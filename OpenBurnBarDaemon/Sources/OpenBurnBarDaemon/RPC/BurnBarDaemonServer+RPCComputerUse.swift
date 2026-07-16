@@ -480,7 +480,8 @@ extension BurnBarDaemonServer {
             let result = ComputerUseApprovalPendingResponse(
                 requests: pending.requests,
                 runRequirements: await runService.listComputerUseRequirements(),
-                sessionActive: pending.sessionActive
+                sessionActive: pending.sessionActive,
+                systemCapability: pending.systemCapability
             )
             let response = BurnBarRPCResponseEnvelope(
                 id: requestId,

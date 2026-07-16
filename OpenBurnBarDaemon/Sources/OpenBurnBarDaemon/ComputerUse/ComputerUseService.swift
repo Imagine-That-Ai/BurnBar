@@ -91,6 +91,7 @@ public actor ComputerUseService {
     private let requiresManagedBrowserRunAuthority: Bool
     private let approvalPublisher: ApprovalPublisher?
     private let sessionEndedObserver: SessionEndedObserver?
+    private let systemCapabilityProvider: (@Sendable () async -> ComputerUseSystemCapabilitySnapshot)?
 #if os(Linux)
     private let linuxInputSessionManager: LinuxComputerUseInputSessionManager
 #endif
@@ -122,6 +123,7 @@ public actor ComputerUseService {
         requiresManagedBrowserRunAuthority: Bool? = nil,
         approvalPublisher: ApprovalPublisher? = nil,
         sessionEndedObserver: SessionEndedObserver? = nil,
+        systemCapabilityProvider: (@Sendable () async -> ComputerUseSystemCapabilitySnapshot)? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
     ) {
         self.init(
@@ -260,6 +262,16 @@ public actor ComputerUseService {
         self.requiresManagedBrowserRunAuthority = resolvedRequiresManagedBrowserRunAuthority
         self.approvalPublisher = approvalPublisher
         self.sessionEndedObserver = sessionEndedObserver
+        let defaultSystemCapabilityProvider: (@Sendable () async -> ComputerUseSystemCapabilitySnapshot)?
+#if os(Linux)
+        let linuxSystemCapabilityProbe = LinuxComputerUseSystemCapabilityProbe()
+        defaultSystemCapabilityProvider = {
+            await linuxSystemCapabilityProbe.capability()
+        }
+#else
+        defaultSystemCapabilityProvider = nil
+#endif
+        self.systemCapabilityProvider = systemCapabilityProvider ?? defaultSystemCapabilityProvider
         self.coordinator = ComputerUseRunCoordinator(
             approvalIssuer: { request in
                 try await approvalBridge.issue(request, publisher: approvalPublisher)
@@ -674,9 +686,11 @@ public actor ComputerUseService {
         } else {
             sessionActive = nil
         }
+        let systemCapability = await systemCapabilityProvider?()
         return ComputerUseApprovalPendingResponse(
             requests: await approvalBridge.pendingApprovals(sessionId: filteredSessionID),
-            sessionActive: sessionActive
+            sessionActive: sessionActive,
+            systemCapability: systemCapability
         )
     }
 

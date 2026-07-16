@@ -149,6 +149,40 @@ final class ComputerUseServiceRunBindingTests: XCTestCase {
     }
 
     #if os(Linux)
+    func testPendingApprovalIncludesTypedSystemCapabilitySnapshot() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-cu-system-capability-" + UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let capabilityStateStore = try await makeCapabilityStateStore(at: root)
+        let expected = ComputerUseSystemCapabilitySnapshot(
+            available: true,
+            captureReady: true,
+            inputReady: true,
+            active: false,
+            reason: "capture_and_input_ready"
+        )
+        let service = ComputerUseService(
+            auditBaseDirectory: root,
+            capabilityStateStore: capabilityStateStore,
+            leafKillSwitch: { false },
+            privilegedInputKillSwitchActivator: { _ in },
+            systemCapabilityProvider: { expected }
+        )
+
+        let pending = await service.pendingApprovals(ComputerUseApprovalPendingRequest())
+
+        XCTAssertEqual(pending.systemCapability, expected)
+        let encoded = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(pending)
+        ) as? [String: Any]
+        let capability = try XCTUnwrap(encoded?["systemCapability"] as? [String: Any])
+        XCTAssertEqual(capability["available"] as? Bool, true)
+        XCTAssertEqual(capability["captureReady"] as? Bool, true)
+        XCTAssertEqual(capability["inputReady"] as? Bool, true)
+        XCTAssertEqual(capability["active"] as? Bool, false)
+        XCTAssertEqual(capability["reason"] as? String, "capture_and_input_ready")
+    }
+
     func testNonBrowserSessionCannotReserveAgentRunBinding() async throws {
         let service = ComputerUseService(
             privilegedInputKillSwitchActivator: { _ in },

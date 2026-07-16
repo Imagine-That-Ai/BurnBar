@@ -451,15 +451,45 @@ public struct ComputerUseApprovalPendingResponse: Codable, Equatable, Sendable {
     /// `nil` preserves unfiltered polling semantics; filtered polls always
     /// return a concrete value so clients can retire daemon-ended sessions.
     public let sessionActive: Bool?
+    /// Linux-native system automation readiness. This is additive and absent
+    /// on platforms that do not compose PipeWire capture with daemon input.
+    public let systemCapability: ComputerUseSystemCapabilitySnapshot?
 
     public init(
         requests: [HermesRealtimeRelayApprovalRequest],
         runRequirements: [ComputerUseRunRequirementSummary]? = nil,
-        sessionActive: Bool? = nil
+        sessionActive: Bool? = nil,
+        systemCapability: ComputerUseSystemCapabilitySnapshot? = nil
     ) {
         self.requests = requests
         self.runRequirements = runRequirements
         self.sessionActive = sessionActive
+        self.systemCapability = systemCapability
+    }
+}
+
+public struct ComputerUseSystemCapabilitySnapshot: Codable, Equatable, Sendable {
+    public let available: Bool
+    public let captureReady: Bool
+    public let inputReady: Bool
+    public let active: Bool
+    public let reason: String
+    public let source: String
+
+    public init(
+        available: Bool,
+        captureReady: Bool,
+        inputReady: Bool,
+        active: Bool,
+        reason: String,
+        source: String = "linux-system-runtime"
+    ) {
+        self.available = available
+        self.captureReady = captureReady
+        self.inputReady = inputReady
+        self.active = active
+        self.reason = reason
+        self.source = source
     }
 }
 
