@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarLogParsers
 
 enum SummaryEndpointCooldownPolicy {
     static let localEndpointFailureCooldown: TimeInterval = 5 * 60

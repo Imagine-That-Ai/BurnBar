@@ -1,5 +1,4 @@
 import SwiftUI
-import OpenBurnBarCore
 
 struct LivingThemesView: View {
     @AppStorage(MobileBackdropKernel.storageKey) private var selectedKernelID = MobileBackdropKernel.defaultKernel.rawValue
