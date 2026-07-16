@@ -621,10 +621,10 @@ extension DatabaseEncryptionService {
         guard databaseFileName.isEmpty == false else { return }
         let orphanPrefix = databaseFileName + ".sqlcipher-migrating-"
         let directoryURL = databaseURL.deletingLastPathComponent()
-        guard let entries = try? fileManager.contentsOfDirectory(atPath: directoryURL.path) else { return }
+        guard let entries = try? fileManager.contentsOfDirectory(atPath: directoryURL.path) else { return } // try?-ok(best-effort orphan cleanup)
         for entry in entries where entry.hasPrefix(orphanPrefix) {
             let orphanPath = directoryURL.appendingPathComponent(entry).path
-            let attributes = try? fileManager.attributesOfItem(atPath: orphanPath)
+            let attributes = try? fileManager.attributesOfItem(atPath: orphanPath) // try?-ok(size metadata is optional for cleanup)
             let orphanBytes = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
             do {
                 try fileManager.removeItem(atPath: orphanPath)
