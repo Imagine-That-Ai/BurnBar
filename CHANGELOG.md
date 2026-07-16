@@ -199,7 +199,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Recount reparses, removes stale same-device Firestore usage docs, and reports
   the full cloud-sync batch total to analytics.
 
-### Added - Windows 1.0.31 parity release
+### Added - Windows 1.0.32 parity release
 
 - **Windows parity release line** - advances the Windows x64 and ARM64
   direct-download candidates to the completed F1 product ledger and applicable
@@ -207,9 +207,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Computer Use, project-code memory, Elder Wand fusion, companion CLI,
   Switcher, indexed search, connectors, and native release packaging.
 
-- **Signed native-engine packaging** - stages the Swift resource bundle beside
-  the Windows native engine, refreshes its manifest after Authenticode signing,
-  and validates the published layout before portable and MSIX packaging.
+- **Signed native-engine packaging** - stages both the Core and Kernel SwiftPM
+  resource bundles beside the Windows native engine, hashes every resource in
+  its manifest, and executes the usage parser from the staged and published
+  layouts before Authenticode signing and portable/MSIX packaging.
 - **Physical certification integrity** - binds imported physical-device and
   performance receipts to their raw hardware attestation and exact signed
   artifact manifest hashes, rejecting virtual, stale, mismatched, or

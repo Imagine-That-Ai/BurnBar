@@ -391,6 +391,19 @@ jobs:
             node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --windows-dir "publish/$rid"
           done
 
+      - name: Run parser smoke from the published x64 layout
+        shell: pwsh
+        env:
+          OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:OPENBURNBAR_CORE_CABI_PATH = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64/OpenBurnBarCoreCAbi.dll"
+          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj `
+            -c Release `
+            --filter FullyQualifiedName~NativeUsageEngineIntegrationTests `
+            --blame-hang `
+            --blame-hang-timeout 5m
+
       - name: Authenticode sign (Azure Artifact Signing — no staple analog)
         if: steps.config.outputs.codesign == 'true'
         uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0

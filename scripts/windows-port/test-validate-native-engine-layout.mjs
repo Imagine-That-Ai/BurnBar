@@ -5,18 +5,27 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { validateNativeEngineLayout, REQUIRED_RESOURCE_BUNDLE } from "./validate-native-engine-layout.mjs";
+import { validateNativeEngineLayout, REQUIRED_RESOURCE_BUNDLES } from "./validate-native-engine-layout.mjs";
 
 function writeFixture() {
   const root = mkdtempSync(join(tmpdir(), "obb-native-layout-"));
-  const bundle = join(root, REQUIRED_RESOURCE_BUNDLE);
-  mkdirSync(bundle);
   const engine = join(root, "OpenBurnBarCoreCAbi.dll");
-  const resource = join(bundle, "catalog.json");
   writeFileSync(engine, "engine");
-  writeFileSync(resource, '{"schemaVersion":1}\n');
-  const files = [engine, resource].map((path) => ({
-    fileName: path === engine ? "OpenBurnBarCoreCAbi.dll" : `${REQUIRED_RESOURCE_BUNDLE}/catalog.json`,
+  const resources = REQUIRED_RESOURCE_BUNDLES.map((bundleName, index) => {
+    const bundle = join(root, bundleName);
+    mkdirSync(bundle);
+    const resource = join(bundle, index === 0 ? "MiningPickIcon.svg" : "secret-pattern-corpus.json");
+    writeFileSync(resource, '{"schemaVersion":1}\n');
+    return { bundleName, bundle, resource };
+  });
+  const files = [
+    { path: engine, fileName: "OpenBurnBarCoreCAbi.dll" },
+    ...resources.map(({ bundleName, resource }) => ({
+      path: resource,
+      fileName: `${bundleName}/${resource.split(/[\\/]/).at(-1)}`,
+    })),
+  ].map(({ path, fileName }) => ({
+    fileName,
     sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
     sizeBytes: readFileSync(path).length,
   }));
@@ -25,7 +34,7 @@ function writeFixture() {
     engine: "OpenBurnBarCoreCAbi.dll",
     files,
   }));
-  return { root, bundle };
+  return { root, resources };
 }
 
 test("accepts a published engine with the resource bundle", () => {
@@ -34,10 +43,14 @@ test("accepts a published engine with the resource bundle", () => {
   assert.deepEqual(result, { ok: true, errors: [] });
 });
 
-test("rejects a published engine without the resource bundle", () => {
-  const { root, bundle } = writeFixture();
-  rmSync(bundle, { recursive: true, force: true });
-  const result = validateNativeEngineLayout(root);
-  assert.equal(result.ok, false);
-  assert.match(result.errors.join("\n"), /resource bundle|manifest files/);
+test("rejects a published engine when either resource bundle is missing", () => {
+  for (const missingBundle of REQUIRED_RESOURCE_BUNDLES) {
+    const { root, resources } = writeFixture();
+    const bundle = resources.find(({ bundleName }) => bundleName === missingBundle).bundle;
+    rmSync(bundle, { recursive: true, force: true });
+    const result = validateNativeEngineLayout(root);
+    assert.equal(result.ok, false);
+    assert.match(result.errors.join("\n"), new RegExp(missingBundle));
+    rmSync(root, { recursive: true, force: true });
+  }
 });
