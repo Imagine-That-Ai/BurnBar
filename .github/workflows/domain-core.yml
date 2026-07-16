@@ -1315,6 +1315,13 @@ jobs:
             "$RUNNER_TEMP/swift-consumer-spool.log" \
             > "$RUNNER_TEMP/swift-consumer-contracts.log"
 
+      - name: Restore checked-in Swift artifacts after debug validation
+        run: |
+          git restore --source=HEAD -- \
+            Vendor/OpenBurnBarDomainCore.xcframework \
+            OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated \
+            crates/openburnbar-domain-core/artifact-provenance/swift.sha256
+
       - name: Emit Swift consumer proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit

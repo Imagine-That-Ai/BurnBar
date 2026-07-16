@@ -152,6 +152,19 @@ test("native consumer jobs keep their measured execution margin and emulator she
     apple,
     /Build Apple XCFramework and regenerate Swift bindings[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ github\.sha \}\}[\s\S]*build-domain-core-xcframework\.sh/u,
   );
+  const swiftConsumer = workflowJob(core, "swift-consumer-contracts");
+  const restoreSwiftArtifacts = swiftConsumer.indexOf(
+    "Restore checked-in Swift artifacts after debug validation",
+  );
+  const emitSwiftProof = swiftConsumer.indexOf(
+    "Emit Swift consumer proof fragment",
+  );
+  assert.ok(restoreSwiftArtifacts >= 0);
+  assert.ok(restoreSwiftArtifacts < emitSwiftProof);
+  assert.match(
+    swiftConsumer,
+    /git restore --source=HEAD -- \\\n            Vendor\/OpenBurnBarDomainCore\.xcframework \\\n            OpenBurnBarCore\/Sources\/OpenBurnBarDomainCore\/Generated \\\n            crates\/openburnbar-domain-core\/artifact-provenance\/swift\.sha256/u,
+  );
 });
 
 test("Python native evidence reports the candidate embedded by Rust", () => {

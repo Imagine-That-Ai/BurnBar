@@ -27,7 +27,7 @@ function fixture(context, mode = "success") {
     `#!/usr/bin/env bash
 set -euo pipefail
 mode="\${FAKE_ADB_MODE:-success}"
-if [[ "$1" == "install" ]]; then echo Success; exit 0; fi
+if [[ "$1 $2 $3 $4" == "install -r -t ${apk}" ]]; then echo Success; exit 0; fi
 if [[ "$1" == "uninstall" ]]; then echo Success; exit 0; fi
 if [[ "$1 $2 $3 $4" == "shell pm list instrumentation"* ]]; then
   if [[ "$mode" == "missing" ]]; then
