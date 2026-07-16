@@ -61,6 +61,8 @@ function valid() {
       'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
       'capture-parity-certification-preflight.mjs',
       'capture-p34-credential-security-proof.mjs',
+      'resolve-p39-platform-evidence.mjs',
+      'capture-p39-differential.mjs',
       'run-p40-privacy-rpc-session.mjs',
       'Capture P-40 installed privacy proof',
       "if: inputs.requirement == 'P-02'",
@@ -104,6 +106,32 @@ function valid() {
       'Preserve non-promotable P-02 diagnostic evidence',
       'Capture P-31 installed accessibility matrix evidence',
       'Capture P-34 credential security proof',
+      [
+        '      - name: Resolve P-39 candidate-bound platform evidence inputs',
+        "        if: inputs.requirement == 'P-39'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          node scripts/linux-port/resolve-p39-platform-evidence.mjs',
+        '            --target-head "$TARGET_HEAD"',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+      ].join('\n'),
+      [
+        '      - name: Capture P-39 same-commit macOS/Linux differential proof',
+        "        if: inputs.requirement == 'P-39'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          node scripts/linux-port/capture-p39-differential.mjs',
+        '            --input-root "$input_root"',
+        '            --macos "$MACOS_INPUT"',
+        '            --linux "$LINUX_INPUT"',
+        '            --environment "$ENVIRONMENT_ID"',
+        '            --target-head "$TARGET_HEAD"',
+        '            --version "$VERSION"',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+        "            --ignore '$.payload.generatedAt'"
+      ].join('\n'),
       'Finalize registered feature proof closure',
       'Materialize the requirement-owned release closure',
       'Run the registered requirement validator'
@@ -325,6 +353,40 @@ test('P-38 workflow step cannot be removed or weakened', () => {
   }
 });
 
+test('P-39 differential workflow cannot be removed or weakened', () => {
+  for (const marker of [
+    'resolve-p39-platform-evidence.mjs',
+    'capture-p39-differential.mjs',
+    'Resolve P-39 candidate-bound platform evidence inputs',
+    'Capture P-39 same-commit macOS/Linux differential proof',
+    "--ignore '$.payload.generatedAt'"
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replaceAll(marker, 'removed-p39-capture-marker');
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(result.failures.some((failure) => /P-39/u.test(failure)), marker);
+  }
+  for (const [name, from, to] of [
+    ['commented resolver', '          node scripts/linux-port/resolve-p39-platform-evidence.mjs', '          # node scripts/linux-port/resolve-p39-platform-evidence.mjs'],
+    ['swallowed capture failure', '          set -euo pipefail', '          set -euo pipefail\n          continue-on-error: true'],
+    ['disabled capture fail-fast shell', '          set -euo pipefail', '          set +e']
+  ]) {
+    const input = valid();
+    const stepName = name.includes('resolver')
+      ? '      - name: Resolve P-39 candidate-bound platform evidence inputs'
+      : '      - name: Capture P-39 same-commit macOS/Linux differential proof';
+    const stepStart = input.productParityWorkflow.indexOf(stepName);
+    assert.ok(stepStart >= 0);
+    const before = input.productParityWorkflow.slice(0, stepStart);
+    const step = input.productParityWorkflow.slice(stepStart);
+    input.productParityWorkflow = `${before}${step.replace(from, to)}`;
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, name);
+    assert.ok(result.failures.some((failure) => /P-39/u.test(failure)), name);
+  }
+});
+
 test('hidden Linux output uploads fail closed when upload protections mutate', () => {
   for (const [surface, step, mutation] of [
     ['release', 'Upload architecture shard', 'include-hidden-files: false'],
@@ -381,7 +443,7 @@ test('product evidence producer identity and immutable artifact wiring fail clos
     'include-hidden-files: true'
   ]) {
     const input = valid();
-    input.productParityWorkflow = input.productParityWorkflow.replace(marker, 'removed');
+    input.productParityWorkflow = input.productParityWorkflow.replaceAll(marker, 'removed');
     assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
   }
 });

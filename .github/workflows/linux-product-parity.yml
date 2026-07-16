@@ -218,6 +218,55 @@ jobs:
             --candidate-run-id "$CANDIDATE_RUN_ID" \
             --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
 
+      # P-39 consumes a macOS/Linux evidence pair emitted by a producer bound
+      # to this exact candidate. The current Linux release producer does not
+      # emit that pair yet; the resolver therefore fails explicitly instead of
+      # creating fixture or synthetic inputs.
+      - name: Resolve P-39 candidate-bound platform evidence inputs
+        id: p39_inputs
+        if: inputs.requirement == 'P-39'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          node scripts/linux-port/resolve-p39-platform-evidence.mjs \
+            --input-root "$input_root" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
+
+      - name: Capture P-39 same-commit macOS/Linux differential proof
+        if: inputs.requirement == 'P-39'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+          MACOS_INPUT: ${{ steps.p39_inputs.outputs.macos }}
+          LINUX_INPUT: ${{ steps.p39_inputs.outputs.linux }}
+          VERSION: ${{ steps.p39_inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          node scripts/linux-port/capture-p39-differential.mjs \
+            --input-root "$input_root" \
+            --macos "$MACOS_INPUT" \
+            --linux "$LINUX_INPUT" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --version "$VERSION" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --ignore '$.payload.generatedAt'
+
       - name: Capture P-40 installed privacy proof
         if: inputs.requirement == 'P-40'
         shell: bash
