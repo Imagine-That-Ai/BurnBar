@@ -969,13 +969,26 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         try sortedEncodedLine(try XCTUnwrap(makeSample(micros: 2))).write(to: readyURL(in: directory, ordinal: 2))
         try sortedEncodedLine(try XCTUnwrap(makeSample(micros: 9))).write(to: readyURL(in: directory, ordinal: 9))
 
+        // nextBatch always surfaces the lowest-ordinal unacknowledged ready file;
+        // it does not auto-advance. Acknowledging each batch removes it, so the
+        // next call must surface the next-higher ordinal. This proves the queue
+        // orders ready files by ordinal, not filesystem enumeration order.
         let first = try XCTUnwrap(spool.nextBatch(sealActive: false))
-        let second = try XCTUnwrap(spool.nextBatch(sealActive: false))
-        let third = try XCTUnwrap(spool.nextBatch(sealActive: false))
-        XCTAssertEqual(first.samples.single?.legacyMicros, 2)
-        XCTAssertEqual(second.samples.single?.legacyMicros, 5)
-        XCTAssertEqual(third.samples.single?.legacyMicros, 9)
         XCTAssertEqual(first.token, "ready-00000000000000000002.jsonl")
+        XCTAssertEqual(first.samples.single?.legacyMicros, 2)
+        try spool.acknowledge(first.token)
+
+        let second = try XCTUnwrap(spool.nextBatch(sealActive: false))
+        XCTAssertEqual(second.token, "ready-00000000000000000005.jsonl")
+        XCTAssertEqual(second.samples.single?.legacyMicros, 5)
+        try spool.acknowledge(second.token)
+
+        let third = try XCTUnwrap(spool.nextBatch(sealActive: false))
+        XCTAssertEqual(third.token, "ready-00000000000000000009.jsonl")
+        XCTAssertEqual(third.samples.single?.legacyMicros, 9)
+        try spool.acknowledge(third.token)
+
+        XCTAssertNil(try spool.nextBatch(sealActive: false))
     }
 
     // MARK: - isValidStored loaded-identity invariants
