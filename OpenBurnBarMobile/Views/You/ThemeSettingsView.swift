@@ -120,11 +120,17 @@ struct ThemeSettingsView: View {
             substrateSection
 
             Section {
+                NavigationLink {
+                    LivingThemesView()
+                } label: {
+                    SettingsLabel(icon: "livephoto", color: MobileTheme.blaze, title: "Living Themes")
+                }
+
                 Button {
                     showWallpaperGenerator = true
                 } label: {
                     HStack {
-                        SettingsLabel(icon: "photo.artframe", color: MobileTheme.ember, title: "Generate Wallpaper")
+                        SettingsLabel(icon: "photo.artframe", color: MobileTheme.ember, title: "Usage Swarm Wallpaper")
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.footnote.weight(.semibold))
@@ -135,7 +141,7 @@ struct ThemeSettingsView: View {
             } header: {
                 Text("Wallpaper")
             } footer: {
-                Text("Create a swarm wallpaper colored by your AI provider usage. Save to Photos, then set as your wallpaper.")
+                Text("Choose from every procedural theme or create a swarm wallpaper colored by your AI usage. Live themes export as wallpaper-ready Live Photos.")
             }
 
             Section {

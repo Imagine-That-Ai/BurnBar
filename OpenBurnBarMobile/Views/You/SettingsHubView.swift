@@ -160,6 +160,12 @@ struct SettingsHubView: View {
                     }
                     .settingsAnchor(SettingsAnchor.theme)
 
+                    NavigationLink {
+                        LivingThemesView()
+                    } label: {
+                        SettingsLabel(icon: "livephoto", color: MobileTheme.blaze, title: "Living Themes")
+                    }
+
                     Picker(selection: $appSkin) {
                         Text("Aurora").tag(AppSkin.aurora)
                         Text("Editorial").tag(AppSkin.editorial)

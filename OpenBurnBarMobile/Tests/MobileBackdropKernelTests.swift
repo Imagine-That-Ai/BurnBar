@@ -3,6 +3,7 @@ import XCTest
 
 final class MobileBackdropKernelTests: XCTestCase {
     func testKernelIDsMatchAppBurnbarRegistryOrder() {
+        XCTAssertEqual(MobileBackdropKernel.allCases.count, 42)
         XCTAssertEqual(
             MobileBackdropKernel.websiteKernelIDs,
             [
@@ -10,8 +11,11 @@ final class MobileBackdropKernelTests: XCTestCase {
                 "flow",
                 "aurora",
                 "mesh",
+                "prismatica",
                 "moire",
                 "volumetric",
+                "iridescence",
+                "gyroid",
                 "lic",
                 "fluid-aurora",
                 "cloudfield",
@@ -36,7 +40,15 @@ final class MobileBackdropKernelTests: XCTestCase {
                 "origami",
                 "ink-diffusion",
                 "petroleum-sheen",
-                "boids"
+                "boids",
+                "voxel",
+                "star-atlas",
+                "sky-ascent",
+                "open-world-armada",
+                "genesis",
+                "singularity",
+                "knot-field",
+                "hypersphere"
             ]
         )
     }
