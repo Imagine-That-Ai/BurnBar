@@ -56,7 +56,8 @@ final class MissionControlNotificationSecretStoreLinuxTests: XCTestCase {
         }
 
         let id = Self.secretIDFor(service: service)
-        let plaintextKey = id
+        let plaintextKey = "OPENBURNBAR_"
+            + id
             .uppercased()
             .replacingOccurrences(of: "-", with: "_")
         let plaintextBackend = LinuxHeadlessSecretStoreBackend(
