@@ -31,6 +31,7 @@ import { TextExpansionSurface } from '../TextExpansionSurface.js';
 import { UpdateStatusCard } from '../updates/UpdateStatusCard.js';
 import { SettingGroup } from './SettingGroup.js';
 import { SettingRow } from './SettingRow.js';
+import { RecoveryAndRestoreControl } from './RecoveryAndRestoreControl.js';
 import { SettingsHomeView } from './SettingsHomeView.js';
 import { SettingsAppearanceControls } from './SettingsAppearanceControls.js';
 import { SettingsDrillRow } from './SettingsDrillRow.js';
@@ -1320,7 +1321,8 @@ export function SettingsDetailPane({
   onRefreshConfig,
   refreshBusy,
   onDone,
-  onSelectTab
+  onSelectTab,
+  onOpenDatabase
 }: {
   activeTab: SettingsTabId;
   config: ConfigSnapshot | null;
@@ -1334,6 +1336,7 @@ export function SettingsDetailPane({
   refreshBusy: boolean;
   onDone: () => void;
   onSelectTab: (tab: SettingsTabId) => void;
+  onOpenDatabase: () => void;
 }) {
   const meta = settingsTabMeta(activeTab);
   const privacyMutation = useSettingsWiringStore((s) => s.privacyMutation);
@@ -1716,12 +1719,9 @@ export function SettingsDetailPane({
                 control={<span className="muted" role="status">Unavailable</span>}
                 readOnlyNote="Use an audited account workflow when the service exposes one; this shell cannot claim erasure."
               />
-              <SettingRow
-                iconGlyph="↺"
-                label="Recovery and restore receipts"
-                description="Recovery keys, account erasure, cloud propagation, and restore receipts remain outside this local retention control."
-                control={<span className="muted" role="status">Unavailable</span>}
-                readOnlyNote="No renderer-only fallback or local recovery state is stored."
+              <RecoveryAndRestoreControl
+                fixtureMode={fixtureMode}
+                onOpenDatabase={onOpenDatabase}
               />
             </SettingGroup>
             <SettingGroup title="Diagnostics" sectionHeader hideTitle>

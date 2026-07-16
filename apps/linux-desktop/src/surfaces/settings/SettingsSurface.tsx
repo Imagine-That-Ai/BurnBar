@@ -66,6 +66,10 @@ export function SettingsSurface() {
     setRoute('overview');
   }, [setRoute]);
 
+  const onOpenDatabase = useCallback(() => {
+    setRoute('database');
+  }, [setRoute]);
+
   let body: ReactNode = null;
 
   if (loading && !config && !fixtureMode) {
@@ -92,6 +96,7 @@ export function SettingsSurface() {
           refreshBusy={refreshBusy}
           onDone={onDone}
           onSelectTab={onSelectTab}
+          onOpenDatabase={onOpenDatabase}
         />
       </div>
     );
