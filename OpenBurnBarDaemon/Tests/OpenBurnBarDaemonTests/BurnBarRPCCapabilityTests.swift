@@ -105,14 +105,64 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.codeWatchProject))
         XCTAssertTrue(profile.permits(.codeSearch))
         XCTAssertTrue(profile.permits(.codeIndexStatus))
+        XCTAssertTrue(profile.permits(.clientAttach))
+        XCTAssertTrue(profile.permits(.clientClaimControl))
         XCTAssertTrue(profile.permits(.runCreate))
+        XCTAssertTrue(profile.permits(.runList))
+        XCTAssertTrue(profile.permits(.runGet))
+        XCTAssertTrue(profile.permits(.runPoll))
+        XCTAssertTrue(profile.permits(.runCancel))
+        XCTAssertTrue(profile.permits(.runRetry))
+        XCTAssertTrue(profile.permits(.approvalRespond))
+        XCTAssertTrue(profile.permits(.subscriptionStart))
+        XCTAssertTrue(profile.permits(.subscriptionResume))
         XCTAssertTrue(profile.permits(.runResume))
+        XCTAssertTrue(profile.permits(.computerUsePanicHalt))
         XCTAssertTrue(profile.permits(.linuxPrivacyInventory))
         XCTAssertTrue(profile.permits(.linuxPrivacyDeletionPreview))
         XCTAssertTrue(profile.permits(.linuxPrivacyDeletionExecute))
         XCTAssertTrue(profile.permits(.linuxPrivacyExport))
         XCTAssertTrue(profile.permits(.linuxPrivacyRetentionStatus))
         XCTAssertTrue(profile.permits(.linuxPrivacyRetentionApply))
+
+        // Keep the security boundary exact: these are the socket RPCs used by
+        // the CLI client and its run/subscription/safety commands, not an
+        // entire capability group.
+        let expected: Set<BurnBarRPCMethod> = [
+            .health,
+            .controllerSummary,
+            .questionsList,
+            .followupsList,
+            .missionsList,
+            .missionApprove,
+            .simulatorList,
+            .simulatorReplay,
+            .memoryRecall,
+            .codeIndexProject,
+            .codeWatchProject,
+            .codeSearch,
+            .codeIndexStatus,
+            .clientAttach,
+            .clientClaimControl,
+            .runCreate,
+            .runList,
+            .runGet,
+            .runPoll,
+            .runCancel,
+            .runRetry,
+            .approvalRespond,
+            .subscriptionStart,
+            .subscriptionResume,
+            .runResume,
+            .computerUsePanicHalt,
+            .linuxPrivacyInventory,
+            .linuxPrivacyDeletionPreview,
+            .linuxPrivacyDeletionExecute,
+            .linuxPrivacyExport,
+            .linuxPrivacyRetentionStatus,
+            .linuxPrivacyRetentionApply
+        ]
+        XCTAssertEqual(profile.permittedMethods, expected)
 
         // The CLI must not inherit whole capability groups just because one
         // supported command lives there.

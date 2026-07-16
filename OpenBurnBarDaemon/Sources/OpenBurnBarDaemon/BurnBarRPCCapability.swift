@@ -193,8 +193,12 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
     )
 
     /// Signed CLI support posture. Keep this as an exact method allowlist, not
-    /// coarse capability groups: the CLI needs `run.resume`, for example, but
-    /// must not inherit the rest of the workspace tool/run-dispatch surface.
+    /// coarse capability groups: the CLI needs the run lifecycle and approval
+    /// methods it actually exposes, but must not inherit the rest of the
+    /// workspace tool/run-dispatch surface. Keep this list in lockstep with
+    /// `BurnBarCLISocketClient`; a missing method makes the corresponding
+    /// command fail at the daemon capability gate even though its parser and
+    /// transport implementation are present.
     public static let cliSupport = methodScoped([
         .health,
         .controllerSummary,
@@ -210,8 +214,21 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
         .codeWatchProject,
         .codeSearch,
         .codeIndexStatus,
+        .clientAttach,
+        .clientClaimControl,
         .runCreate,
+        .runList,
+        .runGet,
+        .runPoll,
+        .runCancel,
+        .runRetry,
+        .approvalRespond,
+        .subscriptionStart,
+        .subscriptionResume,
         .runResume,
+        // The panic path is a safety kill switch, not general computer-use
+        // agency. The CLI intentionally exposes only this computer-use RPC.
+        .computerUsePanicHalt,
         .linuxPrivacyInventory,
         .linuxPrivacyDeletionPreview,
         .linuxPrivacyDeletionExecute,
