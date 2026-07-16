@@ -302,7 +302,7 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
 
       - name: Upload immutable verified Windows release inputs
-        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: domain-core-windows-release-gate-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-native-release-gate/
@@ -329,6 +329,7 @@ jobs:
         shell: bash
     env:
       VERSION: ${{ needs.resolve-release.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
     outputs:
       signed_release: ${{ steps.config.outputs.codesign }}
     steps:
@@ -339,7 +340,7 @@ jobs:
           fetch-depth: 0
 
       - name: Resolve signed public domain-core profile
-        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --format msbuild-props --output "$GITHUB_WORKSPACE/.domain-core-profile.props"
+        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --expected-release-commit "$RELEASE_COMMIT" --format msbuild-props --output "$GITHUB_WORKSPACE/.domain-core-profile.props"
 
       - name: Download verified Shared Rust release inputs
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
@@ -949,7 +950,7 @@ jobs:
           retention-days: 7
 
       - name: Upload observed Windows Rust identity
-        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: domain-core-windows-observed-identity-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-windows-observed-identity.json
@@ -1323,7 +1324,7 @@ jobs:
           node scripts/ci/publish-domain-core-release-evidence.mjs --manifest "$manifest"
 
       - name: Retain exact Windows evidence and rollback chain
-        uses: actions/upload-artifact@330a01c490aca151604b8fc639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: domain-core-windows-release-evidence-${{ needs.domain-core-native-release-gate.outputs.profile_name }}-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |

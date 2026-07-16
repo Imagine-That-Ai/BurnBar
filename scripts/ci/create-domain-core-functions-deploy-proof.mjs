@@ -61,14 +61,14 @@ function parseArguments(argv) {
   return values;
 }
 
-function readJson(path, label) {
+function readArtifact(path, label, { json = true } = {}) {
   try {
-    return JSON.parse(
-      readRegularFileSync(regularFile(path, label), {
-        encoding: "utf8",
-        label,
-      }),
-    );
+    const bytes = readRegularFileSync(regularFile(path, label), { label });
+    return {
+      bytes,
+      sha256: sha256Bytes(bytes),
+      json: json ? JSON.parse(bytes.toString("utf8")) : undefined,
+    };
   } catch (error) {
     throw new Error(`unable to read ${label}: ${error.message}`);
   }
@@ -83,10 +83,8 @@ function positiveInteger(value, label) {
   return parsed;
 }
 
-function sha256File(path) {
-  return createHash("sha256")
-    .update(readRegularFileSync(path, { label: "Functions runtime artifact" }))
-    .digest("hex");
+function sha256Bytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function validateProfile(raw) {
@@ -241,16 +239,18 @@ export function buildFunctionsDeployProof({
     runtimeManifestPath,
     "Functions runtime manifest",
   );
-  const profile = validateProfile(
-    readJson(resolvedProfilePath, "Functions profile"),
+  const profileArtifact = readArtifact(
+    resolvedProfilePath,
+    "Functions profile",
+  );
+  const profile = validateProfile(profileArtifact.json);
+  const receiptArtifact = readArtifact(
+    resolvedReceiptPath,
+    "compiled Functions receipt",
+    { json: false },
   );
   const compiledReceipt = validateProfile(
-    parseDomainCoreFunctionsJavaScript(
-      readRegularFileSync(resolvedReceiptPath, {
-        encoding: "utf8",
-        label: "compiled Functions receipt",
-      }),
-    ),
+    parseDomainCoreFunctionsJavaScript(receiptArtifact.bytes.toString("utf8")),
   );
   if (!isDeepStrictEqual(profile, compiledReceipt)) {
     throw new Error(
@@ -264,15 +264,13 @@ export function buildFunctionsDeployProof({
       "Functions release commit must be a full lowercase Git SHA-1",
     );
   }
-  validateReleaseGate(
-    readJson(resolvedGatePath, "release gate"),
-    profile,
-    commit,
-  );
-  const runtimeManifest = readJson(
+  const gateArtifact = readArtifact(resolvedGatePath, "release gate");
+  validateReleaseGate(gateArtifact.json, profile, commit);
+  const manifestArtifact = readArtifact(
     resolvedManifestPath,
     "Functions runtime manifest",
   );
+  const runtimeManifest = manifestArtifact.json;
   if (
     runtimeManifest?.schemaVersion !== 1 ||
     runtimeManifest?.manifestKind !== "domain-core-runtime-artifact" ||
@@ -306,23 +304,23 @@ export function buildFunctionsDeployProof({
     release: { tag, commit },
     profile: {
       value: profile,
-      sha256: sha256File(resolvedProfilePath),
+      sha256: profileArtifact.sha256,
       canonicalSha256: createHash("sha256")
         .update(canonicalJson(profile))
         .digest("hex"),
     },
     compiledReceipt: {
       fileName: basename(resolvedReceiptPath),
-      sha256: sha256File(resolvedReceiptPath),
+      sha256: receiptArtifact.sha256,
     },
     runtimeArtifact: {
       fileName: basename(resolvedManifestPath),
-      sha256: sha256File(resolvedManifestPath),
+      sha256: manifestArtifact.sha256,
       value: runtimeManifest,
     },
     releaseGate: {
       fileName: basename(resolvedGatePath),
-      sha256: sha256File(resolvedGatePath),
+      sha256: gateArtifact.sha256,
     },
   };
 }

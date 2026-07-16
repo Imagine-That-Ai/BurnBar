@@ -66,19 +66,34 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
         source = TRUSTED_GUARD_WORKFLOW.read_text()
         for marker in (
             "pull_request_target:",
-            "pull_request_review:",
             "Domain Core Trusted Deletion Guard",
             "path: trusted",
             "path: candidate",
-            "python3 trusted/scripts/ci/verify-domain-core-legacy-deletion.py",
-            '--repo-root "$GITHUB_WORKSPACE/candidate"',
+            "ref: ${{ github.event.pull_request.base.sha }}",
+            "ref: ${{ github.event.pull_request.head.sha }}",
+            "persist-credentials: false",
+            'python3 "$TRUSTED_ROOT/scripts/ci/verify-domain-core-legacy-deletion.py"',
+            '--repo-root "$CANDIDATE_ROOT"',
+            '--trusted-root "$TRUSTED_ROOT"',
+            "--verify-signed-evidence",
             '--deletion-head "$HEAD_SHA"',
-            "node trusted/scripts/ci/verify-domain-core-default-branch-controls.mjs",
+            'test "$(git -C "$TRUSTED_ROOT" rev-parse HEAD)" = "$BASE_SHA"',
+            'test "$(git -C "$CANDIDATE_ROOT" rev-parse HEAD)" = "$HEAD_SHA"',
             "DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache",
             "timeout-minutes: 60",
         ):
             self.assertIn(marker, source)
+        # Both checkouts must be credential-free so neither path can push or mutate refs.
+        self.assertGreaterEqual(source.count("persist-credentials: false"), 2)
+        # Trusted workflow intentionally uses only pull_request_target; review-trigger
+        # authority was deliberately removed and must never be reintroduced.
+        self.assertNotIn("pull_request_review:", source)
+        # Candidate is checked out as data only — no candidate-controlled evaluator
+        # execution is permitted. The evaluator must run from the trusted root.
         self.assertNotIn("candidate/scripts/", source)
+        self.assertNotIn("node candidate/", source)
+        self.assertNotIn("python3 candidate/", source)
+        self.assertNotIn("bash candidate/", source)
 
     def test_linux_release_preserves_candidate_activation_history_in_every_job(self) -> None:
         source = (ROOT / ".github/workflows/linux-release.yml").read_text()
