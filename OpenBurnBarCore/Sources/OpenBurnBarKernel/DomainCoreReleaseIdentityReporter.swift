@@ -57,7 +57,8 @@ public enum DomainCoreReleaseIdentityReporter {
         guard candidateCommit.range(
             of: #"^[0-9a-f]{40}$"#,
             options: .regularExpression
-        ) != nil else {
+        ) != nil,
+        candidateCommit != String(repeating: "0", count: 40) else {
             throw DomainCoreReleaseIdentityError.invalidCandidateCommit
         }
 
