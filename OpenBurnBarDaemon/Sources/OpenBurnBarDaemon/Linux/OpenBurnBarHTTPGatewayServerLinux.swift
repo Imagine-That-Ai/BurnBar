@@ -185,13 +185,9 @@ public actor BurnBarHTTPGatewayServer {
             logger.error("gateway_config_invalid", metadata: ["error": detail])
             throw BurnBarHTTPGatewayError.invalidConfiguration(detail)
         }
-        guard configuration.normalizedHost != "::1" else {
-            let detail = "Linux gateway currently supports IPv4 loopback binds only; use 127.0.0.1 or localhost."
-            logger.error("gateway_config_invalid", metadata: ["error": detail])
-            throw BurnBarHTTPGatewayError.invalidConfiguration(detail)
-        }
-
-        let fileDescriptor = Glibc.socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+        let isIPv6Loopback = configuration.normalizedHost == "::1"
+        let socketFamily = isIPv6Loopback ? AF_INET6 : AF_INET
+        let fileDescriptor = Glibc.socket(socketFamily, Int32(SOCK_STREAM.rawValue), 0)
         guard fileDescriptor >= 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
@@ -201,14 +197,43 @@ public actor BurnBarHTTPGatewayServer {
             setsockopt(fileDescriptor, SOL_SOCKET, SO_REUSEADDR, &one, socklen_t(MemoryLayout<Int32>.size))
             configureIOTimeouts(for: fileDescriptor)
 
-            var address = sockaddr_in()
-            address.sin_family = sa_family_t(AF_INET)
-            address.sin_port = UInt16(configuration.port).bigEndian
-            address.sin_addr = loopbackAddress(for: configuration.normalizedHost)
+            let bindResult: Int32
+            if isIPv6Loopback {
+                // Keep the IPv6 listener v6-only. The gateway binds a specific
+                // loopback address, so accepting IPv4-mapped connections here
+                // would make the address-family policy implicit and platform-
+                // dependent. IPv4 callers continue using the AF_INET path.
+                var v6Only: Int32 = 1
+                guard setsockopt(
+                    fileDescriptor,
+                    Int32(IPPROTO_IPV6),
+                    IPV6_V6ONLY,
+                    &v6Only,
+                    socklen_t(MemoryLayout<Int32>.size)
+                ) == 0 else {
+                    throw POSIXError(.init(rawValue: errno) ?? .EIO)
+                }
 
-            let bindResult = withUnsafePointer(to: &address) { pointer in
-                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
-                    Glibc.bind(fileDescriptor, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+                var address = sockaddr_in6()
+                address.sin6_family = sa_family_t(AF_INET6)
+                address.sin6_port = UInt16(configuration.port).bigEndian
+                guard inet_pton(AF_INET6, "::1", &address.sin6_addr) == 1 else {
+                    throw BurnBarHTTPGatewayError.invalidHost(configuration.normalizedHost)
+                }
+                bindResult = withUnsafePointer(to: &address) { pointer in
+                    pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                        Glibc.bind(fileDescriptor, rebound, socklen_t(MemoryLayout<sockaddr_in6>.stride))
+                    }
+                }
+            } else {
+                var address = sockaddr_in()
+                address.sin_family = sa_family_t(AF_INET)
+                address.sin_port = UInt16(configuration.port).bigEndian
+                address.sin_addr = loopbackAddress(for: configuration.normalizedHost)
+                bindResult = withUnsafePointer(to: &address) { pointer in
+                    pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                        Glibc.bind(fileDescriptor, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+                    }
                 }
             }
             guard bindResult == 0 else {

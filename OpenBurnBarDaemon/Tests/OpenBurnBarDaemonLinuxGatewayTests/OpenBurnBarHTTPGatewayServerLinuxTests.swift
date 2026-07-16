@@ -317,9 +317,33 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         XCTAssertEqual(incomplete.statusCode, 400, incomplete.rawText)
         XCTAssertTrue(incomplete.body.contains("incomplete_request"), incomplete.body)
     }
+
+    func testBindsIPv6LoopbackWhenAvailable() async throws {
+        do {
+            let harness = try LinuxGatewayHarness(host: "::1")
+            addTeardownBlock { await harness.stop() }
+            try await harness.start()
+
+            let response = try await LinuxHTTPClient.get(
+                host: "::1",
+                port: harness.port,
+                path: "/health"
+            )
+            XCTAssertEqual(response.statusCode, 200, response.rawText)
+            XCTAssertTrue(response.body.contains(#""platform":"linux""#), response.body)
+        } catch {
+            // Some minimal/containerized Linux images disable IPv6 entirely.
+            // That is an environment limitation, not a gateway regression.
+            if LinuxSocketSupport.isIPv6Unavailable(error) {
+                throw XCTSkip("IPv6 loopback is unavailable in this Linux environment: \(error)")
+            }
+            throw error
+        }
+    }
 }
 
 private final class LinuxGatewayHarness: @unchecked Sendable {
+    private let host: String
     let port: Int
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
@@ -328,8 +352,9 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
     private let server: BurnBarHTTPGatewayServer
     private let tempDirectory: URL
 
-    init() throws {
-        self.port = try LinuxSocketSupport.reserveLoopbackPort()
+    init(host: String = "127.0.0.1") throws {
+        self.host = host
+        self.port = try LinuxSocketSupport.reserveLoopbackPort(host: host)
         tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-linux-gateway-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
@@ -355,7 +380,7 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
         server = BurnBarHTTPGatewayServer(
             configuration: BurnBarGatewayConfiguration(
                 isEnabled: true,
-                host: "127.0.0.1",
+                host: host,
                 port: port,
                 authToken: nil,
                 allowUnauthenticatedLoopback: true
@@ -437,7 +462,7 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
 
     func start() async throws {
         try await server.start()
-        try await LinuxSocketSupport.waitForListener(port: port)
+        try await LinuxSocketSupport.waitForListener(port: port, host: host)
     }
 
     func stop() async {
@@ -710,9 +735,10 @@ private enum LinuxHTTPClient {
         let rawText: String
     }
 
-    static func post(port: Int, path: String, body: String) async throws -> Response {
+    static func post(host: String = "127.0.0.1", port: Int, path: String, body: String) async throws -> Response {
         try await request(
             method: "POST",
+            host: host,
             port: port,
             path: path,
             headers: [
@@ -723,13 +749,13 @@ private enum LinuxHTTPClient {
         )
     }
 
-    static func get(port: Int, path: String) async throws -> Response {
-        try await request(method: "GET", port: port, path: path, headers: [:], body: "")
+    static func get(host: String = "127.0.0.1", port: Int, path: String) async throws -> Response {
+        try await request(method: "GET", host: host, port: port, path: path, headers: [:], body: "")
     }
 
-    static func raw(port: Int, request: String) async throws -> Response {
+    static func raw(host: String = "127.0.0.1", port: Int, request: String) async throws -> Response {
         try await Task.detached(priority: .utility) {
-            let socketFD = try LinuxSocketSupport.connectToLoopback(port: port)
+            let socketFD = try LinuxSocketSupport.connectToLoopback(port: port, host: host)
             defer { Glibc.close(socketFD) }
             try LinuxSocketSupport.sendAll(Data(request.utf8), to: socketFD)
             return try parseResponse(try LinuxSocketSupport.readUntilEOF(from: socketFD))
@@ -738,15 +764,17 @@ private enum LinuxHTTPClient {
 
     private static func request(
         method: String,
+        host: String,
         port: Int,
         path: String,
         headers: [String: String],
         body: String
     ) async throws -> Response {
         try await Task.detached(priority: .utility) {
-            let socketFD = try LinuxSocketSupport.connectToLoopback(port: port)
+            let socketFD = try LinuxSocketSupport.connectToLoopback(port: port, host: host)
             defer { Glibc.close(socketFD) }
-            var request = "\(method) \(path) HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\n"
+            let hostHeader = host == "::1" ? "[::1]:\(port)" : "\(host):\(port)"
+            var request = "\(method) \(path) HTTP/1.1\r\nHost: \(hostHeader)\r\n"
             for (name, value) in headers {
                 request += "\(name): \(value)\r\n"
             }
@@ -775,45 +803,86 @@ private enum LinuxHTTPClient {
 }
 
 private enum LinuxSocketSupport {
-    static func reserveLoopbackPort() throws -> Int {
-        let socketFD = Glibc.socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+    static func reserveLoopbackPort(host: String = "127.0.0.1") throws -> Int {
+        let isIPv6 = host == "::1"
+        let socketFD = Glibc.socket(isIPv6 ? AF_INET6 : AF_INET, Int32(SOCK_STREAM.rawValue), 0)
         guard socketFD >= 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
         defer { Glibc.close(socketFD) }
 
-        var address = sockaddr_in()
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_port = 0
-        address.sin_addr.s_addr = UInt32(0x0100007F).littleEndian
-
-        let bindResult = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
-                Glibc.bind(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+        let bindResult: Int32
+        if isIPv6 {
+            var v6Only: Int32 = 1
+            guard setsockopt(
+                socketFD,
+                Int32(IPPROTO_IPV6),
+                IPV6_V6ONLY,
+                &v6Only,
+                socklen_t(MemoryLayout<Int32>.size)
+            ) == 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
+            var address = sockaddr_in6()
+            address.sin6_family = sa_family_t(AF_INET6)
+            address.sin6_port = 0
+            guard inet_pton(AF_INET6, "::1", &address.sin6_addr) == 1 else {
+                throw POSIXError(.EINVAL)
+            }
+            bindResult = withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                    Glibc.bind(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in6>.stride))
+                }
+            }
+        } else {
+            var address = sockaddr_in()
+            address.sin_family = sa_family_t(AF_INET)
+            address.sin_port = 0
+            address.sin_addr.s_addr = UInt32(0x0100007F).littleEndian
+            bindResult = withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                    Glibc.bind(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+                }
             }
         }
         guard bindResult == 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
 
-        var boundAddress = sockaddr_in()
-        var boundLength = socklen_t(MemoryLayout<sockaddr_in>.stride)
-        let nameResult = withUnsafeMutablePointer(to: &boundAddress) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
-                Glibc.getsockname(socketFD, rebound, &boundLength)
+        let boundPort: UInt16
+        if isIPv6 {
+            var boundAddress = sockaddr_in6()
+            var boundLength = socklen_t(MemoryLayout<sockaddr_in6>.stride)
+            let nameResult = withUnsafeMutablePointer(to: &boundAddress) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                    Glibc.getsockname(socketFD, rebound, &boundLength)
+                }
             }
+            guard nameResult == 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
+            boundPort = boundAddress.sin6_port
+        } else {
+            var boundAddress = sockaddr_in()
+            var boundLength = socklen_t(MemoryLayout<sockaddr_in>.stride)
+            let nameResult = withUnsafeMutablePointer(to: &boundAddress) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                    Glibc.getsockname(socketFD, rebound, &boundLength)
+                }
+            }
+            guard nameResult == 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
+            boundPort = boundAddress.sin_port
         }
-        guard nameResult == 0 else {
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
-        return Int(UInt16(bigEndian: boundAddress.sin_port))
+        return Int(UInt16(bigEndian: boundPort))
     }
 
-    static func waitForListener(port: Int) async throws {
+    static func waitForListener(port: Int, host: String = "127.0.0.1") async throws {
         var lastError: Error?
         for _ in 0..<250 {
             do {
-                let socketFD = try connectToLoopback(port: port)
+                let socketFD = try connectToLoopback(port: port, host: host)
                 Glibc.close(socketFD)
                 return
             } catch {
@@ -824,20 +893,36 @@ private enum LinuxSocketSupport {
         throw lastError ?? POSIXError(.ETIMEDOUT)
     }
 
-    static func connectToLoopback(port: Int) throws -> Int32 {
-        let socketFD = Glibc.socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+    static func connectToLoopback(port: Int, host: String = "127.0.0.1") throws -> Int32 {
+        let isIPv6 = host == "::1"
+        let socketFD = Glibc.socket(isIPv6 ? AF_INET6 : AF_INET, Int32(SOCK_STREAM.rawValue), 0)
         guard socketFD >= 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
 
-        var address = sockaddr_in()
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_port = UInt16(port).bigEndian
-        address.sin_addr.s_addr = UInt32(0x0100007F).littleEndian
-
-        let connectResult = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
-                Glibc.connect(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+        let connectResult: Int32
+        if isIPv6 {
+            var address = sockaddr_in6()
+            address.sin6_family = sa_family_t(AF_INET6)
+            address.sin6_port = UInt16(port).bigEndian
+            guard inet_pton(AF_INET6, "::1", &address.sin6_addr) == 1 else {
+                Glibc.close(socketFD)
+                throw POSIXError(.EINVAL)
+            }
+            connectResult = withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                    Glibc.connect(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in6>.stride))
+                }
+            }
+        } else {
+            var address = sockaddr_in()
+            address.sin_family = sa_family_t(AF_INET)
+            address.sin_port = UInt16(port).bigEndian
+            address.sin_addr.s_addr = UInt32(0x0100007F).littleEndian
+            connectResult = withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
+                    Glibc.connect(socketFD, rebound, socklen_t(MemoryLayout<sockaddr_in>.stride))
+                }
             }
         }
         guard connectResult == 0 else {
@@ -846,6 +931,16 @@ private enum LinuxSocketSupport {
             throw POSIXError(.init(rawValue: code) ?? .ECONNREFUSED)
         }
         return socketFD
+    }
+
+    static func isIPv6Unavailable(_ error: Error) -> Bool {
+        if let gatewayError = error as? BurnBarHTTPGatewayError,
+           case let .listenerCreationFailed(underlying) = gatewayError {
+            return isIPv6Unavailable(underlying)
+        }
+        guard let posixError = error as? POSIXError else { return false }
+        let unavailableCodes: [Int32] = [EAFNOSUPPORT, EADDRNOTAVAIL, ENODEV, ENETUNREACH, EPROTONOSUPPORT]
+        return unavailableCodes.contains(posixError.code.rawValue)
     }
 
     static func readHTTPRequest(from socketFD: Int32) throws -> String {
