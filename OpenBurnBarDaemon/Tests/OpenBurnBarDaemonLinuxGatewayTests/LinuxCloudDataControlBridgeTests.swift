@@ -22,7 +22,8 @@ final class LinuxCloudDataControlBridgeTests: XCTestCase {
         XCTAssertEqual(status.phase, .unavailable)
         XCTAssertEqual(status.detail, "trusted_device_bridge_unavailable")
         XCTAssertNil(status.requestID)
-        XCTAssertEqual(await transportCalls.value(), 0)
+        let transportCallCount = await transportCalls.value()
+        XCTAssertEqual(transportCallCount, 0)
         let encoded = try JSONEncoder().encode(status)
         let text = String(decoding: encoded, as: UTF8.self)
         XCTAssertFalse(text.contains("nonce"))
@@ -58,13 +59,15 @@ final class LinuxCloudDataControlBridgeTests: XCTestCase {
             XCTAssertEqual(error, .dataControlAuthorizationInvalid)
         }
 
-        let request = try XCTUnwrap(await requestProbe.value())
+        let capturedRequest = await requestProbe.value()
+        let request = try XCTUnwrap(capturedRequest)
         XCTAssertEqual(request.operation, .export)
         XCTAssertEqual(request.actionKind, "data_export")
         XCTAssertEqual(request.subjectID, "all")
         XCTAssertEqual(request.domains, ["usage_spend"])
         XCTAssertFalse(request.requiresExplicitConfirmation)
-        XCTAssertEqual(await transportCalls.value(), 0)
+        let transportCallCount = await transportCalls.value()
+        XCTAssertEqual(transportCallCount, 0)
         let status = await authority.cloudDataControlStatus()
         XCTAssertEqual(status.phase, .failed)
         XCTAssertEqual(status.detail, "data_control_authorization_invalid")
@@ -87,7 +90,8 @@ final class LinuxCloudDataControlBridgeTests: XCTestCase {
         } catch let error as LinuxCloudAuthAuthorityError {
             XCTAssertEqual(error, .operationMismatch)
         }
-        XCTAssertEqual(await promptCount.value(), 0)
+        let promptCallCount = await promptCount.value()
+        XCTAssertEqual(promptCallCount, 0)
         let status = await authority.cloudDataControlStatus()
         XCTAssertEqual(status.phase, .unavailable)
     }
@@ -96,7 +100,7 @@ final class LinuxCloudDataControlBridgeTests: XCTestCase {
         transportCalls: CallCounter,
         trustedDeviceAuthorizer: (any LinuxCloudTrustedDeviceActionAuthorizing)? = nil
     ) -> LinuxDaemonCloudCredentialAuthority {
-        let backend = LinuxInMemorySecretStoreBackend()
+        let backend = LinuxInMemorySecretStoreBackend(secrets: [:])
         return LinuxDaemonCloudCredentialAuthority(
             configuration: LinuxCloudAuthConfiguration(
                 googleOAuthClientID: "123456789012.apps.googleusercontent.com",
@@ -109,8 +113,8 @@ final class LinuxCloudDataControlBridgeTests: XCTestCase {
                 throw URLError(.notConnectedToInternet)
             },
             now: { self.now },
-            trustedDeviceAuthorizer: trustedDeviceAuthorizer,
-            hostname: "cloud-data-control-test"
+            hostname: "cloud-data-control-test",
+            trustedDeviceAuthorizer: trustedDeviceAuthorizer
         )
     }
 }

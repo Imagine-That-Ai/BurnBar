@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+@testable import OpenBurnBarDaemon
 import XCTest
 
 final class BurnBarDatabaseRecoveryBundleCryptoTests: XCTestCase {

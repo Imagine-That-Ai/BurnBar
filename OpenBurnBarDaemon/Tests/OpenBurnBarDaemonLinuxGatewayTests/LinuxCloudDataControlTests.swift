@@ -1,6 +1,7 @@
 #if os(Linux)
 import Foundation
 import FoundationNetworking
+import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBarDaemon
 
@@ -133,7 +134,8 @@ final class LinuxCloudDataControlTests: XCTestCase {
         } catch let error as LinuxCloudAuthHTTPError {
             XCTAssertEqual(error, .invalidRequest)
         }
-        XCTAssertEqual(await transportCalls.value(), 0)
+        let transportCallCount = await transportCalls.value()
+        XCTAssertEqual(transportCallCount, 0)
     }
 
     func testExportRejectsExpiredJWTBeforeTransport() async throws {
