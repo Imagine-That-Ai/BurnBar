@@ -16,10 +16,11 @@ Acceptance:
   * A malformed or empty plan fails nonzero — the step validates the plan with
     ``jq -e '.schemaVersion == 2 and .consumer == "windows" and (.domains |
     length > 0)'`` and iterates over a real predicate-list file.
-  * Workflow YAML syntax remains valid.
+  * The supply-chain job structurally needs the native-release gate and carries the gate-output env keys (dependency-free; actionlint owns YAML syntax).
 """
 
 import json
+import re
 import subprocess
 import tempfile
 import textwrap
@@ -41,21 +42,46 @@ def _evidence_step_source() -> str:
         raise AssertionError("could not find end of evidence step")
     return rest[:next_step]
 
+def _job_block(source: str, job_name: str) -> str:
+    """Return the YAML text of a top-level ``jobs:`` entry by indentation scope.
+
+    Dependency-free (no PyYAML): GitHub Actions workflow YAML uses two-space
+    indentation, so a job key at column 2 (``  <name>:``) extends until the next
+    column-2 key line or end-of-file.  This mirrors the scoping pattern already
+    used by ``_evidence_step_source``.
+    """
+    marker = f"\n  {job_name}:\n"
+    start = source.find(marker)
+    if start == -1:
+        raise AssertionError(f"could not find job '{job_name}' in workflow")
+    body_start = start + len(marker)
+    # The block ends at the next top-level job key: a line starting with exactly
+    # two spaces then a word char and ending with ':' (e.g. ``  build-sign:``).
+    # Four-space lines (``    needs:``, ``    env:``) are job-body keys, not siblings.
+    sibling = re.compile(r"^  [A-Za-z][\w-]*:$", re.MULTILINE)
+    match = sibling.search(source, body_start)
+    return source[body_start : match.start() if match else len(source)]
+
 
 class WindowsReleaseEvidencePlanTests(unittest.TestCase):
-    def test_workflow_yaml_syntax_is_valid(self) -> None:
-        import yaml
-
-        data = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-        self.assertIn("supply-chain", data["jobs"])
-        supply_chain = data["jobs"]["supply-chain"]
-        self.assertIn("domain-core-native-release-gate", supply_chain["needs"])
-        # Env must carry the gate outputs needed by the generator.
-        env = supply_chain["env"]
-        self.assertIn("PROFILE", env)
-        self.assertIn("SIGNER_RUN_ID", env)
-        self.assertIn("SIGNER_RUN_ATTEMPT", env)
-        self.assertIn("RELEASE_TAG", env)
+    def test_supply_chain_job_has_gate_need_and_generator_env(self) -> None:
+        # Validate the supply-chain job's structural contract without PyYAML
+        # (the product-posture CI job runs `python -m pytest` with only pytest +
+        # cryptography — no PyYAML).  The repo's convention for workflow tests is
+        # scoped text assertions; actionlint (workflow-lint.yml) separately
+        # enforces YAML *syntax*.  Here we scope to the supply-chain job block
+        # and assert it needs the native-release gate and carries the gate-output
+        # env keys the evidence generator consumes.
+        source = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("\n  supply-chain:\n", source)
+        supply_chain = _job_block(source, "supply-chain")
+        self.assertIn("    needs:", supply_chain)
+        self.assertIn("      - domain-core-native-release-gate", supply_chain)
+        self.assertIn("    env:", supply_chain)
+        self.assertIn("      PROFILE:", supply_chain)
+        self.assertIn("      SIGNER_RUN_ID:", supply_chain)
+        self.assertIn("      SIGNER_RUN_ATTEMPT:", supply_chain)
+        self.assertIn("      RELEASE_TAG:", supply_chain)
 
     def test_supply_chain_downloads_gate_artifact_before_evidence(self) -> None:
         """The gate artifact must be downloaded before the evidence step."""

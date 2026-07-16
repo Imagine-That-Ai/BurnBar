@@ -252,7 +252,7 @@
     "scripts/windows-port/validate-native-engine-layout.mjs": ["9d35322db165c1f1","ed24b6de0fb54f98","3e28e11f5fb92110","e77a96abebfed34d"],
     "scripts/windows-port/write-signed-artifact-manifest.mjs": ["d6fdc6c1104a880b","cd7a71f951270fb3","b1f67d3e0939ec21","ee5e56d0c81a7a0c"],
     "tests/fixtures/domain-core/hermes/v1/hermes-crypto-kat.json": ["2bdf89986e02105e","a9e5780cacfe3bd2","c380dd05a2614b4d","77daf987d32260f5"],
-    "tests/test_domain_core_console_release_evidence_workflow.py": ["67a84bfba30bf445","22a76f5214980eac","7e5111a127752dad","25e35059ebf19854"],
+    "tests/test_domain_core_console_release_evidence_workflow.py": ["965ac9521e64beb5","0f35729095ba564f","d35fb292109b34ee","26332a6fa7a0aa08"],
     "tests/test_domain_core_functions_release_workflow.py": ["7237a811f6a5bc2c","c281329bc1b72bbd","d85e1723fabededf","bbd39acb4be75e66"],
     "tests/test_domain_core_python_hermes.py": ["2d4b8632c2bece6d","fa8f1bd4cdd07c8c","8019d7d1f5e5893e","656a399131212ae7"],
     "tests/test_domain_core_union_gate.py": ["131fcd7f6dcb107b","82fa9171687bd066","314b7134bf55e7b1","af6c421990619845"],

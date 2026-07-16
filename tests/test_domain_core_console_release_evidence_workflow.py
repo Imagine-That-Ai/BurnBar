@@ -43,7 +43,7 @@ class ConsoleReleaseWorkflowTests(unittest.TestCase):
             "domain-core-public-production-rollback-${CANDIDATE_COMMIT}-${SOURCE_RUN_ID}-${SOURCE_RUN_ATTEMPT}",
             "gh attestation download",
             "verify-domain-core-release-gate.mjs",
-            '--expected-candidate-commit "$RELEASE_COMMIT"',
+            '--expected-candidate-commit "$CANDIDATE_COMMIT"',
             "create-domain-core-deployment-identity.mjs",
             "domain-core-release-inputs/domain-core-release-gate.json",
         )
