@@ -395,7 +395,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
     private var hasStoredSession: Bool
     private var storedIdentityUID: String?
     private var identityLabel: String?
-    private var cloudDataControlStatus = LinuxCloudDataControlStatus.trustedDeviceBridgeUnavailable
+    private var cloudDataControlStatusValue = LinuxCloudDataControlStatus.trustedDeviceBridgeUnavailable
 
     init(
         configuration: LinuxCloudAuthConfiguration?,
@@ -766,7 +766,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
     /// Return redacted state for the daemon/UI status surface. Proof material,
     /// nonce values, and account identifiers are intentionally absent.
     public func cloudDataControlStatus() -> LinuxCloudDataControlStatus {
-        cloudDataControlStatus
+        cloudDataControlStatusValue
     }
 
     /// Start a daemon-owned export request. The trusted-device authorizer is
@@ -775,7 +775,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
     /// the network.
     public func requestCloudDataExport(domains: [String]? = nil) async throws -> Data {
         guard let trustedDeviceAuthorizer else {
-            cloudDataControlStatus = .trustedDeviceBridgeUnavailable
+            cloudDataControlStatusValue = .trustedDeviceBridgeUnavailable
             throw LinuxCloudAuthAuthorityError.trustedDeviceBridgeUnavailable
         }
         let request = try beginCloudDataControl(
@@ -788,7 +788,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
         do {
             let authorization = try await trustedDeviceAuthorizer.authorize(request)
             try validateCloudDataControlAuthorization(authorization)
-            cloudDataControlStatus = cloudDataControlStatusFor(
+            cloudDataControlStatusValue = cloudDataControlStatusFor(
                 request,
                 phase: .executing,
                 detail: "executing"
@@ -806,7 +806,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
                     actionProof: authorization.actionProof
                 )
             )
-            cloudDataControlStatus = cloudDataControlStatusFor(
+            cloudDataControlStatusValue = cloudDataControlStatusFor(
                 request,
                 phase: .completed,
                 detail: "completed"
@@ -839,7 +839,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
             throw LinuxCloudAuthAuthorityError.operationMismatch
         }
         guard let trustedDeviceAuthorizer else {
-            cloudDataControlStatus = .trustedDeviceBridgeUnavailable
+            cloudDataControlStatusValue = .trustedDeviceBridgeUnavailable
             throw LinuxCloudAuthAuthorityError.trustedDeviceBridgeUnavailable
         }
         let context = try await credentialContext()
@@ -853,7 +853,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
         do {
             let authorization = try await trustedDeviceAuthorizer.authorize(request)
             try validateCloudDataControlAuthorization(authorization)
-            cloudDataControlStatus = cloudDataControlStatusFor(
+            cloudDataControlStatusValue = cloudDataControlStatusFor(
                 request,
                 phase: .executing,
                 detail: "executing"
@@ -870,7 +870,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
                     actionProof: authorization.actionProof
                 )
             )
-            cloudDataControlStatus = cloudDataControlStatusFor(
+            cloudDataControlStatusValue = cloudDataControlStatusFor(
                 request,
                 phase: .completed,
                 detail: "completed"
@@ -901,8 +901,8 @@ public actor LinuxDaemonCloudCredentialAuthority {
         domains: [String]?,
         requiresExplicitConfirmation: Bool
     ) throws -> LinuxCloudDataControlAuthorizationRequest {
-        guard cloudDataControlStatus.phase != .awaitingTrustedDevice,
-              cloudDataControlStatus.phase != .executing else {
+        guard cloudDataControlStatusValue.phase != .awaitingTrustedDevice,
+              cloudDataControlStatusValue.phase != .executing else {
             throw LinuxCloudAuthAuthorityError.dataControlInProgress
         }
         let requestedAt = now()
@@ -917,7 +917,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
             requestedAt: requestedAt,
             expiresAt: expiresAt
         )
-        cloudDataControlStatus = cloudDataControlStatusFor(
+        cloudDataControlStatusValue = cloudDataControlStatusFor(
             request,
             phase: .awaitingTrustedDevice,
             detail: "awaiting_trusted_device_approval"
@@ -952,7 +952,7 @@ public actor LinuxDaemonCloudCredentialAuthority {
         _ request: LinuxCloudDataControlAuthorizationRequest,
         error: LinuxCloudAuthAuthorityError
     ) {
-        cloudDataControlStatus = cloudDataControlStatusFor(
+        cloudDataControlStatusValue = cloudDataControlStatusFor(
             request,
             phase: .failed,
             detail: Self.reasonCode(error)
