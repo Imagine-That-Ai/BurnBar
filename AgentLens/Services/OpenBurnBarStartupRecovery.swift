@@ -187,7 +187,7 @@ final class OpenBurnBarRuntimeContext {
     let quotaService: ProviderQuotaService
     let daemonManager: OpenBurnBarDaemonManager
     let cursorConnectorManager: CursorConnectorManager
-    let memoryFootprintWatchdog: MemoryFootprintWatchdog
+    let memoryFootprintWatchdog = MemoryFootprintWatchdog()
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     var hermesRelayHostService: HermesRelayHostService?
@@ -265,7 +265,6 @@ final class OpenBurnBarRuntimeContext {
         quotaService: ProviderQuotaService,
         daemonManager: OpenBurnBarDaemonManager,
         cursorConnectorManager: CursorConnectorManager,
-        memoryFootprintWatchdog: MemoryFootprintWatchdog,
         cloudSyncService: CloudSyncService? = nil,
         iCloudSessionMirrorService: ICloudSessionMirrorService? = nil,
         chatController: ChatSessionController,
@@ -278,7 +277,6 @@ final class OpenBurnBarRuntimeContext {
         self.quotaService = quotaService
         self.daemonManager = daemonManager
         self.cursorConnectorManager = cursorConnectorManager
-        self.memoryFootprintWatchdog = memoryFootprintWatchdog
         self.cloudSyncService = cloudSyncService
         self.iCloudSessionMirrorService = iCloudSessionMirrorService
         self.chatController = chatController

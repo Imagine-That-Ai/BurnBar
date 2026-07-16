@@ -259,7 +259,6 @@ struct OpenBurnBarApp: App {
         let cursorConnectorManager = StartupProfiler.interval("cursor_connector_init") {
             CursorConnectorManager(settingsManager: settings)
         }
-        let memoryFootprintWatchdog = MemoryFootprintWatchdog()
 
         // Phase 4 — wire BudgetSettings + BudgetGate so `BudgetEnforcement.shared.evaluate`
         // returns real decisions for AgentLens-plane requests. The daemon plane reads the
@@ -311,7 +310,6 @@ struct OpenBurnBarApp: App {
             quotaService: quotaService,
             daemonManager: daemonManager,
             cursorConnectorManager: cursorConnectorManager,
-            memoryFootprintWatchdog: memoryFootprintWatchdog,
             chatController: controller,
             operatingLayer: layer
         )
