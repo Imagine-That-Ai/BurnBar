@@ -85,6 +85,10 @@ struct DomainCoreShadowSampleV3: Codable, Equatable, Sendable {
             "pensieve-vectors": [
                 "pensieve_l2_normalize", "pensieve_vector_cloak",
                 "pensieve_deterministic_embed", "pensieve_deterministic_embed_and_cloak"
+            ],
+            "opaque-identifiers": [
+                "project_memory_doc_id", "pensieve_dedup_hash",
+                "pensieve_slug_hmac", "subscription_doc_id"
             ]
         ],
         "hermes": [

@@ -26,7 +26,9 @@ for (const helper of [
   "scripts/lib/firebase-hosting-rest-url.mjs",
 ]) {
   if (!WORKFLOW.includes(`cp ${helper} "$ARTIFACT_ROOT/scripts/lib/"`)) {
-    throw new Error(`immutable Hosting artifact omits imported helper: ${helper}`);
+    throw new Error(
+      `immutable Hosting artifact omits imported helper: ${helper}`,
+    );
   }
 }
 const roots = [];
@@ -87,10 +89,33 @@ jobs:
               exit 1
             fi
           fi
+      - name: Resolve signed public domain-core profile
+        env:
+          CANDIDATE_COMMIT: \${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}
+          RELEASE_TAG: \${{ steps.ref.outputs.release_tag }}
+        run: |
+          if [[ -n "$RELEASE_TAG" ]]; then
+            echo "stable"
+          fi
       - name: Build immutable hosting outputs
         run: npm run build --prefix website
+      - name: Stage hosting deploy artifact
+        env:
+          CANDIDATE_COMMIT: \${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}
+          RELEASE_TAG: \${{ steps.ref.outputs.release_tag }}
+        run: |
+          if [[ -n "$RELEASE_TAG" ]]; then
+            echo "stable"
+          fi
+          verify_args=(
+            --expected-candidate-commit "$CANDIDATE_COMMIT"
+          )
+          if [[ -n "$RELEASE_TAG" ]]; then
+            verify_args+=(
+              --expected-release-commit "$RELEASE_COMMIT"
+            )
+          fi
       - name: Upload immutable hosting artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
   deploy-hosting:
     needs: build-hosting-artifacts
     if: \${{ github.event.inputs.dry_run != 'true' }}
@@ -277,6 +302,38 @@ expect(
   GOOD.replace(
     "      dry_run:\n        required: false\n        type: boolean",
     "      dry_run:\n        required: false\n        type: boolean\n      release_hold_bypass_reason:\n        required: false\n        type: string",
+  ),
+  1,
+);
+expect(
+  "staging verify against RELEASE_COMMIT instead of CANDIDATE_COMMIT fails",
+  GOOD.replace(
+    '--expected-candidate-commit "$CANDIDATE_COMMIT"',
+    '--expected-candidate-commit "$RELEASE_COMMIT"',
+  ),
+  1,
+);
+expect(
+  "staging step missing CANDIDATE_COMMIT env fails",
+  GOOD.replace(
+    "      - name: Stage hosting deploy artifact\n        env:\n          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}\n          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}",
+    "      - name: Stage hosting deploy artifact\n        env:\n          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}",
+  ),
+  1,
+);
+expect(
+  "staging step missing conditional release flag guard fails",
+  GOOD.replace(
+    '          if [[ -n "$RELEASE_TAG" ]]; then\n            echo "stable"\n          fi\n          verify_args=(\n            --expected-candidate-commit "$CANDIDATE_COMMIT"\n          )\n          if [[ -n "$RELEASE_TAG" ]]; then\n            verify_args+=(\n              --expected-release-commit "$RELEASE_COMMIT"\n            )\n          fi',
+    '          verify_args=(\n            --expected-candidate-commit "$CANDIDATE_COMMIT"\n          )',
+  ),
+  1,
+);
+expect(
+  "resolve profile step missing conditional release flag guard fails",
+  GOOD.replace(
+    '      - name: Resolve signed public domain-core profile\n        env:\n          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}\n          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}\n        run: |\n          if [[ -n "$RELEASE_TAG" ]]; then\n            echo "stable"\n          fi',
+    "      - name: Resolve signed public domain-core profile\n        env:\n          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}\n          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}\n        run: echo done",
   ),
   1,
 );

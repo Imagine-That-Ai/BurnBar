@@ -23,7 +23,8 @@ export const DOMAIN_CORE_SHADOW_OPERATION_SLICES: Readonly<Record<string, Readon
       "escrow_wrapping_key escrow_assemble_wire escrow_split_wire escrow_seal escrow_open cloudvault_escrow_split_wire cloudvault_escrow_seal cloudvault_escrow_open",
     "document-rewrap": "document_rewrap",
     search: "token index query semantic",
-    "opaque-identifiers": "project_memory_doc_id pensieve_dedup_hash pensieve_provenance_hash pensieve_slug_hmac",
+    "opaque-identifiers":
+      "project_memory_doc_id pensieve_dedup_hash pensieve_provenance_hash pensieve_slug_hmac subscription_doc_id",
     "pensieve-vectors":
       "pensieve_l2_normalize pensieve_vector_cloak pensieve_deterministic_embed pensieve_deterministic_embed_and_cloak",
   }),
@@ -39,9 +40,7 @@ export const DOMAIN_CORE_SHADOW_OPERATION_SLICES: Readonly<Record<string, Readon
   }),
 };
 
-const DOMAIN_CORE_SHADOW_REQUIRED_COVERAGE: Readonly<
-  Record<string, Readonly<Record<string, readonly string[]>>>
-> = {
+const DOMAIN_CORE_SHADOW_REQUIRED_COVERAGE: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
   quota: {
     claude: ["apple", "windows"],
     codex: ["apple", "windows"],
@@ -55,7 +54,7 @@ const DOMAIN_CORE_SHADOW_REQUIRED_COVERAGE: Readonly<
     escrow: ["apple", "android", "windows", "console"],
     "document-rewrap": ["apple", "android"],
     search: ["apple", "android", "local-mcp", "remote-mcp"],
-    "opaque-identifiers": ["local-mcp", "remote-mcp"],
+    "opaque-identifiers": ["apple", "android", "local-mcp", "remote-mcp"],
     "pensieve-vectors": ["apple", "windows", "console", "remote-mcp"],
   },
   hermes: {
@@ -72,10 +71,11 @@ const DOMAIN_CORE_SHADOW_REQUIRED_COVERAGE: Readonly<
 
 const DOMAIN_CORE_SHADOW_OPERATION_CONSUMERS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
   cloudvault: {
-    project_memory_doc_id: ["local-mcp"],
-    pensieve_dedup_hash: ["remote-mcp"],
+    project_memory_doc_id: ["apple", "local-mcp"],
+    pensieve_dedup_hash: ["apple", "remote-mcp"],
     pensieve_provenance_hash: ["remote-mcp"],
-    pensieve_slug_hmac: ["remote-mcp"],
+    pensieve_slug_hmac: ["apple", "remote-mcp"],
+    subscription_doc_id: ["apple", "android"],
     pensieve_l2_normalize: ["apple"],
   },
 };

@@ -451,6 +451,9 @@ public static class DomainCoreQuotaShadowEvidence
         ["cloudvault_escrow_seal"] = "escrow",
         ["cloudvault_escrow_open"] = "escrow",
         ["cloudvault_escrow_split_wire"] = "escrow",
+        ["pensieve_deterministic_embed_and_cloak"] = "pensieve-vectors",
+        ["pensieve_deterministic_embed"] = "pensieve-vectors",
+        ["pensieve_vector_cloak"] = "pensieve-vectors",
     };
     private static readonly HashSet<string> MismatchCategories = new(StringComparer.Ordinal)
     {
@@ -571,7 +574,7 @@ public static class DomainCoreQuotaShadowEvidence
             || !OperationSlices.TryGetValue(operation, out string? expectedSlice)
             || expectedSlice != slice
             || (domain == "quota" && !operation.EndsWith("_quota", StringComparison.Ordinal))
-            || (domain == "cloudvault" && !operation.StartsWith("cloudvault_", StringComparison.Ordinal))
+            || (domain == "cloudvault" && !operation.StartsWith("cloudvault_", StringComparison.Ordinal) && !operation.StartsWith("pensieve_", StringComparison.Ordinal))
             || (equivalent && mismatchCategory is not null)
             || (!equivalent && (mismatchCategory is null || !MismatchCategories.Contains(mismatchCategory)))
             || !ValidLoadedIdentity(identity!, loadedIdentity, equivalent, mismatchCategory)
@@ -704,8 +707,8 @@ public static class DomainCoreQuotaShadowEvidence
             || !OperationSlices.TryGetValue(sample.Operation, out string? expectedSlice)
             || sample.Slice != expectedSlice
             || (sample.Domain == "quota" && !sample.Operation.EndsWith("_quota", StringComparison.Ordinal))
-            || (sample.Domain == "cloudvault" && !sample.Operation.StartsWith("cloudvault_", StringComparison.Ordinal))
             || sample.Domain is not ("quota" or "cloudvault")
+            || (sample.Domain == "cloudvault" && !sample.Operation.StartsWith("cloudvault_", StringComparison.Ordinal) && !sample.Operation.StartsWith("pensieve_", StringComparison.Ordinal))
             || sample.LegacyMicros is < 0 or > 600_000_000
             || sample.RustMicros is < 0 or > 600_000_000
             || string.IsNullOrEmpty(sample.ObservedAt)

@@ -60,6 +60,9 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
     [InlineData("cloudvault_escrow_seal", "escrow")]
     [InlineData("cloudvault_escrow_open", "escrow")]
     [InlineData("cloudvault_escrow_split_wire", "escrow")]
+    [InlineData("pensieve_vector_cloak", "pensieve-vectors")]
+    [InlineData("pensieve_deterministic_embed", "pensieve-vectors")]
+    [InlineData("pensieve_deterministic_embed_and_cloak", "pensieve-vectors")]
     public void OperationCoverage_UsesServerApprovedSlice(string operation, string slice)
     {
         Assert.Equal(slice, DomainCoreQuotaShadowEvidence.SliceForOperation(operation));
@@ -341,6 +344,116 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
 
         spool.DiscardAll();
 
+        Assert.Equal(0, spool.PendingSampleCount());
+    }
+
+    [Theory]
+    [InlineData("pensieve_vector_cloak")]
+    [InlineData("pensieve_deterministic_embed")]
+    [InlineData("pensieve_deterministic_embed_and_cloak")]
+    public void PensieveVectorOperationsSpoolAsValidV3Samples(string operation)
+    {
+        var identity = Identity();
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, identity);
+        var sample = new DomainCoreShadowSampleV3
+        {
+            SampleId = "00000000-0000-4000-8000-000000000001",
+            Domain = "cloudvault",
+            Channel = "internal",
+            Slice = "pensieve-vectors",
+            Operation = operation,
+            CandidateCommit = identity.CandidateCommit,
+            ExpectedCoreVersion = identity.ExpectedCoreVersion,
+            ExpectedCoreAbiVersion = identity.ExpectedCoreAbiVersion,
+            ExpectedCoreSourceSha256 = identity.ExpectedCoreSourceSha256,
+            LoadedCoreVersion = identity.ExpectedCoreVersion,
+            LoadedCoreAbiVersion = identity.ExpectedCoreAbiVersion,
+            LoadedCoreSourceSha256 = identity.ExpectedCoreSourceSha256,
+            ObservedAt = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
+            Outcome = "match",
+            MismatchCategory = null,
+            LegacyMicros = 120,
+            RustMicros = 80,
+        };
+
+        spool.Append(sample);
+        Assert.Equal(1, spool.PendingSampleCount());
+
+        var batch = Assert.IsType<DomainCoreQuotaShadowEvidenceSpool.ReadyBatch>(spool.NextBatch());
+        Assert.Equal(operation, Assert.Single(batch.Samples).Operation);
+        Assert.Equal("pensieve-vectors", Assert.Single(batch.Samples).Slice);
+    }
+
+    [Fact]
+    public void PensieveVectorOperationsRejectUnknownOperation()
+    {
+        var identity = Identity();
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, identity);
+        var sample = new DomainCoreShadowSampleV3
+        {
+            SampleId = "00000000-0000-4000-8000-000000000001",
+            Domain = "cloudvault",
+            Channel = "internal",
+            Slice = "pensieve-vectors",
+            Operation = "pensieve_unknown_operation",
+            CandidateCommit = identity.CandidateCommit,
+            ExpectedCoreVersion = identity.ExpectedCoreVersion,
+            ExpectedCoreAbiVersion = identity.ExpectedCoreAbiVersion,
+            ExpectedCoreSourceSha256 = identity.ExpectedCoreSourceSha256,
+            LoadedCoreVersion = identity.ExpectedCoreVersion,
+            LoadedCoreAbiVersion = identity.ExpectedCoreAbiVersion,
+            LoadedCoreSourceSha256 = identity.ExpectedCoreSourceSha256,
+            ObservedAt = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
+            Outcome = "match",
+            MismatchCategory = null,
+            LegacyMicros = 120,
+            RustMicros = 80,
+        };
+
+        spool.Append(sample);
+        Assert.Equal(1, spool.PendingSampleCount());
+        // Unknown operation is accepted by Append (identity matches) but rejected
+        // by ValidStoredSample during NextBatch because SliceForOperation returns
+        // null for an operation not in the OperationSlices allowlist.
+        Assert.Null(spool.NextBatch());
+        Assert.Equal(0, spool.PendingSampleCount());
+    }
+
+    [Fact]
+    public void PensieveL2NormalizeRejectedOnWindows()
+    {
+        // pensieve_l2_normalize is Apple-only per the v3 schema; Windows
+        // permits only vector_cloak, deterministic_embed, and
+        // deterministic_embed_and_cloak for the pensieve-vectors slice.
+        var identity = Identity();
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, identity);
+        var sample = new DomainCoreShadowSampleV3
+        {
+            SampleId = "00000000-0000-4000-8000-000000000001",
+            Domain = "cloudvault",
+            Channel = "internal",
+            Slice = "pensieve-vectors",
+            Operation = "pensieve_l2_normalize",
+            CandidateCommit = identity.CandidateCommit,
+            ExpectedCoreVersion = identity.ExpectedCoreVersion,
+            ExpectedCoreAbiVersion = identity.ExpectedCoreAbiVersion,
+            ExpectedCoreSourceSha256 = identity.ExpectedCoreSourceSha256,
+            LoadedCoreVersion = identity.ExpectedCoreVersion,
+            LoadedCoreAbiVersion = identity.ExpectedCoreAbiVersion,
+            LoadedCoreSourceSha256 = identity.ExpectedCoreSourceSha256,
+            ObservedAt = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
+            Outcome = "match",
+            MismatchCategory = null,
+            LegacyMicros = 120,
+            RustMicros = 80,
+        };
+
+        spool.Append(sample);
+        Assert.Equal(1, spool.PendingSampleCount());
+        // pensieve_l2_normalize is accepted by Append (identity matches) but
+        // rejected by ValidStoredSample during NextBatch because the Windows
+        // OperationSlices allowlist does not include it.
+        Assert.Null(spool.NextBatch());
         Assert.Equal(0, spool.PendingSampleCount());
     }
 

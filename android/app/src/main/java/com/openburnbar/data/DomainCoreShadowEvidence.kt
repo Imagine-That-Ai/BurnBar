@@ -336,6 +336,7 @@ internal object AndroidDomainCoreShadowEvidence {
             ),
             "document-rewrap" to setOf("document_rewrap"),
             "search" to setOf("token", "index", "query", "semantic"),
+            "opaque-identifiers" to setOf("subscription_doc_id"),
         ),
         "hermes" to mapOf(
             "aad" to setOf("aad"),

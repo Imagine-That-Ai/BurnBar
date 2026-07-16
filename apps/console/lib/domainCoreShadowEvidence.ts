@@ -53,6 +53,8 @@ const CONSOLE_OPERATION_SLICES = new Map<
     aes: "aes_gcm_seal_detached aes_gcm_seal_combined aes_gcm_open_detached aes_gcm_open_text_detached aes_gcm_open_combined aes_seal_detached aes_seal_combined aes_open_detached aes_open_text aes_open_combined cloudvault_aes_seal_detached cloudvault_aes_seal_combined cloudvault_aes_open_detached cloudvault_aes_open_text cloudvault_aes_open_combined",
     escrow:
       "escrow_wrapping_key escrow_assemble_wire escrow_split_wire escrow_seal escrow_open cloudvault_escrow_split_wire cloudvault_escrow_seal cloudvault_escrow_open",
+    "pensieve-vectors":
+      "pensieve_vector_cloak pensieve_deterministic_embed pensieve_deterministic_embed_and_cloak",
   }).flatMap(([slice, operations]) =>
     operations
       .split(" ")
@@ -246,7 +248,10 @@ type StoredSampleRead =
   | { state: "invalid" }
   | { state: "unreadable" };
 
-function readStoredSample(key: string, nowMillis = Date.now()): StoredSampleRead {
+function readStoredSample(
+  key: string,
+  nowMillis = Date.now(),
+): StoredSampleRead {
   let encoded: string | null;
   try {
     encoded = localStorage.getItem(key);

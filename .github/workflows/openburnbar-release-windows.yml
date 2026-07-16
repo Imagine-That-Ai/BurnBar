@@ -968,6 +968,7 @@ jobs:
     name: SBOM + OpenVEX + Sigstore
     needs:
       - resolve-release
+      - domain-core-native-release-gate
       - build-sign
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -979,6 +980,11 @@ jobs:
         shell: bash
     env:
       VERSION: ${{ needs.resolve-release.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+      RELEASE_TAG: windows-v${{ needs.resolve-release.outputs.version }}
+      PROFILE: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}
+      SIGNER_RUN_ID: ${{ needs.domain-core-native-release-gate.outputs.signer_run_id }}
+      SIGNER_RUN_ATTEMPT: ${{ needs.domain-core-native-release-gate.outputs.signer_run_attempt }}
     steps:
       - name: Check out authorized release commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -1121,55 +1127,68 @@ jobs:
             attest "$f"
           done < <(find artifacts -type f -print0 | sort -z)
 
+      - name: Download exact verified candidate chain
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: domain-core-windows-release-gate-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate
+
       - name: Create candidate-bound Windows v2 domain-core evidence
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+        id: windows-evidence-plan
         run: |
           set -euo pipefail
           artifact="artifacts/OpenBurnBar-${VERSION}-windows-release.zip"
           test -s "$artifact"
-          activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"
-          activation_path="$RUNNER_TEMP/domain-core-windows-release-activation.json"
-          jq '{candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256}' \
-            <<<"$activation" > "$activation_path"
-          rollback="artifacts/OpenBurnBar-${VERSION}-legacy-rollback.zip"
-          gh release download "v${VERSION}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern "OpenBurnBar-${VERSION}-legacy-rollback.zip" \
-            --output "$rollback"
-          test -s "$rollback"
-          rollback_profile="$RUNNER_TEMP/domain-core-public-production-rollback.json"
-          unzip -p "$rollback" domain-core-public-production-rollback.json > "$rollback_profile"
-          test -s "$rollback_profile"
-          while IFS= read -r encoded; do
-            domain="$(jq -r '.domain' <<<"$encoded")"
-            predicate="provenance-windows-v${VERSION}/domain-core-windows-${domain}.predicate.json"
-            cp "$(jq -r '.bundlePath' <<<"$encoded")" "$RUNNER_TEMP/domain-core-candidate-bundle.json"
-            node scripts/ci/create-domain-core-release-evidence.mjs \
-              --consumer windows \
-              --domain "$domain" \
-              --artifact-kind windows-release-bundle \
-              --target windows-x64-arm64 \
-              --version "$VERSION" \
-              --tag "windows-v${VERSION}" \
-              --commit "$RELEASE_COMMIT" \
-              --artifact "$artifact" \
-              --predicate "$predicate" \
-              --public-profile-sha256 "$(jq -r '.publicProfileSha256' <<<"$encoded")" \
-              --activation "$activation_path" \
-              --candidate-bundle "$RUNNER_TEMP/domain-core-candidate-bundle.json" \
-              --promotion-attestation "$(jq -r '.provenancePath' <<<"$encoded")" \
-              --protected-signer-run-id "$(jq -r '.signerRunId' <<<"$encoded")" \
-              --protected-signer-run-attempt "$(jq -r '.signerRunAttempt' <<<"$encoded")" \
-              --rollback-artifact "$rollback" \
-              --rollback-profile "$rollback_profile"
+          gate_dir="$RUNNER_TEMP/domain-core-native-release-gate"
+          # Consume the canonical native release evidence plan/gate output that
+          # actually lists Windows domains. create-domain-core-native-release-evidence.mjs
+          # derives the canonical Windows domain set from RELEASE_CONSUMERS +
+          # the selected profile (nativeEvidenceDomains), NOT from the flat
+          # activation JSON's .domains[] selector. The gate has already validated
+          # the activation, candidate bundle, promotion attestation, and rollback
+          # against the exact candidate C, release commit P, and signed profile.
+          evidence_dir="$RUNNER_TEMP/domain-core-windows-candidate-evidence"
+          node scripts/ci/create-domain-core-native-release-evidence.mjs \
+            --consumer windows \
+            --artifact "$artifact" \
+            --version "$VERSION" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --profile-name "$PROFILE" \
+            --profile "$gate_dir/domain-core-selected-public-profile.json" \
+            --activation "$gate_dir/domain-core-activation.json" \
+            --candidate-bundle "$gate_dir/source/domain-core-candidate-bundle.json" \
+            --promotion-attestation "$gate_dir/promotion/domain-core-promotion-attestation.sigstore.jsonl" \
+            --protected-signer-run-id "$SIGNER_RUN_ID" \
+            --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
+            --rollback-artifact "$gate_dir/source/domain-core-public-production-rollback.json" \
+            --output-dir "$evidence_dir" \
+            --github-output "$GITHUB_OUTPUT"
+          # The generator writes the canonical plan to
+          # $evidence_dir/domain-core-native-evidence-plan.json (see
+          # create-domain-core-native-release-evidence.mjs writeCreateOnly).
+          plan="$evidence_dir/domain-core-native-evidence-plan.json"
+          test -s "$plan"
+          # Fail closed: the canonical plan must be a v2 Windows plan with at
+          # least one domain. A jq/schema/empty-plan error exits nonzero here
+          # because the plan is a real file read under set -euo pipefail — no
+          # process-substitution producer whose failure can disappear behind a
+          # successful while loop.
+          jq -e '.schemaVersion == 2 and .consumer == "windows" and (.domains | length > 0)' "$plan" >/dev/null
+          domain_count="$(jq '.domains | length' "$plan")"
+          echo "Windows domain-core evidence plan: $domain_count domain(s) from canonical generator"
+          # Write predicate paths to a real file before iteration so a jq
+          # producer failure propagates through set -e instead of disappearing
+          # behind a successful while loop.
+          predicate_list="$RUNNER_TEMP/domain-core-windows-predicate-paths.txt"
+          jq -r '.domains[].predicatePath' "$plan" > "$predicate_list"
+          while IFS= read -r predicate; do
             cosign attest-blob --yes \
               --type https://openburnbar.dev/attestations/domain-core-release-artifact/v2 \
               --predicate "$predicate" \
               --bundle "${predicate}.sigstore.json" \
               "$artifact"
-          done < <(jq -c '.domains[] | select(.domain == "quota" or .domain == "cloudVault")' <<<"$activation")
+          done < "$predicate_list"
 
       - name: Upload provenance bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
@@ -1179,6 +1198,7 @@ jobs:
             sbom-windows-v${{ needs.resolve-release.outputs.version }}.spdx.json
             openburnbar-windows-v${{ needs.resolve-release.outputs.version }}.vex.json
             provenance-windows-v${{ needs.resolve-release.outputs.version }}/
+            ${{ runner.temp }}/domain-core-windows-candidate-evidence/
           if-no-files-found: error
           retention-days: 7
 

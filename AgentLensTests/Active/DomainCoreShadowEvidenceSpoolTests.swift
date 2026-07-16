@@ -255,6 +255,106 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         XCTAssertEqual(batch.samples.map(\.operation), operations)
     }
 
+    func testOpaqueIdentifierOperationsBuildAndSpoolValidatedV3Samples() throws {
+        let operations = [
+            "subscription_doc_id",
+            "project_memory_doc_id",
+            "pensieve_dedup_hash",
+            "pensieve_slug_hmac"
+        ]
+        let candidate = try XCTUnwrap(signedCandidate())
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+
+        for operation in operations {
+            let sample = try XCTUnwrap(DomainCoreShadowSampleV3(
+                comparison: .init(
+                    domain: "cloudvault",
+                    slice: "opaque-identifiers",
+                    operation: operation,
+                    coreVersion: "0.3.0",
+                    outcome: "match",
+                    mismatchCategory: nil,
+                    legacyMicros: 10,
+                    rustMicros: 8
+                ),
+                channel: "internal",
+                candidate: candidate,
+                loadedIdentity: loadedIdentity
+            ))
+            XCTAssertEqual(sample.domain, "cloudvault")
+            XCTAssertEqual(sample.slice, "opaque-identifiers")
+            XCTAssertEqual(sample.consumer, "apple")
+            XCTAssertTrue(sample.isValidStored(
+                matchingChannel: "internal",
+                matchingCandidate: candidate,
+                now: Date()
+            ))
+            try spool.append(sample)
+        }
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            matchingChannel: "internal",
+            matchingCandidate: candidate
+        ))
+        XCTAssertEqual(batch.samples.map(\.operation), operations)
+        XCTAssertEqual(batch.samples.map(\.slice), Array(repeating: "opaque-identifiers", count: operations.count))
+    }
+
+    func testOpaqueIdentifierRejectsUnknownOperation() throws {
+        let candidate = try XCTUnwrap(signedCandidate())
+        XCTAssertNil(DomainCoreShadowSampleV3(
+            comparison: .init(
+                domain: "cloudvault",
+                slice: "opaque-identifiers",
+                operation: "pensieve_provenance_hash",
+                coreVersion: "0.3.0",
+                outcome: "match",
+                mismatchCategory: nil,
+                legacyMicros: 10,
+                rustMicros: 8
+            ),
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
+        ), "pensieve_provenance_hash is not an Apple opaque-identifier operation and must be rejected")
+        XCTAssertNil(DomainCoreShadowSampleV3(
+            comparison: .init(
+                domain: "cloudvault",
+                slice: "opaque-identifiers",
+                operation: "future_unreviewed_op",
+                coreVersion: "0.3.0",
+                outcome: "match",
+                mismatchCategory: nil,
+                legacyMicros: 10,
+                rustMicros: 8
+            ),
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
+        ), "unknown operation must be rejected")
+    }
+
+    func testOpaqueIdentifierRejectsWrongSlice() throws {
+        let candidate = try XCTUnwrap(signedCandidate())
+        XCTAssertNil(DomainCoreShadowSampleV3(
+            comparison: .init(
+                domain: "cloudvault",
+                slice: "foundation",
+                operation: "subscription_doc_id",
+                coreVersion: "0.3.0",
+                outcome: "match",
+                mismatchCategory: nil,
+                legacyMicros: 10,
+                rustMicros: 8
+            ),
+            channel: "internal",
+            candidate: candidate,
+            loadedIdentity: loadedIdentity
+        ), "subscription_doc_id in foundation slice must be rejected")
+    }
+
     func testGenericCollectorRejectsInvalidCoverageOutcomeAndTiming() throws {
         let candidate = try XCTUnwrap(signedCandidate())
         let valid = DomainCoreShadowComparison(

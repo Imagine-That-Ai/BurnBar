@@ -182,16 +182,21 @@ describe("console domain-core immutable shadow evidence", () => {
     { accepted: 2, duplicates: -1 },
     { accepted: 0.5, duplicates: 0.5 },
     { accepted: 2, duplicates: 0 },
-  ])("preserves immutable keys for invalid acknowledgement $accepted/$duplicates", async (acknowledgement) => {
-    recordConsoleCloudVaultShadowComparison(comparison());
-    const [key] = sampleKeys();
-    callable.mockResolvedValue({ data: acknowledgement });
+  ])(
+    "preserves immutable keys for invalid acknowledgement $accepted/$duplicates",
+    async (acknowledgement) => {
+      recordConsoleCloudVaultShadowComparison(comparison());
+      const [key] = sampleKeys();
+      callable.mockResolvedValue({ data: acknowledgement });
 
-    await expect(flushConsoleShadowEvidenceForTests()).resolves.toBeUndefined();
+      await expect(
+        flushConsoleShadowEvidenceForTests(),
+      ).resolves.toBeUndefined();
 
-    expect(localStorage.getItem(key)).not.toBeNull();
-    expect(pendingConsoleShadowEvidenceForTests()).toHaveLength(1);
-  });
+      expect(localStorage.getItem(key)).not.toBeNull();
+      expect(pendingConsoleShadowEvidenceForTests()).toHaveLength(1);
+    },
+  );
 
   it("normalizes loaded identity outcomes to the exact V3 server contract", () => {
     recordConsoleCloudVaultShadowComparison(
@@ -230,7 +235,10 @@ describe("console domain-core immutable shadow evidence", () => {
 
     resetConsoleShadowEvidenceForTests();
     recordConsoleCloudVaultShadowComparison(
-      comparison({ outcome: "mismatch", mismatchCategory: "native_unavailable" }),
+      comparison({
+        outcome: "mismatch",
+        mismatchCategory: "native_unavailable",
+      }),
     );
     expect(pendingConsoleShadowEvidenceForTests()).toEqual([
       expect.objectContaining({ mismatchCategory: "native_error" }),
@@ -470,11 +478,12 @@ describe("console domain-core immutable shadow evidence", () => {
     runConsoleShadowEvidenceMaintenanceForTests();
 
     expect(sampleKeys()).toHaveLength(3_200);
+    expect(new Set(sampleKeys().map((key) => key.split(".").at(-2))).size).toBe(
+      2,
+    );
     expect(
-      new Set(sampleKeys().map((key) => key.split(".").at(-2))).size,
-    ).toBe(2);
-    expect(
-      new Set(sampleKeys().map((key) => storedSample(key).candidateCommit)).size,
+      new Set(sampleKeys().map((key) => storedSample(key).candidateCommit))
+        .size,
     ).toBeGreaterThan(1);
   }, 20_000);
 
@@ -538,5 +547,33 @@ describe("console domain-core immutable shadow evidence", () => {
       sharedV3,
     );
     expect(sampleKeys()).toHaveLength(0);
+  });
+
+  it("rejects pensieve_l2_normalize as an Apple-only operation not in the Console allowlist", () => {
+    recordConsoleCloudVaultShadowComparison(
+      comparison({
+        slice: "pensieve-vectors",
+        operation: "pensieve_l2_normalize",
+      }),
+    );
+    expect(sampleKeys()).toEqual([]);
+    expect(pendingConsoleShadowEvidenceForTests()).toEqual([]);
+  });
+
+  it("accepts pensieve_deterministic_embed_and_cloak as a schema-allowed Console pensieve-vectors operation", () => {
+    recordConsoleCloudVaultShadowComparison(
+      comparison({
+        slice: "pensieve-vectors",
+        operation: "pensieve_deterministic_embed_and_cloak",
+      }),
+    );
+    expect(sampleKeys()).toHaveLength(1);
+    const sample = storedSample(sampleKeys()[0]!);
+    expect(sample).toMatchObject({
+      domain: "cloudvault",
+      slice: "pensieve-vectors",
+      operation: "pensieve_deterministic_embed_and_cloak",
+      consumer: "console",
+    });
   });
 });

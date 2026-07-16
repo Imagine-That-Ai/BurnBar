@@ -473,6 +473,9 @@ jobs:
           node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
             --profile "${{ steps.tag.outputs.domain_core_profile }}" \
             --expected-candidate-commit "${{ steps.domain-core-profile.outputs.candidate_commit }}" \
+            --expected-release-commit "${{ steps.tag.outputs.commit }}" \
+            --expected-release-version "${RELEASE_TAG#v}" \
+            --expected-release-tag "$RELEASE_TAG" \
             --functions-dir functions/lib
           node scripts/ci/verify-domain-core-functions-target-inventory.mjs \
             --inventory config/domain-core-functions-relevant-targets.json

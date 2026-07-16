@@ -363,6 +363,62 @@ requireIncludes(
   "credentialed deploy-hosting job must keep firebase-hosting.ci.json under the artifact root",
 );
 
+// ── Release-coordinate and candidate-identity contract ───────────────────
+// Main deploys are non-release builds: --expected-release-* flags must be
+// omitted (not passed as empty values). Stable tag/rollback builds include
+// complete non-empty release coordinates. The staged Console profile verifies
+// against CANDIDATE_COMMIT (C), not RELEASE_COMMIT (R/P).
+const stagingStep = stepBlock(buildJob, "Stage hosting deploy artifact");
+const resolveStep = stepBlock(
+  buildJob,
+  "Resolve signed public domain-core profile",
+);
+
+if (!stagingStep) fail("missing Stage hosting deploy artifact step");
+if (!resolveStep)
+  fail("missing Resolve signed public domain-core profile step");
+
+if (stagingStep) {
+  requireIncludes(
+    stagingStep,
+    "CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}",
+    "staging step must expose CANDIDATE_COMMIT from activation (with fallback to ref commit)",
+  );
+  requireIncludes(
+    stagingStep,
+    '--expected-candidate-commit "$CANDIDATE_COMMIT"',
+    "staging step must verify the staged Console profile against CANDIDATE_COMMIT, not RELEASE_COMMIT",
+  );
+  requireNoPattern(
+    stagingStep,
+    /--expected-candidate-commit "\$RELEASE_COMMIT"/u,
+    "staging step must not verify the staged Console profile against RELEASE_COMMIT",
+  );
+  requireIncludes(
+    stagingStep,
+    'if [[ -n "$RELEASE_TAG" ]]; then',
+    "staging step must conditionally include release flags only on stable tag/rollback",
+  );
+}
+
+if (resolveStep) {
+  requireIncludes(
+    resolveStep,
+    "CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}",
+    "resolve profile step must expose CANDIDATE_COMMIT from activation (with fallback to ref commit)",
+  );
+  requireIncludes(
+    resolveStep,
+    'if [[ -n "$RELEASE_TAG" ]]; then',
+    "resolve profile step must conditionally include release flags only on stable tag/rollback",
+  );
+  requireNoPattern(
+    resolveStep,
+    /--expected-release-commit "\$RELEASE_COMMIT" --expected-release-version/u,
+    "resolve profile step must not unconditionally pass release coordinates (main path omits them)",
+  );
+}
+
 if (failures.length > 0) {
   console.error("Hosting deploy boundary verification failed:");
   for (const failure of failures) console.error(`  - ${failure}`);

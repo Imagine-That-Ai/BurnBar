@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -286,10 +292,14 @@ test("Functions artifact module embeds the validated signed receipt without runt
 });
 
 test("artifact verifier accepts MSBuild UTF-8 BOM receipts and still rejects malformed JSON", () => {
-  const temporaryRoot = mkdtempSync(join(tmpdir(), "openburnbar-domain-core-profile-"));
+  const temporaryRoot = mkdtempSync(
+    join(tmpdir(), "openburnbar-domain-core-profile-"),
+  );
   const windowsDirectory = join(temporaryRoot, "publish");
   const artifactPath = join(windowsDirectory, "domain-core-build-profile.json");
-  const verifier = resolve("scripts/ci/verify-domain-core-build-profile-artifact.mjs");
+  const verifier = resolve(
+    "scripts/ci/verify-domain-core-build-profile-artifact.mjs",
+  );
   const manifest = JSON.parse(
     readFileSync(
       resolve("crates/openburnbar-domain-core/union-abi-manifest.json"),
@@ -343,7 +353,10 @@ test("artifact verifier accepts MSBuild UTF-8 BOM receipts and still rejects mal
       { encoding: "utf8" },
     );
     assert.equal(valid.status, 0, valid.stderr || valid.stdout);
-    assert.match(valid.stdout, /domain-core artifact profile verified: public-production/);
+    assert.match(
+      valid.stdout,
+      /domain-core artifact profile verified: public-production/,
+    );
 
     writeFileSync(artifactPath, "\uFEFF{not-json}\n", "utf8");
     const malformed = spawnSync(
@@ -359,9 +372,345 @@ test("artifact verifier accepts MSBuild UTF-8 BOM receipts and still rejects mal
       ],
       { encoding: "utf8" },
     );
-    assert.notEqual(malformed.status, 0, "malformed BOM-prefixed receipts must still fail closed");
+    assert.notEqual(
+      malformed.status,
+      0,
+      "malformed BOM-prefixed receipts must still fail closed",
+    );
     assert.match(malformed.stderr, /SyntaxError/);
   } finally {
     rmSync(temporaryRoot, { recursive: true, force: true });
   }
+});
+
+test("release-bound Functions artifact verifies with a complete release commit/version/tag triplet", () => {
+  const temporaryRoot = mkdtempSync(
+    join(tmpdir(), "openburnbar-functions-release-"),
+  );
+  const functionsDirectory = join(temporaryRoot, "functions");
+  const generatedDirectory = join(functionsDirectory, "generated");
+  const verifier = resolve(
+    "scripts/ci/verify-domain-core-build-profile-artifact.mjs",
+  );
+  const manifest = JSON.parse(
+    readFileSync(
+      resolve("crates/openburnbar-domain-core/union-abi-manifest.json"),
+      "utf8",
+    ),
+  );
+  const candidateCommit = spawnSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).stdout.trim();
+  const releaseCommit = spawnSync("git", ["rev-parse", "HEAD~1"], {
+    encoding: "utf8",
+  }).stdout.trim();
+  assert.notEqual(
+    candidateCommit,
+    releaseCommit,
+    "test requires HEAD and HEAD~1 to be distinct commits",
+  );
+  const releaseVersion = "1.2.3";
+  const releaseTag = `v${releaseVersion}`;
+  const expected = resolveDomainCoreBuildProfile(
+    catalog,
+    "public-production",
+    {
+      candidateCommit,
+      coreVersion: manifest.coreVersion,
+      abiVersion: manifest.abiVersion,
+      sourceSha256: manifest.sourceSha256,
+    },
+    { version: releaseVersion, tag: releaseTag, commit: releaseCommit },
+  );
+  assert.deepEqual(expected.release, {
+    version: releaseVersion,
+    tag: releaseTag,
+    commit: releaseCommit,
+  });
+  mkdirSync(generatedDirectory, { recursive: true });
+  writeFileSync(
+    join(generatedDirectory, "domainCoreCandidateReceipt.js"),
+    profileFunctionsJavaScript(expected),
+    "utf8",
+  );
+
+  try {
+    const valid = spawnSync(
+      process.execPath,
+      [
+        verifier,
+        "--profile",
+        "public-production",
+        "--expected-candidate-commit",
+        candidateCommit,
+        "--expected-release-commit",
+        releaseCommit,
+        "--expected-release-version",
+        releaseVersion,
+        "--expected-release-tag",
+        releaseTag,
+        "--functions-dir",
+        functionsDirectory,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(valid.status, 0, valid.stderr || valid.stdout);
+    assert.match(
+      valid.stdout,
+      /domain-core artifact profile verified: public-production/,
+    );
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("main Functions artifact without release flags stays valid and remains release-free", () => {
+  const temporaryRoot = mkdtempSync(
+    join(tmpdir(), "openburnbar-functions-main-"),
+  );
+  const functionsDirectory = join(temporaryRoot, "functions");
+  const generatedDirectory = join(functionsDirectory, "generated");
+  const verifier = resolve(
+    "scripts/ci/verify-domain-core-build-profile-artifact.mjs",
+  );
+  const manifest = JSON.parse(
+    readFileSync(
+      resolve("crates/openburnbar-domain-core/union-abi-manifest.json"),
+      "utf8",
+    ),
+  );
+  const candidateCommit = spawnSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).stdout.trim();
+  const expected = resolveDomainCoreBuildProfile(catalog, "public-production", {
+    candidateCommit,
+    coreVersion: manifest.coreVersion,
+    abiVersion: manifest.abiVersion,
+    sourceSha256: manifest.sourceSha256,
+  });
+  assert.equal(expected.release, undefined);
+  mkdirSync(generatedDirectory, { recursive: true });
+  writeFileSync(
+    join(generatedDirectory, "domainCoreCandidateReceipt.js"),
+    profileFunctionsJavaScript(expected),
+    "utf8",
+  );
+
+  try {
+    const valid = spawnSync(
+      process.execPath,
+      [
+        verifier,
+        "--profile",
+        "public-production",
+        "--expected-candidate-commit",
+        candidateCommit,
+        "--functions-dir",
+        functionsDirectory,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(valid.status, 0, valid.stderr || valid.stdout);
+    assert.match(
+      valid.stdout,
+      /domain-core artifact profile verified: public-production/,
+    );
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("mismatched release coordinates fail artifact verification", () => {
+  const temporaryRoot = mkdtempSync(
+    join(tmpdir(), "openburnbar-functions-mismatch-"),
+  );
+  const functionsDirectory = join(temporaryRoot, "functions");
+  const generatedDirectory = join(functionsDirectory, "generated");
+  const verifier = resolve(
+    "scripts/ci/verify-domain-core-build-profile-artifact.mjs",
+  );
+  const manifest = JSON.parse(
+    readFileSync(
+      resolve("crates/openburnbar-domain-core/union-abi-manifest.json"),
+      "utf8",
+    ),
+  );
+  const candidateCommit = spawnSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).stdout.trim();
+  const artifactReleaseCommit = spawnSync("git", ["rev-parse", "HEAD~1"], {
+    encoding: "utf8",
+  }).stdout.trim();
+  const mismatchedReleaseCommit = spawnSync("git", ["rev-parse", "HEAD~2"], {
+    encoding: "utf8",
+  }).stdout.trim();
+  const releaseVersion = "1.2.3";
+  const releaseTag = `v${releaseVersion}`;
+  const artifactProfile = resolveDomainCoreBuildProfile(
+    catalog,
+    "public-production",
+    {
+      candidateCommit,
+      coreVersion: manifest.coreVersion,
+      abiVersion: manifest.abiVersion,
+      sourceSha256: manifest.sourceSha256,
+    },
+    { version: releaseVersion, tag: releaseTag, commit: artifactReleaseCommit },
+  );
+  mkdirSync(generatedDirectory, { recursive: true });
+  writeFileSync(
+    join(generatedDirectory, "domainCoreCandidateReceipt.js"),
+    profileFunctionsJavaScript(artifactProfile),
+    "utf8",
+  );
+
+  try {
+    const mismatched = spawnSync(
+      process.execPath,
+      [
+        verifier,
+        "--profile",
+        "public-production",
+        "--expected-candidate-commit",
+        candidateCommit,
+        "--expected-release-commit",
+        mismatchedReleaseCommit,
+        "--expected-release-version",
+        releaseVersion,
+        "--expected-release-tag",
+        releaseTag,
+        "--functions-dir",
+        functionsDirectory,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.notEqual(
+      mismatched.status,
+      0,
+      "mismatched release commit must fail verification",
+    );
+    assert.match(mismatched.stderr, /artifact profile mismatch/);
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("partial release triplets fail closed at profile resolution", () => {
+  const validCoords = {
+    version: "1.0.0",
+    tag: "v1.0.0",
+    commit: "c".repeat(40),
+  };
+  assert.deepEqual(
+    resolveDomainCoreBuildProfile(
+      catalog,
+      "public-production",
+      candidateIdentity,
+      validCoords,
+    ).release,
+    validCoords,
+  );
+  for (const partial of [
+    { commit: "c".repeat(40) },
+    { version: "1.0.0" },
+    { tag: "v1.0.0" },
+    { commit: "c".repeat(40), version: "1.0.0" },
+    { commit: "c".repeat(40), tag: "v1.0.0" },
+    { version: "1.0.0", tag: "v1.0.0" },
+  ]) {
+    assert.throws(() =>
+      resolveDomainCoreBuildProfile(
+        catalog,
+        "public-production",
+        candidateIdentity,
+        partial,
+      ),
+    );
+  }
+});
+
+test("release coordinates validate the tag/version binding and commit format", () => {
+  const releaseCommit = "c".repeat(40);
+  assert.throws(
+    () =>
+      resolveDomainCoreBuildProfile(
+        catalog,
+        "public-production",
+        candidateIdentity,
+        {
+          version: "1.0.0",
+          tag: "v2.0.0",
+          commit: releaseCommit,
+        },
+      ),
+    /release tag must be v1.0.0/,
+  );
+  assert.throws(
+    () =>
+      resolveDomainCoreBuildProfile(
+        catalog,
+        "public-production",
+        candidateIdentity,
+        {
+          version: "1.0.0-beta",
+          tag: "v1.0.0-beta",
+          commit: releaseCommit,
+        },
+      ),
+    /release version is invalid/,
+  );
+  assert.throws(
+    () =>
+      resolveDomainCoreBuildProfile(
+        catalog,
+        "public-production",
+        candidateIdentity,
+        {
+          version: "1.0.0",
+          tag: "v1.0.0",
+          commit: "short",
+        },
+      ),
+    /release commit must be a full lowercase Git SHA-1/,
+  );
+});
+
+test("active Rust release still enforces candidate/release commit separation", () => {
+  const rustCatalog = structuredClone(catalog);
+  rustCatalog.profiles["public-production"].modes.quota = "rust";
+  assert.equal(validateDomainCoreBuildProfiles(rustCatalog), rustCatalog);
+  const candidateCommit = "a".repeat(40);
+  const releaseCommit = "c".repeat(40);
+  assert.throws(
+    () =>
+      resolveDomainCoreBuildProfile(
+        rustCatalog,
+        "public-production",
+        {
+          ...candidateIdentity,
+          candidateCommit,
+        },
+        {
+          version: "1.0.0",
+          tag: "v1.0.0",
+          commit: candidateCommit,
+        },
+      ),
+    /Rust activation requires distinct candidate and release commits/,
+  );
+  const separated = resolveDomainCoreBuildProfile(
+    rustCatalog,
+    "public-production",
+    { ...candidateIdentity, candidateCommit },
+    { version: "1.0.0", tag: "v1.0.0", commit: releaseCommit },
+  );
+  assert.deepEqual(separated.release, {
+    version: "1.0.0",
+    tag: "v1.0.0",
+    commit: releaseCommit,
+  });
+  assert.notEqual(
+    separated.release.commit,
+    separated.candidateIdentity.candidateCommit,
+  );
 });

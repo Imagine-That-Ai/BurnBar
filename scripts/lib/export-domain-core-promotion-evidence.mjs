@@ -1,5 +1,6 @@
 import {
   isValidDomainSliceConsumer,
+  isValidDomainSliceOperationConsumer,
   requiredCoverageForDomain,
 } from "./domain-core-evidence-contract.mjs";
 
@@ -98,10 +99,7 @@ const OPERATION_IDENTITY = new Map([
   ["pensieve_l2_normalize", "cloudvault/pensieve-vectors"],
   ["pensieve_vector_cloak", "cloudvault/pensieve-vectors"],
   ["pensieve_deterministic_embed", "cloudvault/pensieve-vectors"],
-  [
-    "pensieve_deterministic_embed_and_cloak",
-    "cloudvault/pensieve-vectors",
-  ],
+  ["pensieve_deterministic_embed_and_cloak", "cloudvault/pensieve-vectors"],
   ...[
     "aad_v1",
     "aad_v2",
@@ -184,6 +182,7 @@ const OPERATION_IDENTITY = new Map([
   ["pensieve_dedup_hash", "cloudvault/opaque-identifiers"],
   ["pensieve_provenance_hash", "cloudvault/opaque-identifiers"],
   ["pensieve_slug_hmac", "cloudvault/opaque-identifiers"],
+  ["subscription_doc_id", "cloudvault/opaque-identifiers"],
   ["aad", "hermes/aad"],
   ["hpke_v3_info", "hermes/hpke-info"],
   ...[
@@ -434,6 +433,16 @@ export function parseStoredDomainCoreShadowSample(record, index = 0) {
       throw new Error(`${label} is not promotion-eligible V3 evidence`);
     }
     validateOperationIdentity(record, label);
+    if (
+      !isValidDomainSliceOperationConsumer(
+        record.domain,
+        record.slice,
+        record.operation,
+        record.consumer,
+      )
+    ) {
+      throw new Error(`${label} has an invalid consumer for its operation`);
+    }
     validateV3Identity(record, label);
   } else {
     throw new Error(`${label} has an unsupported schema version`);

@@ -35,7 +35,15 @@
     "domain": { "enum": ["quota", "cloudvault", "hermes", "pricing"] },
     "slice": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$" },
     "consumer": {
-      "enum": ["apple", "android", "windows", "console", "functions", "local-mcp", "remote-mcp"]
+      "enum": [
+        "apple",
+        "android",
+        "windows",
+        "console",
+        "functions",
+        "local-mcp",
+        "remote-mcp"
+      ]
     },
     "channel": { "enum": ["internal", "beta"] },
     "operation": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$" },
@@ -213,7 +221,16 @@
           "properties": {
             "domain": { "const": "cloudvault" },
             "slice": { "const": "foundation" },
-            "consumer": { "enum": ["apple", "android", "windows", "console", "local-mcp", "remote-mcp"] },
+            "consumer": {
+              "enum": [
+                "apple",
+                "android",
+                "windows",
+                "console",
+                "local-mcp",
+                "remote-mcp"
+              ]
+            },
             "operation": {
               "enum": [
                 "aad_v1",
@@ -257,7 +274,16 @@
           "properties": {
             "domain": { "const": "cloudvault" },
             "slice": { "const": "aes" },
-            "consumer": { "enum": ["apple", "android", "windows", "console", "local-mcp", "remote-mcp"] },
+            "consumer": {
+              "enum": [
+                "apple",
+                "android",
+                "windows",
+                "console",
+                "local-mcp",
+                "remote-mcp"
+              ]
+            },
             "operation": {
               "enum": [
                 "aes_gcm_seal_detached",
@@ -330,7 +356,9 @@
           "properties": {
             "domain": { "const": "cloudvault" },
             "slice": { "const": "search" },
-            "consumer": { "enum": ["apple", "android", "local-mcp", "remote-mcp"] },
+            "consumer": {
+              "enum": ["apple", "android", "local-mcp", "remote-mcp"]
+            },
             "operation": { "enum": ["token", "index", "query", "semantic"] }
           }
         },
@@ -338,7 +366,7 @@
           "properties": {
             "domain": { "const": "cloudvault" },
             "slice": { "const": "opaque-identifiers" },
-            "consumer": { "const": "local-mcp" },
+            "consumer": { "enum": ["apple", "local-mcp"] },
             "operation": { "const": "project_memory_doc_id" }
           }
         },
@@ -346,10 +374,26 @@
           "properties": {
             "domain": { "const": "cloudvault" },
             "slice": { "const": "opaque-identifiers" },
-            "consumer": { "const": "remote-mcp" },
+            "consumer": { "enum": ["apple", "remote-mcp"] },
             "operation": {
-              "enum": ["pensieve_dedup_hash", "pensieve_provenance_hash", "pensieve_slug_hmac"]
+              "enum": ["pensieve_dedup_hash", "pensieve_slug_hmac"]
             }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "opaque-identifiers" },
+            "consumer": { "const": "remote-mcp" },
+            "operation": { "const": "pensieve_provenance_hash" }
+          }
+        },
+        {
+          "properties": {
+            "domain": { "const": "cloudvault" },
+            "slice": { "const": "opaque-identifiers" },
+            "consumer": { "enum": ["apple", "android"] },
+            "operation": { "const": "subscription_doc_id" }
           }
         },
         {

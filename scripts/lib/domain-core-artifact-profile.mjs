@@ -11,9 +11,15 @@ export const DOMAIN_CORE_ARTIFACT_SELECTORS = [
 ];
 
 export function parseDomainCoreArtifactVerifierArgs(argv) {
+  const releaseFlags = [
+    "--expected-release-commit",
+    "--expected-release-version",
+    "--expected-release-tag",
+  ];
   const allowed = new Set([
     "--profile",
     "--expected-candidate-commit",
+    ...releaseFlags,
     ...DOMAIN_CORE_ARTIFACT_SELECTORS,
   ]);
   const args = new Map();
@@ -28,6 +34,12 @@ export function parseDomainCoreArtifactVerifierArgs(argv) {
     args.set(flag, value);
   }
   if (!args.has("--profile")) throw new Error("--profile is required");
+  const releaseFlagCount = releaseFlags.filter((flag) => args.has(flag)).length;
+  if (releaseFlagCount !== 0 && releaseFlagCount !== releaseFlags.length) {
+    throw new Error(
+      "expected release commit, version, and tag must be supplied together",
+    );
+  }
   const selectors = DOMAIN_CORE_ARTIFACT_SELECTORS.filter((flag) =>
     args.has(flag),
   );

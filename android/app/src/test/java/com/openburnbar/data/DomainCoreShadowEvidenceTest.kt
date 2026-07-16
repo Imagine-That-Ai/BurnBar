@@ -3,6 +3,7 @@ package com.openburnbar.data
 import android.content.Context
 import com.openburnbar.data.cloud.CloudVaultDocumentRewrapDomainCore
 import com.openburnbar.data.cloud.CloudVaultDomainCore
+import com.openburnbar.data.cloud.CloudVaultDomainCoreMode
 import com.openburnbar.data.cloud.CloudVaultSearchDomainCore
 import com.openburnbar.data.cloud.CloudVaultShadowComparison
 import com.openburnbar.data.hermes.relay.HermesDomainCoreAdapter
@@ -20,6 +21,7 @@ import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.Job
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -609,4 +611,111 @@ class DomainCoreShadowEvidenceTest {
         legacyMicros = legacyMicros,
         rustMicros = rustMicros,
     )
+
+    @Test
+    fun `subscription_doc_id dispatch routes to opaque-identifiers slice`() {
+        val comparisons = mutableListOf<CloudVaultShadowComparison>()
+        CloudVaultDomainCore.comparisonOverride = comparisons::add
+        CloudVaultDomainCore.modeOverride = CloudVaultDomainCoreMode.SHADOW
+        try {
+            CloudVaultDomainCore.dispatchForTest(
+                selectedMode = CloudVaultDomainCoreMode.SHADOW,
+                operation = "subscription_doc_id",
+                legacy = { "legacy-doc-id" },
+                rust = { "legacy-doc-id" },
+            )
+            assertEquals(1, comparisons.size)
+            assertEquals("cloudvault", comparisons.single().domain)
+            assertEquals("opaque-identifiers", comparisons.single().slice)
+            assertEquals("subscription_doc_id", comparisons.single().operation)
+            assertEquals("android", comparisons.single().consumer)
+        } finally {
+            CloudVaultDomainCore.resetTestOverrides()
+        }
+    }
+
+    @Test
+    fun `subscription_doc_id comparison in opaque-identifiers passes local validation and spooling`() {
+        val directory = Files.createTempDirectory("domain-core-shadow-opaque-id").toFile()
+        val activeFlush = Job()
+        mockkObject(DomainCoreBuildProfile)
+        every { DomainCoreBuildProfile.runtimeProfile() } returns signedProfile
+        try {
+            val spool = AndroidDomainCoreShadowSpool(directory)
+            setEvidenceField("spool", spool)
+            setEvidenceField("installedChannel", DomainCoreEvidenceChannel.INTERNAL)
+            setEvidenceField("installedCandidate", candidate)
+            setEvidenceField("flushJob", activeFlush)
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = { loadedIdentity }
+
+            invokeRecord(
+                CloudVaultShadowComparison(
+                    slice = "opaque-identifiers",
+                    operation = "subscription_doc_id",
+                    coreVersion = "1.2.3",
+                    outcome = "match",
+                    mismatchCategory = null,
+                    legacyMicros = 12,
+                    rustMicros = 8,
+                ),
+            )
+
+            val batch = requireNotNull(spool.nextBatch(sealActive = true, expectedChannel = "internal", expectedCandidate = candidate))
+            assertEquals(1, batch.samples.size)
+            assertEquals("cloudvault", batch.samples.single()["domain"])
+            assertEquals("opaque-identifiers", batch.samples.single()["slice"])
+            assertEquals("subscription_doc_id", batch.samples.single()["operation"])
+            assertEquals("android", batch.samples.single()["consumer"])
+            assertEquals("internal", batch.samples.single()["channel"])
+        } finally {
+            activeFlush.cancel()
+            setEvidenceField("spool", null)
+            setEvidenceField("installedChannel", null)
+            setEvidenceField("installedCandidate", null)
+            setEvidenceField("flushJob", null)
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = null
+            unmockkObject(DomainCoreBuildProfile)
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `subscription_doc_id comparison with wrong slice is rejected`() {
+        val directory = Files.createTempDirectory("domain-core-shadow-wrong-slice").toFile()
+        val activeFlush = Job()
+        mockkObject(DomainCoreBuildProfile)
+        every { DomainCoreBuildProfile.runtimeProfile() } returns signedProfile
+        try {
+            val spool = AndroidDomainCoreShadowSpool(directory)
+            setEvidenceField("spool", spool)
+            setEvidenceField("installedChannel", DomainCoreEvidenceChannel.INTERNAL)
+            setEvidenceField("installedCandidate", candidate)
+            setEvidenceField("flushJob", activeFlush)
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = { loadedIdentity }
+
+            invokeRecord(
+                CloudVaultShadowComparison(
+                    slice = "foundation",
+                    operation = "subscription_doc_id",
+                    coreVersion = "1.2.3",
+                    outcome = "match",
+                    mismatchCategory = null,
+                    legacyMicros = 12,
+                    rustMicros = 8,
+                ),
+            )
+
+            val batch = spool.nextBatch(sealActive = true, expectedChannel = "internal", expectedCandidate = candidate)
+            assertNull("subscription_doc_id in foundation slice must be rejected", batch)
+        } finally {
+            activeFlush.cancel()
+            setEvidenceField("spool", null)
+            setEvidenceField("installedChannel", null)
+            setEvidenceField("installedCandidate", null)
+            setEvidenceField("flushJob", null)
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = null
+            unmockkObject(DomainCoreBuildProfile)
+            directory.deleteRecursively()
+        }
+    }
 }

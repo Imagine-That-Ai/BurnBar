@@ -403,6 +403,7 @@ private fun elapsedMicros(startedNanos: Long): Long = ((System.nanoTime() - star
     .coerceIn(0, 600_000_000)
 
 private fun sliceFor(operation: String): String = when {
+    operation == "subscription_doc_id" -> "opaque-identifiers"
     operation.contains("escrow") -> "escrow"
     operation.contains("recovery") -> "recovery"
     operation.contains("aes") || operation.contains("seal") || operation.contains("open") -> "aes"

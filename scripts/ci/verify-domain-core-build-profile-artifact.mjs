@@ -36,10 +36,18 @@ const candidateIdentity =
         requireClean: false,
       })
     : undefined;
+const releaseCoordinates = args.has("--expected-release-commit")
+  ? {
+      commit: args.get("--expected-release-commit"),
+      version: args.get("--expected-release-version"),
+      tag: args.get("--expected-release-tag"),
+    }
+  : undefined;
 const expected = resolveDomainCoreBuildProfile(
   catalog,
   profileName,
   candidateIdentity,
+  releaseCoordinates,
 );
 
 const parseJsonArtifact = (content) =>
@@ -47,7 +55,9 @@ const parseJsonArtifact = (content) =>
 
 let actual;
 if (args.has("--receipt")) {
-  actual = parseJsonArtifact(readFileSync(resolve(args.get("--receipt")), "utf8"));
+  actual = parseJsonArtifact(
+    readFileSync(resolve(args.get("--receipt")), "utf8"),
+  );
 } else if (args.has("--windows-dir")) {
   actual = parseJsonArtifact(
     readFileSync(

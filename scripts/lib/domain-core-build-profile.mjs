@@ -216,10 +216,12 @@ export function resolveDomainCoreBuildProfile(
     }
     if (
       resolved.candidateIdentity !== null &&
-      releaseCoordinates.commit === resolved.candidateIdentity.candidateCommit
+      releaseCoordinates.commit ===
+        resolved.candidateIdentity.candidateCommit &&
+      Object.values(resolved.modes).includes("rust")
     ) {
       throw new Error(
-        "rollback profile release commit must be distinct from the candidate commit",
+        "Rust activation requires distinct candidate and release commits",
       );
     }
     resolved.release = {
