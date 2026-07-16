@@ -16,6 +16,8 @@ function parseArguments(argv) {
     "--rollback-artifact",
     "--candidate-commit",
     "--release-commit",
+    "--release-version",
+    "--release-tag",
     "--core-version",
     "--abi-version",
     "--source-sha256",
@@ -111,6 +113,8 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
     ),
     expectedRollbackSha256: args.get("--rollback-sha256"),
     expectedReleaseCommit: args.get("--release-commit"),
+    expectedReleaseVersion: args.get("--release-version"),
+    expectedReleaseTag: args.get("--release-tag"),
     promotionVerifier,
     activationVerifier,
   });

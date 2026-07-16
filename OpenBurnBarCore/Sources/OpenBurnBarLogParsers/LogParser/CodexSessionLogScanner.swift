@@ -16,10 +16,11 @@ import OpenBurnBarKernel
 //    hours while sessions run. The scanner persists a byte offset plus the
 //    token accumulator per file, so a re-scan of a grown file reads only the
 //    appended tail instead of the whole file every refresh tick.
-//  * **Bounded**: every decoded line is wrapped in `autoreleasepool` (the
-//    `JSONSerialization` object graphs are autoreleased, and parse loops run
-//    inside dispatch blocks that never drain), lines that cannot contain
-//    token events are skipped before JSON decoding, and a shared
+//  * **Bounded**: every decoded line is wrapped in `parserAutoReleasePool`
+//    (on Darwin the `JSONSerialization` object graphs are autoreleased, and
+//    parse loops run inside dispatch blocks that never drain; on Linux/Windows
+//    the closure runs inline), lines that cannot contain token events are
+//    skipped before JSON decoding, and a shared
 //    `ParserResourceGovernor` can abort on memory ceiling.
 
 /// Persistable per-file scan state for incremental token extraction.
@@ -184,7 +185,7 @@ public enum CodexSessionLogScanner {
             }
 
             if line.isTerminated {
-                autoreleasepool {
+                parserAutoReleasePool {
                     Self.reduceTokenLine(line.text, into: &accumulator)
                 }
                 persistedOffset = line.endOffset
@@ -193,7 +194,7 @@ public enum CodexSessionLogScanner {
                 // totals but never toward persisted state — a live writer may
                 // still be appending it, and the next scan must re-read it.
                 var tail = accumulator
-                autoreleasepool {
+                parserAutoReleasePool {
                     Self.reduceTokenLine(line.text, into: &tail)
                 }
                 tailAccumulator = tail
@@ -301,7 +302,7 @@ public enum CodexSessionLogScanner {
             if scannedLines % checkpointLineInterval == 0 {
                 try governor?.checkpoint()
             }
-            autoreleasepool {
+            parserAutoReleasePool {
                 guard let data = line.text.data(using: .utf8),
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
                     return

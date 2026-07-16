@@ -2125,6 +2125,125 @@ def validate_promotion_attestation(
     return candidate, bundle_digest, expected_identity["coreVersion"]
 
 
+def validate_deletion_review_receipt(
+    repo_root: Path,
+    row_id: str,
+    generation: int,
+    deletion: Receipt,
+    stable: Receipt,
+    targets: list[Target],
+    deletion_reviewers: dict[str, set[str]] | None,
+    evidence_verifier: SignedEvidenceVerifier | Any | None,
+) -> None:
+    """Validate a deletionReview receipt's authority, plan digest, and ancestry.
+
+    Pure shared verifier extracted from validate_receipt_chain so that the
+    post-deletion completion gate can reuse the exact same fail-closed checks
+    without duplicating a weaker parser.  Enforces:
+
+    * deletionReview payload binds the current stable receipt digest
+    * review URI, reviewer handle, review class, and outcome are canonical
+    * reviewer is qualified by the trusted base catalog
+    * approved deletion plan binds the exact row, generation, stable receipt,
+      reviewer, review class, and legacy target inventory digest
+    * reviewedCommit is a valid commit and an ancestor of the deletion receipt commit
+    * live independent deletion review verification is performed (fail-closed)
+    """
+    payload = deletion.payload
+    fields = {
+        "stableReceiptSha256",
+        "reviewUri",
+        "reviewedCommit",
+        "reviewer",
+        "reviewClass",
+        "outcome",
+        "planPath",
+        "planSha256",
+    }
+    exact_keys(payload, fields, fields, f"row {row_id} deletionReview")
+    require_ancestor(
+        repo_root,
+        stable.commit,
+        deletion.commit,
+        f"row {row_id} deletionReview.commit",
+    )
+    if payload["stableReceiptSha256"] != stable.digest:
+        raise GateError(f"row {row_id}: deletion review does not bind the current stable receipt")
+    validate_https_uri(payload["reviewUri"], f"row {row_id} deletionReview.reviewUri")
+    if not isinstance(payload["reviewer"], str) or not RECEIPT_ACTOR_RE.fullmatch(payload["reviewer"]):
+        raise GateError(f"row {row_id}: deletion reviewer must be a GitHub handle")
+    expected_review_class = "security_crypto" if row_id in SECURITY_REVIEW_ROWS else "domain_owner"
+    if payload["reviewClass"] != expected_review_class or payload["outcome"] != "approved":
+        raise GateError(f"row {row_id}: deletion review class or outcome is invalid")
+    qualified = (deletion_reviewers or {}).get(expected_review_class, set())
+    if payload["reviewer"].casefold() not in qualified:
+        raise GateError(
+            f"row {row_id}: {expected_review_class} reviewer is not qualified by the trusted base catalog"
+        )
+    expected_plan_path = f"{DELETION_PLAN_ROOT}/{row_id}/{generation}.json"
+    plan_path_value = repository_path(payload["planPath"], f"row {row_id} deletionReview.planPath")
+    if plan_path_value != expected_plan_path:
+        raise GateError(f"row {row_id}: deletion plan must use exact path {expected_plan_path}")
+    plan_path = secure_path(repo_root, plan_path_value, f"row {row_id} deletion plan", must_exist=True)
+    plan_digest = require_digest(payload["planSha256"], f"row {row_id} deletionReview.planSha256")
+    if not plan_path.is_file() or sha256_path(plan_path) != plan_digest:
+        raise GateError(f"row {row_id}: deletion plan digest does not match committed bytes")
+    reviewed_commit = payload["reviewedCommit"]
+    reviewed_commit = require_commit(repo_root, reviewed_commit, f"row {row_id} deletion reviewedCommit")
+    require_ancestor(
+        repo_root,
+        reviewed_commit,
+        deletion.commit,
+        f"row {row_id} deletion reviewedCommit",
+    )
+    plan = require_object(
+        load_json(plan_path, f"row {row_id} deletion plan"),
+        f"row {row_id} deletion plan",
+    )
+    plan_fields = {
+        "schemaVersion",
+        "rowId",
+        "authorityGeneration",
+        "stableReceiptSha256",
+        "reviewer",
+        "reviewClass",
+        "legacyTargetsSha256",
+        "requestedAction",
+    }
+    exact_keys(plan, plan_fields, plan_fields, f"row {row_id} deletion plan")
+    target_digest = canonical_json_sha256(
+        [
+            {
+                "kind": target.kind,
+                "role": target.role,
+                "root": target.root,
+                "path": target.path,
+                "value": target.value,
+            }
+            for target in sorted(targets, key=lambda item: item.identity)
+        ]
+    )
+    expected_plan = {
+        "schemaVersion": 1,
+        "rowId": row_id,
+        "authorityGeneration": generation,
+        "stableReceiptSha256": stable.digest,
+        "reviewer": payload["reviewer"],
+        "reviewClass": expected_review_class,
+        "legacyTargetsSha256": target_digest,
+        "requestedAction": "approve_legacy_deletion",
+    }
+    if plan != expected_plan:
+        raise GateError(f"row {row_id}: deletion plan does not match the exact reviewed row and target inventory")
+    if evidence_verifier is None:
+        raise GateError(f"row {row_id}: live independent deletion review verification is required")
+    evidence_verifier.verify_deletion_review(
+        payload,
+        {plan_path_value: plan_digest, stable.path: stable.digest},
+        expected_descendant_commit=deletion.commit,
+    )
+
+
 def validate_receipt_chain(
     repo_root: Path,
     row_id: str,
@@ -2419,101 +2538,18 @@ def validate_receipt_chain(
 
     deletion = receipts.get("deletionReview")
     if deletion is not None:
-        payload = deletion.payload
-        fields = {
-            "stableReceiptSha256",
-            "reviewUri",
-            "reviewedCommit",
-            "reviewer",
-            "reviewClass",
-            "outcome",
-            "planPath",
-            "planSha256",
-        }
-        exact_keys(payload, fields, fields, f"row {row_id} deletionReview")
         assert stable is not None
-        require_ancestor(
-            repo_root,
-            stable.commit,
-            deletion.commit,
-            f"row {row_id} deletionReview.commit",
-        )
-        if payload["stableReceiptSha256"] != stable.digest:
-            raise GateError(f"row {row_id}: deletion review does not bind the current stable receipt")
-        validate_https_uri(payload["reviewUri"], f"row {row_id} deletionReview.reviewUri")
-        if not isinstance(payload["reviewer"], str) or not RECEIPT_ACTOR_RE.fullmatch(payload["reviewer"]):
-            raise GateError(f"row {row_id}: deletion reviewer must be a GitHub handle")
-        expected_review_class = "security_crypto" if row_id in SECURITY_REVIEW_ROWS else "domain_owner"
-        if payload["reviewClass"] != expected_review_class or payload["outcome"] != "approved":
-            raise GateError(f"row {row_id}: deletion review class or outcome is invalid")
-        qualified = (deletion_reviewers or {}).get(expected_review_class, set())
-        if payload["reviewer"].casefold() not in qualified:
-            raise GateError(
-                f"row {row_id}: {expected_review_class} reviewer is not qualified by the trusted base catalog"
-            )
-        expected_plan_path = f"{DELETION_PLAN_ROOT}/{row_id}/{generation}.json"
-        plan_path_value = repository_path(payload["planPath"], f"row {row_id} deletionReview.planPath")
-        if plan_path_value != expected_plan_path:
-            raise GateError(f"row {row_id}: deletion plan must use exact path {expected_plan_path}")
-        plan_path = secure_path(repo_root, plan_path_value, f"row {row_id} deletion plan", must_exist=True)
-        plan_digest = require_digest(payload["planSha256"], f"row {row_id} deletionReview.planSha256")
-        if not plan_path.is_file() or sha256_path(plan_path) != plan_digest:
-            raise GateError(f"row {row_id}: deletion plan digest does not match committed bytes")
-        reviewed_commit = payload["reviewedCommit"]
-        reviewed_commit = require_commit(repo_root, reviewed_commit, f"row {row_id} deletion reviewedCommit")
-        require_ancestor(
-            repo_root,
-            reviewed_commit,
-            deletion.commit,
-            f"row {row_id} deletion reviewedCommit",
-        )
-        plan = require_object(
-            load_json(plan_path, f"row {row_id} deletion plan"),
-            f"row {row_id} deletion plan",
-        )
-        plan_fields = {
-            "schemaVersion",
-            "rowId",
-            "authorityGeneration",
-            "stableReceiptSha256",
-            "reviewer",
-            "reviewClass",
-            "legacyTargetsSha256",
-            "requestedAction",
-        }
-        exact_keys(plan, plan_fields, plan_fields, f"row {row_id} deletion plan")
         if targets is None:
             raise GateError(f"row {row_id}: deletion plan validation requires the row target inventory")
-        target_digest = canonical_json_sha256(
-            [
-                {
-                    "kind": target.kind,
-                    "role": target.role,
-                    "root": target.root,
-                    "path": target.path,
-                    "value": target.value,
-                }
-                for target in sorted(targets, key=lambda item: item.identity)
-            ]
-        )
-        expected_plan = {
-            "schemaVersion": 1,
-            "rowId": row_id,
-            "authorityGeneration": generation,
-            "stableReceiptSha256": stable.digest,
-            "reviewer": payload["reviewer"],
-            "reviewClass": expected_review_class,
-            "legacyTargetsSha256": target_digest,
-            "requestedAction": "approve_legacy_deletion",
-        }
-        if plan != expected_plan:
-            raise GateError(f"row {row_id}: deletion plan does not match the exact reviewed row and target inventory")
-        if evidence_verifier is None:
-            raise GateError(f"row {row_id}: live independent deletion review verification is required")
-        evidence_verifier.verify_deletion_review(
-            payload,
-            {plan_path_value: plan_digest, stable.path: stable.digest},
-            expected_descendant_commit=deletion.commit,
+        validate_deletion_review_receipt(
+            repo_root,
+            row_id,
+            generation,
+            deletion,
+            stable,
+            targets,
+            deletion_reviewers,
+            evidence_verifier,
         )
         if rollback is not None:
             require_ancestor(

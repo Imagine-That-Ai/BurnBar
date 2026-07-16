@@ -452,6 +452,7 @@ export function buildReleaseEvidence({
   validateRollbackArtifact(
     readJson(restoredRollbackPath, "rollback profile"),
     candidate,
+    { version, tag, commit },
   );
   const rollbackArtifact = {
     fileName: basename(rollbackPath),

@@ -402,6 +402,8 @@ export function run(
     profileName,
     resolvedSource.candidate,
   );
+  const releaseVersion = resolvedSource.candidate.coreVersion;
+  const releaseTag = `v${releaseVersion}`;
   const gate = verifyDomainCoreReleaseGate({
     candidateBundlePath: candidatePath,
     promotionAttestationPath: promotionPath,
@@ -412,6 +414,9 @@ export function run(
     protectedSignerRunId: signerRun.runId,
     protectedSignerRunAttempt: signerRun.runAttempt,
     expectedRollbackSha256: sha256File(rollbackPath),
+    expectedReleaseCommit: releaseCommit,
+    expectedReleaseVersion: releaseVersion,
+    expectedReleaseTag: releaseTag,
     promotionVerifier: () => verified,
     activationVerifier,
   });

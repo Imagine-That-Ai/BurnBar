@@ -41,12 +41,154 @@ def expected_rows(consumer: str, domain: str) -> list[str]:
     )
 
 
+def _verify_deletion_review_receipts(
+    repo_root: Path,
+    verifier: Any,
+    release_commit: str,
+    ancestry_verifier: Any,
+) -> dict[str, Any]:
+    """Verify every legacy_deleted ledger row has a valid deletionReview receipt.
+
+    Reuses the canonical GATE.validate_receipt and GATE.validate_deletion_review_receipt
+    verifiers — no weaker parser duplication.  Enforces that the authorized deletion
+    commit is an ancestor of exact release B, binds the approved plan digest, and
+    verifies the reviewed deletion commit/PR/reviewer authority already enforced by
+    the trusted deletion guard.  Fail-closed: evidence_verifier must be non-None.
+    """
+    repo_root = repo_root.resolve(strict=True)
+    manifest_path = GATE.secure_path(
+        repo_root,
+        "config/domain-core-legacy-deletion.json",
+        "release-B deletion ledger",
+        must_exist=True,
+    )
+    manifest = GATE.require_object(
+        GATE.load_json(manifest_path, "release-B deletion ledger"),
+        "release-B deletion ledger",
+    )
+    GATE.exact_keys(
+        manifest,
+        {"schemaVersion", "sourceRoots", "rows", "sharedTargets"},
+        {"schemaVersion", "sourceRoots", "rows", "sharedTargets"},
+        "release-B deletion ledger",
+    )
+    if manifest["schemaVersion"] != 2 or isinstance(manifest["schemaVersion"], bool):
+        raise GATE.GateError("release-B deletion ledger.schemaVersion must be 2")
+    raw_rows = GATE.require_array(manifest["rows"], "release-B deletion ledger.rows")
+    deleted_rows: list[tuple[str, int, dict[str, Any]]] = []
+    for index, raw_row in enumerate(raw_rows):
+        label = f"release-B deletion ledger.rows[{index}]"
+        row = GATE.require_object(raw_row, label)
+        GATE.exact_keys(
+            row,
+            {"id", "state", "authorityGeneration", "receipts", "targets"},
+            {"id", "state", "authorityGeneration", "receipts", "targets"},
+            label,
+        )
+        row_id = row["id"]
+        if not isinstance(row_id, str) or not GATE.ROW_ID_RE.fullmatch(row_id):
+            raise GATE.GateError(f"{label}.id: invalid row id")
+        state = row["state"]
+        if not isinstance(state, str) or state not in GATE.STATES:
+            raise GATE.GateError(f"{label}.state: unknown state: {state!r}")
+        if state != "legacy_deleted":
+            continue
+        generation = row["authorityGeneration"]
+        if not isinstance(generation, int) or isinstance(generation, bool) or generation < 1:
+            raise GATE.GateError(f"{label}.authorityGeneration: expected positive integer for legacy_deleted row")
+        receipts = GATE.require_object(row["receipts"], f"{label}.receipts")
+        GATE.exact_keys(
+            receipts,
+            GATE.allowed_receipts(state),
+            GATE.required_receipts(state),
+            f"{label}.receipts",
+        )
+        deleted_rows.append((row_id, generation, receipts))
+    if not deleted_rows:
+        raise GATE.GateError(
+            "release-B deletion ledger contains no legacy_deleted rows; "
+            "post-deletion completion requires authorized deletion review for every deleted row"
+        )
+    deletion_reviewers = GATE.load_deletion_reviewers(repo_root)
+    seen_receipts: set[str] = set()
+    deletion_authority: dict[str, Any] = {}
+    for row_id, generation, receipts in deleted_rows:
+        stable_receipt = GATE.validate_receipt(
+            repo_root,
+            GATE.repository_path(receipts["stableRelease"], f"row {row_id} stableRelease"),
+            row_id,
+            generation,
+            "stable_release",
+            seen_receipts,
+        )
+        deletion_receipt = GATE.validate_receipt(
+            repo_root,
+            GATE.repository_path(receipts["deletionReview"], f"row {row_id} deletionReview"),
+            row_id,
+            generation,
+            "deletion_review",
+            seen_receipts,
+        )
+        raw_targets = GATE.require_array(
+            manifest_rows_targets(manifest, row_id),
+            f"row {row_id} targets",
+        )
+        targets = [
+            GATE.parse_target(raw_target, f"row {row_id} targets[{idx}]", _manifest_roots(repo_root, manifest))
+            for idx, raw_target in enumerate(raw_targets)
+        ]
+        GATE.validate_deletion_review_receipt(
+            repo_root,
+            row_id,
+            generation,
+            deletion_receipt,
+            stable_receipt,
+            targets,
+            deletion_reviewers,
+            verifier,
+        )
+        ancestry_verifier(deletion_receipt.commit, release_commit)
+        payload = deletion_receipt.payload
+        deletion_authority[row_id] = {
+            "deletionCommit": deletion_receipt.commit,
+            "reviewedCommit": payload["reviewedCommit"],
+            "reviewer": payload["reviewer"],
+            "reviewClass": payload["reviewClass"],
+            "planSha256": payload["planSha256"],
+            "reviewUri": payload["reviewUri"],
+        }
+    return {
+        "coveredDeletedRows": sorted(row_id for row_id, _gen, _rec in deleted_rows),
+        "rowAuthorities": deletion_authority,
+    }
+
+
+def _manifest_roots(repo_root: Path, manifest: dict[str, Any]) -> dict[str, str]:
+    """Extract validated source roots from a ledger manifest."""
+    raw_roots = GATE.require_object(manifest["sourceRoots"], "manifest.sourceRoots")
+    roots: dict[str, str] = {}
+    for root_id, raw_path in raw_roots.items():
+        path = GATE.repository_path(raw_path, f"manifest.sourceRoots.{root_id}")
+        roots[root_id] = path
+    return roots
+
+
+def manifest_rows_targets(manifest: dict[str, Any], row_id: str) -> list[Any]:
+    """Extract the targets array for a specific row from a ledger manifest."""
+    for raw_row in manifest["rows"]:
+        row = GATE.require_object(raw_row, "manifest.rows entry")
+        if row.get("id") == row_id:
+            return GATE.require_array(row["targets"], f"row {row_id} targets")
+    raise GATE.GateError(f"manifest.rows: row {row_id} not found")
+
+
 def run(
     root: Path,
     verifier: Any,
     release_commit: str,
     release_version: str,
     ancestry_verifier: Any | None = None,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     if not GATE.COMMIT_RE.fullmatch(release_commit):
         raise GATE.GateError("release-B commit must be a full lowercase Git SHA")
@@ -200,6 +342,12 @@ def run(
             pass
     if covered != set(GATE.ROW_IDS):
         raise GATE.GateError("release-B final absence evidence does not cover the exact deletion inventory")
+    deletion_authority = _verify_deletion_review_receipts(
+        repo_root or ROOT,
+        verifier,
+        release_commit,
+        ancestry_verifier,
+    )
     return {
         "schemaVersion": 1,
         "completion": "post_deletion_release_complete",
@@ -208,6 +356,7 @@ def run(
         "consumers": list(CONSUMERS),
         "finalArtifactSha256s": final_digests,
         "coveredRows": sorted(covered),
+        "deletionReviewAuthority": deletion_authority,
     }
 
 
@@ -217,6 +366,12 @@ def main() -> int:
     parser.add_argument("--release-commit", required=True)
     parser.add_argument("--release-version", required=True)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=ROOT,
+        help="Release-B checkout root containing the deletion ledger and receipt history",
+    )
     args = parser.parse_args()
     try:
         result = run(
@@ -224,6 +379,7 @@ def main() -> int:
             GATE.SignedEvidenceVerifier(),
             args.release_commit,
             args.release_version,
+            repo_root=args.repo_root,
         )
         args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     except (OSError, json.JSONDecodeError, GATE.GateError) as error:

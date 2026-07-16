@@ -109,19 +109,25 @@ jobs:
           unzip -p "$root/ios/artifact" "$ipa_entry" > "$root/ios/ipa"
           test -s "$root/ios/ipa"
 
-      - name: Verify exact shipped bytes and signed absence predicates
+      - name: Verify exact shipped bytes, signed absence predicates, and authorized deletion ancestry
         env:
           DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "Imagine-That-Ai/BurnBar"
           python3 scripts/ci/verify-domain-core-final-absence-receipts.py \
             --evidence-root "$RUNNER_TEMP/final-absence" \
             --release-commit "${{ inputs.release_commit }}" \
             --release-version "${{ inputs.release_version }}" \
+            --repo-root "$GITHUB_WORKSPACE" \
             --output "$RUNNER_TEMP/domain-core-post-deletion-completion.json"
           test "$(jq -r '.completion' "$RUNNER_TEMP/domain-core-post-deletion-completion.json")" \
             = post_deletion_release_complete
+          jq -e '.deletionReviewAuthority.coveredDeletedRows | length > 0' \
+            "$RUNNER_TEMP/domain-core-post-deletion-completion.json" >/dev/null
+          jq -e '.deletionReviewAuthority.rowAuthorities | length > 0' \
+            "$RUNNER_TEMP/domain-core-post-deletion-completion.json" >/dev/null
 
       - name: Sign post-deletion completion receipt
         id: attest

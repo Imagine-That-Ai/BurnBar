@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarDomainCoreRuntime
 import XCTest
 #if canImport(OpenBurnBarDomainCoreFFI)
 import OpenBurnBarDomainCoreFFI
@@ -62,6 +63,181 @@ final class HermesDomainCoreMigrationTests: XCTestCase {
                 )
             ),
             "97AB 6CD8 FEF0 9594 D5ED FAF1 1D10 B6F7"
+        )
+    }
+
+    // MARK: - Relay key-wrap AEAD domain-core routing
+
+    /// Shadow mode must route the relay key-wrap AEAD seal/open through the
+    /// Rust domain-core adapter and record comparison evidence for
+    /// `seal_combined`/`open_combined`. On the pre-fix head the key-wrap path
+    /// calls `HermesRelayLegacyCrypto` directly, bypassing the adapter entirely,
+    /// so no `seal_combined`/`open_combined` comparison is ever recorded.
+    func testShadowModeRecordsKeyWrapAeadComparisonEvidence() throws {
+        guard ProcessInfo.processInfo.environment["OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"] == "1" else {
+            throw XCTSkip("native-required in domain-core CI")
+        }
+        assertNativeDomainCoreLoaded()
+
+        var comparisons: [DomainCoreShadowComparison] = []
+        DomainCoreShadowComparisonCollector.configure { comparisons.append($0) }
+        defer { DomainCoreShadowComparisonCollector.configure(nil) }
+
+        setenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE", "shadow", 1)
+        defer { unsetenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE") }
+
+        let recipient = HermesRelayCrypto.generatePrivateKey()
+        let symmetricKey = try HermesRelayCrypto.generateSymmetricKeyData()
+        let aad = try HermesRelayCrypto.keyAAD(
+            uid: "user-1",
+            connectionID: "connection-2",
+            requestID: "request-3"
+        )
+
+        let wrapped = try HermesRelayCrypto.wrapSymmetricKey(
+            symmetricKey,
+            recipientPublicKeyBase64: recipient.publicKeyBase64,
+            aad: aad
+        )
+        let unwrapped = try HermesRelayCrypto.unwrapSymmetricKey(
+            wrapped,
+            privateKey: recipient,
+            aad: aad
+        )
+
+        // The wrapped key must round-trip regardless of mode.
+        XCTAssertEqual(unwrapped, symmetricKey)
+
+        // The adapter must have routed the key-wrap AEAD seal and open through
+        // the domain-core dispatch, recording a shadow comparison for each.
+        let sealComparisons = comparisons.filter {
+            $0.domain == "hermes" && $0.slice == "payload-keywrap" && $0.operation == "seal_combined"
+        }
+        let openComparisons = comparisons.filter {
+            $0.domain == "hermes" && $0.slice == "payload-keywrap" && $0.operation == "open_combined"
+        }
+        XCTAssertFalse(sealComparisons.isEmpty,
+            "key-wrap seal must route through HermesDomainCoreAdapter and record a seal_combined shadow comparison")
+        XCTAssertFalse(openComparisons.isEmpty,
+            "key-wrap open must route through HermesDomainCoreAdapter and record an open_combined shadow comparison")
+    }
+
+    /// In rust mode the key-wrap AEAD must round-trip through the native
+    /// domain-core library. The loaded native identity (ABI version 3) is the
+    /// evidence that the Rust path is live, not a mocked fallback.
+    func testRustModeRoundTripsKeyWrapThroughNativeDomainCore() throws {
+        guard ProcessInfo.processInfo.environment["OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"] == "1" else {
+            throw XCTSkip("native-required in domain-core CI")
+        }
+        assertNativeDomainCoreLoaded()
+        setenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE", "rust", 1)
+        defer { unsetenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE") }
+
+        let recipient = HermesRelayCrypto.generatePrivateKey()
+        let symmetricKey = try HermesRelayCrypto.generateSymmetricKeyData()
+        let aad = try HermesRelayCrypto.keyAAD(
+            uid: "user-1",
+            connectionID: "connection-2",
+            requestID: "request-3"
+        )
+
+        let wrapped = try HermesRelayCrypto.wrapSymmetricKey(
+            symmetricKey,
+            recipientPublicKeyBase64: recipient.publicKeyBase64,
+            aad: aad
+        )
+        let unwrapped = try HermesRelayCrypto.unwrapSymmetricKey(
+            wrapped,
+            privateKey: recipient,
+            aad: aad
+        )
+        XCTAssertEqual(unwrapped, symmetricKey)
+    }
+
+    /// In rust mode a tampered wrapped key must fail closed — the AES-GCM tag
+    /// verification failure must propagate as an error, never silently succeed
+    /// or fall back to legacy.
+    func testRustModeFailsClosedOnTamperedWrappedKey() throws {
+        guard ProcessInfo.processInfo.environment["OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"] == "1" else {
+            throw XCTSkip("native-required in domain-core CI")
+        }
+        assertNativeDomainCoreLoaded()
+        setenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE", "rust", 1)
+        defer { unsetenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE") }
+
+        let recipient = HermesRelayCrypto.generatePrivateKey()
+        let symmetricKey = try HermesRelayCrypto.generateSymmetricKeyData()
+        let aad = try HermesRelayCrypto.keyAAD(
+            uid: "user-1",
+            connectionID: "connection-2",
+            requestID: "request-3"
+        )
+
+        let wrapped = try HermesRelayCrypto.wrapSymmetricKey(
+            symmetricKey,
+            recipientPublicKeyBase64: recipient.publicKeyBase64,
+            aad: aad
+        )
+        // Flip the last byte (inside the GCM tag) — the tag verification must fail.
+        var tampered = Data(base64Encoded: wrapped)!
+        let lastIndex = tampered.count - 1
+        tampered[lastIndex] ^= 0xFF
+        let tamperedWrapped = tampered.base64EncodedString()
+
+        XCTAssertThrowsError(
+            try HermesRelayCrypto.unwrapSymmetricKey(
+                tamperedWrapped,
+                privateKey: recipient,
+                aad: aad
+            )
+        )
+    }
+
+    /// Shadow mode must return the legacy-authoritative result: the wrapped key
+    /// round-trips and the recorded `seal_combined`/`open_combined` comparisons
+    /// report `match` (Rust agrees with legacy), never `mismatch`.
+    func testShadowModeKeyWrapComparisonReportsMatchNotMismatch() throws {
+        guard ProcessInfo.processInfo.environment["OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"] == "1" else {
+            throw XCTSkip("native-required in domain-core CI")
+        }
+        assertNativeDomainCoreLoaded()
+
+        var comparisons: [DomainCoreShadowComparison] = []
+        DomainCoreShadowComparisonCollector.configure { comparisons.append($0) }
+        defer { DomainCoreShadowComparisonCollector.configure(nil) }
+
+        setenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE", "shadow", 1)
+        defer { unsetenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE") }
+
+        let recipient = HermesRelayCrypto.generatePrivateKey()
+        let symmetricKey = try HermesRelayCrypto.generateSymmetricKeyData()
+        let aad = try HermesRelayCrypto.keyAAD(
+            uid: "user-1",
+            connectionID: "connection-2",
+            requestID: "request-3"
+        )
+
+        let wrapped = try HermesRelayCrypto.wrapSymmetricKey(
+            symmetricKey,
+            recipientPublicKeyBase64: recipient.publicKeyBase64,
+            aad: aad
+        )
+        let unwrapped = try HermesRelayCrypto.unwrapSymmetricKey(
+            wrapped,
+            privateKey: recipient,
+            aad: aad
+        )
+        XCTAssertEqual(unwrapped, symmetricKey)
+
+        let keyWrapComparisons = comparisons.filter {
+            $0.domain == "hermes" && $0.slice == "payload-keywrap"
+            && ($0.operation == "seal_combined" || $0.operation == "open_combined")
+        }
+        XCTAssertFalse(keyWrapComparisons.isEmpty,
+            "key-wrap AEAD must produce shadow comparison evidence")
+        XCTAssertTrue(
+            keyWrapComparisons.allSatisfy { $0.outcome == "match" },
+            "shadow mode must report match (legacy-authoritative, Rust agrees) for key-wrap AEAD, got: \(keyWrapComparisons.map { $0.outcome })"
         )
     }
 

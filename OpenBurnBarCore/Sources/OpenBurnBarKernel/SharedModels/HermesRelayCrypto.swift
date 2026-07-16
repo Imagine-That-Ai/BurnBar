@@ -368,11 +368,17 @@ public enum HermesRelayCrypto {
                 info: try keyWrapSharedInfo(aad: aad)
             )
         }
-        let combined = try HermesRelayLegacyCrypto.sealCombined(
+        let combined = try HermesDomainCoreAdapter.sealCombined(
             plaintext: keyData,
-            key: wrappingKey,
+            key: PlatformCrypto.symmetricKeyData(wrappingKey),
             aad: aad
-        )
+        ) {
+            try HermesRelayLegacyCrypto.sealCombined(
+                plaintext: keyData,
+                key: wrappingKey,
+                aad: aad
+            )
+        }
         return (enc + combined).base64EncodedString()
     }
 
@@ -421,11 +427,17 @@ public enum HermesRelayCrypto {
                 info: try keyWrapSharedInfo(aad: aad)
             )
         }
-        return try HermesRelayLegacyCrypto.openCombined(
+        return try HermesDomainCoreAdapter.openCombined(
             combined: Data(sealedBoxData),
-            key: wrappingKey,
+            key: PlatformCrypto.symmetricKeyData(wrappingKey),
             aad: aad
-        )
+        ) {
+            try HermesRelayLegacyCrypto.openCombined(
+                combined: Data(sealedBoxData),
+                key: wrappingKey,
+                aad: aad
+            )
+        }
     }
 
     /// v2 authenticated wrapping-key derivation (HPKE-AuthEncap-shaped):

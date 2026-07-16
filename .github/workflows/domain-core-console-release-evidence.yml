@@ -124,6 +124,8 @@ jobs:
             --rollback-artifact "$rollback" \
             --candidate-commit "$(jq -er '.candidate.candidateCommit' "$gate")" \
             --release-commit "$GITHUB_SHA" \
+            --release-version "${RELEASE_TAG#v}" \
+            --release-tag "$RELEASE_TAG" \
             --core-version "$(jq -er '.candidate.coreVersion' "$gate")" \
             --abi-version "$(jq -er '.candidate.abiVersion' "$gate")" \
             --source-sha256 "$(jq -er '.candidate.sourceSha256' "$gate")" \

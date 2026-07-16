@@ -82,6 +82,53 @@ public sealed class ClaudeStatuslineQuotaParserTests
         Assert.Equal(0, legacyEvaluations);
     }
 
+    [Theory]
+    [InlineData("not json")]
+    [InlineData("[]")]
+    public void ExplicitRustMode_MalformedStatusFailsClosedWithoutEmptyExactSnapshot(string malformed)
+    {
+        if (Environment.GetEnvironmentVariable("OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE") != "1")
+        {
+            return;
+        }
+
+        uint abiVersion;
+        try
+        {
+            abiVersion = DomainCore.DomainCoreAbiVersion();
+        }
+        catch (DllNotFoundException)
+        {
+            return;
+        }
+        catch (BadImageFormatException)
+        {
+            return;
+        }
+
+        Assert.Equal(3u, abiVersion);
+        var legacy = ClaudeStatuslineQuotaParser.ParseLegacy(malformed, FetchedAt);
+        var legacyEvaluations = 0;
+
+        // A Rust Malformed status must fail closed — never promoted to a
+        // successful Exact snapshot with empty buckets. This exercises the
+        // real TryParseBuckets path (nativeParser=null), not the delegate
+        // shortcut, so the status classification is the native parser's own.
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ClaudeStatuslineQuotaDomainCore.Apply(
+                malformed,
+                () =>
+                {
+                    legacyEvaluations++;
+                    return legacy;
+                },
+                FetchedAt,
+                legacy.StatusMessage,
+                DomainCoreQuotaMigrationMode.Rust));
+        Assert.Contains("Domain-core Claude quota is unavailable in explicit Rust mode.", ex.Message);
+        Assert.Equal(0, legacyEvaluations);
+    }
+
     [Fact]
     public void Parse_DropsNonCandidateWindows()
     {

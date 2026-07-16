@@ -51,6 +51,7 @@ function workspace() {
       schemaVersion: 1,
       candidateIdentity: CANDIDATE,
       modes: { quota: "legacy", cloudVault: "legacy" },
+      release: { version: "1.2.3", tag: "v1.2.3", commit: ACTIVATION_COMMIT },
     })}\n`,
   );
   const rollbackArtifactSha256 = sha(readFileSync(rollbackArtifact));
@@ -221,6 +222,7 @@ test("binds the exact restored rollback bytes while recording a packaged rollbac
       `${JSON.stringify({
         candidateIdentity: CANDIDATE,
         modes: { quota: "legacy", cloudVault: "legacy" },
+        release: { version: "1.2.3", tag: "v1.2.3", commit: ACTIVATION_COMMIT },
         substituted: true,
       })}\n`,
     );
@@ -531,6 +533,123 @@ test("rejects rollback evidence that does not restore every declared mode", () =
     rmSync(files.directory, { recursive: true, force: true });
   }
 });
+test("rejects a rollback artifact missing release coordinates", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    writeFileSync(
+      files.rollbackArtifact,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+      })}\n`,
+    );
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /rollback artifact release coordinates are missing/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a rollback artifact bound to the wrong release commit P", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    writeFileSync(
+      files.rollbackArtifact,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+        release: { version: "1.2.3", tag: "v1.2.3", commit: "f".repeat(40) },
+      })}\n`,
+    );
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /rollback artifact release commit does not match the expected release P/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a rollback artifact bound to the wrong release version", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    writeFileSync(
+      files.rollbackArtifact,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+        release: { version: "2.0.0", tag: "v2.0.0", commit: ACTIVATION_COMMIT },
+      })}\n`,
+    );
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /rollback artifact release version does not match the expected release version/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a rollback artifact bound to a moved release tag", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    writeFileSync(
+      files.rollbackArtifact,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+        release: { version: "1.2.3", tag: "v9.9.9", commit: ACTIVATION_COMMIT },
+      })}\n`,
+    );
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /rollback artifact release tag does not match the expected release tag/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a candidate-only rollback artifact whose release commit equals the candidate commit", () => {
+  const files = workspace();
+  try {
+    const artifact = join(files.directory, "OpenBurnBar-1.2.3-macOS.dmg");
+    writeFileSync(artifact, "signed-native-bytes");
+    writeFileSync(
+      files.rollbackArtifact,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+        release: {
+          version: "1.2.3",
+          tag: "v1.2.3",
+          commit: CANDIDATE.candidateCommit,
+        },
+      })}\n`,
+    );
+    assert.throws(
+      () => buildReleaseEvidence(baseOptions(files, artifact)),
+      /rollback artifact release commit does not match the expected release P/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
 
 test("writes a deployment receipt and predicate with both artifact digests", () => {
   const files = workspace();
@@ -769,6 +888,7 @@ test("rejects a copied rollback artifact whose file digest does not match the bu
       `${JSON.stringify({
         candidateIdentity: CANDIDATE,
         modes: { quota: "legacy", cloudVault: "legacy" },
+        release: { version: "1.2.3", tag: "v1.2.3", commit: ACTIVATION_COMMIT },
         tampered: true,
       })}\n`,
     );

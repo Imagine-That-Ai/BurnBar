@@ -1995,6 +1995,8 @@ jobs:
             --profile public-production-rollback \
             --expected-candidate-commit "$candidate" \
             --expected-release-commit "$RELEASE_COMMIT" \
+            --expected-release-version "$VERSION" \
+            --expected-release-tag "$RELEASE_TAG" \
             --format json --output "$profile"
           git merge-base --is-ancestor "$candidate" "$RELEASE_COMMIT"
           git archive \

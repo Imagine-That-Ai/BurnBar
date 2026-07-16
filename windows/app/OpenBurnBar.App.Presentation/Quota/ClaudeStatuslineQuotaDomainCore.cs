@@ -165,13 +165,24 @@ internal static class ClaudeStatuslineQuotaDomainCore
             }
 
             var result = DomainCore.ParseClaudeStatuslineQuota(Encoding.UTF8.GetBytes(json));
-            if (result.status != DomainQuotaParseStatus.Parsed)
+            switch (result.status)
             {
-                return true;
+                case DomainQuotaParseStatus.Parsed:
+                    buckets = result.snapshot.buckets.Select(MapBucket).ToArray();
+                    return true;
+                case DomainQuotaParseStatus.Empty:
+                    // Legitimate successful parse with no signal; buckets stays NoBuckets.
+                    return true;
+                case DomainQuotaParseStatus.Malformed:
+                    // Fail-closed: a malformed payload must not surface as a successful
+                    // Exact snapshot with empty buckets. Matches DomainCoreQuotaBridge.MapResult.
+                    return false;
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(result),
+                        result.status,
+                        "Unknown domain-core parse status.");
             }
-
-            buckets = result.snapshot.buckets.Select(MapBucket).ToArray();
-            return true;
         }
         catch (Exception error) when (
             error is DllNotFoundException

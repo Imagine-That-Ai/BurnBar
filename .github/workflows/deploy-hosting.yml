@@ -237,6 +237,7 @@ jobs:
           SOURCE_RUN_ATTEMPT: ${{ steps.proof.outputs.source_run_attempt }}
           SIGNER_RUN_ID: ${{ steps.proof.outputs.protected_signer_run_id }}
           SIGNER_RUN_ATTEMPT: ${{ steps.proof.outputs.protected_signer_run_attempt }}
+          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/domain-core-release-inputs/candidate" \
@@ -267,6 +268,8 @@ jobs:
             --rollback-artifact "$rollback" \
             --candidate-commit "$CANDIDATE_COMMIT" \
             --release-commit "$RELEASE_COMMIT" \
+            --release-version "${RELEASE_TAG#v}" \
+            --release-tag "$RELEASE_TAG" \
             --core-version "$(jq -er '.candidate.coreVersion' "$candidate")" \
             --abi-version "$(jq -er '.candidate.abiVersion' "$candidate")" \
             --source-sha256 "$(jq -er '.candidate.sourceSha256' "$candidate")" \
@@ -282,9 +285,10 @@ jobs:
           DOMAIN_CORE_PROFILE: ${{ steps.ref.outputs.domain_core_profile }}
           RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
           CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}
+          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}
         run: |
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "$DOMAIN_CORE_PROFILE" --expected-candidate-commit "$CANDIDATE_COMMIT" --expected-release-commit "$RELEASE_COMMIT" --format github-env-web >> "$GITHUB_ENV"
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "$DOMAIN_CORE_PROFILE" --expected-candidate-commit "$CANDIDATE_COMMIT" --expected-release-commit "$RELEASE_COMMIT" --format json --output "$RUNNER_TEMP/domain-core-build-profile.json"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "$DOMAIN_CORE_PROFILE" --expected-candidate-commit "$CANDIDATE_COMMIT" --expected-release-commit "$RELEASE_COMMIT" --expected-release-version "${RELEASE_TAG#v}" --expected-release-tag "$RELEASE_TAG" --format github-env-web >> "$GITHUB_ENV"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "$DOMAIN_CORE_PROFILE" --expected-candidate-commit "$CANDIDATE_COMMIT" --expected-release-commit "$RELEASE_COMMIT" --expected-release-version "${RELEASE_TAG#v}" --expected-release-tag "$RELEASE_TAG" --format json --output "$RUNNER_TEMP/domain-core-build-profile.json"
           cp "$RUNNER_TEMP/domain-core-build-profile.json" apps/console/public/domain-core-build-profile.json
 
       - name: Embed exact Console deployment identity

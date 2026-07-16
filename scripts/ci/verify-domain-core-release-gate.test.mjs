@@ -40,6 +40,7 @@ function fixture() {
     `${JSON.stringify({
       candidateIdentity: CANDIDATE,
       modes: { quota: "legacy", cloudVault: "legacy" },
+      release: { version: "1.2.3", tag: "v1.2.3", commit: ACTIVATION.activationCommit },
     })}\n`,
   );
   const rollbackArtifactSha256 = sha(readFileSync(rollbackArtifact));
@@ -105,6 +106,10 @@ function fixture() {
     rollbackArtifactSha256,
     "--output",
     output,
+    "--release-version",
+    "1.2.3",
+    "--release-tag",
+    "v1.2.3",
   ];
   return {
     directory,
@@ -213,6 +218,7 @@ test("rejects rollback artifact whose SHA-256 differs from the bundle rollback p
       `${JSON.stringify({
         candidateIdentity: CANDIDATE,
         modes: { quota: "legacy", cloudVault: "legacy" },
+        release: { version: "1.2.3", tag: "v1.2.3", commit: ACTIVATION.activationCommit },
         tampered: true,
       })}\n`,
     );
@@ -224,6 +230,121 @@ test("rejects rollback artifact whose SHA-256 differs from the bundle rollback p
           activationVerifier: () => ACTIVATION,
         }),
       /rollback artifact digest does not match the protected candidate bundle rollback proof/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a rollback artifact missing release coordinates at the release gate", () => {
+  const files = fixture();
+  try {
+    writeFileSync(
+      files.rollbackArtifact,
+      `${JSON.stringify({
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+      })}\n`,
+    );
+    assert.throws(
+      () =>
+        run(files.args, {
+          promotionVerifier: () => [],
+          activationVerifier: () => ACTIVATION,
+        }),
+      /rollback artifact release coordinates are missing/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a rollback artifact bound to the wrong release commit at the release gate", () => {
+  const files = fixture();
+  try {
+    writeFileSync(
+      files.rollbackArtifact,
+      `${JSON.stringify({
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+        release: { version: "1.2.3", tag: "v1.2.3", commit: "f".repeat(40) },
+      })}\n`,
+    );
+    const tamperedSha256 = sha(readFileSync(files.rollbackArtifact));
+    assert.throws(
+      () =>
+        run(
+          replaceArgument(files.args, "--rollback-sha256", tamperedSha256),
+          {
+            promotionVerifier: () => [],
+            activationVerifier: () => ACTIVATION,
+          },
+        ),
+      /rollback artifact release commit does not match the expected release P/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a rollback artifact bound to the wrong release version at the release gate", () => {
+  const files = fixture();
+  try {
+    writeFileSync(
+      files.rollbackArtifact,
+      `${JSON.stringify({
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+        release: { version: "2.0.0", tag: "v2.0.0", commit: ACTIVATION.activationCommit },
+      })}\n`,
+    );
+    const tamperedSha256 = sha(readFileSync(files.rollbackArtifact));
+    assert.throws(
+      () =>
+        run(
+          replaceArgument(files.args, "--rollback-sha256", tamperedSha256),
+          {
+            promotionVerifier: () => [],
+            activationVerifier: () => ACTIVATION,
+          },
+        ),
+      /rollback artifact release version does not match the expected release version/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a candidate-only rollback artifact whose release commit equals the candidate commit at the release gate", () => {
+  const files = fixture();
+  try {
+    writeFileSync(
+      files.rollbackArtifact,
+      `${JSON.stringify({
+        candidateIdentity: CANDIDATE,
+        modes: { quota: "legacy", cloudVault: "legacy" },
+        release: {
+          version: "1.2.3",
+          tag: "v1.2.3",
+          commit: CANDIDATE.candidateCommit,
+        },
+      })}\n`,
+    );
+    const tamperedSha256 = sha(readFileSync(files.rollbackArtifact));
+    assert.throws(
+      () =>
+        run(
+          replaceArgument(
+            replaceArgument(files.args, "--rollback-sha256", tamperedSha256),
+            "--release-commit",
+            CANDIDATE.candidateCommit,
+          ),
+          {
+            promotionVerifier: () => [],
+            activationVerifier: () => ACTIVATION,
+          },
+        ),
+      /rollback artifact release commit must be distinct from the candidate commit/u,
     );
   } finally {
     rmSync(files.directory, { recursive: true, force: true });

@@ -24,6 +24,8 @@ const format = args.get("--format") ?? "json";
 const output = args.get("--output");
 const expectedCandidateCommit = args.get("--expected-candidate-commit");
 const expectedReleaseCommit = args.get("--expected-release-commit");
+const expectedReleaseVersion = args.get("--expected-release-version");
+const expectedReleaseTag = args.get("--expected-release-tag");
 
 const catalog = loadDomainCoreBuildProfiles(
   resolve(repoRoot, "config/domain-core-build-profiles.json"),
@@ -83,10 +85,35 @@ if (
     "--expected-release-commit is only valid for signed profiles",
   );
 }
+if (
+  (expectedReleaseVersion !== undefined || expectedReleaseTag !== undefined) &&
+  expectedReleaseCommit === undefined
+) {
+  throw new Error(
+    "--expected-release-version and --expected-release-tag require --expected-release-commit",
+  );
+}
+if (
+  (expectedReleaseVersion !== undefined) !==
+  (expectedReleaseTag !== undefined)
+) {
+  throw new Error(
+    "--expected-release-version and --expected-release-tag must be supplied together",
+  );
+}
+const releaseCoordinates =
+  expectedReleaseCommit !== undefined && expectedReleaseVersion !== undefined
+    ? {
+        version: expectedReleaseVersion,
+        tag: expectedReleaseTag,
+        commit: expectedReleaseCommit,
+      }
+    : undefined;
 const profile = resolveDomainCoreBuildProfile(
   catalog,
   profileName,
   candidateIdentity,
+  releaseCoordinates,
 );
 let rendered;
 if (format === "json") {

@@ -159,6 +159,11 @@ test("full gate resolves the signed public profile against the exact candidate",
   );
   const rollback = `${JSON.stringify({
     candidateIdentity: CANDIDATE,
+    release: {
+      version: CANDIDATE.coreVersion,
+      tag: `v${CANDIDATE.coreVersion}`,
+      commit: RELEASE_COMMIT,
+    },
     modes: {
       quota: "legacy",
       cloudVault: "legacy",

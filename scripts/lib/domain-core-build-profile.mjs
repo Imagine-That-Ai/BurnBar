@@ -7,6 +7,9 @@ export const DOMAIN_CORE_ARTIFACT_AUTHORITIES = new Set([
   "development",
   "signed",
 ]);
+const FULL_SHA = /^[0-9a-f]{40}$/u;
+const STABLE_RELEASE_VERSION =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const DOMAIN_CORE_PROFILE_IDENTITIES = new Map([
   [
     "developer",
@@ -169,6 +172,7 @@ export function resolveDomainCoreBuildProfile(
   catalog,
   name,
   candidateIdentity,
+  releaseCoordinates,
 ) {
   validateDomainCoreBuildProfiles(catalog);
   const profile = catalog.profiles[name];
@@ -190,6 +194,39 @@ export function resolveDomainCoreBuildProfile(
   if (candidateIdentity !== undefined) {
     resolved.candidateIdentity =
       validateDomainCoreCandidateIdentity(candidateIdentity);
+  }
+  if (releaseCoordinates !== undefined) {
+    if (
+      typeof releaseCoordinates.version !== "string" ||
+      !STABLE_RELEASE_VERSION.test(releaseCoordinates.version)
+    ) {
+      throw new Error("rollback profile release version is invalid");
+    }
+    const expectedTag = `v${releaseCoordinates.version}`;
+    if (releaseCoordinates.tag !== expectedTag) {
+      throw new Error(`rollback profile release tag must be ${expectedTag}`);
+    }
+    if (
+      typeof releaseCoordinates.commit !== "string" ||
+      !FULL_SHA.test(releaseCoordinates.commit)
+    ) {
+      throw new Error(
+        "rollback profile release commit must be a full lowercase Git SHA-1",
+      );
+    }
+    if (
+      resolved.candidateIdentity !== null &&
+      releaseCoordinates.commit === resolved.candidateIdentity.candidateCommit
+    ) {
+      throw new Error(
+        "rollback profile release commit must be distinct from the candidate commit",
+      );
+    }
+    resolved.release = {
+      version: releaseCoordinates.version,
+      tag: releaseCoordinates.tag,
+      commit: releaseCoordinates.commit,
+    };
   }
   return resolved;
 }

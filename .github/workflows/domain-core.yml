@@ -111,6 +111,7 @@ on:
       - "scripts/build-domain-core-xcframework.sh"
       - "scripts/domain-core/safe-quota-ffi.swift.inc"
       - "scripts/build-domain-core-android-aar.sh"
+      - "scripts/ci/canonical-candidate-commit.mjs"
       - "scripts/build-domain-core-wasm.sh"
       - "scripts/ci/domain-core-union-gate.py"
       - "scripts/ci/evaluate-domain-core-promotion.mjs"
@@ -277,6 +278,7 @@ on:
       - "scripts/build-domain-core-xcframework.sh"
       - "scripts/domain-core/safe-quota-ffi.swift.inc"
       - "scripts/build-domain-core-android-aar.sh"
+      - "scripts/ci/canonical-candidate-commit.mjs"
       - "scripts/build-domain-core-wasm.sh"
       - "scripts/ci/domain-core-union-gate.py"
       - "scripts/ci/evaluate-domain-core-promotion.mjs"
@@ -964,6 +966,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Resolve canonical candidate commit
+        id: candidate
+        run: node scripts/ci/canonical-candidate-commit.mjs
+
       - name: Install safe Android Firebase build config
         run: cp android/app/google-services.json.template android/app/google-services.json
 
@@ -1011,7 +1017,7 @@ jobs:
         run: ./scripts/build-domain-core-android-aar.sh --check-artifact
 
       - name: Resolve signed Android domain-core candidate
-        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format github-env >> "$GITHUB_ENV"
+        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "${{ steps.candidate.outputs.candidate_commit }}" --format github-env >> "$GITHUB_ENV"
 
       - name: Build candidate-bound four-ABI Android AAR
         run: ./scripts/build-domain-core-android-aar.sh
@@ -1051,7 +1057,7 @@ jobs:
           emulator-options: >-
             -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
             -no-boot-anim
-          script: bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "$GITHUB_SHA" "$RUNNER_TEMP/android-observed-identity.json"
+          script: bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ steps.candidate.outputs.candidate_commit }}" "$RUNNER_TEMP/android-observed-identity.json"
 
       - name: Record successful Android native load
         run: |
@@ -1089,12 +1095,12 @@ jobs:
           cd android
           ./gradlew :app:bundleDebug --no-daemon
           cd ..
-          node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --android-aab android/app/build/outputs/bundle/debug/app-debug.aab
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "${{ steps.candidate.outputs.candidate_commit }}" --android-aab android/app/build/outputs/bundle/debug/app-debug.aab
 
       - name: Emit Android proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "${{ steps.candidate.outputs.candidate_commit }}"
           --job-id android
           --suite "android-native-load=$RUNNER_TEMP/android-native-load.log"
           --suite "android-consumer-contracts=$RUNNER_TEMP/android-consumer-contracts.log"
