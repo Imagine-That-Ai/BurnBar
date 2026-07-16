@@ -34,6 +34,17 @@ assert_false() {
     fi
 }
 
+assert_equals() {
+    local label="$1"
+    local expected="$2"
+    local actual="$3"
+    if [[ "$actual" != "$expected" ]]; then
+        echo "FAIL: $label" >&2
+        printf 'expected:\n%s\nactual:\n%s\n' "$expected" "$actual" >&2
+        exit 1
+    fi
+}
+
 false_negative_log="$(write_fixture false-negative <<'LOG'
 Test Suite 'Selected tests' started at 2026-06-03 17:02:02.338.
 Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
@@ -314,5 +325,25 @@ assert_false "SwiftPM timeout does not hide concrete XCTest failure" is_swiftpm_
 assert_true "SwiftPM cache race plus Signal FFI mapping miss is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_cache_and_signal_ffi_mapping_log"
 assert_true "Xcode SwiftPM package graph internal crash is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_xcode_internal_package_graph_crash_log"
 assert_false "unknown failure is not a SwiftPM dependency transient" is_swiftpm_dependency_resolution_transient "$unknown_failure_log"
+
+media_isolated_filter="OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
+projection_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_artifactReuseCopyFailure_reembedsChunks_neverLeavingThemUnsearchable"
+default_plan="$(
+    env -u OPENBURNBAR_APP_TEST_FILTER -u OPENBURNBAR_APP_TEST_FILTERS \
+        "$repo_root/scripts/test-openburnbar-app.sh" --print-xcodebuild-plan
+)"
+assert_equals "default app test plan preserves both sensitive tests in a fresh host" \
+    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_isolated_filter"$'\nmain-skip\t'"$projection_isolated_filter"$'\nfresh-host-only\t'"$media_isolated_filter"$'\nfresh-host-only\t'"$projection_isolated_filter" \
+    "$default_plan"
+
+custom_plan="$(
+    env -u OPENBURNBAR_APP_TEST_FILTER -u OPENBURNBAR_APP_TEST_FILTERS \
+        "$repo_root/scripts/test-openburnbar-app.sh" \
+        -only-testing:OpenBurnBarTests/MediaSessionCoordinatorTests \
+        --print-xcodebuild-plan
+)"
+assert_equals "focused app tests remain a single-host plan" \
+    $'main-only\tOpenBurnBarTests/MediaSessionCoordinatorTests' \
+    "$custom_plan"
 
 echo "OpenBurnBar app-test classifier fixtures passed."
