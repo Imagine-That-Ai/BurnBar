@@ -92,6 +92,7 @@ assert.doesNotMatch(
 );
 
 const windowsReleaseWorkflow = read(".github/workflows/openburnbar-release-windows.yml");
+const windowsEngineWorkflow = read(".github/workflows/openburnbar-engine-windows.yml");
 assert.match(
   windowsReleaseWorkflow,
   /OPENBURNBAR_EXPECTED_WINDOWS_VERSION: \$\{\{ needs\.resolve-release\.outputs\.version \}\}/,
@@ -156,6 +157,29 @@ assert.match(
   windowsReleaseWorkflow,
   /Test-SignedMsixLifecycle\.ps1[\s\S]*-HoldSeconds 20/,
   "signed MSIX evidence must exercise a sustained application launch",
+);
+const publishedLayoutValidationIndex = windowsReleaseWorkflow.indexOf(
+  "Validate published native-engine layouts",
+);
+const publishedParserSmokeIndex = windowsReleaseWorkflow.indexOf(
+  "Run parser smoke from the published x64 layout",
+);
+const authenticodeSignIndex = windowsReleaseWorkflow.indexOf("- name: Authenticode sign");
+assert.ok(
+  publishedLayoutValidationIndex >= 0 &&
+    publishedParserSmokeIndex > publishedLayoutValidationIndex &&
+    authenticodeSignIndex > publishedParserSmokeIndex,
+  "the real parser must execute from the published x64 layout before Authenticode signing",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"[\s\S]*publish\/win-x64\/OpenBurnBarCoreCAbi\.dll[\s\S]*NativeUsageEngineIntegrationTests/,
+  "the published-layout parser smoke must be mandatory and load the published engine",
+);
+assert.equal(
+  (windowsEngineWorkflow.match(/OPENBURNBAR_CORE_CABI_PATH=\$stagedEngine/g) ?? []).length,
+  2,
+  "both native architectures must run their usage scan from the staged engine layout",
 );
 const portableSignatureIndex = windowsReleaseWorkflow.indexOf("Verify portable Authenticode signatures");
 const signedManifestRefreshIndex = windowsReleaseWorkflow.indexOf("Refresh and validate signed native-engine layouts");

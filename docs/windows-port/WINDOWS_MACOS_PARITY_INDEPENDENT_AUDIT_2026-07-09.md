@@ -3,7 +3,37 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** F1 source/product implementation is complete; the applicable WPD-0006 F2 source substitutions are complete; exact-head signed promotion is verified; physical/manual/live-staging/public-lifecycle release gates remain
+**Status:** F1 source/product implementation is complete; the applicable WPD-0006 F2 source substitutions are complete; the `windows-v1.0.31` physical x64 candidate is NO-GO pending a corrected signed successor; physical/manual/live-staging/public-lifecycle release gates remain
+
+## Physical Intel x64 Packaging Finding - 2026-07-16
+
+Independent certification on an HP ENVY x360 15-ew0xxx running native Intel
+AMD64/x64 invalidated `windows-v1.0.31` as a physical release candidate. The
+machine verified the exact tag commit
+`9a280a7d36c52276bba083e6d6906a31d698bee1`, x64 MSIX SHA-256
+`fd5e8215cd2f6d0f01b971e843742ca9ab1cb049e6e0eef317fa87bde85fe585`,
+the expected Imagine That AI LLC Authenticode signer, and its RFC 3161
+timestamp. Clean checkout, artifact binding, install, uninstall, and reinstall
+passed. Normal and cold launch reproducibly failed with `0xc000001d`, so warm
+launch, UI, performance, accessibility, staging, safety, Store/update, and
+final evidence-validation gates did not run and remain unproved.
+
+The root cause is the signed package layout, not the Intel CPU, CoreCLR,
+ReadyToRun, WebView2, or the host runtime. The C ABI engine transitively uses
+`OpenBurnBarKernel` resources during its usage scan, but the signed portable and
+MSIX layouts contain only `OpenBurnBarCore_OpenBurnBarCore.resources`; they omit
+`OpenBurnBarCore_OpenBurnBarKernel.resources`. Swift traps when `Bundle.module`
+resolves the missing Kernel bundle, while Windows Error Reporting attributes the
+mixed managed/native crash to `coreclr.dll`.
+
+The replacement release line is `1.0.32`. Its source gate requires both SwiftPM
+resource bundles at native staging, MSBuild publish, post-signature manifest
+refresh, portable packaging, and MSIX packaging. Both bundles and every file
+within them must be hashed by `native-engine-manifest.json`. The Windows engine
+workflow executes the real usage scan from the staged layout, and the release
+workflow repeats that parser smoke from the published x64 layout before signing.
+A new exact-head signed artifact and a fresh physical Intel certification run
+are required; no result from `windows-v1.0.31` may be promoted or relabeled.
 
 ## Certification Update - 2026-07-11
 

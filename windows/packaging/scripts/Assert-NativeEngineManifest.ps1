@@ -68,15 +68,20 @@ function Assert-OpenBurnBarNativeEngineManifest {
         throw "Native-engine manifest does not hash its declared engine '$engineName'."
     }
 
-    $bundleName = "OpenBurnBarCore_OpenBurnBarCore.resources"
-    $bundlePath = Join-Path $resolvedRoot $bundleName
-    if (-not (Test-Path -LiteralPath $bundlePath -PathType Container)) {
-        throw "Required Swift resource bundle is missing from the packaged layout: $bundleName"
-    }
-    $bundlePrefix = "$($bundleName.ToLowerInvariant())/"
-    if (-not ($seen.Keys | Where-Object { $_.StartsWith($bundlePrefix, [System.StringComparison]::Ordinal) })) {
-        throw "Native-engine manifest does not hash any files from $bundleName."
+    $bundleNames = @(
+        "OpenBurnBarCore_OpenBurnBarCore.resources",
+        "OpenBurnBarCore_OpenBurnBarKernel.resources"
+    )
+    foreach ($bundleName in $bundleNames) {
+        $bundlePath = Join-Path $resolvedRoot $bundleName
+        if (-not (Test-Path -LiteralPath $bundlePath -PathType Container)) {
+            throw "Required Swift resource bundle is missing from the packaged layout: $bundleName"
+        }
+        $bundlePrefix = "$($bundleName.ToLowerInvariant())/"
+        if (-not ($seen.Keys | Where-Object { $_.StartsWith($bundlePrefix, [System.StringComparison]::Ordinal) })) {
+            throw "Native-engine manifest does not hash any files from $bundleName."
+        }
     }
 
-    Write-Host "Native-engine manifest verified: $($entries.Count) files; engine $engineName; resources $bundleName"
+    Write-Host "Native-engine manifest verified: $($entries.Count) files; engine $engineName; resources $($bundleNames -join ', ')"
 }

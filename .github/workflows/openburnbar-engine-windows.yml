@@ -312,7 +312,8 @@ jobs:
           if ($manifest.extras -notcontains "openburnbar_domain_ffi.dll") {
             throw "Native engine manifest omits openburnbar_domain_ffi.dll"
           }
-          "OPENBURNBAR_CORE_CABI_PATH=$engine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $stagedEngine = Join-Path $stage "OpenBurnBarCoreCAbi.dll"
+          "OPENBURNBAR_CORE_CABI_PATH=$stagedEngine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "OPENBURNBAR_NATIVE_ENGINE_STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Run managed-to-Swift usage scan integration
@@ -571,7 +572,8 @@ jobs:
           if ($manifest.extras -notcontains "openburnbar_domain_ffi.dll") {
             throw "Native engine manifest omits openburnbar_domain_ffi.dll"
           }
-          "OPENBURNBAR_CORE_CABI_PATH=$engine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $stagedEngine = Join-Path $stage "OpenBurnBarCoreCAbi.dll"
+          "OPENBURNBAR_CORE_CABI_PATH=$stagedEngine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "OPENBURNBAR_NATIVE_ENGINE_STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Run managed-to-Swift usage scan integration (ARM64)
