@@ -49,7 +49,7 @@ fail_with_logs() {
 
 install_stdout="$temporary_directory/install.stdout"
 install_stderr="$temporary_directory/install.stderr"
-if ! "$adb_bin" install --replace --test "$apk_path" >"$install_stdout" 2>"$install_stderr"; then
+if ! "$adb_bin" install -r -t "$apk_path" >"$install_stdout" 2>"$install_stderr"; then
   fail_with_logs \
     "Unable to install the domain-core Android instrumentation APK" \
     "$install_stdout" "$install_stderr"
