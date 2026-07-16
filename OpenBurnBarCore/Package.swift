@@ -524,6 +524,11 @@ let computerUseCoreTestExcludes = [
     "RemoteUnlockPolicyTests.swift"
 ]
 let legacyLinuxTestSources: [String]? = ["LinuxEmptyTests.swift"]
+// Mercury's platform-neutral Linux contract tests are a real suite, rather
+// than one of the legacy compile-only placeholders. Keep their source list
+// separate so the Linux graph can execute them without widening the other
+// compatibility targets.
+let openBurnBarMediaTestSources: [String]? = ["LinuxMediaContractTests.swift"]
 #if os(Linux)
 let openBurnBarCoreOffAppleTestSources: [String]? = ["LLMSafeWrapVectorTests.swift"]
 let openBurnBarCorePlaceholderExcludes = ["LinuxEmptyTests.swift"]
@@ -552,6 +557,7 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
         let relativePath = String(url.path.dropFirst(targetURL.path.count + 1))
         return [
             "LinuxEmptyTests.swift",
+            "LinuxMediaContractTests.swift",
             "LLMSafeWrapVectorTests.swift",
             "LinuxSecretStorageTests.swift",
             "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
@@ -594,6 +600,7 @@ let computerUseCoreExcludes: [String] = []
 let openBurnBarCoreTestExcludes: [String] = []
 let computerUseCoreTestExcludes: [String] = []
 let legacyLinuxTestSources: [String]? = nil
+let openBurnBarMediaTestSources: [String]? = nil
 let openBurnBarCoreOffAppleTestSources: [String]? = nil
 let openBurnBarCorePlaceholderExcludes: [String] = []
 let computerUseCoreOffAppleTestSources: [String]? = nil
@@ -887,7 +894,7 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarMediaTests",
             dependencies: ["OpenBurnBarMedia", "OpenBurnBarCore", "OpenBurnBarIrohRelay", swiftTestingDependency],
             exclude: legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarMediaTests"),
-            sources: legacyLinuxTestSources,
+            sources: openBurnBarMediaTestSources,
             resources: [
                 .process("Fixtures")
             ],

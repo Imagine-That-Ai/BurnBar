@@ -32,6 +32,14 @@
       "scratchPath": ".build-linux-swift-tests/core"
     },
     {
+      "id": "linux-media",
+      "packagePath": "OpenBurnBarCore",
+      "target": "OpenBurnBarMediaTests",
+      "filter": "OpenBurnBarMediaTests.LinuxMediaContractTests",
+      "minimumExecutedTests": 8,
+      "scratchPath": ".build-linux-swift-tests/core"
+    },
+    {
       "id": "portable-wrap-vectors",
       "packagePath": "OpenBurnBarCore",
       "target": "OpenBurnBarCoreTests",
