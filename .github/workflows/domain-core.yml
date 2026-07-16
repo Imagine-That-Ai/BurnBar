@@ -443,6 +443,9 @@ jobs:
           python3 "$evaluator" \
             "${args[@]}"
 
+      - name: Remove trusted evaluator checkout
+        run: rm -rf -- .domain-core-trusted-evaluator
+
       - name: Emit promotion-contracts proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit

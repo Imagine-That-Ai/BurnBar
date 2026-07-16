@@ -439,3 +439,28 @@ test("protected Functions inventory covers every pricing execution entry and bot
     /verify-domain-core-functions-target-inventory\.mjs/u,
   );
 });
+test("promotion-contracts cleanup removes trusted evaluator after final use and before proof emission", () => {
+  const job = workflowJob(core, "promotion-contracts");
+
+  // Verify the evaluator is used during legacy deletion verification
+  const evaluatorUse = job.indexOf('evaluator=".domain-core-trusted-evaluator/scripts/ci/verify-domain-core-legacy-deletion.py"');
+  assert.notEqual(evaluatorUse, -1, "trusted evaluator must be used for legacy deletion verification");
+
+  // Verify the cleanup step exists and targets the correct path
+  const cleanupStep = job.indexOf("Remove trusted evaluator checkout");
+  assert.notEqual(cleanupStep, -1, "cleanup step must exist");
+  const cleanupSection = job.slice(cleanupStep, job.indexOf("\n\n", cleanupStep));
+  assert.match(cleanupSection, /run: rm -rf -- \.domain-core-trusted-evaluator/, "cleanup must remove .domain-core-trusted-evaluator directory");
+
+  // Verify cleanup happens after evaluator use
+  assert.ok(cleanupStep > evaluatorUse, "cleanup must happen after final evaluator use");
+
+  // Verify cleanup happens before proof emission
+  const proofEmission = job.indexOf("Emit promotion-contracts proof fragment");
+  assert.notEqual(proofEmission, -1, "proof emission step must exist");
+  assert.ok(cleanupStep < proofEmission, "cleanup must happen before proof emission");
+
+  // Verify cleanup does not target wrong paths
+  assert.doesNotMatch(job, /rm -rf -- \.domain-core-trusted-evaluator[^_\n]/, "cleanup must not target similar but wrong paths");
+  assert.doesNotMatch(job, /rm -rf -- \.domain-core-trusted-evaluator[^\/\s]/, "cleanup must not target partial paths");
+});
