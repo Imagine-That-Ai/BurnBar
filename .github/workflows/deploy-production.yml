@@ -267,6 +267,18 @@ jobs:
             --config "$FIREBASE_FUNCTIONS_CI_CONFIG" \
             --non-interactive
 
+      - name: Verify parity-critical Linux callables deployed
+        if: steps.tag.outputs.dry_run != 'true'
+        env:
+          FIREBASE_PROJECT: burnbar
+        run: |
+          set -euo pipefail
+          list_json="$RUNNER_TEMP/production-functions.json"
+          "$FIREBASE_TOOLS_BIN" functions:list \
+            --project "$FIREBASE_PROJECT" \
+            --json > "$list_json"
+          node scripts/ci/verify-production-function-catalog.mjs --input "$list_json"
+
       - name: Dry-run skip deploy
         if: steps.tag.outputs.dry_run == 'true'
         run: echo "dry_run=true — skipping production deploy"

@@ -462,6 +462,11 @@ def validate_production_functions(text: str) -> None:
         "google-github-actions/setup-gcloud@",
         "Require matching rules before Functions deploy",
         'node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"',
+        "Verify parity-critical Linux callables deployed",
+        "functions:list",
+        '--project "$FIREBASE_PROJECT"',
+        "--json",
+        "node scripts/ci/verify-production-function-catalog.mjs --input",
     ):
         if marker not in deploy_job:
             fail(f"{path} deploy-functions is missing rules-first deploy guard marker {marker!r}")
