@@ -42,12 +42,12 @@ def test_trusted_deletion_guard_uses_workspace_anchored_checkout_paths() -> None
     assert "$GITHUB_WORKSPACE/candidate" not in source
 
 
-def test_domain_core_aggregate_gates_are_required_after_the_ledger_lands() -> None:
+def test_domain_core_trusted_guard_is_required_and_pr_gate_is_pending() -> None:
     governance = json.loads((ROOT / "governance/branch-protection.main.json").read_text())
     required = governance["required_status_checks"]["contexts"]
     pending = governance["_pending_required_status_checks"]["contexts"]
 
     assert "Domain Core Trusted Deletion Guard" in required
-    assert "Domain Core PR Gate" in required
     assert "Domain Core Trusted Deletion Guard" not in pending
-    assert "Domain Core PR Gate" not in pending
+    assert "Domain Core PR Gate" not in required
+    assert "Domain Core PR Gate" in pending

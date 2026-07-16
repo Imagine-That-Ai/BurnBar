@@ -136,7 +136,7 @@ python3 tests/test_domain_core_legacy_deletion_workflow.py
 python3 scripts/ci/verify-domain-core-legacy-deletion.py
 ```
 
-The `pull_request_target`-based `Domain Core Trusted Deletion Guard` comes from the default branch, checks out candidate bytes as data only, and runs only the default branch's committed evaluator. CI also supplies the trusted base SHA, `--verify-signed-evidence`, and actual deletion PR/head coordinates. The final always-running `Domain Core PR Gate` requires every meaningful matrix and proof job to succeed. Both checks must be required on official `main`. The gate fails closed on:
+The `pull_request_target`-based `Domain Core Trusted Deletion Guard` comes from the default branch, checks out candidate bytes as data only, and runs only the default branch's committed evaluator. CI also supplies the trusted base SHA, `--verify-signed-evidence`, and actual deletion PR/head coordinates. This always-running trusted guard must be required on official `main`. The path-scoped `Domain Core PR Gate` additionally requires every meaningful domain-core matrix and proof job to succeed when governed paths change; it is not a classic global required context because it intentionally does not emit for unrelated PRs. Required native, Android, and Windows aggregate checks provide the remaining compile gates. The trusted deletion guard fails closed on:
 
 - changed or removed append-only generations, receipts, bundles, or provenance;
 - missing or unexpected rows and targets;
@@ -179,7 +179,7 @@ deployment receipts.
 
 The iOS stable predicate is created only after App Store Connect accepts the exact IPA and reports completed processing. Its receipt binds the archive digest, IPA digest, and shipped executable digest. The executable verifier reads candidate commit, core version, ABI, and source fingerprint from the dedicated `__TEXT,__obb_core_id` Mach-O section and also requires the three linked UniFFI identity symbols; unrelated strings in the app cannot satisfy this proof.
 
-The protected signer and trusted deletion guard audit the live default-branch protection settings without mutating them. Official `main` must require strict `Domain Core PR Gate` and `Domain Core Trusted Deletion Guard` checks, admin enforcement, stale-approval dismissal, and disabled force-pushes/deletions. Signed release artifacts are cached by immutable SHA-256 under runner-temporary storage during a gate run; attestations are separately deduplicated by their complete verification key.
+The protected signer and trusted deletion guard audit the live default-branch protection settings without mutating them. Official `main` must require strict `Domain Core Trusted Deletion Guard`, native, Android, and Windows aggregate checks, admin enforcement, one current independent approval, stale-approval dismissal, and disabled force-pushes/deletions. The path-scoped `Domain Core PR Gate` remains additional evidence on governed changes without deadlocking unrelated PRs. Signed release artifacts are cached by immutable SHA-256 under runner-temporary storage during a gate run; attestations are separately deduplicated by their complete verification key.
 
 The live protection query cannot eliminate GitHub administrator time-of-check/time-of-use risk by itself. Branch protection and the required checks remain the final merge-time authority: an administrator who changes those controls after the query can bypass repository policy, and that administrative action must be handled through GitHub audit-log monitoring and incident response.
 

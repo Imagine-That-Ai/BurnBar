@@ -36,10 +36,10 @@ changes. The repository has two named CODEOWNERS, so this closes the protected-f
 two-PR bypass without deadlocking ordinary review.
 
 Strict checks were chosen over a merge queue because they do not require every
-required context to support `merge_group`. The protected shared-Rust signer also
-requires `Domain Core PR Gate` and `Domain Core Trusted Deletion Guard` on official
-`main`; both contexts were promoted only after their exact names were observed on
-PR #1820.
+required context to support `merge_group`. `Domain Core Trusted Deletion Guard`
+runs on every PR and is globally required. `Domain Core PR Gate` remains
+path-scoped evidence for domain-core changes; promoting it as a classic global
+context would leave every unrelated PR permanently pending.
 
 The drift checker verifies this complete contract. Apply the same values to live
 classic branch protection in the same change, then

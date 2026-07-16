@@ -21,7 +21,6 @@
       "Detect Windows changes",
       "Detect Windows dist changes",
       "Detect native changes",
-      "Domain Core PR Gate",
       "Domain Core Trusted Deletion Guard",
       "Extension (lint + types + unit tests)",
       "Fast Feedback Gate",
@@ -71,8 +70,8 @@
     ]
   },
   "_pending_required_status_checks": {
-    "_comment": "PLACEHOLDER — future-required checks. Do NOT promote a context until its workflow has emitted the exact check name on pull_request; a never-reported required context blocks every PR. 'diff-coverage (PR)' is emitted but remains informational pending an explicit owner decision.",
-    "contexts": ["diff-coverage (PR)"]
+    "_comment": "PLACEHOLDER — future-required checks. Do NOT promote a context until it is emitted on every pull request; a never-reported required context blocks unrelated PRs. 'diff-coverage (PR)' remains informational pending an explicit owner decision. 'Domain Core PR Gate' is intentionally path-scoped and therefore cannot be a classic global required context; the always-running trusted deletion guard is the required domain-core authority.",
+    "contexts": ["diff-coverage (PR)", "Domain Core PR Gate"]
   },
   "enforce_admins": true,
   "required_pull_request_reviews": {

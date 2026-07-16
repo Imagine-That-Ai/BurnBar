@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 
 const REPOSITORY = "Imagine-That-Ai/BurnBar";
 const REQUIRED_CONTEXTS = Object.freeze([
-  "Domain Core PR Gate",
   "Domain Core Trusted Deletion Guard",
 ]);
 
