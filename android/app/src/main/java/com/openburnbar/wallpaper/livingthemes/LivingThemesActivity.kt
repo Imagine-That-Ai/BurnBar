@@ -115,7 +115,7 @@ class LivingThemesActivity : ComponentActivity() {
     }
 
     private fun openWallpaperPreview() {
-        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val activityManager = getSystemService(ActivityManager::class.java)
         if (activityManager.deviceConfigurationInfo.reqGlEsVersion < 0x30000) {
             Toast.makeText(
                 this,
