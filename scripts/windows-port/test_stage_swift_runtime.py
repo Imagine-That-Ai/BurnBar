@@ -77,9 +77,7 @@ class StageSwiftRuntimeTests(unittest.TestCase):
                 staged_resource = destination / bundle.name / resource.name
                 self.assertTrue(staged_resource.is_file())
                 manifest_entry = next(
-                    item
-                    for item in manifest["files"]
-                    if item["fileName"] == f"{bundle.name}/{resource.name}"
+                    item for item in manifest["files"] if item["fileName"] == f"{bundle.name}/{resource.name}"
                 )
                 self.assertEqual(
                     manifest_entry["sha256"],
@@ -110,7 +108,7 @@ class StageSwiftRuntimeTests(unittest.TestCase):
             engine.write_bytes(b"engine")
             core_bundle = directory / "OpenBurnBarCore_OpenBurnBarCore.resources"
             core_bundle.mkdir()
-            (core_bundle / "MiningPickIcon.svg").write_bytes(b'<svg/>\n')
+            (core_bundle / "MiningPickIcon.svg").write_bytes(b"<svg/>\n")
             with patch.object(
                 MODULE.subprocess,
                 "run",
