@@ -13,6 +13,8 @@
 #   OPENBURNBAR_ENABLE_COVERAGE=YES      Capture xcresult at canonical mobile coverage path.
 #   OPENBURNBAR_IOS_DESTINATION=...      Explicit xcodebuild destination (e.g. platform=iOS,id=<UDID>).
 #   OPENBURNBAR_MOBILE_DRY_RUN=1         Print resolved destination and exit 0.
+#   OPENBURNBAR_MOBILE_PREFLIGHT_ONLY=1   Validate physical-device readiness and
+#                                        exit before package prep or XCTest.
 #   OPENBURNBAR_MOBILE_TEST_ATTEMPTS=N   Override max attempts (default 4).
 #   OPENBURNBAR_MOBILE_TEST_FILTER=...   Pass one or more custom -only-testing
 #                                           targets. Separate multiple selectors
@@ -376,6 +378,110 @@ resolve_ios_destination() {
     discover_physical_ios_destination
 }
 
+physical_ios_device_status() {
+    local destination="$1"
+    local xcdevice_json
+
+    xcdevice_json="$(xcrun xcdevice list 2>/dev/null || true)"
+    XCDEVICE_JSON="$xcdevice_json" python3 -c '
+import json
+import os
+import sys
+
+destination = sys.argv[1]
+raw = os.environ.get("XCDEVICE_JSON", "")
+try:
+    devices = json.loads(raw)
+except Exception:
+    devices = []
+
+if not isinstance(devices, list):
+    devices = []
+
+parts = {}
+for part in destination.split(","):
+    if "=" in part:
+        key, value = part.split("=", 1)
+        parts[key.strip()] = value.strip()
+
+physical = [
+    device for device in devices
+    if isinstance(device, dict)
+    and not device.get("simulator")
+    and device.get("platform") == "com.apple.platform.iphoneos"
+]
+identifier = parts.get("id")
+name = parts.get("name")
+if identifier:
+    physical = [device for device in physical if device.get("identifier") == identifier]
+elif name:
+    physical = [device for device in physical if device.get("name") == name]
+
+if not physical:
+    print("missing\tiOS device\tunknown-udid\tNo matching physical iOS device was reported by Xcode.")
+    raise SystemExit(0)
+
+device = physical[0]
+device_name = str(device.get("name") or "iOS device")
+device_id = str(device.get("identifier") or identifier or "unknown-udid")
+error = device.get("error")
+if isinstance(error, dict):
+    reason = str(error.get("description") or error.get("code") or "")
+else:
+    reason = str(error or "")
+reason = " ".join(reason.split())
+lower_reason = reason.lower()
+if any(token in lower_reason for token in ("locked", "passcode", "unlock")):
+    state = "locked"
+elif any(token in lower_reason for token in ("developer mode", "developer-mode", "developermode")):
+    state = "developer_mode"
+elif not bool(device.get("available")):
+    state = "unavailable"
+else:
+    state = "ready"
+display_reason = reason or "available"
+print(f"{state}\t{device_name}\t{device_id}\t{display_reason}")
+' "$destination"
+}
+
+verify_physical_ios_device_ready() {
+    local status_line state device_name udid reason
+    status_line="$(physical_ios_device_status "$ios_destination")"
+    IFS=$'\t' read -r state device_name udid reason <<< "$status_line"
+
+    case "$state" in
+        ready)
+            echo ">>> Physical iOS device readiness verified: $device_name ($udid)"
+            ;;
+        locked)
+            echo "ERROR: Physical iOS device is locked: $device_name ($udid)." >&2
+            echo "Unlock the device before running XCTest; do not leave it at the passcode screen." >&2
+            echo "If it remains unavailable after unlocking, enable Developer Mode in Settings > Privacy & Security > Developer Mode, tap Trust if prompted, and reconnect it." >&2
+            echo "Xcode reported: ${reason:-device locked}." >&2
+            return 65
+            ;;
+        developer_mode)
+            echo "ERROR: Physical iOS device cannot run XCTest because Developer Mode is disabled: $device_name ($udid)." >&2
+            echo "Enable Developer Mode in Settings > Privacy & Security > Developer Mode, tap Trust if prompted, unlock the device, and reconnect it." >&2
+            echo "Xcode reported: ${reason:-Developer Mode is disabled}." >&2
+            return 65
+            ;;
+        unavailable)
+            echo "ERROR: Physical iOS device is unavailable: $device_name ($udid)." >&2
+            echo "Reconnect it over USB, unlock it, tap Trust if prompted, and ensure Developer Mode is enabled in Settings > Privacy & Security > Developer Mode." >&2
+            echo "Xcode reported: ${reason:-device unavailable}." >&2
+            return 65
+            ;;
+        *)
+            echo "ERROR: Xcode could not find the requested physical iOS device for XCTest." >&2
+            echo "Connect the device over USB, unlock it, tap Trust if prompted, and ensure Developer Mode is enabled in Settings > Privacy & Security > Developer Mode." >&2
+            echo "Requested destination: $ios_destination" >&2
+            echo "Xcode reported: ${reason:-no matching device}." >&2
+            return 65
+            ;;
+    esac
+}
+
 simulator_udid=""
 simulator_destination="platform=iOS Simulator,name=${simulator_name}"
 
@@ -445,6 +551,18 @@ if [[ "${OPENBURNBAR_MOBILE_DRY_RUN:-}" == "1" ]]; then
 fi
 
 print_test_filters
+
+# Physical XCTest can terminate/relaunch the app on the attached device. Check
+# the live device record immediately before any package preparation or stale
+# process cleanup so a locked/passcode-screen device is never disturbed.
+if [[ "$uses_ios_simulator" -eq 0 ]]; then
+    verify_physical_ios_device_ready
+fi
+
+if [[ "${OPENBURNBAR_MOBILE_PREFLIGHT_ONLY:-}" == "1" ]]; then
+    echo ">>> Mobile preflight passed; no package preparation or XCTest was started."
+    exit 0
+fi
 
 mkdir -p "$cache_dir"
 mkdir -p "$artifact_root"

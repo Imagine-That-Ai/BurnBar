@@ -63,4 +63,112 @@ fi
 grep -q "SwiftPM cache resolves outside OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT" "$symlink_output" ||
   fail "symlink escape error did not identify the containment rule"
 
-echo "test-openburnbar-mobile root boundary tests passed"
+fake_bin="$tmp_root/fake-bin"
+mkdir -p "$fake_bin"
+cat >"$fake_bin/xcrun" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "xcdevice" && "${2:-}" == "list" ]]; then
+  cat "$FAKE_XCDEVICE_JSON"
+  exit 0
+fi
+
+if [[ "${1:-}" == "simctl" && "${2:-}" == "list" ]]; then
+  printf '%s\n' '{"devices":{}}'
+  exit 0
+fi
+
+printf 'unexpected fake xcrun invocation: %s\n' "$*" >&2
+exit 64
+SH
+chmod +x "$fake_bin/xcrun"
+
+cat >"$fake_bin/pkill" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "$FAKE_PRECLEAN_MARKER"
+exit 0
+SH
+chmod +x "$fake_bin/pkill"
+
+locked_json="$tmp_root/locked.json"
+printf '%s\n' '[{"simulator":false,"platform":"com.apple.platform.iphoneos","available":false,"identifier":"00008132-001158191E9A401C","name":"Alberto iPad","error":{"description":"Device is locked."}}]' > "$locked_json"
+locked_output="$tmp_root/locked.out"
+locked_marker="$tmp_root/locked-preclean.marker"
+if PATH="$fake_bin:$PATH" \
+  FAKE_XCDEVICE_JSON="$locked_json" \
+  FAKE_PRECLEAN_MARKER="$locked_marker" \
+  OPENBURNBAR_IOS_DESTINATION="$destination" \
+  OPENBURNBAR_MOBILE_PREFLIGHT_ONLY=1 \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$locked_output" 2>&1; then
+  fail "locked physical device unexpectedly passed preflight"
+fi
+grep -qi "physical iOS device is locked" "$locked_output" ||
+  fail "locked-device refusal did not identify the locked device"
+grep -qi "unlock the device" "$locked_output" ||
+  fail "locked-device refusal did not tell the user to unlock the device"
+grep -q "Developer Mode" "$locked_output" ||
+  fail "locked-device refusal did not include the Developer Mode recovery path"
+[[ ! -e "$locked_marker" ]] || fail "stale-process cleanup ran before locked-device refusal"
+
+developer_mode_json="$tmp_root/developer-mode.json"
+printf '%s\n' '[{"simulator":false,"platform":"com.apple.platform.iphoneos","available":true,"identifier":"00008132-001158191E9A401C","name":"Alberto iPad","error":{"description":"Developer Mode is disabled."}}]' > "$developer_mode_json"
+developer_mode_output="$tmp_root/developer-mode.out"
+developer_mode_marker="$tmp_root/developer-mode-preclean.marker"
+if PATH="$fake_bin:$PATH" \
+  FAKE_XCDEVICE_JSON="$developer_mode_json" \
+  FAKE_PRECLEAN_MARKER="$developer_mode_marker" \
+  OPENBURNBAR_IOS_DESTINATION="$destination" \
+  OPENBURNBAR_MOBILE_PREFLIGHT_ONLY=1 \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$developer_mode_output" 2>&1; then
+  fail "Developer Mode-disabled device unexpectedly passed preflight"
+fi
+grep -qi "Developer Mode is disabled" "$developer_mode_output" ||
+  fail "Developer Mode refusal did not identify the disabled state"
+grep -qi "Settings > Privacy & Security > Developer Mode" "$developer_mode_output" ||
+  fail "Developer Mode refusal did not include the settings path"
+[[ ! -e "$developer_mode_marker" ]] || fail "stale-process cleanup ran before Developer Mode refusal"
+
+unavailable_json="$tmp_root/unavailable.json"
+printf '%s\n' '[{"simulator":false,"platform":"com.apple.platform.iphoneos","available":false,"identifier":"00008132-001158191E9A401C","name":"Alberto iPad","error":{"description":"The device is not paired with this Mac."}}]' > "$unavailable_json"
+unavailable_output="$tmp_root/unavailable.out"
+unavailable_marker="$tmp_root/unavailable-preclean.marker"
+if PATH="$fake_bin:$PATH" \
+  FAKE_XCDEVICE_JSON="$unavailable_json" \
+  FAKE_PRECLEAN_MARKER="$unavailable_marker" \
+  OPENBURNBAR_IOS_DESTINATION="$destination" \
+  OPENBURNBAR_MOBILE_PREFLIGHT_ONLY=1 \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$unavailable_output" 2>&1; then
+  fail "unavailable physical device unexpectedly passed preflight"
+fi
+grep -qi "physical iOS device is unavailable" "$unavailable_output" ||
+  fail "unavailable-device refusal did not identify the unavailable device"
+grep -qi "Reconnect it over USB" "$unavailable_output" ||
+  fail "unavailable-device refusal did not provide reconnect guidance"
+grep -q "Developer Mode" "$unavailable_output" ||
+  fail "unavailable-device refusal did not include the Developer Mode recovery path"
+[[ ! -e "$unavailable_marker" ]] || fail "stale-process cleanup ran before unavailable-device refusal"
+
+simulator_output="$tmp_root/simulator.out"
+if ! PATH="$fake_bin:$PATH" \
+  CI=true \
+  FAKE_XCDEVICE_JSON="$locked_json" \
+  FAKE_PRECLEAN_MARKER="$tmp_root/simulator-preclean.marker" \
+  OPENBURNBAR_MOBILE_PREFLIGHT_ONLY=1 \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$simulator_output" 2>&1; then
+  fail "simulator preflight unexpectedly failed"
+fi
+grep -q "CI environment: using iOS Simulator destination" "$simulator_output" ||
+  fail "simulator path did not retain CI destination resolution"
+grep -q "Mobile preflight passed" "$simulator_output" ||
+  fail "simulator path did not complete the preflight-only exit"
+if grep -qi "physical iOS device is locked" "$simulator_output"; then
+  fail "simulator path incorrectly ran the physical-device lock guard"
+fi
+[[ ! -e "$tmp_root/simulator-preclean.marker" ]] || fail "preflight-only simulator path ran stale-process cleanup"
+
+echo "test-openburnbar-mobile root boundary and physical-device preflight tests passed"
