@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` at current source head `a8fb43090f1afd1cb18b1338c7f6e99e96d36ff8`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, and the Windows-portable Hermes stream transport are linked below. Exact-head candidate run `29475397312` passed both release architectures and installed-package runtime checks; the current UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
+| Remediation evidence | `codex/linux-parity-integration-final` at source checkpoint `a8fb43090f1afd1cb18b1338c7f6e99e96d36ff8`; this audit record is subsequently carried by documentation-only commits. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, and the Windows-portable Hermes stream transport are linked below. Exact-head candidate run `29475397312` passed both release architectures and installed-package runtime checks; the candidate-bound UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -54,7 +54,7 @@ percentage. The active remediation stack now contains these reviewable slices:
   `sha256:33df8b7d9fdbe85e1db9c36003e3681f10d78506d24f71113b95fdab1fcace6e`;
   both signed architecture shards passed the native build, package,
   installed-runtime, accessibility, tray, and route sessions.
-- **Current UTM P-40 proof:** Ubuntu 24.04 GNOME/X11 aarch64 installed the
+- **Candidate-bound UTM P-40 proof:** Ubuntu 24.04 GNOME/X11 aarch64 installed the
   exact arm64 Debian package (`sha256:
   1c8e187ccf7f264954cde7b7aec4e64ce186d16c26ddb2cef149a9c61715cce9`). The
   installed manifest is bound to `a8fb43090f1afd1cb18b1338c7f6e99e96d36ff8`
