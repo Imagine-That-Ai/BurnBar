@@ -4,13 +4,31 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const GATE = join(SCRIPT_DIR, "verify-hosting-deploy-boundary.mjs");
+const WORKFLOW = readFileSync(
+  join(SCRIPT_DIR, "..", "..", ".github", "workflows", "deploy-hosting.yml"),
+  "utf8",
+);
+for (const helper of [
+  "scripts/lib/atomic-regular-file.mjs",
+  "scripts/lib/firebase-hosting-rest-url.mjs",
+]) {
+  if (!WORKFLOW.includes(`cp ${helper} "$ARTIFACT_ROOT/scripts/lib/"`)) {
+    throw new Error(`immutable Hosting artifact omits imported helper: ${helper}`);
+  }
+}
 const roots = [];
 process.on("exit", () =>
   roots.forEach((dir) => rmSync(dir, { recursive: true, force: true })),

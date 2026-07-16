@@ -349,7 +349,9 @@ jobs:
           cp scripts/ci/deploy-firebase-hosting-rest.mjs "$ARTIFACT_ROOT/scripts/ci/"
           cp scripts/ci/create-domain-core-runtime-artifact-manifest.mjs "$ARTIFACT_ROOT/scripts/ci/"
           cp scripts/ci/verify-existing-domain-core-deployment.mjs "$ARTIFACT_ROOT/scripts/ci/"
+          cp scripts/lib/atomic-regular-file.mjs "$ARTIFACT_ROOT/scripts/lib/"
           cp scripts/lib/curl-bearer.sh "$ARTIFACT_ROOT/scripts/lib/"
+          cp scripts/lib/firebase-hosting-rest-url.mjs "$ARTIFACT_ROOT/scripts/lib/"
           cp "$RUNNER_TEMP/domain-core-build-profile.json" \
             "$ARTIFACT_ROOT/domain-core-release-inputs/domain-core-build-profile.json"
           if [[ "$REQUIRES_PROOF" == "true" ]]; then
