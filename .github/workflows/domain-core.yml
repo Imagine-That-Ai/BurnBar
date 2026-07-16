@@ -1339,12 +1339,19 @@ jobs:
             "$RUNNER_TEMP/swift-consumer-spool.log" \
             > "$RUNNER_TEMP/swift-consumer-contracts.log"
 
-      - name: Restore checked-in Swift artifacts after debug validation
+      - name: Restore tracked Swift artifacts after debug validation
         run: |
+          # The XCFramework is a generated, gitignored build product. Remove it;
+          # git restore cannot address a path that is intentionally untracked.
+          rm -rf -- Vendor/OpenBurnBarDomainCore.xcframework
           git restore --source=HEAD -- \
-            Vendor/OpenBurnBarDomainCore.xcframework \
             OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated \
             crates/openburnbar-domain-core/artifact-provenance/swift.sha256
+          status="$(git status --porcelain=v1 --untracked-files=all)"
+          if [[ -n "$status" ]]; then
+            printf 'unexpected dirty path after Swift candidate validation:\n%s\n' "$status" >&2
+            exit 1
+          fi
 
       - name: Emit Swift consumer proof fragment
         run: >-

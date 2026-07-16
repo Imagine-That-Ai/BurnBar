@@ -166,7 +166,7 @@ test("native consumer jobs keep their measured execution margin and emulator she
   );
   const swiftConsumer = workflowJob(core, "swift-consumer-contracts");
   const restoreSwiftArtifacts = swiftConsumer.indexOf(
-    "Restore checked-in Swift artifacts after debug validation",
+    "Restore tracked Swift artifacts after debug validation",
   );
   const androidAppBundle = android.indexOf(
     "Build and verify a signed Android app bundle",
@@ -188,9 +188,30 @@ test("native consumer jobs keep their measured execution margin and emulator she
   );
   assert.ok(restoreSwiftArtifacts >= 0);
   assert.ok(restoreSwiftArtifacts < emitSwiftProof);
+  // The XCFramework is gitignored (.gitignore:20), so git restore cannot
+  // touch it — the build step generates it fresh. The cleanup must remove
+  // the generated XCFramework, restore only the tracked paths (Generated
+  // bindings + swift.sha256), then fail on any remaining dirty path —
+  // mirroring the Android AAR restore pattern.
   assert.match(
     swiftConsumer,
-    /git restore --source=HEAD -- \\\n            Vendor\/OpenBurnBarDomainCore\.xcframework \\\n            OpenBurnBarCore\/Sources\/OpenBurnBarDomainCore\/Generated \\\n            crates\/openburnbar-domain-core\/artifact-provenance\/swift\.sha256/u,
+    /rm -rf -- Vendor\/OpenBurnBarDomainCore\.xcframework/u,
+    "swift-consumer-contracts must remove the generated (gitignored) XCFramework, not git restore it",
+  );
+  assert.doesNotMatch(
+    swiftConsumer,
+    /git restore --source=HEAD --[\s\S]*Vendor\/OpenBurnBarDomainCore\.xcframework/u,
+    "swift-consumer-contracts must not git restore the untracked/gitignored XCFramework (it fails)",
+  );
+  assert.match(
+    swiftConsumer,
+    /git restore --source=HEAD -- [\s\S]*OpenBurnBarCore\/Sources\/OpenBurnBarDomainCore\/Generated [\s\S]*crates\/openburnbar-domain-core\/artifact-provenance\/swift\.sha256/u,
+    "swift-consumer-contracts must git restore only the tracked Generated bindings and swift.sha256",
+  );
+  assert.match(
+    swiftConsumer,
+    /git status --porcelain=v1 --untracked-files=all[\s\S]*exit 1/u,
+    "swift-consumer-contracts must fail on any remaining dirty path after restore",
   );
 });
 
