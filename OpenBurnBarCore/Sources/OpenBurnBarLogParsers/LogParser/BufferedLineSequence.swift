@@ -123,12 +123,24 @@ public final class BufferedLineReader {
                 baseOffset += Int64(cursor)
                 cursor = 0
             }
-            let chunk = fileHandle.readData(ofLength: chunkSize)
-            if chunk.isEmpty {
+            // `readData(ofLength:)` returns an autoreleased NSData-backed
+            // Data, and `Data.append(_: Data)` on an emptied buffer ADOPTS
+            // that backing instead of copying (measured: one live 256KB
+            // NSData per chunk for the whole scan — footprint equal to total
+            // bytes read). Copy the raw bytes explicitly so no NSData
+            // representation ever outlives this pool.
+            let readCount = autoreleasepool { () -> Int in
+                let chunk = fileHandle.readData(ofLength: chunkSize)
+                chunk.withUnsafeBytes { raw in
+                    guard let base = raw.baseAddress, !raw.isEmpty else { return }
+                    buffer.append(base.assumingMemoryBound(to: UInt8.self), count: raw.count)
+                }
+                return chunk.count
+            }
+            if readCount == 0 {
                 reachedEOF = true
                 continue
             }
-            buffer.append(chunk)
 
             // Guard against pathological single-line inputs: if the buffer
             // exceeds maxLineBytes with no separator in sight, drop it and
@@ -170,8 +182,11 @@ public final class BufferedLineReader {
     }
 
     private func decode(range: Range<Int>) -> String {
-        buffer.subdata(in: range).withUnsafeBytes { bytes in
-            String(decoding: bytes, as: UTF8.self)
+        // Decode straight out of the buffer: `subdata(in:)` would mint an
+        // autoreleased NSData copy per line, which never drains in the
+        // contexts parsers run in (sum over a scan ≈ every byte read).
+        buffer.withUnsafeBytes { raw in
+            String(decoding: UnsafeRawBufferPointer(rebasing: raw[range]), as: UTF8.self)
         }
     }
 }
