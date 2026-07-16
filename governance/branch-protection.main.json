@@ -1,6 +1,6 @@
 {
   "_about": "Canonical DESIRED branch protection for the 'main' branch of Imagine-That-Ai/BurnBar. This file is the SOURCE OF TRUTH — see governance/README.md. It encodes the solo-maintainer automation contract: required status checks and required conversation resolution are hard gates; PR-review, CODEOWNER-review, last-push-approval, force-push, and deletion bypasses must not block or weaken the lane. As of Operation 9 P-QA-3, required_status_checks.strict is true to prevent stale-base greens (QA finding M-1); strict is the conservative option over a merge queue because it does not require every required context to also fire on the merge_group event.",
-  "_derivation": "required_status_checks.contexts were read from the live main branch protection on 2026-07-08. Only check-run names currently required by GitHub are listed; keep this file and live protection in sync. strict was set to true in P-QA-3 (Operation 9) to prevent stale-base greens; the owner intentionally changed the contract per governance/README.md.",
+  "_derivation": "required_status_checks.contexts were reconciled with live main branch protection on 2026-07-15. Only check-run names currently required by GitHub are listed; keep this file and live protection in sync. strict was set to true in P-QA-3 (Operation 9) to prevent stale-base greens; the owner intentionally changed the contract per governance/README.md.",
   "branch": "main",
   "required_status_checks": {
     "strict": true,
@@ -15,6 +15,7 @@
       "BurnBar AGPL product posture",
       "Console (lint + types + tests + build)",
       "Control Center foundations (registry + tokens)",
+      "Debt budgets (shrink-only ratchets)",
       "Dependency Boundaries (dependency-cruiser)",
       "Dependency Review (CVE check)",
       "Detect Windows changes",
