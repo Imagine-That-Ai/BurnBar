@@ -439,15 +439,24 @@ async function deployOne(entry, firebaserc) {
 
 const config = readJson(configPath);
 const firebaserc = readJson(firebasercPath);
+const expectedHostingTargets = {
+  burnbar: {
+    hosting: { marketing: ["burnbar"], console: ["burnbar-console"] },
+  },
+  "burnbar-staging": {
+    hosting: {
+      marketing: ["burnbar-staging"],
+      console: ["burnbar-staging-console"],
+    },
+  },
+};
 if (
   firebaserc.projects?.default !== project ||
-  Object.keys(firebaserc.targets ?? {}).length !== 1 ||
-  Object.keys(firebaserc.targets?.[project] ?? {}).join(",") !== "hosting" ||
-  JSON.stringify(firebaserc.targets?.[project]?.hosting) !==
-    JSON.stringify({ marketing: ["burnbar"], console: ["burnbar-console"] })
+  firebaserc.projects?.staging !== "burnbar-staging" ||
+  JSON.stringify(firebaserc.targets) !== JSON.stringify(expectedHostingTargets)
 ) {
   throw new Error(
-    ".firebaserc must contain only the exact reviewed production Hosting target map",
+    ".firebaserc must contain the exact reviewed production and staging Hosting target maps",
   );
 }
 if (!Array.isArray(config.hosting)) {

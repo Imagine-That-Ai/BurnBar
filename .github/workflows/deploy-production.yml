@@ -71,6 +71,7 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       commit: ${{ steps.tag.outputs.commit }}
+      candidate_commit: ${{ steps.domain-core-profile.outputs.candidate_commit }}
       dry_run: ${{ steps.tag.outputs.dry_run }}
       stable_release: ${{ steps.tag.outputs.stable_release }}
       domain_core_profile: ${{ steps.tag.outputs.domain_core_profile }}
@@ -633,6 +634,7 @@ jobs:
     outputs:
       tag: ${{ needs.prepare-functions-deploy.outputs.tag }}
       commit: ${{ needs.prepare-functions-deploy.outputs.commit }}
+      candidate_commit: ${{ needs.prepare-functions-deploy.outputs.candidate_commit }}
       dry_run: ${{ needs.prepare-functions-deploy.outputs.dry_run }}
       stable_release: ${{ needs.prepare-functions-deploy.outputs.stable_release }}
       domain_core_profile: ${{ needs.prepare-functions-deploy.outputs.domain_core_profile }}
@@ -982,7 +984,7 @@ jobs:
           HEALTH_GATE_EXPECTED_SOURCE_COMMIT: ${{ needs.deploy-functions.outputs.commit }}
           HEALTH_GATE_EXPECTED_VERSION: ${{ needs.deploy-functions.outputs.tag }}
           HEALTH_GATE_EXPECTED_DOMAIN_CORE_PROFILE: ${{ needs.deploy-functions.outputs.domain_core_profile }}
-          HEALTH_GATE_EXPECTED_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ needs.deploy-functions.outputs.commit }}
+          HEALTH_GATE_EXPECTED_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ needs.deploy-functions.outputs.candidate_commit }}
           HEALTH_GATE_EXPECTED_DOMAIN_CORE_VERSION: ${{ needs.deploy-functions.outputs.core_version }}
           HEALTH_GATE_EXPECTED_DOMAIN_CORE_ABI_VERSION: ${{ needs.deploy-functions.outputs.abi_version }}
           HEALTH_GATE_EXPECTED_DOMAIN_CORE_SOURCE_SHA256: ${{ needs.deploy-functions.outputs.source_sha256 }}

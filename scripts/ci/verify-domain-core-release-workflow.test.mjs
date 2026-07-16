@@ -67,11 +67,16 @@ const PROFILES_JSON = join(
 const BUILD_GRADLE_KTS = process.env.TEST_BUILD_GRADLE_KTS
   ? process.env.TEST_BUILD_GRADLE_KTS
   : join(REPO_ROOT, "android/app/build.gradle.kts");
+const DEPLOY_PRODUCTION_YML = join(
+  REPO_ROOT,
+  ".github/workflows/deploy-production.yml",
+);
 
 const releaseBody = readFileSync(RELEASE_YML, "utf8");
 const windowsBody = readFileSync(WINDOWS_YML, "utf8");
 const profilesRaw = readFileSync(PROFILES_JSON, "utf8");
 const buildGradleBody = readFileSync(BUILD_GRADLE_KTS, "utf8");
+const deployProductionBody = readFileSync(DEPLOY_PRODUCTION_YML, "utf8");
 
 let passed = 0;
 let failed = 0;
@@ -606,6 +611,18 @@ const candidateCommitInvocations =
   extractNativeEvidenceInvocations(candidateCommitBody);
 const appleCandidateCommit = candidateCommitInvocations.find(
   (inv) => inv.consumer === "apple",
+);
+
+assert(
+  "Functions deploy exports the resolved candidate commit through both jobs",
+  (deployProductionBody.match(/candidate_commit: \$\{\{ (?:steps\.domain-core-profile|needs\.prepare-functions-deploy)\.outputs\.candidate_commit \}\}/gu) ?? [])
+    .length === 2,
+);
+assert(
+  "Functions health gate compares the deployed candidate identity, not the activation commit",
+  deployProductionBody.includes(
+    "HEALTH_GATE_EXPECTED_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ needs.deploy-functions.outputs.candidate_commit }}",
+  ),
 );
 assert(
   "negative control: --commit pointing at candidate commit is detected",

@@ -35,12 +35,18 @@ function makeArtifact(config) {
     join(root, ".firebaserc"),
     JSON.stringify(
       {
-        projects: { default: "burnbar" },
+        projects: { default: "burnbar", staging: "burnbar-staging" },
         targets: {
           burnbar: {
             hosting: {
               marketing: ["burnbar"],
               console: ["burnbar-console"],
+            },
+          },
+          "burnbar-staging": {
+            hosting: {
+              marketing: ["burnbar-staging"],
+              console: ["burnbar-staging-console"],
             },
           },
         },
@@ -138,7 +144,7 @@ try {
   throw new Error("mismatched production Hosting target unexpectedly passed");
 } catch (error) {
   const stderr = error.stderr?.toString("utf8") ?? "";
-  if (!stderr.includes("exact reviewed production Hosting target map"))
+  if (!stderr.includes("exact reviewed production and staging Hosting target maps"))
     throw error;
 }
 
