@@ -837,7 +837,22 @@ public actor BurnBarLinuxPrivacyService {
               pathHasNoSymlinks(parent) else {
             throw ServiceError.unsafeLocation
         }
+        // A root-run daemon cannot use UID ownership as a meaningful user
+        // boundary: every system directory appears root-owned. In that
+        // posture, keep exports inside the daemon support directory so a
+        // renderer cannot redirect encrypted local data into /etc, /usr, or
+        // another privileged path.
+        if geteuid() == 0 && !isDescendantOrSame(destination, of: supportDirectory) {
+            throw ServiceError.unsafeLocation
+        }
         return destination
+    }
+
+    private func isDescendantOrSame(_ path: URL, of directory: URL) -> Bool {
+        let directoryComponents = directory.standardizedFileURL.pathComponents
+        let pathComponents = path.standardizedFileURL.pathComponents
+        guard pathComponents.count >= directoryComponents.count else { return false }
+        return Array(pathComponents.prefix(directoryComponents.count)) == directoryComponents
     }
 
     private func allowlistedURL(for store: StoreID) throws -> URL {
