@@ -35,6 +35,7 @@ import uniffi.openburnbar_domain_ffi.hermesGatewayRelaySafetyCode
 import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
+import java.util.zip.ZipFile
 
 @RunWith(AndroidJUnit4::class)
 class DomainCoreNativeLoadTest {
@@ -231,6 +232,147 @@ class DomainCoreNativeLoadTest {
     ): List<String> = cloudVaultSearch(CloudVaultSearchRequest(operation, text, key, limit)).hashes
 
     private fun hex(value: String): ByteArray = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+
+    private fun getLoadedLibrarySha256(): String {
+        val mapsFile = File("/proc/self/maps")
+        if (!mapsFile.exists() || !mapsFile.isFile || !mapsFile.canRead()) {
+            throw AssertionError("/proc/self/maps must be readable regular file")
+        }
+
+        val librarySegments = mutableListOf<String>()
+        mapsFile.forEachLine { line ->
+            val trimmedLine = line.trim()
+            // Skip empty lines and anonymous mappings
+            if (trimmedLine.isEmpty()) {
+                return@forEachLine
+            }
+
+            // Split with limit=6 to preserve pathname as sixth field
+            val parts = trimmedLine.split(Regex("\\s+"), limit = 6)
+            if (parts.size < 6) {
+                // Skip malformed lines that don't have pathname field
+                return@forEachLine
+            }
+
+            val addressRange = parts[0]
+            val permissions = parts[1]
+            val offset = parts[2]
+            val device = parts[3]
+            val inode = parts[4]
+            val pathname = parts[5]
+
+            // Validate first five fields minimally
+            if (addressRange.isEmpty() ||
+                permissions.isEmpty() ||
+                offset.isEmpty() ||
+                device.isEmpty() ||
+                inode.isEmpty()
+            ) {
+                return@forEachLine
+            }
+
+            // Pathname must be nonblank and contain exact library filename
+            if (pathname.isEmpty() || !pathname.contains("libopenburnbar_domain_ffi.so")) {
+                return@forEachLine
+            }
+
+            // Fail closed for any candidate with (deleted), whitespace ambiguity, or malformed metadata
+            if (pathname.contains("(deleted)") ||
+                pathname.contains("\\s+".toRegex()) ||
+                permissions.length < 4 ||
+                !inode.matches(Regex("\\d+"))
+            ) {
+                throw AssertionError("Invalid library mapping: $trimmedLine")
+            }
+
+            // Exact basename match with executable permissions and nonzero inode
+            val basename = File(pathname).name
+            if (basename == "libopenburnbar_domain_ffi.so" &&
+                permissions.contains("x") &&
+                inode != "0"
+            ) {
+                librarySegments.add(pathname)
+            }
+        }
+
+        if (librarySegments.isEmpty()) {
+            throw AssertionError("No loaded libopenburnbar_domain_ffi.so found in maps")
+        }
+
+        // Deduplicate by exact pathname
+        val uniqueSegments = librarySegments.distinct()
+        if (uniqueSegments.size != 1) {
+            throw AssertionError("Expected exactly one unique libopenburnbar_domain_ffi.so mapping, found ${uniqueSegments.size}")
+        }
+
+        val pathname = uniqueSegments.first()
+
+        // Check for APK mapping first (exact single !/ delimiter)
+        if (pathname.contains("!/")) {
+            val delimiterCount = pathname.split("!/").size - 1
+            if (delimiterCount != 1) {
+                throw AssertionError("Invalid APK mapping: expected single !/ delimiter, found $delimiterCount in $pathname")
+            }
+
+            val parts = pathname.split("!/", limit = 2)
+            if (parts.size != 2) {
+                throw AssertionError("Invalid APK mapping format: $pathname")
+            }
+
+            val apkPath = parts[0]
+            val entryPath = parts[1]
+
+            // APK path must be absolute, readable regular file, and .apk extension
+            val apkFile = File(apkPath)
+            if (!apkPath.startsWith("/") || !apkFile.isFile || !apkFile.canRead() || !apkPath.endsWith(".apk")) {
+                throw AssertionError("APK file is not accessible or not .apk: $apkPath")
+            }
+
+            // Entry path must match lib/<abi>/libopenburnbar_domain_ffi.so with supported ABI
+            val expectedPattern = "lib/([^/]+)/libopenburnbar_domain_ffi\\.so".toRegex()
+            val matchResult = expectedPattern.matchEntire(entryPath)
+            if (matchResult == null) {
+                throw AssertionError("Invalid APK entry path: $entryPath")
+            }
+
+            val abi = matchResult.groupValues[1]
+            if (abi !in android.os.Build.SUPPORTED_ABIS) {
+                throw AssertionError("Unsupported ABI: $abi")
+            }
+
+            // Enumerate zip entries and require exactly one exact non-directory entry
+            ZipFile(apkFile).use { zipFile ->
+                val matchingEntries =
+                    zipFile.entries().toList().filter { entry ->
+                        !entry.isDirectory && entry.name == entryPath
+                    }
+                if (matchingEntries.size != 1) {
+                    throw AssertionError("Expected exactly one matching APK entry, found ${matchingEntries.size} for $entryPath")
+                }
+
+                val entry = matchingEntries.first()
+                // Hash exact entry bytes in lowercase with proper byte masking
+                zipFile.getInputStream(entry).use { inputStream ->
+                    val digest = MessageDigest.getInstance("SHA-256")
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                        digest.update(buffer, 0, bytesRead)
+                    }
+                    return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+                }
+            }
+        } else {
+            // Regular file mapping - must be absolute, readable, and reject whitespace/deleted ambiguity
+            val file = File(pathname)
+            if (!pathname.startsWith("/") || !file.isFile || !file.canRead() ||
+                pathname.contains("(deleted)") || pathname.contains("\\s+".toRegex())
+            ) {
+                throw AssertionError("Mapped library file is not accessible or has ambiguity: $pathname")
+            }
+            return sha256(file)
+        }
+    }
 
     private fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
