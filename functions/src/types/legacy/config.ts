@@ -96,8 +96,9 @@ export interface EnvConfig {
   windowsAppCheckAppID: string;
 
   /**
-   * Placeholder / non-prod Firebase App Check app id used by the Linux port
-   * until the real Linux desktop app id is provisioned. Never a prod id.
+   * Firebase App Check app id used by the Linux port. Non-production projects
+   * may use the placeholder fixture; production requires a provisioned Web app
+   * id and the config builder rejects the placeholder or malformed values.
    */
   linuxAppCheckAppID: string;
 

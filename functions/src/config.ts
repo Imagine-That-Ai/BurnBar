@@ -79,12 +79,28 @@ export const PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID = "1:000000000000:windows:0000
 export const PLACEHOLDER_LINUX_APP_CHECK_APP_ID = "1:000000000000:linux:0000000000000000placeholder" as const;
 
 /**
+ * Firebase represents a Linux desktop app with a Web App Check application
+ * id.  The desktop client cannot use the native iOS/Android attestation
+ * providers, so production must be bound to the dedicated Web app id that is
+ * provisioned for the Linux release.  Keep this check local to the Functions
+ * runtime as a second line of defense behind the release-package validator.
+ */
+export function isProductionLinuxAppCheckAppID(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!/^1:[0-9]{6,20}:web:[A-Za-z0-9_-]{8,128}$/u.test(trimmed)) return false;
+  const projectNumber = trimmed.split(":", 3)[1];
+  return !/^0+$/u.test(projectNumber) && !/placeholder/iu.test(trimmed);
+}
+
+/**
  * Resolve the lower-trust desktop App Check surface: placeholder app ids, the
  * mint/binding allowlist, and whether the MOCK attestation verifier is permitted
  * (non-prod only, fail-closed in prod).
  */
 function resolveAppCheckAppIdSurface(
   openburnbar: Record<string, unknown>,
+  projectId: string,
   looksProd: boolean,
 ): Pick<
   EnvConfig,
@@ -95,9 +111,24 @@ function resolveAppCheckAppIdSurface(
     configString(openburnbar, "windows_app_check_app_id") ??
     PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID;
   const linuxAppCheckAppID =
-    process.env.LINUX_APP_CHECK_APP_ID ??
+    process.env.LINUX_APP_CHECK_APP_ID?.trim() ??
     configString(openburnbar, "linux_app_check_app_id") ??
     PLACEHOLDER_LINUX_APP_CHECK_APP_ID;
+
+  // A production-looking Functions instance must never boot with the Linux
+  // placeholder (or a malformed/non-Web id).  Without this guard, a missing
+  // deploy variable silently changes the attestation contract while the
+  // callable handlers still appear healthy, making every Linux approval and
+  // token-mint claim misleading.  Demo/test/local/emulator projects retain
+  // the placeholder defaults for fixture-based tests; staging must provision
+  // its own Firebase Web app id just like production.
+  if (looksProd && !isProductionLinuxAppCheckAppID(linuxAppCheckAppID)) {
+    throw new Error(
+      `[security] Linux App Check app id is missing or malformed for production project "${projectId}". ` +
+        "Refusing to start: LINUX_APP_CHECK_APP_ID must be a provisioned Firebase Web app id (set " +
+        "LINUX_APP_CHECK_APP_ID or openburnbar.linux_app_check_app_id).",
+    );
+  }
 
   // The lower-trust desktop placeholders are always allowed; operators may allowlist additional ids
   // (e.g. the real Windows app id, once provisioned) via env/config. Deduped so a
@@ -552,7 +583,7 @@ function buildConfig(): EnvConfig {
     kmsKeyName,
     enforceAppCheck,
     requireHighRiskNonce,
-    ...resolveAppCheckAppIdSurface(openburnbar, looksProd),
+    ...resolveAppCheckAppIdSurface(openburnbar, projectId, looksProd),
     ...buildNumericSettings(openburnbar),
     ...buildAppleProductIds(openburnbar),
     ...buildStripeSettings(ctx.stripe),
