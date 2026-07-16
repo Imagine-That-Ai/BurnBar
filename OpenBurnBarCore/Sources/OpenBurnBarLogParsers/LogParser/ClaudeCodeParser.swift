@@ -15,7 +15,7 @@ import OpenBurnBarKernel
 ///  * usage-only passes skip conversation accumulation entirely (previously
 ///    the full conversation text was built and thrown away every tick) and
 ///    pre-filter lines by the quoted `"usage"` key before JSON decoding;
-///  * every decoded line runs inside `autoreleasepool` — the
+///  * every decoded line runs inside `ParserAutoreleasePool` — the
 ///    `JSONSerialization` graphs are autoreleased and parse loops run inside
 ///    dispatch blocks that never drain;
 ///  * `LogParseOptions.resourceGovernor` bounds bytes read per pass and
@@ -365,7 +365,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             }
 
             if line.isTerminated {
-                autoreleasepool {
+                ParserAutoreleasePool.run {
                     Self.reduceLine(line.text, tokenAccumulator: &accumulator, conversation: conversationAccumulator)
                 }
                 persistedOffset = line.endOffset
@@ -374,7 +374,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
                 // counted toward returned totals, never toward persisted
                 // state — the next scan re-reads it once complete.
                 var tail = accumulator
-                autoreleasepool {
+                ParserAutoreleasePool.run {
                     Self.reduceLine(line.text, tokenAccumulator: &tail, conversation: conversationAccumulator)
                 }
                 tailAccumulator = tail
