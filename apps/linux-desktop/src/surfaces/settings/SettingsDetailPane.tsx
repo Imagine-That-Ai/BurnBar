@@ -47,6 +47,25 @@ const UPDATE_CHANNEL_COPY: Record<'deb' | 'rpm' | 'appimage' | 'unknown', string
   unknown: 'Package channel could not be determined; use your distro package manager or release notes.'
 };
 
+function accountErasureCompleted(result: AccountCloudDataDeletionResult): boolean {
+  return result.ok
+    && result.cloudDataDeleted
+    && !result.retryRequired
+    && result.failedSecretDestroys === 0
+    && result.failedStorageDeletes === 0
+    && (result.deletedAuthUser || result.authUserAlreadyMissing);
+}
+
+function accountErasureRetryMessage(result: AccountCloudDataDeletionResult): string {
+  const reasons: string[] = [];
+  if (!result.cloudDataDeleted) reasons.push('cloud data is still present');
+  if (result.failedSecretDestroys > 0) reasons.push(`${result.failedSecretDestroys} secret deletion(s) failed`);
+  if (result.failedStorageDeletes > 0) reasons.push(`${result.failedStorageDeletes} storage deletion(s) failed`);
+  if (!result.deletedAuthUser && !result.authUserAlreadyMissing) reasons.push('the cloud account remains');
+  if (result.retryRequired && reasons.length === 0) reasons.push('the server requested another attempt');
+  return `Account erasure is incomplete; retry required. ${reasons.join('; ')}.`;
+}
+
 function SettingsDetailHeader({
   title,
   onDone
@@ -618,7 +637,12 @@ function AccountCloudDataDeletionControl({ fixtureMode }: { fixtureMode: boolean
       const next = await bridge.accountDeleteCloudData(ACCOUNT_CLOUD_DATA_DELETION_CONFIRMATION);
       setResult(next);
       setConfirmation('');
-      setPhase('success');
+      if (accountErasureCompleted(next)) {
+        setPhase('success');
+      } else {
+        setError(accountErasureRetryMessage(next));
+        setPhase('error');
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Account erasure did not complete; retry.');
       setPhase('error');

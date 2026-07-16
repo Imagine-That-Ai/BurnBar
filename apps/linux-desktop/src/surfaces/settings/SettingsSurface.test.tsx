@@ -190,6 +190,35 @@ describe('SettingsSurface', () => {
     await waitFor(() => expect(screen.getByText(/Cloud account data was deleted/i)).toBeTruthy());
   });
 
+  it('does not report partial account erasure as success and keeps retry available', async () => {
+    const accountDeleteCloudData = vi.fn(async () => ({
+      ok: false,
+      cloudDataDeleted: false,
+      retryRequired: true,
+      deletedDocuments: 4,
+      destroyedSecrets: 0,
+      failedSecretDestroys: 1,
+      deletedStoragePrefixes: 1,
+      failedStorageDeletes: 1,
+      deletedAuthUser: false,
+      authUserAlreadyMissing: false
+    }));
+    useShellStore.setState({ bridge: bridge({ accountDeleteCloudData }), fixtureMode: false });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Data & Privacy/i })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete cloud account data' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Account erasure confirmation' }), {
+      target: { value: 'DELETE MY ACCOUNT' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm account erasure' }));
+
+    await waitFor(() => expect(screen.getByText(/Account erasure is incomplete; retry required/i)).toBeTruthy());
+    expect(screen.queryByText(/Cloud account data was deleted/i)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry account erasure' })).toBeTruthy();
+  });
+
   it('clears only the daemon-owned local proxy route log after explicit confirmation', async () => {
     let routeRows = [{
       id: 'route-1',
