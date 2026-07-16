@@ -888,6 +888,511 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
     }
 
+    // MARK: - Spool seal, pending, and ordinal recovery contracts
+
+    func testAppendSealsActiveOnCumulativeByteLimitBeforeExceedingFileCap() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // One sample fits comfortably under the file cap; two together exceed it,
+        // so the second append must seal the active file first rather than drop
+        // the new line or merge into an oversized ready file.
+        let spool = try DomainCoreShadowEvidenceSpool(
+            directory: directory,
+            maxFileBytes: 700,
+            maxReadyFiles: 8,
+            maxSamplesPerFile: 100
+        )
+        let first = try XCTUnwrap(makeSample(legacyMicros: 1))
+        try spool.append(first)
+        let firstLine = try encodedLine(first)
+        let second = try XCTUnwrap(makeSample(legacyMicros: 2))
+        let secondLine = try encodedLine(second)
+        let cap = 700
+        XCTAssert(firstLine.count <= cap && firstLine.count + secondLine.count > cap,
+                  "fixture must exercise the size-seal branch, not the oversized-line guard")
+
+        try spool.append(second)
+
+        // The first sample was sealed to ready-0; the second now lives in active.
+        let readyFiles = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("ready-") }
+        XCTAssertEqual(readyFiles.count, 1)
+        let batch = try XCTUnwrap(spool.nextBatch(sealActive: false))
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [1])
+        XCTAssertEqual(try spool.pendingSampleCount(), 2,
+                       "sealing on size must not lose either sample")
+    }
+
+    func testNextBatchWithoutSealingKeepsActiveUnrolledAndReadyReadable() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory, maxSamplesPerFile: 1)
+        try spool.append(try XCTUnwrap(makeSample(micros: 1)))
+        // Second append seals the first to ready-0; active now holds only sample 2.
+        try spool.append(try XCTUnwrap(makeSample(micros: 2)))
+
+        // sealActive: false must read the already-sealed ready file without
+        // rolling the still-active sample into a new ready file.
+        let batch = try XCTUnwrap(spool.nextBatch(sealActive: false))
+        XCTAssertEqual(batch.samples.single?.legacyMicros, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("active.jsonl").path),
+                      "active file must remain untouched when sealActive is false")
+
+        // The ready batch persists until acknowledged (retry contract); after
+        // acknowledging it, no further ready file exists because active was never sealed.
+        try spool.acknowledge(batch.token)
+        XCTAssertNil(try spool.nextBatch(sealActive: false),
+                     "sealActive false must not produce a ready file from active")
+        XCTAssertEqual(try spool.pendingSampleCount(), 1,
+                       "only the unsealed active sample may remain pending")
+    }
+
+    func testPendingSampleCountSumsActiveAndReadyFiles() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory, maxSamplesPerFile: 1)
+        try spool.append(try XCTUnwrap(makeSample(micros: 7)))
+        // First append sealed nothing; active has one sample.
+        XCTAssertEqual(try spool.pendingSampleCount(), 1)
+        try spool.append(try XCTUnwrap(makeSample(micros: 8)))
+        // Second append seals the first to ready-0, then writes the second to active.
+        XCTAssertEqual(try spool.pendingSampleCount(), 2)
+    }
+
+    func testReadyFilesAreReadInOrdinalOrderAcrossGaps() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory, maxSamplesPerFile: 1)
+        // Seed ready files with non-contiguous ordinals, using the spool's exact
+        // sorted-key encoding so the round-trip equality check accepts them.
+        try sortedEncodedLine(try XCTUnwrap(makeSample(micros: 5))).write(to: readyURL(in: directory, ordinal: 5))
+        try sortedEncodedLine(try XCTUnwrap(makeSample(micros: 2))).write(to: readyURL(in: directory, ordinal: 2))
+        try sortedEncodedLine(try XCTUnwrap(makeSample(micros: 9))).write(to: readyURL(in: directory, ordinal: 9))
+
+        let first = try XCTUnwrap(spool.nextBatch(sealActive: false))
+        let second = try XCTUnwrap(spool.nextBatch(sealActive: false))
+        let third = try XCTUnwrap(spool.nextBatch(sealActive: false))
+        XCTAssertEqual(first.samples.single?.legacyMicros, 2)
+        XCTAssertEqual(second.samples.single?.legacyMicros, 5)
+        XCTAssertEqual(third.samples.single?.legacyMicros, 9)
+        XCTAssertEqual(first.token, "ready-00000000000000000002.jsonl")
+    }
+
+    // MARK: - isValidStored loaded-identity invariants
+
+    func testIsValidStoredRejectsPartialLoadedIdentityTuple() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let candidate = try XCTUnwrap(signedCandidate())
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let fresh = try XCTUnwrap(makeSample(legacyMicros: 42, observedAt: now))
+        let base = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh)) as? [String: Any])
+        // Only loadedCoreVersion set; abi/sha null -> neither fully-null nor fully-present.
+        var partial = base
+        partial["loadedCoreVersion"] = "0.3.0"
+        partial["loadedCoreAbiVersion"] = NSNull()
+        partial["loadedCoreSourceSha256"] = NSNull()
+        try writeReadyFile(in: directory, ordinal: 0, objects: [partial, base])
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: candidate,
+            now: now
+        ))
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [42],
+                       "partial loaded-identity tuple must be dropped, fresh sibling kept")
+    }
+
+    func testIsValidStoredRejectsPresentButMalformedLoadedIdentity() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let candidate = try XCTUnwrap(signedCandidate())
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let fresh = try XCTUnwrap(makeSample(legacyMicros: 42, observedAt: now))
+        let base = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh)) as? [String: Any])
+        func loaded(_ version: Any, _ abi: Any, _ sha: Any) -> [String: Any] {
+            var object = base
+            object["loadedCoreVersion"] = version
+            object["loadedCoreAbiVersion"] = abi
+            object["loadedCoreSourceSha256"] = sha
+            return object
+        }
+        // Outcome stays "match" so requiresExpectedIdentity applies; each loaded
+        // tuple is present but invalid in exactly one dimension.
+        let malformed: [[String: Any]] = [
+            loaded("01.0.0", 3, String(repeating: "b", count: 64)),   // non-canonical version
+            loaded("0.3.0", 0, String(repeating: "b", count: 64)),    // zero abi
+            loaded("0.3.0", 3, "not-a-sha")                            // bad sha pattern
+        ]
+        try writeReadyFile(in: directory, ordinal: 0, objects: malformed + [base])
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: candidate,
+            now: now
+        ))
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [42],
+                       "malformed present loaded-identity must be dropped, fresh sibling kept")
+    }
+
+    func testIsValidStoredRejectsMatchOutcomeWhenLoadedIdentityDiffersFromExpected() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let candidate = try XCTUnwrap(signedCandidate())
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let fresh = try XCTUnwrap(makeSample(legacyMicros: 42, observedAt: now))
+        let base = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh)) as? [String: Any])
+        // A record claiming "match" but whose loaded native identity differs
+        // from the expected candidate is internally inconsistent and must drop.
+        var forged = base
+        forged["outcome"] = "match"
+        forged["mismatchCategory"] = NSNull()
+        forged["loadedCoreVersion"] = "0.3.9"
+        forged["loadedCoreAbiVersion"] = 3
+        forged["loadedCoreSourceSha256"] = String(repeating: "b", count: 64)
+        try writeReadyFile(in: directory, ordinal: 0, objects: [forged, base])
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: candidate,
+            now: now
+        ))
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [42])
+    }
+
+    func testIsValidStoredRejectsNativeUnavailableWhenLoadedIdentityIsPresent() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let candidate = try XCTUnwrap(signedCandidate())
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let fresh = try XCTUnwrap(makeSample(legacyMicros: 42, observedAt: now))
+        let base = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh)) as? [String: Any])
+        // "native_unavailable" requires a fully-null loaded tuple; a present one
+        // would mean the native was actually loaded, so the record is contradictory.
+        var contradiction = base
+        contradiction["outcome"] = "mismatch"
+        contradiction["mismatchCategory"] = "native_unavailable"
+        contradiction["loadedCoreVersion"] = "0.3.0"
+        contradiction["loadedCoreAbiVersion"] = 3
+        contradiction["loadedCoreSourceSha256"] = String(repeating: "b", count: 64)
+        try writeReadyFile(in: directory, ordinal: 0, objects: [contradiction, base])
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: candidate,
+            now: now
+        ))
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [42])
+    }
+
+    func testIsValidStoredRejectsLoadedIdentityMismatchWhenLoadedEqualsExpected() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let candidate = try XCTUnwrap(signedCandidate())
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let fresh = try XCTUnwrap(makeSample(legacyMicros: 42, observedAt: now))
+        let base = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh)) as? [String: Any])
+        // Flagging "loaded_identity_mismatch" when loaded == expected is a false
+        // positive that must be rejected; the fresh sibling must still surface.
+        var falseMismatch = base
+        falseMismatch["outcome"] = "mismatch"
+        falseMismatch["mismatchCategory"] = "loaded_identity_mismatch"
+        falseMismatch["loadedCoreVersion"] = "0.3.0"
+        falseMismatch["loadedCoreAbiVersion"] = 3
+        falseMismatch["loadedCoreSourceSha256"] = String(repeating: "b", count: 64)
+        try writeReadyFile(in: directory, ordinal: 0, objects: [falseMismatch, base])
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: candidate,
+            now: now
+        ))
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [42])
+    }
+
+    func testIsValidStoredRejectsZeroExpectedAbiVersion() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let candidate = try XCTUnwrap(signedCandidate())
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let fresh = try XCTUnwrap(makeSample(legacyMicros: 42, observedAt: now))
+        let base = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh)) as? [String: Any])
+        var zeroAbi = base
+        zeroAbi["expectedCoreAbiVersion"] = 0
+        try writeReadyFile(in: directory, ordinal: 0, objects: [zeroAbi, base])
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: candidate,
+            now: now
+        ))
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [42])
+    }
+
+    func testMatchingCandidateFilterRejectsOnAbiMismatchEvenWhenCommitMatches() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let candidate = try XCTUnwrap(signedCandidate())
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let fresh = try XCTUnwrap(makeSample(legacyMicros: 42, observedAt: now))
+        let base = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh)) as? [String: Any])
+        // Same commit + source sha as the active candidate, but a different ABI.
+        // The candidate filter must reject on the abi field alone.
+        var wrongAbi = base
+        wrongAbi["expectedCoreAbiVersion"] = candidate.abiVersion + 1
+        try writeReadyFile(in: directory, ordinal: 0, objects: [wrongAbi, base])
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: candidate,
+            now: now
+        ))
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [42],
+                       "candidate filter must reject on abi mismatch even when commit matches")
+    }
+
+    func testMatchingCandidateFilterRejectsOnSourceShaMismatchEvenWhenCommitAndAbiMatch() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let candidate = try XCTUnwrap(signedCandidate())
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let fresh = try XCTUnwrap(makeSample(legacyMicros: 42, observedAt: now))
+        let base = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh)) as? [String: Any])
+        // Same commit + abi, but a different source sha. The candidate filter
+        // must reject on the source-sha field alone.
+        var wrongSha = base
+        wrongSha["expectedCoreSourceSha256"] = String(repeating: "c", count: 64)
+        try writeReadyFile(in: directory, ordinal: 0, objects: [wrongSha, base])
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: candidate,
+            now: now
+        ))
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [42],
+                       "candidate filter must reject on source-sha mismatch even when commit+abi match")
+    }
+
+    // MARK: - Timestamp and semver canonicalization
+
+    func testIsValidStoredAcceptsCanonicalTimestampsWithoutFractionalSeconds() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let candidate = try XCTUnwrap(signedCandidate())
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        // An older writer may have persisted timestamps without fractional seconds;
+        // the validator must still accept the canonical no-fraction form within the
+        // acceptance window.
+        let sample = try XCTUnwrap(makeSample(legacyMicros: 11, observedAt: now))
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(sample)) as? [String: Any])
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        object["observedAt"] = formatter.string(from: now)
+        try writeReadyFile(in: directory, ordinal: 0, objects: [object])
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: candidate,
+            now: now
+        ))
+        XCTAssertEqual(batch.samples.single?.legacyMicros, 11)
+        XCTAssertFalse(batch.samples.single?.observedAt.contains(".") ?? true)
+    }
+
+    func testIsValidStoredRejectsUnparseableTimestampThatMatchesShapeRegex() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let candidate = try XCTUnwrap(signedCandidate())
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let fresh = try XCTUnwrap(makeSample(legacyMicros: 42, observedAt: now))
+        let base = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh)) as? [String: Any])
+        // Shape-legal but calendarly invalid (month 13); the formatter must fail.
+        var bad = base
+        bad["observedAt"] = "2025-13-01T00:00:00.000Z"
+        try writeReadyFile(in: directory, ordinal: 0, objects: [bad, base])
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: candidate,
+            now: now
+        ))
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [42])
+    }
+
+    func testIsValidStoredAcceptsPrereleaseAndMetadataCoreVersions() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // Candidate core versions may carry semver prerelease/build metadata; the
+        // canonical-version check must accept them. No matchingCandidate is passed
+        // so the candidate filter does not constrain the version under test.
+        let sample = try XCTUnwrap(makeSample(legacyMicros: 9))
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(sample)) as? [String: Any])
+        object["expectedCoreVersion"] = "1.2.3-rc.1+build.7"
+        object["loadedCoreVersion"] = "1.2.3-rc.1+build.7"
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        try writeReadyFile(in: directory, ordinal: 0, objects: [object])
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: nil
+        ))
+        XCTAssertEqual(batch.samples.single?.expectedCoreVersion, "1.2.3-rc.1+build.7")
+        XCTAssertEqual(batch.samples.single?.loadedCoreVersion, "1.2.3-rc.1+build.7")
+    }
+
+    func testIsValidStoredRejectsOverlongCoreVersion() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let candidate = try XCTUnwrap(signedCandidate())
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let fresh = try XCTUnwrap(makeSample(legacyMicros: 42, observedAt: now))
+        let base = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh)) as? [String: Any])
+        var overlong = base
+        overlong["expectedCoreVersion"] = String(repeating: "0", count: 65)
+        try writeReadyFile(in: directory, ordinal: 0, objects: [overlong, base])
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: candidate,
+            now: now
+        ))
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [42],
+                       "core version beyond 64 chars must be rejected")
+    }
+
+    // MARK: - Acknowledgement validator bounds
+
+    func testAcknowledgementValidatorRejectsNegativeBatchSizeAndAcceptsZeroSum() throws {
+        XCTAssertThrowsError(try DomainCoreShadowAcknowledgementValidator.validate(
+            ["accepted": 0, "duplicates": 0],
+            batchSize: -1
+        )) { error in
+            guard case .invalidCallableResponse = error as? DomainCoreShadowEvidenceError else {
+                return XCTFail("expected invalidCallableResponse, got \(error)")
+            }
+        }
+        XCTAssertNoThrow(try DomainCoreShadowAcknowledgementValidator.validate(
+            ["accepted": 0, "duplicates": 0],
+            batchSize: 0
+        ))
+    }
+
+    func testAcknowledgementValidatorRejectsOverflowingAcceptedPlusDuplicates() throws {
+        // accepted + duplicates must not overflow Int and must equal batchSize.
+        let maxInt = Int.max
+        XCTAssertThrowsError(try DomainCoreShadowAcknowledgementValidator.validate(
+            ["accepted": maxInt, "duplicates": 1],
+            batchSize: maxInt
+        )) { error in
+            guard case .invalidCallableResponse = error as? DomainCoreShadowEvidenceError else {
+                return XCTFail("expected invalidCallableResponse, got \(error)")
+            }
+        }
+    }
+
+    func testAcknowledgementValidatorRejectsNonCallableResponseShape() throws {
+        // A response missing required keys or carrying wrong types must map to
+        // invalidCallableResponse, never crash.
+        for response: [String: Any] in [
+            [:],
+            ["accepted": "1", "duplicates": "0"],
+            ["accepted": 1]
+        ] {
+            XCTAssertThrowsError(try DomainCoreShadowAcknowledgementValidator.validate(response, batchSize: 1)) { error in
+                guard case .invalidCallableResponse = error as? DomainCoreShadowEvidenceError else {
+                    return XCTFail("expected invalidCallableResponse for \(response), got \(error)")
+                }
+            }
+        }
+    }
+
+    // MARK: - Coordinator re-entrancy and cancel contracts
+
+    func testConcurrentFlushIsReentrancyGuardedAndRunsOnce() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let submitter = RecordingDomainCoreShadowSubmitter()
+        let coordinator = DomainCoreShadowEvidenceUploadCoordinator(
+            spool: spool,
+            submitter: submitter,
+            activeChannel: "internal",
+            activeCandidate: try XCTUnwrap(signedCandidate()),
+            debounceNanoseconds: 1_000_000_000
+        )
+        try spool.append(try XCTUnwrap(makeSample(micros: 1)))
+
+        // Two concurrent flush() calls must collapse to a single in-flight run;
+        // the re-entrancy guard prevents double submission of the same batch.
+        async let first: Void = coordinator.flush()
+        async let second: Void = coordinator.flush()
+        _ = await (first, second)
+
+        let sizes = await submitter.batchSizes()
+        XCTAssertEqual(sizes, [1],
+                       "concurrent flush must not submit the same batch twice")
+        XCTAssertEqual(try spool.pendingSampleCount(), 0)
+    }
+
+    func testScheduledFlushCancelsEarlierPendingFlush() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let submitter = RecordingDomainCoreShadowSubmitter()
+        let coordinator = DomainCoreShadowEvidenceUploadCoordinator(
+            spool: spool,
+            submitter: submitter,
+            activeChannel: "internal",
+            activeCandidate: try XCTUnwrap(signedCandidate()),
+            debounceNanoseconds: 300_000_000
+        )
+        try spool.append(try XCTUnwrap(makeSample(micros: 1)))
+        await coordinator.scheduleFlush()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        // A second schedule before the first fires must cancel the first and
+        // re-arm from this point; only one flushed batch should ever result.
+        try spool.append(try XCTUnwrap(makeSample(micros: 2)))
+        await coordinator.scheduleFlush()
+        try await Task.sleep(nanoseconds: 500_000_000)
+
+        let sizes = await submitter.batchSizes()
+        XCTAssertEqual(sizes, [2],
+                       "rescheduling must coalesce pending samples into one batch")
+        XCTAssertEqual(try spool.pendingSampleCount(), 0)
+    }
+
+    private func writeReadyFile(in directory: URL, ordinal: UInt64, objects: [[String: Any]]) throws {
+        var data = Data()
+        for object in objects {
+            data.append(try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]))
+            data.append(0x0A)
+        }
+        try data.write(to: readyURL(in: directory, ordinal: ordinal))
+    }
+
     private func makeSample(
         channel: String = "internal",
         operation: String = "claude_quota",
@@ -942,6 +1447,14 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
 
     private func encodedLine(_ sample: DomainCoreShadowSampleV3) throws -> Data {
         var data = try JSONEncoder().encode(sample)
+        data.append(0x0A)
+        return data
+    }
+
+    private func sortedEncodedLine(_ sample: DomainCoreShadowSampleV3) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        var data = try encoder.encode(sample)
         data.append(0x0A)
         return data
     }
