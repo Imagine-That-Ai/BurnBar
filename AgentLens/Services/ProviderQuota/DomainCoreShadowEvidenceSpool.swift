@@ -150,12 +150,16 @@ final class DomainCoreShadowEvidenceSpool: Sendable {
         let samples: [DomainCoreShadowSampleV2]
     }
 
+    private static let directoryLockRegistry = OSAllocatedUnfairLock(
+        initialState: [String: OSAllocatedUnfairLock<Void>]()
+    )
+
     private let directory: URL
     private let activeURL: URL
     private let maxFileBytes: Int
     private let maxReadyFiles: Int
     private let maxSamplesPerFile: Int
-    private let fileAccess = OSAllocatedUnfairLock(initialState: ())
+    private let fileAccess: OSAllocatedUnfairLock<Void>
 
     init(
         directory: URL,
@@ -169,6 +173,15 @@ final class DomainCoreShadowEvidenceSpool: Sendable {
         self.maxFileBytes = maxFileBytes
         self.maxReadyFiles = maxReadyFiles
         self.maxSamplesPerFile = maxSamplesPerFile
+        let directoryKey = directory.standardizedFileURL.resolvingSymlinksInPath().path
+        self.fileAccess = Self.directoryLockRegistry.withLockUnchecked { locks in
+            if let existing = locks[directoryKey] {
+                return existing
+            }
+            let created = OSAllocatedUnfairLock(initialState: ())
+            locks[directoryKey] = created
+            return created
+        }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
     }
