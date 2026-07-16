@@ -1,5 +1,8 @@
 import Crypto
 import Foundation
+#if os(Linux)
+import Glibc
+#endif
 
 public enum LinuxSecretTrustLevel: String, Codable, CaseIterable, Sendable {
     case secretService = "secret_service"
@@ -182,7 +185,7 @@ public struct LinuxHeadlessSecretStoreBackend: LinuxSecretStoreBackend {
         trustLevel: LinuxSecretTrustLevel = .headlessPassphrase,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         credentialReader: @escaping @Sendable (String) throws -> String = { path in
-            try String(contentsOfFile: path, encoding: .utf8)
+            try LinuxHeadlessSecretStoreBackend.readSystemdCredential(path: path)
         },
         nowMillis: Int64 = 1_800_000_000_000,
         allowsEnvironmentSecrets: Bool = false
@@ -195,28 +198,188 @@ public struct LinuxHeadlessSecretStoreBackend: LinuxSecretStoreBackend {
     }
 
     public func readSecret(id: String, secretClass: LinuxHighValueSecretClass) throws -> LinuxSecretRecord? {
+        try Self.validateCredentialID(id)
         let envKey = "OPENBURNBAR_\(id.uppercased().replacingOccurrences(of: "-", with: "_"))"
         let value: String?
+        let source: LinuxHeadlessSecretSource
         if allowsEnvironmentSecrets, let env = environment[envKey]?.trimmedNonEmpty {
             value = env
+            source = .environment
         } else if let directory = environment["CREDENTIALS_DIRECTORY"]?.trimmedNonEmpty {
-            let path = URL(fileURLWithPath: directory).appendingPathComponent(id).path
-            value = try credentialReader(path).trimmingCharacters(in: .whitespacesAndNewlines).trimmedNonEmpty
+            guard Self.isAbsoluteCredentialDirectory(directory) else {
+                throw LinuxSecretStoreError.backendUnavailable("systemd credentials directory is invalid")
+            }
+            let path = URL(fileURLWithPath: directory, isDirectory: true)
+                .appendingPathComponent(id, isDirectory: false)
+                .path
+            do {
+                value = try credentialReader(path)
+            } catch LinuxHeadlessCredentialReadError.missing {
+                return nil
+            } catch let error as LinuxSecretStoreError {
+                throw error
+            } catch {
+                // Do not expose credential paths or OS error details through
+                // daemon RPC/diagnostics. A caller can retry after repairing
+                // the systemd credential mount.
+                throw LinuxSecretStoreError.backendUnavailable(
+                    "systemd credential file is unavailable or not trusted"
+                )
+            }
+            source = .systemdCredential
         } else {
             value = nil
+            source = .none
         }
-        guard let secret = value else { return nil }
+        guard let rawSecret = value else { return nil }
+        guard let secret = try Self.normalizeCredentialValue(rawSecret) else { return nil }
+        let resolvedTrustLevel: LinuxSecretTrustLevel =
+            source == .systemdCredential && trustLevel == .headlessPassphrase
+                ? .systemdCredential
+                : trustLevel
         return LinuxSecretRecord(
             secret: secret,
             metadata: LinuxSecretMetadata(
                 id: id,
                 secretClass: secretClass,
-                trustLevel: trustLevel,
+                trustLevel: resolvedTrustLevel,
                 backend: backendName,
                 createdAtMillis: nowMillis,
-                note: "Headless secret resolved from process environment or systemd credentials."
+                note: source == .systemdCredential
+                    ? "Headless secret resolved from an owner-only systemd credential file."
+                    : "Headless secret resolved from an explicitly enabled process environment."
             )
         )
+    }
+
+    private enum LinuxHeadlessSecretSource {
+        case none
+        case environment
+        case systemdCredential
+    }
+
+    private enum LinuxHeadlessCredentialReadError: Error {
+        case missing
+        case rejected
+        case tooLarge
+        case invalidEncoding
+    }
+
+    private static func validateCredentialID(_ id: String) throws {
+        guard id.isEmpty == false,
+              id.utf8.count <= 512,
+              id != ".",
+              id != "..",
+              id.contains("/") == false,
+              id.contains("\\") == false,
+              id.contains("\0") == false,
+              id.contains("\n") == false,
+              id.contains("\r") == false,
+              id.unicodeScalars.allSatisfy({ scalar in
+                  scalar.value >= 0x21 && scalar.value <= 0x7E
+              }) else {
+            throw LinuxSecretStoreError.invalidSecretID(id)
+        }
+    }
+
+    private static func isAbsoluteCredentialDirectory(_ directory: String) -> Bool {
+        directory.hasPrefix("/")
+            && directory.utf8.count <= 4_096
+            && directory.contains("\0") == false
+            && directory.contains("\n") == false
+            && directory.contains("\r") == false
+    }
+
+    private static func normalizeCredentialValue(_ raw: String) throws -> String? {
+        guard raw.contains("\0") == false else {
+            throw LinuxSecretStoreError.invalidSecretValue(
+                "systemd credential contains a NUL byte"
+            )
+        }
+        guard raw.utf8.count <= 16_384 else {
+            throw LinuxSecretStoreError.secretTooLarge(raw.utf8.count)
+        }
+        var secret = raw
+        if secret.hasSuffix("\n") {
+            secret.removeLast()
+            if secret.hasSuffix("\r") {
+                secret.removeLast()
+            }
+        }
+        guard secret.contains("\n") == false, secret.contains("\r") == false else {
+            throw LinuxSecretStoreError.invalidSecretValue(
+                "systemd credential must be a single line"
+            )
+        }
+        return secret.isEmpty ? nil : secret
+    }
+
+    @usableFromInline
+    static func readSystemdCredential(path: String) throws -> String {
+#if os(Linux)
+        let url = URL(fileURLWithPath: path, isDirectory: false)
+        let directoryURL = url.deletingLastPathComponent()
+        var directoryMetadata = stat()
+        let directoryStatus = directoryURL.path.withCString {
+            Glibc.lstat($0, &directoryMetadata)
+        }
+        guard directoryStatus == 0 else {
+            if errno == ENOENT { throw LinuxHeadlessCredentialReadError.missing }
+            throw LinuxHeadlessCredentialReadError.rejected
+        }
+        guard directoryMetadata.st_mode & S_IFMT == S_IFDIR,
+              directoryMetadata.st_uid == geteuid() || directoryMetadata.st_uid == 0,
+              directoryMetadata.st_mode & 0o022 == 0 else {
+            throw LinuxHeadlessCredentialReadError.rejected
+        }
+
+        let descriptor = path.withCString {
+            Glibc.open($0, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+        }
+        guard descriptor >= 0 else {
+            if errno == ENOENT { throw LinuxHeadlessCredentialReadError.missing }
+            throw LinuxHeadlessCredentialReadError.rejected
+        }
+        defer { _ = Glibc.close(descriptor) }
+
+        var metadata = stat()
+        guard Glibc.fstat(descriptor, &metadata) == 0,
+              metadata.st_mode & S_IFMT == S_IFREG,
+              metadata.st_uid == geteuid() || metadata.st_uid == 0,
+              metadata.st_mode & 0o077 == 0,
+              metadata.st_size >= 0,
+              metadata.st_size <= 16_384 else {
+            throw LinuxHeadlessCredentialReadError.rejected
+        }
+
+        var bytes = Data()
+        bytes.reserveCapacity(Int(metadata.st_size))
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        defer { buffer.withUnsafeMutableBytes { $0.initializeMemory(as: UInt8.self, repeating: 0) } }
+        while true {
+            let count = buffer.withUnsafeMutableBytes { rawBuffer in
+                Glibc.read(descriptor, rawBuffer.baseAddress, rawBuffer.count)
+            }
+            guard count >= 0 else { throw LinuxHeadlessCredentialReadError.rejected }
+            if count == 0 { break }
+            bytes.append(contentsOf: buffer.prefix(Int(count)))
+            guard bytes.count <= 16_384 else {
+                throw LinuxHeadlessCredentialReadError.tooLarge
+            }
+        }
+        guard let value = String(data: bytes, encoding: .utf8) else {
+            throw LinuxHeadlessCredentialReadError.invalidEncoding
+        }
+        return value
+#else
+        do {
+            return try String(contentsOfFile: path, encoding: .utf8)
+        } catch CocoaError.fileNoSuchFile {
+            throw LinuxHeadlessCredentialReadError.missing
+        } catch {
+            throw LinuxHeadlessCredentialReadError.rejected
+        }
+#endif
     }
 }
 
