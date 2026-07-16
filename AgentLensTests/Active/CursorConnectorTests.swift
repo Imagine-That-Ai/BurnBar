@@ -385,24 +385,15 @@ final class CursorConnectorTests: XCTestCase {
         try JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys])
             .write(to: configURL, options: .atomic)
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-        process.arguments = [scriptURL.path, configURL.path]
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = output
-        try process.run()
-        defer {
-            process.terminate()
-            process.waitUntilExit()
-        }
+        let (process, output) = try launchProxy(script: scriptURL, config: configURL)
+        defer { terminateProxyProcess(process, output: output) }
 
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.timeoutIntervalForRequest = 2
         let session = URLSession(configuration: sessionConfig)
         defer { session.invalidateAndCancel() }
         let baseURL = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)"))
-        try await waitForProxyHealth(baseURL: baseURL, session: session)
+        try await waitForProxyHealth(baseURL: baseURL, session: session, process: process, output: output)
 
         for _ in 0..<3 {
             let healthStatus = try await proxyResponseStatus(baseURL.appendingPathComponent("health"), session: session)
@@ -463,24 +454,15 @@ final class CursorConnectorTests: XCTestCase {
         try JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys])
             .write(to: configURL, options: .atomic)
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-        process.arguments = [scriptURL.path, configURL.path]
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = output
-        try process.run()
-        defer {
-            process.terminate()
-            process.waitUntilExit()
-        }
+        let (process, output) = try launchProxy(script: scriptURL, config: configURL)
+        defer { terminateProxyProcess(process, output: output) }
 
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.timeoutIntervalForRequest = 2
         let session = URLSession(configuration: sessionConfig)
         defer { session.invalidateAndCancel() }
         let baseURL = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)"))
-        try await waitForProxyHealth(baseURL: baseURL, session: session)
+        try await waitForProxyHealth(baseURL: baseURL, session: session, process: process, output: output)
 
         let authHeaders = ["Authorization": "Bearer \(bearerToken)"]
         let cfOneHeaders = authHeaders.merging(["Cf-Connecting-IP": "198.51.100.10"], uniquingKeysWith: { _, new in new })
@@ -676,10 +658,65 @@ final class CursorConnectorTests: XCTestCase {
         return Int(UInt16(bigEndian: address.sin_port))
     }
 
-    private func waitForProxyHealth(baseURL: URL, session: URLSession) async throws {
+    private func launchProxy(script: URL, config: URL) throws -> (Process, Pipe) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = [script.path, config.path]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        return (process, output)
+    }
+
+    /// Bounded subprocess teardown: SIGTERM → poll (≤3 s) → SIGKILL → poll (≤2 s).
+    /// Never blocks indefinitely — the pre-fix `defer { terminate(); waitUntilExit() }`
+    /// could hang the entire test suite when the child was a zombie or unresponsive.
+    private func terminateProxyProcess(_ process: Process, output: Pipe) {
+        if process.isRunning {
+            process.terminate()
+        }
+        // Poll for graceful exit (3 s budget).
+        for _ in 0..<150 where process.isRunning {
+            usleep(20_000)
+        }
+        if process.isRunning {
+            // Escalate to SIGKILL.
+            kill(process.processIdentifier, SIGKILL)
+            // Poll for forced exit (2 s budget).
+            for _ in 0..<100 where process.isRunning {
+                usleep(20_000)
+            }
+        }
+    }
+
+    private func captureProxyOutput(_ output: Pipe) -> String {
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private func waitForProxyHealth(
+        baseURL: URL,
+        session: URLSession,
+        process: Process,
+        output: Pipe
+    ) async throws {
         let healthURL = baseURL.appendingPathComponent("health")
         var lastError: Error?
         for _ in 0..<150 {
+            // Fail fast if the child already exited — the proxy will never
+            // become healthy and polling for 7.5 s only delays the inevitable.
+            if !process.isRunning {
+                let captured = captureProxyOutput(output)
+                throw NSError(
+                    domain: "CursorConnectorTests",
+                    code: 2,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "proxy process exited before becoming healthy",
+                        NSLocalizedRecoverySuggestionErrorKey: captured.trimmingCharacters(in: .whitespacesAndNewlines),
+                    ]
+                )
+            }
             do {
                 if try await proxyResponseStatus(healthURL, session: session) == 200 {
                     return
@@ -689,7 +726,15 @@ final class CursorConnectorTests: XCTestCase {
             }
             try await Task.sleep(nanoseconds: 50_000_000)
         }
-        throw lastError ?? NSError(domain: "CursorConnectorTests", code: 1)
+        let captured = captureProxyOutput(output)
+        throw lastError ?? NSError(
+            domain: "CursorConnectorTests",
+            code: 1,
+            userInfo: [
+                NSLocalizedDescriptionKey: "proxy did not become healthy within timeout",
+                NSLocalizedRecoverySuggestionErrorKey: captured.trimmingCharacters(in: .whitespacesAndNewlines),
+            ]
+        )
     }
 
     private func proxyResponseStatus(

@@ -134,10 +134,10 @@ jobs:
     # Observing-first: build-for-testing first (fail fast on compile errors),
     # then test-without-building (execute the already-compiled tests).
     # Cold cache + libsignal FFI + full xcodebuild build-for-testing of the
-    # mobile app target on a hosted runner can exceed 75 minutes; the app
-    # build+test lane (app-build-test above) uses 120 for the same reason.
-    # Match the 120-minute cap so a cold build does not time out before
-    # simulator test execution can start.
+    # mobile app target on a hosted runner can exceed 75 minutes. The test
+    # step runs only the three focused QA regression groups (not the full
+    # mobile suite) so test execution is fast after the build completes.
+    # The 120-min cap covers a cold SPM cache + FFI build + focused tests.
     timeout-minutes: 120
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     steps:
@@ -229,7 +229,10 @@ jobs:
             SWIFT_ENABLE_EXPLICIT_MODULES=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            -resultBundlePath "$RUNNER_TEMP/Mobile_TestResults.xcresult"
+            -resultBundlePath "$RUNNER_TEMP/Mobile_TestResults.xcresult" \
+            -only-testing:OpenBurnBarMobileTests/AssistantPendingThreadIsolationTests \
+            -only-testing:OpenBurnBarMobileTests/OpenBurnBarCoreTypeIdentityTests \
+            -only-testing:OpenBurnBarMobileTests/HermesServiceToolUseLoopTests
 
       - name: Guard against zero-test false greens
         run: ./scripts/ci/check-executed-test-count.sh "$RUNNER_TEMP/Mobile_TestResults.xcresult"
