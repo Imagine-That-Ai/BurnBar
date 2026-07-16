@@ -2177,9 +2177,7 @@ def validate_deletion_review_receipt(
         raise GateError(f"row {row_id}: deletion review class or outcome is invalid")
     qualified = (deletion_reviewers or {}).get(expected_review_class, set())
     if payload["reviewer"].casefold() not in qualified:
-        raise GateError(
-            f"row {row_id}: {expected_review_class} reviewer is not qualified by the trusted base catalog"
-        )
+        raise GateError(f"row {row_id}: {expected_review_class} reviewer is not qualified by the trusted base catalog")
     expected_plan_path = f"{DELETION_PLAN_ROOT}/{row_id}/{generation}.json"
     plan_path_value = repository_path(payload["planPath"], f"row {row_id} deletionReview.planPath")
     if plan_path_value != expected_plan_path:

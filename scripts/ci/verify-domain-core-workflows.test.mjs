@@ -113,6 +113,18 @@ test("native consumer jobs keep their measured execution margin and emulator she
   const android = workflowJob(core, "android");
   const apple = workflowJob(core, "apple");
   assert.match(
+    android,
+    /^      - name: Check out repository\n(?: {8}.*\n| {10}.*\n)* {10}ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}$/mu,
+  );
+  const androidCheckoutRef = android.indexOf(
+    "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
+  );
+  const canonicalCandidateResolution = android.indexOf(
+    "Resolve canonical candidate commit",
+  );
+  assert.ok(androidCheckoutRef >= 0);
+  assert.ok(androidCheckoutRef < canonicalCandidateResolution);
+  assert.match(
     core,
     /^  swift-consumer-contracts:\n(?:.*\n){0,4}    timeout-minutes: 90$/mu,
   );

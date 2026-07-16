@@ -849,7 +849,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
         verifier = GATE.SignedEvidenceVerifier()
         identity = {
             "candidateCommit": "1" * 40,
-            "coreVersion": "0.3.0",
+            "coreVersion": "1.2.3",
             "abiVersion": 3,
             "sourceSha256": "2" * 64,
         }
@@ -887,9 +887,12 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 "evidenceEnabled": False,
                 "modes": {domain: "legacy" for domain in GATE.PROFILE_DOMAIN_ROWS},
                 "candidateIdentity": identity,
+                "release": {
+                    "version": "1.2.3",
+                    "tag": "v1.2.3",
+                    "commit": activation["activationCommit"],
+                },
             }
-            profile.write_text(json.dumps(profile_value))
-            activation_path.write_text(json.dumps(activation))
             with tarfile.open(source_path, "w:gz") as source:
                 for name, value in (
                     ("OpenBurnBar/config/domain-core-build-profiles.json", b"{}\n"),
@@ -898,6 +901,10 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                     info = tarfile.TarInfo(name)
                     info.size = len(value)
                     source.addfile(info, io.BytesIO(value))
+            identity["sourceSha256"] = hashlib.sha256(source_path.read_bytes()).hexdigest()
+            activation["sourceSha256"] = identity["sourceSha256"]
+            profile.write_text(json.dumps(profile_value))
+            activation_path.write_text(json.dumps(activation))
             download_bytes = {}
             ROLLBACK_BUNDLE.create_bundle(
                 profile,
