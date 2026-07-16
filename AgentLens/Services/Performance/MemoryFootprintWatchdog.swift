@@ -21,8 +21,6 @@ import OpenBurnBarCore
 /// the condition loud is the safe reaction; exiting would lose user state.
 @MainActor
 final class MemoryFootprintWatchdog {
-    static let shared = MemoryFootprintWatchdog()
-
     /// Footprint that logs a single warning per crossing.
     static let softLimitBytes = ParserResourcePolicy.memorySoftLimitBytes
     /// Footprint at which background refresh work is shed. Sits above the
@@ -39,7 +37,7 @@ final class MemoryFootprintWatchdog {
     private var criticalTripped = false
     private weak var aggregator: UsageAggregator?
 
-    private init() {}
+    init() {}
 
     func start(aggregator: UsageAggregator) {
         self.aggregator = aggregator
