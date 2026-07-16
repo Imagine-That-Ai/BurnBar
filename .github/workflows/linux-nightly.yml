@@ -72,6 +72,7 @@ jobs:
           name: linux-parity-matched-performance-nightly
           path: ${{ env.OB_EVIDENCE_OUT }}/
           if-no-files-found: error
+          include-hidden-files: true
 
   linux-surface:
     name: ${{ matrix.label }}
