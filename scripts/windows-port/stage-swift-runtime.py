@@ -15,7 +15,10 @@ import sys
 
 
 DEPENDENCY_LINE = re.compile(r"^\s*([A-Za-z0-9_.+-]+\.dll)\s*$", re.IGNORECASE)
-REQUIRED_RESOURCE_BUNDLE = "OpenBurnBarCore_OpenBurnBarCore.resources"
+REQUIRED_RESOURCE_BUNDLES = (
+    "OpenBurnBarCore_OpenBurnBarCore.resources",
+    "OpenBurnBarCore_OpenBurnBarKernel.resources",
+)
 SYSTEM_LIBRARIES = {
     "advapi32.dll",
     "bcrypt.dll",
@@ -135,18 +138,19 @@ def stage(
             queued.add(key)
             queue.append(resolved)
 
-    resource_bundle = engine.parent / REQUIRED_RESOURCE_BUNDLE
-    if not resource_bundle.is_dir():
-        raise ValueError(f"required Swift resource bundle is missing: {resource_bundle}")
+    for bundle_name in REQUIRED_RESOURCE_BUNDLES:
+        resource_bundle = engine.parent / bundle_name
+        if not resource_bundle.is_dir():
+            raise ValueError(f"required Swift resource bundle is missing: {resource_bundle}")
 
-    for source in sorted(resource_bundle.rglob("*"), key=lambda item: item.as_posix().casefold()):
-        if not source.is_file():
-            continue
-        relative = Path(resource_bundle.name) / source.relative_to(resource_bundle)
-        target = destination / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-        staged.append((target, relative))
+        for source in sorted(resource_bundle.rglob("*"), key=lambda item: item.as_posix().casefold()):
+            if not source.is_file():
+                continue
+            relative = Path(resource_bundle.name) / source.relative_to(resource_bundle)
+            target = destination / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            staged.append((target, relative))
 
     files = [
         {
@@ -195,7 +199,7 @@ def main() -> int:
         return 1
     print(
         "stage-swift-runtime: staged "
-        f"{len(manifest['files'])} files (including {REQUIRED_RESOURCE_BUNDLE}) "
+        f"{len(manifest['files'])} files (including {', '.join(REQUIRED_RESOURCE_BUNDLES)}) "
         f"to {args.destination}"
     )
     return 0

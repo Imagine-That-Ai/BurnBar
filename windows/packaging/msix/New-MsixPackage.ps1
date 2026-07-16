@@ -16,7 +16,15 @@ param(
 
     [string]$MakeAppxPath = "",
     [string]$MakePriPath = "",
-    [string]$Publisher = ""
+
+    [ValidateSet("Sideload", "MicrosoftStore")]
+    [string]$DistributionChannel = "Sideload",
+
+    [string]$PackageName = "",
+    [string]$PackageDisplayName = "",
+    [string]$Publisher = "",
+    [string]$PublisherDisplayName = "",
+    [string]$StoreProductId = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,6 +35,31 @@ $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $publish = (Resolve-Path -LiteralPath $PublishDir).Path
 $manifestSource = Join-Path $scriptRoot "Package.appxmanifest"
 $imagesSource = Join-Path $scriptRoot "Images"
+
+if ($DistributionChannel -ceq "MicrosoftStore") {
+    $missingStoreIdentityFields = @()
+    if (-not $PackageName) {
+        $missingStoreIdentityFields += "PackageName"
+    }
+    if (-not $PackageDisplayName) {
+        $missingStoreIdentityFields += "PackageDisplayName"
+    }
+    if (-not $Publisher) {
+        $missingStoreIdentityFields += "Publisher"
+    }
+    if (-not $PublisherDisplayName) {
+        $missingStoreIdentityFields += "PublisherDisplayName"
+    }
+    if (-not $StoreProductId) {
+        $missingStoreIdentityFields += "StoreProductId"
+    }
+    if ($missingStoreIdentityFields.Count -gt 0) {
+        throw "MicrosoftStore packaging requires a complete Partner Center identity: $($missingStoreIdentityFields -join ', ')."
+    }
+}
+elseif ($PackageName -or $PackageDisplayName -or $PublisherDisplayName -or $StoreProductId) {
+    throw "PackageName, PackageDisplayName, PublisherDisplayName, and StoreProductId overrides are reserved for the MicrosoftStore channel."
+}
 
 if (-not (Test-Path -LiteralPath $manifestSource -PathType Leaf)) {
     throw "MSIX manifest not found at $manifestSource."
@@ -72,6 +105,30 @@ try {
     Copy-Item -Path (Join-Path $publish "*") -Destination $stage -Recurse -Force
     Copy-Item -LiteralPath $imagesSource -Destination (Join-Path $stage "Images") -Recurse -Force
 
+    $updatesDirectory = Join-Path $stage "Resources\Updates"
+    $latestFeed = Join-Path $updatesDirectory "latest-windows.json"
+    $pinnedUpdateKey = Join-Path $updatesDirectory "pinned-update-key.pub"
+    $distributionMarker = Join-Path $updatesDirectory "distribution-channel.json"
+    foreach ($requiredDirectUpdateFile in @($latestFeed, $pinnedUpdateKey)) {
+        if (-not (Test-Path -LiteralPath $requiredDirectUpdateFile -PathType Leaf)) {
+            throw "Publish output is missing required direct-update metadata: $requiredDirectUpdateFile"
+        }
+    }
+    if ($DistributionChannel -ceq "MicrosoftStore") {
+        Remove-Item -LiteralPath $latestFeed, $pinnedUpdateKey -Force
+        $distribution = [ordered]@{
+            schemaVersion = 1
+            channel = "microsoft-store"
+            productId = $StoreProductId
+        }
+        $distribution |
+            ConvertTo-Json |
+            Set-Content -LiteralPath $distributionMarker -Encoding utf8NoBOM
+    }
+    elseif (Test-Path -LiteralPath $distributionMarker) {
+        throw "Sideload publish input contains Microsoft Store distribution metadata: $distributionMarker"
+    }
+
     $nativeEngine = Join-Path $stage "OpenBurnBarCoreCAbi.dll"
     if (Test-Path -LiteralPath $nativeEngine -PathType Leaf) {
         Assert-OpenBurnBarNativeEngineManifest -Root $stage
@@ -92,8 +149,31 @@ try {
     }
     $identity.SetAttribute("Version", "$Version.0")
     $identity.SetAttribute("ProcessorArchitecture", $Architecture)
+    if ($PackageName) {
+        $identity.SetAttribute("Name", $PackageName)
+    }
     if ($Publisher) {
         $identity.SetAttribute("Publisher", $Publisher)
+    }
+    if ($PackageDisplayName) {
+        $packageDisplayNameNode = $document.SelectSingleNode(
+            "/pkg:Package/pkg:Properties/pkg:DisplayName",
+            $namespaces
+        )
+        if ($null -eq $packageDisplayNameNode) {
+            throw "Package.appxmanifest has no package DisplayName element."
+        }
+        $packageDisplayNameNode.InnerText = $PackageDisplayName
+    }
+    if ($PublisherDisplayName) {
+        $publisherDisplayNameNode = $document.SelectSingleNode(
+            "/pkg:Package/pkg:Properties/pkg:PublisherDisplayName",
+            $namespaces
+        )
+        if ($null -eq $publisherDisplayNameNode) {
+            throw "Package.appxmanifest has no PublisherDisplayName element."
+        }
+        $publisherDisplayNameNode.InnerText = $PublisherDisplayName
     }
 
     $application = $document.SelectSingleNode("/pkg:Package/pkg:Applications/pkg:Application", $namespaces)
@@ -224,6 +304,9 @@ try {
     Write-Host "MSIX created: $output"
     Write-Host "Architecture: $Architecture"
     Write-Host "Version: $Version.0"
+    Write-Host "Distribution channel: $DistributionChannel"
+    Write-Host "Package identity: $($identity.GetAttribute('Name'))"
+    Write-Host "Publisher: $($identity.GetAttribute('Publisher'))"
     Write-Host "Package resource map: $packageName ($($inputPris.Count) component PRI files)"
     Write-Host "SHA-256: $hash"
 }

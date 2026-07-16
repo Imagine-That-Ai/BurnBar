@@ -391,6 +391,19 @@ jobs:
             node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --windows-dir "publish/$rid"
           done
 
+      - name: Run parser smoke from the published x64 layout
+        shell: pwsh
+        env:
+          OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:OPENBURNBAR_CORE_CABI_PATH = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64/OpenBurnBarCoreCAbi.dll"
+          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj `
+            -c Release `
+            --filter FullyQualifiedName~NativeUsageEngineIntegrationTests `
+            --blame-hang `
+            --blame-hang-timeout 5m
+
       - name: Authenticode sign (Azure Artifact Signing — no staple analog)
         if: steps.config.outputs.codesign == 'true'
         uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
@@ -485,11 +498,10 @@ jobs:
             ( cd artifacts && sha256sum "OpenBurnBar-${VERSION}-${rid}.zip" >> "checksums-windows-v${VERSION}.txt" )
           done
 
-      - name: Build MSIX (MakeAppx — Store + sideload channel)
-        # The MSIX is the Store + sideload channel; the portable zip above is the
-        # direct-download / winget / Chocolatey channel. Both ship from the SAME
-        # app binaries (the WAP project references the app as its entry point;
-        # the app keeps WindowsPackageType=None so the portable build is unchanged).
+      - name: Build direct-download MSIX packages
+        # Direct-download MSIX and portable zip outputs share the same app binaries.
+        # The direct package uses the Artifact Signing certificate identity and the
+        # Ed25519-pinned OpenBurnBar updater. Store packages are built separately.
         run: |
           set -euo pipefail
           makeappx='${{ steps.packaging-tools.outputs.makeappx }}'
@@ -502,10 +514,103 @@ jobs:
             pwsh -NoProfile -NonInteractive -File windows/packaging/msix/New-MsixPackage.ps1 \
               -PublishDir "publish/$rid" -Architecture "$arch" -Version "$VERSION" \
               -OutputPath "$output" -MakeAppxPath "$makeappx" -MakePriPath "$makepri" \
-              -Publisher "$publisher"
+              -DistributionChannel Sideload -Publisher "$publisher"
           done
 
-      - name: Authenticode sign the MSIX (Azure Artifact Signing)
+      - name: Build Microsoft Store MSIX packages
+        shell: pwsh
+        env:
+          RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $identityPath = Join-Path $env:GITHUB_WORKSPACE "windows/packaging/msix/store-identity.json"
+          $identity = Get-Content -LiteralPath $identityPath -Raw | ConvertFrom-Json
+          if ($identity.schemaVersion -ne 1) {
+            throw "Unsupported Microsoft Store identity schema: $($identity.schemaVersion)"
+          }
+          foreach ($field in @(
+            "productId",
+            "productName",
+            "packageIdentityName",
+            "publisher",
+            "publisherDisplayName",
+            "packageFamilyName",
+            "packageSid",
+            "msaAppId"
+          )) {
+            if (-not $identity.$field) {
+              throw "Microsoft Store identity is missing $field."
+            }
+          }
+
+          $storeDirectory = Join-Path $env:GITHUB_WORKSPACE "artifacts/store"
+          New-Item -ItemType Directory -Path $storeDirectory -Force | Out-Null
+          $packages = @()
+          foreach ($rid in @("win-x64", "win-arm64")) {
+            $arch = if ($rid -ceq "win-arm64") { "arm64" } else { "x64" }
+            $output = Join-Path $storeDirectory "OpenBurnBar-${env:VERSION}-store-$arch.msix"
+            & windows/packaging/msix/New-MsixPackage.ps1 `
+              -PublishDir "publish/$rid" `
+              -Architecture $arch `
+              -Version $env:VERSION `
+              -OutputPath $output `
+              -MakeAppxPath '${{ steps.packaging-tools.outputs.makeappx }}' `
+              -MakePriPath '${{ steps.packaging-tools.outputs.makepri }}' `
+              -DistributionChannel MicrosoftStore `
+              -PackageName $identity.packageIdentityName `
+              -PackageDisplayName $identity.productName `
+              -Publisher $identity.publisher `
+              -PublisherDisplayName $identity.publisherDisplayName `
+              -StoreProductId $identity.productId
+            & windows/packaging/msix/Test-MsixPackageIdentity.ps1 `
+              -PackagePath $output `
+              -ExpectedName $identity.packageIdentityName `
+              -ExpectedPublisher $identity.publisher `
+              -ExpectedDisplayName $identity.productName `
+              -ExpectedPublisherDisplayName $identity.publisherDisplayName `
+              -ExpectedVersion "${env:VERSION}.0" `
+              -ExpectedArchitecture $arch `
+              -SignatureExpectation Unsigned `
+              -DistributionChannel MicrosoftStore `
+              -StoreProductId $identity.productId `
+              -MakeAppxPath '${{ steps.packaging-tools.outputs.makeappx }}'
+            $file = Get-Item -LiteralPath $output
+            $packages += [ordered]@{
+              architecture = $arch
+              fileName = $file.Name
+              sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              sizeBytes = $file.Length
+            }
+          }
+
+          $submission = [ordered]@{
+            schemaVersion = "openburnbar.windows.store-submission.v1"
+            release = [ordered]@{
+              version = $env:VERSION
+              sourceCommit = $env:RELEASE_COMMIT
+            }
+            product = [ordered]@{
+              productId = $identity.productId
+              productName = $identity.productName
+              packageIdentityName = $identity.packageIdentityName
+              publisher = $identity.publisher
+              publisherDisplayName = $identity.publisherDisplayName
+              packageFamilyName = $identity.packageFamilyName
+              packageSid = $identity.packageSid
+              msaAppId = $identity.msaAppId
+            }
+            packages = $packages
+            signing = [ordered]@{
+              submissionState = "unsigned"
+              finalSigner = "Microsoft Store"
+            }
+          }
+          $manifestPath = Join-Path $env:GITHUB_WORKSPACE "artifacts/store-submission-v${env:VERSION}.json"
+          $submission |
+            ConvertTo-Json -Depth 6 |
+            Set-Content -LiteralPath $manifestPath -Encoding utf8NoBOM
+
+      - name: Authenticode sign the direct-download MSIX
         if: steps.config.outputs.codesign == 'true'
         uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
@@ -522,7 +627,7 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
-      - name: Verify MSIX Authenticode signatures
+      - name: Verify direct-download MSIX Authenticode signatures
         if: steps.config.outputs.codesign == 'true'
         shell: pwsh
         run: |
@@ -550,6 +655,30 @@ jobs:
               throw "MSIX Authenticode signature is missing an RFC 3161 timestamp: $relativePath"
             }
             Write-Host "MSIX Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
+          }
+
+      - name: Verify Microsoft Store MSIX identity and unsigned state
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $identity = Get-Content `
+            -LiteralPath "windows/packaging/msix/store-identity.json" `
+            -Raw |
+            ConvertFrom-Json
+          foreach ($arch in @("x64", "arm64")) {
+            $packagePath = "artifacts/store/OpenBurnBar-${env:VERSION}-store-$arch.msix"
+            & windows/packaging/msix/Test-MsixPackageIdentity.ps1 `
+              -PackagePath $packagePath `
+              -ExpectedName $identity.packageIdentityName `
+              -ExpectedPublisher $identity.publisher `
+              -ExpectedDisplayName $identity.productName `
+              -ExpectedPublisherDisplayName $identity.publisherDisplayName `
+              -ExpectedVersion "${env:VERSION}.0" `
+              -ExpectedArchitecture $arch `
+              -SignatureExpectation Unsigned `
+              -DistributionChannel MicrosoftStore `
+              -StoreProductId $identity.productId `
+              -MakeAppxPath '${{ steps.packaging-tools.outputs.makeappx }}'
           }
 
       - name: Exercise signed x64 MSIX install and sustained-launch lifecycle
@@ -599,7 +728,10 @@ jobs:
             "OpenBurnBar-${VERSION}-win-x64.zip" \
             "OpenBurnBar-${VERSION}-win-arm64.zip" \
             "OpenBurnBar-${VERSION}-x64.msix" \
-            "OpenBurnBar-${VERSION}-arm64.msix"; do
+            "OpenBurnBar-${VERSION}-arm64.msix" \
+            "store/OpenBurnBar-${VERSION}-store-x64.msix" \
+            "store/OpenBurnBar-${VERSION}-store-arm64.msix" \
+            "store-submission-v${VERSION}.json"; do
             if [[ ! -f "artifacts/$file" ]]; then
               echo "::error::Mandatory Windows release package is missing: artifacts/$file"
               exit 1
@@ -709,7 +841,7 @@ jobs:
           set -euo pipefail
           mkdir -p sbom-input
           shopt -s nullglob
-          archives=(artifacts/*.zip artifacts/*.msix)
+          archives=(artifacts/*.zip artifacts/*.msix artifacts/store/*.msix)
           if [[ "${#archives[@]}" -eq 0 ]]; then
             echo "::error::No Windows packages are available for SBOM generation."
             exit 1
@@ -829,9 +961,9 @@ jobs:
 
           attest "$sbom"
           attest "$vex"
-          for f in artifacts/*; do
-            [[ -f "$f" ]] && attest "$f"
-          done
+          while IFS= read -r -d '' f; do
+            attest "$f"
+          done < <(find artifacts -type f -print0 | sort -z)
 
       - name: Upload provenance bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
