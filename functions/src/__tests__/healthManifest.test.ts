@@ -283,6 +283,7 @@ describe("health endpoint runtime artifact manifest and production identity", ()
     // Negative control: the sha is a real 64-hex digest, not a placeholder.
     const manifest = dcField(dc, "artifactManifest");
     const sha = isRecord(manifest) ? Reflect.get(manifest, "sha256") : undefined;
+    expect(sha).toEqual(expect.stringMatching(/^[0-9a-f]{64}$/u));
   });
 
   // ---- Missing manifest → null, not fabricated ----
