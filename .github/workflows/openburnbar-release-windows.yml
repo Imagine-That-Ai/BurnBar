@@ -397,9 +397,15 @@ jobs:
           OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"
         run: |
           $ErrorActionPreference = "Stop"
-          $env:OPENBURNBAR_CORE_CABI_PATH = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64/OpenBurnBarCoreCAbi.dll"
+          $publishedRoot = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64"
+          $smokeRoot = Join-Path $env:RUNNER_TEMP "openburnbar-published-x64-parser-smoke"
+          Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
+          Copy-Item -Path (Join-Path $publishedRoot "*") -Destination $smokeRoot -Recurse -Force
+          $env:OPENBURNBAR_CORE_CABI_PATH = Join-Path $smokeRoot "OpenBurnBarCoreCAbi.dll"
           dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj `
             -c Release `
+            --output $smokeRoot `
             --filter FullyQualifiedName~NativeUsageEngineIntegrationTests `
             --blame-hang `
             --blame-hang-timeout 5m
