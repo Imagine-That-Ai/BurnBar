@@ -194,6 +194,12 @@ linux_security_tests=(
 )
 
 daemon_linux_tests=(
+    LinuxCloudDataControlTests/testDeleteDecodesAuthoritativeSummaryAfterConfirmation
+    LinuxCloudDataControlTests/testDeleteRequiresExactConfirmationToken
+    LinuxCloudDataControlTests/testExportForwardsProofHeadersAndReturnsOnlyCallablePayload
+    LinuxCloudDataControlTests/testExportRejectsExpiredJWTBeforeTransport
+    LinuxCloudDataControlTests/testExportRejectsMalformedCallableResponse
+    LinuxCloudDataControlTests/testExportRejectsSignedOutTokenBeforeTransport
     BurnBarChatThreadServiceTests/testAppendRetryIsIdempotentAndConflictingReuseFails
     BurnBarChatThreadServiceTests/testAppendedTimestampsUseGRDBTextFormatForMixedMacOSThreads
     BurnBarChatThreadServiceTests/testAttachmentColumnIsAddedToOlderChatSchema

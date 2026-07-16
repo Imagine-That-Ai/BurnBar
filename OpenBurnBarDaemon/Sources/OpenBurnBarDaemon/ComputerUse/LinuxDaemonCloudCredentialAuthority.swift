@@ -690,6 +690,67 @@ public actor LinuxDaemonCloudCredentialAuthority {
         }
     }
 
+    /// Forward a trusted-device-authorized data export through the daemon. The
+    /// renderer never receives Firebase credentials or constructs action proofs;
+    /// a future trusted-device bridge supplies the opaque proof envelope.
+    public func exportUserData(
+        domains: [String]? = nil,
+        nonce: String,
+        trustedDeviceId: String,
+        actionProof: LinuxCloudTrustedDeviceActionProof
+    ) async throws -> Data {
+        guard let configuration else { throw LinuxCloudAuthAuthorityError.configurationRequired }
+        let context = try await credentialContext()
+        let request = LinuxCloudDataExportRequest(
+            domains: domains,
+            nonce: nonce,
+            trustedDeviceId: trustedDeviceId,
+            actionProof: actionProof
+        )
+        do {
+            return try await http.exportUserData(
+                functionsBaseURL: configuration.functionsBaseURL,
+                idToken: context.idToken,
+                appCheckToken: context.appCheckToken,
+                request: request
+            )
+        } catch let error as LinuxCloudAuthHTTPError {
+            throw Self.map(error)
+        }
+    }
+
+    /// Forward an explicitly confirmed, trusted-device-authorized account
+    /// erasure. The confirmation phrase is checked before the irreversible
+    /// callable is sent; server-side erasure remains the source of truth.
+    public func deleteUserCloudData(
+        confirmationToken: String,
+        nonce: String,
+        trustedDeviceId: String,
+        actionProof: LinuxCloudTrustedDeviceActionProof
+    ) async throws -> LinuxCloudDataDeletionResponse {
+        guard let configuration else { throw LinuxCloudAuthAuthorityError.configurationRequired }
+        guard confirmationToken == LinuxCloudDataDeletionRequest.confirmationToken else {
+            throw LinuxCloudAuthAuthorityError.operationMismatch
+        }
+        let context = try await credentialContext()
+        let request = LinuxCloudDataDeletionRequest(
+            confirmation: confirmationToken,
+            nonce: nonce,
+            trustedDeviceId: trustedDeviceId,
+            actionProof: actionProof
+        )
+        do {
+            return try await http.deleteUserCloudData(
+                functionsBaseURL: configuration.functionsBaseURL,
+                idToken: context.idToken,
+                appCheckToken: context.appCheckToken,
+                request: request
+            )
+        } catch let error as LinuxCloudAuthHTTPError {
+            throw Self.map(error)
+        }
+    }
+
     private func installationVerificationDescriptor() -> InstallationVerificationDescriptor? {
         guard let identity = try? identityStore.loadOrCreate() else { return nil }
         let digest = PlatformCrypto.sha256Hex(identity.pairingKeypair.publicKeyRaw)
