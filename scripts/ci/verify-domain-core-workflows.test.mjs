@@ -168,6 +168,21 @@ test("native consumer jobs keep their measured execution margin and emulator she
   const restoreSwiftArtifacts = swiftConsumer.indexOf(
     "Restore checked-in Swift artifacts after debug validation",
   );
+  const androidAppBundle = android.indexOf(
+    "Build and verify a signed Android app bundle",
+  );
+  const restoreAndroidAar = android.indexOf(
+    "Restore checked-in Android AAR after candidate validation",
+  );
+  const emitAndroidProof = android.indexOf("Emit Android proof fragment");
+  assert.ok(androidAppBundle >= 0);
+  assert.ok(restoreAndroidAar >= 0);
+  assert.ok(androidAppBundle < restoreAndroidAar);
+  assert.ok(restoreAndroidAar < emitAndroidProof);
+  assert.match(
+    android,
+    /git restore --source=HEAD -- Vendor\/openburnbar-domain-core\.aar[\s\S]*git status --porcelain=v1 --untracked-files=all[\s\S]*exit 1/u,
+  );
   const emitSwiftProof = swiftConsumer.indexOf(
     "Emit Swift consumer proof fragment",
   );

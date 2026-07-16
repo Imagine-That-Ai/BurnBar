@@ -1101,6 +1101,15 @@ jobs:
           cd ..
           node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "${{ steps.candidate.outputs.candidate_commit }}" --android-aab android/app/build/outputs/bundle/debug/app-debug.aab
 
+      - name: Restore checked-in Android AAR after candidate validation
+        run: |
+          git restore --source=HEAD -- Vendor/openburnbar-domain-core.aar
+          status="$(git status --porcelain=v1 --untracked-files=all)"
+          if [[ -n "$status" ]]; then
+            printf 'unexpected dirty path after Android candidate validation:\n%s\n' "$status" >&2
+            exit 1
+          fi
+
       - name: Emit Android proof fragment
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
