@@ -4438,7 +4438,17 @@ fn pet_companion_status() -> PetCompanionStatus {
 // ───────────────── P12: Mercury media ─────────────────
 #[tauri::command]
 fn media_status() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.media.status", Some(serde_json::json!({})))
+    let mut status = call_daemon_method("daemon.media.status", Some(serde_json::json!({})))?;
+    let viewer_capability = serde_json::to_value(media::MediaViewer::capability())
+        .map_err(|error| format!("media_viewer_capability_encode_failed:{error}"))?;
+    let Some(object) = status.as_object_mut() else {
+        return Err("media_status_invalid_payload".to_string());
+    };
+    // Keep the daemon capability and shell-local rendering capability in one
+    // typed response. The daemon can capture frames even when this process
+    // cannot decode or display them.
+    object.insert("viewerCapability".to_string(), viewer_capability);
+    Ok(status)
 }
 
 #[tauri::command]

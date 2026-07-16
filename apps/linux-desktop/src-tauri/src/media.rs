@@ -29,7 +29,12 @@ pub struct MediaViewerCapability {
     pub feature_enabled: bool,
     pub can_decode_vp9: bool,
     pub has_video_sink: bool,
+    /// Stable machine-readable state used by the typed media status bridge.
+    /// Keep this distinct from the human-facing install hint so diagnostics
+    /// and UI copy can evolve independently.
+    pub status: &'static str,
     pub reason: Option<String>,
+    pub install_hint: Option<&'static str>,
 }
 
 pub struct MediaViewer {
@@ -72,14 +77,26 @@ impl MediaViewer {
         #[cfg(feature = "media-gst")]
         {
             let capabilities = openburnbar_media::viewer_probe();
-            let reason = if capabilities.available() {
-                None
+            let (status, reason, install_hint) = if capabilities.available() {
+                ("available", None, None)
             } else if !capabilities.backend_available {
-                Some("gstreamer_backend_unavailable".to_string())
+                (
+                    "gstreamer_backend_unavailable",
+                    Some("gstreamer_backend_unavailable".to_string()),
+                    Some("Install the GStreamer 1.0 runtime, then restart OpenBurnBar."),
+                )
             } else if !capabilities.vp9_decoder_available {
-                Some("gstreamer_vp9_decoder_missing".to_string())
+                (
+                    "gstreamer_vp9_decoder_missing",
+                    Some("gstreamer_vp9_decoder_missing".to_string()),
+                    Some("Install a GStreamer VP9 decoder plugin (for example gstreamer1.0-libav), then restart OpenBurnBar."),
+                )
             } else {
-                Some("gstreamer_video_sink_missing".to_string())
+                (
+                    "gstreamer_video_sink_missing",
+                    Some("gstreamer_video_sink_missing".to_string()),
+                    Some("Install a native GStreamer video sink (for example gstreamer1.0-plugins-good), then restart OpenBurnBar."),
+                )
             };
             return MediaViewerCapability {
                 available: capabilities.available(),
@@ -87,7 +104,9 @@ impl MediaViewer {
                 feature_enabled: true,
                 can_decode_vp9: capabilities.vp9_decoder_available,
                 has_video_sink: capabilities.video_sink_available,
+                status,
                 reason,
+                install_hint,
             };
         }
 
@@ -99,7 +118,11 @@ impl MediaViewer {
                 feature_enabled: false,
                 can_decode_vp9: false,
                 has_video_sink: false,
+                status: "built_without_gstreamer",
                 reason: Some("linux_media_viewer_built_without_gstreamer".to_string()),
+                install_hint: Some(
+                    "Install the packaged Linux build with GStreamer support, or rebuild with --features media-gst.",
+                ),
             }
         }
     }
@@ -361,14 +384,32 @@ mod tests {
 
     #[test]
     #[cfg(not(feature = "media-gst"))]
+    fn viewer_capability_serializes_stable_status_and_install_hint() {
+        let value =
+            serde_json::to_value(super::MediaViewer::capability()).expect("serialize capability");
+        assert_eq!(value["status"], "built_without_gstreamer");
+        assert_eq!(value["featureEnabled"], false);
+        assert_eq!(
+            value["installHint"],
+            "Install the packaged Linux build with GStreamer support, or rebuild with --features media-gst."
+        );
+    }
+
+    #[test]
+    #[cfg(not(feature = "media-gst"))]
     fn viewer_capability_is_explicitly_stubbed_without_gstreamer() {
         let capability = super::MediaViewer::capability();
         assert!(!capability.available);
         assert_eq!(capability.renderer, "stub");
         assert!(!capability.feature_enabled);
+        assert_eq!(capability.status, "built_without_gstreamer");
         assert_eq!(
             capability.reason.as_deref(),
             Some("linux_media_viewer_built_without_gstreamer")
+        );
+        assert_eq!(
+            capability.install_hint,
+            Some("Install the packaged Linux build with GStreamer support, or rebuild with --features media-gst.")
         );
     }
 }

@@ -189,6 +189,52 @@ describe('P12 Mercury media section', () => {
     expect(screen.getByText('Phase: Connecting')).toBeTruthy();
   });
 
+  it('hides dead call controls when the shell viewer lacks a decoder while preserving file transfer', async () => {
+    useShellStore.setState({
+      bridge: bridgeWithMedia(
+        Promise.resolve({
+          capabilityAvailable: true,
+          pairedDevices: [],
+          viewerCapability: {
+            available: false,
+            renderer: 'media-gst',
+            featureEnabled: true,
+            canDecodeVp9: false,
+            hasVideoSink: true,
+            status: 'gstreamer_vp9_decoder_missing',
+            reason: 'gstreamer_vp9_decoder_missing',
+            installHint: 'Install a VP9 decoder plugin, then restart OpenBurnBar.'
+          }
+        }),
+        {
+          mediaSessionState: vi.fn().mockResolvedValue({
+            phase: 'ringing',
+            requestId: 'incoming-1',
+            peerName: 'Live iPhone',
+            kind: 'call',
+            capabilityAvailable: true
+          }),
+          mediaFileOfferList: vi.fn().mockResolvedValue({
+            capabilityAvailable: true,
+            downloadDirectory: '/home/alberto/Downloads',
+            transfers: []
+          })
+        }
+      )
+    });
+    render(<MediaSection />);
+    await act(async () => {
+      await useMediaStore.getState().load();
+    });
+    expect(screen.getByText('Calls and screen sharing are paused on this Linux session')).toBeTruthy();
+    expect(screen.getByText('The GStreamer runtime is present, but its VP9 decoder is missing.')).toBeTruthy();
+    expect(screen.getByText('Install a VP9 decoder plugin, then restart OpenBurnBar.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Decline' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'End' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Send file' })).toBeTruthy();
+  });
+
   it('renders incoming file offer actions and completed path rows', async () => {
     const completed = fileTransfer({
       phase: 'completed',

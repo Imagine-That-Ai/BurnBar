@@ -6,7 +6,7 @@ import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { DeviceRow } from './DeviceRow.js';
 import { MercuryCallHUD } from './MercuryCallHUD.js';
 import { SessionStatusCard } from './SessionStatusCard.js';
-import type { MercuryFileTransfer } from '../../tauriBridge.js';
+import type { MercuryFileTransfer, MercuryViewerCapability } from '../../tauriBridge.js';
 
 export function MediaSection() {
   const status = useMediaStore((s) => s.status);
@@ -31,6 +31,8 @@ export function MediaSection() {
   const scriptFixtureFileTransfer = useMediaStore((s) => s.scriptFixtureFileTransfer);
   const daemonStatus = useDaemonStatusCopy();
   const fixtureMode = useShellStore((s) => s.fixtureMode);
+  const viewerCapability = status?.viewerCapability;
+  const viewerUnavailable = Boolean(viewerCapability && !viewerCapability.available);
 
   useLaneLoad(load);
 
@@ -49,14 +51,18 @@ export function MediaSection() {
     );
   } else if (loadState === 'capability-absent') {
     body = (
-      <div className="p12-absent-state" role="status">
-        <span className="p12-absent-kicker">Capability absent</span>
-        <h3>Media engine is unavailable in this Linux session</h3>
-        <p>
-          The shell checked the daemon's Mercury capability contract. Repair the daemon, runtime
-          directory, portal, or codec dependency reported in Support, then retry this route.
-        </p>
-      </div>
+      viewerUnavailable ? (
+        <MercuryViewerCapabilityNotice capability={viewerCapability!} />
+      ) : (
+        <div className="p12-absent-state" role="status">
+          <span className="p12-absent-kicker">Capability absent</span>
+          <h3>Media engine is unavailable in this Linux session</h3>
+          <p>
+            The shell checked the daemon's Mercury capability contract. Repair the daemon, runtime
+            directory, portal, or codec dependency reported in Support, then retry this route.
+          </p>
+        </div>
+      )
     );
   } else if (loadState === 'error') {
     body = (
@@ -67,6 +73,7 @@ export function MediaSection() {
   } else if (loadState === 'empty') {
     body = (
       <>
+        {viewerUnavailable ? <MercuryViewerCapabilityNotice capability={viewerCapability!} /> : null}
         <p className="muted">No paired devices — pair from the mobile app.</p>
         <MercuryFileTransferPanel
           transfers={fileTransfers}
@@ -85,13 +92,16 @@ export function MediaSection() {
   } else {
     body = (
       <>
-        <MercuryCallHUD
-          call={callState}
-          error={callError}
-          onAccept={(requestId) => void acceptCall(requestId)}
-          onDecline={(requestId) => void declineCall(requestId)}
-          onEnd={() => void endCall()}
-        />
+        {viewerUnavailable ? <MercuryViewerCapabilityNotice capability={viewerCapability!} /> : null}
+        {!viewerUnavailable ? (
+          <MercuryCallHUD
+            call={callState}
+            error={callError}
+            onAccept={(requestId) => void acceptCall(requestId)}
+            onDecline={(requestId) => void declineCall(requestId)}
+            onEnd={() => void endCall()}
+          />
+        ) : null}
         {status?.activeSession ? (
           <SessionStatusCard session={status.activeSession} events={stageEvents} />
         ) : (
@@ -136,6 +146,35 @@ export function MediaSection() {
       {body}
     </section>
   );
+}
+
+function MercuryViewerCapabilityNotice({ capability }: { capability: MercuryViewerCapability }) {
+  return (
+    <div className="p12-absent-state p12-viewer-absent" role="status">
+      <span className="p12-absent-kicker">Viewer unavailable</span>
+      <h3>Calls and screen sharing are paused on this Linux session</h3>
+      <p>{viewerCapabilityReason(capability)}</p>
+      {capability.installHint ? <p className="p12-viewer-install-hint">{capability.installHint}</p> : null}
+      <small>File transfer remains available when the daemon advertises it.</small>
+    </div>
+  );
+}
+
+function viewerCapabilityReason(capability: MercuryViewerCapability): string {
+  switch (capability.status) {
+    case 'built_without_gstreamer':
+      return 'This Linux build was compiled without the GStreamer viewer feature.';
+    case 'gstreamer_backend_unavailable':
+      return 'The GStreamer runtime is not available to the packaged shell.';
+    case 'gstreamer_vp9_decoder_missing':
+      return 'The GStreamer runtime is present, but its VP9 decoder is missing.';
+    case 'gstreamer_video_sink_missing':
+      return 'The GStreamer runtime is present, but no native video sink is registered.';
+    case 'unknown':
+      return capability.reason ?? 'The packaged shell cannot verify a native Mercury video viewer.';
+    case 'available':
+      return 'The native Mercury viewer is ready.';
+  }
 }
 
 function formatBytes(bytes: number): string {

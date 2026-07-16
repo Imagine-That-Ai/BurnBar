@@ -940,6 +940,9 @@ export type MercuryMediaStatus = {
   capabilityAvailable: boolean;
   pairedDevices: MercuryPairedDevice[];
   activeSession?: MercuryActiveSession;
+  /** Shell-local renderer capability; daemon capture may still be available. */
+  viewerCapability?: MercuryViewerCapability;
+  reason?: string;
 };
 export type MercuryMediaSessionState = {
   phase: MercuryCallPhase;
@@ -958,6 +961,23 @@ export type MercuryMediaCapability = {
   canReceiveCalls: boolean;
   canViewScreenShare: boolean;
   reason?: string;
+};
+export type MercuryViewerCapabilityStatus =
+  | 'available'
+  | 'built_without_gstreamer'
+  | 'gstreamer_backend_unavailable'
+  | 'gstreamer_vp9_decoder_missing'
+  | 'gstreamer_video_sink_missing'
+  | 'unknown';
+export type MercuryViewerCapability = {
+  available: boolean;
+  renderer: 'media-gst' | 'stub' | 'unknown';
+  featureEnabled: boolean;
+  canDecodeVp9: boolean;
+  hasVideoSink: boolean;
+  status: MercuryViewerCapabilityStatus;
+  reason?: string;
+  installHint?: string;
 };
 export type MercuryFileTransferDirection = 'inbound' | 'outbound';
 export type MercuryFileTransferPhase =
@@ -4378,9 +4398,63 @@ function isCapabilityAbsentError(e: unknown): boolean {
   return /unknown|unsupported|not implemented|no such method/i.test(message);
 }
 
+function normalizeMercuryViewerStatus(
+  raw: string,
+  available: boolean,
+  reason?: string
+): MercuryViewerCapabilityStatus {
+  const known: MercuryViewerCapabilityStatus[] = [
+    'available',
+    'built_without_gstreamer',
+    'gstreamer_backend_unavailable',
+    'gstreamer_vp9_decoder_missing',
+    'gstreamer_video_sink_missing'
+  ];
+  if (known.includes(raw as MercuryViewerCapabilityStatus)) {
+    return raw as MercuryViewerCapabilityStatus;
+  }
+  if (available) return 'available';
+  if (reason && known.includes(reason as MercuryViewerCapabilityStatus)) {
+    return reason as MercuryViewerCapabilityStatus;
+  }
+  return 'unknown';
+}
+
+function mapMercuryViewerCapability(raw: RawJsonValue): MercuryViewerCapability {
+  const available = pick(raw, 'available', 'capabilityAvailable', 'capability_available') === true;
+  const rendererRaw = str(pick(raw, 'renderer', 'source'), 'unknown');
+  const renderer = rendererRaw === 'media-gst' || /MediaCapture/i.test(rendererRaw)
+    ? 'media-gst'
+    : rendererRaw === 'stub'
+      ? 'stub'
+      : 'unknown';
+  const reason = str(pick(raw, 'reason', 'detail', 'error')) || undefined;
+  const status = normalizeMercuryViewerStatus(
+    str(pick(raw, 'status', 'state')),
+    available,
+    reason
+  );
+  return {
+    available,
+    renderer,
+    featureEnabled: pick(raw, 'featureEnabled', 'feature_enabled') === true,
+    canDecodeVp9: pick(raw, 'canDecodeVp9', 'can_decode_vp9') === true,
+    hasVideoSink: pick(raw, 'hasVideoSink', 'has_video_sink') === true,
+    status,
+    ...(reason ? { reason } : {}),
+    ...(str(pick(raw, 'installHint', 'install_hint'))
+      ? { installHint: str(pick(raw, 'installHint', 'install_hint')) }
+      : {})
+  };
+}
+
 function mapMercuryMediaStatus(raw: RawJsonValue): MercuryMediaStatus {
   const absent = Boolean(pick(raw, 'capabilityAbsent', 'capability_absent'));
   const capability = pick(raw, 'capability');
+  const viewerRaw = pick(raw, 'viewerCapability', 'viewer_capability');
+  const viewerCapability = viewerRaw && typeof viewerRaw === 'object' && !Array.isArray(viewerRaw)
+    ? mapMercuryViewerCapability(viewerRaw)
+    : undefined;
   const availableRaw =
     pick(capability, 'available', 'capabilityAvailable', 'capability_available') ??
     pick(raw, 'capabilityAvailable', 'capability_available', 'available');
@@ -4417,10 +4491,15 @@ function mapMercuryMediaStatus(raw: RawJsonValue): MercuryMediaStatus {
           startedAt: str(pick(sessionRaw, 'startedAt', 'started_at')) || undefined
         }
       : undefined;
+  const daemonReason = str(
+    pick(capability, 'detail', 'reason') ?? pick(raw, 'detail', 'reason')
+  ) || undefined;
   return {
     capabilityAvailable: absent ? false : availableRaw === true,
     pairedDevices,
-    activeSession
+    activeSession,
+    ...(viewerCapability ? { viewerCapability } : {}),
+    ...(daemonReason ? { reason: daemonReason } : {})
   };
 }
 

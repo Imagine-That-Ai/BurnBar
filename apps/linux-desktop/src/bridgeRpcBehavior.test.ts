@@ -1181,6 +1181,67 @@ describe('VAL-RPC-002 bridge behavior', () => {
     });
   });
 
+  it('mediaStatus carries shell viewer capability and install guidance separately from daemon capture', async () => {
+    invoke.mockResolvedValueOnce({
+      capability: {
+        available: true,
+        codecsKnown: true,
+        source: 'MercuryLinuxCapabilityProbe'
+      },
+      viewerCapability: {
+        available: false,
+        renderer: 'media-gst',
+        featureEnabled: true,
+        canDecodeVp9: false,
+        hasVideoSink: true,
+        status: 'gstreamer_vp9_decoder_missing',
+        reason: 'gstreamer_vp9_decoder_missing',
+        installHint: 'Install a GStreamer VP9 decoder plugin, then restart OpenBurnBar.'
+      },
+      session: { phase: 'idle' }
+    });
+    const b = await bridge();
+    await expect(b.mediaStatus()).resolves.toMatchObject({
+      capabilityAvailable: true,
+      viewerCapability: {
+        available: false,
+        renderer: 'media-gst',
+        featureEnabled: true,
+        canDecodeVp9: false,
+        hasVideoSink: true,
+        status: 'gstreamer_vp9_decoder_missing',
+        reason: 'gstreamer_vp9_decoder_missing',
+        installHint: 'Install a GStreamer VP9 decoder plugin, then restart OpenBurnBar.'
+      }
+    });
+  });
+
+  it('mediaStatus preserves the build-time no-GStreamer distinction', async () => {
+    invoke.mockResolvedValueOnce({
+      capability: { available: true },
+      viewerCapability: {
+        available: false,
+        renderer: 'stub',
+        featureEnabled: false,
+        canDecodeVp9: false,
+        hasVideoSink: false,
+        status: 'built_without_gstreamer',
+        reason: 'linux_media_viewer_built_without_gstreamer',
+        installHint: 'Install the packaged Linux build with GStreamer support.'
+      }
+    });
+    const b = await bridge();
+    await expect(b.mediaStatus()).resolves.toMatchObject({
+      viewerCapability: {
+        available: false,
+        renderer: 'stub',
+        featureEnabled: false,
+        status: 'built_without_gstreamer',
+        reason: 'linux_media_viewer_built_without_gstreamer'
+      }
+    });
+  });
+
   it('mediaStatus fails closed when the nested daemon capability is unavailable', async () => {
     invoke.mockResolvedValueOnce({
       capability: {
@@ -1195,7 +1256,8 @@ describe('VAL-RPC-002 bridge behavior', () => {
     await expect(b.mediaStatus()).resolves.toEqual({
       capabilityAvailable: false,
       pairedDevices: [],
-      activeSession: undefined
+      activeSession: undefined,
+      reason: 'XDG_RUNTIME_DIR is not set.'
     });
   });
 
