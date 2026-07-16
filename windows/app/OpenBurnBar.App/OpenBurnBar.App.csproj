@@ -61,7 +61,7 @@
              CopyToPublishDirectory="PreserveNewest"
              Condition="Exists('$(OpenBurnBarNativeEngineDirectory)\openburnbar_domain_ffi.dll')" />
     <!-- Start the recursive glob at the engine root so %(RecursiveDir) retains
-         the OpenBurnBarCore_OpenBurnBarCore.resources directory segment. -->
+         both SwiftPM resource-bundle directory segments. -->
     <Content Include="$(OpenBurnBarNativeEngineDirectory)\**\*"
              Exclude="$(OpenBurnBarNativeEngineDirectory)\*.dll;$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json"
              Link="%(RecursiveDir)%(Filename)%(Extension)"
@@ -86,6 +86,9 @@
     <Error
       Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources')"
       Text="Required Swift resource bundle is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarCore.resources" />
+    <Error
+      Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarKernel.resources')"
+      Text="Required Swift resource bundle is missing: $(OpenBurnBarNativeEngineDirectory)\OpenBurnBarCore_OpenBurnBarKernel.resources" />
     <Error
       Condition="!Exists('$(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json')"
       Text="Required native-engine manifest is missing: $(OpenBurnBarNativeEngineDirectory)\native-engine-manifest.json" />

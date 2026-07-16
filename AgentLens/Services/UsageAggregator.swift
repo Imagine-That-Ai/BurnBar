@@ -47,6 +47,10 @@ final class UsageAggregator {
     private var conversationIndexingTask: Task<Void, Never>?
     private var projectionSweepRequested = false
     private var lastProjectionInsightRefreshAt: Date?
+    /// Set by `MemoryFootprintWatchdog` when the process footprint crosses
+    /// the critical threshold; suppresses new conversation-indexing passes
+    /// until the watchdog observes recovery.
+    private(set) var memoryPressureSheddingActive = false
 
     // MARK: - Forwarded Summary State (observation convenience)
 
@@ -241,9 +245,31 @@ final class UsageAggregator {
                 "providers_scanned": String(parsers.count),
                 "usage_rows": String(result.allUsages.count),
                 "indexed_changes": String(result.indexedConversationChanges),
-                "api_supplemental_rows": String(postResult.supplementalUsageCount)
+                "api_supplemental_rows": String(postResult.supplementalUsageCount),
+                // No silent caps: how much new log content this pass read and
+                // how many files the byte budget pushed to the next tick.
+                "parse_new_content_mb": String(result.parseConsumedByteCount / (1024 * 1024)),
+                "parse_deferred_files": String(result.parseDeferredFileCount)
             ]
         )
+    }
+
+    /// Memory-watchdog escape hatch: cancels the heavy optional background
+    /// work and surfaces the condition in parser health (visible in the UI)
+    /// instead of only in Activity Monitor.
+    func shedBackgroundWorkForMemoryPressure(footprintMB: Int64) {
+        memoryPressureSheddingActive = true
+        conversationIndexingTask?.cancel()
+        conversationIndexingTask = nil
+        if parserImportError == nil {
+            parserImportError = "Background parsing paused: memory footprint reached \(footprintMB)MB. It resumes automatically once memory recovers."
+        }
+    }
+
+    /// Called by the watchdog once the footprint falls back under the re-arm
+    /// threshold.
+    func memoryPressureRecovered() {
+        memoryPressureSheddingActive = false
     }
 
     private static func formatMilliseconds(_ seconds: TimeInterval) -> String {
@@ -425,6 +451,10 @@ private extension UsageAggregator {
             conversationIndexingTask?.cancel()
             return
         }
+        // Watchdog shedding: no new indexing passes while the process
+        // footprint is critical; the periodic refresh keeps calling here, so
+        // indexing resumes on the first tick after recovery.
+        guard !memoryPressureSheddingActive else { return }
         guard conversationIndexingTask == nil else { return }
 
         let dataStore = self.dataStore
@@ -466,7 +496,9 @@ private extension UsageAggregator {
                 metadata: [
                     "duration_ms": Self.formatMilliseconds(result.duration),
                     "indexed_changes": String(result.indexedConversationChanges),
-                    "provider_errors": String(result.errors.count)
+                    "provider_errors": String(result.errors.count),
+                    "read_content_mb": String(result.consumedByteCount / (1024 * 1024)),
+                    "deferred_files": String(result.deferredFileCount)
                 ]
             )
         }

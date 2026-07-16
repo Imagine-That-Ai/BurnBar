@@ -1,7 +1,55 @@
 import Foundation
+import OpenBurnBarCore
 
 enum SummaryEndpointCooldownPolicy {
     static let localEndpointFailureCooldown: TimeInterval = 5 * 60
+}
+
+/// Resource bounds for usage-refresh and conversation-indexing parse passes.
+///
+/// Sized for the 2026-07-16 incident corpus (21GB of Codex rollouts, 4.2GB of
+/// Claude transcripts on one machine): a cold cache converges over a handful
+/// of ticks instead of one unbounded 80-minute, 25GB pass, and steady-state
+/// ticks (incremental tail scans) never come near the budget.
+enum ParserResourcePolicy {
+    /// Bytes of new (uncached) log content one usage-refresh pass may read.
+    static let refreshFileByteBudget: Int64 = 256 * 1024 * 1024
+    /// Bytes of new content one conversation-indexing pass may read — bodies
+    /// re-read whole changed files, so this pass gets more headroom.
+    static let indexingFileByteBudget: Int64 = 512 * 1024 * 1024
+    /// Process physical footprint at which any governed pass hard-aborts.
+    /// Generous versus the app's normal few-hundred-MB footprint, but far
+    /// below the level that pushes a 64GB machine into swap death.
+    static let memoryCeilingBytes: Int64 = 4 * 1024 * 1024 * 1024
+    /// Footprint that logs a warning once per pass.
+    static let memorySoftLimitBytes: Int64 = 1536 * 1024 * 1024
+
+    static func makeRefreshGovernor() -> ParserResourceGovernor {
+        makeGovernor(fileByteBudget: refreshFileByteBudget, label: "usage_refresh")
+    }
+
+    static func makeIndexingGovernor() -> ParserResourceGovernor {
+        makeGovernor(fileByteBudget: indexingFileByteBudget, label: "conversation_indexing")
+    }
+
+    private static func makeGovernor(fileByteBudget: Int64, label: String) -> ParserResourceGovernor {
+        ParserResourceGovernor(
+            limits: ParserResourceLimits(
+                fileByteBudget: fileByteBudget,
+                memoryCeilingBytes: memoryCeilingBytes,
+                memorySoftLimitBytes: memorySoftLimitBytes
+            ),
+            onSoftLimit: { footprint in
+                AppLogger.parser.notice(
+                    "parse_pass_memory_soft_limit",
+                    metadata: [
+                        "pass": label,
+                        "footprint_mb": String(footprint / (1024 * 1024))
+                    ]
+                )
+            }
+        )
+    }
 }
 
 enum ProjectionWorkerPolicy {

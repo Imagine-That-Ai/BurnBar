@@ -18,12 +18,13 @@ pipeline's channel set (see [`docs/WINDOWS_PORT_MASTER_PLAN.md`](../../docs/WIND
 | [`chocolatey/openburnbar.nuspec`](chocolatey/openburnbar.nuspec) | Chocolatey | nuspec (installs the portable zip; no Authenticode dependency) + [`tools/chocolateyinstall.ps1`](chocolatey/tools/chocolateyinstall.ps1) / [`chocolateyuninstall.ps1`](chocolatey/tools/chocolateyuninstall.ps1). |
 | [`scripts/verify.sh`](scripts/verify.sh) | — | Host-portable validator (XML well-formedness, winget schema rules, JSON/nuspec/PowerShell checks). |
 
-The published app must retain the Swift native engine resource bundle
-`OpenBurnBarCore_OpenBurnBarCore.resources` beside `OpenBurnBarCoreCAbi.dll`.
-`scripts/windows-port/stage-swift-runtime.py` copies and hashes that bundle in
+The published app must retain both Swift native engine resource bundles,
+`OpenBurnBarCore_OpenBurnBarCore.resources` and
+`OpenBurnBarCore_OpenBurnBarKernel.resources`, beside `OpenBurnBarCoreCAbi.dll`.
+`scripts/windows-port/stage-swift-runtime.py` copies and hashes both bundles in
 `native-engine-manifest.json`, while
 `scripts/windows-port/validate-native-engine-layout.mjs` rejects a publish tree
-that omits it before either the portable zip or MSIX is packaged.
+that omits either bundle before either the portable zip or MSIX is packaged.
 
 ## Identity (mirrors the macOS app)
 
@@ -50,9 +51,10 @@ PowerShell scripts.
 
 When a publish contains `OpenBurnBarCoreCAbi.dll`, the portable and MSIX packagers
 and the Windows release workflow require `native-engine-manifest.json` and verify
-every declared file's relative path, byte count, and SHA-256. The Swift resource
-bundle (`OpenBurnBarCore_OpenBurnBarCore.resources`) must be present and represented
-in the manifest. Authenticode signing changes PE bytes, so the release workflow
+every declared file's relative path, byte count, and SHA-256. Both Swift resource
+bundles (`OpenBurnBarCore_OpenBurnBarCore.resources` and
+`OpenBurnBarCore_OpenBurnBarKernel.resources`) must be present and represented in
+the manifest. Authenticode signing changes PE bytes, so the release workflow
 refreshes the manifest after portable signing and re-verifies it before zips/MSIX
 are created. A mismatch fails before signing or archive creation.
 

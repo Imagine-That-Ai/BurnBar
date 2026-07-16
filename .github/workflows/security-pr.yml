@@ -283,14 +283,24 @@ jobs:
         uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
         with:
           scan-args: |-
-            --lockfile=functions/package-lock.json
+            --lockfile=package-lock.json
+            --lockfile=apps/console/package-lock.json
+            --lockfile=apps/linux-desktop/package-lock.json
             --lockfile=extensions/openburnbar/package-lock.json
-            --lockfile=services/hermes-realtime-relay/package-lock.json
-            --lockfile=services/hosted-mcp/package-lock.json
-            --lockfile=tools/openburnbar-mcp-remote/package-lock.json
+            --lockfile=firestore-rules-tests/package-lock.json
+            --lockfile=functions/package-lock.json
+            --lockfile=packages/design-tokens/package-lock.json
+            --lockfile=packages/entitlements/package-lock.json
             --lockfile=packages/libsignal-bridge/package-lock.json
             --lockfile=packages/libsignal-protocol/package-lock.json
             --lockfile=packages/signal-envelope-contracts/package-lock.json
+            --lockfile=quota-runner/package-lock.json
+            --lockfile=services/hermes-realtime-relay/package-lock.json
+            --lockfile=services/hosted-mcp/package-lock.json
+            --lockfile=tools/app-store-connect/package-lock.json
+            --lockfile=tools/openburnbar-mcp-remote/package-lock.json
+            --lockfile=tools/schema-sync/package-lock.json
+            --lockfile=website/package-lock.json
 
   hosted-mcp-security-smoke:
     name: Hosted MCP Security Smoke

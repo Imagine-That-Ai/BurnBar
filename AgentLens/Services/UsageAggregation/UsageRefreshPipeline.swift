@@ -51,7 +51,8 @@ struct UsageRefreshPipeline: Sendable {
     func parse(
         from discovery: DiscoverResult,
         includeConversationBodies: Bool? = nil,
-        minimumFileModificationDate: Date? = nil
+        minimumFileModificationDate: Date? = nil,
+        resourceGovernor: OpenBurnBarCore.ParserResourceGovernor? = nil
     ) async throws -> ParsedBatch {
         var result = ParsedBatch()
         let startedAt = Date()
@@ -62,7 +63,8 @@ struct UsageRefreshPipeline: Sendable {
                 let parseResult = try await parser.parse(
                     options: OpenBurnBarCore.LogParseOptions(
                         includeConversationBodies: includeConversationBodies,
-                        minimumFileModificationDate: minimumFileModificationDate
+                        minimumFileModificationDate: minimumFileModificationDate,
+                        resourceGovernor: resourceGovernor
                     )
                 )
                 let usages = parseResult.usages

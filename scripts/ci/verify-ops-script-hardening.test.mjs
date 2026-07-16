@@ -92,6 +92,7 @@ assert.doesNotMatch(
 );
 
 const windowsReleaseWorkflow = read(".github/workflows/openburnbar-release-windows.yml");
+const windowsEngineWorkflow = read(".github/workflows/openburnbar-engine-windows.yml");
 assert.match(
   windowsReleaseWorkflow,
   /OPENBURNBAR_EXPECTED_WINDOWS_VERSION: \$\{\{ needs\.resolve-release\.outputs\.version \}\}/,
@@ -129,6 +130,31 @@ assert.match(
 );
 assert.match(
   windowsReleaseWorkflow,
+  /Build Microsoft Store MSIX packages[\s\S]*store-identity\.json[\s\S]*-DistributionChannel MicrosoftStore[\s\S]*artifacts\/store/,
+  "Windows release workflow must build a distinct Store-identity package set",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /Authenticode sign the direct-download MSIX[\s\S]*files-folder-recurse: false[\s\S]*Verify Microsoft Store MSIX identity and unsigned state[\s\S]*-SignatureExpectation Unsigned/,
+  "Microsoft Store packages must stay outside direct Artifact Signing and be rechecked as unsigned afterward",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /store\/OpenBurnBar-\$\{VERSION\}-store-x64\.msix[\s\S]*store\/OpenBurnBar-\$\{VERSION\}-store-arm64\.msix[\s\S]*store-submission-v\$\{VERSION\}\.json/,
+  "final checksums must bind both Store packages and their submission manifest",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /archives=\(artifacts\/\*\.zip artifacts\/\*\.msix artifacts\/store\/\*\.msix\)/,
+  "the Windows SBOM must inventory both direct and Store package contents",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /find artifacts -type f -print0/,
+  "Sigstore provenance must recurse into the Store artifact directory",
+);
+assert.match(
+  windowsReleaseWorkflow,
   /OpenBurnBar\.ComputerUse\.Watchdog\.csproj[\s\S]*dotnet publish "\$watchdog"[\s\S]*cp -R "\$watchdog_out\/\." "publish\/\$rid\/ComputerUseWatchdog\/"/,
   "Windows release workflow must publish and stage the independent privileged-input watchdog",
 );
@@ -156,6 +182,39 @@ assert.match(
   windowsReleaseWorkflow,
   /Test-SignedMsixLifecycle\.ps1[\s\S]*-HoldSeconds 20/,
   "signed MSIX evidence must exercise a sustained application launch",
+);
+const publishedLayoutValidationIndex = windowsReleaseWorkflow.indexOf(
+  "Validate published native-engine layouts",
+);
+const publishedParserSmokeIndex = windowsReleaseWorkflow.indexOf(
+  "Run parser smoke from the published x64 layout",
+);
+const authenticodeSignIndex = windowsReleaseWorkflow.indexOf("- name: Authenticode sign");
+assert.ok(
+  publishedLayoutValidationIndex >= 0 &&
+    publishedParserSmokeIndex > publishedLayoutValidationIndex &&
+    authenticodeSignIndex > publishedParserSmokeIndex,
+  "the real parser must execute from the published x64 layout before Authenticode signing",
+);
+assert.match(
+  windowsReleaseWorkflow,
+  /OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"[\s\S]*publish\/win-x64[\s\S]*RUNNER_TEMP[\s\S]*Copy-Item[\s\S]*OpenBurnBarCoreCAbi\.dll[\s\S]*--output \$smokeRoot[\s\S]*NativeUsageEngineIntegrationTests/,
+  "the published-layout parser smoke must be mandatory and load the published engine",
+);
+assert.equal(
+  (windowsEngineWorkflow.match(/OPENBURNBAR_CORE_CABI_PATH=\$stagedEngine/g) ?? []).length,
+  2,
+  "both native architectures must run their usage scan from the staged engine layout",
+);
+assert.equal(
+  (windowsEngineWorkflow.match(/Copy-Item -Path \(Join-Path \$env:OPENBURNBAR_NATIVE_ENGINE_STAGE "\*"\)/g) ?? []).length,
+  2,
+  "both native architectures must mirror the staged bundle into the parser smoke host layout",
+);
+assert.equal(
+  (windowsEngineWorkflow.match(/--output \$smokeRoot/g) ?? []).length,
+  2,
+  "both native parser smoke hosts must execute beside the staged Swift resource bundles",
 );
 const portableSignatureIndex = windowsReleaseWorkflow.indexOf("Verify portable Authenticode signatures");
 const signedManifestRefreshIndex = windowsReleaseWorkflow.indexOf("Refresh and validate signed native-engine layouts");
@@ -207,6 +266,29 @@ assert.match(
   windowsMsixPackager,
   /SetAttribute\("Version", "\$Version\.0"\)[\s\S]*SetAttribute\("ProcessorArchitecture", \$Architecture\)/,
   "MSIX staging must stamp the resolved version and target architecture into the package identity",
+);
+assert.match(
+  windowsMsixPackager,
+  /MicrosoftStore packaging requires a complete Partner Center identity[\s\S]*StoreProductId[\s\S]*distribution-channel\.json[\s\S]*SetAttribute\("Name", \$PackageName\)[\s\S]*SetAttribute\("Publisher", \$Publisher\)[\s\S]*PackageDisplayName[\s\S]*PublisherDisplayName/,
+  "MSIX staging must fail closed on partial Store identity and stamp every Partner Center field",
+);
+const windowsMsixIdentityVerifier = read(
+  "windows/packaging/msix/Test-MsixPackageIdentity.ps1",
+);
+assert.match(
+  windowsMsixIdentityVerifier,
+  /MakeAppxPath unpack[\s\S]*ExpectedName[\s\S]*ExpectedPublisher[\s\S]*ExpectedDisplayName[\s\S]*ExpectedPublisherDisplayName[\s\S]*ExpectedVersion[\s\S]*ExpectedArchitecture/,
+  "Store package verification must inspect every required identity field from the packed MSIX",
+);
+assert.match(
+  windowsMsixIdentityVerifier,
+  /SignatureExpectation[\s\S]*AppxSignature\.p7x[\s\S]*Microsoft Store submission package must not contain AppxSignature\.p7x/,
+  "Store package verification must fail closed if a submission package becomes signed",
+);
+assert.match(
+  windowsMsixIdentityVerifier,
+  /MicrosoftStore package contains forbidden direct-update metadata[\s\S]*distribution-channel\.json[\s\S]*Sideload package is missing required direct-update metadata/,
+  "package verification must prove direct and Store update ownership cannot cross channels",
 );
 assert.match(
   windowsMsixPackager,
@@ -285,6 +367,16 @@ assert.match(
 assert.ok(
   windowsDistPrWorkflow.includes("node scripts/ci/verify-ops-script-hardening.test.mjs"),
   "Windows distribution PR verification must execute the release wiring regressions",
+);
+assert.match(
+  windowsDistPrWorkflow,
+  /msix-package-smoke:[\s\S]*runs-on: windows-latest[\s\S]*dotnet publish windows\/app\/OpenBurnBar\.App\/OpenBurnBar\.App\.csproj[\s\S]*New-MsixPackage\.ps1[\s\S]*-DistributionChannel Sideload[\s\S]*-DistributionChannel MicrosoftStore[\s\S]*Test-MsixPackageIdentity\.ps1/,
+  "Windows distribution PR verification must execute MakePri/MakeAppx over real WinUI output for both package channels",
+);
+assert.match(
+  windowsDistPrWorkflow,
+  /MSIX_SMOKE_RESULT[\s\S]*The Windows MSIX package smoke failed/,
+  "the required Windows distribution aggregate must fail when the real MSIX smoke fails",
 );
 
 const foundationUiaCollector = read(

@@ -12,7 +12,10 @@ import {
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const REQUIRED_RESOURCE_BUNDLE = "OpenBurnBarCore_OpenBurnBarCore.resources";
+export const REQUIRED_RESOURCE_BUNDLES = [
+  "OpenBurnBarCore_OpenBurnBarCore.resources",
+  "OpenBurnBarCore_OpenBurnBarKernel.resources",
+];
 export const REQUIRED_ENGINE = "OpenBurnBarCoreCAbi.dll";
 
 function normalizedRelativePath(value) {
@@ -69,7 +72,7 @@ export function refreshNativeEngineManifest(layoutDirectory) {
 
   const seen = new Set();
   let engineEntry = false;
-  let resourceEntry = false;
+  const resourceEntries = new Set();
   const files = manifest.files.map((entry, index) => {
     const label = `manifest files[${index}]`;
     const relativePath = normalizedRelativePath(entry?.fileName);
@@ -78,20 +81,24 @@ export function refreshNativeEngineManifest(layoutDirectory) {
     seen.add(relativePath);
     const snapshot = snapshotFile(root, relativePath);
     if (relativePath === REQUIRED_ENGINE) engineEntry = true;
-    if (relativePath.startsWith(`${REQUIRED_RESOURCE_BUNDLE}/`)) resourceEntry = true;
+    for (const bundle of REQUIRED_RESOURCE_BUNDLES) {
+      if (relativePath.startsWith(`${bundle}/`)) resourceEntries.add(bundle);
+    }
     return { ...entry, fileName: relativePath, ...snapshot };
   });
 
-  const resourceDirectory = join(root, REQUIRED_RESOURCE_BUNDLE);
-  let resourceDirectoryPresent = false;
-  try {
-    resourceDirectoryPresent = lstatSync(resourceDirectory).isDirectory();
-  } catch {
-    resourceDirectoryPresent = false;
-  }
-  if (!resourceDirectoryPresent) throw new Error(`${REQUIRED_RESOURCE_BUNDLE} directory is missing`);
   if (!engineEntry) throw new Error(`${REQUIRED_ENGINE} is absent from the manifest`);
-  if (!resourceEntry) throw new Error(`${REQUIRED_RESOURCE_BUNDLE} has no manifest entry`);
+  for (const bundle of REQUIRED_RESOURCE_BUNDLES) {
+    const resourceDirectory = join(root, bundle);
+    let resourceDirectoryPresent = false;
+    try {
+      resourceDirectoryPresent = lstatSync(resourceDirectory).isDirectory();
+    } catch {
+      resourceDirectoryPresent = false;
+    }
+    if (!resourceDirectoryPresent) throw new Error(`${bundle} directory is missing`);
+    if (!resourceEntries.has(bundle)) throw new Error(`${bundle} has no manifest entry`);
+  }
 
   const refreshed = { ...manifest, files };
   writeFileSync(manifestPath, `${JSON.stringify(refreshed, null, 2)}\n`, "utf8");
