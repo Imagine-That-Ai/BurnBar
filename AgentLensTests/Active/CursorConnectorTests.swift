@@ -713,7 +713,7 @@ final class CursorConnectorTests: XCTestCase {
                     code: 2,
                     userInfo: [
                         NSLocalizedDescriptionKey: "proxy process exited before becoming healthy",
-                        NSLocalizedRecoverySuggestionErrorKey: captured.trimmingCharacters(in: .whitespacesAndNewlines),
+                        NSLocalizedRecoverySuggestionErrorKey: captured.trimmingCharacters(in: .whitespacesAndNewlines)
                     ]
                 )
             }
@@ -732,7 +732,7 @@ final class CursorConnectorTests: XCTestCase {
             code: 1,
             userInfo: [
                 NSLocalizedDescriptionKey: "proxy did not become healthy within timeout",
-                NSLocalizedRecoverySuggestionErrorKey: captured.trimmingCharacters(in: .whitespacesAndNewlines),
+                NSLocalizedRecoverySuggestionErrorKey: captured.trimmingCharacters(in: .whitespacesAndNewlines)
             ]
         )
     }
