@@ -40,6 +40,8 @@ enum WallpaperSettingsDeepLink {
 
 struct WallpaperGeneratorView: View {
     let colorDriver: SwarmColorDriver
+    var livingTheme: MobileBackdropKernel?
+    var livingThemeMaxFrameRate: Double = 20
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
@@ -90,6 +92,7 @@ struct WallpaperGeneratorView: View {
     }
     private var usesSidebar: Bool { horizontalSizeClass == .regular }
     private var sidebarVisible: Bool { usesSidebar && showProviderGlyphCustomizer }
+    private var isLivingThemeMode: Bool { livingTheme != nil }
 
     private var substrate: SwarmSubstrate {
         substrateBox.resolve(kernelID: backdropKernel, selectedID: substrateID, enabled: substrateEnabled)
@@ -160,8 +163,10 @@ struct WallpaperGeneratorView: View {
                 .ignoresSafeArea()
 
             // Gesture overlay — tap to cycle shapes, hold to speed up
-            gestureOverlay
-                .ignoresSafeArea()
+            if !isLivingThemeMode {
+                gestureOverlay
+                    .ignoresSafeArea()
+            }
 
             // Overlay controls (pushed clear of the sidebar on regular width)
             VStack {
@@ -170,11 +175,19 @@ struct WallpaperGeneratorView: View {
 
                 // Tap hint
                 if showTapHint {
-                    tapHintView
-                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    Group {
+                        if let livingTheme {
+                            livingThemeHintView(livingTheme)
+                        } else {
+                            tapHintView
+                        }
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
 
-                providerLegend
+                if !isLivingThemeMode {
+                    providerLegend
+                }
                 bottomControls
             }
             .padding()
@@ -183,7 +196,7 @@ struct WallpaperGeneratorView: View {
             .animation(.interactiveSpring(response: 0.18, dampingFraction: 0.92), value: sidebarWidth)
 
             // Right sidebar (iPad / macOS) — resizable provider list.
-            if sidebarVisible {
+            if sidebarVisible && !isLivingThemeMode {
                 providerSidebar
                     .frame(width: sidebarWidth)
                     .frame(maxHeight: .infinity)
@@ -206,21 +219,38 @@ struct WallpaperGeneratorView: View {
     @ViewBuilder
     private var wallpaperCanvas: some View {
         ZStack {
-            effectiveStyle.backgroundColor
-                .ignoresSafeArea()
+            if let livingTheme {
+                if MobileWebGLKernelBackdropView.supports(kernelID: livingTheme.rawValue) {
+                    MobileWebGLKernelBackdropView(
+                        kernelID: livingTheme.rawValue,
+                        theme: "dark",
+                        maxFrameRate: livingThemeMaxFrameRate
+                    )
+                } else {
+                    MobileKernelBackdropView(
+                        kernel: livingTheme,
+                        accent: MobileTheme.ember,
+                        visibility: .prominent,
+                        maxFrameRate: livingThemeMaxFrameRate
+                    )
+                }
+            } else {
+                effectiveStyle.backgroundColor
+                    .ignoresSafeArea()
 
-            SwarmCanvasView(
-                accent: selectedStyle == .swarmEmber ? MobileTheme.ember : .white,
-                pace: .cinematic,
-                colorDriver: colorDriver,
-                colorPalette: effectiveStyle.swarmPalette,
-                motionSpeedMultiplier: isHolding ? 2.5 : 1.0,
-                enabledProviderGlyphs: selectedProviderGlyphs,
-                excludeBrandShapesFromSwarm: !selectedProviderGlyphs.isEmpty,
-                currentMode: $currentMode,
-                logoOffsets: logoOffsets,
-                substrate: substrate
-            )
+                SwarmCanvasView(
+                    accent: selectedStyle == .swarmEmber ? MobileTheme.ember : .white,
+                    pace: .cinematic,
+                    colorDriver: colorDriver,
+                    colorPalette: effectiveStyle.swarmPalette,
+                    motionSpeedMultiplier: isHolding ? 2.5 : 1.0,
+                    enabledProviderGlyphs: selectedProviderGlyphs,
+                    excludeBrandShapesFromSwarm: !selectedProviderGlyphs.isEmpty,
+                    currentMode: $currentMode,
+                    logoOffsets: logoOffsets,
+                    substrate: substrate
+                )
+            }
 
             // Subtle radial vignette
             RadialGradient(
@@ -336,6 +366,23 @@ struct WallpaperGeneratorView: View {
         .padding(.bottom, 8)
     }
 
+    private func livingThemeHintView(_ theme: MobileBackdropKernel) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "livephoto")
+                .font(.system(size: 13, weight: .semibold))
+            Text("\(theme.label) · Save Live, then choose it in Wallpaper Settings")
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .lineLimit(2)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .wallpaperLiquidGlass(in: Capsule()) {
+            $0.background(.ultraThinMaterial.opacity(0.7), in: Capsule())
+        }
+        .foregroundStyle(.white.opacity(0.78))
+        .padding(.bottom, 8)
+    }
+
     private func dismissTapHint() {
         guard showTapHint else { return }
         withAnimation(.easeOut(duration: 0.4)) {
@@ -361,32 +408,38 @@ struct WallpaperGeneratorView: View {
 
             Spacer()
 
-            // Style picker
-            Menu {
-                ForEach(WallpaperStyle.allCases, id: \.self) { style in
-                    Button {
-                        withAnimation(.spring(response: 0.4)) {
-                            selectedStyleRaw = style.rawValue
-                        }
-                    } label: {
-                        HStack {
-                            Text(style.rawValue)
-                            if style == selectedStyle {
-                                Image(systemName: "checkmark")
+            if let livingTheme {
+                Text(livingTheme.label)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+            } else {
+                // Style picker
+                Menu {
+                    ForEach(WallpaperStyle.allCases, id: \.self) { style in
+                        Button {
+                            withAnimation(.spring(response: 0.4)) {
+                                selectedStyleRaw = style.rawValue
+                            }
+                        } label: {
+                            HStack {
+                                Text(style.rawValue)
+                                if style == selectedStyle {
+                                    Image(systemName: "checkmark")
+                                }
                             }
                         }
                     }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "paintbrush.fill")
+                        Text(selectedStyle.rawValue)
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .liquidGlassInteractive(in: Capsule())
+                    .foregroundStyle(effectiveStyle.isDark ? .white : .black)
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "paintbrush.fill")
-                    Text(selectedStyle.rawValue)
-                        .font(.subheadline.weight(.semibold))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .liquidGlassInteractive(in: Capsule())
-                .foregroundStyle(effectiveStyle.isDark ? .white : .black)
             }
         }
         .padding(.top, 50)
@@ -422,7 +475,7 @@ struct WallpaperGeneratorView: View {
         VStack(spacing: 12) {
             // Inline customizer is the compact-width (iPhone) fallback only.
             // On regular width (iPad / macOS) the sidebar hosts it instead.
-            if showProviderGlyphCustomizer && !usesSidebar {
+            if showProviderGlyphCustomizer && !usesSidebar && !isLivingThemeMode {
                 providerGlyphCustomizer
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -432,23 +485,25 @@ struct WallpaperGeneratorView: View {
             // container passes content through unchanged.
             LiquidGlassGroup(spacing: 12) {
                 HStack(spacing: 12) {
-                    // Toggle options
-                    HStack(spacing: 12) {
-                        toggleButton(
-                            icon: "clock.fill",
-                            isOn: $showClock,
-                            label: "Clock"
-                        )
-                        toggleButton(
-                            icon: "tag.fill",
-                            isOn: $showProviderLabels,
-                            label: "Labels"
-                        )
-                        toggleButton(
-                            icon: "slider.horizontal.3",
-                            isOn: $showProviderGlyphCustomizer,
-                            label: "Provider glyphs"
-                        )
+                    if !isLivingThemeMode {
+                        // Toggle options
+                        HStack(spacing: 12) {
+                            toggleButton(
+                                icon: "clock.fill",
+                                isOn: $showClock,
+                                label: "Clock"
+                            )
+                            toggleButton(
+                                icon: "tag.fill",
+                                isOn: $showProviderLabels,
+                                label: "Labels"
+                            )
+                            toggleButton(
+                                icon: "slider.horizontal.3",
+                                isOn: $showProviderGlyphCustomizer,
+                                label: "Provider glyphs"
+                            )
+                        }
                     }
 
                     Spacer()
@@ -865,25 +920,35 @@ struct WallpaperGeneratorView: View {
         let screenBounds = UIScreen.main.bounds
         let scale = UIScreen.main.scale
 
-        // Render the current swarm state at full device resolution
-        let wallpaperView = ZStack {
-            effectiveStyle.backgroundColor
-            SwarmCanvasView(
-                accent: selectedStyle == .swarmEmber ? MobileTheme.ember : .white,
-                pace: .cinematic,
-                colorDriver: colorDriver,
-                colorPalette: effectiveStyle.swarmPalette,
-                enabledProviderGlyphs: selectedProviderGlyphs,
-                excludeBrandShapesFromSwarm: !selectedProviderGlyphs.isEmpty,
-                logoOffsets: logoOffsets,
-                substrate: substrate
-            )
-            RadialGradient(
-                colors: [.clear, effectiveStyle.backgroundColor.opacity(0.7)],
-                center: .center,
-                startRadius: 120,
-                endRadius: 500
-            )
+        let wallpaperView = Group {
+            if let livingTheme {
+                MobileKernelBackdropFrameView(
+                    kernel: livingTheme,
+                    accent: MobileTheme.ember,
+                    time: 1.5,
+                    size: screenBounds.size
+                )
+            } else {
+                ZStack {
+                    effectiveStyle.backgroundColor
+                    SwarmCanvasView(
+                        accent: selectedStyle == .swarmEmber ? MobileTheme.ember : .white,
+                        pace: .cinematic,
+                        colorDriver: colorDriver,
+                        colorPalette: effectiveStyle.swarmPalette,
+                        enabledProviderGlyphs: selectedProviderGlyphs,
+                        excludeBrandShapesFromSwarm: !selectedProviderGlyphs.isEmpty,
+                        logoOffsets: logoOffsets,
+                        substrate: substrate
+                    )
+                    RadialGradient(
+                        colors: [.clear, effectiveStyle.backgroundColor.opacity(0.7)],
+                        center: .center,
+                        startRadius: 120,
+                        endRadius: 500
+                    )
+                }
+            }
         }
         .frame(width: screenBounds.width, height: screenBounds.height)
         .preferredColorScheme(selectedStyle == .appDefault ? nil : (selectedStyle.isDark ? .dark : .light))
@@ -1027,23 +1092,29 @@ struct WallpaperGeneratorView: View {
             }
             metadataAdaptor.append(timedMetadataGroup)
 
-            // Create a single simulation instance
-            let simulation = SwarmSimulation(
-                particleCount: SwarmCanvasView.adaptiveParticleCount,
-                pace: .cinematic,
-                enabledProviderGlyphs: selectedProviderGlyphs
-            )
-            simulation.colorPalette = effectiveStyle.swarmPalette
-            simulation.setColorDriver(colorDriver)
-            simulation.setAutoCyclingEnabled(false)
-            simulation.assignMode(currentMode)
-            simulation.panOffsets = logoOffsets
+            // Living Themes render directly and never allocate or prewarm the
+            // much heavier usage-swarm simulation.
+            var simulation: SwarmSimulation?
+            if livingTheme == nil {
+                let swarm = SwarmSimulation(
+                    particleCount: SwarmCanvasView.adaptiveParticleCount,
+                    pace: .cinematic,
+                    enabledProviderGlyphs: selectedProviderGlyphs
+                )
+                swarm.colorPalette = effectiveStyle.swarmPalette
+                swarm.setColorDriver(colorDriver)
+                swarm.setAutoCyclingEnabled(false)
+                swarm.assignMode(currentMode)
+                swarm.panOffsets = logoOffsets
+                simulation = swarm
+            }
 
-            // Pre-advance simulation by 600 steps
             var currentTime = Date()
-            for _ in 0..<600 {
-                simulation.advance(to: currentTime, bounds: screenBounds.size, reduceMotion: false, isBatteryThrottled: false)
-                currentTime = currentTime.addingTimeInterval(1.0 / 60.0)
+            if let simulation {
+                for _ in 0..<600 {
+                    simulation.advance(to: currentTime, bounds: screenBounds.size, reduceMotion: false, isBatteryThrottled: false)
+                    currentTime = currentTime.addingTimeInterval(1.0 / 60.0)
+                }
             }
 
             var didWriteKeyPhoto = false
@@ -1055,17 +1126,32 @@ struct WallpaperGeneratorView: View {
                 }
 
                 // Step simulation twice to advance virtual time by 1/30s
-                for _ in 0..<2 {
-                    simulation.advance(to: currentTime, bounds: screenBounds.size, reduceMotion: false, isBatteryThrottled: false)
-                    currentTime = currentTime.addingTimeInterval(1.0 / 60.0)
+                if let simulation {
+                    for _ in 0..<2 {
+                        simulation.advance(to: currentTime, bounds: screenBounds.size, reduceMotion: false, isBatteryThrottled: false)
+                        currentTime = currentTime.addingTimeInterval(1.0 / 60.0)
+                    }
                 }
 
-                let renderView = OfflineSwarmRenderView(
-                    simulation: simulation,
-                    size: screenBounds.size,
-                    colorScheme: effectiveStyle.isDark ? .dark : .light,
-                    backgroundColor: effectiveStyle.backgroundColor
-                )
+                let renderView = Group {
+                    if let livingTheme {
+                        MobileKernelBackdropFrameView(
+                            kernel: livingTheme,
+                            accent: MobileTheme.ember,
+                            time: Double(i) / Double(fps),
+                            size: screenBounds.size
+                        )
+                    } else if let simulation {
+                        OfflineSwarmRenderView(
+                            simulation: simulation,
+                            size: screenBounds.size,
+                            colorScheme: effectiveStyle.isDark ? .dark : .light,
+                            backgroundColor: effectiveStyle.backgroundColor
+                        )
+                    } else {
+                        Color.black
+                    }
+                }
 
                 let renderer = ImageRenderer(content: renderView.environment(\.colorScheme, effectiveStyle.isDark ? .dark : .light))
                 renderer.scale = scale

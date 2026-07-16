@@ -10,8 +10,11 @@ final class MobileBackdropKernelTests: XCTestCase {
                 "flow",
                 "aurora",
                 "mesh",
+                "prismatica",
                 "moire",
                 "volumetric",
+                "iridescence",
+                "gyroid",
                 "lic",
                 "fluid-aurora",
                 "cloudfield",
@@ -36,9 +39,18 @@ final class MobileBackdropKernelTests: XCTestCase {
                 "origami",
                 "ink-diffusion",
                 "petroleum-sheen",
-                "boids"
+                "boids",
+                "voxel",
+                "star-atlas",
+                "sky-ascent",
+                "open-world-armada",
+                "genesis",
+                "singularity",
+                "knot-field",
+                "hypersphere"
             ]
         )
+        XCTAssertEqual(MobileBackdropKernel.allCases.count, 42)
     }
 
     func testDefaultKeepsFirstLaunchOnOriginalDotBackdrop() {

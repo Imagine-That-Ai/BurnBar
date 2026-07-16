@@ -1,0 +1,25 @@
+{
+  "id": "bat-signal",
+  "label": "Beacon",
+  "metalFileBase": "K_BatSignal",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_bat_signal_display"
+  },
+  "controls": [
+    "scroll"
+  ],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

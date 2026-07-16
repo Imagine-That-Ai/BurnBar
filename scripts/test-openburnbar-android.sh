@@ -30,6 +30,8 @@ if [[ -z "${ANDROID_HOME:-}" ]]; then
 fi
 export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
 
+node "$repo_root/scripts/verify-living-theme-assets.mjs"
+
 cd "$android_dir"
 
 ./gradlew \

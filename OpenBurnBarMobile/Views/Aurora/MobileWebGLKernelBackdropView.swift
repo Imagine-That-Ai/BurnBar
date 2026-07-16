@@ -25,10 +25,12 @@ struct MobileWebGLKernelBackdropView: UIViewRepresentable {
     let kernelID: String
     /// `"light"` or `"dark"`. Anything else normalizes to `"dark"`.
     let theme: String
+    let maxFrameRate: Double
 
-    init(kernelID: String, theme: String) {
+    init(kernelID: String, theme: String, maxFrameRate: Double = 20) {
         self.kernelID = kernelID
         self.theme = theme
+        self.maxFrameRate = maxFrameRate
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -59,7 +61,12 @@ struct MobileWebGLKernelBackdropView: UIViewRepresentable {
 
         context.coordinator.requestedKernel = resolvedKernelID
         context.coordinator.requestedTheme = themeName
-        context.coordinator.load(initialKernel: resolvedKernelID, into: webView)
+        context.coordinator.requestedMaxFrameRate = resolvedMaxFrameRate
+        context.coordinator.load(
+            initialKernel: resolvedKernelID,
+            maxFrameRate: resolvedMaxFrameRate,
+            into: webView
+        )
         return webView
     }
 
@@ -67,11 +74,13 @@ struct MobileWebGLKernelBackdropView: UIViewRepresentable {
         context.coordinator.apply(
             kernel: resolvedKernelID,
             theme: themeName,
+            maxFrameRate: resolvedMaxFrameRate,
             to: webView
         )
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.evaluateJavaScript("window.__setBackdropActive && window.__setBackdropActive(false)")
         webView.navigationDelegate = nil
         webView.stopLoading()
     }
@@ -86,13 +95,23 @@ struct MobileWebGLKernelBackdropView: UIViewRepresentable {
         theme == "light" ? "light" : "dark"
     }
 
+    private var resolvedMaxFrameRate: Double {
+        guard maxFrameRate.isFinite, maxFrameRate > 0 else { return 20 }
+        return min(maxFrameRate, 60)
+    }
+
+    static func supports(kernelID: String) -> Bool {
+        MobileKernelCatalogIDs.isValid(kernelID)
+    }
+
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate {
         var requestedKernel: String = MobileKernelCatalogIDs.defaultID
         var requestedTheme: String = "dark"
+        var requestedMaxFrameRate: Double = 20
         private var isLoaded = false
 
-        func load(initialKernel: String, into webView: WKWebView) {
+        func load(initialKernel: String, maxFrameRate: Double, into webView: WKWebView) {
             guard
                 let indexURL = Bundle.main.url(
                     forResource: "index",
@@ -106,19 +125,25 @@ struct MobileWebGLKernelBackdropView: UIViewRepresentable {
             // before our JS bridge fires.
             var components = URLComponents(url: indexURL, resolvingAgainstBaseURL: false)
             components?.fragment = initialKernel
+            components?.queryItems = [
+                URLQueryItem(name: "maxFps", value: String(Int(maxFrameRate)))
+            ]
             let target = components?.url ?? indexURL
 
             webView.loadFileURL(target, allowingReadAccessTo: indexURL.deletingLastPathComponent())
         }
 
-        func apply(kernel: String, theme: String, to webView: WKWebView) {
+        func apply(kernel: String, theme: String, maxFrameRate: Double, to webView: WKWebView) {
             let kernelChanged = kernel != requestedKernel
             let themeChanged = theme != requestedTheme
+            let frameRateChanged = maxFrameRate != requestedMaxFrameRate
             requestedKernel = kernel
             requestedTheme = theme
+            requestedMaxFrameRate = maxFrameRate
             guard isLoaded else { return }
             if themeChanged { evaluateSetTheme(theme, on: webView) }
             if kernelChanged { evaluateSetKernel(kernel, on: webView) }
+            if frameRateChanged { evaluateSetMaxFrameRate(maxFrameRate, on: webView) }
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -127,6 +152,8 @@ struct MobileWebGLKernelBackdropView: UIViewRepresentable {
             // `window.__backdropReady === true`, so poll briefly before driving.
             evaluateSetTheme(requestedTheme, on: webView)
             evaluateSetKernel(requestedKernel, on: webView)
+            evaluateSetMaxFrameRate(requestedMaxFrameRate, on: webView)
+            webView.evaluateJavaScript("window.__setBackdropActive && window.__setBackdropActive(true)")
         }
 
         private func evaluateSetKernel(_ kernel: String, on webView: WKWebView) {
@@ -137,6 +164,11 @@ struct MobileWebGLKernelBackdropView: UIViewRepresentable {
         private func evaluateSetTheme(_ theme: String, on webView: WKWebView) {
             let normalized = theme == "light" ? "light" : "dark"
             webView.evaluateJavaScript(Self.readyGatedCall("window.__setTheme('\(normalized)')"))
+        }
+
+        private func evaluateSetMaxFrameRate(_ maxFrameRate: Double, on webView: WKWebView) {
+            let resolved = max(1, min(maxFrameRate, 60))
+            webView.evaluateJavaScript(Self.readyGatedCall("window.__setMaxFps(\(resolved))"))
         }
 
         /// Defers `call` until the bundle signals readiness. Kernel ids and the
