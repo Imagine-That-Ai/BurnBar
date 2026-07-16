@@ -158,6 +158,8 @@
         { "slice": "document-rewrap", "consumer": "android", "suiteId": "android-consumer-contracts" },
         { "slice": "search", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
         { "slice": "search", "consumer": "android", "suiteId": "android-consumer-contracts" },
+        { "slice": "opaque-identifiers", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "opaque-identifiers", "consumer": "android", "suiteId": "android-consumer-contracts" },
         { "slice": "search", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" },
         { "slice": "opaque-identifiers", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" },
         { "slice": "search", "consumer": "local-mcp", "suiteId": "python-mcp-cloudvault-contracts" },

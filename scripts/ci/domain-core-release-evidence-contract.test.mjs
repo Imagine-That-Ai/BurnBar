@@ -262,16 +262,32 @@ test("every direct release-evidence workflow supplies a canonical activation doc
     ".github/workflows/domain-core-ios-release-evidence.yml",
     ".github/workflows/domain-core-functions-release-evidence.yml",
   ];
+  // The standard and native evidence creators both require --activation.
+  // The Windows workflow uses create-domain-core-native-release-evidence.mjs
+  // with a generator-plan + per-domain loop; every other workflow uses
+  // create-domain-core-release-evidence.mjs directly.
   for (const path of workflows) {
     const source = readFileSync(join(REPO_ROOT, path), "utf8");
-    const invocations = source.split(
+    const foundInvocation = [
       "node scripts/ci/create-domain-core-release-evidence.mjs",
-    );
-    assert.ok(invocations.length > 1, `${path} has no evidence invocation`);
-    for (const block of invocations.slice(1)) {
-      const command = block.split(/\n\s*(?:cosign |\{)/u, 1)[0];
-      assert.match(command, /--activation\s+"[^"\n]+"/u, path);
-    }
+      "node scripts/ci/create-domain-core-native-release-evidence.mjs",
+    ].some((script) => {
+      const parts = source.split(script);
+      if (parts.length <= 1) return false;
+      for (const block of parts.slice(1)) {
+        const command = block.split(/\n\s*(?:cosign |\{)/u, 1)[0];
+        assert.match(command, /--activation\s+"[^"\n]+"/u, `${path} must supply --activation`);
+      }
+      return true;
+    });
+    assert.ok(foundInvocation, `${path} has no evidence invocation`);
+  }
+  // The standard creator workflows share the candidate/activation object pattern.
+  // The Windows native creator uses a generator-plan + per-domain loop instead,
+  // so only verify the object pattern for non-Windows workflows.
+  for (const path of workflows) {
+    if (path === ".github/workflows/openburnbar-release-windows.yml") continue;
+    const source = readFileSync(join(REPO_ROOT, path), "utf8");
     assert.match(
       source,
       /\{candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256\}/u,
