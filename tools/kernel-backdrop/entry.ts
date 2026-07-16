@@ -70,7 +70,7 @@ function initialKernel(): KernelId {
 
 function initialMaxFps(): number {
   const value = Number(new URLSearchParams(location.search).get("maxFps"));
-  return Number.isFinite(value) && value > 0 ? Math.min(value, 60) : 20;
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 60) : 0;
 }
 
 function mount(): void {

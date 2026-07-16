@@ -220,20 +220,12 @@ struct WallpaperGeneratorView: View {
     private var wallpaperCanvas: some View {
         ZStack {
             if let livingTheme {
-                if MobileWebGLKernelBackdropView.supports(kernelID: livingTheme.rawValue) {
-                    MobileWebGLKernelBackdropView(
-                        kernelID: livingTheme.rawValue,
-                        theme: "dark",
-                        maxFrameRate: livingThemeMaxFrameRate
-                    )
-                } else {
-                    MobileKernelBackdropView(
-                        kernel: livingTheme,
-                        accent: MobileTheme.ember,
-                        visibility: .prominent,
-                        maxFrameRate: livingThemeMaxFrameRate
-                    )
-                }
+                MobileKernelBackdropView(
+                    kernel: livingTheme,
+                    accent: MobileTheme.ember,
+                    visibility: .prominent,
+                    maxFrameRate: livingThemeMaxFrameRate
+                )
             } else {
                 effectiveStyle.backgroundColor
                     .ignoresSafeArea()

@@ -66,7 +66,7 @@ public enum ParserResourceExceeded: Error, CustomStringConvertible, Equatable {
 public final class ParserResourceGovernor: Sendable {
     private struct State: Sendable {
         var consumedBytes: Int64 = 0
-        var deferredFileCount: Int = 0
+        var deferredFileCount = 0
         var softLimitReported = false
         var checkpointCounter: UInt64 = 0
     }
@@ -75,12 +75,6 @@ public final class ParserResourceGovernor: Sendable {
     private let footprintProvider: @Sendable () -> Int64
     private let onSoftLimit: (@Sendable (Int64) -> Void)?
     private let state = Locked(State())
-
-    private func withState<Result: Sendable>(
-        _ body: (inout State) throws -> Result
-    ) rethrows -> Result {
-        try state.withLock(body)
-    }
 
     /// - Parameters:
     ///   - footprintProvider: injectable for tests; defaults to the live
@@ -107,7 +101,7 @@ public final class ParserResourceGovernor: Sendable {
     /// budget is allowed (a pass always makes progress even when a single
     /// file exceeds the whole budget).
     public func admitFile(estimatedBytes: Int64) -> Bool {
-        withState { state in
+        state.withLock { state in
             guard let budget = limits.fileByteBudget else {
                 state.consumedBytes += estimatedBytes
                 return true
@@ -124,7 +118,7 @@ public final class ParserResourceGovernor: Sendable {
     /// Memory-ceiling check. Call between files and every few thousand lines
     /// inside per-line loops. Throws when the hard ceiling is crossed.
     public func checkpoint() throws {
-        let shouldSample = withState { state in
+        let shouldSample = state.withLock { state in
             state.checkpointCounter += 1
             // Sample the footprint on every 32nd checkpoint — task_info is cheap
             // (~µs) but line loops can run millions of iterations.
@@ -137,8 +131,10 @@ public final class ParserResourceGovernor: Sendable {
         guard footprint > 0 else { return }
 
         if let soft = limits.memorySoftLimitBytes, footprint > soft {
-            let shouldReport = withState { state in
-                guard !state.softLimitReported else { return false }
+            let shouldReport = state.withLock { state in
+                if state.softLimitReported {
+                    return false
+                }
                 state.softLimitReported = true
                 return true
             }
@@ -151,12 +147,12 @@ public final class ParserResourceGovernor: Sendable {
 
     /// Bytes of new file content admitted so far in this pass.
     public var consumedBytes: Int64 {
-        withState { $0.consumedBytes }
+        state.read().consumedBytes
     }
 
     /// Files deferred to a later pass because the budget was exhausted.
     public var deferredFileCount: Int {
-        withState { $0.deferredFileCount }
+        state.read().deferredFileCount
     }
 
     /// Current process physical footprint (the same number Activity Monitor

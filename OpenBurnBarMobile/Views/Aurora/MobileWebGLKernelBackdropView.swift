@@ -209,39 +209,7 @@ private enum MobileKernelCatalogIDs {
     /// Matches the bundle's own fallback when no `#hash`/`?kernel=` is supplied.
     static let defaultID = "fluid-aurora"
 
-    static let all: Set<String> = [
-        "constellation",
-        "flow",
-        "aurora",
-        "mesh",
-        "moire",
-        "volumetric",
-        "lic",
-        "fluid-aurora",
-        "cloudfield",
-        "plasma-orbs",
-        "blobs-mesh",
-        "retro-plasma",
-        "inversion-lattice",
-        "vogel-bloom",
-        "crystal-drift",
-        "ripple-lattice",
-        "liquid-lumen",
-        "spectral-drift",
-        "mycelium-mesh",
-        "oilfield",
-        "suminagashi-drift",
-        "kinetic-stipple",
-        "agent1",
-        "neural-bloom",
-        "aether-lattice",
-        "bat-signal",
-        "storm-signal",
-        "origami",
-        "ink-diffusion",
-        "petroleum-sheen",
-        "boids"
-    ]
+    static let all = MobileBackdropKernel.appBackdropKernelIDs
 
     /// Whether `id` names a real kernel; guards the JS bridge against junk.
     static func isValid(_ id: String) -> Bool {

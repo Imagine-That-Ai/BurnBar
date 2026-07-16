@@ -58,6 +58,17 @@ final class MobileBackdropKernelTests: XCTestCase {
         XCTAssertEqual(MobileBackdropKernel.defaultKernel.rawValue, "constellation")
     }
 
+    func testAppBackdropOnlyOffersBundledWebGLKernels() {
+        XCTAssertEqual(MobileBackdropKernel.appBackdropKernels.count, 31)
+        XCTAssertTrue(MobileBackdropKernel.appBackdropKernels.contains(.fluidAurora))
+        XCTAssertFalse(MobileBackdropKernel.appBackdropKernels.contains(.prismatica))
+        XCTAssertFalse(MobileBackdropKernel.appBackdropKernels.contains(.hypersphere))
+    }
+
+    func testLivingThemeSelectionDoesNotMutateAppBackdropPreference() {
+        XCTAssertNotEqual(MobileBackdropKernel.livingThemeStorageKey, MobileBackdropKernel.storageKey)
+    }
+
     func testInvalidStoredKernelFallsBackToDefault() {
         XCTAssertEqual(MobileBackdropKernel.resolved("petroleum-sheen"), .petroleumSheen)
         XCTAssertEqual(MobileBackdropKernel.resolved("not-a-kernel"), .constellation)

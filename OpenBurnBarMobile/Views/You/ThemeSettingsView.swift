@@ -89,7 +89,7 @@ struct ThemeSettingsView: View {
                 .settingsAnchor(SettingsAnchor.useWebsiteBackground)
 
                 Picker(selection: $mobileBackdropKernel) {
-                    ForEach(MobileBackdropKernel.allCases) { kernel in
+                    ForEach(MobileBackdropKernel.appBackdropKernels) { kernel in
                         Text(kernel.label).tag(kernel.rawValue)
                     }
                 } label: {

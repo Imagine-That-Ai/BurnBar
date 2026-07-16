@@ -2,15 +2,13 @@ import Foundation
 
 // MARK: - Parser Scan Support
 
-enum ParserAutoreleasePool {
-    @inline(__always)
-    static func run<Result>(_ body: () throws -> Result) rethrows -> Result {
-        #if canImport(ObjectiveC)
-        return try autoreleasepool(invoking: body)
-        #else
-        return try body()
-        #endif
-    }
+@inline(__always)
+func withParserAutoreleasePool<Result>(_ body: () throws -> Result) rethrows -> Result {
+    #if canImport(ObjectiveC)
+    return try autoreleasepool(invoking: body)
+    #else
+    return try body()
+    #endif
 }
 
 /// Digest helpers shared by the incremental JSONL scanners (Codex rollouts,
@@ -46,8 +44,8 @@ enum ParserScanDigest {
     static func headDigestHex(handle: FileHandle, length: Int) -> String {
         guard length > 0 else { return fnv1a64Hex(Data()) }
         try? handle.seek(toOffset: 0) // try?-ok(seek 0 before head read)
-        // Pool the NSData-backed read on Objective-C platforms.
-        return ParserAutoreleasePool.run {
+        // Pool the autoreleased NSData-backed read (see BufferedLineReader).
+        return withParserAutoreleasePool {
             fnv1a64Hex(handle.readData(ofLength: length))
         }
     }

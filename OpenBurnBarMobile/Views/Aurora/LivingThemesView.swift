@@ -2,7 +2,7 @@ import SwiftUI
 import OpenBurnBarUI
 
 struct LivingThemesView: View {
-    @AppStorage(MobileBackdropKernel.storageKey) private var selectedKernelID = MobileBackdropKernel.defaultKernel.rawValue
+    @AppStorage(MobileBackdropKernel.livingThemeStorageKey) private var selectedKernelID = MobileBackdropKernel.defaultKernel.rawValue
     @AppStorage("burnbar.livingThemes.quality") private var selectedQualityRaw = LivingThemeDeepLink.Quality.eco.rawValue
     @State private var searchText = ""
     @State private var showGenerator = false
@@ -50,20 +50,12 @@ struct LivingThemesView: View {
 
     private var selectedPreview: some View {
         ZStack(alignment: .bottomLeading) {
-            if MobileWebGLKernelBackdropView.supports(kernelID: selectedKernel.rawValue) {
-                MobileWebGLKernelBackdropView(
-                    kernelID: selectedKernel.rawValue,
-                    theme: "dark",
-                    maxFrameRate: selectedQuality.maxFrameRate
-                )
-            } else {
-                MobileKernelBackdropView(
-                    kernel: selectedKernel,
-                    accent: MobileTheme.ember,
-                    visibility: .prominent,
-                    maxFrameRate: selectedQuality.maxFrameRate
-                )
-            }
+            MobileKernelBackdropView(
+                kernel: selectedKernel,
+                accent: MobileTheme.ember,
+                visibility: .prominent,
+                maxFrameRate: selectedQuality.maxFrameRate
+            )
 
             LinearGradient(
                 colors: [.clear, .black.opacity(0.88)],

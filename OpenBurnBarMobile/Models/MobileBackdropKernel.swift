@@ -45,6 +45,7 @@ enum MobileBackdropKernel: String, CaseIterable, Codable, Identifiable, Sendable
     case hypersphere
 
     static let storageKey = "mobileBackdropKernel"
+    static let livingThemeStorageKey = "burnbar.livingThemes.selectedKernel"
     /// Keep first launch on the original provider-dot look. The heavier
     /// app.burnbar.ai-inspired kernels remain opt-in from Settings.
     static let defaultKernel: MobileBackdropKernel = .constellation
@@ -53,6 +54,22 @@ enum MobileBackdropKernel: String, CaseIterable, Codable, Identifiable, Sendable
 
     static var websiteKernelIDs: [String] {
         allCases.map(\.rawValue)
+    }
+
+    /// Kernels implemented by the shared offline WebGL bundle used for the
+    /// in-app backdrop. Living Themes may additionally use native renderers.
+    static let appBackdropKernelIDs: Set<String> = [
+        "constellation", "flow", "aurora", "mesh", "moire", "volumetric", "lic",
+        "fluid-aurora", "cloudfield", "plasma-orbs", "blobs-mesh", "retro-plasma",
+        "inversion-lattice", "vogel-bloom", "crystal-drift", "ripple-lattice",
+        "liquid-lumen", "spectral-drift", "mycelium-mesh", "oilfield",
+        "suminagashi-drift", "kinetic-stipple", "agent1", "neural-bloom",
+        "aether-lattice", "bat-signal", "storm-signal", "origami", "ink-diffusion",
+        "petroleum-sheen", "boids"
+    ]
+
+    static var appBackdropKernels: [MobileBackdropKernel] {
+        allCases.filter { appBackdropKernelIDs.contains($0.rawValue) }
     }
 
     static func resolved(_ rawValue: String) -> MobileBackdropKernel {
