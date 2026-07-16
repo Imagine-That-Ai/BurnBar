@@ -245,35 +245,35 @@ def test_shadow_native_load_failure_returns_legacy_with_safe_diagnostic(tmp_path
 # ---------------------------------------------------------------------------
 
 
-def test_search_mode_rust_overrides_aggregate_legacy_for_token_search() -> None:
+def test_search_mode_rust_overrides_aggregate_legacy_for_token_search(tmp_path: Path) -> None:
     """SEARCH_MODE=rust routes token search to Rust even when aggregate mode is legacy.
 
     Before fix: ``search_mode`` kwarg does not exist → ``TypeError`` at construction.
     After fix:  search uses ``search_mode="rust"`` → native load fails → ``DomainCoreIdentityError``.
     """
-    adapter = CloudVaultDomainAdapter("legacy", search_mode="rust")
+    adapter = CloudVaultDomainAdapter("legacy", search_mode="rust", package_dir=tmp_path / "absent")
     with pytest.raises(DomainCoreIdentityError):
         adapter.token_hashes("private-query", bytes(range(32)), 10)
 
 
-def test_search_mode_rust_overrides_aggregate_legacy_for_semantic_search() -> None:
+def test_search_mode_rust_overrides_aggregate_legacy_for_semantic_search(tmp_path: Path) -> None:
     """SEARCH_MODE=rust routes semantic search to Rust even when aggregate mode is legacy.
 
     Before fix: ``search_mode`` kwarg does not exist → ``TypeError`` at construction.
     After fix:  search uses ``search_mode="rust"`` → native load fails → ``DomainCoreIdentityError``.
     """
-    adapter = CloudVaultDomainAdapter("legacy", search_mode="rust")
+    adapter = CloudVaultDomainAdapter("legacy", search_mode="rust", package_dir=tmp_path / "absent")
     with pytest.raises(DomainCoreIdentityError):
         adapter.semantic_hashes("private-query", bytes(range(32)), 12)
 
 
-def test_search_mode_rust_overrides_aggregate_legacy_for_normalized_tokens() -> None:
+def test_search_mode_rust_overrides_aggregate_legacy_for_normalized_tokens(tmp_path: Path) -> None:
     """SEARCH_MODE=rust routes search-analyze to Rust even when aggregate mode is legacy.
 
     Before fix: ``search_mode`` kwarg does not exist → ``TypeError`` at construction.
     After fix:  search uses ``search_mode="rust"`` → native load fails → ``DomainCoreIdentityError``.
     """
-    adapter = CloudVaultDomainAdapter("legacy", search_mode="rust")
+    adapter = CloudVaultDomainAdapter("legacy", search_mode="rust", package_dir=tmp_path / "absent")
     with pytest.raises(DomainCoreIdentityError):
         adapter.normalized_tokens("private-query")
 
@@ -337,24 +337,24 @@ def test_aggregate_project_memory_doc_id_ignores_search_mode() -> None:
     assert adapter.project_memory_doc_id("private-project", key) == expected
 
 
-def test_aggregate_operations_use_rust_mode_when_search_mode_is_legacy() -> None:
+def test_aggregate_operations_use_rust_mode_when_search_mode_is_legacy(tmp_path: Path) -> None:
     """Non-search operations use aggregate rust mode even when search_mode is legacy.
 
     Before fix: ``search_mode`` kwarg does not exist → ``TypeError``.
     After fix:  project-memory doc id uses ``mode="rust"`` → native load fails → ``DomainCoreIdentityError``.
     """
-    adapter = CloudVaultDomainAdapter("rust", search_mode="legacy")
+    adapter = CloudVaultDomainAdapter("rust", search_mode="legacy", package_dir=tmp_path / "absent")
     with pytest.raises(DomainCoreIdentityError):
         adapter.project_memory_doc_id("slug", bytes(32))
 
 
-def test_combined_search_legacy_and_aggregate_rust_route_independently() -> None:
+def test_combined_search_legacy_and_aggregate_rust_route_independently(tmp_path: Path) -> None:
     """Search uses search_mode=legacy while aggregate ops use mode=rust, independently.
 
     Before fix: ``search_mode`` kwarg does not exist → ``TypeError``.
     After fix:  search returns legacy hashes; project-memory doc id raises ``DomainCoreIdentityError``.
     """
-    adapter = CloudVaultDomainAdapter("rust", search_mode="legacy")
+    adapter = CloudVaultDomainAdapter("rust", search_mode="legacy", package_dir=tmp_path / "absent")
     key = bytes(range(32))
     # Search uses search_mode=legacy → succeeds with legacy hashes
     expected = search_legacy._cloud_token_hashes("The QUICK, quick fox and X.", key, 250)
@@ -364,7 +364,7 @@ def test_combined_search_legacy_and_aggregate_rust_route_independently() -> None
         adapter.project_memory_doc_id("slug", key)
 
 
-def test_env_var_search_mode_rust_overrides_aggregate_legacy(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_env_var_search_mode_rust_overrides_aggregate_legacy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Env-var SEARCH_MODE=rust routes search to Rust even when MODE=legacy.
 
     Before fix: ``_search_mode_from_environment`` does not exist → ``AttributeError``.
@@ -375,6 +375,7 @@ def test_env_var_search_mode_rust_overrides_aggregate_legacy(monkeypatch: pytest
     adapter = CloudVaultDomainAdapter(
         domain_core_cloudvault._mode_from_environment(),
         search_mode=domain_core_cloudvault._search_mode_from_environment(),
+        package_dir=tmp_path / "absent",
     )
     with pytest.raises(DomainCoreIdentityError):
         adapter.token_hashes("private-query", bytes(range(32)), 10)
