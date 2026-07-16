@@ -365,7 +365,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             }
 
             if line.isTerminated {
-                autoreleasepool {
+                withParserAutoreleasePool {
                     Self.reduceLine(line.text, tokenAccumulator: &accumulator, conversation: conversationAccumulator)
                 }
                 persistedOffset = line.endOffset
@@ -374,7 +374,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
                 // counted toward returned totals, never toward persisted
                 // state — the next scan re-reads it once complete.
                 var tail = accumulator
-                autoreleasepool {
+                withParserAutoreleasePool {
                     Self.reduceLine(line.text, tokenAccumulator: &tail, conversation: conversationAccumulator)
                 }
                 tailAccumulator = tail
