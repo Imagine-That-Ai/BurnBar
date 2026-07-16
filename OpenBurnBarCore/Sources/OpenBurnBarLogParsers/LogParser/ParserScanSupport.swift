@@ -36,8 +36,12 @@ enum ParserScanDigest {
         guard length > 0 else { return fnv1a64Hex(Data()) }
         try? handle.seek(toOffset: 0) // try?-ok(seek 0 before head read)
         // Pool the autoreleased NSData-backed read (see BufferedLineReader).
+        #if canImport(ObjectiveC)
         return autoreleasepool {
             fnv1a64Hex(handle.readData(ofLength: length))
         }
+        #else
+        return fnv1a64Hex(handle.readData(ofLength: length))
+        #endif
     }
 }

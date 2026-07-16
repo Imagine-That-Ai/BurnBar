@@ -1,11 +1,7 @@
 import Foundation
+import OpenBurnBarKernel
 #if canImport(Darwin)
 import Darwin
-#endif
-#if canImport(os)
-import os
-#else
-import Synchronization
 #endif
 
 // MARK: - Parser Resource Governance
@@ -78,20 +74,12 @@ public final class ParserResourceGovernor: Sendable {
     private let limits: ParserResourceLimits
     private let footprintProvider: @Sendable () -> Int64
     private let onSoftLimit: (@Sendable (Int64) -> Void)?
-    #if canImport(os)
-    private let state = OSAllocatedUnfairLock(initialState: State())
-    #else
-    private let state = Mutex(State())
-    #endif
+    private let state = Locked(State())
 
     private func withState<Result: Sendable>(
         _ body: (inout State) throws -> Result
     ) rethrows -> Result {
-        #if canImport(os)
-        try state.withLockUnchecked(body)
-        #else
         try state.withLock(body)
-        #endif
     }
 
     /// - Parameters:
