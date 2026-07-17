@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,9 +20,8 @@ const supplementalValidator = readFileSync(
 const protocolCatalog = JSON.parse(
   readFileSync(join(root, "release-certification-protocols.json"), "utf8"),
 );
-const performanceBudget = JSON.parse(
-  readFileSync(join(root, "release-performance-budgets.json"), "utf8"),
-);
+const performanceBudgetBytes = readFileSync(join(root, "release-performance-budgets.json"));
+const performanceBudget = JSON.parse(performanceBudgetBytes.toString("utf8"));
 const physicalRunbook = readFileSync(
   join(root, "../../docs/windows-port/evidence/windows-v1.0.35-release/PHYSICAL_X64_RUNBOOK.md"),
   "utf8",
@@ -99,6 +99,10 @@ for (const [gate, gateConfig] of Object.entries(protocolCatalog.gates)) {
 assert.equal(performanceBudget.status, "ACTIVE_RELEASE_GATE");
 assert.equal(performanceBudget.profile, "physical-performance");
 assert.equal(
+  createHash("sha256").update(performanceBudgetBytes).digest("hex"),
+  "779abf7596911f8d255e0bc82e490e47c025ca3e4ef24842c65107081291f926",
+);
+assert.equal(
   protocolCatalog.profiles["physical-performance"].performanceBudgetSchema,
   performanceBudget.schema,
 );
@@ -150,8 +154,13 @@ assert.match(physicalRunbook, /\$Repo = Join-Path \$Root 'candidate'/);
 assert.match(physicalRunbook, /\$Harness = Join-Path \$Root 'harness'/);
 assert.match(
   physicalRunbook,
-  /\$ExpectedHarnessCommit = '19385bf798a19f836dcb41d8d9decb5f6a228997'/,
+  /\$ExpectedHarnessCommit = 'f44ad39aee2129016a931a9bf40a913f2138fc4e'/,
 );
+assert.match(
+  physicalRunbook,
+  /\$ExpectedPerformanceBudgetHash = '779abf7596911f8d255e0bc82e490e47c025ca3e4ef24842c65107081291f926'/,
+);
+assert.match(physicalRunbook, /Active release performance budget mismatch/);
 assert.match(physicalRunbook, /git -C \$Repo checkout --detach windows-v1\.0\.35/);
 assert.match(physicalRunbook, /git -C \$Harness checkout --detach \$ExpectedHarnessCommit/);
 assert.match(

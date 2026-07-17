@@ -42,6 +42,19 @@ The machine-readable record is
 [`exact-signed-artifacts-2cfa9db885.json`](exact-signed-artifacts-2cfa9db885.json).
 The physical Intel handoff is [`PHYSICAL_X64_RUNBOOK.md`](PHYSICAL_X64_RUNBOOK.md).
 
+## Physical performance gate
+
+The physical handoff is pinned to independent harness commit
+`f44ad39aee2129016a931a9bf40a913f2138fc4e`. That harness promotes the reviewed
+Windows performance proposal into the active, machine-readable release contract
+at `scripts/windows-port/release-performance-budgets.json` (SHA-256
+`779abf7596911f8d255e0bc82e490e47c025ca3e4ef24842c65107081291f926`).
+A performance receipt cannot pass from prose assertions alone: it must bind the
+exact budget, report all 18 numeric measurements with required sample and
+duration floors, attach hashed raw evidence, and survive independent threshold
+re-evaluation. The older evidence-namespace proposal remains historical and is
+not consumed by the validator.
+
 ## Certification boundary
 
 This record does not satisfy physical x64 performance, physical ARM64, manual

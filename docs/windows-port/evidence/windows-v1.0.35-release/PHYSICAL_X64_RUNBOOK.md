@@ -25,7 +25,8 @@ $Release = Join-Path $Root 'release'
 $Evidence = Join-Path $Root ('physical-x64-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $Attestation = Join-Path $Root 'hardware-attestation-x64.json'
 $ExpectedCommit = '2cfa9db885dafef7f1f451a9e05a8ee775351d44'
-$ExpectedHarnessCommit = '19385bf798a19f836dcb41d8d9decb5f6a228997'
+$ExpectedHarnessCommit = 'f44ad39aee2129016a931a9bf40a913f2138fc4e'
+$ExpectedPerformanceBudgetHash = '779abf7596911f8d255e0bc82e490e47c025ca3e4ef24842c65107081291f926'
 $ExpectedMsixHash = '1d68c24f044a0247d49a5f2e4030a4d46844ce49c34016d3605f129bcd9a43e1'
 $ExpectedSigner = 'CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US'
 $InstalledByRun = $false
@@ -55,6 +56,10 @@ if ((git -C $Harness rev-parse HEAD) -ne $ExpectedHarnessCommit) {
 }
 if (git -C $Harness status --porcelain) {
     throw 'Certification harness checkout is dirty.'
+}
+$PerformanceBudget = Join-Path $Harness 'scripts\windows-port\release-performance-budgets.json'
+if ((Get-FileHash -Algorithm SHA256 $PerformanceBudget).Hash.ToLowerInvariant() -ne $ExpectedPerformanceBudgetHash) {
+    throw 'Active release performance budget mismatch.'
 }
 
 gh run download 29557726093 `
@@ -189,6 +194,23 @@ Each generated result file enumerates every required assertion as `NOT_RUN`.
 During the protocol, set the true UTC start/end times, record at least one
 command or manual step, change an assertion to `PASS` only after observing it,
 and list one or more raw evidence files relative to the result file's directory.
+The physical-performance template also contains the immutable active-budget
+identity, five required `performanceContext` fields, and 18 numeric
+`performanceMeasurements`. Fill every measurement's `value`, `sampleCount`,
+`durationSeconds`, `context`, and `evidenceFiles`; do not change its id,
+assertion, unit, statistic, direction, limit, or minimums. Use WPR/WPA,
+PresentMon, Performance Monitor, or an equivalently auditable source, and name
+the tool/version, workload and dataset cardinality, power/thermal state,
+display/GPU/driver/WebView2 state, sample interval, and percentile method.
+
+The active release contract is
+`scripts/windows-port/release-performance-budgets.json`. It requires repeated
+cold/warm and interaction p95 samples, five minutes of idle CPU/disk samples,
+one minute of active CPU/GPU sampling, at least 300 presented frames, and a
+30-minute soak. The finalizer copies and hashes the raw files; the independent
+validator rebinds the budget SHA-256, rejects missing/duplicate/unknown metrics,
+checks sample and duration floors, re-evaluates all thresholds, and rejects a
+measurement duration longer than the signed receipt interval.
 Incomplete, failed, unknown, duplicate, unbound, unhashed, path-escaping, stale,
 wrong-device, wrong-architecture, virtualized, or secret-bearing evidence fails
 closed.
