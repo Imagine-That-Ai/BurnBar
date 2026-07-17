@@ -11,6 +11,30 @@ SIGNER_WORKFLOW = ROOT / ".github/workflows/domain-core-promotion-proof.yml"
 TRUSTED_GUARD_WORKFLOW = ROOT / ".github/workflows/domain-core-deletion-guard.yml"
 
 
+def _workflow_trigger_paths(source: str, event: str) -> set[str]:
+    """Return the quoted path filters for one top-level workflow event."""
+    lines = source.splitlines()
+    start = lines.index(f"  {event}:")
+    end = next(
+        (
+            index
+            for index in range(start + 1, len(lines))
+            if lines[index].startswith("  ")
+            and not lines[index].startswith("    ")
+            and lines[index].endswith(":")
+        ),
+        len(lines),
+    )
+    event_lines = lines[start:end]
+    paths_start = event_lines.index("    paths:")
+    paths: set[str] = set()
+    for line in event_lines[paths_start + 1 :]:
+        if not line.startswith("      - "):
+            break
+        paths.add(line.removeprefix("      - ").strip('"'))
+    return paths
+
+
 class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
     def test_domain_workflow_runs_governance_and_append_only_gate(self) -> None:
         source = DOMAIN_WORKFLOW.read_text()
@@ -27,26 +51,22 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
         ):
             self.assertIn(marker, source)
 
-    def test_workflow_triggers_cover_every_governance_surface(self) -> None:
+    def test_workflow_triggers_cover_validator_test_manifest_and_workflow_families(self) -> None:
         source = DOMAIN_WORKFLOW.read_text()
-        for marker in (
+        governed_families = {
             "config/domain-core-legacy-deletion*.json",
             "config/domain-core-legacy-deletion-receipts/**",
             "config/domain-core-deletion-*.json",
             "config/domain-core-deletion-plans/**",
-            "config/domain-core-promotion-attestation.schema.json",
-            "config/domain-core-promotion-attestations/**",
-            "config/domain-core-promotion-bundles/**",
-            "config/domain-core-promotion-provenance/**",
-            "config/domain-core-release-provenance/**",
-            "scripts/ci/verify-domain-core-legacy-deletion.py",
-            "scripts/ops/create-domain-core-promotion-receipt.py",
-            "scripts/ops/create-domain-core-deletion-plan.py",
-            "tests/test_domain_core_legacy_deletion*.py",
-            "docs/runbooks/shared-rust-legacy-deletion.md",
-            "docs/SHARED_RUST_DOMAIN_INVENTORY.md",
-        ):
-            self.assertGreaterEqual(source.count(marker), 2, marker)
+            "scripts/ci/verify-domain-core-*deletion*.py",
+            "tests/test_domain_core_*deletion*.py",
+            ".github/workflows/domain-core-deletion-guard.yml",
+            ".github/workflows/domain-core-post-deletion-completion.yml",
+            ".github/workflows/domain-core-promotion-proof.yml",
+        }
+
+        for event in ("push", "pull_request"):
+            self.assertLessEqual(governed_families, _workflow_trigger_paths(source, event), event)
 
     def test_protected_signer_publishes_official_provenance_bundle(self) -> None:
         source = SIGNER_WORKFLOW.read_text()

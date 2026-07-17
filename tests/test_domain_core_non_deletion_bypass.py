@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -64,6 +65,11 @@ IMMUTABLE_ROOTS = (
     Path("config/domain-core-promotion-provenance"),
     Path("config/domain-core-release-provenance"),
     Path("config/domain-core-deletion-plans"),
+)
+
+GOVERNED_ROOTS = (
+    Path("crates/openburnbar-domain-core"),
+    Path("OpenBurnBarCore/Sources/OpenBurnBarDomainCoreRuntime"),
 )
 
 
@@ -198,6 +204,43 @@ def _materialize_ledger_tree(repository: Path, ledger: dict[str, Any]) -> None:
     for shared in ledger["sharedTargets"]:
         target = shared["target"]
         _write(repository, Path(target["path"]), f"// {target['literal']} = true\n")
+
+
+def _governed_ledger(*, deleted: bool) -> dict[str, Any]:
+    """Build a trusted inventory whose two source roots each own legacy rows."""
+    ledger = _bootstrap_ledger()
+    ledger["sourceRoots"] = {
+        "rust": GOVERNED_ROOTS[0].as_posix(),
+        "swift": GOVERNED_ROOTS[1].as_posix(),
+    }
+    for index, row in enumerate(ledger["rows"]):
+        root_id = "rust" if index % 2 == 0 else "swift"
+        root = Path(ledger["sourceRoots"][root_id])
+        row["state"] = "legacy_deleted" if deleted else "rollout"
+        row["targets"][0]["root"] = root_id
+        row["targets"][0]["path"] = (root / "legacy" / f"{row['id']}.legacy").as_posix()
+    ledger["sharedTargets"][0]["target"]["path"] = (
+        GOVERNED_ROOTS[0] / "legacy" / "hermes_rollback.legacy"
+    ).as_posix()
+    return ledger
+
+
+def _governed_repository(tmp_path: Path, *, deleted: bool) -> tuple[Path, str, dict[str, Any]]:
+    repository = _repository(tmp_path)
+    ledger = _governed_ledger(deleted=deleted)
+    _write(repository, LEDGER_PATH, json.dumps(ledger, separators=(",", ":")))
+    for index, root in enumerate(GOVERNED_ROOTS):
+        _write(repository, root / "retained" / "current-authority.keep", f"authority {index}\n")
+    _write(repository, Path("ordinary/source.keep"), "ordinary source\n")
+    base = _commit(repository, "seed governed deletion roots")
+    _git(repository, "checkout", "-b", "feature")
+    return repository, base, ledger
+
+
+def _assert_deleted_root_rejection(repository: Path, base: str, governed_path: Path) -> None:
+    with pytest.raises(GATE.GateError, match="post-deletion governed legacy roots are immutable") as error:
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=base)
+    assert governed_path.as_posix() in str(error.value)
 
 
 # ---------------------------------------------------------------------------
@@ -544,6 +587,116 @@ def test_rename_immutable_artifact_to_ordinary_name_stays_fail_closed(tmp_path: 
     with pytest.raises(GATE.GateError):
         GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
 
+
+
+@pytest.mark.parametrize(
+    "root,new_path",
+    [
+        (GOVERNED_ROOTS[0], Path("nested/revival/undeclared.adapter.ktx")),
+        (GOVERNED_ROOTS[1], Path("nested/revival/undeclared.bridge.swiftinterface")),
+    ],
+    ids=("rust-root", "swift-root"),
+)
+def test_deleted_governed_roots_reject_uninventoried_nested_extensions(
+    tmp_path: Path, root: Path, new_path: Path
+) -> None:
+    """A deleted root cannot hide new legacy code behind an unlisted nested extension."""
+    repository, base, _ledger = _governed_repository(tmp_path, deleted=True)
+    candidate_path = root / new_path
+    _write(repository, candidate_path, "reintroduced implementation\n")
+    _commit(repository, "add uninventoried nested implementation")
+
+    inventory = GATE._deletion_sensitivity_inventory(repository, base)
+    assert candidate_path.as_posix() not in inventory.target_paths
+    _assert_deleted_root_rejection(repository, base, candidate_path)
+
+
+@pytest.mark.parametrize("operation", ("modified", "reintroduced"))
+def test_deleted_governed_root_rejects_modified_and_reintroduced_paths(
+    tmp_path: Path, operation: str
+) -> None:
+    """A deleted root rejects edits to retained files and restoration of an absent target."""
+    repository, base, ledger = _governed_repository(tmp_path, deleted=True)
+    if operation == "modified":
+        governed_path = GOVERNED_ROOTS[0] / "retained/current-authority.keep"
+        _write(repository, governed_path, "modified authority\n")
+    else:
+        governed_path = Path(ledger["rows"][0]["targets"][0]["path"])
+        assert not (repository / governed_path).exists()
+        _write(repository, governed_path, "restored legacy implementation\n")
+    _commit(repository, f"{operation} path under deleted root")
+
+    _assert_deleted_root_rejection(repository, base, governed_path)
+
+
+@pytest.mark.parametrize("direction", ("from-governed-root", "into-governed-root"))
+def test_deleted_governed_root_rejects_either_side_of_a_rename(
+    tmp_path: Path, direction: str
+) -> None:
+    """Rename classification retains both names, so neither direction escapes a deleted root."""
+    repository, base, _ledger = _governed_repository(tmp_path, deleted=True)
+    inside = GOVERNED_ROOTS[0] / "retained/current-authority.keep"
+    outside = Path("ordinary/source.keep")
+    destination = Path("ordinary/renamed.keep") if direction == "from-governed-root" else (
+        GOVERNED_ROOTS[0] / "retained/renamed.keep"
+    )
+    source = inside if direction == "from-governed-root" else outside
+    _git(repository, "mv", source.as_posix(), destination.as_posix())
+    _commit(repository, f"rename {direction}")
+
+    changed_paths = GATE._candidate_changed_paths(repository, base)
+    assert {source.as_posix(), destination.as_posix()} <= changed_paths
+    governed_path = source if direction == "from-governed-root" else destination
+    _assert_deleted_root_rejection(repository, base, governed_path)
+
+
+@pytest.mark.parametrize("direction", ("from-governed-root", "into-governed-root"))
+def test_deleted_governed_root_rejects_either_side_of_a_copy(
+    tmp_path: Path, direction: str
+) -> None:
+    """Copy classification retains source and destination so code cannot escape a deleted root."""
+    repository, base, _ledger = _governed_repository(tmp_path, deleted=True)
+    inside = GOVERNED_ROOTS[0] / "retained/current-authority.keep"
+    outside = Path("ordinary/source.keep")
+    destination = Path("ordinary/copied.keep") if direction == "from-governed-root" else (
+        GOVERNED_ROOTS[0] / "retained/copied.keep"
+    )
+    source = inside if direction == "from-governed-root" else outside
+    shutil.copyfile(repository / source, repository / destination)
+    _commit(repository, f"copy {direction}")
+
+    changed_paths = GATE._candidate_changed_paths(repository, base)
+    assert {source.as_posix(), destination.as_posix()} <= changed_paths
+    governed_path = source if direction == "from-governed-root" else destination
+    _assert_deleted_root_rejection(repository, base, governed_path)
+
+
+def test_deleted_governed_roots_leave_unrelated_paths_non_sensitive(tmp_path: Path) -> None:
+    """A deleted-root ledger does not turn an ordinary path into a deletion-sensitive change."""
+    repository, base, _ledger = _governed_repository(tmp_path, deleted=True)
+    _write(repository, Path("ordinary/source.keep"), "unrelated edit\n")
+    _commit(repository, "edit outside governed roots")
+
+    assert not GATE.classify_deletion_sensitivity(repository, base)
+    GATE.run_gate(repository, LEDGER_PATH, base_ref=base)
+
+
+def test_pre_deletion_root_changes_remain_sensitive_without_becoming_immutable(tmp_path: Path) -> None:
+    """Before legacy_deleted, root changes still receive full validation rather than the deletion ban."""
+    repository, base, _ledger = _governed_repository(tmp_path, deleted=False)
+    governed_path = GOVERNED_ROOTS[0] / "retained/current-authority.keep"
+    _write(repository, governed_path, "pre-deletion edit\n")
+    _commit(repository, "edit active legacy root")
+
+    inventory = GATE._deletion_sensitivity_inventory(repository, base)
+    changed_paths = GATE._candidate_changed_paths(repository, base)
+    assert not inventory.deleted_legacy_roots
+    assert GATE.classify_deletion_sensitivity(
+        repository, base, inventory=inventory, changed_paths=changed_paths
+    )
+    GATE.verify_post_deletion_root_changes(
+        repository, base, inventory=inventory, changed_paths=changed_paths
+    )
 
 # ---------------------------------------------------------------------------
 # Regression for run 29470881643 / job 87533675580 (PR #1820):

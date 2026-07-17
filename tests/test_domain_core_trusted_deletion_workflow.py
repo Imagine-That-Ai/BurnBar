@@ -6,11 +6,17 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/domain-core-deletion-guard.yml"
 
 
-def test_trusted_deletion_guard_runs_only_default_branch_code() -> None:
+def test_required_guard_is_unconditional_and_runs_only_default_branch_code() -> None:
     source = WORKFLOW.read_text()
+    trigger_block = source.split("on:\n", 1)[1].split("\npermissions:", 1)[0]
+    trigger_lines = [line.strip() for line in trigger_block.splitlines() if line.strip()]
 
-    for marker in (
+    assert trigger_lines == [
         "pull_request_target:",
+        "types: [opened, synchronize, reopened, ready_for_review]",
+    ]
+    assert "\n    if:" not in source
+    for marker in (
         "Domain Core Trusted Deletion Guard",
         "ref: ${{ github.event.pull_request.base.sha }}",
         "path: trusted",
@@ -26,6 +32,7 @@ def test_trusted_deletion_guard_runs_only_default_branch_code() -> None:
     ):
         assert marker in source
 
+    assert source.count("persist-credentials: false") == 2
     assert "candidate/scripts/" not in source
     assert "python3 candidate/" not in source
     assert "node candidate/" not in source

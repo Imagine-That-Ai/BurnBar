@@ -2668,23 +2668,28 @@ def validate_rollback_history(
         )
 
 
-def _sensitive_target_paths(repo_root: Path, revision: str) -> set[str]:
-    """Extract ledger-covered target paths from the manifest at a trusted revision.
+@dataclass(frozen=True)
+class DeletionSensitivityInventory:
+    target_paths: frozenset[str]
+    legacy_roots: frozenset[str]
+    deleted_legacy_roots: tuple[tuple[str, tuple[str, ...]], ...]
 
-    Reads the manifest's ``rows[].targets[].path`` and ``sharedTargets[].target.path``
-    values so the classifier treats any diff touching a legacy target, rollback control,
-    or post-deletion primitive path as deletion-sensitive.
-    """
-    paths: set[str] = set()
+
+def _deletion_sensitivity_inventory(repo_root: Path, revision: str) -> DeletionSensitivityInventory:
+    """Load the trusted deletion paths and root ownership used to classify a PR."""
     relative = "config/domain-core-legacy-deletion.json"
     if not git_file_exists(repo_root, revision, relative, "base legacy deletion ledger"):
-        return paths
+        return DeletionSensitivityInventory(frozenset(), frozenset(), ())
+
     manifest = require_object(
         load_json_bytes(git_file(repo_root, revision, relative, "base legacy deletion ledger"), relative),
         relative,
     )
     raw_rows = require_array(manifest.get("rows"), "base manifest rows")
     seen_row_ids: set[str] = set()
+    row_states: dict[str, str] = {}
+    target_records: list[tuple[str, dict[str, Any]]] = []
+    target_paths: set[str] = set()
     for raw_row in raw_rows:
         row = require_object(raw_row, "base manifest row")
         row_id = row.get("id")
@@ -2693,20 +2698,70 @@ def _sensitive_target_paths(repo_root: Path, revision: str) -> set[str]:
         if row_id in seen_row_ids:
             raise GateError(f"base manifest row: duplicate stable row id: {row_id}")
         seen_row_ids.add(row_id)
+        state = row.get("state")
+        if not isinstance(state, str) or state not in STATES:
+            raise GateError(f"base manifest row {row_id}: invalid state: {state!r}")
+        row_states[row_id] = state
         raw_targets = require_array(row.get("targets"), f"base manifest row {row_id} targets")
         if not raw_targets:
             raise GateError(f"base manifest row {row_id} targets must not be empty")
         for raw_target in raw_targets:
             target = require_object(raw_target, "base manifest target")
-            paths.add(repository_path(target.get("path"), "base manifest target.path"))
+            target_paths.add(repository_path(target.get("path"), "base manifest target.path"))
+            target_records.append((row_id, target))
     if seen_row_ids != set(ROW_IDS) or len(raw_rows) != len(ROW_IDS):
         missing = sorted(set(ROW_IDS) - seen_row_ids)
         raise GateError(f"base manifest rows must contain the stable row set; missing={missing}")
+
     for raw_shared in require_array(manifest.get("sharedTargets"), "base manifest sharedTargets"):
         shared = require_object(raw_shared, "base manifest sharedTarget")
         target = require_object(shared.get("target"), "base manifest sharedTarget.target")
-        paths.add(repository_path(target.get("path"), "base manifest sharedTarget.target.path"))
-    return paths
+        target_paths.add(repository_path(target.get("path"), "base manifest sharedTarget.target.path"))
+
+    raw_roots = require_object(manifest.get("sourceRoots"), "base manifest sourceRoots")
+    if not raw_roots:
+        raise GateError("base manifest sourceRoots must not be empty")
+    source_roots: dict[str, str] = {}
+    seen_root_paths: set[str] = set()
+    for root_id, raw_path in raw_roots.items():
+        if not isinstance(root_id, str) or not ID_RE.fullmatch(root_id):
+            raise GateError(f"base manifest sourceRoots: invalid root id: {root_id!r}")
+        root_path = repository_path(raw_path, f"base manifest sourceRoots.{root_id}")
+        if root_path in seen_root_paths:
+            raise GateError(f"base manifest sourceRoots: duplicate root path: {root_path}")
+        seen_root_paths.add(root_path)
+        source_roots[root_id] = root_path
+
+    legacy_root_rows: dict[str, set[str]] = {}
+    for row_id, target in target_records:
+        root_id = target.get("root")
+        if not isinstance(root_id, str) or root_id not in source_roots:
+            raise GateError(f"base manifest target.root: unknown source root: {root_id!r}")
+        role = target.get("role")
+        if role not in {"legacy_implementation", "rollback_control"}:
+            raise GateError(f"base manifest target.role: invalid role: {role!r}")
+        target_path = repository_path(target.get("path"), "base manifest target.path")
+        root_path = source_roots[root_id]
+        if target_path != root_path and not target_path.startswith(root_path + "/"):
+            raise GateError(f"base manifest target.path must be inside source root {root_id}")
+        if role == "legacy_implementation":
+            legacy_root_rows.setdefault(root_path, set()).add(row_id)
+
+    deleted_legacy_roots = tuple(
+        (root_path, tuple(sorted(row_id for row_id in row_ids if row_states[row_id] == "legacy_deleted")))
+        for root_path, row_ids in sorted(legacy_root_rows.items())
+        if any(row_states[row_id] == "legacy_deleted" for row_id in row_ids)
+    )
+    return DeletionSensitivityInventory(
+        target_paths=frozenset(target_paths),
+        legacy_roots=frozenset(legacy_root_rows),
+        deleted_legacy_roots=deleted_legacy_roots,
+    )
+
+
+def _sensitive_target_paths(repo_root: Path, revision: str) -> set[str]:
+    """Extract ledger-covered target paths from the manifest at a trusted revision."""
+    return set(_deletion_sensitivity_inventory(repo_root, revision).target_paths)
 
 
 def _post_deletion_primitive_paths() -> set[str]:
@@ -2714,7 +2769,15 @@ def _post_deletion_primitive_paths() -> set[str]:
     return {rule[2] for rule in POST_DELETION_PRIMITIVE_RULES}
 
 
-def _is_sensitive_path(path: str, target_paths: set[str]) -> bool:
+def _path_is_within_root(path: str, root: str) -> bool:
+    return path == root or path.startswith(root + "/")
+
+
+def _is_sensitive_path(
+    path: str,
+    target_paths: set[str] | frozenset[str],
+    root_paths: set[str] | frozenset[str] = frozenset(),
+) -> bool:
     """Return True if a repository-relative path touches a deletion-covered surface."""
     if path in SENSITIVE_EXACT_PATHS:
         return True
@@ -2722,9 +2785,63 @@ def _is_sensitive_path(path: str, target_paths: set[str]) -> bool:
         return True
     if path in target_paths:
         return True
-    if any(path.startswith(tp + "/") for tp in target_paths):
+    if any(_path_is_within_root(path, target_path) for target_path in target_paths):
         return True
-    return False
+    return any(_path_is_within_root(path, root_path) for root_path in root_paths)
+
+
+def _candidate_changed_paths(repo_root: Path, base_ref: str) -> frozenset[str]:
+    """Return every source and destination path changed since the PR fork point.
+
+    ``--find-copies-harder`` is intentional. A pure copy leaves its source path
+    unchanged, but copying code out of an immutable deleted legacy root is still
+    deletion-sensitive. Name-status output retains both paths for copies and
+    renames; NUL delimiters preserve unusual but valid Git path names.
+    """
+    fork_point = git_output(
+        repo_root,
+        ["merge-base", base_ref, "HEAD"],
+        "non-deletion classification fork point",
+    ).strip()
+    if not COMMIT_RE.fullmatch(fork_point):
+        raise GateError("non-deletion classification: cannot determine fork point")
+
+    fields = git_output(
+        repo_root,
+        [
+            "diff",
+            "--name-status",
+            "-z",
+            "--find-renames=50%",
+            "--find-copies=50%",
+            "--find-copies-harder",
+            "--diff-filter=ACDMRTUXB",
+            f"{fork_point}..HEAD",
+        ],
+        "non-deletion classification diff",
+    ).split("\0")
+
+    changed_paths: set[str] = set()
+    field_index = 0
+    while field_index < len(fields):
+        status = fields[field_index]
+        field_index += 1
+        if not status:
+            if field_index == len(fields):
+                break
+            raise GateError("non-deletion classification: malformed empty diff status")
+        if status[0] not in "ACDMRTUXB":
+            raise GateError(f"non-deletion classification: unsupported diff status: {status!r}")
+
+        path_count = 2 if status[0] in "CR" else 1
+        if field_index + path_count > len(fields):
+            raise GateError("non-deletion classification: truncated name-status diff")
+        for _ in range(path_count):
+            path = fields[field_index]
+            field_index += 1
+            changed_paths.add(repository_path(path, "non-deletion classification path"))
+
+    return frozenset(changed_paths)
 
 
 def _ensure_base_ref_available(repo_root: Path, base_ref: str, trusted_root: Path | None) -> None:
@@ -2775,49 +2892,66 @@ def _ensure_base_ref_available(repo_root: Path, base_ref: str, trusted_root: Pat
         raise GateError("base ref: trusted commit is unavailable in both candidate and trusted checkouts")
 
 
-def classify_deletion_sensitivity(repo_root: Path, base_ref: str) -> bool:
+def classify_deletion_sensitivity(
+    repo_root: Path,
+    base_ref: str,
+    *,
+    inventory: DeletionSensitivityInventory | None = None,
+    changed_paths: frozenset[str] | None = None,
+) -> bool:
     """Classify whether the candidate diff touches any deletion-covered surface.
 
     Uses trusted default-branch code and inventory only. The fork point
     (``merge-base(base_ref, HEAD)``) isolates the PR author's own changes from
     main's independent advance, so a behind-base ordinary PR whose diff touches
     none of the sensitive surfaces is classified non-deletion and may bypass the
-    current-base ancestry requirement. Any touch of a ledger-covered target,
-    rollback control, immutable artifact, reviewer catalog, policy, workflow,
-    verifier, or guard surface is deletion-sensitive and must proceed through
-    full ancestry + signed-evidence validation.
+    current-base ancestry requirement. Every path below a trusted legacy source
+    root is sensitive, including a newly added nested path that was never named as
+    a target. Rename detection is disabled so both sides of a rename remain visible.
 
     Returns ``True`` if deletion-sensitive, ``False`` if non-deletion.
     """
     if not COMMIT_RE.fullmatch(base_ref):
         raise GateError("base ref must be a full lowercase Git SHA")
-    fork_point = git_output(
-        repo_root,
-        ["merge-base", base_ref, "HEAD"],
-        "non-deletion classification fork point",
-    ).strip()
-    if not COMMIT_RE.fullmatch(fork_point):
-        raise GateError("non-deletion classification: cannot determine fork point")
-    changed = [
-        line
-        for line in git_output(
-            repo_root,
-            [
-                "diff",
-                "--name-only",
-                "--no-renames",
-                "--diff-filter=ACDMRTUXB",
-                f"{fork_point}..HEAD",
-            ],
-            "non-deletion classification diff",
-        ).splitlines()
-        if line
-    ]
+    if inventory is None:
+        inventory = _deletion_sensitivity_inventory(repo_root, base_ref)
+    if changed_paths is None:
+        changed_paths = _candidate_changed_paths(repo_root, base_ref)
     static_target_paths = _post_deletion_primitive_paths()
-    if any(_is_sensitive_path(path, static_target_paths) for path in changed):
-        return True
-    target_paths = _sensitive_target_paths(repo_root, base_ref) | static_target_paths
-    return any(_is_sensitive_path(path, target_paths) for path in changed)
+    return any(
+        _is_sensitive_path(path, static_target_paths)
+        or _is_sensitive_path(path, inventory.target_paths, inventory.legacy_roots)
+        for path in changed_paths
+    )
+
+
+def verify_post_deletion_root_changes(
+    repo_root: Path,
+    base_ref: str,
+    *,
+    inventory: DeletionSensitivityInventory | None = None,
+    changed_paths: frozenset[str] | None = None,
+) -> None:
+    """Reject every PR-authored change below a root with a deleted legacy owner."""
+    if inventory is None:
+        inventory = _deletion_sensitivity_inventory(repo_root, base_ref)
+    if not inventory.deleted_legacy_roots:
+        return
+    if changed_paths is None:
+        changed_paths = _candidate_changed_paths(repo_root, base_ref)
+    violations = sorted(
+        (path, root_path, row_ids)
+        for path in changed_paths
+        for root_path, row_ids in inventory.deleted_legacy_roots
+        if _path_is_within_root(path, root_path)
+    )
+    if not violations:
+        return
+    details = "; ".join(
+        f"{path} (root {root_path}; legacy_deleted rows {', '.join(row_ids)})"
+        for path, root_path, row_ids in violations
+    )
+    raise GateError(f"post-deletion governed legacy roots are immutable: {details}")
 
 
 def verify_append_only_artifacts(repo_root: Path, base_ref: str | None) -> None:
@@ -3363,7 +3497,20 @@ def run_gate(
     deletion_sensitive = False
     if base_ref is not None:
         _ensure_base_ref_available(repo_root, base_ref, trusted_root)
-        deletion_sensitive = classify_deletion_sensitivity(repo_root, base_ref)
+        sensitivity_inventory = _deletion_sensitivity_inventory(repo_root, base_ref)
+        changed_paths = _candidate_changed_paths(repo_root, base_ref)
+        deletion_sensitive = classify_deletion_sensitivity(
+            repo_root,
+            base_ref,
+            inventory=sensitivity_inventory,
+            changed_paths=changed_paths,
+        )
+        verify_post_deletion_root_changes(
+            repo_root,
+            base_ref,
+            inventory=sensitivity_inventory,
+            changed_paths=changed_paths,
+        )
         if not deletion_sensitive:
             return
     verify_append_only_artifacts(repo_root, base_ref)
