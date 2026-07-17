@@ -1,19 +1,42 @@
 # Staging / pre-prod environment runbook
 
-**Status:** SCAFFOLD. The staging project does **not** exist yet. This repo ships
-the wiring (`.firebaserc` `staging` alias, `.github/workflows/deploy-staging.yml`,
-`functions/.env.burnbar-staging.example`) so the staging deploy lane is a **safe
-no-op** until you complete the provisioning steps below. Nothing here touches
-production (`burnbar`).
+**Status:** PARTIALLY PROVISIONED. The isolated `burnbar-staging` GCP/Firebase
+project, least-privilege deploy service account and role bindings, GitHub OIDC
+provider, and protected `staging` GitHub Environment exist. Billing and the
+deployable Firebase surfaces are not enabled, so the staging lane remains a
+**safe no-op**. Nothing here touches production (`burnbar`).
+
+## Live provisioning snapshot - 2026-07-17
+
+Read-only inspection produced this fail-closed state:
+
+| Surface | Status |
+| --- | --- |
+| GCP project `burnbar-staging` | Active; Firebase APIs are attached |
+| Deploy service account | `burnbar-staging-deployer` exists with all nine documented project roles |
+| GitHub OIDC | `github-pool/github-provider` is active and repository-scoped |
+| GitHub Environment | `staging` requires review and permits deployments from `main` only |
+| Billing | **Disabled**; no billing account is linked |
+| Firestore database | Missing |
+| Firebase Storage bucket | Missing |
+| Registered Firebase apps | None |
+| Deploy APIs | Core Firebase APIs exist; Functions, Build, Run, Tasks, Scheduler, and Artifact Registry still need enablement |
+| GitHub staging secrets | `STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER` and `STAGING_GCP_DEPLOY_SERVICE_ACCOUNT` are not set |
+| Repository deploy switch | `STAGING_ENABLED` is unset |
+| Functions runtime config | Template only; no reviewed `functions/.env.burnbar-staging` |
+
+Do not recreate the project, service account, OIDC pool/provider, or GitHub
+Environment. Resume at billing linkage, then verify/finish the remaining steps
+idempotently. Keep `STAGING_ENABLED` unset until the resources and GitHub
+environment secrets have been independently verified.
 
 ## Why this exists
 
-Today `.firebaserc` has exactly one project (`default: burnbar`). Every Firestore
-rules / indexes / Storage rules / Cloud Functions change is deployed straight to
-the single production project. A bad rules edit, a missing composite index, or a
-functions regression has no rehearsal surface — it lands on real users. The
-diligence review flagged this single-project setup as the highest-probability
-source of a self-inflicted incident.
+Historically `.firebaserc` exposed only the production project (`default:
+burnbar`), so every Firestore rules / indexes / Storage rules / Cloud Functions
+change went straight to real users. The repository now has a `staging` alias and
+an isolated cloud project, but the rehearsal surface is not usable until the
+remaining provisioning gates in this document pass.
 
 Staging fixes that: an isolated Firebase/GCP project (`burnbar-staging`) that is
 byte-for-byte the same `firestore.rules` / `firestore.indexes.json` /
@@ -48,17 +71,20 @@ staging.** Same source files, same pipeline shape, different project + creds.
 
 ---
 
-## What Alberto must provision (one-time)
+## Finish provisioning (one-time)
 
 You need `gcloud` + `firebase` CLIs authenticated as an owner of the GCP org/
 billing account. Estimated time: ~15–20 minutes.
 
-### 1. Create the staging Firebase/GCP project
+### 1. Create or finish the staging Firebase/GCP project
 
 ```bash
 # Project id must match .firebaserc `staging` alias (or override via the
 # STAGING_FIREBASE_PROJECT repo variable — see step 5).
-gcloud projects create burnbar-staging --name="BurnBar Staging"
+# Skip project creation when `gcloud projects describe burnbar-staging`
+# succeeds. The project already existed in the 2026-07-17 snapshot.
+gcloud projects describe burnbar-staging >/dev/null 2>&1 || \
+  gcloud projects create burnbar-staging --name="BurnBar Staging"
 gcloud billing projects link burnbar-staging \
   --billing-account="<YOUR_BILLING_ACCOUNT_ID>"
 
@@ -99,12 +125,15 @@ gcloud storage buckets describe "gs://burnbar-staging.firebasestorage.app" \
 > (step 5) — the workflow reads `vars.STAGING_FIREBASE_PROJECT` and only falls
 > back to `burnbar-staging`.
 
-### 2. Create the deploy service account (least privilege)
+### 2. Create or verify the deploy service account (least privilege)
 
 ```bash
-gcloud iam service-accounts create burnbar-staging-deployer \
-  --display-name="BurnBar Staging Deployer" \
-  --project=burnbar-staging
+gcloud iam service-accounts describe \
+  burnbar-staging-deployer@burnbar-staging.iam.gserviceaccount.com \
+  --project=burnbar-staging >/dev/null 2>&1 || \
+  gcloud iam service-accounts create burnbar-staging-deployer \
+    --display-name="BurnBar Staging Deployer" \
+    --project=burnbar-staging
 
 SA="burnbar-staging-deployer@burnbar-staging.iam.gserviceaccount.com"
 
@@ -125,7 +154,7 @@ for ROLE in \
 done
 ```
 
-### 3. Wire Workload Identity Federation (no long-lived keys)
+### 3. Create or verify Workload Identity Federation (no long-lived keys)
 
 Production auths via OIDC WIF only (see `deploy-firestore.yml` /
 `deploy-production.yml`). Staging must too — **do not create JSON SA keys.**
@@ -136,17 +165,22 @@ PROVIDER=github-provider
 PROJECT_NUMBER="$(gcloud projects describe burnbar-staging --format='value(projectNumber)')"
 REPO="Imagine-That-Ai/BurnBar"   # canonical origin owner/repo
 
-gcloud iam workload-identity-pools create "$POOL" \
-  --project=burnbar-staging --location=global \
-  --display-name="GitHub Actions pool"
+gcloud iam workload-identity-pools describe "$POOL" \
+  --project=burnbar-staging --location=global >/dev/null 2>&1 || \
+  gcloud iam workload-identity-pools create "$POOL" \
+    --project=burnbar-staging --location=global \
+    --display-name="GitHub Actions pool"
 
-gcloud iam workload-identity-pools providers create-oidc "$PROVIDER" \
+gcloud iam workload-identity-pools providers describe "$PROVIDER" \
   --project=burnbar-staging --location=global \
-  --workload-identity-pool="$POOL" \
-  --display-name="GitHub OIDC" \
-  --issuer-uri="https://token.actions.githubusercontent.com" \
-  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
-  --attribute-condition="assertion.repository=='${REPO}'"
+  --workload-identity-pool="$POOL" >/dev/null 2>&1 || \
+  gcloud iam workload-identity-pools providers create-oidc "$PROVIDER" \
+    --project=burnbar-staging --location=global \
+    --workload-identity-pool="$POOL" \
+    --display-name="GitHub OIDC" \
+    --issuer-uri="https://token.actions.githubusercontent.com" \
+    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
+    --attribute-condition="assertion.repository=='${REPO}'"
 
 # Let the deploy SA be impersonated ONLY from this repo (optionally pin a ref).
 gcloud iam service-accounts add-iam-policy-binding "$SA" \
