@@ -21,14 +21,15 @@ Read-only inspection produced this fail-closed state:
 | Firebase Storage bucket | Missing |
 | Registered Firebase apps | None |
 | Deploy APIs | Core Firebase APIs exist; Functions, Build, Run, Tasks, Scheduler, and Artifact Registry still need enablement |
-| GitHub staging secrets | `STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER` and `STAGING_GCP_DEPLOY_SERVICE_ACCOUNT` are not set |
+| GitHub staging secrets | `STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER` and `STAGING_GCP_DEPLOY_SERVICE_ACCOUNT` are set in the protected `staging` environment |
 | Repository deploy switch | `STAGING_ENABLED` is unset |
 | Functions runtime config | Template only; no reviewed `functions/.env.burnbar-staging` |
 
-Do not recreate the project, service account, OIDC pool/provider, or GitHub
-Environment. Resume at billing linkage, then verify/finish the remaining steps
-idempotently. Keep `STAGING_ENABLED` unset until the resources and GitHub
-environment secrets have been independently verified.
+Do not recreate the project, service account, OIDC pool/provider, GitHub
+Environment, or environment secrets. Resume at billing linkage, then
+verify/finish the remaining steps idempotently. Keep `STAGING_ENABLED` unset
+until billing, APIs, Firestore, Storage, Firebase apps, and runtime configuration
+have been independently verified.
 
 ## Why this exists
 
