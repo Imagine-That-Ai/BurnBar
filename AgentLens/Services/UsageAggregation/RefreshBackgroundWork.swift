@@ -201,10 +201,6 @@ enum RefreshBackgroundWork {
         // not each provider.
         let governor = ParserResourcePolicy.makeIndexingGovernor()
 
-        defer {
-            result.consumedByteCount = governor.consumedBytes
-            result.deferredFileCount = governor.deferredFileCount
-        }
 
         for (provider, parser) in parserEntries {
             do {
@@ -349,6 +345,8 @@ enum RefreshBackgroundWork {
                     AppLogger.parser.error("Checkpoint advance failed for \(provider.rawValue): \(error.localizedDescription)")
                 }
             } catch is CancellationError {
+                result.consumedByteCount = governor.consumedBytes
+                result.deferredFileCount = governor.deferredFileCount
                 return result
             } catch {
                 result.errors[provider] = error.localizedDescription
@@ -356,6 +354,8 @@ enum RefreshBackgroundWork {
         }
 
         result.duration = Date().timeIntervalSince(startedAt)
+        result.consumedByteCount = governor.consumedBytes
+        result.deferredFileCount = governor.deferredFileCount
 
         // P-PERF-2: visible cost logging — no silent truncation.
         // At steady state: parsed_count > 0, changed_count = 0,

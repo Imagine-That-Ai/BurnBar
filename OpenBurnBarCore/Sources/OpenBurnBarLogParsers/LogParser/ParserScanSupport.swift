@@ -33,6 +33,77 @@ public func parserAutoReleasePool<Result>(
 /// These are integrity heuristics on trusted local files, not security
 /// boundaries — collision odds at the observed set sizes are negligible, and
 /// the failure mode of a head-digest collision is one redundant full re-scan.
+/// Applies the incremental boundary and the shared byte/memory governor before
+/// a parser opens a content-bearing file. Metadata-only directory enumeration
+/// remains uncharged; every admitted file is accounted exactly once by its
+/// caller before the first content read.
+struct ParserFileReadGate {
+    let options: LogParseOptions
+    let fileManager: FileManager
+
+    init(options: LogParseOptions, fileManager: FileManager = .default) {
+        self.options = options
+        self.fileManager = fileManager
+    }
+
+    func shouldRead(_ file: URL, fallbackModificationDate: Date? = nil) throws -> Bool {
+        try options.resourceGovernor?.checkpoint()
+
+        let attributes = try? fileManager.attributesOfItem(atPath: file.path)
+        let modificationDate = attributes?[.modificationDate] as? Date ?? fallbackModificationDate
+        if let boundary = options.minimumFileModificationDate {
+            guard let modificationDate else {
+                options.resourceGovernor?.recordDeferredFile()
+                return false
+            }
+            guard modificationDate >= boundary else { return false }
+        }
+
+        guard let governor = options.resourceGovernor else { return true }
+        guard let size = attributes?[.size] as? NSNumber else {
+            governor.recordDeferredFile()
+            return false
+        }
+        return governor.admitFile(estimatedBytes: max(0, size.int64Value))
+    }
+
+    /// Atomically admits the files needed to parse one logical session. This
+    /// avoids consuming the budget on a sidecar and then deferring its primary
+    /// transcript forever on every subsequent pass.
+    func shouldRead(_ files: [URL]) throws -> Bool {
+        guard !files.isEmpty else { return true }
+        try options.resourceGovernor?.checkpoint()
+
+        var totalBytes: Int64 = 0
+        for file in files {
+            let attributes = try? fileManager.attributesOfItem(atPath: file.path)
+            if let boundary = options.minimumFileModificationDate {
+                guard let modificationDate = attributes?[.modificationDate] as? Date else {
+                    options.resourceGovernor?.recordDeferredFile()
+                    return false
+                }
+                guard modificationDate >= boundary else { return false }
+            }
+
+            if options.resourceGovernor != nil {
+                guard let size = attributes?[.size] as? NSNumber else {
+                    options.resourceGovernor?.recordDeferredFile()
+                    return false
+                }
+                let (sum, overflow) = totalBytes.addingReportingOverflow(max(0, size.int64Value))
+                guard !overflow else {
+                    options.resourceGovernor?.recordDeferredFile()
+                    return false
+                }
+                totalBytes = sum
+            }
+        }
+
+        guard let governor = options.resourceGovernor else { return true }
+        return governor.admitFile(estimatedBytes: totalBytes)
+    }
+}
+
 enum ParserScanDigest {
     static func fnv1a64(_ data: Data) -> UInt64 {
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325

@@ -57,21 +57,32 @@ public final class WindsurfParser: LogParser, Sendable {
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fm)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
+        let globalPath = ((globalStorageOverride ?? Self.globalStoragePath) as NSString).expandingTildeInPath
+        let stateDBURL = URL(fileURLWithPath: (globalPath as NSString).appendingPathComponent("state.vscdb"))
+        let canReadStateDB: Bool
+        if fm.fileExists(atPath: stateDBURL.path) {
+            canReadStateDB = try gate.shouldRead(stateDBURL)
+        } else {
+            canReadStateDB = true
+        }
+
         let cascadeDir = ((cascadeDirectoryOverride ?? Self.cascadeDirectory) as NSString).expandingTildeInPath
         if fm.fileExists(atPath: cascadeDir) {
-            let allFiles = (try? fm.contentsOfDirectory(atPath: cascadeDir)) ?? [] // try?-ok(dir read, empty fallback)
+            let allFiles = (try? fm.contentsOfDirectory(atPath: cascadeDir)) ?? []
             let pbFiles = allFiles
                 .filter { $0.hasSuffix(".pb") }
                 .map { (cascadeDir as NSString).appendingPathComponent($0) }
 
             for pbFile in pbFiles {
+                try options.resourceGovernor?.checkpoint()
                 let sessionId = (pbFile as NSString).deletingPathExtension
                     .components(separatedBy: "/").last ?? UUID().uuidString
 
-                let attrs = try? fm.attributesOfItem(atPath: pbFile) // try?-ok(file attrs, nil fallback)
+                let attrs = try? fm.attributesOfItem(atPath: pbFile)
                 let created = (attrs?[.creationDate] as? Date) ?? Date()
                 let modified = (attrs?[.modificationDate] as? Date) ?? created
                 let fileSize = (attrs?[.size] as? Int) ?? 0
@@ -81,7 +92,7 @@ public final class WindsurfParser: LogParser, Sendable {
                     continue
                 }
 
-                let model = extractModelFromStateDB(sessionId: sessionId) ?? "unknown"
+                let model = canReadStateDB ? (extractModelFromStateDB(sessionId: sessionId) ?? "unknown") : "unknown"
 
                 let estimatedTotalTokens = Int(Double(fileSize) / Self.estimatedBytesPerToken)
                 let inputTokens = Int(Double(estimatedTotalTokens) * Self.inputOutputRatio / (Self.inputOutputRatio + 1.0))
@@ -95,10 +106,11 @@ public final class WindsurfParser: LogParser, Sendable {
                     cacheReadTokens: 0
                 )
 
+                let projectName = canReadStateDB ? (extractWorkspaceName(sessionId: sessionId) ?? sessionId) : sessionId
                 let usage = TokenUsage(
                     provider: provider,
                     sessionId: sessionId,
-                    projectName: extractWorkspaceName(sessionId: sessionId) ?? sessionId,
+                    projectName: projectName,
                     model: model,
                     inputTokens: inputTokens,
                     outputTokens: outputTokens,
@@ -114,6 +126,7 @@ public final class WindsurfParser: LogParser, Sendable {
                 usages.append(usage)
 
                 if options.includeConversationBodies {
+                    let title = canReadStateDB ? (extractSessionTitle(sessionId: sessionId) ?? "Windsurf Cascade Session") : "Windsurf Cascade Session"
                     let conversation = ConversationRecord(
                         id: ConversationRecord.stableId(provider: provider, sessionId: sessionId),
                         provider: provider,
@@ -127,7 +140,7 @@ public final class WindsurfParser: LogParser, Sendable {
                         keyFiles: [],
                         keyCommands: [],
                         keyTools: [],
-                        inferredTaskTitle: extractSessionTitle(sessionId: sessionId) ?? "Windsurf Cascade Session",
+                        inferredTaskTitle: title,
                         lastAssistantMessage: "",
                         fullText: "",
                         indexedAt: Date(),

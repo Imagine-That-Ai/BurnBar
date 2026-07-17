@@ -36,7 +36,12 @@ public final class GooseParser: LogParser, Sendable {
     }()
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fm)
         let sessionDirectories = resolvedSessionDirectories()
 
         var databasePaths: [String] = []
@@ -50,19 +55,26 @@ public final class GooseParser: LogParser, Sendable {
         if !databasePaths.isEmpty {
             var usagesBySessionId: [String: TokenUsage] = [:]
             var conversationsById: [String: ConversationRecord] = [:]
+            var parsedDatabase = false
             for dbPath in databasePaths {
+                guard try gate.shouldRead(URL(fileURLWithPath: dbPath)) else { continue }
                 let result = try parseSQLiteDatabase(dbPath: dbPath)
+                parsedDatabase = true
                 for usage in result.usages {
                     usagesBySessionId[usage.sessionId] = usage
                 }
-                for conversation in result.conversations {
-                    conversationsById[conversation.id] = conversation
+                if options.includeConversationBodies {
+                    for conversation in result.conversations {
+                        conversationsById[conversation.id] = conversation
+                    }
                 }
             }
-            return ParseResult(
-                usages: Array(usagesBySessionId.values),
-                conversations: Array(conversationsById.values)
-            )
+            if parsedDatabase {
+                return ParseResult(
+                    usages: Array(usagesBySessionId.values),
+                    conversations: Array(conversationsById.values)
+                )
+            }
         }
 
         var usages: [TokenUsage] = []
@@ -70,16 +82,17 @@ public final class GooseParser: LogParser, Sendable {
 
         for sessionsPath in sessionDirectories where fm.fileExists(atPath: sessionsPath) {
             let sessionsURL = URL(fileURLWithPath: sessionsPath)
-            let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))?.filter { // try?-ok(dir read, empty fallback)
+            let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))?.filter {
                 $0.pathExtension == "jsonl"
             } ?? []
 
             for file in jsonlFiles {
+                guard try gate.shouldRead(file) else { continue }
                 let sessionId = file.deletingPathExtension().lastPathComponent
                 if let pair = try parseJsonlSession(file: file, sessionId: sessionId),
                    let usage = pair.usage {
                     usages.append(usage)
-                    if let conv = pair.conversation {
+                    if options.includeConversationBodies, let conv = pair.conversation {
                         conversations.append(conv)
                     }
                 }

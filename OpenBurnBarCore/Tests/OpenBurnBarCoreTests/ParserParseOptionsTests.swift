@@ -299,6 +299,88 @@ final class ParserParseOptionsTests: XCTestCase {
         XCTAssertTrue(deferred.conversations.isEmpty)
     }
 
+    func testClaudeCodeBoundedSteadyStatePerformsNoContentReadsAcrossTwoPasses() async throws {
+        let root = try makeTemporaryDirectory("claude-steady-state")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let projectsRoot = root.appendingPathComponent("projects", isDirectory: true)
+        let project = projectsRoot.appendingPathComponent("-Users-test-Project", isDirectory: true)
+        let transcript = project.appendingPathComponent("steady-state.jsonl")
+        try write(claudeSession(user: "Read exactly once", input: 100, output: 20), to: transcript)
+        let attributes = try fileManager.attributesOfItem(atPath: transcript.path)
+        let transcriptByteCount = try XCTUnwrap((attributes[.size] as? NSNumber)?.int64Value)
+
+        let parser = ClaudeCodeParser(
+            fileManager: fileManager,
+            appPaths: OpenBurnBarAppPaths(
+                applicationSupportRoot: root.appendingPathComponent("support", isDirectory: true)
+            ),
+            projectsDirectoryOverride: projectsRoot
+        )
+        let initialGovernor = ParserResourceGovernor(
+            limits: ParserResourceLimits(fileByteBudget: .max)
+        )
+        let initial = try await parser.parse(
+            options: LogParseOptions(
+                includeConversationBodies: true,
+                resourceGovernor: initialGovernor
+            )
+        )
+        XCTAssertEqual(initial.usages.count, 1)
+        XCTAssertEqual(initial.conversations.count, 1)
+        XCTAssertEqual(
+            initialGovernor.consumedBytes,
+            transcriptByteCount,
+            "the admission counter must observe the transcript immediately before its content read"
+        )
+
+        for pass in 1...2 {
+            let steadyStateGovernor = ParserResourceGovernor(
+                limits: ParserResourceLimits(fileByteBudget: .max)
+            )
+            let steadyState = try await parser.parse(
+                options: LogParseOptions(
+                    includeConversationBodies: true,
+                    minimumFileModificationDate: .distantFuture,
+                    resourceGovernor: steadyStateGovernor
+                )
+            )
+
+            XCTAssertEqual(steadyState.usages.count, 1, "pass \(pass) must retain cached usage")
+            XCTAssertTrue(steadyState.conversations.isEmpty, "pass \(pass) must not reconstruct historical bodies")
+            XCTAssertEqual(steadyStateGovernor.consumedBytes, 0, "pass \(pass) must not admit or read unchanged content")
+            XCTAssertEqual(steadyStateGovernor.deferredFileCount, 0)
+        }
+    }
+
+    func testLegacyConformerRejectsBoundedOptionsBeforeContentRead() async throws {
+        let readProbe = ParserContentReadProbe()
+        let parser: any LogParser = LegacyContentReadingParser(readProbe: readProbe)
+        let governor = ParserResourceGovernor(
+            limits: ParserResourceLimits(fileByteBudget: 1)
+        )
+
+        do {
+            _ = try await parser.parse(
+                options: LogParseOptions(
+                    includeConversationBodies: false,
+                    minimumFileModificationDate: .distantFuture,
+                    resourceGovernor: governor
+                )
+            )
+            XCTFail("A legacy conformer must reject bounded parsing instead of entering parse()")
+        } catch let error as ParserOptionsUnsupported {
+            XCTAssertEqual(error.provider, .copilot)
+        } catch {
+            XCTFail("Expected ParserOptionsUnsupported, got \(error)")
+        }
+
+        let contentReadCount = await readProbe.count()
+        XCTAssertEqual(contentReadCount, 0, "the bounded-options guard must run before legacy content reads")
+        XCTAssertEqual(governor.consumedBytes, 0)
+        XCTAssertEqual(governor.deferredFileCount, 1, "rejection must freeze the provider watermark for retry")
+    }
+
     private var futureUsageOnlyOptions: LogParseOptions {
         LogParseOptions(
             includeConversationBodies: false,
@@ -339,5 +421,27 @@ final class ParserParseOptionsTests: XCTestCase {
         {"role":"user","content":"\(user)","timestamp":"2026-05-06T10:00:00Z"}
         {"role":"assistant","content":"\(assistant)","timestamp":"2026-05-06T10:01:00Z","model":"hermes-model","usage":{"input_tokens":20,"output_tokens":5}}
         """
+    }
+}
+
+private actor ParserContentReadProbe {
+    private var contentReadCount = 0
+
+    func recordContentRead() {
+        contentReadCount += 1
+    }
+
+    func count() -> Int {
+        contentReadCount
+    }
+}
+
+private struct LegacyContentReadingParser: LogParser {
+    let provider: AgentProvider = .copilot
+    let readProbe: ParserContentReadProbe
+
+    func parse() async throws -> ParseResult {
+        await readProbe.recordContentRead()
+        return ParseResult(usages: [], conversations: [])
     }
 }

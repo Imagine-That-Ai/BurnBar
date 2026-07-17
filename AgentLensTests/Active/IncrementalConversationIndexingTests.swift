@@ -108,6 +108,8 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         XCTAssertEqual(secondResult.indexedConversationChanges, 0)
     }
 
+
+
     // MARK: - 4. Changed file after checkpoint
 
     func test_runConversationIndexing_changedFileAfterCheckpoint_isIndexed() async throws {
@@ -196,27 +198,46 @@ final class IncrementalConversationIndexingTests: XCTestCase {
 
     func test_runConversationIndexing_parserError_doesNotAdvanceCheckpoint() async throws {
         let store = try makeInMemoryStore()
-        let failingParser = FailingParser()
+        let mtime = Date(timeIntervalSince1970: 1_700_000_000)
+        let initialParser = StubParser(
+            provider: .factory,
+            conversations: [
+                makeFactoryConversationRecord(
+                    id: "Factory:parse-failure-watermark",
+                    indexedAt: mtime,
+                    fileModifiedAt: mtime
+                )
+            ]
+        )
         let orchestrator = makeOrchestrator(store: store)
 
-        // Verify no checkpoint exists before the call.
-        let beforeCheckpoint = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
-        XCTAssertNil(beforeCheckpoint)
+        let initialResult = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: initialParser],
+            dataStore: store,
+            orchestrator: orchestrator,
+            indexingEnabled: true
+        )
+        XCTAssertEqual(initialResult.indexedConversationChanges, 1)
+        let checkpointBeforeFailureRecord = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
+        let checkpointBeforeFailure = try XCTUnwrap(checkpointBeforeFailureRecord)
 
         let result = await RefreshBackgroundWork.runConversationIndexing(
-            parsers: [.factory: failingParser],
+            parsers: [.factory: FailingParser()],
             dataStore: store,
             orchestrator: orchestrator,
             indexingEnabled: true
         )
 
-        // The error should be captured, not crash.
         XCTAssertNotNil(result.errors[.factory])
         XCTAssertFalse(result.errors[.factory]!.isEmpty)
-
-        // The checkpoint should NOT have advanced (no checkpoint row written).
-        let afterCheckpoint = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
-        XCTAssertNil(afterCheckpoint)
+        let checkpointAfterFailureRecord = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
+        let checkpointAfterFailure = try XCTUnwrap(checkpointAfterFailureRecord)
+        XCTAssertEqual(
+            checkpointAfterFailure.lastProcessedAt,
+            checkpointBeforeFailure.lastProcessedAt,
+            "a parse failure must retry from the last successful watermark"
+        )
+        XCTAssertEqual(checkpointAfterFailure.checkpointToken, checkpointBeforeFailure.checkpointToken)
     }
 
     // MARK: - 7. Old-mtime new ID is indexed despite old fileModifiedAt
@@ -264,14 +285,73 @@ final class IncrementalConversationIndexingTests: XCTestCase {
             indexingEnabled: true
         )
 
-        // The new ID passes through despite old mtime (finding 2).
-        XCTAssertGreaterThanOrEqual(secondResult.changedConversationCount, 1)
-        XCTAssertGreaterThanOrEqual(secondResult.indexedConversationChanges, 1)
+        XCTAssertEqual(secondResult.changedConversationCount, 1)
+        XCTAssertEqual(secondResult.indexedConversationChanges, 1)
 
-        // The new conversation must be fetchable from the store.
-        let fetched = try await store.fetchConversation(id: "Factory:old-mtime-new-id")
-        XCTAssertNotNil(fetched)
+        let fetchedRecord = try await store.fetchConversation(id: "Factory:old-mtime-new-id")
+        let fetched = try XCTUnwrap(fetchedRecord)
+        XCTAssertEqual(fetched.sessionId, "test-session-Factory:old-mtime-new-id")
+        XCTAssertEqual(fetched.inferredTaskTitle, "Hello")
+        XCTAssertEqual(
+            try XCTUnwrap(fetched.fileModifiedAt).timeIntervalSince1970,
+            newOldMtime.timeIntervalSince1970,
+            accuracy: 0.001
+        )
+
     }
+    func test_runConversationIndexing_deferredFileDoesNotAdvanceCheckpointAfterPartialSuccess() async throws {
+        let store = try makeInMemoryStore()
+        let mtime = Date(timeIntervalSince1970: 1_700_000_000)
+        let orchestrator = makeOrchestrator(store: store)
+        let initialParser = StubParser(
+            provider: .factory,
+            conversations: [
+                makeFactoryConversationRecord(
+                    id: "Factory:defer-existing",
+                    indexedAt: mtime,
+                    fileModifiedAt: mtime
+                )
+            ]
+        )
+
+        let initialResult = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: initialParser],
+            dataStore: store,
+            orchestrator: orchestrator,
+            indexingEnabled: true
+        )
+        XCTAssertEqual(initialResult.indexedConversationChanges, 1)
+        let checkpointBeforeDeferralRecord = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
+        let checkpointBeforeDeferral = try XCTUnwrap(checkpointBeforeDeferralRecord)
+
+        let deferredConversation = makeFactoryConversationRecord(
+            id: "Factory:defer-partial-success",
+            indexedAt: mtime,
+            fileModifiedAt: checkpointBeforeDeferral.lastProcessedAt.addingTimeInterval(60)
+        )
+        let deferredResult = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [
+                .factory: DeferringParser(provider: .factory, conversations: [deferredConversation])
+            ],
+            dataStore: store,
+            orchestrator: orchestrator,
+            indexingEnabled: true
+        )
+
+        XCTAssertEqual(deferredResult.changedConversationCount, 1)
+        XCTAssertEqual(deferredResult.indexedConversationChanges, 1)
+        let persistedDeferredConversation = try await store.fetchConversation(id: deferredConversation.id)
+        XCTAssertNotNil(persistedDeferredConversation)
+        let checkpointAfterDeferralRecord = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
+        let checkpointAfterDeferral = try XCTUnwrap(checkpointAfterDeferralRecord)
+        XCTAssertEqual(
+            checkpointAfterDeferral.lastProcessedAt,
+            checkpointBeforeDeferral.lastProcessedAt,
+            "partial indexing success must not hide a resource-deferred file behind a new watermark"
+        )
+        XCTAssertEqual(checkpointAfterDeferral.checkpointToken, checkpointBeforeDeferral.checkpointToken)
+    }
+
 
     // MARK: - 8. Indexing failure does not advance checkpoint (retry on next tick)
 
@@ -482,5 +562,19 @@ private struct FailingParser: LogParser {
 
     func parse(options: LogParseOptions) async throws -> ParseResult {
         throw OpenBurnBarError.parse("test", message: "simulated parser failure")
+    }
+}
+
+private struct DeferringParser: LogParser {
+    let provider: AgentProvider
+    let conversations: [ConversationRecord]
+
+    func parse() async throws -> ParseResult {
+        ParseResult(usages: [], conversations: conversations)
+    }
+
+    func parse(options: LogParseOptions) async throws -> ParseResult {
+        options.resourceGovernor?.recordDeferredFile()
+        return ParseResult(usages: [], conversations: conversations)
     }
 }

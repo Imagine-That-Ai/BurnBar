@@ -38,13 +38,34 @@ public struct LogParseOptions: Sendable {
 
 // MARK: - Log Parser Protocol
 
+public struct ParserOptionsUnsupported: Error, CustomStringConvertible, Sendable {
+    public let provider: AgentProvider
+
+    public init(provider: AgentProvider) {
+        self.provider = provider
+    }
+
+    public var description: String {
+        "Parser \(provider.rawValue) does not implement bounded LogParseOptions reads"
+    }
+}
+
 public protocol LogParser: LogParserProtocol {
     func parse() async throws -> ParseResult
     func parse(options: LogParseOptions) async throws -> ParseResult
 }
 
 extension LogParser {
+    /// Fail-closed adapter for legacy conformers. A parser that has not opted
+    /// into `LogParseOptions` may still serve an unbounded direct parse, but it
+    /// is never allowed to silently ignore an incremental boundary or resource
+    /// governor before reading content.
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        if options.minimumFileModificationDate != nil || options.resourceGovernor != nil {
+            options.resourceGovernor?.recordDeferredFile()
+            throw ParserOptionsUnsupported(provider: provider)
+        }
+
         let result = try await parse()
         guard options.includeConversationBodies else {
             return ParseResult(usages: result.usages, conversations: [])

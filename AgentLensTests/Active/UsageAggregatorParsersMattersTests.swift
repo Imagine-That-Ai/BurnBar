@@ -1,3 +1,4 @@
+import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
 
@@ -388,6 +389,67 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
             parsers[.mimo],
             "MiMo quota is refreshed via Token Plan API, not the shared Factory sessions tree."
         )
+    }
+
+    func testParserRegistryBoundedParsesAreOptionsAwareOrFailClosedBeforeReading() async {
+        let expectedFailClosedProviders: Set<AgentProvider> = [
+            .copilot, .aider, .cursor, .openCode, .piAgent,
+            .zai, .minimax, .openClaw, .ollama, .junie
+        ]
+        let expectedOptionsAwareProviders: Set<AgentProvider> = [
+            .factory, .claudeCode, .cursorAgent, .codex, .kimi, .xAI,
+            .cline, .kiloCode, .rooCode, .forgeDev, .augment, .hermes,
+            .geminiCLI, .antigravity, .goose, .windsurf, .warp
+        ]
+        let parsers = ParserRegistry.defaultParsers()
+        let registeredProviders = Set(parsers.keys)
+
+        XCTAssertEqual(parsers.count, 27)
+        XCTAssertEqual(
+            registeredProviders,
+            expectedFailClosedProviders.union(expectedOptionsAwareProviders),
+            "every production registry entry must have an explicit bounded-parse disposition"
+        )
+
+        for provider in registeredProviders.sorted(by: { $0.rawValue < $1.rawValue }) {
+            guard let parser = parsers[provider] else {
+                XCTFail("missing parser for \(provider.rawValue)")
+                continue
+            }
+            let governor = ParserResourceGovernor(
+                limits: ParserResourceLimits(memoryCeilingBytes: 1),
+                footprintProvider: { 2 }
+            )
+            let options = LogParseOptions(
+                includeConversationBodies: false,
+                minimumFileModificationDate: .distantFuture,
+                resourceGovernor: governor
+            )
+
+            if expectedFailClosedProviders.contains(provider) {
+                do {
+                    _ = try await parser.parse(options: options)
+                    XCTFail("\(provider.rawValue) must reject bounded parsing before its legacy parser reads content")
+                } catch let error as ParserOptionsUnsupported {
+                    XCTAssertEqual(error.provider, provider)
+                    XCTAssertEqual(governor.consumedBytes, 0, "\(provider.rawValue) read admission must not occur")
+                    XCTAssertEqual(governor.deferredFileCount, 1, "\(provider.rawValue) must freeze its watermark")
+                } catch {
+                    XCTFail("\(provider.rawValue) returned unexpected bounded-parse error: \(error)")
+                }
+            } else {
+                do {
+                    _ = try await parser.parse(options: options)
+                } catch is ParserResourceExceeded {
+                    // A discovered file reached the options-aware gate, which
+                    // enforced the injected hard ceiling before content read.
+                } catch is ParserOptionsUnsupported {
+                    XCTFail("\(provider.rawValue) fell through to the legacy LogParser default")
+                } catch {
+                    XCTFail("\(provider.rawValue) returned unexpected bounded-parse error: \(error)")
+                }
+            }
+        }
     }
 
     private func seedParserCache(at cacheURL: URL, marker: String) throws {

@@ -48,6 +48,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
             return ParseResult(usages: [], conversations: [])
         }
 
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var parseCache = cacheStore.load()
@@ -55,11 +56,10 @@ public final class FactoryDroidParser: LogParser, Sendable {
         var cacheMutated = false
 
         let projectDirs = try fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])
-            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(non-dir filtered out)
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
         for projectDir in projectDirs {
             let projectName = decodeProjectName(projectDir.lastPathComponent)
-
             let files = try fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)
                 .filter { $0.pathExtension == "jsonl" || $0.pathExtension == "json" }
 
@@ -75,49 +75,57 @@ public final class FactoryDroidParser: LogParser, Sendable {
                     metadataFile: metadataFile
                 )
 
-                // The normal refresh publishes recent token usage before the
-                // optional conversation-indexing pass. Do not reopen old
-                // transcripts during that fast pass; the later full indexing
-                // pass intentionally calls this parser without a cutoff.
-                if let minimumFileModificationDate = options.minimumFileModificationDate,
-                   signature == nil
-                    || Date(timeIntervalSince1970: signature?.primary.modifiedAt ?? 0) < minimumFileModificationDate {
+                if let boundary = options.minimumFileModificationDate,
+                   signature == nil || Date(timeIntervalSince1970: signature?.primary.modifiedAt ?? 0) < boundary {
                     continue
                 }
 
-                if let signature,
-                   let cached = parseCache.fileEntries[cacheKey], cached.signature == signature {
-                    let cached = updateCacheEntry(
+                let cached = signature.flatMap { signature in
+                    parseCache.fileEntries[cacheKey].flatMap { $0.signature == signature ? $0 : nil }
+                }
+                if let cached, !options.includeConversationBodies {
+                    appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
+                    continue
+                }
+
+                guard fileManager.fileExists(atPath: settingsFile.path) else {
+                    if let cached {
+                        appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
+                    }
+                    continue
+                }
+                var sessionFiles = [jsonlFile, settingsFile]
+                if fileManager.fileExists(atPath: metadataFile.path) {
+                    sessionFiles.append(metadataFile)
+                }
+                guard try gate.shouldRead(sessionFiles) else {
+                    if let cached {
+                        appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
+                    }
+                    continue
+                }
+
+                if let cached, let signature {
+                    let refreshed = updateCacheEntry(
                         cached,
                         signature: signature,
                         jsonlFile: jsonlFile,
                         settingsFile: settingsFile,
                         sessionId: baseName,
                         projectName: projectName,
-                        includeConversationBodies: options.includeConversationBodies,
+                        includeConversationBodies: true,
                         parseCache: &parseCache,
                         cacheKey: cacheKey,
                         cacheMutated: &cacheMutated
                     )
-                    appendCached(
-                        cached,
-                        includeConversation: options.includeConversationBodies,
-                        usages: &usages,
-                        conversations: &conversations
-                    )
+                    appendCached(refreshed, includeConversation: true, usages: &usages, conversations: &conversations)
                 } else {
-                    let parsed: (usage: TokenUsage?, conversation: ConversationRecord?)?
-                    if fileManager.fileExists(atPath: settingsFile.path) {
-                        // try?-ok(best-effort session parse)
-                        parsed = try? parseSession(
-                            sessionId: baseName,
-                            jsonlFile: jsonlFile,
-                            settingsFile: settingsFile,
-                            projectName: projectName
-                        )
-                    } else {
-                        parsed = nil
-                    }
+                    let parsed = try? parseSession(
+                        sessionId: baseName,
+                        jsonlFile: jsonlFile,
+                        settingsFile: settingsFile,
+                        projectName: projectName
+                    )
                     appendParsed(
                         parsed,
                         includeConversation: options.includeConversationBodies,

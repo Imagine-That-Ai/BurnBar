@@ -114,6 +114,14 @@ public final class ParserResourceGovernor: Sendable {
         }
     }
 
+    /// Records a file that a bounded adapter cannot safely inspect. This keeps
+    /// the caller's checkpoint watermark frozen without charging unread bytes.
+    public func recordDeferredFile() {
+        state.withLock { state in
+            state.deferredFileCount += 1
+        }
+    }
+
     /// Memory-ceiling check. Call between files and every few thousand lines
     /// inside per-line loops. Throws when the hard ceiling is crossed.
     public func checkpoint() throws {

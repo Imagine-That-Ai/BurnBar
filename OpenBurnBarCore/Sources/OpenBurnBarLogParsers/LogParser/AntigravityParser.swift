@@ -30,6 +30,7 @@ public final class AntigravityParser: LogParser, Sendable {
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fm)
         let basePath = ((logDirectoryOverride ?? "~/.gemini/antigravity-cli") as NSString).expandingTildeInPath
         let brainPath = (basePath as NSString).appendingPathComponent("brain")
 
@@ -37,23 +38,25 @@ public final class AntigravityParser: LogParser, Sendable {
             return ParseResult(usages: [], conversations: [])
         }
 
-        // Fetch settings for active model (fallback when per-session model unavailable)
         let settingsURL = URL(fileURLWithPath: basePath).appendingPathComponent("settings.json")
-        let fallbackModelName: String = {
-            guard let data = try? Data(contentsOf: settingsURL), // try?-ok(settings read, model fallback)
-                  let settings = try? JSONDecoder().decode(SettingsFile.self, from: data), // try?-ok(optional decode, model fallback)
-                  let model = settings.model, !model.isEmpty else {
-                return "Claude Opus 4.6 (Thinking)"
-            }
-            return model
-        }()
+        let fallbackModelName: String
+        if options.resourceGovernor == nil,
+           fm.fileExists(atPath: settingsURL.path),
+           try gate.shouldRead(settingsURL),
+           let data = try? Data(contentsOf: settingsURL),
+           let settings = try? JSONDecoder().decode(SettingsFile.self, from: data),
+           let model = settings.model, !model.isEmpty {
+            fallbackModelName = model
+        } else {
+            fallbackModelName = "Claude Opus 4.6 (Thinking)"
+        }
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
         let brainURL = URL(fileURLWithPath: brainPath)
-        let conversationDirs = (try? fm.contentsOfDirectory(at: brainURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter { // try?-ok(dir listing, empty fallback)
-            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true // try?-ok(resource read, skip on fail)
+        let conversationDirs = (try? fm.contentsOfDirectory(at: brainURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter {
+            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         } ?? []
 
         for conversationDir in conversationDirs {
@@ -62,18 +65,11 @@ public final class AntigravityParser: LogParser, Sendable {
                 .appendingPathComponent(".system_generated")
                 .appendingPathComponent("logs")
 
-            // Prefer transcript_full.jsonl (untruncated) — truncated version can lose ~40% of content
             let fullTranscript = logsDir.appendingPathComponent("transcript_full.jsonl")
             let truncatedTranscript = logsDir.appendingPathComponent("transcript.jsonl")
             let transcriptFile = fm.fileExists(atPath: fullTranscript.path) ? fullTranscript : truncatedTranscript
 
-            guard fm.fileExists(atPath: transcriptFile.path) else { continue }
-
-            if let minimumFileModificationDate = options.minimumFileModificationDate,
-               let modifiedAt = (try? fm.attributesOfItem(atPath: transcriptFile.path)[.modificationDate]) as? Date,
-               modifiedAt < minimumFileModificationDate {
-                continue
-            }
+            guard fm.fileExists(atPath: transcriptFile.path), try gate.shouldRead(transcriptFile) else { continue }
 
             if let pair = try parseSession(
                 transcriptFile: transcriptFile,
@@ -81,8 +77,7 @@ public final class AntigravityParser: LogParser, Sendable {
                 fallbackModel: fallbackModelName
             ) {
                 if let usage = pair.usage { usages.append(usage) }
-                if options.includeConversationBodies,
-                   let conv = pair.conversation {
+                if options.includeConversationBodies, let conv = pair.conversation {
                     conversations.append(conv)
                 }
             }
