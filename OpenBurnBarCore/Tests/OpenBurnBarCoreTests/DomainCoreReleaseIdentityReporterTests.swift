@@ -224,9 +224,10 @@ final class DomainCoreReleaseIdentityReporterTests: XCTestCase {
     func test_writeRejectsAllZerosPlaceholderArtifactCommit() throws {
         // The reporter must reject a native core whose candidate commit is the
         // all-zero placeholder — an uninitialized/placeholder artifact can never
-        // pass the identity gate. This is the first FFI-side guard (lines 83-89)
-        // and runs before the candidate-match check, so it fires even when the
-        // caller-supplied commit is a valid 40-hex SHA.
+        // pass the identity gate. This is the first FFI-side guard
+        // and runs before the candidate-match check,
+        // so it fires even when the caller-supplied commit is a
+        // valid 40-hex SHA.
         let loadedCommit = OpenBurnBarDomainCoreFFI.domainCoreCandidateCommit()
         guard loadedCommit == String(repeating: "0", count: 40) else {
             // If the artifact carries a real commit, the all-zeros guard does
@@ -240,8 +241,8 @@ final class DomainCoreReleaseIdentityReporterTests: XCTestCase {
                 executableURL: executable
             )
         ) { error in
-            guard case DomainCoreReleaseIdentityError.invalidCandidateCommit = error else {
-                XCTFail("expected invalidCandidateCommit for all-zeros artifact, got \(error)")
+            guard case DomainCoreReleaseIdentityError.invalidLoadedCandidateCommit = error else {
+                XCTFail("expected invalidLoadedCandidateCommit for all-zeros artifact, got \(error)")
                 return
             }
         }

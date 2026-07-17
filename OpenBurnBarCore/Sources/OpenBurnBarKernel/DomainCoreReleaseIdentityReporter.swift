@@ -22,6 +22,7 @@ public struct DomainCoreReleaseIdentity: Codable, Equatable, Sendable {
 
 public enum DomainCoreReleaseIdentityError: Error, LocalizedError {
     case invalidCandidateCommit
+    case invalidLoadedCandidateCommit
     case candidateCommitMismatch
     case unavailableNativeCore
     case invalidSourceFingerprint
@@ -32,6 +33,8 @@ public enum DomainCoreReleaseIdentityError: Error, LocalizedError {
         switch self {
         case .invalidCandidateCommit:
             "candidate commit must be a lowercase 40-character Git SHA"
+        case .invalidLoadedCandidateCommit:
+            "the loaded shared Rust candidate commit is not a valid lowercase 40-character Git SHA"
         case .candidateCommitMismatch:
             "the loaded shared Rust candidate commit does not match the expected candidate"
         case .unavailableNativeCore:
@@ -86,7 +89,7 @@ public enum DomainCoreReleaseIdentityReporter {
             options: .regularExpression
         ) != nil,
         loadedCandidateCommit != String(repeating: "0", count: 40) else {
-            throw DomainCoreReleaseIdentityError.invalidCandidateCommit
+            throw DomainCoreReleaseIdentityError.invalidLoadedCandidateCommit
         }
         guard loadedCandidateCommit == candidateCommit else {
             throw DomainCoreReleaseIdentityError.candidateCommitMismatch
