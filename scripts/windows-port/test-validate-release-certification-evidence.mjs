@@ -23,6 +23,7 @@ import {
   PERFORMANCE_BUDGET_SCHEMA,
   PERFORMANCE_BUDGET_SHA256,
   PERFORMANCE_BUDGET_STATUS,
+  derivePerformanceValue,
   performanceContextTemplate,
   performanceMeasurementTemplate,
   validatePerformanceBudgetCatalog,
@@ -160,14 +161,28 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
       `${field} recorded for the physical test workload.`,
     ]),
   );
-  value.protocol.performanceMeasurements = performanceMeasurementTemplate().map((measurement) => ({
-    ...measurement,
-    value: measurement.limit,
-    sampleCount: measurement.minimumSamples,
-    durationSeconds: measurement.minimumDurationSeconds,
-    context: "Windows Performance Recorder 11; AC power; balanced mode; declared fixture dataset.",
-    evidence: ["observation.log"],
-  }));
+  value.protocol.performanceMeasurements = performanceMeasurementTemplate().map((measurement) => {
+    let samples = Array(measurement.minimumSamples).fill(measurement.limit);
+    if (measurement.statistic === "rate") {
+      samples = Array(measurement.minimumSamples).fill(0);
+      for (let index = 0; index < Math.round(measurement.minimumSamples * measurement.limit / 100); index += 1) {
+        samples[index] = 1;
+      }
+    } else if (measurement.statistic === "growth") {
+      samples = [100, 100 + measurement.limit];
+    } else if (measurement.statistic === "count") {
+      samples = Array(measurement.minimumSamples).fill(0);
+    }
+    return {
+      ...measurement,
+      value: derivePerformanceValue(samples, measurement.statistic),
+      sampleCount: samples.length,
+      samples,
+      durationSeconds: measurement.minimumDurationSeconds,
+      context: "Windows Performance Recorder 11; AC power; balanced mode; declared fixture dataset.",
+      evidence: ["observation.log"],
+    };
+  });
   return value;
 }
 
@@ -470,6 +485,14 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
   const result = validateReceipt(value, { bundleDir: value.root });
   assert.equal(result.ok, false);
   assert.match(result.errors.join("\n"), /sampleCount must be at least/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements[0].samples.fill(0);
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /does not match the independently derived value/);
 }
 
 {

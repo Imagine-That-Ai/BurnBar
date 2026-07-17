@@ -16,6 +16,7 @@ export const PERFORMANCE_BUDGET_SCHEMA =
 export const PERFORMANCE_BUDGET_STATUS = "ACTIVE_RELEASE_GATE";
 
 const DIRECTIONS = new Set(["at_most", "at_least", "equal"]);
+const STATISTICS = new Set(["p95", "average", "maximum", "rate", "growth", "count"]);
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -60,6 +61,9 @@ export function validatePerformanceBudgetCatalog(catalog = PERFORMANCE_BUDGET_CA
     if (!DIRECTIONS.has(measurement.direction)) {
       errors.push(`${label}.direction is invalid`);
     }
+    if (!STATISTICS.has(measurement.statistic)) {
+      errors.push(`${label}.statistic is invalid`);
+    }
     if (!finiteNumber(measurement.limit)) errors.push(`${label}.limit must be finite`);
     if (!Number.isInteger(measurement.minimumSamples) || measurement.minimumSamples < 1) {
       errors.push(`${label}.minimumSamples must be a positive integer`);
@@ -69,6 +73,14 @@ export function validatePerformanceBudgetCatalog(catalog = PERFORMANCE_BUDGET_CA
     }
   }
   if (ids.size === 0) errors.push("performance budget catalog has no measurements");
+  for (const statistic of STATISTICS) {
+    if (
+      typeof catalog.calculationContract?.[statistic] !== "string" ||
+      catalog.calculationContract[statistic].trim().length === 0
+    ) {
+      errors.push(`performance budget calculationContract.${statistic} is required`);
+    }
+  }
   const contextFields = asArray(catalog.requiredContext);
   if (contextFields.length === 0 || new Set(contextFields).size !== contextFields.length) {
     errors.push("performance budget requiredContext must contain unique fields");
@@ -111,6 +123,7 @@ export function performanceMeasurementTemplate() {
     minimumDurationSeconds: measurement.minimumDurationSeconds,
     value: null,
     sampleCount: 0,
+    samples: [],
     durationSeconds: 0,
     context: "",
     evidenceFiles: [],
@@ -121,6 +134,38 @@ function passesBudget(value, budget) {
   if (budget.direction === "at_most") return value <= budget.limit;
   if (budget.direction === "at_least") return value >= budget.limit;
   return value === budget.limit;
+}
+
+export function derivePerformanceValue(samples, statistic) {
+  if (!Array.isArray(samples) || samples.length === 0) {
+    throw new Error("samples must contain at least one value");
+  }
+  if (!samples.every(finiteNumber)) throw new Error("samples must contain only finite numbers");
+  if (statistic === "p95") {
+    const sorted = [...samples].sort((left, right) => left - right);
+    return sorted[Math.max(0, Math.ceil(sorted.length * 0.95) - 1)];
+  }
+  if (statistic === "average") {
+    return samples.reduce((sum, value) => sum + value, 0) / samples.length;
+  }
+  if (statistic === "maximum") return Math.max(...samples);
+  if (statistic === "rate") {
+    if (!samples.every((value) => value === 0 || value === 1)) {
+      throw new Error("rate samples must be binary zero/one events");
+    }
+    return (samples.reduce((sum, value) => sum + value, 0) / samples.length) * 100;
+  }
+  if (statistic === "growth") {
+    if (samples[0] <= 0) throw new Error("growth samples require a positive first value");
+    return ((samples.at(-1) - samples[0]) / samples[0]) * 100;
+  }
+  if (statistic === "count") {
+    if (!samples.every((value) => Number.isInteger(value) && value >= 0)) {
+      throw new Error("count samples must be non-negative integers");
+    }
+    return samples.reduce((sum, value) => sum + value, 0);
+  }
+  throw new Error(`unsupported statistic ${statistic}`);
 }
 
 export function validatePerformanceMeasurements(measurements, options = {}) {
@@ -159,6 +204,23 @@ export function validatePerformanceMeasurements(measurements, options = {}) {
       errors.push(
         `${measurementLabel}.value ${measurement.value} violates ${budget.direction} ${budget.limit} ${budget.unit}`,
       );
+    }
+    const samples = asArray(measurement.samples);
+    if (samples.length !== measurement.sampleCount) {
+      errors.push(`${measurementLabel}.sampleCount must equal samples.length`);
+    }
+    try {
+      const derivedValue = derivePerformanceValue(samples, budget.statistic);
+      if (
+        finiteNumber(measurement.value) &&
+        Math.abs(derivedValue - measurement.value) > Math.max(1e-9, Math.abs(derivedValue) * 1e-9)
+      ) {
+        errors.push(
+          `${measurementLabel}.value ${measurement.value} does not match the independently derived value ${derivedValue}`,
+        );
+      }
+    } catch (error) {
+      errors.push(`${measurementLabel}.samples are invalid: ${error.message}`);
     }
     if (!Number.isInteger(measurement.sampleCount) || measurement.sampleCount < budget.minimumSamples) {
       errors.push(`${measurementLabel}.sampleCount must be at least ${budget.minimumSamples}`);

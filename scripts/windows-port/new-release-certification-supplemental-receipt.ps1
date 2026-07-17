@@ -197,6 +197,7 @@ if ($Initialize) {
                 minimumDurationSeconds = [double]$_.minimumDurationSeconds
                 value = $null
                 sampleCount = 0
+                samples = @()
                 durationSeconds = 0
                 context = ''
                 evidenceFiles = @()
@@ -471,6 +472,24 @@ if ($null -ne $performanceBudget) {
             [double]::IsNaN($measurementDurationSeconds) -or [double]::IsInfinity($measurementDurationSeconds)) {
             throw "Performance measurement $($measurement.id) contains a non-finite numeric value."
         }
+        $samplesProperty = $measurement.PSObject.Properties['samples']
+        if ($null -eq $samplesProperty) {
+            throw "Performance measurement $($measurement.id) requires numeric samples."
+        }
+        $measurementSamples = [System.Collections.Generic.List[double]]::new()
+        foreach ($sample in @($samplesProperty.Value)) {
+            if ($null -eq $sample -or $sample -is [string] -or $sample -is [bool]) {
+                throw "Performance measurement $($measurement.id) contains a non-numeric sample."
+            }
+            $numericSample = [double]$sample
+            if ([double]::IsNaN($numericSample) -or [double]::IsInfinity($numericSample)) {
+                throw "Performance measurement $($measurement.id) contains a non-finite sample."
+            }
+            $measurementSamples.Add($numericSample)
+        }
+        if ($measurementSamples.Count -ne [int]$measurementSampleCount) {
+            throw "Performance measurement $($measurement.id) sampleCount does not match samples."
+        }
         Assert-PrintableText ([string]$measurement.context) "Performance measurement $($measurement.id) context" 8192
         $rawFiles = @($measurement.evidenceFiles)
         if ($rawFiles.Count -eq 0) {
@@ -511,6 +530,7 @@ if ($null -ne $performanceBudget) {
             minimumDurationSeconds = [double]$measurement.minimumDurationSeconds
             value = $measurementValue
             sampleCount = [int]$measurementSampleCount
+            samples = @($measurementSamples)
             durationSeconds = $measurementDurationSeconds
             context = [string]$measurement.context
             evidence = @($measurementEvidence)

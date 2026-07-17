@@ -12,6 +12,14 @@
     ],
     "decision": "The reviewed proposal is adopted as a fail-closed Windows beta release gate. Every declared value requires raw, hashed physical-device evidence and is independently re-evaluated by the receipt validator."
   },
+  "calculationContract": {
+    "p95": "nearest-rank percentile: sort ascending and select index ceil(0.95 * sampleCount) - 1",
+    "average": "arithmetic mean of all samples",
+    "maximum": "largest sample",
+    "rate": "percentage of binary event samples equal to one",
+    "growth": "100 * (last sample - first sample) / first sample",
+    "count": "sum of non-negative integer event-count samples"
+  },
   "measurements": [
     {
       "id": "cold-start-p95",
