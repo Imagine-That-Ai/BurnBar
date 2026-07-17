@@ -133,6 +133,22 @@ $profileProperty = $catalog.profiles.PSObject.Properties[$profileName]
 if ($null -eq $profileProperty) { throw "Certification profile is absent from the catalog: $profileName" }
 $profile = $profileProperty.Value
 $requiredAssertions = @($profile.assertions)
+$performanceBudget = $null
+$performanceBudgetHash = $null
+$performanceBudgetSchemaProperty = $profile.PSObject.Properties['performanceBudgetSchema']
+if ($null -ne $performanceBudgetSchemaProperty) {
+    $performanceBudgetPath = Join-Path $harness 'scripts\windows-port\release-performance-budgets.json'
+    if (-not (Test-Path -LiteralPath $performanceBudgetPath -PathType Leaf)) {
+        throw "Active release performance budget is missing: $performanceBudgetPath"
+    }
+    $performanceBudget = Get-Content -Raw -LiteralPath $performanceBudgetPath | ConvertFrom-Json
+    $performanceBudgetHash = Get-Sha256 $performanceBudgetPath
+    if ([string]$performanceBudget.schema -ne [string]$performanceBudgetSchemaProperty.Value -or
+        [string]$performanceBudget.status -ne 'ACTIVE_RELEASE_GATE' -or
+        [string]$performanceBudget.profile -ne $profileName) {
+        throw 'The release performance budget is not active or does not match the certification profile.'
+    }
+}
 
 $resultsFile = Resolve-FullPath $ResultsPath
 if ($Initialize) {
@@ -153,6 +169,36 @@ if ($Initialize) {
                 description = [string]$_.description
                 status = 'NOT_RUN'
                 observed = ''
+                evidenceFiles = @()
+            }
+        })
+    }
+    if ($null -ne $performanceBudget) {
+        $template.performanceBudget = [ordered]@{
+            schema = [string]$performanceBudget.schema
+            status = [string]$performanceBudget.status
+            revision = [int]$performanceBudget.revision
+            sha256 = $performanceBudgetHash
+        }
+        $template.performanceContext = [ordered]@{}
+        foreach ($field in @($performanceBudget.requiredContext)) {
+            $template.performanceContext[[string]$field] = ''
+        }
+        $template.performanceMeasurements = @($performanceBudget.measurements | ForEach-Object {
+            [ordered]@{
+                id = [string]$_.id
+                assertionId = [string]$_.assertionId
+                metric = [string]$_.metric
+                unit = [string]$_.unit
+                statistic = [string]$_.statistic
+                direction = [string]$_.direction
+                limit = [double]$_.limit
+                minimumSamples = [int]$_.minimumSamples
+                minimumDurationSeconds = [double]$_.minimumDurationSeconds
+                value = $null
+                sampleCount = 0
+                durationSeconds = 0
+                context = ''
                 evidenceFiles = @()
             }
         })
@@ -347,6 +393,8 @@ $resultsRoot = Split-Path -Parent $resultsFile
 $resultsRootWithSeparator = $resultsRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
 $copiedEvidence = @{}
 $assertionReceipts = [System.Collections.Generic.List[object]]::new()
+$performanceMeasurementReceipts = [System.Collections.Generic.List[object]]::new()
+$performanceContextReceipt = [ordered]@{}
 $evidenceIndex = 0
 foreach ($requiredAssertion in $requiredAssertions) {
     $assertionId = [string]$requiredAssertion.id
@@ -387,10 +435,110 @@ foreach ($requiredAssertion in $requiredAssertions) {
     })
 }
 
+if ($null -ne $performanceBudget) {
+    $resultsContextProperty = $results.PSObject.Properties['performanceContext']
+    if ($null -eq $resultsContextProperty) {
+        throw 'Physical performance results require performanceContext.'
+    }
+    foreach ($field in @($performanceBudget.requiredContext)) {
+        $contextProperty = $resultsContextProperty.Value.PSObject.Properties[[string]$field]
+        if ($null -eq $contextProperty) {
+            throw "Physical performance results are missing performanceContext.$field."
+        }
+        Assert-PrintableText ([string]$contextProperty.Value) "Performance context $field" 8192
+        $performanceContextReceipt[[string]$field] = [string]$contextProperty.Value
+    }
+    $resultsMeasurementProperty = $results.PSObject.Properties['performanceMeasurements']
+    if ($null -eq $resultsMeasurementProperty) {
+        throw 'Physical performance results require the canonical performanceMeasurements checklist.'
+    }
+    foreach ($measurement in @($resultsMeasurementProperty.Value)) {
+        if ($null -eq $measurement.value -or $measurement.value -is [string] -or $measurement.value -is [bool]) {
+            throw "Performance measurement $($measurement.id) requires an explicit numeric value."
+        }
+        if ($null -eq $measurement.sampleCount -or $measurement.sampleCount -is [string] -or $measurement.sampleCount -is [bool]) {
+            throw "Performance measurement $($measurement.id) requires an explicit numeric sampleCount."
+        }
+        if ($null -eq $measurement.durationSeconds -or $measurement.durationSeconds -is [string] -or $measurement.durationSeconds -is [bool]) {
+            throw "Performance measurement $($measurement.id) requires an explicit numeric durationSeconds."
+        }
+        $measurementValue = [double]$measurement.value
+        $measurementSampleCount = [double]$measurement.sampleCount
+        $measurementDurationSeconds = [double]$measurement.durationSeconds
+        if ([double]::IsNaN($measurementValue) -or [double]::IsInfinity($measurementValue) -or
+            [double]::IsNaN($measurementSampleCount) -or [double]::IsInfinity($measurementSampleCount) -or
+            $measurementSampleCount -ne [Math]::Floor($measurementSampleCount) -or
+            [double]::IsNaN($measurementDurationSeconds) -or [double]::IsInfinity($measurementDurationSeconds)) {
+            throw "Performance measurement $($measurement.id) contains a non-finite numeric value."
+        }
+        Assert-PrintableText ([string]$measurement.context) "Performance measurement $($measurement.id) context" 8192
+        $rawFiles = @($measurement.evidenceFiles)
+        if ($rawFiles.Count -eq 0) {
+            throw "Performance measurement $($measurement.id) has no raw evidence file."
+        }
+        $measurementEvidence = [System.Collections.Generic.List[string]]::new()
+        foreach ($rawFile in $rawFiles) {
+            $sourcePath = [System.IO.Path]::GetFullPath((Join-Path $resultsRoot ([string]$rawFile)))
+            if (-not $sourcePath.StartsWith($resultsRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase) -or
+                -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+                throw "Performance measurement $($measurement.id) evidence is missing or escapes the result directory: $rawFile"
+            }
+            $extension = [System.IO.Path]::GetExtension($sourcePath).ToLowerInvariant()
+            if ($TextEvidenceExtensions -contains $extension) {
+                Assert-NoSecretMaterial (Get-Content -Raw -LiteralPath $sourcePath) "Performance measurement $($measurement.id) evidence $rawFile"
+            }
+            if (-not $copiedEvidence.ContainsKey($sourcePath)) {
+                $evidenceIndex += 1
+                $fileName = [System.IO.Path]::GetFileName($sourcePath)
+                $destinationRelative = 'evidence/' + $Gate + '/' + $evidenceIndex.ToString('000') + '-' + $fileName
+                $destinationPath = Join-Path $outputRoot ($destinationRelative.Replace('/', '\'))
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destinationPath) | Out-Null
+                Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force:$Force
+                $entry = [ordered]@{ path = $destinationRelative; sha256 = Get-Sha256 $destinationPath }
+                $copiedEvidence[$sourcePath] = $entry
+                $evidenceEntries.Add($entry)
+            }
+            $measurementEvidence.Add([string]$copiedEvidence[$sourcePath].path)
+        }
+        $performanceMeasurementReceipts.Add([ordered]@{
+            id = [string]$measurement.id
+            assertionId = [string]$measurement.assertionId
+            unit = [string]$measurement.unit
+            statistic = [string]$measurement.statistic
+            direction = [string]$measurement.direction
+            limit = [double]$measurement.limit
+            minimumSamples = [int]$measurement.minimumSamples
+            minimumDurationSeconds = [double]$measurement.minimumDurationSeconds
+            value = $measurementValue
+            sampleCount = [int]$measurementSampleCount
+            durationSeconds = $measurementDurationSeconds
+            context = [string]$measurement.context
+            evidence = @($measurementEvidence)
+        })
+    }
+}
+
 $device = $baselineReceipt.device
 $device.capturedAtUtc = [DateTimeOffset]::UtcNow.ToUniversalTime().ToString('o')
 $device.hardwareAttestation.evidencePath = $attestationRelative
 $device.hardwareAttestation.sha256 = $attestationHash
+$protocolReceipt = [ordered]@{
+    commands = @($commands | ForEach-Object { [string]$_ })
+    manualSteps = @($manualSteps | ForEach-Object { [string]$_ })
+    profileSchema = [string]$catalog.schema
+    profile = $profileName
+    assertions = @($assertionReceipts)
+}
+if ($null -ne $performanceBudget) {
+    $protocolReceipt.performanceBudget = [ordered]@{
+        schema = [string]$performanceBudget.schema
+        status = [string]$performanceBudget.status
+        revision = [int]$performanceBudget.revision
+        sha256 = $performanceBudgetHash
+    }
+    $protocolReceipt.performanceContext = $performanceContextReceipt
+    $protocolReceipt.performanceMeasurements = @($performanceMeasurementReceipts)
+}
 $receipt = [ordered]@{
     schema = $ReceiptSchema
     status = 'PASS'
@@ -399,13 +547,7 @@ $receipt = [ordered]@{
     source = $baselineReceipt.source
     artifact = $baselineReceipt.artifact
     device = $device
-    protocol = [ordered]@{
-        commands = @($commands | ForEach-Object { [string]$_ })
-        manualSteps = @($manualSteps | ForEach-Object { [string]$_ })
-        profileSchema = [string]$catalog.schema
-        profile = $profileName
-        assertions = @($assertionReceipts)
-    }
+    protocol = $protocolReceipt
     time = [ordered]@{
         startedAtUtc = $startedAt.ToUniversalTime().ToString('o')
         endedAtUtc = $endedAt.ToUniversalTime().ToString('o')

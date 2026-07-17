@@ -19,6 +19,9 @@ const supplementalValidator = readFileSync(
 const protocolCatalog = JSON.parse(
   readFileSync(join(root, "release-certification-protocols.json"), "utf8"),
 );
+const performanceBudget = JSON.parse(
+  readFileSync(join(root, "release-performance-budgets.json"), "utf8"),
+);
 const physicalRunbook = readFileSync(
   join(root, "../../docs/windows-port/evidence/windows-v1.0.35-release/PHYSICAL_X64_RUNBOOK.md"),
   "utf8",
@@ -93,6 +96,21 @@ for (const [gate, gateConfig] of Object.entries(protocolCatalog.gates)) {
     `${gate} assertion ids must be unique`,
   );
 }
+assert.equal(performanceBudget.status, "ACTIVE_RELEASE_GATE");
+assert.equal(performanceBudget.profile, "physical-performance");
+assert.equal(
+  protocolCatalog.profiles["physical-performance"].performanceBudgetSchema,
+  performanceBudget.schema,
+);
+assert.ok(performanceBudget.measurements.length >= 15);
+const performanceAssertionIds = new Set(
+  protocolCatalog.profiles["physical-performance"].assertions.map((assertion) => assertion.id),
+);
+for (const measurement of performanceBudget.measurements) {
+  assert.ok(performanceAssertionIds.has(measurement.assertionId));
+  assert.ok(measurement.minimumSamples >= 1);
+  assert.ok(measurement.minimumDurationSeconds >= 0);
+}
 assert.match(supplementalGenerator, /ParameterSetName = 'Initialize'/);
 assert.match(supplementalGenerator, /status = 'NOT_RUN'/);
 assert.match(supplementalGenerator, /validate-release-certification-evidence\.mjs/);
@@ -116,6 +134,12 @@ assert.match(supplementalGenerator, /evidence is missing or escapes the result d
 assert.match(supplementalGenerator, /contains secret-like material/);
 assert.match(supplementalGenerator, /The signed artifact architecture does not match/);
 assert.match(supplementalGenerator, /invalid, stale, or future time interval/);
+assert.match(supplementalGenerator, /release-performance-budgets\.json/);
+assert.match(supplementalGenerator, /ACTIVE_RELEASE_GATE/);
+assert.match(supplementalGenerator, /performanceMeasurements/);
+assert.match(supplementalGenerator, /performanceContext/);
+assert.match(supplementalGenerator, /requires an explicit numeric value/);
+assert.match(supplementalGenerator, /has no raw evidence file/);
 assert.match(supplementalValidator, /validateReceipt/);
 assert.match(supplementalValidator, /Windows release-certification receipt is valid/);
 assert.match(physicalRunbook, /Do not hand-author PASS receipts/);

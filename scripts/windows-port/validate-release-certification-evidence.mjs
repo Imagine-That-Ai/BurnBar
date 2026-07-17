@@ -10,6 +10,14 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  PERFORMANCE_BUDGET_CATALOG,
+  PERFORMANCE_BUDGET_SCHEMA,
+  PERFORMANCE_BUDGET_SHA256,
+  PERFORMANCE_BUDGET_STATUS,
+  validatePerformanceContext,
+  validatePerformanceMeasurements,
+} from "./release-performance-budget.mjs";
 
 export const BUNDLE_SCHEMA = "openburnbar.windows.release-certification-bundle.v1";
 export const RECEIPT_SCHEMA = "openburnbar.windows.release-certification-receipt.v1";
@@ -136,6 +144,20 @@ export function validateCertificationProtocolCatalog(
     }
     if (ids.size === 0) {
       errors.push(`protocol catalog profile has no assertions: ${gateConfig.profile}`);
+    }
+    if (gateConfig.profile === "physical-performance") {
+      if (profile.performanceBudgetSchema !== PERFORMANCE_BUDGET_SCHEMA) {
+        errors.push(
+          `protocol catalog physical-performance profile must bind ${PERFORMANCE_BUDGET_SCHEMA}`,
+        );
+      }
+      for (const measurement of PERFORMANCE_BUDGET_CATALOG.measurements) {
+        if (!ids.has(measurement.assertionId)) {
+          errors.push(
+            `performance budget measurement ${measurement.id} references unknown assertion ${measurement.assertionId}`,
+          );
+        }
+      }
     }
   }
   for (const profileName of Object.keys(catalog.profiles)) {
@@ -548,6 +570,46 @@ function checkProtocol(receipt, errors, label) {
   for (const id of assertionById.keys()) {
     if (!requiredIds.has(id)) {
       errors.push(`${label}: unknown protocol assertion: ${id}`);
+    }
+  }
+
+  if (PHYSICAL_PERFORMANCE_ARCHITECTURES.has(receipt.gate)) {
+    const budget = receipt.protocol.performanceBudget;
+    if (!isRecord(budget)) {
+      errors.push(`${label}: physical performance PASS requires protocol.performanceBudget`);
+    } else {
+      const expectedBudget = {
+        schema: PERFORMANCE_BUDGET_SCHEMA,
+        status: PERFORMANCE_BUDGET_STATUS,
+        revision: PERFORMANCE_BUDGET_CATALOG.revision,
+        sha256: PERFORMANCE_BUDGET_SHA256,
+      };
+      for (const [field, expected] of Object.entries(expectedBudget)) {
+        if (budget[field] !== expected) {
+          errors.push(`${label}: protocol.performanceBudget.${field} does not match the active release budget`);
+        }
+      }
+    }
+    errors.push(
+      ...validatePerformanceContext(receipt.protocol.performanceContext, {
+        label: `${label}: protocol.performanceContext`,
+      }),
+      ...validatePerformanceMeasurements(receipt.protocol.performanceMeasurements, {
+        label: `${label}: protocol.performanceMeasurements`,
+        evidencePaths,
+      }),
+    );
+    for (const measurement of asArray(receipt.protocol.performanceMeasurements)) {
+      if (
+        isRecord(measurement) &&
+        typeof measurement.durationSeconds === "number" &&
+        typeof receipt.time?.durationSeconds === "number" &&
+        measurement.durationSeconds > receipt.time.durationSeconds + 1
+      ) {
+        errors.push(
+          `${label}: protocol.performanceMeasurements.${measurement.id}.durationSeconds exceeds the receipt interval`,
+        );
+      }
     }
   }
 }

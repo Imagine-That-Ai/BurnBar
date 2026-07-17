@@ -2,26 +2,27 @@
   "schema": "openburnbar.windows.release-certification-protocols.v1",
   "profiles": {
     "physical-performance": {
+      "performanceBudgetSchema": "openburnbar.windows.release-performance-budgets.v1",
       "target": "Signed exact-candidate physical Windows performance and lifecycle",
-      "expected": "Every launch, interaction, resource, resilience, and soak assertion passes on the declared physical architecture.",
+      "expected": "Every launch, interaction, resource, resilience, and soak assertion passes on the declared physical architecture, and every numeric measurement satisfies the active release-performance budget.",
       "assertions": [
-        { "id": "launch-cold", "description": "Cold launch is responsive and records elapsed time." },
-        { "id": "launch-warm", "description": "Warm launch is responsive and records elapsed time." },
-        { "id": "surface-flyout", "description": "Tray and flyout interaction remains responsive." },
-        { "id": "surface-dashboard", "description": "Dashboard interaction remains responsive under representative data." },
-        { "id": "surface-search", "description": "Search interaction remains responsive under representative data." },
-        { "id": "surface-settings", "description": "Settings interaction remains responsive." },
-        { "id": "surface-chat", "description": "Chat interaction remains responsive under a harmless fixture." },
-        { "id": "usage-scan", "description": "A representative usage scan completes without crash or hang." },
-        { "id": "resource-idle-cpu", "description": "Idle CPU consumption is measured and within the release budget." },
-        { "id": "resource-active-cpu", "description": "Active CPU consumption is measured and within the release budget." },
-        { "id": "resource-memory", "description": "Working set and private memory are measured and within the release budget." },
-        { "id": "resource-gpu", "description": "GPU utilization and fallback behavior are measured and acceptable." },
-        { "id": "resource-disk", "description": "Disk activity is measured and free of pathological churn." },
-        { "id": "frame-pacing", "description": "Frame pacing is measured on animated and scrolling surfaces." },
+        { "id": "launch-cold", "description": "Cold launch satisfies the active p95 budget with the required repeated samples." },
+        { "id": "launch-warm", "description": "Warm launch satisfies the active p95 budget with the required repeated samples." },
+        { "id": "surface-flyout", "description": "Tray and flyout input acknowledgement satisfies the active p95 budget." },
+        { "id": "surface-dashboard", "description": "Dashboard refresh satisfies the documented p95 SLO under a declared representative dataset." },
+        { "id": "surface-search", "description": "Local search satisfies the documented p95 SLO under a declared representative dataset." },
+        { "id": "surface-settings", "description": "Settings input acknowledgement satisfies the active p95 budget." },
+        { "id": "surface-chat", "description": "Local chat input acknowledgement satisfies the active p95 budget under a harmless fixture; provider latency is reported separately." },
+        { "id": "usage-scan", "description": "A declared representative incremental usage scan satisfies the active p95 budget without crash or hang." },
+        { "id": "resource-idle-cpu", "description": "Warm-idle normalized process CPU satisfies the active average budget for the prescribed duration." },
+        { "id": "resource-active-cpu", "description": "Normalized process CPU satisfies the active p95 budget during the declared workload." },
+        { "id": "resource-memory", "description": "Private memory satisfies the active steady-state budget." },
+        { "id": "resource-gpu", "description": "Process GPU utilization satisfies the active p95 budget and fallback behavior remains usable." },
+        { "id": "resource-disk", "description": "Warm-idle process disk writes satisfy the active rate budget." },
+        { "id": "frame-pacing", "description": "Frame-time p95 and dropped-frame rate satisfy both active budgets on animated and scrolling surfaces." },
         { "id": "lifecycle-sleep-wake", "description": "Sleep and wake preserve a usable responsive app." },
         { "id": "lifecycle-explorer-restart", "description": "Explorer restart restores tray and activation behavior." },
-        { "id": "soak", "description": "The prescribed soak completes without crash, hang, leak, or runaway resource growth." }
+        { "id": "soak", "description": "The 30-minute soak satisfies memory-growth, zero-crash, and zero-hang budgets." }
       ]
     },
     "accessibility-display": {

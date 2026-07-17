@@ -18,6 +18,15 @@ import {
   writeSha256Sums,
 } from "./validate-release-certification-evidence.mjs";
 import { sanitizeCertificationLog } from "./certification-log-sanitizer.mjs";
+import {
+  PERFORMANCE_BUDGET_CATALOG,
+  PERFORMANCE_BUDGET_SCHEMA,
+  PERFORMANCE_BUDGET_SHA256,
+  PERFORMANCE_BUDGET_STATUS,
+  performanceContextTemplate,
+  performanceMeasurementTemplate,
+  validatePerformanceBudgetCatalog,
+} from "./release-performance-budget.mjs";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 const HARNESS_COMMIT = "89abcdef0123456789abcdef0123456789abcdef";
@@ -134,7 +143,38 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
       evidence: ["observation.log"],
     })),
   };
+  value.time = {
+    startedAtUtc: "2026-07-11T00:00:00Z",
+    endedAtUtc: "2026-07-11T01:00:00Z",
+    durationSeconds: 3600,
+  };
+  value.protocol.performanceBudget = {
+    schema: PERFORMANCE_BUDGET_SCHEMA,
+    status: PERFORMANCE_BUDGET_STATUS,
+    revision: PERFORMANCE_BUDGET_CATALOG.revision,
+    sha256: PERFORMANCE_BUDGET_SHA256,
+  };
+  value.protocol.performanceContext = Object.fromEntries(
+    Object.keys(performanceContextTemplate()).map((field) => [
+      field,
+      `${field} recorded for the physical test workload.`,
+    ]),
+  );
+  value.protocol.performanceMeasurements = performanceMeasurementTemplate().map((measurement) => ({
+    ...measurement,
+    value: measurement.limit,
+    sampleCount: measurement.minimumSamples,
+    durationSeconds: measurement.minimumDurationSeconds,
+    context: "Windows Performance Recorder 11; AC power; balanced mode; declared fixture dataset.",
+    evidence: ["observation.log"],
+  }));
   return value;
+}
+
+{
+  assert.deepEqual(validatePerformanceBudgetCatalog(), []);
+  assert.equal(PERFORMANCE_BUDGET_CATALOG.status, "ACTIVE_RELEASE_GATE");
+  assert.ok(PERFORMANCE_BUDGET_CATALOG.measurements.length >= 15);
 }
 
 {
@@ -380,6 +420,73 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
   const value = physicalPassReceipt();
   const result = validateReceipt(value, { bundleDir: value.root });
   assert.equal(result.ok, true, result.errors.join("\n"));
+}
+
+{
+  const value = physicalPassReceipt();
+  delete value.protocol.performanceBudget;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /requires protocol\.performanceBudget/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceBudget.sha256 = "0".repeat(64);
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /performanceBudget\.sha256 does not match/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceContext.sampling = "";
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /performanceContext\.sampling is required/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements.shift();
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /cold-start-p95 is missing/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements[0].value =
+    value.protocol.performanceMeasurements[0].limit + 0.001;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /violates at_most/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements[0].sampleCount =
+    value.protocol.performanceMeasurements[0].minimumSamples - 1;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /sampleCount must be at least/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements[0].evidence = ["missing-performance.csv"];
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /evidence reference is not present/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements.find((measurement) => measurement.id === "soak-crashes")
+    .durationSeconds = 3602;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /durationSeconds exceeds the receipt interval/);
 }
 
 {
