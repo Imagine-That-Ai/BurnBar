@@ -612,9 +612,13 @@ describe("domain-core shadow evidence hermes payload-keywrap combined ops", () =
     const keyWrapBranch = branches.find(
       (branch) => branch.properties.domain.const === "hermes" && branch.properties.slice.const === "payload-keywrap",
     );
-    expect(keyWrapBranch).toBeDefined();
-    const operations = keyWrapBranch!.properties.operation.enum ?? [keyWrapBranch!.properties.operation.const!];
-    const consumers = keyWrapBranch!.properties.consumer.enum ?? [keyWrapBranch!.properties.consumer.const!];
+    if (!keyWrapBranch) {
+      throw new Error("authoritative V3 schema is missing the hermes payload-keywrap branch");
+    }
+    const operationContract = keyWrapBranch.properties.operation;
+    const consumerContract = keyWrapBranch.properties.consumer;
+    const operations = operationContract.enum ?? (operationContract.const ? [operationContract.const] : []);
+    const consumers = consumerContract.enum ?? (consumerContract.const ? [consumerContract.const] : []);
     expect(operations).toEqual(expect.arrayContaining(["seal_combined", "open_combined"]));
     expect(consumers).toEqual(expect.arrayContaining(["apple", "android"]));
   });
