@@ -25,7 +25,7 @@ work is the macOS-level **surface depth**, **installed runtime evidence**,
 
 ### Current continuation checkpoint — 2026-07-17
 
-The integration branch is at `09e6050d9` with two recent source slices plus
+The integration branch is at `bf30c881a` with two recent source slices plus
 nightly evidence hardening: the real
 P-39 parser differential producer (`dd7c588db`, focused suite **45/45**) and
 provider-catalog enforcement in first-run onboarding (`29fa77791`). Candidate run
@@ -43,6 +43,14 @@ did not have a host evidence mount. Commit `09e6050d9` mounts the host evidence
 directory into both PR and nightly Swift containers, routes results to
 `/evidence/linux-swift-tests`, and regression-tests the workflow wiring. Fresh
 nightly run `29607854309` is the first exact-head validation of that correction.
+
+Since that correction, `6ef6794ea` serialized Computer Use expiry teardown so
+run-binding replacement cannot race coordinator cleanup. The Linux Swift graph
+now executes a real analytics target (**8 suites / 84 minimum tests**) through
+`9db5cca26`, `d846c95d0`, `7349007e2`, and `4925d258d`. The P-07
+computer-use validator and mutation suite landed in `bf30c881a` and is required
+by the PR gate (`5e6241275`). These changes improve source confidence only; the
+ledger remains 0/40 and 0/7 until installed, current-head receipts exist.
 
 The honest status is therefore **0/40 product** and **0/7 environment** certified.
 A non-certifying engineering maturity estimate is approximately **68%**. The

@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` at source checkpoint `09e6050d9`; this audit record is subsequently carried by documentation-only commits. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, structured shell failure diagnostics, and host-mounted Swift evidence are linked below. Candidate run `29546157464` passed both release architectures and installed-package runtime checks at its then-current head; the candidate-bound UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
+| Remediation evidence | `codex/linux-parity-integration-final` at source checkpoint `bf30c881a`; this audit record is subsequently carried by documentation-only commits. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, structured shell failure diagnostics, host-mounted Swift evidence, expiry-teardown serialization, executable Linux analytics coverage, and the P-07 computer-use validator are linked below. Candidate run `29546157464` passed both release architectures and installed-package runtime checks at its then-current head; the candidate-bound UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -66,6 +66,22 @@ percentage. The active remediation stack now contains these reviewable slices:
   so the wiring cannot regress. Fresh nightly run `29607854309` is exercising
   this correction; the failing XCTest remains open until its retained log is
   reviewed and the test passes on the Linux runner.
+
+### Latest source hardening - 2026-07-17
+
+- **Expiry race:** `6ef6794ea` coalesces Computer Use teardown, makes polling
+  and run lookup await revocation, and prevents a replacement browser run from
+  racing the old coordinator's cleanup. It directly addresses the X11 failure
+  named above; the existing regression test remains unchanged.
+- **Linux test coverage:** `9db5cca26` adds four real analytics behavior tests;
+  `d846c95d0`, `7349007e2`, and `4925d258d` put the target back into the Linux
+  Swift graph with an explicit source name. The contract is now **8 suites / 84
+  minimum tests** instead of silently excluding analytics.
+- **P-07 certification guard:** `bf30c881a` adds a fail-closed
+  `feature.computer-use` validator and three mutation tests covering candidate,
+  HEAD, target, rejection-policy, dependency, and source-hash binding. Commit
+  `5e6241275` makes the mutation suite mandatory in the PR parity gate. These
+  are source/contract improvements; no product receipt is promoted.
 
 ### Latest verification delta — 2026-07-14
 
