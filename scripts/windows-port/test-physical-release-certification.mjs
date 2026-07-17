@@ -100,7 +100,7 @@ assert.equal(performanceBudget.status, "ACTIVE_RELEASE_GATE");
 assert.equal(performanceBudget.profile, "physical-performance");
 assert.equal(
   createHash("sha256").update(performanceBudgetBytes).digest("hex"),
-  "779abf7596911f8d255e0bc82e490e47c025ca3e4ef24842c65107081291f926",
+  "e74d889051244901f1bac929999d9b276feb89cdd8d9ea61a74ca275de3ab832",
 );
 assert.equal(
   protocolCatalog.profiles["physical-performance"].performanceBudgetSchema,
@@ -143,6 +143,7 @@ assert.match(supplementalGenerator, /ACTIVE_RELEASE_GATE/);
 assert.match(supplementalGenerator, /performanceMeasurements/);
 assert.match(supplementalGenerator, /performanceContext/);
 assert.match(supplementalGenerator, /requires an explicit numeric value/);
+assert.match(supplementalGenerator, /sampleCount does not match samples/);
 assert.match(supplementalGenerator, /has no raw evidence file/);
 assert.match(supplementalValidator, /validateReceipt/);
 assert.match(supplementalValidator, /Windows release-certification receipt is valid/);
@@ -154,11 +155,11 @@ assert.match(physicalRunbook, /\$Repo = Join-Path \$Root 'candidate'/);
 assert.match(physicalRunbook, /\$Harness = Join-Path \$Root 'harness'/);
 assert.match(
   physicalRunbook,
-  /\$ExpectedHarnessCommit = 'f44ad39aee2129016a931a9bf40a913f2138fc4e'/,
+  /\$ExpectedHarnessCommit = 'f7d95fabecc6964f7b2cec895eb1c14dc8178bb1'/,
 );
 assert.match(
   physicalRunbook,
-  /\$ExpectedPerformanceBudgetHash = '779abf7596911f8d255e0bc82e490e47c025ca3e4ef24842c65107081291f926'/,
+  /\$ExpectedPerformanceBudgetHash = 'e74d889051244901f1bac929999d9b276feb89cdd8d9ea61a74ca275de3ab832'/,
 );
 assert.match(physicalRunbook, /Active release performance budget mismatch/);
 assert.match(physicalRunbook, /git -C \$Repo checkout --detach windows-v1\.0\.35/);

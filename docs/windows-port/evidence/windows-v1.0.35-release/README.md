@@ -45,15 +45,16 @@ The physical Intel handoff is [`PHYSICAL_X64_RUNBOOK.md`](PHYSICAL_X64_RUNBOOK.m
 ## Physical performance gate
 
 The physical handoff is pinned to independent harness commit
-`f44ad39aee2129016a931a9bf40a913f2138fc4e`. That harness promotes the reviewed
+`f7d95fabecc6964f7b2cec895eb1c14dc8178bb1`. That harness promotes the reviewed
 Windows performance proposal into the active, machine-readable release contract
 at `scripts/windows-port/release-performance-budgets.json` (SHA-256
-`779abf7596911f8d255e0bc82e490e47c025ca3e4ef24842c65107081291f926`).
+`e74d889051244901f1bac929999d9b276feb89cdd8d9ea61a74ca275de3ab832`).
 A performance receipt cannot pass from prose assertions alone: it must bind the
-exact budget, report all 18 numeric measurements with required sample and
-duration floors, attach hashed raw evidence, and survive independent threshold
-re-evaluation. The older evidence-namespace proposal remains historical and is
-not consumed by the validator.
+exact budget, report all 18 numeric measurements and their complete sample
+series with required sample and duration floors, attach hashed raw evidence,
+and survive independent statistic derivation and threshold re-evaluation. The
+older evidence-namespace proposal remains historical and is not consumed by the
+validator.
 
 ## Certification boundary
 
