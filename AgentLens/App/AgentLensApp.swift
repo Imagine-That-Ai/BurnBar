@@ -217,25 +217,21 @@ struct OpenBurnBarApp: App {
     }
 
     private static func runDomainCoreReleaseIdentityModeIfRequested() {
-        let arguments = ProcessInfo.processInfo.arguments
-        guard arguments.contains(DomainCoreReleaseIdentityReporter.argument) else { return }
-        guard arguments.count == 3,
-              arguments[1] == DomainCoreReleaseIdentityReporter.argument,
-              let candidateCommit = ProcessInfo.processInfo.environment["DOMAIN_CORE_CANDIDATE_COMMIT"],
-              let executableURL = Bundle.main.executableURL else {
+        // The irreversible side effects (stderr writes + process exit) live here; the
+        // deterministic argument/env validation and the reporter dispatch are resolved
+        // by the testable `domainCoreReleaseIdentityRequest` helper, which mirrors this
+        // exact policy without touching the process lifecycle.
+        switch domainCoreReleaseIdentityRequest() {
+        case .notRequested:
+            return
+        case .invalidInvocation:
             FileHandle.standardError.write(Data("invalid domain-core release identity invocation\n".utf8))
             exit(EXIT_FAILURE)
-        }
-        do {
-            try DomainCoreReleaseIdentityReporter.write(
-                candidateCommit: candidateCommit,
-                reportURL: URL(fileURLWithPath: arguments[2]),
-                executableURL: executableURL
-            )
+        case .success:
             exit(EXIT_SUCCESS)
-        } catch {
+        case .failure(let errorDescription):
             FileHandle.standardError.write(
-                Data("domain-core release identity failed: \(error.localizedDescription)\n".utf8)
+                Data("domain-core release identity failed: \(errorDescription)\n".utf8)
             )
             exit(EXIT_FAILURE)
         }

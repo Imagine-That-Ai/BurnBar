@@ -292,6 +292,7 @@
 		1C347E138BAF150837BA6DD3 /* MercuryHapticsLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49099AC4E1E3AFF5099DB30 /* MercuryHapticsLevel.swift */; };
 		1C40EEDBF7AE08FA192EACA4 /* MobileKernelBackdropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60678642A0A318457E0FDD98 /* MobileKernelBackdropView.swift */; };
 		1C5D55C2C8068710D4373303 /* OpenBurnBarRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99E42B11E324F1453214E100 /* OpenBurnBarRuntimeTests.swift */; };
+		0F1E2D3C4B5A6789091A2B3C /* OpenBurnBarAppDomainCoreReleaseIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* OpenBurnBarAppDomainCoreReleaseIdentityTests.swift */; };
 		1C7259D38380AAF804E63C1F /* GeneralSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A317984A38DE61F12E1CC368 /* GeneralSettingsView.swift */; };
 		1C82CDE50D49E3C33D9F075A /* CredentialTransferSheetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F29A041AE3008083D27409AD /* CredentialTransferSheetTests.swift */; };
 		1C94791BBE43CEA33AB83C96 /* OnboardingProviderPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D3A00C8EF2A430EA4BA4269 /* OnboardingProviderPill.swift */; };
@@ -757,6 +758,7 @@
 		507C413112A937883813A364 /* MotionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 689067F0D26073F6C3FE7BCE /* MotionStore.swift */; };
 		509EDFA3664A191D40F8EB14 /* AWTRIXClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 178DF51B7E4B1CA8A525A046 /* AWTRIXClient.swift */; };
 		50BC7CC89C1DB20EE5D6676A /* AgentLensApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4950384806BAAB38EA77DE /* AgentLensApp.swift */; };
+		1F2E3D4C5B6A7988091A2B3C /* OpenBurnBarAppDomainCoreReleaseIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4B9C1D2E3F4A5B6C7D8E9F /* OpenBurnBarAppDomainCoreReleaseIdentity.swift */; };
 		50D7D3F3D1628220F44477A4 /* PretextTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570C29F09E507809169A5A1E /* PretextTextView.swift */; };
 		50DFF3FA31B7B62422D5151E /* ConnectionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE103E4277978540F8113F15 /* ConnectionsViewModel.swift */; };
 		50F1DE66642B53A0A3CB89B3 /* DashboardUsageViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 310C7E939D5B539E71C59D83 /* DashboardUsageViewModel.swift */; };
@@ -3579,6 +3581,7 @@
 		7B3EC55DF5B115EF94AB99E5 /* SelfHostedQuotaRunnerStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelfHostedQuotaRunnerStoreTests.swift; sourceTree = "<group>"; };
 		7B414B81877E67ADE8671334 /* OpenAIUsageAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIUsageAPI.swift; sourceTree = "<group>"; };
 		7B4950384806BAAB38EA77DE /* AgentLensApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLensApp.swift; sourceTree = "<group>"; };
+		8A4B9C1D2E3F4A5B6C7D8E9F /* OpenBurnBarAppDomainCoreReleaseIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarAppDomainCoreReleaseIdentity.swift; sourceTree = "<group>"; };
 		7B4AAC18D2359F0262FEAED6 /* SmartHubStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartHubStore.swift; sourceTree = "<group>"; };
 		7B4C328FF9BDF36CEBD1175F /* SwitcherCLIFallbackPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherCLIFallbackPlanner.swift; sourceTree = "<group>"; };
 		7B67A500D5444BA512DFEC09 /* DashboardOverviewViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverviewViewTests.swift; sourceTree = "<group>"; };
@@ -3867,6 +3870,7 @@
 		99C2EC986953660BF7D9DDCA /* ConstellationLayoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConstellationLayoutView.swift; sourceTree = "<group>"; };
 		99C7CBBD802415F1CA862411 /* DaemonPhoneKeyPinStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonPhoneKeyPinStore.swift; sourceTree = "<group>"; };
 		99E42B11E324F1453214E100 /* OpenBurnBarRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarRuntimeTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* OpenBurnBarAppDomainCoreReleaseIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarAppDomainCoreReleaseIdentityTests.swift; sourceTree = "<group>"; };
 		99F33DE2BA8DD6E67994F7CB /* HomeAssistantCastRecoveryClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAssistantCastRecoveryClient.swift; sourceTree = "<group>"; };
 		99FA1122E0C4286BF56E9D9F /* EscrowCryptoRoundTripTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EscrowCryptoRoundTripTests.swift; sourceTree = "<group>"; };
 		9A03F652B86509EB253386D2 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -7068,6 +7072,7 @@
 				1E310E9672E52C8144BFADB3 /* AppDelegate+Wallpaper.swift */,
 				A1EB230E41AEAAEB8AD2C522 /* MacCrashReportingPrivacy.swift */,
 				14F36ABE482995CDD701EB5C /* MenuBarLabel.swift */,
+				8A4B9C1D2E3F4A5B6C7D8E9F /* OpenBurnBarAppDomainCoreReleaseIdentity.swift */,
 				F42D0E82B5E3AF8D83CB4D46 /* OpenBurnBarAppSentryDSN.swift */,
 				C9013EF92982CD4D3F00010C /* OpenBurnBarStatusItemSupport.swift */,
 				AF539F519666C2094B14EAA6 /* OpenBurnBarWindowManager.swift */,
@@ -7343,6 +7348,7 @@
 				C437B40CEAB1015E9625C5CD /* OpenBurnBarOperatingLayerTests.swift */,
 				EA33A8353CC2AF2DEC963BBD /* OpenBurnBarQueryTracerTrimTests.swift */,
 				BFB5C4B01DAD05B2981DD7B9 /* OpenBurnBarRetrievalReplayGoldenTests.swift */,
+				A1B2C3D4E5F60718293A4B5C /* OpenBurnBarAppDomainCoreReleaseIdentityTests.swift */,
 				99E42B11E324F1453214E100 /* OpenBurnBarRuntimeTests.swift */,
 				07856B146FD31F08AB0EE977 /* OpenBurnBarSearchIntegrationHarnessTests.swift */,
 				7D35E4C00FB9069826B90DAD /* OpenBurnBarStartupRecoveryTests.swift */,
@@ -11134,6 +11140,7 @@
 				75CF90DA0D961AD88BCC3201 /* OpenBurnBarQueryTracerTrimTests.swift in Sources */,
 				45BCF4A9C4EB3771C34C09D1 /* OpenBurnBarRetrievalReplayGoldenTests.swift in Sources */,
 				1C5D55C2C8068710D4373303 /* OpenBurnBarRuntimeTests.swift in Sources */,
+				0F1E2D3C4B5A6789091A2B3C /* OpenBurnBarAppDomainCoreReleaseIdentityTests.swift in Sources */,
 				5F9AC642494337CAB33C3AC3 /* OpenBurnBarSearchIntegrationHarness.swift in Sources */,
 				5997A49A9B52DBB3821B55C3 /* OpenBurnBarSearchIntegrationHarnessTests.swift in Sources */,
 				AA3DEF012394190AEBFC8F45 /* OpenBurnBarStartupRecoveryTests.swift in Sources */,
@@ -11298,6 +11305,7 @@
 				F67AC3B36FA30F336B13548B /* AgentLensApp+MemoryServices.swift in Sources */,
 				6989D6449236139C468C37CA /* AgentLensApp+StartupRecovery.swift in Sources */,
 				50BC7CC89C1DB20EE5D6676A /* AgentLensApp.swift in Sources */,
+				1F2E3D4C5B6A7988091A2B3C /* OpenBurnBarAppDomainCoreReleaseIdentity.swift in Sources */,
 				4DC7FCD725CA373AB183654A /* AgentLensStringNilIfBlank.swift in Sources */,
 				5F77D587576F0415ACF95220 /* AgentProvider.swift in Sources */,
 				29D9978C86326B09B1183CE6 /* AgentSecurityPolicy.swift in Sources */,
