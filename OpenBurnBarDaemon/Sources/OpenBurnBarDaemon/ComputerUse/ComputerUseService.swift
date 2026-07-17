@@ -153,6 +153,7 @@ public actor ComputerUseService {
             requiresManagedBrowserRunAuthority: requiresManagedBrowserRunAuthority,
             approvalPublisher: approvalPublisher,
             sessionEndedObserver: sessionEndedObserver,
+            systemCapabilityProvider: systemCapabilityProvider,
             logger: logger
         )
     }
@@ -271,7 +272,6 @@ public actor ComputerUseService {
 #else
         defaultSystemCapabilityProvider = nil
 #endif
-        self.systemCapabilityProvider = systemCapabilityProvider ?? defaultSystemCapabilityProvider
         self.coordinator = ComputerUseRunCoordinator(
             approvalIssuer: { request in
                 try await approvalBridge.issue(request, publisher: approvalPublisher)
@@ -289,6 +289,9 @@ public actor ComputerUseService {
             quotaLedger: resolvedQuotaLedger,
             logger: logger
         )
+        // Assign this after the coordinator and every other stored property so
+        // Swift's initialization rules are satisfied on Linux and macOS.
+        self.systemCapabilityProvider = systemCapabilityProvider ?? defaultSystemCapabilityProvider
     }
 
     public func startSession(
