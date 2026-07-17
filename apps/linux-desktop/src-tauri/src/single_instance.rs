@@ -19,6 +19,7 @@ pub(crate) const PROTOCOL_VERSION: u8 = 1;
 const MAX_FRAME_BYTES: usize = 16 * 1024;
 const LOCK_NAME: &str = "openburnbar-linux-desktop.lock";
 const SOCKET_NAME: &str = "openburnbar-linux-desktop.sock";
+const DEEP_LINK_SCHEME_PREFIX: &str = "openburnbar://";
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
@@ -43,6 +44,18 @@ struct Frame {
 
 fn empty_json_object() -> serde_json::Value {
     serde_json::json!({})
+}
+
+/// URI schemes are case-insensitive. Normalize only the surrounding command
+/// line whitespace and keep the rest of the URI opaque for the authoritative
+/// validator in `lib.rs`; malformed OpenBurnBar URIs must be rejected rather
+/// than silently downgraded to a focus launch.
+fn deep_link_argument(argument: &str) -> Option<&str> {
+    let trimmed = argument.trim();
+    trimmed
+        .get(..DEEP_LINK_SCHEME_PREFIX.len())
+        .filter(|prefix| prefix.eq_ignore_ascii_case(DEEP_LINK_SCHEME_PREFIX))
+        .map(|_| trimmed)
 }
 
 pub(crate) fn notification_action_route(action: &str) -> Option<&'static str> {
@@ -157,8 +170,8 @@ where
     let mut index = 0;
     while index < arguments.len() {
         let argument = &arguments[index];
-        if argument.starts_with("openburnbar://") {
-            let route = deep_link_validator(argument)
+        if let Some(deep_link) = deep_link_argument(argument) {
+            let route = deep_link_validator(deep_link)
                 .ok_or_else(|| "single_instance_deep_link_rejected".to_string())?;
             messages.push(Message::Route {
                 route: route.to_string(),
@@ -494,6 +507,32 @@ mod tests {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn startup_args_accept_case_insensitive_trimmed_deep_links() {
+        let messages =
+            startup_messages_from_args(vec!["  OPENBURNBAR://route/chat  ".to_string()], |value| {
+                value
+                    .eq_ignore_ascii_case("openburnbar://route/chat")
+                    .then_some("chat")
+            })
+            .unwrap();
+        assert_eq!(
+            messages,
+            vec![Message::Route {
+                route: "chat".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn malformed_case_insensitive_deep_links_are_rejected() {
+        let result = startup_messages_from_args(
+            vec!["OPENBURNBAR://unregistered-route".to_string()],
+            |_| None,
+        );
+        assert_eq!(result.unwrap_err(), "single_instance_deep_link_rejected");
     }
 
     #[test]
