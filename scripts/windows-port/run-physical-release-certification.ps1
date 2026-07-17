@@ -63,6 +63,19 @@ function Get-CommitSha {
     return $value.Trim().ToLowerInvariant()
 }
 
+function Get-RepositoryCommit([string] $Root, [string] $Label) {
+    $value = (& git -C $Root rev-parse HEAD 2>$null | Select-Object -First 1)
+    if ([string]::IsNullOrWhiteSpace($value)) { throw "Unable to resolve the $Label commit." }
+    $commit = $value.Trim().ToLowerInvariant()
+    if ($commit -notmatch '^[a-f0-9]{40}$') { throw "The $Label commit is not a full Git SHA." }
+    return $commit
+}
+
+function Test-RepositoryDirty([string] $Root) {
+    $value = (& git -C $Root status --porcelain 2>$null)
+    return -not [string]::IsNullOrWhiteSpace(($value -join "`n"))
+}
+
 function Test-DirtyTree {
     # Runner-owned output written inside the repo must not poison the source
     # cleanliness verdict, so the resolved OutputDir is excluded when in-repo.
@@ -377,8 +390,12 @@ function New-Receipt(
 }
 
 $RepoRoot = Resolve-FullPath $RepoRoot
+$HarnessRoot = Resolve-FullPath (Join-Path $PSScriptRoot '..\..')
 $OutputDir = Resolve-FullPath $OutputDir
 if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot 'windows\OpenBurnBar.sln'))) { throw "RepoRoot does not contain windows\OpenBurnBar.sln: $RepoRoot" }
+if (-not (Test-Path -LiteralPath (Join-Path $HarnessRoot 'scripts\windows-port\validate-release-certification-evidence.mjs'))) {
+    throw "The certification harness checkout is incomplete: $HarnessRoot"
+}
 $script:RepoRelativeOutputDir = $null
 $repoRootWithSeparator = $RepoRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
 if ($OutputDir.StartsWith($repoRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -389,9 +406,16 @@ if ($OutputDir.StartsWith($repoRootWithSeparator, [System.StringComparison]::Ord
 $script:SourceIdentity = [ordered]@{
     commitSha = Get-CommitSha
     dirtyTree = Test-DirtyTree
+    harness = [ordered]@{
+        commitSha = Get-RepositoryCommit $HarnessRoot 'certification harness'
+        dirtyTree = Test-RepositoryDirty $HarnessRoot
+    }
 }
 if ($script:SourceIdentity.dirtyTree) {
     throw 'Refusing certification evidence for a candidate that was dirty before execution.'
+}
+if ($script:SourceIdentity.harness.dirtyTree) {
+    throw 'Refusing certification evidence from a dirty certification harness checkout.'
 }
 New-Item -ItemType Directory -Force -Path $OutputDir, (Join-Path $OutputDir 'receipts'), (Join-Path $OutputDir 'logs'), (Join-Path $OutputDir 'blockers') | Out-Null
 
@@ -447,7 +471,7 @@ if ($SkipUiAutomation) {
     $blockerMissing = 'The operator supplied -SkipUiAutomation.'
     $blockerRecovery = 'Run the accessibility profile in the signed-in Windows desktop session.'
 } else {
-    $uiStep = Invoke-LoggedProcess 'ui-automation-accessibility' (Join-Path $RepoRoot 'scripts\windows-port\run-ui-automation.ps1') @('-RepoRoot', $RepoRoot, '-Platform', $Platform, '-CertificationProfile', 'all', '-OutputDirectory', (Join-Path $OutputDir 'ui-automation'))
+    $uiStep = Invoke-LoggedProcess 'ui-automation-accessibility' (Join-Path $HarnessRoot 'scripts\windows-port\run-ui-automation.ps1') @('-RepoRoot', $RepoRoot, '-Platform', $Platform, '-CertificationProfile', 'all', '-OutputDirectory', (Join-Path $OutputDir 'ui-automation'))
     $steps.Add($uiStep)
     $uiEvidence = @([ordered]@{ path = $uiStep.log; sha256 = $uiStep.logSha256 })
     if ($uiStep.exitCode -eq 0) {
@@ -507,9 +531,11 @@ if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
         $candidate = Get-Content -Raw -LiteralPath $sourceReceiptPath.FullName | ConvertFrom-Json
         if ($candidate.schema -ne $ReceiptSchema -or $candidate.status -ne 'PASS') { continue }
         if ($candidate.source.commitSha -ne (Get-CommitSha) -or $candidate.source.dirtyTree -eq $true) { continue }
+        if ($candidate.source.harness.commitSha -ne $script:SourceIdentity.harness.commitSha -or
+            $candidate.source.harness.dirtyTree -eq $true) { continue }
         if ($supplementalGateIds -notcontains [string]$candidate.gate) { continue }
         if ($candidate.artifact.availability -ne 'recorded' -or $candidate.artifact.signature.result -ne 'verified') { continue }
-        & $supplementalValidatorNode.Source (Join-Path $RepoRoot 'scripts\windows-port\validate-release-certification-receipt.mjs') `
+        & $supplementalValidatorNode.Source (Join-Path $HarnessRoot 'scripts\windows-port\validate-release-certification-receipt.mjs') `
             $sourceReceiptPath.FullName $supplementalRoot
         if ($LASTEXITCODE -ne 0) {
             throw "Supplemental PASS receipt failed schema validation: $($sourceReceiptPath.FullName)"
@@ -659,7 +685,8 @@ $manifest = [ordered]@{
     schema = $BundleSchema
     generatedAtUtc = [DateTimeOffset]::UtcNow.ToUniversalTime().ToString('o')
     source = $script:SourceIdentity
-    runner = [ordered]@{ script = 'scripts/windows-port/run-physical-release-certification.ps1'; platform = $Platform; physicalHardwareAsserted = [bool]$PhysicalHardware }
+    artifact = $artifact
+    runner = [ordered]@{ script = 'scripts/windows-port/run-physical-release-certification.ps1'; harnessCommitSha = $script:SourceIdentity.harness.commitSha; platform = $Platform; physicalHardwareAsserted = [bool]$PhysicalHardware }
     overallVerdict = $overallVerdict
     receipts = @($receiptEntries | ForEach-Object { [ordered]@{ path = $_.path; sha256 = $_.sha256 } })
     gates = @($receiptEntries | ForEach-Object { [ordered]@{ id = $_.gate; status = $_.status; receipts = @($_.path) } })
@@ -669,6 +696,8 @@ Write-JsonFile (Join-Path $OutputDir 'certification-manifest.json') $manifest
 
 $node = Get-Command node -ErrorAction SilentlyContinue
 if ($null -eq $node) { throw 'Node.js is required to validate and hash the evidence bundle.' }
-& $node.Source (Join-Path $RepoRoot 'scripts\windows-port\validate-release-certification-evidence.mjs') $OutputDir --write-sums
+& $node.Source (Join-Path $HarnessRoot 'scripts\windows-port\validate-release-certification-evidence.mjs') `
+    $OutputDir --write-sums --expected-commit $script:SourceIdentity.commitSha `
+    --expected-harness-commit $script:SourceIdentity.harness.commitSha
 if ($LASTEXITCODE -ne 0) { throw 'Evidence bundle validation failed.' }
 Write-Host "Windows physical release-certification bundle written to $OutputDir" -ForegroundColor Yellow

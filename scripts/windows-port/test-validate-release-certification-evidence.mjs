@@ -20,6 +20,7 @@ import {
 import { sanitizeCertificationLog } from "./certification-log-sanitizer.mjs";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
+const HARNESS_COMMIT = "89abcdef0123456789abcdef0123456789abcdef";
 
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
@@ -34,7 +35,11 @@ function receipt(gate, status = "PASS") {
     status,
     gate,
     target: `${gate}.target`,
-    source: { commitSha: COMMIT, dirtyTree: false },
+    source: {
+      commitSha: COMMIT,
+      dirtyTree: false,
+      harness: { commitSha: HARNESS_COMMIT, dirtyTree: false },
+    },
     artifact: {
       name: "source-checkout",
       architecture: "macOS-arm64-authoring-host",
@@ -179,15 +184,47 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
   const manifest = {
     schema: BUNDLE_SCHEMA,
     generatedAtUtc: "2026-07-11T00:00:01Z",
-    source: { commitSha: COMMIT, dirtyTree: false },
+    source: structuredClone(value.source),
+    artifact: structuredClone(value.artifact),
     overallVerdict: "NO-GO",
     receipts: [{ path: "receipts/local-automated-checks.json", sha256: receiptHash }],
     gates: [{ id: "local-automated-checks", status: "PASS", receipts: ["receipts/local-automated-checks.json"] }],
   };
   writeJson(join(bundleDir, "certification-manifest.json"), manifest);
   writeSha256Sums(bundleDir);
-  const result = validateReleaseCertificationBundle(bundleDir, { expectedCommit: COMMIT, requireAllGates: false });
+  const result = validateReleaseCertificationBundle(bundleDir, {
+    expectedCommit: COMMIT,
+    expectedHarnessCommit: HARNESS_COMMIT,
+    requireAllGates: false,
+  });
   assert.equal(result.ok, true, result.errors.join("\n"));
+
+  const wrongExpectedHarness = validateReleaseCertificationBundle(bundleDir, {
+    expectedCommit: COMMIT,
+    expectedHarnessCommit: "f".repeat(40),
+    requireAllGates: false,
+  });
+  assert.equal(wrongExpectedHarness.ok, false);
+  assert.match(
+    wrongExpectedHarness.errors.join("\n"),
+    /bundle: harness commit mismatch/,
+  );
+
+  const missingSourceManifest = structuredClone(manifest);
+  delete missingSourceManifest.source;
+  writeJson(join(bundleDir, "certification-manifest.json"), missingSourceManifest);
+  writeSha256Sums(bundleDir);
+  const missingSourceResult = validateReleaseCertificationBundle(bundleDir, {
+    expectedCommit: COMMIT,
+    expectedHarnessCommit: HARNESS_COMMIT,
+    requireAllGates: false,
+  });
+  assert.equal(missingSourceResult.ok, false);
+  assert.match(missingSourceResult.errors.join("\n"), /bundle: source is required/);
+  assert.match(missingSourceResult.errors.join("\n"), /bundle: commit mismatch/);
+  assert.match(missingSourceResult.errors.join("\n"), /bundle: harness commit mismatch/);
+  writeJson(join(bundleDir, "certification-manifest.json"), manifest);
+  writeSha256Sums(bundleDir);
 
   const missingReceiptHashManifest = structuredClone(manifest);
   delete missingReceiptHashManifest.receipts[0].sha256;
@@ -244,6 +281,27 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
     /receipt commit does not match bundle source commit/,
   );
 
+  const wrongHarnessReceipt = structuredClone(value);
+  wrongHarnessReceipt.source.harness.commitSha = "a".repeat(40);
+  const wrongHarnessResult = validateState(
+    wrongHarnessReceipt,
+    structuredClone(manifest),
+  );
+  assert.equal(wrongHarnessResult.ok, false);
+  assert.match(
+    wrongHarnessResult.errors.join("\n"),
+    /receipt harness does not match bundle source harness/,
+  );
+
+  const wrongArtifactManifest = structuredClone(manifest);
+  wrongArtifactManifest.artifact.sha256 = "f".repeat(64);
+  const wrongArtifactResult = validateState(value, wrongArtifactManifest);
+  assert.equal(wrongArtifactResult.ok, false);
+  assert.match(
+    wrongArtifactResult.errors.join("\n"),
+    /receipt artifact does not match bundle artifact/,
+  );
+
   const falseGoManifest = structuredClone(manifest);
   falseGoManifest.overallVerdict = "GO";
   const falseGoResult = validateState(value, falseGoManifest);
@@ -260,6 +318,15 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
   assert.match(
     dirtyGoResult.errors.join("\n"),
     /GO requires a clean source tree/,
+  );
+
+  const dirtyHarnessGoManifest = structuredClone(falseGoManifest);
+  dirtyHarnessGoManifest.source.harness.dirtyTree = true;
+  const dirtyHarnessGoResult = validateState(value, dirtyHarnessGoManifest);
+  assert.equal(dirtyHarnessGoResult.ok, false);
+  assert.match(
+    dirtyHarnessGoResult.errors.join("\n"),
+    /GO requires a clean certification harness/,
   );
 
   const dirtyGoReceipt = structuredClone(value);
@@ -313,6 +380,14 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
   const value = physicalPassReceipt();
   const result = validateReceipt(value, { bundleDir: value.root });
   assert.equal(result.ok, true, result.errors.join("\n"));
+}
+
+{
+  const value = physicalPassReceipt();
+  delete value.source.harness;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /source\.harness is required/);
 }
 
 {

@@ -282,6 +282,46 @@ function checkArtifact(receipt, errors, label) {
   }
 }
 
+function artifactIdentity(artifact) {
+  if (!isRecord(artifact)) return null;
+  return JSON.stringify({
+    name: artifact.name,
+    architecture: artifact.architecture,
+    availability: artifact.availability,
+    sourceCommit: artifact.sourceCommit,
+    sha256: artifact.sha256,
+    workflowRunId: artifact.workflowRunId,
+    workflowRunUrl: artifact.workflowRunUrl,
+    signatureResult: artifact.signature?.result,
+    signatureIdentity: artifact.signature?.identity,
+  });
+}
+
+function checkSource(source, errors, label, options = {}) {
+  if (!isRecord(source)) {
+    errors.push(`${label}: source is required`);
+    return;
+  }
+  if (!/^[a-f0-9]{40,64}$/.test(source.commitSha ?? "")) {
+    errors.push(`${label}: source.commitSha is invalid`);
+  }
+  if (typeof source.dirtyTree !== "boolean") {
+    errors.push(`${label}: source.dirtyTree is required`);
+  }
+  if (source.harness !== undefined || options.requireHarness === true) {
+    if (!isRecord(source.harness)) {
+      errors.push(`${label}: source.harness is required`);
+    } else {
+      if (!/^[a-f0-9]{40}$/.test(source.harness.commitSha ?? "")) {
+        errors.push(`${label}: source.harness.commitSha must be a full Git SHA`);
+      }
+      if (typeof source.harness.dirtyTree !== "boolean") {
+        errors.push(`${label}: source.harness.dirtyTree is required`);
+      }
+    }
+  }
+}
+
 function checkDevice(receipt, errors, label) {
   if (!isRecord(receipt.device)) {
     errors.push(`${label}: device is required`);
@@ -528,12 +568,9 @@ export function validateReceipt(receipt, options = {}) {
   if (typeof receipt.gate !== "string" || receipt.gate.length === 0) errors.push(`${label}: gate is required`);
   if (typeof receipt.target !== "string" || receipt.target.length === 0) errors.push(`${label}: target is required`);
 
-  if (!isRecord(receipt.source)) {
-    errors.push(`${label}: source is required`);
-  } else {
-    if (!/^[a-f0-9]{40,64}$/.test(receipt.source.commitSha ?? "")) errors.push(`${label}: source.commitSha is invalid`);
-    if (typeof receipt.source.dirtyTree !== "boolean") errors.push(`${label}: source.dirtyTree is required`);
-  }
+  checkSource(receipt.source, errors, label, {
+    requireHarness: PHYSICAL_GATES.has(receipt.gate) && receipt.status === "PASS",
+  });
 
   checkArtifact(receipt, errors, label);
   checkDevice(receipt, errors, label);
@@ -563,6 +600,9 @@ export function validateReceipt(receipt, options = {}) {
   if (PHYSICAL_GATES.has(receipt.gate) && receipt.status === "PASS") {
     if (receipt.artifact?.availability !== "recorded") errors.push(`${label}: physical PASS requires a recorded artifact`);
     if (receipt.source?.dirtyTree === true) errors.push(`${label}: physical PASS cannot use a dirty source tree`);
+    if (receipt.source?.harness?.dirtyTree === true) {
+      errors.push(`${label}: physical PASS cannot use a dirty certification harness`);
+    }
     const expectedArchitecture = PHYSICAL_PERFORMANCE_ARCHITECTURES.get(receipt.gate);
     if (expectedArchitecture && normalizeArchitecture(receipt.device?.architecture) !== expectedArchitecture) {
       errors.push(`${label}: ${receipt.gate} requires ${expectedArchitecture} device architecture`);
@@ -632,9 +672,19 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
   const manifest = readJson(manifestPath, errors, "certification-manifest.json");
   if (!manifest) return { ok: false, errors };
   if (manifest.schema !== BUNDLE_SCHEMA) errors.push("bundle: schema mismatch");
-  if (!/^[a-f0-9]{40,64}$/.test(manifest.source?.commitSha ?? "")) errors.push("bundle: source.commitSha is invalid");
-  if (typeof manifest.source?.dirtyTree !== "boolean") errors.push("bundle: source.dirtyTree is required");
+  checkSource(manifest.source, errors, "bundle");
   if (!["GO", "CONDITIONAL GO", "NO-GO"].includes(manifest.overallVerdict)) errors.push("bundle: overallVerdict is invalid");
+  if (manifest.artifact !== undefined) {
+    checkArtifact(
+      {
+        artifact: manifest.artifact,
+        source: manifest.source,
+        status: manifest.overallVerdict === "GO" ? "PASS" : "BLOCKED",
+      },
+      errors,
+      "bundle",
+    );
+  }
 
   const receiptEntries = asArray(manifest.receipts);
   if (receiptEntries.length === 0) errors.push("bundle: receipts must not be empty");
@@ -659,6 +709,18 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
     receiptByPath.set(entry.path, receipt);
     if (receipt.source?.commitSha !== manifest.source?.commitSha) {
       errors.push(`${label}: receipt commit does not match bundle source commit`);
+    }
+    if (
+      manifest.artifact !== undefined &&
+      artifactIdentity(receipt.artifact) !== artifactIdentity(manifest.artifact)
+    ) {
+      errors.push(`${label}: receipt artifact does not match bundle artifact`);
+    }
+    if (
+      receipt.source?.harness?.commitSha !== manifest.source?.harness?.commitSha ||
+      receipt.source?.harness?.dirtyTree !== manifest.source?.harness?.dirtyTree
+    ) {
+      errors.push(`${label}: receipt harness does not match bundle source harness`);
     }
     if (!/^[a-f0-9]{64}$/.test(entry.sha256 ?? "")) {
       errors.push(`${label}: receipt sha256 is required`);
@@ -708,6 +770,9 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
     if (manifest.source?.dirtyTree === true) {
       errors.push("bundle: overallVerdict GO requires a clean source tree");
     }
+    if (manifest.source?.harness?.dirtyTree === true) {
+      errors.push("bundle: overallVerdict GO requires a clean certification harness");
+    }
     const dirtyPassingReceipt = [...receiptByPath.values()].some(
       (receipt) => receipt.status === "PASS" && receipt.source?.dirtyTree === true,
     );
@@ -716,19 +781,35 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
     }
   }
 
-  if (options.expectedCommit && manifest.source.commitSha !== options.expectedCommit) {
-    errors.push(`bundle: commit mismatch expected ${options.expectedCommit} actual ${manifest.source.commitSha}`);
+  if (options.expectedCommit && manifest.source?.commitSha !== options.expectedCommit) {
+    errors.push(`bundle: commit mismatch expected ${options.expectedCommit} actual ${manifest.source?.commitSha}`);
+  }
+  if (
+    options.expectedHarnessCommit &&
+    manifest.source?.harness?.commitSha !== options.expectedHarnessCommit
+  ) {
+    errors.push(
+      `bundle: harness commit mismatch expected ${options.expectedHarnessCommit} actual ${manifest.source?.harness?.commitSha}`,
+    );
   }
   validateSha256Sums(root, errors);
   return { ok: errors.length === 0, errors, manifest };
 }
 
 function parseArgs(argv) {
-  const args = { bundleDir: "", writeSums: false, expectedCommit: "" };
+  const args = {
+    bundleDir: "",
+    writeSums: false,
+    expectedCommit: "",
+    expectedHarnessCommit: "",
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === "--write-sums") args.writeSums = true;
     else if (value === "--expected-commit") args.expectedCommit = argv[++index] ?? "";
+    else if (value === "--expected-harness-commit") {
+      args.expectedHarnessCommit = argv[++index] ?? "";
+    }
     else if (!args.bundleDir) args.bundleDir = value;
     else throw new Error(`unknown argument: ${value}`);
   }
@@ -745,7 +826,10 @@ if (isMain) {
       mkdirSync(bundleDir, { recursive: true });
       writeSha256Sums(bundleDir);
     }
-    const result = validateReleaseCertificationBundle(bundleDir, { expectedCommit: args.expectedCommit || undefined });
+    const result = validateReleaseCertificationBundle(bundleDir, {
+      expectedCommit: args.expectedCommit || undefined,
+      expectedHarnessCommit: args.expectedHarnessCommit || undefined,
+    });
     if (!result.ok) {
       console.error("FAIL: Windows release-certification evidence bundle is invalid.");
       for (const error of result.errors) console.error(`- ${error}`);

@@ -98,6 +98,9 @@ assert.match(supplementalGenerator, /status = 'NOT_RUN'/);
 assert.match(supplementalGenerator, /validate-release-certification-evidence\.mjs/);
 assert.match(supplementalGenerator, /validate-release-certification-receipt\.mjs/);
 assert.match(supplementalGenerator, /Refusing a supplemental receipt from a dirty source checkout/);
+assert.match(supplementalGenerator, /dirty certification harness checkout/);
+assert.match(supplementalGenerator, /baseline receipt is not bound to the clean current certification harness/);
+assert.match(supplementalGenerator, /--expected-harness-commit/);
 assert.match(supplementalGenerator, /Get-CimInstance Win32_ComputerSystem/);
 assert.match(supplementalGenerator, /Get-CimInstance Win32_SystemEnclosure/);
 assert.match(supplementalGenerator, /Get-CimInstance Win32_ComputerSystemProduct/);
@@ -153,6 +156,8 @@ assert.match(script, /ConvertTo-WindowsProcessArgument \$_/);
 assert.match(script, /'dotnet-build'[\s\S]*'-m:1'/);
 assert.match(script, /'dotnet-test'[\s\S]*'-m:1'/);
 assert.match(script, /\$script:SourceIdentity = \[ordered\]@\{/);
+assert.match(script, /harness = \[ordered\]@\{/);
+assert.match(script, /Refusing certification evidence from a dirty certification harness checkout/);
 assert.match(script, /Refusing certification evidence for a candidate that was dirty before execution/);
 // The pre-execution cleanliness snapshot must happen before the runner writes
 // its own output directories, and an in-repo OutputDir must be excluded from
@@ -164,6 +169,10 @@ assert.ok(
 );
 assert.match(script, /\$script:RepoRelativeOutputDir/);
 assert.match(script, /:\(exclude\)/);
+assert.match(script, /\$HarnessRoot = Resolve-FullPath \(Join-Path \$PSScriptRoot '\.\.\\\.\.'\)/);
+assert.match(script, /Join-Path \$HarnessRoot 'scripts\\windows-port\\run-ui-automation\.ps1'/);
+assert.match(script, /Join-Path \$HarnessRoot 'scripts\\windows-port\\validate-release-certification-evidence\.mjs'/);
+assert.match(script, /--expected-harness-commit \$script:SourceIdentity\.harness\.commitSha/);
 // The artifact manifest must bind the signed artifact to its source commit.
 assert.match(script, /'sourceCommit',/);
 assert.match(script, /Artifact manifest sourceCommit must be a full 40-character Git SHA/);

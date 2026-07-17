@@ -97,6 +97,19 @@ function Normalize-Architecture([string] $Value) {
     return $normalized
 }
 
+function Get-RepositoryCommit([string] $Root, [string] $Label) {
+    $value = (& git -C $Root rev-parse HEAD 2>$null | Select-Object -First 1)
+    if ([string]::IsNullOrWhiteSpace($value)) { throw "Unable to resolve the $Label commit." }
+    $commit = $value.Trim().ToLowerInvariant()
+    if ($commit -notmatch '^[a-f0-9]{40}$') { throw "The $Label commit is not a full Git SHA." }
+    return $commit
+}
+
+function Test-RepositoryDirty([string] $Root) {
+    $value = (& git -C $Root status --porcelain 2>$null)
+    return -not [string]::IsNullOrWhiteSpace(($value -join "`n"))
+}
+
 function Assert-IdentityMatch([string] $LiveValue, [string] $BaselineValue, [string] $Field) {
     if (-not [string]::Equals($LiveValue, $BaselineValue, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "The live device $Field does not match the physical baseline."
@@ -104,7 +117,8 @@ function Assert-IdentityMatch([string] $LiveValue, [string] $BaselineValue, [str
 }
 
 $repo = Resolve-FullPath $RepoRoot
-$catalogPath = Join-Path $repo 'scripts\windows-port\release-certification-protocols.json'
+$harness = Resolve-FullPath (Join-Path $PSScriptRoot '..\..')
+$catalogPath = Join-Path $harness 'scripts\windows-port\release-certification-protocols.json'
 if (-not (Test-Path -LiteralPath $catalogPath -PathType Leaf)) {
     throw "Certification protocol catalog is missing: $catalogPath"
 }
@@ -159,6 +173,8 @@ if (-not (Test-Path -LiteralPath (Join-Path $repo 'windows\OpenBurnBar.sln') -Pa
 $commit = (& git -C $repo rev-parse HEAD).Trim().ToLowerInvariant()
 if ($commit -notmatch '^[a-f0-9]{40}$') { throw 'Unable to resolve a full candidate commit.' }
 if (& git -C $repo status --porcelain) { throw 'Refusing a supplemental receipt from a dirty source checkout.' }
+$harnessCommit = Get-RepositoryCommit $harness 'certification harness'
+if (Test-RepositoryDirty $harness) { throw 'Refusing a supplemental receipt from a dirty certification harness checkout.' }
 
 $baseline = Resolve-FullPath $BaselineBundle
 if (-not (Test-Path -LiteralPath $baseline -PathType Container)) {
@@ -166,8 +182,8 @@ if (-not (Test-Path -LiteralPath $baseline -PathType Container)) {
 }
 $node = Get-Command node -ErrorAction SilentlyContinue
 if ($null -eq $node) { throw 'Node.js is required to validate certification evidence.' }
-& $node.Source (Join-Path $repo 'scripts\windows-port\validate-release-certification-evidence.mjs') `
-    $baseline --expected-commit $commit
+& $node.Source (Join-Path $harness 'scripts\windows-port\validate-release-certification-evidence.mjs') `
+    $baseline --expected-commit $commit --expected-harness-commit $harnessCommit
 if ($LASTEXITCODE -ne 0) { throw 'The physical baseline bundle is not validator-clean.' }
 
 $baselineReceiptPath = Join-Path $baseline ("receipts\" + $Gate + '.json')
@@ -180,6 +196,10 @@ if ([string]$baselineReceipt.gate -ne $Gate) {
 }
 if ([string]$baselineReceipt.source.commitSha -ne $commit -or $baselineReceipt.source.dirtyTree -eq $true) {
     throw 'The baseline receipt is not bound to the clean current commit.'
+}
+if ([string]$baselineReceipt.source.harness.commitSha -ne $harnessCommit -or
+    $baselineReceipt.source.harness.dirtyTree -eq $true) {
+    throw 'The baseline receipt is not bound to the clean current certification harness.'
 }
 if ([string]$baselineReceipt.device.kind -ne 'physical-windows') {
     throw 'The baseline receipt is not bound to physical Windows hardware.'
@@ -398,7 +418,7 @@ $receipt = [ordered]@{
     blocker = $null
 }
 Write-JsonNoBom $receiptPath $receipt
-& $node.Source (Join-Path $repo 'scripts\windows-port\validate-release-certification-receipt.mjs') `
+& $node.Source (Join-Path $harness 'scripts\windows-port\validate-release-certification-receipt.mjs') `
     $receiptPath $outputRoot
 if ($LASTEXITCODE -ne 0) { throw 'Generated supplemental receipt failed validation.' }
 
