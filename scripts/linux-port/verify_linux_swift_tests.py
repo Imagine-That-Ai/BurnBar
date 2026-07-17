@@ -142,8 +142,13 @@ def validate_contract(root: Path, manifest: dict) -> dict:
     runner = "bash scripts/linux-port/run-linux-swift-tests.sh"
     for relative in (".github/workflows/linux-pr-gate.yml", ".github/workflows/linux-nightly.yml"):
         workflow = root / relative
-        if not workflow.is_file() or runner not in workflow.read_text(encoding="utf-8"):
+        workflow_source = workflow.read_text(encoding="utf-8") if workflow.is_file() else ""
+        if runner not in workflow_source:
             failures.append(f"{relative} does not execute the Linux Swift test runner")
+        if '-v "$OPENBURNBAR_LINUX_EVIDENCE_OUT:/evidence"' not in workflow_source:
+            failures.append(f"{relative} does not host-mount Linux Swift evidence")
+        if "--env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests" not in workflow_source:
+            failures.append(f"{relative} does not route Linux Swift results to the host evidence tree")
 
     if failures:
         raise VerificationError("\n".join(failures))

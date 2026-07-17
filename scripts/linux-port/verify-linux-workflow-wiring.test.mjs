@@ -44,7 +44,17 @@ function valid() {
       '--profile pr',
       'matched-performance-contract.test.mjs',
       'perf-budget-contract.test.mjs',
-      'linux-parity-macos-performance-pr'
+      'linux-parity-macos-performance-pr',
+      '-v "$OPENBURNBAR_LINUX_EVIDENCE_OUT:/evidence"',
+      '--env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests',
+      '      - name: Upload Linux gate evidence',
+      '        if: always()',
+      '        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874',
+      '        with:',
+      '          name: linux-pr-gate-evidence',
+      '          path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/',
+      '          include-hidden-files: true',
+      '          if-no-files-found: warn'
     ].join('\n'),
     productParityWorkflow: [
       'id-token: write',
@@ -201,6 +211,8 @@ function valid() {
       'OB_MATCHED_MACOS_INPUT',
       'OB_MATCHED_LINUX_INPUT',
       'linux-parity-matched-performance-nightly',
+      '-v "$OPENBURNBAR_LINUX_EVIDENCE_OUT:/evidence"',
+      '--env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests',
       '      - name: Upload Linux nightly evidence',
       '        if: always()',
       '        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874',
@@ -429,6 +441,21 @@ test('hidden Linux output uploads fail closed when upload protections mutate', (
         : 'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4';
     input[surface] = `${input[surface].slice(0, start)}${input[surface].slice(start).replace(original, mutation)}`;
     assert.equal(verifyLinuxWorkflowWiring(input).passed, false, `${surface}:${step}`);
+  }
+});
+
+test('Linux Swift evidence must remain host-mounted and routed in both workflows', () => {
+  for (const field of ['pr', 'nightly']) {
+    const input = valid();
+    input[field] = input[field].replace('-v "$OPENBURNBAR_LINUX_EVIDENCE_OUT:/evidence"', '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, `${field}:evidence mount`);
+
+    const routed = valid();
+    routed[field] = routed[field].replace(
+      '--env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests',
+      ''
+    );
+    assert.equal(verifyLinuxWorkflowWiring(routed).passed, false, `${field}:evidence route`);
   }
 });
 

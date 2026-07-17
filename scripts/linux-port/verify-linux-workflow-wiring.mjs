@@ -231,6 +231,17 @@ export function verifyLinuxWorkflowWiring(input) {
     'promotion workflow'
   );
   requireUploadContract(
+    input.pr,
+    'Upload Linux gate evidence',
+    ['${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/'],
+    'PR workflow',
+    {
+      artifactAction: 'actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874',
+      noFilesFound: 'if-no-files-found: warn',
+      additionalMarkers: ['if: always()']
+    }
+  );
+  requireUploadContract(
     input.nightly,
     'Upload Linux nightly evidence',
     ['${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/'],
@@ -241,6 +252,18 @@ export function verifyLinuxWorkflowWiring(input) {
       additionalMarkers: ['if: always()']
     }
   );
+  for (const [field, source] of [['pr', 'PR workflow'], ['nightly', 'nightly workflow']]) {
+    requireText(
+      input[field],
+      '-v "$OPENBURNBAR_LINUX_EVIDENCE_OUT:/evidence"',
+      `${source} Linux Swift evidence mount`
+    );
+    requireText(
+      input[field],
+      '--env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests',
+      `${source} Linux Swift evidence routing`
+    );
+  }
   for (const marker of [
     'architecture: aarch64',
     'runner: ubuntu-24.04-arm',
