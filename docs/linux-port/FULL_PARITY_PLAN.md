@@ -25,7 +25,8 @@ work is the macOS-level **surface depth**, **installed runtime evidence**,
 
 ### Current continuation checkpoint — 2026-07-17
 
-The integration branch is at `33e3bb59b` with two recent source slices plus
+The integration branch is at `c7bbd4ed6` with executable Linux behavior suites,
+desktop-shell hardening, and nightly evidence hardening plus
 nightly evidence hardening: the real
 P-39 parser differential producer (`dd7c588db`, focused suite **45/45**) and
 provider-catalog enforcement in first-run onboarding (`29fa77791`). Candidate run
@@ -48,7 +49,9 @@ Since that correction, `6ef6794ea` serialized Computer Use expiry teardown so
 run-binding replacement cannot race coordinator cleanup. The Linux Swift graph
 now executes real analytics, Computer Use, and remote-engine targets (**9
 suites / 92 minimum tests**) through `9db5cca26`, `d846c95d0`, `7349007e2`,
-`4925d258d`, `9cee2687a`, and `33e3bb59b`. The P-07
+`4925d258d`, `9cee2687a`, and `33e3bb59b`; `9d8b0895e`, `7f2a4cdd4`, and
+`c7bbd4ed6` add deep-link normalization, fail-closed text-expansion state, and
+typed SmartHub process/payload boundaries. The P-07
 computer-use validator and mutation suite landed in `bf30c881a` and is required
 by the PR gate (`5e6241275`). These changes improve source confidence only; the
 ledger remains 0/40 and 0/7 until installed, current-head receipts exist.

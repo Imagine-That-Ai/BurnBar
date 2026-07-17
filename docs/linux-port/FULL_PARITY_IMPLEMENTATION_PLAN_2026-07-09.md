@@ -22,7 +22,7 @@ Linux is not at full macOS parity.
 
 The authoritative ledger is **0/40 product requirements** and **0/7 environment
 receipts**; `productParityClaim=false`. The integration branch currently ends at
-`33e3bb59b`. Recent source work includes the real P-39 parser differential
+`c7bbd4ed6`. Recent source work includes the real P-39 parser differential
 producer (`dd7c588db`, **45/45** focused checks) and provider-catalog enforcement
 for first-run onboarding (`29fa77791`). Candidate run `29546157464` passed both
 architectures and the installed P-40 RPC proof at `46425c540`, but it is stale
@@ -42,7 +42,9 @@ The follow-on source hardening is now committed: `6ef6794ea` serializes
 Computer Use expiry teardown and closes the failing run-binding race;
 `9db5cca26` plus `d846c95d0`, `7349007e2`, `4925d258d`, `9cee2687a`, and
 `33e3bb59b` execute real Linux analytics, Computer Use, and remote-engine
-behavior suites (9 suites / 92 minimum tests); and `bf30c881a` adds a strict
+behavior suites (9 suites / 92 minimum tests); `9d8b0895e`, `7f2a4cdd4`, and
+`c7bbd4ed6` add deep-link normalization, fail-closed text-expansion state, and
+typed SmartHub process/payload boundaries; and `bf30c881a` adds a strict
 candidate/HEAD-bound P-07 computer-use validator with three mutation tests,
 required by PR gate commit `5e6241275`. These are not installed product
 receipts and do not change the 0/40 or 0/7 certification state.
