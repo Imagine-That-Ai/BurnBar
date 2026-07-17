@@ -607,12 +607,15 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         // branch deterministically (the real path is only reachable via a
         // non-deterministic race). The default lookup is restored on exit.
         var sizeLookupWasCalled = false
-        try DatabaseEncryptionService.withOrphanSizeLookupForTesting({ _, _ in
-            sizeLookupWasCalled = true
-            throw CocoaError(.fileReadNoSuchFile)
-        }) {
-            DatabaseEncryptionService.removeOrphanedMigrationArtifacts(forDatabaseAt: dbPath)
-        }
+        try DatabaseEncryptionService.withOrphanSizeLookupForTesting(
+            { _, _ in
+                sizeLookupWasCalled = true
+                throw CocoaError(.fileReadNoSuchFile)
+            },
+            {
+                DatabaseEncryptionService.removeOrphanedMigrationArtifacts(forDatabaseAt: dbPath)
+            }
+        )
 
         // The failing size lookup must have been consulted (proves the branch ran)
         // and — the real contract — the orphan must STILL be removed despite it.

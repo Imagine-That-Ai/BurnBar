@@ -128,6 +128,7 @@ private final class DatabaseEncryptionKeychainClientBox: @unchecked Sendable {
     }
 }
 
+#if DEBUG
 // AUDIT(@unchecked Sendable): test injection state is guarded by `lock`;
 // sendable-allowlist: foundation-sdk-shim
 private final class OrphanSizeLookupBox: @unchecked Sendable {
@@ -161,6 +162,7 @@ private final class OrphanSizeLookupBox: @unchecked Sendable {
         return previous
     }
 }
+#endif
 
 enum DatabaseEncryptionService {
     private static let service = "com.openburnbar.database-encryption"
@@ -455,6 +457,13 @@ enum DatabaseEncryptionService {
         _ body: () throws -> T
     ) rethrows -> T {
         try orphanSizeLookupBox.withLookup(lookup, body)
+    }
+#else
+    private static func orphanSizeLookup(
+        _ fileManager: FileManager,
+        _ path: String
+    ) throws -> [FileAttributeKey: Any] {
+        try fileManager.attributesOfItem(atPath: path)
     }
     #endif
 
