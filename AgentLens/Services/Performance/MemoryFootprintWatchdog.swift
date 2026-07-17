@@ -40,15 +40,21 @@ final class MemoryFootprintWatchdog {
 
     init() {}
 
-    func start(aggregator: UsageAggregator) {
+    func start(
+        aggregator: UsageAggregator,
+        sleep: (@MainActor @Sendable () async throws -> Void)? = nil
+    ) {
         self.aggregator = aggregator
         guard monitorTask == nil else { return }
+
+        let sleepAction: @MainActor @Sendable () async throws -> Void =
+            sleep ?? { try await Task.sleep(for: Self.sampleInterval) }
 
         monitorTask = Task(priority: .utility) { [weak self] in
             while !Task.isCancelled {
                 await self?.sample(trigger: "timer")
                 do {
-                    try await Task.sleep(for: Self.sampleInterval)
+                    try await sleepAction()
                 } catch is CancellationError {
                     return
                 } catch {
