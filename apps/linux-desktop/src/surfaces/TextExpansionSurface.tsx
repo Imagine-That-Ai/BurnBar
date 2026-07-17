@@ -29,6 +29,15 @@ import { PreviewPane } from './textExpansion/PreviewPane.js';
 import { SnippetImportExport } from './textExpansion/SnippetImportExport.js';
 import './textExpansion/textExpansion.css';
 
+// The daemon reports `ready` for a live external engine. Keep the legacy
+// transitional names accepted for older packaged shells, but never offer a
+// second start while the engine is already live.
+const ACTIVE_ENGINE_STATES = new Set(['ready', 'running', 'starting', 'stopping']);
+
+function engineIsActive(state: string | undefined): boolean {
+  return state !== undefined && ACTIVE_ENGINE_STATES.has(state);
+}
+
 /**
  * In-app text expansion (v1). Safety contract: no global key capture on
  * Linux — expansion applies to in-app buffers only, gated behind explicit
@@ -263,7 +272,7 @@ export function TextExpansionSurface() {
             className="ghost"
             disabled={engineBusy || persistenceBlocked || consentBusy}
             onClick={() => {
-              const running = ['running', 'starting', 'stopping'].includes(textExpansionEngineStatus()?.state ?? '');
+              const running = engineIsActive(textExpansionEngineStatus()?.state);
               setEngineActionError(null);
               setEngineBusy(true);
               void (running ? stopTextExpansionEngine({ timeoutMillis: 500 }) : startTextExpansionEngine({ timeoutMillis: 1_000 }))
@@ -276,7 +285,7 @@ export function TextExpansionSurface() {
                 });
             }}
           >
-            {['running', 'starting', 'stopping'].includes(textExpansionEngineStatus()?.state ?? '')
+            {engineIsActive(textExpansionEngineStatus()?.state)
               ? 'Stop input-method engine'
               : 'Start input-method engine'}
           </button>

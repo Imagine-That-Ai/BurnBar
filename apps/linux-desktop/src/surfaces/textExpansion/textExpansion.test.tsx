@@ -142,6 +142,49 @@ describe('TextExpansionSurface P14', () => {
     await waitFor(() => expect(screen.getByText(/Engine not_running — ready/i)).toBeTruthy());
   });
 
+  it('treats the daemon ready state as an active engine', async () => {
+    const start = vi.fn();
+    const stop = vi.fn().mockResolvedValue({
+      state: 'stopped',
+      registration: 'registered',
+      supportsExternalExpansion: true,
+      detail: 'stopped',
+      checkedAt: new Date(0).toISOString()
+    });
+    const ready = {
+      state: 'ready',
+      registration: 'registered',
+      supportsExternalExpansion: true,
+      detail: 'handshake complete',
+      checkedAt: new Date(0).toISOString()
+    };
+    useShellStore.setState({
+      fixtureMode: false,
+      bridgeReady: true,
+      bridge: {
+        textExpansionList: vi.fn().mockResolvedValue({
+          schemaVersion: 1,
+          exportedAt: new Date(0).toISOString(),
+          snippets: [],
+          consent: { inAppOnly: true, declinedGlobalCapture: true, acknowledgedAt: new Date(0).toISOString() }
+        }),
+        textExpansionUpsert: vi.fn(),
+        textExpansionDelete: vi.fn(),
+        textExpansionConsentUpdate: vi.fn(),
+        textExpansionEngineStatus: vi.fn().mockResolvedValue(ready),
+        textExpansionEngineStart: start,
+        textExpansionEngineStop: stop
+      } as never
+    });
+    render(<TextExpansionSurface />);
+
+    await waitFor(() => expect(screen.getByText(/Engine ready — handshake complete/i)).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Stop input-method engine' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Stop input-method engine' }));
+    await waitFor(() => expect(stop).toHaveBeenCalledWith({ timeoutMillis: 500 }));
+    expect(start).not.toHaveBeenCalled();
+  });
+
   it('keeps in-app controls available when an optional engine transition fails', async () => {
     useShellStore.setState({
       fixtureMode: false,

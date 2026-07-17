@@ -284,7 +284,10 @@ describe('native input-method engine boundary', () => {
         status = { ...status, state: 'not_running', detail: 'stopped' };
         return status;
       },
-      textExpansionEngineExpand: async () => ({ expanded: true, replacement: 'expanded' })
+      textExpansionEngineExpand: async () => {
+        calls.push('expand');
+        return { expanded: true, replacement: 'expanded' };
+      }
     };
     return { backend, calls };
   }
@@ -315,6 +318,18 @@ describe('native input-method engine boundary', () => {
     await expect(expandTextExpansionEngine({
       trigger: 'reply',
       context: { inspectable: false, isSecureField: false }
+    })).resolves.toBeNull();
+    expect(fake.calls).toEqual([]);
+  });
+
+  it('fails closed when the secure-field signal is unknown before calling the bridge', async () => {
+    writeTextExpansionConsent({ inAppOnly: true, declinedGlobalCapture: true });
+    const fake = engineBackend();
+    await hydrateTextExpansionStorage(fake.backend);
+
+    await expect(expandTextExpansionEngine({
+      trigger: 'reply',
+      context: { inspectable: true }
     })).resolves.toBeNull();
     expect(fake.calls).toEqual([]);
   });

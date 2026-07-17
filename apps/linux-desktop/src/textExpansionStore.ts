@@ -383,7 +383,10 @@ export async function expandTextExpansionEngine(request: {
   requestID?: string;
 }): Promise<string | null> {
   if (!consentAllowsEngine()) throw new Error('Text expansion engine requires explicit consent.');
-  if (!request.context.inspectable || request.context.isSecureField === true) return null;
+  // Match the daemon's deny-unless-explicitly-nonsecure policy at the
+  // renderer boundary too. An unknown secure-field signal must never reach a
+  // bridge implementation that might fail open.
+  if (!request.context.inspectable || request.context.isSecureField !== false) return null;
   const context = requireEngineContext('expand');
   const expand = context.backend.textExpansionEngineExpand;
   if (!expand) throw new Error('Native text expansion engine is unavailable in this packaged shell.');
