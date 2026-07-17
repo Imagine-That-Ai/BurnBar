@@ -166,6 +166,12 @@ public sealed class MicrosoftStorePackagingTests
         Assert.Contains(PublisherDisplayName, runbook, StringComparison.Ordinal);
         Assert.Contains(PackageFamilyName, runbook, StringComparison.Ordinal);
         Assert.Contains("**Private audience**", runbook, StringComparison.Ordinal);
+        Assert.Contains("| Category        | Developer tools", runbook, StringComparison.Ordinal);
+        Assert.Contains("| Subcategory     | Utilities", runbook, StringComparison.Ordinal);
+        Assert.Contains(
+            "https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msi/categories-and-subcategories",
+            runbook,
+            StringComparison.Ordinal);
         Assert.Contains("https://burnbar.ai/legal/privacy-policy", runbook, StringComparison.Ordinal);
         Assert.Contains("https://burnbar.ai/support", runbook, StringComparison.Ordinal);
 

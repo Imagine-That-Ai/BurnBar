@@ -12,6 +12,7 @@ a **Private audience** submission restricted to a reviewed known-user group:
 - [Win32 Store distribution options](https://learn.microsoft.com/en-us/windows/apps/distribute-through-store/how-to-distribute-your-win32-app-through-microsoft-store)
 - [Known user groups](https://learn.microsoft.com/en-us/windows/apps/publish/create-known-user-groups)
 - [Package flights](https://learn.microsoft.com/en-us/windows/apps/publish/package-flights)
+- [Store categories and subcategories](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msi/categories-and-subcategories)
 
 ## Authorization boundary
 
@@ -78,6 +79,7 @@ field. Do not invent policy or age-rating answers.
 | Visibility      | Private audience                          |
 | Discoverability | Only the authorized known-user group      |
 | Category        | Developer tools                           |
+| Subcategory     | Utilities                                 |
 | Privacy policy  | `https://burnbar.ai/legal/privacy-policy` |
 | Support         | `https://burnbar.ai/support`              |
 | Terms           | `https://burnbar.ai/legal/terms`          |
