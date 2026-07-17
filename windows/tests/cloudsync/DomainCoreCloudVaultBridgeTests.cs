@@ -219,6 +219,7 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
         [Fact]
         public void ShadowEvidence_OperationLoadFailureRetainsReadableLoadedIdentity()
         {
+            if (!NativeRequired()) return;
             using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "shadow");
             DomainCoreCloudVaultShadowComparison? comparison = null;
             DomainCoreCloudVaultShadowEvidence.Configure(value => comparison = value);
