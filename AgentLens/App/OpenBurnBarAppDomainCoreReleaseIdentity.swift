@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Pure decision helper extracted from `OpenBurnBarApp.runDomainCoreReleaseIdentityModeIfRequested()`.
 ///
