@@ -469,15 +469,27 @@ test("native evidence binds restored rollback profile bytes across raw and packa
   );
   const windowsEvidence = job(windows, "domain-core-windows-release-evidence");
 
-  for (const rawProfileWorkflow of [appleAndroidEvidence, windowsEvidence]) {
+  // Raw-profile workflows consume the exact verified gate rollback JSON
+  // directly via --rollback-artifact and never unpack a legacy rollback
+  // archive. The supply-chain job binds $gate_dir to the same gate directory
+  // and references the rollback JSON through that variable, while the Apple
+  // and Windows evidence jobs spell out the full $RUNNER_TEMP path.
+  for (const rawProfileWorkflow of [
+    appleAndroidEvidence,
+    windowsSupplyChain,
+    windowsEvidence,
+  ]) {
     assert.match(
       rawProfileWorkflow,
-      /--rollback-artifact "\$RUNNER_TEMP\/domain-core-native-release-gate\/source\/domain-core-public-production-rollback\.json"/u,
+      /--rollback-artifact "\$(?:RUNNER_TEMP\/domain-core-native-release-gate|gate_dir)\/source\/domain-core-public-production-rollback\.json"/u,
     );
     assert.doesNotMatch(rawProfileWorkflow, /--rollback-profile/u);
   }
 
-  for (const packagedWorkflow of [ios, windowsSupplyChain]) {
+  // iOS remains the only packaged rollback workflow: it downloads the legacy
+  // rollback archive, extracts rollback_profile from it, and feeds both
+  // --rollback-artifact and --rollback-profile to the evidence tool.
+  for (const packagedWorkflow of [ios]) {
     assert.match(
       packagedWorkflow,
       /rollback_profile=.*domain-core-public-production-rollback\.json/u,
