@@ -53,12 +53,34 @@ export const DOMAIN_CORE_REQUIRED_COVERAGE = Object.freeze({
   }),
 });
 
+// Runtime shadow telemetry follows actual V3 producers, not every
+// deterministic release suite. Keep this separate from REQUIRED_COVERAGE so
+// diagnostics cannot silently expand or weaken candidate promotion policy.
+export const DOMAIN_CORE_RUNTIME_DIAGNOSTIC_COVERAGE = Object.freeze({
+  quota: DOMAIN_CORE_REQUIRED_COVERAGE.quota,
+  cloudvault: Object.freeze({
+    ...DOMAIN_CORE_REQUIRED_COVERAGE.cloudvault,
+    "opaque-identifiers": Object.freeze([
+      "apple",
+      "android",
+      "windows",
+      "remote-mcp",
+      "local-mcp",
+    ]),
+  }),
+  hermes: Object.freeze({
+    ...DOMAIN_CORE_REQUIRED_COVERAGE.hermes,
+    ratchet: Object.freeze(["apple", "android"]),
+  }),
+  pricing: DOMAIN_CORE_REQUIRED_COVERAGE.pricing,
+});
+
 export const DOMAIN_CORE_OPERATION_CONSUMERS = Object.freeze({
   cloudvault: Object.freeze({
     project_memory_doc_id: Object.freeze(["apple", "local-mcp"]),
-    pensieve_dedup_hash: Object.freeze(["apple", "remote-mcp"]),
+    pensieve_dedup_hash: Object.freeze(["apple", "windows", "remote-mcp"]),
     pensieve_provenance_hash: Object.freeze(["remote-mcp"]),
-    pensieve_slug_hmac: Object.freeze(["apple", "remote-mcp"]),
+    pensieve_slug_hmac: Object.freeze(["apple", "windows", "remote-mcp"]),
     subscription_doc_id: Object.freeze(["apple", "android"]),
     pensieve_l2_normalize: Object.freeze(["apple"]),
   }),
@@ -83,9 +105,19 @@ export function requiredCoverageForDomain(domain) {
   );
 }
 
+export function runtimeDiagnosticCoverageForDomain(domain) {
+  const slices = DOMAIN_CORE_RUNTIME_DIAGNOSTIC_COVERAGE[domain];
+  if (!slices) return [];
+  return Object.entries(slices).flatMap(([slice, consumers]) =>
+    consumers.map((consumer) => ({ slice, consumer })),
+  );
+}
+
 export function isValidDomainSliceConsumer(domain, slice, consumer) {
   return (
-    DOMAIN_CORE_REQUIRED_COVERAGE[domain]?.[slice]?.includes(consumer) === true
+    DOMAIN_CORE_RUNTIME_DIAGNOSTIC_COVERAGE[domain]?.[slice]?.includes(
+      consumer,
+    ) === true
   );
 }
 

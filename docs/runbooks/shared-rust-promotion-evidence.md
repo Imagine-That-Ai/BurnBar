@@ -209,13 +209,24 @@ never exits with promotion success and no report-file state grants authority.
 
 The CLI accepts only the committed
 [`config/domain-core-shadow-diagnostic-policy.json`](../../config/domain-core-shadow-diagnostic-policy.json)
-and has no policy override. It covers only the real owners in the inventory:
+and has no policy override. Its runtime coverage list contains only producers
+that can submit V3 samples; deterministic release suites remain a separate
+contract and never become synthetic telemetry consumers. The runtime owners are:
 
 - quota: Claude, Codex, Cursor, and Anthropic on Apple and Windows;
-- CloudVault: foundation/AES/escrow on Apple, Android, Windows, and Console;
-  recovery on Apple, Android, and Windows; document rewrap/search on Apple and Android;
+- CloudVault foundation/AES: Apple, Android, Windows, Console, local MCP, and
+  remote MCP; recovery: Apple, Android, and Windows; escrow: Apple, Android,
+  Windows, and Console; document rewrap: Apple and Android; search: Apple,
+  Android, local MCP, and remote MCP; opaque identifiers: Apple, Android,
+  Windows, local MCP, and remote MCP; Pensieve vectors: Apple, Windows, Console,
+  and remote MCP;
 - Hermes: AAD, payload/key-wrap, HPKE info, and ratchet on Apple and Android;
 - pricing: token cost on Apple and Functions, plus legacy Kimi in Functions.
+
+The deterministic `python-hermes-contracts` suite remains required release
+evidence for Hermes ratchet behavior, but it is not a V3 runtime producer.
+Windows Pensieve dedup-hash and slug-HMAC comparisons emit canonical
+`opaque-identifiers` samples rather than being dropped as unknown operations.
 
 The diagnostic evaluator checks candidate identity, real coverage cells,
 channels, mismatch categories, and latency when samples exist. It intentionally

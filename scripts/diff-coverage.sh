@@ -611,6 +611,30 @@ STORED_LITERAL_DECLARATION = re.compile(
     r"(?:\[|nil\s*$|(?:true|false)\s*$|[+-]?(?:0x[0-9A-Fa-f_]+|\d[\d_]*)(?:\.\d[\d_]*)?\s*$)"
 )
 
+SWIFT_STRING_LITERAL = re.compile(r'"(?:\\.|[^"\\])*"')
+SWIFT_NUMERIC_LITERAL = re.compile(
+    r"(?<![A-Za-z0-9_])[+-]?(?:0x[0-9A-Fa-f_]+|0b[01_]+|0o[0-7_]+|"
+    r"(?:\d[\d_]*)(?:\.\d[\d_]*)?(?:[eE][+-]?\d[\d_]*)?)(?![A-Za-z0-9_])"
+)
+
+
+def is_pure_swift_collection_literal(text):
+    """Return true only for collection syntax made entirely from literals.
+
+    This deliberately fails closed. Calls, member access, closures, string
+    interpolation, identifiers, and compiler expressions all keep the changed
+    initializer in the coverage denominator.
+    """
+    if "\\(" in text:
+        return False
+    sanitized = SWIFT_STRING_LITERAL.sub('""', text)
+    sanitized = re.sub(r"//.*", "", sanitized)
+    sanitized = SWIFT_NUMERIC_LITERAL.sub("", sanitized)
+    sanitized = re.sub(r"\b(?:true|false|nil)\b", "", sanitized)
+    sanitized = sanitized.replace('""', "")
+    return re.fullmatch(r"[\s\[\],:]*", sanitized) is not None
+
+
 
 def is_structural_swift_line(text):
     stripped = text.strip()
@@ -647,15 +671,18 @@ def structural_swift_context_lines(src_lines):
 
     The line map remains authoritative for executable expressions: this helper
     is consulted only for lines absent from that map. It recognizes callable
-    signatures and literal stored-property initializers, while leaving factory
-    calls and closure bodies fail-closed.
+    signatures and genuinely literal stored-property initializers, while
+    leaving factory calls, transforms, member access, and closure bodies
+    fail-closed.
     """
     structural = set()
     callable_depth = 0
     literal_depth = 0
+    literal_lines = []
+    literal_text = []
 
     def bracket_delta(text):
-        without_strings = re.sub(r'"(?:\\.|[^"\\])*"', '""', text)
+        without_strings = SWIFT_STRING_LITERAL.sub('""', text)
         return without_strings.count("[") - without_strings.count("]")
 
     def has_inline_body(text):
@@ -664,19 +691,36 @@ def structural_swift_context_lines(src_lines):
         tail = text.split("{", 1)[1].strip()
         return bool(tail and tail not in {"}", "};"} and not tail.startswith("//"))
 
+    def finish_literal_candidate():
+        nonlocal literal_depth, literal_lines, literal_text
+        if is_pure_swift_collection_literal("\n".join(literal_text)):
+            structural.update(literal_lines)
+        literal_depth = 0
+        literal_lines = []
+        literal_text = []
+
     for line_number, text in enumerate(src_lines, start=1):
         stripped = text.strip()
 
-        if literal_depth > 0:
-            structural.add(line_number)
+        if literal_lines:
+            literal_lines.append(line_number)
+            literal_text.append(text)
             literal_depth += bracket_delta(text)
+            if literal_depth <= 0:
+                finish_literal_candidate()
             continue
 
-        if STORED_LITERAL_DECLARATION.match(stripped):
-            structural.add(line_number)
+        literal_match = STORED_LITERAL_DECLARATION.match(stripped)
+        if literal_match:
             rhs = text.split("=", 1)[1]
             if rhs.lstrip().startswith("["):
-                literal_depth = max(0, bracket_delta(rhs))
+                literal_lines = [line_number]
+                literal_text = [rhs]
+                literal_depth = bracket_delta(rhs)
+                if literal_depth <= 0:
+                    finish_literal_candidate()
+            else:
+                structural.add(line_number)
             continue
 
         if callable_depth > 0:

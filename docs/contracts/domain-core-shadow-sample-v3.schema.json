@@ -374,7 +374,7 @@
           "properties": {
             "domain": { "const": "cloudvault" },
             "slice": { "const": "opaque-identifiers" },
-            "consumer": { "enum": ["apple", "remote-mcp"] },
+            "consumer": { "enum": ["apple", "windows", "remote-mcp"] },
             "operation": {
               "enum": ["pensieve_dedup_hash", "pensieve_slug_hmac"]
             }

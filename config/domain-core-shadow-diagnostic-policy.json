@@ -54,6 +54,7 @@
         { "slice": "opaque-identifiers", "consumer": "apple" },
         { "slice": "opaque-identifiers", "consumer": "android" },
         { "slice": "opaque-identifiers", "consumer": "remote-mcp" },
+        { "slice": "opaque-identifiers", "consumer": "windows" },
         { "slice": "search", "consumer": "local-mcp" },
         { "slice": "opaque-identifiers", "consumer": "local-mcp" },
         { "slice": "pensieve-vectors", "consumer": "apple" },
@@ -80,8 +81,7 @@
         { "slice": "hpke-info", "consumer": "apple" },
         { "slice": "hpke-info", "consumer": "android" },
         { "slice": "ratchet", "consumer": "apple" },
-        { "slice": "ratchet", "consumer": "android" },
-        { "slice": "ratchet", "consumer": "hermes-python" }
+        { "slice": "ratchet", "consumer": "android" }
       ],
       "allowedChannels": ["internal", "beta"],
       "mismatchAlertCategories": [

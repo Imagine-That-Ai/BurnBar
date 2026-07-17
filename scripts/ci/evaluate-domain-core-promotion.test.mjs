@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { requiredCoverageForDomain } from "../lib/domain-core-evidence-contract.mjs";
+import { runtimeDiagnosticCoverageForDomain } from "../lib/domain-core-evidence-contract.mjs";
 import { evaluatePromotionEvidence } from "../lib/domain-core-promotion-evidence.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -47,7 +47,7 @@ function dailySampleCounts(total) {
 }
 
 function validEvidence(domain = "quota") {
-  const coverage = requiredCoverageForDomain(domain);
+  const coverage = runtimeDiagnosticCoverageForDomain(domain);
   const sampleCount = 14;
   const candidate = {
     candidateCommit: CANDIDATE,
@@ -101,7 +101,7 @@ test("complete candidate-bound V3 coverage remains diagnostic-only", () => {
       report.summary.coverage.map(
         ({ slice, consumer }) => `${slice}:${consumer}`,
       ),
-      requiredCoverageForDomain(domain).map(
+      runtimeDiagnosticCoverageForDomain(domain).map(
         ({ slice, consumer }) => `${slice}:${consumer}`,
       ),
     );

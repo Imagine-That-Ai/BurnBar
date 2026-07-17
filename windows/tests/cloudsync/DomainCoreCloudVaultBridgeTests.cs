@@ -268,6 +268,54 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
         }
 
         [Fact]
+        public void ShadowEvidence_PensieveOpaqueIdentifiersUseCanonicalRoute()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "shadow");
+            var comparisons = new DomainCoreCloudVaultShadowComparison?[2];
+            var index = 0;
+            DomainCoreCloudVaultShadowEvidence.Configure(value => comparisons[index++] = value);
+            try
+            {
+                var key = new byte[32];
+                const string plaintext = "pensieve opaque identifier";
+                const string slug = "pensieve-opaque-identifier";
+
+                _ = DomainCoreCloudVaultBridge.PensieveDedupHash(
+                    plaintext,
+                    key,
+                    () => DomainCore.CloudVaultPensieveDedupHash(plaintext, key));
+                _ = DomainCoreCloudVaultBridge.PensieveSlugHmac(
+                    slug,
+                    key,
+                    () => DomainCore.CloudVaultPensieveSlugHmac(slug, key));
+
+                Assert.Collection(
+                    comparisons,
+                    comparison =>
+                    {
+                        Assert.NotNull(comparison);
+                        Assert.Equal("cloudvault", comparison.Domain);
+                        Assert.Equal("opaque-identifiers", comparison.Slice);
+                        Assert.Equal("windows", comparison.Consumer);
+                        Assert.Equal("pensieve_dedup_hash", comparison.Operation);
+                    },
+                    comparison =>
+                    {
+                        Assert.NotNull(comparison);
+                        Assert.Equal("cloudvault", comparison.Domain);
+                        Assert.Equal("opaque-identifiers", comparison.Slice);
+                        Assert.Equal("windows", comparison.Consumer);
+                        Assert.Equal("pensieve_slug_hmac", comparison.Operation);
+                    });
+            }
+            finally
+            {
+                DomainCoreCloudVaultShadowEvidence.Configure(null);
+            }
+        }
+
+        [Fact]
         public void RustMode_MapsInvalidVaultKeyToFailClosedError()
         {
             if (!NativeRequired()) return;

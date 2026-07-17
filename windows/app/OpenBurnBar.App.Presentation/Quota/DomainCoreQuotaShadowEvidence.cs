@@ -451,6 +451,8 @@ public static class DomainCoreQuotaShadowEvidence
         ["cloudvault_escrow_seal"] = "escrow",
         ["cloudvault_escrow_open"] = "escrow",
         ["cloudvault_escrow_split_wire"] = "escrow",
+        ["pensieve_dedup_hash"] = "opaque-identifiers",
+        ["pensieve_slug_hmac"] = "opaque-identifiers",
         ["pensieve_deterministic_embed_and_cloak"] = "pensieve-vectors",
         ["pensieve_deterministic_embed"] = "pensieve-vectors",
         ["pensieve_vector_cloak"] = "pensieve-vectors",

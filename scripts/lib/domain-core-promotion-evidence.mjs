@@ -2,7 +2,7 @@ import {
   coverageKey,
   DOMAIN_CORE_REQUIRED_COVERAGE,
   isValidDomainSliceConsumer,
-  requiredCoverageForDomain,
+  runtimeDiagnosticCoverageForDomain,
 } from "./domain-core-evidence-contract.mjs";
 
 const WINDOW_KEYS = new Set([
@@ -290,7 +290,7 @@ function validateV3Policy(policy, errors) {
         }
       });
       const expected = new Set(
-        requiredCoverageForDomain(domain).map((item) =>
+        runtimeDiagnosticCoverageForDomain(domain).map((item) =>
           coverageKey(item.slice, item.consumer),
         ),
       );

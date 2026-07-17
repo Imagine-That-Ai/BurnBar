@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 import {
   DOMAIN_CORE_OPERATION_CONSUMERS,
   DOMAIN_CORE_REQUIRED_COVERAGE,
+  DOMAIN_CORE_RUNTIME_DIAGNOSTIC_COVERAGE,
   requiredCoverageForDomain,
+  runtimeDiagnosticCoverageForDomain,
 } from "./domain-core-evidence-contract.mjs";
 import { evaluatePromotionEvidence } from "./domain-core-promotion-evidence.mjs";
 import {
@@ -56,6 +58,7 @@ const CONSUMER_OPERATION = {
   "cloudvault/pensieve-vectors/apple": "pensieve_l2_normalize",
   "cloudvault/opaque-identifiers/remote-mcp": "pensieve_dedup_hash",
   "cloudvault/opaque-identifiers/android": "subscription_doc_id",
+  "cloudvault/opaque-identifiers/windows": "pensieve_dedup_hash",
 };
 
 function dayTimestamp(day) {
@@ -101,10 +104,11 @@ function record(domain, slice, consumer, suffix, overrides = {}) {
 
 function recordsFor(domain, overrides = {}) {
   let suffix = 1;
-  return requiredCoverageForDomain(domain).flatMap(({ slice, consumer }) =>
-    Array.from({ length: 14 }, () =>
-      record(domain, slice, consumer, suffix++, overrides),
-    ),
+  return runtimeDiagnosticCoverageForDomain(domain).flatMap(
+    ({ slice, consumer }) =>
+      Array.from({ length: 14 }, () =>
+        record(domain, slice, consumer, suffix++, overrides),
+      ),
   );
 }
 
@@ -128,6 +132,26 @@ function options(domain, overrides = {}) {
 function diagnosticPolicy() {
   return structuredClone(DIAGNOSTIC_POLICY);
 }
+
+test("Hermes diagnostics exclude the deterministic-only Python suite consumer", () => {
+  const deterministicCoverage = requiredCoverageForDomain("hermes");
+  assert.ok(
+    deterministicCoverage.some(
+      ({ slice, consumer }) =>
+        slice === "ratchet" && consumer === "hermes-python",
+    ),
+    "python-hermes-contracts remains mandatory deterministic release evidence",
+  );
+
+  const diagnosticCoverage = new Set(
+    recordsFor("hermes").map(({ slice, consumer }) => `${slice}:${consumer}`),
+  );
+  assert.equal(
+    diagnosticCoverage.has("ratchet:hermes-python"),
+    false,
+    "hermes-python cannot produce a V3 runtime diagnostic sample",
+  );
+});
 
 test("exporter builds exact candidate-bound V3 evaluator input for every domain", () => {
   for (const domain of ["quota", "cloudvault", "hermes", "pricing"]) {
@@ -551,9 +575,8 @@ test("exporter rejects unexpected stored fields and duplicate IDs", () => {
 
 // ---------------------------------------------------------------------------
 // Opaque-identifier operations: actual producer tuples from Apple, Android,
-// remote-mCP, and local-mCP callsites.  These mirror the v3 schema oneOf
-// branches for cloudvault/opaque-identifiers and the
-// DOMAIN_CORE_SHADOW_OPERATION_CONSUMERS table in the server contract.
+// Windows, remote-mCP, and local-mCP callsites. These mirror the v3 schema
+// oneOf branches and the server's operation-consumer contract.
 // ---------------------------------------------------------------------------
 const OPAQUE_ID_PRODUCER_TUPLES = [
   // Apple (CloudVaultDomainCoreAdapter.swift) — four key operations.
@@ -563,6 +586,9 @@ const OPAQUE_ID_PRODUCER_TUPLES = [
   { consumer: "apple", operation: "subscription_doc_id" },
   // Android (CloudVaultDomainCore.kt) — subscription document IDs.
   { consumer: "android", operation: "subscription_doc_id" },
+  // Windows (DomainCoreCloudVaultBridge.cs) — dedup and slug identifiers.
+  { consumer: "windows", operation: "pensieve_dedup_hash" },
+  { consumer: "windows", operation: "pensieve_slug_hmac" },
   // remote-mCP (domainCoreOpaqueIdentifiers.ts) — three operations.
   { consumer: "remote-mcp", operation: "pensieve_dedup_hash" },
   { consumer: "remote-mcp", operation: "pensieve_provenance_hash" },
@@ -608,12 +634,11 @@ test("opaque-identifier operations reject a wrong slice", () => {
   }
 });
 
-test("opaque-identifier operations reject a consumer outside the slice coverage allowlist", () => {
-  // windows and console are valid cloudvault consumers but not in the
-  // opaque-identifiers slice coverage, so every opaque-ID operation
-  // must fail for them even when the operation→slice pair is correct.
+test("opaque-identifier operations reject a consumer outside runtime slice coverage", () => {
+  // Console is a valid cloudvault consumer but has no opaque-identifier
+  // producer. Every opaque-ID operation must fail for it.
   let suffix = 22_000;
-  for (const wrongConsumer of ["windows", "console"]) {
+  for (const wrongConsumer of ["console"]) {
     for (const { operation: operationName } of OPAQUE_ID_PRODUCER_TUPLES) {
       assert.throws(
         () =>
@@ -721,11 +746,11 @@ test("export operation identity mirrors the canonical v3 schema oneOf branches e
 });
 
 // ---------------------------------------------------------------------------
-// Mirrored allowlist equality: the diagnostic policy config's requiredCoverage
-// must exactly equal DOMAIN_CORE_REQUIRED_COVERAGE from the canonical evidence
-// contract.  A missing or extra coverage cell is a contract violation.
+// Mirrored allowlist equality: the diagnostic policy requiredCoverage must
+// exactly equal the runtime producer contract. Deterministic release suites
+// remain governed separately by DOMAIN_CORE_REQUIRED_COVERAGE.
 // ---------------------------------------------------------------------------
-test("diagnostic policy requiredCoverage mirrors the canonical evidence contract exactly", () => {
+test("diagnostic policy requiredCoverage mirrors runtime producers exactly", () => {
   const policy = JSON.parse(
     readFileSync(
       new URL(
@@ -735,8 +760,8 @@ test("diagnostic policy requiredCoverage mirrors the canonical evidence contract
       "utf8",
     ),
   );
-  for (const domain of Object.keys(DOMAIN_CORE_REQUIRED_COVERAGE)) {
-    const canonical = DOMAIN_CORE_REQUIRED_COVERAGE[domain];
+  for (const domain of Object.keys(DOMAIN_CORE_RUNTIME_DIAGNOSTIC_COVERAGE)) {
+    const canonical = DOMAIN_CORE_RUNTIME_DIAGNOSTIC_COVERAGE[domain];
     const policyCoverage = policy.domains[domain]?.requiredCoverage ?? [];
     const canonicalKeys = new Set(
       Object.entries(canonical).flatMap(([slice, consumers]) =>
@@ -749,18 +774,17 @@ test("diagnostic policy requiredCoverage mirrors the canonical evidence contract
     assert.deepEqual(
       [...policyKeys].sort(),
       [...canonicalKeys].sort(),
-      `${domain} diagnostic policy requiredCoverage must exactly match the canonical evidence contract`,
+      `${domain} diagnostic policy requiredCoverage must exactly match runtime producers`,
     );
   }
 });
 
 // ---------------------------------------------------------------------------
-// Mirrored allowlist equality: DOMAIN_CORE_REQUIRED_COVERAGE from the evidence
-// contract must exactly equal the union of consumers declared across all v3
-// schema oneOf branches for the same domain/slice.  This catches the case
-// where the contract lists a consumer the schema forbids, or vice versa.
+// Mirrored allowlist equality: runtime diagnostic coverage must exactly equal
+// the union of consumers declared across all V3 schema oneOf branches. This
+// keeps telemetry producers independent from deterministic release suites.
 // ---------------------------------------------------------------------------
-test("evidence contract required coverage mirrors the v3 schema slice consumers exactly", () => {
+test("runtime diagnostic coverage mirrors the v3 schema slice consumers exactly", () => {
   const schema = JSON.parse(
     readFileSync(
       new URL(
@@ -789,17 +813,8 @@ test("evidence contract required coverage mirrors the v3 schema slice consumers 
     }
   }
 
-  // hermes-python is an intentional contract-only suite consumer:
-  // deterministic candidate/promotion policy maps it to python-hermes-contracts,
-  // while the v3 runtime sample schema and Functions parser enumerate platform
-  // producers only.  It is the sole permitted excess consumer, and only on
-  // hermes/ratchet.  Any other set difference is drift the test must catch.
-  const ALLOWED_EXCESS = new Map([
-    ["hermes/ratchet", new Set(["hermes-python"])],
-  ]);
-
-  for (const domain of Object.keys(DOMAIN_CORE_REQUIRED_COVERAGE)) {
-    const canonical = DOMAIN_CORE_REQUIRED_COVERAGE[domain];
+  for (const domain of Object.keys(DOMAIN_CORE_RUNTIME_DIAGNOSTIC_COVERAGE)) {
+    const canonical = DOMAIN_CORE_RUNTIME_DIAGNOSTIC_COVERAGE[domain];
     for (const [slice, consumers] of Object.entries(canonical)) {
       const key = `${domain}/${slice}`;
       const schemaSliceConsumers = schemaCoverage[key] ?? new Set();
@@ -813,18 +828,15 @@ test("evidence contract required coverage mirrors the v3 schema slice consumers 
         );
       }
 
-      // The contract may have excess consumers only where explicitly allowed.
       const excess = new Set(
         [...contractSliceConsumers].filter(
           (consumer) => !schemaSliceConsumers.has(consumer),
         ),
       );
-      const allowed = ALLOWED_EXCESS.get(key) ?? new Set();
       assert.deepEqual(
         [...excess].sort(),
-        [...allowed].sort(),
-        `${key} contract has unexpected excess consumers beyond the schema; ` +
-          `only ${[...allowed].join(", ") || "(none)"} are permitted`,
+        [],
+        `${key} runtime contract has consumers absent from the V3 schema`,
       );
     }
   }
@@ -948,23 +960,13 @@ test("operation-specific consumer sets mirror the canonical v3 schema oneOf bran
     }
   }
 
-  // Conversely, verify that every schema operation whose consumer set is
-  // narrower than the full slice coverage has a matching contract entry.
-  // hermes-python is the sole permitted excess consumer (on hermes/ratchet);
-  // it inflates slice coverage beyond the schema's platform consumers, so
-  // exclude it before comparing to avoid false "narrower" positives.
-  const ALLOWED_EXCESS_CONSUMERS = new Map([
-    ["hermes/ratchet", new Set(["hermes-python"])],
-  ]);
+  // Conversely, every schema operation narrower than its runtime slice must
+  // have a matching operation-specific contract entry.
   for (const [key, schemaSet] of Object.entries(schemaOpConsumers)) {
     const [domain, operation] = key.split("/");
     const slice = schemaOpSlice[key];
-    const sliceKey = `${domain}/${slice}`;
-    const excess = ALLOWED_EXCESS_CONSUMERS.get(sliceKey) ?? new Set();
     const sliceConsumers = new Set(
-      (DOMAIN_CORE_REQUIRED_COVERAGE[domain]?.[slice] ?? []).filter(
-        (consumer) => !excess.has(consumer),
-      ),
+      DOMAIN_CORE_RUNTIME_DIAGNOSTIC_COVERAGE[domain]?.[slice] ?? [],
     );
     const isNarrower = schemaSet.size < sliceConsumers.size;
     if (!isNarrower) continue;

@@ -1,7 +1,7 @@
 import {
   isValidDomainSliceConsumer,
   isValidDomainSliceOperationConsumer,
-  requiredCoverageForDomain,
+  runtimeDiagnosticCoverageForDomain,
 } from "./domain-core-evidence-contract.mjs";
 
 const STORED_V1_KEYS = new Set([
@@ -481,7 +481,7 @@ function requiredUtcDays(startedAt, endedAt) {
 
 export function validateDomainCorePromotionOptions(options) {
   exactKeys(options, EXPORT_OPTION_KEYS, "options");
-  const requiredCoverage = requiredCoverageForDomain(options.domain);
+  const requiredCoverage = runtimeDiagnosticCoverageForDomain(options.domain);
   if (requiredCoverage.length === 0) {
     throw new Error(`Unsupported --domain ${options.domain ?? "<missing>"}`);
   }

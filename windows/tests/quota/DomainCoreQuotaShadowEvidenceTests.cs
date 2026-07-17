@@ -60,6 +60,8 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
     [InlineData("cloudvault_escrow_seal", "escrow")]
     [InlineData("cloudvault_escrow_open", "escrow")]
     [InlineData("cloudvault_escrow_split_wire", "escrow")]
+    [InlineData("pensieve_dedup_hash", "opaque-identifiers")]
+    [InlineData("pensieve_slug_hmac", "opaque-identifiers")]
     [InlineData("pensieve_vector_cloak", "pensieve-vectors")]
     [InlineData("pensieve_l2_normalize", "pensieve-vectors")]
     [InlineData("pensieve_deterministic_embed", "pensieve-vectors")]

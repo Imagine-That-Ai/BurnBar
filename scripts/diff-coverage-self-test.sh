@@ -1311,6 +1311,49 @@ check "cross-partition source file is reported out of scope, never silently drop
   "AgentLens/Services/Demo/AppSide.swift" \
   "$(json_get "$verdict" 'v["outOfScope"][0]["file"]')"
 
+# --- fixture 16: literal array and executable initializers regression test ----------
+# Base file should lack properties; changed file adds a pure literal array and
+# three executable initializers: a call, a transform, and an arithmetic expression.
+# LCOV should name an unrelated covered file so the changed file is no_evidence.
+# Assert exactly 3 executable changed lines and failure rc=1; pure literal stays excluded.
+repo_litexec="$tmp_root/repo-litexec"
+mkdir -p "$repo_litexec/OpenBurnBarCore/Sources/DemoKit"
+git -C "$repo_litexec" init -q -b main
+git -C "$repo_litexec" config user.email selftest@openburnbar.invalid
+git -C "$repo_litexec" config user.name "Diff Coverage Self-Test"
+cat > "$repo_litexec/OpenBurnBarCore/Sources/DemoKit/LiteralExec.swift" <<'EOF'
+public enum LiteralExec {
+}
+EOF
+git -C "$repo_litexec" add -A
+git -C "$repo_litexec" commit -qm base
+base_litexec="$(git -C "$repo_litexec" rev-parse HEAD)"
+cat > "$repo_litexec/OpenBurnBarCore/Sources/DemoKit/LiteralExec.swift" <<'EOF'
+public enum LiteralExec {
+    static let pureArray = [1, -2, 3]
+    static let execArray1 = [makeValue()]
+    static let execArray2 = [1].map(transform)
+    static let execArray3 = [1 + 2]
+}
+EOF
+git -C "$repo_litexec" add -A
+git -C "$repo_litexec" commit -qm "add literal and executable arrays"
+# LCOV evidence names ONLY Unrelated.swift, so LiteralExec.swift is no_evidence
+lcov_litexec="$tmp_root/fixture-litexec.lcov"
+write_swift_lcov "$lcov_litexec" "$repo_litexec" \
+  "OpenBurnBarCore/Sources/DemoKit/Unrelated.swift" "DA:2,1" "DA:3,1"
+pkg_litexec="$tmp_root/pkg-litexec.json"
+extract_pkg "$lcov_litexec" "$repo_litexec" "$pkg_litexec"
+verdict_litexec="$tmp_root/verdict-litexec.json"
+rc="$(run_gate "$repo_litexec" "$base_litexec" packages 80 "$pkg_litexec" "$verdict_litexec" "$tmp_root/err-litexec.log")"
+check "literal+exec arrays fail with exactly 3 executable changed lines" "1" "$rc"
+check "literal+exec arrays count only executable lines in denominator" \
+  "3" "$(json_get "$verdict_litexec" 'v["diffCoverage"]["changedLines"]')"
+check "literal+exec arrays file is reported as no_evidence" \
+  "no_evidence" "$(json_get "$verdict_litexec" '[d for d in v["details"] if d["file"].endswith("LiteralExec.swift")][0]["method"]')"
+check "literal+exec arrays have zero covered lines" \
+  "0" "$(json_get "$verdict_litexec" '[d for d in v["details"] if d["file"].endswith("LiteralExec.swift")][0]["coveredLines"]')"
+
 # -----------------------------------------------------------------------------
 
 if [[ "$failures" -gt 0 ]]; then

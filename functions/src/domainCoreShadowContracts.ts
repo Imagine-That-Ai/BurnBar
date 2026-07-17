@@ -54,7 +54,7 @@ const DOMAIN_CORE_SHADOW_REQUIRED_COVERAGE: Readonly<Record<string, Readonly<Rec
     escrow: ["apple", "android", "windows", "console"],
     "document-rewrap": ["apple", "android"],
     search: ["apple", "android", "local-mcp", "remote-mcp"],
-    "opaque-identifiers": ["apple", "android", "local-mcp", "remote-mcp"],
+    "opaque-identifiers": ["apple", "android", "windows", "local-mcp", "remote-mcp"],
     "pensieve-vectors": ["apple", "windows", "console", "remote-mcp"],
   },
   hermes: {
@@ -72,9 +72,9 @@ const DOMAIN_CORE_SHADOW_REQUIRED_COVERAGE: Readonly<Record<string, Readonly<Rec
 const DOMAIN_CORE_SHADOW_OPERATION_CONSUMERS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
   cloudvault: {
     project_memory_doc_id: ["apple", "local-mcp"],
-    pensieve_dedup_hash: ["apple", "remote-mcp"],
+    pensieve_dedup_hash: ["apple", "windows", "remote-mcp"],
     pensieve_provenance_hash: ["remote-mcp"],
-    pensieve_slug_hmac: ["apple", "remote-mcp"],
+    pensieve_slug_hmac: ["apple", "windows", "remote-mcp"],
     subscription_doc_id: ["apple", "android"],
     pensieve_l2_normalize: ["apple"],
   },

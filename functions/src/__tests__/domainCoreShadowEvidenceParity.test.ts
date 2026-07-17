@@ -104,6 +104,8 @@ describe("domain-core shadow evidence opaque-identifier and schema-parity contra
     ["apple", "subscription_doc_id"],
     ["android", "subscription_doc_id"],
     ["remote-mcp", "pensieve_dedup_hash"],
+    ["windows", "pensieve_dedup_hash"],
+    ["windows", "pensieve_slug_hmac"],
     ["remote-mcp", "pensieve_provenance_hash"],
     ["remote-mcp", "pensieve_slug_hmac"],
     ["local-mcp", "project_memory_doc_id"],

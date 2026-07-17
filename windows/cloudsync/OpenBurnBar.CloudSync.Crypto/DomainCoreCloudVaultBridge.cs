@@ -121,14 +121,14 @@ namespace OpenBurnBar.CloudSync.Crypto
 
         internal static string PensieveDedupHash(string plaintext, byte[] key, Func<string> legacy) =>
             Apply(
-                "cloudvault_pensieve_dedup_hash",
+                "pensieve_dedup_hash",
                 () => DomainCore.CloudVaultPensieveDedupHash(plaintext, key),
                 legacy,
                 StringComparer.Ordinal.Equals);
 
         internal static string PensieveSlugHmac(string slug, byte[] key, Func<string> legacy) =>
             Apply(
-                "cloudvault_pensieve_slug_hmac",
+                "pensieve_slug_hmac",
                 () => DomainCore.CloudVaultPensieveSlugHmac(slug, key),
                 legacy,
                 StringComparer.Ordinal.Equals);
