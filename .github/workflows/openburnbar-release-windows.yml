@@ -399,13 +399,18 @@ jobs:
           $ErrorActionPreference = "Stop"
           $publishedRoot = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64"
           $smokeRoot = Join-Path $env:RUNNER_TEMP "openburnbar-published-x64-parser-smoke"
+          $testOutputRoot = Join-Path $env:RUNNER_TEMP "openburnbar-published-x64-parser-testhost"
           Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $testOutputRoot -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
+          New-Item -ItemType Directory -Force -Path $testOutputRoot | Out-Null
           Copy-Item -Path (Join-Path $publishedRoot "*") -Destination $smokeRoot -Recurse -Force
           $env:OPENBURNBAR_CORE_CABI_PATH = Join-Path $smokeRoot "OpenBurnBarCoreCAbi.dll"
+          # Keep the .NET testhost outside the self-contained app layout. Otherwise its
+          # app-local hostfxr takes precedence and cannot resolve the net10.0 test runtime.
           dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj `
             -c Release `
-            --output $smokeRoot `
+            --output $testOutputRoot `
             --filter FullyQualifiedName~NativeUsageEngineIntegrationTests `
             --blame-hang `
             --blame-hang-timeout 5m
