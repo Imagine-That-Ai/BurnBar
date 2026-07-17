@@ -273,6 +273,7 @@ on:
       - "Vendor/openburnbar-domain-core.aar"
       - "tests/fixtures/domain-core/**"
       - "tools/openburnbar-mcp/**"
+      - "tools/hermes-platform-burnbar/**"
       - "scripts/build-domain-core-python.sh"
       - "scripts/test-domain-core-python.sh"
       - "scripts/build-domain-core-xcframework.sh"
@@ -471,6 +472,11 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Resolve canonical candidate commit
+        id: candidate
+        run: node scripts/ci/canonical-candidate-commit.mjs
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
@@ -488,7 +494,7 @@ jobs:
       - name: Check Rust core
         working-directory: crates/openburnbar-domain-core
         env:
-          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
         run: |
           set -o pipefail
           {
@@ -537,7 +543,7 @@ jobs:
 
       - name: Reject C# domain-core binding drift
         env:
-          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
         run: scripts/windows-port/check-csharp-binding-drift.sh domain-core
 
       - name: Verify C# generated-source provenance
@@ -548,7 +554,7 @@ jobs:
       - name: Observe the exact C# native identity
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ github.sha }}
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
           DOMAIN_CORE_NATIVE_LIBRARY_PATH: ${{ github.workspace }}/crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/csharp-native-observed-identity.json
         run: >-
@@ -586,17 +592,17 @@ jobs:
 
       - name: Build and verify a signed Windows configuration artifact
         run: |
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format msbuild-props --output "$RUNNER_TEMP/domain-core-profile.props"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "${{ steps.candidate.outputs.candidate_commit }}" --format msbuild-props --output "$RUNNER_TEMP/domain-core-profile.props"
           dotnet build windows/app/OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj --nologo -c Release -p:DomainCoreBuildProfileProps="$RUNNER_TEMP/domain-core-profile.props"
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format json --output windows/app/OpenBurnBar.App.Configuration/bin/Release/domain-core-build-profile.json
-          node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --windows-dir windows/app/OpenBurnBar.App.Configuration/bin/Release
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "${{ steps.candidate.outputs.candidate_commit }}" --format json --output windows/app/OpenBurnBar.App.Configuration/bin/Release/domain-core-build-profile.json
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "${{ steps.candidate.outputs.candidate_commit }}" --windows-dir windows/app/OpenBurnBar.App.Configuration/bin/Release
 
       - name: Emit Rust and C# proof fragment
         env:
           ATTESTATION_INPUT: ${{ runner.temp }}/attestation-csharp-native
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "${{ steps.candidate.outputs.candidate_commit }}"
           --job-id rust-and-csharp
           --suite "rust-workspace=$RUNNER_TEMP/rust-workspace.log"
           --suite "rust-fuzz-smoke=$RUNNER_TEMP/rust-fuzz-smoke.log"
@@ -1686,6 +1692,8 @@ jobs:
       - apple-native-smoke
       - swift-consumer-contracts
       - console-consumer-contracts
+      - python-mcp-cloudvault-contracts
+      - python-hermes-contracts
       - rollback-drill
       - candidate-bundle
     runs-on: ubuntu-latest
@@ -1697,7 +1705,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s\n' "$NEEDS_JSON" > "$RUNNER_TEMP/domain-core-final-results.json"
-          jq -e 'to_entries | length == 13 and all(.value.result == "success")' \
+          jq -e 'to_entries | length == 15 and all(.value.result == "success")' \
             "$RUNNER_TEMP/domain-core-final-results.json" >/dev/null
 
       - name: Check out deletion candidate

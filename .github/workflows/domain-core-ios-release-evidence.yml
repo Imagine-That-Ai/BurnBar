@@ -15,6 +15,9 @@ on:
       archive_artifact_name:
         required: true
         type: string
+      domain_core_profile:
+        required: true
+        type: string
 
 permissions:
   attestations: write
@@ -71,6 +74,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
           RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DOMAIN_CORE_PROFILE: ${{ inputs.domain_core_profile }}
         run: |
           set -euo pipefail
           archive="$RUNNER_TEMP/ios-release/OpenBurnBar-${VERSION}-iOS.xcarchive.zip"
@@ -101,12 +105,18 @@ jobs:
           applicable_count="$(jq '[.domains[] | select(.domain == "cloudVault" or .domain == "cloudVaultRewrap" or .domain == "cloudVaultSearch" or .domain == "hermes")] | length' <<<"$activation")"
           echo "applicable_count=$applicable_count" >> "$GITHUB_OUTPUT"
           node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
-            --profile public-production \
+            --profile "$DOMAIN_CORE_PROFILE" \
             --expected-candidate-commit "$candidate" \
+            --expected-release-commit "$RELEASE_COMMIT" \
+            --expected-release-version "$VERSION" \
+            --expected-release-tag "v${VERSION}" \
             --apple-app "$app"
           node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
-            --profile public-production \
+            --profile "$DOMAIN_CORE_PROFILE" \
             --expected-candidate-commit "$candidate" \
+            --expected-release-commit "$RELEASE_COMMIT" \
+            --expected-release-version "$VERSION" \
+            --expected-release-tag "v${VERSION}" \
             --apple-app "$exported_app"
           python3 scripts/ci/verify-domain-core-ios-binary-identity.py \
             --app "$app" \
@@ -117,7 +127,7 @@ jobs:
             --candidate "$RUNNER_TEMP/ios-release/domain-core-candidate.json" \
             --output "$RUNNER_TEMP/ios-release/ipa-loaded-rust-identity.json"
           node scripts/ci/resolve-domain-core-build-profile.mjs \
-            --profile public-production \
+            --profile "$DOMAIN_CORE_PROFILE" \
             --expected-candidate-commit "$candidate" \
             --expected-release-commit "$RELEASE_COMMIT" \
             --format json \

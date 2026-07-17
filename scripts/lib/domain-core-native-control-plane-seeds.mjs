@@ -12,6 +12,7 @@ export const NATIVE_RELEASE_CONTROL_PLANE_SEEDS = Object.freeze([
   "android/app/build.gradle.kts",
   "android/app/src/main/java/com/openburnbar/data/square/AgentSubscriptionTopicStore.kt",
   "android/openburnbar-domain-core/src/androidTest/java/com/openburnbar/domaincore/DomainCoreNativeLoadTest.kt",
+  "android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi/openburnbar_domain_ffi.kt",
   "config/android-upload-certificate.sha256",
   "config/apple-release-signing-policy.json",
   "config/domain-core-build-profiles.json",
@@ -19,6 +20,7 @@ export const NATIVE_RELEASE_CONTROL_PLANE_SEEDS = Object.freeze([
   "config/domain-core-legacy-deletion.json",
   "config/domain-core-promotion-policy.json",
   "config/domain-core-release-predicate.schema.json",
+  "scripts/build-domain-core-android-aar.sh",
   "scripts/build-domain-core-xcframework.sh",
   "scripts/check-openburnbar-app-swiftpm-lock.sh",
   "scripts/ci/build-corresponding-source-archive.sh",
@@ -104,5 +106,6 @@ export const NATIVE_RELEASE_CONTROL_PLANE_SEEDS = Object.freeze([
   "scripts/windows-port/refresh-native-engine-manifest.mjs",
   "scripts/windows-port/validate-native-engine-layout.mjs",
   "scripts/windows-port/write-signed-artifact-manifest.mjs",
+  "windows/packaging/msix/store-identity.json",
   "windows/tests/quota/DomainCoreQuotaBridgeTests.cs",
 ]);

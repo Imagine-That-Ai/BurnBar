@@ -77,6 +77,65 @@ final class DomainCoreReleaseIdentityReporterTests: XCTestCase {
         }
     }
 
+    func test_candidateCommitGateAcceptsExact40LowercaseHexRejectsTrailingLinebreaksAndWrongCase() {
+        // Table-driven boundary contract for the candidate-commit gate. The
+        // accepted row proves the gate lets exactly-40 lowercase hex through
+        // (it reaches a downstream outcome — unavailableNativeCore without the
+        // FFI, candidateCommitMismatch or success with it — but never
+        // invalidCandidateCommit). The rejected rows pin the boundaries a
+        // weakened validator (e.g. an end-of-line `$` that matches before a
+        // trailing newline, or a length-only check that ignores case) would
+        // let slip: every linebreak-terminated and wrong-case/wrong-length
+        // variant must surface invalidCandidateCommit specifically.
+        let hex40 = Self.hex40
+        let accepted: [String] = [hex40]
+        let rejected: [(String, String)] = [
+            (hex40 + "\n", "trailing LF newline"),
+            (hex40 + "\r", "trailing CR carriage return"),
+            (hex40 + "\r\n", "trailing CRLF"),
+            (hex40 + " ", "trailing space"),
+            (" " + hex40, "leading space"),
+            (String(repeating: "A", count: 40), "40 uppercase hex"),
+            (String(repeating: "a", count: 39), "39 chars — short"),
+            (String(repeating: "a", count: 41), "41 chars — long")
+        ]
+
+        for value in accepted {
+            do {
+                _ = try DomainCoreReleaseIdentityReporter.write(
+                    candidateCommit: value,
+                    reportURL: report,
+                    executableURL: executable
+                )
+                // Success is valid: the candidate gate passed and (with the
+                // FFI) the loaded commit happened to match.
+            } catch DomainCoreReleaseIdentityError.invalidCandidateCommit {
+                XCTFail("exact 40 lowercase hex must pass the candidate gate, but was rejected as invalidCandidateCommit")
+            } catch {
+                // unavailableNativeCore (no FFI) or candidateCommitMismatch
+                // (FFI loaded commit differs) both prove the candidate gate
+                // accepted the value; any non-invalidCandidateCommit throw
+                // satisfies the accepted-row contract.
+            }
+        }
+
+        for (value, label) in rejected {
+            XCTAssertThrowsError(
+                try DomainCoreReleaseIdentityReporter.write(
+                    candidateCommit: value,
+                    reportURL: report,
+                    executableURL: executable
+                ),
+                "expected rejection for \(label)"
+            ) { error in
+                guard case DomainCoreReleaseIdentityError.invalidCandidateCommit = error else {
+                    XCTFail("expected invalidCandidateCommit for \(label), got \(error)")
+                    return
+                }
+            }
+        }
+    }
+
     // MARK: - executable safety (runs without native core)
 
     func test_unsafeExecutableRejectsSymlink() throws {

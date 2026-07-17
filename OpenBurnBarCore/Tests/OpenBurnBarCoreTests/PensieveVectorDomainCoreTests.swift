@@ -103,6 +103,57 @@ final class PensieveVectorDomainCoreTests: XCTestCase {
         XCTAssertEqual(offenders, [], "The migrated L2 implementation must be deletable outside Legacy/")
     }
 
+    /// Shadow comparison records must carry the four canonical pensieve operation IDs
+    /// (pensieve_vector_cloak, pensieve_l2_normalize, pensieve_deterministic_embed,
+    /// pensieve_deterministic_embed_and_cloak), never the short aliases the legacy shadow
+    /// branches once emitted (cloak, l2_normalize, embed, embed_and_cloak). Console and
+    /// Windows admission maps only admit the canonical IDs, so a short-alias record is
+    /// silently dropped downstream — the exact cross-surface defect this guards.
+    func test_shadowComparisonsUseCanonicalPensieveOperationIDsNotShortAliases() {
+        let expected: Set<String> = [
+            "pensieve_vector_cloak",
+            "pensieve_l2_normalize",
+            "pensieve_deterministic_embed",
+            "pensieve_deterministic_embed_and_cloak",
+        ]
+        let forbidden: Set<String> = [
+            "cloak",
+            "l2_normalize",
+            "embed",
+            "embed_and_cloak",
+        ]
+
+        var captured: [DomainCoreShadowComparison] = []
+        DomainCoreShadowComparisonCollector.configure { comparison in
+            captured.append(comparison)
+        }
+        defer { DomainCoreShadowComparisonCollector.configure(nil) }
+
+        let vaultKey = Data(repeating: 0x42, count: 32)
+        try? withCloudVaultMode("shadow") {
+            _ = try PensieveVectorCloak.cloak([0.6, 0.8], vaultKey: vaultKey, modelVersion: "hashing-bow-v1")
+            _ = PensieveVectorCloak.l2normalize([3, 4])
+            _ = PensieveVectorCloak.deterministicEmbed("pensieve contract vector", isQuery: false)
+            _ = try PensieveVectorCloak.embedAndCloak("pensieve contract vector", vaultKey: vaultKey, isQuery: false)
+        }
+
+        // Each of the four methods records exactly one comparison in shadow mode, even when
+        // the native path throws (the catch branch still records with the operation string).
+        XCTAssertEqual(captured.count, 4, "Each shadow method must record one comparison (got \(captured.count)).")
+
+        let operations = Set(captured.map(\.operation))
+        let slices = Set(captured.map(\.slice))
+        let domains = Set(captured.map(\.domain))
+
+        // The four canonical IDs must all be present — one per method, no duplicates, none missing.
+        XCTAssertEqual(operations, expected, "Shadow records must use all four canonical pensieve operation IDs.")
+        // No short alias may survive the cutover.
+        XCTAssertTrue(operations.isDisjoint(with: forbidden), "Short aliases must not appear in shadow records: \(operations.intersection(forbidden)).")
+        // Every record is a pensieve-vectors cloudvault record, never a misrouted slice.
+        XCTAssertEqual(slices, ["pensieve-vectors"], "Shadow records must target the pensieve-vectors slice.")
+        XCTAssertEqual(domains, ["cloudvault"], "Shadow records must target the cloudvault domain.")
+    }
+
     private func withCloudVaultMode<T>(_ mode: String, operation: () throws -> T) rethrows -> T {
         let environmentKey = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE"
         let previous = getenv(environmentKey).map { String(cString: $0) }

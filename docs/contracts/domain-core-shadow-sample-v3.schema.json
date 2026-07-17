@@ -444,6 +444,8 @@
                 "key_wrap_info_v2",
                 "seal",
                 "open",
+                "seal_combined",
+                "open_combined",
                 "safety_code",
                 "hkdf"
               ]

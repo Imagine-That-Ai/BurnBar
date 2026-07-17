@@ -555,3 +555,85 @@ describe("domain-core shadow evidence contract", () => {
     );
   });
 });
+
+describe("domain-core shadow evidence hermes payload-keywrap combined ops", () => {
+  // Defends the Hermes payload-keywrap seal_combined/open_combined shadow
+  // evidence contract on the Functions/server parser. Both combined AEAD
+  // operations must pass V3 validation for both apple and android consumers
+  // and the parsed operation must be preserved end-to-end. Before the fix the
+  // DOMAIN_CORE_SHADOW_OPERATION_SLICES.hermes payload-keywrap slice omitted
+  // seal_combined/open_combined, so parseDomainCoreShadowSampleRequest
+  // rejected any submitted combined-op sample with an inconsistent
+  // operation/slice error and the server never recorded key-wrap AEAD
+  // evidence. These cases redden if either combined operation is removed from
+  // the operation-slice map (or the authoritative V3 schema oneOf branch).
+  it.each([
+    ["seal_combined", "apple"],
+    ["open_combined", "apple"],
+    ["seal_combined", "android"],
+    ["open_combined", "android"],
+  ])("accepts and preserves V3 hermes payload-keywrap %s for %s", (operation, consumer) => {
+    const sample = v3Sample({
+      domain: "hermes",
+      slice: "payload-keywrap",
+      consumer: consumer as "apple",
+      operation,
+    });
+    const parsed = parseDomainCoreShadowSampleRequest({ samples: [sample] }, NOW);
+
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]).toEqual(sample);
+    expect(parsed[0].operation).toBe(operation);
+    expect(parsed[0].domain).toBe("hermes");
+    expect(parsed[0].slice).toBe("payload-keywrap");
+    expect(parsed[0].consumer).toBe(consumer);
+  });
+
+  it("builds V3 producer samples for both hermes payload-keywrap combined ops and preserves operation through buildDomainCoreShadowSampleV3", () => {
+    for (const operation of ["seal_combined", "open_combined"] as const) {
+      const comparison = {
+        ...v3Sample({ domain: "hermes", slice: "payload-keywrap", operation }),
+      };
+      const { schemaVersion: _schemaVersion, sampleId: _sampleId, observedAt: _observedAt, ...rest } = comparison;
+      const built = buildDomainCoreShadowSampleV3(rest, {
+        nowMillis: NOW,
+        sampleId: "00000000-0000-4000-8000-000000000099",
+      });
+
+      expect(built.operation).toBe(operation);
+      expect(built.domain).toBe("hermes");
+      expect(built.slice).toBe("payload-keywrap");
+      expect(built.schemaVersion).toBe(3);
+    }
+  });
+
+  it("authoritative V3 schema admits both hermes payload-keywrap combined ops for apple and android", () => {
+    const branches = v3OperationContractBranches();
+    const keyWrapBranch = branches.find(
+      (branch) => branch.properties.domain.const === "hermes" && branch.properties.slice.const === "payload-keywrap",
+    );
+    expect(keyWrapBranch).toBeDefined();
+    const operations = keyWrapBranch!.properties.operation.enum ?? [keyWrapBranch!.properties.operation.const!];
+    const consumers = keyWrapBranch!.properties.consumer.enum ?? [keyWrapBranch!.properties.consumer.const!];
+    expect(operations).toEqual(expect.arrayContaining(["seal_combined", "open_combined"]));
+    expect(consumers).toEqual(expect.arrayContaining(["apple", "android"]));
+  });
+
+  it("rejects a hermes payload-keywrap combined op placed under the wrong slice", () => {
+    expect(() =>
+      parseDomainCoreShadowSampleRequest(
+        {
+          samples: [
+            v3Sample({
+              domain: "hermes",
+              slice: "aad",
+              consumer: "apple",
+              operation: "seal_combined",
+            }),
+          ],
+        },
+        NOW,
+      ),
+    ).toThrow();
+  });
+});

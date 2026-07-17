@@ -61,6 +61,7 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
     [InlineData("cloudvault_escrow_open", "escrow")]
     [InlineData("cloudvault_escrow_split_wire", "escrow")]
     [InlineData("pensieve_vector_cloak", "pensieve-vectors")]
+    [InlineData("pensieve_l2_normalize", "pensieve-vectors")]
     [InlineData("pensieve_deterministic_embed", "pensieve-vectors")]
     [InlineData("pensieve_deterministic_embed_and_cloak", "pensieve-vectors")]
     public void OperationCoverage_UsesServerApprovedSlice(string operation, string slice)
@@ -349,6 +350,7 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
 
     [Theory]
     [InlineData("pensieve_vector_cloak")]
+    [InlineData("pensieve_l2_normalize")]
     [InlineData("pensieve_deterministic_embed")]
     [InlineData("pensieve_deterministic_embed_and_cloak")]
     public void PensieveVectorOperationsSpoolAsValidV3Samples(string operation)
@@ -419,42 +421,38 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
         Assert.Equal(0, spool.PendingSampleCount());
     }
 
-    [Fact]
-    public void PensieveL2NormalizeRejectedOnWindows()
+    // The legacy short aliases (cloak, l2_normalize, embed, embed_and_cloak) are not
+    // canonical pensieve operation IDs and must never resolve to a slice — Windows
+    // has no compat shim. A null slice means the shadow record is dropped before
+    // persistence, the correct behavior post-cutover.
+    [Theory]
+    [InlineData("cloak")]
+    [InlineData("l2_normalize")]
+    [InlineData("embed")]
+    [InlineData("embed_and_cloak")]
+    public void ShortAliasOperationsAreNotAdmittedToAnySlice(string operation)
     {
-        // pensieve_l2_normalize is Apple-only per the v3 schema; Windows
-        // permits only vector_cloak, deterministic_embed, and
-        // deterministic_embed_and_cloak for the pensieve-vectors slice.
-        var identity = Identity();
-        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, identity);
-        var sample = new DomainCoreShadowSampleV3
-        {
-            SampleId = "00000000-0000-4000-8000-000000000001",
-            Domain = "cloudvault",
-            Channel = "internal",
-            Slice = "pensieve-vectors",
-            Operation = "pensieve_l2_normalize",
-            CandidateCommit = identity.CandidateCommit,
-            ExpectedCoreVersion = identity.ExpectedCoreVersion,
-            ExpectedCoreAbiVersion = identity.ExpectedCoreAbiVersion,
-            ExpectedCoreSourceSha256 = identity.ExpectedCoreSourceSha256,
-            LoadedCoreVersion = identity.ExpectedCoreVersion,
-            LoadedCoreAbiVersion = identity.ExpectedCoreAbiVersion,
-            LoadedCoreSourceSha256 = identity.ExpectedCoreSourceSha256,
-            ObservedAt = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
-            Outcome = "match",
-            MismatchCategory = null,
-            LegacyMicros = 120,
-            RustMicros = 80,
-        };
+        Assert.Null(DomainCoreQuotaShadowEvidence.SliceForOperation(operation));
+    }
 
-        spool.Append(sample);
-        Assert.Equal(1, spool.PendingSampleCount());
-        // pensieve_l2_normalize is accepted by Append (identity matches) but
-        // rejected by ValidStoredSample during NextBatch because the Windows
-        // OperationSlices allowlist does not include it.
-        Assert.Null(spool.NextBatch());
-        Assert.Equal(0, spool.PendingSampleCount());
+    // A short-alias operation has no slice binding, so a stored sample carrying it
+    // must be rejected by ValidStoredSample even when the slice field claims
+    // pensieve-vectors. This is the cross-surface guard: Apple producers that still
+    // emit a short alias cannot land evidence on Windows.
+    [Theory]
+    [InlineData("cloak")]
+    [InlineData("l2_normalize")]
+    [InlineData("embed")]
+    [InlineData("embed_and_cloak")]
+    public void ValidStoredSampleRejectsShortAliasPensieveRecords(string operation)
+    {
+        DomainCoreShadowEvidenceIdentity identity = Identity();
+        var sample = Sample(1) with
+        {
+            Slice = "pensieve-vectors",
+            Operation = operation,
+        };
+        Assert.False(DomainCoreQuotaShadowEvidence.ValidStoredSample(identity, sample, DateTimeOffset.UtcNow));
     }
 
     public void Dispose()

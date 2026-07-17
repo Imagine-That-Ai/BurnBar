@@ -843,14 +843,20 @@ enum CloudVaultDomainCoreAdapter {
         legacyMicros: UInt64,
         rustMicros: UInt64
     ) {
-        let slice: String = if operation.contains("escrow") {
-            "escrow"
-        } else if operation.contains("recovery") {
-            "recovery"
-        } else if operation.contains("aes") || operation.contains("seal") || operation.contains("open") {
-            "aes"
-        } else {
-            "foundation"
+        let slice: String
+        switch operation {
+        case "project_memory_doc_id", "pensieve_dedup_hash", "pensieve_slug_hmac", "subscription_doc_id":
+            slice = "opaque-identifiers"
+        default:
+            slice = if operation.contains("escrow") {
+                "escrow"
+            } else if operation.contains("recovery") {
+                "recovery"
+            } else if operation.contains("aes") || operation.contains("seal") || operation.contains("open") {
+                "aes"
+            } else {
+                "foundation"
+            }
         }
         DomainCoreShadowComparisonCollector.record(.init(
             domain: "cloudvault",

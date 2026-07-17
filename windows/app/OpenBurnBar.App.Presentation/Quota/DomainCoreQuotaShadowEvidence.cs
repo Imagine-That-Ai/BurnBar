@@ -454,6 +454,7 @@ public static class DomainCoreQuotaShadowEvidence
         ["pensieve_deterministic_embed_and_cloak"] = "pensieve-vectors",
         ["pensieve_deterministic_embed"] = "pensieve-vectors",
         ["pensieve_vector_cloak"] = "pensieve-vectors",
+        ["pensieve_l2_normalize"] = "pensieve-vectors",
     };
     private static readonly HashSet<string> MismatchCategories = new(StringComparer.Ordinal)
     {

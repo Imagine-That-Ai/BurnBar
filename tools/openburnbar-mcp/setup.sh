@@ -14,11 +14,16 @@ python3 -m venv .venv
 # The Python binding is source-controlled; the native library and receipt are
 # rebuilt for this exact host so Rust-mode identity checks cannot load a stale
 # or cross-platform artifact.
-command -v cargo >/dev/null 2>&1 || {
-  echo "ERROR: cargo is required to build the local MCP shared domain core." >&2
-  exit 1
-}
-"$REPO_ROOT/scripts/build-domain-core-python.sh"
+if [ "${OPENBURNBAR_MCP_ALLOW_LEXICAL_ONLY:-}" = "true" ]; then
+  echo "WARN: OPENBURNBAR_MCP_ALLOW_LEXICAL_ONLY=true; skipping Rust/cargo domain-core Python native build. Project Code Memory setup will be lexical-only."
+else
+  command -v cargo >/dev/null 2>&1 || {
+    echo "ERROR: cargo is required to build the local MCP shared domain core." >&2
+    echo "Install Rust or set OPENBURNBAR_MCP_ALLOW_LEXICAL_ONLY=true to skip the native build explicitly." >&2
+    exit 1
+  }
+  "$REPO_ROOT/scripts/build-domain-core-python.sh"
+fi
 
 # --- Build/verify Project Code Memory static parser helper ---
 PARSER_MANIFEST="$REPO_ROOT/crates/project-code-static-parser/Cargo.toml"

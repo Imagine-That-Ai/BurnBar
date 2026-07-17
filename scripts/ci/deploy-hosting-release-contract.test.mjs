@@ -400,3 +400,133 @@ test("create-domain-core-runtime-artifact-manifest.mjs has no local imports (sel
     "runtime artifact manifest script should have no local imports (self-contained)",
   );
 });
+
+// ── Stable-tag replay missing-receipt guard ──────────────────────────────
+//
+// Regression: when a stable release exists on GitHub but its immutable Console
+// deployment receipt asset is missing, the guard must fail closed (exit 1)
+// only when the live deployment identity commit equals the release commit P.
+// The pre-fix guard fetched the live runtime-artifact-manifest and compared
+// its candidate.candidateCommit — coupling the missing-receipt decision to
+// candidate C. The fix fetches the live domain-core-deployment-identity.json
+// (the same v2 console identity embedded at build time) and compares its
+// `.commit` to RELEASE_COMMIT (P). Candidate C stays validated independently
+// via the release-gate path passed to verify-existing-domain-core-deployment.
+
+/**
+ * Extract the missing-receipt branch (the `if ! jq -e ...any(.name == $asset)...`
+ * block) from the stable-replay step. Returns the raw text from the `if !` line
+ * through the `mkdir "$RUNNER_TEMP/existing-console-evidence"` boundary that
+ * marks the existing-receipt branch.
+ */
+function missingReceiptBranch(source) {
+  const block = stepBlock(source, "Refuse non-identical stable-tag redeploy");
+  assert.ok(block, "stable-replay step must exist");
+  const start = block.indexOf('if ! jq -e --arg asset "$asset"');
+  assert.ok(start >= 0, "missing-receipt branch guard must exist");
+  const tail = block.slice(start);
+  const end = tail.indexOf(
+    '\n          mkdir "$RUNNER_TEMP/existing-console-evidence"',
+  );
+  return end >= 0 ? tail.slice(0, end + 1) : tail;
+}
+
+test("missing-receipt guard fetches the live deployment identity, not the runtime artifact manifest", () => {
+  const branch = missingReceiptBranch(WORKFLOW);
+  // The guard must read the v2 console deployment identity (commit-bearing),
+  // not the runtime-artifact-manifest (candidate-bearing). The pre-fix shape
+  // curled domain-core-runtime-artifact-manifest.json and read
+  // .candidate.candidateCommit; the fix must not.
+  assert.match(
+    branch,
+    /"https:\/\/app\.burnbar\.ai\/domain-core-deployment-identity\.json"/u,
+    "missing-receipt guard must fetch domain-core-deployment-identity.json",
+  );
+  assert.doesNotMatch(
+    branch,
+    /domain-core-runtime-artifact-manifest\.json/u,
+    "missing-receipt guard must NOT consult the runtime artifact manifest (candidate C is validated separately)",
+  );
+  assert.doesNotMatch(
+    branch,
+    /\.candidate\.candidateCommit/u,
+    "missing-receipt guard must NOT read candidate.candidateCommit (candidate C is validated separately via the release gate)",
+  );
+});
+
+test("missing-receipt guard validates the live identity is a v2 console identity before trusting its commit", () => {
+  const branch = missingReceiptBranch(WORKFLOW);
+  // The fetched identity must be schema-checked: schemaVersion 2, consumer
+  // console, and a 40-hex commit string. Without this, a malformed or
+  // attacker-controlled live file could spoof the fail-closed decision.
+  assert.match(branch, /\.schemaVersion != 2/u);
+  assert.match(branch, /\.consumer != "console"/u);
+  assert.match(branch, /test\("\^\[0-9a-f\]\{40\}\$"\)/u);
+});
+
+test("missing-receipt guard fails closed when live identity commit equals RELEASE_COMMIT P", () => {
+  const branch = missingReceiptBranch(WORKFLOW);
+  // The fail-closed comparison binds on the release commit P (the identity's
+  // `.commit`), not on candidate C.
+  assert.match(
+    branch,
+    /live_commit="\$\(jq -er '\.commit' "\$identity"\)"/u,
+    "guard must extract the live identity commit via jq .commit",
+  );
+  assert.match(
+    branch,
+    /if \[\[ "\$live_commit" == "\$RELEASE_COMMIT" \]\]/u,
+    "guard must compare live identity commit to RELEASE_COMMIT (P), not CANDIDATE_COMMIT",
+  );
+  assert.match(branch, /exit 1/u);
+  // The error message must name the deployment identity and the missing
+  // receipt, so an operator can trace the fail-closed reason.
+  assert.match(branch, /already live \(deployment identity commit/u);
+  assert.match(
+    branch,
+    /immutable Console deployment receipt is missing/u,
+  );
+});
+
+test("missing-receipt guard does not consult CANDIDATE_COMMIT in the fail-closed branch", () => {
+  const branch = missingReceiptBranch(WORKFLOW);
+  // Candidate C is validated separately via the release-gate path passed to
+  // verify-existing-domain-core-deployment; the missing-receipt branch must
+  // not reference CANDIDATE_COMMIT at all.
+  assert.doesNotMatch(
+    branch,
+    /CANDIDATE_COMMIT/u,
+    "missing-receipt guard must not reference CANDIDATE_COMMIT (candidate C is validated separately)",
+  );
+});
+
+test("missing-receipt guard fails closed when live identity is unreachable and proceeds only when live commit differs from P", () => {
+  const branch = missingReceiptBranch(WORKFLOW);
+  assert.ok(
+    branch.includes(
+      'echo "::error::Cannot establish the live Console release identity while the immutable deployment receipt is missing. Refusing production mutation."\n              exit 1',
+    ),
+    "guard must fail closed when the live identity is unreachable",
+  );
+  assert.ok(
+    branch.includes('fi\n            echo "reused=false" >> "$GITHUB_OUTPUT"\n            exit 0'),
+    "guard must emit reused=false and exit 0 when live commit differs from RELEASE_COMMIT",
+  );
+});
+
+test("existing-receipt branch passes --release-gate to the verify-existing script", () => {
+  // The existing-receipt path (receipt asset present) must pass the release
+  // gate so verify-existing binds the receipt candidate to the authoritative
+  // candidate C, not to the release commit P. This is the C!=P replay contract.
+  const block = stepBlock(WORKFLOW, "Refuse non-identical stable-tag redeploy");
+  assert.ok(block);
+  assert.match(
+    block,
+    /node "\$ARTIFACT_ROOT\/scripts\/ci\/verify-existing-domain-core-deployment\.mjs"/u,
+  );
+  assert.match(
+    block,
+    /--release-gate "\$ARTIFACT_ROOT\/domain-core-release-inputs\/domain-core-release-gate\.json"/u,
+    "existing-receipt branch must pass --release-gate so the receipt candidate binds to C, not P",
+  );
+});

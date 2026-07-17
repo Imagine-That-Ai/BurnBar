@@ -38,7 +38,7 @@ public enum PensieveVectorCloak {
                 let rustValue = try nativeCloak(vector, vaultKey: vaultKey, modelVersion: modelVersion)
                 let matches = equivalent(legacyValue, rustValue)
                 recordComparison(
-                    operation: "cloak",
+                    operation: "pensieve_vector_cloak",
                     matches: matches,
                     category: matches ? nil : "result_mismatch",
                     legacyMicros: legacyMicros,
@@ -46,18 +46,18 @@ public enum PensieveVectorCloak {
                 )
                 if !matches {
                     PlatformLogger(subsystem: "com.openburnbar.core", category: "PensieveVectorDomainCore")
-                        .warning("domain_core.pensieve_vector shadow_mismatch operation=cloak core=abi3")
+                        .warning("domain_core.pensieve_vector shadow_mismatch operation=pensieve_vector_cloak core=abi3")
                 }
             } catch {
                 recordComparison(
-                    operation: "cloak",
+                    operation: "pensieve_vector_cloak",
                     matches: false,
                     category: "native_error",
                     legacyMicros: legacyMicros,
                     rustMicros: elapsedMicros(since: rustStarted)
                 )
                 PlatformLogger(subsystem: "com.openburnbar.core", category: "PensieveVectorDomainCore")
-                    .warning("domain_core.pensieve_vector native_error operation=cloak core=abi3")
+                    .warning("domain_core.pensieve_vector native_error operation=pensieve_vector_cloak core=abi3")
             }
             return legacyValue
         }
@@ -81,7 +81,7 @@ public enum PensieveVectorCloak {
                 let rustValue = try nativeNormalize(vector)
                 let matches = equivalent(legacyValue, rustValue)
                 recordComparison(
-                    operation: "l2_normalize",
+                    operation: "pensieve_l2_normalize",
                     matches: matches,
                     category: matches ? nil : "result_mismatch",
                     legacyMicros: legacyMicros,
@@ -89,18 +89,18 @@ public enum PensieveVectorCloak {
                 )
                 if !matches {
                     PlatformLogger(subsystem: "com.openburnbar.core", category: "PensieveVectorDomainCore")
-                        .warning("domain_core.pensieve_vector shadow_mismatch operation=l2_normalize core=abi3")
+                        .warning("domain_core.pensieve_vector shadow_mismatch operation=pensieve_l2_normalize core=abi3")
                 }
             } catch {
                 recordComparison(
-                    operation: "l2_normalize",
+                    operation: "pensieve_l2_normalize",
                     matches: false,
                     category: "native_error",
                     legacyMicros: legacyMicros,
                     rustMicros: elapsedMicros(since: rustStarted)
                 )
                 PlatformLogger(subsystem: "com.openburnbar.core", category: "PensieveVectorDomainCore")
-                    .warning("domain_core.pensieve_vector native_error operation=l2_normalize core=abi3")
+                    .warning("domain_core.pensieve_vector native_error operation=pensieve_l2_normalize core=abi3")
             }
             return legacyValue
         }
@@ -124,7 +124,7 @@ public enum PensieveVectorCloak {
                 let rustValue = try nativeEmbed(text, isQuery: isQuery)
                 let matches = equivalent(legacyValue, rustValue)
                 recordComparison(
-                    operation: "embed",
+                    operation: "pensieve_deterministic_embed",
                     matches: matches,
                     category: matches ? nil : "result_mismatch",
                     legacyMicros: legacyMicros,
@@ -132,18 +132,18 @@ public enum PensieveVectorCloak {
                 )
                 if !matches {
                     PlatformLogger(subsystem: "com.openburnbar.core", category: "PensieveVectorDomainCore")
-                        .warning("domain_core.pensieve_vector shadow_mismatch operation=embed core=abi3")
+                        .warning("domain_core.pensieve_vector shadow_mismatch operation=pensieve_deterministic_embed core=abi3")
                 }
             } catch {
                 recordComparison(
-                    operation: "embed",
+                    operation: "pensieve_deterministic_embed",
                     matches: false,
                     category: "native_error",
                     legacyMicros: legacyMicros,
                     rustMicros: elapsedMicros(since: rustStarted)
                 )
                 PlatformLogger(subsystem: "com.openburnbar.core", category: "PensieveVectorDomainCore")
-                    .warning("domain_core.pensieve_vector native_error operation=embed core=abi3")
+                    .warning("domain_core.pensieve_vector native_error operation=pensieve_deterministic_embed core=abi3")
             }
             return legacyValue
         }
@@ -181,7 +181,7 @@ public enum PensieveVectorCloak {
                 )
                 let matches = equivalent(legacyValue.vector, rustVector)
                 recordComparison(
-                    operation: "embed_and_cloak",
+                    operation: "pensieve_deterministic_embed_and_cloak",
                     matches: matches,
                     category: matches ? nil : "result_mismatch",
                     legacyMicros: legacyMicros,
@@ -189,18 +189,18 @@ public enum PensieveVectorCloak {
                 )
                 if !matches {
                     PlatformLogger(subsystem: "com.openburnbar.core", category: "PensieveVectorDomainCore")
-                        .warning("domain_core.pensieve_vector shadow_mismatch operation=embed_and_cloak core=abi3")
+                        .warning("domain_core.pensieve_vector shadow_mismatch operation=pensieve_deterministic_embed_and_cloak core=abi3")
                 }
             } catch {
                 recordComparison(
-                    operation: "embed_and_cloak",
+                    operation: "pensieve_deterministic_embed_and_cloak",
                     matches: false,
                     category: "native_error",
                     legacyMicros: legacyMicros,
                     rustMicros: elapsedMicros(since: rustStarted)
                 )
                 PlatformLogger(subsystem: "com.openburnbar.core", category: "PensieveVectorDomainCore")
-                    .warning("domain_core.pensieve_vector native_error operation=embed_and_cloak core=abi3")
+                    .warning("domain_core.pensieve_vector native_error operation=pensieve_deterministic_embed_and_cloak core=abi3")
             }
             return legacyValue
         }

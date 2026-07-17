@@ -18,6 +18,27 @@ function json(path, label) {
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
+const FULL_SHA = /^[0-9a-f]{40}$/u;
+
+function authoritativeCandidateFromReleaseGate(releaseGate, releaseCommit) {
+  if (releaseGate === undefined) return undefined;
+  const candidate = releaseGate?.candidate;
+  const candidateCommit = candidate?.candidateCommit;
+  if (
+    releaseGate?.schemaVersion !== 2 ||
+    releaseGate?.verificationKind !== "domain-core-release-gate" ||
+    typeof candidateCommit !== "string" ||
+    !FULL_SHA.test(candidateCommit) ||
+    releaseGate?.activation?.candidateCommit !== candidateCommit ||
+    releaseGate?.activation?.activationCommit !== releaseCommit ||
+    releaseGate?.rollbackArtifact?.candidate?.candidateCommit !== candidateCommit ||
+    releaseGate?.rollbackArtifact?.activation?.candidateCommit !== candidateCommit ||
+    releaseGate?.rollbackArtifact?.activation?.activationCommit !== releaseCommit
+  ) {
+    throw new Error("authoritative protected release gate is invalid");
+  }
+  return candidate;
+}
 
 function exactTargetSet(targets, expected, label) {
   if (
@@ -41,16 +62,39 @@ export function verifyExistingDeployment({
   live,
   providerCoordinates,
   inventory,
+  releaseGate,
 }) {
+  // The authoritative candidate commit C comes from the release-gate/artifact
+  // manifest, never from the release/activation commit P. When a release gate
+  // is supplied, the existing receipt's candidate must bind to C — not to P —
+  // so a stable-tag replay with C != P can reuse byte-identical evidence only
+  // when both the release commit (P) and candidate commit (C) match. Without a
+  // gate, the only valid replay is the legacy C == P case.
+  const releaseGateCandidate = authoritativeCandidateFromReleaseGate(
+    releaseGate,
+    commit,
+  );
+  const authoritativeCandidate = releaseGateCandidate?.candidateCommit ?? commit;
   if (
     receipt?.schemaVersion !== 2 ||
     receipt?.consumer !== consumer ||
     receipt?.release?.tag !== tag ||
     receipt?.release?.commit !== commit ||
-    receipt?.candidate?.candidateCommit !== commit ||
+    receipt?.candidate?.candidateCommit !== authoritativeCandidate ||
+    (releaseGateCandidate !== undefined &&
+      !isDeepStrictEqual(receipt.candidate, releaseGateCandidate)) ||
     receipt?.deployment?.status !== "healthy" ||
     receipt?.deployment?.deployedArtifact?.sha256 !== sha256(artifactBytes)
   ) {
+    if (
+      releaseGate !== undefined &&
+      receipt?.release?.commit === commit &&
+      receipt?.candidate?.candidateCommit !== authoritativeCandidate
+    ) {
+      throw new Error(
+        "existing receipt candidate does not match the authoritative protected candidate C",
+      );
+    }
     throw new Error(
       "existing evidence does not match the exact stable deployment artifact",
     );
@@ -147,6 +191,7 @@ function args(argv) {
     "--live",
     "--provider-coordinates",
     "--inventory",
+    "--release-gate",
   ]);
   for (let index = 0; index < argv.length; index += 2) {
     if (
@@ -200,6 +245,9 @@ export function run(argv) {
     ),
     inventory: values.get("--inventory")
       ? json(values.get("--inventory"), "protected Functions target inventory")
+      : undefined,
+    releaseGate: values.get("--release-gate")
+      ? json(values.get("--release-gate"), "protected release gate")
       : undefined,
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);

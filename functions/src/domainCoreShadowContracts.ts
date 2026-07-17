@@ -30,7 +30,7 @@ export const DOMAIN_CORE_SHADOW_OPERATION_SLICES: Readonly<Record<string, Readon
   }),
   hermes: operationSlices({
     aad: "aad",
-    "payload-keywrap": "key_wrap_info_v1 key_wrap_info_v2 seal open safety_code hkdf",
+    "payload-keywrap": "key_wrap_info_v1 key_wrap_info_v2 seal open seal_combined open_combined safety_code hkdf",
     "hpke-info": "hpke_v3_info",
     ratchet: "ratchet_aad ratchet_root_kdf ratchet_chain_kdf ratchet_message_kdf ratchet_seal ratchet_open",
   }),

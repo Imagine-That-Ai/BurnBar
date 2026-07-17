@@ -521,11 +521,28 @@ jobs:
             exit 1
           fi
           if ! jq -e --arg asset "$asset" '.assets | any(.name == $asset)' "$RUNNER_TEMP/existing-release.json" >/dev/null; then
-            current_commit="$(curl --fail --silent --show-error \
-              "https://app.burnbar.ai/domain-core-runtime-artifact-manifest.json" \
-              | jq -er '.candidate.candidateCommit')"
-            if [[ "$current_commit" == "$RELEASE_COMMIT" ]]; then
-              echo "::error::The release commit is already live but its immutable Console deployment receipt is missing. Refusing an unverifiable same-tag redeploy."
+            # The release exists but its immutable Console receipt is missing.
+            # The live v2 deployment identity is the only authoritative way to
+            # distinguish a safe first deployment from an unverifiable replay.
+            # An unavailable or malformed identity is therefore a hard failure,
+            # not permission to mutate production.
+            identity="$RUNNER_TEMP/existing-console-deployment-identity.json"
+            if ! curl --fail --silent --show-error \
+                "https://app.burnbar.ai/domain-core-deployment-identity.json" \
+                > "$identity" 2>"$RUNNER_TEMP/existing-identity.err"; then
+              cat "$RUNNER_TEMP/existing-identity.err" >&2
+              echo "::error::Cannot establish the live Console release identity while the immutable deployment receipt is missing. Refusing production mutation."
+              exit 1
+            fi
+            jq -e '
+              if .schemaVersion != 2 or .consumer != "console"
+                or (.commit | type != "string" or (test("^[0-9a-f]{40}$") | not))
+              then error("live Console deployment identity is not a v2 console identity")
+              else . end
+            ' "$identity" >/dev/null
+            live_commit="$(jq -er '.commit' "$identity")"
+            if [[ "$live_commit" == "$RELEASE_COMMIT" ]]; then
+              echo "::error::The release commit is already live (deployment identity commit ${live_commit}) but its immutable Console deployment receipt is missing. Refusing an unverifiable same-tag redeploy."
               exit 1
             fi
             echo "reused=false" >> "$GITHUB_OUTPUT"
@@ -579,7 +596,8 @@ jobs:
             --commit "$RELEASE_COMMIT" \
             --artifact "$ARTIFACT_ROOT/apps/console/out/domain-core-runtime-artifact-manifest.json" \
             --live "$RUNNER_TEMP/existing-console-runtime-manifest.json" \
-            --provider-coordinates "$RUNNER_TEMP/existing-hosting-provider-coordinates.json")"
+            --provider-coordinates "$RUNNER_TEMP/existing-hosting-provider-coordinates.json" \
+            --release-gate "$ARTIFACT_ROOT/domain-core-release-inputs/domain-core-release-gate.json")"
           echo "reused=true" >> "$GITHUB_OUTPUT"
           echo "provider_coordinates=$(jq -c '{schemaVersion: 1, project: "burnbar", sites: .providerCoordinates.sites}' <<< "$result")" >> "$GITHUB_OUTPUT"
 

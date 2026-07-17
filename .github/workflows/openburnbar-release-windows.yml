@@ -917,21 +917,6 @@ jobs:
           echo "Checksums:"
           cat "artifacts/${checksum_file}"
 
-      - name: Package canonical cross-architecture Windows release bundle
-        run: |
-          set -euo pipefail
-          canonical="OpenBurnBar-${VERSION}-windows-release.zip"
-          (
-            cd artifacts
-            7z a -tzip -bd "$canonical" \
-              "OpenBurnBar-${VERSION}-win-x64.zip" \
-              "OpenBurnBar-${VERSION}-win-arm64.zip" \
-              "OpenBurnBar-${VERSION}-x64.msix" \
-              "OpenBurnBar-${VERSION}-arm64.msix" >/dev/null
-            sha256sum "$canonical" >> "checksums-windows-v${VERSION}.txt"
-          )
-          test -s "artifacts/$canonical"
-
       - name: Sign the update feed (pinned Ed25519, independent of Authenticode)
         if: steps.config.outputs.updatekey == 'true'
         env:
@@ -980,6 +965,50 @@ jobs:
             --commit "${GITHUB_SHA}" \
             --created-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --pub-date "$(date -u '+%a, %d %b %Y %H:%M:%S GMT')"
+
+      - name: Build deterministic canonical Windows release bundle
+        if: steps.config.outputs.updatekey == 'true'
+        env:
+          RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          # The update feed, appcast, and latest metadata now exist above. The
+          # deterministic create-windows-domain-core-release-bundle.py bundler is
+          # the SINGLE canonical authority for OpenBurnBar-${VERSION}-windows-release.zip:
+          # it builds the bundle only after the three updater-metadata files are
+          # present and validates that they bind the exact signed app packages.
+          # Stage a clean input directory containing exactly the four app packages
+          # plus the three metadata files plus a four-package-only checksums file,
+          # so the bundler's strict parse_checksums passes (the build artifacts/
+          # checksums file also covers store MSIX + submission JSON, which the
+          # bundler would reject as unexpected members).
+          bundle_input="$RUNNER_TEMP/windows-canonical-bundle-input"
+          rm -rf "$bundle_input"
+          mkdir -p "$bundle_input"
+          cp \
+            "artifacts/OpenBurnBar-${VERSION}-win-x64.zip" \
+            "artifacts/OpenBurnBar-${VERSION}-win-arm64.zip" \
+            "artifacts/OpenBurnBar-${VERSION}-x64.msix" \
+            "artifacts/OpenBurnBar-${VERSION}-arm64.msix" \
+            "artifacts/windows-update-feed-v${VERSION}.json" \
+            "artifacts/appcast-windows.xml" \
+            "artifacts/latest-windows.json" \
+            "$bundle_input/"
+          canonical_checksums="$bundle_input/checksums-windows-v${VERSION}.txt"
+          : > "$canonical_checksums"
+          for file in \
+            "OpenBurnBar-${VERSION}-win-x64.zip" \
+            "OpenBurnBar-${VERSION}-win-arm64.zip" \
+            "OpenBurnBar-${VERSION}-x64.msix" \
+            "OpenBurnBar-${VERSION}-arm64.msix"; do
+            ( cd "$bundle_input" && sha256sum "$file" >> "checksums-windows-v${VERSION}.txt" )
+          done
+          python3 scripts/ci/create-windows-domain-core-release-bundle.py \
+            --source-dir "$bundle_input" \
+            --output "artifacts/OpenBurnBar-${VERSION}-windows-release.zip" \
+            --version "$VERSION" --commit "$RELEASE_COMMIT"
+          ( cd artifacts && sha256sum "OpenBurnBar-${VERSION}-windows-release.zip" >> "checksums-windows-v${VERSION}.txt" )
+          test -s "artifacts/OpenBurnBar-${VERSION}-windows-release.zip"
 
       - name: Upload Windows release artifacts
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
@@ -1304,10 +1333,44 @@ jobs:
         id: bundle
         run: |
           set -euo pipefail
+          # Rebuild deterministically, then byte-compare with the canonical bundle
+          # uploaded by build-sign. The evidence plan must attest the exact shipped
+          # archive, not an independently reconstructed lookalike.
+          # The deterministic Python bundler remains the single canonical authority.
+          # Run it against a clean directory with four app packages, three metadata files, and a
+          # four-package-only checksums file (the downloaded artifacts/
+          # checksums file also covers store MSIX + submission JSON, which the
+          # bundler would reject as unexpected members).
+          bundle_input="$RUNNER_TEMP/windows-canonical-bundle-input"
+          rm -rf "$bundle_input"
+          mkdir -p "$bundle_input"
+          cp \
+            "$RUNNER_TEMP/windows-release-input/OpenBurnBar-${VERSION}-win-x64.zip" \
+            "$RUNNER_TEMP/windows-release-input/OpenBurnBar-${VERSION}-win-arm64.zip" \
+            "$RUNNER_TEMP/windows-release-input/OpenBurnBar-${VERSION}-x64.msix" \
+            "$RUNNER_TEMP/windows-release-input/OpenBurnBar-${VERSION}-arm64.msix" \
+            "$RUNNER_TEMP/windows-release-input/windows-update-feed-v${VERSION}.json" \
+            "$RUNNER_TEMP/windows-release-input/appcast-windows.xml" \
+            "$RUNNER_TEMP/windows-release-input/latest-windows.json" \
+            "$bundle_input/"
+          : > "$bundle_input/checksums-windows-v${VERSION}.txt"
+          for file in \
+            "OpenBurnBar-${VERSION}-win-x64.zip" \
+            "OpenBurnBar-${VERSION}-win-arm64.zip" \
+            "OpenBurnBar-${VERSION}-x64.msix" \
+            "OpenBurnBar-${VERSION}-arm64.msix"; do
+            ( cd "$bundle_input" && sha256sum "$file" >> "checksums-windows-v${VERSION}.txt" )
+          done
           artifact="$RUNNER_TEMP/OpenBurnBar-${VERSION}-windows-release.zip"
           python3 scripts/ci/create-windows-domain-core-release-bundle.py \
-            --source-dir "$RUNNER_TEMP/windows-release-input" \
+            --source-dir "$bundle_input" \
             --output "$artifact" --version "$VERSION" --commit "$RELEASE_COMMIT"
+          shipped="$RUNNER_TEMP/windows-release-input/OpenBurnBar-${VERSION}-windows-release.zip"
+          test -s "$shipped"
+          cmp -s "$artifact" "$shipped" || {
+            echo "::error::Rebuilt canonical Windows bundle differs from the shipped build-sign artifact."
+            exit 1
+          }
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
 
       - name: Create Windows v2 release predicates

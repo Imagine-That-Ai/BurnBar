@@ -7,6 +7,7 @@ import { validateDomainCoreCandidateIdentity } from "./domain-core-candidate-rec
 import { DOMAIN_CORE_PROTECTED_SIGNER_WORKFLOW } from "./domain-core-release-evidence.mjs";
 
 const FULL_SHA = /^[0-9a-f]{40}$/u;
+const DIGEST_RE = /^[0-9a-f]{64}$/u;
 const ALLOWED_EXACT = new Set([
   "config/domain-core-build-profiles.json",
   "config/domain-core-legacy-deletion.json",
@@ -32,11 +33,81 @@ const DOMAIN_ROWS = Object.freeze({
   hermes: ["hermes.relay_crypto", "hermes.ratchet_transforms"],
   pricing: ["pricing.token_cost", "pricing.kimi_historical"],
 });
+const DOMAIN_SCOPES = Object.freeze({
+  quota: "quota",
+  cloudVault: "cloudvault",
+  cloudVaultRewrap: "cloudvault-rewrap",
+  cloudVaultSearch: "cloudvault-search",
+  hermes: "hermes",
+  pricing: "pricing",
+});
 
 function git(repoRoot, args) {
   return execFileSync("git", ["-C", repoRoot, ...args], {
     encoding: "utf8",
   }).trim();
+}
+
+function provenanceError() {
+  return new Error("attestation candidate provenance unverifiable");
+}
+
+function requireExactKeys(value, expected) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw provenanceError();
+  }
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  if (
+    actual.length !== wanted.length ||
+    actual.some((key, index) => key !== wanted[index])
+  ) {
+    throw provenanceError();
+  }
+  return value;
+}
+
+function requirePositiveInteger(value) {
+  if (!Number.isSafeInteger(value) || value < 1) throw provenanceError();
+  return value;
+}
+
+function requireRepoRelativePath(value) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.includes("\u0000") ||
+    value.includes("\\") ||
+    value.startsWith("/") ||
+    value.endsWith("/")
+  ) {
+    throw provenanceError();
+  }
+  const parts = value.split("/");
+  if (parts.some((part) => part === "" || part === "." || part === "..")) {
+    throw provenanceError();
+  }
+  return value;
+}
+
+// Hash the exact committed git-blob bytes. Evidence is release-authoritative
+// only when it is bound to activation commit P; reading the worktree would add
+// a pathname race and a second, mutable authority even in a nominally clean
+// checkout. No decoding or trimming is performed.
+function sha256GitBlob(repoRoot, revision, path) {
+  requireRepoRelativePath(path);
+  let blob;
+  try {
+    blob = execFileSync("git", [
+      "-C",
+      repoRoot,
+      "show",
+      `${revision}:${path}`,
+    ]);
+  } catch {
+    throw provenanceError();
+  }
+  return createHash("sha256").update(blob).digest("hex");
 }
 
 function requireCleanCheckout(repoRoot) {
@@ -45,6 +116,13 @@ function requireCleanCheckout(repoRoot) {
   ) {
     throw new Error("signed domain-core activation checkout must be clean");
   }
+}
+
+function requireExactCheckout(repoRoot, expectedCommit) {
+  if (git(repoRoot, ["rev-parse", "HEAD"]) !== expectedCommit) {
+    throw new Error("signed domain-core activation checkout must match the activation commit");
+  }
+  requireCleanCheckout(repoRoot);
 }
 
 function commit(value, label) {
@@ -221,32 +299,57 @@ export function validateDomainCoreActivation({
 // already used by verifyProtectedPromotionAttestation and the Python gate.
 function verifyProtectedAttestationProvenance({
   repoRoot,
+  activationCommit,
+  authorityScope,
+  authorityGeneration,
   attestation,
   verifyArtifactIdentity,
 }) {
-  const claimedCandidate = attestation?.candidate;
+  requireExactKeys(attestation, [
+    "schemaVersion",
+    "authorityScope",
+    "authorityGeneration",
+    "candidate",
+    "unsignedBundle",
+    "provenance",
+    "status",
+    "generatedAt",
+    "evidenceUri",
+  ]);
   if (
-    !claimedCandidate ||
-    typeof claimedCandidate !== "object" ||
-    Array.isArray(claimedCandidate)
+    attestation.schemaVersion !== 2 ||
+    attestation.authorityScope !== authorityScope ||
+    attestation.authorityGeneration !== authorityGeneration ||
+    attestation.status !== "attested" ||
+    typeof attestation.generatedAt !== "string" ||
+    !attestation.generatedAt.endsWith("Z") ||
+    !Number.isFinite(Date.parse(attestation.generatedAt)) ||
+    typeof attestation.evidenceUri !== "string" ||
+    !/^https:\/\/github\.com\/Imagine-That-Ai\/BurnBar\/attestations\/[1-9][0-9]*$/u.test(
+      attestation.evidenceUri,
+    )
   ) {
-    throw new Error("attestation candidate provenance unverifiable");
+    throw provenanceError();
   }
+
+  const claimedCandidate = requireExactKeys(attestation.candidate, [
+    "candidateCommit",
+    "coreVersion",
+    "abiVersion",
+    "sourceSha256",
+  ]);
   const claimedCommit = claimedCandidate.candidateCommit;
   if (typeof claimedCommit !== "string" || !FULL_SHA.test(claimedCommit)) {
-    throw new Error("attestation candidate provenance unverifiable");
+    throw provenanceError();
   }
-  // Re-derive the protected candidate identity from the git checkout at the
-  // claimed commit. candidateAt reads union-abi-manifest.json from git and runs
-  // it through validateDomainCoreCandidateIdentity, so a forged or
-  // digest-substituted attestation tuple that disagrees with the committed Rust
-  // core closure fails here. A non-existent or unreadable candidate commit is
-  // also fail-closed under the same provenance-unverifiable error.
+
+  // Re-derive candidate truth from the committed union manifest. Attestation
+  // identity claims never become an independent candidate authority.
   let verifiedCandidate;
   try {
     verifiedCandidate = candidateAt(repoRoot, claimedCommit);
   } catch {
-    throw new Error("attestation candidate provenance unverifiable");
+    throw provenanceError();
   }
   if (
     verifiedCandidate.candidateCommit !== claimedCandidate.candidateCommit ||
@@ -254,55 +357,83 @@ function verifyProtectedAttestationProvenance({
     verifiedCandidate.abiVersion !== claimedCandidate.abiVersion ||
     verifiedCandidate.sourceSha256 !== claimedCandidate.sourceSha256
   ) {
-    throw new Error("attestation candidate provenance unverifiable");
+    throw provenanceError();
   }
-  // Bind the provenance to the single protected signer workflow and run
-  // coordinates already established by the promotion-proof pipeline. This
-  // rejects wrong-workflow, wrong-run, and unsigned-or-substituted provenance
-  // without inventing a parallel authority.
-  const provenance = attestation?.provenance;
+
+  const unsignedBundle = requireExactKeys(attestation.unsignedBundle, [
+    "path",
+    "sha256",
+    "sourceRunId",
+    "sourceRunAttempt",
+  ]);
+  const expectedBundlePath =
+    `config/domain-core-promotion-bundles/${authorityScope}/${authorityGeneration}.json`;
   if (
-    !provenance ||
-    typeof provenance !== "object" ||
-    Array.isArray(provenance)
+    requireRepoRelativePath(unsignedBundle.path) !== expectedBundlePath ||
+    typeof unsignedBundle.sha256 !== "string" ||
+    !DIGEST_RE.test(unsignedBundle.sha256)
   ) {
-    throw new Error("attestation candidate provenance unverifiable");
+    throw provenanceError();
+  }
+  requirePositiveInteger(unsignedBundle.sourceRunId);
+  requirePositiveInteger(unsignedBundle.sourceRunAttempt);
+  if (
+    sha256GitBlob(repoRoot, activationCommit, unsignedBundle.path) !==
+    unsignedBundle.sha256
+  ) {
+    throw new Error("attestation unsigned bundle digest mismatch");
+  }
+
+  const provenance = requireExactKeys(attestation.provenance, [
+    "path",
+    "sha256",
+    "signerWorkflow",
+    "signerRunId",
+    "signerRunAttempt",
+    "trustedMainCommit",
+    "policySha256",
+    "evaluatorSha256",
+  ]);
+  const expectedProvenancePath =
+    `config/domain-core-promotion-provenance/${authorityScope}/${authorityGeneration}.json`;
+  if (
+    requireRepoRelativePath(provenance.path) !== expectedProvenancePath ||
+    typeof provenance.sha256 !== "string" ||
+    !DIGEST_RE.test(provenance.sha256)
+  ) {
+    throw provenanceError();
   }
   if (provenance.signerWorkflow !== DOMAIN_CORE_PROTECTED_SIGNER_WORKFLOW) {
     throw new Error("attestation workflow mismatch");
   }
-  if (
-    !Number.isSafeInteger(provenance.signerRunId) ||
-    provenance.signerRunId < 1 ||
-    !Number.isSafeInteger(provenance.signerRunAttempt) ||
-    provenance.signerRunAttempt < 1
-  ) {
+  try {
+    requirePositiveInteger(provenance.signerRunId);
+    requirePositiveInteger(provenance.signerRunAttempt);
+  } catch {
     throw new Error("attestation signer run mismatch");
   }
   if (
     typeof provenance.trustedMainCommit !== "string" ||
     !FULL_SHA.test(provenance.trustedMainCommit)
   ) {
-    throw new Error("attestation candidate provenance unverifiable");
+    throw provenanceError();
   }
-  // The trusted-main evaluator must be a real ancestor of the candidate so the
-  // policy/evaluator digests the provenance binds are anchored to a commit the
-  // candidate descends from.
+
+  // The protected evaluator runs after candidate C exists; C must therefore be
+  // an ancestor of trusted-main M. Reversing this relation would authorize an
+  // unevaluated descendant candidate.
   try {
     execFileSync("git", [
       "-C",
       repoRoot,
       "merge-base",
       "--is-ancestor",
-      provenance.trustedMainCommit,
       verifiedCandidate.candidateCommit,
+      provenance.trustedMainCommit,
     ]);
   } catch {
-    throw new Error("attestation candidate provenance unverifiable");
+    throw provenanceError();
   }
-  // Bind the provenance policy and evaluator digests to the trusted-main
-  // commit's committed bytes, mirroring the Python gate's
-  // file_sha256_at_commit checks. This rejects digest-substituted provenance.
   const policyDigest = sha256GitBlob(
     repoRoot,
     provenance.trustedMainCommit,
@@ -314,18 +445,18 @@ function verifyProtectedAttestationProvenance({
     "scripts/lib/domain-core-deterministic-candidate-bundle.mjs",
   );
   if (
-    typeof provenance.policySha256 !== "string" ||
     provenance.policySha256 !== policyDigest ||
-    typeof provenance.evaluatorSha256 !== "string" ||
     provenance.evaluatorSha256 !== evaluatorDigest
   ) {
     throw new Error("attestation source digest mismatch");
   }
-  // When the full artifact-identity gate is requested (CI default), the
-  // verified candidate's source digest must match the re-derived source
-  // fingerprint produced by the union gate. Offline deterministic tests pass
-  // verifyArtifactIdentity: false to use this same provenance binding without
-  // requiring the python union gate against a synthetic repository.
+  if (
+    sha256GitBlob(repoRoot, activationCommit, provenance.path) !==
+    provenance.sha256
+  ) {
+    throw new Error("attestation provenance digest mismatch");
+  }
+
   if (verifyArtifactIdentity) {
     const unionGatePath = join(
       repoRoot,
@@ -350,13 +481,150 @@ function verifyProtectedAttestationProvenance({
   return { verifiedCandidate, provenance };
 }
 
-function sha256GitBlob(repoRoot, revision, path) {
-  try {
-    const blob = git(repoRoot, ["show", `${revision}:${path}`]);
-    return createHash("sha256").update(blob).digest("hex");
-  } catch {
-    throw new Error("attestation candidate provenance unverifiable");
+
+function verifySupersededAuthority({
+  repoRoot,
+  activationCommit,
+  rowId,
+  authorityGeneration,
+  approvedAt,
+  supersedes,
+}) {
+  if (authorityGeneration === 1) {
+    if (supersedes !== null) throw provenanceError();
+    return;
   }
+  const link = requireExactKeys(supersedes, ["transition", "path", "sha256"]);
+  const fileName = {
+    rollback: "rollback.json",
+    stable_release: "stable_release.json",
+  }[link.transition];
+  if (fileName === undefined) throw provenanceError();
+  const expectedPath =
+    `config/domain-core-legacy-deletion-receipts/${rowId}/${authorityGeneration - 1}/${fileName}`;
+  if (
+    requireRepoRelativePath(link.path) !== expectedPath ||
+    typeof link.sha256 !== "string" ||
+    !DIGEST_RE.test(link.sha256) ||
+    sha256GitBlob(repoRoot, activationCommit, link.path) !== link.sha256
+  ) {
+    throw new Error("promotion supersession receipt mismatch");
+  }
+  const previous = gitJson(
+    repoRoot,
+    activationCommit,
+    link.path,
+    `${rowId} superseded authority receipt`,
+  );
+  const previousApprovedAt = Date.parse(previous?.approvedAt);
+  if (
+    previous?.schemaVersion !== 2 ||
+    previous?.rowId !== rowId ||
+    previous?.authorityGeneration !== authorityGeneration - 1 ||
+    previous?.transition !== link.transition ||
+    previous?.status !== "active" ||
+    !Number.isFinite(previousApprovedAt) ||
+    previousApprovedAt >= Date.parse(approvedAt)
+  ) {
+    throw new Error("promotion supersession does not identify the previous active authority");
+  }
+  if (link.transition === "rollback") {
+    const activatedAt = Date.parse(previous?.rollback?.activatedAt);
+    if (!Number.isFinite(activatedAt) || activatedAt > previousApprovedAt) {
+      throw new Error("previous rollback activation cannot follow rollback approval");
+    }
+  }
+}
+function verifyPromotionReceipt({
+  repoRoot,
+  activationCommit,
+  rowId,
+  authorityScope,
+  authorityGeneration,
+  pointer,
+}) {
+  const expectedReceiptPath =
+    `config/domain-core-legacy-deletion-receipts/${rowId}/${authorityGeneration}/promotion.json`;
+  if (requireRepoRelativePath(pointer) !== expectedReceiptPath) {
+    throw new Error(`${rowId}: promotion receipt path mismatch`);
+  }
+  const receipt = gitJson(
+    repoRoot,
+    activationCommit,
+    pointer,
+    `${rowId} promotion receipt`,
+  );
+  requireExactKeys(receipt, [
+    "schemaVersion",
+    "rowId",
+    "authorityGeneration",
+    "transition",
+    "status",
+    "evidence",
+    "approvedBy",
+    "approvedAt",
+    "commit",
+    "promotionAttestation",
+  ]);
+  if (
+    receipt.schemaVersion !== 2 ||
+    receipt.rowId !== rowId ||
+    receipt.authorityGeneration !== authorityGeneration ||
+    receipt.transition !== "promotion" ||
+    receipt.status !== "active" ||
+    !Array.isArray(receipt.evidence) ||
+    receipt.evidence.length === 0 ||
+    receipt.evidence.some(
+      (value) =>
+        typeof value !== "string" ||
+        !/^https:\/\/(?![^/?#]*@)[^/?#]+(?:\/[^?#]*)?$/u.test(value),
+    ) ||
+    new Set(receipt.evidence).size !== receipt.evidence.length ||
+    typeof receipt.approvedBy !== "string" ||
+    !/^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u.test(
+      receipt.approvedBy,
+    ) ||
+    typeof receipt.approvedAt !== "string" ||
+    !receipt.approvedAt.endsWith("Z") ||
+    !Number.isFinite(Date.parse(receipt.approvedAt)) ||
+    typeof receipt.commit !== "string" ||
+    !FULL_SHA.test(receipt.commit)
+  ) {
+    throw provenanceError();
+  }
+  const attestationPointer = requireExactKeys(receipt.promotionAttestation, [
+    "path",
+    "sha256",
+    "supersedes",
+  ]);
+  const expectedAttestationPath =
+    `config/domain-core-promotion-attestations/${authorityScope}/${authorityGeneration}.json`;
+  if (
+    requireRepoRelativePath(attestationPointer.path) !==
+      expectedAttestationPath ||
+    typeof attestationPointer.sha256 !== "string" ||
+    !DIGEST_RE.test(attestationPointer.sha256) ||
+    (attestationPointer.supersedes !== null &&
+      (typeof attestationPointer.supersedes !== "object" ||
+        Array.isArray(attestationPointer.supersedes)))
+  ) {
+    throw provenanceError();
+  }
+  verifySupersededAuthority({
+    repoRoot,
+    activationCommit,
+    rowId,
+    authorityGeneration,
+    approvedAt: receipt.approvedAt,
+    supersedes: attestationPointer.supersedes,
+  });
+  if (
+    sha256GitBlob(repoRoot, activationCommit, attestationPointer.path) !==
+    attestationPointer.sha256
+  ) {
+    throw new Error("promotion attestation digest mismatch");
+  }
+  return { receipt, attestationPath: attestationPointer.path };
 }
 
 export function resolveActiveDomainCoreActivation({
@@ -365,18 +633,18 @@ export function resolveActiveDomainCoreActivation({
   verifyArtifactIdentity = true,
 }) {
   const releaseCommit = commit(activationCommit, "activation commit");
-  requireCleanCheckout(repoRoot);
-  const profiles = JSON.parse(
-    readFileSync(
-      join(repoRoot, "config/domain-core-build-profiles.json"),
-      "utf8",
-    ),
+  requireExactCheckout(repoRoot, releaseCommit);
+  const profiles = gitJson(
+    repoRoot,
+    releaseCommit,
+    "config/domain-core-build-profiles.json",
+    "domain-core build profiles",
   );
-  const ledger = JSON.parse(
-    readFileSync(
-      join(repoRoot, "config/domain-core-legacy-deletion.json"),
-      "utf8",
-    ),
+  const ledger = gitJson(
+    repoRoot,
+    releaseCommit,
+    "config/domain-core-legacy-deletion.json",
+    "domain-core authority ledger",
   );
   const rows = new Map(ledger.rows.map((row) => [row.id, row]));
   const candidates = new Set();
@@ -386,28 +654,44 @@ export function resolveActiveDomainCoreActivation({
       continue;
     for (const rowId of rowIds) {
       const row = rows.get(rowId);
+      const authorityGeneration = row?.authorityGeneration;
       const pointer = row?.receipts?.promotion;
-      if (typeof pointer !== "string") {
+      if (
+        !Number.isSafeInteger(authorityGeneration) ||
+        authorityGeneration < 1 ||
+        typeof pointer !== "string"
+      ) {
         throw new Error(
           `${domain}: Rust activation is missing promotion receipt for ${rowId}`,
         );
       }
-      const receipt = JSON.parse(readFileSync(join(repoRoot, pointer), "utf8"));
-      const attestationPath = receipt.promotionAttestation?.path;
-      if (typeof attestationPath !== "string" || attestationPath.length === 0) {
-        throw new Error(
-          `${domain}: Rust activation promotion receipt must reference an attestation`,
-        );
-      }
-      const attestation = JSON.parse(
-        readFileSync(join(repoRoot, attestationPath), "utf8"),
+      const authorityScope = DOMAIN_SCOPES[domain];
+      const { receipt, attestationPath } = verifyPromotionReceipt({
+        repoRoot,
+        activationCommit: releaseCommit,
+        rowId,
+        authorityScope,
+        authorityGeneration,
+        pointer,
+      });
+      const attestation = gitJson(
+        repoRoot,
+        releaseCommit,
+        attestationPath,
+        `${rowId} promotion attestation`,
       );
       const { verifiedCandidate, provenance } =
         verifyProtectedAttestationProvenance({
           repoRoot,
+          activationCommit: releaseCommit,
+          authorityScope,
+          authorityGeneration,
           attestation,
           verifyArtifactIdentity,
         });
+      if (receipt.commit !== verifiedCandidate.candidateCommit) {
+        throw new Error(`${rowId}: promotion receipt candidate mismatch`);
+      }
       candidates.add(verifiedCandidate.candidateCommit);
       if (!domains.some((item) => item.domain === domain)) {
         domains.push({

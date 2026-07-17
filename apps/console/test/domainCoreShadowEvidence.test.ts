@@ -548,32 +548,112 @@ describe("console domain-core immutable shadow evidence", () => {
     );
     expect(sampleKeys()).toHaveLength(0);
   });
+});
 
-  it("rejects pensieve_l2_normalize as an Apple-only operation not in the Console allowlist", () => {
-    recordConsoleCloudVaultShadowComparison(
-      comparison({
-        slice: "pensieve-vectors",
-        operation: "pensieve_l2_normalize",
-      }),
+describe("console pensieve-vectors canonical operation admission", () => {
+  beforeEach(() => {
+    callable.mockReset();
+    vi.stubEnv("NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY", "signed");
+    vi.stubEnv("NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE", "internal");
+    vi.stubEnv("NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION", "internal");
+    vi.stubEnv(
+      "NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL",
+      "internal",
     );
-    expect(sampleKeys()).toEqual([]);
-    expect(pendingConsoleShadowEvidenceForTests()).toEqual([]);
+    vi.stubEnv("NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_EVIDENCE_ENABLED", "1");
+    vi.stubEnv(
+      "NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT",
+      CANDIDATE_COMMIT,
+    );
+    vi.stubEnv("NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_EXPECTED_VERSION", "0.1.0");
+    vi.stubEnv("NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_EXPECTED_ABI_VERSION", "3");
+    vi.stubEnv(
+      "NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_EXPECTED_SOURCE_SHA256",
+      SOURCE_SHA256,
+    );
+    for (const domain of domains) {
+      vi.stubEnv(
+        `NEXT_PUBLIC_OPENBURNBAR_DOMAIN_CORE_${domain}_MODE`,
+        "shadow",
+      );
+    }
+    callable.mockResolvedValue({ data: { accepted: 1, duplicates: 0 } });
   });
 
-  it("accepts pensieve_deterministic_embed_and_cloak as a schema-allowed Console pensieve-vectors operation", () => {
-    recordConsoleCloudVaultShadowComparison(
-      comparison({
-        slice: "pensieve-vectors",
-        operation: "pensieve_deterministic_embed_and_cloak",
-      }),
-    );
-    expect(sampleKeys()).toHaveLength(1);
-    const sample = storedSample(sampleKeys()[0]!);
-    expect(sample).toMatchObject({
-      domain: "cloudvault",
-      slice: "pensieve-vectors",
-      operation: "pensieve_deterministic_embed_and_cloak",
-      consumer: "console",
-    });
+  afterEach(() => {
+    resetConsoleShadowEvidenceForTests();
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
+
+  const canonicalPensieveOps = [
+    "pensieve_l2_normalize",
+    "pensieve_vector_cloak",
+    "pensieve_deterministic_embed",
+    "pensieve_deterministic_embed_and_cloak",
+  ] as const;
+
+  // Each canonical pensieve operation, paired with the pensieve-vectors slice,
+  // must be admitted into immutable V3 storage. The pre-fix bug: Console's
+  // pensieve-vectors admission map omitted pensieve_l2_normalize, so Apple's
+  // canonical l2-normalize comparison records were silently dropped here.
+  it.each(canonicalPensieveOps)(
+    "admits %s into the pensieve-vectors slice and stores a V3 sample",
+    (operation) => {
+      recordConsoleCloudVaultShadowComparison(
+        comparison({
+          slice: "pensieve-vectors",
+          operation,
+        }),
+      );
+
+      const keys = sampleKeys();
+      expect(keys).toHaveLength(1);
+      expect(storedSample(keys[0]!)).toMatchObject({
+        domain: "cloudvault",
+        slice: "pensieve-vectors",
+        consumer: "console",
+        operation,
+        outcome: "match",
+        mismatchCategory: null,
+      });
+    },
+  );
+
+  // Short aliases (the legacy Apple shadow names) must never be admitted to
+  // pensieve-vectors. They are not canonical IDs and Console has no compat shim.
+  it.each(["cloak", "l2_normalize", "embed", "embed_and_cloak"])(
+    "rejects the short alias %s for the pensieve-vectors slice",
+    (operation) => {
+      recordConsoleCloudVaultShadowComparison(
+        comparison({
+          slice: "pensieve-vectors",
+          operation,
+        }),
+      );
+
+      expect(sampleKeys()).toEqual([]);
+      expect(pendingConsoleShadowEvidenceForTests()).toHaveLength(0);
+    },
+  );
+
+  // A canonical operation routed to the wrong slice is a misrouted record and
+  // must be rejected — the operation<->slice binding is the contract.
+  it.each(canonicalPensieveOps)(
+    "rejects %s when routed to a mismatched slice",
+    (operation) => {
+      recordConsoleCloudVaultShadowComparison(
+        comparison({
+          slice: "aes",
+          operation,
+        }),
+      );
+
+      expect(sampleKeys()).toEqual([]);
+      expect(pendingConsoleShadowEvidenceForTests()).toHaveLength(0);
+    },
+  );
 });
