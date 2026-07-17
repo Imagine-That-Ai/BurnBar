@@ -19,11 +19,13 @@ release run `29557726093`.
 ```powershell
 $ErrorActionPreference = 'Stop'
 $Root = 'C:\BurnBar-cert\windows-v1.0.35'
-$Repo = Join-Path $Root 'repo'
+$Repo = Join-Path $Root 'candidate'
+$Harness = Join-Path $Root 'harness'
 $Release = Join-Path $Root 'release'
 $Evidence = Join-Path $Root ('physical-x64-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $Attestation = Join-Path $Root 'hardware-attestation-x64.json'
 $ExpectedCommit = '2cfa9db885dafef7f1f451a9e05a8ee775351d44'
+$ExpectedHarnessCommit = '19385bf798a19f836dcb41d8d9decb5f6a228997'
 $ExpectedMsixHash = '1d68c24f044a0247d49a5f2e4030a4d46844ce49c34016d3605f129bcd9a43e1'
 $ExpectedSigner = 'CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US'
 $InstalledByRun = $false
@@ -38,6 +40,7 @@ New-Item -ItemType Directory -Path $Root, $Release | Out-Null
 
 gh auth status
 gh repo clone Imagine-That-Ai/BurnBar $Repo
+gh repo clone Imagine-That-Ai/BurnBar $Harness
 git -C $Repo fetch origin tag windows-v1.0.35 --force
 git -C $Repo checkout --detach windows-v1.0.35
 if ((git -C $Repo rev-parse HEAD) -ne $ExpectedCommit) {
@@ -45,6 +48,13 @@ if ((git -C $Repo rev-parse HEAD) -ne $ExpectedCommit) {
 }
 if (git -C $Repo status --porcelain) {
     throw 'Candidate checkout is dirty.'
+}
+git -C $Harness checkout --detach $ExpectedHarnessCommit
+if ((git -C $Harness rev-parse HEAD) -ne $ExpectedHarnessCommit) {
+    throw 'Certification harness commit mismatch.'
+}
+if (git -C $Harness status --porcelain) {
+    throw 'Certification harness checkout is dirty.'
 }
 
 gh run download 29557726093 `
@@ -99,15 +109,17 @@ $AppProcess | Stop-Process
 ## Prescribed baseline
 
 Generate hardware identity from the machine and run the full baseline without
-skipping automated or UI automation tests:
+skipping automated or UI automation tests. Product builds and artifact binding
+use the immutable candidate checkout. Collectors and validators run from the
+separately pinned certification harness checkout:
 
 ```powershell
-pwsh (Join-Path $Repo 'scripts\windows-port\new-physical-hardware-attestation.ps1') `
+pwsh (Join-Path $Harness 'scripts\windows-port\new-physical-hardware-attestation.ps1') `
     -Operator Alberto `
     -ExpectedArchitecture x64 `
     -OutputPath $Attestation
 
-pwsh (Join-Path $Repo 'scripts\windows-port\run-physical-release-certification.ps1') `
+pwsh (Join-Path $Harness 'scripts\windows-port\run-physical-release-certification.ps1') `
     -RepoRoot $Repo `
     -OutputDir $Evidence `
     -Platform x64 `
@@ -115,9 +127,11 @@ pwsh (Join-Path $Repo 'scripts\windows-port\run-physical-release-certification.p
     -HardwareAttestationPath $Attestation `
     -PhysicalHardware
 
-node (Join-Path $Repo 'scripts\windows-port\validate-release-certification-evidence.mjs') `
+node (Join-Path $Harness 'scripts\windows-port\validate-release-certification-evidence.mjs') `
     $Evidence `
-    --write-sums
+    --write-sums `
+    --expected-commit $ExpectedCommit `
+    --expected-harness-commit $ExpectedHarnessCommit
 ```
 
 The baseline may emit `BLOCKED` receipts for protocols requiring live manual or
@@ -146,10 +160,55 @@ Perform every available protocol against the installed exact signed artifact:
    activation, single instance, valid/tampered/downgrade/offline feeds,
    Store/direct-download coexistence, and winget eligibility.
 
-Create a supplemental PASS receipt only when every required observation has
-fresh raw evidence and hashes. Follow
-`openburnbar.windows.release-certification-receipt.v1`. Keep unavailable gates
-`BLOCKED` with a named prerequisite and recovery action.
+Do not hand-author PASS receipts. Initialize the canonical checklist for each
+gate that is actually authorized and available:
+
+```powershell
+$Supplemental = Join-Path $Root 'supplemental'
+$ProtocolWork = Join-Path $Root 'protocol-work'
+$ReceiptTool = Join-Path $Harness 'scripts\windows-port\new-release-certification-supplemental-receipt.ps1'
+New-Item -ItemType Directory -Force -Path $Supplemental, $ProtocolWork | Out-Null
+
+$AvailableGates = @(
+    'physical-performance-x64',
+    'accessibility-display'
+)
+# Add staging-cloud, media-computer-use-safety, or store-update-lifecycle only
+# after its explicit authorization and prerequisites exist. Never add the
+# physical ARM64 gate on this x64 device.
+foreach ($Gate in $AvailableGates) {
+    pwsh $ReceiptTool `
+        -RepoRoot $Repo `
+        -Gate $Gate `
+        -ResultsPath (Join-Path $ProtocolWork ($Gate + '.json')) `
+        -Initialize
+}
+```
+
+Each generated result file enumerates every required assertion as `NOT_RUN`.
+During the protocol, set the true UTC start/end times, record at least one
+command or manual step, change an assertion to `PASS` only after observing it,
+and list one or more raw evidence files relative to the result file's directory.
+Incomplete, failed, unknown, duplicate, unbound, unhashed, path-escaping, stale,
+wrong-device, wrong-architecture, virtualized, or secret-bearing evidence fails
+closed.
+
+After every assertion for a gate has genuine raw evidence, finalize it against
+the validator-clean physical baseline:
+
+```powershell
+foreach ($Gate in $AvailableGates) {
+    pwsh $ReceiptTool `
+        -RepoRoot $Repo `
+        -Gate $Gate `
+        -ResultsPath (Join-Path $ProtocolWork ($Gate + '.json')) `
+        -BaselineBundle $Evidence `
+        -OutputDirectory $Supplemental
+}
+```
+
+Keep unavailable gates `BLOCKED` with their named prerequisite and recovery
+action. A template, partial result, or manual JSON file is not PASS evidence.
 
 ## Final bundle
 
@@ -157,9 +216,8 @@ Rerun the prescribed runner with the supplemental directory, validate it, and
 create a content-addressed ZIP without deleting the evidence directory:
 
 ```powershell
-$Supplemental = Join-Path $Root 'supplemental'
 $FinalEvidence = Join-Path $Root ('physical-x64-final-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-pwsh (Join-Path $Repo 'scripts\windows-port\run-physical-release-certification.ps1') `
+pwsh (Join-Path $Harness 'scripts\windows-port\run-physical-release-certification.ps1') `
     -RepoRoot $Repo `
     -OutputDir $FinalEvidence `
     -Platform x64 `
@@ -168,9 +226,11 @@ pwsh (Join-Path $Repo 'scripts\windows-port\run-physical-release-certification.p
     -SupplementalReceiptDirectory $Supplemental `
     -PhysicalHardware
 
-node (Join-Path $Repo 'scripts\windows-port\validate-release-certification-evidence.mjs') `
+node (Join-Path $Harness 'scripts\windows-port\validate-release-certification-evidence.mjs') `
     $FinalEvidence `
-    --write-sums
+    --write-sums `
+    --expected-commit $ExpectedCommit `
+    --expected-harness-commit $ExpectedHarnessCommit
 
 $Zip = Join-Path $Root 'windows-v1.0.35-physical-x64-evidence.zip'
 Compress-Archive -Path (Join-Path $FinalEvidence '*') -DestinationPath $Zip -Force
@@ -180,6 +240,7 @@ $Certification = Get-Content -Raw (Join-Path $FinalEvidence 'certification-manif
     evidenceZip = $Zip
     evidenceZipSha256 = $ZipHash
     commit = $Certification.source.commitSha
+    harnessCommit = $Certification.source.harness.commitSha
     artifactSha256 = $Certification.artifact.sha256
     verdict = $Certification.overallVerdict
     gates = $Certification.gates
