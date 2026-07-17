@@ -41,6 +41,8 @@ Store lifecycle certification.
 The machine-readable record is
 [`exact-signed-artifacts-2cfa9db885.json`](exact-signed-artifacts-2cfa9db885.json).
 The physical Intel handoff is [`PHYSICAL_X64_RUNBOOK.md`](PHYSICAL_X64_RUNBOOK.md).
+The non-public Partner Center preparation is
+[`STORE_PRIVATE_SUBMISSION_RUNBOOK.md`](STORE_PRIVATE_SUBMISSION_RUNBOOK.md).
 
 ## Certification boundary
 

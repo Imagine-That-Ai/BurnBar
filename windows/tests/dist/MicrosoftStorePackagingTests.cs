@@ -136,4 +136,72 @@ public sealed class MicrosoftStorePackagingTests
         Assert.Contains("Microsoft Store manages signing, installation, and automatic updates", updateService, StringComparison.Ordinal);
         Assert.Contains("Updater disabled: packaged distribution metadata is malformed.", updateService, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void V1035PrivateSubmissionRunbookIsBoundToTheExactStoreCandidate()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string evidenceRoot = Path.Combine(
+            root,
+            "docs",
+            "windows-port",
+            "evidence",
+            "windows-v1.0.35-release");
+        string runbook = File.ReadAllText(Path.Combine(
+            evidenceRoot,
+            "STORE_PRIVATE_SUBMISSION_RUNBOOK.md"));
+        using JsonDocument packet = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            evidenceRoot,
+            "exact-signed-artifacts-2cfa9db885.json")));
+
+        JsonElement source = packet.RootElement.GetProperty("source");
+        Assert.Equal("1.0.35", source.GetProperty("version").GetString());
+        Assert.Equal(
+            "2cfa9db885dafef7f1f451a9e05a8ee775351d44",
+            source.GetProperty("mergeCommitSha").GetString());
+        Assert.Contains(source.GetProperty("mergeCommitSha").GetString()!, runbook, StringComparison.Ordinal);
+        Assert.Contains(ProductId, runbook, StringComparison.Ordinal);
+        Assert.Contains(PackageName, runbook, StringComparison.Ordinal);
+        Assert.Contains(Publisher, runbook, StringComparison.Ordinal);
+        Assert.Contains(PublisherDisplayName, runbook, StringComparison.Ordinal);
+        Assert.Contains(PackageFamilyName, runbook, StringComparison.Ordinal);
+        Assert.Contains("**Private audience**", runbook, StringComparison.Ordinal);
+        Assert.Contains("https://burnbar.ai/legal/privacy-policy", runbook, StringComparison.Ordinal);
+        Assert.Contains("https://burnbar.ai/support", runbook, StringComparison.Ordinal);
+
+        JsonElement distributionObjects = packet.RootElement.GetProperty("distributionObjects");
+        int storePackageCount = 0;
+        foreach (JsonElement item in distributionObjects.EnumerateArray())
+        {
+            if (item.GetProperty("channel").GetString() != "microsoft-store")
+            {
+                continue;
+            }
+
+            storePackageCount += 1;
+            Assert.Contains(item.GetProperty("fileName").GetString()!, runbook, StringComparison.Ordinal);
+            Assert.Contains(item.GetProperty("sha256").GetString()!, runbook, StringComparison.Ordinal);
+            Assert.Contains(item.GetProperty("sizeBytes").GetInt64().ToString(), runbook, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(2, storePackageCount);
+
+        string privacyPolicy = File.ReadAllText(Path.Combine(
+            root,
+            "website",
+            "src",
+            "pages",
+            "legal",
+            "privacy-policy.astro"));
+        string support = File.ReadAllText(Path.Combine(
+            root,
+            "website",
+            "src",
+            "pages",
+            "support.astro"));
+        Assert.Contains("DPAPI-protected Windows", privacyPolicy, StringComparison.Ordinal);
+        Assert.Contains("Microsoft Store", privacyPolicy, StringComparison.Ordinal);
+        Assert.Contains("Windows", support, StringComparison.Ordinal);
+        Assert.Contains("Microsoft Store", support, StringComparison.Ordinal);
+    }
 }
