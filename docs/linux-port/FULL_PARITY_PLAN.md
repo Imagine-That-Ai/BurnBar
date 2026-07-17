@@ -25,7 +25,7 @@ work is the macOS-level **surface depth**, **installed runtime evidence**,
 
 ### Current continuation checkpoint — 2026-07-17
 
-The integration branch is at `0a6c9dd85` with two recent source slices plus
+The integration branch is at `09e6050d9` with two recent source slices plus
 nightly evidence hardening: the real
 P-39 parser differential producer (`dd7c588db`, focused suite **45/45**) and
 provider-catalog enforcement in first-run onboarding (`29fa77791`). Candidate run
@@ -34,8 +34,15 @@ its then-current head, but the branch has advanced and needs a fresh exact-head
 candidate. Nightly run `29546158468` passed the matched workload, Wayland portal,
 Arch/wlroots, and Fedora/KDE jobs; Ubuntu GNOME/X11 shell smoke failed after its
 Linux Swift suites passed (**325/325**). Hidden nightly evidence was previously
-lost and is now retained by the workflow; the shell runner is also being changed
-to emit a structured failure manifest before the job is rerun.
+lost and is now retained by the workflow; the shell runner emits a structured
+failure manifest before the job is rerun. Run `29587742846` then confirmed the
+X11 failure was inside
+`ComputerUseServiceRunBindingTests/testExpiredSessionReleasesRunBindingBeforeRestart`,
+before shell smoke, and that no Swift artifact survived because the container
+did not have a host evidence mount. Commit `09e6050d9` mounts the host evidence
+directory into both PR and nightly Swift containers, routes results to
+`/evidence/linux-swift-tests`, and regression-tests the workflow wiring. Fresh
+nightly run `29607854309` is the first exact-head validation of that correction.
 
 The honest status is therefore **0/40 product** and **0/7 environment** certified.
 A non-certifying engineering maturity estimate is approximately **68%**. The

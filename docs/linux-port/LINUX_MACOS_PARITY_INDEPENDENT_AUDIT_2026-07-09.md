@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` at source checkpoint `0a6c9dd85`; this audit record is subsequently carried by documentation-only commits. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, and structured shell failure diagnostics are linked below. Candidate run `29546157464` passed both release architectures and installed-package runtime checks at its then-current head; the candidate-bound UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
+| Remediation evidence | `codex/linux-parity-integration-final` at source checkpoint `09e6050d9`; this audit record is subsequently carried by documentation-only commits. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, structured shell failure diagnostics, and host-mounted Swift evidence are linked below. Candidate run `29546157464` passed both release architectures and installed-package runtime checks at its then-current head; the candidate-bound UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -50,6 +50,22 @@ percentage. The active remediation stack now contains these reviewable slices:
   Linux environments, installed Computer Use/Mercury/SmartHub/IME/keyring/
   accessibility/performance receipts, update/rollback proof, and promotion of
   all 40 requirement receipts.
+
+### Latest CI correction - 2026-07-17
+
+- **Nightly run `29587742846`:** macOS and Linux matched-performance jobs and
+  the three blocked-environment records passed. Ubuntu GNOME/X11 executed all
+  **325** Linux Swift tests but failed
+  `ComputerUseServiceRunBindingTests/testExpiredSessionReleasesRunBindingBeforeRestart`.
+  The failure happened before shell smoke, and no diagnostic artifact was
+  uploaded because the Swift runner wrote its results inside the Docker
+  container rather than the host evidence tree.
+- **Correction:** `09e6050d9` mounts the host evidence directory into both PR and
+  nightly Swift-test containers, routes results to
+  `/evidence/linux-swift-tests`, uploads hidden evidence, and adds mutation tests
+  so the wiring cannot regress. Fresh nightly run `29607854309` is exercising
+  this correction; the failing XCTest remains open until its retained log is
+  reviewed and the test passes on the Linux runner.
 
 ### Latest verification delta — 2026-07-14
 

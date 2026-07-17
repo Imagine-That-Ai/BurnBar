@@ -22,15 +22,21 @@ Linux is not at full macOS parity.
 
 The authoritative ledger is **0/40 product requirements** and **0/7 environment
 receipts**; `productParityClaim=false`. The integration branch currently ends at
-`0a6c9dd85`. Recent source work includes the real P-39 parser differential
+`09e6050d9`. Recent source work includes the real P-39 parser differential
 producer (`dd7c588db`, **45/45** focused checks) and provider-catalog enforcement
 for first-run onboarding (`29fa77791`). Candidate run `29546157464` passed both
 architectures and the installed P-40 RPC proof at `46425c540`, but it is stale
 after these source commits and cannot certify the current head. Nightly run
 `29546158468` passed matched performance, Wayland portal, Arch/wlroots, and
 Fedora/KDE jobs; Ubuntu GNOME/X11 shell smoke failed while its **325/325** Linux
-Swift tests passed. The hidden evidence upload gap is fixed and the runner is
-being hardened to emit a structured failure manifest before rerun.
+Swift tests passed. Run `29587742846` retained the failure diagnosis: the
+failing XCTest was
+`ComputerUseServiceRunBindingTests/testExpiredSessionReleasesRunBindingBeforeRestart`,
+and the Swift result was not uploaded because the Docker container lacked a
+host evidence mount. Commit `09e6050d9` fixes the PR/nightly container mounts,
+routes output through `/evidence/linux-swift-tests`, and adds workflow mutation
+tests. Fresh nightly run `29607854309` validates that correction at the exact
+head.
 
 For planning purposes only, source maturity is approximately **68%**. This is
 not a release percentage. The remaining dependency order is: diagnose and close
