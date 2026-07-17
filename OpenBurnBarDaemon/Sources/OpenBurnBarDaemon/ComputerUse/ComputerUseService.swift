@@ -180,6 +180,7 @@ public actor ComputerUseService {
         requiresManagedBrowserRunAuthority: Bool? = nil,
         approvalPublisher: ApprovalPublisher? = nil,
         sessionEndedObserver: SessionEndedObserver? = nil,
+        systemCapabilityProvider: (@Sendable () async -> ComputerUseSystemCapabilitySnapshot)? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
     ) {
         let approvalBridge = ComputerUseApprovalBridge()
