@@ -48,13 +48,7 @@ extension OpenBurnBarApp {
         arguments: [String] = ProcessInfo.processInfo.arguments,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         executableURL: URL? = Bundle.main.executableURL,
-        write: (String, URL, URL) throws -> Void = { candidate, report, exec in
-            _ = try DomainCoreReleaseIdentityReporter.write(
-                candidateCommit: candidate,
-                reportURL: report,
-                executableURL: exec
-            )
-        }
+        write: (String, URL, URL) throws -> Void = { candidate, report, exec in _ = try DomainCoreReleaseIdentityReporter.write(candidateCommit: candidate, reportURL: report, executableURL: exec) }
     ) -> DomainCoreReleaseIdentityOutcome {
         guard arguments.contains(DomainCoreReleaseIdentityReporter.argument) else {
             return .notRequested
