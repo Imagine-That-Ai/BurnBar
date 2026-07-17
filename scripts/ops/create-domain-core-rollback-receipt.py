@@ -68,10 +68,7 @@ def completion_record(
             f"{consumer}: rollback completion inputs must use {expected_artifact} and {expected_provenance}"
         )
     public_profile = GATE.require_object(receipt.get("publicProfile"), f"{consumer} rollback publicProfile")
-    if (
-        public_profile.get("profile") != "public-production-rollback"
-        or public_profile.get("mode") != "legacy"
-    ):
+    if public_profile.get("profile") != "public-production-rollback" or public_profile.get("mode") != "legacy":
         raise GATE.GateError(f"{consumer}: completion artifact is not an executed legacy rollback")
     release = GATE.require_object(receipt.get("release"), f"{consumer} rollback release")
     deployment = receipt.get("deployment")
@@ -200,8 +197,7 @@ def create_receipt(
     if not completions:
         raise GATE.GateError("rollback completion evidence is required; a plan alone cannot activate rollback")
     activated_at = max(
-        GATE.parse_rfc3339_utc(item["completedAt"], f"{item['consumer']} completedAt")
-        for item in completions
+        GATE.parse_rfc3339_utc(item["completedAt"], f"{item['consumer']} completedAt") for item in completions
     )
     activated_at_text = activated_at.isoformat().replace("+00:00", "Z")
     review_class = "security_crypto" if row_id in GATE.SECURITY_REVIEW_ROWS else "domain_owner"
@@ -315,13 +311,7 @@ def main(argv: list[str] | None = None) -> int:
             approved_by=args.approved_by,
             approved_at=args.approved_at,
         )
-        output = (
-            repo_root
-            / GATE.RECEIPT_ROOT
-            / args.row_id
-            / str(args.authority_generation)
-            / "rollback.json"
-        )
+        output = repo_root / GATE.RECEIPT_ROOT / args.row_id / str(args.authority_generation) / "rollback.json"
         WRITER.append_only(output, WRITER.serialized(receipt))
     except (GATE.GateError, OSError, KeyError, TypeError, ValueError) as error:
         print(f"ERROR: cannot create rollback receipt: {error}", file=sys.stderr)

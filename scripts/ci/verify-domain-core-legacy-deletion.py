@@ -883,8 +883,7 @@ class SignedEvidenceVerifier:
                 and predicate["rollbackArtifact"].get("activation") == item["activation"]
                 and (
                     "_retainedRollbackSha256" not in item
-                    or predicate["rollbackArtifact"].get("sha256")
-                    == item["_retainedRollbackSha256"]
+                    or predicate["rollbackArtifact"].get("sha256") == item["_retainedRollbackSha256"]
                 )
             ]
             if item["consumer"] == "ios":
@@ -2567,10 +2566,7 @@ def validate_rollback_receipt(
     authority = require_object(payload["authority"], f"row {row_id} rollback.authority")
     authority_fields = {"candidateBundleSha256", "sourceRun", "promotionSigner"}
     exact_keys(authority, authority_fields, authority_fields, f"row {row_id} rollback.authority")
-    if authority != {
-        key: expected_authority[key]
-        for key in ("candidateBundleSha256", "sourceRun", "promotionSigner")
-    }:
+    if authority != {key: expected_authority[key] for key in ("candidateBundleSha256", "sourceRun", "promotionSigner")}:
         raise GateError(f"row {row_id}: rollback does not bind the exact source and promotion authority")
     retained = require_object(
         payload["retainedRollbackArtifact"],
@@ -2663,8 +2659,7 @@ def validate_rollback_receipt(
         signer_id = positive_integer(signer["runId"], f"{label}.signer.runId")
         signer_attempt = positive_integer(signer["runAttempt"], f"{label}.signer.runAttempt")
         if signer["runInvocationUri"] != (
-            f"https://github.com/{SignedEvidenceVerifier.repository}/actions/runs/"
-            f"{signer_id}/attempts/{signer_attempt}"
+            f"https://github.com/{SignedEvidenceVerifier.repository}/actions/runs/{signer_id}/attempts/{signer_attempt}"
         ):
             raise GateError(f"{label}: signer invocation URI does not bind the exact run attempt")
         action_run = require_object(completion["actionRun"], f"{label}.actionRun")
@@ -2682,8 +2677,7 @@ def validate_rollback_receipt(
         exact_keys(action_run, action_fields, action_fields, f"{label}.actionRun")
         if (
             action_run["repository"] != SignedEvidenceVerifier.repository
-            or action_run["workflowPath"]
-            != ROLLBACK_ACTION_WORKFLOWS.get(consumer, RELEASE_SIGNER_WORKFLOWS[consumer])
+            or action_run["workflowPath"] != ROLLBACK_ACTION_WORKFLOWS.get(consumer, RELEASE_SIGNER_WORKFLOWS[consumer])
             or action_run["ref"] != f"refs/tags/{release['tag']}"
             or action_run["headSha"] != release["commit"]
         ):
@@ -2692,14 +2686,17 @@ def validate_rollback_receipt(
             require_digest(action_run["jobSetSha256"], f"{label}.actionRun.jobSetSha256")
             require_digest(completion["deployedArtifactSha256"], f"{label}.deployedArtifactSha256")
             require_digest(completion["healthArtifactSha256"], f"{label}.healthArtifactSha256")
-        elif completion["deployedArtifactSha256"] != completion["artifactSha256"] or completion["healthArtifactSha256"] is not None:
-            raise GateError(f"{label}: native completion must bind its signed release artifact without fake health evidence")
+        elif (
+            completion["deployedArtifactSha256"] != completion["artifactSha256"]
+            or completion["healthArtifactSha256"] is not None
+        ):
+            raise GateError(
+                f"{label}: native completion must bind its signed release artifact without fake health evidence"
+            )
         artifact_relative = repository_path(completion["artifactPath"], f"{label}.artifactPath")
         provenance_relative = repository_path(completion["provenancePath"], f"{label}.provenancePath")
         expected_artifact_relative = f"{ROLLBACK_COMPLETION_ROOT}/{row_id}/{generation}/{consumer}.json"
-        expected_provenance_relative = (
-            f"{ROLLBACK_COMPLETION_ROOT}/{row_id}/{generation}/{consumer}.sigstore.json"
-        )
+        expected_provenance_relative = f"{ROLLBACK_COMPLETION_ROOT}/{row_id}/{generation}/{consumer}.sigstore.json"
         if artifact_relative != expected_artifact_relative or provenance_relative != expected_provenance_relative:
             raise GateError(f"{label}: completion evidence must use its exact immutable repository path")
         artifact_path = secure_path(repo_root, artifact_relative, f"{label}.artifactPath", must_exist=True)
@@ -2711,9 +2708,17 @@ def validate_rollback_receipt(
             digest = require_digest(completion[digest_key], f"{label}.{digest_key}")
             if sha256_path(path_value) != digest:
                 raise GateError(f"{label}: committed {file_label} digest does not match working bytes")
-            if hashlib.sha256(
-                git_file(repo_root, rollback.commit, path_value.relative_to(repo_root).as_posix(), f"{label} {file_label}")
-            ).hexdigest() != digest:
+            if (
+                hashlib.sha256(
+                    git_file(
+                        repo_root,
+                        rollback.commit,
+                        path_value.relative_to(repo_root).as_posix(),
+                        f"{label} {file_label}",
+                    )
+                ).hexdigest()
+                != digest
+            ):
                 raise GateError(f"{label}: {file_label} bytes are not immutable at trusted main")
         completed_at = evidence_verifier.verify_rollback_completion(
             completion,
@@ -2728,7 +2733,9 @@ def validate_rollback_receipt(
             domain=domain,
         )
         if completed_at < stable.approved_at or completed_at > rollback.approved_at:
-            raise GateError(f"{label}: rollback action must complete after stable approval and before rollback approval")
+            raise GateError(
+                f"{label}: rollback action must complete after stable approval and before rollback approval"
+            )
         completion_times.append(completed_at)
     if consumers != release_consumers_for_row(row_id):
         raise GateError(f"row {row_id}: rollback completion must cover the exact governed consumer set")

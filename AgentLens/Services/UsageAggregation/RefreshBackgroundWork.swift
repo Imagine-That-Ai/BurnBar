@@ -201,7 +201,6 @@ enum RefreshBackgroundWork {
         // not each provider.
         let governor = ParserResourcePolicy.makeIndexingGovernor()
 
-
         for (provider, parser) in parserEntries {
             do {
                 // P-PERF-2: capture scan-start watermark BEFORE parsing.

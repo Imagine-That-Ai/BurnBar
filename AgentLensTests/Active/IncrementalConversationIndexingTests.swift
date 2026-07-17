@@ -108,8 +108,6 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         XCTAssertEqual(secondResult.indexedConversationChanges, 0)
     }
 
-
-
     // MARK: - 4. Changed file after checkpoint
 
     func test_runConversationIndexing_changedFileAfterCheckpoint_isIndexed() async throws {
@@ -351,7 +349,6 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         )
         XCTAssertEqual(checkpointAfterDeferral.checkpointToken, checkpointBeforeDeferral.checkpointToken)
     }
-
 
     // MARK: - 8. Indexing failure does not advance checkpoint (retry on next tick)
 
