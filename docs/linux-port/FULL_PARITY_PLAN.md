@@ -25,7 +25,7 @@ work is the macOS-level **surface depth**, **installed runtime evidence**,
 
 ### Current continuation checkpoint — 2026-07-17
 
-The integration branch is at `a10733cdd` with two recent source slices plus
+The integration branch is at `33e3bb59b` with two recent source slices plus
 nightly evidence hardening: the real
 P-39 parser differential producer (`dd7c588db`, focused suite **45/45**) and
 provider-catalog enforcement in first-run onboarding (`29fa77791`). Candidate run
@@ -46,8 +46,9 @@ nightly run `29607854309` is the first exact-head validation of that correction.
 
 Since that correction, `6ef6794ea` serialized Computer Use expiry teardown so
 run-binding replacement cannot race coordinator cleanup. The Linux Swift graph
-now executes a real analytics target (**8 suites / 84 minimum tests**) through
-`9db5cca26`, `d846c95d0`, `7349007e2`, and `4925d258d`. The P-07
+now executes real analytics, Computer Use, and remote-engine targets (**9
+suites / 92 minimum tests**) through `9db5cca26`, `d846c95d0`, `7349007e2`,
+`4925d258d`, `9cee2687a`, and `33e3bb59b`. The P-07
 computer-use validator and mutation suite landed in `bf30c881a` and is required
 by the PR gate (`5e6241275`). These changes improve source confidence only; the
 ledger remains 0/40 and 0/7 until installed, current-head receipts exist.
@@ -112,7 +113,11 @@ accessibility/performance/update receipts, then promote all 40 requirement rows.
 32. **Remote access agent** (entire subsystem excluded).
 33. **Code signature verification** for peer auth (currently excluded on Linux).
 34. **IPv6 loopback** in the HTTP gateway (currently IPv4 only).
-35. **Remaining placeholder tests** (`BurnBarRemoteEngineTests`, `OpenBurnBarComputerUseCoreTests`, and `OpenBurnBarCoreTests` still use `LinuxEmptyTests.swift`; analytics now has an executable Linux behavior suite).
+35. **Remaining compatibility test sources** retain `LinuxEmptyTests.swift`
+    only for Apple/off-Linux fallbacks and targets intentionally excluded from
+    the Linux graph. Linux Computer Use and remote-engine targets now execute
+    behavior suites, alongside the existing Core, media, analytics, security,
+    and daemon suites.
 
 ### Tier 5 — macOS-only accepted divergences
 
@@ -131,7 +136,7 @@ accessibility/performance/update receipts, then promote all 40 requirement rows.
 | R3 | Nightly matrix: fix Wayland/Fedora/Arch runners, add `xdg-desktop-portal` consent test. | `.github/workflows/linux-nightly.yml` | Nightly matrix produces artifacts. |
 | D1 | Pensieve watcher: replace stub with inotify. | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/PensieveKnowledgeWatcherLinux.swift` | `OpenBurnBarDaemonLinuxGatewayTests` pass. |
 | D2 | Switcher shell: implement `BurnBarCLIShellExecutor` and `ShimInstaller` for Linux. | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/OpenBurnBarSwitcherShellLinux.swift` | CLI tests pass. |
-| D3 | Test backfill: replace the remaining `LinuxEmptyTests.swift` placeholders with real tests (analytics is complete). | `OpenBurnBarCore/Tests/*/LinuxEmptyTests.swift` | `swift test` passes for all Linux targets. |
+| D3 | Test backfill: replace Linux compile-only paths with deterministic behavior suites; retain placeholders only as platform fallbacks. | `OpenBurnBarCore/Tests/*/Linux*BehaviorTests.swift`, `OpenBurnBarCore/Package.swift`, `scripts/linux-port/linux-swift-test-manifest.json` | Linux manifest declares 9 suites / 92 minimum tests; each selected target executes non-tautological tests and `swift test` passes on the release runner. |
 
 ### Phase 2 — Design system foundation
 

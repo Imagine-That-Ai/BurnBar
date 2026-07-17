@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` at source checkpoint `a10733cdd`; this audit record is subsequently carried by documentation-only commits. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, structured shell failure diagnostics, host-mounted Swift evidence, expiry-teardown serialization, executable Linux analytics coverage, the P-07 computer-use validator, and the Linux type-inference correction are linked below. Candidate run `29546157464` passed both release architectures and installed-package runtime checks at its then-current head; the candidate-bound UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
+| Remediation evidence | `codex/linux-parity-integration-final` at source checkpoint `33e3bb59b`; this audit record is subsequently carried by documentation-only commits. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, structured shell failure diagnostics, host-mounted Swift evidence, expiry-teardown serialization, executable Linux analytics, Computer Use, and remote-engine behavior coverage, the P-07 computer-use validator, and the Linux type-inference correction are linked below. Candidate run `29546157464` passed both release architectures and installed-package runtime checks at its then-current head; the candidate-bound UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -19,7 +19,12 @@ percentage. The active remediation stack now contains these reviewable slices:
 
 ### Latest continuation delta - 2026-07-17
 
-- **Current source checkpoint:** `dd7c588db` adds a real P-39 differential parser
+- **Current source checkpoint:** `33e3bb59b` adds executable Linux Computer Use
+  and remote-engine behavior suites, replacing the two Linux compile-only
+  placeholder paths. The manifest now declares **9 suites / 92 minimum tests**;
+  platform fallback `LinuxEmptyTests.swift` files remain excluded from the
+  Linux execution graph.
+- **P-39 source checkpoint:** `dd7c588db` adds a real P-39 differential parser
   producer. It writes and validates the committed macOS golden corpus, checks all
   26 fixtures across 15 parser families, rejects synthetic payloads, and binds the
   producer output to the candidate head/version/host. The focused producer suite
@@ -75,8 +80,10 @@ percentage. The active remediation stack now contains these reviewable slices:
   named above; the existing regression test remains unchanged.
 - **Linux test coverage:** `9db5cca26` adds four real analytics behavior tests;
   `d846c95d0`, `7349007e2`, and `4925d258d` put the target back into the Linux
-  Swift graph with an explicit source name. The contract is now **8 suites / 84
-  minimum tests** instead of silently excluding analytics.
+  Swift graph with an explicit source name. `9cee2687a` and `33e3bb59b` add
+  deterministic Computer Use and remote-engine behavior suites. The contract
+  is now **9 suites / 92 minimum tests** instead of silently excluding those
+  targets.
 - **P-07 certification guard:** `bf30c881a` adds a fail-closed
   `feature.computer-use` validator and three mutation tests covering candidate,
   HEAD, target, rejection-policy, dependency, and source-hash binding. Commit
