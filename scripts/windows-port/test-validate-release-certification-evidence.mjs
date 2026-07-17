@@ -6,9 +6,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   BUNDLE_SCHEMA,
+  CERTIFICATION_PROTOCOL_CATALOG,
+  CERTIFICATION_PROTOCOL_SCHEMA,
   HARDWARE_ATTESTATION_SCHEMA,
   RECEIPT_SCHEMA,
   REQUIRED_GATE_IDS,
+  certificationProtocolForGate,
+  validateCertificationProtocolCatalog,
   validateReceipt,
   validateReleaseCertificationBundle,
   writeSha256Sums,
@@ -101,6 +105,7 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
     name: "OpenBurnBar-1.0.30-x64.msix",
     architecture: "x64",
     availability: "recorded",
+    sourceCommit: COMMIT,
     sha256: "a".repeat(64),
     workflowRunId: "123",
     workflowRunUrl: "https://example.invalid/runs/123",
@@ -110,7 +115,46 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
     .update(readFileSync(join(value.root, "observation.log")))
     .digest("hex");
   value.evidence.files.push({ path: "hardware-attestation.json", sha256: attestationHash });
+  const protocol = certificationProtocolForGate(gate);
+  assert.ok(protocol, `missing test protocol for ${gate}`);
+  value.protocol = {
+    commands: [`execute ${gate} protocol`],
+    manualSteps: ["Review every assertion against its raw evidence."],
+    profileSchema: CERTIFICATION_PROTOCOL_SCHEMA,
+    profile: protocol.profileName,
+    assertions: protocol.profile.assertions.map((assertion) => ({
+      id: assertion.id,
+      status: "PASS",
+      observed: `${assertion.id} passed on the physical test device.`,
+      evidence: ["observation.log"],
+    })),
+  };
   return value;
+}
+
+{
+  assert.deepEqual(validateCertificationProtocolCatalog(), []);
+  for (const gate of REQUIRED_GATE_IDS.slice(1)) {
+    const protocol = certificationProtocolForGate(gate);
+    assert.ok(protocol, `required gate ${gate} must have a protocol`);
+    assert.ok(protocol.profile.assertions.length > 0);
+    assert.equal(
+      new Set(protocol.profile.assertions.map((assertion) => assertion.id)).size,
+      protocol.profile.assertions.length,
+      `${gate} assertion ids must be unique`,
+    );
+  }
+}
+
+{
+  const catalog = structuredClone(CERTIFICATION_PROTOCOL_CATALOG);
+  catalog.profiles["physical-performance"].assertions.push(
+    structuredClone(catalog.profiles["physical-performance"].assertions[0]),
+  );
+  assert.match(
+    validateCertificationProtocolCatalog(catalog).join("\n"),
+    /duplicate assertion/,
+  );
 }
 
 {
@@ -269,6 +313,88 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
   const value = physicalPassReceipt();
   const result = validateReceipt(value, { bundleDir: value.root });
   assert.equal(result.ok, true, result.errors.join("\n"));
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.assertions = [];
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /required protocol assertion is missing/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.artifact.sourceCommit = "b".repeat(40);
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /artifact\.sourceCommit does not match/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.device.assetTag = "Chassis Asset Tag";
+  value.device.hardwareAttestation.assetTag = value.device.assetTag;
+  const attestationPath = join(value.root, "hardware-attestation.json");
+  const attestation = JSON.parse(readFileSync(attestationPath, "utf8"));
+  attestation.assetTag = value.device.assetTag;
+  writeJson(attestationPath, attestation);
+  const attestationHash = createHash("sha256")
+    .update(readFileSync(attestationPath))
+    .digest("hex");
+  value.device.hardwareAttestation.sha256 = attestationHash;
+  value.evidence.files.find((file) => file.path === "hardware-attestation.json").sha256 =
+    attestationHash;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /requires a usable device\.assetTag/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.profileSchema = "openburnbar.windows.release-certification-protocols.invalid";
+  value.protocol.profile = "invalid-profile";
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /protocol\.profileSchema/);
+  assert.match(result.errors.join("\n"), /protocol\.profile/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.assertions[0].status = "FAIL";
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /status must be PASS/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.assertions.push({
+    id: "not-in-the-canonical-protocol",
+    status: "PASS",
+    observed: "This assertion must not be accepted.",
+    evidence: ["observation.log"],
+  });
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /unknown protocol assertion/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.assertions[0].evidence = ["missing-evidence.log"];
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /evidence reference is not present/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.evidence.files.push({ ...value.evidence.files[0] });
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /duplicate evidence path/);
 }
 
 {

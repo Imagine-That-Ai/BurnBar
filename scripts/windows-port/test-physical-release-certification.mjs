@@ -8,6 +8,21 @@ import { describeLocalCertificationHost } from "./local-certification-host.mjs";
 const root = dirname(fileURLToPath(import.meta.url));
 const script = readFileSync(join(root, "run-physical-release-certification.ps1"), "utf8");
 const attestationGenerator = readFileSync(join(root, "new-physical-hardware-attestation.ps1"), "utf8");
+const supplementalGenerator = readFileSync(
+  join(root, "new-release-certification-supplemental-receipt.ps1"),
+  "utf8",
+);
+const supplementalValidator = readFileSync(
+  join(root, "validate-release-certification-receipt.mjs"),
+  "utf8",
+);
+const protocolCatalog = JSON.parse(
+  readFileSync(join(root, "release-certification-protocols.json"), "utf8"),
+);
+const physicalRunbook = readFileSync(
+  join(root, "../../docs/windows-port/evidence/windows-v1.0.35-release/PHYSICAL_X64_RUNBOOK.md"),
+  "utf8",
+);
 const localRunner = readFileSync(join(root, "run-local-certification-checks.mjs"), "utf8");
 
 assert.match(script, /\$PhysicalHardware/);
@@ -24,8 +39,12 @@ assert.match(script, /Hardware attestation assetTagSource is required for physic
 assert.match(script, /Hardware attestation assetTagSource does not match/);
 assert.match(script, /Amazon EC2\|Google Compute Engine\|HVM domU\|\\bXen\\b/);
 assert.match(script, /\$script:AllowedAssetTagSources -notcontains \$candidateAssetTagSource/);
+assert.match(script, /validate-release-certification-receipt\.mjs/);
+assert.match(script, /Supplemental PASS receipt failed schema validation/);
 assert.match(script, /\$candidateDeviceIdentity -match \$script:VirtualHostIdentityPattern/);
 assert.match(script, /Normalize-Architecture \(\[string\]\$candidate\.device\.architecture\)/);
+assert.match(script, /\$candidateEvidencePathMap\[\$sourceFileKey\] = \$destinationRelative/);
+assert.match(script, /\$assertion\.evidence = \$rewrittenEvidence/);
 assert.match(
   script,
   /system asset tag\|chassis asset tag/,
@@ -49,12 +68,66 @@ assert.match(attestationGenerator, /Refusing physical hardware attestation for a
 assert.match(attestationGenerator, /Amazon EC2\|Google Compute Engine\|HVM domU\|\\bXen\\b/);
 assert.match(attestationGenerator, /Refusing to overwrite existing hardware attestation without -Force/);
 assert.match(attestationGenerator, /\.tmp-/);
+assert.equal(
+  protocolCatalog.schema,
+  "openburnbar.windows.release-certification-protocols.v1",
+);
+assert.deepEqual(
+  Object.keys(protocolCatalog.gates).sort(),
+  [
+    "accessibility-display",
+    "media-computer-use-safety",
+    "physical-performance-arm64",
+    "physical-performance-x64",
+    "staging-cloud",
+    "store-update-lifecycle",
+  ],
+);
+for (const [gate, gateConfig] of Object.entries(protocolCatalog.gates)) {
+  const profile = protocolCatalog.profiles[gateConfig.profile];
+  assert.ok(profile, `${gate} profile must exist`);
+  assert.ok(profile.assertions.length > 0, `${gate} must require assertions`);
+  assert.equal(
+    new Set(profile.assertions.map((assertion) => assertion.id)).size,
+    profile.assertions.length,
+    `${gate} assertion ids must be unique`,
+  );
+}
+assert.match(supplementalGenerator, /ParameterSetName = 'Initialize'/);
+assert.match(supplementalGenerator, /status = 'NOT_RUN'/);
+assert.match(supplementalGenerator, /validate-release-certification-evidence\.mjs/);
+assert.match(supplementalGenerator, /validate-release-certification-receipt\.mjs/);
+assert.match(supplementalGenerator, /Refusing a supplemental receipt from a dirty source checkout/);
+assert.match(supplementalGenerator, /Get-CimInstance Win32_ComputerSystem/);
+assert.match(supplementalGenerator, /Get-CimInstance Win32_SystemEnclosure/);
+assert.match(supplementalGenerator, /Get-CimInstance Win32_ComputerSystemProduct/);
+assert.match(supplementalGenerator, /Get-CimInstance Win32_OperatingSystem/);
+assert.match(supplementalGenerator, /Get-Tpm/);
+assert.match(supplementalGenerator, /The current host identity looks virtualized/);
+assert.match(supplementalGenerator, /The live device .* does not match the physical baseline/);
+assert.match(supplementalGenerator, /Required protocol assertion is missing/);
+assert.match(supplementalGenerator, /Unknown protocol assertion/);
+assert.match(supplementalGenerator, /did not PASS/);
+assert.match(supplementalGenerator, /has no raw evidence file/);
+assert.match(supplementalGenerator, /evidence is missing or escapes the result directory/);
+assert.match(supplementalGenerator, /contains secret-like material/);
+assert.match(supplementalGenerator, /The signed artifact architecture does not match/);
+assert.match(supplementalGenerator, /invalid, stale, or future time interval/);
+assert.match(supplementalValidator, /validateReceipt/);
+assert.match(supplementalValidator, /Windows release-certification receipt is valid/);
+assert.match(physicalRunbook, /Do not hand-author PASS receipts/);
+assert.match(physicalRunbook, /new-release-certification-supplemental-receipt\.ps1/);
+assert.match(physicalRunbook, /-Initialize/);
+assert.match(physicalRunbook, /-BaselineBundle \$Evidence/);
 const windowsFastWorkflow = readFileSync(join(root, "../../.github/workflows/pr-windows-fast.yml"), "utf8");
 const windowsReleaseWorkflow = readFileSync(
   join(root, "../../.github/workflows/openburnbar-release-windows.yml"),
   "utf8",
 );
 assert.match(windowsFastWorkflow, /new-physical-hardware-attestation\.ps1/);
+assert.match(windowsFastWorkflow, /new-release-certification-supplemental-receipt\.ps1/);
+assert.match(windowsFastWorkflow, /Smoke supplemental certification templates/);
+assert.match(windowsFastWorkflow, /Supplemental template OK/);
 assert.match(windowsFastWorkflow, /run-physical-release-certification\.ps1/);
 assert.match(windowsFastWorkflow, /Language\.Parser\]::ParseFile/);
 assert.match(windowsReleaseWorkflow, /Write physical-certification artifact manifests/);

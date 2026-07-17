@@ -146,10 +146,55 @@ Perform every available protocol against the installed exact signed artifact:
    activation, single instance, valid/tampered/downgrade/offline feeds,
    Store/direct-download coexistence, and winget eligibility.
 
-Create a supplemental PASS receipt only when every required observation has
-fresh raw evidence and hashes. Follow
-`openburnbar.windows.release-certification-receipt.v1`. Keep unavailable gates
-`BLOCKED` with a named prerequisite and recovery action.
+Do not hand-author PASS receipts. Initialize the canonical checklist for each
+gate that is actually authorized and available:
+
+```powershell
+$Supplemental = Join-Path $Root 'supplemental'
+$ProtocolWork = Join-Path $Root 'protocol-work'
+$ReceiptTool = Join-Path $Repo 'scripts\windows-port\new-release-certification-supplemental-receipt.ps1'
+New-Item -ItemType Directory -Force -Path $Supplemental, $ProtocolWork | Out-Null
+
+$AvailableGates = @(
+    'physical-performance-x64',
+    'accessibility-display'
+)
+# Add staging-cloud, media-computer-use-safety, or store-update-lifecycle only
+# after its explicit authorization and prerequisites exist. Never add the
+# physical ARM64 gate on this x64 device.
+foreach ($Gate in $AvailableGates) {
+    pwsh $ReceiptTool `
+        -RepoRoot $Repo `
+        -Gate $Gate `
+        -ResultsPath (Join-Path $ProtocolWork ($Gate + '.json')) `
+        -Initialize
+}
+```
+
+Each generated result file enumerates every required assertion as `NOT_RUN`.
+During the protocol, set the true UTC start/end times, record at least one
+command or manual step, change an assertion to `PASS` only after observing it,
+and list one or more raw evidence files relative to the result file's directory.
+Incomplete, failed, unknown, duplicate, unbound, unhashed, path-escaping, stale,
+wrong-device, wrong-architecture, virtualized, or secret-bearing evidence fails
+closed.
+
+After every assertion for a gate has genuine raw evidence, finalize it against
+the validator-clean physical baseline:
+
+```powershell
+foreach ($Gate in $AvailableGates) {
+    pwsh $ReceiptTool `
+        -RepoRoot $Repo `
+        -Gate $Gate `
+        -ResultsPath (Join-Path $ProtocolWork ($Gate + '.json')) `
+        -BaselineBundle $Evidence `
+        -OutputDirectory $Supplemental
+}
+```
+
+Keep unavailable gates `BLOCKED` with their named prerequisite and recovery
+action. A template, partial result, or manual JSON file is not PASS evidence.
 
 ## Final bundle
 
@@ -157,7 +202,6 @@ Rerun the prescribed runner with the supplemental directory, validate it, and
 create a content-addressed ZIP without deleting the evidence directory:
 
 ```powershell
-$Supplemental = Join-Path $Root 'supplemental'
 $FinalEvidence = Join-Path $Root ('physical-x64-final-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 pwsh (Join-Path $Repo 'scripts\windows-port\run-physical-release-certification.ps1') `
     -RepoRoot $Repo `

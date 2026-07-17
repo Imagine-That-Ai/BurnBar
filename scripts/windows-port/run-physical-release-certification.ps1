@@ -500,6 +500,8 @@ foreach ($gate in $gateProtocols.Keys) {
 if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
     $supplementalRoot = Resolve-FullPath $SupplementalReceiptDirectory
     if (-not (Test-Path -LiteralPath $supplementalRoot -PathType Container)) { throw "Supplemental receipt directory not found: $supplementalRoot" }
+    $supplementalValidatorNode = Get-Command node -ErrorAction SilentlyContinue
+    if ($null -eq $supplementalValidatorNode) { throw 'Node.js is required to validate supplemental receipts.' }
     foreach ($sourceReceiptPath in @(Get-ChildItem -LiteralPath $supplementalRoot -Filter '*.json' -File -Recurse)) {
         if ($sourceReceiptPath.Name -eq 'certification-manifest.json') { continue }
         $candidate = Get-Content -Raw -LiteralPath $sourceReceiptPath.FullName | ConvertFrom-Json
@@ -507,6 +509,11 @@ if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
         if ($candidate.source.commitSha -ne (Get-CommitSha) -or $candidate.source.dirtyTree -eq $true) { continue }
         if ($supplementalGateIds -notcontains [string]$candidate.gate) { continue }
         if ($candidate.artifact.availability -ne 'recorded' -or $candidate.artifact.signature.result -ne 'verified') { continue }
+        & $supplementalValidatorNode.Source (Join-Path $RepoRoot 'scripts\windows-port\validate-release-certification-receipt.mjs') `
+            $sourceReceiptPath.FullName $supplementalRoot
+        if ($LASTEXITCODE -ne 0) {
+            throw "Supplemental PASS receipt failed schema validation: $($sourceReceiptPath.FullName)"
+        }
         $candidateGate = [string]$candidate.gate
         $candidateDeviceIdentity = (([string]$candidate.device.manufacturer).Trim() + ' ' + ([string]$candidate.device.model).Trim()).Trim()
         $candidateAssetTag = ([string]$candidate.device.assetTag).Trim()
@@ -585,9 +592,11 @@ if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
             continue
         }
         $candidateFiles = @()
+        $candidateEvidencePathMap = @{}
         $candidateAttestationDestinationRelative = $null
         foreach ($sourceFile in @($candidate.evidence.files)) {
-            $relativeSource = ([string]$sourceFile.path).Replace('/', '\')
+            $sourceFileKey = ([string]$sourceFile.path).Replace('\', '/')
+            $relativeSource = $sourceFileKey.Replace('/', '\')
             $sourcePath = [System.IO.Path]::GetFullPath((Join-Path $supplementalRoot $relativeSource))
             $sourceRootWithSeparator = $supplementalRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
             if (-not $sourcePath.StartsWith($sourceRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) { throw "Supplemental evidence path escapes its root: $($sourceFile.path)" }
@@ -601,6 +610,7 @@ if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destinationPath) | Out-Null
             Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
             $candidateFiles += [ordered]@{ path = $destinationRelative; sha256 = Get-Sha256 $destinationPath }
+            $candidateEvidencePathMap[$sourceFileKey] = $destinationRelative
             if ([string]$sourceFile.path -eq [string]$candidateAttestationMetadata.evidencePath) {
                 $candidateAttestationDestinationRelative = $destinationRelative
             }
@@ -610,6 +620,17 @@ if (-not [string]::IsNullOrWhiteSpace($SupplementalReceiptDirectory)) {
         }
         $candidate.evidence.files = $candidateFiles
         $candidate.device.hardwareAttestation.evidencePath = $candidateAttestationDestinationRelative
+        foreach ($assertion in @($candidate.protocol.assertions)) {
+            $rewrittenEvidence = @()
+            foreach ($sourceEvidencePath in @($assertion.evidence)) {
+                $sourceEvidenceKey = ([string]$sourceEvidencePath).Replace('\', '/')
+                if (-not $candidateEvidencePathMap.ContainsKey($sourceEvidenceKey)) {
+                    throw "Supplemental assertion references unlisted evidence: $sourceEvidencePath"
+                }
+                $rewrittenEvidence += [string]$candidateEvidencePathMap[$sourceEvidenceKey]
+            }
+            $assertion.evidence = $rewrittenEvidence
+        }
         $destinationReceipt = Join-Path $OutputDir ('receipts\' + [string]$candidate.gate + '.json')
         Write-JsonFile $destinationReceipt $candidate
         foreach ($existing in @($receiptEntries | Where-Object { $_.gate -eq [string]$candidate.gate })) { [void]$receiptEntries.Remove($existing) }
