@@ -94,13 +94,46 @@ describe('P28 SmartHub command decoder', () => {
     })).toThrow(/item limit/);
   });
 
-  it('accepts typed test, cast, and device operations without opening an argument escape hatch', () => {
-    for (const operation of ['test', 'cast', 'device'] as const) {
+  it('accepts every typed status operation without opening an argument escape hatch', () => {
+    for (const operation of [
+      'status',
+      'test',
+      'cast',
+      'cast_status',
+      'homeassistant_status',
+      'device',
+      'pixel_clock_control'
+    ] as const) {
       expect(decodeSmartHubCommandResponse({
         operation,
         payload: { adapter: 'smart_hub_bridge', status: 'blocked', detail: '' }
       })).toMatchObject({ operation, payload: { status: 'blocked' } });
     }
+  });
+
+  it('preserves degraded status and blocker fields for offline device bridges', () => {
+    expect(decodeSmartHubCommandResponse({
+      operation: 'homeassistant_status',
+      payload: {
+        adapter: 'home_assistant',
+        status: 'degraded_bridge_unreachable',
+        blocker: 'Home Assistant did not answer on the configured loopback bridge.',
+        retryAfterSeconds: '8'
+      }
+    })).toEqual({
+      operation: 'homeassistant_status',
+      payload: {
+        adapter: 'home_assistant',
+        status: 'degraded_bridge_unreachable',
+        blocker: 'Home Assistant did not answer on the configured loopback bridge.',
+        details: {
+          adapter: 'home_assistant',
+          status: 'degraded_bridge_unreachable',
+          blocker: 'Home Assistant did not answer on the configured loopback bridge.',
+          retryAfterSeconds: '8'
+        }
+      }
+    });
   });
 
   it('requires a complete command response rather than defaulting malformed payloads', () => {

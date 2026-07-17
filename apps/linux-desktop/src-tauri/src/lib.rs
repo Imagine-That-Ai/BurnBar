@@ -7,8 +7,9 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -209,6 +210,41 @@ fn validate_smart_hub_json_value(value: &serde_json::Value, depth: usize) -> Res
         serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {}
     }
     Ok(())
+}
+
+fn validate_smart_hub_payload_shape(
+    operation: &str,
+    payload: &serde_json::Value,
+) -> Result<(), String> {
+    let expects_array = matches!(operation, "discover" | "parity");
+    let valid_shape = if expects_array {
+        payload.is_array()
+    } else {
+        // Every non-list operation maps to SmartHubStatusResult in the
+        // renderer. Reject scalar/null payloads at the native boundary so a
+        // malformed CLI response cannot masquerade as a degraded status.
+        payload.is_object()
+    };
+    if !valid_shape {
+        return Err("openburnbar_cli_smarthub_payload_shape_invalid".to_string());
+    }
+    Ok(())
+}
+
+/// Kill the whole CLI process group, not only the direct child. Discovery
+/// adapters can launch helpers (for example Avahi); killing only the parent
+/// leaves stdout open and makes the bounded reader wait forever.
+fn terminate_smarthub_child(child: &mut Child) {
+    let process_group = child.id() as libc::pid_t;
+    if process_group > 0 {
+        // The child is started in its own process group below. A failed group
+        // kill is harmless because the direct-child fallback still runs.
+        unsafe {
+            let _ = libc::kill(-process_group, libc::SIGKILL);
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// First non-empty trimmed env value among the given keys (VAL-PATH-001 parity with TS/Swift).
@@ -2371,6 +2407,7 @@ fn run_smarthub_cli(
 ) -> Result<SmartHubCommandPayload, String> {
     let args = smart_hub_cli_args(operation.as_str())?;
     let mut child = Command::new(cli)
+        .process_group(0)
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -2395,29 +2432,25 @@ fn run_smarthub_cli(
     let deadline = Instant::now() + SMART_HUB_TIMEOUT;
     let status = loop {
         if cancellation.is_cancelled() {
-            let _ = child.kill();
-            let _ = child.wait();
+            terminate_smarthub_child(&mut child);
             let _ = reader.join();
             return Err("openburnbar_cli_smarthub_cancelled".to_string());
         }
         if output_too_large.load(Ordering::Acquire) {
-            let _ = child.kill();
-            let _ = child.wait();
+            terminate_smarthub_child(&mut child);
             let _ = reader.join();
             return Err("openburnbar_cli_smarthub_output_too_large".to_string());
         }
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if Instant::now() >= deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
+                terminate_smarthub_child(&mut child);
                 let _ = reader.join();
                 return Err("openburnbar_cli_smarthub_timeout".to_string());
             }
             Ok(None) => thread::sleep(Duration::from_millis(25)),
             Err(_) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                terminate_smarthub_child(&mut child);
                 let _ = reader.join();
                 return Err("openburnbar_cli_smarthub_wait_failed".to_string());
             }
@@ -2435,10 +2468,7 @@ fn run_smarthub_cli(
     }
     let payload = serde_json::from_slice::<serde_json::Value>(&stdout)
         .map_err(|_| "openburnbar_cli_smarthub_invalid_json".to_string())?;
-    let expected_array = matches!(operation.as_str(), "discover" | "parity");
-    if expected_array != payload.is_array() {
-        return Err("openburnbar_cli_smarthub_payload_shape_invalid".to_string());
-    }
+    validate_smart_hub_payload_shape(operation.as_str(), &payload)?;
     validate_smart_hub_json_value(&payload, 0)?;
     Ok(SmartHubCommandPayload { operation, payload })
 }
@@ -7994,6 +8024,52 @@ mod tests {
             .unwrap_err(),
             "openburnbar_cli_smarthub_payload_too_many_items"
         );
+    }
+
+    #[test]
+    fn smarthub_payload_shape_matches_each_typed_operation() {
+        for operation in ["discover", "parity"] {
+            assert!(validate_smart_hub_payload_shape(operation, &serde_json::json!([])).is_ok());
+            assert_eq!(
+                validate_smart_hub_payload_shape(operation, &serde_json::json!({})).unwrap_err(),
+                "openburnbar_cli_smarthub_payload_shape_invalid"
+            );
+        }
+
+        for operation in [
+            "status",
+            "test",
+            "cast",
+            "cast_status",
+            "homeassistant_status",
+            "device",
+            "pixel_clock_control",
+        ] {
+            assert!(validate_smart_hub_payload_shape(operation, &serde_json::json!({})).is_ok());
+            for malformed in [serde_json::json!([]), serde_json::Value::Null] {
+                assert_eq!(
+                    validate_smart_hub_payload_shape(operation, &malformed).unwrap_err(),
+                    "openburnbar_cli_smarthub_payload_shape_invalid",
+                    "unexpectedly accepted malformed {operation} payload: {malformed}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn smarthub_termination_kills_a_helper_process_group() {
+        let mut child = Command::new("/bin/sh")
+            .process_group(0)
+            .arg("-c")
+            .arg("sleep 30")
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("test shell should start");
+        terminate_smarthub_child(&mut child);
+        assert!(child
+            .try_wait()
+            .expect("test shell status should be readable")
+            .is_some());
     }
 
     #[test]
