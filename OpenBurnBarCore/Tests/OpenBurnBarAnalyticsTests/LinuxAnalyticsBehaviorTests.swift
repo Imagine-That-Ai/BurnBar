@@ -6,7 +6,6 @@ import XCTest
 /// Keep this suite self-contained because Package.swift intentionally selects
 /// this file as the Linux source list, while the larger shared test helpers are
 /// not part of that target on Linux.
-@MainActor
 private final class LinuxAnalyticsTransport: AnalyticsTransporting {
     struct Event {
         let name: String
@@ -39,7 +38,6 @@ private final class LinuxAnalyticsTransport: AnalyticsTransporting {
     }
 }
 
-@MainActor
 private func makeLinuxAnalyticsDefaults() -> (defaults: UserDefaults, suiteName: String) {
     let suiteName = "com.openburnbar.tests.linux-analytics.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suiteName)!
@@ -47,7 +45,6 @@ private func makeLinuxAnalyticsDefaults() -> (defaults: UserDefaults, suiteName:
     return (defaults, suiteName)
 }
 
-@MainActor
 final class LinuxAnalyticsBehaviorTests: XCTestCase {
     func testConsentGateStaysDarkUntilGrantAndAfterRevoke() {
         let (defaults, suiteName) = makeLinuxAnalyticsDefaults()
