@@ -1091,6 +1091,97 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         XCTAssertNil(try spool.nextBatch(sealActive: false))
     }
 
+    // MARK: - default directory / Firebase submitter fallback
+
+    func testIsValidStoredRejectsTimestampThatFailsShapeRegex() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = Date()
+        let candidate = try XCTUnwrap(signedCandidate())
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let fresh = try XCTUnwrap(makeSample(legacyMicros: 42, observedAt: now))
+        let base = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(fresh)) as? [String: Any])
+        // A timestamp inside the acceptance window but carrying a +00:00 offset
+        // instead of the required Z suffix: the shape regex guard must reject it
+        // before the formatter is consulted. Because ISO8601DateFormatter would
+        // otherwise accept this offset form and it is within the window, only the
+        // regex guard (not the formatter fallback) prevents it from being stored,
+        // so the well-shaped sibling survives the same batch alone.
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let offsetTimestamp = formatter
+            .string(from: now.addingTimeInterval(-60))
+            .replacingOccurrences(of: "Z", with: "+00:00")
+        var bad = base
+        bad["observedAt"] = offsetTimestamp
+        try writeReadyFile(in: directory, ordinal: 0, objects: [bad, base])
+
+        let batch = try XCTUnwrap(spool.nextBatch(
+            sealActive: false,
+            matchingChannel: "internal",
+            matchingCandidate: candidate,
+            now: now
+        ))
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [42])
+    }
+
+    func testFirebaseSubmitterThrowsSignedOutWithoutConfiguredApp() async throws {
+        #if canImport(FirebaseAuth) && canImport(FirebaseCore) && canImport(FirebaseFunctions)
+        // With no Firebase app configured and no authenticated user, the default
+        // submitter must fail closed with .signedOut rather than reaching the
+        // network callable, so evidence is never silently transmitted unsigned.
+        let submitter = FirebaseDomainCoreShadowSampleSubmitter()
+        do {
+            try await submitter.submit([])
+            XCTFail("submit should fail closed when no Firebase app is configured")
+        } catch DomainCoreShadowEvidenceError.signedOut {
+            // expected
+        } catch {
+            XCTFail("expected .signedOut, got \(error)")
+        }
+        #endif
+    }
+
+    func testRecorderWithoutInjectedSubmitterRetainsReadyBatchThenDrains() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let candidate = try XCTUnwrap(signedCandidate())
+        let now = Date()
+        // Seed a ready file before the recorder is constructed so the init flush
+        // immediately attempts the default Firebase submitter over a real batch.
+        let seedSpool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        try seedSpool.append(try XCTUnwrap(makeSample(legacyMicros: 7, observedAt: now)))
+        _ = try seedSpool.nextBatch(sealActive: true)
+
+        // No submitter is injected: the recorder must fall back to the Firebase
+        // submitter. With no app configured that submitter throws .signedOut, so
+        // the batch is retained (never acknowledged) for later retry rather than
+        // dropped. A large debounce keeps rescheduled retries out of the test window.
+        let recorder = MacDomainCoreShadowEvidenceRecorder(
+            profile: signedProfile(
+                profile: "internal",
+                distribution: "internal",
+                channel: "internal",
+                evidenceEnabled: true
+            ),
+            directory: directory,
+            submitter: nil,
+            debounceNanoseconds: 30_000_000_000
+        )
+
+        let drainSpool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        try await eventually(timeout: 2) {
+            try drainSpool.pendingSampleCount() > 0
+        }
+        XCTAssertEqual(try drainSpool.pendingSampleCount(), 1,
+                       "default Firebase submitter must fail closed and retain the ready batch")
+
+        // Drain the spool from a sibling handle so the coordinator's rescheduled
+        // retry finds no pending work and stops the flush loop before teardown.
+        try drainSpool.discardAll()
+        _ = recorder
+    }
+
     // MARK: - isValidStored loaded-identity invariants
 
     func testIsValidStoredRejectsPartialLoadedIdentityTuple() throws {
