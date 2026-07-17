@@ -1059,7 +1059,7 @@ Work:
    - extend `openburnbar-cli devices iot ...` control subcommands
    - keep Tauri shell as caller of CLI commands until daemon methods exist
 10. Linux test backfill:
-   - replace `LinuxEmptyTests.swift` placeholders with behavior tests
+   - replace the remaining `LinuxEmptyTests.swift` placeholders with behavior tests (analytics is now covered by `LinuxAnalyticsBehaviorTests.swift`)
    - cover analytics, remote engine, media, iroh relay, signal/session
      transport, computer-use core, and OpenBurnBarCore contracts
 

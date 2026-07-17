@@ -109,7 +109,7 @@ accessibility/performance/update receipts, then promote all 40 requirement rows.
 32. **Remote access agent** (entire subsystem excluded).
 33. **Code signature verification** for peer auth (currently excluded on Linux).
 34. **IPv6 loopback** in the HTTP gateway (currently IPv4 only).
-35. **Placeholder tests** (`BurnBarRemoteEngineTests`, `OpenBurnBarAnalyticsTests`, `OpenBurnBarComputerUseCoreTests`, `OpenBurnBarCoreTests` all have `LinuxEmptyTests.swift`).
+35. **Remaining placeholder tests** (`BurnBarRemoteEngineTests`, `OpenBurnBarComputerUseCoreTests`, and `OpenBurnBarCoreTests` still use `LinuxEmptyTests.swift`; analytics now has an executable Linux behavior suite).
 
 ### Tier 5 — macOS-only accepted divergences
 
@@ -128,7 +128,7 @@ accessibility/performance/update receipts, then promote all 40 requirement rows.
 | R3 | Nightly matrix: fix Wayland/Fedora/Arch runners, add `xdg-desktop-portal` consent test. | `.github/workflows/linux-nightly.yml` | Nightly matrix produces artifacts. |
 | D1 | Pensieve watcher: replace stub with inotify. | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/PensieveKnowledgeWatcherLinux.swift` | `OpenBurnBarDaemonLinuxGatewayTests` pass. |
 | D2 | Switcher shell: implement `BurnBarCLIShellExecutor` and `ShimInstaller` for Linux. | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/OpenBurnBarSwitcherShellLinux.swift` | CLI tests pass. |
-| D3 | Test backfill: replace `LinuxEmptyTests.swift` placeholders with real tests. | `OpenBurnBarCore/Tests/*/LinuxEmptyTests.swift` | `swift test` passes for all Linux targets. |
+| D3 | Test backfill: replace the remaining `LinuxEmptyTests.swift` placeholders with real tests (analytics is complete). | `OpenBurnBarCore/Tests/*/LinuxEmptyTests.swift` | `swift test` passes for all Linux targets. |
 
 ### Phase 2 — Design system foundation
 
