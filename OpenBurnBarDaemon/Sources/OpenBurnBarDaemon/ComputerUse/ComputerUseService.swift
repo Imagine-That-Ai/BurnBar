@@ -99,6 +99,11 @@ public actor ComputerUseService {
     private var pendingEndedSessions: [ComputerUseSessionEndRecord] = []
     private var sessionStartReserved = false
     private var timeoutTasks: [ComputerUseSessionID: Task<Void, Never>] = [:]
+    // Multiple expiry paths can observe the same session while its cleanup
+    // awaits another actor (for example, polling can race the timeout task).
+    // Share one teardown task so callers that need the session gone do not
+    // resume until the coordinator and run binding have both been released.
+    private var haltTasks: [ComputerUseSessionID: Task<ComputerUseSessionEndRecord?, Never>] = [:]
     private var revokingSessionIDs: Set<ComputerUseSessionID> = []
 
     public init(
@@ -320,6 +325,11 @@ public actor ComputerUseService {
             throw ServiceError.browserRunRequired
         }
 
+        // A previous session may have already revoked its run binding while
+        // its coordinator is still stopping. Wait for that shared teardown
+        // before admission so a replacement cannot race the old coordinator.
+        await waitForInFlightHalts()
+
         let capabilityState = try await currentCapabilityState()
         try await enforceSessionAdmission(capabilityState, mode: mode)
         guard !sessionStartReserved else {
@@ -478,7 +488,10 @@ public actor ComputerUseService {
             return nil
         }
         let sessionID = authorization.sessionID
-        guard revokingSessionIDs.contains(sessionID) == false else { return nil }
+        if revokingSessionIDs.contains(sessionID) {
+            await waitForHalt(sessionID)
+            return nil
+        }
         if let expiresAt = authorization.expiresAt, expiresAt <= Date() {
             await haltSession(sessionID, source: .stalled)
             return nil
@@ -536,14 +549,50 @@ public actor ComputerUseService {
         await haltSession(sessionID, source: .stalled)
     }
 
+    private func waitForInFlightHalts() async {
+        let tasks = Array(haltTasks.values)
+        for task in tasks {
+            _ = await task.value
+        }
+    }
+
+    private func waitForHalt(_ sessionID: ComputerUseSessionID) async {
+        guard let task = haltTasks[sessionID] else { return }
+        _ = await task.value
+    }
+
     @discardableResult
     private func haltSession(
         _ sessionID: ComputerUseSessionID,
         source: ComputerUsePanicSource,
         closedAt: Date = Date()
     ) async -> ComputerUseSessionEndRecord? {
+        if let existingTask = haltTasks[sessionID] {
+            return await existingTask.value
+        }
+
         timeoutTasks.removeValue(forKey: sessionID)?.cancel()
         revokingSessionIDs.insert(sessionID)
+
+        let haltTask = Task { [weak self] in
+            guard let self else { return nil }
+            return await self.finishHaltSession(
+                sessionID,
+                source: source,
+                closedAt: closedAt
+            )
+        }
+        haltTasks[sessionID] = haltTask
+        let ended = await haltTask.value
+        haltTasks.removeValue(forKey: sessionID)
+        return ended
+    }
+
+    private func finishHaltSession(
+        _ sessionID: ComputerUseSessionID,
+        source: ComputerUsePanicSource,
+        closedAt: Date
+    ) async -> ComputerUseSessionEndRecord? {
         // Revoke authority before any cleanup await. Late approvals and
         // concurrent invokes must fail closed while the driver is stopping.
         await authorizationRegistry.revoke(sessionID: sessionID)
@@ -699,8 +748,11 @@ public actor ComputerUseService {
     }
 
     private func isSessionActiveForPolling(_ sessionID: ComputerUseSessionID) async -> Bool {
-        guard revokingSessionIDs.contains(sessionID) == false,
-              let manifest = manifests[sessionID] else {
+        if revokingSessionIDs.contains(sessionID) {
+            await waitForHalt(sessionID)
+            return false
+        }
+        guard let manifest = manifests[sessionID] else {
             return false
         }
         if manifest.sessionTimeoutSeconds > 0,
