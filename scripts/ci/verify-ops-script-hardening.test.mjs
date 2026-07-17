@@ -207,12 +207,19 @@ assert.match(
 );
 const testhostBuildIndex = publishedParserSmokeBlock.indexOf("dotnet build $testProject");
 const resourceCopyIndex = publishedParserSmokeBlock.indexOf("$requiredResourceBundles = @(");
+const nativeDllSearchPathIndex = publishedParserSmokeBlock.indexOf(
+  '$env:PATH = "$smokeRoot;$env:PATH"',
+);
 const parserTestIndex = publishedParserSmokeBlock.indexOf("dotnet test $testProject");
 assert.ok(
   testhostBuildIndex >= 0 &&
     resourceCopyIndex > testhostBuildIndex &&
     parserTestIndex > resourceCopyIndex,
   "the isolated testhost must build before resource staging and execute afterward",
+);
+assert.ok(
+  nativeDllSearchPathIndex >= 0 && nativeDllSearchPathIndex < parserTestIndex,
+  "the isolated testhost must resolve native dependencies from the copied publish layout",
 );
 for (const bundleName of [
   "OpenBurnBarCore_OpenBurnBarCore.resources",
