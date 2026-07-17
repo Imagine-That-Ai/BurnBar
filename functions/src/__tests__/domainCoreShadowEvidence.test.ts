@@ -572,21 +572,25 @@ describe("domain-core shadow evidence hermes payload-keywrap combined ops", () =
     ["open_combined", "apple"],
     ["seal_combined", "android"],
     ["open_combined", "android"],
-  ])("accepts and preserves V3 hermes payload-keywrap %s for %s", (operation, consumer) => {
+  ] as const)("accepts and preserves V3 hermes payload-keywrap %s for %s", (operation, consumer) => {
     const sample = v3Sample({
       domain: "hermes",
       slice: "payload-keywrap",
-      consumer: consumer as "apple",
+      consumer,
       operation,
     });
     const parsed = parseDomainCoreShadowSampleRequest({ samples: [sample] }, NOW);
 
     expect(parsed).toHaveLength(1);
-    expect(parsed[0]).toEqual(sample);
-    expect(parsed[0].operation).toBe(operation);
-    expect(parsed[0].domain).toBe("hermes");
-    expect(parsed[0].slice).toBe("payload-keywrap");
-    expect(parsed[0].consumer).toBe(consumer);
+    const parsedSample = parsed[0];
+    if (!parsedSample || parsedSample.schemaVersion !== 3) {
+      throw new Error("parser did not preserve the V3 hermes payload-keywrap sample");
+    }
+    expect(parsedSample).toEqual(sample);
+    expect(parsedSample.operation).toBe(operation);
+    expect(parsedSample.domain).toBe("hermes");
+    expect(parsedSample.slice).toBe("payload-keywrap");
+    expect(parsedSample.consumer).toBe(consumer);
   });
 
   it("builds V3 producer samples for both hermes payload-keywrap combined ops and preserves operation through buildDomainCoreShadowSampleV3", () => {
