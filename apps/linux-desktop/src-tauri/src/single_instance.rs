@@ -59,7 +59,7 @@ fn deep_link_argument(argument: &str) -> Option<&str> {
 }
 
 pub(crate) fn notification_action_route(action: &str) -> Option<&'static str> {
-    match action {
+    let route = match action {
         "open" | "overview" | "dashboard" => Some("overview"),
         "insights" | "usage" => Some("insights"),
         "chat" | "reply" => Some("chat"),
@@ -80,7 +80,11 @@ pub(crate) fn notification_action_route(action: &str) -> Option<&'static str> {
         "pet" => Some("pet"),
         "text-expansion" | "text_expansion" => Some("text-expansion"),
         _ => None,
-    }
+    }?;
+    // Keep relaunch actions tied to the same closed route registry as direct
+    // route messages. A future alias cannot silently steer the renderer to a
+    // route that the shell does not advertise.
+    is_registered_shell_route(route).then_some(route)
 }
 
 fn is_registered_shell_route(route: &str) -> bool {
@@ -188,6 +192,14 @@ where
                 .ok_or_else(|| "single_instance_notification_action_missing".to_string())?
         } else if let Some(value) = argument.strip_prefix("--notification-action=") {
             value.to_string()
+        } else if argument == "--notification-payload"
+            || argument.starts_with("--notification-payload=")
+        {
+            // A payload is meaningful only when it is attached to the action
+            // immediately before it. Silently ignoring an orphan payload
+            // would turn a malformed notification relaunch into a plain
+            // focus launch and lose the user's intended destination.
+            return Err("single_instance_notification_payload_without_action".to_string());
         } else {
             index += 1;
             continue;
@@ -562,6 +574,22 @@ mod tests {
             deep_link
         )
         .is_err());
+        assert_eq!(
+            startup_messages_from_args(
+                vec!["--notification-payload={\"threadId\":\"orphan\"}".to_string()],
+                deep_link
+            )
+            .unwrap_err(),
+            "single_instance_notification_payload_without_action"
+        );
+        assert_eq!(
+            startup_messages_from_args(
+                vec!["--notification-payload".to_string(), "{}".to_string()],
+                deep_link
+            )
+            .unwrap_err(),
+            "single_instance_notification_payload_without_action"
+        );
         assert!(parse_frame(
             br#"{"protocol":1,"message":{"kind":"route","route":"chat","extra":true}}"#
         )
@@ -570,7 +598,7 @@ mod tests {
 
     #[test]
     fn notification_action_aliases_resolve_only_to_registered_routes() {
-        for (action, route) in [
+        let aliases = [
             ("open", "overview"),
             ("dashboard", "overview"),
             ("reply", "chat"),
@@ -579,11 +607,56 @@ mod tests {
             ("smart-hub", "smarthub"),
             ("text_expansion", "text-expansion"),
             ("support", "support"),
-        ] {
+        ];
+        for (action, route) in aliases {
             assert_eq!(notification_action_route(action), Some(route));
+            assert!(is_registered_shell_route(route));
         }
         for action in ["execute", "open-url", "javascript", ""] {
             assert_eq!(notification_action_route(action), None);
+        }
+    }
+
+    #[test]
+    fn every_notification_action_alias_targets_a_registered_shell_route() {
+        // Keep the alias table fail-closed if a future shortcut is added
+        // without adding the corresponding renderer route registration.
+        for action in [
+            "open",
+            "overview",
+            "dashboard",
+            "insights",
+            "usage",
+            "chat",
+            "reply",
+            "database",
+            "providers",
+            "models",
+            "projects",
+            "missions",
+            "memory",
+            "computer-use",
+            "computer_use",
+            "mercury",
+            "smarthub",
+            "smart-hub",
+            "settings",
+            "updates",
+            "account",
+            "activity",
+            "logs",
+            "support",
+            "onboarding",
+            "pet",
+            "text-expansion",
+            "text_expansion",
+        ] {
+            let route = notification_action_route(action)
+                .unwrap_or_else(|| panic!("action alias must remain supported: {action}"));
+            assert!(
+                is_registered_shell_route(route),
+                "unregistered route: {route}"
+            );
         }
     }
 
