@@ -390,6 +390,15 @@ fn channel_info(package_channel: &str) -> LinuxUpdateChannelInfo {
             rollback_mode: "dnf-history".into(),
             explanation: "The distro package manager owns files and upgrades; OpenBurnBar never replaces RPM-owned files from the shell.".into(),
         },
+        "arch" => LinuxUpdateChannelInfo {
+            id: "arch".into(),
+            label: "Arch package (.pkg.tar.zst)".into(),
+            owner: "pacman".into(),
+            install_mode: "package-manager-guided".into(),
+            automatic_install: false,
+            rollback_mode: "pacman-cache".into(),
+            explanation: "The Arch package manager owns files and upgrades; OpenBurnBar never replaces pacman-owned files from the shell.".into(),
+        },
         "appimage" => LinuxUpdateChannelInfo {
             id: "appimage".into(),
             label: "AppImage".into(),
@@ -415,6 +424,7 @@ fn artifact_type_for_package_channel(package_channel: &str) -> Option<&'static s
     match package_channel {
         "deb" => Some("deb"),
         "rpm" => Some("rpm"),
+        "arch" => Some("arch"),
         "appimage" => Some("appimage"),
         _ => None,
     }
@@ -492,6 +502,7 @@ fn build_update_instructions(
     let channel = match package_channel {
         "deb" => "apt",
         "rpm" => "dnf",
+        "arch" => "pacman",
         "appimage" => "appimage",
         _ => "unknown",
     };
@@ -511,6 +522,14 @@ fn build_update_instructions(
             id: "install".into(),
             label: "Update with dnf".into(),
             instruction: "A signed direct-download artifact is available, but no dnf repository channel is configured; install that artifact manually after verifying its digest.".into(),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+        "pacman" => LinuxUpdateAction {
+            id: "install".into(),
+            label: "Update with pacman".into(),
+            instruction: "A signed direct-download artifact is available, but no pacman repository channel is configured; install that artifact manually after verifying its digest.".into(),
             command: None,
             available: false,
             requires_confirmation: true,
@@ -548,6 +567,16 @@ fn build_update_instructions(
             label: "Roll back with dnf".into(),
             instruction: format!(
                 "No previous signed RPM artifact is attached to this feed (current: {current_version}, feed: {version}); rollback stays unavailable until release metadata supplies one."
+            ),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+        "pacman" => LinuxUpdateAction {
+            id: "rollback".into(),
+            label: "Roll back with pacman".into(),
+            instruction: format!(
+                "No previous signed Arch artifact is attached to this feed (current: {current_version}, feed: {version}); rollback stays unavailable until release metadata supplies one."
             ),
             command: None,
             available: false,
@@ -648,7 +677,7 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
     for artifact in &feed.artifacts {
         if !matches!(
             artifact.r#type.as_str(),
-            "appimage" | "deb" | "rpm" | "daemon"
+            "appimage" | "arch" | "deb" | "rpm" | "daemon"
         ) || !matches!(artifact.architecture.as_str(), "aarch64" | "x86_64")
             || artifact.size == 0
             || artifact.sha256.len() != 64
@@ -928,6 +957,9 @@ mod tests {
     #[test]
     fn validates_strict_feed_and_required_architectures() {
         assert!(validate_feed(&feed()).is_ok());
+        let mut arch_feed = feed();
+        arch_feed.artifacts.push(artifact("arch", "aarch64"));
+        assert!(validate_feed(&arch_feed).is_ok());
         let mut missing = feed();
         missing.artifacts.pop();
         assert!(validate_feed(&missing).unwrap_err().contains("x86_64"));
@@ -963,6 +995,11 @@ mod tests {
         let rpm = build_update_instructions("rpm", "1.0.0", Some("1.1.0"));
         assert!(rpm.rollback.command.is_none());
         assert!(!rpm.rollback.available);
+        let arch = build_update_instructions("arch", "1.0.0", Some("1.1.0"));
+        assert_eq!(arch.package_manager, "pacman");
+        assert_eq!(arch.install.label, "Update with pacman");
+        assert!(!arch.install.available);
+        assert!(arch.rollback.instruction.contains("Arch artifact"));
         let unknown = build_update_instructions("unknown", "1.0.0", None);
         assert!(!unknown.install.available);
         assert!(!unknown.rollback.available);
@@ -974,6 +1011,7 @@ mod tests {
         let release = feed();
         assert_eq!(artifact_type_for_package_channel("deb"), Some("deb"));
         assert_eq!(artifact_type_for_package_channel("rpm"), Some("rpm"));
+        assert_eq!(artifact_type_for_package_channel("arch"), Some("arch"));
         assert_eq!(
             artifact_type_for_package_channel("appimage"),
             Some("appimage")
@@ -987,6 +1025,14 @@ mod tests {
                 .expect("matching appimage")
                 .architecture,
             "aarch64"
+        );
+        let mut arch_release = release;
+        arch_release.artifacts.push(artifact("arch", "aarch64"));
+        assert_eq!(
+            select_artifact(&arch_release, "arch", "aarch64")
+                .expect("matching Arch package")
+                .r#type,
+            "arch"
         );
     }
 

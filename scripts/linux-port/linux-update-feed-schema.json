@@ -25,7 +25,7 @@
         "additionalProperties": false,
         "required": ["type", "architecture", "url", "sha256", "size", "signatureUrl"],
         "properties": {
-          "type": { "enum": ["appimage", "deb", "rpm", "daemon"] },
+          "type": { "enum": ["appimage", "arch", "deb", "rpm", "daemon"] },
           "architecture": { "enum": ["aarch64", "x86_64"] },
           "url": { "type": "string", "format": "uri" },
           "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },

@@ -40,9 +40,10 @@ import { SettingsDrillRow } from './SettingsDrillRow.js';
 import { settingsTabMeta, type SettingsTabId } from './settingsTabs.js';
 import { fixtureAccountStatus } from '../../daemonFixture.js';
 
-const UPDATE_CHANNEL_COPY: Record<'deb' | 'rpm' | 'appimage' | 'unknown', string> = {
+const UPDATE_CHANNEL_COPY: Record<'deb' | 'rpm' | 'arch' | 'appimage' | 'unknown', string> = {
   deb: 'Installed via the Debian package channel; apt/dpkg owns upgrades.',
   rpm: 'Installed via the RPM package channel; dnf/rpm owns upgrades.',
+  arch: 'Installed via the Arch package channel; pacman owns upgrades.',
   appimage: 'Installed as AppImage; replace the image file from your release source.',
   unknown: 'Package channel could not be determined; use your distro package manager or release notes.'
 };

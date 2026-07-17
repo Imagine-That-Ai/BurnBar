@@ -342,6 +342,53 @@ describe('native Linux update status decoding', () => {
     expect(decoded.instructions?.rollback.command).toBe('sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION');
   });
 
+  it('accepts Arch package metadata and pacman guidance', () => {
+    const decoded = decodeLinuxUpdateStatus({
+      state: 'available',
+      currentVersion: '1.0.0',
+      latestVersion: '1.1.0',
+      packageChannel: 'arch',
+      artifact: {
+        type: 'arch',
+        architecture: 'x86_64',
+        url: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/openburnbar-1.1.0-x86_64.pkg.tar.zst',
+        sha256: 'a'.repeat(64),
+        size: 100,
+        signatureUrl: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/openburnbar-1.1.0-x86_64.pkg.tar.zst.sig'
+      },
+      instructions: {
+        packageManager: 'pacman',
+        install: {
+          id: 'install', label: 'Update with pacman', instruction: 'Use pacman.',
+          available: false, requiresConfirmation: true
+        },
+        rollback: {
+          id: 'rollback', label: 'Roll back with pacman', instruction: 'Choose a prior version.',
+          available: false, requiresConfirmation: true
+        },
+        restart: {
+          id: 'restart', label: 'Restart OpenBurnBar', instruction: 'Restart after replacement.',
+          command: 'systemctl --user restart openburnbar-daemon.service', available: true, requiresConfirmation: false
+        }
+      },
+      channelInfo: {
+        id: 'arch',
+        label: 'Arch package (.pkg.tar.zst)',
+        owner: 'pacman',
+        installMode: 'package-manager-guided',
+        automaticInstall: false,
+        rollbackMode: 'pacman-cache',
+        explanation: 'The Arch package manager owns files and upgrades.'
+      }
+    });
+    expect(decoded).toMatchObject({
+      packageChannel: 'arch',
+      artifact: { type: 'arch', architecture: 'x86_64' },
+      instructions: { packageManager: 'pacman' },
+      channelInfo: { id: 'arch', owner: 'pacman' }
+    });
+  });
+
   it('rejects unsafe or incomplete native package actions', () => {
     expect(() => decodeLinuxUpdateStatus({
       state: 'current',

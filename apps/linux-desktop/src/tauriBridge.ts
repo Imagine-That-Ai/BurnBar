@@ -731,9 +731,9 @@ export type MembershipStatus = {
 export type AppVersionInfo = {
   shellVersion: string;
   daemonVersion: string;
-  packageChannel: 'deb' | 'rpm' | 'appimage' | 'unknown';
+  packageChannel: 'deb' | 'rpm' | 'arch' | 'appimage' | 'unknown';
   package?: {
-    channel: 'deb' | 'rpm' | 'appimage' | 'unknown';
+    channel: 'deb' | 'rpm' | 'arch' | 'appimage' | 'unknown';
     manager: string;
     evidence: string;
   };
@@ -749,7 +749,7 @@ export type AppVersionInfo = {
   updateCheck?: string;
 };
 export type LinuxUpdateArtifact = {
-  type: 'appimage' | 'deb' | 'rpm' | 'daemon';
+  type: 'appimage' | 'arch' | 'deb' | 'rpm' | 'daemon';
   architecture: 'aarch64' | 'x86_64';
   url: string;
   sha256: string;
@@ -765,13 +765,13 @@ export type LinuxUpdateAction = {
   requiresConfirmation: boolean;
 };
 export type LinuxUpdateInstructions = {
-  packageManager: 'apt' | 'dnf' | 'appimage' | 'unknown';
+  packageManager: 'apt' | 'dnf' | 'pacman' | 'appimage' | 'unknown';
   install: LinuxUpdateAction;
   rollback: LinuxUpdateAction;
   restart: LinuxUpdateAction;
 };
 export type LinuxUpdateChannelInfo = {
-  id: 'deb' | 'rpm' | 'appimage' | 'unknown';
+  id: 'deb' | 'rpm' | 'arch' | 'appimage' | 'unknown';
   label: string;
   owner: string;
   installMode: 'package-manager-guided' | 'artifact-replacement-guided' | 'unavailable';
@@ -3625,7 +3625,7 @@ export function decodeLinuxUpdateStatus(raw: RawJsonValue): LinuxUpdateStatus {
       };
   if (
     artifact &&
-    (!['appimage', 'deb', 'rpm', 'daemon'].includes(artifact.type) ||
+    (!['appimage', 'arch', 'deb', 'rpm', 'daemon'].includes(artifact.type) ||
       !['aarch64', 'x86_64'].includes(artifact.architecture) ||
       !artifact.url ||
       !/^[a-f0-9]{64}$/.test(artifact.sha256) ||
@@ -3663,7 +3663,7 @@ export function decodeLinuxUpdateStatus(raw: RawJsonValue): LinuxUpdateStatus {
     rollback: parseAction('rollback'),
     restart: parseAction('restart')
   };
-  const hasInstructions = ['apt', 'dnf', 'appimage', 'unknown'].includes(packageManager)
+  const hasInstructions = ['apt', 'dnf', 'pacman', 'appimage', 'unknown'].includes(packageManager)
     && parsedInstructions.install
     && parsedInstructions.rollback
     && parsedInstructions.restart;
@@ -3684,7 +3684,7 @@ export function decodeLinuxUpdateStatus(raw: RawJsonValue): LinuxUpdateStatus {
         explanation: str(pick(channelInfoRaw, 'explanation'))
       };
   if (channelInfo && (
-    !['deb', 'rpm', 'appimage', 'unknown'].includes(channelInfo.id)
+    !['deb', 'rpm', 'arch', 'appimage', 'unknown'].includes(channelInfo.id)
     || !channelInfo.label
     || !channelInfo.owner
     || !['package-manager-guided', 'artifact-replacement-guided', 'unavailable'].includes(channelInfo.installMode)
@@ -3732,7 +3732,7 @@ export function decodeLinuxUpdateStatus(raw: RawJsonValue): LinuxUpdateStatus {
     instructions: hasInstructions
       ? parsedInstructions as LinuxUpdateInstructions
       : undefined,
-    packageChannel: ['deb', 'rpm', 'appimage', 'unknown'].includes(packageChannelRaw)
+    packageChannel: ['deb', 'rpm', 'arch', 'appimage', 'unknown'].includes(packageChannelRaw)
       ? packageChannelRaw as LinuxUpdateChannelInfo['id']
       : undefined,
     channelInfo,
@@ -4417,6 +4417,7 @@ function normalizeChannel(s: string): AppVersionInfo['packageChannel'] {
   const lower = s.toLowerCase();
   if (lower.includes('deb')) return 'deb';
   if (lower.includes('rpm')) return 'rpm';
+  if (lower === 'arch' || lower.includes('pacman')) return 'arch';
   if (lower.includes('appimage') || lower.includes('app-image')) return 'appimage';
   return 'unknown';
 }

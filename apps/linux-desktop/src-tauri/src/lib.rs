@@ -5650,6 +5650,7 @@ const DIAGNOSTICS_EXCLUDED: [&str; 4] = [
 fn normalized_package_channel(value: &str) -> Option<&'static str> {
     match value.trim().to_ascii_lowercase().as_str() {
         "appimage" => Some("appimage"),
+        "arch" => Some("arch"),
         "deb" => Some("deb"),
         "rpm" => Some("rpm"),
         _ => None,
@@ -5658,6 +5659,7 @@ fn normalized_package_channel(value: &str) -> Option<&'static str> {
 
 fn package_manager_for_channel(channel: &str) -> &'static str {
     match channel {
+        "arch" => "pacman",
         "deb" => "dpkg",
         "rpm" => "rpm",
         "appimage" => "appimage",
@@ -5732,6 +5734,17 @@ fn detect_linux_package_facts() -> LinuxPackageFacts {
                 channel: "rpm".to_string(),
                 manager: "rpm".to_string(),
                 evidence: format!("rpm:{package_id}"),
+            };
+        }
+    }
+    for package_id in package_query_ids() {
+        if command_reports_installed("/usr/bin/pacman", &["-Q", package_id])
+            || command_reports_installed("/bin/pacman", &["-Q", package_id])
+        {
+            return LinuxPackageFacts {
+                channel: "arch".to_string(),
+                manager: "pacman".to_string(),
+                evidence: format!("pacman:{package_id}"),
             };
         }
     }
@@ -7376,8 +7389,10 @@ mod tests {
     fn package_channel_override_is_strict_and_unknown_is_not_promoted_to_appimage() {
         assert_eq!(normalized_package_channel(" DEB "), Some("deb"));
         assert_eq!(normalized_package_channel("rpm"), Some("rpm"));
+        assert_eq!(normalized_package_channel(" Arch "), Some("arch"));
         assert_eq!(normalized_package_channel("appimage"), Some("appimage"));
         assert_eq!(normalized_package_channel("flatpak"), None);
+        assert_eq!(package_manager_for_channel("arch"), "pacman");
         assert_eq!(package_manager_for_channel("unknown"), "unknown");
     }
 

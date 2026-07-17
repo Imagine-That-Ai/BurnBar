@@ -4,6 +4,7 @@ import type { AppVersionInfo } from '../../tauriBridge.js';
 const CHANNEL_LABEL: Record<AppVersionInfo['packageChannel'], string> = {
   deb: 'Debian package (.deb)',
   rpm: 'RPM package (.rpm)',
+  arch: 'Arch package (.pkg.tar.zst)',
   appimage: 'AppImage',
   unknown: 'Unknown channel'
 };

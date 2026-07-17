@@ -7,7 +7,7 @@
  */
 
 const STRICT_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
-const CHANNELS = new Set(['deb', 'rpm', 'appimage', 'unknown']);
+const CHANNELS = new Set(['deb', 'rpm', 'arch', 'appimage', 'unknown']);
 
 function assertVersion(value, label) {
   if (typeof value !== 'string' || !STRICT_SEMVER.test(value)) {
@@ -35,7 +35,9 @@ export function buildLinuxUpdatePlan({
     ? 'apt'
     : packageChannel === 'rpm'
       ? 'dnf'
-      : packageChannel;
+      : packageChannel === 'arch'
+        ? 'pacman'
+        : packageChannel;
   const versionLabel = latest ?? current;
   const install = packageChannel === 'deb'
     ? action({
@@ -49,17 +51,23 @@ export function buildLinuxUpdatePlan({
           instruction: 'A signed direct-download artifact is available, but no dnf repository channel is configured; install it manually after verifying its digest.',
           available: false, requiresConfirmation: true
         })
-      : packageChannel === 'appimage'
+      : packageChannel === 'arch'
         ? action({
-            id: 'install', label: 'Replace the AppImage',
-            instruction: 'Download the signed artifact, replace the current AppImage atomically, and keep its executable bit.',
-            available: true, requiresConfirmation: true
-          })
-        : action({
-            id: 'install', label: 'Use your package manager',
-            instruction: 'Identify the owning package channel before replacing OpenBurnBar.',
+            id: 'install', label: 'Update with pacman',
+            instruction: 'A signed direct-download artifact is available, but no pacman repository channel is configured; install it manually after verifying its digest.',
             available: false, requiresConfirmation: true
-          });
+          })
+        : packageChannel === 'appimage'
+          ? action({
+              id: 'install', label: 'Replace the AppImage',
+              instruction: 'Download the signed artifact, replace the current AppImage atomically, and keep its executable bit.',
+              available: true, requiresConfirmation: true
+            })
+          : action({
+              id: 'install', label: 'Use your package manager',
+              instruction: 'Identify the owning package channel before replacing OpenBurnBar.',
+              available: false, requiresConfirmation: true
+            });
   const rollback = packageChannel === 'deb'
     ? action({
         id: 'rollback', label: 'Roll back with apt',
@@ -72,17 +80,23 @@ export function buildLinuxUpdatePlan({
           instruction: `No previous signed RPM artifact is attached to this feed (current: ${current}, feed: ${versionLabel}); rollback stays unavailable until release metadata supplies one.`,
           available: false, requiresConfirmation: true
         })
-      : packageChannel === 'appimage'
+      : packageChannel === 'arch'
         ? action({
-            id: 'rollback', label: 'Restore the previous AppImage',
-            instruction: 'Restore a previously signed AppImage backup, verify its digest, and relaunch OpenBurnBar.',
+            id: 'rollback', label: 'Roll back with pacman',
+            instruction: `No previous signed Arch artifact is attached to this feed (current: ${current}, feed: ${versionLabel}); rollback stays unavailable until release metadata supplies one.`,
             available: false, requiresConfirmation: true
           })
-        : action({
-            id: 'rollback', label: 'Rollback guidance unavailable',
-            instruction: 'The owning package channel is unknown; do not replace binaries until it is identified.',
-            available: false, requiresConfirmation: true
-          });
+        : packageChannel === 'appimage'
+          ? action({
+              id: 'rollback', label: 'Restore the previous AppImage',
+              instruction: 'Restore a previously signed AppImage backup, verify its digest, and relaunch OpenBurnBar.',
+              available: false, requiresConfirmation: true
+            })
+          : action({
+              id: 'rollback', label: 'Rollback guidance unavailable',
+              instruction: 'The owning package channel is unknown; do not replace binaries until it is identified.',
+              available: false, requiresConfirmation: true
+            });
   const restart = action({
     id: 'restart',
     label: 'Restart OpenBurnBar',

@@ -30,6 +30,18 @@ test('rpm and AppImage plans preserve native ownership', () => {
   assert.equal(appimage.restart.command, null);
 });
 
+test('Arch plans preserve pacman ownership and fail closed without repository/history artifacts', () => {
+  const plan = buildLinuxUpdatePlan({ packageChannel: 'arch', currentVersion: '1.0.0', latestVersion: '1.1.0' });
+  assert.equal(plan.packageManager, 'pacman');
+  assert.equal(plan.install.label, 'Update with pacman');
+  assert.equal(plan.install.command, null);
+  assert.equal(plan.install.available, false);
+  assert.equal(plan.rollback.label, 'Roll back with pacman');
+  assert.equal(plan.rollback.command, null);
+  assert.equal(plan.rollback.available, false);
+  assert.equal(plan.restart.command, 'systemctl --user restart openburnbar-daemon.service');
+});
+
 test('unknown channel remains explicitly unavailable', () => {
   const plan = buildLinuxUpdatePlan({ packageChannel: 'unknown', currentVersion: '1.0.0' });
   assert.equal(plan.install.available, false);
