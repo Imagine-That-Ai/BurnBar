@@ -3,7 +3,47 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** F1 source/product implementation is complete; the applicable WPD-0006 F2 source substitutions are complete; the `windows-v1.0.31` physical x64 candidate is NO-GO pending a corrected signed successor; physical/manual/live-staging/public-lifecycle release gates remain
+**Status:** F1 source/product implementation and applicable WPD-0006 F2 substitutions are complete; corrected signed successor `windows-v1.0.35` passes the automated exact-candidate release gate; fresh physical x64, manual, live-staging, safety, and Store/update lifecycle certification remain
+
+## Corrected Signed Successor - 2026-07-17
+
+Protected tag `windows-v1.0.35` resolves to PR #1832 merge commit
+`2cfa9db885dafef7f1f451a9e05a8ee775351d44`. Release workflow
+[29557726093](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29557726093)
+completed successfully with unsigned direct-download output forbidden. The
+published-layout parser smoke passed before signing with both
+`OpenBurnBarCore_OpenBurnBarCore.resources` and
+`OpenBurnBarCore_OpenBurnBarKernel.resources` present. Its isolated .NET 10
+testhost staged the Swift resource bundles beside the host process while the
+exact copied publish directory supplied the native DLL dependency search path.
+
+Azure Artifact Signing, portable and direct-MSIX signature verification,
+RFC 3161 timestamp checks, x64 and ARM64 native-layout validation, direct and
+Store MSIX packaging, Store unsigned-state verification, the hosted x64
+clean-install/uninstall/reinstall lifecycle, Ed25519 update-feed signing, SPDX
+SBOM, OpenVEX, and all 18 Sigstore attestations passed. Independent download
+verification matched both GitHub artifact archive digests, every release
+checksum, all four portable/direct native layouts, both Store identities and
+resource layouts, the pinned two-entry update feed, and all 18 Sigstore
+bundles under the exact tag workflow identity.
+
+Exact distribution hashes:
+
+- x64 portable ZIP: `bd851461b55da12a1b4d5470d26ccb5e8e6f2db7ea7e3a9a352b9ea7d47bf14e`
+- ARM64 portable ZIP: `59ddf9ccc07f9c9535d1a49d6d9e824fe952be6d469965a3ca71906665bfc3c7`
+- x64 direct MSIX: `1d68c24f044a0247d49a5f2e4030a4d46844ce49c34016d3605f129bcd9a43e1`
+- ARM64 direct MSIX: `c3ef5b12c06ede819965f301357ac8d84ef22c4a71631528d353092a425f11bf`
+- x64 Store MSIX: `a5fe60b3b0816f4b59482031e9e139725741665db0e2fd2150054a0f3f804d64`
+- ARM64 Store MSIX: `eafc14b7a9d6b408d7ce1cf9f82228228d878c2ae416670d70de94fe797ece2c`
+
+The machine-readable record and physical handoff are under
+[`evidence/windows-v1.0.35-release/`](evidence/windows-v1.0.35-release/README.md).
+This supersedes `windows-v1.0.31` only as the corrected automated signed
+candidate. It does not erase that candidate's physical NO-GO result or convert
+hosted lifecycle evidence into physical certification. A fresh physical Intel
+x64 run is required. Physical ARM64 remains an explicit beta limitation, and
+manual accessibility/display, live staging, advanced media/Computer Use
+safety, and controlled Store/update lifecycle gates remain open.
 
 ## Physical Intel x64 Packaging Finding - 2026-07-16
 
@@ -26,14 +66,16 @@ MSIX layouts contain only `OpenBurnBarCore_OpenBurnBarCore.resources`; they omit
 resolves the missing Kernel bundle, while Windows Error Reporting attributes the
 mixed managed/native crash to `coreclr.dll`.
 
-The replacement release line is `1.0.32`. Its source gate requires both SwiftPM
+The replacement release line began at `1.0.32` and produced the corrected
+signed successor at `1.0.35`. Its source gate requires both SwiftPM
 resource bundles at native staging, MSBuild publish, post-signature manifest
 refresh, portable packaging, and MSIX packaging. Both bundles and every file
 within them must be hashed by `native-engine-manifest.json`. The Windows engine
 workflow executes the real usage scan from the staged layout, and the release
 workflow repeats that parser smoke from the published x64 layout before signing.
-A new exact-head signed artifact and a fresh physical Intel certification run
-are required; no result from `windows-v1.0.31` may be promoted or relabeled.
+The exact-head signed artifact now exists as `windows-v1.0.35`; a fresh physical
+Intel certification run remains required. No result from `windows-v1.0.31` may
+be promoted or relabeled.
 
 ## Certification Update - 2026-07-11
 
