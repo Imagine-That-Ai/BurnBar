@@ -25,8 +25,8 @@ $Release = Join-Path $Root 'release'
 $Evidence = Join-Path $Root ('physical-x64-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $Attestation = Join-Path $Root 'hardware-attestation-x64.json'
 $ExpectedCommit = '2cfa9db885dafef7f1f451a9e05a8ee775351d44'
-$ExpectedHarnessCommit = 'f7d95fabecc6964f7b2cec895eb1c14dc8178bb1'
-$ExpectedPerformanceBudgetHash = 'e74d889051244901f1bac929999d9b276feb89cdd8d9ea61a74ca275de3ab832'
+$ExpectedHarnessCommit = '0ff07832c9a2a8137d7a342682d4ccd785be7034'
+$ExpectedPerformanceBudgetHash = '0824f341d0a7dea318a831e6ce67de016c9589d909e6982a678102130078fa92'
 $ExpectedMsixHash = '1d68c24f044a0247d49a5f2e4030a4d46844ce49c34016d3605f129bcd9a43e1'
 $ExpectedSigner = 'CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US'
 $InstalledByRun = $false
@@ -214,7 +214,8 @@ checks sample and duration floors, independently derives nearest-rank p95,
 arithmetic mean, maximum, binary event rate, first-to-last growth, or event
 count from each sample series, re-evaluates all thresholds, and rejects a
 measurement duration longer than the signed receipt interval. A typed summary
-value that does not match its samples fails.
+value that does not match its samples fails. Negative physical samples and
+sample series above the active 100,000-value safety ceiling also fail.
 Incomplete, failed, unknown, duplicate, unbound, unhashed, path-escaping, stale,
 wrong-device, wrong-architecture, virtualized, or secret-bearing evidence fails
 closed.

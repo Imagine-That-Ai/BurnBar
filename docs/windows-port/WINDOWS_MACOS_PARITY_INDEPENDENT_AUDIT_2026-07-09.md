@@ -47,12 +47,13 @@ safety, and controlled Store/update lifecycle gates remain open.
 
 The physical-performance gate is now fail-closed against an active numeric
 contract rather than a subjective checklist. Independent harness commit
-`f7d95fabecc6964f7b2cec895eb1c14dc8178bb1` binds 18 launch, interaction,
+`0ff07832c9a2a8137d7a342682d4ccd785be7034` binds 18 launch, interaction,
 CPU, memory, GPU, disk, frame, and soak measurements to
 `release-performance-budgets.json`; requires declared tools, workload, power,
 display, and sampling context; enforces sample/duration floors; hashes every raw
 evidence file; independently derives each statistic from the complete sample
-series; and re-evaluates every threshold during receipt validation. This
+series; bounds sample cardinality and value domains; and re-evaluates every
+threshold during receipt validation. This
 closes an evidence-integrity gap but is not physical performance evidence: the
 Intel x64 protocol must still run against the exact signed candidate, and ARM64
 physical performance remains the documented beta limitation.

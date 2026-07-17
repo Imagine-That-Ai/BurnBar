@@ -100,7 +100,7 @@ assert.equal(performanceBudget.status, "ACTIVE_RELEASE_GATE");
 assert.equal(performanceBudget.profile, "physical-performance");
 assert.equal(
   createHash("sha256").update(performanceBudgetBytes).digest("hex"),
-  "e74d889051244901f1bac929999d9b276feb89cdd8d9ea61a74ca275de3ab832",
+  "0824f341d0a7dea318a831e6ce67de016c9589d909e6982a678102130078fa92",
 );
 assert.equal(
   protocolCatalog.profiles["physical-performance"].performanceBudgetSchema,
@@ -155,11 +155,11 @@ assert.match(physicalRunbook, /\$Repo = Join-Path \$Root 'candidate'/);
 assert.match(physicalRunbook, /\$Harness = Join-Path \$Root 'harness'/);
 assert.match(
   physicalRunbook,
-  /\$ExpectedHarnessCommit = 'f7d95fabecc6964f7b2cec895eb1c14dc8178bb1'/,
+  /\$ExpectedHarnessCommit = '0ff07832c9a2a8137d7a342682d4ccd785be7034'/,
 );
 assert.match(
   physicalRunbook,
-  /\$ExpectedPerformanceBudgetHash = 'e74d889051244901f1bac929999d9b276feb89cdd8d9ea61a74ca275de3ab832'/,
+  /\$ExpectedPerformanceBudgetHash = '0824f341d0a7dea318a831e6ce67de016c9589d909e6982a678102130078fa92'/,
 );
 assert.match(physicalRunbook, /Active release performance budget mismatch/);
 assert.match(physicalRunbook, /git -C \$Repo checkout --detach windows-v1\.0\.35/);
