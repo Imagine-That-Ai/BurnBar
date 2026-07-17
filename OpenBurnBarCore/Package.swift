@@ -604,6 +604,7 @@ let computerUseCoreExcludes: [String] = []
 let openBurnBarCoreTestExcludes: [String] = []
 let computerUseCoreTestExcludes: [String] = []
 let legacyLinuxTestSources: [String]? = nil
+let analyticsLinuxTestSources: [String]? = nil
 let openBurnBarMediaTestSources: [String]? = nil
 let openBurnBarCoreOffAppleTestSources: [String]? = nil
 let openBurnBarCorePlaceholderExcludes: [String] = []
