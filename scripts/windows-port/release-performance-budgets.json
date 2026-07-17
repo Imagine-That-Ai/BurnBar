@@ -5,6 +5,7 @@
   "effectiveAtUtc": "2026-07-17T00:00:00Z",
   "owner": "OpenBurnBar release engineering",
   "profile": "physical-performance",
+  "maximumSamplesPerMeasurement": 100000,
   "basis": {
     "documented": [
       "docs/runbooks/slos.md defines local search p95 below 350 ms and dashboard refresh p95 below 5 seconds",

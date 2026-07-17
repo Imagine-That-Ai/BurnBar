@@ -44,6 +44,12 @@ export function validatePerformanceBudgetCatalog(catalog = PERFORMANCE_BUDGET_CA
   if (!Number.isInteger(catalog.revision) || catalog.revision < 1) {
     errors.push("performance budget catalog revision must be a positive integer");
   }
+  if (
+    !Number.isInteger(catalog.maximumSamplesPerMeasurement) ||
+    catalog.maximumSamplesPerMeasurement < 1
+  ) {
+    errors.push("performance budget maximumSamplesPerMeasurement must be a positive integer");
+  }
   const ids = new Set();
   for (const [index, measurement] of asArray(catalog.measurements).entries()) {
     const label = `performance budget measurements[${index}]`;
@@ -141,6 +147,9 @@ export function derivePerformanceValue(samples, statistic) {
     throw new Error("samples must contain at least one value");
   }
   if (!samples.every(finiteNumber)) throw new Error("samples must contain only finite numbers");
+  if (samples.some((value) => value < 0)) {
+    throw new Error("samples must be non-negative");
+  }
   if (statistic === "p95") {
     const sorted = [...samples].sort((left, right) => left - right);
     return sorted[Math.max(0, Math.ceil(sorted.length * 0.95) - 1)];
@@ -156,7 +165,7 @@ export function derivePerformanceValue(samples, statistic) {
     return (samples.reduce((sum, value) => sum + value, 0) / samples.length) * 100;
   }
   if (statistic === "growth") {
-    if (samples[0] <= 0) throw new Error("growth samples require a positive first value");
+    if (samples[0] === 0) throw new Error("growth samples require a positive first value");
     return ((samples.at(-1) - samples[0]) / samples[0]) * 100;
   }
   if (statistic === "count") {
@@ -206,10 +215,18 @@ export function validatePerformanceMeasurements(measurements, options = {}) {
       );
     }
     const samples = asArray(measurement.samples);
+    if (samples.length > PERFORMANCE_BUDGET_CATALOG.maximumSamplesPerMeasurement) {
+      errors.push(
+        `${measurementLabel}.samples exceeds ${PERFORMANCE_BUDGET_CATALOG.maximumSamplesPerMeasurement}`,
+      );
+    }
     if (samples.length !== measurement.sampleCount) {
       errors.push(`${measurementLabel}.sampleCount must equal samples.length`);
     }
     try {
+      if (samples.length > PERFORMANCE_BUDGET_CATALOG.maximumSamplesPerMeasurement) {
+        throw new Error("sample series exceeds the active validation limit");
+      }
       const derivedValue = derivePerformanceValue(samples, budget.statistic);
       if (
         finiteNumber(measurement.value) &&

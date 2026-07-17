@@ -497,6 +497,25 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
 
 {
   const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements[0].samples[0] = -1;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /samples must be non-negative/);
+}
+
+{
+  const value = physicalPassReceipt();
+  const measurement = value.protocol.performanceMeasurements[0];
+  measurement.samples = Array(PERFORMANCE_BUDGET_CATALOG.maximumSamplesPerMeasurement + 1).fill(0);
+  measurement.sampleCount = measurement.samples.length;
+  measurement.value = 0;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /samples exceeds 100000/);
+}
+
+{
+  const value = physicalPassReceipt();
   value.protocol.performanceMeasurements[0].evidence = ["missing-performance.csv"];
   const result = validateReceipt(value, { bundleDir: value.root });
   assert.equal(result.ok, false);
