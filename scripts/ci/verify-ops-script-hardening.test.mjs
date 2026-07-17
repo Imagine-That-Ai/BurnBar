@@ -196,10 +196,54 @@ assert.ok(
     authenticodeSignIndex > publishedParserSmokeIndex,
   "the real parser must execute from the published x64 layout before Authenticode signing",
 );
+const publishedParserSmokeBlock = windowsReleaseWorkflow.slice(
+  publishedParserSmokeIndex,
+  authenticodeSignIndex,
+);
 assert.match(
-  windowsReleaseWorkflow,
-  /OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"[\s\S]*publish\/win-x64[\s\S]*RUNNER_TEMP[\s\S]*Copy-Item[\s\S]*OpenBurnBarCoreCAbi\.dll[\s\S]*--output \$smokeRoot[\s\S]*NativeUsageEngineIntegrationTests/,
-  "the published-layout parser smoke must be mandatory and load the published engine",
+  publishedParserSmokeBlock,
+  /OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"[\s\S]*publish\/win-x64[\s\S]*\$smokeRoot = Join-Path \$env:RUNNER_TEMP[\s\S]*\$testOutputRoot = Join-Path \$env:RUNNER_TEMP[\s\S]*Copy-Item[\s\S]*OpenBurnBarCoreCAbi\.dll/,
+  "the published-layout parser smoke must load the published native engine",
+);
+const testhostBuildIndex = publishedParserSmokeBlock.indexOf("dotnet build $testProject");
+const resourceCopyIndex = publishedParserSmokeBlock.indexOf("$requiredResourceBundles = @(");
+const nativeDllSearchPathIndex = publishedParserSmokeBlock.indexOf(
+  '$env:PATH = "$smokeRoot;$env:PATH"',
+);
+const parserTestIndex = publishedParserSmokeBlock.indexOf("dotnet test $testProject");
+assert.ok(
+  testhostBuildIndex >= 0 &&
+    resourceCopyIndex > testhostBuildIndex &&
+    parserTestIndex > resourceCopyIndex,
+  "the isolated testhost must build before resource staging and execute afterward",
+);
+assert.ok(
+  nativeDllSearchPathIndex >= 0 && nativeDllSearchPathIndex < parserTestIndex,
+  "the isolated testhost must resolve native dependencies from the copied publish layout",
+);
+for (const bundleName of [
+  "OpenBurnBarCore_OpenBurnBarCore.resources",
+  "OpenBurnBarCore_OpenBurnBarKernel.resources",
+]) {
+  assert.ok(
+    publishedParserSmokeBlock.includes(bundleName),
+    `the parser smoke must require ${bundleName}`,
+  );
+}
+assert.match(
+  publishedParserSmokeBlock,
+  /Get-ChildItem[\s\S]*OpenBurnBarCore_\*\.resources[\s\S]*Copy-Item[\s\S]*\$testOutputRoot/,
+  "Swift resource bundles must be copied beside the isolated test process",
+);
+assert.match(
+  publishedParserSmokeBlock,
+  /\$forbiddenRuntimeFiles = @\("hostfxr\.dll", "hostpolicy\.dll", "coreclr\.dll"\)[\s\S]*dotnet test \$testProject[\s\S]*--no-build[\s\S]*--output \$testOutputRoot[\s\S]*NativeUsageEngineIntegrationTests/,
+  "the parser smoke must reject app-local runtimes and execute the prebuilt isolated testhost",
+);
+assert.doesNotMatch(
+  publishedParserSmokeBlock,
+  /--output \$smokeRoot/,
+  "the .NET testhost must not be emitted into the self-contained published app layout",
 );
 assert.equal(
   (windowsEngineWorkflow.match(/OPENBURNBAR_CORE_CABI_PATH=\$stagedEngine/g) ?? []).length,

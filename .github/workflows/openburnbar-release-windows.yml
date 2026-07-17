@@ -399,13 +399,47 @@ jobs:
           $ErrorActionPreference = "Stop"
           $publishedRoot = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64"
           $smokeRoot = Join-Path $env:RUNNER_TEMP "openburnbar-published-x64-parser-smoke"
+          $testOutputRoot = Join-Path $env:RUNNER_TEMP "openburnbar-published-x64-parser-testhost"
           Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $testOutputRoot -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
+          New-Item -ItemType Directory -Force -Path $testOutputRoot | Out-Null
           Copy-Item -Path (Join-Path $publishedRoot "*") -Destination $smokeRoot -Recurse -Force
           $env:OPENBURNBAR_CORE_CABI_PATH = Join-Path $smokeRoot "OpenBurnBarCoreCAbi.dll"
-          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj `
+          # The real app starts in the publish directory. Give the isolated testhost
+          # the equivalent Windows DLL search path for the engine's Swift runtimes.
+          $env:PATH = "$smokeRoot;$env:PATH"
+          $testProject = "windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj"
+          dotnet build $testProject -c Release --output $testOutputRoot
+
+          # Swift Bundle.module resolves beside the host process on Windows. Stage only
+          # resource bundles there; copying the self-contained runtime would shadow net10.
+          $requiredResourceBundles = @(
+            "OpenBurnBarCore_OpenBurnBarCore.resources",
+            "OpenBurnBarCore_OpenBurnBarKernel.resources"
+          )
+          foreach ($bundleName in $requiredResourceBundles) {
+            $bundleSource = Join-Path $smokeRoot $bundleName
+            if (-not (Test-Path -LiteralPath $bundleSource -PathType Container)) {
+              throw "Published parser smoke is missing required resource bundle: $bundleName"
+            }
+          }
+          Get-ChildItem -LiteralPath $smokeRoot -Directory -Filter "OpenBurnBarCore_*.resources" |
+            ForEach-Object {
+              Copy-Item -LiteralPath $_.FullName `
+                -Destination (Join-Path $testOutputRoot $_.Name) -Recurse -Force
+            }
+          $forbiddenRuntimeFiles = @("hostfxr.dll", "hostpolicy.dll", "coreclr.dll")
+          foreach ($runtimeFile in $forbiddenRuntimeFiles) {
+            if (Test-Path -LiteralPath (Join-Path $testOutputRoot $runtimeFile)) {
+              throw "Self-contained runtime leaked into parser testhost output: $runtimeFile"
+            }
+          }
+
+          dotnet test $testProject `
             -c Release `
-            --output $smokeRoot `
+            --no-build `
+            --output $testOutputRoot `
             --filter FullyQualifiedName~NativeUsageEngineIntegrationTests `
             --blame-hang `
             --blame-hang-timeout 5m
