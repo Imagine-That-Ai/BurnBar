@@ -620,7 +620,7 @@ final class CloudVaultOpaqueIdentifierShadowSliceTests: XCTestCase {
                 "project_memory_doc_id",
                 "pensieve_dedup_hash",
                 "pensieve_slug_hmac",
-                "subscription_doc_id",
+                "subscription_doc_id"
             ])
         )
     }

@@ -114,13 +114,13 @@ final class PensieveVectorDomainCoreTests: XCTestCase {
             "pensieve_vector_cloak",
             "pensieve_l2_normalize",
             "pensieve_deterministic_embed",
-            "pensieve_deterministic_embed_and_cloak",
+            "pensieve_deterministic_embed_and_cloak"
         ]
         let forbidden: Set<String> = [
             "cloak",
             "l2_normalize",
             "embed",
-            "embed_and_cloak",
+            "embed_and_cloak"
         ]
 
         var captured: [DomainCoreShadowComparison] = []
