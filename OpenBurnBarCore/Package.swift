@@ -534,6 +534,10 @@ let analyticsLinuxTestSources: [String]? = ["LinuxAnalyticsBehaviorTests.swift"]
 // compatibility targets.
 let openBurnBarMediaTestSources: [String]? = ["LinuxMediaContractTests.swift"]
 #if os(Linux)
+// The remote-engine seam has a real Linux behavior suite. Keep it separate
+// from the legacy placeholder source list so the Linux graph executes these
+// transport-contract tests rather than reporting a compile-only target.
+let remoteEngineLinuxTestSources: [String]? = ["LinuxRemoteEngineBehaviorTests.swift"]
 let openBurnBarCoreOffAppleTestSources: [String]? = ["LLMSafeWrapVectorTests.swift"]
 let openBurnBarCorePlaceholderExcludes = ["LinuxEmptyTests.swift"]
 let computerUseCoreOffAppleTestSources: [String]? = [
@@ -545,6 +549,7 @@ let computerUseCoreOffAppleTestSources: [String]? = [
 let openBurnBarCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift", "LLMSafeWrapVectorTests.swift"]
 let openBurnBarCorePlaceholderExcludes: [String] = []
 let computerUseCoreOffAppleTestSources: [String]? = ["LinuxComputerUseCoreBehaviorTests.swift"]
+let remoteEngineLinuxTestSources: [String]? = nil
 #endif
 func legacyLinuxTestExcludes(targetPath: String) -> [String] {
     let targetURL = packageRoot.appendingPathComponent(targetPath, isDirectory: true)
@@ -564,6 +569,7 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
             "LinuxEmptyTests.swift",
             "LinuxComputerUseCoreBehaviorTests.swift",
             "LinuxAnalyticsBehaviorTests.swift",
+            "LinuxRemoteEngineBehaviorTests.swift",
             "LinuxMediaContractTests.swift",
             "LLMSafeWrapVectorTests.swift",
             "LinuxSecretStorageTests.swift",
@@ -609,6 +615,7 @@ let computerUseCoreTestExcludes: [String] = []
 let legacyLinuxTestSources: [String]? = nil
 let analyticsLinuxTestSources: [String]? = nil
 let openBurnBarMediaTestSources: [String]? = nil
+let remoteEngineLinuxTestSources: [String]? = nil
 let openBurnBarCoreOffAppleTestSources: [String]? = nil
 let openBurnBarCorePlaceholderExcludes: [String] = []
 let computerUseCoreOffAppleTestSources: [String]? = nil
@@ -914,7 +921,7 @@ let firstPartyTargetsBase: [Target] = [
             name: "BurnBarRemoteEngineTests",
             dependencies: ["BurnBarRemoteEngine", swiftTestingDependency],
             exclude: legacyLinuxTestExcludes(targetPath: "Tests/BurnBarRemoteEngineTests"),
-            sources: legacyLinuxTestSources
+            sources: remoteEngineLinuxTestSources
         ),
         .testTarget(
             name: "OpenBurnBarComputerUseCoreTests",
@@ -975,7 +982,6 @@ let firstPartyTargetsBase: [Target] = [
 // supported code; media has a real platform-neutral contract suite below.
 let linuxPlaceholderTestTargetNames: Set<String> = [
     "OpenBurnBarIrohRelayTests",
-    "BurnBarRemoteEngineTests",
     "OpenBurnBarSignalCoreTests",
     "OpenBurnBarSignalSessionTransportTests"
 ]

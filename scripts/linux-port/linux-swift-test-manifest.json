@@ -48,6 +48,14 @@
       "scratchPath": ".build-linux-swift-tests/core"
     },
     {
+      "id": "remote-engine-linux",
+      "packagePath": "OpenBurnBarCore",
+      "target": "BurnBarRemoteEngineTests",
+      "filter": "BurnBarRemoteEngineTests.BurnBarRemoteEngineLinuxBehaviorTests",
+      "minimumExecutedTests": 8,
+      "scratchPath": ".build-linux-swift-tests/core"
+    },
+    {
       "id": "portable-wrap-vectors",
       "packagePath": "OpenBurnBarCore",
       "target": "OpenBurnBarCoreTests",

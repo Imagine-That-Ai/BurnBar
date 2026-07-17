@@ -167,8 +167,8 @@ sleep 5
         self.assertEqual(
             report,
             {
-                "suiteCount": 8,
-                "minimumExecutedTests": 84,
+                "suiteCount": 9,
+                "minimumExecutedTests": 92,
                 "executionStrategy": "direct-xctest-isolated-per-test",
                 "perTestTimeoutSeconds": 300,
             },
@@ -181,6 +181,18 @@ sleep 5
         source = root / suite["packagePath"] / "Tests" / suite["target"] / "LinuxMediaContractTests.swift"
 
         self.assertEqual(suite["filter"], "OpenBurnBarMediaTests.LinuxMediaContractTests")
+        self.assertEqual(suite["minimumExecutedTests"], 8)
+        self.assertTrue(source.is_file())
+        self.assertEqual(VERIFIER.declared_test_count(source), 8)
+        self.assertNotIn("LinuxEmptyTests.swift", source.name)
+
+    def test_real_remote_engine_suite_uses_non_placeholder_contract_source(self) -> None:
+        root = MODULE_PATH.parents[2]
+        manifest = VERIFIER.load_manifest(root)
+        suite = next(suite for suite in manifest["suites"] if suite["id"] == "remote-engine-linux")
+        source = root / suite["packagePath"] / "Tests" / suite["target"] / "LinuxRemoteEngineBehaviorTests.swift"
+
+        self.assertEqual(suite["filter"], "BurnBarRemoteEngineTests.BurnBarRemoteEngineLinuxBehaviorTests")
         self.assertEqual(suite["minimumExecutedTests"], 8)
         self.assertTrue(source.is_file())
         self.assertEqual(VERIFIER.declared_test_count(source), 8)
