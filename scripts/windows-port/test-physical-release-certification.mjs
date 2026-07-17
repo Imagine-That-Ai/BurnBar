@@ -153,6 +153,13 @@ assert.match(
 );
 assert.match(localRunner, /const runtimePlatform = platform\(\)/);
 assert.match(localRunner, /const windowsNativeColdSpike = runtimePlatform === "win32"/);
+assert.match(localRunner, /name: "domain-core-native-build"[\s\S]*file: "cargo"/);
+assert.ok(
+  localRunner.indexOf('name: "domain-core-native-build"') <
+    localRunner.indexOf('name: "windows-solution-aggregate"'),
+  "the local certification runner must build the native domain core before running Windows tests",
+);
+assert.match(localRunner, /OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"/);
 assert.match(localRunner, /isColdNativeSpike \? \(windowsNativeColdSpike \? "600s" : "180s"\) : "60s"/);
 assert.match(localRunner, /isColdNativeSpike \? \(windowsNativeColdSpike \? 900000 : 360000\) : 180000/);
 assert.match(
@@ -160,6 +167,7 @@ assert.match(
   /windows\/OpenBurnBar\.sln[\s\S]*--blame-hang-timeout",[\s\S]*runtimePlatform === "win32" \? "600s" : "60s"[\s\S]*timeoutMs: 900000/,
 );
 assert.match(localRunner, /PYTHONUTF8: process\.env\.PYTHONUTF8 \?\? "1"/);
+assert.match(localRunner, /\.\.\.\(spec\.env \?\? \{\}\)/);
 
 const windowsHost = describeLocalCertificationHost({
   platform: "win32",
