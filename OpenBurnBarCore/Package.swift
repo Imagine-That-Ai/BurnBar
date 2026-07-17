@@ -561,6 +561,7 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
         let relativePath = String(url.path.dropFirst(targetURL.path.count + 1))
         return [
             "LinuxEmptyTests.swift",
+            "LinuxAnalyticsBehaviorTests.swift",
             "LinuxMediaContractTests.swift",
             "LLMSafeWrapVectorTests.swift",
             "LinuxSecretStorageTests.swift",
