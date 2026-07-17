@@ -221,7 +221,7 @@ struct OpenBurnBarApp: App {
         // deterministic argument/env validation and the reporter dispatch are resolved
         // by the testable `domainCoreReleaseIdentityRequest` helper, which mirrors this
         // exact policy without touching the process lifecycle.
-        switch domainCoreReleaseIdentityRequest() {
+        switch domainCoreReleaseIdentityRequest(executableURL: Bundle.main.executableURL) {
         case .notRequested:
             return
         case .invalidInvocation:
