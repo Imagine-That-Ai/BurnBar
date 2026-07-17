@@ -574,7 +574,7 @@ public actor ComputerUseService {
         timeoutTasks.removeValue(forKey: sessionID)?.cancel()
         revokingSessionIDs.insert(sessionID)
 
-        let haltTask = Task { [weak self] in
+        let haltTask = Task<ComputerUseSessionEndRecord?, Never> { [weak self] in
             guard let self else { return nil }
             return await self.finishHaltSession(
                 sessionID,
