@@ -475,6 +475,15 @@ test("protected Functions inventory covers every pricing execution entry and bot
     /verify-domain-core-functions-target-inventory\.mjs/u,
   );
 });
+test("promotion-contracts executes native release workflow contract tests", () => {
+  const job = workflowJob(core, "promotion-contracts");
+
+  assert.match(
+    job,
+    /node --test \\\n(?:            [^\n]+ \\\n)*            scripts\/ci\/verify-domain-core-native-release-workflows\.test\.mjs \\/u,
+  );
+});
+
 test("promotion-contracts cleanup removes trusted evaluator after final use and before proof emission", () => {
   const job = workflowJob(core, "promotion-contracts");
 

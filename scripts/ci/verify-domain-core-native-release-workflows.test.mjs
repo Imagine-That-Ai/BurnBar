@@ -35,6 +35,10 @@ const androidBuild = readFileSync(
   new URL("../../android/app/build.gradle.kts", import.meta.url),
   "utf8",
 );
+const project = readFileSync(
+  new URL("../../project.yml", import.meta.url),
+  "utf8",
+);
 const artifactVerifier = readFileSync(
   new URL("./verify-domain-core-native-release-artifact.sh", import.meta.url),
   "utf8",
@@ -199,9 +203,17 @@ test("Android release artifacts embed the preflight version", () => {
     appleAndroid,
     /\.\/gradlew\s+:app:bundleRelease[^\n]*-PopenBurnBarAppVersionName="\$\{\{\s*needs\.release-preflight\.outputs\.version\s*\}\}"/u,
   );
-  assert.match(
-    androidBuild,
-    /providers\s*\.\s*gradleProperty\(\s*"openBurnBarAppVersionName"\s*\)[\s\S]{0,160}?\.orElse\(\s*"1\.0\.29"\s*\)/u,
+  const projectVersion = project.match(
+    /^\s+MARKETING_VERSION:\s*["']?([^\s"']+)/mu,
+  )?.[1];
+  assert.ok(projectVersion, "project.yml must expose a MARKETING_VERSION");
+  const gradleFallbackVersion = androidBuild.match(
+    /providers\s*\.\s*gradleProperty\(\s*"openBurnBarAppVersionName"\s*\)[\s\S]{0,160}?\.orElse\(\s*"([^"]+)"\s*\)/u,
+  )?.[1];
+  assert.equal(
+    gradleFallbackVersion,
+    projectVersion,
+    "Android Gradle version fallback must match project.yml MARKETING_VERSION",
   );
   assert.match(
     artifactVerifier,
