@@ -22,7 +22,7 @@ Linux is not at full macOS parity.
 
 The authoritative ledger is **0/40 product requirements** and **0/7 environment
 receipts**; `productParityClaim=false`. The integration branch currently ends at
-`bf30c881a`. Recent source work includes the real P-39 parser differential
+`a10733cdd`. Recent source work includes the real P-39 parser differential
 producer (`dd7c588db`, **45/45** focused checks) and provider-catalog enforcement
 for first-run onboarding (`29fa77791`). Candidate run `29546157464` passed both
 architectures and the installed P-40 RPC proof at `46425c540`, but it is stale
@@ -45,6 +45,9 @@ analytics suite (8 suites / 84 minimum tests); and `bf30c881a` adds a strict
 candidate/HEAD-bound P-07 computer-use validator with three mutation tests,
 required by PR gate commit `5e6241275`. These are not installed product
 receipts and do not change the 0/40 or 0/7 certification state.
+The first exact-head release attempt found a Linux-only Swift inference failure
+in the teardown task; `a10733cdd` adds its explicit optional result type. A new
+candidate must compile both architectures before promotion work resumes.
 
 For planning purposes only, source maturity is approximately **68%**. This is
 not a release percentage. The remaining dependency order is: diagnose and close

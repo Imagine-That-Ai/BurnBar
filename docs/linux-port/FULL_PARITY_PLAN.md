@@ -25,7 +25,7 @@ work is the macOS-level **surface depth**, **installed runtime evidence**,
 
 ### Current continuation checkpoint — 2026-07-17
 
-The integration branch is at `bf30c881a` with two recent source slices plus
+The integration branch is at `a10733cdd` with two recent source slices plus
 nightly evidence hardening: the real
 P-39 parser differential producer (`dd7c588db`, focused suite **45/45**) and
 provider-catalog enforcement in first-run onboarding (`29fa77791`). Candidate run
@@ -51,6 +51,9 @@ now executes a real analytics target (**8 suites / 84 minimum tests**) through
 computer-use validator and mutation suite landed in `bf30c881a` and is required
 by the PR gate (`5e6241275`). These changes improve source confidence only; the
 ledger remains 0/40 and 0/7 until installed, current-head receipts exist.
+The first exact-head release attempt then found a Linux-only type-inference
+failure in the new teardown task; `a10733cdd` adds the explicit optional task
+type and a replacement candidate is required.
 
 The honest status is therefore **0/40 product** and **0/7 environment** certified.
 A non-certifying engineering maturity estimate is approximately **68%**. The
