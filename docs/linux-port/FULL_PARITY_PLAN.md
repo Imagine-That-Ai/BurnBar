@@ -14,7 +14,14 @@ Generated from a 6-subagent parallel reconnaissance of `AgentLens/`, `apps/linux
 | Desktop integration | `AppDelegate+StatusItem.swift`, `SwarmWallpaperRuntime.swift`, `Hotkey.swift` | Tauri tray exists. | Missing menu-bar popover, global hotkeys, desktop wallpaper, live wallpaper panels. |
 | Release / CI | `scripts/build-macos-website-release.sh`, `scripts/upload-macos-downloads-r2.sh`, `scripts/ops/rollback-macos-appcast.sh` | Toolchain, workflows, Tauri build, release manifest, scripts exist. | Missing AppImage/RPM closure, update feed, R2 upload, public trust verification, Sentry, nightly matrix evidence. |
 
-The canonical `docs/linux-port/parity-ledger.json` now contains 40 product rows and 7 environment rows, all intentionally `blocked` until signed current-HEAD receipts exist. `productParityClaim` is false; source implementation progress is not a certification score. `docs/linux-port/ui-parity/README.md` P01-P15 and the shared daemon foundations are substantially implemented, while the remaining work is the macOS-level **surface depth**, **installed runtime evidence**, **visual/system integration**, and **release/promotion** layer.
+The canonical `docs/linux-port/parity-ledger.json` contains 40 product rows, and
+`product-parity-requirements.json` defines the seven required environment rows;
+all remain intentionally `blocked` until signed current-HEAD receipts exist.
+`productParityClaim` is false; source implementation progress is not a
+certification score. `docs/linux-port/ui-parity/README.md` P01-P15 and the
+shared daemon foundations are substantially implemented, while the remaining
+work is the macOS-level **surface depth**, **installed runtime evidence**,
+**visual/system integration**, and **release/promotion** layer.
 
 ### Current continuation checkpoint — 2026-07-17
 
