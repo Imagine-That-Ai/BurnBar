@@ -198,8 +198,13 @@ assert.ok(
 );
 assert.match(
   windowsReleaseWorkflow,
-  /OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"[\s\S]*publish\/win-x64[\s\S]*RUNNER_TEMP[\s\S]*Copy-Item[\s\S]*OpenBurnBarCoreCAbi\.dll[\s\S]*--output \$smokeRoot[\s\S]*NativeUsageEngineIntegrationTests/,
-  "the published-layout parser smoke must be mandatory and load the published engine",
+  /OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"[\s\S]*publish\/win-x64[\s\S]*\$smokeRoot = Join-Path \$env:RUNNER_TEMP[\s\S]*\$testOutputRoot = Join-Path \$env:RUNNER_TEMP[\s\S]*Copy-Item[\s\S]*OpenBurnBarCoreCAbi\.dll[\s\S]*--output \$testOutputRoot[\s\S]*NativeUsageEngineIntegrationTests/,
+  "the published-layout parser smoke must load the published engine with an isolated testhost output",
+);
+assert.doesNotMatch(
+  windowsReleaseWorkflow,
+  /--output \$smokeRoot/,
+  "the .NET testhost must not be emitted into the self-contained published app layout",
 );
 assert.equal(
   (windowsEngineWorkflow.match(/OPENBURNBAR_CORE_CABI_PATH=\$stagedEngine/g) ?? []).length,
