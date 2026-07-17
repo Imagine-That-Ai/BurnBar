@@ -1310,7 +1310,7 @@ jobs:
             exit 1
           fi
           cd android
-          ./gradlew :app:bundleRelease --no-daemon
+          ./gradlew :app:bundleRelease --no-daemon -PopenBurnBarAppVersionName="${{ needs.release-preflight.outputs.version }}"
           source_path="$(pwd)/app/build/outputs/bundle/release/app-release.aab"
           release_name="OpenBurnBar-${{ needs.release-preflight.outputs.version }}-Android.aab"
           release_path="$RUNNER_TEMP/$release_name"

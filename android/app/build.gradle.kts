@@ -60,6 +60,9 @@ val openBurnBarUseDebugAppCheck =
 val openBurnBarDebugAppCheckToken =
     providers.environmentVariable("OPENBURNBAR_APP_CHECK_DEBUG_TOKEN")
         .orElse("")
+val openBurnBarAppVersionName =
+    providers.gradleProperty("openBurnBarAppVersionName")
+        .orElse("1.0.29")
 fun Any?.asJsonMap(): Map<*, *> = this as? Map<*, *> ?: emptyMap<Any, Any>()
 fun Any?.asJsonList(): List<*> = this as? List<*> ?: emptyList<Any>()
 
@@ -269,7 +272,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 39
-        versionName = "1.0.29"
+        versionName = openBurnBarAppVersionName.get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // App Check: when this build is meant for Firebase App Distribution

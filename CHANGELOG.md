@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no-redirect deployment identity, normal evidence publishes immutably, and
   explicit rollback is separately review-gated and every retained result binds
   the exact deploy and evidence workflow attempts.
+- Protected Android bundles now embed the immutable release tag as their
+  `versionName`; native release verification rejects any filename/manifest
+  version split before publishing evidence.
 
 ### Added — Liquid dashboard command deck
 

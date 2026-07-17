@@ -220,6 +220,12 @@ verify_android() {
     "https://github.com/google/bundletool/releases/download/${bundletool_version}/bundletool-all-${bundletool_version}.jar"
   printf '%s  %s\n' "$bundletool_sha256" "$bundletool" | shasum -a 256 -c -
   java -jar "$bundletool" validate --bundle="$artifact"
+  local embedded_version
+  embedded_version="$(java -jar "$bundletool" dump manifest --bundle="$artifact" --xpath=/manifest/@android:versionName)"
+  if [[ "$embedded_version" != "$version" ]]; then
+    echo "Android artifact version mismatch: embedded '$embedded_version', expected '$version'" >&2
+    exit 1
+  fi
 
   node "$repo_root/scripts/ci/verify-domain-core-build-profile-artifact.mjs" \
     --profile "$profile_name" \

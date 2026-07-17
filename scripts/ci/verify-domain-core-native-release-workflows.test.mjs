@@ -194,6 +194,26 @@ test("native release keeps protected candidate C distinct from activation P", ()
   );
 });
 
+test("Android release artifacts embed the preflight version", () => {
+  assert.match(
+    appleAndroid,
+    /\.\/gradlew\s+:app:bundleRelease[^\n]*-PopenBurnBarAppVersionName="\$\{\{\s*needs\.release-preflight\.outputs\.version\s*\}\}"/u,
+  );
+  assert.match(
+    androidBuild,
+    /providers\s*\.\s*gradleProperty\(\s*"openBurnBarAppVersionName"\s*\)[\s\S]{0,160}?\.orElse\(\s*"1\.0\.29"\s*\)/u,
+  );
+  assert.match(
+    artifactVerifier,
+    /java\s+-jar\s+"\$bundletool"\s+dump\s+manifest\s+--bundle="\$artifact"\s+--xpath=\/manifest\/@android:versionName/u,
+  );
+  assert.match(
+    artifactVerifier,
+    /if\s+\[\[\s+"\$embedded_version"\s+!=\s+"\$version"\s+\]\];\s*then/u,
+  );
+  assert.match(artifactVerifier, /Android artifact version mismatch/u);
+});
+
 test("Apple DMG is fully verified before any release mutation", () => {
   const prepublication = job(
     appleAndroid,
