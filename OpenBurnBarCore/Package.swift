@@ -537,13 +537,14 @@ let openBurnBarMediaTestSources: [String]? = ["LinuxMediaContractTests.swift"]
 let openBurnBarCoreOffAppleTestSources: [String]? = ["LLMSafeWrapVectorTests.swift"]
 let openBurnBarCorePlaceholderExcludes = ["LinuxEmptyTests.swift"]
 let computerUseCoreOffAppleTestSources: [String]? = [
+    "LinuxComputerUseCoreBehaviorTests.swift",
     "LinuxSecretStorageTests.swift",
     "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
 ]
 #else
 let openBurnBarCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift", "LLMSafeWrapVectorTests.swift"]
 let openBurnBarCorePlaceholderExcludes: [String] = []
-let computerUseCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift"]
+let computerUseCoreOffAppleTestSources: [String]? = ["LinuxComputerUseCoreBehaviorTests.swift"]
 #endif
 func legacyLinuxTestExcludes(targetPath: String) -> [String] {
     let targetURL = packageRoot.appendingPathComponent(targetPath, isDirectory: true)
@@ -561,6 +562,7 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
         let relativePath = String(url.path.dropFirst(targetURL.path.count + 1))
         return [
             "LinuxEmptyTests.swift",
+            "LinuxComputerUseCoreBehaviorTests.swift",
             "LinuxAnalyticsBehaviorTests.swift",
             "LinuxMediaContractTests.swift",
             "LLMSafeWrapVectorTests.swift",
