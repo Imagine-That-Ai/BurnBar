@@ -21,7 +21,32 @@ function artifact(payload = {}) {
     targetHead: HEAD,
     version: VERSION,
     candidate: { runId: RUN_ID, artifactDigest: DIGEST },
-    payload: { generatedAt: '2026-01-01T00:00:00.000Z', ...payload }
+    payload: {
+      contract: 'openburnbar-g2-parser-output-v1',
+      corpus: {
+        source: 'OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/Fixtures/ParserContract/parser-output-golden.json',
+        baselineSha256: 'a'.repeat(64)
+      },
+      observed: {
+        source: 'OpenBurnBarG2ParserParity',
+        invocation: 'swift run --package-path OpenBurnBarCore --disable-automatic-resolution OpenBurnBarG2ParserParity --write-golden',
+        generatedSha256: 'b'.repeat(64),
+        normalizedSha256: 'c'.repeat(64)
+      },
+      parserOutput: {
+        formatVersion: 1,
+        providers: ['test'],
+        fixtures: [{
+          fixtureId: 'fixture-1',
+          parser: 'TestParser',
+          provider: 'test',
+          usageCount: 0,
+          conversationCount: 0,
+          usages: []
+        }]
+      },
+      ...payload
+    }
   };
 }
 
@@ -127,6 +152,27 @@ test('resolver rejects an aggregate closure for a different commit', () => {
         candidateArtifactDigest: DIGEST
       }),
       /target does not match/u
+    );
+  } finally {
+    fs.rmSync(subject.root, { recursive: true, force: true });
+  }
+});
+
+test('resolver rejects candidate-bound synthetic payloads', () => {
+  const subject = fixture();
+  try {
+    const macos = path.join(subject.inputRoot, P39_PLATFORM_INPUT_FILENAMES.macos);
+    const synthetic = artifact({ generatedAt: '2026-01-01T00:00:00.000Z' });
+    fs.writeFileSync(macos, `${JSON.stringify(synthetic)}\n`);
+    assert.throws(
+      () => resolveP39PlatformEvidence({
+        repoRoot: subject.root,
+        inputRoot: subject.inputRoot,
+        targetHead: HEAD,
+        candidateRunId: RUN_ID,
+        candidateArtifactDigest: DIGEST
+      }),
+      /P-39 producer payload fields must be exactly/u
     );
   } finally {
     fs.rmSync(subject.root, { recursive: true, force: true });

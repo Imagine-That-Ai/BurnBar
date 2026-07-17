@@ -77,8 +77,76 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  p39-macos-producer:
+    name: P-39 macOS parser corpus producer
+    if: inputs.requirement == 'P-39'
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - name: Check out the exact evidence source
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+
+      - name: Resolve the trusted immutable release evidence artifact
+        id: evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          TARGET_HEAD: ${{ github.sha }}
+        run: >-
+          node scripts/linux-port/resolve-product-evidence-run.mjs
+          --run-id "$CANDIDATE_RUN_ID"
+          --target-head "$TARGET_HEAD"
+
+      - name: Download exact candidate closure for version binding
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          artifact-ids: ${{ steps.evidence.outputs.artifact_id }}
+          repository: Imagine-That-Ai/BurnBar
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/openburnbar-p39-candidate
+
+      - name: Capture real macOS candidate-bound parser output
+        shell: bash
+        env:
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          candidate_root="$RUNNER_TEMP/openburnbar-p39-candidate"
+          output_root="$RUNNER_TEMP/openburnbar-p39-platform"
+          mkdir -p "$output_root"
+          test -f "$candidate_root/.linux-release/product-proof-closure.json"
+          node scripts/linux-port/capture-p39-platform-evidence.mjs \
+            --platform macos \
+            --output "$output_root/macos-platform-evidence.json" \
+            --report "$output_root/macos-platform-producer-run.json" \
+            --candidate-closure "$candidate_root/.linux-release/product-proof-closure.json" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
+
+      - name: Upload P-39 macOS platform evidence
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: linux-p39-macos-platform-evidence
+          path: ${{ runner.temp }}/openburnbar-p39-platform/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+
   validate:
     name: ${{ inputs.requirement }} on ${{ inputs.environment }}
+    needs: [p39-macos-producer]
+    if: always() && (inputs.requirement != 'P-39' || needs.p39-macos-producer.result == 'success')
     runs-on:
       - self-hosted
       - linux
@@ -116,6 +184,13 @@ jobs:
           repository: Imagine-That-Ai/BurnBar
           run-id: ${{ inputs.candidate_run_id }}
           github-token: ${{ github.token }}
+          path: docs/linux-port/evidence/product-parity-inputs/${{ inputs.requirement }}/${{ inputs.environment }}
+
+      - name: Download P-39 macOS platform evidence
+        if: inputs.requirement == 'P-39'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: linux-p39-macos-platform-evidence
           path: docs/linux-port/evidence/product-parity-inputs/${{ inputs.requirement }}/${{ inputs.environment }}
 
       - name: Capture P-38 release automation verification
@@ -218,10 +293,30 @@ jobs:
             --candidate-run-id "$CANDIDATE_RUN_ID" \
             --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
 
-      # P-39 consumes a macOS/Linux evidence pair emitted by a producer bound
-      # to this exact candidate. The current Linux release producer does not
-      # emit that pair yet; the resolver therefore fails explicitly instead of
-      # creating fixture or synthetic inputs.
+      # P-39 consumes a macOS/Linux evidence pair emitted by producers bound to
+      # this exact candidate. The macOS producer runs the real lifted parser
+      # corpus; this Linux step runs the same corpus on the selected runner.
+      - name: Capture P-39 Linux candidate-bound platform evidence
+        if: inputs.requirement == 'P-39'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          node scripts/linux-port/capture-p39-platform-evidence.mjs \
+            --platform linux \
+            --output "$input_root/linux-platform-evidence.json" \
+            --report "$input_root/linux-platform-producer-run.json" \
+            --candidate-closure "$input_root/.linux-release/product-proof-closure.json" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
+
       - name: Resolve P-39 candidate-bound platform evidence inputs
         id: p39_inputs
         if: inputs.requirement == 'P-39'

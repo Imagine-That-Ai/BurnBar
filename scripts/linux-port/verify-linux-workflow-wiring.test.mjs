@@ -59,6 +59,11 @@ function valid() {
       'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
       'CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}',
       'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
+      'p39-macos-producer',
+      'P-39 macOS parser corpus producer',
+      '--platform macos',
+      'linux-p39-macos-platform-evidence',
+      'capture-p39-platform-evidence.mjs',
       'capture-parity-certification-preflight.mjs',
       'capture-p34-credential-security-proof.mjs',
       'resolve-p39-platform-evidence.mjs',
@@ -93,6 +98,7 @@ function valid() {
       'if-no-files-found: error',
       'include-hidden-files: true',
       'Download exact-candidate installed evidence',
+      'Download P-39 macOS platform evidence',
       [
         '      - name: Capture P-38 release automation verification',
         "        if: inputs.requirement == 'P-38'",
@@ -106,6 +112,17 @@ function valid() {
       'Preserve non-promotable P-02 diagnostic evidence',
       'Capture P-31 installed accessibility matrix evidence',
       'Capture P-34 credential security proof',
+      [
+        '      - name: Capture P-39 Linux candidate-bound platform evidence',
+        "        if: inputs.requirement == 'P-39'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          node scripts/linux-port/capture-p39-platform-evidence.mjs',
+        '            --platform linux',
+        '            --candidate-closure "$input_root/.linux-release/product-proof-closure.json"',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+      ].join('\n'),
       [
         '      - name: Resolve P-39 candidate-bound platform evidence inputs',
         "        if: inputs.requirement == 'P-39'",

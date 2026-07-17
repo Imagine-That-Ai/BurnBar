@@ -6,6 +6,7 @@ import {
   P39_ARTIFACT_ID,
   validateBoundArtifact
 } from './lib/p39-differential-proof.mjs';
+import { validateP39ProducerArtifact } from './capture-p39-platform-evidence.mjs';
 import { readRegularSnapshot } from './lib/product-proof-closure.mjs';
 
 const DEFAULT_REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -85,9 +86,8 @@ function resolveSingleInput(root, role, targetHead, version, candidateRunId, can
   const filename = P39_PLATFORM_INPUT_FILENAMES[role];
   const candidates = walkRegularFiles(root).filter((file) => path.basename(file) === filename);
   if (candidates.length === 0) {
-    // The current Linux release workflow does not produce the macOS/Linux
-    // platform-evidence pair. Keep this explicit so a missing producer cannot
-    // be mistaken for a passing differential proof or replaced with a fixture.
+    // Keep producer absence explicit so a missing platform run cannot be
+    // mistaken for a passing differential proof or replaced with a fixture.
     throw new Error(
       `P-39 platform evidence producer is absent: candidate artifact is missing ${filename}; `
       + 'the workflow cannot synthesize macOS/Linux evidence'
@@ -97,12 +97,14 @@ function resolveSingleInput(root, role, targetHead, version, candidateRunId, can
     throw new Error(`P-39 requires exactly one ${filename}; found ${candidates.length}`);
   }
   const file = candidates[0];
-  validateBoundArtifact(parseJsonFile(file, `P-39 ${role} platform evidence`), {
+  const artifact = parseJsonFile(file, `P-39 ${role} platform evidence`);
+  validateBoundArtifact(artifact, {
     targetHead,
     version,
     candidateRunId,
     candidateArtifactDigest
   });
+  validateP39ProducerArtifact(artifact);
   return file;
 }
 

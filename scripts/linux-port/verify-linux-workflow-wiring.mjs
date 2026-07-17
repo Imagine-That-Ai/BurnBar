@@ -113,13 +113,25 @@ export function verifyLinuxWorkflowWiring(input) {
     };
     const resolveStep = 'Resolve P-39 candidate-bound platform evidence inputs';
     const captureStep = 'Capture P-39 same-commit macOS/Linux differential proof';
+    const linuxProducerStep = 'Capture P-39 Linux candidate-bound platform evidence';
     const resolve = blockFor(resolveStep);
     const capture = blockFor(captureStep);
+    const linuxProducer = blockFor(linuxProducerStep);
     if (!resolve) failures.push(`product parity evidence workflow is missing executable step: ${resolveStep}`);
     if (!capture) failures.push(`product parity evidence workflow is missing executable step: ${captureStep}`);
+    if (!linuxProducer) failures.push(`product parity evidence workflow is missing executable step: ${linuxProducerStep}`);
     const activeLines = (block) => block.split('\n').map((line) => line.trim())
       .filter((line) => line && !line.startsWith('#'));
     for (const [step, lines] of [
+      [linuxProducerStep, [
+        "if: inputs.requirement == 'P-39'",
+        'set -euo pipefail',
+        'node scripts/linux-port/capture-p39-platform-evidence.mjs',
+        '--platform linux',
+        '--candidate-closure "$input_root/.linux-release/product-proof-closure.json"',
+        '--candidate-run-id "$CANDIDATE_RUN_ID"',
+        '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+      ]],
       [resolveStep, [
         "if: inputs.requirement == 'P-39'",
         'set -euo pipefail',
@@ -143,7 +155,9 @@ export function verifyLinuxWorkflowWiring(input) {
         "--ignore '$.payload.generatedAt'"
       ]]
     ]) {
-      const linesInStep = activeLines(step === resolveStep ? resolve : capture);
+      const linesInStep = activeLines(
+        step === resolveStep ? resolve : step === captureStep ? capture : linuxProducer
+      );
       for (const line of lines) {
         if (!linesInStep.includes(line) && !linesInStep.includes(`${line} \\`)) {
           failures.push(`product parity evidence workflow ${step} is missing: ${line}`);
@@ -400,16 +414,26 @@ export function verifyLinuxWorkflowWiring(input) {
   ]) requireText(input.productParityWorkflow, marker, 'product parity evidence workflow');
   requireP38CaptureContract(input.productParityWorkflow);
   requireP39CaptureContract(input.productParityWorkflow);
+  for (const marker of [
+    'p39-macos-producer',
+    'P-39 macOS parser corpus producer',
+    'capture-p39-platform-evidence.mjs',
+    '--platform macos',
+    'linux-p39-macos-platform-evidence',
+    'Download P-39 macOS platform evidence'
+  ]) requireText(input.productParityWorkflow, marker, 'P-39 cross-platform producer wiring');
   if (/--run-id\s+['"]?\$\{\{\s*inputs\.candidate_run_id/u.test(input.productParityWorkflow)) {
     failures.push('product parity workflow may not interpolate candidate_run_id directly into shell.');
   }
   requireOrder(input.productParityWorkflow, [
     'Download exact-candidate installed evidence',
+    'Download P-39 macOS platform evidence',
     'Capture P-38 release automation verification',
     'Capture parity certification preflight',
     'Preserve non-promotable P-02 diagnostic evidence',
     'Capture P-31 installed accessibility matrix evidence',
     'Capture P-34 credential security proof',
+    'Capture P-39 Linux candidate-bound platform evidence',
     'Resolve P-39 candidate-bound platform evidence inputs',
     'Capture P-39 same-commit macOS/Linux differential proof',
     'Finalize registered feature proof closure',

@@ -35,6 +35,39 @@ head. Review every non-ignored difference; do not add an ignore merely to make
 the command green. The oracle complements installed runtime and accessibility
 evidence and cannot replace them.
 
+## Current producer
+
+The checked-in P-39 producer is
+`scripts/linux-port/capture-p39-platform-evidence.mjs`. It runs the real
+`OpenBurnBarG2ParserParity` executable against the committed 26-fixture
+`ParserContract` corpus with `--write-golden`, reads the generated parser
+observations, and restores the committed golden file before exiting. It does
+not accept a fixture as an observation. Every output is bound to the requested
+candidate run, artifact digest, release version, and exact checkout head; it
+also refuses to run on the wrong host (the macOS producer requires Darwin and
+the Linux producer requires Linux).
+
+For a local producer run, provide the immutable product-proof closure and the
+candidate identity explicitly:
+
+```bash
+node scripts/linux-port/capture-p39-platform-evidence.mjs \
+  --platform linux \
+  --output /path/to/linux-platform-evidence.json \
+  --report /path/to/linux-platform-producer-run.json \
+  --candidate-closure /path/to/.linux-release/product-proof-closure.json \
+  --target-head "$GITHUB_SHA" \
+  --candidate-run-id "$CANDIDATE_RUN_ID" \
+  --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
+```
+
+The product-parity workflow runs the same producer once on macOS and once on
+the selected Linux environment. The macOS artifact is uploaded as an immutable
+run artifact, downloaded into the Linux input root, and both files are then
+resolved and compared by the existing same-commit differential proof producer.
+If either producer, candidate closure, parser corpus, or checkout binding fails,
+the P-39 job fails closed instead of synthesizing a passing pair.
+
 ## QA
 
 ```bash
@@ -45,4 +78,3 @@ node scripts/linux-port/run-platform-differential.mjs --help
 The focused suite covers exact matches, deterministic key ordering, credential
 redaction, ignored volatile fields, nested mismatches, missing/malformed input,
 report output, and all exit classes.
-
