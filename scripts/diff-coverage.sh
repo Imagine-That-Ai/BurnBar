@@ -597,6 +597,19 @@ NON_EXECUTABLE_DECLARATION = re.compile(
     r"^\s*(?:public|private|fileprivate|internal|open|package)?\s*"
     r"(?:typealias|associatedtype|case)\b"
 )
+CALLABLE_SWIFT_DECLARATION = re.compile(
+    r"^\s*(?:(?:public|private|fileprivate|internal|open|package|final|static|class|"
+    r"mutating|nonmutating|override|required|convenience|isolated|nonisolated)\s+)*"
+    r"(?:func\s+[A-Za-z_][A-Za-z0-9_]*|init[?!]?\s*\(|deinit\b|subscript\s*\()"
+)
+CALLABLE_PARAMETER_LINE = re.compile(
+    r"^\s*(?:_\s+)?[A-Za-z_][A-Za-z0-9_]*(?:\s+[A-Za-z_][A-Za-z0-9_]*)?\s*:"
+)
+STORED_LITERAL_DECLARATION = re.compile(
+    r"^\s*(?:(?:public|private|fileprivate|internal|open|package|static|class|lazy)\s+)*"
+    r"(?:let|var)\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*:[^=]+)?\s*=\s*"
+    r"(?:\[|nil\s*$|(?:true|false)\s*$|[+-]?(?:0x[0-9A-Fa-f_]+|\d[\d_]*)(?:\.\d[\d_]*)?\s*$)"
+)
 
 
 def is_structural_swift_line(text):
@@ -604,6 +617,8 @@ def is_structural_swift_line(text):
     if not stripped:
         return True
     if stripped in {"{", "}", "};", "],", "]", "),", ")"}:
+        return True
+    if re.match(r"^(?:}\s*)?(?:do|catch(?:\s+[^{}]+)?)\s*\{$", stripped):
         return True
     if stripped in {"#else", "#endif"} or stripped.startswith((
         "#if ",
@@ -627,6 +642,65 @@ def is_structural_swift_line(text):
         return "{" not in stripped and "=" not in stripped
     return False
 
+def structural_swift_context_lines(src_lines):
+    """Find declaration continuations that LLVM intentionally gives no counter.
+
+    The line map remains authoritative for executable expressions: this helper
+    is consulted only for lines absent from that map. It recognizes callable
+    signatures and literal stored-property initializers, while leaving factory
+    calls and closure bodies fail-closed.
+    """
+    structural = set()
+    callable_depth = 0
+    literal_depth = 0
+
+    def bracket_delta(text):
+        without_strings = re.sub(r'"(?:\\.|[^"\\])*"', '""', text)
+        return without_strings.count("[") - without_strings.count("]")
+
+    def has_inline_body(text):
+        if "{" not in text:
+            return False
+        tail = text.split("{", 1)[1].strip()
+        return bool(tail and tail not in {"}", "};"} and not tail.startswith("//"))
+
+    for line_number, text in enumerate(src_lines, start=1):
+        stripped = text.strip()
+
+        if literal_depth > 0:
+            structural.add(line_number)
+            literal_depth += bracket_delta(text)
+            continue
+
+        if STORED_LITERAL_DECLARATION.match(stripped):
+            structural.add(line_number)
+            rhs = text.split("=", 1)[1]
+            if rhs.lstrip().startswith("["):
+                literal_depth = max(0, bracket_delta(rhs))
+            continue
+
+        if callable_depth > 0:
+            is_signature_syntax = (
+                CALLABLE_PARAMETER_LINE.match(stripped) is not None
+                or stripped.startswith((")", "-> ", "where "))
+            )
+            if is_signature_syntax and not has_inline_body(stripped):
+                structural.add(line_number)
+            callable_depth += text.count("(") - text.count(")")
+            callable_depth = max(0, callable_depth)
+            continue
+
+        if CALLABLE_SWIFT_DECLARATION.match(stripped):
+            # A one-line declaration that opens a body is the only counter a
+            # no-evidence file may provide for an untested function; keep it
+            # fail-closed. Multi-line signature openers have no body here and
+            # are declaration-only.
+            if "{" not in stripped:
+                structural.add(line_number)
+            callable_depth = max(0, text.count("(") - text.count(")"))
+
+    return structural
+
 
 def filter_structural_swift_lines(rel_path, line_nums):
     abs_path = os.path.join(repo_root, rel_path)
@@ -634,12 +708,13 @@ def filter_structural_swift_lines(rel_path, line_nums):
         return line_nums
     with open(abs_path, encoding="utf-8", errors="replace") as fh:
         src_lines = fh.read().splitlines()
+    contextual_structural = structural_swift_context_lines(src_lines)
     executable = []
     for ln in line_nums:
         idx = ln - 1
         if not (0 <= idx < len(src_lines)):
             continue
-        if not is_structural_swift_line(src_lines[idx]):
+        if ln not in contextual_structural and not is_structural_swift_line(src_lines[idx]):
             executable.append(ln)
     return executable
 
