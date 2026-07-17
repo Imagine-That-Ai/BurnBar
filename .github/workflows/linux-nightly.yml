@@ -165,6 +165,7 @@ jobs:
         with:
           name: linux-nightly-${{ matrix.label }}
           path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/
+          include-hidden-files: true
           if-no-files-found: warn
 
   open-failure-issue:

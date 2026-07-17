@@ -200,7 +200,15 @@ function valid() {
       '--profile nightly',
       'OB_MATCHED_MACOS_INPUT',
       'OB_MATCHED_LINUX_INPUT',
-      'linux-parity-matched-performance-nightly'
+      'linux-parity-matched-performance-nightly',
+      '      - name: Upload Linux nightly evidence',
+      '        if: always()',
+      '        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874',
+      '        with:',
+      '          name: linux-nightly-${{ matrix.label }}',
+      '          path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/',
+      '          include-hidden-files: true',
+      '          if-no-files-found: warn'
     ].join('\n'),
     release: [
       '- "linux-v*"',
@@ -408,7 +416,8 @@ test('hidden Linux output uploads fail closed when upload protections mutate', (
   for (const [surface, step, mutation] of [
     ['release', 'Upload architecture shard', 'include-hidden-files: false'],
     ['release', 'Upload Linux release evidence', 'if-no-files-found: warn'],
-    ['promotionWorkflow', 'Upload promotion closure', 'actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874']
+    ['promotionWorkflow', 'Upload promotion closure', 'actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874'],
+    ['nightly', 'Upload Linux nightly evidence', 'include-hidden-files: false']
   ]) {
     const input = valid();
     const start = input[surface].indexOf(`- name: ${step}`);

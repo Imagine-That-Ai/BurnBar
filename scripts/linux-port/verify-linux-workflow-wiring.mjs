@@ -62,7 +62,7 @@ export function verifyLinuxWorkflowWiring(input) {
       previous = Math.max(previous, index);
     }
   };
-  const requireUploadContract = (body, stepName, paths, source) => {
+  const requireUploadContract = (body, stepName, paths, source, options = {}) => {
     const start = body.indexOf(`- name: ${stepName}`);
     const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
     const block = start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
@@ -70,11 +70,14 @@ export function verifyLinuxWorkflowWiring(input) {
       failures.push(`${source} is missing upload step: ${stepName}`);
       return;
     }
+    const artifactAction = options.artifactAction ?? 'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4';
+    const noFilesFound = options.noFilesFound ?? 'if-no-files-found: error';
     for (const marker of [
-      'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4',
+      artifactAction,
       'include-hidden-files: true',
-      'if-no-files-found: error',
-      ...paths
+      noFilesFound,
+      ...paths,
+      ...(options.additionalMarkers ?? [])
     ]) requireText(block, marker, `${source} ${stepName}`);
   };
   const requireP38CaptureContract = (body) => {
@@ -226,6 +229,17 @@ export function verifyLinuxWorkflowWiring(input) {
     'Upload promotion closure',
     ['${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/promotion/'],
     'promotion workflow'
+  );
+  requireUploadContract(
+    input.nightly,
+    'Upload Linux nightly evidence',
+    ['${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/'],
+    'nightly workflow',
+    {
+      artifactAction: 'actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874',
+      noFilesFound: 'if-no-files-found: warn',
+      additionalMarkers: ['if: always()']
+    }
   );
   for (const marker of [
     'architecture: aarch64',
