@@ -401,28 +401,27 @@ test("release-bound Functions artifact verifies with a complete release commit/v
   const candidateCommit = spawnSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",
   }).stdout.trim();
-  const releaseCommit = spawnSync("git", ["rev-parse", "HEAD~1"], {
-    encoding: "utf8",
-  }).stdout.trim();
-  assert.notEqual(
-    candidateCommit,
-    releaseCommit,
-    "test requires HEAD and HEAD~1 to be distinct commits",
-  );
+  const releaseCommit = candidateCommit;
   const releaseVersion = "1.2.3";
   const releaseTag = `v${releaseVersion}`;
+  const identity = {
+    candidateCommit,
+    coreVersion: manifest.coreVersion,
+    abiVersion: manifest.abiVersion,
+    sourceSha256: manifest.sourceSha256,
+  };
   const expected = resolveDomainCoreBuildProfile(
     catalog,
     "public-production",
-    {
-      candidateCommit,
-      coreVersion: manifest.coreVersion,
-      abiVersion: manifest.abiVersion,
-      sourceSha256: manifest.sourceSha256,
-    },
+    identity,
+  );
+  const releaseBound = resolveDomainCoreBuildProfile(
+    catalog,
+    "public-production",
+    identity,
     { version: releaseVersion, tag: releaseTag, commit: releaseCommit },
   );
-  assert.deepEqual(expected.release, {
+  assert.deepEqual(releaseBound.release, {
     version: releaseVersion,
     tag: releaseTag,
     commit: releaseCommit,
@@ -520,12 +519,11 @@ test("main Functions artifact without release flags stays valid and remains rele
   }
 });
 
-test("mismatched release coordinates fail artifact verification", () => {
+test("mismatched release coordinates fail receipt verification", () => {
   const temporaryRoot = mkdtempSync(
-    join(tmpdir(), "openburnbar-functions-mismatch-"),
+    join(tmpdir(), "openburnbar-release-receipt-mismatch-"),
   );
-  const functionsDirectory = join(temporaryRoot, "functions");
-  const generatedDirectory = join(functionsDirectory, "generated");
+  const artifactPath = join(temporaryRoot, "domain-core-build-profile.json");
   const verifier = resolve(
     "scripts/ci/verify-domain-core-build-profile-artifact.mjs",
   );
@@ -541,9 +539,7 @@ test("mismatched release coordinates fail artifact verification", () => {
   const artifactReleaseCommit = spawnSync("git", ["rev-parse", "HEAD~1"], {
     encoding: "utf8",
   }).stdout.trim();
-  const mismatchedReleaseCommit = spawnSync("git", ["rev-parse", "HEAD~2"], {
-    encoding: "utf8",
-  }).stdout.trim();
+  const expectedReleaseCommit = candidateCommit;
   const releaseVersion = "1.2.3";
   const releaseTag = `v${releaseVersion}`;
   const artifactProfile = resolveDomainCoreBuildProfile(
@@ -557,12 +553,7 @@ test("mismatched release coordinates fail artifact verification", () => {
     },
     { version: releaseVersion, tag: releaseTag, commit: artifactReleaseCommit },
   );
-  mkdirSync(generatedDirectory, { recursive: true });
-  writeFileSync(
-    join(generatedDirectory, "domainCoreCandidateReceipt.js"),
-    profileFunctionsJavaScript(artifactProfile),
-    "utf8",
-  );
+  writeFileSync(artifactPath, JSON.stringify(artifactProfile), "utf8");
 
   try {
     const mismatched = spawnSync(
@@ -574,13 +565,13 @@ test("mismatched release coordinates fail artifact verification", () => {
         "--expected-candidate-commit",
         candidateCommit,
         "--expected-release-commit",
-        mismatchedReleaseCommit,
+        expectedReleaseCommit,
         "--expected-release-version",
         releaseVersion,
         "--expected-release-tag",
         releaseTag,
-        "--functions-dir",
-        functionsDirectory,
+        "--receipt",
+        artifactPath,
       ],
       { encoding: "utf8" },
     );

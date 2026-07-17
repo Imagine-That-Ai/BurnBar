@@ -188,6 +188,8 @@ const OPERATION_IDENTITY = new Map([
   ...[
     "seal",
     "open",
+    "seal_combined",
+    "open_combined",
     "safety_code",
     "key_wrap_info_v1",
     "key_wrap_info_v2",
