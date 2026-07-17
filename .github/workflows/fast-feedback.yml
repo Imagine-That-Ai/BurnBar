@@ -817,7 +817,7 @@ jobs:
   rust-deny-fast:
     name: Rust (fmt + clippy + cargo-deny)
     needs: fast-feedback-path-filter
-    if: needs.fast-feedback-path-filter.outputs.rust_changed == 'true'
+    if: always() && (needs.fast-feedback-path-filter.result != 'success' || needs.fast-feedback-path-filter.outputs.rust_changed != 'false')
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -1356,16 +1356,29 @@ jobs:
     if: always()
     steps:
       - name: Check all fast jobs passed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          RUST_CHANGED: ${{ needs.fast-feedback-path-filter.outputs.rust_changed }}
         run: |
-          results='${{ toJSON(needs) }}'
-          failed=$(echo "$results" | python3 -c "
-          import json, sys
+          set -euo pipefail
+          failed=$(printf '%s\n' "$NEEDS_JSON" | python3 -c "
+          import json, os, sys
           data = json.load(sys.stdin)
-          failed = [k for k, v in data.items() if v.get('result') not in ('success', 'skipped')]
-          print('\n'.join(failed))
+          detector_result = data.get('fast-feedback-path-filter', {}).get('result')
+          rust_changed = os.environ.get('RUST_CHANGED', '')
+          failed = []
+          for name, value in data.items():
+              result = value.get('result')
+              if result == 'success':
+                  continue
+              if (name == 'rust-deny-fast' and result == 'skipped'
+                      and detector_result == 'success' and rust_changed == 'false'):
+                  continue
+              failed.append(name + ' (result=' + str(result or 'missing') + ')')
+          print('\\n'.join(failed))
           ")
           if [[ -n "$failed" ]]; then
-            echo "::error::The following fast feedback jobs failed:"
+            echo "::error::The following fast feedback jobs did not succeed:"
             echo "$failed"
             exit 1
           fi

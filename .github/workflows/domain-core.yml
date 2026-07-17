@@ -180,6 +180,11 @@ on:
       - "tests/test_domain_core_functions_release_workflow.py"
       - "tests/test_domain_core_console_release_evidence_workflow.py"
       - "tests/test_domain_core_lifecycle_receipt_writers.py"
+      - "governance/branch-protection.main.json"
+      - "scripts/lib/branch-protection-drift.mjs"
+      - "scripts/ops/check-branch-protection-drift*.mjs"
+      - "scripts/ci/verify-domain-core-default-branch-controls*.mjs"
+      - "tests/test_domain_core_trusted_deletion_workflow.py"
       - ".github/workflows/domain-core.yml"
       - ".github/workflows/domain-core-promotion-proof.yml"
   pull_request:
@@ -348,6 +353,11 @@ on:
       - "tests/test_domain_core_functions_release_workflow.py"
       - "tests/test_domain_core_console_release_evidence_workflow.py"
       - "tests/test_domain_core_lifecycle_receipt_writers.py"
+      - "governance/branch-protection.main.json"
+      - "scripts/lib/branch-protection-drift.mjs"
+      - "scripts/ops/check-branch-protection-drift*.mjs"
+      - "scripts/ci/verify-domain-core-default-branch-controls*.mjs"
+      - "tests/test_domain_core_trusted_deletion_workflow.py"
       - ".github/workflows/domain-core.yml"
       - ".github/workflows/domain-core-promotion-proof.yml"
   workflow_dispatch:

@@ -611,6 +611,19 @@ function workflowTrigger(source, name) {
     : source.slice(start, start + 2 + next);
 }
 
+function workflowTriggerPaths(source, name) {
+  const trigger = workflowTrigger(source, name);
+  const lines = trigger.split("\n");
+  const start = lines.indexOf("    paths:");
+  assert.notEqual(start, -1, `missing paths for ${name} trigger`);
+  const paths = [];
+  for (const line of lines.slice(start + 1)) {
+    if (!line.startsWith('      - "')) break;
+    paths.push(JSON.parse(line.slice("      - ".length)));
+  }
+  return paths;
+}
+
 test("pull_request trigger covers tools/hermes-platform-burnbar so PRs touching the platform adapter run the gate", () => {
   // Regression: the pull_request path filter omitted tools/hermes-platform-burnbar/**,
   // so edits to the Hermes platform-burnbar adapter never surfaced in domain-core CI.
@@ -620,6 +633,22 @@ test("pull_request trigger covers tools/hermes-platform-burnbar so PRs touching 
     /^      - "tools\/hermes-platform-burnbar\/\*\*"/mu,
     "pull_request.paths must include tools/hermes-platform-burnbar/** so platform-burnbar changes trigger the gate",
   );
+});
+
+test("pull_request trigger covers every branch-control input that can change Domain Core PR Gate authority", () => {
+  const paths = new Set(workflowTriggerPaths(core, "pull_request"));
+  for (const path of [
+    "governance/branch-protection.main.json",
+    "scripts/lib/branch-protection-drift.mjs",
+    "scripts/ops/check-branch-protection-drift*.mjs",
+    "scripts/ci/verify-domain-core-default-branch-controls*.mjs",
+    "tests/test_domain_core_trusted_deletion_workflow.py",
+  ]) {
+    assert.ok(
+      paths.has(path),
+      `pull_request.paths must include ${path} so changing branch-control authority runs Domain Core PR Gate`,
+    );
+  }
 });
 
 test("domain-core-pr-gate needs both python contract jobs before the aggregate count", () => {

@@ -9,9 +9,9 @@ name: App PR Gate (Swift)
 # builds + tests the app target on every PR so an app-target compile error or
 # app-test regression cannot merge again.
 #
-# Mirrors daemon-pr-gate.yml (the proven focused-Swift-lane precedent): always
-# runs on non-draft PRs to main, so it can be a required status check directly
-# (no skipped-required-check aggregate needed).
+# The exact required context is emitted by the always-running aggregate below.
+# The aggregate accepts only successful AgentLens and mobile prerequisite jobs;
+# a missing, skipped, cancelled, or failed prerequisite therefore blocks merge.
 #
 # mobile-build-gate (added 2026-07-07): the same gap existed for the iOS app —
 # PR CI compiled macOS + SwiftPM but never the OpenBurnBarMobile target, so
@@ -39,7 +39,7 @@ concurrency:
 
 jobs:
   app-build-test:
-    name: App build + test (AgentLens)
+    name: AgentLens Rust + Swift build/test prerequisites
     runs-on: macos-26
     # Cold cache + libsignal FFI + full xcodebuild of the app target on a hosted
     # runner needs headroom; observed cold macos-26 runs can approach 120
@@ -235,3 +235,27 @@ jobs:
 
       - name: Guard against zero-test false greens
         run: ./scripts/ci/check-executed-test-count.sh "$RUNNER_TEMP/Mobile_TestResults.xcresult"
+
+  app-pr-gate:
+    name: App build + test (AgentLens)
+    needs:
+      - app-build-test
+      - mobile-build-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    steps:
+      - name: Require every Rust and Swift prerequisite job
+        env:
+          AGENTLENS_RESULT: ${{ needs.app-build-test.result }}
+          MOBILE_RESULT: ${{ needs.mobile-build-gate.result }}
+        run: |
+          set -euo pipefail
+          printf 'app-build-test=%s\nmobile-build-gate=%s\n' \
+            "$AGENTLENS_RESULT" "$MOBILE_RESULT"
+          for result in "$AGENTLENS_RESULT" "$MOBILE_RESULT"; do
+            if [[ "$result" != "success" ]]; then
+              echo "::error::App Rust/Swift prerequisite did not succeed (result=${result:-missing})."
+              exit 1
+            fi
+          done
