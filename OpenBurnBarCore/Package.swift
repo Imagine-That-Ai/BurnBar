@@ -524,6 +524,10 @@ let computerUseCoreTestExcludes = [
     "RemoteUnlockPolicyTests.swift"
 ]
 let legacyLinuxTestSources: [String]? = ["LinuxEmptyTests.swift"]
+// Analytics now has a real Linux behavior suite. Keep its source list
+// explicit so the target is part of the isolated Linux test inventory rather
+// than being mistaken for one of the legacy compile-only targets below.
+let analyticsLinuxTestSources: [String]? = ["LinuxAnalyticsBehaviorTests.swift"]
 // Mercury's platform-neutral Linux contract tests are a real suite, rather
 // than one of the legacy compile-only placeholders. Keep their source list
 // separate so the Linux graph can execute them without widening the other
@@ -867,7 +871,7 @@ let firstPartyTargetsBase: [Target] = [
                 swiftTestingDependency
             ],
             exclude: legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarAnalyticsTests"),
-            sources: legacyLinuxTestSources,
+            sources: analyticsLinuxTestSources,
             // Test target stays Swift 5: harness-only code; the Swift 6
             // region-isolation checker has known gaps (Task hand-off) that would
             // contort correct tests. Matches the other Core test targets.
@@ -966,7 +970,6 @@ let firstPartyTargetsBase: [Target] = [
 // Linux SwiftPM graph avoids reporting a green suite that exercises no
 // supported code; media has a real platform-neutral contract suite below.
 let linuxPlaceholderTestTargetNames: Set<String> = [
-    "OpenBurnBarAnalyticsTests",
     "OpenBurnBarIrohRelayTests",
     "BurnBarRemoteEngineTests",
     "OpenBurnBarSignalCoreTests",

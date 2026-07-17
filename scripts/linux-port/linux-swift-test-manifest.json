@@ -40,6 +40,14 @@
       "scratchPath": ".build-linux-swift-tests/core"
     },
     {
+      "id": "linux-analytics",
+      "packagePath": "OpenBurnBarCore",
+      "target": "OpenBurnBarAnalyticsTests",
+      "filter": "OpenBurnBarAnalyticsTests.LinuxAnalyticsBehaviorTests",
+      "minimumExecutedTests": 4,
+      "scratchPath": ".build-linux-swift-tests/core"
+    },
+    {
       "id": "portable-wrap-vectors",
       "packagePath": "OpenBurnBarCore",
       "target": "OpenBurnBarCoreTests",
