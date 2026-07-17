@@ -25,6 +25,7 @@ const KNOWN_EVALUATORS = new Set([
   'media',
   'tray',
   'x11-overlay',
+  'computer-use-system',
   'unavailable'
 ]);
 
