@@ -24,7 +24,12 @@ const CANDIDATE = {
 };
 const ACTIVATION_COMMIT = "c".repeat(40);
 
-function fixture({ profileName = "public-production", rust = ["quota"] } = {}) {
+function fixture({
+  profileName = "public-production",
+  rust = ["quota"],
+  version = "1.2.3",
+  tag = `v${version}`,
+} = {}) {
   const directory = mkdtempSync(join(tmpdir(), "native-release-evidence-"));
   const paths = {
     directory,
@@ -70,6 +75,11 @@ function fixture({ profileName = "public-production", rust = ["quota"] } = {}) {
     `${JSON.stringify({
       schemaVersion: 1,
       candidateIdentity: CANDIDATE,
+      release: {
+        commit: paths.releaseCommit,
+        tag,
+        version,
+      },
       modes: {
         quota: "legacy",
         cloudVault: "legacy",
@@ -311,11 +321,12 @@ test("rejects profile, candidate, and artifact substitution", () => {
 
 test("accepts Apple and Android prereleases but keeps Windows stable-only", () => {
   for (const consumer of ["apple", "android"]) {
+    const version = "1.2.3-rc.1";
     const paths = fixture({
       rust: [consumer === "apple" ? "quota" : "cloudVault"],
+      version,
     });
     try {
-      const version = "1.2.3-rc.1";
       const artifact = join(
         paths.directory,
         consumer === "apple"
@@ -350,9 +361,9 @@ test("accepts Apple and Android prereleases but keeps Windows stable-only", () =
     }
   }
 
-  const windows = fixture();
+  const version = "1.2.3-rc.1";
+  const windows = fixture({ version, tag: `windows-v${version}` });
   try {
-    const version = "1.2.3-rc.1";
     const artifact = join(
       windows.directory,
       `OpenBurnBar-${version}-windows-release.zip`,

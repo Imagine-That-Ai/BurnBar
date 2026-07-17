@@ -92,14 +92,17 @@ function assert(label, condition) {
 
 /**
  * Extract each individual invocation of a script from a workflow body.
- * Returns an array of { index, lines } where lines is the text from the
- * script name line through the end of that specific command invocation
- * (up to the next "node " or "python3 " line, or 10 lines max).
+ * Returns an array of { index, block } entries for executable command lines,
+ * excluding prose and comments that merely mention the script. Each block runs
+ * through the command's final shell-continuation line.
  */
 function extractIndividualInvocations(body, scriptName) {
   const results = [];
   const escaped = scriptName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const pattern = new RegExp(escaped, "gu");
+  const pattern = new RegExp(
+    `^[ \\t]*(?:run:[ \\t]+)?(?:node|python3|bash)[ \\t]+[^\\n]*${escaped}(?=[" \\t\\\\]|$)`,
+    "gmu",
+  );
   let match;
   while ((match = pattern.exec(body)) !== null) {
     // Grab the next 10 lines or until the next script invocation /
@@ -561,7 +564,7 @@ for (const invocation of allEvidenceInvocations) {
   );
   // The --activation value must be a path (not empty, not another flag).
   const activationMatch = invocation.block.match(
-    /--activation\s+"\$RUNNER_TEMP\/[^"]+"/u,
+    /--activation\s+"\$[A-Za-z_][A-Za-z0-9_]*\/[^"]+"/u,
   );
   assert(
     `${invocation.consumer} evidence --activation has a path value`,
