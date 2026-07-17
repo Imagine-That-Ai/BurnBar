@@ -25,7 +25,7 @@ work is the macOS-level **surface depth**, **installed runtime evidence**,
 
 ### Current continuation checkpoint — 2026-07-17
 
-The integration branch is at `832a9b0d2` with executable Linux behavior suites,
+The integration branch is at `85b167205` with executable Linux behavior suites,
 desktop-shell hardening, and nightly evidence hardening plus
 nightly evidence hardening: the real
 P-39 parser differential producer (`dd7c588db`, focused suite **45/45**) and
@@ -59,6 +59,10 @@ ledger remains 0/40 and 0/7 until installed, current-head receipts exist.
 The first exact-head release attempt then found a Linux-only type-inference
 failure in the new teardown task; `a10733cdd` adds the explicit optional task
 type and a replacement candidate is required.
+
+The latest continuation also adds Arch/pacman update-channel handling and
+fail-closed notification payload/route validation (`85b167205`, `a852af8c5`).
+These source and focused-test improvements do not promote any ledger row.
 
 The honest status is therefore **0/40 product** and **0/7 environment** certified.
 A non-certifying engineering maturity estimate is approximately **68%**. The

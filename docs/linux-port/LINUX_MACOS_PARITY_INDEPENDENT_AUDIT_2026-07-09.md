@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` at source checkpoint `832a9b0d2`; this audit record is subsequently carried by documentation-only commits. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, structured shell failure diagnostics, host-mounted Swift evidence, expiry-teardown serialization, executable Linux analytics, Computer Use, and remote-engine behavior coverage, the P-07 computer-use validator, the Linux type-inference correction, deep-link normalization, fail-closed text-expansion state, SmartHub process/payload hardening, and Linux XCTest discovery hardening are linked below. Candidate run `29546157464` passed both release architectures and installed-package runtime checks at its then-current head; the candidate-bound UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
+| Remediation evidence | `codex/linux-parity-integration-final` at source checkpoint `85b167205`; this audit record is subsequently carried by documentation-only commits. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, structured shell failure diagnostics, host-mounted Swift evidence, expiry-teardown serialization, executable Linux analytics, Computer Use, and remote-engine behavior coverage, the P-07 computer-use validator, the Linux type-inference correction, deep-link normalization, fail-closed text-expansion state, SmartHub process/payload hardening, Linux XCTest discovery hardening, Arch package-channel update handling, and fail-closed notification payload routing are linked below. Candidate run `29546157464` passed both release architectures and installed-package runtime checks at its then-current head; the candidate-bound UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -19,11 +19,17 @@ percentage. The active remediation stack now contains these reviewable slices:
 
 ### Latest continuation delta - 2026-07-17
 
-- **Current source checkpoint:** `832a9b0d2` carries executable Linux Computer Use
+- **Current source checkpoint:** `85b167205` carries executable Linux Computer Use
   and remote-engine behavior suites, replacing the two Linux compile-only
   placeholder paths. The manifest now declares **9 suites / 92 minimum tests**;
   platform fallback `LinuxEmptyTests.swift` files remain excluded from the
   Linux execution graph.
+- **Update and notification hardening:** `85b167205` adds strict Arch
+  (`pacman`) package-channel detection, signed artifact selection, typed bridge
+  decoding, and fail-closed install/rollback guidance. `a852af8c5` rejects
+  orphan notification payload arguments and prevents aliases from targeting
+  unregistered shell routes. Focused Rust/TypeScript/Node regressions pass;
+  installed package/update and desktop-host receipts remain open.
 - **P-39 source checkpoint:** `dd7c588db` adds a real P-39 differential parser
   producer. It writes and validates the committed macOS golden corpus, checks all
   26 fixtures across 15 parser families, rejects synthetic payloads, and binds the
