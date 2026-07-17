@@ -714,7 +714,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Record hosting deploy failure (per-lane dedupe; comment, never silent-skip)
-        if: failure() && github.ref == 'refs/heads/main'
+        if: failure()
         uses: ./.github/actions/ops-failure-issue
         with:
           mode: open
@@ -727,7 +727,7 @@ jobs:
           paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}
 
       - name: Close resolved hosting deploy failure issue
-        if: success() && github.ref == 'refs/heads/main'
+        if: success()
         uses: ./.github/actions/ops-failure-issue
         with:
           mode: close
