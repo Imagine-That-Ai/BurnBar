@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` at source checkpoint `c7bbd4ed6`; this audit record is subsequently carried by documentation-only commits. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, structured shell failure diagnostics, host-mounted Swift evidence, expiry-teardown serialization, executable Linux analytics, Computer Use, and remote-engine behavior coverage, the P-07 computer-use validator, the Linux type-inference correction, deep-link normalization, fail-closed text-expansion state, and SmartHub process/payload hardening are linked below. Candidate run `29546157464` passed both release architectures and installed-package runtime checks at its then-current head; the candidate-bound UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
+| Remediation evidence | `codex/linux-parity-integration-final` at source checkpoint `832a9b0d2`; this audit record is subsequently carried by documentation-only commits. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, structured shell failure diagnostics, host-mounted Swift evidence, expiry-teardown serialization, executable Linux analytics, Computer Use, and remote-engine behavior coverage, the P-07 computer-use validator, the Linux type-inference correction, deep-link normalization, fail-closed text-expansion state, SmartHub process/payload hardening, and Linux XCTest discovery hardening are linked below. Candidate run `29546157464` passed both release architectures and installed-package runtime checks at its then-current head; the candidate-bound UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -19,7 +19,7 @@ percentage. The active remediation stack now contains these reviewable slices:
 
 ### Latest continuation delta - 2026-07-17
 
-- **Current source checkpoint:** `c7bbd4ed6` carries executable Linux Computer Use
+- **Current source checkpoint:** `832a9b0d2` carries executable Linux Computer Use
   and remote-engine behavior suites, replacing the two Linux compile-only
   placeholder paths. The manifest now declares **9 suites / 92 minimum tests**;
   platform fallback `LinuxEmptyTests.swift` files remain excluded from the
@@ -102,6 +102,11 @@ percentage. The active remediation stack now contains these reviewable slices:
   groups on cancellation, timeout, oversized output, or wait failure. Focused
   Rust/TypeScript regressions are present; installed desktop receipts remain
   open.
+- **Linux XCTest discovery correction:** `832a9b0d2` removes `@MainActor` from
+  the Linux analytics behavior test target so Swift XCTest discovery can cast
+  generated methods on Ubuntu aarch64. The preceding nightly caught the
+  runtime discovery crash; the focused source parse is green and a fresh
+  exact-head nightly is required before the Linux suite is considered passed.
 
 ### Latest verification delta — 2026-07-14
 
