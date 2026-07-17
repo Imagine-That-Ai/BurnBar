@@ -14,7 +14,29 @@ Generated from a 6-subagent parallel reconnaissance of `AgentLens/`, `apps/linux
 | Desktop integration | `AppDelegate+StatusItem.swift`, `SwarmWallpaperRuntime.swift`, `Hotkey.swift` | Tauri tray exists. | Missing menu-bar popover, global hotkeys, desktop wallpaper, live wallpaper panels. |
 | Release / CI | `scripts/build-macos-website-release.sh`, `scripts/upload-macos-downloads-r2.sh`, `scripts/ops/rollback-macos-appcast.sh` | Toolchain, workflows, Tauri build, release manifest, scripts exist. | Missing AppImage/RPM closure, update feed, R2 upload, public trust verification, Sentry, nightly matrix evidence. |
 
-The existing `docs/linux-port/parity-ledger.json` has 64 Tier A/B rows all marked `ready`, but the release runbook and factory handoff identify blockers because the ledger was last sealed at an older commit and does not yet cover the W5 visual/desktop layer or release distribution. `docs/linux-port/ui-parity/README.md` P01-P15 are largely implemented; the remaining work is the macOS-level **surface depth**, **visual system**, and **release/distribution** layer.
+The canonical `docs/linux-port/parity-ledger.json` now contains 40 product rows and 7 environment rows, all intentionally `blocked` until signed current-HEAD receipts exist. `productParityClaim` is false; source implementation progress is not a certification score. `docs/linux-port/ui-parity/README.md` P01-P15 and the shared daemon foundations are substantially implemented, while the remaining work is the macOS-level **surface depth**, **installed runtime evidence**, **visual/system integration**, and **release/promotion** layer.
+
+### Current continuation checkpoint — 2026-07-17
+
+The integration branch is at `0a6c9dd85` with two recent source slices plus
+nightly evidence hardening: the real
+P-39 parser differential producer (`dd7c588db`, focused suite **45/45**) and
+provider-catalog enforcement in first-run onboarding (`29fa77791`). Candidate run
+`29546157464` passed both release architectures and the installed P-40 proof at
+its then-current head, but the branch has advanced and needs a fresh exact-head
+candidate. Nightly run `29546158468` passed the matched workload, Wayland portal,
+Arch/wlroots, and Fedora/KDE jobs; Ubuntu GNOME/X11 shell smoke failed after its
+Linux Swift suites passed (**325/325**). Hidden nightly evidence was previously
+lost and is now retained by the workflow; the shell runner is also being changed
+to emit a structured failure manifest before the job is rerun.
+
+The honest status is therefore **0/40 product** and **0/7 environment** certified.
+A non-certifying engineering maturity estimate is approximately **68%**. The
+remaining order is: recover the X11 failure evidence and rerun nightly, produce a
+fresh exact-head signed candidate, deploy and verify production App Check/OAuth
+callables, execute approval on the physical iPad, close the six Linux desktop
+matrix rows, collect installed Computer Use/Mercury/SmartHub/IME/keyring/
+accessibility/performance/update receipts, then promote all 40 requirement rows.
 
 ---
 

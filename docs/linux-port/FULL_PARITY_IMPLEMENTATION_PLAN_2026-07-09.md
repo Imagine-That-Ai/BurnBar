@@ -18,6 +18,28 @@ known platform divergences.
 
 Linux is not at full macOS parity.
 
+### Live continuation checkpoint — 2026-07-17
+
+The authoritative ledger is **0/40 product requirements** and **0/7 environment
+receipts**; `productParityClaim=false`. The integration branch currently ends at
+`0a6c9dd85`. Recent source work includes the real P-39 parser differential
+producer (`dd7c588db`, **45/45** focused checks) and provider-catalog enforcement
+for first-run onboarding (`29fa77791`). Candidate run `29546157464` passed both
+architectures and the installed P-40 RPC proof at `46425c540`, but it is stale
+after these source commits and cannot certify the current head. Nightly run
+`29546158468` passed matched performance, Wayland portal, Arch/wlroots, and
+Fedora/KDE jobs; Ubuntu GNOME/X11 shell smoke failed while its **325/325** Linux
+Swift tests passed. The hidden evidence upload gap is fixed and the runner is
+being hardened to emit a structured failure manifest before rerun.
+
+For planning purposes only, source maturity is approximately **68%**. This is
+not a release percentage. The remaining dependency order is: diagnose and close
+the X11 shell smoke, produce a fresh signed exact-head candidate, deploy and
+verify production App Check/OAuth callables, run the physical iPad approval
+journey, close the six remaining Linux desktop environments, collect installed
+Computer Use/Mercury/SmartHub/IME/keyring/accessibility/performance/update
+receipts, and only then promote the 40 product rows.
+
 ### Execution checkpoint — 2026-07-14
 
 The implementation stack is now split into reviewable, dependency-ordered

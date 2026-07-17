@@ -2,11 +2,11 @@
 
 | Audit field | Value |
 |---|---|
-| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-16 UTC |
+| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-17 UTC |
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` at source checkpoint `a8fb43090f1afd1cb18b1338c7f6e99e96d36ff8`; this audit record is subsequently carried by documentation-only commits. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, and the Windows-portable Hermes stream transport are linked below. Exact-head candidate run `29475397312` passed both release architectures and installed-package runtime checks; the candidate-bound UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
+| Remediation evidence | `codex/linux-parity-integration-final` at source checkpoint `0a6c9dd85`; this audit record is subsequently carried by documentation-only commits. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, and structured shell failure diagnostics are linked below. Candidate run `29546157464` passed both release architectures and installed-package runtime checks at its then-current head; the candidate-bound UTM P-40 session is recorded below, while full certification remains intentionally blocked. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -16,6 +16,40 @@ The audit remains the source of truth for the parity claim. The current Linux
 ledger is still **0/40 product requirements ready** and **0/7 environment
 receipts complete**; implementation progress must not be reported as a release
 percentage. The active remediation stack now contains these reviewable slices:
+
+### Latest continuation delta - 2026-07-17
+
+- **Current source checkpoint:** `dd7c588db` adds a real P-39 differential parser
+  producer. It writes and validates the committed macOS golden corpus, checks all
+  26 fixtures across 15 parser families, rejects synthetic payloads, and binds the
+  producer output to the candidate head/version/host. The focused producer suite
+  is **45/45**; this is source evidence, not a product receipt.
+- **Onboarding source checkpoint:** `29fa77791` makes the daemon's canonical
+  provider catalog a required first-run invariant. Empty provider catalogs now
+  block onboarding rather than presenting a false completed state; actor-level
+  coverage is present. The focused Linux package compiles, while macOS cannot
+  launch the XCTest bundle here because the existing SQLCipher framework is
+  unavailable at `@rpath`.
+- **Latest candidate:** run `29546157464` at `46425c540` passed both signed
+  architecture shards, aggregate finalization, and the installed P-40 RPC proof.
+  Aggregate digest: `sha256:6fccc6bf0bb7450b4ee1d95cc633cf68ab6769dfc5ddf0b2bc95bb55b6461b59`.
+  The branch has advanced since that candidate, so it is historical until a
+  fresh exact-head candidate is produced.
+- **Nightly matrix:** run `29546158468` passed the matched macOS/Linux workload,
+  Wayland portal, Arch/wlroots, and Fedora/KDE jobs. Ubuntu GNOME/X11 shell job
+  `87787948444` failed its Docker desktop smoke/evidence/performance wrappers,
+  while the Linux Swift suites passed (**7 suites, 325 tests, 0 failures**).
+  The failure was not diagnosable from the retained artifact because hidden
+  `.linux-evidence` files were not uploaded; the parity lane is adding hidden-file
+  retention and a structured shell failure summary before rerunning the job.
+- **Certification boundary:** the strict ledger remains **0/40 product** and
+  **0/7 environment**, with `productParityClaim=false`. A non-certifying source
+  maturity estimate is approximately **68%**; it must never be confused with
+  the evidence score. Remaining work is current-head candidate production,
+  production callable deployment, real iPad approval execution, six remaining
+  Linux environments, installed Computer Use/Mercury/SmartHub/IME/keyring/
+  accessibility/performance receipts, update/rollback proof, and promotion of
+  all 40 requirement receipts.
 
 ### Latest verification delta — 2026-07-14
 
