@@ -65,6 +65,7 @@ public actor BurnBarLinuxOnboardingService {
             "The daemon accepted and verified this authenticated onboarding RPC."
         },
         secretStoreProbe: @escaping Probe = BurnBarLinuxOnboardingService.verifyProductionSecretStore,
+        providerCatalogCount: Int = BurnBarCatalogLoader.bundledCatalog.providers.count,
         providerPathsProbe: Probe? = nil,
         cloudIdentityProbe: Probe? = nil,
         portalInputProbe: Probe? = nil,
@@ -105,8 +106,9 @@ public actor BurnBarLinuxOnboardingService {
         }
         self.optionalProbes = optionalProbes
         self.providerPathsProbe = providerPathsProbe ?? {
-            try BurnBarLinuxOnboardingService.verifyWritableDirectory(
-                stateURL.deletingLastPathComponent(),
+            try BurnBarLinuxOnboardingService.verifyProviderData(
+                at: stateURL.deletingLastPathComponent(),
+                providerCount: providerCatalogCount,
                 fileManager: fileManager
             )
         }

@@ -238,6 +238,50 @@ final class BurnBarLinuxOnboardingServiceTests: XCTestCase {
         }
     }
 
+    func testDefaultProviderProbeBlocksEmptyCatalogAndAcceptsFirstData() async throws {
+        let emptyStateURL = makeStateURL()
+        let emptyCatalogService = BurnBarLinuxOnboardingService(
+            stateURL: emptyStateURL,
+            now: { Date(timeIntervalSince1970: 1_700_000_000) },
+            daemonProbe: { "daemon verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerCatalogCount: 0
+        )
+
+        _ = try await verify(.daemon, using: emptyCatalogService)
+        _ = try await verify(.secretStore, using: emptyCatalogService)
+        let blocked = try await verify(.providerPaths, using: emptyCatalogService)
+        XCTAssertEqual(
+            blocked.steps.first(where: { $0.id == .providerPaths })?.state,
+            .blocked
+        )
+        XCTAssertTrue(
+            blocked.steps.first(where: { $0.id == .providerPaths })?.detail?.contains(
+                "bundled provider catalog is empty"
+            ) == true
+        )
+        XCTAssertFalse(blocked.completed)
+
+        let populatedStateURL = makeStateURL()
+        let populatedCatalogService = BurnBarLinuxOnboardingService(
+            stateURL: populatedStateURL,
+            now: { Date(timeIntervalSince1970: 1_700_000_000) },
+            daemonProbe: { "daemon verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerCatalogCount: 1
+        )
+
+        _ = try await verify(.daemon, using: populatedCatalogService)
+        _ = try await verify(.secretStore, using: populatedCatalogService)
+        let verified = try await verify(.providerPaths, using: populatedCatalogService)
+        let providerStep = try XCTUnwrap(
+            verified.steps.first(where: { $0.id == .providerPaths })
+        )
+        XCTAssertEqual(providerStep.state, .verified)
+        XCTAssertTrue(providerStep.detail?.contains("provider definitions") == true)
+        XCTAssertEqual(verified.currentStepID, .cloudIdentity)
+    }
+
     private func makeService(stateURL: URL) -> BurnBarLinuxOnboardingService {
         BurnBarLinuxOnboardingService(
             stateURL: stateURL,

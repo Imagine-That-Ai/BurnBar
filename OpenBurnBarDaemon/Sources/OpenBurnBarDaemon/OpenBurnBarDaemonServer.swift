@@ -193,14 +193,8 @@ public actor BurnBarDaemonServer {
             catalog: configuration.catalog,
             logger: BurnBarDaemonLogger(category: "config-store")
         )
-        let defaultLinuxProviderPathsProbe: BurnBarLinuxOnboardingService.Probe = {
-            try BurnBarLinuxOnboardingService.verifyProviderData(
-                at: BurnBarDaemonPaths.supportDirectoryURL,
-                providerCount: configuration.catalog.providers.count
-            )
-        }
         self.linuxOnboardingService = linuxOnboardingService ?? BurnBarLinuxOnboardingService(
-            providerPathsProbe: defaultLinuxProviderPathsProbe,
+            providerCatalogCount: configuration.catalog.providers.count,
             configStore: resolvedConfigStore
         )
         let resolvedUsageRecorder = usageRecorder ?? BurnBarUsageRecorder(
