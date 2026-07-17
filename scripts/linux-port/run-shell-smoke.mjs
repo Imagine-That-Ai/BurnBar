@@ -116,16 +116,33 @@ function reusedDesktopStep() {
 const evidenceEnv = { ...process.env, OB_EVIDENCE_OUT: outDir };
 const unitEnv = { ...process.env };
 delete unitEnv.OB_EVIDENCE_OUT;
-fs.writeFileSync(path.join(outDir, 'smoke-transcript.txt'), '');
 const steps = [];
-steps.push(run('npm', ['install', '--no-audit', '--no-fund'], appDir, evidenceEnv, 240000));
-steps.push(run('npm', ['test'], appDir, unitEnv, 180000));
-steps.push(run('npm', ['run', 'build'], appDir, evidenceEnv, 180000));
+const transcriptPath = path.join(outDir, 'smoke-transcript.txt');
+
+function persistTranscript() {
+  const transcript = steps
+    .map((s, i) => `### step ${i + 1}\n${s.cmd}\nexit_code=${s.code}\ntimed_out=${s.timedOut ? 'true' : 'false'}\n${s.stdout}\n${s.stderr}`)
+    .join('\n\n');
+  fs.writeFileSync(transcriptPath, normalizeTranscript(transcript) + '\n');
+}
+
+function recordStep(step) {
+  steps.push(step);
+  persistTranscript();
+  if (step.code !== 0) {
+    console.error(`shell smoke step failed: ${step.cmd} (exit ${step.code})`);
+  }
+  return step;
+}
+
+recordStep(run('npm', ['install', '--no-audit', '--no-fund'], appDir, evidenceEnv, 240000));
+recordStep(run('npm', ['test'], appDir, unitEnv, 180000));
+recordStep(run('npm', ['run', 'build'], appDir, evidenceEnv, 180000));
 const desktopSessionTimeoutMs = Number.parseInt(process.env.OB_SHELL_DESKTOP_TIMEOUT_MS || '1500000', 10);
-steps.push(currentDesktopArtifactsAreReusable()
+recordStep(currentDesktopArtifactsAreReusable()
   ? reusedDesktopStep()
   : run('node', [path.join(root, 'scripts/linux-port/run-shell-desktop-session.mjs')], root, evidenceEnv, desktopSessionTimeoutMs));
-steps.push(run('node', [path.join(root, 'scripts/linux-port/run-shell-evidence.mjs')], root, evidenceEnv, 120000));
+recordStep(run('node', [path.join(root, 'scripts/linux-port/run-shell-evidence.mjs')], root, evidenceEnv, 120000));
 const matchedProfile = process.env.OB_MATCHED_PERF_PROFILE || 'pr';
 const matchedArguments = [
   path.join(root, 'scripts/linux-port/run-matched-performance.mjs'),
@@ -138,14 +155,8 @@ if (process.env.OB_MATCHED_LINUX_INPUT) {
   matchedArguments.push('--linux-input', process.env.OB_MATCHED_LINUX_INPUT);
 }
 const matchedTimeoutMs = matchedProfile === 'nightly' ? 2700000 : 900000;
-steps.push(run('node', matchedArguments, root, evidenceEnv, matchedTimeoutMs));
-steps.push(run('node', [path.join(root, 'scripts/linux-port/run-perf-budget.mjs')], root, evidenceEnv, 120000));
-steps.push(run('node', [path.join(root, 'scripts/linux-port/verify-shell-evidence.mjs'), outDir], root, evidenceEnv, 120000));
-
-const transcript = steps
-  .map((s, i) => `### step ${i + 1}\n${s.cmd}\nexit_code=${s.code}\ntimed_out=${s.timedOut ? 'true' : 'false'}\n${s.stdout}\n${s.stderr}`)
-  .join('\n\n');
-
-fs.writeFileSync(path.join(outDir, 'smoke-transcript.txt'), normalizeTranscript(transcript) + '\n');
+recordStep(run('node', matchedArguments, root, evidenceEnv, matchedTimeoutMs));
+recordStep(run('node', [path.join(root, 'scripts/linux-port/run-perf-budget.mjs')], root, evidenceEnv, 120000));
+recordStep(run('node', [path.join(root, 'scripts/linux-port/verify-shell-evidence.mjs'), outDir], root, evidenceEnv, 120000));
 const failed = steps.find((s) => s.code !== 0);
 process.exit(failed ? failed.code : 0);
