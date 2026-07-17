@@ -1232,12 +1232,15 @@ jobs:
           # create-domain-core-native-release-evidence.mjs writeCreateOnly).
           plan="$evidence_dir/domain-core-native-evidence-plan.json"
           test -s "$plan"
-          # Fail closed: the canonical plan must be a v2 Windows plan with at
-          # least one domain. A jq/schema/empty-plan error exits nonzero here
-          # because the plan is a real file read under set -euo pipefail — no
-          # process-substitution producer whose failure can disappear behind a
-          # successful while loop.
-          jq -e '.schemaVersion == 2 and .consumer == "windows" and (.domains | length > 0)' "$plan" >/dev/null
+          # Fail closed: public-production must attest at least one Rust domain.
+          # The separately authorized rollback profile is all-legacy by contract,
+          # so its canonical plan must be empty and publishes the native artifact
+          # without fabricating Rust-domain evidence.
+          if [[ "$PROFILE" == "public-production-rollback" ]]; then
+            jq -e '.schemaVersion == 2 and .consumer == "windows" and (.domains | length == 0)' "$plan" >/dev/null
+          else
+            jq -e '.schemaVersion == 2 and .consumer == "windows" and (.domains | length > 0)' "$plan" >/dev/null
+          fi
           domain_count="$(jq '.domains | length' "$plan")"
           echo "Windows domain-core evidence plan: $domain_count domain(s) from canonical generator"
           # Write predicate paths to a real file before iteration so a jq

@@ -322,6 +322,11 @@ test("mounted shipped app executable itself emits the loaded Rust identity", () 
 });
 
 test("all Apple and Android assets and v2 evidence publish through one draft state machine", () => {
+  const publication = job(
+    appleAndroid,
+    "prepare-release-publication",
+    "domain-core-native-release-evidence",
+  );
   const evidence = job(
     appleAndroid,
     "domain-core-native-release-evidence",
@@ -348,6 +353,11 @@ test("all Apple and Android assets and v2 evidence publish through one draft sta
   );
   assert.match(evidence, /release_published != 'true'/u);
   assert.match(evidence, /--asset "\$asset"/u);
+  assert.match(
+    publication,
+    /ROLLBACK_PATH=.*OpenBurnBar-\$\{VERSION\}-legacy-rollback\.zip/u,
+  );
+  assert.match(publication, /ASSETS=\("\$ZIP_PATH" "\$ROLLBACK_PATH"\)/u);
   assert.match(evidence, /environment: release/u);
   assert.doesNotMatch(evidence, /--clobber|14[- ]day|10,?000/iu);
   assert.doesNotMatch(evidence, /gh release (?:upload|create|edit|delete)/u);
@@ -375,6 +385,11 @@ test("Windows signing and canonical evidence consume the exact gate", () => {
     "authorize-domain-core-rollback",
   );
   const build = job(windows, "build-sign", "supply-chain");
+  const supplyChain = job(
+    windows,
+    "supply-chain",
+    "domain-core-windows-release-evidence",
+  );
   const evidence = job(windows, "domain-core-windows-release-evidence");
   assert.match(
     gate,
@@ -413,6 +428,10 @@ test("Windows signing and canonical evidence consume the exact gate", () => {
   assert.match(build, /OpenBurnBar-\$\{env:VERSION\}-win-x64\.zip/u);
   assert.match(build, /--binary "\$nativeLibrary"/u);
   assert.match(evidence, /create-windows-domain-core-release-bundle\.py/u);
+  assert.match(
+    supplyChain,
+    /if \[\[ "\$PROFILE" == "public-production-rollback" \]\]; then[\s\S]*\.domains \| length == 0[\s\S]*else[\s\S]*\.domains \| length > 0/u,
+  );
   assert.match(evidence, /verify-domain-core-observed-identity\.mjs/u);
   assert.match(evidence, /create-domain-core-native-release-evidence\.mjs/u);
   assert.match(

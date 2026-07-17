@@ -2632,6 +2632,7 @@ jobs:
           SOURCE_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-corresponding-source.tar.gz" -print -quit 2>/dev/null)
           SOURCE_SHA256_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-corresponding-source.tar.gz.sha256" -print -quit 2>/dev/null)
           SIG_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.asc" -print -quit 2>/dev/null)
+          ROLLBACK_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-legacy-rollback.zip" -print -quit 2>/dev/null)
           PROVENANCE_PATHS=()
           while IFS= read -r provenance_path; do
             [[ -n "$provenance_path" ]] && PROVENANCE_PATHS+=("$provenance_path")
@@ -2651,14 +2652,14 @@ jobs:
             cp CHANGELOG.md "$NOTES_FILE"
           fi
 
-          for asset in "$DMG_PATH" "$ZIP_PATH"; do
+          for asset in "$DMG_PATH" "$ZIP_PATH" "$ROLLBACK_PATH"; do
             if [[ ! -f "$asset" ]]; then
               echo "::error::Release asset missing after artifact download: $asset"
               exit 1
             fi
           done
           bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$DMG_PATH" "$ZIP_PATH"
-          ASSETS=("$ZIP_PATH")
+          ASSETS=("$ZIP_PATH" "$ROLLBACK_PATH")
           [[ -n "$CHECKSUMS_PATH" && -f "$CHECKSUMS_PATH" ]] && ASSETS+=("$CHECKSUMS_PATH")
           [[ -n "$APPCAST_PATH" && -f "$APPCAST_PATH" ]] && ASSETS+=("$APPCAST_PATH")
           [[ -n "$LATEST_PATH" && -f "$LATEST_PATH" ]] && ASSETS+=("$LATEST_PATH")

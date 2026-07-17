@@ -8,8 +8,8 @@ export const DOMAIN_CORE_ARTIFACT_AUTHORITIES = new Set([
   "signed",
 ]);
 const FULL_SHA = /^[0-9a-f]{40}$/u;
-const STABLE_RELEASE_VERSION =
-  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
+const RELEASE_VERSION =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const DOMAIN_CORE_PROFILE_IDENTITIES = new Map([
   [
     "developer",
@@ -198,7 +198,7 @@ export function resolveDomainCoreBuildProfile(
   if (releaseCoordinates !== undefined) {
     if (
       typeof releaseCoordinates.version !== "string" ||
-      !STABLE_RELEASE_VERSION.test(releaseCoordinates.version)
+      !RELEASE_VERSION.test(releaseCoordinates.version)
     ) {
       throw new Error("rollback profile release version is invalid");
     }

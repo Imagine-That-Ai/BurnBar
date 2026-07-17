@@ -636,17 +636,27 @@ test("release coordinates validate the tag/version binding and commit format", (
       ),
     /release tag must be v1.0.0/,
   );
+  const prerelease = {
+    version: "1.0.0-beta.1+build.7",
+    tag: "v1.0.0-beta.1+build.7",
+    commit: releaseCommit,
+  };
+  assert.deepEqual(
+    resolveDomainCoreBuildProfile(
+      catalog,
+      "public-production",
+      candidateIdentity,
+      prerelease,
+    ).release,
+    prerelease,
+  );
   assert.throws(
     () =>
       resolveDomainCoreBuildProfile(
         catalog,
         "public-production",
         candidateIdentity,
-        {
-          version: "1.0.0-beta",
-          tag: "v1.0.0-beta",
-          commit: releaseCommit,
-        },
+        { version: "1.0", tag: "v1.0", commit: releaseCommit },
       ),
     /release version is invalid/,
   );
