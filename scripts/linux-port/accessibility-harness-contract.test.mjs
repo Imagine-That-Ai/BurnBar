@@ -79,6 +79,12 @@ test('toolchain and artifact reuse preserve the complete accessibility proof', (
     'report?.accessibility?.keyboardFocus?.pass === true',
     'report?.accessibility?.zoom?.pass === true'
   ]) assert.ok(smokeRunner.includes(marker), marker);
+  for (const marker of [
+    'function persistTranscript()',
+    'function recordStep(step)',
+    'persistTranscript();',
+    'shell smoke step failed:'
+  ]) assert.ok(smokeRunner.includes(marker), marker);
 });
 
 test('AT-SPI crawler self-test and session shell syntax pass', () => {
