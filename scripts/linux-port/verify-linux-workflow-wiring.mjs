@@ -389,6 +389,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'smoke-linux-packages.test.mjs',
     'product-proof-closure.test.mjs',
     'product-feature-proof-closure.test.mjs',
+    'p07-computer-use-proof.test.mjs',
     'p38-release-automation-proof.test.mjs',
     'p31-accessibility-proof.test.mjs',
     'p34-credential-security-proof.test.mjs',

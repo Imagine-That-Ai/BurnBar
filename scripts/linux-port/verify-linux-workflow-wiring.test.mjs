@@ -30,6 +30,7 @@ function valid() {
       'smoke-linux-packages.test.mjs',
       'product-proof-closure.test.mjs',
       'product-feature-proof-closure.test.mjs',
+      'p07-computer-use-proof.test.mjs',
       'p38-release-automation-proof.test.mjs',
       'p31-accessibility-proof.test.mjs',
       'p34-credential-security-proof.test.mjs',
@@ -466,6 +467,7 @@ test('product evidence dependency install and mutation suites are mandatory in t
     'github-artifact-provenance.test.mjs',
     'smoke-linux-packages.test.mjs',
     'product-feature-proof-closure.test.mjs',
+    'p07-computer-use-proof.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs'
   ]) {
