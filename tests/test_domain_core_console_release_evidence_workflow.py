@@ -1,3 +1,6 @@
+import shlex
+
+import yaml
 import unittest
 from pathlib import Path
 
@@ -5,6 +8,32 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOY = ROOT / ".github/workflows/deploy-hosting.yml"
 EVIDENCE = ROOT / ".github/workflows/domain-core-console-release-evidence.yml"
+
+
+def workflow(path: Path) -> dict:
+    return yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+
+def step(job: dict, name: str) -> dict:
+    return next(value for value in job["steps"] if value.get("name") == name)
+
+
+def shell_commands(script: str) -> list[list[str]]:
+    commands: list[str] = []
+    pending = ""
+    for raw_line in script.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.endswith("\\"):
+            pending += line[:-1].strip() + " "
+        else:
+            commands.append(pending + line)
+            pending = ""
+    if pending:
+        commands.append(pending.rstrip())
+    return [shlex.split(command) for command in commands]
+
 
 
 class ConsoleReleaseWorkflowTests(unittest.TestCase):
@@ -111,6 +140,72 @@ class ConsoleReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn("Rollback evidence already exists", source)
         rollback_stage = source[source.index("Stage run-bound rollback evidence without duplicating") :]
         self.assertNotIn("domain-core-public-production-rollback.json", rollback_stage)
+
+    def test_rollback_attestation_follows_deploy_health_and_exact_artifact_readback(self) -> None:
+        deploy_jobs = workflow(DEPLOY)["jobs"]
+        dispatch = deploy_jobs["dispatch-domain-core-console-evidence"]
+        self.assertEqual(
+            set(dispatch["needs"]),
+            {"build-hosting-artifacts", "deploy-hosting", "hosting-smoke-result"},
+        )
+        dispatch_gate = " ".join(dispatch["if"].split())
+        for required_result in (
+            "needs.deploy-hosting.result == 'success'",
+            "needs.hosting-smoke-result.result == 'success'",
+            "needs.build-hosting-artifacts.outputs.stable_release == 'true'",
+        ):
+            self.assertIn(required_result, dispatch_gate)
+
+        publish = workflow(EVIDENCE)["jobs"]["publish"]
+        names = [value.get("name") for value in publish["steps"]]
+        self.assertLess(
+            names.index("Download exact deployed artifact and health evidence"),
+            names.index("Reverify protected proof and exact live deployment"),
+        )
+        self.assertLess(
+            names.index("Reverify protected proof and exact live deployment"),
+            names.index("Create deterministic v2 Console release evidence"),
+        )
+        self.assertLess(
+            names.index("Create deterministic v2 Console release evidence"),
+            names.index("Attest exact Console deployment receipt"),
+        )
+        download_commands = [
+            command
+            for command in shell_commands(
+                step(publish, "Download exact deployed artifact and health evidence")["run"]
+            )
+            if command[:3] == ["gh", "run", "download"]
+        ]
+        self.assertEqual(
+            download_commands,
+            [
+                [
+                    "gh",
+                    "run",
+                    "download",
+                    "$DEPLOY_RUN_ID",
+                    "--repo",
+                    "$GITHUB_REPOSITORY",
+                    "--name",
+                    "hosting-artifacts-${GITHUB_SHA}-${DEPLOY_RUN_ID}-${DEPLOY_RUN_ATTEMPT}",
+                    "--dir",
+                    "$RUNNER_TEMP/hosting-artifact",
+                ],
+                [
+                    "gh",
+                    "run",
+                    "download",
+                    "$DEPLOY_RUN_ID",
+                    "--repo",
+                    "$GITHUB_REPOSITORY",
+                    "--name",
+                    "console-deploy-health-${DEPLOY_RUN_ID}-${DEPLOY_RUN_ATTEMPT}",
+                    "--dir",
+                    "$RUNNER_TEMP/console-deploy-health",
+                ],
+            ],
+        )
 
 
 if __name__ == "__main__":

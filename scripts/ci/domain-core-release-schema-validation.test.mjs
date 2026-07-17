@@ -27,6 +27,15 @@ const deploymentSchema = JSON.parse(
     "utf8",
   ),
 );
+const rollbackReceiptSchema = JSON.parse(
+  readFileSync(
+    new URL(
+      "../../config/domain-core-legacy-deletion-receipt.schema.json",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+);
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const candidate = {
   candidateCommit: "a".repeat(40),
@@ -207,6 +216,157 @@ test("Draft 2020-12 schemas compile and validate generated receipt and predicate
     true,
     JSON.stringify(validatePredicate.errors),
   );
+});
+
+test("release predicate accepts only the governed production/profile mode pairs", () => {
+  const ajv = new Ajv2020({ allErrors: true, strict: true });
+  const validate = ajv.compile(releaseSchema);
+  const base = common();
+  const rollback = {
+    ...base,
+    predicateType:
+      "https://openburnbar.dev/attestations/domain-core-release-artifact/v2",
+    publicProfile: {
+      ...base.publicProfile,
+      profile: "public-production-rollback",
+      mode: "legacy",
+    },
+    artifact: {
+      fileName: "OpenBurnBar-1.2.3-functions-deployment.json",
+      sha256: "f".repeat(64),
+    },
+  };
+  assert.equal(validate(rollback), true, JSON.stringify(validate.errors));
+
+  for (const [profile, mode] of [
+    ["public-production", "legacy"],
+    ["public-production-rollback", "rust"],
+    ["unprotected-rollback", "legacy"],
+  ]) {
+    const substituted = structuredClone(rollback);
+    substituted.publicProfile.profile = profile;
+    substituted.publicProfile.mode = mode;
+    assert.equal(
+      validate(substituted),
+      false,
+      `schema accepted unauthorized profile/mode pair ${profile}/${mode}`,
+    );
+  }
+});
+
+test("rollback receipt schema requires exact completion paths and signed health fields", () => {
+  const ajv = new Ajv2020({
+    allErrors: true,
+    strict: true,
+    strictRequired: false,
+    formats: { "date-time": true },
+  });
+  const validate = ajv.compile(rollbackReceiptSchema);
+  const activation = {
+    ...candidate,
+    activationCommit: "3".repeat(40),
+    changedPathsSha256: "4".repeat(64),
+  };
+  const sourceRun = {
+    repository: "Imagine-That-Ai/BurnBar",
+    workflowPath: ".github/workflows/domain-core.yml",
+    runId: 11,
+    runAttempt: 2,
+    event: "push",
+    ref: "refs/heads/main",
+    headSha: candidate.candidateCommit,
+  };
+  const receipt = {
+    schemaVersion: 2,
+    rowId: "quota.claude_statusline",
+    authorityGeneration: 1,
+    transition: "rollback",
+    status: "active",
+    evidence: ["https://github.com/Imagine-That-Ai/BurnBar/issues/123"],
+    approvedBy: "@release-owner",
+    approvedAt: "2026-07-17T00:00:00Z",
+    commit: "5".repeat(40),
+    rollback: {
+      stableReceiptSha256: "6".repeat(64),
+      issueUri: "https://github.com/Imagine-That-Ai/BurnBar/issues/123",
+      activatedAt: "2026-07-17T00:00:00Z",
+      candidate,
+      activation,
+      authority: {
+        candidateBundleSha256: "7".repeat(64),
+        sourceRun,
+        promotionSigner: {
+          workflowPath: ".github/workflows/domain-core-promotion-proof.yml",
+          runId: 21,
+          runAttempt: 3,
+          trustedMainCommit: "8".repeat(40),
+          provenanceSha256: "9".repeat(64),
+        },
+      },
+      retainedRollbackArtifact: {
+        artifactUri:
+          "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.2.3/OpenBurnBar-1.2.3-legacy-rollback.zip",
+        artifactSha256: "a".repeat(64),
+        provenanceSha256: "b".repeat(64),
+        retentionPolicy: "retain_until_legacy_deletion_complete",
+      },
+      approverAuthority: {
+        reviewClass: "domain_owner",
+        catalogSha256: "c".repeat(64),
+        trustedMainCommit: "8".repeat(40),
+      },
+      completionEvidence: [
+        {
+          consumer: "apple",
+          domain: "quota",
+          artifactPath:
+            "config/domain-core-rollback-completions/quota.claude_statusline/1/apple.json",
+          artifactSha256: "d".repeat(64),
+          provenancePath:
+            "config/domain-core-rollback-completions/quota.claude_statusline/1/apple.sigstore.json",
+          provenanceSha256: "e".repeat(64),
+          rollbackProfileSha256: "f".repeat(64),
+          release: {
+            version: "1.2.3",
+            tag: "v1.2.3",
+            commit: activation.activationCommit,
+          },
+          signer: {
+            workflowPath: ".github/workflows/release.yml",
+            runId: 31,
+            runAttempt: 2,
+            runInvocationUri:
+              "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31/attempts/2",
+          },
+          actionRun: {
+            repository: "Imagine-That-Ai/BurnBar",
+            workflowPath: ".github/workflows/release.yml",
+            runId: 31,
+            runAttempt: 2,
+            event: "workflow_dispatch",
+            ref: "refs/tags/v1.2.3",
+            headSha: activation.activationCommit,
+          },
+          deployedArtifactSha256: "d".repeat(64),
+          healthArtifactSha256: null,
+          completedAt: "2026-07-17T00:00:00Z",
+        },
+      ],
+    },
+  };
+  assert.equal(validate(receipt), true, JSON.stringify(validate.errors));
+
+  const wrongPath = structuredClone(receipt);
+  wrongPath.rollback.completionEvidence[0].artifactPath =
+    "artifacts/quota.claude_statusline/1/apple.json";
+  assert.equal(validate(wrongPath), false);
+  const missingHealthBinding = structuredClone(receipt);
+  delete missingHealthBinding.rollback.completionEvidence[0]
+    .healthArtifactSha256;
+  assert.equal(validate(missingHealthBinding), false);
+  const extraAuthority = structuredClone(receipt);
+  extraAuthority.rollback.authority.selfAuthorized = true;
+  assert.equal(validate(extraAuthority), false);
 });
 
 test("compiled schemas reject missing provider coordinates, mixed consumer shape, and unknown fields", () => {

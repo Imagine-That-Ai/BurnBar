@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import UTC, datetime
 import hashlib
 import io
 import importlib.util
@@ -1017,6 +1018,717 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(GATE.GateError, "review classes"):
                 GATE.load_deletion_reviewers(root)
+
+    def test_rollback_authority_is_derived_from_protected_promotion_and_stable_bytes(self) -> None:
+        candidate = {
+            "candidateCommit": "1" * 40,
+            "coreVersion": "1.2.3",
+            "abiVersion": 3,
+            "sourceSha256": "2" * 64,
+        }
+        activation = {
+            **candidate,
+            "activationCommit": "3" * 40,
+            "changedPathsSha256": "4" * 64,
+        }
+        retained = {
+            "artifactUri": "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.2.3/OpenBurnBar-1.2.3-legacy-rollback.zip",
+            "artifactSha256": "5" * 64,
+            "provenanceSha256": "6" * 64,
+            "retentionPolicy": "retain_until_legacy_deletion_complete",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory).resolve()
+            relative = f"{GATE.ATTESTATION_ROOT}/quota/1.json"
+            attestation = repo / relative
+            attestation.parent.mkdir(parents=True)
+            attestation.write_text(
+                json.dumps(
+                    {
+                        "unsignedBundle": {
+                            "sha256": "7" * 64,
+                            "sourceRunId": 11,
+                            "sourceRunAttempt": 2,
+                        },
+                        "provenance": {
+                            "signerRunId": 21,
+                            "signerRunAttempt": 3,
+                            "trustedMainCommit": "8" * 40,
+                            "sha256": "9" * 64,
+                        },
+                    }
+                )
+            )
+            promotion = GATE.Receipt(
+                "promotion.json",
+                "promotion",
+                1,
+                datetime(2026, 7, 14, tzinfo=UTC),
+                candidate["candidateCommit"],
+                "a" * 64,
+                (),
+                {"path": relative},
+            )
+            stable = GATE.Receipt(
+                "stable_release.json",
+                "stable_release",
+                1,
+                datetime(2026, 7, 15, tzinfo=UTC),
+                activation["activationCommit"],
+                "b" * 64,
+                (),
+                {
+                    "candidate": candidate,
+                    "activation": activation,
+                    "rollbackArtifact": retained,
+                },
+            )
+            with mock.patch.object(GATE, "require_commit", return_value="8" * 40):
+                authority = GATE.rollback_authority_binding(
+                    repo,
+                    "quota.claude_statusline",
+                    1,
+                    promotion,
+                    stable,
+                )
+        self.assertEqual(authority["candidate"], candidate)
+        self.assertEqual(authority["activation"], activation)
+        self.assertEqual(authority["candidateBundleSha256"], "7" * 64)
+        self.assertEqual(
+            authority["sourceRun"],
+            {
+                "repository": GATE.SignedEvidenceVerifier.repository,
+                "workflowPath": GATE.SOURCE_WORKFLOW,
+                "runId": 11,
+                "runAttempt": 2,
+                "event": "push",
+                "ref": "refs/heads/main",
+                "headSha": candidate["candidateCommit"],
+            },
+        )
+        self.assertEqual(
+            authority["promotionSigner"],
+            {
+                "workflowPath": GATE.PROMOTION_SIGNER_WORKFLOW,
+                "runId": 21,
+                "runAttempt": 3,
+                "trustedMainCommit": "8" * 40,
+                "provenanceSha256": "9" * 64,
+            },
+        )
+        self.assertEqual(authority["retainedRollbackArtifact"], retained)
+
+    def test_signed_rollback_completion_binds_authority_identity_and_live_action(self) -> None:
+        candidate = {
+            "candidateCommit": "1" * 40,
+            "coreVersion": "1.2.3",
+            "abiVersion": 3,
+            "sourceSha256": "2" * 64,
+        }
+        activation = {
+            **candidate,
+            "activationCommit": "3" * 40,
+            "changedPathsSha256": "4" * 64,
+        }
+        source_run = {
+            "repository": GATE.SignedEvidenceVerifier.repository,
+            "workflowPath": GATE.SOURCE_WORKFLOW,
+            "runId": 51,
+            "runAttempt": 2,
+            "event": "push",
+            "ref": "refs/heads/main",
+            "headSha": candidate["candidateCommit"],
+        }
+        promotion_signer = {
+            "workflowPath": GATE.PROMOTION_SIGNER_WORKFLOW,
+            "runId": 61,
+            "runAttempt": 3,
+            "trustedMainCommit": "5" * 40,
+            "provenanceSha256": "6" * 64,
+        }
+        action_run = {
+            "repository": GATE.SignedEvidenceVerifier.repository,
+            "workflowPath": GATE.ROLLBACK_ACTION_WORKFLOWS["console"],
+            "runId": 81,
+            "runAttempt": 4,
+            "event": "workflow_dispatch",
+            "ref": "refs/tags/v1.2.3",
+            "headSha": activation["activationCommit"],
+            "jobSetSha256": "7" * 64,
+        }
+        artifact_bytes = b"completed console rollback"
+        provenance_bytes = b"signed rollback provenance"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            artifact = root / "console.json"
+            bundle = root / "console.sigstore.json"
+            artifact.write_bytes(artifact_bytes)
+            bundle.write_bytes(provenance_bytes)
+            item = {
+                "consumer": "console",
+                "domain": "cloudVault",
+                "artifactSha256": hashlib.sha256(artifact_bytes).hexdigest(),
+                "provenanceSha256": hashlib.sha256(provenance_bytes).hexdigest(),
+                "rollbackProfileSha256": "8" * 64,
+                "release": {
+                    "version": "1.2.3",
+                    "tag": "v1.2.3",
+                    "commit": activation["activationCommit"],
+                },
+                "signer": {
+                    "runId": 71,
+                    "runAttempt": 2,
+                },
+                "actionRun": action_run,
+                "deployedArtifactSha256": "9" * 64,
+                "healthArtifactSha256": "a" * 64,
+                "completedAt": "2026-07-17T00:00:00Z",
+            }
+            predicate = {
+                "schemaVersion": 2,
+                "predicateType": GATE.RELEASE_PREDICATE_TYPES["console"],
+                "consumer": "console",
+                "domain": "cloudVault",
+                "artifactKind": "console-deployment-receipt",
+                "target": "firebase-hosting-production",
+                "candidate": candidate,
+                "activation": activation,
+                "publicProfile": {
+                    "profile": "public-production-rollback",
+                    "domain": "cloudVault",
+                    "mode": "legacy",
+                    "sha256": item["rollbackProfileSha256"],
+                },
+                "release": {
+                    **item["release"],
+                    "publicProfileSha256": item["rollbackProfileSha256"],
+                },
+                "artifact": {
+                    "fileName": "OpenBurnBar-1.2.3-console-deployment.json",
+                    "sha256": item["artifactSha256"],
+                },
+                "sourceRun": source_run,
+                "promotionProof": {
+                    "signerWorkflow": GATE.PROMOTION_SIGNER_WORKFLOW,
+                    "predicateType": "https://slsa.dev/provenance/v1",
+                    "signerRun": {
+                        "runId": promotion_signer["runId"],
+                        "runAttempt": promotion_signer["runAttempt"],
+                    },
+                    "attestationSubject": {
+                        "fileName": "domain-core-candidate-bundle.json",
+                        "sha256": "b" * 64,
+                    },
+                },
+                "rollbackArtifact": {
+                    "sha256": "c" * 64,
+                    "candidate": candidate,
+                    "activation": activation,
+                },
+                "deployment": {
+                    "status": "healthy",
+                    "deployRun": action_run,
+                    "deployedArtifact": {"sha256": item["deployedArtifactSha256"]},
+                    "healthArtifactSha256": item["healthArtifactSha256"],
+                },
+            }
+
+            def verified(value: dict, invocation_attempt: int = 2) -> list[dict]:
+                return [
+                    {
+                        "verificationResult": {
+                            "statement": {"predicate": value},
+                            "signature": {
+                                "certificate": {
+                                    "runInvocationURI": (
+                                        "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/71/attempts/"
+                                        f"{invocation_attempt}"
+                                    )
+                                }
+                            },
+                        }
+                    }
+                ]
+
+            def github_json(endpoint: str, _label: str) -> dict:
+                if endpoint.endswith("/actions/runs/71/attempts/2"):
+                    return {
+                        "path": GATE.RELEASE_SIGNER_WORKFLOWS["console"],
+                        "head_sha": activation["activationCommit"],
+                        "status": "completed",
+                        "conclusion": "success",
+                        "run_attempt": 2,
+                        "head_branch": "v1.2.3",
+                        "repository": {"full_name": GATE.SignedEvidenceVerifier.repository},
+                    }
+                if endpoint.endswith("/actions/runs/81/attempts/4"):
+                    return {
+                        "path": GATE.ROLLBACK_ACTION_WORKFLOWS["console"],
+                        "event": "workflow_dispatch",
+                        "head_sha": activation["activationCommit"],
+                        "status": "completed",
+                        "conclusion": "success",
+                        "run_attempt": 4,
+                        "head_branch": "v1.2.3",
+                        "updated_at": "2026-07-17T00:00:00Z",
+                        "repository": {"full_name": GATE.SignedEvidenceVerifier.repository},
+                    }
+                raise AssertionError(endpoint)
+
+            verifier = GATE.SignedEvidenceVerifier()
+            with (
+                mock.patch.object(verifier, "_verify_bundle", return_value=verified(predicate)),
+                mock.patch.object(verifier, "_github_json", side_effect=github_json),
+            ):
+                completed_at = verifier.verify_rollback_completion(
+                    item,
+                    artifact,
+                    bundle,
+                    candidate=candidate,
+                    activation=activation,
+                    source_run=source_run,
+                    promotion_signer=promotion_signer,
+                    candidate_bundle_sha256="b" * 64,
+                    retained_rollback_sha256="c" * 64,
+                    domain="cloudVault",
+                )
+            self.assertEqual(completed_at, datetime(2026, 7, 17, tzinfo=UTC))
+
+            substitutions = (
+                ("candidate", ("candidate", "candidateCommit"), "d" * 40),
+                ("activation", ("activation", "changedPathsSha256"), "d" * 64),
+                ("source attempt", ("sourceRun", "runAttempt"), 99),
+                ("promotion attempt", ("promotionProof", "signerRun", "runAttempt"), 99),
+                ("retained rollback", ("rollbackArtifact", "sha256"), "d" * 64),
+                ("consumer artifact", ("artifactKind",), "macos-dmg"),
+                ("release tag", ("release", "tag"), "v1.2.4"),
+                ("deployment status", ("deployment", "status"), "pending"),
+                ("deployed bytes", ("deployment", "deployedArtifact", "sha256"), "d" * 64),
+                ("health bytes", ("deployment", "healthArtifactSha256"), "d" * 64),
+            )
+            for label, path, replacement in substitutions:
+                substituted = copy.deepcopy(predicate)
+                target = substituted
+                for key in path[:-1]:
+                    target = target[key]
+                target[path[-1]] = replacement
+                with (
+                    self.subTest(label=label),
+                    mock.patch.object(verifier, "_verify_bundle", return_value=verified(substituted)),
+                    self.assertRaisesRegex(GATE.GateError, "exactly one signed predicate"),
+                ):
+                    verifier.verify_rollback_completion(
+                        item,
+                        artifact,
+                        bundle,
+                        candidate=candidate,
+                        activation=activation,
+                        source_run=source_run,
+                        promotion_signer=promotion_signer,
+                        candidate_bundle_sha256="b" * 64,
+                        retained_rollback_sha256="c" * 64,
+                        domain="cloudVault",
+                    )
+            with (
+                mock.patch.object(verifier, "_verify_bundle", return_value=verified(predicate, 9)),
+                self.assertRaisesRegex(GATE.GateError, "exact signer run and attempt"),
+            ):
+                verifier.verify_rollback_completion(
+                    item,
+                    artifact,
+                    bundle,
+                    candidate=candidate,
+                    activation=activation,
+                    source_run=source_run,
+                    promotion_signer=promotion_signer,
+                    candidate_bundle_sha256="b" * 64,
+                    retained_rollback_sha256="c" * 64,
+                    domain="cloudVault",
+                )
+            stale = {**item, "completedAt": "2026-07-16T00:00:00Z"}
+            with (
+                mock.patch.object(verifier, "_verify_bundle", return_value=verified(predicate)),
+                mock.patch.object(verifier, "_github_json", side_effect=github_json),
+                self.assertRaisesRegex(GATE.GateError, "completion timestamp"),
+            ):
+                verifier.verify_rollback_completion(
+                    stale,
+                    artifact,
+                    bundle,
+                    candidate=candidate,
+                    activation=activation,
+                    source_run=source_run,
+                    promotion_signer=promotion_signer,
+                    candidate_bundle_sha256="b" * 64,
+                    retained_rollback_sha256="c" * 64,
+                    domain="cloudVault",
+                )
+
+
+    def test_rollback_receipt_rejects_substituted_authority_and_self_approval(self) -> None:
+        candidate = {
+            "candidateCommit": "1" * 40,
+            "coreVersion": "1.2.3",
+            "abiVersion": 3,
+            "sourceSha256": "2" * 64,
+        }
+        activation = {
+            **candidate,
+            "activationCommit": "3" * 40,
+            "changedPathsSha256": "4" * 64,
+        }
+        authority = {
+            "candidate": candidate,
+            "activation": activation,
+            "candidateBundleSha256": "5" * 64,
+            "sourceRun": {
+                "repository": GATE.SignedEvidenceVerifier.repository,
+                "workflowPath": GATE.SOURCE_WORKFLOW,
+                "runId": 11,
+                "runAttempt": 2,
+                "event": "push",
+                "ref": "refs/heads/main",
+                "headSha": candidate["candidateCommit"],
+            },
+            "promotionSigner": {
+                "workflowPath": GATE.PROMOTION_SIGNER_WORKFLOW,
+                "runId": 21,
+                "runAttempt": 3,
+                "trustedMainCommit": "6" * 40,
+                "provenanceSha256": "7" * 64,
+            },
+            "retainedRollbackArtifact": {
+                "artifactUri": "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.2.3/OpenBurnBar-1.2.3-legacy-rollback.zip",
+                "artifactSha256": "8" * 64,
+                "provenanceSha256": "9" * 64,
+                "retentionPolicy": "retain_until_legacy_deletion_complete",
+            },
+        }
+        catalog = b'{"reviewers":["@release-owner"]}\n'
+        payload = {
+            "stableReceiptSha256": "a" * 64,
+            "issueUri": "https://github.com/Imagine-That-Ai/BurnBar/issues/123",
+            "activatedAt": "2026-07-17T00:00:00Z",
+            "candidate": candidate,
+            "activation": activation,
+            "authority": {
+                key: copy.deepcopy(authority[key])
+                for key in ("candidateBundleSha256", "sourceRun", "promotionSigner")
+            },
+            "retainedRollbackArtifact": copy.deepcopy(authority["retainedRollbackArtifact"]),
+            "approverAuthority": {
+                "reviewClass": "domain_owner",
+                "catalogSha256": hashlib.sha256(catalog).hexdigest(),
+                "trustedMainCommit": authority["promotionSigner"]["trustedMainCommit"],
+            },
+            "completionEvidence": [],
+        }
+        promotion = GATE.Receipt(
+            "promotion.json",
+            "promotion",
+            1,
+            datetime(2026, 7, 14, tzinfo=UTC),
+            candidate["candidateCommit"],
+            "b" * 64,
+            (),
+            {},
+        )
+        stable = GATE.Receipt(
+            "stable_release.json",
+            "stable_release",
+            1,
+            datetime(2026, 7, 15, tzinfo=UTC),
+            activation["activationCommit"],
+            payload["stableReceiptSha256"],
+            (),
+            {},
+        )
+
+        mutations = (
+            ("candidate", ("candidate", "candidateCommit"), "c" * 40, "governed promotion"),
+            ("activation", ("activation", "changedPathsSha256"), "c" * 64, "governed stable release"),
+            ("source run", ("authority", "sourceRun", "runAttempt"), 99, "source and promotion authority"),
+            ("signer run", ("authority", "promotionSigner", "runAttempt"), 99, "source and promotion authority"),
+            ("artifact digest", ("retainedRollbackArtifact", "artifactSha256"), "c" * 64, "retained rollback artifact"),
+            ("provenance digest", ("retainedRollbackArtifact", "provenanceSha256"), "c" * 64, "retained rollback artifact"),
+            ("trusted main", ("approverAuthority", "trustedMainCommit"), "c" * 40, "protected trusted main"),
+            ("catalog", ("approverAuthority", "catalogSha256"), "c" * 64, "catalog digest"),
+        )
+        for label, path, replacement, error in mutations:
+            mutated = copy.deepcopy(payload)
+            target = mutated
+            for key in path[:-1]:
+                target = target[key]
+            target[path[-1]] = replacement
+            receipt = GATE.Receipt(
+                "rollback.json",
+                "rollback",
+                1,
+                datetime(2026, 7, 18, tzinfo=UTC),
+                "d" * 40,
+                "e" * 64,
+                (),
+                mutated,
+                approved_by="@release-owner",
+            )
+            with (
+                self.subTest(label=label),
+                mock.patch.object(GATE, "require_ancestor"),
+                mock.patch.object(GATE, "rollback_authority_binding", return_value=authority),
+                mock.patch.object(GATE, "git_file", return_value=catalog),
+                mock.patch.object(
+                    GATE,
+                    "load_deletion_reviewers",
+                    return_value={"domain_owner": {"@release-owner"}},
+                ),
+                self.assertRaisesRegex(GATE.GateError, error),
+            ):
+                GATE.validate_rollback_receipt(
+                    ROOT,
+                    "quota.claude_statusline",
+                    1,
+                    receipt,
+                    promotion,
+                    stable,
+                    mock.Mock(),
+                )
+
+        self_authored = GATE.Receipt(
+            "rollback.json",
+            "rollback",
+            1,
+            datetime(2026, 7, 18, tzinfo=UTC),
+            "d" * 40,
+            "e" * 64,
+            (),
+            payload,
+            approved_by="@rollback-author",
+        )
+        with (
+            mock.patch.object(GATE, "require_ancestor"),
+            mock.patch.object(GATE, "rollback_authority_binding", return_value=authority),
+            mock.patch.object(GATE, "git_file", return_value=catalog),
+            mock.patch.object(
+                GATE,
+                "load_deletion_reviewers",
+                return_value={"domain_owner": {"@release-owner"}},
+            ),
+            self.assertRaisesRegex(GATE.GateError, "approver is not qualified"),
+        ):
+            GATE.validate_rollback_receipt(
+                ROOT,
+                "quota.claude_statusline",
+                1,
+                self_authored,
+                promotion,
+                stable,
+                mock.Mock(),
+            )
+
+    def test_rollback_completion_covers_exact_consumers_with_native_release_tags(self) -> None:
+        row_id = "quota.claude_statusline"
+        candidate = {
+            "candidateCommit": "1" * 40,
+            "coreVersion": "1.2.3",
+            "abiVersion": 3,
+            "sourceSha256": "2" * 64,
+        }
+        activation = {
+            **candidate,
+            "activationCommit": "3" * 40,
+            "changedPathsSha256": "4" * 64,
+        }
+        authority = {
+            "candidate": candidate,
+            "activation": activation,
+            "candidateBundleSha256": "5" * 64,
+            "sourceRun": {
+                "repository": GATE.SignedEvidenceVerifier.repository,
+                "workflowPath": GATE.SOURCE_WORKFLOW,
+                "runId": 11,
+                "runAttempt": 2,
+                "event": "push",
+                "ref": "refs/heads/main",
+                "headSha": candidate["candidateCommit"],
+            },
+            "promotionSigner": {
+                "workflowPath": GATE.PROMOTION_SIGNER_WORKFLOW,
+                "runId": 21,
+                "runAttempt": 3,
+                "trustedMainCommit": "6" * 40,
+                "provenanceSha256": "7" * 64,
+            },
+            "retainedRollbackArtifact": {
+                "artifactUri": "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.2.3/OpenBurnBar-1.2.3-legacy-rollback.zip",
+                "artifactSha256": "8" * 64,
+                "provenanceSha256": "9" * 64,
+                "retentionPolicy": "retain_until_legacy_deletion_complete",
+            },
+        }
+        catalog = b"protected approver catalog"
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory).resolve()
+            completions = []
+            for index, (consumer, tag) in enumerate(
+                (("apple", "v1.2.3"), ("linux", "linux-v1.2.3"), ("windows", "windows-v1.2.3")),
+                start=1,
+            ):
+                root = repo / GATE.ROLLBACK_COMPLETION_ROOT / row_id / "1"
+                root.mkdir(parents=True, exist_ok=True)
+                artifact = root / f"{consumer}.json"
+                provenance = root / f"{consumer}.sigstore.json"
+                artifact.write_text(json.dumps({"consumer": consumer, "completed": True}))
+                provenance.write_text(json.dumps({"consumer": consumer, "signed": True}))
+                artifact_digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+                provenance_digest = hashlib.sha256(provenance.read_bytes()).hexdigest()
+                completions.append(
+                    {
+                        "consumer": consumer,
+                        "domain": "quota",
+                        "artifactPath": artifact.relative_to(repo).as_posix(),
+                        "artifactSha256": artifact_digest,
+                        "provenancePath": provenance.relative_to(repo).as_posix(),
+                        "provenanceSha256": provenance_digest,
+                        "rollbackProfileSha256": "a" * 64,
+                        "release": {
+                            "version": "1.2.3",
+                            "tag": tag,
+                            "commit": activation["activationCommit"],
+                        },
+                        "signer": {
+                            "workflowPath": GATE.RELEASE_SIGNER_WORKFLOWS[consumer],
+                            "runId": 30 + index,
+                            "runAttempt": 2,
+                            "runInvocationUri": (
+                                "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/"
+                                f"{30 + index}/attempts/2"
+                            ),
+                        },
+                        "actionRun": {
+                            "repository": GATE.SignedEvidenceVerifier.repository,
+                            "workflowPath": GATE.RELEASE_SIGNER_WORKFLOWS[consumer],
+                            "runId": 30 + index,
+                            "runAttempt": 2,
+                            "event": "workflow_dispatch",
+                            "ref": f"refs/tags/{tag}",
+                            "headSha": activation["activationCommit"],
+                        },
+                        "deployedArtifactSha256": artifact_digest,
+                        "healthArtifactSha256": None,
+                        "completedAt": "2026-07-17T00:00:00Z",
+                    }
+                )
+            payload = {
+                "stableReceiptSha256": "b" * 64,
+                "issueUri": "https://github.com/Imagine-That-Ai/BurnBar/issues/123",
+                "activatedAt": "2026-07-17T00:00:00Z",
+                "candidate": candidate,
+                "activation": activation,
+                "authority": {
+                    key: copy.deepcopy(authority[key])
+                    for key in ("candidateBundleSha256", "sourceRun", "promotionSigner")
+                },
+                "retainedRollbackArtifact": copy.deepcopy(authority["retainedRollbackArtifact"]),
+                "approverAuthority": {
+                    "reviewClass": "domain_owner",
+                    "catalogSha256": hashlib.sha256(catalog).hexdigest(),
+                    "trustedMainCommit": authority["promotionSigner"]["trustedMainCommit"],
+                },
+                "completionEvidence": completions,
+            }
+            promotion = GATE.Receipt(
+                "promotion.json",
+                "promotion",
+                1,
+                datetime(2026, 7, 14, tzinfo=UTC),
+                candidate["candidateCommit"],
+                "c" * 64,
+                (),
+                {},
+            )
+            stable = GATE.Receipt(
+                "stable_release.json",
+                "stable_release",
+                1,
+                datetime(2026, 7, 15, tzinfo=UTC),
+                activation["activationCommit"],
+                payload["stableReceiptSha256"],
+                (),
+                {},
+            )
+            rollback = GATE.Receipt(
+                "rollback.json",
+                "rollback",
+                1,
+                datetime(2026, 7, 18, tzinfo=UTC),
+                "d" * 40,
+                "e" * 64,
+                (),
+                payload,
+                approved_by="@release-owner",
+            )
+            verifier = mock.Mock()
+            verifier.verify_rollback_completion.return_value = datetime(2026, 7, 17, tzinfo=UTC)
+
+            def committed_bytes(_repo: Path, _commit: str, path: str, _label: str) -> bytes:
+                if path == GATE.DELETION_REVIEWERS_PATH:
+                    return catalog
+                return (repo / path).read_bytes()
+
+            with (
+                mock.patch.object(GATE, "require_ancestor"),
+                mock.patch.object(GATE, "rollback_authority_binding", return_value=authority),
+                mock.patch.object(GATE, "git_file", side_effect=committed_bytes),
+                mock.patch.object(
+                    GATE,
+                    "load_deletion_reviewers",
+                    return_value={"domain_owner": {"@release-owner"}},
+                ),
+            ):
+                GATE.validate_rollback_receipt(
+                    repo,
+                    row_id,
+                    1,
+                    rollback,
+                    promotion,
+                    stable,
+                    verifier,
+                )
+            self.assertEqual(verifier.verify_rollback_completion.call_count, 3)
+
+            missing = copy.deepcopy(payload)
+            missing["completionEvidence"] = copy.deepcopy(completions[:-1])
+            missing_receipt = GATE.Receipt(
+                "rollback.json",
+                "rollback",
+                1,
+                datetime(2026, 7, 18, tzinfo=UTC),
+                "d" * 40,
+                "e" * 64,
+                (),
+                missing,
+                approved_by="@release-owner",
+            )
+            with (
+                mock.patch.object(GATE, "require_ancestor"),
+                mock.patch.object(GATE, "rollback_authority_binding", return_value=authority),
+                mock.patch.object(GATE, "git_file", side_effect=committed_bytes),
+                mock.patch.object(
+                    GATE,
+                    "load_deletion_reviewers",
+                    return_value={"domain_owner": {"@release-owner"}},
+                ),
+                self.assertRaisesRegex(GATE.GateError, "exact governed consumer set"),
+            ):
+                GATE.validate_rollback_receipt(
+                    repo,
+                    row_id,
+                    1,
+                    missing_receipt,
+                    promotion,
+                    stable,
+                    verifier,
+                )
 
     def test_all_governance_schemas_are_valid_json(self) -> None:
         for path in (

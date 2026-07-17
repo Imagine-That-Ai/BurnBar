@@ -349,6 +349,14 @@ jobs:
           materials="$RUNNER_TEMP/domain-core-release-materials"
           candidate="$materials/candidate/domain-core-candidate-bundle.json"
           rollback="$materials/rollback/domain-core-public-production-rollback.json"
+          release_rollback="$materials/domain-core-public-production-rollback-release.json"
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile public-production-rollback \
+            --expected-candidate-commit "$CANDIDATE_COMMIT" \
+            --expected-release-commit "${{ steps.tag.outputs.commit }}" \
+            --expected-release-version "${RELEASE_TAG#v}" \
+            --expected-release-tag "$RELEASE_TAG" \
+            --format json --output "$release_rollback"
           test -s "$candidate"
           test -s "$rollback"
 
@@ -397,7 +405,7 @@ jobs:
           fs.writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`);
           NODE
 
-          rollback_sha256="$(sha256sum "$rollback" | awk '{print $1}')"
+          rollback_sha256="$(sha256sum "$release_rollback" | awk '{print $1}')"
           selected_run=""
           selected_attempt=""
           : > "$RUNNER_TEMP/domain-core-release-gate-attempts.log"
@@ -420,7 +428,9 @@ jobs:
             if node scripts/ci/verify-domain-core-release-gate.mjs \
               --candidate-bundle "$candidate" \
               --promotion-attestation "$promotion" \
-              --rollback-artifact "$rollback" \
+              --candidate-rollback-artifact "$rollback" \
+              --rollback-artifact "$release_rollback" \
+              --rollback-profile "$release_rollback" \
               --candidate-commit "$CANDIDATE_COMMIT" \
               --release-commit "${{ steps.tag.outputs.commit }}" \
               --release-version "${RELEASE_TAG#v}" \
@@ -527,6 +537,8 @@ jobs:
           install -m 0600 "$materials/candidate/domain-core-candidate-bundle.json" "$stage/domain-core-candidate-bundle.json"
           install -m 0600 "$materials/promotion/domain-core-promotion.sigstore.jsonl" "$stage/domain-core-promotion.sigstore.jsonl"
           install -m 0600 "$materials/rollback/domain-core-public-production-rollback.json" "$stage/domain-core-public-production-rollback.json"
+          install -m 0600 "$materials/domain-core-public-production-rollback-release.json" \
+            "$stage/domain-core-public-production-rollback-release.json"
           artifact_name="domain-core-functions-deploy-proof-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
 

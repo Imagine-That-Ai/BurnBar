@@ -240,6 +240,92 @@ test("binds the exact restored rollback bytes while recording a packaged rollbac
   }
 });
 
+test("rollback deployment evidence binds candidate proof retained authority and healthy readback", () => {
+  const files = workspace();
+  try {
+    const artifact = join(
+      files.directory,
+      "OpenBurnBar-1.2.3-console-deployment.json",
+    );
+    const retainedRollback = join(
+      files.directory,
+      "OpenBurnBar-1.2.3-legacy-rollback.zip",
+    );
+    const releaseRollbackProfile = join(
+      files.directory,
+      "domain-core-public-production-rollback-release.json",
+    );
+    writeFileSync(artifact, "healthy console deployment receipt");
+    writeFileSync(retainedRollback, "retained rollback authority");
+    writeFileSync(
+      releaseRollbackProfile,
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          candidateIdentity: CANDIDATE,
+          modes: { quota: "legacy", cloudVault: "legacy" },
+          release: {
+            version: "1.2.3",
+            tag: "v1.2.3",
+            commit: ACTIVATION_COMMIT,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    const options = {
+      ...baseOptions(files, artifact),
+      consumer: "console",
+      domain: "cloudVault",
+      artifactKind: "console-deployment-receipt",
+      target: "firebase-hosting-production",
+      profileName: "public-production-rollback",
+      publicProfileSha256: sha(readFileSync(releaseRollbackProfile)),
+      candidateRollbackProfilePath: files.rollbackArtifact,
+      rollbackArtifactPath: retainedRollback,
+      rollbackProfilePath: releaseRollbackProfile,
+      deployment: consoleDeployment(),
+    };
+    const result = buildReleaseEvidence(options);
+    assert.deepEqual(result.common.publicProfile, {
+      profile: "public-production-rollback",
+      domain: "cloudVault",
+      mode: "legacy",
+      sha256: sha(readFileSync(releaseRollbackProfile)),
+    });
+    assert.equal(result.common.legacyAbsence, undefined);
+    assert.equal(
+      result.common.rollbackArtifact.sha256,
+      sha(readFileSync(retainedRollback)),
+    );
+    assert.deepEqual(result.deploymentReceipt.deployment, consoleDeployment());
+
+    assert.throws(
+      () =>
+        buildReleaseEvidence({
+          ...options,
+          publicProfileSha256: "f".repeat(64),
+        }),
+      /profile digest does not match the exact retained rollback profile/u,
+    );
+    const staleReleaseProfile = JSON.parse(
+      readFileSync(releaseRollbackProfile, "utf8"),
+    );
+    staleReleaseProfile.release.commit = "f".repeat(40);
+    writeFileSync(
+      releaseRollbackProfile,
+      `${JSON.stringify(staleReleaseProfile, null, 2)}\n`,
+    );
+    assert.throws(
+      () => buildReleaseEvidence(options),
+      /release commit does not match the expected release P/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
 test("iOS evidence requires processed ASC and loaded Rust slice identity", () => {
   const files = workspace();
   try {

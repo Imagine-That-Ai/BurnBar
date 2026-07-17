@@ -130,6 +130,42 @@ jobs:
         with:
           node-version: 22
 
+      - name: Download and verify canonical retained rollback authority
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          asset="OpenBurnBar-${RELEASE_VERSION}-legacy-rollback.zip"
+          bundle="${asset}.sigstore.json"
+          retained="$RUNNER_TEMP/domain-core-retained-rollback"
+          mkdir -p "$retained"
+          for attempt in $(seq 1 120); do
+            rm -f "$retained/$asset" "$retained/$bundle"
+            if gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$asset" --pattern "$bundle" --dir "$retained" 2>/dev/null; then
+              break
+            fi
+            [[ "$attempt" -lt 120 ]] || { echo "::error::Canonical retained rollback authority was not published."; exit 1; }
+            sleep 30
+          done
+          gh attestation verify "$retained/$asset" \
+            --bundle "$retained/$bundle" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+            --source-digest "$GITHUB_SHA" \
+            --source-ref "refs/tags/$RELEASE_TAG" \
+            --signer-digest "$GITHUB_SHA" \
+            --cert-oidc-issuer https://token.actions.githubusercontent.com \
+            --deny-self-hosted-runners \
+            --predicate-type https://openburnbar.dev/attestations/domain-core-rollback-artifact/v1
+          unzip -p "$retained/$asset" domain-core-public-production-rollback.json \
+            > "$retained/domain-core-public-production-rollback.json"
+          test -s "$retained/domain-core-public-production-rollback.json"
+          {
+            echo "RETAINED_ROLLBACK=$retained/$asset"
+            echo "RETAINED_ROLLBACK_PROFILE=$retained/domain-core-public-production-rollback.json"
+          } >> "$GITHUB_ENV"
+
       - name: Export archived candidate and signer coordinates
         env:
           EXPECTED_PROFILE: ${{ inputs.domain_core_profile }}
@@ -167,11 +203,19 @@ jobs:
         run: |
           set -euo pipefail
           proof_dir="$RUNNER_TEMP/functions-deploy-proof"
-          rollback_sha256="$(sha256sum "$proof_dir/domain-core-public-production-rollback.json" | awk '{print $1}')"
+          release_rollback="$proof_dir/domain-core-public-production-rollback-release.json"
+          cmp "$release_rollback" "$RETAINED_ROLLBACK_PROFILE"
+          if [[ "${{ inputs.domain_core_profile }}" == "public-production-rollback" ]]; then
+            cmp "$proof_dir/domain-core-functions-profile.json" "$RETAINED_ROLLBACK_PROFILE"
+            [[ "$PUBLIC_PROFILE_SHA256" == "$(sha256sum "$RETAINED_ROLLBACK_PROFILE" | awk '{print $1}')" ]]
+          fi
+          rollback_sha256="$(sha256sum "$release_rollback" | awk '{print $1}')"
           node scripts/ci/verify-domain-core-release-gate.mjs \
             --candidate-bundle "$proof_dir/domain-core-candidate-bundle.json" \
             --promotion-attestation "$proof_dir/domain-core-promotion.sigstore.jsonl" \
-            --rollback-artifact "$proof_dir/domain-core-public-production-rollback.json" \
+            --candidate-rollback-artifact "$proof_dir/domain-core-public-production-rollback.json" \
+            --rollback-artifact "$release_rollback" \
+            --rollback-profile "$release_rollback" \
             --candidate-commit "$CANDIDATE_COMMIT" \
             --release-commit "$GITHUB_SHA" \
             --release-version "$RELEASE_VERSION" \
@@ -228,12 +272,15 @@ jobs:
             --artifact "$artifact" \
             --predicate "$predicate" \
             --public-profile-sha256 "$PUBLIC_PROFILE_SHA256" \
+            --profile-name "${{ inputs.domain_core_profile }}" \
             --activation "$activation" \
             --candidate-bundle "$proof_dir/domain-core-candidate-bundle.json" \
             --promotion-attestation "$proof_dir/domain-core-promotion.sigstore.jsonl" \
             --protected-signer-run-id "$SIGNER_RUN_ID" \
             --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
-            --rollback-artifact "$proof_dir/domain-core-public-production-rollback.json" \
+            --candidate-rollback-profile "$proof_dir/domain-core-public-production-rollback.json" \
+            --rollback-artifact "$RETAINED_ROLLBACK" \
+            --rollback-profile "$RETAINED_ROLLBACK_PROFILE" \
             --deployment "$RUNNER_TEMP/functions-deployment-evidence.json" \
             --legacy-absence-root "$proof_dir/functions-lib"
           {
@@ -258,28 +305,6 @@ jobs:
           set -euo pipefail
           install -m 0600 "$ATTESTATION_BUNDLE" "$RUNNER_TEMP/$BUNDLE_ASSET"
 
-      - name: Wait for exact stable GitHub release
-        if: inputs.domain_core_profile == 'public-production'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          for attempt in $(seq 1 120); do
-            if release_json="$(gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" 2>/dev/null)"; then
-              state="$(jq -r --arg tag "$RELEASE_TAG" '
-                if .tag_name != $tag or .draft != false or .prerelease != false then "invalid" else "ready" end
-              ' <<< "$release_json")"
-              if [[ "$state" == "ready" ]]; then
-                exit 0
-              fi
-              echo "::error::Release $RELEASE_TAG exists but is not the exact published stable release."
-              exit 1
-            fi
-            echo "Waiting for release.yml to publish $RELEASE_TAG ($attempt/120)..."
-            sleep 30
-          done
-          echo "::error::Stable release $RELEASE_TAG was not published within 60 minutes."
-          exit 1
 
       - name: Publish immutable normal-release evidence
         if: inputs.domain_core_profile == 'public-production'

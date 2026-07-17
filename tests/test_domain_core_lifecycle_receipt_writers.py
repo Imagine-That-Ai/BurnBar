@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import subprocess
@@ -29,6 +30,11 @@ def load(name: str, path: Path):
 STABLE = load(
     "domain_core_stable_receipt_writer",
     ROOT / "scripts/ops/create-domain-core-stable-receipt.py",
+)
+
+ROLLBACK = load(
+    "domain_core_rollback_receipt_writer",
+    ROOT / "scripts/ops/create-domain-core-rollback-receipt.py",
 )
 
 
@@ -154,6 +160,152 @@ class LifecycleReceiptWriterTests(unittest.TestCase):
                 )
             validate_chain.assert_called_once()
             self.assertIs(validate_chain.call_args.args[5], verifier)
+
+    def test_rollback_writer_rejects_plan_without_post_action_completion(self) -> None:
+        promotion = ROLLBACK.GATE.Receipt(
+            path="promotion.json",
+            transition="promotion",
+            generation=1,
+            approved_at=ROLLBACK.GATE.parse_rfc3339_utc("2026-07-14T00:00:00Z", "approved"),
+            commit="1" * 40,
+            digest="2" * 64,
+            evidence=(),
+            payload={},
+        )
+        stable = ROLLBACK.GATE.Receipt(
+            path="stable_release.json",
+            transition="stable_release",
+            generation=1,
+            approved_at=ROLLBACK.GATE.parse_rfc3339_utc("2026-07-15T00:00:00Z", "approved"),
+            commit="3" * 40,
+            digest="4" * 64,
+            evidence=(),
+            payload={},
+        )
+        authority = {
+            "promotionSigner": {"trustedMainCommit": "5" * 40},
+            "retainedRollbackArtifact": {"artifactUri": "https://example.com/rollback.zip"},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory).resolve()
+            stable_path = (
+                repo
+                / ROLLBACK.GATE.RECEIPT_ROOT
+                / "quota.claude_statusline"
+                / "1"
+                / "stable_release.json"
+            )
+            stable_path.parent.mkdir(parents=True)
+            stable_path.write_text("{}\n")
+            with (
+                mock.patch.object(ROLLBACK.GATE, "require_commit", return_value="6" * 40),
+                mock.patch.object(ROLLBACK.GATE, "require_ancestor"),
+                mock.patch.object(
+                    ROLLBACK.GATE,
+                    "validate_receipt",
+                    side_effect=[promotion, stable],
+                ),
+                mock.patch.object(
+                    ROLLBACK.GATE,
+                    "rollback_authority_binding",
+                    return_value=authority,
+                ),
+                mock.patch.object(ROLLBACK.GATE, "validate_receipt_chain") as validate_chain,
+                self.assertRaisesRegex(
+                    ROLLBACK.GATE.GateError,
+                    "plan alone cannot activate rollback",
+                ),
+            ):
+                ROLLBACK.create_receipt(
+                    repo,
+                    row_id="quota.claude_statusline",
+                    generation=1,
+                    stable_receipt_path=stable_path,
+                    rollback_commit="6" * 40,
+                    issue_uri="https://github.com/Imagine-That-Ai/BurnBar/issues/123",
+                    completion_inputs=[],
+                    approved_by="@release-owner",
+                    approved_at="2026-07-16T00:00:00Z",
+                )
+            validate_chain.assert_not_called()
+
+    def test_hosting_completion_requires_healthy_post_deploy_evidence(self) -> None:
+        row_id = "cloudvault.portable_primitives"
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory).resolve()
+            completion_root = repo / ROLLBACK.GATE.ROLLBACK_COMPLETION_ROOT / row_id / "1"
+            completion_root.mkdir(parents=True)
+            artifact = completion_root / "console.json"
+            provenance = completion_root / "console.sigstore.json"
+            receipt = {
+                "consumer": "console",
+                "domain": "cloudVault",
+                "publicProfile": {
+                    "profile": "public-production-rollback",
+                    "mode": "legacy",
+                    "sha256": "1" * 64,
+                },
+                "release": {
+                    "version": "1.2.3",
+                    "tag": "v1.2.3",
+                    "commit": "2" * 40,
+                },
+                "deployment": {
+                    "status": "healthy",
+                    "deployRun": {
+                        "repository": ROLLBACK.GATE.SignedEvidenceVerifier.repository,
+                        "workflowPath": ROLLBACK.GATE.ROLLBACK_ACTION_WORKFLOWS["console"],
+                        "runId": 31,
+                        "runAttempt": 2,
+                        "event": "workflow_dispatch",
+                        "ref": "refs/tags/v1.2.3",
+                        "headSha": "2" * 40,
+                        "jobSetSha256": "3" * 64,
+                    },
+                    "deployedArtifact": {"sha256": "4" * 64},
+                    "healthArtifactSha256": "5" * 64,
+                },
+            }
+            artifact.write_text(json.dumps(receipt))
+            provenance.write_bytes(b"signed provenance")
+            completion = ROLLBACK.completion_record(
+                repo,
+                row_id=row_id,
+                generation=1,
+                artifact_path=artifact,
+                provenance_path=provenance,
+                signer_run_id=41,
+                signer_run_attempt=3,
+                completed_at="2026-07-16T00:00:00Z",
+            )
+            self.assertEqual(completion["actionRun"], receipt["deployment"]["deployRun"])
+            self.assertEqual(completion["deployedArtifactSha256"], "4" * 64)
+            self.assertEqual(completion["healthArtifactSha256"], "5" * 64)
+            self.assertEqual(
+                completion["artifactSha256"],
+                hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            )
+            self.assertEqual(
+                completion["provenanceSha256"],
+                hashlib.sha256(provenance.read_bytes()).hexdigest(),
+            )
+
+            receipt["deployment"]["status"] = "pending"
+            artifact.write_text(json.dumps(receipt))
+            with self.assertRaisesRegex(
+                ROLLBACK.GATE.GateError,
+                "healthy post-action evidence",
+            ):
+                ROLLBACK.completion_record(
+                    repo,
+                    row_id=row_id,
+                    generation=1,
+                    artifact_path=artifact,
+                    provenance_path=provenance,
+                    signer_run_id=41,
+                    signer_run_attempt=3,
+                    completed_at="2026-07-16T00:00:00Z",
+                )
 
 
 if __name__ == "__main__":

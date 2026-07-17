@@ -96,6 +96,43 @@ jobs:
         with:
           node-version: 24
 
+      - name: Download and verify canonical retained rollback authority
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          asset="OpenBurnBar-${version}-legacy-rollback.zip"
+          bundle="${asset}.sigstore.json"
+          retained="$RUNNER_TEMP/domain-core-retained-rollback"
+          mkdir -p "$retained"
+          for attempt in $(seq 1 120); do
+            rm -f "$retained/$asset" "$retained/$bundle"
+            if gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$asset" --pattern "$bundle" --dir "$retained" 2>/dev/null; then
+              break
+            fi
+            [[ "$attempt" -lt 120 ]] || { echo "::error::Canonical retained rollback authority was not published."; exit 1; }
+            sleep 30
+          done
+          gh attestation verify "$retained/$asset" \
+            --bundle "$retained/$bundle" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+            --source-digest "$GITHUB_SHA" \
+            --source-ref "refs/tags/$RELEASE_TAG" \
+            --signer-digest "$GITHUB_SHA" \
+            --cert-oidc-issuer https://token.actions.githubusercontent.com \
+            --deny-self-hosted-runners \
+            --predicate-type https://openburnbar.dev/attestations/domain-core-rollback-artifact/v1
+          unzip -p "$retained/$asset" domain-core-public-production-rollback.json \
+            > "$retained/domain-core-public-production-rollback.json"
+          test -s "$retained/domain-core-public-production-rollback.json"
+          {
+            echo "RETAINED_ROLLBACK=$retained/$asset"
+            echo "RETAINED_ROLLBACK_PROFILE=$retained/domain-core-public-production-rollback.json"
+          } >> "$GITHUB_ENV"
+
       - name: Reverify protected proof and exact live deployment
         id: verified
         env:
@@ -107,6 +144,7 @@ jobs:
           candidate="$inputs/candidate/domain-core-candidate-bundle.json"
           promotion="$inputs/promotion.sigstore.jsonl"
           rollback="$inputs/rollback/domain-core-public-production-rollback.json"
+          release_rollback="$inputs/domain-core-public-production-rollback-release.json"
           gate="$inputs/domain-core-release-gate.json"
           profile="$inputs/domain-core-build-profile.json"
           identity="$RUNNER_TEMP/hosting-artifact/apps/console/out/domain-core-deployment-identity.json"
@@ -118,10 +156,13 @@ jobs:
           activation="$RUNNER_TEMP/domain-core-console-release-activation.json"
           jq -e '.activation | {candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256}' \
             "$gate" > "$activation"
+          cmp "$release_rollback" "$RETAINED_ROLLBACK_PROFILE"
           node scripts/ci/verify-domain-core-release-gate.mjs \
             --candidate-bundle "$candidate" \
             --promotion-attestation "$promotion" \
-            --rollback-artifact "$rollback" \
+            --candidate-rollback-artifact "$rollback" \
+            --rollback-artifact "$release_rollback" \
+            --rollback-profile "$release_rollback" \
             --candidate-commit "$(jq -er '.candidate.candidateCommit' "$gate")" \
             --release-commit "$GITHUB_SHA" \
             --release-version "${RELEASE_TAG#v}" \
@@ -133,7 +174,7 @@ jobs:
             --source-run-attempt "$source_run_attempt" \
             --protected-signer-run-id "$signer_run_id" \
             --protected-signer-run-attempt "$signer_run_attempt" \
-            --rollback-sha256 "$(sha256sum "$rollback" | cut -d' ' -f1)" \
+            --rollback-sha256 "$(sha256sum "$release_rollback" | cut -d' ' -f1)" \
             --output "$RUNNER_TEMP/reverified-release-gate.json"
           cmp "$gate" "$RUNNER_TEMP/reverified-release-gate.json"
           node scripts/ci/verify-domain-core-console-deploy-evidence.mjs \
@@ -151,11 +192,15 @@ jobs:
             --output "$RUNNER_TEMP/console-deploy-verification.json"
           profile_name="$(jq -er '.name' "$profile")"
           profile_sha256="$(jq -er '.profile.sha256' "$identity")"
+          if [[ "$profile_name" == "public-production-rollback" ]]; then
+            cmp "$profile" "$RETAINED_ROLLBACK_PROFILE"
+            [[ "$profile_sha256" == "$(sha256sum "$RETAINED_ROLLBACK_PROFILE" | cut -d' ' -f1)" ]]
+          fi
           {
             echo "activation=$activation"
             echo "candidate=$candidate"
             echo "promotion=$promotion"
-            echo "rollback=$rollback"
+            echo "candidate_rollback=$rollback"
             echo "deployment=$RUNNER_TEMP/console-deploy-verification.json"
             echo "profile_name=$profile_name"
             echo "profile_sha256=$profile_sha256"
@@ -171,7 +216,8 @@ jobs:
           DEPLOYMENT: ${{ steps.verified.outputs.deployment }}
           PROFILE_SHA256: ${{ steps.verified.outputs.profile_sha256 }}
           PROMOTION: ${{ steps.verified.outputs.promotion }}
-          ROLLBACK: ${{ steps.verified.outputs.rollback }}
+          CANDIDATE_ROLLBACK: ${{ steps.verified.outputs.candidate_rollback }}
+          PROFILE_NAME: ${{ steps.verified.outputs.profile_name }}
           SIGNER_RUN_ATTEMPT: ${{ steps.verified.outputs.signer_run_attempt }}
           SIGNER_RUN_ID: ${{ steps.verified.outputs.signer_run_id }}
         run: |
@@ -190,12 +236,15 @@ jobs:
             --artifact "$artifact" \
             --predicate "$predicate" \
             --public-profile-sha256 "$PROFILE_SHA256" \
+            --profile-name "$PROFILE_NAME" \
             --activation "$ACTIVATION" \
             --candidate-bundle "$CANDIDATE" \
             --promotion-attestation "$PROMOTION" \
             --protected-signer-run-id "$SIGNER_RUN_ID" \
             --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
-            --rollback-artifact "$ROLLBACK" \
+            --candidate-rollback-profile "$CANDIDATE_ROLLBACK" \
+            --rollback-artifact "$RETAINED_ROLLBACK" \
+            --rollback-profile "$RETAINED_ROLLBACK_PROFILE" \
             --deployment "$DEPLOYMENT" \
             --legacy-absence-root "$RUNNER_TEMP/hosting-artifact/apps/console/out"
           {

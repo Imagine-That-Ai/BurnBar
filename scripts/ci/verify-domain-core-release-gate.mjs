@@ -28,11 +28,15 @@ function parseArguments(argv) {
     "--rollback-sha256",
     "--output",
   ]);
+  const optional = new Set([
+    "--candidate-rollback-artifact",
+    "--rollback-profile",
+  ]);
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (!required.has(flag))
+    if (!required.has(flag) && !optional.has(flag))
       throw new Error(`unknown argument: ${String(flag)}`);
     if (!value || value.startsWith("--"))
       throw new Error(`${flag} requires a value`);
@@ -89,6 +93,12 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
     candidateBundlePath: resolve(args.get("--candidate-bundle")),
     promotionAttestationPath: resolve(args.get("--promotion-attestation")),
     rollbackArtifactPath: resolve(args.get("--rollback-artifact")),
+    candidateRollbackArtifactPath: args.has("--candidate-rollback-artifact")
+      ? resolve(args.get("--candidate-rollback-artifact"))
+      : undefined,
+    rollbackProfilePath: args.has("--rollback-profile")
+      ? resolve(args.get("--rollback-profile"))
+      : undefined,
     expectedCandidate: {
       candidateCommit: args.get("--candidate-commit"),
       coreVersion: args.get("--core-version"),

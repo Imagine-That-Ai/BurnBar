@@ -219,9 +219,14 @@ RELEASE_SIGNER_WORKFLOWS = {
     "linux": ".github/workflows/linux-release.yml",
     "android": ".github/workflows/release.yml",
     "windows": ".github/workflows/openburnbar-release-windows.yml",
+    "console": ".github/workflows/domain-core-console-release-evidence.yml",
+    "functions": ".github/workflows/domain-core-functions-release-evidence.yml",
+}
+ROLLBACK_ACTION_WORKFLOWS = {
     "console": ".github/workflows/deploy-hosting.yml",
     "functions": ".github/workflows/deploy-production.yml",
 }
+ROLLBACK_COMPLETION_ROOT = "config/domain-core-rollback-completions"
 RELEASE_PREDICATE_TYPES = {
     consumer: "https://openburnbar.dev/attestations/domain-core-release-artifact/v2"
     for consumer in RELEASE_SIGNER_WORKFLOWS
@@ -254,6 +259,7 @@ ACTIVATION_ALLOWED_PREFIXES = (
     f"{ATTESTATION_ROOT}/",
     f"{PROMOTION_BUNDLE_ROOT}/",
     f"{PROMOTION_PROVENANCE_ROOT}/",
+    f"{ROLLBACK_COMPLETION_ROOT}/",
     "docs/runbooks/shared-rust-",
     "docs/SHARED_RUST_DOMAIN_",
 )
@@ -281,6 +287,7 @@ SENSITIVE_PREFIXES = (
     f"{PROMOTION_PROVENANCE_ROOT}/",
     f"{RELEASE_PROVENANCE_ROOT}/",
     f"{DELETION_PLAN_ROOT}/",
+    f"{ROLLBACK_COMPLETION_ROOT}/",
 )
 SECURITY_REVIEW_ROWS = {
     "cloudvault.portable_primitives",
@@ -874,6 +881,11 @@ class SignedEvidenceVerifier:
                 ).get("candidate")
                 == item["candidate"]
                 and predicate["rollbackArtifact"].get("activation") == item["activation"]
+                and (
+                    "_retainedRollbackSha256" not in item
+                    or predicate["rollbackArtifact"].get("sha256")
+                    == item["_retainedRollbackSha256"]
+                )
             ]
             if item["consumer"] == "ios":
                 matching = [
@@ -889,6 +901,196 @@ class SignedEvidenceVerifier:
             if self.cache_root is None:
                 artifact.unlink(missing_ok=True)
                 artifact.parent.rmdir()
+
+    def verify_rollback_completion(
+        self,
+        item: dict[str, Any],
+        artifact: Path,
+        bundle: Path,
+        *,
+        candidate: dict[str, Any],
+        activation: dict[str, Any],
+        source_run: dict[str, Any],
+        promotion_signer: dict[str, Any],
+        candidate_bundle_sha256: str,
+        retained_rollback_sha256: str,
+        domain: str,
+    ) -> datetime:
+        consumer = item["consumer"]
+        label = f"{consumer} rollback completion"
+        artifact_digest = require_digest(item["artifactSha256"], f"{label}.artifactSha256")
+        bundle_digest = require_digest(item["provenanceSha256"], f"{label}.provenanceSha256")
+        if sha256_path(artifact) != artifact_digest or sha256_path(bundle) != bundle_digest:
+            raise GateError(f"{label}: committed completion evidence digest does not match its bytes")
+        release = item["release"]
+        signer = item["signer"]
+        action_run = item["actionRun"]
+        verified = self._verify_bundle(
+            artifact,
+            bundle,
+            signer_workflow=RELEASE_SIGNER_WORKFLOWS[consumer],
+            source_digest=activation["activationCommit"],
+            source_ref=f"refs/tags/{release['tag']}",
+            predicate_type=RELEASE_PREDICATE_TYPES[consumer],
+            signer_digest=activation["activationCommit"],
+            label=label,
+        )
+        expected_public_profile = {
+            "profile": "public-production-rollback",
+            "domain": domain,
+            "mode": "legacy",
+            "sha256": item["rollbackProfileSha256"],
+        }
+        expected_release = {
+            "version": release["version"],
+            "tag": release["tag"],
+            "commit": activation["activationCommit"],
+            "publicProfileSha256": item["rollbackProfileSha256"],
+        }
+        expected_artifact_identity = RELEASE_ARTIFACT_IDENTITIES[consumer]
+        predicates: list[dict[str, Any]] = []
+        invocations: set[tuple[int, int]] = set()
+        invocation_prefix = f"https://github.com/{self.repository}/actions/runs/"
+        for result in verified:
+            verification = result.get("verificationResult")
+            if not isinstance(verification, dict):
+                continue
+            statement = verification.get("statement")
+            predicate = statement.get("predicate") if isinstance(statement, dict) else None
+            if isinstance(predicate, dict):
+                predicates.append(predicate)
+            signature = verification.get("signature")
+            certificate = signature.get("certificate") if isinstance(signature, dict) else None
+            invocation = certificate.get("runInvocationURI") if isinstance(certificate, dict) else None
+            if isinstance(invocation, str) and invocation.startswith(invocation_prefix):
+                match = re.fullmatch(r"([1-9][0-9]*)/attempts/([1-9][0-9]*)", invocation[len(invocation_prefix) :])
+                if match is not None:
+                    invocations.add((int(match.group(1)), int(match.group(2))))
+        signer_identity = (
+            positive_integer(signer["runId"], f"{label}.signer.runId"),
+            positive_integer(signer["runAttempt"], f"{label}.signer.runAttempt"),
+        )
+        if invocations != {signer_identity}:
+            raise GateError(f"{label}: signed provenance does not bind the exact signer run and attempt")
+        matching: list[dict[str, Any]] = []
+        for predicate in predicates:
+            if (
+                predicate.get("schemaVersion") != 2
+                or predicate.get("predicateType") != RELEASE_PREDICATE_TYPES[consumer]
+                or predicate.get("consumer") != consumer
+                or predicate.get("domain") != domain
+                or (predicate.get("artifactKind"), predicate.get("target")) != expected_artifact_identity
+                or predicate.get("candidate") != candidate
+                or predicate.get("activation") != activation
+                or predicate.get("publicProfile") != expected_public_profile
+                or predicate.get("release") != expected_release
+                or require_object(predicate.get("artifact"), f"{label} predicate.artifact").get("sha256")
+                != artifact_digest
+                or predicate.get("sourceRun") != source_run
+            ):
+                continue
+            promotion = require_object(predicate.get("promotionProof"), f"{label} predicate.promotionProof")
+            subject = require_object(
+                promotion.get("attestationSubject"),
+                f"{label} predicate.promotionProof.attestationSubject",
+            )
+            promotion_run = require_object(
+                promotion.get("signerRun"),
+                f"{label} predicate.promotionProof.signerRun",
+            )
+            rollback_artifact = require_object(
+                predicate.get("rollbackArtifact"),
+                f"{label} predicate.rollbackArtifact",
+            )
+            if (
+                promotion.get("signerWorkflow") != PROMOTION_SIGNER_WORKFLOW
+                or promotion.get("predicateType") != "https://slsa.dev/provenance/v1"
+                or subject.get("sha256") != candidate_bundle_sha256
+                or promotion_run.get("runId") != promotion_signer["runId"]
+                or promotion_run.get("runAttempt") != promotion_signer["runAttempt"]
+                or rollback_artifact.get("sha256") != retained_rollback_sha256
+                or rollback_artifact.get("candidate") != candidate
+                or rollback_artifact.get("activation") != activation
+            ):
+                continue
+            deployment = predicate.get("deployment")
+            if consumer in ROLLBACK_ACTION_WORKFLOWS:
+                if not isinstance(deployment, dict) or deployment.get("status") != "healthy":
+                    continue
+                deploy_run = deployment.get("deployRun")
+                if not isinstance(deploy_run, dict) or deploy_run != action_run:
+                    continue
+                if deployment.get("deployedArtifact", {}).get("sha256") != item["deployedArtifactSha256"]:
+                    continue
+                if deployment.get("healthArtifactSha256") != item["healthArtifactSha256"]:
+                    continue
+            elif action_run != {
+                "repository": self.repository,
+                "workflowPath": RELEASE_SIGNER_WORKFLOWS[consumer],
+                "runId": signer_identity[0],
+                "runAttempt": signer_identity[1],
+                "event": action_run.get("event"),
+                "ref": f"refs/tags/{release['tag']}",
+                "headSha": activation["activationCommit"],
+            }:
+                continue
+            matching.append(predicate)
+        if len(matching) != 1:
+            raise GateError(f"{label}: expected exactly one signed predicate for the completed rollback target")
+
+        signer_run = self._github_json(
+            f"repos/{self.repository}/actions/runs/{signer_identity[0]}/attempts/{signer_identity[1]}",
+            f"{label} signer run",
+        )
+        expected_signer_run = {
+            "path": RELEASE_SIGNER_WORKFLOWS[consumer],
+            "head_sha": activation["activationCommit"],
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": signer_identity[1],
+            "head_branch": release["tag"],
+        }
+        for key, expected in expected_signer_run.items():
+            if signer_run.get(key) != expected:
+                raise GateError(f"{label} signer run.{key} must equal {expected!r}")
+        if (
+            require_object(signer_run.get("repository"), f"{label} signer run.repository").get("full_name")
+            != self.repository
+        ):
+            raise GateError(f"{label}: signer run repository is not trusted")
+        if consumer in ROLLBACK_ACTION_WORKFLOWS:
+            action_run_id = positive_integer(action_run.get("runId"), f"{label}.actionRun.runId")
+            action_run_attempt = positive_integer(
+                action_run.get("runAttempt"),
+                f"{label}.actionRun.runAttempt",
+            )
+            authoritative_run = self._github_json(
+                f"repos/{self.repository}/actions/runs/{action_run_id}/attempts/{action_run_attempt}",
+                f"{label} action run",
+            )
+            expected_action_run = {
+                "path": ROLLBACK_ACTION_WORKFLOWS[consumer],
+                "event": "workflow_dispatch",
+                "head_sha": activation["activationCommit"],
+                "status": "completed",
+                "conclusion": "success",
+                "run_attempt": action_run_attempt,
+                "head_branch": release["tag"],
+            }
+            for key, expected in expected_action_run.items():
+                if authoritative_run.get(key) != expected:
+                    raise GateError(f"{label} action run.{key} must equal {expected!r}")
+        else:
+            authoritative_run = signer_run
+        if (
+            require_object(authoritative_run.get("repository"), f"{label} action run.repository").get("full_name")
+            != self.repository
+        ):
+            raise GateError(f"{label}: action run repository is not trusted")
+        completed_at = parse_rfc3339_utc(authoritative_run.get("updated_at"), f"{label} action run.updated_at")
+        if completed_at != parse_rfc3339_utc(item["completedAt"], f"{label}.completedAt"):
+            raise GateError(f"{label}: completion timestamp does not match the authoritative action run")
+        return completed_at
 
     def verify_rollback_artifact(
         self,
@@ -1352,6 +1554,7 @@ class Receipt:
     digest: str
     evidence: tuple[str, ...]
     payload: dict[str, Any]
+    approved_by: str = ""
 
 
 def validate_receipt(
@@ -1445,6 +1648,7 @@ def validate_receipt(
         digest=sha256_path(path),
         evidence=tuple(evidence),
         payload=require_object(receipt[expected_field], f"receipt {receipt_path}.{expected_field}"),
+        approved_by=approved_by,
     )
 
 
@@ -2242,6 +2446,300 @@ def validate_deletion_review_receipt(
     )
 
 
+def rollback_authority_binding(
+    repo_root: Path,
+    row_id: str,
+    generation: int,
+    promotion: Receipt,
+    stable: Receipt,
+) -> dict[str, Any]:
+    pointer = require_object(promotion.payload, f"row {row_id} promotionAttestation")
+    attestation_path = secure_path(
+        repo_root,
+        repository_path(pointer["path"], f"row {row_id} promotionAttestation.path"),
+        f"row {row_id} promotion attestation",
+        must_exist=True,
+    )
+    attestation = require_object(
+        load_json(attestation_path, f"row {row_id} promotion attestation"),
+        f"row {row_id} promotion attestation",
+    )
+    unsigned = require_object(attestation.get("unsignedBundle"), f"row {row_id} promotion unsignedBundle")
+    provenance = require_object(attestation.get("provenance"), f"row {row_id} promotion provenance")
+    release = stable.payload
+    candidate = require_object(release.get("candidate"), f"row {row_id} release.candidate")
+    activation = require_object(release.get("activation"), f"row {row_id} release.activation")
+    retained = require_object(release.get("rollbackArtifact"), f"row {row_id} release.rollbackArtifact")
+    return {
+        "candidate": candidate,
+        "activation": activation,
+        "candidateBundleSha256": require_digest(
+            unsigned.get("sha256"),
+            f"row {row_id} promotion unsignedBundle.sha256",
+        ),
+        "sourceRun": {
+            "repository": SignedEvidenceVerifier.repository,
+            "workflowPath": SOURCE_WORKFLOW,
+            "runId": positive_integer(
+                unsigned.get("sourceRunId"),
+                f"row {row_id} promotion unsignedBundle.sourceRunId",
+            ),
+            "runAttempt": positive_integer(
+                unsigned.get("sourceRunAttempt"),
+                f"row {row_id} promotion unsignedBundle.sourceRunAttempt",
+            ),
+            "event": "push",
+            "ref": "refs/heads/main",
+            "headSha": candidate["candidateCommit"],
+        },
+        "promotionSigner": {
+            "workflowPath": PROMOTION_SIGNER_WORKFLOW,
+            "runId": positive_integer(
+                provenance.get("signerRunId"),
+                f"row {row_id} promotion provenance.signerRunId",
+            ),
+            "runAttempt": positive_integer(
+                provenance.get("signerRunAttempt"),
+                f"row {row_id} promotion provenance.signerRunAttempt",
+            ),
+            "trustedMainCommit": require_commit(
+                repo_root,
+                provenance.get("trustedMainCommit"),
+                f"row {row_id} promotion provenance.trustedMainCommit",
+            ),
+            "provenanceSha256": require_digest(
+                provenance.get("sha256"),
+                f"row {row_id} promotion provenance.sha256",
+            ),
+        },
+        "retainedRollbackArtifact": {
+            "artifactUri": retained["artifactUri"],
+            "artifactSha256": require_digest(
+                retained["artifactSha256"],
+                f"row {row_id} release.rollbackArtifact.artifactSha256",
+            ),
+            "provenanceSha256": require_digest(
+                retained["provenanceSha256"],
+                f"row {row_id} release.rollbackArtifact.provenanceSha256",
+            ),
+            "retentionPolicy": retained["retentionPolicy"],
+        },
+    }
+
+
+def validate_rollback_receipt(
+    repo_root: Path,
+    row_id: str,
+    generation: int,
+    rollback: Receipt,
+    promotion: Receipt,
+    stable: Receipt,
+    evidence_verifier: SignedEvidenceVerifier | Any | None,
+) -> datetime:
+    payload = rollback.payload
+    fields = {
+        "stableReceiptSha256",
+        "issueUri",
+        "activatedAt",
+        "candidate",
+        "activation",
+        "authority",
+        "retainedRollbackArtifact",
+        "approverAuthority",
+        "completionEvidence",
+    }
+    exact_keys(payload, fields, fields, f"row {row_id} rollback")
+    require_ancestor(repo_root, stable.commit, rollback.commit, f"row {row_id} rollback.commit")
+    if payload["stableReceiptSha256"] != stable.digest:
+        raise GateError(f"row {row_id}: rollback does not bind the current stable receipt")
+    issue_uri = validate_https_uri(payload["issueUri"], f"row {row_id} rollback.issueUri")
+    parsed_issue = urlsplit(issue_uri)
+    if (
+        parsed_issue.hostname != "github.com"
+        or re.fullmatch(r"/Imagine-That-Ai/BurnBar/issues/[1-9][0-9]*", parsed_issue.path) is None
+    ):
+        raise GateError(f"row {row_id}: rollback issue must be an exact OpenBurnBar GitHub issue")
+    expected_authority = rollback_authority_binding(repo_root, row_id, generation, promotion, stable)
+    if payload["candidate"] != expected_authority["candidate"]:
+        raise GateError(f"row {row_id}: rollback candidate does not match the governed promotion")
+    if payload["activation"] != expected_authority["activation"]:
+        raise GateError(f"row {row_id}: rollback activation does not match the governed stable release")
+    authority = require_object(payload["authority"], f"row {row_id} rollback.authority")
+    authority_fields = {"candidateBundleSha256", "sourceRun", "promotionSigner"}
+    exact_keys(authority, authority_fields, authority_fields, f"row {row_id} rollback.authority")
+    if authority != {
+        key: expected_authority[key]
+        for key in ("candidateBundleSha256", "sourceRun", "promotionSigner")
+    }:
+        raise GateError(f"row {row_id}: rollback does not bind the exact source and promotion authority")
+    retained = require_object(
+        payload["retainedRollbackArtifact"],
+        f"row {row_id} rollback.retainedRollbackArtifact",
+    )
+    retained_fields = {"artifactUri", "artifactSha256", "provenanceSha256", "retentionPolicy"}
+    exact_keys(
+        retained,
+        retained_fields,
+        retained_fields,
+        f"row {row_id} rollback.retainedRollbackArtifact",
+    )
+    if retained != expected_authority["retainedRollbackArtifact"]:
+        raise GateError(f"row {row_id}: rollback does not bind the exact retained rollback artifact")
+    approver = require_object(payload["approverAuthority"], f"row {row_id} rollback.approverAuthority")
+    approver_fields = {"reviewClass", "catalogSha256", "trustedMainCommit"}
+    exact_keys(approver, approver_fields, approver_fields, f"row {row_id} rollback.approverAuthority")
+    review_class = "security_crypto" if row_id in SECURITY_REVIEW_ROWS else "domain_owner"
+    trusted_approver_commit = expected_authority["promotionSigner"]["trustedMainCommit"]
+    if approver["reviewClass"] != review_class or approver["trustedMainCommit"] != trusted_approver_commit:
+        raise GateError(f"row {row_id}: rollback approver authority is not bound to protected trusted main")
+    catalog_sha256 = hashlib.sha256(
+        git_file(
+            repo_root,
+            trusted_approver_commit,
+            DELETION_REVIEWERS_PATH,
+            "rollback approver catalog",
+        )
+    ).hexdigest()
+    if approver["catalogSha256"] != catalog_sha256:
+        raise GateError(f"row {row_id}: rollback approver catalog digest does not match trusted main")
+    qualified = load_deletion_reviewers(repo_root, trusted_approver_commit)[review_class]
+    approved_by = rollback.approved_by
+    if not isinstance(approved_by, str) or approved_by.casefold() not in qualified:
+        raise GateError(f"row {row_id}: rollback approver is not qualified by trusted main")
+
+    if evidence_verifier is None:
+        raise GateError(f"row {row_id}: independent signed rollback completion verification is required")
+    completions = require_array(payload["completionEvidence"], f"row {row_id} rollback.completionEvidence")
+    consumers: set[str] = set()
+    completion_times: list[datetime] = []
+    domain = profile_domain_for_row(row_id)
+    for index, raw_completion in enumerate(completions):
+        label = f"row {row_id} rollback.completionEvidence[{index}]"
+        completion = require_object(raw_completion, label)
+        completion_fields = {
+            "consumer",
+            "domain",
+            "artifactPath",
+            "artifactSha256",
+            "provenancePath",
+            "provenanceSha256",
+            "rollbackProfileSha256",
+            "release",
+            "signer",
+            "actionRun",
+            "deployedArtifactSha256",
+            "healthArtifactSha256",
+            "completedAt",
+        }
+        exact_keys(completion, completion_fields, completion_fields, label)
+        consumer = completion["consumer"]
+        if consumer not in RELEASE_ARTIFACT_IDENTITIES or consumer in consumers:
+            raise GateError(f"{label}: consumer must be known and unique")
+        consumers.add(consumer)
+        if completion["domain"] != domain:
+            raise GateError(f"{label}: domain does not match the governed row")
+        require_digest(completion["rollbackProfileSha256"], f"{label}.rollbackProfileSha256")
+        release = require_object(completion["release"], f"{label}.release")
+        exact_keys(release, {"version", "tag", "commit"}, {"version", "tag", "commit"}, f"{label}.release")
+        expected_release_tag = (
+            f"windows-v{release['version']}"
+            if consumer == "windows"
+            else f"linux-v{release['version']}"
+            if consumer == "linux"
+            else f"v{release['version']}"
+        )
+        if (
+            not isinstance(release["version"], str)
+            or not VERSION_RE.fullmatch(release["version"])
+            or release["tag"] != expected_release_tag
+            or release["commit"] != expected_authority["activation"]["activationCommit"]
+        ):
+            raise GateError(f"{label}: release identity does not match activation P")
+        signer = require_object(completion["signer"], f"{label}.signer")
+        signer_fields = {"workflowPath", "runId", "runAttempt", "runInvocationUri"}
+        exact_keys(signer, signer_fields, signer_fields, f"{label}.signer")
+        if signer["workflowPath"] != RELEASE_SIGNER_WORKFLOWS[consumer]:
+            raise GateError(f"{label}: signer workflow is not the governed consumer signer")
+        signer_id = positive_integer(signer["runId"], f"{label}.signer.runId")
+        signer_attempt = positive_integer(signer["runAttempt"], f"{label}.signer.runAttempt")
+        if signer["runInvocationUri"] != (
+            f"https://github.com/{SignedEvidenceVerifier.repository}/actions/runs/"
+            f"{signer_id}/attempts/{signer_attempt}"
+        ):
+            raise GateError(f"{label}: signer invocation URI does not bind the exact run attempt")
+        action_run = require_object(completion["actionRun"], f"{label}.actionRun")
+        action_fields = {
+            "repository",
+            "workflowPath",
+            "runId",
+            "runAttempt",
+            "event",
+            "ref",
+            "headSha",
+        }
+        if consumer in ROLLBACK_ACTION_WORKFLOWS:
+            action_fields.add("jobSetSha256")
+        exact_keys(action_run, action_fields, action_fields, f"{label}.actionRun")
+        if (
+            action_run["repository"] != SignedEvidenceVerifier.repository
+            or action_run["workflowPath"]
+            != ROLLBACK_ACTION_WORKFLOWS.get(consumer, RELEASE_SIGNER_WORKFLOWS[consumer])
+            or action_run["ref"] != f"refs/tags/{release['tag']}"
+            or action_run["headSha"] != release["commit"]
+        ):
+            raise GateError(f"{label}: action run does not bind the exact rollback target")
+        if consumer in ROLLBACK_ACTION_WORKFLOWS:
+            require_digest(action_run["jobSetSha256"], f"{label}.actionRun.jobSetSha256")
+            require_digest(completion["deployedArtifactSha256"], f"{label}.deployedArtifactSha256")
+            require_digest(completion["healthArtifactSha256"], f"{label}.healthArtifactSha256")
+        elif completion["deployedArtifactSha256"] != completion["artifactSha256"] or completion["healthArtifactSha256"] is not None:
+            raise GateError(f"{label}: native completion must bind its signed release artifact without fake health evidence")
+        artifact_relative = repository_path(completion["artifactPath"], f"{label}.artifactPath")
+        provenance_relative = repository_path(completion["provenancePath"], f"{label}.provenancePath")
+        expected_artifact_relative = f"{ROLLBACK_COMPLETION_ROOT}/{row_id}/{generation}/{consumer}.json"
+        expected_provenance_relative = (
+            f"{ROLLBACK_COMPLETION_ROOT}/{row_id}/{generation}/{consumer}.sigstore.json"
+        )
+        if artifact_relative != expected_artifact_relative or provenance_relative != expected_provenance_relative:
+            raise GateError(f"{label}: completion evidence must use its exact immutable repository path")
+        artifact_path = secure_path(repo_root, artifact_relative, f"{label}.artifactPath", must_exist=True)
+        provenance_path = secure_path(repo_root, provenance_relative, f"{label}.provenancePath", must_exist=True)
+        for path_value, digest_key, file_label in (
+            (artifact_path, "artifactSha256", "artifact"),
+            (provenance_path, "provenanceSha256", "provenance"),
+        ):
+            digest = require_digest(completion[digest_key], f"{label}.{digest_key}")
+            if sha256_path(path_value) != digest:
+                raise GateError(f"{label}: committed {file_label} digest does not match working bytes")
+            if hashlib.sha256(
+                git_file(repo_root, rollback.commit, path_value.relative_to(repo_root).as_posix(), f"{label} {file_label}")
+            ).hexdigest() != digest:
+                raise GateError(f"{label}: {file_label} bytes are not immutable at trusted main")
+        completed_at = evidence_verifier.verify_rollback_completion(
+            completion,
+            artifact_path,
+            provenance_path,
+            candidate=expected_authority["candidate"],
+            activation=expected_authority["activation"],
+            source_run=expected_authority["sourceRun"],
+            promotion_signer=expected_authority["promotionSigner"],
+            candidate_bundle_sha256=expected_authority["candidateBundleSha256"],
+            retained_rollback_sha256=expected_authority["retainedRollbackArtifact"]["artifactSha256"],
+            domain=domain,
+        )
+        if completed_at < stable.approved_at or completed_at > rollback.approved_at:
+            raise GateError(f"{label}: rollback action must complete after stable approval and before rollback approval")
+        completion_times.append(completed_at)
+    if consumers != release_consumers_for_row(row_id):
+        raise GateError(f"row {row_id}: rollback completion must cover the exact governed consumer set")
+    if not completion_times:
+        raise GateError(f"row {row_id}: rollback cannot be activated from a plan without completion evidence")
+    activated_at = parse_rfc3339_utc(payload["activatedAt"], f"row {row_id} rollback.activatedAt")
+    if activated_at != max(completion_times):
+        raise GateError(f"row {row_id}: rollback activation must equal the last verified completion")
+    return activated_at
+
+
 def validate_receipt_chain(
     repo_root: Path,
     row_id: str,
@@ -2411,7 +2909,20 @@ def validate_receipt_chain(
                 raise GateError(f"{label}: provenance digest does not match committed bytes")
             if evidence_verifier is None:
                 raise GateError(f"{label}: signed release evidence verification is required")
-            evidence_verifier.verify_release(item, provenance_path, artifact_digest, profile_domain)
+            verification_item = dict(item)
+            verification_item["_retainedRollbackSha256"] = require_digest(
+                require_object(
+                    release["rollbackArtifact"],
+                    f"row {row_id} release.rollbackArtifact",
+                ).get("artifactSha256"),
+                f"row {row_id} release.rollbackArtifact.artifactSha256",
+            )
+            evidence_verifier.verify_release(
+                verification_item,
+                provenance_path,
+                artifact_digest,
+                profile_domain,
+            )
         if consumers != release_consumers_for_row(row_id):
             raise GateError(f"row {row_id}: stable receipt must cover the exact applicable consumer set")
         rollback_item = require_object(release["rollbackArtifact"], f"row {row_id} release.rollbackArtifact")
@@ -2522,17 +3033,16 @@ def validate_receipt_chain(
     rollback = receipts.get("rollback")
     rollback_activated_at: datetime | None = None
     if rollback is not None:
-        payload = rollback.payload
-        fields = {"stableReceiptSha256", "issueUri", "activatedAt"}
-        exact_keys(payload, fields, fields, f"row {row_id} rollback")
         assert stable is not None
-        require_ancestor(repo_root, stable.commit, rollback.commit, f"row {row_id} rollback.commit")
-        if payload["stableReceiptSha256"] != stable.digest:
-            raise GateError(f"row {row_id}: rollback does not bind the current stable receipt")
-        validate_https_uri(payload["issueUri"], f"row {row_id} rollback.issueUri")
-        rollback_activated_at = parse_rfc3339_utc(payload["activatedAt"], f"row {row_id} rollback.activatedAt")
-        if rollback_activated_at < stable.approved_at or rollback_activated_at > rollback.approved_at:
-            raise GateError(f"row {row_id}: rollback activation must follow stable approval")
+        rollback_activated_at = validate_rollback_receipt(
+            repo_root,
+            row_id,
+            generation,
+            rollback,
+            promotion,
+            stable,
+            evidence_verifier,
+        )
 
     deletion = receipts.get("deletionReview")
     if deletion is not None:

@@ -251,6 +251,14 @@ jobs:
             --dir "$RUNNER_TEMP/domain-core-release-inputs/rollback"
           candidate="$RUNNER_TEMP/domain-core-release-inputs/candidate/domain-core-candidate-bundle.json"
           rollback="$RUNNER_TEMP/domain-core-release-inputs/rollback/domain-core-public-production-rollback.json"
+          release_rollback="$RUNNER_TEMP/domain-core-release-inputs/domain-core-public-production-rollback-release.json"
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile public-production-rollback \
+            --expected-candidate-commit "$CANDIDATE_COMMIT" \
+            --expected-release-commit "$RELEASE_COMMIT" \
+            --expected-release-version "${RELEASE_TAG#v}" \
+            --expected-release-tag "$RELEASE_TAG" \
+            --format json --output "$release_rollback"
           (
             cd "$RUNNER_TEMP/domain-core-release-inputs/promotion"
             gh attestation download "$candidate" --repo "$GITHUB_REPOSITORY" \
@@ -265,7 +273,9 @@ jobs:
           node scripts/ci/verify-domain-core-release-gate.mjs \
             --candidate-bundle "$candidate" \
             --promotion-attestation "$RUNNER_TEMP/domain-core-release-inputs/promotion.sigstore.jsonl" \
-            --rollback-artifact "$rollback" \
+            --candidate-rollback-artifact "$rollback" \
+            --rollback-artifact "$release_rollback" \
+            --rollback-profile "$release_rollback" \
             --candidate-commit "$CANDIDATE_COMMIT" \
             --release-commit "$RELEASE_COMMIT" \
             --release-version "${RELEASE_TAG#v}" \
@@ -277,7 +287,7 @@ jobs:
             --source-run-attempt "$SOURCE_RUN_ATTEMPT" \
             --protected-signer-run-id "$SIGNER_RUN_ID" \
             --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
-            --rollback-sha256 "$(sha256sum "$rollback" | cut -d' ' -f1)" \
+            --rollback-sha256 "$(sha256sum "$release_rollback" | cut -d' ' -f1)" \
             --output "$RUNNER_TEMP/domain-core-release-inputs/domain-core-release-gate.json"
 
       - name: Resolve signed public domain-core profile

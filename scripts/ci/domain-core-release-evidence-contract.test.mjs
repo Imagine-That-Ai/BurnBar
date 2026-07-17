@@ -64,7 +64,16 @@ test("release predicate v2 requires the complete deterministic trust chain", () 
     "mode",
     "sha256",
   ]);
-  assert.equal(schema.$defs.publicProfile.properties.mode.const, "rust");
+  assert.deepEqual(
+    schema.$defs.publicProfile.oneOf.map((branch) => ({
+      profile: branch.properties.profile.const,
+      mode: branch.properties.mode.const,
+    })),
+    [
+      { profile: "public-production", mode: "rust" },
+      { profile: "public-production-rollback", mode: "legacy" },
+    ],
+  );
   assert.deepEqual(schema.$defs.activation.required, [
     "candidateCommit",
     "activationCommit",

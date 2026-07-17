@@ -244,11 +244,26 @@
       "additionalProperties": false,
       "required": ["profile", "domain", "mode", "sha256"],
       "properties": {
-        "profile": { "const": "public-production" },
+        "profile": { "enum": ["public-production", "public-production-rollback"] },
         "domain": { "$ref": "#/$defs/domain" },
-        "mode": { "const": "rust" },
+        "mode": { "enum": ["rust", "legacy"] },
         "sha256": { "$ref": "#/$defs/sha256" }
       }
+      ,
+      "oneOf": [
+        {
+          "properties": {
+            "profile": { "const": "public-production" },
+            "mode": { "const": "rust" }
+          }
+        },
+        {
+          "properties": {
+            "profile": { "const": "public-production-rollback" },
+            "mode": { "const": "legacy" }
+          }
+        }
+      ]
     },
     "appStoreConnectReceipt": {
       "type": "object",
@@ -479,11 +494,26 @@
       "additionalProperties": false,
       "required": ["profile", "domain", "mode", "sha256"],
       "properties": {
-        "profile": { "const": "public-production" },
+        "profile": { "enum": ["public-production", "public-production-rollback"] },
         "domain": { "$ref": "#/$defs/domain" },
-        "mode": { "const": "rust" },
+        "mode": { "enum": ["rust", "legacy"] },
         "sha256": { "$ref": "#/$defs/sha256" }
       }
+      ,
+      "oneOf": [
+        {
+          "properties": {
+            "profile": { "const": "public-production" },
+            "mode": { "const": "rust" }
+          }
+        },
+        {
+          "properties": {
+            "profile": { "const": "public-production-rollback" },
+            "mode": { "const": "legacy" }
+          }
+        }
+      ]
     },
     "activation": {
       "type": "object",

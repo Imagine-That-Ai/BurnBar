@@ -1,3 +1,5 @@
+import yaml
+
 import unittest
 from pathlib import Path
 
@@ -5,6 +7,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOY = ROOT / ".github/workflows/deploy-production.yml"
 EVIDENCE = ROOT / ".github/workflows/domain-core-functions-release-evidence.yml"
+
+
+def workflow(path: Path) -> dict:
+    return yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+
+def step(job: dict, name: str) -> dict:
+    return next(value for value in job["steps"] if value.get("name") == name)
 
 
 class DomainCoreFunctionsReleaseWorkflowTests(unittest.TestCase):
@@ -101,22 +111,64 @@ class DomainCoreFunctionsReleaseWorkflowTests(unittest.TestCase):
         for value in required:
             self.assertIn(value, source)
 
-    def test_normal_and_rollback_publication_are_immutable_and_separate(self) -> None:
-        source = EVIDENCE.read_text(encoding="utf-8")
-        required = (
-            "Wait for exact stable GitHub release",
-            "scripts/ci/publish-domain-core-release-evidence.mjs",
-            "inputs.domain_core_profile == 'public-production'",
-            "Retain unique immutable rollback evidence",
-            "inputs.domain_core_profile == 'public-production-rollback'",
-            "domain-core-functions-rollback-evidence-${{ github.ref_name }}-${{ inputs.deploy_run_id }}-${{ inputs.deploy_run_attempt }}",
-            "retention-days: 90",
+    def test_rollback_attestation_follows_deploy_health_and_exact_artifact_readback(self) -> None:
+        deploy_jobs = workflow(DEPLOY)["jobs"]
+        dispatch = deploy_jobs["dispatch-domain-core-functions-evidence"]
+        self.assertEqual(
+            set(dispatch["needs"]),
+            {"deploy-functions", "functions-health-gate"},
         )
-        for value in required:
-            self.assertIn(value, source)
-        self.assertNotIn("--clobber", source)
-        self.assertNotIn("gh release create", source)
-        self.assertNotIn("gh release edit", source)
+        dispatch_gate = " ".join(dispatch["if"].split())
+        for required_result in (
+            "needs.deploy-functions.result == 'success'",
+            "needs.functions-health-gate.result == 'success'",
+            "needs.deploy-functions.outputs.dry_run != 'true'",
+            "needs.deploy-functions.outputs.stable_release == 'true'",
+        ):
+            self.assertIn(required_result, dispatch_gate)
+
+        publish = workflow(EVIDENCE)["jobs"]["publish"]
+        proof_download = step(publish, "Download exact deployed Functions proof inputs")
+        self.assertEqual(
+            proof_download["with"],
+            {
+                "github-token": "${{ github.token }}",
+                "run-id": "${{ inputs.deploy_run_id }}",
+                "name": "domain-core-functions-deploy-proof-${{ github.ref_name }}-${{ inputs.deploy_run_id }}-${{ inputs.deploy_run_attempt }}",
+                "path": "${{ runner.temp }}/functions-deploy-proof",
+            },
+        )
+        health_download = step(publish, "Download exact post-deploy health evidence")
+        self.assertEqual(
+            health_download["with"],
+            {
+                "github-token": "${{ github.token }}",
+                "run-id": "${{ inputs.deploy_run_id }}",
+                "name": "domain-core-functions-deploy-health-${{ github.ref_name }}-${{ inputs.deploy_run_id }}-${{ inputs.deploy_run_attempt }}",
+                "path": "${{ runner.temp }}/functions-deploy-health",
+            },
+        )
+        names = [value.get("name") for value in publish["steps"]]
+        self.assertLess(
+            names.index("Reverify live deployment evidence"),
+            names.index("Create candidate-bound v2 Functions receipt and predicate"),
+        )
+        self.assertLess(
+            names.index("Create candidate-bound v2 Functions receipt and predicate"),
+            names.index("Attest exact Functions deployment receipt"),
+        )
+        retained = step(publish, "Retain unique immutable rollback evidence")["with"]
+        self.assertEqual(
+            set(retained["path"].splitlines()),
+            {
+                "${{ steps.evidence.outputs.artifact }}",
+                "${{ steps.evidence.outputs.predicate }}",
+                "${{ runner.temp }}/${{ steps.evidence.outputs.bundle_asset }}",
+                "${{ runner.temp }}/functions-deploy-run-verification.json",
+                "${{ runner.temp }}/functions-deploy-proof",
+                "${{ runner.temp }}/functions-deploy-health/deploy-health.json",
+            },
+        )
 
     def test_rollback_evidence_names_cannot_collide_across_attempts(self) -> None:
         source = EVIDENCE.read_text(encoding="utf-8")

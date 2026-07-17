@@ -66,6 +66,8 @@ function parseArguments(argv) {
     "--protected-signer-run-id",
     "--protected-signer-run-attempt",
     "--rollback-artifact",
+    "--candidate-rollback-profile",
+    "--profile-name",
     "--rollback-profile",
     "--app-store-connect-receipt",
     "--deployment",
@@ -90,6 +92,8 @@ function parseArguments(argv) {
       flag !== "--deployment" &&
       flag !== "--android-abi-manifest" &&
       flag !== "--rollback-profile" &&
+      flag !== "--candidate-rollback-profile" &&
+      flag !== "--profile-name" &&
       flag !== "--app-store-connect-receipt" &&
       flag !== "--legacy-absence-scan" &&
       flag !== "--legacy-absence-root",
@@ -370,6 +374,8 @@ export function buildReleaseEvidence({
   protectedSignerRunAttempt,
   rollbackArtifactPath,
   rollbackProfilePath,
+  candidateRollbackProfilePath,
+  profileName = "public-production",
   appStoreConnectReceipt,
   publicProfileSha256,
   activation: suppliedActivation,
@@ -382,23 +388,37 @@ export function buildReleaseEvidence({
   const candidateBundle = readJson(candidateBundlePath, "candidate bundle");
   const { candidate, sourceRun, restoredArtifactSha256 } =
     validateCandidateBundle(candidateBundle);
-  const absenceAuthority = JSON.parse(
-    execFileSync(
-      "python3",
-      [
-        "scripts/ci/inspect-domain-core-release-legacy-absence.py",
-        "--consumer",
-        consumer,
-        "--domain",
-        domain,
-        "--commit",
-        commit,
-        "--candidate-json",
-        JSON.stringify(candidate),
-      ],
-      { encoding: "utf8" },
-    ),
-  );
+  if (
+    !["public-production", "public-production-rollback"].includes(profileName)
+  ) {
+    throw new Error("release evidence profile name is not governed");
+  }
+  if (
+    profileName === "public-production-rollback" &&
+    !DEPLOYMENT_CONSUMERS.has(consumer)
+  ) {
+    throw new Error("rollback completion evidence requires an actual deployment consumer");
+  }
+  const absenceAuthority =
+    profileName === "public-production-rollback"
+      ? null
+      : JSON.parse(
+          execFileSync(
+            "python3",
+            [
+              "scripts/ci/inspect-domain-core-release-legacy-absence.py",
+              "--consumer",
+              consumer,
+              "--domain",
+              domain,
+              "--commit",
+              commit,
+              "--candidate-json",
+              JSON.stringify(candidate),
+            ],
+            { encoding: "utf8" },
+          ),
+        );
   const rawActivation =
     absenceAuthority?.activation ??
     activationVerifier({
@@ -444,27 +464,35 @@ export function buildReleaseEvidence({
     signerRunId: protectedSignerRunId,
     signerRunAttempt: protectedSignerRunAttempt,
   });
-  const rollbackPath = regularFile(rollbackArtifactPath, "rollback artifact");
+  const rollbackPath = regularFile(rollbackArtifactPath, "retained rollback artifact");
   const restoredRollbackPath = regularFile(
     rollbackProfilePath ?? rollbackPath,
-    "restored rollback artifact",
+    "release-bound rollback profile",
+  );
+  const candidateRollbackPath = regularFile(
+    candidateRollbackProfilePath ?? restoredRollbackPath,
+    "candidate rollback proof",
   );
   validateRollbackArtifact(
-    readJson(restoredRollbackPath, "rollback profile"),
+    readJson(restoredRollbackPath, "release-bound rollback profile"),
     candidate,
     { version, tag, commit },
   );
-  const rollbackArtifact = {
-    fileName: basename(rollbackPath),
-    sha256: sha256RegularFile(rollbackPath, "rollback artifact"),
+  validateRollbackArtifact(
+    readJson(candidateRollbackPath, "candidate rollback proof"),
     candidate,
-    activation,
-  };
-  if (sha256RegularFile(restoredRollbackPath, "restored rollback artifact") !== restoredArtifactSha256) {
+  );
+  if (sha256RegularFile(candidateRollbackPath, "candidate rollback proof") !== restoredArtifactSha256) {
     throw new Error(
       "release evidence restored rollback artifact digest does not match the protected candidate bundle rollback proof",
     );
   }
+  const rollbackArtifact = {
+    fileName: basename(rollbackPath),
+    sha256: sha256RegularFile(rollbackPath, "retained rollback artifact"),
+    candidate,
+    activation,
+  };
   const release = {
     version,
     tag,
@@ -472,11 +500,20 @@ export function buildReleaseEvidence({
     publicProfileSha256: validatePublicProfileSha256(publicProfileSha256),
   };
   const publicProfile = {
-    profile: "public-production",
+    profile: profileName,
     domain,
-    mode: "rust",
+    mode: profileName === "public-production-rollback" ? "legacy" : "rust",
     sha256: release.publicProfileSha256,
   };
+  if (
+    profileName === "public-production-rollback" &&
+    publicProfile.sha256 !==
+      sha256RegularFile(restoredRollbackPath, "release-bound rollback profile")
+  ) {
+    throw new Error(
+      "rollback completion profile digest does not match the exact retained rollback profile",
+    );
+  }
   const common = {
     schemaVersion: 2,
     consumer,
@@ -663,6 +700,10 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
     rollbackProfilePath: args["--rollback-profile"]
       ? resolve(args["--rollback-profile"])
       : undefined,
+    candidateRollbackProfilePath: args["--candidate-rollback-profile"]
+      ? resolve(args["--candidate-rollback-profile"])
+      : undefined,
+    profileName: args["--profile-name"] ?? "public-production",
     appStoreConnectReceipt: args["--app-store-connect-receipt"]
       ? readJson(
           args["--app-store-connect-receipt"],

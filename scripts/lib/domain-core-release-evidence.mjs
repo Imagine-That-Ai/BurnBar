@@ -567,6 +567,8 @@ export function verifyDomainCoreReleaseGate({
   candidateBundlePath,
   promotionAttestationPath,
   rollbackArtifactPath,
+  candidateRollbackArtifactPath,
+  rollbackProfilePath,
   expectedCandidate,
   expectedSourceRunId,
   expectedSourceRunAttempt,
@@ -619,8 +621,16 @@ export function verifyDomainCoreReleaseGate({
     activationCommit: expectedReleaseCommit,
   });
   const rollbackPath = regularFile(rollbackArtifactPath, "rollback artifact");
+  const rollbackProfile = regularFile(
+    rollbackProfilePath ?? rollbackPath,
+    "release-bound rollback profile",
+  );
+  const candidateRollback = regularFile(
+    candidateRollbackArtifactPath ?? rollbackProfile,
+    "candidate rollback proof",
+  );
   validateRollbackArtifact(
-    JSON.parse(readFileSync(rollbackPath, "utf8")),
+    JSON.parse(readFileSync(rollbackProfile, "utf8")),
     candidate,
     {
       version: expectedReleaseVersion,
@@ -628,12 +638,16 @@ export function verifyDomainCoreReleaseGate({
       commit: expectedReleaseCommit,
     },
   );
-  const rollbackSha256 = sha256File(rollbackPath);
-  if (rollbackSha256 !== restoredArtifactSha256) {
+  validateRollbackArtifact(
+    JSON.parse(readFileSync(candidateRollback, "utf8")),
+    candidate,
+  );
+  if (sha256File(candidateRollback) !== restoredArtifactSha256) {
     throw new Error(
       "release gate rollback artifact digest does not match the protected candidate bundle rollback proof",
     );
   }
+  const rollbackSha256 = sha256File(rollbackPath);
   if (
     rollbackSha256 !==
     digest(expectedRollbackSha256, "expected rollback artifact SHA-256")
