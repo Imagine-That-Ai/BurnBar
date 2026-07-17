@@ -9,6 +9,8 @@ import OpenBurnBarKernel
 ///     uses the same hashed ID, never the cleartext folder name.
 ///   • Inferred task titles are omitted from the hosted digest entirely —
 ///     32-bit hashes with a public salt remain dictionary-guessable.
+///   • Operating-action `kind` and `summary` contain only a closed category
+///     derived from the action type; raw operator-authored text stays local.
 ///   • Encoded payload is trimmed to 24 KB by dropping long-tail entries
 ///     (per-day per-provider extras, low-rank providers/models/projects).
 ///   • No keyFiles or full message text ever appears.
@@ -77,7 +79,7 @@ public struct InsightDigestBuilder: Sendable {
 
         // 4. Provider / model / project / device snapshots.
         let providers = makeProviderSnapshots(usages: usages, sessions: sessions, limit: maxProviders)
-        let models = makeModelSnapshots(usages: usages, sessions: sessions, limit: maxModels, projectTokenMap: projectTokenMap)
+        let models = makeModelSnapshots(usages: usages, limit: maxModels, projectTokenMap: projectTokenMap)
         let projects = makeProjectSnapshots(usages: usages, limit: maxProjects, projectTokenMap: projectTokenMap)
         let devices = makeDeviceSnapshots(usages: usages, limit: maxDevices)
 
@@ -188,7 +190,6 @@ public struct InsightDigestBuilder: Sendable {
         var tokens: Int = 0
         var sessions: Set<String> = []
         var topModels: [String: Int] = [:]
-        var titles: [String: Int] = [:]
         var tools: [String: Int] = [:]
     }
 
@@ -199,7 +200,6 @@ public struct InsightDigestBuilder: Sendable {
         var tokens: Int = 0
         var cacheTokens: Int = 0
         var sessions: Set<String> = []
-        var titles: [String: Int] = [:]
         var projects: [String: Int] = [:]
     }
 
@@ -216,12 +216,9 @@ public struct InsightDigestBuilder: Sendable {
             perProvider[u.provider] = entry
         }
         for s in sessions {
-            if let title = s.inferredTaskTitle, !title.isEmpty {
-                var entry = perProvider[s.provider] ?? ProviderAccumulator()
-                entry.titles[title, default: 0] += 1
-                for tool in s.keyTools { entry.tools[tool, default: 0] += 1 }
-                perProvider[s.provider] = entry
-            }
+            var entry = perProvider[s.provider] ?? ProviderAccumulator()
+            for tool in s.keyTools { entry.tools[tool, default: 0] += 1 }
+            perProvider[s.provider] = entry
         }
         return perProvider
             .sorted {
@@ -232,10 +229,6 @@ public struct InsightDigestBuilder: Sendable {
                 let topModels = Array(value.topModels
                     .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
                     .prefix(3).map(\.key))
-                // Omit inferred task titles from the hosted digest — 32-bit
-                // hashes with a public salt remain dictionary-guessable for
-                // low-entropy inputs (see Codex review r3585472414).
-                let topTitles: [String] = []
                 let topTools = Array(value.tools
                     .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
                     .prefix(5).map(\.key))
@@ -246,14 +239,13 @@ public struct InsightDigestBuilder: Sendable {
                     totalTokens: value.tokens,
                     sessionCount: value.sessions.count,
                     topModels: topModels,
-                    topInferredTaskTitles: topTitles,
+                    topInferredTaskTitles: [],
                     topKeyTools: topTools
                 )
             }
     }
 
     private func makeModelSnapshots(usages: [InsightUsageRow],
-                                    sessions: [InsightSessionRow],
                                     limit: Int,
                                     projectTokenMap: [String: String]) -> [InsightDigest.ModelSnapshot] {
         var perModel: [String: ModelAccumulator] = [:]
@@ -265,16 +257,6 @@ public struct InsightDigestBuilder: Sendable {
             entry.sessions.insert(u.sessionID)
             if let p = u.projectName, let token = projectTokenMap[p] { entry.projects[token, default: 0] += 1 }
         }
-        // Sessions don't carry model, so we count titles per provider/model
-        // approximately by joining via sessionID.
-        let sessionByID = Dictionary(uniqueKeysWithValues: sessions.map { ($0.sessionID, $0) })
-        for u in usages {
-            if let s = sessionByID[u.sessionID], let title = s.inferredTaskTitle, !title.isEmpty {
-                var entry = perModel[u.model] ?? ModelAccumulator(provider: u.provider)
-                entry.titles[title, default: 0] += 1
-                perModel[u.model] = entry
-            }
-        }
         return perModel
             .sorted {
                 $0.value.cost != $1.value.cost ? $0.value.cost > $1.value.cost : $0.key < $1.key
@@ -284,9 +266,6 @@ public struct InsightDigestBuilder: Sendable {
                 let cacheRate = value.tokens > 0 ? Double(value.cacheTokens) / Double(value.tokens) : 0
                 let sessionCount = max(1, value.sessions.count)
                 let avgCost = value.cost / Double(sessionCount)
-                // Omit inferred task titles from the hosted digest —
-                // dictionary-guessable (see Codex review r3585472414).
-                let topTitles: [String] = []
                 let topProjects = Array(value.projects
                     .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
                     .prefix(3).map(\.key))
@@ -298,7 +277,7 @@ public struct InsightDigestBuilder: Sendable {
                     sessionCount: value.sessions.count,
                     avgCostPerSession: avgCost,
                     cacheHitRate: cacheRate,
-                    topInferredTaskTitles: topTitles,
+                    topInferredTaskTitles: [],
                     topProjects: topProjects
                 )
             }
@@ -515,19 +494,63 @@ public struct InsightDigestBuilder: Sendable {
         taxonomy.focuses.contains(desired) ? desired : (taxonomy.focuses.first ?? "code")
     }
 
+    /// Maps an untrusted source action type to the only values allowed in a
+    /// hosted digest. Matching affects classification only; no source text is
+    /// copied into either returned field.
+    static func hostedActionFields(for rawKind: String) -> (kind: String, summary: String) {
+        let normalized = rawKind.lowercased()
+        if normalized.contains("approval") || normalized.contains("approve")
+            || normalized.contains("permission") || normalized.contains("grant")
+            || normalized.contains("revoke") {
+            return ("approval", "Approval action")
+        }
+        if normalized.contains("rollback") || normalized.contains("revert")
+            || normalized.contains("restore") {
+            return ("rollback", "Rollback action")
+        }
+        if normalized.contains("deploy") || normalized.contains("release")
+            || normalized.contains("publish") {
+            return ("deployment", "Deployment action")
+        }
+        if normalized.contains("delete") || normalized.contains("export")
+            || normalized.contains("privacy") || normalized.contains("data_") {
+            return ("data_control", "Data-control action")
+        }
+        if normalized.contains("browser") || normalized.contains("computer")
+            || normalized.contains("click") || normalized.contains("input")
+            || normalized.contains("clipboard") || normalized.contains("panic") {
+            return ("computer_use", "Computer-use action")
+        }
+        if normalized.contains("model") || normalized.contains("inference")
+            || normalized.contains("completion") {
+            return ("model", "Model action")
+        }
+        if normalized.contains("tool") || normalized.contains("search")
+            || normalized.contains("read") || normalized.contains("write")
+            || normalized.contains("edit") || normalized.contains("command")
+            || normalized.contains("cache") {
+            return ("tool", "Tool action")
+        }
+        if normalized.contains("mission") || normalized.contains("agent")
+            || normalized.contains("session") || normalized.contains("workflow") {
+            return ("workflow", "Workflow action")
+        }
+        return ("other", "Other action")
+    }
+
     private func makeActionDigests(actions: [InsightOperatingAction], limit: Int, projectTokenMap: [String: String]) -> [InsightDigest.ActionDigest] {
         actions
             .sorted { $0.occurredAt > $1.occurredAt }
             .prefix(limit)
             .map {
                 let pid = $0.projectName.flatMap { projectTokenMap[$0] }
-                let snippet = String($0.summary.prefix(160))
+                let hostedFields = Self.hostedActionFields(for: $0.actionKind)
                 return InsightDigest.ActionDigest(
                     id: $0.id,
-                    kind: $0.actionKind,
+                    kind: hostedFields.kind,
                     projectID: pid,
                     occurredAt: $0.occurredAt,
-                    summary: snippet
+                    summary: hostedFields.summary
                 )
             }
     }

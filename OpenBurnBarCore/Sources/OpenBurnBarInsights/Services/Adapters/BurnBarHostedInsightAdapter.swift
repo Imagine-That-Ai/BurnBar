@@ -409,6 +409,30 @@ public struct BurnBarHostedInsightAdapter: InsightModelGateway {
         )
     }
 
+    /// Returns an egress-only copy so local canvases and rule-based analysis
+    /// retain their on-device detail. This is the final hosted boundary even
+    /// when callers construct a digest without `InsightDigestBuilder`.
+    private static func privacyBoundRequest(_ request: InsightAnalysisRequest) -> InsightAnalysisRequest {
+        var outbound = request
+        var digest = outbound.context.digest
+
+        for index in digest.providers.indices {
+            digest.providers[index].topInferredTaskTitles = []
+        }
+        for index in digest.models.indices {
+            digest.models[index].topInferredTaskTitles = []
+        }
+        for index in digest.operatingActions.indices {
+            let fields = InsightDigestBuilder.hostedActionFields(for: digest.operatingActions[index].kind)
+            digest.operatingActions[index].kind = fields.kind
+            digest.operatingActions[index].summary = fields.summary
+        }
+
+        digest.contentHash = InsightDigestBuilder.computeContentHash(digest: digest)
+        outbound.context.digest = digest
+        return outbound
+    }
+
     /// Encodes the analysis request as the Firebase v2 callable
     /// payload (`{ "data": ... }`). Keeps the digest and the canvas
     /// payload compact so we don't blow the callable's 10 MB body
@@ -421,7 +445,8 @@ public struct BurnBarHostedInsightAdapter: InsightModelGateway {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = []
-        let requestJSON = try encoder.encode(request)
+        let outboundRequest = Self.privacyBoundRequest(request)
+        let requestJSON = try encoder.encode(outboundRequest)
         let requestObject = try JSONSerialization.jsonObject(with: requestJSON)
 
         // Surface a few well-known top-level fields so the server can
