@@ -122,6 +122,24 @@ assert.match(physicalRunbook, /Do not hand-author PASS receipts/);
 assert.match(physicalRunbook, /new-release-certification-supplemental-receipt\.ps1/);
 assert.match(physicalRunbook, /-Initialize/);
 assert.match(physicalRunbook, /-BaselineBundle \$Evidence/);
+assert.match(physicalRunbook, /\$Repo = Join-Path \$Root 'candidate'/);
+assert.match(physicalRunbook, /\$Harness = Join-Path \$Root 'harness'/);
+assert.match(
+  physicalRunbook,
+  /\$ExpectedHarnessCommit = '19385bf798a19f836dcb41d8d9decb5f6a228997'/,
+);
+assert.match(physicalRunbook, /git -C \$Repo checkout --detach windows-v1\.0\.35/);
+assert.match(physicalRunbook, /git -C \$Harness checkout --detach \$ExpectedHarnessCommit/);
+assert.match(
+  physicalRunbook,
+  /Join-Path \$Harness 'scripts\\windows-port\\run-physical-release-certification\.ps1'/,
+);
+assert.match(
+  physicalRunbook,
+  /Join-Path \$Harness 'scripts\\windows-port\\validate-release-certification-evidence\.mjs'/,
+);
+assert.match(physicalRunbook, /--expected-commit \$ExpectedCommit/);
+assert.match(physicalRunbook, /--expected-harness-commit \$ExpectedHarnessCommit/);
 const windowsFastWorkflow = readFileSync(join(root, "../../.github/workflows/pr-windows-fast.yml"), "utf8");
 const windowsReleaseWorkflow = readFileSync(
   join(root, "../../.github/workflows/openburnbar-release-windows.yml"),
@@ -178,6 +196,7 @@ assert.match(script, /'sourceCommit',/);
 assert.match(script, /Artifact manifest sourceCommit must be a full 40-character Git SHA/);
 assert.match(script, /Artifact manifest source commit mismatch/);
 assert.match(script, /source = \$script:SourceIdentity/);
+assert.match(script, /artifact = \$artifact/);
 assert.doesNotMatch(script, /source = \[ordered\]@\{ commitSha = Get-CommitSha; dirtyTree = Test-DirtyTree \}/);
 assert.match(script, /\$script:HardwareAttestationSha256 = Get-Sha256 \$attestationEvidencePath/);
 assert.match(script, /evidence\/hardware-attestation\.json/);
