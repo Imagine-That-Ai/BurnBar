@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.30] - 2026-07-17
+
 ### Added — Shared Rust Console release evidence
 
 - Stable and Rust-authoritative Hosting deploys now consume the exact protected
