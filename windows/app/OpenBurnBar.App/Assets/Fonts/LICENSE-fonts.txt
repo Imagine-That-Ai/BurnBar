@@ -1,0 +1,16 @@
+Fonts bundled with the Windows app (converted from the woff2 files in
+apps/linux-desktop/public/fonts/, which are sourced from burnbar.ai's optimized
+bundles and Google Fonts):
+
+  - Outfit (display/headings/telemetry)         — Google Fonts, SIL Open Font License 1.1
+  - Geist (body text)                           — Vercel, SIL Open Font License 1.1
+  - JetBrains Mono (code/metrics)               — JetBrains, SIL Open Font License 1.1
+  - Fraunces (arcane hero labels only)          — Undercase Type, SIL Open Font License 1.1
+
+All four families are licensed under the SIL Open Font License 1.1 (OFL), which permits
+bundling with the application. The full license text:
+https://openfontlicense.org/open-font-license-official-text/
+
+Note: the Outfit TTF's name table records family "Outfit" (nameID 1/16 patched during
+the woff2→ttf conversion so WinUI's ms-appx font resolution finds the family); this is
+a metadata-only change, permitted by the OFL as no Reserved Font Name applies.

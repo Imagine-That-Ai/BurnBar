@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using OpenBurnBar.App.Presentation.Chat;
+using OpenBurnBar.App.Theme;
 using OpenBurnBar.Pretext;
 
 namespace OpenBurnBar.App.Chat;
@@ -187,10 +188,10 @@ public sealed partial class StreamingBubble : UserControl
                 return chip;
 
             case HermesRichRunKind.Mention:
-                return Pill(fragment.Text, "PensieveColorBrassBrightBrush", mono: false);
+                return Pill(fragment.Text, "PensieveColorMacosEmberBrush", mono: false);
 
             case HermesRichRunKind.Code:
-                return Pill(fragment.Text, "PensieveColorTextBaseBrush", mono: true);
+                return Pill(fragment.Text, "PensieveColorMacosTextBrush", mono: true);
 
             default:
                 var text = new TextBlock
@@ -220,7 +221,7 @@ public sealed partial class StreamingBubble : UserControl
         };
         if (mono)
         {
-            block.FontFamily = new FontFamily("Cascadia Mono");
+            block.FontFamily = BrandMonoFont();
         }
         else
         {
@@ -232,7 +233,7 @@ public sealed partial class StreamingBubble : UserControl
             Child = block,
             Padding = new Thickness(5, 1, 5, 1),
             CornerRadius = new CornerRadius(5),
-            Background = Brush("PensieveColorGlassBgElevatedBrush"),
+            Background = Brush("PensieveGlassTintElevatedBrush"),
         };
     }
 
@@ -256,7 +257,7 @@ public sealed partial class StreamingBubble : UserControl
             }
             else if (run.Kind == HermesRichRunKind.Code)
             {
-                inline.FontFamily = new FontFamily("Cascadia Mono");
+                inline.FontFamily = BrandMonoFont();
             }
             else
             {
@@ -269,10 +270,10 @@ public sealed partial class StreamingBubble : UserControl
 
     private static string CanvasFont(HermesRichRun run) => run.Kind switch
     {
-        HermesRichRunKind.Code => "500 13px 'Cascadia Mono'",
-        HermesRichRunKind.Mention => "600 13px 'Segoe UI'",
-        HermesRichRunKind.Atom => "600 13px 'Segoe UI'",
-        _ => (run.Style.HasFlag(HermesInlineStyle.Bold) ? "600 " : "400 ") + "14px 'Segoe UI'",
+        HermesRichRunKind.Code => "500 13px 'JetBrains Mono', 'Cascadia Mono', monospace",
+        HermesRichRunKind.Mention => "600 13px 'Geist', 'Segoe UI', sans-serif",
+        HermesRichRunKind.Atom => "600 13px 'Geist', 'Segoe UI', sans-serif",
+        _ => (run.Style.HasFlag(HermesInlineStyle.Bold) ? "600 " : "400 ") + "14px 'Geist', 'Segoe UI', sans-serif",
     };
 
     private static double ExtraWidth(HermesRichRun run) => run.Kind switch
@@ -283,7 +284,11 @@ public sealed partial class StreamingBubble : UserControl
         _ => 0,
     };
 
-    private static Brush TextBrush() => Brush("PensieveColorTextBaseBrush");
+    private static Brush TextBrush() => Brush("PensieveColorMacosTextBrush");
+
+    // AuroraMonoFont lives at the Typography.xaml dictionary root (theme-independent),
+    // so an Application-level lookup resolves it (see Theme/BrandFonts.cs).
+    private static FontFamily BrandMonoFont() => BrandFonts.Mono;
 
     private static Brush Brush(string key)
     {

@@ -25,6 +25,7 @@
         <!-- Inline fallback shown until the first Pretext layout resolves. -->
         <RichTextBlock x:Name="Fallback"
                        TextWrapping="Wrap"
-                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                       FontFamily="{StaticResource AuroraBodyFont}"
+                       Foreground="{ThemeResource AuroraTextBrush}" />
     </Grid>
 </UserControl>

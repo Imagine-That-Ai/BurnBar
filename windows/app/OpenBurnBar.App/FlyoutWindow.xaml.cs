@@ -243,7 +243,7 @@ public sealed partial class FlyoutWindow : Window
         {
             Text = row.MetricLabel,
             FontSize = 12,
-            FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            FontFamily = BrandFonts.Mono,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = new SolidColorBrush(Color.FromArgb(0xFF, 0xFA, 0x6B, 0x06)),
         };

@@ -29,10 +29,10 @@
             <TextBlock Text="Presets"
                        FontSize="15"
                        FontWeight="SemiBold"
-                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                       Foreground="{ThemeResource AuroraTextBrush}" />
             <TextBlock Text="The default preset runs when The Elder Wand is on."
                        FontSize="11"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
         </StackPanel>
 
         <!-- Save bar: name field + Save/Update -->
@@ -47,14 +47,14 @@
                      Text="{x:Bind Editor.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      Background="{StaticResource PensieveColorGlassBgBrush}"
                      BorderBrush="{StaticResource OBBStrokeBrush}"
-                     Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                     Foreground="{ThemeResource AuroraTextBrush}" />
             <Button Grid.Column="1"
                     Content="{x:Bind Editor.SaveButtonTitle, Mode=OneWay}"
                     IsEnabled="{x:Bind Editor.IsValid, Mode=OneWay}"
                     MinWidth="96"
                     Click="OnSaveClick"
                     Style="{StaticResource LiquidGlassInteractiveStyle}"
-                    Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                    Foreground="{ThemeResource AuroraTextBrush}" />
         </Grid>
 
         <!-- Empty state -->
@@ -64,7 +64,7 @@
             <TextBlock Text="No saved presets yet. Build a panel above, name it, and save."
                        FontSize="12"
                        TextWrapping="Wrap"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
         </Border>
 
         <!-- Saved presets -->
@@ -86,7 +86,7 @@
                                     Width="28"
                                     Height="28"
                                     CornerRadius="7"
-                                    Background="#1FFA5053"
+                                    Background="{ThemeResource AuroraGlassSelectionFillBrush}"
                                     VerticalAlignment="Center">
                                 <FontIcon Glyph="&#xE734;"
                                           FontSize="14"
@@ -97,22 +97,22 @@
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <TextBlock Text="{x:Bind Name}"
                                                FontSize="13"
-                                               Foreground="{StaticResource PensieveColorTextBrightBrush}"
+                                               Foreground="{ThemeResource AuroraTextBrush}"
                                                TextTrimming="CharacterEllipsis" />
                                     <Border CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                                            Background="#24FA5053"
+                                            Background="{ThemeResource AuroraGlassSelectionFillBrush}"
                                             Padding="6,1"
                                             VerticalAlignment="Center"
                                             Visibility="{x:Bind IsActive, Converter={StaticResource BoolToVisibility}}">
                                         <TextBlock Text="Default"
                                                    FontSize="10"
                                                    FontWeight="SemiBold"
-                                                   Foreground="#FFFA5053" />
+                                                   Foreground="{ThemeResource AuroraAccentBrush}" />
                                     </Border>
                                 </StackPanel>
                                 <TextBlock Text="{x:Bind Summary}"
                                            FontSize="11"
-                                           Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                                           Foreground="{ThemeResource AuroraTextMutedBrush}"
                                            TextTrimming="CharacterEllipsis" />
                             </StackPanel>
 
@@ -124,7 +124,7 @@
                                     ToolTipService.ToolTip="Preset actions">
                                 <FontIcon Glyph="&#xE712;"
                                           FontSize="13"
-                                          Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                          Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                                 <Button.Flyout>
                                     <MenuFlyout>
                                         <MenuFlyoutItem Text="Edit"

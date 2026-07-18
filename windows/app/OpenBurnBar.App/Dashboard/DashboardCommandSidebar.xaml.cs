@@ -108,11 +108,11 @@ public sealed partial class DashboardCommandSidebar : UserControl
             ? "Scan, compare spend, and drill into model behavior from one workspace."
             : "Track spend and token volume across every model your agents use.";
 
-        Brush selectedBg = ResourceBrush("PensieveColorGlassBgElevatedBrush")
+        Brush selectedBg = ResourceBrush("PensieveGlassTintElevatedBrush")
             ?? new SolidColorBrush(Color.FromArgb(0x44, 0xFF, 0xFF, 0xFF));
-        Brush mutedFg = ResourceBrush("PensieveColorTextBaseBrush")
+        Brush mutedFg = ResourceBrush("PensieveColorMacosTextSecondaryBrush")
             ?? new SolidColorBrush(Color.FromArgb(0xCC, 0xC8, 0xD0, 0xE0));
-        Brush brightFg = ResourceBrush("PensieveColorTextBrightBrush")
+        Brush brightFg = ResourceBrush("PensieveColorMacosTextBrush")
             ?? new SolidColorBrush(Colors.White);
 
         AgentsModeButton.Background = agents ? selectedBg : new SolidColorBrush(Colors.Transparent);
@@ -214,7 +214,7 @@ public sealed partial class DashboardCommandSidebar : UserControl
             BorderThickness = new Thickness(1),
             BorderBrush = selected
                 ? new SolidColorBrush(Color.FromArgb(0x4D, accentColor.R, accentColor.G, accentColor.B))
-                : ResourceBrush("PensieveColorGlassLineBrush") ?? new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
+                : ResourceBrush("PensieveGlassStrokeBaseBrush") ?? new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
             Background = selected
                 ? new SolidColorBrush(Color.FromArgb(0x14, accentColor.R, accentColor.G, accentColor.B))
                 : new SolidColorBrush(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)),
@@ -232,7 +232,7 @@ public sealed partial class DashboardCommandSidebar : UserControl
             CornerRadius = new CornerRadius(17),
             Background = selected
                 ? new SolidColorBrush(Color.FromArgb(0x2E, accentColor.R, accentColor.G, accentColor.B))
-                : ResourceBrush("PensieveColorGlassBgElevatedBrush")
+                : ResourceBrush("PensieveGlassTintElevatedBrush")
                     ?? new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
             Child = new FontIcon
             {
@@ -242,7 +242,7 @@ public sealed partial class DashboardCommandSidebar : UserControl
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = selected
                     ? accentBrush
-                    : ResourceBrush("PensieveColorTextBaseBrush")
+                    : ResourceBrush("PensieveColorMacosTextSecondaryBrush")
                         ?? new SolidColorBrush(Color.FromArgb(0xCC, 0xC8, 0xD0, 0xE0)),
             },
         };
@@ -256,14 +256,14 @@ public sealed partial class DashboardCommandSidebar : UserControl
             FontWeight = selected ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = selected
-                ? ResourceBrush("PensieveColorTextBrightBrush")
-                : ResourceBrush("PensieveColorTextBaseBrush"),
+                ? ResourceBrush("PensieveColorMacosTextBrush")
+                : ResourceBrush("PensieveColorMacosTextSecondaryBrush"),
         });
         labels.Children.Add(new TextBlock
         {
             Text = subtitle,
             FontSize = 11,
-            Foreground = ResourceBrush("PensieveColorTextDimBrush"),
+            Foreground = ResourceBrush("PensieveColorMacosTextMutedBrush"),
         });
         Grid.SetColumn(labels, 1);
 
@@ -277,9 +277,9 @@ public sealed partial class DashboardCommandSidebar : UserControl
         {
             Text = metric,
             FontSize = 12,
-            FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            FontFamily = BrandFonts.Mono,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Foreground = selected ? accentBrush : ResourceBrush("PensieveColorTextDimBrush"),
+            Foreground = selected ? accentBrush : ResourceBrush("PensieveColorMacosTextMutedBrush"),
         });
         trailing.Children.Add(new FontIcon
         {
@@ -288,7 +288,7 @@ public sealed partial class DashboardCommandSidebar : UserControl
             HorizontalAlignment = HorizontalAlignment.Right,
             Foreground = selected
                 ? new SolidColorBrush(Color.FromArgb(0xCC, accentColor.R, accentColor.G, accentColor.B))
-                : ResourceBrush("PensieveColorTextDimBrush"),
+                : ResourceBrush("PensieveColorMacosTextMutedBrush"),
         });
         Grid.SetColumn(trailing, 2);
 

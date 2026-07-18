@@ -14,6 +14,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   active paid subscription. Committed `droid-wiki/` pages still reconcile to
   mem0 through the post-commit hook and nightly mirror job.
 
+### Changed — Windows shell now renders the macOS Aurora liquid-glass design
+
+- **Full visual parity pass on the WinUI 3 app** (`windows/app/`): the shell now renders the
+  same Aurora "liquid glass" look as the macOS and Linux apps instead of the Pensieve
+  ink/brass recolor. The design-token pipeline gains an additive Aurora group
+  (`packages/design-tokens/tokens/aurora.tokens.json` — macOS dark/light ramps, liquid-glass
+  tint/stroke/sheen/shadow recipes, macOS type scale) emitted to CSS/Swift/Compose/WinUI from
+  the same DTCG source; the Windows theme is rebuilt on `ThemeDictionaries` (Light mode no
+  longer paints dark plates), the glass vocabulary carries the macOS card radius/hover
+  physics, and brand fonts (Outfit/Geist/JetBrains Mono/Fraunces, OFL) are bundled so type no
+  longer falls back to Segoe/Consolas. Tray flyout, command deck, chat bubbles, Settings,
+  onboarding, command palette, and dashboard all consume the new tokens; a CI gate
+  (`scripts/windows-port/check-xaml-token-discipline.sh`) blocks raw colors/fonts outside
+  `Theme/`. See `docs/windows-port/MAC_GLASS_PARITY_PASS.md` for the review map, validation
+  matrix, and Windows-host evidence checklist.
+
 ### Added — Liquid dashboard command deck
 
 - **A live, customizable command deck for the dashboard**: Added a dominant

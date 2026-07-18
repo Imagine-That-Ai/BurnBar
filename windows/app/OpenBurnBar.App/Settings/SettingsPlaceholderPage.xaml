@@ -27,15 +27,15 @@
                 <TextBlock
                     x:Name="TitleLabel"
                     Style="{StaticResource TitleTextBlockStyle}"
-                    Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                    Foreground="{ThemeResource AuroraTextBrush}" />
                 <TextBlock
                     x:Name="SubtitleLabel"
-                    Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                    Foreground="{ThemeResource AuroraTextMutedBrush}"
                     TextWrapping="Wrap" />
                 <TextBlock
                     Margin="0,8,0,0"
                     FontSize="12"
-                    Foreground="{StaticResource PensieveColorTextDimBrush}"
+                    Foreground="{ThemeResource AuroraTextMutedBrush}"
                     Text="This surface is being ported in a later W7 lane. Search already indexes its settings." />
             </StackPanel>
         </Border>
