@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using OpenBurnBar.App.Diagnostics;
+using OpenBurnBar.App.Interop;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 
