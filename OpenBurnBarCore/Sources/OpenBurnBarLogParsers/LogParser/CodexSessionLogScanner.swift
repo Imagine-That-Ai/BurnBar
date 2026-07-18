@@ -433,14 +433,10 @@ public enum CodexSessionLogScanner {
         for row in threadRows {
             try governor?.checkpoint()
 
-            // Try to get exact token breakdown from JSONL session file
-            var inputTokens: Int = 0
-            var outputTokens: Int = 0
-            var cacheReadTokens: Int = 0
+            var inputTokens = 0
+            var outputTokens = 0
+            var cacheReadTokens = 0
             var foundExact = false
-            // A deferred row (budget/boundary, no cached tokens) emits
-            // nothing: absent rows leave previously persisted exact values
-            // untouched, while a heuristic emission could overwrite them.
             var deferredWithoutCache = false
 
             var parsedConversation: CodexConversationCacheEntry?
@@ -450,108 +446,117 @@ public enum CodexSessionLogScanner {
                 let fileURL = URL(fileURLWithPath: expandedPath)
                 let cacheKey = fileURL.standardizedFileURL.path
                 activePaths.insert(cacheKey)
+                options.metrics?.recordCandidate()
+                options.metrics?.recordMetadataStat()
 
-                // Signature captured BEFORE scanning: if a live writer grows
-                // the file mid-scan, the next pass sees a size mismatch and
-                // resumes from the persisted offset instead of trusting a
-                // stale-complete entry.
                 let signature = FileSignature(for: fileURL, using: fileManager)
                 let cached = sessionCache.fileEntries[cacheKey]
-                let isUnchanged = signature != nil && cached?.signature == signature
 
-                let boundaryDeferred = isDeferredByBoundary(
-                    signature: signature,
-                    minimumFileModificationDate: options.minimumFileModificationDate
-                )
-
-                if isUnchanged {
+                if governor != nil, signature == nil {
+                    governor?.recordDeferredFile()
+                    options.metrics?.recordDeferred(.metadataUnavailable)
+                    deferredWithoutCache = cached?.tokenUsage == nil
                     if let tokenUsage = cached?.tokenUsage {
                         inputTokens = tokenUsage.input
                         outputTokens = tokenUsage.output
                         cacheReadTokens = tokenUsage.cacheRead
                         foundExact = true
-                    }
-                } else if boundaryDeferred {
-                    // Changed file below the indexing boundary: reuse cached
-                    // tokens without a content read; never emit a heuristic
-                    // row over previously exact data.
-                    if let tokenUsage = cached?.tokenUsage {
-                        inputTokens = tokenUsage.input
-                        outputTokens = tokenUsage.output
-                        cacheReadTokens = tokenUsage.cacheRead
-                        foundExact = true
-                    } else {
-                        deferredWithoutCache = true
                     }
                 } else {
-                    let fileSize = signature?.sizeBytes ?? 0
-                    let resumeOffset = cached?.scanState?.byteOffset ?? 0
-                    let newBytes = max(fileSize - min(resumeOffset, fileSize), 0)
+                    let isUnchanged = signature != nil && cached?.signature == signature
+                    let boundaryDeferred = isDeferredByBoundary(
+                        signature: signature,
+                        minimumFileModificationDate: options.minimumFileModificationDate
+                    )
 
-                    if governor?.admitFile(estimatedBytes: newBytes) ?? true {
-                        let scan = try scanTokens(
-                            path: expandedPath,
-                            fileManager: fileManager,
-                            previousState: cached?.scanState,
-                            governor: governor
-                        )
-                        if let usage = scan?.usage {
-                            inputTokens = usage.input
-                            outputTokens = usage.output
-                            cacheReadTokens = usage.cacheRead
+                    if isUnchanged {
+                        if let tokenUsage = cached?.tokenUsage {
+                            inputTokens = tokenUsage.input
+                            outputTokens = tokenUsage.output
+                            cacheReadTokens = tokenUsage.cacheRead
                             foundExact = true
                         }
-
-                        if let signature, let scan {
-                            sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
-                                signature: signature,
-                                tokenUsage: scan.usage.map {
-                                    CodexTokenUsage(input: $0.input, output: $0.output, cacheRead: $0.cacheRead)
-                                },
-                                scanState: scan.state
-                            )
-                            cacheMutated = true
-                        } else if cached != nil {
-                            sessionCache.fileEntries.removeValue(forKey: cacheKey)
-                            cacheMutated = true
+                    } else if boundaryDeferred {
+                        if let tokenUsage = cached?.tokenUsage {
+                            inputTokens = tokenUsage.input
+                            outputTokens = tokenUsage.output
+                            cacheReadTokens = tokenUsage.cacheRead
+                            foundExact = true
+                        } else {
+                            deferredWithoutCache = true
                         }
-                    } else if let tokenUsage = cached?.tokenUsage {
-                        // Byte budget exhausted: keep last known exact values
-                        // this tick; the unchanged cache entry retries next.
-                        inputTokens = tokenUsage.input
-                        outputTokens = tokenUsage.output
-                        cacheReadTokens = tokenUsage.cacheRead
-                        foundExact = true
                     } else {
-                        deferredWithoutCache = true
+                        let fileSize = signature?.sizeBytes ?? 0
+                        let resumeOffset = cached?.scanState?.byteOffset ?? 0
+                        let newBytes = max(fileSize - min(resumeOffset, fileSize), 0)
+
+                        if governor?.admitFile(estimatedBytes: newBytes) ?? true {
+                            options.metrics?.recordContentRead(bytes: newBytes)
+                            let scan = try scanTokens(
+                                path: expandedPath,
+                                fileManager: fileManager,
+                                previousState: cached?.scanState,
+                                governor: governor
+                            )
+                            if let usage = scan?.usage {
+                                inputTokens = usage.input
+                                outputTokens = usage.output
+                                cacheReadTokens = usage.cacheRead
+                                foundExact = true
+                            }
+
+                            if let signature, let scan {
+                                sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
+                                    signature: signature,
+                                    tokenUsage: scan.usage.map {
+                                        CodexTokenUsage(input: $0.input, output: $0.output, cacheRead: $0.cacheRead)
+                                    },
+                                    scanState: scan.state
+                                )
+                                cacheMutated = true
+                            } else if cached != nil {
+                                sessionCache.fileEntries.removeValue(forKey: cacheKey)
+                                cacheMutated = true
+                            }
+                        } else {
+                            options.metrics?.recordDeferred(.byteBudget)
+                            if let tokenUsage = cached?.tokenUsage {
+                                inputTokens = tokenUsage.input
+                                outputTokens = tokenUsage.output
+                                cacheReadTokens = tokenUsage.cacheRead
+                                foundExact = true
+                            } else {
+                                deferredWithoutCache = true
+                            }
+                        }
+                    }
+
+                    if options.includeConversationBodies, !boundaryDeferred {
+                        let conversationBytes = signature?.sizeBytes ?? 0
+                        if governor?.admitFile(estimatedBytes: conversationBytes) ?? true {
+                            options.metrics?.recordContentRead(bytes: conversationBytes)
+                            parsedConversation = try scanConversation(
+                                path: expandedPath,
+                                fallbackTitle: row.rawTitle,
+                                fileManager: fileManager,
+                                governor: governor
+                            )
+                            shouldEmitConversation = parsedConversation != nil
+                        } else {
+                            options.metrics?.recordDeferred(.byteBudget)
+                            parsedConversation = nil
+                            shouldEmitConversation = false
+                        }
+                    } else {
+                        parsedConversation = nil
+                        shouldEmitConversation = false
                     }
                 }
-
-                // Conversation bodies re-read the whole file (they are
-                // privacy-transient — never disk-cached), so they get their
-                // own budget admission. A denial counts as a deferral, which
-                // freezes the caller's indexing watermark for this pass.
-                if options.includeConversationBodies, !boundaryDeferred,
-                   governor?.admitFile(estimatedBytes: signature?.sizeBytes ?? 0) ?? true {
-                    parsedConversation = try scanConversation(
-                        path: expandedPath,
-                        fallbackTitle: row.rawTitle,
-                        fileManager: fileManager,
-                        governor: governor
-                    )
-                    shouldEmitConversation = parsedConversation != nil
-                } else {
-                    parsedConversation = nil
-                    shouldEmitConversation = false
-                }
             }
 
-            if deferredWithoutCache {
-                continue
-            }
+            if deferredWithoutCache { continue }
 
             if !foundExact {
-                // Better than 50/50: Codex sessions are heavily input-weighted (~95/5)
                 inputTokens = Int(Double(row.tokensUsed) * 0.95)
                 outputTokens = max(row.tokensUsed - inputTokens, 0)
             }
@@ -564,7 +569,7 @@ public enum CodexSessionLogScanner {
                     cacheReadTokens: cacheReadTokens
                 )
 
-                let usage = TokenUsage(
+                usages.append(TokenUsage(
                     provider: .codex,
                     sessionId: row.threadId,
                     projectName: row.projectName,
@@ -579,8 +584,7 @@ public enum CodexSessionLogScanner {
                     provenanceMethod: foundExact ? .providerLog : .heuristicEstimate,
                     provenanceConfidence: foundExact ? .exact : .lowConfidenceEstimate,
                     estimatorVersion: foundExact ? "" : "tokens-used-split-v1"
-                )
-                usages.append(usage)
+                ))
             }
 
             if shouldEmitConversation {
@@ -589,7 +593,7 @@ public enum CodexSessionLogScanner {
                     ?? row.threadId
                 let fullText = parsedConversation?.markdown
                     ?? row.rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                let conversation = ConversationRecord(
+                conversations.append(ConversationRecord(
                     id: ConversationRecord.stableId(provider: .codex, sessionId: row.threadId),
                     provider: .codex,
                     sessionId: row.threadId,
@@ -608,8 +612,7 @@ public enum CodexSessionLogScanner {
                     indexedAt: Date(),
                     fileModifiedAt: row.expandedRolloutPath.flatMap { modificationDate(of: $0, fileManager: fileManager) },
                     summary: nil
-                )
-                conversations.append(conversation)
+                ))
             }
         }
 

@@ -1597,6 +1597,148 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         }
     }
 
+    // MARK: - Bounded shadow writer
+
+    func testWriterDrainsFIFOInOneBatchAndDropsNewestAtCapacity() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let seedSpool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        try seedSpool.append(try XCTUnwrap(makeSample(micros: 99)))
+        _ = try XCTUnwrap(seedSpool.nextBatch())
+
+        let blocker = BlockingReadyBatchReader()
+        let spool = try DomainCoreShadowEvidenceSpool(
+            directory: directory,
+            readyBatchReader: { try blocker.read($0) }
+        )
+        let readerFinished = expectation(description: "ready reader releases spool lock")
+        DispatchQueue.global().async {
+            _ = try? spool.nextBatch(sealActive: false)
+            readerFinished.fulfill()
+        }
+        XCTAssertEqual(blocker.started.wait(timeout: .now() + 2), .success)
+
+        let didWrite = expectation(description: "one coalesced writer drain")
+        let drainCallbacks = LockedCounter()
+        let writer = DomainCoreShadowEvidenceWriter(
+            spool: spool,
+            maxPendingSamples: 3,
+            maxWritesPerDrain: 8,
+            retryDelayNanoseconds: 0,
+            didWrite: {
+                drainCallbacks.increment()
+                didWrite.fulfill()
+            }
+        )
+        XCTAssertTrue(writer.enqueue(try XCTUnwrap(makeSample(micros: 1))))
+        XCTAssertTrue(writer.enqueue(try XCTUnwrap(makeSample(micros: 2))))
+        XCTAssertTrue(writer.enqueue(try XCTUnwrap(makeSample(micros: 3))))
+        XCTAssertFalse(writer.enqueue(try XCTUnwrap(makeSample(micros: 4))))
+
+        let backlogged = writer.snapshot()
+        XCTAssertEqual(backlogged.backpressurePolicy, .dropNewest)
+        XCTAssertEqual(backlogged.enqueued, 3)
+        XCTAssertEqual(backlogged.droppedOverflow, 1)
+        XCTAssertEqual(backlogged.queueDepth, 3)
+        XCTAssertNotNil(backlogged.oldestBacklogAgeNanoseconds)
+        XCTAssertNil(backlogged.appendLatencyNanoseconds)
+
+        blocker.release.signal()
+        wait(for: [readerFinished, didWrite], timeout: 2)
+
+        let drained = writer.snapshot()
+        XCTAssertEqual(drained.written, 3)
+        XCTAssertEqual(drained.queueDepth, 0)
+        XCTAssertNil(drained.oldestBacklogAgeNanoseconds)
+        let lastLatency = try XCTUnwrap(drained.appendLatencyNanoseconds)
+        let maximumLatency = try XCTUnwrap(drained.maximumAppendLatencyNanoseconds)
+        XCTAssertGreaterThanOrEqual(maximumLatency, lastLatency)
+        XCTAssertEqual(drainCallbacks.value, 1, "multiple samples must share a bounded drain, not one callback/task each")
+
+        let seedBatch = try XCTUnwrap(spool.nextBatch(sealActive: false))
+        XCTAssertEqual(seedBatch.samples.map(\.legacyMicros), [99])
+        try spool.acknowledge(seedBatch.token)
+        let writtenBatch = try XCTUnwrap(spool.nextBatch())
+        XCTAssertEqual(writtenBatch.samples.map(\.legacyMicros), [1, 2, 3], "accepted samples append durably in FIFO order")
+        writer.shutdown()
+    }
+
+    func testWriterRetryRetainsFailedHeadAheadOfLaterSamples() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let seedSpool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        try seedSpool.append(try XCTUnwrap(makeSample(micros: 99)))
+        _ = try XCTUnwrap(seedSpool.nextBatch())
+
+        let blocker = BlockingReadyBatchReader {
+            try FileManager.default.removeItem(at: directory)
+            try Data("not-a-directory".utf8).write(to: directory)
+        }
+        let spool = try DomainCoreShadowEvidenceSpool(
+            directory: directory,
+            readyBatchReader: { try blocker.read($0) }
+        )
+        let readerFinished = expectation(description: "sabotaging reader releases spool lock")
+        DispatchQueue.global().async {
+            _ = try? spool.nextBatch(sealActive: false)
+            readerFinished.fulfill()
+        }
+        XCTAssertEqual(blocker.started.wait(timeout: .now() + 2), .success)
+
+        let firstFailure = expectation(description: "first append fails")
+        let drained = expectation(description: "retry drains queue")
+        let failures = LockedCounter()
+        let writer = DomainCoreShadowEvidenceWriter(
+            spool: spool,
+            maxPendingSamples: 2,
+            maxWritesPerDrain: 2,
+            retryDelayNanoseconds: 0,
+            didWrite: { drained.fulfill() },
+            writeFailureHandler: {
+                let attempt = failures.increment()
+                if attempt == 1 {
+                    do {
+                        try FileManager.default.removeItem(at: directory)
+                        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    } catch {
+                        XCTFail("failed to restore retry fixture: \(error)")
+                    }
+                    firstFailure.fulfill()
+                }
+            }
+        )
+        XCTAssertTrue(writer.enqueue(try XCTUnwrap(makeSample(micros: 10))))
+        XCTAssertTrue(writer.enqueue(try XCTUnwrap(makeSample(micros: 20))))
+
+        blocker.release.signal()
+        wait(for: [readerFinished, firstFailure, drained], timeout: 2)
+
+        let snapshot = writer.snapshot()
+        XCTAssertEqual(snapshot.writeFailures, 1)
+        XCTAssertEqual(snapshot.written, 2)
+        XCTAssertEqual(snapshot.queueDepth, 0)
+        let batch = try XCTUnwrap(spool.nextBatch())
+        XCTAssertEqual(batch.samples.map(\.legacyMicros), [10, 20], "a failed head must retry before the following sample")
+        writer.shutdown()
+    }
+
+    func testWriterShutdownSynchronouslyRejectsNewSamplesAndLeavesNoBacklog() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let spool = try DomainCoreShadowEvidenceSpool(directory: directory)
+        let writer = DomainCoreShadowEvidenceWriter(spool: spool)
+
+        writer.shutdown()
+
+        XCTAssertFalse(writer.enqueue(try XCTUnwrap(makeSample(micros: 1))))
+        let snapshot = writer.snapshot()
+        XCTAssertEqual(snapshot.enqueued, 0)
+        XCTAssertEqual(snapshot.written, 0)
+        XCTAssertEqual(snapshot.queueDepth, 0)
+        XCTAssertNil(snapshot.oldestBacklogAgeNanoseconds)
+        XCTAssertEqual(try spool.pendingSampleCount(), 0)
+    }
+
     // MARK: - Coordinator re-entrancy and cancel contracts
 
     func testConcurrentFlushIsReentrancyGuardedAndRunsOnce() async throws {
@@ -1806,6 +1948,51 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-shadow-\(UUID().uuidString)", isDirectory: true)
+    }
+}
+
+private final class BlockingReadyBatchReader: @unchecked Sendable {
+    let started = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    private let stateLock = NSLock()
+    private var shouldBlock = true
+    private let afterRelease: @Sendable () throws -> Void
+
+    init(afterRelease: @escaping @Sendable () throws -> Void = {}) {
+        self.afterRelease = afterRelease
+    }
+
+    func read(_ url: URL) throws -> Data {
+        let data = try Data(contentsOf: url)
+        stateLock.lock()
+        let blocksThisRead = shouldBlock
+        shouldBlock = false
+        stateLock.unlock()
+        if blocksThisRead {
+            started.signal()
+            release.wait()
+            try afterRelease()
+        }
+        return data
+    }
+}
+
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    @discardableResult
+    func increment() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        count += 1
+        return count
+    }
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
     }
 }
 

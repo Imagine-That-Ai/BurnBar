@@ -13,6 +13,8 @@ import Foundation
 /// pool, and the runtime does not accumulate autoreleased backing storage the
 /// way the Objective-C runtime does). Generic return and `rethrows` semantics
 /// are preserved so the helper is a drop-in for every call shape.
+import OpenBurnBarKernel
+
 @inlinable
 public func parserAutoReleasePool<Result>(
     _ body: () throws -> Result
@@ -37,70 +39,201 @@ public func parserAutoReleasePool<Result>(
 /// a parser opens a content-bearing file. Metadata-only directory enumeration
 /// remains uncharged; every admitted file is accounted exactly once by its
 /// caller before the first content read.
-struct ParserFileReadGate {
-    let options: LogParseOptions
-    let fileManager: FileManager
+public enum ParserDeferredReason: String, Sendable {
+    case byteBudget
+    case metadataUnavailable
+    case byteCountOverflow
+    case contentReadFailed
+}
 
-    init(options: LogParseOptions, fileManager: FileManager = .default) {
+public struct ParserPassMetricSnapshot: Sendable, Equatable {
+    public let candidateCount: Int
+    public let metadataStatCount: Int
+    public let contentReadCount: Int
+    public let contentReadBytes: Int64
+    public let deferredFileCount: Int
+    public let byteBudgetDeferredCount: Int
+    public let metadataUnavailableDeferredCount: Int
+    public let byteCountOverflowDeferredCount: Int
+    public let contentReadFailedDeferredCount: Int
+    public let elapsedMilliseconds: Double
+}
+
+/// Lock-backed, allocation-free counters for one parser pass. The recorder
+/// never accepts paths or content, so production telemetry cannot leak either.
+public final class ParserPassMetrics: Sendable {
+    private struct State: Sendable {
+        var candidateCount = 0
+        var metadataStatCount = 0
+        var contentReadCount = 0
+        var contentReadBytes: Int64 = 0
+        var byteBudgetDeferredCount = 0
+        var metadataUnavailableDeferredCount = 0
+        var byteCountOverflowDeferredCount = 0
+        var contentReadFailedDeferredCount = 0
+    }
+
+    private let startedAt = ContinuousClock.now
+    private let state = Locked(State())
+
+    public init() {}
+
+    public func recordCandidate(count: Int = 1) {
+        guard count > 0 else { return }
+        state.withLock { $0.candidateCount += count }
+    }
+
+    public func recordMetadataStat(count: Int = 1) {
+        guard count > 0 else { return }
+        state.withLock { $0.metadataStatCount += count }
+    }
+
+    public func recordContentRead(count: Int = 1, bytes: Int64) {
+        guard count > 0 else { return }
+        state.withLock { state in
+            state.contentReadCount += count
+            state.contentReadBytes += max(0, bytes)
+        }
+    }
+
+    public func recordDeferred(_ reason: ParserDeferredReason) {
+        state.withLock { state in
+            switch reason {
+            case .byteBudget:
+                state.byteBudgetDeferredCount += 1
+            case .metadataUnavailable:
+                state.metadataUnavailableDeferredCount += 1
+            case .byteCountOverflow:
+                state.byteCountOverflowDeferredCount += 1
+            case .contentReadFailed:
+                state.contentReadFailedDeferredCount += 1
+            }
+        }
+    }
+
+    public func snapshot() -> ParserPassMetricSnapshot {
+        let counters = state.withLock { $0 }
+        let elapsed = startedAt.duration(to: ContinuousClock.now).components
+        let elapsedMilliseconds = Double(elapsed.seconds) * 1_000
+            + Double(elapsed.attoseconds) / 1_000_000_000_000_000
+        let deferredFileCount = counters.byteBudgetDeferredCount
+            + counters.metadataUnavailableDeferredCount
+            + counters.byteCountOverflowDeferredCount
+            + counters.contentReadFailedDeferredCount
+        return ParserPassMetricSnapshot(
+            candidateCount: counters.candidateCount,
+            metadataStatCount: counters.metadataStatCount,
+            contentReadCount: counters.contentReadCount,
+            contentReadBytes: counters.contentReadBytes,
+            deferredFileCount: deferredFileCount,
+            byteBudgetDeferredCount: counters.byteBudgetDeferredCount,
+            metadataUnavailableDeferredCount: counters.metadataUnavailableDeferredCount,
+            byteCountOverflowDeferredCount: counters.byteCountOverflowDeferredCount,
+            contentReadFailedDeferredCount: counters.contentReadFailedDeferredCount,
+            elapsedMilliseconds: elapsedMilliseconds
+        )
+    }
+}
+
+public struct ParserFileReadGate {
+    public let options: LogParseOptions
+    public let fileManager: FileManager
+
+    public init(options: LogParseOptions, fileManager: FileManager = .default) {
         self.options = options
         self.fileManager = fileManager
     }
 
-    func shouldRead(_ file: URL, fallbackModificationDate: Date? = nil) throws -> Bool {
+    public func shouldRead(_ file: URL, fallbackModificationDate: Date? = nil) throws -> Bool {
         try options.resourceGovernor?.checkpoint()
+        options.metrics?.recordCandidate()
+        options.metrics?.recordMetadataStat()
 
         let attributes = try? fileManager.attributesOfItem(atPath: file.path)
         let modificationDate = attributes?[.modificationDate] as? Date ?? fallbackModificationDate
         if let boundary = options.minimumFileModificationDate {
             guard let modificationDate else {
-                options.resourceGovernor?.recordDeferredFile()
+                recordDeferred(.metadataUnavailable)
                 return false
             }
             guard modificationDate >= boundary else { return false }
         }
 
-        guard let governor = options.resourceGovernor else { return true }
-        guard let size = attributes?[.size] as? NSNumber else {
-            governor.recordDeferredFile()
+        let size = (attributes?[.size] as? NSNumber)?.int64Value
+        guard let governor = options.resourceGovernor else {
+            options.metrics?.recordContentRead(bytes: max(0, size ?? 0))
+            return true
+        }
+        guard let size else {
+            recordDeferred(.metadataUnavailable)
             return false
         }
-        return governor.admitFile(estimatedBytes: max(0, size.int64Value))
+        let admittedBytes = max(0, size)
+        guard governor.admitFile(estimatedBytes: admittedBytes) else {
+            options.metrics?.recordDeferred(.byteBudget)
+            return false
+        }
+        options.metrics?.recordContentRead(bytes: admittedBytes)
+        return true
     }
 
     /// Atomically admits the files needed to parse one logical session. This
     /// avoids consuming the budget on a sidecar and then deferring its primary
-    /// transcript forever on every subsequent pass.
-    func shouldRead(_ files: [URL]) throws -> Bool {
+    /// transcript forever on every subsequent pass. A session crosses the
+    /// modification boundary when any of its inputs changed; older sidecars do
+    /// not suppress a newer primary transcript.
+    public func shouldRead(_ files: [URL], candidateAlreadyRecorded: Bool = false) throws -> Bool {
         guard !files.isEmpty else { return true }
         try options.resourceGovernor?.checkpoint()
+        if !candidateAlreadyRecorded {
+            options.metrics?.recordCandidate()
+        }
 
         var totalBytes: Int64 = 0
+        var boundaryPassed = options.minimumFileModificationDate == nil
         for file in files {
+            options.metrics?.recordMetadataStat()
             let attributes = try? fileManager.attributesOfItem(atPath: file.path)
             if let boundary = options.minimumFileModificationDate {
                 guard let modificationDate = attributes?[.modificationDate] as? Date else {
-                    options.resourceGovernor?.recordDeferredFile()
+                    recordDeferred(.metadataUnavailable)
                     return false
                 }
-                guard modificationDate >= boundary else { return false }
+                if modificationDate >= boundary {
+                    boundaryPassed = true
+                }
             }
 
             if options.resourceGovernor != nil {
                 guard let size = attributes?[.size] as? NSNumber else {
-                    options.resourceGovernor?.recordDeferredFile()
+                    recordDeferred(.metadataUnavailable)
                     return false
                 }
                 let (sum, overflow) = totalBytes.addingReportingOverflow(max(0, size.int64Value))
                 guard !overflow else {
-                    options.resourceGovernor?.recordDeferredFile()
+                    recordDeferred(.byteCountOverflow)
                     return false
                 }
                 totalBytes = sum
             }
         }
 
-        guard let governor = options.resourceGovernor else { return true }
-        return governor.admitFile(estimatedBytes: totalBytes)
+        guard boundaryPassed else { return false }
+        guard let governor = options.resourceGovernor else {
+            options.metrics?.recordContentRead(count: files.count, bytes: totalBytes)
+            return true
+        }
+        guard governor.admitFile(estimatedBytes: totalBytes) else {
+            options.metrics?.recordDeferred(.byteBudget)
+            return false
+        }
+        options.metrics?.recordContentRead(count: files.count, bytes: totalBytes)
+        return true
+    }
+
+    private func recordDeferred(_ reason: ParserDeferredReason) {
+        options.resourceGovernor?.recordDeferredFile()
+        options.metrics?.recordDeferred(reason)
     }
 }
 

@@ -73,16 +73,23 @@ final class JunieParser: LogParser, Sendable {
             return ParseResult(usages: [], conversations: [])
         }
 
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var parseCache = cacheStore.load()
         var activePaths = Set<String>()
         var cacheMutated = false
 
-        let indexProjects = sessionIndexProjects(sessionsURL: sessionsURL)
+        let indexURL = sessionsURL.appendingPathComponent("index.jsonl")
+        let indexProjects: [String: String]
+        if fileManager.fileExists(atPath: indexURL.path), try gate.shouldRead(indexURL) {
+            indexProjects = sessionIndexProjects(sessionsURL: sessionsURL)
+        } else {
+            indexProjects = [:]
+        }
 
-        let sessionDirs = (try? fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) // try?-ok(unreadable sessions root yields empty result)
-            .map { $0.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } } // try?-ok(non-dir filtered out)
+        let sessionDirs = (try? fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey]))
+            .map { $0.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } }
             ?? []
 
         for sessionDir in sessionDirs {
@@ -93,15 +100,36 @@ final class JunieParser: LogParser, Sendable {
 
             let cacheKey = eventsFile.standardizedFileURL.path
             activePaths.insert(cacheKey)
+            options.metrics?.recordCandidate()
+            options.metrics?.recordMetadataStat(count: 2)
 
             let signature = compositeSignature(eventsFile: eventsFile, stateFile: stateFile)
-            if let minimumFileModificationDate = options.minimumFileModificationDate,
-               signature == nil
-                || Date(timeIntervalSince1970: signature?.primary.modifiedAt ?? 0) < minimumFileModificationDate {
-                continue
+            if let minimumFileModificationDate = options.minimumFileModificationDate {
+                guard let signature else {
+                    options.resourceGovernor?.recordDeferredFile()
+                    options.metrics?.recordDeferred(.metadataUnavailable)
+                    continue
+                }
+                guard Date(timeIntervalSince1970: signature.primary.modifiedAt) >= minimumFileModificationDate else {
+                    continue
+                }
             }
 
+            var sessionFiles = [eventsFile]
+            if fileManager.fileExists(atPath: stateFile.path) { sessionFiles.append(stateFile) }
+
             if let signature, let cached = parseCache.fileEntries[cacheKey], cached.signature == signature {
+                if options.includeConversationBodies, cached.conversation == nil,
+                   !(try gate.shouldRead(sessionFiles, candidateAlreadyRecorded: true)) {
+                    appendEntry(
+                        usage: cached.usage,
+                        conversation: nil,
+                        includeConversation: false,
+                        usages: &usages,
+                        conversations: &conversations
+                    )
+                    continue
+                }
                 let cached = updateCacheEntry(
                     cached,
                     signature: signature,
@@ -121,29 +149,42 @@ final class JunieParser: LogParser, Sendable {
                     usages: &usages,
                     conversations: &conversations
                 )
-            } else {
-                // try?-ok(best-effort session parse)
-                let parsed = try? parseSession(
-                    sessionId: sessionId,
-                    eventsFile: eventsFile,
-                    stateFile: stateFile,
-                    indexProjectPath: indexProjects[sessionId]
-                )
-                appendEntry(
-                    usage: parsed?.usage,
-                    conversation: parsed?.conversation,
-                    includeConversation: options.includeConversationBodies,
-                    usages: &usages,
-                    conversations: &conversations
-                )
-                if let signature {
-                    parseCache.fileEntries[cacheKey] = JunieCacheEntry(
-                        signature: signature,
-                        usage: parsed?.usage,
-                        conversation: options.includeConversationBodies ? parsed?.conversation : nil
+                continue
+            }
+
+            guard try gate.shouldRead(sessionFiles, candidateAlreadyRecorded: true) else {
+                if let cached = parseCache.fileEntries[cacheKey] {
+                    appendEntry(
+                        usage: cached.usage,
+                        conversation: nil,
+                        includeConversation: false,
+                        usages: &usages,
+                        conversations: &conversations
                     )
-                    cacheMutated = true
                 }
+                continue
+            }
+
+            let parsed = try? parseSession(
+                sessionId: sessionId,
+                eventsFile: eventsFile,
+                stateFile: stateFile,
+                indexProjectPath: indexProjects[sessionId]
+            )
+            appendEntry(
+                usage: parsed?.usage,
+                conversation: parsed?.conversation,
+                includeConversation: options.includeConversationBodies,
+                usages: &usages,
+                conversations: &conversations
+            )
+            if let signature {
+                parseCache.fileEntries[cacheKey] = JunieCacheEntry(
+                    signature: signature,
+                    usage: parsed?.usage,
+                    conversation: options.includeConversationBodies ? parsed?.conversation : nil
+                )
+                cacheMutated = true
             }
         }
 

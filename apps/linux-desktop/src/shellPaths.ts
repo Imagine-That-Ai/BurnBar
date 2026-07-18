@@ -2,7 +2,7 @@ export function displayLinuxSupportDir(home = '~'): string {
   return `${home}/.local/share/openburnbar`;
 }
 
-export function displayLinuxSocketPath(home = '~'): string {
+export function displayLinuxSocketPath(): string {
   return '$XDG_RUNTIME_DIR/openburnbar/daemon.sock';
 }
 

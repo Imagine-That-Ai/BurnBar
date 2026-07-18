@@ -238,6 +238,43 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         XCTAssertEqual(checkpointAfterFailure.checkpointToken, checkpointBeforeFailure.checkpointToken)
     }
 
+    func test_runConversationIndexing_cancellationDoesNotAdvanceCheckpoint() async throws {
+        let store = try makeInMemoryStore()
+        let mtime = Date(timeIntervalSince1970: 1_700_000_000)
+        let orchestrator = makeOrchestrator(store: store)
+        let initialParser = StubParser(
+            provider: .factory,
+            conversations: [
+                makeFactoryConversationRecord(
+                    id: "Factory:cancellation-watermark",
+                    indexedAt: mtime,
+                    fileModifiedAt: mtime
+                )
+            ]
+        )
+        _ = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: initialParser],
+            dataStore: store,
+            orchestrator: orchestrator,
+            indexingEnabled: true
+        )
+        let checkpointBeforeCancellation = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
+        let before = try XCTUnwrap(checkpointBeforeCancellation)
+
+        let result = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: CancellingParser()],
+            dataStore: store,
+            orchestrator: orchestrator,
+            indexingEnabled: true
+        )
+
+        let checkpointAfterCancellation = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
+        let after = try XCTUnwrap(checkpointAfterCancellation)
+        XCTAssertTrue(result.errors.isEmpty, "cooperative cancellation is not reported as a parser defect")
+        XCTAssertEqual(after.lastProcessedAt, before.lastProcessedAt)
+        XCTAssertEqual(after.checkpointToken, before.checkpointToken)
+    }
+
     // MARK: - 7. Old-mtime new ID is indexed despite old fileModifiedAt
 
     func test_runConversationIndexing_oldMtimeNewID_isIndexed() async throws {
@@ -541,9 +578,6 @@ private struct StubParser: LogParser {
     let provider: AgentProvider
     let conversations: [ConversationRecord]
 
-    func parse() async throws -> ParseResult {
-        ParseResult(usages: [], conversations: conversations)
-    }
 
     func parse(options: LogParseOptions) async throws -> ParseResult {
         ParseResult(usages: [], conversations: conversations)
@@ -553,12 +587,17 @@ private struct StubParser: LogParser {
 private struct FailingParser: LogParser {
     let provider: AgentProvider = .factory
 
-    func parse() async throws -> ParseResult {
-        throw OpenBurnBarError.parse("test", message: "simulated parser failure")
-    }
 
     func parse(options: LogParseOptions) async throws -> ParseResult {
         throw OpenBurnBarError.parse("test", message: "simulated parser failure")
+    }
+}
+
+private struct CancellingParser: LogParser {
+    let provider: AgentProvider = .factory
+
+    func parse(options: LogParseOptions) async throws -> ParseResult {
+        throw CancellationError()
     }
 }
 
@@ -566,9 +605,6 @@ private struct DeferringParser: LogParser {
     let provider: AgentProvider
     let conversations: [ConversationRecord]
 
-    func parse() async throws -> ParseResult {
-        ParseResult(usages: [], conversations: conversations)
-    }
 
     func parse(options: LogParseOptions) async throws -> ParseResult {
         options.resourceGovernor?.recordDeferredFile()

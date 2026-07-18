@@ -151,18 +151,21 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
         self.sessionsDirectory = sessionsDirectory
     }
 
-    func parse() async throws -> OpenBurnBarCore.ParseResult {
+    func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
         guard fileManager.fileExists(atPath: sessionsDirectory.path) else {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
+        let gate = OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fileManager)
         let files = sessionFiles(in: sessionsDirectory)
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
         var usages: [TokenUsage] = []
 
         for file in files {
-            guard let parsed = parseSession(file: file) else { continue }
-            conversations.append(parsed.conversation)
+            guard try gate.shouldRead(file), let parsed = parseSession(file: file) else { continue }
+            if options.includeConversationBodies {
+                conversations.append(parsed.conversation)
+            }
             if let usage = parsed.usage {
                 usages.append(usage)
             }

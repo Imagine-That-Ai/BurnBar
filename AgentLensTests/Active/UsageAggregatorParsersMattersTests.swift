@@ -391,64 +391,50 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         )
     }
 
-    func testParserRegistryBoundedParsesAreOptionsAwareOrFailClosedBeforeReading() async {
-        let expectedFailClosedProviders: Set<AgentProvider> = [
-            .copilot, .aider, .cursor, .openCode, .piAgent,
-            .zai, .minimax, .openClaw, .ollama, .junie
-        ]
-        let expectedOptionsAwareProviders: Set<AgentProvider> = [
-            .factory, .claudeCode, .cursorAgent, .codex, .kimi, .xAI,
+    func testParserRegistryEveryEntryHonorsGovernedFutureBoundaryWithoutFallback() async {
+        let expectedProviders: Set<AgentProvider> = [
+            .factory, .claudeCode, .copilot, .aider, .cursor, .cursorAgent,
+            .codex, .openCode, .piAgent, .zai, .minimax, .kimi, .xAI,
             .cline, .kiloCode, .rooCode, .forgeDev, .augment, .hermes,
-            .geminiCLI, .antigravity, .goose, .windsurf, .warp
+            .geminiCLI, .antigravity, .goose, .openClaw, .windsurf, .warp,
+            .ollama, .junie
         ]
         let parsers = ParserRegistry.defaultParsers()
         let registeredProviders = Set(parsers.keys)
 
-        XCTAssertEqual(parsers.count, 27)
-        XCTAssertEqual(
-            registeredProviders,
-            expectedFailClosedProviders.union(expectedOptionsAwareProviders),
-            "every production registry entry must have an explicit bounded-parse disposition"
-        )
+        XCTAssertEqual(registeredProviders, expectedProviders)
 
         for provider in registeredProviders.sorted(by: { $0.rawValue < $1.rawValue }) {
             guard let parser = parsers[provider] else {
                 XCTFail("missing parser for \(provider.rawValue)")
                 continue
             }
+            XCTAssertEqual(parser.provider, provider)
             let governor = ParserResourceGovernor(
                 limits: ParserResourceLimits(memoryCeilingBytes: 1),
                 footprintProvider: { 2 }
             )
-            let options = LogParseOptions(
-                includeConversationBodies: false,
-                minimumFileModificationDate: .distantFuture,
-                resourceGovernor: governor
-            )
 
-            if expectedFailClosedProviders.contains(provider) {
-                do {
-                    _ = try await parser.parse(options: options)
-                    XCTFail("\(provider.rawValue) must reject bounded parsing before its legacy parser reads content")
-                } catch let error as ParserOptionsUnsupported {
-                    XCTAssertEqual(error.provider, provider)
-                    XCTAssertEqual(governor.consumedBytes, 0, "\(provider.rawValue) read admission must not occur")
-                    XCTAssertEqual(governor.deferredFileCount, 1, "\(provider.rawValue) must freeze its watermark")
-                } catch {
-                    XCTFail("\(provider.rawValue) returned unexpected bounded-parse error: \(error)")
-                }
-            } else {
-                do {
-                    _ = try await parser.parse(options: options)
-                } catch is ParserResourceExceeded {
-                    // A discovered file reached the options-aware gate, which
-                    // enforced the injected hard ceiling before content read.
-                } catch is ParserOptionsUnsupported {
-                    XCTFail("\(provider.rawValue) fell through to the legacy LogParser default")
-                } catch {
-                    XCTFail("\(provider.rawValue) returned unexpected bounded-parse error: \(error)")
-                }
+            do {
+                _ = try await parser.parse(options: LogParseOptions(
+                    includeConversationBodies: false,
+                    minimumFileModificationDate: .distantFuture,
+                    resourceGovernor: governor
+                ))
+            } catch is ParserResourceExceeded {
+                // A locally present candidate reached the governed checkpoint
+                // before any content admission. An empty fixture root returns
+                // normally; both paths prove options dispatch for that entry.
+            } catch is ParserOptionsUnsupported {
+                XCTFail("\(provider.rawValue) reached an obsolete ungoverned fallback")
+            } catch {
+                XCTFail("\(provider.rawValue) returned unexpected governed-parse error: \(error)")
             }
+            XCTAssertEqual(
+                governor.consumedBytes,
+                0,
+                "the stable future-boundary fixture must not admit content for \(provider.rawValue)"
+            )
         }
     }
 

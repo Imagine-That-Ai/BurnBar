@@ -69,20 +69,31 @@ public final class FactoryDroidParser: LogParser, Sendable {
                 let metadataFile = projectDir.appendingPathComponent("\(baseName).metadata.json")
                 let cacheKey = cachePath(for: jsonlFile)
                 activePaths.insert(cacheKey)
+                options.metrics?.recordCandidate()
+                options.metrics?.recordMetadataStat(count: 3)
+
                 let signature = compositeSignature(
                     jsonlFile: jsonlFile,
                     settingsFile: settingsFile,
                     metadataFile: metadataFile
                 )
-
-                if let boundary = options.minimumFileModificationDate,
-                   signature == nil || Date(timeIntervalSince1970: signature?.primary.modifiedAt ?? 0) < boundary {
-                    continue
-                }
-
                 let cached = signature.flatMap { signature in
                     parseCache.fileEntries[cacheKey].flatMap { $0.signature == signature ? $0 : nil }
                 }
+
+                if let boundary = options.minimumFileModificationDate {
+                    guard let signature else {
+                        options.resourceGovernor?.recordDeferredFile()
+                        options.metrics?.recordDeferred(.metadataUnavailable)
+                        continue
+                    }
+                    let latestModification = max(
+                        signature.primary.modifiedAt,
+                        max(signature.settings?.modifiedAt ?? 0, signature.metadata?.modifiedAt ?? 0)
+                    )
+                    guard Date(timeIntervalSince1970: latestModification) >= boundary else { continue }
+                }
+
                 if let cached, !options.includeConversationBodies {
                     appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
                     continue
@@ -98,7 +109,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
                 if fileManager.fileExists(atPath: metadataFile.path) {
                     sessionFiles.append(metadataFile)
                 }
-                guard try gate.shouldRead(sessionFiles) else {
+                guard try gate.shouldRead(sessionFiles, candidateAlreadyRecorded: true) else {
                     if let cached {
                         appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
                     }
@@ -118,6 +129,10 @@ public final class FactoryDroidParser: LogParser, Sendable {
                         cacheKey: cacheKey,
                         cacheMutated: &cacheMutated
                     )
+                    if refreshed.conversation == nil {
+                        options.resourceGovernor?.recordDeferredFile()
+                        options.metrics?.recordDeferred(.contentReadFailed)
+                    }
                     appendCached(refreshed, includeConversation: true, usages: &usages, conversations: &conversations)
                 } else {
                     let parsed = try? parseSession(
@@ -126,6 +141,10 @@ public final class FactoryDroidParser: LogParser, Sendable {
                         settingsFile: settingsFile,
                         projectName: projectName
                     )
+                    if parsed == nil {
+                        options.resourceGovernor?.recordDeferredFile()
+                        options.metrics?.recordDeferred(.contentReadFailed)
+                    }
                     appendParsed(
                         parsed,
                         includeConversation: options.includeConversationBodies,

@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 import OpenBurnBarKernel
 import OpenBurnBarQuota
@@ -594,6 +595,262 @@ final class DomainCoreShadowEvidenceSpool: Sendable {
     }
 }
 
+final class DomainCoreShadowEvidenceWriter: @unchecked Sendable {
+    enum BackpressurePolicy: String, Sendable {
+        case dropNewest = "drop_newest"
+    }
+
+    struct Snapshot: Equatable, Sendable {
+        let backpressurePolicy: BackpressurePolicy
+        let enqueued: UInt64
+        let written: UInt64
+        let droppedOverflow: UInt64
+        let writeFailures: UInt64
+        let queueDepth: Int
+        let oldestBacklogAgeNanoseconds: UInt64?
+        let appendLatencyNanoseconds: UInt64?
+        let maximumAppendLatencyNanoseconds: UInt64?
+    }
+
+    private struct PendingWrite: Sendable {
+        let sample: DomainCoreShadowSampleV3
+        let enqueuedAtUptimeNanoseconds: UInt64
+    }
+
+    private struct State: Sendable {
+        var queue: [PendingWrite?]
+        var head = 0
+        var queuedCount = 0
+        var inFlight: PendingWrite?
+        var writerScheduled = false
+        var stopped = false
+        var enqueued: UInt64 = 0
+        var written: UInt64 = 0
+        var droppedOverflow: UInt64 = 0
+        var writeFailures: UInt64 = 0
+        var appendLatencyNanoseconds: UInt64?
+        var maximumAppendLatencyNanoseconds: UInt64?
+
+        init(capacity: Int) {
+            self.queue = Array(repeating: nil, count: capacity)
+        }
+
+        var depth: Int {
+            queuedCount + (inFlight == nil ? 0 : 1)
+        }
+
+        var oldestEnqueuedAtUptimeNanoseconds: UInt64? {
+            if let inFlight {
+                return inFlight.enqueuedAtUptimeNanoseconds
+            }
+            guard queuedCount > 0 else { return nil }
+            return queue[head]?.enqueuedAtUptimeNanoseconds
+        }
+
+        mutating func enqueue(_ pending: PendingWrite) {
+            let index = (head + queuedCount) % queue.count
+            queue[index] = pending
+            queuedCount += 1
+        }
+
+        mutating func nextPendingWrite() -> PendingWrite? {
+            if let inFlight {
+                return inFlight
+            }
+            guard queuedCount > 0, let pending = queue[head] else { return nil }
+            queue[head] = nil
+            head = (head + 1) % queue.count
+            queuedCount -= 1
+            inFlight = pending
+            return pending
+        }
+
+        mutating func removeAllPendingWrites() {
+            for offset in 0..<queuedCount {
+                queue[(head + offset) % queue.count] = nil
+            }
+            head = 0
+            queuedCount = 0
+            inFlight = nil
+        }
+    }
+
+    private let spool: DomainCoreShadowEvidenceSpool
+    private let writerQueue: DispatchQueue
+    private let state: OSAllocatedUnfairLock<State>
+    private let maxWritesPerDrain: Int
+    private let retryDelayNanoseconds: UInt64
+    private let didWrite: @Sendable () -> Void
+    private let writeFailureHandler: @Sendable () -> Void
+
+    init(
+        spool: DomainCoreShadowEvidenceSpool,
+        maxPendingSamples: Int = 256,
+        maxWritesPerDrain: Int = 32,
+        retryDelayNanoseconds: UInt64 = 1_000_000_000,
+        didWrite: @escaping @Sendable () -> Void = {},
+        writeFailureHandler: @escaping @Sendable () -> Void = {}
+    ) {
+        precondition(maxPendingSamples > 0 && maxWritesPerDrain > 0)
+        precondition(retryDelayNanoseconds <= UInt64(Int.max))
+        self.spool = spool
+        self.writerQueue = DispatchQueue(
+            label: "app.openburnbar.domain-core-shadow-evidence-writer",
+            qos: .utility
+        )
+        self.state = OSAllocatedUnfairLock(initialState: State(capacity: maxPendingSamples))
+        self.maxWritesPerDrain = maxWritesPerDrain
+        self.retryDelayNanoseconds = retryDelayNanoseconds
+        self.didWrite = didWrite
+        self.writeFailureHandler = writeFailureHandler
+    }
+
+    @discardableResult
+    func enqueue(_ sample: DomainCoreShadowSampleV3) -> Bool {
+        let pending = PendingWrite(
+            sample: sample,
+            enqueuedAtUptimeNanoseconds: DispatchTime.now().uptimeNanoseconds
+        )
+        let result = state.withLockUnchecked { state -> (accepted: Bool, startWriter: Bool) in
+            guard !state.stopped else { return (false, false) }
+            guard state.depth < state.queue.count else {
+                Self.increment(&state.droppedOverflow)
+                return (false, false)
+            }
+            state.enqueue(pending)
+            Self.increment(&state.enqueued)
+            guard !state.writerScheduled else { return (true, false) }
+            state.writerScheduled = true
+            return (true, true)
+        }
+        if result.startWriter {
+            writerQueue.async { [weak self] in
+                self?.drainBatch()
+            }
+        }
+        return result.accepted
+    }
+
+    func snapshot() -> Snapshot {
+        let now = DispatchTime.now().uptimeNanoseconds
+        return state.withLockUnchecked { state in
+            Snapshot(
+                backpressurePolicy: .dropNewest,
+                enqueued: state.enqueued,
+                written: state.written,
+                droppedOverflow: state.droppedOverflow,
+                writeFailures: state.writeFailures,
+                queueDepth: state.depth,
+                oldestBacklogAgeNanoseconds: state.oldestEnqueuedAtUptimeNanoseconds.map {
+                    now >= $0 ? now - $0 : 0
+                },
+                appendLatencyNanoseconds: state.appendLatencyNanoseconds,
+                maximumAppendLatencyNanoseconds: state.maximumAppendLatencyNanoseconds
+            )
+        }
+    }
+
+    func shutdown() {
+        state.withLockUnchecked { state in
+            state.stopped = true
+            state.removeAllPendingWrites()
+            state.writerScheduled = false
+        }
+    }
+
+    deinit {
+        shutdown()
+    }
+
+    private func drainBatch() {
+        var wroteAny = false
+        for _ in 0..<maxWritesPerDrain {
+            guard let pending = state.withLockUnchecked({ state -> PendingWrite? in
+                guard !state.stopped else { return nil }
+                return state.nextPendingWrite()
+            }) else {
+                finishDrain(wroteAny: wroteAny)
+                return
+            }
+
+            do {
+                try spool.append(pending.sample)
+            } catch {
+                let shouldRetry = state.withLockUnchecked { state -> Bool in
+                    Self.increment(&state.writeFailures)
+                    return !state.stopped
+                }
+                writeFailureHandler()
+                if wroteAny {
+                    didWrite()
+                }
+                if shouldRetry {
+                    writerQueue.asyncAfter(
+                        deadline: .now() + .nanoseconds(Int(retryDelayNanoseconds))
+                    ) { [weak self] in
+                        self?.drainBatch()
+                    }
+                } else {
+                    stopWriter()
+                }
+                return
+            }
+
+            let completedAt = DispatchTime.now().uptimeNanoseconds
+            state.withLockUnchecked { state in
+                state.inFlight = nil
+                Self.increment(&state.written)
+                let latency = completedAt >= pending.enqueuedAtUptimeNanoseconds
+                    ? completedAt - pending.enqueuedAtUptimeNanoseconds
+                    : 0
+                state.appendLatencyNanoseconds = latency
+                state.maximumAppendLatencyNanoseconds = max(
+                    state.maximumAppendLatencyNanoseconds ?? 0,
+                    latency
+                )
+            }
+            wroteAny = true
+        }
+        finishDrain(wroteAny: wroteAny)
+    }
+
+    private func finishDrain(wroteAny: Bool) {
+        if wroteAny {
+            didWrite()
+        }
+        let shouldContinue = state.withLockUnchecked { state -> Bool in
+            if state.stopped {
+                state.removeAllPendingWrites()
+                state.writerScheduled = false
+                return false
+            }
+            if state.depth == 0 {
+                state.writerScheduled = false
+                return false
+            }
+            return true
+        }
+        if shouldContinue {
+            writerQueue.async { [weak self] in
+                self?.drainBatch()
+            }
+        }
+    }
+
+    private func stopWriter() {
+        state.withLockUnchecked { state in
+            state.removeAllPendingWrites()
+            state.writerScheduled = false
+        }
+    }
+
+    private static func increment(_ value: inout UInt64) {
+        if value < UInt64.max {
+            value += 1
+        }
+    }
+}
+
 protocol DomainCoreShadowSampleSubmitting: Sendable {
     func submit(_ samples: [DomainCoreShadowSampleV3]) async throws
 }
@@ -625,14 +882,20 @@ enum DomainCoreShadowAcknowledgementValidator {
     }
 }
 
-actor DomainCoreShadowEvidenceUploadCoordinator {
+final class DomainCoreShadowEvidenceUploadCoordinator: @unchecked Sendable {
+    private struct State: Sendable {
+        var flushing = false
+        var scheduledDeadlineUptimeNanoseconds: UInt64?
+        var stopped = false
+    }
+
     private let spool: DomainCoreShadowEvidenceSpool
     private let submitter: any DomainCoreShadowSampleSubmitting
     private let activeChannel: String
     private let activeCandidate: DomainCoreCandidateIdentity
-    private var flushing = false
-    private var scheduledFlush: Task<Void, Never>?
     private let debounceNanoseconds: UInt64
+    private let state = OSAllocatedUnfairLock(initialState: State())
+    private let timer: DispatchSourceTimer
 
     init(
         spool: DomainCoreShadowEvidenceSpool,
@@ -642,36 +905,85 @@ actor DomainCoreShadowEvidenceUploadCoordinator {
         debounceNanoseconds: UInt64 = 5_000_000_000
     ) {
         precondition(activeChannel == "internal" || activeChannel == "beta")
+        precondition(debounceNanoseconds <= UInt64(Int.max))
         self.spool = spool
         self.submitter = submitter
         self.activeChannel = activeChannel
         self.activeCandidate = activeCandidate
         self.debounceNanoseconds = debounceNanoseconds
+        let timer = DispatchSource.makeTimerSource(
+            queue: DispatchQueue(
+                label: "app.openburnbar.domain-core-shadow-upload-timer",
+                qos: .utility
+            )
+        )
+        self.timer = timer
+        timer.setEventHandler { [weak self] in
+            self?.timerFired()
+        }
+        timer.activate()
     }
 
-    func scheduleFlush() {
-        scheduledFlush?.cancel()
-        scheduledFlush = Task { [debounceNanoseconds] in
-            do {
-                try await Task.sleep(nanoseconds: debounceNanoseconds)
-            } catch {
-                return
-            }
-            guard !Task.isCancelled else { return }
-            await self.runScheduledFlush()
+    deinit {
+        state.withLockUnchecked { state in
+            state.stopped = true
+            state.scheduledDeadlineUptimeNanoseconds = nil
+        }
+        timer.setEventHandler {}
+        timer.cancel()
+    }
+
+    func requestFlush() {
+        let now = DispatchTime.now().uptimeNanoseconds
+        let sum = now.addingReportingOverflow(debounceNanoseconds)
+        let deadline = sum.overflow ? UInt64.max : sum.partialValue
+        let shouldSchedule = state.withLockUnchecked { state -> Bool in
+            guard !state.stopped else { return false }
+            state.scheduledDeadlineUptimeNanoseconds = deadline
+            return true
+        }
+        if shouldSchedule {
+            timer.schedule(
+                deadline: .now() + .nanoseconds(Int(debounceNanoseconds)),
+                repeating: .never
+            )
         }
     }
 
-    private func runScheduledFlush() async {
-        scheduledFlush = nil
-        await flush()
+    func scheduleFlush() async {
+        requestFlush()
+    }
+
+    private func timerFired() {
+        let now = DispatchTime.now().uptimeNanoseconds
+        let action = state.withLockUnchecked { state -> (flush: Bool, remaining: UInt64?) in
+            guard !state.stopped, let deadline = state.scheduledDeadlineUptimeNanoseconds else {
+                return (false, nil)
+            }
+            if now < deadline {
+                return (false, deadline - now)
+            }
+            state.scheduledDeadlineUptimeNanoseconds = nil
+            return (true, nil)
+        }
+        if let remaining = action.remaining {
+            timer.schedule(deadline: .now() + .nanoseconds(Int(remaining)), repeating: .never)
+        } else if action.flush {
+            Task { [weak self] in
+                await self?.flush()
+            }
+        }
     }
 
     func flush() async {
-        guard !flushing else { return }
-        scheduledFlush?.cancel()
-        scheduledFlush = nil
-        flushing = true
+        let shouldFlush = state.withLockUnchecked { state -> Bool in
+            guard !state.stopped, !state.flushing else { return false }
+            state.flushing = true
+            state.scheduledDeadlineUptimeNanoseconds = nil
+            return true
+        }
+        guard shouldFlush else { return }
+
         do {
             var sealActive = true
             while let batch = try spool.nextBatch(
@@ -686,10 +998,12 @@ actor DomainCoreShadowEvidenceUploadCoordinator {
         } catch {
             AppLogger.shared.error("domain_core_shadow_upload", metadata: ["status": "retry_pending"])
         }
-        flushing = false
+        state.withLockUnchecked { state in
+            state.flushing = false
+        }
         do {
             if try spool.pendingSampleCount() > 0 {
-                scheduleFlush()
+                requestFlush()
             }
         } catch {
             AppLogger.shared.error("domain_core_shadow_upload", metadata: ["status": "pending_count_failed"])
@@ -716,7 +1030,7 @@ final class FirebaseDomainCoreShadowSampleSubmitter: DomainCoreShadowSampleSubmi
 final class MacDomainCoreShadowEvidenceRecorder: Sendable {
     private let channel: String?
     private let candidate: DomainCoreCandidateIdentity?
-    private let spool: DomainCoreShadowEvidenceSpool?
+    private let writer: DomainCoreShadowEvidenceWriter?
     private let coordinator: DomainCoreShadowEvidenceUploadCoordinator?
     private let loadedIdentity: @Sendable () -> DomainCoreEvidenceLoadedIdentity?
 
@@ -759,9 +1073,10 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
             AppLogger.shared.error("domain_core_shadow_spool", metadata: ["status": "initialization_failed"])
             resolvedSpool = nil
         }
-        self.spool = resolvedSpool
+
+        let resolvedCoordinator: DomainCoreShadowEvidenceUploadCoordinator?
         if let resolvedChannel, let resolvedCandidate, let spool = resolvedSpool, let submitter {
-            self.coordinator = DomainCoreShadowEvidenceUploadCoordinator(
+            resolvedCoordinator = DomainCoreShadowEvidenceUploadCoordinator(
                 spool: spool,
                 submitter: submitter,
                 activeChannel: resolvedChannel,
@@ -770,8 +1085,8 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
             )
         } else {
             #if canImport(FirebaseAuth) && canImport(FirebaseCore) && canImport(FirebaseFunctions)
-                self.coordinator = resolvedChannel.flatMap { activeChannel in resolvedSpool.flatMap { spool in
-                    resolvedCandidate.map { candidate in
+            resolvedCoordinator = resolvedChannel.flatMap { activeChannel in resolvedSpool.flatMap { spool in
+                resolvedCandidate.map { candidate in
                     DomainCoreShadowEvidenceUploadCoordinator(
                         spool: spool,
                         submitter: FirebaseDomainCoreShadowSampleSubmitter(),
@@ -779,14 +1094,45 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
                         activeCandidate: candidate,
                         debounceNanoseconds: debounceNanoseconds
                     )
-                    }
-                } }
+                }
+            } }
             #else
-            self.coordinator = nil
+            resolvedCoordinator = nil
             #endif
         }
-        if let coordinator {
-            Task { await coordinator.flush() }
+        self.coordinator = resolvedCoordinator
+
+        if let spool = resolvedSpool {
+            if let resolvedCoordinator {
+                self.writer = DomainCoreShadowEvidenceWriter(
+                    spool: spool,
+                    didWrite: { [weak resolvedCoordinator] in
+                        resolvedCoordinator?.requestFlush()
+                    },
+                    writeFailureHandler: {
+                        AppLogger.shared.error(
+                            "domain_core_shadow_spool",
+                            metadata: ["status": "append_failed"]
+                        )
+                    }
+                )
+            } else {
+                self.writer = DomainCoreShadowEvidenceWriter(
+                    spool: spool,
+                    writeFailureHandler: {
+                        AppLogger.shared.error(
+                            "domain_core_shadow_spool",
+                            metadata: ["status": "append_failed"]
+                        )
+                    }
+                )
+            }
+        } else {
+            self.writer = nil
+        }
+
+        if let resolvedCoordinator {
+            Task { await resolvedCoordinator.flush() }
         }
         DomainCoreShadowComparisonCollector.configure { [weak self] comparison in
             self?.record(comparison)
@@ -794,7 +1140,7 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
     }
 
     func record(_ comparison: DomainCoreQuotaShadowComparison) {
-        guard let channel, let candidate, let spool,
+        guard let channel, let candidate, let writer,
               let sample = DomainCoreShadowSampleV3(
                   comparison: comparison,
                   channel: channel,
@@ -803,18 +1149,15 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
               ) else {
             return
         }
-        do {
-            try spool.append(sample)
-            if let coordinator {
-                Task { await coordinator.scheduleFlush() }
-            }
-        } catch {
-            AppLogger.shared.error("domain_core_shadow_spool", metadata: ["status": "append_failed"])
-        }
+        writer.enqueue(sample)
+    }
+
+    func snapshot() -> DomainCoreShadowEvidenceWriter.Snapshot? {
+        writer?.snapshot()
     }
 
     private func record(_ comparison: DomainCoreShadowComparison) {
-        guard let channel, let candidate, let spool,
+        guard let channel, let candidate, let writer,
               let sample = DomainCoreShadowSampleV3(
                   comparison: comparison,
                   channel: channel,
@@ -823,14 +1166,7 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
               ) else {
             return
         }
-        do {
-            try spool.append(sample)
-            if let coordinator {
-                Task { await coordinator.scheduleFlush() }
-            }
-        } catch {
-            AppLogger.shared.error("domain_core_shadow_spool", metadata: ["status": "append_failed"])
-        }
+        writer.enqueue(sample)
     }
 
     static func candidateNamespace(_ candidate: DomainCoreCandidateIdentity) -> String {
