@@ -9,13 +9,26 @@ using OpenBurnBar.App.UsageRuntime;
 namespace OpenBurnBar.App.Shell;
 
 /// <summary>
-/// App frame chrome matching macOS <c>DashboardView</c> Command Deck:
-/// section switcher menu + palette + appearance, full-width content frame.
-/// The permanent left destination rail is intentionally gone — Dashboard owns
-/// the Command sidebar (<c>DashboardSidebarView</c> parity).
+/// App frame chrome matching the Linux TopChrome (apps/linux-desktop/src/components/TopChrome.tsx):
+/// command deck (brand + omnibar + kernel + hero + appearance + overflow) over the 7-tab
+/// glass pill strip (chat/providers/database/projects/missions/activity/memory), content below.
+/// Dashboard owns the Command sidebar (not a permanent destination rail).
 /// </summary>
 public sealed partial class AppShell : UserControl
 {
+    /// <summary>The Linux TopTabbar tab set (labels mirror src/topTabMeta.ts), mapped to NavCatalog keys.</summary>
+    private static readonly (string Key, string Label)[] TopTabs =
+    {
+        ("chat", "Chat"),
+        ("dashboard", "Providers"),
+        ("database", "Database"),
+        ("projects", "Projects"),
+        ("missionControl", "Missions"),
+        ("sessionLogs", "Activity"),
+        ("memory", "Memory"),
+    };
+
+    private readonly System.Collections.Generic.List<Button> _tabButtons = new();
     private string? _currentKey;
     private ThemeService? _theme;
     private bool _appearanceBound;
@@ -23,7 +36,8 @@ public sealed partial class AppShell : UserControl
     public AppShell()
     {
         InitializeComponent();
-        BuildSectionMenus();
+        BuildTopTabs();
+        BuildOverflowMenu();
         NavigateFrame(NavCatalog.Default);
     }
 
@@ -61,18 +75,76 @@ public sealed partial class AppShell : UserControl
         NavigateFrame(destination, sessionId);
     }
 
-    private void BuildSectionMenus()
+    private void BuildTopTabs()
     {
-        SectionMenu.Items.Clear();
+        Style normal = (Style)Application.Current.Resources["AuroraGlassTabStyle"];
+        TopTabsHost.ColumnDefinitions.Clear();
+        TopTabsHost.Children.Clear();
+        _tabButtons.Clear();
+
+        for (int i = 0; i < TopTabs.Length; i++)
+        {
+            (string key, string label) = TopTabs[i];
+            TopTabsHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var destination = NavCatalog.Find(key);
+            var button = new Button
+            {
+                Tag = key,
+                Style = normal,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                ToolTipService.ToolTip = destination is null ? label : $"{label} — {destination.Subtitle}",
+                Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    Children =
+                    {
+                        new FontIcon
+                        {
+                            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe MDL2 Assets"),
+                            Glyph = destination?.Glyph ?? "\uE80F",
+                            FontSize = 12,
+                        },
+                        new TextBlock { Text = label, FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold },
+                    },
+                },
+            };
+            button.Click += (_, _) => Navigate(key);
+            Grid.SetColumn(button, i);
+            TopTabsHost.Children.Add(button);
+            _tabButtons.Add(button);
+        }
+
+        ApplyTabSelection(NavCatalog.Default.Key);
+    }
+
+    private void ApplyTabSelection(string activeKey)
+    {
+        Style normal = (Style)Application.Current.Resources["AuroraGlassTabStyle"];
+        Style selected = (Style)Application.Current.Resources["AuroraGlassTabSelectedStyle"];
+        foreach (Button tab in _tabButtons)
+        {
+            tab.Style = (string?)tab.Tag == activeKey ? selected : normal;
+        }
+    }
+
+    private void BuildOverflowMenu()
+    {
         OverflowMenu.Items.Clear();
 
-        // Primary sections in the switcher — macOS DashboardSectionSwitcher lists
-        // chat/quota/database/projects/missions/sessionLogs/memory; Windows NavCatalog
-        // is the ordered catalog (IA-1 adds database/projects as deferred disclosure).
-        // Dashboard stays first (overview home).
+        // The tab strip owns the 7 primary destinations; everything else lives here:
+        // remaining catalog entries (insights/quota/budget/dataControlCenter/switcher/
+        // onboarding), footer (settings), and palette-only auxiliaries (elderWand).
+        var tabKeys = new System.Collections.Generic.HashSet<string>(
+            System.Linq.Enumerable.Select(TopTabs, t => t.Key));
         foreach (var destination in NavCatalog.Menu)
         {
-            SectionMenu.Items.Add(CreateMenuItem(destination));
+            if (!tabKeys.Contains(destination.Key))
+            {
+                OverflowMenu.Items.Add(CreateMenuItem(destination));
+            }
         }
 
         foreach (var destination in NavCatalog.Footer)
@@ -140,22 +212,9 @@ public sealed partial class AppShell : UserControl
 
     private void ApplySectionChrome(NavDestination destination)
     {
-        SectionTitle.Text = destination.Title;
-        SectionGlyph.Glyph = destination.Glyph;
-
-        // Tick mark on the active section menu row.
-        foreach (object raw in SectionMenu.Items)
-        {
-            if (raw is MenuFlyoutItem item)
-            {
-                bool active = (string?)item.Tag == destination.Key;
-                item.Icon = new FontIcon
-                {
-                    FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe MDL2 Assets"),
-                    Glyph = active ? "\uE73E" : (NavCatalog.Find((string?)item.Tag)?.Glyph ?? "\uE80F"),
-                };
-            }
-        }
+        // Linux TopTabbar: selected tab follows the active destination; destinations
+        // outside the tab set (overflow/palette) leave all tabs unselected.
+        ApplyTabSelection(destination.Key);
     }
 
     private void Palette_Click(object sender, RoutedEventArgs e)

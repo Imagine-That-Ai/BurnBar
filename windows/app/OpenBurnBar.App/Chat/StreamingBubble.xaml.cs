@@ -188,10 +188,10 @@ public sealed partial class StreamingBubble : UserControl
                 return chip;
 
             case HermesRichRunKind.Mention:
-                return Pill(fragment.Text, "PensieveColorMacosEmberBrush", mono: false);
+                return Pill(fragment.Text, "AuroraAccentBrush", mono: false);
 
             case HermesRichRunKind.Code:
-                return Pill(fragment.Text, "PensieveColorMacosTextBrush", mono: true);
+                return Pill(fragment.Text, "AuroraTextBrush", mono: true);
 
             default:
                 var text = new TextBlock
@@ -211,7 +211,7 @@ public sealed partial class StreamingBubble : UserControl
         }
     }
 
-    private static Border Pill(string text, string brushKey, bool mono)
+    private Border Pill(string text, string brushKey, bool mono)
     {
         var block = new TextBlock
         {
@@ -233,7 +233,7 @@ public sealed partial class StreamingBubble : UserControl
             Child = block,
             Padding = new Thickness(5, 1, 5, 1),
             CornerRadius = new CornerRadius(5),
-            Background = Brush("PensieveGlassTintElevatedBrush"),
+            Background = Brush("AuroraGlassTintElevatedBrush"),
         };
     }
 
@@ -284,17 +284,24 @@ public sealed partial class StreamingBubble : UserControl
         _ => 0,
     };
 
-    private static Brush TextBrush() => Brush("PensieveColorMacosTextBrush");
+    private Brush TextBrush() => Brush("AuroraTextBrush");
 
     // AuroraMonoFont lives at the Typography.xaml dictionary root (theme-independent),
     // so an Application-level lookup resolves it (see Theme/BrandFonts.cs).
     private static FontFamily BrandMonoFont() => BrandFonts.Mono;
 
-    private static Brush Brush(string key)
+    // Element-level lookup first: resolves the theme dictionaries (Aurora* aliases)
+    // against this control's ActualTheme, so Light/Dark swaps paint correctly.
+    // Application.Current.Resources cannot see theme-dictionary entries (theme-blind).
+    private Brush Brush(string key)
     {
-        if (Application.Current.Resources.TryGetValue(key, out var value) && value is Brush brush)
+        if (Resources.TryGetValue(key, out var value) && value is Brush brush)
         {
             return brush;
+        }
+        if (Application.Current.Resources.TryGetValue(key, out var appValue) && appValue is Brush appBrush)
+        {
+            return appBrush;
         }
         return new SolidColorBrush(Microsoft.UI.Colors.White);
     }

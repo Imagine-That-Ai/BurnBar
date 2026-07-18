@@ -169,6 +169,26 @@
         <Setter Property="Opacity" Value="0.6" />
     </Style>
 
+    <!-- ═══ Top tab strip (Linux TopTabbar): equal-width pills in a glass track.
+         Unselected = quiet transparent pill; selected = elevated plate + ember hairline. ═══ -->
+
+    <Style x:Key="AuroraGlassTabStyle" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource PensieveRadiusPillCorner}" />
+        <Setter Property="Padding" Value="12,5" />
+        <Setter Property="Foreground" Value="{ThemeResource AuroraTextSecondaryBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+    </Style>
+    <Style x:Key="AuroraGlassTabSelectedStyle" TargetType="Button" BasedOn="{StaticResource AuroraGlassTabStyle}">
+        <Setter Property="Background" Value="{ThemeResource AuroraGlassTintElevatedBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AuroraGlassSelectionStrokeBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AuroraTextBrush}" />
+    </Style>
+
     <!-- ═══ Dialogs (Linux CommandPalette: radius 20 elevated glass over dim scrim) ═══ -->
 
     <Style x:Key="AuroraGlassDialogStyle" TargetType="ContentDialog">
