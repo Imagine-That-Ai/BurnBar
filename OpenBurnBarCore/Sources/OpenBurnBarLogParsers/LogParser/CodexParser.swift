@@ -63,16 +63,16 @@ public final class CodexParser: LogParser, Sendable {
     }
 
     public func parseSynchronously(options: LogParseOptions) throws -> ParseResult {
-        let dbPath = homeDirectoryURL
+        let dbURL = homeDirectoryURL
             .appendingPathComponent(".codex", isDirectory: true)
             .appendingPathComponent("state_5.sqlite", isDirectory: false)
-            .path
 
-        guard fileManager.fileExists(atPath: dbPath) else {
+        guard fileManager.fileExists(atPath: dbURL.path),
+              try ParserFileReadGate(options: options, fileManager: fileManager).shouldRead(dbURL) else {
             return ParseResult(usages: [], conversations: [])
         }
 
-        let parsed = try parseCodexDatabase(dbPath: dbPath, options: options)
+        let parsed = try parseCodexDatabase(dbPath: dbURL.path, options: options)
         return ParseResult(usages: parsed.usages, conversations: parsed.conversations)
     }
 

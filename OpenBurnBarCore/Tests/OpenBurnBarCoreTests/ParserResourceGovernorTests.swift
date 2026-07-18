@@ -5,23 +5,6 @@ import XCTest
 final class ParserResourceGovernorTests: XCTestCase {
     // MARK: - ParserResourceLimits
 
-    func test_unlimitedLimitsLeaveAllBoundsUnenforced() {
-        let limits = ParserResourceLimits.unlimited
-        XCTAssertNil(limits.fileByteBudget, "unlimited must not cap the byte budget")
-        XCTAssertNil(limits.memoryCeilingBytes, "unlimited must not cap the memory ceiling")
-        XCTAssertNil(limits.memorySoftLimitBytes, "unlimited must not set a soft limit")
-    }
-
-    func test_limitsStoreConfiguredBounds() {
-        let limits = ParserResourceLimits(
-            fileByteBudget: 1_024,
-            memoryCeilingBytes: 2_048,
-            memorySoftLimitBytes: 1_024
-        )
-        XCTAssertEqual(limits.fileByteBudget, 1_024)
-        XCTAssertEqual(limits.memoryCeilingBytes, 2_048)
-        XCTAssertEqual(limits.memorySoftLimitBytes, 1_024)
-    }
 
     // MARK: - byte budget admission
 
@@ -207,6 +190,103 @@ final class ParserResourceGovernorTests: XCTestCase {
         XCTAssertThrowsError(try governor.checkpoint(), "33rd sampled checkpoint must throw when ceiling is crossed")
     }
 
+    // MARK: - Governed read telemetry
+
+    func test_fileReadGateChargesAdmittedBytesOnceAndReportsBudgetDeferral() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-parser-gate-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("session.jsonl")
+        let bytes = Data("0123456789".utf8)
+        try bytes.write(to: file)
+
+        let governor = ParserResourceGovernor(limits: ParserResourceLimits(fileByteBudget: Int64(bytes.count)))
+        let metrics = ParserPassMetrics()
+        let gate = ParserFileReadGate(options: LogParseOptions(
+            includeConversationBodies: false,
+            resourceGovernor: governor,
+            metrics: metrics
+        ))
+
+        XCTAssertTrue(try gate.shouldRead(file))
+        XCTAssertFalse(try gate.shouldRead(file), "a second candidate after the pass budget is exhausted must be deferred")
+
+        let snapshot = metrics.snapshot()
+        XCTAssertEqual(snapshot.candidateCount, 2)
+        XCTAssertEqual(snapshot.metadataStatCount, 2)
+        XCTAssertEqual(snapshot.contentReadCount, 1)
+        XCTAssertEqual(snapshot.contentReadBytes, Int64(bytes.count))
+        XCTAssertEqual(snapshot.deferredFileCount, 1)
+        XCTAssertEqual(snapshot.byteBudgetDeferredCount, 1)
+        XCTAssertEqual(governor.consumedBytes, Int64(bytes.count), "deferred candidates must not be charged")
+    }
+
+    func test_fileReadGateMissingMetadataDefersWithoutReadAdmission() throws {
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let metrics = ParserPassMetrics()
+        let missingFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-missing-parser-file-\(UUID().uuidString)")
+        let gate = ParserFileReadGate(options: LogParseOptions(
+            includeConversationBodies: false,
+            minimumFileModificationDate: .distantPast,
+            resourceGovernor: governor,
+            metrics: metrics
+        ))
+
+        XCTAssertFalse(try gate.shouldRead(missingFile))
+
+        let snapshot = metrics.snapshot()
+        XCTAssertEqual(snapshot.candidateCount, 1)
+        XCTAssertEqual(snapshot.metadataStatCount, 1)
+        XCTAssertEqual(snapshot.contentReadCount, 0)
+        XCTAssertEqual(snapshot.contentReadBytes, 0)
+        XCTAssertEqual(snapshot.deferredFileCount, 1)
+        XCTAssertEqual(snapshot.metadataUnavailableDeferredCount, 1)
+        XCTAssertEqual(governor.deferredFileCount, 1, "missing metadata must freeze the caller's checkpoint")
+    }
+
+    func test_passMetricsSnapshotsPreserveReasonBreakdownAndMonotonicElapsedTime() {
+        let metrics = ParserPassMetrics()
+        metrics.recordCandidate(count: 4)
+        metrics.recordMetadataStat(count: 5)
+        metrics.recordContentRead(count: 2, bytes: 123)
+        metrics.recordDeferred(.byteBudget)
+        metrics.recordDeferred(.metadataUnavailable)
+        metrics.recordDeferred(.byteCountOverflow)
+        metrics.recordDeferred(.contentReadFailed)
+        let first = metrics.snapshot()
+
+        metrics.recordCandidate()
+        let second = metrics.snapshot()
+
+        XCTAssertEqual(first.candidateCount, 4)
+        XCTAssertEqual(first.metadataStatCount, 5)
+        XCTAssertEqual(first.contentReadCount, 2)
+        XCTAssertEqual(first.contentReadBytes, 123)
+        XCTAssertEqual(first.deferredFileCount, 4)
+        XCTAssertEqual(first.byteBudgetDeferredCount, 1)
+        XCTAssertEqual(first.metadataUnavailableDeferredCount, 1)
+        XCTAssertEqual(first.byteCountOverflowDeferredCount, 1)
+        XCTAssertEqual(first.contentReadFailedDeferredCount, 1)
+        XCTAssertEqual(second.candidateCount, 5)
+        XCTAssertGreaterThanOrEqual(
+            second.elapsedMilliseconds,
+            first.elapsedMilliseconds,
+            "successive snapshots from one pass must never move elapsed time backwards"
+        )
+    }
+
+    func test_parseConvenienceDispatchesToTheOnlyGovernedProtocolRequirement() async throws {
+        let recorder = ParserOptionsInvocationRecorder()
+        let parser: any LogParser = OptionsOnlyLogParser(recorder: recorder)
+
+        _ = try await parser.parse()
+
+        let invocationCount = await recorder.invocationCount()
+        XCTAssertEqual(invocationCount, 1)
+    }
+
     // MARK: - ParserResourceExceeded
 
     func test_memoryCeilingErrorEqualityAndDescription() {
@@ -218,5 +298,27 @@ final class ParserResourceGovernorTests: XCTestCase {
         // Description surfaces MB-granularity numbers for operators reading CI logs.
         XCTAssertTrue(a.description.contains("2MB"), "description must report footprint in MB: \(a.description)")
         XCTAssertTrue(a.description.contains("1MB"), "description must report ceiling in MB: \(a.description)")
+    }
+}
+
+private actor ParserOptionsInvocationRecorder {
+    private var count = 0
+
+    func recordInvocation() {
+        count += 1
+    }
+
+    func invocationCount() -> Int {
+        count
+    }
+}
+
+private struct OptionsOnlyLogParser: LogParser {
+    let provider: AgentProvider = .factory
+    let recorder: ParserOptionsInvocationRecorder
+
+    func parse(options: LogParseOptions) async throws -> ParseResult {
+        await recorder.recordInvocation()
+        return ParseResult(usages: [], conversations: [])
     }
 }

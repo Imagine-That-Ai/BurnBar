@@ -703,7 +703,7 @@ final class CheckpointTests: XCTestCase {
 private struct MockLogParser: LogParser {
     let provider: AgentProvider
 
-    func parse() async throws -> ParseResult {
+    func parse(options _: LogParseOptions) async throws -> ParseResult {
         ParseResult(usages: [], conversations: [])
     }
 }

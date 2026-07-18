@@ -63,11 +63,14 @@ public final class WindsurfParser: LogParser, Sendable {
 
         let globalPath = ((globalStorageOverride ?? Self.globalStoragePath) as NSString).expandingTildeInPath
         let stateDBURL = URL(fileURLWithPath: (globalPath as NSString).appendingPathComponent("state.vscdb"))
+        let stateDBWasCached = Self.stateDBCache.withLock { $0.entriesByDBPath[stateDBURL.path] != nil }
         let canReadStateDB: Bool
-        if fm.fileExists(atPath: stateDBURL.path) {
+        if stateDBWasCached {
+            canReadStateDB = true
+        } else if fm.fileExists(atPath: stateDBURL.path) {
             canReadStateDB = try gate.shouldRead(stateDBURL)
         } else {
-            canReadStateDB = true
+            canReadStateDB = false
         }
 
         let cascadeDir = ((cascadeDirectoryOverride ?? Self.cascadeDirectory) as NSString).expandingTildeInPath
@@ -79,13 +82,19 @@ public final class WindsurfParser: LogParser, Sendable {
 
             for pbFile in pbFiles {
                 try options.resourceGovernor?.checkpoint()
+                options.metrics?.recordCandidate()
+                options.metrics?.recordMetadataStat()
                 let sessionId = (pbFile as NSString).deletingPathExtension
                     .components(separatedBy: "/").last ?? UUID().uuidString
 
-                let attrs = try? fm.attributesOfItem(atPath: pbFile)
-                let created = (attrs?[.creationDate] as? Date) ?? Date()
-                let modified = (attrs?[.modificationDate] as? Date) ?? created
-                let fileSize = (attrs?[.size] as? Int) ?? 0
+                guard let attrs = try? fm.attributesOfItem(atPath: pbFile) else {
+                    options.resourceGovernor?.recordDeferredFile()
+                    options.metrics?.recordDeferred(.metadataUnavailable)
+                    continue
+                }
+                let created = (attrs[.creationDate] as? Date) ?? Date()
+                let modified = (attrs[.modificationDate] as? Date) ?? created
+                let fileSize = (attrs[.size] as? Int) ?? 0
 
                 guard fileSize > 100 else { continue }
                 if let cutoff = options.minimumFileModificationDate, modified < cutoff {
@@ -127,7 +136,7 @@ public final class WindsurfParser: LogParser, Sendable {
 
                 if options.includeConversationBodies {
                     let title = canReadStateDB ? (extractSessionTitle(sessionId: sessionId) ?? "Windsurf Cascade Session") : "Windsurf Cascade Session"
-                    let conversation = ConversationRecord(
+                    conversations.append(ConversationRecord(
                         id: ConversationRecord.stableId(provider: provider, sessionId: sessionId),
                         provider: provider,
                         sessionId: sessionId,
@@ -146,8 +155,7 @@ public final class WindsurfParser: LogParser, Sendable {
                         indexedAt: Date(),
                         fileModifiedAt: modified,
                         summary: nil
-                    )
-                    conversations.append(conversation)
+                    ))
                 }
             }
         }

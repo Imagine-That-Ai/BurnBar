@@ -19,20 +19,26 @@ public struct LogParseOptions: Sendable {
     /// uncached files whose modification date is before this boundary.
     public var minimumFileModificationDate: Date?
     /// Shared per-pass resource accounting: byte budget for new file content
-    /// and a process memory ceiling. `nil` leaves the pass ungoverned.
-    /// Governed parsers throw `ParserResourceExceeded` on the hard ceiling.
+    /// and a process memory ceiling. `nil` leaves direct, non-registry calls
+    /// ungoverned. Production registry entries install an unlimited governor
+    /// when their caller does not supply stricter limits.
     public var resourceGovernor: ParserResourceGovernor?
+    /// Per-parser, path-free scan telemetry. Production registry entries
+    /// install a fresh recorder for every parse pass.
+    public var metrics: ParserPassMetrics?
 
     public static let `default` = LogParseOptions(includeConversationBodies: true)
 
     public init(
         includeConversationBodies: Bool,
         minimumFileModificationDate: Date? = nil,
-        resourceGovernor: ParserResourceGovernor? = nil
+        resourceGovernor: ParserResourceGovernor? = nil,
+        metrics: ParserPassMetrics? = nil
     ) {
         self.includeConversationBodies = includeConversationBodies
         self.minimumFileModificationDate = minimumFileModificationDate
         self.resourceGovernor = resourceGovernor
+        self.metrics = metrics
     }
 }
 
@@ -51,26 +57,16 @@ public struct ParserOptionsUnsupported: Error, CustomStringConvertible, Sendable
 }
 
 public protocol LogParser: LogParserProtocol {
-    func parse() async throws -> ParseResult
+    /// The only required parser entry point. Every conformer must explicitly
+    /// honor the incremental boundary and resource governor before content I/O.
     func parse(options: LogParseOptions) async throws -> ParseResult
 }
 
 extension LogParser {
-    /// Fail-closed adapter for legacy conformers. A parser that has not opted
-    /// into `LogParseOptions` may still serve an unbounded direct parse, but it
-    /// is never allowed to silently ignore an incremental boundary or resource
-    /// governor before reading content.
-    public func parse(options: LogParseOptions) async throws -> ParseResult {
-        if options.minimumFileModificationDate != nil || options.resourceGovernor != nil {
-            options.resourceGovernor?.recordDeferredFile()
-            throw ParserOptionsUnsupported(provider: provider)
-        }
-
-        let result = try await parse()
-        guard options.includeConversationBodies else {
-            return ParseResult(usages: result.usages, conversations: [])
-        }
-        return result
+    /// Convenience for direct callers. Delegation flows toward the governed
+    /// entry point; there is no options fallback that can bypass it.
+    public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
     }
 }
 

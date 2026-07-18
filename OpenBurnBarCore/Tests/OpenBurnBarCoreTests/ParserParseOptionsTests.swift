@@ -353,33 +353,130 @@ final class ParserParseOptionsTests: XCTestCase {
         }
     }
 
-    func testLegacyConformerRejectsBoundedOptionsBeforeContentRead() async throws {
-        let readProbe = ParserContentReadProbe()
-        let parser: any LogParser = LegacyContentReadingParser(readProbe: readProbe)
-        let governor = ParserResourceGovernor(
-            limits: ParserResourceLimits(fileByteBudget: 1)
+    func testClaudeCodeMetricsStatUnchangedFilesAndChargeChangedContentExactlyOnce() async throws {
+        let root = try makeTemporaryDirectory("claude-metrics")
+        defer { try? fileManager.removeItem(at: root) }
+        let projectsRoot = root.appendingPathComponent("projects", isDirectory: true)
+        let project = projectsRoot.appendingPathComponent("-Users-test-Project", isDirectory: true)
+        let transcript = project.appendingPathComponent("metrics.jsonl")
+        try write(claudeSession(user: "Initial", input: 100, output: 20), to: transcript)
+        let parser = ClaudeCodeParser(
+            fileManager: fileManager,
+            appPaths: OpenBurnBarAppPaths(
+                applicationSupportRoot: root.appendingPathComponent("support", isDirectory: true)
+            ),
+            projectsDirectoryOverride: projectsRoot
         )
 
-        do {
-            _ = try await parser.parse(
-                options: LogParseOptions(
-                    includeConversationBodies: false,
-                    minimumFileModificationDate: .distantFuture,
-                    resourceGovernor: governor
-                )
-            )
-            XCTFail("A legacy conformer must reject bounded parsing instead of entering parse()")
-        } catch let error as ParserOptionsUnsupported {
-            XCTAssertEqual(error.provider, .copilot)
-        } catch {
-            XCTFail("Expected ParserOptionsUnsupported, got \(error)")
-        }
+        let firstGovernor = ParserResourceGovernor(limits: .unlimited)
+        let firstMetrics = ParserPassMetrics()
+        let first = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            resourceGovernor: firstGovernor,
+            metrics: firstMetrics
+        ))
+        let firstSize = Int64(try Data(contentsOf: transcript).count)
+        XCTAssertEqual(first.usages.first?.inputTokens, 100)
+        XCTAssertEqual(firstMetrics.snapshot().contentReadCount, 1)
+        XCTAssertEqual(firstMetrics.snapshot().contentReadBytes, firstSize)
+        XCTAssertEqual(firstGovernor.consumedBytes, firstSize)
 
-        let contentReadCount = await readProbe.count()
-        XCTAssertEqual(contentReadCount, 0, "the bounded-options guard must run before legacy content reads")
-        XCTAssertEqual(governor.consumedBytes, 0)
-        XCTAssertEqual(governor.deferredFileCount, 1, "rejection must freeze the provider watermark for retry")
+        let unchangedGovernor = ParserResourceGovernor(limits: .unlimited)
+        let unchangedMetrics = ParserPassMetrics()
+        let unchanged = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            resourceGovernor: unchangedGovernor,
+            metrics: unchangedMetrics
+        ))
+        let unchangedSnapshot = unchangedMetrics.snapshot()
+        XCTAssertEqual(unchanged.usages.first?.inputTokens, 100)
+        XCTAssertEqual(unchangedSnapshot.candidateCount, 1)
+        XCTAssertEqual(unchangedSnapshot.metadataStatCount, 1)
+        XCTAssertEqual(unchangedSnapshot.contentReadCount, 0, "the unchanged file must be statted but never opened")
+        XCTAssertEqual(unchangedSnapshot.contentReadBytes, 0)
+        XCTAssertEqual(unchangedGovernor.consumedBytes, 0)
+
+        let handle = try FileHandle(forWritingTo: transcript)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(("\n" + claudeSession(user: "Changed", input: 7, output: 2)).utf8))
+        try handle.close()
+        let changedSize = Int64(try Data(contentsOf: transcript).count)
+        let changedGovernor = ParserResourceGovernor(limits: .unlimited)
+        let changedMetrics = ParserPassMetrics()
+        let changed = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            resourceGovernor: changedGovernor,
+            metrics: changedMetrics
+        ))
+        let changedSnapshot = changedMetrics.snapshot()
+
+        XCTAssertEqual(changed.usages.first?.inputTokens, 107)
+        XCTAssertEqual(changedSnapshot.candidateCount, 1)
+        XCTAssertEqual(changedSnapshot.metadataStatCount, 1)
+        XCTAssertEqual(changedSnapshot.contentReadCount, 1)
+        XCTAssertEqual(changedSnapshot.contentReadBytes, changedSize)
+        XCTAssertEqual(changedGovernor.consumedBytes, changedSize, "one changed file must be charged exactly once")
     }
+
+    func testClaudeCodeMetricsDistinguishMissingMetadataFromContentReadFailure() async throws {
+        let root = try makeTemporaryDirectory("claude-deferred-reasons")
+        defer { try? fileManager.removeItem(at: root) }
+        let projectsRoot = root.appendingPathComponent("projects", isDirectory: true)
+        let project = projectsRoot.appendingPathComponent("-Users-test-Project", isDirectory: true)
+        try fileManager.createDirectory(at: project, withIntermediateDirectories: true)
+        let dangling = project.appendingPathComponent("missing-metadata.jsonl")
+        try fileManager.createSymbolicLink(
+            at: dangling,
+            withDestinationURL: project.appendingPathComponent("absent.jsonl")
+        )
+        let metadataParser = ClaudeCodeParser(
+            fileManager: fileManager,
+            appPaths: OpenBurnBarAppPaths(
+                applicationSupportRoot: root.appendingPathComponent("metadata-support", isDirectory: true)
+            ),
+            projectsDirectoryOverride: projectsRoot
+        )
+        let metadataGovernor = ParserResourceGovernor(limits: .unlimited)
+        let metadataMetrics = ParserPassMetrics()
+
+        _ = try await metadataParser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            minimumFileModificationDate: .distantPast,
+            resourceGovernor: metadataGovernor,
+            metrics: metadataMetrics
+        ))
+
+        XCTAssertEqual(metadataGovernor.deferredFileCount, 1)
+        XCTAssertEqual(metadataMetrics.snapshot().metadataUnavailableDeferredCount, 1)
+        XCTAssertEqual(metadataMetrics.snapshot().contentReadCount, 0)
+
+        try fileManager.removeItem(at: dangling)
+        let unreadable = project.appendingPathComponent("unreadable.jsonl")
+        try write(claudeSession(user: "Unreadable", input: 20, output: 4), to: unreadable)
+        try fileManager.setAttributes([.posixPermissions: 0o000], ofItemAtPath: unreadable.path)
+        defer { try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: unreadable.path) }
+        let readFailureParser = ClaudeCodeParser(
+            fileManager: fileManager,
+            appPaths: OpenBurnBarAppPaths(
+                applicationSupportRoot: root.appendingPathComponent("read-failure-support", isDirectory: true)
+            ),
+            projectsDirectoryOverride: projectsRoot
+        )
+        let readFailureGovernor = ParserResourceGovernor(limits: .unlimited)
+        let readFailureMetrics = ParserPassMetrics()
+
+        let readFailure = try await readFailureParser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            resourceGovernor: readFailureGovernor,
+            metrics: readFailureMetrics
+        ))
+
+        XCTAssertTrue(readFailure.usages.isEmpty)
+        XCTAssertEqual(readFailureGovernor.deferredFileCount, 1)
+        XCTAssertEqual(readFailureMetrics.snapshot().contentReadFailedDeferredCount, 1)
+        XCTAssertEqual(readFailureMetrics.snapshot().contentReadCount, 1, "failed content reads remain charged after admission")
+    }
+
 
     private var futureUsageOnlyOptions: LogParseOptions {
         LogParseOptions(
@@ -421,27 +518,5 @@ final class ParserParseOptionsTests: XCTestCase {
         {"role":"user","content":"\(user)","timestamp":"2026-05-06T10:00:00Z"}
         {"role":"assistant","content":"\(assistant)","timestamp":"2026-05-06T10:01:00Z","model":"hermes-model","usage":{"input_tokens":20,"output_tokens":5}}
         """
-    }
-}
-
-private actor ParserContentReadProbe {
-    private var contentReadCount = 0
-
-    func recordContentRead() {
-        contentReadCount += 1
-    }
-
-    func count() -> Int {
-        contentReadCount
-    }
-}
-
-private struct LegacyContentReadingParser: LogParser {
-    let provider: AgentProvider = .copilot
-    let readProbe: ParserContentReadProbe
-
-    func parse() async throws -> ParseResult {
-        await readProbe.recordContentRead()
-        return ParseResult(usages: [], conversations: [])
     }
 }
