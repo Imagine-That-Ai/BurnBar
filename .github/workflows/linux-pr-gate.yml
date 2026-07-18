@@ -150,6 +150,7 @@ jobs:
             scripts/linux-port/runtime-capability-contract.test.mjs \
             scripts/linux-port/accessibility-harness-contract.test.mjs \
             scripts/linux-port/run-linux-native-tests.test.mjs \
+            scripts/linux-port/text-expansion-native-evidence.test.mjs \
             scripts/linux-port/matched-performance-contract.test.mjs \
             scripts/linux-port/perf-budget-contract.test.mjs
 

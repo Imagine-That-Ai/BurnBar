@@ -45,6 +45,7 @@ function valid() {
       '--profile pr',
       'matched-performance-contract.test.mjs',
       'perf-budget-contract.test.mjs',
+      'text-expansion-native-evidence.test.mjs',
       'linux-parity-macos-performance-pr',
       '-v "$OPENBURNBAR_LINUX_EVIDENCE_OUT:/evidence"',
       '--env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests',

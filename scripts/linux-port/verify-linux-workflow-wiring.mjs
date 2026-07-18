@@ -485,6 +485,7 @@ export function verifyLinuxWorkflowWiring(input) {
     '--profile pr',
     'matched-performance-contract.test.mjs',
     'perf-budget-contract.test.mjs',
+    'text-expansion-native-evidence.test.mjs',
     'linux-parity-macos-performance-pr'
   ]) requireText(input.pr, command, 'PR matched performance gate');
   for (const command of [
