@@ -49,8 +49,6 @@ on:
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVault*Tests.swift"
       - "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/**"
       - "windows/tests/cloudsync/**"
-      - "windows/cloudsync/appcheck/**"
-      - "windows/tests/cloudsync-appcheck-windows/**"
       - "android/openburnbar-domain-core/**"
       - "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto*.kt"
       - "android/app/src/test/java/com/openburnbar/data/cloud/CloudVault*Test.kt"
@@ -157,8 +155,6 @@ on:
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVault*Tests.swift"
       - "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/**"
       - "windows/tests/cloudsync/**"
-      - "windows/cloudsync/appcheck/**"
-      - "windows/tests/cloudsync-appcheck-windows/**"
       - "android/openburnbar-domain-core/**"
       - "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto*.kt"
       - "android/app/src/test/java/com/openburnbar/data/cloud/CloudVault*Test.kt"
@@ -368,9 +364,6 @@ jobs:
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo --runtime ${{ matrix.rid }}
-
-      - name: Verify Windows App Check native ABI
-        run: dotnet test windows/tests/cloudsync-appcheck-windows/OpenBurnBar.CloudSync.AppCheck.Windows.Tests.csproj --nologo
 
   linux-arm64-native:
     runs-on: ubuntu-24.04
