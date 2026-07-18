@@ -117,6 +117,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         _ = GIDSignIn.sharedInstance.handle(url)
     }
 
+    nonisolated func applicationWillFinishLaunching(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            installPerformanceGateVisibilityControlIfNeeded()
+        }
+    }
+
     nonisolated func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
             applicationDidFinishLaunchingOnMainActor()
@@ -126,7 +132,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func applicationDidFinishLaunchingOnMainActor() {
         guard enforceSingleOpenBurnBarInstance() else { return }
         OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
-        installPerformanceGateVisibilityControlIfNeeded()
 
         NSAppleEventManager.shared().setEventHandler(
             self,
