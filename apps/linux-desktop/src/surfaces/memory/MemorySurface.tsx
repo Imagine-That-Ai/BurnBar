@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useMemoryStore } from '../../state/memoryStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
-import type { MemoryBoundary, MemoryReviewItem, MemoryReviewStatus } from '../../tauriBridge.js';
+import type { MemoryBoundary, MemoryReviewItem } from '../../tauriBridge.js';
 import '../system/system.css';
 import './memory.css';
 
