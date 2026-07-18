@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +20,8 @@ const supplementalValidator = readFileSync(
 const protocolCatalog = JSON.parse(
   readFileSync(join(root, "release-certification-protocols.json"), "utf8"),
 );
+const performanceBudgetBytes = readFileSync(join(root, "release-performance-budgets.json"));
+const performanceBudget = JSON.parse(performanceBudgetBytes.toString("utf8"));
 const physicalRunbook = readFileSync(
   join(root, "../../docs/windows-port/evidence/windows-v1.0.35-release/PHYSICAL_X64_RUNBOOK.md"),
   "utf8",
@@ -93,6 +96,25 @@ for (const [gate, gateConfig] of Object.entries(protocolCatalog.gates)) {
     `${gate} assertion ids must be unique`,
   );
 }
+assert.equal(performanceBudget.status, "ACTIVE_RELEASE_GATE");
+assert.equal(performanceBudget.profile, "physical-performance");
+assert.equal(
+  createHash("sha256").update(performanceBudgetBytes).digest("hex"),
+  "0824f341d0a7dea318a831e6ce67de016c9589d909e6982a678102130078fa92",
+);
+assert.equal(
+  protocolCatalog.profiles["physical-performance"].performanceBudgetSchema,
+  performanceBudget.schema,
+);
+assert.ok(performanceBudget.measurements.length >= 15);
+const performanceAssertionIds = new Set(
+  protocolCatalog.profiles["physical-performance"].assertions.map((assertion) => assertion.id),
+);
+for (const measurement of performanceBudget.measurements) {
+  assert.ok(performanceAssertionIds.has(measurement.assertionId));
+  assert.ok(measurement.minimumSamples >= 1);
+  assert.ok(measurement.minimumDurationSeconds >= 0);
+}
 assert.match(supplementalGenerator, /ParameterSetName = 'Initialize'/);
 assert.match(supplementalGenerator, /status = 'NOT_RUN'/);
 assert.match(supplementalGenerator, /validate-release-certification-evidence\.mjs/);
@@ -116,6 +138,13 @@ assert.match(supplementalGenerator, /evidence is missing or escapes the result d
 assert.match(supplementalGenerator, /contains secret-like material/);
 assert.match(supplementalGenerator, /The signed artifact architecture does not match/);
 assert.match(supplementalGenerator, /invalid, stale, or future time interval/);
+assert.match(supplementalGenerator, /release-performance-budgets\.json/);
+assert.match(supplementalGenerator, /ACTIVE_RELEASE_GATE/);
+assert.match(supplementalGenerator, /performanceMeasurements/);
+assert.match(supplementalGenerator, /performanceContext/);
+assert.match(supplementalGenerator, /requires an explicit numeric value/);
+assert.match(supplementalGenerator, /sampleCount does not match samples/);
+assert.match(supplementalGenerator, /has no raw evidence file/);
 assert.match(supplementalValidator, /validateReceipt/);
 assert.match(supplementalValidator, /Windows release-certification receipt is valid/);
 assert.match(physicalRunbook, /Do not hand-author PASS receipts/);
@@ -126,8 +155,13 @@ assert.match(physicalRunbook, /\$Repo = Join-Path \$Root 'candidate'/);
 assert.match(physicalRunbook, /\$Harness = Join-Path \$Root 'harness'/);
 assert.match(
   physicalRunbook,
-  /\$ExpectedHarnessCommit = '19385bf798a19f836dcb41d8d9decb5f6a228997'/,
+  /\$ExpectedHarnessCommit = '0ff07832c9a2a8137d7a342682d4ccd785be7034'/,
 );
+assert.match(
+  physicalRunbook,
+  /\$ExpectedPerformanceBudgetHash = '0824f341d0a7dea318a831e6ce67de016c9589d909e6982a678102130078fa92'/,
+);
+assert.match(physicalRunbook, /Active release performance budget mismatch/);
 assert.match(physicalRunbook, /git -C \$Repo checkout --detach windows-v1\.0\.35/);
 assert.match(physicalRunbook, /git -C \$Harness checkout --detach \$ExpectedHarnessCommit/);
 assert.match(
