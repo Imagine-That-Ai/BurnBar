@@ -599,6 +599,13 @@ explicit approve or revoke mutation.
 
 Full parity remains **NO-GO** until all of these gates are met in order:
 
+Live recheck on 2026-07-18: the paired iPad is booted with Developer Mode
+enabled, but Xcode cannot mount its developer disk image and reports no physical
+test destination; the focused preflight stopped before build/XCTest. The UTM
+Linux guest is currently stopped. The product-parity workflow is not yet on
+`main`, and GitHub has no registered self-hosted runners for the seven required
+Linux environment labels.
+
 1. Provision the dedicated Google Desktop OAuth client.
 2. Set and validate the remaining `OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID`; the
    `OPENBURNBAR_FIREBASE_API_KEY` and

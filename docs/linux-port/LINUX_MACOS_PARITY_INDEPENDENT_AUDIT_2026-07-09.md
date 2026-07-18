@@ -91,6 +91,23 @@ percentage. The active remediation stack now contains these reviewable slices:
   approval execution, live UTM daemon repair, and installed Mercury/Computer
   Use/SmartHub/IME/keyring/accessibility/update receipts.
 
+### Fresh local device and infrastructure recheck — 2026-07-18
+
+- **Physical iPad:** `xcrun devicectl` sees Alberto's paired, booted iPad with
+  Developer Mode enabled, but reports that the developer disk image cannot be
+  mounted. `xcodebuild` consequently reports no matching physical destination;
+  `OPENBURNBAR_MOBILE_PREFLIGHT_ONLY=1` stopped before package preparation or
+  XCTest discovery. No device test result is promoted. The fix is to restore
+  the Xcode-to-device connection (USB/unlock/trust and a compatible developer
+  image), then rerun the focused approval suite on this iPad.
+- **UTM:** live `utmctl list` reports the OpenBurnBar Linux guest as stopped.
+  No VM was started or modified during this recheck; the historical stale
+  `/usr/local` launcher diagnosis remains an open repair gate.
+- **Product evidence infrastructure:** the product-parity workflow is absent
+  from `main`, and the repository has zero registered self-hosted runners.
+  The strict product validator cannot produce the required P-01 through P-40
+  environment receipts until the workflow is landed and those runners exist.
+
 ### Historical exact-head Release/Nightly verification - 2026-07-18 (source `70ab4eb0b9`)
 
 - **Exact-head Release:** run `29646670068` completed successfully at

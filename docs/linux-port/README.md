@@ -31,6 +31,12 @@ Current parity status as of 2026-07-18:
   rows and 0/7 environment receipts. The Nightly pass is engineering evidence,
   not a promotion claim; production, lifecycle, physical iPad, installed
   integration, and registered product evidence remain open.
+- Fresh local recheck: CoreDevice sees the iPad as paired, booted, and with
+  Developer Mode enabled, but Xcode cannot mount its developer disk image, so
+  the physical XCTest preflight stops before build/test. `utmctl` reports the
+  OpenBurnBar Linux VM stopped. The product-parity workflow is not present on
+  `main`, and GitHub currently has zero self-hosted runners for its required
+  Linux environment labels.
 - For the detailed audit and implementation plan, see
   the browser-ready
   [`LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.html`](LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.html)
