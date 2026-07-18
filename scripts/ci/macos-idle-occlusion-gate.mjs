@@ -33,7 +33,7 @@ const measurementMethod = Object.freeze({
   processCPU: "two proc_pidinfo(PROC_PIDTASKINFO) cumulative CPU snapshots divided by monotonic uptime",
   windowControl: "DEBUG gate channel minimizes/restores the real dashboard window with CGWindow on-screen verification",
   workload: "idle dashboard with the existing --uitest seam and fluid-aurora kernel enabled",
-  pairing: "alternating visible-idle then fully-occluded-idle samples from one PID",
+  pairing: "batched visible-idle then fully-occluded-idle samples from one PID, paired by sample index",
   limitation: "window minimization is the deterministic fully occluded path; partial window overlap is not simulated",
 });
 
@@ -398,7 +398,7 @@ async function commandLineForPID(pid) {
   return stdout;
 }
 
-async function findAttachableProcess(helperBinaryPath, buildIdentity, config) {
+async function findConflictingGateProcess(helperBinaryPath, buildIdentity, config) {
   let stdout;
   try {
     ({ stdout } = await run("/usr/bin/pgrep", ["-x", config.app.executableName]));
@@ -418,7 +418,7 @@ async function findAttachableProcess(helperBinaryPath, buildIdentity, config) {
         return { pid, commandLine, initialState: current };
       }
     } catch {
-      // A candidate can exit between pgrep and inspection. It is not attachable.
+      // A candidate can exit between pgrep and inspection. It no longer conflicts.
     }
   }
   return null;
@@ -438,10 +438,23 @@ async function waitForRegisteredProcess(helperBinaryPath, pid, timeoutSeconds) {
   throw new Error(`OpenBurnBar pid ${pid} did not register with AppKit: ${lastError?.message ?? "timeout"}`);
 }
 
-async function launchOrAttach(helperBinaryPath, buildIdentity, config, workDirectory) {
-  const attachable = await findAttachableProcess(helperBinaryPath, buildIdentity, config);
-  if (attachable) {
-    return { ...attachable, mode: "attached", child: null };
+export async function launchFreshProcess(
+  helperBinaryPath,
+  buildIdentity,
+  config,
+  workDirectory,
+  operations = {}
+) {
+  const findConflict = operations.findConflictingGateProcess ?? findConflictingGateProcess;
+  const spawnProcess = operations.spawn ?? spawn;
+  const waitForProcess = operations.waitForRegisteredProcess ?? waitForRegisteredProcess;
+  const readCommandLine = operations.commandLineForPID ?? commandLineForPID;
+  const stopProcess = operations.stopOwnedProcess ?? stopOwnedProcess;
+  const conflicting = await findConflict(helperBinaryPath, buildIdentity, config);
+  if (conflicting) {
+    throw new Error(
+      `performance gate requires a fresh process; refusing to reuse existing pid ${conflicting.pid}`
+    );
   }
 
   const logPath = path.join(workDirectory, "app-process.log");
@@ -452,36 +465,53 @@ async function launchOrAttach(helperBinaryPath, buildIdentity, config, workDirec
     logHandleClosed = true;
     closeSync(logHandle);
   };
-  const child = spawn(buildIdentity.executablePath, config.app.launchArguments, {
-    cwd: repositoryRoot,
-    env: {
-      ...process.env,
-      CFFIXED_USER_HOME: workDirectory,
-      HOME: workDirectory,
-      OPENBURNBAR_UITEST: "1",
-      OPENBURNBAR_FORCE_LIVE_SCENE: "1",
-      OPENBURNBAR_E2E_HOLD_OPEN: "1",
-      OPENBURNBAR_PERFORMANCE_GATE: "1",
-      NSUnbufferedIO: "YES",
-    },
-    stdio: ["ignore", logHandle, logHandle],
-  });
-  child.once("spawn", closeLogHandle);
-  child.once("error", closeLogHandle);
-  await once(child, "spawn");
-  const pid = child.pid;
-  const initialState = await waitForRegisteredProcess(
-    helperBinaryPath,
-    pid,
-    config.measurement.stateTransitionTimeoutSeconds
-  );
-  return {
-    pid,
-    commandLine: await commandLineForPID(pid),
-    initialState,
-    mode: "launched",
-    child,
-  };
+  let child;
+  try {
+    child = spawnProcess(buildIdentity.executablePath, config.app.launchArguments, {
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        CFFIXED_USER_HOME: workDirectory,
+        HOME: workDirectory,
+        OPENBURNBAR_UITEST: "1",
+        OPENBURNBAR_FORCE_LIVE_SCENE: "1",
+        OPENBURNBAR_E2E_HOLD_OPEN: "1",
+        OPENBURNBAR_PERFORMANCE_GATE: "1",
+        NSUnbufferedIO: "YES",
+      },
+      stdio: ["ignore", logHandle, logHandle],
+    });
+    child.once("spawn", closeLogHandle);
+    child.once("error", closeLogHandle);
+    await once(child, "spawn");
+    const pid = child.pid;
+    const initialState = await waitForProcess(
+      helperBinaryPath,
+      pid,
+      config.measurement.stateTransitionTimeoutSeconds
+    );
+    const commandLine = await readCommandLine(pid);
+    return {
+      pid,
+      commandLine,
+      initialState,
+      mode: "launched",
+      child,
+    };
+  } catch (launchError) {
+    closeLogHandle();
+    if (Number.isInteger(child?.pid) && child.pid > 0) {
+      try {
+        await stopProcess({ pid: child.pid, mode: "launched", child });
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [launchError, cleanupError],
+          `fresh process launch failed and pid ${child.pid} cleanup also failed`
+        );
+      }
+    }
+    throw launchError;
+  }
 }
 
 async function stopOwnedProcess(runtime) {
@@ -540,47 +570,70 @@ async function takeCPUSample(helperBinaryPath, pid, state, durationSeconds) {
   };
 }
 
-async function measureMatchedPairs(helperBinaryPath, runtime, buildIdentity, config, partialMeasurement) {
+export async function measureMatchedPairs(
+  helperBinaryPath,
+  runtime,
+  buildIdentity,
+  config,
+  partialMeasurement,
+  operations = {}
+) {
+  const runHelper = operations.helper ?? helper;
+  const sampleCPU = operations.takeCPUSample ?? takeCPUSample;
+  const wait = operations.sleep ?? sleep;
+  const monotonicNow = operations.monotonicNow
+    ?? (() => process.hrtime.bigint().toString());
   const pid = runtime.pid;
   const timeout = config.measurement.stateTransitionTimeoutSeconds;
-  const initialVisible = await helper(helperBinaryPath, "show", pid, timeout);
+  const initialVisible = await runHelper(helperBinaryPath, "show", pid, timeout);
   assertProcessIdentity(initialVisible, pid, buildIdentity, config, "visible");
-  await sleep(config.measurement.initialVisibleWarmupSeconds * 1000);
+  await wait(config.measurement.initialVisibleWarmupSeconds * 1000);
 
   const { pairs, transitions } = partialMeasurement;
-  transitions.push({ state: "initial-visible",
-    atMonotonicNanoseconds: process.hrtime.bigint().toString(), observed: initialVisible });
+  transitions.push({
+    state: "initial-visible",
+    atMonotonicNanoseconds: monotonicNow(),
+    observed: initialVisible,
+  });
+
+  const visibleSamples = [];
   for (let pairIndex = 1; pairIndex <= config.measurement.matchedPairCount; pairIndex += 1) {
-    let visibleState;
-    if (pairIndex === 1) {
-      visibleState = await helper(helperBinaryPath, "wait-visible", pid, timeout);
-    } else {
-      visibleState = await helper(helperBinaryPath, "show", pid, timeout);
-      transitions.push({ state: "visible", pairIndex,
-        atMonotonicNanoseconds: process.hrtime.bigint().toString(), observed: visibleState });
-      await sleep(config.measurement.transitionSettleSeconds * 1000);
-    }
+    const visibleState = await runHelper(helperBinaryPath, "wait-visible", pid, timeout);
     assertProcessIdentity(visibleState, pid, buildIdentity, config, "visible");
-    const visibleIdle = await takeCPUSample(
+    visibleSamples.push(await sampleCPU(
       helperBinaryPath,
       pid,
       "visible-idle",
       config.measurement.sampleDurationSeconds
-    );
+    ));
+  }
 
-    const hiddenState = await helper(helperBinaryPath, "hide", pid, timeout);
-    assertProcessIdentity(hiddenState, pid, buildIdentity, config, "occluded");
-    transitions.push({ state: "occluded", pairIndex,
-      atMonotonicNanoseconds: process.hrtime.bigint().toString(), observed: hiddenState });
-    await sleep(config.measurement.transitionSettleSeconds * 1000);
-    const occludedIdle = await takeCPUSample(
+  const hiddenState = await runHelper(helperBinaryPath, "hide", pid, timeout);
+  assertProcessIdentity(hiddenState, pid, buildIdentity, config, "occluded");
+  transitions.push({
+    state: "occluded",
+    afterVisibleSampleCount: visibleSamples.length,
+    atMonotonicNanoseconds: monotonicNow(),
+    observed: hiddenState,
+  });
+  await wait(config.measurement.transitionSettleSeconds * 1000);
+
+  for (let pairIndex = 1; pairIndex <= config.measurement.matchedPairCount; pairIndex += 1) {
+    if (pairIndex > 1) {
+      const stillHidden = await runHelper(helperBinaryPath, "wait-hidden", pid, timeout);
+      assertProcessIdentity(stillHidden, pid, buildIdentity, config, "occluded");
+    }
+    const occludedIdle = await sampleCPU(
       helperBinaryPath,
       pid,
       "occluded-idle",
       config.measurement.sampleDurationSeconds
     );
-
-    pairs.push({ pairIndex, visibleIdle, occludedIdle });
+    pairs.push({
+      pairIndex,
+      visibleIdle: visibleSamples[pairIndex - 1],
+      occludedIdle,
+    });
   }
   return partialMeasurement;
 }
@@ -626,7 +679,7 @@ async function executeGate(argumentsToParse) {
       sha256(helperSourcePath),
     ]);
     const helperBinaryPath = await compileHelper(workDirectory);
-    runtime = await launchOrAttach(helperBinaryPath, buildIdentity, config, workDirectory);
+    runtime = await launchFreshProcess(helperBinaryPath, buildIdentity, config, workDirectory);
     measurement = { pairs: [], transitions: [] };
     measurement = await measureMatchedPairs(
       helperBinaryPath,
@@ -724,15 +777,6 @@ async function executeGate(argumentsToParse) {
     }
     throw error;
   } finally {
-    if (runtime?.mode === "attached") {
-      try {
-        const helperBinaryPath = path.join(workDirectory, "macos-idle-occlusion-gate-helper");
-        await helper(helperBinaryPath, "show", runtime.pid,
-          rawConfig?.measurement?.stateTransitionTimeoutSeconds ?? 15);
-      } catch {
-        // Restoration is best-effort; the measurement verdict is already recorded.
-      }
-    }
     await stopOwnedProcess(runtime);
     await rm(workDirectory, { recursive: true, force: true });
   }

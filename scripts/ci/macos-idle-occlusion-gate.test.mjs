@@ -23,6 +23,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import {
   chmodSync,
   copyFileSync,
@@ -39,6 +40,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  launchFreshProcess,
+  measureMatchedPairs,
   median,
   medianAbsoluteDeviation,
   parseArguments,
@@ -394,6 +397,235 @@ function passingPairs() {
   }));
 }
 
+test("launchFreshProcess rejects an existing matching gate PID instead of reusing it", async () => {
+  const helperBinaryPath = "/fake/macos-idle-occlusion-gate-helper";
+  const buildIdentity = {
+    executablePath: "/fake/OpenBurnBar.app/Contents/MacOS/OpenBurnBar",
+  };
+  const existingPID = 8675;
+  const conflictingProcess = {
+    pid: existingPID,
+    commandLine: [buildIdentity.executablePath, ...realGateConfig.app.launchArguments].join(" "),
+    initialState: {
+      running: true,
+      pid: existingPID,
+      executablePath: buildIdentity.executablePath,
+      bundleIdentifier: realGateConfig.app.expectedBundleIdentifier,
+      hidden: false,
+      visibleWindowCount: 1,
+    },
+  };
+  const unopenedWorkDirectory = path.join(
+    os.tmpdir(),
+    `openburnbar-fresh-process-must-not-open-${process.pid}-${Date.now()}`,
+  );
+  let finderCalls = 0;
+
+  await assert.rejects(
+    launchFreshProcess(
+      helperBinaryPath,
+      buildIdentity,
+      realGateConfig,
+      unopenedWorkDirectory,
+      {
+        findConflictingGateProcess: async (
+          observedHelperPath,
+          observedBuildIdentity,
+          observedConfig,
+        ) => {
+          finderCalls += 1;
+          assert.equal(observedHelperPath, helperBinaryPath);
+          assert.strictEqual(observedBuildIdentity, buildIdentity);
+          assert.strictEqual(observedConfig, realGateConfig);
+          return conflictingProcess;
+        },
+      },
+    ),
+    (error) => {
+      assert.equal(
+        error.message,
+        `performance gate requires a fresh process; refusing to reuse existing pid ${existingPID}`,
+      );
+      return true;
+    },
+  );
+  assert.equal(finderCalls, 1);
+});
+
+test("launchFreshProcess stops the owned child once and rethrows registration failure before command lookup", async () => {
+  const workDirectory = mkdtempSync(path.join(os.tmpdir(), "openburnbar-launch-cleanup-"));
+  const helperBinaryPath = "/fake/macos-idle-occlusion-gate-helper";
+  const buildIdentity = {
+    executablePath: "/fake/OpenBurnBar.app/Contents/MacOS/OpenBurnBar",
+  };
+  const child = new EventEmitter();
+  child.pid = 9753;
+  child.exitCode = null;
+  const registrationError = new Error("fake AppKit registration failed");
+  const stoppedRuntimes = [];
+  let spawnCalls = 0;
+  let commandLineCalls = 0;
+
+  try {
+    await assert.rejects(
+      launchFreshProcess(
+        helperBinaryPath,
+        buildIdentity,
+        realGateConfig,
+        workDirectory,
+        {
+          findConflictingGateProcess: async () => null,
+          spawn: (executablePath, launchArguments, options) => {
+            spawnCalls += 1;
+            assert.equal(executablePath, buildIdentity.executablePath);
+            assert.strictEqual(launchArguments, realGateConfig.app.launchArguments);
+            assert.equal(options.env.HOME, workDirectory);
+            queueMicrotask(() => child.emit("spawn"));
+            return child;
+          },
+          waitForRegisteredProcess: async (observedHelperPath, pid, timeout) => {
+            assert.equal(observedHelperPath, helperBinaryPath);
+            assert.equal(pid, child.pid);
+            assert.equal(timeout, realGateConfig.measurement.stateTransitionTimeoutSeconds);
+            throw registrationError;
+          },
+          commandLineForPID: async () => {
+            commandLineCalls += 1;
+            return "must not be reached";
+          },
+          stopOwnedProcess: async (runtime) => {
+            stoppedRuntimes.push(runtime);
+          },
+        },
+      ),
+      (error) => {
+        assert.strictEqual(error, registrationError);
+        return true;
+      },
+    );
+
+    assert.equal(spawnCalls, 1);
+    assert.equal(commandLineCalls, 0);
+    assert.equal(stoppedRuntimes.length, 1);
+    assert.deepEqual(stoppedRuntimes[0], {
+      pid: child.pid,
+      mode: "launched",
+      child,
+    });
+  } finally {
+    rmSync(workDirectory, { recursive: true, force: true });
+  }
+});
+
+test("measureMatchedPairs batches visible samples before one hide and pairs occluded samples by index", async () => {
+  const config = JSON.parse(JSON.stringify(realGateConfig));
+  config.measurement.matchedPairCount = 3;
+  config.measurement.minimumPositiveVisibleSamples = 3;
+
+  const helperBinaryPath = "/fake/macos-idle-occlusion-gate-helper";
+  const pid = 4242;
+  const executablePath = "/fake/OpenBurnBar.app/Contents/MacOS/OpenBurnBar";
+  const runtime = { pid };
+  const buildIdentity = { executablePath };
+  const visibleIdentity = {
+    running: true,
+    pid,
+    executablePath,
+    bundleIdentifier: config.app.expectedBundleIdentifier,
+    hidden: false,
+    visibleWindowCount: 1,
+  };
+  const occludedIdentity = {
+    ...visibleIdentity,
+    hidden: true,
+    visibleWindowCount: 0,
+  };
+  const actions = [];
+  const sleepCalls = [];
+  const monotonicCalls = [];
+  const sampleCounts = new Map();
+  const monotonicValues = ["1000", "2000"];
+  const partialMeasurement = { pairs: [], transitions: [] };
+
+  const measurement = await measureMatchedPairs(
+    helperBinaryPath,
+    runtime,
+    buildIdentity,
+    config,
+    partialMeasurement,
+    {
+      helper: async (observedHelperPath, command, observedPID, timeout) => {
+        assert.equal(observedHelperPath, helperBinaryPath);
+        assert.equal(observedPID, pid);
+        assert.equal(timeout, config.measurement.stateTransitionTimeoutSeconds);
+        actions.push(`helper:${command}`);
+        if (command === "show" || command === "wait-visible") return visibleIdentity;
+        if (command === "hide" || command === "wait-hidden") return occludedIdentity;
+        assert.fail(`unexpected helper command ${command}`);
+      },
+      takeCPUSample: async (observedHelperPath, observedPID, state, durationSeconds) => {
+        assert.equal(observedHelperPath, helperBinaryPath);
+        assert.equal(observedPID, pid);
+        assert.equal(durationSeconds, config.measurement.sampleDurationSeconds);
+        const sampleIndex = (sampleCounts.get(state) ?? 0) + 1;
+        sampleCounts.set(state, sampleIndex);
+        actions.push(`sample:${state}:${sampleIndex}`);
+        return {
+          ...sample(state, state === "visible-idle" ? 10 + sampleIndex : sampleIndex, pid),
+          sampleIndex,
+          sampleID: `${state}-${sampleIndex}`,
+        };
+      },
+      sleep: async (milliseconds) => {
+        sleepCalls.push(milliseconds);
+      },
+      monotonicNow: () => {
+        const value = monotonicValues[monotonicCalls.length];
+        assert.ok(value, "measureMatchedPairs requested an unexpected monotonic timestamp");
+        monotonicCalls.push(value);
+        return value;
+      },
+    },
+  );
+
+  assert.strictEqual(measurement, partialMeasurement);
+  assert.deepEqual(actions, [
+    "helper:show",
+    "helper:wait-visible",
+    "sample:visible-idle:1",
+    "helper:wait-visible",
+    "sample:visible-idle:2",
+    "helper:wait-visible",
+    "sample:visible-idle:3",
+    "helper:hide",
+    "sample:occluded-idle:1",
+    "helper:wait-hidden",
+    "sample:occluded-idle:2",
+    "helper:wait-hidden",
+    "sample:occluded-idle:3",
+  ]);
+  assert.equal(actions.filter((action) => action === "helper:hide").length, 1);
+  assert.equal(actions.filter((action) => action === "helper:show").length, 1);
+  assert.deepEqual(sleepCalls, [
+    config.measurement.initialVisibleWarmupSeconds * 1000,
+    config.measurement.transitionSettleSeconds * 1000,
+  ]);
+  assert.deepEqual(monotonicCalls, monotonicValues);
+  assert.equal(measurement.transitions[1].afterVisibleSampleCount, 3);
+  assert.deepEqual(
+    measurement.pairs.map((pair) => ({
+      pairIndex: pair.pairIndex,
+      visibleSampleID: pair.visibleIdle.sampleID,
+      occludedSampleID: pair.occludedIdle.sampleID,
+    })),
+    [
+      { pairIndex: 1, visibleSampleID: "visible-idle-1", occludedSampleID: "occluded-idle-1" },
+      { pairIndex: 2, visibleSampleID: "visible-idle-2", occludedSampleID: "occluded-idle-2" },
+      { pairIndex: 3, visibleSampleID: "visible-idle-3", occludedSampleID: "occluded-idle-3" },
+    ],
+  );
+});
+
 test("real gate config versions and enforces absolute plus relative ceilings", () => {
   assert.equal(realGateConfig.gateVersion, "P-PERF-3-macos-real-process-v1");
   assert.equal(realGateConfig.measurement.robustStatistic, "median");
@@ -530,11 +762,15 @@ function runGateAgainstFakeBuild({ bundleIdentifier, ageSeconds }) {
   }
 
   try {
-    return spawnSync(
+    const result = spawnSync(
       process.execPath,
       [runnerPath, "--output", outputPath],
       { encoding: "utf8" },
     );
+    return {
+      ...result,
+      evidence: JSON.parse(readFileSync(outputPath, "utf8")),
+    };
   } finally {
     rmSync(fixtureRoot, { recursive: true, force: true });
   }
@@ -548,6 +784,10 @@ test("real gate rejects a built app with the wrong bundle identity", () => {
   });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /bundle id com\.example\.not-openburnbar does not match com\.openburnbar\.app/);
+  assert.equal(
+    result.evidence.measurementMethod.pairing,
+    "batched visible-idle then fully-occluded-idle samples from one PID, paired by sample index",
+  );
 });
 
 test("real gate rejects a stale OpenBurnBar executable", () => {
