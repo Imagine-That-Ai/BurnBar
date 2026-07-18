@@ -256,6 +256,7 @@ public struct InsightDigestBuilder: Sendable {
             entry.cacheTokens += u.cacheReadTokens
             entry.sessions.insert(u.sessionID)
             if let p = u.projectName, let token = projectTokenMap[p] { entry.projects[token, default: 0] += 1 }
+            perModel[u.model] = entry
         }
         return perModel
             .sorted {
