@@ -232,8 +232,6 @@ echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/
 | --- | --- |
 | `STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER` | the provider resource name printed in step 3 |
 | `STAGING_GCP_DEPLOY_SERVICE_ACCOUNT` | `burnbar-staging-deployer@burnbar-staging.iam.gserviceaccount.com` |
-| `STAGING_WINDOWS_FIREBASE_WEB_API_KEY` | API key from the `OpenBurnBar Windows Staging` Web app SDK config |
-| `STAGING_WINDOWS_GOOGLE_OAUTH_CLIENT_ID` | staging-only Desktop OAuth client id |
 | `STAGING_SENTRY_DSN_FUNCTIONS` | *(optional)* staging functions Sentry DSN |
 
 **Environment variables** (scope: protected `staging` environment):
@@ -241,7 +239,6 @@ echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/
 | Variable | Value | Effect |
 | --- | --- | --- |
 | `STAGING_ENABLED` | `true` | **Flips the workflow on.** Until this is `true`, the preflight job reports "not provisioned" and every deploy job is skipped. |
-| `STAGING_WINDOWS_APPCHECK_APP_ID` | Windows staging Web app id | Binds custom Windows App Check tokens to the staging app. |
 
 **Repository variable:**
 
@@ -252,11 +249,24 @@ echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/
 ```bash
 gh secret set STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER --env staging --repo Imagine-That-Ai/BurnBar
 gh secret set STAGING_GCP_DEPLOY_SERVICE_ACCOUNT     --env staging --repo Imagine-That-Ai/BurnBar
-gh secret set STAGING_WINDOWS_FIREBASE_WEB_API_KEY   --env staging --repo Imagine-That-Ai/BurnBar
-gh secret set STAGING_WINDOWS_GOOGLE_OAUTH_CLIENT_ID --env staging --repo Imagine-That-Ai/BurnBar
-gh variable set STAGING_WINDOWS_APPCHECK_APP_ID --env staging --repo Imagine-That-Ai/BurnBar
 gh variable set STAGING_ENABLED --env staging --body true --repo Imagine-That-Ai/BurnBar
 ```
+
+The GitHub deploy workflow does not launch the Windows app, so do not invent
+`STAGING_WINDOWS_*` aliases there. For a physical staging certification session,
+set the exact runtime names consumed by `CloudAuthProductionComposition` and
+`AppConfiguration` in that native Windows process:
+
+```powershell
+$env:OPENBURNBAR_FIREBASE_PROJECT_ID = 'burnbar-staging'
+$env:OPENBURNBAR_FIREBASE_WEB_API_KEY = '<OpenBurnBar Windows Staging Web API key>'
+$env:OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID = '<staging-only Desktop OAuth client id>'
+$env:OPENBURNBAR_APPCHECK_APP_ID = '<OpenBurnBar Windows Staging Web app id>'
+```
+
+Keep the OAuth client and Web API key in the approved staging credential store
+and inject them only into the authorized test session. Never place them in a
+committed `.env` file or reuse production credentials.
 
 ### 6. Staging functions runtime config (only if deploying functions)
 

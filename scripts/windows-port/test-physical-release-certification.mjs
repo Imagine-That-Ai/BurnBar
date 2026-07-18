@@ -26,6 +26,13 @@ const physicalRunbook = readFileSync(
   join(root, "../../docs/windows-port/evidence/windows-v1.0.37-release/PHYSICAL_X64_RUNBOOK.md"),
   "utf8",
 );
+const storeRunbook = readFileSync(
+  join(
+    root,
+    "../../docs/windows-port/evidence/windows-v1.0.37-release/STORE_PRIVATE_SUBMISSION_RUNBOOK.md",
+  ),
+  "utf8",
+);
 const localRunner = readFileSync(join(root, "run-local-certification-checks.mjs"), "utf8");
 
 assert.match(script, /\$PhysicalHardware/);
@@ -155,7 +162,7 @@ assert.match(physicalRunbook, /\$Repo = Join-Path \$Root 'candidate'/);
 assert.match(physicalRunbook, /\$Harness = Join-Path \$Root 'harness'/);
 assert.match(
   physicalRunbook,
-  /\$ExpectedHarnessCommit = '2757652e89440eb647d21721895fc61ec89935d3'/,
+  /\$ExpectedHarnessCommit = '00d0751f1c671d99fe7ef8f4059e91d689a30f44'/,
 );
 assert.match(
   physicalRunbook,
@@ -168,6 +175,9 @@ assert.match(
   /\$ExpectedMsixHash = '63a9c374bb8d817f4642ddbcbc1c4847d5bcc0388d40fdac4c45b202e7e64bd9'/,
 );
 assert.match(physicalRunbook, /git -C \$Harness checkout --detach \$ExpectedHarnessCommit/);
+assert.match(storeRunbook, /HARD STOP.*v1\.0\.37.*NO-GO/s);
+assert.match(storeRunbook, /Do not create a[\s\S]*Partner Center draft/);
+assert.doesNotMatch(storeRunbook, /Upload only these intentionally unsigned Store packages/);
 assert.match(
   physicalRunbook,
   /Join-Path \$Harness 'scripts\\windows-port\\run-physical-release-certification\.ps1'/,

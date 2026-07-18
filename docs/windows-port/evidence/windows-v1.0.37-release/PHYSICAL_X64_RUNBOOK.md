@@ -24,7 +24,7 @@ $Release = Join-Path $Root 'release'
 $Evidence = Join-Path $Root ('physical-x64-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $Attestation = Join-Path $Root 'hardware-attestation-x64.json'
 $ExpectedCommit = '2757652e89440eb647d21721895fc61ec89935d3'
-$ExpectedHarnessCommit = '2757652e89440eb647d21721895fc61ec89935d3'
+$ExpectedHarnessCommit = '00d0751f1c671d99fe7ef8f4059e91d689a30f44'
 $ExpectedPerformanceBudgetHash = '0824f341d0a7dea318a831e6ce67de016c9589d909e6982a678102130078fa92'
 $ExpectedMsixHash = '63a9c374bb8d817f4642ddbcbc1c4847d5bcc0388d40fdac4c45b202e7e64bd9'
 $ExpectedSigner = 'CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US'
