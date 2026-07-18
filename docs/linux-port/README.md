@@ -5,12 +5,11 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-18:
 
-- Current source checkpoint is `1b4c3b1e269b3d58d38226af1084f88bc7c6f742`.
-  It adds compatible-baseline discovery, strict declared/detected environment
-  identity binding, scratch-only iPad SPM cache pruning, and a bounded wait
-  for a meaningful packaged AT-SPI tree with failure diagnostics. These source
-  safeguards require complete current-head Release/Nightly and product rows
-  before they can support promotion.
+- Current source checkpoint is `1dced585af2441ac8ac1d4fdcb2e4666177f0474`.
+  It adds the startup/deep-link measurement boundary that keeps synthetic
+  startup routing out of user-navigation performance receipts. The prior
+  `1b4c3b1e26` Release evidence remains valid for its source; current-head
+  Nightly `29660228199` is the current shell/performance receipt.
 
 - Exact-head Release `29652889294` produced signed x86_64/aarch64 candidate
   `0.1.1` and passed package, daemon, desktop, tray, accessibility, route, and
@@ -19,12 +18,16 @@ Current parity status as of 2026-07-18:
   `sha256:d3d26e5a2d57148babfca11646aeecdb89280b95e16446c7cd186b388cb64bf0`).
   Update/rollback/data-preservation remains blocked until a compatible
   previous same-architecture package is supplied.
-- Current-head Nightly `29652890031` was rerun after its first attempt hit a
-  GitHub artifact-service DNS error (`ENOTFOUND`) after macOS soak success.
-  Linux and environment results are pending that rerun; the older successful
-  Nightly is historical evidence only.
-- Full macOS parity is not complete and the strict ledger remains 0/40 product
-  rows and 0/7 environment receipts. See
+- Current-head Nightly `29660228199` passed macOS and Linux matched workloads,
+  the Ubuntu GNOME/X11 packaged shell gate, and the explicit blocked-row
+  contracts for GNOME Wayland, Fedora/KDE Wayland, and Arch/wlroots. The X11
+  artifact is `8435091387`; compact extracts live under
+  [`evidence/mission-004-exact-head-1dced585af/`](evidence/mission-004-exact-head-1dced585af/).
+- Full macOS parity is not complete: the strict ledger remains 0/40 product
+  rows and 0/7 environment receipts. The Nightly pass is engineering evidence,
+  not a promotion claim; production, lifecycle, physical iPad, installed
+  integration, and registered product evidence remain open.
+- For the detailed audit and implementation plan, see
   the browser-ready
   [`LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.html`](LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.html)
   or its Markdown source

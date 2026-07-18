@@ -58,7 +58,7 @@ fail-closed notification payload/route validation (`85b167205`, `a852af8c5`).
 These are bounded source improvements; installed update/rollback and desktop
 host receipts remain required.
 
-### Exact-head release verification - 2026-07-18 (source `1b4c3b1e26`)
+### Latest Release verification - 2026-07-18 (source `1b4c3b1e26`; current source `1dced585af`)
 
 Release workflow `29652889294` completed successfully at
 `1b4c3b1e269b3d58d38226af1084f88bc7c6f742`. x86_64 job `88102165389`,
@@ -74,10 +74,27 @@ Both architecture sessions passed the strict AT-SPI tree contract after
 update/rollback/data-preservation is still blocked because no compatible
 previous same-architecture package was supplied.
 
-The current-head Nightly `29652890031` was initially stopped by a transient
-GitHub artifact-service DNS failure (`ENOTFOUND`) after the macOS workload
-passed. Its failed jobs were rerun in place; do not treat the Nightly or its
-Linux/environment rows as current-head evidence until that rerun completes.
+The current-head Nightly is recorded below; the earlier `29652890031` attempt
+is historical and was superseded after a transient GitHub artifact-service DNS
+failure (`ENOTFOUND`).
+
+### Current-head Nightly verification - 2026-07-18 (source `1dced585af`)
+
+Nightly `29660228199` completed successfully at
+`1dced585af2441ac8ac1d4fdcb2e4666177f0474`. The macOS matched soak
+(`88121518808`), Linux matched soak/comparison (`88124270582`), and the
+Ubuntu GNOME/X11 packaged shell row (`88127262321`) passed. The explicitly
+blocked GNOME Wayland, Arch/wlroots, and Fedora/KDE rows completed their
+blocked-row contracts (`88127262305`, `88127262310`, `88127262315`).
+
+The current X11 receipt passed all six shell validators and the full 19-route
+packaged session. Native p95s were app start `315.55 ms`, route navigation
+`99 ms`, daemon IPC `112.55 ms`, and tray open `72.45 ms`, all below their
+respective budgets. The matched 1,800-second workload passed all four
+checksum/parity/resource checks. These receipts validate the Linux shell and
+performance lane only; they do not promote any of the 40 product rows or the
+seven-environment ledger, which remain fail-closed until registered product
+evidence and live integration/install/lifecycle proof exist.
 
 ### Historical exact-head release verification - 2026-07-18 (source `70ab4eb0b9`)
 

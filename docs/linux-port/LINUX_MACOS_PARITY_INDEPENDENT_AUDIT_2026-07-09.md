@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` current source checkpoint `1b4c3b1e269b3d58d38226af1084f88bc7c6f742`; the audit record is carried by documentation, source-validation, and exact-head Release evidence. Release `29652889294` passed both native architectures at this source. Nightly `29652890031` is being rerun after a transient macOS artifact-service `ENOTFOUND` upload failure; its Linux and environment rows are not yet available. Full certification remains intentionally blocked. |
+| Remediation evidence | `codex/linux-parity-integration-final` current source checkpoint `1dced585af2441ac8ac1d4fdcb2e4666177f0474`; Release `29652889294` passed both native architectures at the prior `1b4c3b1e26` source, and Nightly `29660228199` passed the current-head macOS/Linux matched soak plus Ubuntu X11 shell gate. Full certification remains intentionally blocked because product evidence and live integration receipts are still missing. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -17,7 +17,7 @@ ledger is still **0/40 product requirements ready** and **0/7 environment
 receipts complete**; implementation progress must not be reported as a release
 percentage. The active remediation stack now contains these reviewable slices:
 
-### Latest exact-head Release verification - 2026-07-18 (source `1b4c3b1e26`)
+### Latest Release verification - 2026-07-18 (source `1b4c3b1e26`; current source is `1dced585af`)
 
 - **Exact-head Release:** run `29652889294` completed successfully at
   `1b4c3b1e269b3d58d38226af1084f88bc7c6f742`. x86_64 job `88102165389`,
@@ -38,12 +38,40 @@ percentage. The active remediation stack now contains these reviewable slices:
   fails. The exact-head x86_64 Release session now passes; the earlier
   four-node race is closed as a Release blocker, not promoted as a product
   parity receipt.
-- **Exact-head Nightly:** run `29652890031` at this source was first stopped
-  by GitHub artifact-service DNS failure (`ENOTFOUND`) after the macOS matched
-  workload itself passed. The failed jobs were rerun in place. Until that
-  rerun completes, Linux matched-performance and the desktop environment
-  rows remain unobserved for this source; the prior successful Nightly is
-  historical evidence only.
+### Current-head Nightly verification - 2026-07-18 (source `1dced585af`)
+
+- **Full matrix:** run `29660228199` completed successfully at
+  `1dced585af2441ac8ac1d4fdcb2e4666177f0474`. macOS matched soak job
+  `88121518808`, Linux matched soak/comparison job `88124270582`, and the
+  Ubuntu GNOME/X11 job `88127262321` passed. The three intentionally blocked
+  environment rows also completed their explicit blocked-row checks:
+  GNOME/Wayland `88127262305`, Arch/wlroots `88127262310`, and Fedora/KDE
+  Wayland `88127262315`. The X11 artifact is `8435091387` (the immutable
+  GitHub artifact remains the source of the full screenshots/logs); small
+  ranged JSON extracts are archived under
+  `evidence/mission-004-exact-head-1dced585af/`.
+- **X11 packaged shell gate:** Ubuntu 24.04.4 aarch64 under Xvfb/X11 with
+  XFCE/openbox passed all six shell validators (`VAL-A11Y-001`,
+  `VAL-SHELL-005`, `VAL-ONBOARDING-001`, `VAL-PET-001`, `VAL-TEXTEXP-001`,
+  and `VAL-PERF-001`). The 19-route packaged session and daemon health passed;
+  native p95s were app start `315.55 ms` (10 samples, 2,500 ms limit), route
+  navigation `99 ms` (31 samples, 120 ms limit), daemon IPC `112.55 ms` (10
+  samples, 800 ms limit), and tray open `72.45 ms` (10 samples, 400 ms
+  limit). The route-startup measurement boundary fixed by `1dced585af` is
+  therefore verified in the decisive X11 row.
+- **Matched workload:** the nightly 1,800-second macOS/Linux soak passed all
+  four checksum-matched workloads, absolute/parity budgets, and resource
+  checks. Linux RSS growth was `81,920` bytes; no workload errors were
+  reported. This is a performance/reliability receipt, not a product-parity
+  claim.
+- **Certification boundary:** the fail-closed ledger remains **0/40 product**
+  and **0/7 environment**, with `productParityClaim=false`. The blocked rows
+  above are explicit infrastructure declarations, not successful Wayland or
+  wlroots product sessions. Current remaining blockers are the unregistered
+  product-parity workflow/evidence for P-01 through P-40, production callable
+  deployment proof, compatible previous-release lifecycle proof, physical iPad
+  approval execution, live UTM daemon repair, and installed Mercury/Computer
+  Use/SmartHub/IME/keyring/accessibility/update receipts.
 
 ### Historical exact-head Release/Nightly verification - 2026-07-18 (source `70ab4eb0b9`)
 
