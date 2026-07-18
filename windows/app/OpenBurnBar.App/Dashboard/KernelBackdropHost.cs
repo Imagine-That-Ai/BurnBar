@@ -1,8 +1,11 @@
 using System;
 using System.IO;
+using System.Numerics;
 using System.Threading.Tasks;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.Web.WebView2.Core;
 using OpenBurnBar.App.Diagnostics;
 using Path = System.IO.Path;
@@ -14,7 +17,8 @@ namespace OpenBurnBar.App.Dashboard;
 /// (<c>AgentLens/Resources/KernelBackdrop/</c>). Mirrors macOS
 /// <c>KernelBackdropView</c>: loads the offline bundle, bridges
 /// <c>__setKernel</c> / <c>__setTheme</c> / <c>__setBackdropActive</c>, and is
-/// hit-test disabled so dashboard content composites cleanly on top.
+/// hosted through a composition controller below dashboard XAML so native browser
+/// airspace can never cover the command sidebar or detail content.
 /// Permanent failure is signaled via <see cref="Failed"/> so the dashboard can
 /// fail over to the Win2D swarm.
 /// </summary>
@@ -22,8 +26,13 @@ public sealed class KernelBackdropHost : IDisposable
 {
     private const string VirtualHost = "kernelbackdrop.openburnbar.invalid";
 
-    private readonly WebView2 _webView;
+    private readonly Grid _anchor;
+    private readonly TaskCompletionSource _loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private CoreWebView2Environment? _environment;
+    private CoreWebView2CompositionController? _compositionController;
+    private CoreWebView2Controller? _controller;
     private CoreWebView2? _core;
+    private SpriteVisual? _visual;
     private bool _started;
     private bool _disposed;
     private bool _isLoaded;
@@ -35,19 +44,18 @@ public sealed class KernelBackdropHost : IDisposable
 
     public KernelBackdropHost()
     {
-        _webView = new WebView2
+        _anchor = new Grid
         {
-            DefaultBackgroundColor = Windows.UI.Color.FromArgb(0, 0, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
             IsHitTestVisible = false,
         };
-        // Never steal focus/clicks from the dashboard content layer.
-        _webView.IsTabStop = false;
+        _anchor.Loaded += OnAnchorLoaded;
+        _anchor.SizeChanged += OnAnchorSizeChanged;
     }
 
-    /// <summary>The WebView2 control to place at the back of the dashboard visual tree.</summary>
-    public WebView2 Control => _webView;
+    /// <summary>The XAML anchor whose child visual hosts the browser composition tree.</summary>
+    public Grid Control => _anchor;
 
     /// <summary>True once the CoreWebView2 session loaded the kernel bundle successfully.</summary>
     public bool IsReady => _isLoaded;
@@ -120,13 +128,37 @@ public sealed class KernelBackdropHost : IDisposable
 
         try
         {
-            await _webView.EnsureCoreWebView2Async();
+            await WaitUntilLoadedAsync();
             if (_disposed)
             {
                 return;
             }
 
-            _core = _webView.CoreWebView2;
+            nint parentWindow = App.Current.MainWindowHandle;
+            if (parentWindow == 0)
+            {
+                throw new InvalidOperationException("The main window handle is unavailable.");
+            }
+
+            string userDataFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "OpenBurnBar",
+                "WebView2",
+                "KernelBackdrop");
+            Directory.CreateDirectory(userDataFolder);
+            _environment = await CoreWebView2Environment.CreateWithOptionsAsync(
+                browserExecutableFolder: null,
+                userDataFolder,
+                environmentOptions: null);
+            var windowReference = CoreWebView2ControllerWindowReference.CreateFromWindowHandle(
+                checked((ulong)parentWindow));
+            _compositionController = await _environment.CreateCoreWebView2CompositionControllerAsync(windowReference);
+            _controller = _compositionController;
+            _core = _controller.CoreWebView2;
+
+            _controller.DefaultBackgroundColor = Windows.UI.Color.FromArgb(0, 0, 0, 0);
+            _controller.ShouldDetectMonitorScaleChanges = false;
+            CreateAndAttachVisual();
             Harden(_core);
 
             _core.SetVirtualHostNameToFolderMapping(
@@ -214,6 +246,10 @@ public sealed class KernelBackdropHost : IDisposable
         }
 
         _lastActive = active;
+        if (_controller is not null)
+        {
+            _controller.IsVisible = active;
+        }
         if (_core is null)
         {
             return;
@@ -242,6 +278,63 @@ public sealed class KernelBackdropHost : IDisposable
         _lastActive = null;
         SetBackdropActive(true);
         Ready?.Invoke(this, EventArgs.Empty);
+    }
+
+    private Task WaitUntilLoadedAsync()
+    {
+        if (_anchor.IsLoaded)
+        {
+            return Task.CompletedTask;
+        }
+
+        return _loaded.Task;
+    }
+
+    private void OnAnchorLoaded(object sender, RoutedEventArgs args)
+    {
+        _loaded.TrySetResult();
+        if (_anchor.XamlRoot is { } root)
+        {
+            root.Changed -= OnXamlRootChanged;
+            root.Changed += OnXamlRootChanged;
+        }
+        ResizeCompositionSurface();
+    }
+
+    private void OnAnchorSizeChanged(object sender, SizeChangedEventArgs args) => ResizeCompositionSurface();
+
+    private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => ResizeCompositionSurface();
+
+    private void CreateAndAttachVisual()
+    {
+        if (_compositionController is null)
+        {
+            return;
+        }
+
+        _visual ??= ElementCompositionPreview.GetElementVisual(_anchor).Compositor.CreateSpriteVisual();
+        ElementCompositionPreview.SetElementChildVisual(_anchor, _visual);
+        _compositionController.RootVisualTarget = _visual;
+        ResizeCompositionSurface();
+    }
+
+    private void ResizeCompositionSurface()
+    {
+        if (_controller is null || _visual is null)
+        {
+            return;
+        }
+
+        double scale = _anchor.XamlRoot?.RasterizationScale ?? 1.0;
+        double width = Math.Max(1, _anchor.ActualWidth);
+        double height = Math.Max(1, _anchor.ActualHeight);
+        double pixelWidth = Math.Ceiling(width * scale);
+        double pixelHeight = Math.Ceiling(height * scale);
+
+        _controller.RasterizationScale = scale;
+        _controller.Bounds = new Windows.Foundation.Rect(0, 0, pixelWidth, pixelHeight);
+        _visual.Size = new Vector2((float)pixelWidth, (float)pixelHeight);
+        _visual.Scale = new Vector3((float)(1.0 / scale), (float)(1.0 / scale), 1);
     }
 
     private void Fail(string reason)
@@ -300,6 +393,13 @@ public sealed class KernelBackdropHost : IDisposable
         }
 
         _disposed = true;
+        _loaded.TrySetResult();
+        _anchor.Loaded -= OnAnchorLoaded;
+        _anchor.SizeChanged -= OnAnchorSizeChanged;
+        if (_anchor.XamlRoot is { } root)
+        {
+            root.Changed -= OnXamlRootChanged;
+        }
         if (_core is not null)
         {
             _core.NavigationCompleted -= OnNavigationCompleted;
@@ -307,7 +407,12 @@ public sealed class KernelBackdropHost : IDisposable
 
         try
         {
-            _webView.Close();
+            if (_compositionController is not null)
+            {
+                _compositionController.RootVisualTarget = null;
+            }
+            ElementCompositionPreview.SetElementChildVisual(_anchor, null);
+            _controller?.Close();
         }
         catch (Exception)
         {

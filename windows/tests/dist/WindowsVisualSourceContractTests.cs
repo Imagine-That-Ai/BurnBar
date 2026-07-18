@@ -222,6 +222,56 @@ public sealed class WindowsVisualSourceContractTests
     }
 
     [Fact]
+    public void DashboardBackdropsUseXamlSafeCompositionSurfaces()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string kernel = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Dashboard", "KernelBackdropHost.cs"));
+        string swarm = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Particles", "SwarmCanvasHost.cs"));
+        string page = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Dashboard", "DashboardPage.xaml"));
+
+        Assert.Contains("CreateCoreWebView2CompositionControllerAsync", kernel, StringComparison.Ordinal);
+        Assert.Contains("ElementCompositionPreview.SetElementChildVisual", kernel, StringComparison.Ordinal);
+        Assert.DoesNotContain("new WebView2", kernel, StringComparison.Ordinal);
+        Assert.Contains("new CanvasControl", swarm, StringComparison.Ordinal);
+        Assert.DoesNotContain("new CanvasAnimatedControl", swarm, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"Dashboard.Content\"", page, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ShellKeyboardControlsExposeStableAccessibleNames()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string shellXaml = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Shell", "AppShell.xaml"));
+        string shellCode = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Shell", "AppShell.xaml.cs"));
+        string kernelXaml = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Shell", "KernelSwitcherControl.xaml"));
+
+        Assert.Contains("AutomationProperties.Name=\"OpenBurnBar dashboard\"", shellXaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Command palette\"", shellXaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Appearance\"", shellXaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"More navigation and settings\"", shellXaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.SetName(button, label);", shellCode, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Backdrop kernel\"", kernelXaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StreamingBubbleObservesEveryPretextMeasurementFault()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string bubble = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Chat", "StreamingBubble.xaml.cs"));
+
+        Assert.Contains("catch (Exception ex)", bubble, StringComparison.Ordinal);
+        Assert.Contains("AppDiagnostics.LogException(\"chat.pretext.measure\", ex);", bubble, StringComparison.Ordinal);
+        Assert.Contains("await engine.ReleaseAsync(prepared)", bubble, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CodePaintedGlassAndBudgetCanvasFollowTheActualTheme()
     {
         string root = DistTestSupport.RepositoryRoot();

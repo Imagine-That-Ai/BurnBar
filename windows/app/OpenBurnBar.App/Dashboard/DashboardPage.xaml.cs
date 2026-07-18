@@ -33,6 +33,7 @@ public sealed partial class DashboardPage : Page
     private bool _kernelConstructionFailed;
     private DashboardCommandSnapshot _commandSnapshot = DashboardCommandSnapshot.Empty;
     private DashboardCommandSelection _commandSelection = DashboardCommandSelection.Overview();
+    private const double CompactDashboardBreakpoint = 900;
 
     public DashboardPage()
     {
@@ -217,7 +218,7 @@ public sealed partial class DashboardPage : Page
 
         if (_backdrop is not null)
         {
-            _backdrop.Control.Paused = !showWin2D;
+            _backdrop.Paused = !showWin2D;
             _backdrop.Control.Visibility = showWin2D ? Visibility.Visible : Visibility.Collapsed;
         }
 
@@ -234,6 +235,21 @@ public sealed partial class DashboardPage : Page
 
     private void OnLayoutChanged(object? sender, DashboardLayout layout) => ShowLayout(layout);
 
+    private void OnDashboardSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        bool compact = e.NewSize.Width < CompactDashboardBreakpoint;
+        SidebarColumn.MinWidth = compact ? 0 : 260;
+        SidebarColumn.MaxWidth = compact ? 0 : 320;
+        SidebarColumn.Width = compact ? new GridLength(0) : new GridLength(280);
+        SidebarDividerColumn.Width = compact ? new GridLength(0) : new GridLength(1);
+        CommandSidebar.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        SidebarDivider.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        DetailSubtitle.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        DetailHost.Padding = compact ? new Thickness(10, 8, 10, 0) : new Thickness(16, 12, 16, 0);
+        Switcher.Width = compact ? 190 : double.NaN;
+        Switcher.MaxWidth = compact ? 190 : double.PositiveInfinity;
+    }
+
     private void ShowLayout(DashboardLayout layout)
     {
         ContentHost.Content = CreateLayoutView(layout);
@@ -243,7 +259,7 @@ public sealed partial class DashboardPage : Page
         if (_backdrop is not null)
         {
             // Ensure the animated control is running after visibility toggles.
-            _backdrop.Control.Paused = false;
+            _backdrop.Paused = false;
         }
 
         // When the WebGL2 kernel field is active, also switch its kernel so the

@@ -15,6 +15,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     AutomationProperties.AutomationId="RouteRoot.dashboard"
+    SizeChanged="OnDashboardSizeChanged"
     Background="Transparent">
 
     <Grid Background="Transparent">
@@ -34,19 +35,25 @@
         <!-- NavigationSplitView: Command sidebar | detail -->
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="280" MinWidth="260" MaxWidth="320" />
-                <ColumnDefinition Width="1" />
+                <ColumnDefinition x:Name="SidebarColumn" Width="280" MinWidth="260" MaxWidth="320" />
+                <ColumnDefinition x:Name="SidebarDividerColumn" Width="1" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
             <dashboard:DashboardCommandSidebar x:Name="CommandSidebar"
                                                Grid.Column="0" />
 
-            <Border Grid.Column="1"
+            <Border x:Name="SidebarDivider"
+                    Grid.Column="1"
                     Background="{StaticResource PensieveColorGlassLineBrush}"
                     Opacity="0.65" />
 
-            <Grid Grid.Column="2" RowSpacing="8" Padding="16,12,16,0">
+            <Grid x:Name="DetailHost"
+                  Grid.Column="2"
+                  RowSpacing="8"
+                  Padding="16,12,16,0"
+                  AutomationProperties.AutomationId="Dashboard.Content"
+                  AutomationProperties.Name="Providers dashboard content">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />

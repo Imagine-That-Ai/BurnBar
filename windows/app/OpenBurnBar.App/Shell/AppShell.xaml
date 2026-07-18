@@ -14,7 +14,8 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    FontFamily="{StaticResource AuroraBodyFont}">
+    FontFamily="{StaticResource AuroraBodyFont}"
+    SizeChanged="OnShellSizeChanged">
 
     <Grid Background="Transparent" RowSpacing="0">
         <Grid.RowDefinitions>
@@ -40,16 +41,22 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Brand: AppLogo + wordmark (Linux DeckBrandMark) -->
-                <Button Grid.Column="0"
+                <Button x:Name="BrandButton"
+                        Grid.Column="0"
                         Click="Brand_Click"
                         Background="Transparent"
                         BorderThickness="0"
                         Padding="4,2"
                         VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="Shell.Brand"
+                        AutomationProperties.Name="OpenBurnBar dashboard"
                         ToolTipService.ToolTip="OpenBurnBar — Dashboard">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <components:AppLogoView Size="26" VerticalAlignment="Center" />
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="0">
+                        <StackPanel x:Name="BrandWordmark"
+                                    Orientation="Horizontal"
+                                    VerticalAlignment="Center"
+                                    Spacing="0">
                             <TextBlock Text="Open" FontSize="13" FontWeight="SemiBold"
                                        Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                             <TextBlock Text="BurnBar" FontSize="13" FontWeight="SemiBold"
@@ -59,7 +66,8 @@
                 </Button>
 
                 <!-- Omnibar: wide glass search pill (macOS BurnBarTopRail / Linux TopChrome) -->
-                <Button Grid.Column="1"
+                <Button x:Name="PaletteButton"
+                        Grid.Column="1"
                         Style="{StaticResource LiquidGlassInteractiveStyle}"
                         theme:LiquidGlass.Interactive="True"
                         Click="Palette_Click"
@@ -68,6 +76,8 @@
                         MinWidth="220"
                         MaxWidth="400"
                         HorizontalContentAlignment="Stretch"
+                        AutomationProperties.AutomationId="Shell.CommandPalette"
+                        AutomationProperties.Name="Command palette"
                         ToolTipService.ToolTip="Command palette (Ctrl+K)">
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
@@ -81,11 +91,13 @@
                                   FontSize="12"
                                   Glyph="&#xE721;"
                                   Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
-                        <TextBlock Grid.Column="1"
+                        <TextBlock x:Name="PaletteLabel"
+                                   Grid.Column="1"
                                    Text="Search or jump to…"
                                    FontSize="12"
                                    Foreground="{ThemeResource AuroraTextMutedBrush}" />
-                        <Border Grid.Column="3"
+                        <Border x:Name="PaletteShortcut"
+                                Grid.Column="3"
                                 VerticalAlignment="Center"
                                 CornerRadius="4"
                                 Padding="6,2"
@@ -111,10 +123,13 @@
                                        Margin="4,0,0,0" />
 
                 <!-- Appearance -->
-                <Button Grid.Column="5"
+                <Button x:Name="AppearanceButton"
+                        Grid.Column="5"
                         Style="{StaticResource LiquidGlassCircleButtonStyle}"
                         theme:LiquidGlass.CircleButtonDiameter="30"
                         VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="Shell.Appearance"
+                        AutomationProperties.Name="Appearance"
                         ToolTipService.ToolTip="Appearance">
                     <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE771;"
                               Foreground="{ThemeResource AuroraTextBrush}" />
@@ -126,10 +141,13 @@
                 </Button>
 
                 <!-- Overflow -->
-                <Button Grid.Column="6"
+                <Button x:Name="OverflowButton"
+                        Grid.Column="6"
                         Style="{StaticResource LiquidGlassCircleButtonStyle}"
                         theme:LiquidGlass.CircleButtonDiameter="30"
                         VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="Shell.More"
+                        AutomationProperties.Name="More navigation and settings"
                         ToolTipService.ToolTip="More">
                     <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE712;"
                               Foreground="{ThemeResource AuroraTextBrush}" />

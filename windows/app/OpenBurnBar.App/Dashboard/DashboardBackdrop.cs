@@ -1,6 +1,6 @@
 // WINDOWS-ONLY / CI-DEFERRED (Win2D host). The frame-GENERATION math here mirrors the
 // perf harness (portable, macOS-built), but this file lives in the WinUI app because it
-// binds the LANDED SwarmCanvasHost (Win2D CanvasAnimatedControl). See SwarmCanvasHost.cs.
+// binds the LANDED SwarmCanvasHost (XAML-composited Win2D CanvasControl). See SwarmCanvasHost.cs.
 
 using System;
 using Microsoft.Graphics.Canvas.UI.Xaml;
@@ -17,7 +17,7 @@ namespace OpenBurnBar.App.Dashboard;
 /// macOS <c>ConstellationBackgroundView</c> / <c>DashboardDepthBackdrop</c> /
 /// <c>KernelBackdropView</c> that ride behind every concept layout. It CONSUMES the
 /// landed particle engine: a <see cref="SwarmCanvasHost"/> (the Win2D
-/// <c>CanvasAnimatedControl</c> renderer) painting a family-appropriate
+/// <c>CanvasControl</c> renderer) painting a family-appropriate
 /// <see cref="ISwarmSubstrate"/> from the ported <see cref="SubstrateCatalog"/>. The
 /// active family follows the selected <see cref="DashboardLayout"/> so each concept has
 /// its own signature backdrop, exactly like the macOS layouts.
@@ -46,7 +46,14 @@ public sealed class DashboardBackdrop : IDisposable
     }
 
     /// <summary>The Win2D control to place at the back of the dashboard visual tree.</summary>
-    public CanvasAnimatedControl Control => _host.Control;
+    public CanvasControl Control => _host.Control;
+
+    /// <summary>Pauses compositor-driven invalidation while the WebGL layer is active.</summary>
+    public bool Paused
+    {
+        get => _host.Paused;
+        set => _host.Paused = value;
+    }
 
     /// <summary>Switch the backdrop family + substrate to match the selected layout.</summary>
     public void SetLayout(DashboardLayout layout)
@@ -65,7 +72,7 @@ public sealed class DashboardBackdrop : IDisposable
         }
 
         // Resume the vsync loop if it was paused while the kernel layer was on top.
-        Control.Paused = false;
+        Paused = false;
     }
 
     /// <summary>
