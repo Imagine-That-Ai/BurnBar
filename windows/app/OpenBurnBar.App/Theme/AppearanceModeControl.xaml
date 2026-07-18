@@ -11,8 +11,10 @@
   ElementTheme via AppearanceModeExtensions.ToElementTheme — the exact mapping ThemeService
   applies — so {ThemeResource} AuroraCanvasBrush/AuroraAccentBrush resolve to that mode's
   plate + accent (Dark: #0D1117 + #FA5053 dot; Light: #F3E8E6 + #F45B69 dot). High
-  contrast overlays a solid black plate with a white border (AllowsBackdrop=false is the
-  one mode-unique static signal). System previews its effective resolution (System → Dark
+  contrast overlays a solid black plate with a white border (AppearanceModeExtensions.
+  HighContrastOverlayVisibility — a Visibility-returning helper, since x:Bind function
+  bindings type-check the return type against the target property and a bool + converter
+  does not compile through a function bind). System previews its effective resolution (System → Dark
   per ToElementTheme): a literal half-dark/half-light split would need Mode-identity
   branching the shared ItemTemplate cannot express without new code-behind — System and
   Dark share every derivable signal, so the tile honestly previews what System resolves to.
@@ -25,15 +27,10 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:OpenBurnBar.App.Theme"
-    xmlns:conv="using:OpenBurnBar.App.Converters"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-
-    <UserControl.Resources>
-        <conv:NegatedBoolToVisibilityConverter x:Key="NegatedBoolToVisibility" />
-    </UserControl.Resources>
 
     <StackPanel Spacing="14">
 
@@ -66,7 +63,7 @@
                                     Background="Black"
                                     BorderBrush="White"
                                     BorderThickness="2"
-                                    Visibility="{x:Bind local:AppearanceModeExtensions.AllowsBackdrop(Mode), Mode=OneWay, Converter={StaticResource NegatedBoolToVisibility}}" />
+                                    Visibility="{x:Bind local:AppearanceModeExtensions.HighContrastOverlayVisibility(Mode), Mode=OneWay}" />
                         </Grid>
                         <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
                             <FontIcon FontFamily="Segoe MDL2 Assets"
