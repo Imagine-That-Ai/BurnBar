@@ -716,6 +716,22 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertFalse(bundle.contains("/home/alberto"))
     }
 
+    func testTelemetryRedactorCoversJSONBearerAndLinuxPathForms() {
+        let redactor = LinuxTelemetryRedactor()
+        let diagnostic = #"{"apiKey":"json-secret","access_token":"json-refresh","authorization":"Bearer eyJhbGciOiJIUzI1NiJ9.payload.signature","session_id":"session-secret","path":"/run/user/1000/openburnbar/session.json"}"#
+
+        let redacted = redactor.redact(diagnostic)
+
+        XCTAssertTrue(redacted.contains(#""apiKey":[REDACTED]"#))
+        XCTAssertTrue(redacted.contains(#""access_token":[REDACTED]"#))
+        XCTAssertTrue(redacted.contains(#""authorization":[REDACTED]"#))
+        XCTAssertTrue(redacted.contains(#""session_id":[REDACTED]"#))
+        XCTAssertFalse(redacted.contains("json-secret"))
+        XCTAssertFalse(redacted.contains("json-refresh"))
+        XCTAssertFalse(redacted.contains("eyJhbGciOiJIUzI1NiJ9"))
+        XCTAssertFalse(redacted.contains("/run/user/1000"))
+    }
+
     func testTelemetryBridgeControlsAndRedactionSurfaceProofs() {
         let seeded = "token=sk-ant-abcdefghijklmnopqrstuvwxyz refreshToken=secret123 email=alberto@example.com path=/home/alberto/.config/openburnbar/session.json cookie=sessionid apiKey=key123 prompt=private operator request"
         var controls = LinuxTelemetryControlStore()

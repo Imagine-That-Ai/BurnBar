@@ -915,17 +915,38 @@ public struct LinuxTelemetryRedactor: Sendable {
 
     public func redact(_ input: String) -> String {
         var output = input
-        let patterns = [
-            #"(?i)(sk-[a-z0-9_-]{12,}|sk-ant-[a-z0-9_-]{12,}|xox[baprs]-[a-z0-9-]{12,}|gh[pousr]_[a-z0-9_]{12,})"#,
-            #"(?i)(refresh[_-]?token|access[_-]?token|id[_-]?token|cookie|authorization|api[_-]?key|secret|private[_-]?key|prompt|message)\s*[:=]\s*[^\n,;]+"#,
-            #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#,
-            #"/(?:home|Users)/[A-Za-z0-9._ -]+/[^\s,;]+"#
+        // Keep the diagnostic label while replacing its value.  The previous
+        // key/value expression only matched unquoted shell-style fields, so a
+        // JSON payload such as {"apiKey":"…"} could leak through unchanged.
+        let replacements: [(pattern: String, template: String)] = [
+            (
+                #"(?i)([\"']?(?:token|refresh[_-]?token|access[_-]?token|id[_-]?token|auth[_-]?token|cookie|authorization|api[_-]?key|api[_-]?secret|client[_-]?secret|secret(?:[_-]?key)?|private[_-]?key|password|passcode|passphrase|credential|session[_-]?id|prompt|message|body|content|snippet|vault|mnemonic|recovery|address|phone|uid|user[_-]?id)[\"']?\s*[:=]\s*)(?:\"(?:\\.|[^\"\\\r\n])*\"|'(?:\\.|[^'\\\r\n])*'|[^\s,;}\]]+)"#,
+                "$1[REDACTED]"
+            ),
+            (#"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}"#, "Bearer [REDACTED]"),
+            (
+                #"(?i)\b(?:sk-ant-|sk-|xox[baprs]-|gh[pousr]_)[A-Za-z0-9_-]{12,}\b"#,
+                "[REDACTED]"
+            ),
+            (#"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#, "[REDACTED]"),
+            (
+                #"/(?:home|Users|root|tmp|var/tmp|run/user)/[^\s,;}\]]+"#,
+                "[REDACTED]"
+            )
         ]
-        for pattern in patterns {
-            output = output.replacingOccurrences(
-                of: pattern,
-                with: "[REDACTED]",
-                options: [.regularExpression, .caseInsensitive]
+        for replacement in replacements {
+            guard let expression = try? NSRegularExpression(
+                pattern: replacement.pattern,
+                options: [.caseInsensitive]
+            ) else {
+                continue
+            }
+            let range = NSRange(output.startIndex..<output.endIndex, in: output)
+            output = expression.stringByReplacingMatches(
+                in: output,
+                options: [],
+                range: range,
+                withTemplate: replacement.template
             )
         }
         return output
@@ -1042,12 +1063,20 @@ public enum LinuxRedactionSurfaceEvidence {
             "release_evidence_log"
         ].map { surface in
             let redacted = redactor.redact("[\(surface)] \(seed)")
+            let sensitiveKeyPattern = #"(?i)(?:token|cookie|authorization|api[_-]?key|secret|password|passcode|credential|session[_-]?id|prompt|message|body|content|snippet|vault|mnemonic|recovery|address|phone|uid|user[_-]?id)\s*[:=]\s*(?!\[REDACTED\])\S+"#
+            let rawSensitiveKeyValue: Bool
+            if let expression = try? NSRegularExpression(pattern: sensitiveKeyPattern) {
+                let range = NSRange(redacted.startIndex..<redacted.endIndex, in: redacted)
+                rawSensitiveKeyValue = expression.firstMatch(in: redacted, range: range) != nil
+            } else {
+                rawSensitiveKeyValue = false
+            }
             return LinuxRedactionSurfaceProof(
                 surface: surface,
                 seededMarkerClasses: ["api_key", "refresh_token", "cookie", "private_prompt", "email", "local_path"],
                 redactedOutput: redacted,
                 rawMarkerFound: redacted.contains("sk-ant-")
-                    || redacted.contains("refreshToken=")
+                    || rawSensitiveKeyValue
                     || redacted.contains("sessionid")
                     || redacted.contains("private operator request")
                     || redacted.contains("@example.com")
