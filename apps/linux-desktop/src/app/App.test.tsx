@@ -447,4 +447,35 @@ describe('App shell', () => {
     });
     expect(useShellStore.getState().route).toBe('chat');
   });
+
+  it('falls back for a missing binding even when another native binding is healthy', async () => {
+    const nativeShortcutStatus = vi.fn().mockResolvedValue({
+      available: true,
+      registered: true,
+      backend: 'x11',
+      shortcuts: ['Ctrl+Alt+Super+O'],
+      bindings: [
+        { id: 'open-dashboard', shortcut: 'Ctrl+Alt+Super+O', state: 'registered' }
+      ]
+    });
+    useShellStore.setState({
+      route: 'chat',
+      bridge: { nativeShortcutStatus } as unknown as LinuxShellBridge,
+      bridgeReady: true
+    });
+    render(<App />);
+
+    await waitFor(() => expect(nativeShortcutStatus).toHaveBeenCalled());
+    await act(async () => {
+      await nativeShortcutStatus.mock.results[0]?.value;
+    });
+    fireEvent.keyDown(window, {
+      key: 'p',
+      code: 'KeyP',
+      ctrlKey: true,
+      altKey: true,
+      metaKey: true
+    });
+    await waitFor(() => expect(useShellStore.getState().route).toBe('pet'));
+  });
 });

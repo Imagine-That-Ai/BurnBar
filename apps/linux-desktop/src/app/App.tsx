@@ -34,7 +34,10 @@ function nativeShortcutBindingNeedsFallback(
   if (status === null) return true;
   if (!status.bindings) return !status.registered;
   const binding = status.bindings.find((candidate) => candidate.id === bindingID);
-  return binding ? binding.state !== 'registered' : !status.registered;
+  // A healthy aggregate result is not enough when one required binding is
+  // absent from the native report. Treat that binding as degraded so the
+  // focused-window fallback remains available for the missing command.
+  return binding ? binding.state !== 'registered' : true;
 }
 
 function isLinuxNativeRouteShortcut(event: KeyboardEvent, key: string): boolean {
