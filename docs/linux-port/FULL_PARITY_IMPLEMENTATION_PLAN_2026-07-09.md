@@ -58,7 +58,7 @@ fail-closed notification payload/route validation (`85b167205`, `a852af8c5`).
 These are bounded source improvements; installed update/rollback and desktop
 host receipts remain required.
 
-### Exact-head release verification - 2026-07-18
+### Exact-head release verification - 2026-07-18 (source `70ab4eb0b9`)
 
 Exact-head Release workflow `29646670068` completed successfully at
 `70ab4eb0b9e66394d709dac246296a3b050e8a3f`. x86_64 job `88086012965`,
@@ -100,6 +100,29 @@ Check/OAuth callables, run the physical iPad approval journey, close the
 remaining Linux desktop/architecture/keyring/portal rows, collect installed
 Computer Use, Mercury, SmartHub, IME, accessibility, performance, and update
 receipts, and only then promote the 40 product rows.
+
+### Current source follow-up - 2026-07-18 (source `63f23dcfb1`)
+
+The Release/Nightly receipts above remain bound to `70ab4eb0b9` and are stale
+for promotion after the current source commits. The follow-up implementation
+is bounded and tested:
+
+- `b6d662d503` + `63f23dcfb1` resolve only a complete two-architecture,
+  provenance-backed previous release and inspect each Debian payload for the
+  package-owned daemon launcher. The live history has no compatible baseline;
+  the resolver reports that fact and leaves lifecycle status blocked.
+- `84a34432ed` binds ready environment evidence to declared support-matrix
+  identity and detected Linux OS/architecture/desktop/session, and rejects a
+  malformed current HEAD. Validator/matrix tests pass **38/38**.
+- `dbdfb5b8f1` adds scratch-only pruning of unused Sentry SwiftPM variants for
+  physical iPad approval runs. The preflight/prune contract passes; no device
+  XCTest method has executed.
+- `e85d38acc7` keeps local package contracts honest when external historical
+  archives are absent. The combined executable contract lane is **69/69** with
+  two explicit fixture skips; workflow wiring is **44/44**.
+
+These changes improve repeatability and evidence integrity. They do not change
+the strict ledger: **0/40 product** and **0/7 environment**.
 
 ### Execution checkpoint — 2026-07-14
 

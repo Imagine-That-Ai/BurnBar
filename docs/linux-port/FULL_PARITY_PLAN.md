@@ -64,7 +64,7 @@ The latest continuation also adds Arch/pacman update-channel handling and
 fail-closed notification payload/route validation (`85b167205`, `a852af8c5`).
 These source and focused-test improvements do not promote any ledger row.
 
-Exact-head Release run `29646670068` completed successfully at
+Exact-head Release run `29646670068` completed successfully at source
 `70ab4eb0b9e66394d709dac246296a3b050e8a3f`; x86_64 job `88086012965`,
 aarch64 job `88086012972`, and aggregate job `88089349146` passed package
 construction, ownership/install/uninstall, daemon/desktop/tray, route/
@@ -100,6 +100,18 @@ execute approval on the physical iPad, close the remaining Linux desktop,
 architecture, keyring, and portal rows, collect installed Computer Use/Mercury/
 SmartHub/IME/accessibility/performance/update receipts, then promote all 40
 requirement rows.
+
+### Current source follow-up — 2026-07-18 (`63f23dcfb1`)
+
+The release/nightly receipts above are intentionally retained for their
+original source head and are not promoted to this newer source. The current
+branch adds three bounded safeguards: compatible-baseline discovery
+(`b6d662d503`, `63f23dcfb1`), declared/detected environment identity binding
+(`84a34432ed`), and an opt-in scratch-only iPad SPM cache prune
+(`dbdfb5b8f1`). The live resolver rejects historical `0.1.0` because its
+two-architecture/provenance and daemon-launcher requirements are incomplete.
+Focused contracts pass, but a fresh signed Release/Nightly run is still
+required before promotion.
 
 ---
 

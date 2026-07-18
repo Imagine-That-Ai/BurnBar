@@ -5,6 +5,11 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-18:
 
+- Current source checkpoint is `63f23dcfb1`. It adds compatible-baseline
+  discovery, strict declared/detected environment identity binding, and an
+  opt-in scratch-only iPad SPM cache prune. These source safeguards require a
+  fresh Release/Nightly run before they can support promotion.
+
 - Exact-head Release `29646670068` produced signed x86_64/aarch64 candidate
   `0.1.1` (`linux-v0.1.1`) and passed package, daemon, desktop, tray,
   accessibility, route, and attestation checks. Update/rollback/data-

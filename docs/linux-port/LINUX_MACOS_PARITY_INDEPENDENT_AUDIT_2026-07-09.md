@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` source implementation checkpoint `70ab4eb0b9`; the audit record is carried by documentation-only updates. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, structured shell failure diagnostics, host-mounted Swift evidence, expiry-teardown serialization, executable Linux analytics, Computer Use, and remote-engine behavior coverage, the P-07 computer-use validator, the Linux type-inference correction, deep-link normalization, fail-closed text-expansion state, SmartHub process/payload hardening, Linux XCTest discovery hardening, Arch package-channel update handling, fail-closed notification payload routing, native payload staging, media-crate packaging, the fresh arm64 shell timeout, native text-expansion persistence receipts, duplicate route-echo suppression, post-paint packaged lane hydration, packaged route-body idle hydration, and root-owned evidence transcript handling are linked below. Fresh exact-head Release `29646670068` completed successfully on x86_64 and aarch64 with signed evidence artifact `8430648757` (zip digest `sha256:30d67cc9ff465206bdc0a38dad1f0aa910b3a4c7f2205ef811175b37976da13b`). Its package/desktop/daemon/accessibility/tray/route closure is current, but lifecycle update/rollback/data-preservation remains blocked because no compatible same-architecture previous package was supplied. Fresh exact-head Nightly `29646670763` completed successfully at the same head: matched macOS/Linux soak and the runnable Ubuntu GNOME/X11 gate passed; hosted Arch/wlroots, GNOME Wayland, and Fedora/KDE rows were recorded as blocked; 9 Swift suites/414 tests, 19-route packaged X11 shell/accessibility/onboarding/text-expansion proof, and performance thresholds passed. Full certification remains intentionally blocked. |
+| Remediation evidence | `codex/linux-parity-integration-final` current source checkpoint `63f23dcfb1`; the audit record is carried by documentation and source-validation commits. The existing exact-head Release/Nightly receipts are bound to `70ab4eb0b9` and are not promoted to this newer source. Compatible-baseline discovery, support-matrix identity binding, scratch-only iPad cache pruning, and external package-fixture hygiene are linked below. Full certification remains intentionally blocked. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -17,7 +17,7 @@ ledger is still **0/40 product requirements ready** and **0/7 environment
 receipts complete**; implementation progress must not be reported as a release
 percentage. The active remediation stack now contains these reviewable slices:
 
-### Latest exact-head verification - 2026-07-18
+### Latest exact-head Release/Nightly verification - 2026-07-18 (source `70ab4eb0b9`)
 
 - **Exact-head Release:** run `29646670068` completed successfully at
   `70ab4eb0b9e66394d709dac246296a3b050e8a3f`. x86_64 job `88086012965`,
@@ -71,6 +71,29 @@ percentage. The active remediation stack now contains these reviewable slices:
   Computer Use/accessibility/performance/update receipts, and current-head
   validator promotion remain open. The fresh X11 gate is now clear; remaining
   P-32/P-37/P-38 work is broader environment and promotion evidence.
+
+### Current source follow-up - 2026-07-18 (source `63f23dcfb1`)
+
+- **Lifecycle discovery:** `b6d662d503` and `63f23dcfb1` add
+  `resolve-linux-previous-release.mjs`. Automatic selection now requires a
+  complete two-architecture asset/provenance matrix and inspects each Debian
+  payload for the exact package identity and
+  `/usr/libexec/openburnbar-daemon-launch`. The live resolver rejected
+  `linux-v0.1.0` with explicit missing-asset reasons; it did not select or
+  download an incompatible baseline. A compatible historical package is still
+  required for update/rollback/data-preservation certification.
+- **Environment evidence integrity:** `84a34432ed` binds ready environment
+  receipts to declared support-row identity and independently detected Linux
+  OS, architecture, desktop, and session, and rejects malformed current-head
+  inputs. The focused validator/matrix lane passed **38/38**.
+- **Physical iPad build hygiene:** `dbdfb5b8f1` adds an opt-in,
+  scratch-root-only SPM cache prune that retains static Sentry and removes
+  unused binary variants before XCTest. Preflight/prune contracts passed; no
+  device XCTest method ran, so iPad approval remains unproven.
+- **Local fixture hygiene:** `e85d38acc7` marks absent historical DEB/RPM
+  archives as explicit external-evidence skips while retaining full assertions
+  when CI supplies the archives. The combined executable contract lane passed
+  **69/69** with **2** explicit fixture skips; workflow wiring passed **44/44**.
 
 ### Historical continuation delta - 2026-07-17 (superseded by the exact-head verification above)
 
