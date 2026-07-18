@@ -9,6 +9,51 @@ namespace OpenBurnBar.App.UsageRuntime.Tests;
 public sealed class NativeUsageEngineIntegrationTests
 {
     [Fact]
+    public async Task ScanAsync_RealWorker_IsolatesNativeParserProcess()
+    {
+        string? workerPath = Environment.GetEnvironmentVariable("OPENBURNBAR_USAGE_SCAN_WORKER_PATH");
+        bool required = string.Equals(
+            Environment.GetEnvironmentVariable("OPENBURNBAR_REQUIRE_USAGE_SCAN_WORKER_INTEGRATION"),
+            "1",
+            StringComparison.Ordinal);
+        if (string.IsNullOrWhiteSpace(workerPath))
+        {
+            Assert.False(required, "OPENBURNBAR_USAGE_SCAN_WORKER_PATH is required by this integration run.");
+            return;
+        }
+
+        Assert.True(File.Exists(workerPath), $"Usage scan worker does not exist: {workerPath}");
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "obb-worker-usage-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(root);
+            var engine = new OutOfProcessUsageEngine(() => workerPath);
+            UsageEngineScanResponse response = await engine.ScanAsync(new UsageEngineScanRequest
+            {
+                SupportDirectory = Path.Combine(root, "support"),
+                HomeDirectory = root,
+                ClaudeProjectsDirectory = Path.Combine(root, ".claude", "projects"),
+                CodexHomeDirectory = root,
+                CursorSessionsDirectory = Path.Combine(root, ".cursor-agent", "sessions"),
+                FactorySessionsDirectory = Path.Combine(root, ".factory", "sessions"),
+                HermesHomeDirectory = Path.Combine(root, ".hermes"),
+                IncludeConversationBodies = false,
+            });
+
+            Assert.True(response.Ok, response.Error);
+            Assert.Equal(5, response.Providers.Count);
+            Assert.All(response.Providers, provider =>
+                Assert.Equal(UsageProviderScanStatus.Missing, provider.Status));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ScanAsync_RealCAbi_ParsesProviderLogsInProcess()
     {
         string? enginePath = Environment.GetEnvironmentVariable("OPENBURNBAR_CORE_CABI_PATH");

@@ -395,6 +395,7 @@ jobs:
         shell: pwsh
         env:
           OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"
+          OPENBURNBAR_REQUIRE_USAGE_SCAN_WORKER_INTEGRATION: "1"
         run: |
           $ErrorActionPreference = "Stop"
           $publishedRoot = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64"
@@ -406,6 +407,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $testOutputRoot | Out-Null
           Copy-Item -Path (Join-Path $publishedRoot "*") -Destination $smokeRoot -Recurse -Force
           $env:OPENBURNBAR_CORE_CABI_PATH = Join-Path $smokeRoot "OpenBurnBarCoreCAbi.dll"
+          $env:OPENBURNBAR_USAGE_SCAN_WORKER_PATH = Join-Path $smokeRoot "OpenBurnBar.Cli.exe"
           # The real app starts in the publish directory. Give the isolated testhost
           # the equivalent Windows DLL search path for the engine's Swift runtimes.
           $env:PATH = "$smokeRoot;$env:PATH"

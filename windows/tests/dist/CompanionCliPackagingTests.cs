@@ -28,6 +28,34 @@ public sealed class CompanionCliPackagingTests
         Assert.Contains("dotnet publish \"$cli\"", workflow, StringComparison.Ordinal);
         Assert.Contains("OpenBurnBar.Cli.exe", workflow, StringComparison.Ordinal);
         Assert.Contains("OpenBurnBar*.exe,OpenBurnBar*.dll", workflow, StringComparison.Ordinal);
+        Assert.Contains("OpenBurnBar.Cli.deps.json", workflow, StringComparison.Ordinal);
+        Assert.Contains("OpenBurnBar.Cli.runtimeconfig.json", workflow, StringComparison.Ordinal);
+        Assert.Contains("OPENBURNBAR_REQUIRE_USAGE_SCAN_WORKER_INTEGRATION", workflow, StringComparison.Ordinal);
+        Assert.Contains("OPENBURNBAR_USAGE_SCAN_WORKER_PATH", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppUsesPublishedCompanionCliAsNativeUsageScanWorker()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string appComposition = File.ReadAllText(Path.Combine(
+            root,
+            "windows",
+            "app",
+            "OpenBurnBar.App",
+            "App.xaml.cs"));
+        string cliEntryPoint = File.ReadAllText(Path.Combine(
+            root,
+            "windows",
+            "app",
+            "OpenBurnBar.Cli",
+            "Program.cs"));
+
+        Assert.Contains("new OutOfProcessUsageEngine()", appComposition, StringComparison.Ordinal);
+        Assert.DoesNotContain("new CAbiUsageEngine()", appComposition, StringComparison.Ordinal);
+        Assert.Contains("UsageScanWorkerProtocol.WorkerArgument", cliEntryPoint, StringComparison.Ordinal);
+        Assert.Contains("new CAbiUsageEngine()", cliEntryPoint, StringComparison.Ordinal);
+        Assert.Contains("UsageScanWorkerHost.RunAsync", cliEntryPoint, StringComparison.Ordinal);
     }
 
     [Fact]
