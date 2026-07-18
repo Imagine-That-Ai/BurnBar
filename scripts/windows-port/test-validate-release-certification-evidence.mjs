@@ -6,16 +6,31 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   BUNDLE_SCHEMA,
+  CERTIFICATION_PROTOCOL_CATALOG,
+  CERTIFICATION_PROTOCOL_SCHEMA,
   HARDWARE_ATTESTATION_SCHEMA,
   RECEIPT_SCHEMA,
   REQUIRED_GATE_IDS,
+  certificationProtocolForGate,
+  validateCertificationProtocolCatalog,
   validateReceipt,
   validateReleaseCertificationBundle,
   writeSha256Sums,
 } from "./validate-release-certification-evidence.mjs";
 import { sanitizeCertificationLog } from "./certification-log-sanitizer.mjs";
+import {
+  PERFORMANCE_BUDGET_CATALOG,
+  PERFORMANCE_BUDGET_SCHEMA,
+  PERFORMANCE_BUDGET_SHA256,
+  PERFORMANCE_BUDGET_STATUS,
+  derivePerformanceValue,
+  performanceContextTemplate,
+  performanceMeasurementTemplate,
+  validatePerformanceBudgetCatalog,
+} from "./release-performance-budget.mjs";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
+const HARNESS_COMMIT = "89abcdef0123456789abcdef0123456789abcdef";
 
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
@@ -30,7 +45,11 @@ function receipt(gate, status = "PASS") {
     status,
     gate,
     target: `${gate}.target`,
-    source: { commitSha: COMMIT, dirtyTree: false },
+    source: {
+      commitSha: COMMIT,
+      dirtyTree: false,
+      harness: { commitSha: HARNESS_COMMIT, dirtyTree: false },
+    },
     artifact: {
       name: "source-checkout",
       architecture: "macOS-arm64-authoring-host",
@@ -101,6 +120,7 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
     name: "OpenBurnBar-1.0.30-x64.msix",
     architecture: "x64",
     availability: "recorded",
+    sourceCommit: COMMIT,
     sha256: "a".repeat(64),
     workflowRunId: "123",
     workflowRunUrl: "https://example.invalid/runs/123",
@@ -110,7 +130,91 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
     .update(readFileSync(join(value.root, "observation.log")))
     .digest("hex");
   value.evidence.files.push({ path: "hardware-attestation.json", sha256: attestationHash });
+  const protocol = certificationProtocolForGate(gate);
+  assert.ok(protocol, `missing test protocol for ${gate}`);
+  value.protocol = {
+    commands: [`execute ${gate} protocol`],
+    manualSteps: ["Review every assertion against its raw evidence."],
+    profileSchema: CERTIFICATION_PROTOCOL_SCHEMA,
+    profile: protocol.profileName,
+    assertions: protocol.profile.assertions.map((assertion) => ({
+      id: assertion.id,
+      status: "PASS",
+      observed: `${assertion.id} passed on the physical test device.`,
+      evidence: ["observation.log"],
+    })),
+  };
+  value.time = {
+    startedAtUtc: "2026-07-11T00:00:00Z",
+    endedAtUtc: "2026-07-11T01:00:00Z",
+    durationSeconds: 3600,
+  };
+  value.protocol.performanceBudget = {
+    schema: PERFORMANCE_BUDGET_SCHEMA,
+    status: PERFORMANCE_BUDGET_STATUS,
+    revision: PERFORMANCE_BUDGET_CATALOG.revision,
+    sha256: PERFORMANCE_BUDGET_SHA256,
+  };
+  value.protocol.performanceContext = Object.fromEntries(
+    Object.keys(performanceContextTemplate()).map((field) => [
+      field,
+      `${field} recorded for the physical test workload.`,
+    ]),
+  );
+  value.protocol.performanceMeasurements = performanceMeasurementTemplate().map((measurement) => {
+    let samples = Array(measurement.minimumSamples).fill(measurement.limit);
+    if (measurement.statistic === "rate") {
+      samples = Array(measurement.minimumSamples).fill(0);
+      for (let index = 0; index < Math.round(measurement.minimumSamples * measurement.limit / 100); index += 1) {
+        samples[index] = 1;
+      }
+    } else if (measurement.statistic === "growth") {
+      samples = [100, 100 + measurement.limit];
+    } else if (measurement.statistic === "count") {
+      samples = Array(measurement.minimumSamples).fill(0);
+    }
+    return {
+      ...measurement,
+      value: derivePerformanceValue(samples, measurement.statistic),
+      sampleCount: samples.length,
+      samples,
+      durationSeconds: measurement.minimumDurationSeconds,
+      context: "Windows Performance Recorder 11; AC power; balanced mode; declared fixture dataset.",
+      evidence: ["observation.log"],
+    };
+  });
   return value;
+}
+
+{
+  assert.deepEqual(validatePerformanceBudgetCatalog(), []);
+  assert.equal(PERFORMANCE_BUDGET_CATALOG.status, "ACTIVE_RELEASE_GATE");
+  assert.ok(PERFORMANCE_BUDGET_CATALOG.measurements.length >= 15);
+}
+
+{
+  assert.deepEqual(validateCertificationProtocolCatalog(), []);
+  for (const gate of REQUIRED_GATE_IDS.slice(1)) {
+    const protocol = certificationProtocolForGate(gate);
+    assert.ok(protocol, `required gate ${gate} must have a protocol`);
+    assert.ok(protocol.profile.assertions.length > 0);
+    assert.equal(
+      new Set(protocol.profile.assertions.map((assertion) => assertion.id)).size,
+      protocol.profile.assertions.length,
+      `${gate} assertion ids must be unique`,
+    );
+  }
+}
+
+{
+  const catalog = structuredClone(CERTIFICATION_PROTOCOL_CATALOG);
+  catalog.profiles["physical-performance"].assertions.push(
+    structuredClone(catalog.profiles["physical-performance"].assertions[0]),
+  );
+  assert.match(
+    validateCertificationProtocolCatalog(catalog).join("\n"),
+    /duplicate assertion/,
+  );
 }
 
 {
@@ -135,15 +239,47 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
   const manifest = {
     schema: BUNDLE_SCHEMA,
     generatedAtUtc: "2026-07-11T00:00:01Z",
-    source: { commitSha: COMMIT, dirtyTree: false },
+    source: structuredClone(value.source),
+    artifact: structuredClone(value.artifact),
     overallVerdict: "NO-GO",
     receipts: [{ path: "receipts/local-automated-checks.json", sha256: receiptHash }],
     gates: [{ id: "local-automated-checks", status: "PASS", receipts: ["receipts/local-automated-checks.json"] }],
   };
   writeJson(join(bundleDir, "certification-manifest.json"), manifest);
   writeSha256Sums(bundleDir);
-  const result = validateReleaseCertificationBundle(bundleDir, { expectedCommit: COMMIT, requireAllGates: false });
+  const result = validateReleaseCertificationBundle(bundleDir, {
+    expectedCommit: COMMIT,
+    expectedHarnessCommit: HARNESS_COMMIT,
+    requireAllGates: false,
+  });
   assert.equal(result.ok, true, result.errors.join("\n"));
+
+  const wrongExpectedHarness = validateReleaseCertificationBundle(bundleDir, {
+    expectedCommit: COMMIT,
+    expectedHarnessCommit: "f".repeat(40),
+    requireAllGates: false,
+  });
+  assert.equal(wrongExpectedHarness.ok, false);
+  assert.match(
+    wrongExpectedHarness.errors.join("\n"),
+    /bundle: harness commit mismatch/,
+  );
+
+  const missingSourceManifest = structuredClone(manifest);
+  delete missingSourceManifest.source;
+  writeJson(join(bundleDir, "certification-manifest.json"), missingSourceManifest);
+  writeSha256Sums(bundleDir);
+  const missingSourceResult = validateReleaseCertificationBundle(bundleDir, {
+    expectedCommit: COMMIT,
+    expectedHarnessCommit: HARNESS_COMMIT,
+    requireAllGates: false,
+  });
+  assert.equal(missingSourceResult.ok, false);
+  assert.match(missingSourceResult.errors.join("\n"), /bundle: source is required/);
+  assert.match(missingSourceResult.errors.join("\n"), /bundle: commit mismatch/);
+  assert.match(missingSourceResult.errors.join("\n"), /bundle: harness commit mismatch/);
+  writeJson(join(bundleDir, "certification-manifest.json"), manifest);
+  writeSha256Sums(bundleDir);
 
   const missingReceiptHashManifest = structuredClone(manifest);
   delete missingReceiptHashManifest.receipts[0].sha256;
@@ -200,6 +336,27 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
     /receipt commit does not match bundle source commit/,
   );
 
+  const wrongHarnessReceipt = structuredClone(value);
+  wrongHarnessReceipt.source.harness.commitSha = "a".repeat(40);
+  const wrongHarnessResult = validateState(
+    wrongHarnessReceipt,
+    structuredClone(manifest),
+  );
+  assert.equal(wrongHarnessResult.ok, false);
+  assert.match(
+    wrongHarnessResult.errors.join("\n"),
+    /receipt harness does not match bundle source harness/,
+  );
+
+  const wrongArtifactManifest = structuredClone(manifest);
+  wrongArtifactManifest.artifact.sha256 = "f".repeat(64);
+  const wrongArtifactResult = validateState(value, wrongArtifactManifest);
+  assert.equal(wrongArtifactResult.ok, false);
+  assert.match(
+    wrongArtifactResult.errors.join("\n"),
+    /receipt artifact does not match bundle artifact/,
+  );
+
   const falseGoManifest = structuredClone(manifest);
   falseGoManifest.overallVerdict = "GO";
   const falseGoResult = validateState(value, falseGoManifest);
@@ -216,6 +373,15 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
   assert.match(
     dirtyGoResult.errors.join("\n"),
     /GO requires a clean source tree/,
+  );
+
+  const dirtyHarnessGoManifest = structuredClone(falseGoManifest);
+  dirtyHarnessGoManifest.source.harness.dirtyTree = true;
+  const dirtyHarnessGoResult = validateState(value, dirtyHarnessGoManifest);
+  assert.equal(dirtyHarnessGoResult.ok, false);
+  assert.match(
+    dirtyHarnessGoResult.errors.join("\n"),
+    /GO requires a clean certification harness/,
   );
 
   const dirtyGoReceipt = structuredClone(value);
@@ -269,6 +435,190 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
   const value = physicalPassReceipt();
   const result = validateReceipt(value, { bundleDir: value.root });
   assert.equal(result.ok, true, result.errors.join("\n"));
+}
+
+{
+  const value = physicalPassReceipt();
+  delete value.protocol.performanceBudget;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /requires protocol\.performanceBudget/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceBudget.sha256 = "0".repeat(64);
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /performanceBudget\.sha256 does not match/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceContext.sampling = "";
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /performanceContext\.sampling is required/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements.shift();
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /cold-start-p95 is missing/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements[0].value =
+    value.protocol.performanceMeasurements[0].limit + 0.001;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /violates at_most/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements[0].sampleCount =
+    value.protocol.performanceMeasurements[0].minimumSamples - 1;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /sampleCount must be at least/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements[0].samples.fill(0);
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /does not match the independently derived value/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements[0].samples[0] = -1;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /samples must be non-negative/);
+}
+
+{
+  const value = physicalPassReceipt();
+  const measurement = value.protocol.performanceMeasurements[0];
+  measurement.samples = Array(PERFORMANCE_BUDGET_CATALOG.maximumSamplesPerMeasurement + 1).fill(0);
+  measurement.sampleCount = measurement.samples.length;
+  measurement.value = 0;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /samples exceeds 100000/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements[0].evidence = ["missing-performance.csv"];
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /evidence reference is not present/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.performanceMeasurements.find((measurement) => measurement.id === "soak-crashes")
+    .durationSeconds = 3602;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /durationSeconds exceeds the receipt interval/);
+}
+
+{
+  const value = physicalPassReceipt();
+  delete value.source.harness;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /source\.harness is required/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.assertions = [];
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /required protocol assertion is missing/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.artifact.sourceCommit = "b".repeat(40);
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /artifact\.sourceCommit does not match/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.device.assetTag = "Chassis Asset Tag";
+  value.device.hardwareAttestation.assetTag = value.device.assetTag;
+  const attestationPath = join(value.root, "hardware-attestation.json");
+  const attestation = JSON.parse(readFileSync(attestationPath, "utf8"));
+  attestation.assetTag = value.device.assetTag;
+  writeJson(attestationPath, attestation);
+  const attestationHash = createHash("sha256")
+    .update(readFileSync(attestationPath))
+    .digest("hex");
+  value.device.hardwareAttestation.sha256 = attestationHash;
+  value.evidence.files.find((file) => file.path === "hardware-attestation.json").sha256 =
+    attestationHash;
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /requires a usable device\.assetTag/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.profileSchema = "openburnbar.windows.release-certification-protocols.invalid";
+  value.protocol.profile = "invalid-profile";
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /protocol\.profileSchema/);
+  assert.match(result.errors.join("\n"), /protocol\.profile/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.assertions[0].status = "FAIL";
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /status must be PASS/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.assertions.push({
+    id: "not-in-the-canonical-protocol",
+    status: "PASS",
+    observed: "This assertion must not be accepted.",
+    evidence: ["observation.log"],
+  });
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /unknown protocol assertion/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.protocol.assertions[0].evidence = ["missing-evidence.log"];
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /evidence reference is not present/);
+}
+
+{
+  const value = physicalPassReceipt();
+  value.evidence.files.push({ ...value.evidence.files[0] });
+  const result = validateReceipt(value, { bundleDir: value.root });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /duplicate evidence path/);
 }
 
 {

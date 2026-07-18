@@ -158,6 +158,7 @@ jobs:
         run: |
           $scripts = @(
             "scripts/windows-port/new-physical-hardware-attestation.ps1",
+            "scripts/windows-port/new-release-certification-supplemental-receipt.ps1",
             "scripts/windows-port/run-physical-release-certification.ps1"
           )
           foreach ($script in $scripts) {
@@ -172,6 +173,27 @@ jobs:
               throw "Physical certification PowerShell has parse errors: $script"
             }
             Write-Host "PowerShell parse OK: $script"
+          }
+
+      - name: Smoke supplemental certification templates
+        run: |
+          $catalog = Get-Content -Raw "scripts/windows-port/release-certification-protocols.json" | ConvertFrom-Json
+          $outputRoot = Join-Path $env:RUNNER_TEMP ("certification-protocol-" + [Guid]::NewGuid().ToString("N"))
+          $tool = Resolve-Path "scripts/windows-port/new-release-certification-supplemental-receipt.ps1"
+          foreach ($gateProperty in $catalog.gates.PSObject.Properties) {
+            $gate = [string]$gateProperty.Name
+            $resultsPath = Join-Path $outputRoot ($gate + ".json")
+            & $tool -Gate $gate -ResultsPath $resultsPath -Initialize
+            $results = Get-Content -Raw $resultsPath | ConvertFrom-Json
+            $profileName = [string]$gateProperty.Value.profile
+            $profile = $catalog.profiles.PSObject.Properties[$profileName].Value
+            if ($results.schema -ne "openburnbar.windows.release-certification-protocol-results.v1" -or
+                $results.gate -ne $gate -or
+                @($results.assertions).Count -ne @($profile.assertions).Count -or
+                @($results.assertions | Where-Object { $_.status -ne "NOT_RUN" }).Count -ne 0) {
+              throw "Supplemental certification template smoke failed: $gate"
+            }
+            Write-Host "Supplemental template OK: $gate ($(@($results.assertions).Count) assertions)"
           }
 
       - name: Restore Windows solution

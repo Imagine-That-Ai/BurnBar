@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,23 @@ import { describeLocalCertificationHost } from "./local-certification-host.mjs";
 const root = dirname(fileURLToPath(import.meta.url));
 const script = readFileSync(join(root, "run-physical-release-certification.ps1"), "utf8");
 const attestationGenerator = readFileSync(join(root, "new-physical-hardware-attestation.ps1"), "utf8");
+const supplementalGenerator = readFileSync(
+  join(root, "new-release-certification-supplemental-receipt.ps1"),
+  "utf8",
+);
+const supplementalValidator = readFileSync(
+  join(root, "validate-release-certification-receipt.mjs"),
+  "utf8",
+);
+const protocolCatalog = JSON.parse(
+  readFileSync(join(root, "release-certification-protocols.json"), "utf8"),
+);
+const performanceBudgetBytes = readFileSync(join(root, "release-performance-budgets.json"));
+const performanceBudget = JSON.parse(performanceBudgetBytes.toString("utf8"));
+const physicalRunbook = readFileSync(
+  join(root, "../../docs/windows-port/evidence/windows-v1.0.35-release/PHYSICAL_X64_RUNBOOK.md"),
+  "utf8",
+);
 const localRunner = readFileSync(join(root, "run-local-certification-checks.mjs"), "utf8");
 
 assert.match(script, /\$PhysicalHardware/);
@@ -24,8 +42,12 @@ assert.match(script, /Hardware attestation assetTagSource is required for physic
 assert.match(script, /Hardware attestation assetTagSource does not match/);
 assert.match(script, /Amazon EC2\|Google Compute Engine\|HVM domU\|\\bXen\\b/);
 assert.match(script, /\$script:AllowedAssetTagSources -notcontains \$candidateAssetTagSource/);
+assert.match(script, /validate-release-certification-receipt\.mjs/);
+assert.match(script, /Supplemental PASS receipt failed schema validation/);
 assert.match(script, /\$candidateDeviceIdentity -match \$script:VirtualHostIdentityPattern/);
 assert.match(script, /Normalize-Architecture \(\[string\]\$candidate\.device\.architecture\)/);
+assert.match(script, /\$candidateEvidencePathMap\[\$sourceFileKey\] = \$destinationRelative/);
+assert.match(script, /\$assertion\.evidence = \$rewrittenEvidence/);
 assert.match(
   script,
   /system asset tag\|chassis asset tag/,
@@ -49,12 +71,118 @@ assert.match(attestationGenerator, /Refusing physical hardware attestation for a
 assert.match(attestationGenerator, /Amazon EC2\|Google Compute Engine\|HVM domU\|\\bXen\\b/);
 assert.match(attestationGenerator, /Refusing to overwrite existing hardware attestation without -Force/);
 assert.match(attestationGenerator, /\.tmp-/);
+assert.equal(
+  protocolCatalog.schema,
+  "openburnbar.windows.release-certification-protocols.v1",
+);
+assert.deepEqual(
+  Object.keys(protocolCatalog.gates).sort(),
+  [
+    "accessibility-display",
+    "media-computer-use-safety",
+    "physical-performance-arm64",
+    "physical-performance-x64",
+    "staging-cloud",
+    "store-update-lifecycle",
+  ],
+);
+for (const [gate, gateConfig] of Object.entries(protocolCatalog.gates)) {
+  const profile = protocolCatalog.profiles[gateConfig.profile];
+  assert.ok(profile, `${gate} profile must exist`);
+  assert.ok(profile.assertions.length > 0, `${gate} must require assertions`);
+  assert.equal(
+    new Set(profile.assertions.map((assertion) => assertion.id)).size,
+    profile.assertions.length,
+    `${gate} assertion ids must be unique`,
+  );
+}
+assert.equal(performanceBudget.status, "ACTIVE_RELEASE_GATE");
+assert.equal(performanceBudget.profile, "physical-performance");
+assert.equal(
+  createHash("sha256").update(performanceBudgetBytes).digest("hex"),
+  "0824f341d0a7dea318a831e6ce67de016c9589d909e6982a678102130078fa92",
+);
+assert.equal(
+  protocolCatalog.profiles["physical-performance"].performanceBudgetSchema,
+  performanceBudget.schema,
+);
+assert.ok(performanceBudget.measurements.length >= 15);
+const performanceAssertionIds = new Set(
+  protocolCatalog.profiles["physical-performance"].assertions.map((assertion) => assertion.id),
+);
+for (const measurement of performanceBudget.measurements) {
+  assert.ok(performanceAssertionIds.has(measurement.assertionId));
+  assert.ok(measurement.minimumSamples >= 1);
+  assert.ok(measurement.minimumDurationSeconds >= 0);
+}
+assert.match(supplementalGenerator, /ParameterSetName = 'Initialize'/);
+assert.match(supplementalGenerator, /status = 'NOT_RUN'/);
+assert.match(supplementalGenerator, /validate-release-certification-evidence\.mjs/);
+assert.match(supplementalGenerator, /validate-release-certification-receipt\.mjs/);
+assert.match(supplementalGenerator, /Refusing a supplemental receipt from a dirty source checkout/);
+assert.match(supplementalGenerator, /dirty certification harness checkout/);
+assert.match(supplementalGenerator, /baseline receipt is not bound to the clean current certification harness/);
+assert.match(supplementalGenerator, /--expected-harness-commit/);
+assert.match(supplementalGenerator, /Get-CimInstance Win32_ComputerSystem/);
+assert.match(supplementalGenerator, /Get-CimInstance Win32_SystemEnclosure/);
+assert.match(supplementalGenerator, /Get-CimInstance Win32_ComputerSystemProduct/);
+assert.match(supplementalGenerator, /Get-CimInstance Win32_OperatingSystem/);
+assert.match(supplementalGenerator, /Get-Tpm/);
+assert.match(supplementalGenerator, /The current host identity looks virtualized/);
+assert.match(supplementalGenerator, /The live device .* does not match the physical baseline/);
+assert.match(supplementalGenerator, /Required protocol assertion is missing/);
+assert.match(supplementalGenerator, /Unknown protocol assertion/);
+assert.match(supplementalGenerator, /did not PASS/);
+assert.match(supplementalGenerator, /has no raw evidence file/);
+assert.match(supplementalGenerator, /evidence is missing or escapes the result directory/);
+assert.match(supplementalGenerator, /contains secret-like material/);
+assert.match(supplementalGenerator, /The signed artifact architecture does not match/);
+assert.match(supplementalGenerator, /invalid, stale, or future time interval/);
+assert.match(supplementalGenerator, /release-performance-budgets\.json/);
+assert.match(supplementalGenerator, /ACTIVE_RELEASE_GATE/);
+assert.match(supplementalGenerator, /performanceMeasurements/);
+assert.match(supplementalGenerator, /performanceContext/);
+assert.match(supplementalGenerator, /requires an explicit numeric value/);
+assert.match(supplementalGenerator, /sampleCount does not match samples/);
+assert.match(supplementalGenerator, /has no raw evidence file/);
+assert.match(supplementalValidator, /validateReceipt/);
+assert.match(supplementalValidator, /Windows release-certification receipt is valid/);
+assert.match(physicalRunbook, /Do not hand-author PASS receipts/);
+assert.match(physicalRunbook, /new-release-certification-supplemental-receipt\.ps1/);
+assert.match(physicalRunbook, /-Initialize/);
+assert.match(physicalRunbook, /-BaselineBundle \$Evidence/);
+assert.match(physicalRunbook, /\$Repo = Join-Path \$Root 'candidate'/);
+assert.match(physicalRunbook, /\$Harness = Join-Path \$Root 'harness'/);
+assert.match(
+  physicalRunbook,
+  /\$ExpectedHarnessCommit = '0ff07832c9a2a8137d7a342682d4ccd785be7034'/,
+);
+assert.match(
+  physicalRunbook,
+  /\$ExpectedPerformanceBudgetHash = '0824f341d0a7dea318a831e6ce67de016c9589d909e6982a678102130078fa92'/,
+);
+assert.match(physicalRunbook, /Active release performance budget mismatch/);
+assert.match(physicalRunbook, /git -C \$Repo checkout --detach windows-v1\.0\.35/);
+assert.match(physicalRunbook, /git -C \$Harness checkout --detach \$ExpectedHarnessCommit/);
+assert.match(
+  physicalRunbook,
+  /Join-Path \$Harness 'scripts\\windows-port\\run-physical-release-certification\.ps1'/,
+);
+assert.match(
+  physicalRunbook,
+  /Join-Path \$Harness 'scripts\\windows-port\\validate-release-certification-evidence\.mjs'/,
+);
+assert.match(physicalRunbook, /--expected-commit \$ExpectedCommit/);
+assert.match(physicalRunbook, /--expected-harness-commit \$ExpectedHarnessCommit/);
 const windowsFastWorkflow = readFileSync(join(root, "../../.github/workflows/pr-windows-fast.yml"), "utf8");
 const windowsReleaseWorkflow = readFileSync(
   join(root, "../../.github/workflows/openburnbar-release-windows.yml"),
   "utf8",
 );
 assert.match(windowsFastWorkflow, /new-physical-hardware-attestation\.ps1/);
+assert.match(windowsFastWorkflow, /new-release-certification-supplemental-receipt\.ps1/);
+assert.match(windowsFastWorkflow, /Smoke supplemental certification templates/);
+assert.match(windowsFastWorkflow, /Supplemental template OK/);
 assert.match(windowsFastWorkflow, /run-physical-release-certification\.ps1/);
 assert.match(windowsFastWorkflow, /Language\.Parser\]::ParseFile/);
 assert.match(windowsReleaseWorkflow, /Write physical-certification artifact manifests/);
@@ -80,6 +208,8 @@ assert.match(script, /ConvertTo-WindowsProcessArgument \$_/);
 assert.match(script, /'dotnet-build'[\s\S]*'-m:1'/);
 assert.match(script, /'dotnet-test'[\s\S]*'-m:1'/);
 assert.match(script, /\$script:SourceIdentity = \[ordered\]@\{/);
+assert.match(script, /harness = \[ordered\]@\{/);
+assert.match(script, /Refusing certification evidence from a dirty certification harness checkout/);
 assert.match(script, /Refusing certification evidence for a candidate that was dirty before execution/);
 // The pre-execution cleanliness snapshot must happen before the runner writes
 // its own output directories, and an in-repo OutputDir must be excluded from
@@ -91,11 +221,16 @@ assert.ok(
 );
 assert.match(script, /\$script:RepoRelativeOutputDir/);
 assert.match(script, /:\(exclude\)/);
+assert.match(script, /\$HarnessRoot = Resolve-FullPath \(Join-Path \$PSScriptRoot '\.\.\\\.\.'\)/);
+assert.match(script, /Join-Path \$HarnessRoot 'scripts\\windows-port\\run-ui-automation\.ps1'/);
+assert.match(script, /Join-Path \$HarnessRoot 'scripts\\windows-port\\validate-release-certification-evidence\.mjs'/);
+assert.match(script, /--expected-harness-commit \$script:SourceIdentity\.harness\.commitSha/);
 // The artifact manifest must bind the signed artifact to its source commit.
 assert.match(script, /'sourceCommit',/);
 assert.match(script, /Artifact manifest sourceCommit must be a full 40-character Git SHA/);
 assert.match(script, /Artifact manifest source commit mismatch/);
 assert.match(script, /source = \$script:SourceIdentity/);
+assert.match(script, /artifact = \$artifact/);
 assert.doesNotMatch(script, /source = \[ordered\]@\{ commitSha = Get-CommitSha; dirtyTree = Test-DirtyTree \}/);
 assert.match(script, /\$script:HardwareAttestationSha256 = Get-Sha256 \$attestationEvidencePath/);
 assert.match(script, /evidence\/hardware-attestation\.json/);

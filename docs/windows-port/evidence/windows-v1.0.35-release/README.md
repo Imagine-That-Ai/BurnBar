@@ -41,6 +41,22 @@ Store lifecycle certification.
 The machine-readable record is
 [`exact-signed-artifacts-2cfa9db885.json`](exact-signed-artifacts-2cfa9db885.json).
 The physical Intel handoff is [`PHYSICAL_X64_RUNBOOK.md`](PHYSICAL_X64_RUNBOOK.md).
+The non-public Partner Center preparation is
+[`STORE_PRIVATE_SUBMISSION_RUNBOOK.md`](STORE_PRIVATE_SUBMISSION_RUNBOOK.md).
+
+## Physical performance gate
+
+The physical handoff is pinned to independent harness commit
+`0ff07832c9a2a8137d7a342682d4ccd785be7034`. That harness promotes the reviewed
+Windows performance proposal into the active, machine-readable release contract
+at `scripts/windows-port/release-performance-budgets.json` (SHA-256
+`0824f341d0a7dea318a831e6ce67de016c9589d909e6982a678102130078fa92`).
+A performance receipt cannot pass from prose assertions alone: it must bind the
+exact budget, report all 18 numeric measurements and their complete sample
+series with required sample and duration floors, attach hashed raw evidence,
+and survive independent statistic derivation and threshold re-evaluation. The
+older evidence-namespace proposal remains historical and is not consumed by the
+validator.
 
 ## Certification boundary
 
