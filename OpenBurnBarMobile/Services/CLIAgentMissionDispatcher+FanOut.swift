@@ -90,7 +90,10 @@ extension CLIAgentMissionDispatcher {
             )
             return MissionConsoleForecastComputer.forecast(for: draft, runtime: runtime)
         }
-        let plim = max(1, parallelismLimit ?? runtimeTokens.count)
+        let plim = Self.resolvedParallelismLimit(
+            parallelismLimit,
+            childCount: runtimeTokens.count
+        )
         let aggregated = MissionGroupForecastComputer.combine(
             children: childForecasts,
             parallelismLimit: plim
@@ -360,13 +363,25 @@ extension CLIAgentMissionDispatcher {
         wandPolicy: WandPolicy? = nil
     ) throws -> String? {
         let runtime = runtimeID(forRequestedRuntime: runtimeToken)
-        guard let runtime else { return nil }
+        guard let runtime else {
+            guard wandPolicy == nil else {
+                throw DispatchError.wandRoutingUnavailable(
+                    "The selected agent runtime is not recognized by The Wand. Refresh the agent list or switch to Manual."
+                )
+            }
+            return nil
+        }
 
         // Phase 2: when a Wand policy is active, this must be a concrete
         // catalog-backed routing table. `resolvedWandPolicy` fails before
         // Firestore writes if no selected runtime can be routed, so the UI
         // never looks like a Wand cast happened while silently using defaults.
-        if let policy = wandPolicy, let routed = policy.routedModelID(for: runtime) {
+        if let policy = wandPolicy {
+            guard let routed = policy.routedModelID(for: runtime) else {
+                throw DispatchError.wandRoutingUnavailable(
+                    "The Wand did not produce a model route for \(runtime.displayName). Refresh the Mac model catalog or switch to Manual."
+                )
+            }
             return routed
         }
 
@@ -381,6 +396,11 @@ extension CLIAgentMissionDispatcher {
         case .codex, .claude, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp, .junie:
             return try CLIAgentModelPreferences.validatedPreferredModelID(for: runtime)?.nonEmpty
         }
+    }
+
+    static func resolvedParallelismLimit(_ requested: Int?, childCount: Int) -> Int {
+        let boundedChildCount = max(1, childCount)
+        return min(boundedChildCount, max(1, requested ?? boundedChildCount))
     }
 
     private static func resolvedWandPolicy(
@@ -409,9 +429,12 @@ extension CLIAgentMissionDispatcher {
             runtimes: runtimes,
             catalogs: catalogs
         )
-        guard !routed.routedModels.isEmpty else {
+        let missingRuntimes = Set(runtimes.filter { routed.routedModelID(for: $0) == nil })
+            .sorted { $0.rawValue < $1.rawValue }
+        guard missingRuntimes.isEmpty else {
+            let names = missingRuntimes.map(\.displayName).joined(separator: ", ")
             throw DispatchError.wandRoutingUnavailable(
-                "The Wand could not route any selected agent. Refresh the Mac model catalog, choose agents with available catalogs, or switch to Manual."
+                "The Wand could not route every selected agent (missing: \(names)). Refresh the Mac model catalog, choose agents with available catalogs, or switch to Manual."
             )
         }
         return routed

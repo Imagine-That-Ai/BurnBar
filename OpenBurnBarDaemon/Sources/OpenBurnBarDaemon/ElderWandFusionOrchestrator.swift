@@ -78,12 +78,15 @@ struct ElderWandFusionOrchestrator: Sendable {
         originatingModel: String,
         wantsStream: Bool
     ) async -> ElderWandFusionResult {
+        guard !Task.isCancelled else { return Self.cancelledResult() }
         let parentRequestID = "elderwand-\(UUID().uuidString)"
 
         // Stage 1 — decode config.
+        var seenPanelModels = Set<String>()
         let panelModels = (plugin.analysisModels ?? [])
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+            .filter { seenPanelModels.insert($0).inserted }
         guard !panelModels.isEmpty else {
             return .failed(.init(
                 status: 400,
@@ -121,6 +124,7 @@ struct ElderWandFusionOrchestrator: Sendable {
             loop: loop,
             parentRequestID: parentRequestID
         )
+        guard !Task.isCancelled else { return Self.cancelledResult() }
         guard !panelAnswers.isEmpty else {
             return .failed(.init(
                 status: 502,
@@ -137,6 +141,7 @@ struct ElderWandFusionOrchestrator: Sendable {
             loop: loop,
             parentRequestID: parentRequestID
         )
+        guard !Task.isCancelled else { return Self.cancelledResult() }
 
         // The panel + judge receipt line items, in pipeline order, carried into
         // the streaming result so the gateway can emit the full itemized session
@@ -239,6 +244,8 @@ struct ElderWandFusionOrchestrator: Sendable {
                 text: text,
                 spend: Self.lineItem(stage: .panel(index: index), route: route, requestSignature: signature, usage: result.usage)
             )
+        } catch is CancellationError {
+            return nil
         } catch {
             logger.warning("elder_wand_panel_failed", metadata: ["model": model, "error": "\(error)"])
             await recordSubCall(.failure(
@@ -305,7 +312,13 @@ struct ElderWandFusionOrchestrator: Sendable {
             ))
             let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             let spend = Self.lineItem(stage: .judge, route: route, requestSignature: signature, usage: result.usage)
-            return (text.isEmpty ? Self.fallbackVerdict(panelBlock: panelBlock) : text, spend)
+            guard let verdict = Self.validatedJudgeVerdict(text) else {
+                logger.warning("elder_wand_judge_invalid_verdict", metadata: ["model": judgeSlug])
+                return (Self.fallbackVerdict(panelBlock: panelBlock), spend)
+            }
+            return (verdict, spend)
+        } catch is CancellationError {
+            return (Self.fallbackVerdict(panelBlock: panelBlock), nil)
         } catch {
             logger.warning("elder_wand_judge_failed", metadata: ["model": judgeSlug, "error": "\(error)"])
             await recordSubCall(.failure(
@@ -329,6 +342,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         parentRequestID: String,
         priorLineItems: [FusionSubCallSpend]
     ) async -> ElderWandFusionResult {
+        guard !Task.isCancelled else { return Self.cancelledResult() }
         guard let route = await resolveRoute(originatingModel) else {
             return .failed(.init(
                 status: 503,
@@ -358,6 +372,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         ])
 
         let requestSignature = Self.signature(parentRequestID, "synthesis", originatingModel, 0)
+        guard !Task.isCancelled else { return Self.cancelledResult() }
 
         if wantsStream {
             // Stream the synthesis answer. The gateway runs the relay over its
@@ -397,6 +412,8 @@ struct ElderWandFusionOrchestrator: Sendable {
                 contentType: response.contentType,
                 body: response.body
             ))
+        } catch is CancellationError {
+            return Self.cancelledResult()
         } catch {
             logger.error("elder_wand_synthesis_failed", metadata: ["model": originatingModel, "error": "\(error)"])
             await recordSubCall(.failure(
@@ -418,6 +435,10 @@ struct ElderWandFusionOrchestrator: Sendable {
     static func clampToolCalls(_ raw: Int?) -> Int {
         let value = raw ?? ElderWandPreset.defaultMaxToolCalls
         return min(max(value, ElderWandPreset.maxToolCallsRange.lowerBound), ElderWandPreset.maxToolCallsRange.upperBound)
+    }
+
+    private static func cancelledResult() -> ElderWandFusionResult {
+        .failed(.init(status: 499, message: "The Elder Wand request was cancelled."))
     }
 
     /// The originating `messages` array re-serialized (`Sendable`) plus the last
@@ -521,6 +542,23 @@ struct ElderWandFusionOrchestrator: Sendable {
 
         \(panelBlock)
         """
+    }
+
+    static func validatedJudgeVerdict(_ text: String) -> String? {
+        let requiredFields: Set<String> = [
+            "consensus",
+            "contradictions",
+            "partial_coverage",
+            "unique_insights",
+            "blind_spots"
+        ]
+        guard let data = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Set(object.keys) == requiredFields,
+              object.values.allSatisfy({ $0 is String }) else {
+            return nil
+        }
+        return text
     }
 
     // MARK: - Prompts

@@ -284,9 +284,8 @@ def sanitize_wands(raw: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]
             if runtime in RUNTIMES:
                 normalized_preference.append("cursor-agent" if runtime == "cursoragent" else runtime)
         runtime_preference = sorted(set(normalized_preference), key=normalized_preference.index)
-        constraints = item.get("constraints")
-        if not isinstance(constraints, dict):
-            constraints = {}
+        raw_constraints = item.get("constraints")
+        constraints = dict(raw_constraints) if isinstance(raw_constraints, dict) else {}
         min_rank = constraints.get("minCapabilityRank", 0)
         try:
             constraints["minCapabilityRank"] = max(0, int(min_rank))
@@ -347,6 +346,15 @@ def load_wands(store_path: Path) -> dict[str, Any]:
             "wands": _seed_wands(),
             "warnings": [{"code": "corrupt_json", "reason": str(exc)}],
         }
+    except OSError as exc:
+        return {
+            "status": "ok",
+            "source": "seed",
+            "path": str(store_path),
+            "repoRoot": str(REPO_ROOT),
+            "wands": _seed_wands(),
+            "warnings": [{"code": "store_read_failed", "reason": str(exc)}],
+        }
     wands, warnings = sanitize_wands(raw)
     return {
         "status": "ok",
@@ -365,8 +373,12 @@ def validate_wands(store_path: Path) -> dict[str, Any]:
     if store_path.is_file():
         try:
             file_payload = _read_json_file(store_path)
-        except json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError):
             file_payload = None
+    comparable_payload = file_payload
+    if isinstance(file_payload, dict):
+        comparable_payload = dict(file_payload)
+        comparable_payload.pop("updatedAt", None)
     return {
         "status": "ok",
         "path": str(store_path),
@@ -374,17 +386,56 @@ def validate_wands(store_path: Path) -> dict[str, Any]:
         "valid": not current["warnings"],
         "warnings": current["warnings"],
         "sanitized": sanitized,
-        "wouldChange": file_payload is not None and file_payload != {"schemaVersion": 1, "wands": sanitized},
+        "wouldChange": comparable_payload is not None
+        and comparable_payload != {"schemaVersion": 1, "wands": sanitized},
     }
 
 
 def save_wands(store_path: Path, raw_wands: Any) -> dict[str, Any]:
     wands, warnings = sanitize_wands(raw_wands)
     payload = {"schemaVersion": 1, "updatedAt": utc_now(), "wands": wands}
-    store_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = store_path.with_suffix(store_path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp, store_path)
+    tmp: Path | None = None
+    try:
+        store_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=store_path.parent,
+            prefix=f".{store_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as fh:
+            tmp = Path(fh.name)
+            fh.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, store_path)
+        tmp = None
+
+        # Persist the directory entry where the platform supports directory
+        # fsync. The file itself is already safely replaced if this is absent.
+        try:
+            directory_fd = os.open(store_path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        except OSError:
+            pass
+    except OSError as exc:
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return {
+            "status": "error",
+            "code": "WAND_STORE_WRITE_FAILED",
+            "reason": str(exc),
+            "path": str(store_path),
+            "wands": wands,
+            "warnings": warnings,
+        }
     return {"status": "ok", "path": str(store_path), "wands": wands, "warnings": warnings}
 
 

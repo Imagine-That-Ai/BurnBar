@@ -19,6 +19,57 @@ import OpenBurnBarCore
 /// a pure value type, so the checks need no app-host MainActor queue.
 final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
 
+    // MARK: - Wand routing authority
+
+    @MainActor
+    func testGroupedMissionKeepsConcreteDispatchRoute() {
+        let context = MissionGroupClaimContext(
+            groupID: "group",
+            siblingIndex: 0,
+            siblingCount: 2,
+            parallelismLimit: 2,
+            tierCap: 2
+        )
+
+        XCTAssertFalse(
+            CLIAgentMissionRequestListener.shouldResolveWandRouting(
+                context: context,
+                data: ["requestedModelID": "anthropic/claude-sonnet-4"]
+            ),
+            "A mobile Pareto or Manual route must not be replaced by the Mac's default Ministry wand."
+        )
+    }
+
+    @MainActor
+    func testMacWandGroupWithoutConcreteRouteStillUsesMinistry() {
+        let context = MissionGroupClaimContext(
+            groupID: "group",
+            siblingIndex: 1,
+            siblingCount: 2,
+            parallelismLimit: 2,
+            tierCap: 2
+        )
+
+        XCTAssertTrue(
+            CLIAgentMissionRequestListener.shouldResolveWandRouting(
+                context: context,
+                data: [:]
+            )
+        )
+        XCTAssertTrue(
+            CLIAgentMissionRequestListener.shouldResolveWandRouting(
+                context: context,
+                data: ["requestedModelID": "  \n"]
+            )
+        )
+        XCTAssertFalse(
+            CLIAgentMissionRequestListener.shouldResolveWandRouting(
+                context: nil,
+                data: [:]
+            )
+        )
+    }
+
     // MARK: - Legitimate "no scope" path stays open
 
     func testMissingScopeResolvesToEmptyWithoutRefusing() {

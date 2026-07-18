@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Elder Wand and Pareto Wand reliability
+
+- **Hardened Elder fusion across malformed, repeated, over-budget, and cancelled
+  calls**: duplicate panel IDs now execute once, judge output is validated before
+  synthesis, every requested tool call receives a protocol-valid response, and
+  cancellation stops before later paid stages.
+- **Made Pareto routing durable from dispatch through Mac claim**: active Wand
+  routing now fails closed when any selected runtime is missing, fan-out
+  parallelism matches Firestore bounds, concrete mobile/manual routes are no
+  longer replaced by the Mac default, and capability matching no longer reads
+  `proxy` as `pro`. Incomplete headless proof results no longer wrap one proven
+  model onto missing siblings.
+- **Made Ministry wand persistence atomic and diagnosable**: sanitization no
+  longer mutates caller data, concurrent saves use unique durable temp files,
+  read/write permission failures are structured, and freshly saved stores no
+  longer report timestamp-only rewrites.
+
 ### Fixed - Windows physical x64 usage-scan memory
 
 - **Isolated native Swift parsing from the long-lived WinUI process**: usage

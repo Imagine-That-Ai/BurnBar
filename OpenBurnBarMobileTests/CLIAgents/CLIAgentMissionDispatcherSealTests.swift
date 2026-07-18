@@ -509,6 +509,63 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         )
     }
 
+    func test_selectedModelIDFailsClosedWhenActiveWandDidNotRouteRuntime() throws {
+        let partialPolicy = WandPolicy(
+            selector: .pareto,
+            routedModels: [.codex: "gpt-5.5"]
+        )
+
+        XCTAssertThrowsError(
+            try CLIAgentMissionDispatcher.selectedModelID(
+                forRequestedRuntime: "claude",
+                wandPolicy: partialPolicy
+            )
+        ) { error in
+            guard case CLIAgentMissionDispatcher.DispatchError.wandRoutingUnavailable = error else {
+                return XCTFail("Expected wandRoutingUnavailable, got \(error)")
+            }
+        }
+    }
+
+    func test_selectedModelIDFailsClosedForUnknownRuntimeOnlyWhenWandIsActive() throws {
+        let policy = WandPolicy(
+            selector: .pareto,
+            routedModels: [.codex: "gpt-5.5"]
+        )
+
+        XCTAssertThrowsError(
+            try CLIAgentMissionDispatcher.selectedModelID(
+                forRequestedRuntime: "future-runtime",
+                wandPolicy: policy
+            )
+        ) { error in
+            guard case CLIAgentMissionDispatcher.DispatchError.wandRoutingUnavailable = error else {
+                return XCTFail("Expected wandRoutingUnavailable, got \(error)")
+            }
+        }
+        XCTAssertNil(
+            try CLIAgentMissionDispatcher.selectedModelID(
+                forRequestedRuntime: "future-runtime",
+                wandPolicy: nil
+            )
+        )
+    }
+
+    func test_resolvedParallelismLimitStaysWithinPersistedChildCount() {
+        XCTAssertEqual(
+            CLIAgentMissionDispatcher.resolvedParallelismLimit(99, childCount: 2),
+            2
+        )
+        XCTAssertEqual(
+            CLIAgentMissionDispatcher.resolvedParallelismLimit(0, childCount: 2),
+            1
+        )
+        XCTAssertEqual(
+            CLIAgentMissionDispatcher.resolvedParallelismLimit(nil, childCount: 3),
+            3
+        )
+    }
+
     private static func childSnapshot(
         id: String,
         title: String,

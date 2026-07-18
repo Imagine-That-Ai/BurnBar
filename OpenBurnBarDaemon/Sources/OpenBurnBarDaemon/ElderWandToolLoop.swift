@@ -126,13 +126,20 @@ struct ElderWandToolLoop: Sendable {
             // Append the assistant turn that requested the tools, then run them.
             messages.append(Self.assistantMessage(from: object))
             for call in toolCalls {
-                guard totalToolCalls < budget else { break }
-                totalToolCalls += 1
+                try Task.checkCancellation()
                 let resultText: String
-                if let tool = toolsByName[call.name] {
-                    resultText = await tool.invoke(call.arguments)
+                if totalToolCalls < budget {
+                    totalToolCalls += 1
+                    if let tool = toolsByName[call.name] {
+                        resultText = await tool.invoke(call.arguments)
+                    } else {
+                        resultText = "Tool \"\(call.name)\" is not available."
+                    }
                 } else {
-                    resultText = "Tool \"\(call.name)\" is not available."
+                    // OpenAI-compatible providers require one tool response for
+                    // every tool_call ID before the next assistant turn. Keep
+                    // the transcript valid even when a batch exceeds budget.
+                    resultText = "Tool call skipped because the tool-call budget is exhausted."
                 }
                 messages.append([
                     "role": "tool",
@@ -151,6 +158,7 @@ struct ElderWandToolLoop: Sendable {
 
         // Iteration ceiling hit without a tool-free turn: do one final
         // tool-less completion so we always return real model text.
+        try Task.checkCancellation()
         let finalBody: [String: Any] = [
             "model": model,
             "stream": false,

@@ -4,6 +4,9 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from pathlib import Path
 
 
@@ -201,6 +204,105 @@ def test_wand_sanitizer_falls_back_and_has_one_default_with_headless_floor() -> 
     assert sum(1 for wand in wands if wand["isDefault"]) == 1
     headmaster = next(wand for wand in wands if wand["id"] == "headmaster")
     assert headmaster["constraints"]["minCapabilityRank"] <= 10
+
+
+def test_wand_sanitizer_does_not_mutate_caller_payload() -> None:
+    raw = {
+        "wands": [
+            {
+                "id": "pareto",
+                "name": "Pareto Wand",
+                "selector": "pareto",
+                "constraints": {"minCapabilityRank": "12"},
+                "isDefault": True,
+            }
+        ]
+    }
+    original = deepcopy(raw)
+
+    ministry.sanitize_wands(raw)
+
+    assert raw == original
+
+
+def test_saved_wand_store_validates_without_spurious_rewrite(tmp_path: Path) -> None:
+    store = tmp_path / "wands.v1.json"
+
+    saved = ministry.save_wands(store, ministry.SEED_WANDS)
+    validated = ministry.validate_wands(store)
+
+    assert saved["status"] == "ok"
+    assert validated["valid"] is True
+    assert validated["wouldChange"] is False
+
+
+def test_unreadable_wand_store_falls_back_with_actionable_warning(monkeypatch, tmp_path: Path) -> None:
+    store = tmp_path / "wands.v1.json"
+    store.write_text("{}", encoding="utf-8")
+
+    def deny_read(_path: Path):
+        raise PermissionError("permission denied")
+
+    monkeypatch.setattr(ministry, "_read_json_file", deny_read)
+
+    loaded = ministry.load_wands(store)
+
+    assert loaded["status"] == "ok"
+    assert loaded["source"] == "seed"
+    assert loaded["wands"] == ministry.SEED_WANDS
+    assert loaded["warnings"][0]["code"] == "store_read_failed"
+    assert "permission denied" in loaded["warnings"][0]["reason"]
+
+
+def test_concurrent_wand_saves_are_atomic_and_do_not_share_temp_file(monkeypatch, tmp_path: Path) -> None:
+    store = tmp_path / "wands.v1.json"
+    replace_barrier = threading.Barrier(2)
+    real_replace = ministry.os.replace
+
+    def synchronized_replace(source, destination) -> None:
+        replace_barrier.wait(timeout=5)
+        real_replace(source, destination)
+
+    monkeypatch.setattr(ministry.os, "replace", synchronized_replace)
+
+    def save(name: str) -> dict:
+        return ministry.save_wands(
+            store,
+            [
+                {
+                    "id": "pareto",
+                    "name": name,
+                    "selector": "pareto",
+                    "constraints": {"minCapabilityRank": 10},
+                    "isDefault": True,
+                }
+            ],
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(save, ["Pareto A", "Pareto B"]))
+
+    assert [result["status"] for result in results] == ["ok", "ok"]
+    payload = json.loads(store.read_text(encoding="utf-8"))
+    assert payload["wands"][0]["name"] in {"Pareto A", "Pareto B"}
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_wand_save_failure_is_structured_and_cleans_temp_file(monkeypatch, tmp_path: Path) -> None:
+    store = tmp_path / "wands.v1.json"
+
+    def deny_replace(_source, _destination) -> None:
+        raise PermissionError("read-only volume")
+
+    monkeypatch.setattr(ministry.os, "replace", deny_replace)
+
+    result = ministry.save_wands(store, ministry.SEED_WANDS)
+
+    assert result["status"] == "error"
+    assert result["code"] == "WAND_STORE_WRITE_FAILED"
+    assert "read-only volume" in result["reason"]
+    assert store.exists() is False
+    assert list(tmp_path.glob("*.tmp")) == []
 
 
 def test_resolved_wand_parallel_max_env_and_clamp(monkeypatch) -> None:

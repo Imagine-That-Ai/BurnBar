@@ -64,11 +64,22 @@ private enum CLIAgentMissionWandRoutingError: LocalizedError, Sendable {
 }
 
 extension CLIAgentMissionRequestListener {
+    static func shouldResolveWandRouting(
+        context: MissionGroupClaimContext?,
+        data: [String: Any]
+    ) -> Bool {
+        guard context != nil else { return false }
+        let requestedModelID = (data["requestedModelID"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return requestedModelID?.isEmpty ?? true
+    }
+
     func resolveWandRoutingIfNeeded(
         context: MissionGroupClaimContext?,
         data: [String: Any]
     ) async throws -> CLIAgentMissionWandRoutingSelection? {
-        guard let context else { return nil }
+        guard Self.shouldResolveWandRouting(context: context, data: data),
+              let context else { return nil }
         let payload = try await CLIAgentMissionWandRouter.select(
             context: context,
             targetProject: (data["targetProject"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
