@@ -29,16 +29,19 @@ The portable ARM64 layout and sustained launch passed, and the UIA
 certification rerun passed 25/25 route/scenario runs. The external evidence ZIP
 is recorded in [ARM64_VM_EVIDENCE.md](ARM64_VM_EVIDENCE.md).
 
-This is VM validation, not physical ARM64 certification. The physical Intel
-x64 run for `v1.0.37` is still required. Use
-[PHYSICAL_X64_RUNBOOK.md](PHYSICAL_X64_RUNBOOK.md), never the historical
-`v1.0.35` runbook. Private Partner Center preparation is in
-[STORE_PRIVATE_SUBMISSION_RUNBOOK.md](STORE_PRIVATE_SUBMISSION_RUNBOOK.md).
+The physical Intel x64 run subsequently completed and returned **NO-GO** for
+release-blocking dashboard composition, accessibility naming, and compact-width
+defects. Its exact evidence identity and sub-results are in
+[PHYSICAL_X64_RESULT.md](PHYSICAL_X64_RESULT.md). This is also VM validation,
+not physical ARM64 certification. Private Partner Center preparation remains in
+[STORE_PRIVATE_SUBMISSION_RUNBOOK.md](STORE_PRIVATE_SUBMISSION_RUNBOOK.md), but
+this candidate must not be submitted.
 
 ## Release boundary
 
-The Windows port and signed beta packages are complete. A public parity-release
-claim remains fail-closed until the fresh physical x64, manual
-accessibility/display, authorized staging cloud, physical media/Computer Use
-safety, and controlled Store/update lifecycle receipts pass. Physical ARM64 is
-an explicit beta limitation until qualifying hardware is available.
+The source/product port is substantially implemented, but this exact signed
+beta package is not releaseable. PR #1854 contains the source remediation; a
+new signed candidate must pass physical x64, manual accessibility/display,
+authorized staging cloud, physical media/Computer Use safety, and controlled
+Store/update lifecycle receipts. Physical ARM64 is an explicit beta limitation
+until qualifying hardware is available.
