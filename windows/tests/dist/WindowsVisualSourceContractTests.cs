@@ -44,10 +44,16 @@ public sealed class WindowsVisualSourceContractTests
         Assert.Empty(violations);
         foreach (string key in themeColorKeys)
         {
-            Assert.Equal(
-                3,
-                shell.Descendants(presentation + "Color").Count(element =>
-                    string.Equals((string?)element.Attribute(xaml + "Key"), key, StringComparison.Ordinal)));
+            XElement[] aliases = shell
+                .Descendants(presentation + "Color")
+                .Where(element => string.Equals(
+                    (string?)element.Attribute(xaml + "Key"),
+                    key,
+                    StringComparison.Ordinal))
+                .ToArray();
+
+            Assert.Equal(3, aliases.Length);
+            Assert.All(aliases, alias => Assert.Matches("^#[0-9A-Fa-f]{8}$", alias.Value.Trim()));
         }
     }
 
@@ -123,6 +129,28 @@ public sealed class WindowsVisualSourceContractTests
         Assert.Equal(
             "{StaticResource AuroraBodyFont}",
             (string?)shell.Root?.Attribute("FontFamily"));
+        Assert.Null(shell.Root?.Attribute("RequestedTheme"));
+    }
+
+    [Fact]
+    public void PackagedBrandFontsCarryTheirLicenseNotice()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        XDocument project = XDocument.Load(Path.Combine(
+            root,
+            "windows",
+            "app",
+            "OpenBurnBar.App",
+            "OpenBurnBar.App.csproj"));
+        XElement license = project
+            .Descendants("Content")
+            .Single(element => string.Equals(
+                (string?)element.Attribute("Include"),
+                @"Assets\Fonts\LICENSE-fonts.txt",
+                StringComparison.Ordinal));
+
+        Assert.Equal("PreserveNewest", (string?)license.Attribute("CopyToOutputDirectory"));
+        Assert.Equal("PreserveNewest", (string?)license.Attribute("CopyToPublishDirectory"));
     }
 
     [Fact]

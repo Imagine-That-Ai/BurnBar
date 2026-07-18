@@ -265,6 +265,9 @@
          families the macOS tokens + Linux shell render; OFL, see Assets\Fonts\LICENSE-fonts.txt).
          Referenced as ms-appx:///Assets/Fonts/<file>#<Family> in Theme/Typography.xaml. -->
     <Content Include="Assets\Fonts\*.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\LICENSE-fonts.txt"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\packaging\updater\feed\latest-windows.json"
              Link="Resources\Updates\latest-windows.json"
              CopyToOutputDirectory="PreserveNewest" />

@@ -60,12 +60,12 @@
             <SolidColorBrush x:Key="AuroraGlassStrokeBrush" Color="{StaticResource PensieveGlassStrokeBase}" />
             <SolidColorBrush x:Key="AuroraGlassStrokeFrostBrush" Color="{StaticResource PensieveGlassStrokeFrost}" />
             <SolidColorBrush x:Key="AuroraGlassInnerLightBrush" Color="{StaticResource PensieveGlassInnerLight}" />
-            <Color x:Key="AuroraGlassSelectionFillColor">{StaticResource PensieveGlassSelectionFill}</Color>
-            <Color x:Key="AuroraGlassTintSunkenColor">{StaticResource PensieveGlassTintSunken}</Color>
-            <Color x:Key="AuroraGlassSheenFromColor">{StaticResource PensieveGlassSheenDarkFrom}</Color>
-            <Color x:Key="AuroraGlassSheenToColor">{StaticResource PensieveGlassSheenDarkTo}</Color>
-            <Color x:Key="AuroraGlassEdgeColor">{StaticResource PensieveGlassEdgeLight}</Color>
-            <Color x:Key="AuroraGlassEdgeBorderColor">{StaticResource PensieveGlassEdgeDarkBorder}</Color>
+            <Color x:Key="AuroraGlassSelectionFillColor">#14FA5053</Color>
+            <Color x:Key="AuroraGlassTintSunkenColor">#6B0D1117</Color>
+            <Color x:Key="AuroraGlassSheenFromColor">#14FFFFFF</Color>
+            <Color x:Key="AuroraGlassSheenToColor">#05FA5053</Color>
+            <Color x:Key="AuroraGlassEdgeColor">#2EFFFFFF</Color>
+            <Color x:Key="AuroraGlassEdgeBorderColor">#7330363D</Color>
             <SolidColorBrush x:Key="AuroraGlassSelectionFillBrush" Color="{StaticResource AuroraGlassSelectionFillColor}" />
             <SolidColorBrush x:Key="AuroraGlassSelectionStrokeBrush" Color="{StaticResource PensieveGlassSelectionStroke}" />
             <SolidColorBrush x:Key="AuroraGlassSheenFromBrush" Color="{StaticResource AuroraGlassSheenFromColor}" />
@@ -135,10 +135,10 @@
             <SolidColorBrush x:Key="AuroraGlassTintElevatedBrush" Color="{StaticResource PensieveGlassLightTintElevated}" />
             <Color x:Key="AuroraGlassSelectionFillColor">#14F45B69</Color>
             <Color x:Key="AuroraGlassTintSunkenColor">#B8F3E8E6</Color>
-            <Color x:Key="AuroraGlassSheenFromColor">{StaticResource PensieveGlassSheenLightFrom}</Color>
-            <Color x:Key="AuroraGlassSheenToColor">{StaticResource PensieveGlassSheenLightTo}</Color>
-            <Color x:Key="AuroraGlassEdgeColor">{StaticResource PensieveGlassEdgeLight}</Color>
-            <Color x:Key="AuroraGlassEdgeBorderColor">{StaticResource PensieveGlassEdgeLightBorder}</Color>
+            <Color x:Key="AuroraGlassSheenFromColor">#12F45B69</Color>
+            <Color x:Key="AuroraGlassSheenToColor">#0DE86100</Color>
+            <Color x:Key="AuroraGlassEdgeColor">#2EFFFFFF</Color>
+            <Color x:Key="AuroraGlassEdgeBorderColor">#73E8BFB5</Color>
             <SolidColorBrush x:Key="AuroraGlassTintSunkenBrush" Color="{StaticResource AuroraGlassTintSunkenColor}" />
             <SolidColorBrush x:Key="AuroraGlassTintClearBrush" Color="#8CFAF5F2" />
             <SolidColorBrush x:Key="AuroraGlassTintInteractiveBrush" Color="#61FDF8F5" />
@@ -213,12 +213,12 @@
             <SolidColorBrush x:Key="AuroraGlassStrokeBrush" Color="{StaticResource PensieveGlassStrokeBase}" />
             <SolidColorBrush x:Key="AuroraGlassStrokeFrostBrush" Color="{StaticResource PensieveGlassStrokeFrost}" />
             <SolidColorBrush x:Key="AuroraGlassInnerLightBrush" Color="{StaticResource PensieveGlassInnerLight}" />
-            <Color x:Key="AuroraGlassSelectionFillColor">{StaticResource PensieveGlassSelectionFill}</Color>
-            <Color x:Key="AuroraGlassTintSunkenColor">{StaticResource PensieveGlassTintSunken}</Color>
-            <Color x:Key="AuroraGlassSheenFromColor">{StaticResource PensieveGlassSheenDarkFrom}</Color>
-            <Color x:Key="AuroraGlassSheenToColor">{StaticResource PensieveGlassSheenDarkTo}</Color>
-            <Color x:Key="AuroraGlassEdgeColor">{StaticResource PensieveGlassEdgeLight}</Color>
-            <Color x:Key="AuroraGlassEdgeBorderColor">{StaticResource PensieveGlassEdgeDarkBorder}</Color>
+            <Color x:Key="AuroraGlassSelectionFillColor">#14FA5053</Color>
+            <Color x:Key="AuroraGlassTintSunkenColor">#6B0D1117</Color>
+            <Color x:Key="AuroraGlassSheenFromColor">#14FFFFFF</Color>
+            <Color x:Key="AuroraGlassSheenToColor">#05FA5053</Color>
+            <Color x:Key="AuroraGlassEdgeColor">#2EFFFFFF</Color>
+            <Color x:Key="AuroraGlassEdgeBorderColor">#7330363D</Color>
             <SolidColorBrush x:Key="AuroraGlassSelectionFillBrush" Color="{StaticResource AuroraGlassSelectionFillColor}" />
             <SolidColorBrush x:Key="AuroraGlassSelectionStrokeBrush" Color="{StaticResource PensieveGlassSelectionStroke}" />
             <SolidColorBrush x:Key="AuroraGlassSheenFromBrush" Color="{StaticResource AuroraGlassSheenFromColor}" />
