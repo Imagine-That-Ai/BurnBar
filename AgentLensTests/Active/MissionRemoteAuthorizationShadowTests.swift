@@ -279,18 +279,7 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         }
     }
 
-    @MainActor
-    func testApprovalDecisionClassifiesEveryMissionStateWithoutSideEffects() throws {
-        let defaults = try XCTUnwrap(
-            UserDefaults(suiteName: "MissionAuthorizationApproval-\(UUID().uuidString)")
-        )
-        let settings = SettingsManager(defaults: defaults)
-        let store = try makeDiscoveryInMemoryStore()
-        let listener = CLIAgentMissionRequestListener(
-            accountManager: FakeAccountManager.makeSignedIn(),
-            settingsManager: settings,
-            chatController: ChatSessionController(dataStore: store, settingsManager: settings)
-        )
+    func testApprovalDecisionClassifiesEveryMissionStateWithoutSideEffects() {
         let codex = CLIAgentMissionBackend(chatBackend: .codex)
         let hermes = CLIAgentMissionBackend(chatBackend: .hermes)
 
@@ -325,14 +314,15 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
         ]
 
         for row in rows {
-            settings.cliAssistantAllowed = row.cliAllowed
-            let before = settings.cliAssistantAllowed
             XCTAssertEqual(
-                listener.approvalDecision(data: row.data, backend: row.backend),
+                CLIAgentMissionApprovalDecision.resolve(
+                    data: row.data,
+                    backend: row.backend,
+                    cliAssistantAllowed: row.cliAllowed
+                ),
                 row.expected,
                 row.name
             )
-            XCTAssertEqual(settings.cliAssistantAllowed, before, "classification mutated settings: \(row.name)")
         }
     }
 

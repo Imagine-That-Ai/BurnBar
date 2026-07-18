@@ -16,6 +16,29 @@ enum CLIAgentMissionApprovalDecision: Equatable {
 
     var willPauseForApproval: Bool { self != .proceed }
     var isTerminalDenial: Bool { self == .cliAssistantDisabled }
+
+    static func resolve(
+        data: [String: Any],
+        backend: CLIAgentMissionBackend,
+        cliAssistantAllowed: Bool
+    ) -> Self {
+        let approvalStatus = ((data["approvalStatus"] as? String) ?? "none").lowercased()
+        let status = ((data["status"] as? String) ?? "pending").lowercased()
+        if approvalStatus == "rejected" || approvalStatus == "canceled" || approvalStatus == "cancelled" {
+            return .cancel(approvalStatus: approvalStatus)
+        }
+        if CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend),
+           !cliAssistantAllowed {
+            return .cliAssistantDisabled
+        }
+        if approvalStatus == "approved" {
+            return .proceed
+        }
+        guard CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(data: data, backend: backend) else {
+            return .proceed
+        }
+        return status == "waiting_for_approval" ? .waitForApproval : .requestApproval
+    }
 }
 
 extension CLIAgentMissionRequestListener {
@@ -118,22 +141,11 @@ extension CLIAgentMissionRequestListener {
         data: [String: Any],
         backend: CLIAgentMissionBackend
     ) -> CLIAgentMissionApprovalDecision {
-        let approvalStatus = ((data["approvalStatus"] as? String) ?? "none").lowercased()
-        let status = ((data["status"] as? String) ?? "pending").lowercased()
-        if approvalStatus == "rejected" || approvalStatus == "canceled" || approvalStatus == "cancelled" {
-            return .cancel(approvalStatus: approvalStatus)
-        }
-        if CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend),
-           !settingsManager.cliAssistantAllowed {
-            return .cliAssistantDisabled
-        }
-        if approvalStatus == "approved" {
-            return .proceed
-        }
-        guard missionRequiresApproval(data: data, backend: backend) else {
-            return .proceed
-        }
-        return status == "waiting_for_approval" ? .waitForApproval : .requestApproval
+        CLIAgentMissionApprovalDecision.resolve(
+            data: data,
+            backend: backend,
+            cliAssistantAllowed: settingsManager.cliAssistantAllowed
+        )
     }
 
     func applyApprovalDecision(
