@@ -208,11 +208,47 @@ function valid() {
     nightly: [
       'OPENBURNBAR_LINUX_EVIDENCE_OUT',
       'macos-matched-performance',
+      '    outputs:',
+      '      macos_artifact_name: ${{ steps.select-macos-performance-artifact.outputs.artifact_name }}',
+      '      - name: Upload macOS nightly matched workload soak',
+      '        id: upload-macos-performance-primary',
+      '        continue-on-error: true',
+      '        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4',
+      '          name: linux-parity-macos-performance-nightly',
+      '          path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json',
+      '          if-no-files-found: error',
+      '      - name: Retry macOS nightly matched workload soak upload',
+      '        id: upload-macos-performance-retry',
+      "        if: steps.upload-macos-performance-primary.outcome != 'success'",
+      '        continue-on-error: true',
+      '        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4',
+      '          name: linux-parity-macos-performance-nightly-retry-${{ github.run_id }}',
+      '          path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json',
+      '          if-no-files-found: error',
+      '      - name: Select uploaded macOS nightly matched workload soak',
+      '        id: select-macos-performance-artifact',
+      '        if: always()',
+      '        env:',
+      '          PRIMARY_OUTCOME: ${{ steps.upload-macos-performance-primary.outcome }}',
+      '          RETRY_OUTCOME: ${{ steps.upload-macos-performance-retry.outcome }}',
+      '          PRIMARY_NAME: linux-parity-macos-performance-nightly',
+      '          RETRY_NAME: linux-parity-macos-performance-nightly-retry-${{ github.run_id }}',
+      '        run: |',
+      '          set -euo pipefail',
+      '          if [[ "$PRIMARY_OUTCOME" == "success" ]]',
+      '          echo "artifact_name=$PRIMARY_NAME" >> "$GITHUB_OUTPUT"',
+      '          exit 0',
+      '          if [[ "$RETRY_OUTCOME" == "success" ]]',
+      '          echo "artifact_name=$RETRY_NAME" >> "$GITHUB_OUTPUT"',
+      '          exit 0',
+      '          Neither macOS matched-performance artifact upload succeeded.',
+      '          exit 1',
       'linux-matched-performance',
       '--profile nightly',
       'OB_MATCHED_MACOS_INPUT',
       'OB_MATCHED_LINUX_INPUT',
       'linux-parity-matched-performance-nightly',
+      'name: ${{ needs.macos-matched-performance.outputs.macos_artifact_name }}',
       '-v "$OPENBURNBAR_LINUX_EVIDENCE_OUT:/evidence"',
       '--env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests',
       '      - name: Upload Linux nightly evidence',
@@ -729,5 +765,24 @@ test('removing PR or nightly matched performance wiring fails', () => {
     const input = valid();
     input[field] = input[field].replace(marker, '');
     assert.equal(verifyLinuxWorkflowWiring(input).passed, false, `${field}:${marker}`);
+  }
+});
+
+test('nightly macOS evidence upload retries once and fails closed without an artifact', () => {
+  for (const marker of [
+    'id: upload-macos-performance-primary',
+    'continue-on-error: true',
+    "if: steps.upload-macos-performance-primary.outcome != 'success'",
+    'name: linux-parity-macos-performance-nightly-retry-${{ github.run_id }}',
+    'id: select-macos-performance-artifact',
+    'if: always()',
+    'if [[ "$RETRY_OUTCOME" == "success" ]]',
+    'echo "artifact_name=$RETRY_NAME" >> "$GITHUB_OUTPUT"',
+    'Neither macOS matched-performance artifact upload succeeded.',
+    'name: ${{ needs.macos-matched-performance.outputs.macos_artifact_name }}'
+  ]) {
+    const input = valid();
+    input.nightly = input.nightly.replace(marker, '');
+    assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
   }
 });

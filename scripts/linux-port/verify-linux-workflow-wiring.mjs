@@ -80,6 +80,61 @@ export function verifyLinuxWorkflowWiring(input) {
       ...(options.additionalMarkers ?? [])
     ]) requireText(block, marker, `${source} ${stepName}`);
   };
+  const requireNightlyMacosArtifactRetryContract = (body) => {
+    const blockFor = (stepName) => {
+      const start = body.indexOf(`- name: ${stepName}`);
+      const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
+      return start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
+    };
+    const primary = blockFor('Upload macOS nightly matched workload soak');
+    const retry = blockFor('Retry macOS nightly matched workload soak upload');
+    const selector = blockFor('Select uploaded macOS nightly matched workload soak');
+    for (const [block, stepName] of [[primary, 'Upload macOS nightly matched workload soak'], [retry, 'Retry macOS nightly matched workload soak upload'], [selector, 'Select uploaded macOS nightly matched workload soak']]) {
+      if (!block) failures.push(`nightly macOS artifact contract is missing step: ${stepName}`);
+    }
+    for (const marker of [
+      'macos_artifact_name: ${{ steps.select-macos-performance-artifact.outputs.artifact_name }}',
+      'name: ${{ needs.macos-matched-performance.outputs.macos_artifact_name }}'
+    ]) requireText(body, marker, 'nightly macOS artifact contract');
+    for (const marker of [
+      'id: upload-macos-performance-primary',
+      'continue-on-error: true',
+      'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4',
+      'name: linux-parity-macos-performance-nightly',
+      'path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json',
+      'if-no-files-found: error'
+    ]) requireText(primary, marker, 'nightly macOS primary artifact upload');
+    for (const marker of [
+      'id: upload-macos-performance-retry',
+      "if: steps.upload-macos-performance-primary.outcome != 'success'",
+      'continue-on-error: true',
+      'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4',
+      'name: linux-parity-macos-performance-nightly-retry-${{ github.run_id }}',
+      'path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json',
+      'if-no-files-found: error'
+    ]) requireText(retry, marker, 'nightly macOS retry artifact upload');
+    for (const marker of [
+      'id: select-macos-performance-artifact',
+      'if: always()',
+      'set -euo pipefail',
+      'PRIMARY_OUTCOME: ${{ steps.upload-macos-performance-primary.outcome }}',
+      'RETRY_OUTCOME: ${{ steps.upload-macos-performance-retry.outcome }}',
+      'PRIMARY_NAME: linux-parity-macos-performance-nightly',
+      'RETRY_NAME: linux-parity-macos-performance-nightly-retry-${{ github.run_id }}',
+      'if [[ "$PRIMARY_OUTCOME" == "success" ]]',
+      'if [[ "$RETRY_OUTCOME" == "success" ]]',
+      'echo "artifact_name=$PRIMARY_NAME" >> "$GITHUB_OUTPUT"',
+      'echo "artifact_name=$RETRY_NAME" >> "$GITHUB_OUTPUT"',
+      'exit 0',
+      'Neither macOS matched-performance artifact upload succeeded.',
+      'exit 1'
+    ]) requireText(selector, marker, 'nightly macOS artifact selector');
+    requireOrder(body, [
+      '- name: Upload macOS nightly matched workload soak',
+      '- name: Retry macOS nightly matched workload soak upload',
+      '- name: Select uploaded macOS nightly matched workload soak'
+    ], 'nightly macOS artifact retry');
+  };
   const requireP38CaptureContract = (body) => {
     const stepName = 'Capture P-38 release automation verification';
     const start = body.indexOf(`- name: ${stepName}`);
@@ -496,6 +551,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'OB_MATCHED_LINUX_INPUT',
     'linux-parity-matched-performance-nightly'
   ]) requireText(input.nightly, command, 'nightly matched performance gate');
+  requireNightlyMacosArtifactRetryContract(input.nightly);
   for (const command of [
     'run_swift_suite',
     'OpenBurnBarLinuxCoreFoundationTests',

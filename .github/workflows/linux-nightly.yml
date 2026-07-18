@@ -18,6 +18,8 @@ jobs:
     name: macOS 30-minute matched workload soak
     runs-on: macos-26
     timeout-minutes: 45
+    outputs:
+      macos_artifact_name: ${{ steps.select-macos-performance-artifact.outputs.artifact_name }}
     env:
       OB_EVIDENCE_OUT: ${{ github.workspace }}/.linux-matched-performance
     steps:
@@ -31,11 +33,44 @@ jobs:
         run: node scripts/linux-port/run-matched-performance.mjs --macos-only --profile nightly
 
       - name: Upload macOS nightly matched workload soak
+        id: upload-macos-performance-primary
+        continue-on-error: true
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: linux-parity-macos-performance-nightly
           path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json
           if-no-files-found: error
+
+      - name: Retry macOS nightly matched workload soak upload
+        id: upload-macos-performance-retry
+        if: steps.upload-macos-performance-primary.outcome != 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: linux-parity-macos-performance-nightly-retry-${{ github.run_id }}
+          path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json
+          if-no-files-found: error
+
+      - name: Select uploaded macOS nightly matched workload soak
+        id: select-macos-performance-artifact
+        if: always()
+        env:
+          PRIMARY_OUTCOME: ${{ steps.upload-macos-performance-primary.outcome }}
+          RETRY_OUTCOME: ${{ steps.upload-macos-performance-retry.outcome }}
+          PRIMARY_NAME: linux-parity-macos-performance-nightly
+          RETRY_NAME: linux-parity-macos-performance-nightly-retry-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [[ "$PRIMARY_OUTCOME" == "success" ]]; then
+            echo "artifact_name=$PRIMARY_NAME" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$RETRY_OUTCOME" == "success" ]]; then
+            echo "artifact_name=$RETRY_NAME" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Neither macOS matched-performance artifact upload succeeded." >&2
+          exit 1
 
   linux-matched-performance:
     name: Linux 30-minute matched workload soak and comparison
@@ -54,7 +89,7 @@ jobs:
       - name: Download macOS nightly matched workload soak
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
-          name: linux-parity-macos-performance-nightly
+          name: ${{ needs.macos-matched-performance.outputs.macos_artifact_name }}
           path: ${{ runner.temp }}/openburnbar-macos-performance
 
       - name: Build mission Linux toolchain image
