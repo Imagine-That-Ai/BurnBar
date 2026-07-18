@@ -52,26 +52,26 @@
                     <FontIcon Glyph="&#xE9D9;" FontSize="11" Foreground="{StaticResource OBBAccentBrush}" />
                     <TextBlock Text="SESSION LOGS"
                                FontSize="11"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
                 <TextBlock Text="{x:Bind ViewModel.CountLabel, Mode=OneWay}"
                            FontSize="18"
                            FontWeight="SemiBold"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Foreground="{ThemeResource AuroraTextBrush}" />
                 <StackPanel Orientation="Horizontal" Spacing="16">
                     <StackPanel Orientation="Horizontal" Spacing="4">
                         <TextBlock Text="{x:Bind ViewModel.ProviderCount, Mode=OneWay}"
-                                   FontFamily="Cascadia Mono, Consolas"
+                                   FontFamily="{StaticResource AuroraMonoFont}"
                                    FontSize="12"
-                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                        <TextBlock Text="providers" FontSize="11" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                   Foreground="{ThemeResource AuroraTextBrush}" />
+                        <TextBlock Text="providers" FontSize="11" Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="4">
                         <TextBlock Text="{x:Bind ViewModel.ProjectCount, Mode=OneWay}"
-                                   FontFamily="Cascadia Mono, Consolas"
+                                   FontFamily="{StaticResource AuroraMonoFont}"
                                    FontSize="12"
-                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                        <TextBlock Text="projects" FontSize="11" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                   Foreground="{ThemeResource AuroraTextBrush}" />
+                        <TextBlock Text="projects" FontSize="11" Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     </StackPanel>
                 </StackPanel>
             </StackPanel>
@@ -88,7 +88,7 @@
                     </Grid.ColumnDefinitions>
                     <FontIcon Grid.Column="0" Glyph="&#xE721;" FontSize="11"
                               VerticalAlignment="Center"
-                              Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                              Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     <TextBox Grid.Column="1"
                              x:Name="SearchBox"
                              PlaceholderText="Search by title, project, provider, or keyword…"
@@ -128,11 +128,11 @@
 
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Padding="24"
                             Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
-                    <FontIcon Glyph="&#xE9D9;" FontSize="36" Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                    <FontIcon Glyph="&#xE9D9;" FontSize="36" Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     <TextBlock Text="No session logs yet"
                                HorizontalAlignment="Center"
                                FontSize="13"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
 
                 <ListView x:Name="LogsList"
@@ -166,13 +166,13 @@
                                                    Text="{x:Bind Title}"
                                                    FontSize="12"
                                                    VerticalAlignment="Center"
-                                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                                   Foreground="{ThemeResource AuroraTextBrush}" />
                                         <Border Grid.Column="2"
                                                 CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                                                Background="#1FC7CFDD"
+                                                Background="{ThemeResource AuroraGlassStrokeFrostBrush}"
                                                 Padding="8,1">
                                             <TextBlock Text="{x:Bind local:SessionLogRowFormat.Count(Count)}"
-                                                       FontFamily="Cascadia Mono, Consolas"
+                                                       FontFamily="{StaticResource AuroraMonoFont}"
                                                        FontSize="10"
                                                        Foreground="{x:Bind Accent, Converter={StaticResource AccentBrush}}" />
                                         </Border>
@@ -192,7 +192,7 @@
                                 <Border Grid.Column="0"
                                         Width="28" Height="28"
                                         CornerRadius="14"
-                                        Background="#1FC7CFDD"
+                                        Background="{ThemeResource AuroraGlassStrokeFrostBrush}"
                                         VerticalAlignment="Center">
                                     <FontIcon Glyph="&#xE8BD;" FontSize="12"
                                               Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
@@ -201,23 +201,23 @@
                                     <TextBlock Text="{x:Bind DisplayTitle}"
                                                FontSize="12"
                                                TextTrimming="CharacterEllipsis"
-                                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                               Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <TextBlock Text="{x:Bind ProjectName}"
                                                    FontSize="10"
                                                    TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
-                                        <TextBlock Text="·" FontSize="10" Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                                                   Foreground="{ThemeResource AuroraTextMutedBrush}" />
+                                        <TextBlock Text="·" FontSize="10" Foreground="{ThemeResource AuroraTextMutedBrush}" />
                                         <TextBlock Text="{x:Bind local:SessionLogRowFormat.Messages(MessageCount)}"
                                                    FontSize="10"
-                                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                                   Foreground="{ThemeResource AuroraTextMutedBrush}" />
                                     </StackPanel>
                                 </StackPanel>
                                 <TextBlock Grid.Column="2"
                                            Text="{x:Bind local:SessionLogRowFormat.Time(TimelineDate)}"
                                            FontSize="10"
                                            VerticalAlignment="Center"
-                                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
                             </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>

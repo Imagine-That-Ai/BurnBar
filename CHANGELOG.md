@@ -16,6 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   typed fail-closed errors, and a streamed internal protocol. Release CI proves
   the real worker against the exact published x64 native-engine layout before
   signing and locks the app composition root against an in-process regression.
+
+### Fixed - Windows Aurora physical validation
+
+- **Closed the physical-build and command-palette regressions found by the x64
+  screenshot run**: programmatic tab tooltips now use the WinUI attached-property
+  setter, the global brand font is inherited from a valid `Control`, and the
+  Aurora dialog style retains WinUI's required `ContentDialog` template so
+  `Ctrl+K` renders its controls instead of only the dimmed backdrop. Portable
+  source-contract tests lock all three framework requirements. Theme-aware
+  color aliases now feed gradient stops, code-painted glass plates re-resolve
+  for Light mode and reduced-transparency fallback, and Budget follows the
+  active Aurora canvas instead of mixing light text with a fixed dark plate.
+
 ### Changed
 
 - **Droid wiki generation is local-only** — retired the failing unattended
@@ -35,6 +48,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Protected Android bundles now embed the immutable release tag as their
   `versionName`; native release verification rejects any filename/manifest
   version split before publishing evidence.
+
+### Changed — Windows shell now renders the macOS Aurora liquid-glass design
+
+- **Full visual parity pass on the WinUI 3 app** (`windows/app/`): the shell now renders the
+  same Aurora "liquid glass" look as the macOS and Linux apps instead of the Pensieve
+  ink/brass recolor. The design-token pipeline gains an additive Aurora group
+  (`packages/design-tokens/tokens/aurora.tokens.json` — macOS dark/light ramps, liquid-glass
+  tint/stroke/sheen/shadow recipes, macOS type scale) emitted to CSS/Swift/Compose/WinUI from
+  the same DTCG source; the Windows theme is rebuilt on `ThemeDictionaries` (Light mode no
+  longer paints dark plates), the glass vocabulary carries the macOS card radius/hover
+  physics, and brand fonts (Outfit/Geist/JetBrains Mono/Fraunces, OFL) are bundled so type no
+  longer falls back to Segoe/Consolas. Tray flyout, command deck, chat bubbles, Settings,
+  onboarding, command palette, and dashboard all consume the new tokens; a CI gate
+  (`scripts/windows-port/check-xaml-token-discipline.sh`) blocks raw colors/fonts outside
+  `Theme/`. See `docs/windows-port/MAC_GLASS_PARITY_PASS.md` for the review map, validation
+  matrix, and Windows-host evidence checklist.
 
 ### Added — Liquid dashboard command deck
 

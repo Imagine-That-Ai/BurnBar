@@ -1077,6 +1077,44 @@ check "app verdict uses line-level evidence" \
 check "app scope excludes conditional-compilation directives from denominator" \
   "2" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
 
+# The canonical Style Dictionary Swift output contains compile-time constants
+# and is validated by generator drift tests, so it cannot produce XCTest line
+# hits. Keep the waiver exact: an adjacent handwritten Swift token file must
+# remain fail-closed without its own evidence.
+repo_tokens="$tmp_root/repo-generated-design-tokens"
+mkdir -p "$repo_tokens/packages/design-tokens/dist/swift"
+git -C "$repo_tokens" init -q -b main
+git -C "$repo_tokens" config user.email selftest@openburnbar.invalid
+git -C "$repo_tokens" config user.name "Diff Coverage Self-Test"
+printf 'public enum Baseline {}\n' > "$repo_tokens/packages/design-tokens/dist/swift/Baseline.swift"
+git -C "$repo_tokens" add -A
+git -C "$repo_tokens" commit -qm base
+base_tokens="$(git -C "$repo_tokens" rev-parse HEAD)"
+cat > "$repo_tokens/packages/design-tokens/dist/swift/PensieveTokens.swift" <<'EOF'
+public enum PensieveTokens {
+    public static let accent = "#ff4f61"
+}
+EOF
+cat > "$repo_tokens/packages/design-tokens/dist/swift/HandwrittenTokens.swift" <<'EOF'
+public enum HandwrittenTokens {
+    public static func accent() -> String { "#ff4f61" }
+}
+EOF
+git -C "$repo_tokens" add -A
+git -C "$repo_tokens" commit -qm token-change
+tokens_summary="$tmp_root/generated-tokens-summary.json"
+tokens_lines="$tmp_root/generated-tokens-lines.json"
+printf '{"targets":[]}\n' > "$tokens_summary"
+printf '{"files":{}}\n' > "$tokens_lines"
+verdict="$tmp_root/verdict-generated-tokens.json"
+rc="$(run_app_gate "$repo_tokens" "$base_tokens" 80 "$tokens_summary" "$tokens_lines" "$verdict" "$tmp_root/err-generated-tokens.log")"
+check "canonical generated Swift tokens are explicitly waived" \
+  "packages/design-tokens/dist/swift/PensieveTokens.swift" \
+  "$(json_get "$verdict" 'v["waived"][0]["file"]')"
+check "adjacent handwritten Swift tokens remain coverage-gated" "1" "$rc"
+check "adjacent handwritten Swift tokens require line evidence" \
+  "no_evidence" "$(json_get "$verdict" 'v["details"][0]["method"]')"
+
 # --- fixture 13: TRUE whole-file `git mv` with a repointed import must charge
 # ONLY the changed line, not the relocated body (R-GH0; directly guards change 1
 # of the rename fix). This is the canonical god-module decomposition edit: a file

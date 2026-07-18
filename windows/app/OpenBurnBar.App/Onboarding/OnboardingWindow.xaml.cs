@@ -11,14 +11,15 @@ namespace OpenBurnBar.App.Onboarding;
 /// 520x620 first-run window. Owns the <see cref="OnboardingWizardModel"/>, seeds it from
 /// the host's detection + settings, and hosts the <see cref="OnboardingPage"/>. The glass
 /// window backdrop routes through the LiquidGlass chokepoint so it honors the transparency
-/// preference like every other surface.
+/// preference like every other surface. The appearance follows the shared
+/// <see cref="ThemeService"/> (registered below, same as <see cref="MainWindow"/>).
 /// </summary>
 public sealed partial class OnboardingWindow : Window
 {
     private readonly OnboardingWizardModel _model = new();
     private readonly OnboardingPage _page = new();
 
-    public OnboardingWindow()
+    public OnboardingWindow(ThemeService theme)
     {
         InitializeComponent();
 
@@ -29,6 +30,10 @@ public sealed partial class OnboardingWindow : Window
         appWindow.Resize(new Windows.Graphics.SizeInt32(520, 620));
 
         RootHost.Children.Add(_page);
+
+        // Same appearance ownership as MainWindow: the shared theme service pushes
+        // RequestedTheme + backdrop onto this window and re-applies on every change.
+        theme.Register(this);
     }
 
     /// <summary>Raised when the wizard chooses "Open Dashboard".</summary>
