@@ -90,8 +90,9 @@ export function App() {
   }, [bridge]);
 
   useEffect(() => {
-    window.addEventListener('hashchange', syncRouteFromHash);
-    return () => window.removeEventListener('hashchange', syncRouteFromHash);
+    const onHashChange = () => syncRouteFromHash();
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
   }, [syncRouteFromHash]);
 
   // Native tray actions stay typed at the shell boundary: the Rust tray only

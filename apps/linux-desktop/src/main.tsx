@@ -31,7 +31,7 @@ async function boot(): Promise<void> {
   const ob = readOnboarding();
   if (!chatPopout && !petCompanion && location.hash !== '#/onboarding') {
     location.hash = '#/onboarding';
-    useShellStore.getState().syncRouteFromHash();
+    useShellStore.getState().syncRouteFromHash({ measure: false });
   }
 
   const root = document.getElementById('root');
@@ -45,9 +45,9 @@ async function boot(): Promise<void> {
   await useShellStore.getState().boot();
   const bridge = useShellStore.getState().bridge;
   if (chatPopout) {
-    useShellStore.getState().setRoute('chat');
+    useShellStore.getState().setRoute('chat', { measure: false });
   } else if (petCompanion) {
-    useShellStore.getState().setRoute('pet');
+    useShellStore.getState().setRoute('pet', { measure: false });
   }
   if (bridge) {
     try {
@@ -60,25 +60,25 @@ async function boot(): Promise<void> {
         : null;
       cacheOnboarding(authoritative);
       if (chatPopout) {
-        useShellStore.getState().setRoute('chat');
+        useShellStore.getState().setRoute('chat', { measure: false });
       } else if (petCompanion) {
-        useShellStore.getState().setRoute('pet');
+        useShellStore.getState().setRoute('pet', { measure: false });
       } else if (requestedNativeRoute) {
-        useShellStore.getState().setRoute(requestedNativeRoute);
+        useShellStore.getState().setRoute(requestedNativeRoute, { measure: false });
       } else if (shouldRouteToOnboarding(authoritative)) {
-        useShellStore.getState().setRoute('onboarding');
+        useShellStore.getState().setRoute('onboarding', { measure: false });
       } else if (hadDeepLink) {
         location.hash = requestedHash;
-        useShellStore.getState().syncRouteFromHash();
+        useShellStore.getState().syncRouteFromHash({ measure: false });
       } else {
-        useShellStore.getState().setRoute('overview');
+        useShellStore.getState().setRoute('overview', { measure: false });
       }
     } catch (error) {
       console.error('linux_onboarding_authority_unavailable', error);
-      useShellStore.getState().setRoute('onboarding');
+      useShellStore.getState().setRoute('onboarding', { measure: false });
     }
   } else {
-    if (!chatPopout && !petCompanion) useShellStore.getState().setRoute('onboarding');
+    if (!chatPopout && !petCompanion) useShellStore.getState().setRoute('onboarding', { measure: false });
   }
   end();
 
