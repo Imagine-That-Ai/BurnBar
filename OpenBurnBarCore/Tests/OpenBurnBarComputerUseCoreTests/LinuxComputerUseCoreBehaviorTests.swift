@@ -129,7 +129,9 @@ final class LinuxComputerUseCoreBehaviorTests: XCTestCase {
             sessionId: ComputerUseSessionID("linux-session"),
             mode: .browser,
             trustMode: .manual,
-            startedAt: now,
+            // Keep the fixture inside the wall-clock session limit. The gate
+            // intentionally evaluates the timeout against the current clock.
+            startedAt: Date(),
             userId: "linux-user",
             entitlementProductId: ComputerUseEntitlementSnapshot.hostedProductID,
             actionCap: 50,
