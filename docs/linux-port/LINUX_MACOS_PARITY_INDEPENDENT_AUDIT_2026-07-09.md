@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` source implementation checkpoint `440635120f`; the audit record is carried by documentation-only updates. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, structured shell failure diagnostics, host-mounted Swift evidence, expiry-teardown serialization, executable Linux analytics, Computer Use, and remote-engine behavior coverage, the P-07 computer-use validator, the Linux type-inference correction, deep-link normalization, fail-closed text-expansion state, SmartHub process/payload hardening, Linux XCTest discovery hardening, Arch package-channel update handling, fail-closed notification payload routing, native payload staging, media-crate packaging, the fresh arm64 shell timeout, native text-expansion persistence receipts, duplicate route-echo suppression, post-paint packaged lane hydration, packaged route-body idle hydration, and root-owned evidence transcript handling are linked below. Exact-head Release `29643064655` completed successfully on x86_64 and aarch64 with aggregate digest `sha256:54c07e78e60841b7cb999d87a28d7d1125d4f63dcfcaa10cbe47d9738f327dbf`. Nightly `29643065163` passed matched macOS/Linux, Wayland portal, Arch/wlroots, and Fedora/KDE; its X11 route p95 passed at `93.4 ms` versus `120 ms`, but the shell wrapper failed after the packaged session because Docker-owned evidence transcripts were not writable by the host runner. Full certification remains intentionally blocked. |
+| Remediation evidence | `codex/linux-parity-integration-final` source implementation checkpoint `70ab4eb0b9`; the audit record is carried by documentation-only updates. Controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, the Node 22 release-toolchain pin, packaged daemon/resource binding, launcher precedence, session-scoped Linux portal input, onboarding validation, Mercury viewer packaging, capability-gated native chat attachments, canonical provider catalog hydration, the Wayland-safe pet fallback, Secret Service first-use health, narrowly attested XDG autostart packaging, sealed Mercury media enforcement, bounded cloud export selection, recovery-bundle staging, Windows-portable Hermes stream transport, the real P-39 parser producer, provider-catalog onboarding enforcement, hidden nightly evidence retention, structured shell failure diagnostics, host-mounted Swift evidence, expiry-teardown serialization, executable Linux analytics, Computer Use, and remote-engine behavior coverage, the P-07 computer-use validator, the Linux type-inference correction, deep-link normalization, fail-closed text-expansion state, SmartHub process/payload hardening, Linux XCTest discovery hardening, Arch package-channel update handling, fail-closed notification payload routing, native payload staging, media-crate packaging, the fresh arm64 shell timeout, native text-expansion persistence receipts, duplicate route-echo suppression, post-paint packaged lane hydration, packaged route-body idle hydration, and root-owned evidence transcript handling are linked below. Fresh exact-head Release `29646670068` completed successfully on x86_64 and aarch64 with signed evidence artifact `8430648757` (zip digest `sha256:30d67cc9ff465206bdc0a38dad1f0aa910b3a4c7f2205ef811175b37976da13b`). Its package/desktop/daemon/accessibility/tray/route closure is current, but lifecycle update/rollback/data-preservation remains blocked because no compatible same-architecture previous package was supplied. Fresh exact-head Nightly `29646670763` completed successfully at the same head: matched macOS/Linux soak and the runnable Ubuntu GNOME/X11 gate passed; hosted Arch/wlroots, GNOME Wayland, and Fedora/KDE rows were recorded as blocked; 9 Swift suites/414 tests, 19-route packaged X11 shell/accessibility/onboarding/text-expansion proof, and performance thresholds passed. Full certification remains intentionally blocked. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -19,24 +19,26 @@ percentage. The active remediation stack now contains these reviewable slices:
 
 ### Latest exact-head verification - 2026-07-18
 
-- **Exact-head Release:** run `29643064655` completed successfully at
-  `473217fac228649355e10f70c9702ac8b7b10feb`. x86_64 job `88076682475` and
-  aarch64 job `88076682489` both passed native package creation, DEB/RPM/Arch ownership and
-  install/uninstall, rollback/data preservation, packaged daemon,
-  desktop/tray/accessibility/route sessions, and aggregate attestation. The
-  immutable release evidence digest is
-  `sha256:54c07e78e60841b7cb999d87a28d7d1125d4f63dcfcaa10cbe47d9738f327dbf`.
-- **Exact-head Nightly:** run `29643065163` completed at the same source head.
-  macOS matched soak, Linux matched soak, GNOME Wayland portal, Arch/wlroots,
-  and Fedora/KDE jobs passed. Ubuntu GNOME/X11 ran all nine Linux Swift suites
-  (**414/414**), npm install/test/build, the packaged route/accessibility/
-  onboarding/text-expansion session, and matched workload. Its native route
-  budget passed at `93.4 ms` p95 (33 samples; budget `120 ms`) and the matched
-  soak passed. The job itself failed because Docker-owned evidence transcripts
-  were readable but not writable by the host wrapper (`EACCES` while rewriting
-  `linux-deb-install-run-transcript.txt`), after the desktop session had already
-  exited successfully. The wrapper fix is now in the source tree; a fresh exact
-  head run is required to promote the shell gate.
+- **Exact-head Release:** run `29646670068` completed successfully at
+  `70ab4eb0b9e66394d709dac246296a3b050e8a3f`. x86_64 job `88086012965`,
+  aarch64 job `88086012972`, and aggregate job `88089349146` passed native
+  package construction, DEB/RPM/Arch ownership/install/uninstall, packaged
+  daemon, desktop/tray/accessibility/route sessions, final verification, and
+  signed closure. The evidence artifact is `8430648757` with zip digest
+  `sha256:30d67cc9ff465206bdc0a38dad1f0aa910b3a4c7f2205ef811175b37976da13b`.
+  Update/rollback/data-preservation remains explicitly **blocked** because no
+  compatible previous same-architecture package was supplied; the prerelease
+  workflow allowed that blocked lifecycle but did not certify it.
+- **Exact-head Nightly:** run `29646670763` completed successfully at the same
+  source head. Matched macOS/Linux soak and the runnable Ubuntu GNOME/X11 job
+  passed; Arch/wlroots, GNOME Wayland, and Fedora/KDE were recorded as explicit
+  blocked rows. Ubuntu GNOME/X11 passed all nine Linux Swift
+  suites (**414/414**), npm install/test/build, the real packaged daemon and
+  19-route AT-SPI/Orca/keyboard/200%-zoom session, onboarding and text-
+  expansion flows, and shell smoke. `route.navigation` p95 was `95.6 ms`
+  across 33 samples versus the `120 ms` budget; matched workload and resource
+  checks passed. The wrapper transcript ends `linux-desktop-session-ok` with
+  no shell failure summary, confirming the root-owned transcript fix.
 - **Route-performance and evidence follow-up:** source commit `fb20c38dc2`
   adds the packaged-only route-body skeleton and two-frame/idle hydration
   boundary, preserving eager fixture/browser behavior; the fresh X11 evidence
@@ -67,8 +69,8 @@ percentage. The active remediation stack now contains these reviewable slices:
   physical approval execution, four unproven desktop environments plus the
   broader architecture/keyring/portal rows, installed IME/SmartHub/Mercury/
   Computer Use/accessibility/performance/update receipts, and current-head
-  validator promotion remain open. The route-body fix must clear the fresh X11
-  performance gate before P-32/P-37/P-38 can advance.
+  validator promotion remain open. The fresh X11 gate is now clear; remaining
+  P-32/P-37/P-38 work is broader environment and promotion evidence.
 
 ### Historical continuation delta - 2026-07-17 (superseded by the exact-head verification above)
 
@@ -873,10 +875,10 @@ required gates and were not made green by the Ed25519 result.
 
 | ID | Area | macOS gold standard | Linux current state | Status | Priority |
 |---|---|---|---|---|---|
-| P-01 | Release integrity | Signed, notarized, release/update path with installed-app proof | Exact-head run `29643064655` passed signed x86_64/aarch64 package construction, aggregate attestation, install/rollback, and package-owned runtime checks; public feed promotion and notarized distribution remain open | Partial | Critical |
+| P-01 | Release integrity | Signed, notarized, release/update path with installed-app proof | Exact-head run `29646670068` passed signed x86_64/aarch64 package construction, aggregate attestation, install/uninstall, and package-owned runtime checks; lifecycle is blocked without a compatible prior same-architecture package, while public feed promotion and notarized distribution remain open | Partial | Critical |
 | P-02 | Parity certification | Product inventory tied to release head and real behavior | Complete 40-row generated inventory now reports 0 ready/40 blocked and fail-closes stale, missing, contradictory, or self-referential proof | Partial | Critical |
-| P-03 | Installed runtime | Owned app/daemon lifecycle with recovery and one authoritative supervisor | Exact-head run `29643064655` package-owned x86_64 and aarch64 GUI/daemon/version/uninstall/update/rollback sessions passed; broader desktop-matrix lifecycle and promotion receipts remain open | Partial | Critical |
-| P-04 | Architecture reach | Published build covers the declared macOS architecture support contract | Exact-head run `29643064655` native x86_64/aarch64 shards, signed aggregate, package install, and architecture-specific runtime sessions passed; public release promotion and wider environment coverage remain open | Partial | Critical |
+| P-03 | Installed runtime | Owned app/daemon lifecycle with recovery and one authoritative supervisor | Exact-head run `29646670068` package-owned x86_64 and aarch64 GUI/daemon/version/uninstall sessions passed; update/rollback/data-preservation is blocked without a compatible prior same-architecture package, and broader desktop-matrix lifecycle and promotion receipts remain open | Partial | Critical |
+| P-04 | Architecture reach | Published build covers the declared macOS architecture support contract | Exact-head run `29646670068` native x86_64/aarch64 shards, signed aggregate, package install, and architecture-specific runtime sessions passed; lifecycle baseline, public release promotion, and wider environment coverage remain open | Partial | Critical |
 | P-05 | Credential custody | Keychain-backed provider, connector, auth, and sync secrets | Secret Service, KWallet, and encrypted headless custodians are wired; fresh unlocked Secret Service first-use health now succeeds without a sentinel item while locked/unavailable states still fail closed; live keyring/recovery matrix remains incomplete | Partial | Critical |
 | P-06 | Gateway credential boundary | Native process owns bearer credentials | Rust owns the bearer and proxies bounded authenticated HTTP/SSE; renderer receives typed data, not the token | Near parity | Critical |
 | P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Exact run/call/generation authority, signed session/action responses, replay protection, waiting-run selection, shared scope/panic/Playwright/audit routing, and fail-safe restart/terminal behavior are implemented. Controller-route v2 provides dual-signature bootstrap, exact-tuple same-generation transport renewal, and authoritative absence/revocation. The Linux daemon now composes that runtime with daemon-owned PKCE sign-in, secure refresh-token custody, fresh Firebase ID/App Check credentials, per-install Ed25519 App Check enrollment, account-generation invalidation, phase-safe account transition RPCs, and scoped old-account revocation. Pending approval has an explicit bounded reason and quota-safe retry; permanent rejection stops polling. Official AppImages authenticate the final GUI bytes through a signed manifest rather than mutable environment pins. [PR #1681](https://github.com/Imagine-That-Ai/BurnBar/pull/1681) adds typed navigate/screenshot/click/fill requests with exact selected run/call/generation binding and daemon-owned result decoding; `bf0eb36294` adds a consent-scoped RemoteDesktop `Notify*` executor for pointer/key/shortcut/type/scroll/drag with typed libei/uinput-unavailable states and bounded cancellation/timeout/kill-switch teardown. System mode stays hidden when unavailable. A dedicated Linux Firebase web app exists, but the Desktop OAuth client, production callable deployment, release variables, current physical-iPad approval execution, installed browser/panic/audit/restart proof, Agent Watch, and compositor-installed portal receipts remain missing | Partial | Critical |
@@ -897,20 +899,20 @@ required gates and were not made green by the Ed25519 result.
 | P-22 | Database | Search/inspect indexed sessions, snapshots, watch/recovery, encrypted storage UX | Index/watch foundation plus bounded daemon-owned code search/context-pack inspection are wired in [PR #1680](https://github.com/Imagine-That-Ai/BurnBar/pull/1680), with pagination, trust warnings, and fail-closed capability handling. SQLCipher-gated encrypted snapshots provide owner-only path validation, bounded atomic copy, SHA-256 integrity, rollback, and watcher reopen; `f5d562da82`/`238577c904` add typed recovery status/export/import state, key-loss/device-transfer guidance, partial-capability rendering, passphrase/path validation, and redacted outcomes. Installed proof and backend recovery on real keyrings remain open | Partial | Medium |
 | P-23 | Provider/model workspace | Provider and model deep dives, health, catalog, failover, routing | Daemon-backed provider/model workspace, canonical catalog/config mapping, model variants/aliases, health/failover posture, account chips, config-derived chat backend gates, and source-integrated custom-model add/remove mutation state are integrated. `d7cffc79d6` makes the bridge fetch canonical `daemon.catalog` separately from `daemon.config.get` and exposes an explicit config-only degraded state on catalog failure; live credential routing and installed lifecycle proof remain open | Partial | Medium |
 | P-24 | Settings | 16 searchable tabs with deep links and writable state | 16-tab searchable inventory and deep routes are wired; deeper per-tab backend writes and installed proof remain open | Partial | Medium |
-| P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed freshness, exact package-channel/architecture selection, shell/daemon compatibility, fail-closed mutation guidance, and run `29643064655` package update/rollback/data-preservation sessions passed; valid public feed and promoted installed history remain open | Partial | High |
+| P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed freshness, exact package-channel/architecture selection, shell/daemon compatibility, fail-closed mutation guidance, and run `29646670068` package construction/install checks passed; update/rollback/data-preservation remains blocked without a compatible previous same-architecture package, and valid public feed/promoted history remain open | Partial | High |
 | P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Native tray now exposes dashboard/chat/usage/updates/settings routes, daemon health, recent usage, signed-update state, refresh/reconnect, and quit actions; `dcca8b74b4` packages the canonical XDG autostart entry and honors tray-first `--background` startup; compositor/DE persistence and installed receipts remain open | Partial | High |
 | P-27 | Notifications/deep links | Actionable notifications, OAuth return, global commands, login start | Native startup/deep-link handoff, background tray launch, XDG autostart package installation, desktop MIME registration, strict membership/OAuth URL validation, owner-checked per-user single-instance forwarding, normalized freedesktop `open`/`reply` actions, explicit route aliases, and cold-start precedence are implemented in [PR #1679](https://github.com/Imagine-That-Ai/BurnBar/pull/1679), [PR #1686](https://github.com/Imagine-That-Ai/BurnBar/pull/1686), `5f74018422`, `07153ac3d5`, and `dcca8b74b4`; Reply preserves intent, opens chat, and focuses the composer rather than providing inline notification text input. Global shortcut and installed host integration remain open | Partial | High |
 | P-28 | SmartHub | Discovery, status, allowlisted device actions | Runtime requires a trusted root-owned packaged CLI and otherwise fails closed. Typed operation allowlists, request/output bounds, concurrent drain, bounded Avahi timeout, cancellation, and degraded renderer states are integrated; real device/Avahi outcomes remain unproven | Partial | High |
 | P-29 | Text expansion | Global, secure-field-aware expansion, persistence, sync, previews | Daemon-owned AES-GCM persistence with native Secret Service/KWallet custody, owner-only sealed files, consent, in-app Composer expansion, no renderer localStorage/global capture, and fail-closed corruption/missing-key handling are integrated. Renderer consent/import/snippet/edit/delete controls now fail closed until live daemon storage hydration succeeds (`1ddc8bc33a`). The daemon exposes a bounded IBus/Fcitx reachability and secure-field policy probe (`6c76df084f`) and `d2dbbe8df8` adds a trigger-only signed-engine request/response path with strict bounds, secure-field denial before write, and cancellation/kill-switch teardown. Linux keyring/IME runtime receipts, sync/conflict handling, and installed secure-field proof remain open | Partial | High |
 | P-30 | Pet companion | Animated ambient overlay, click-through, summon, selection, interactions | Typed runtime-manifest probe, contained draggable fallback, accessible summon/focus/status, and selection/clear controls are honest. `3b652f9b9e` adds bounded pointer/mouse drag and Arrow/Home keyboard repositioning with focus metadata and announcements for the Wayland-safe contained substitute. `5c3caab2e` adds a fixed-marker X11-only `Ctrl+Alt+Super+P` native summon route and `2b85f1431` exposes `aria-keyshortcuts`; native overlay/click-through and installed compositor proof remain open | Partial | High |
-| P-31 | Accessibility | Semantic UI, keyboard flows, assistive announcements, reduced effects | All routes pass axe; global reduced-motion, forced-colors, and prefers-contrast styling plus keyboard/status contracts are implemented in [PR #1683](https://github.com/Imagine-That-Ai/BurnBar/pull/1683), with live reduced-motion preference updates and cleanup in `7cd30e2e71`; run `29643065163` passed 19-route AT-SPI, Orca, keyboard, zoom, and text-expansion evidence, while broader desktop/high-contrast breadth remains | Near parity | High |
-| P-32 | Performance | Startup/recovery/frame/cadence budgets and mature profiling | Run `29643065163` passed matched 30-minute macOS/Linux soak with bounded RSS growth and Ubuntu GNOME/X11 route p95 `93.4 ms` versus the `120 ms` budget; the shell wrapper reliability fix still needs a fresh exact-head run before promotion | Near parity | High |
+| P-31 | Accessibility | Semantic UI, keyboard flows, assistive announcements, reduced effects | All routes pass axe; global reduced-motion, forced-colors, and prefers-contrast styling plus keyboard/status contracts are implemented in [PR #1683](https://github.com/Imagine-That-Ai/BurnBar/pull/1683), with live reduced-motion preference updates and cleanup in `7cd30e2e71`; Nightly `29646670763` passed 19-route X11 AT-SPI/Orca, keyboard, 200% zoom, onboarding, and text-expansion evidence, while broader desktop/high-contrast breadth remains | Near parity | High |
+| P-32 | Performance | Startup/recovery/frame/cadence budgets and mature profiling | Nightly `29646670763` passed matched 30-minute macOS/Linux correctness/resource soak and packaged X11 thresholds: `route.navigation` p95 `95.6 ms` across 33 samples versus the `120 ms` budget, app start p95 `333.9 ms`, IPC health p95 `111.65 ms`, and tray-open p95 `123.55 ms`; comparable hardware, suspend/keyring recovery, and broader matrix profiling remain open | Near parity | High |
 | P-33 | Reliability | Backoff, supervisor, recovery, subscriptions, migrations, long-idle stability | Daemon-owned bounded start/resume/stop subscriptions, monotonic restart recovery, offline-aware single-flight cadence, cancellation, coalesced route refresh, and soak contracts exist; native push and installed suspend/portal/keyring/matrix certification remain | Partial | High |
 | P-34 | Security hardening | Native URL/secret/process boundaries | Generic renderer shell permission and token exposure removed; production fixtures disabled; full installed adversarial matrix remains | Near parity | Critical |
 | P-35 | Diagnostics/support | Native export, privacy choices, accurate runtime/package facts | Metadata-only redacted export and support preview are wired; installed support workflow remains open | Partial | Medium |
 | P-36 | Visual/interaction polish | Consistent components, responsive density, animations, native affordances | Nonblack installed route captures now exist; raw diagnostics, interaction polish, and multi-environment regressions remain | Partial | Medium |
-| P-37 | Linux matrix | N/A; macOS supported versions are exercised | Environment-bound fail-closed harness binds installed/accessibility evidence to exact environment, architecture, session, and desktop identity (`b012a53a6c`); run `29643065163` passed GNOME Wayland portal, Arch/wlroots, Fedora/KDE, and the X11 packaged session, while current-head promotion and the remaining architecture/keyring/portal rows remain open | Partial | Critical |
-| P-38 | CI/release automation | Test, sign, package, and promotion jobs fail closed | Strict gates, mutation tests, native architecture shards, sessions, and aggregate closure are implemented; Release `29643064655` passed all architecture/attestation jobs and Nightly `29643065163` passed its substantive checks but exposed a root-owned evidence-transcript wrapper bug now fixed in source; current-head product/environment promotion remains open | Partial | Critical |
+| P-37 | Linux matrix | N/A; macOS supported versions are exercised | Environment-bound fail-closed harness binds installed/accessibility evidence to exact environment, architecture, session, and desktop identity (`b012a53a6c`); Nightly `29646670763` passed the runnable Ubuntu GNOME/X11 packaged session while recording Arch/wlroots, GNOME Wayland portal, and Fedora/KDE as explicit blocked rows; current-head promotion and architecture/keyring/portal rows remain open | Partial | Critical |
+| P-38 | CI/release automation | Test, sign, package, and promotion jobs fail closed | Strict gates, mutation tests, native architecture shards, sessions, and signed aggregate closure are implemented; Release `29646670068` and Nightly `29646670763` passed their current-head gates, including the root-owned evidence wrapper fix; lifecycle, production, and product/environment promotion remain open | Partial | Critical |
 | P-39 | Cross-platform differential proof | Same contract/corpus compared at the same product version | A bounded evidence comparator is implemented in [PR #1682](https://github.com/Imagine-That-Ai/BurnBar/pull/1682): it normalizes object order, redacts credential values, supports explicit volatile paths, emits path-level differences, and fails closed with machine-readable exit codes. A same-commit macOS/Linux artifact run is still required | Partial | High |
 | P-40 | Data and Privacy | Vault/export/deletion/retention/recovery/consent/telemetry/panic workflows | Daemon-backed telemetry/privacy/cloud-sync consent, allowlisted inventory, preview/execute deletion, selected-scope encrypted export, bounded age/size retention, and a typed account-erasure request path are implemented. The installed candidate now has a live Ubuntu 24.04 GNOME/X11 aarch64 RPC proof; trusted-device account erasure, backend deletion receipts, and the other six environment rows remain open | Partial | High |
 
@@ -1702,17 +1704,21 @@ backoff and coalesced mounted-route reloads. See
 `performance-reliability-validation.md` and
 `LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md`.
 
-**Exact-head evidence (2026-07-18):** Release `29643064655` passed both native
-architecture package/runtime shards and aggregate attestation. Nightly
-`29643065163` passed the matched 30-minute macOS/Linux soak (Linux RSS growth
-remained bounded), GNOME Wayland portal, Arch/wlroots, and Fedora/KDE. Ubuntu
-GNOME/X11 completed all nine Linux Swift suites (**414/414**), the shell,
-AT-SPI, onboarding, text-expansion, and matched-workload stages. Its
-`route.navigation` p95 is now `93.4 ms` versus the `120 ms` budget. The overall
-job still failed because Docker-owned transcript files returned `EACCES` when
-the host wrapper tried to normalize them, after the packaged session itself
-passed. The wrapper now treats normalization as best-effort and retains the
-raw transcript; a fresh exact-head run is required to promote the shell gate.
+**Exact-head evidence (2026-07-18):** Release `29646670068` passed both native
+architecture package/runtime shards and signed aggregate attestation at
+`70ab4eb0b9e66394d709dac246296a3b050e8a3f`; its evidence artifact is
+`8430648757` with zip digest
+`sha256:30d67cc9ff465206bdc0a38dad1f0aa910b3a4c7f2205ef811175b37976da13b`.
+Package update/rollback/data-preservation remains blocked because no compatible
+previous same-architecture package was supplied. Nightly `29646670763` then
+passed matched 30-minute macOS/Linux correctness/resource soak and the runnable
+Ubuntu GNOME/X11 gate; Arch/wlroots, GNOME Wayland, and Fedora/KDE remained
+explicitly blocked rows. It also passed 9 Linux Swift suites (**414/414**), the packaged X11
+19-route accessibility/onboarding/text-expansion session, and the route budget
+(`95.6 ms` p95, 33 samples, budget `120 ms`). Its wrapper transcript ended
+`linux-desktop-session-ok`; the former root-owned `EACCES` false failure is
+closed, but these are still engineering receipts rather than full product
+promotion.
 
 - **Difference:** Linux now has daemon-owned bounded pull subscriptions, a
   single-flight data supervisor, packaged startup/reopen/reconnect percentiles,

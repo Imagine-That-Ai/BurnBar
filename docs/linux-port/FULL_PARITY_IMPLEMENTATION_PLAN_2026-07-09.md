@@ -60,25 +60,28 @@ host receipts remain required.
 
 ### Exact-head release verification - 2026-07-18
 
-Exact-head Release workflow `29643064655` completed successfully at
-`473217fac228649355e10f70c9702ac8b7b10feb`. x86_64 job `88076682475`,
-aarch64 job `88076682489`, and aggregate job `88079754029` covered package
-construction, DEB/RPM/Arch ownership/install/uninstall, rollback/data
-preservation, packaged daemon and desktop/tray/accessibility/route sessions,
-and attestation. Aggregate evidence digest:
-`sha256:54c07e78e60841b7cb999d87a28d7d1125d4f63dcfcaa10cbe47d9738f327dbf`.
+Exact-head Release workflow `29646670068` completed successfully at
+`70ab4eb0b9e66394d709dac246296a3b050e8a3f`. x86_64 job `88086012965`,
+aarch64 job `88086012972`, and aggregate job `88089349146` covered package
+construction, DEB/RPM/Arch ownership/install/uninstall, packaged daemon and
+desktop/tray/accessibility/route sessions, final verification, and signed
+closure. The evidence artifact is `8430648757` with zip digest
+`sha256:30d67cc9ff465206bdc0a38dad1f0aa910b3a4c7f2205ef811175b37976da13b`.
+The candidate's update/rollback/data-preservation lifecycle is explicitly
+blocked because no compatible previous same-architecture package was supplied;
+the prerelease workflow allowed that blocked lifecycle but did not certify it.
 
-Exact-head Nightly workflow `29643065163` completed at the same source head.
-macOS matched soak, Linux matched soak, GNOME Wayland portal, Arch/wlroots,
-and Fedora/KDE jobs passed. Ubuntu GNOME/X11 ran all nine Linux Swift suites
-(**414/414**), npm install/test/build, the packaged
-route/accessibility/onboarding/text-expansion session, and matched workload.
-Its `route.navigation` p95 passed at `93.4 ms` across 33 samples versus the
-`120 ms` budget. The job nevertheless failed after the packaged session because
-Docker-owned transcript files were readable but not writable by the host
-wrapper (`EACCES` rewriting `linux-deb-install-run-transcript.txt`). The source
-wrapper now treats normalization as best-effort and retains the raw transcript;
-a fresh exact-head Nightly is required to promote the shell gate.
+Exact-head Nightly workflow `29646670763` completed successfully at the same
+source head. Its matched macOS/Linux soak and runnable Ubuntu GNOME/X11 job
+passed; Arch/wlroots, GNOME Wayland, and Fedora/KDE were recorded as explicit
+blocked rows. X11 ran all nine Linux Swift
+suites (**414/414**), npm install/test/build, the real packaged daemon and
+19-route AT-SPI/Orca/keyboard/200%-zoom session, onboarding and text-expansion
+flows, and shell smoke. `route.navigation` p95 was `95.6 ms` across 33
+samples versus the `120 ms` budget; matched workload/resource checks passed.
+The wrapper emitted root-owned transcript `EACCES` warnings but retained raw
+evidence and exited successfully with `linux-desktop-session-ok`, so the prior
+false shell failure is closed.
 
 The physical iPad preflight passed, but the focused approval build was stopped
 by the 10 GiB hygiene guard before XCTest discovery. Production callable
@@ -90,13 +93,13 @@ promoted until that VM launcher state is repaired and rechecked. These facts
 are recorded in the independent audit and do not promote any ledger row.
 
 For planning purposes only, source maturity is approximately **68%**. This is
-not a release percentage. The remaining dependency order is: rerun the fresh
-X11 shell gate after the root-owned transcript wrapper fix, produce a signed
-candidate from that verified head, deploy and verify production App Check/OAuth
-callables, run the physical iPad approval journey, close the remaining Linux
-desktop/architecture/keyring/portal rows, collect installed Computer Use,
-Mercury, SmartHub, IME, accessibility, performance, and update receipts, and
-only then promote the 40 product rows.
+not a release percentage. The remaining dependency order is: supply a
+compatible previous same-architecture package for
+update/rollback/data-preservation proof, deploy and verify production App
+Check/OAuth callables, run the physical iPad approval journey, close the
+remaining Linux desktop/architecture/keyring/portal rows, collect installed
+Computer Use, Mercury, SmartHub, IME, accessibility, performance, and update
+receipts, and only then promote the 40 product rows.
 
 ### Execution checkpoint — 2026-07-14
 
@@ -535,17 +538,19 @@ Full parity remains **NO-GO** until all of these gates are met in order:
    passed, but they do not satisfy physical-device approval execution. The
    visible iPhone and simulator targets remain invalid substitutes.
 5. Build and sign the exact deb/rpm/AppImage candidate, including the final-byte
-   AppImage peer manifest.
+   AppImage peer manifest. Candidate `0.1.1` is now built and signed by Release
+   `29646670068`; compatible previous-package lifecycle proof and public
+   promotion remain open.
 6. Install the exact candidate and complete PKCE sign-in plus physical-iPad
    enrollment, fingerprint confirmation, approval, refresh, revoke, and sign-out.
 7. Prove real Browser Computer Use actions, approval/deny, panic, audit/tamper,
    credential loss, account switch, and daemon restart/replay behavior.
-8. Clear the exact-head Ubuntu GNOME/X11 packaged shell gate. Commit
-   `fb20c38dc2` defers packaged route bodies behind a stable skeleton and idle
-   hydration; `440635120f` makes host-side transcript normalization best-effort
-   for root-owned Docker evidence. Rerun the Nightly and require both
-   `route.navigation` p95 <= 120 ms and shell-smoke success without relaxing
-   the threshold.
+8. Clear the exact-head Ubuntu GNOME/X11 packaged shell gate. **Completed** by
+   Nightly `29646670763`: `fb20c38dc2` defers packaged route bodies behind a
+   stable skeleton and idle hydration; `440635120f` makes host-side transcript
+   normalization best-effort for root-owned Docker evidence; route p95 is
+   `95.6 ms` (33 samples, budget `120 ms`) and shell smoke exits successfully.
+   Keep the threshold and raw-transcript retention contract in future runs.
 9. Complete GNOME X11/Wayland, KDE Wayland, wlroots, architecture,
    accessibility, performance, update/rollback, and release-promotion
    certification.

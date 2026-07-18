@@ -3,10 +3,20 @@
 This directory tracks the Linux desktop peer release work. The Linux lane is
 implemented as reviewable infrastructure, not a public availability claim.
 
-Current parity status as of 2026-07-09:
+Current parity status as of 2026-07-18:
 
-- A public signed aarch64 prerelease exists at `linux-v0.1.0`.
-- Full macOS parity is not complete. See
+- Exact-head Release `29646670068` produced signed x86_64/aarch64 candidate
+  `0.1.1` (`linux-v0.1.1`) and passed package, daemon, desktop, tray,
+  accessibility, route, and attestation checks. Update/rollback/data-
+  preservation remains blocked until a compatible previous same-architecture
+  package is supplied.
+- Exact-head Nightly `29646670763` passed the matched 30-minute soak, the
+  runnable Ubuntu GNOME/X11 gate, 9 Linux Swift suites (414 tests), and the
+  packaged X11 shell/accessibility/onboarding/text-expansion gate. Arch/
+  wlroots, GNOME Wayland, and Fedora/KDE remain explicit blocked rows. Route
+  navigation p95 was 95.6 ms against a 120 ms budget.
+- Full macOS parity is not complete and the strict ledger remains 0/40 product
+  rows and 0/7 environment receipts. See
   the browser-ready
   [`LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.html`](LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.html)
   or its Markdown source

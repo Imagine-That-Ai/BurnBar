@@ -12,7 +12,7 @@ Generated from a 6-subagent parallel reconnaissance of `AgentLens/`, `apps/linux
 | UI shell | `AgentLens/Views/`, `AgentLens/Theme/` | `apps/linux-desktop/` has W6 foundation + P01-P15 route surfaces. | Route parity exists, but macOS visual/interaction layer is missing. |
 | Design system | `AgentLens/Theme/DesignSystem.swift`, `LiquidGlass.swift`, `KernelBackdropView.swift` | Tokens + 2 skins + 32 kernels + CSS glass exist. | Missing dashboard layouts, Liquid Glass transparency, Pro theme, wallpaper, pet renderer, swarm customization. |
 | Desktop integration | `AppDelegate+StatusItem.swift`, `SwarmWallpaperRuntime.swift`, `Hotkey.swift` | Tauri tray exists. | Missing menu-bar popover, global hotkeys, desktop wallpaper, live wallpaper panels. |
-| Release / CI | `scripts/build-macos-website-release.sh`, `scripts/upload-macos-downloads-r2.sh`, `scripts/ops/rollback-macos-appcast.sh` | Toolchain, workflows, Tauri build, release manifest, scripts exist. | Missing AppImage/RPM closure, update feed, R2 upload, public trust verification, Sentry, nightly matrix evidence. |
+| Release / CI | `scripts/build-macos-website-release.sh`, `scripts/upload-macos-downloads-r2.sh`, `scripts/ops/rollback-macos-appcast.sh` | Signed x86_64/aarch64 DEB/RPM/Arch candidate, daemon/desktop sessions, aggregate attestation, and exact-head Nightly matrix are green. | Public feed/promotion, compatible previous-package lifecycle proof, production trust callables, and full environment receipts remain open. |
 
 The canonical `docs/linux-port/parity-ledger.json` contains 40 product rows, and
 `product-parity-requirements.json` defines the seven required environment rows;
@@ -64,21 +64,25 @@ The latest continuation also adds Arch/pacman update-channel handling and
 fail-closed notification payload/route validation (`85b167205`, `a852af8c5`).
 These source and focused-test improvements do not promote any ledger row.
 
-Exact-head Release run `29643064655` completed successfully at
-`473217fac228649355e10f70c9702ac8b7b10feb`; x86_64 job `88076682475`,
-aarch64 job `88076682489`, and aggregate job `88079754029` passed package
-construction, ownership/install/uninstall, rollback/data preservation,
-daemon/desktop/tray, route/accessibility sessions, and attestation. Aggregate
-digest: `sha256:54c07e78e60841b7cb999d87a28d7d1125d4f63dcfcaa10cbe47d9738f327dbf`.
-Exact-head Nightly run `29643065163` completed at the same head. macOS/Linux
-matched soak, GNOME Wayland portal, Arch/wlroots, and Fedora/KDE passed. Ubuntu
-GNOME/X11 ran all nine Swift suites (**414/414**), shell, AT-SPI, onboarding,
-text-expansion, matched workload, and route performance; `route.navigation`
-p95 was `93.4 ms` versus the `120 ms` budget. The job failed only because the
-host wrapper could not rewrite a Docker-owned transcript (`EACCES`) after the
-packaged session passed. The source wrapper now treats transcript normalization
-as best-effort and retains the raw evidence; a fresh Nightly must promote this
-shell gate.
+Exact-head Release run `29646670068` completed successfully at
+`70ab4eb0b9e66394d709dac246296a3b050e8a3f`; x86_64 job `88086012965`,
+aarch64 job `88086012972`, and aggregate job `88089349146` passed package
+construction, ownership/install/uninstall, daemon/desktop/tray, route/
+accessibility sessions, final verification, and signed closure. Evidence
+artifact `8430648757` has zip digest
+`sha256:30d67cc9ff465206bdc0a38dad1f0aa910b3a4c7f2205ef811175b37976da13b`.
+Update/rollback/data-preservation remains blocked because no compatible prior
+same-architecture package was supplied.
+Exact-head Nightly run `29646670763` completed successfully at the same head.
+The macOS/Linux matched soak and runnable Ubuntu GNOME/X11 passed; GNOME
+Wayland portal, Arch/wlroots, and Fedora/KDE remained explicit blocked rows.
+X11 ran all nine Swift suites (**414/414**), shell,
+AT-SPI/Orca/keyboard/200%-zoom, onboarding, text-expansion, matched workload,
+and route performance; `route.navigation` p95 was `95.6 ms` versus the
+`120 ms` budget. Root-owned transcript normalization emitted warnings but kept
+the raw evidence and exited `linux-desktop-session-ok`; the previous false
+shell failure is closed. The three non-X11 environments remain blocked because
+hosted runners do not provide their required compositor/portal surfaces.
 
 The physical iPad preflight passes but approval XCTest execution is blocked by
 the worktree hygiene ceiling. Production callable drift remains open. The UTM
@@ -167,7 +171,7 @@ requirement rows.
 | R1 | Release scripts: `upload-linux-downloads-r2.sh`, update/rollback feed, `verify-public-linux-download-trust.sh`. | `scripts/linux-port/`, `scripts/ci/`, `Makefile` | `verify-linux-release.mjs --allow-blocked` passes; scripts run green. |
 | R2 | Sentry + observability: add `sentry-rust` to Tauri and daemon, configure DSN. | `apps/linux-desktop/src-tauri/Cargo.toml`, `OpenBurnBarDaemon/` | Build passes; errors captured in dev. |
 | R3 | Nightly matrix: fix Wayland/Fedora/Arch runners, add `xdg-desktop-portal` consent test. | `.github/workflows/linux-nightly.yml` | Nightly matrix produces artifacts. |
-| R4 | Route performance and packaged-evidence closure: validate `fb20c38dc2` packaged route-body skeleton/idle hydration and the root-owned transcript normalization fix on Ubuntu GNOME/X11; preserve eager fixture/browser behavior. | `apps/linux-desktop/src/surfaces/SurfaceRouter.tsx`, `SurfaceRouter.test.tsx`, `system/system.css`, `scripts/linux-port/run-shell-desktop-session.mjs`, `scripts/linux-port/accessibility-harness-contract.test.mjs`, `.github/workflows/linux-nightly.yml` | Fresh exact-head Nightly route p95 <= 120 ms and shell-smoke success; no threshold relaxation; route shell remains accessible during hydration and raw Docker-owned transcripts remain valid evidence. |
+| R4 | **Complete:** `fb20c38dc2` packaged route-body skeleton/idle hydration plus the root-owned transcript normalization fix were validated on Ubuntu GNOME/X11; eager fixture/browser behavior remains intact. | `apps/linux-desktop/src/surfaces/SurfaceRouter.tsx`, `SurfaceRouter.test.tsx`, `system/system.css`, `scripts/linux-port/run-shell-desktop-session.mjs`, `scripts/linux-port/accessibility-harness-contract.test.mjs`, `.github/workflows/linux-nightly.yml` | Nightly `29646670763`: route p95 `95.6 ms` <= `120 ms`, shell smoke success, route shell accessible during hydration, raw Docker-owned transcripts retained as evidence. |
 | D1 | Pensieve watcher: replace stub with inotify. | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/PensieveKnowledgeWatcherLinux.swift` | `OpenBurnBarDaemonLinuxGatewayTests` pass. |
 | D2 | Switcher shell: implement `BurnBarCLIShellExecutor` and `ShimInstaller` for Linux. | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/OpenBurnBarSwitcherShellLinux.swift` | CLI tests pass. |
 | D3 | Test backfill: replace Linux compile-only paths with deterministic behavior suites; retain placeholders only as platform fallbacks. | `OpenBurnBarCore/Tests/*/Linux*BehaviorTests.swift`, `OpenBurnBarCore/Package.swift`, `scripts/linux-port/linux-swift-test-manifest.json` | Linux manifest declares 9 suites / 92 minimum tests; each selected target executes non-tautological tests and `swift test` passes on the release runner. |
