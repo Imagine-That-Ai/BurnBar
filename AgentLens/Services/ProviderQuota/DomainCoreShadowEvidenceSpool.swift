@@ -595,7 +595,7 @@ final class DomainCoreShadowEvidenceSpool: Sendable {
     }
 }
 
-final class DomainCoreShadowEvidenceWriter: @unchecked Sendable {
+final class DomainCoreShadowEvidenceWriter: Sendable {
     enum BackpressurePolicy: String, Sendable {
         case dropNewest = "drop_newest"
     }
@@ -882,7 +882,7 @@ enum DomainCoreShadowAcknowledgementValidator {
     }
 }
 
-final class DomainCoreShadowEvidenceUploadCoordinator: @unchecked Sendable {
+final class DomainCoreShadowEvidenceUploadCoordinator: Sendable {
     private struct State: Sendable {
         var flushing = false
         var scheduledDeadlineUptimeNanoseconds: UInt64?
