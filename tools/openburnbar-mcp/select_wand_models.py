@@ -91,11 +91,7 @@ def _public_payload(payload: dict[str, Any], sibling_index: int) -> dict[str, An
     selected_candidates = selected if isinstance(selected, list) else []
     requested_count = payload.get("requestedCount")
     selection_complete = not isinstance(requested_count, int) or len(selected_candidates) >= requested_count
-    selected_for_index = (
-        _selection_for_index(selected_candidates, sibling_index)
-        if selection_complete
-        else None
-    )
+    selected_for_index = _selection_for_index(selected_candidates, sibling_index) if selection_complete else None
     return {
         "status": _safe_public_string(payload.get("status"), max_length=32) or "ok",
         "selectedCount": len(selected_candidates),
