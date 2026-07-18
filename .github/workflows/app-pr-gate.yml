@@ -84,6 +84,11 @@ jobs:
         # shipped bundle behavior check ahead of the slower app build/measurement.
         run: node --test scripts/ci/macos-idle-occlusion-gate.test.mjs
 
+      - name: Prepare macOS libsignal FFI for CPU gate
+        run: >-
+          SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin
+          ./scripts/lib/prepare-signal-ffi-xcframework.sh
+
       - name: Build AgentLens app for real-process CPU gate
         run: |
           set -euo pipefail
