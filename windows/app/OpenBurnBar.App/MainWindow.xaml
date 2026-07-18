@@ -8,8 +8,7 @@
     xmlns:theme="using:OpenBurnBar.App.Theme"
     Title="OpenBurnBar">
 
-    <Grid x:Name="RootGrid" RowSpacing="0" Background="Transparent" RequestedTheme="Dark"
-          FontFamily="{StaticResource AuroraBodyFont}">
+    <Grid x:Name="RootGrid" RowSpacing="0" Background="Transparent" RequestedTheme="Dark">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
