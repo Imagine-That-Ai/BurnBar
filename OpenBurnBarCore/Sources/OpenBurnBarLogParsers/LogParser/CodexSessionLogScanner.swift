@@ -450,6 +450,11 @@ public enum CodexSessionLogScanner {
                 options.metrics?.recordMetadataStat()
 
                 let signature = FileSignature(for: fileURL, using: fileManager)
+                let discoveredFile = ParserDiscoveredFile.capture(
+                    for: fileURL,
+                    attributes: try? fileManager.attributesOfItem(atPath: fileURL.path)
+                )
+                let isNewlyDiscovered = options.fileDiscoveryTracker?.record(discoveredFile) ?? false
                 let cached = sessionCache.fileEntries[cacheKey]
 
                 if governor != nil, signature == nil {
@@ -463,8 +468,10 @@ public enum CodexSessionLogScanner {
                         foundExact = true
                     }
                 } else {
-                    let isUnchanged = signature != nil && cached?.signature == signature
-                    let boundaryDeferred = isDeferredByBoundary(
+                    let isUnchanged = !isNewlyDiscovered
+                        && signature != nil
+                        && cached?.signature == signature
+                    let boundaryDeferred = !isNewlyDiscovered && isDeferredByBoundary(
                         signature: signature,
                         minimumFileModificationDate: options.minimumFileModificationDate
                     )
@@ -491,6 +498,7 @@ public enum CodexSessionLogScanner {
                         let newBytes = max(fileSize - min(resumeOffset, fileSize), 0)
 
                         if governor?.admitFile(estimatedBytes: newBytes) ?? true {
+                            options.fileDiscoveryTracker?.recordAdmitted(discoveredFile)
                             options.metrics?.recordContentRead(bytes: newBytes)
                             let scan = try scanTokens(
                                 path: expandedPath,
@@ -498,6 +506,11 @@ public enum CodexSessionLogScanner {
                                 previousState: cached?.scanState,
                                 governor: governor
                             )
+                            if scan == nil {
+                                governor?.recordDeferredFile()
+                                options.fileDiscoveryTracker?.recordDeferred(discoveredFile)
+                                options.metrics?.recordDeferred(.contentReadFailed)
+                            }
                             if let usage = scan?.usage {
                                 inputTokens = usage.input
                                 outputTokens = usage.output

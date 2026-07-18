@@ -81,7 +81,8 @@ public final class FactoryDroidParser: LogParser, Sendable {
                     parseCache.fileEntries[cacheKey].flatMap { $0.signature == signature ? $0 : nil }
                 }
 
-                if let boundary = options.minimumFileModificationDate {
+                if options.fileDiscoveryTracker == nil,
+                   let boundary = options.minimumFileModificationDate {
                     guard let signature else {
                         options.resourceGovernor?.recordDeferredFile()
                         options.metrics?.recordDeferred(.metadataUnavailable)
@@ -132,6 +133,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
                     if refreshed.conversation == nil {
                         options.resourceGovernor?.recordDeferredFile()
                         options.metrics?.recordDeferred(.contentReadFailed)
+                        recordDeferredSessionFiles(sessionFiles, options: options)
                     }
                     appendCached(refreshed, includeConversation: true, usages: &usages, conversations: &conversations)
                 } else {
@@ -144,6 +146,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
                     if parsed == nil {
                         options.resourceGovernor?.recordDeferredFile()
                         options.metrics?.recordDeferred(.contentReadFailed)
+                        recordDeferredSessionFiles(sessionFiles, options: options)
                     }
                     appendParsed(
                         parsed,
@@ -440,6 +443,21 @@ public final class FactoryDroidParser: LogParser, Sendable {
         }
         if includeConversation, let conversation = parsed.conversation {
             conversations.append(conversation)
+        }
+    }
+
+    private func recordDeferredSessionFiles(
+        _ files: [URL],
+        options: LogParseOptions
+    ) {
+        guard let tracker = options.fileDiscoveryTracker else { return }
+        for file in files {
+            tracker.recordDeferred(
+                ParserDiscoveredFile.capture(
+                    for: file,
+                    attributes: try? fileManager.attributesOfItem(atPath: file.path)
+                )
+            )
         }
     }
 

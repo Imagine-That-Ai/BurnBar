@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarKernel
+import OpenBurnBarSQLiteReader
 import XCTest
 @testable import OpenBurnBarLogParsers
 
@@ -149,6 +150,54 @@ final class ParserParseOptionsTests: XCTestCase {
         let usageOnly = try await parser.parse(options: futureUsageOnlyOptions)
         XCTAssertEqual(usageOnly.usages.count, 2)
         XCTAssertTrue(usageOnly.conversations.isEmpty)
+    }
+
+    func testClaudeCodeNewHistoricalIdentityParsesBeforeKnownIdentitySkips() async throws {
+        let root = try makeTemporaryDirectory("claude-new-historical-identity")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let projectsRoot = root.appendingPathComponent("projects", isDirectory: true)
+        let project = projectsRoot.appendingPathComponent("-Users-test-Project", isDirectory: true)
+        let transcript = project.appendingPathComponent("restored-old.jsonl")
+        try write(claudeSession(user: "Parse the restored transcript", input: 321, output: 45), to: transcript)
+        let historicalDate = Date(timeIntervalSince1970: 1_600_000_000)
+        try setModificationDate(historicalDate, for: [transcript])
+        let attributes = try fileManager.attributesOfItem(atPath: transcript.path)
+        let identity = ParserDiscoveredFile.capture(for: transcript, attributes: attributes)
+        let boundary = historicalDate.addingTimeInterval(60)
+
+        let parser = ClaudeCodeParser(
+            fileManager: fileManager,
+            appPaths: OpenBurnBarAppPaths(
+                applicationSupportRoot: root.appendingPathComponent("support", isDirectory: true)
+            ),
+            projectsDirectoryOverride: projectsRoot
+        )
+
+        let newlyDiscovered = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true,
+            minimumFileModificationDate: boundary,
+            fileDiscoveryTracker: ParserFileDiscoveryTracker(knownFiles: [])
+        ))
+
+        let parsedUsage = try XCTUnwrap(newlyDiscovered.usages.first)
+        XCTAssertEqual(newlyDiscovered.usages.count, 1)
+        XCTAssertEqual(parsedUsage.sessionId, "restored-old")
+        XCTAssertEqual(parsedUsage.inputTokens, 321)
+        XCTAssertEqual(parsedUsage.outputTokens, 45)
+        let parsedConversation = try XCTUnwrap(newlyDiscovered.conversations.first)
+        XCTAssertEqual(newlyDiscovered.conversations.count, 1)
+        XCTAssertTrue(parsedConversation.fullText.contains("Parse the restored transcript"))
+
+        let alreadyKnown = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true,
+            minimumFileModificationDate: boundary,
+            fileDiscoveryTracker: ParserFileDiscoveryTracker(knownFiles: [identity])
+        ))
+
+        XCTAssertEqual(alreadyKnown.usages.map(\.sessionId), ["restored-old"])
+        XCTAssertEqual(alreadyKnown.usages.first?.inputTokens, 321)
+        XCTAssertTrue(alreadyKnown.conversations.isEmpty)
     }
 
     func testCodexOptionsReturnEmptyWhenTheStateDatabaseIsUnavailable() async throws {
@@ -303,6 +352,59 @@ final class ParserParseOptionsTests: XCTestCase {
         let deferred = try await parser.parse(options: futureUsageOnlyOptions)
         XCTAssertTrue(deferred.usages.isEmpty)
         XCTAssertTrue(deferred.conversations.isEmpty)
+    }
+
+    func testHermesNewlyWatchedHistoricalDatabaseParsesRowsBeforeCutoff() async throws {
+        let root = try makeTemporaryDirectory("hermes-new-historical-database")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let database = root.appendingPathComponent("state.db")
+        let connection = try SQLiteConnection.openForWriting(creatingAt: database.path)
+        try connection.execute(
+            """
+            CREATE TABLE sessions (
+                id TEXT PRIMARY KEY,
+                source TEXT,
+                model TEXT,
+                title TEXT,
+                started_at REAL,
+                ended_at REAL,
+                input_tokens INTEGER,
+                output_tokens INTEGER
+            )
+            """
+        )
+        let historicalDate = Date(timeIntervalSince1970: 1_600_000_000)
+        try connection.execute(
+            "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            arguments: [
+                .text("restored-sqlite-session"),
+                .text("hermes-cli"),
+                .text("hermes-model"),
+                .text("Recovered database session"),
+                .double(historicalDate.timeIntervalSince1970),
+                .double(historicalDate.addingTimeInterval(30).timeIntervalSince1970),
+                .int(87),
+                .int(13)
+            ]
+        )
+        connection.close()
+        try setModificationDate(historicalDate, for: [database])
+
+        let result = try await HermesParser(fileManager: fileManager, hermesRootURL: root).parse(
+            options: LogParseOptions(
+                includeConversationBodies: false,
+                minimumFileModificationDate: historicalDate.addingTimeInterval(60),
+                fileDiscoveryTracker: ParserFileDiscoveryTracker(knownFiles: [])
+            )
+        )
+
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(usage.sessionId, "restored-sqlite-session")
+        XCTAssertEqual(usage.model, "hermes-model")
+        XCTAssertEqual(usage.inputTokens, 87)
+        XCTAssertEqual(usage.outputTokens, 13)
     }
 
     func testKimiOptionsPreserveWireUsageWithoutConversationBodies() async throws {

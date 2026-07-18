@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Incremental conversation indexing
+
+- **Stopped steady-state conversation indexing from re-reading the full log
+  corpus every minute**: parser checkpoints now persist exact, content-free file
+  identities in a normalized SQLite manifest. Claude Code, Codex, Factory Droid,
+  Windsurf, and Hermes skip inputs already represented by the last successful
+  checkpoint while still admitting restored or copied transcripts whose
+  modification times predate the watermark. Byte-bounded passes persist only
+  safely committed identities and freeze the watermark until deferred inputs
+  are retried, so cold scans converge without gaps or silent truncation.
+
 ### Fixed - Windows physical x64 usage-scan memory
 
 - **Isolated native Swift parsing from the long-lived WinUI process**: usage

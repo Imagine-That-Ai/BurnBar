@@ -189,6 +189,11 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         // mid-scan, the next pass sees a size mismatch and resumes from the
         // persisted offset instead of trusting a stale-complete entry.
         let signature = FileSignature(for: file, using: fileManager)
+        let discoveredFile = ParserDiscoveredFile.capture(
+            for: file,
+            attributes: try? fileManager.attributesOfItem(atPath: file.path)
+        )
+        let isNewlyDiscovered = options.fileDiscoveryTracker?.record(discoveredFile) ?? false
         let cached = parseCache.fileEntries[cacheKey]
         let governor = options.resourceGovernor
 
@@ -203,10 +208,11 @@ public final class ClaudeCodeParser: LogParser, Sendable {
 
         // Historical files below the indexing boundary are never content-read;
         // cached usage rows still surface.
-        if shouldDeferHistoricalFile(
-            signature: signature,
-            minimumFileModificationDate: options.minimumFileModificationDate
-        ) {
+        if !isNewlyDiscovered,
+           shouldDeferHistoricalFile(
+               signature: signature,
+               minimumFileModificationDate: options.minimumFileModificationDate
+           ) {
             if let signature, let cached, cached.signature == signature,
                let usage = cached.usage {
                 usages.append(usage)
@@ -214,8 +220,8 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             return
         }
 
-        let isUnchanged = signature != nil && cached?.signature == signature
-        if isUnchanged, !includeConversation {
+        let isUnchanged = !isNewlyDiscovered && signature != nil && cached?.signature == signature
+        if isUnchanged, !includeConversation || options.fileDiscoveryTracker != nil {
             if let usage = cached?.usage { usages.append(usage) }
             return
         }
@@ -233,6 +239,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             if let usage = cached?.usage { usages.append(usage) }
             return
         }
+        options.fileDiscoveryTracker?.recordAdmitted(discoveredFile)
         options.metrics?.recordContentRead(bytes: estimatedNewBytes)
 
         guard let outcome = try scanClaudeSession(
@@ -244,6 +251,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             governor: governor
         ) else {
             governor?.recordDeferredFile()
+            options.fileDiscoveryTracker?.recordDeferred(discoveredFile)
             options.metrics?.recordDeferred(.contentReadFailed)
             if let usage = cached?.usage { usages.append(usage) }
             return

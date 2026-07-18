@@ -277,63 +277,104 @@ final class IncrementalConversationIndexingTests: XCTestCase {
 
     // MARK: - 7. Old-mtime new ID is indexed despite old fileModifiedAt
 
-    func test_runConversationIndexing_oldMtimeNewID_isIndexed() async throws {
-        let store = try makeInMemoryStore()
-        let oldMtime = Date(timeIntervalSince1970: 1_700_000_000)
-        let initialConversations: [ConversationRecord] = (0..<2).map { i in
-            makeFactoryConversationRecord(
-                id: "Factory:old-mtime-\(i)",
-                indexedAt: oldMtime,
-                fileModifiedAt: oldMtime
+    func test_runConversationIndexing_realParserIndexesCopiedTranscriptWithHistoricalMtime() async throws {
+        let harness = try ParserIntegrationTestHarness(name: "incremental-historical-mtime")
+        defer { harness.cleanup() }
+
+        let initialSessionID = "factory-historical-initial"
+        let copiedSessionID = "factory-historical-copy"
+        let fixture = ParserTestFixtures.factoryDroidSessionWithSettings(
+            sessionId: initialSessionID,
+            model: "glm-5",
+            inputTokens: 120,
+            outputTokens: 40,
+            userMessage: "Initial historical transcript",
+            assistantMessage: "Initial response"
+        )
+        let projectDirectory = try harness.createFactoryDroidProject(
+            projectName: "-Users-test-HistoricalProject",
+            sessions: [(
+                sessionId: initialSessionID,
+                content: fixture.jsonl,
+                settings: fixture.settings,
+                metadata: fixture.metadata
+            )]
+        )
+        let historicalMtime = ParserTestFixtures.frozenReferenceDate
+        let fixtureSuffixes = ["jsonl", "settings.json", "metadata.json"]
+        for suffix in fixtureSuffixes {
+            let fixtureURL = projectDirectory.appendingPathComponent("\(initialSessionID).\(suffix)")
+            try harness.fileManager.setAttributes(
+                [.modificationDate: historicalMtime],
+                ofItemAtPath: fixtureURL.path
             )
         }
-        let initialParser = StubParser(provider: .factory, conversations: initialConversations)
-        let orchestrator = makeOrchestrator(store: store)
 
-        // First tick: index 2 conversations, checkpoint is set.
+        let parser = FactoryDroidParser(
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(
+                applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true)
+            ),
+            sessionsDirectoryOverride: harness.rootURL.appendingPathComponent(".factory/sessions", isDirectory: true)
+        )
+        let orchestrator = makeOrchestrator(store: harness.dataStore)
+
         let firstResult = await RefreshBackgroundWork.runConversationIndexing(
-            parsers: [.factory: initialParser],
-            dataStore: store,
+            parsers: [.factory: parser],
+            dataStore: harness.dataStore,
             orchestrator: orchestrator,
             indexingEnabled: true
         )
-        XCTAssertEqual(firstResult.changedConversationCount, 2)
 
-        // Second tick: same 2 conversations (filtered by watermark) PLUS 1 new
-        // conversation with an mtime OLDER than the checkpoint watermark.
-        let checkpoint = try await store.actor.checkpointStore.fetchCheckpoint(for: .factory)
-        XCTAssertNotNil(checkpoint)
-        let watermark = checkpoint!.lastProcessedAt
-        let newOldMtime = watermark.addingTimeInterval(-100) // older than checkpoint
-        var secondConversations = initialConversations
-        secondConversations.append(makeFactoryConversationRecord(
-            id: "Factory:old-mtime-new-id",
-            indexedAt: oldMtime,
-            fileModifiedAt: newOldMtime
-        ))
-        let secondParser = StubParser(provider: .factory, conversations: secondConversations)
+        XCTAssertTrue(firstResult.errors.isEmpty)
+        XCTAssertEqual(firstResult.changedConversationCount, 1)
+        XCTAssertEqual(firstResult.indexedConversationChanges, 1)
+        let firstCheckpointRecord = try await harness.dataStore.actor.checkpointStore.fetchCheckpoint(for: .factory)
+        let firstCheckpoint = try XCTUnwrap(firstCheckpointRecord)
+        XCTAssertTrue(firstCheckpoint.checkpointToken.hasPrefix("idx2:"))
+        XCTAssertLessThan(historicalMtime, firstCheckpoint.lastProcessedAt)
+
+        for suffix in fixtureSuffixes {
+            let sourceURL = projectDirectory.appendingPathComponent("\(initialSessionID).\(suffix)")
+            let copiedURL = projectDirectory.appendingPathComponent("\(copiedSessionID).\(suffix)")
+            try harness.fileManager.copyItem(at: sourceURL, to: copiedURL)
+            try harness.fileManager.setAttributes(
+                [.modificationDate: historicalMtime],
+                ofItemAtPath: copiedURL.path
+            )
+        }
+        let copiedTranscriptURL = projectDirectory.appendingPathComponent("\(copiedSessionID).jsonl")
+        let copiedAttributes = try harness.fileManager.attributesOfItem(atPath: copiedTranscriptURL.path)
+        let copiedMtime = try XCTUnwrap(copiedAttributes[.modificationDate] as? Date)
+        XCTAssertLessThan(copiedMtime, firstCheckpoint.lastProcessedAt)
 
         let secondResult = await RefreshBackgroundWork.runConversationIndexing(
-            parsers: [.factory: secondParser],
-            dataStore: store,
+            parsers: [.factory: parser],
+            dataStore: harness.dataStore,
             orchestrator: orchestrator,
             indexingEnabled: true
         )
 
+        XCTAssertTrue(secondResult.errors.isEmpty)
+        XCTAssertEqual(secondResult.parsedConversationCount, 1)
         XCTAssertEqual(secondResult.changedConversationCount, 1)
         XCTAssertEqual(secondResult.indexedConversationChanges, 1)
 
-        let fetchedRecord = try await store.fetchConversation(id: "Factory:old-mtime-new-id")
-        let fetched = try XCTUnwrap(fetchedRecord)
-        XCTAssertEqual(fetched.sessionId, "test-session-Factory:old-mtime-new-id")
-        XCTAssertEqual(fetched.inferredTaskTitle, "Hello")
+        let copiedConversationID = ConversationRecord.stableId(provider: .factory, sessionId: copiedSessionID)
+        let copiedConversationRecord = try await harness.dataStore.fetchConversation(id: copiedConversationID)
+        let copiedConversation = try XCTUnwrap(copiedConversationRecord)
+        XCTAssertEqual(copiedConversation.sessionId, copiedSessionID)
+        XCTAssertEqual(copiedConversation.inferredTaskTitle, "Initial historical transcript")
         XCTAssertEqual(
-            try XCTUnwrap(fetched.fileModifiedAt).timeIntervalSince1970,
-            newOldMtime.timeIntervalSince1970,
+            try XCTUnwrap(copiedConversation.fileModifiedAt).timeIntervalSince1970,
+            historicalMtime.timeIntervalSince1970,
             accuracy: 0.001
         )
 
+        let secondCheckpointRecord = try await harness.dataStore.actor.checkpointStore.fetchCheckpoint(for: .factory)
+        let secondCheckpoint = try XCTUnwrap(secondCheckpointRecord)
+        XCTAssertTrue(secondCheckpoint.checkpointToken.hasPrefix("idx2:"))
     }
+
     func test_runConversationIndexing_deferredFileDoesNotAdvanceCheckpointAfterPartialSuccess() async throws {
         let store = try makeInMemoryStore()
         let mtime = Date(timeIntervalSince1970: 1_700_000_000)

@@ -726,14 +726,23 @@ let computerUseCoreTestExcludes = [
 ]
 let legacyLinuxTestSources: [String]? = ["LinuxEmptyTests.swift"]
 #if os(Linux)
-let openBurnBarCoreOffAppleTestSources: [String]? = ["LLMSafeWrapVectorTests.swift", "ParserAutoReleasePoolTests.swift"]
+let openBurnBarCoreOffAppleTestSources: [String]? = [
+    "LiftedParserBoundaryTests.swift",
+    "LLMSafeWrapVectorTests.swift",
+    "ParserAutoReleasePoolTests.swift"
+]
 let openBurnBarCorePlaceholderExcludes = ["LinuxEmptyTests.swift"]
 let computerUseCoreOffAppleTestSources: [String]? = [
     "LinuxSecretStorageTests.swift",
     "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
 ]
 #else
-let openBurnBarCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift", "LLMSafeWrapVectorTests.swift", "ParserAutoReleasePoolTests.swift"]
+let openBurnBarCoreOffAppleTestSources: [String]? = [
+    "LiftedParserBoundaryTests.swift",
+    "LinuxEmptyTests.swift",
+    "LLMSafeWrapVectorTests.swift",
+    "ParserAutoReleasePoolTests.swift"
+]
 let openBurnBarCorePlaceholderExcludes: [String] = []
 let computerUseCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift"]
 #endif
@@ -753,6 +762,7 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
         let relativePath = String(url.path.dropFirst(targetURL.path.count + 1))
         return [
             "LinuxEmptyTests.swift",
+            "LiftedParserBoundaryTests.swift",
             "LLMSafeWrapVectorTests.swift",
             "ParserAutoReleasePoolTests.swift",
             "LinuxSecretStorageTests.swift",

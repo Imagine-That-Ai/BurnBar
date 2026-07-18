@@ -28,17 +28,118 @@ public func parserAutoReleasePool<Result>(
 
 // MARK: - Parser Scan Support
 
-/// Digest helpers shared by the incremental JSONL scanners (Codex rollouts,
-/// Claude Code transcripts).
-///
-/// FNV-1a 64 is used for file-rewrite detection and usage-key dedupe sets.
-/// These are integrity heuristics on trusted local files, not security
-/// boundaries — collision odds at the observed set sizes are negligible, and
-/// the failure mode of a head-digest collision is one redundant full re-scan.
-/// Applies the incremental boundary and the shared byte/memory governor before
-/// a parser opens a content-bearing file. Metadata-only directory enumeration
-/// remains uncharged; every admitted file is accounted exactly once by its
-/// caller before the first content read.
+/// Stable metadata identity for one parser input. The path distinguishes a
+/// restored or copied transcript from files already present at the checkpoint;
+/// inode metadata also catches same-path replacement when the filesystem
+/// exposes it. Content is never retained.
+public struct ParserDiscoveredFile: Codable, Hashable, Sendable {
+    public let path: String
+    public let fileSizeBytes: Int64?
+    public let modificationDate: Date?
+    public let creationDate: Date?
+    public let fileSystemNumber: UInt64?
+    public let fileNumber: UInt64?
+
+    public init(
+        path: String,
+        fileSizeBytes: Int64?,
+        modificationDate: Date?,
+        creationDate: Date?,
+        fileSystemNumber: UInt64?,
+        fileNumber: UInt64?
+    ) {
+        self.path = path
+        self.fileSizeBytes = fileSizeBytes
+        self.modificationDate = modificationDate
+        self.creationDate = creationDate
+        self.fileSystemNumber = fileSystemNumber
+        self.fileNumber = fileNumber
+    }
+    static func capture(
+        for file: URL,
+        attributes: [FileAttributeKey: Any]?,
+        fallbackModificationDate: Date? = nil
+    ) -> ParserDiscoveredFile {
+        ParserDiscoveredFile(
+            path: file.standardizedFileURL.path,
+            fileSizeBytes: (attributes?[.size] as? NSNumber)?.int64Value,
+            modificationDate: attributes?[.modificationDate] as? Date ?? fallbackModificationDate,
+            creationDate: attributes?[.creationDate] as? Date,
+            fileSystemNumber: (attributes?[.systemNumber] as? NSNumber)?.uint64Value,
+            fileNumber: (attributes?[.systemFileNumber] as? NSNumber)?.uint64Value
+        )
+    }
+}
+
+/// Records the current scan's metadata identities and identifies candidates
+/// absent or changed since the last successful checkpoint. Immutable known
+/// state plus a lock-backed path map keeps concurrent parser scans safe.
+public final class ParserFileDiscoveryTracker: Sendable {
+    private struct State: Sendable {
+        var observedFilesByPath: [String: ParserDiscoveredFile] = [:]
+        var admittedFilesByPath: [String: ParserDiscoveredFile] = [:]
+    }
+
+    private let knownFilesByPath: [String: ParserDiscoveredFile]
+    private let state = Locked(State())
+
+    public init(knownFiles: [ParserDiscoveredFile] = []) {
+        self.knownFilesByPath = knownFiles.reduce(into: [:]) { filesByPath, file in
+            filesByPath[file.path] = file
+        }
+    }
+
+    /// Returns true when the path was absent or its metadata identity changed
+    /// since the last successful or partial checkpoint.
+    @discardableResult
+    public func record(_ file: ParserDiscoveredFile) -> Bool {
+        state.withLock { $0.observedFilesByPath[file.path] = file }
+        return knownFilesByPath[file.path] != file
+    }
+
+    func wasKnownAtCheckpoint(_ file: ParserDiscoveredFile) -> Bool {
+        knownFilesByPath[file.path] == file
+    }
+
+    /// Marks an input whose content was admitted during this pass. These files
+    /// may be persisted after a budget-limited partial pass once their parsed
+    /// conversations have committed, allowing the next pass to make progress.
+    func recordAdmitted(_ file: ParserDiscoveredFile) {
+        state.withLock { $0.admittedFilesByPath[file.path] = file }
+    }
+
+    /// Removes an admitted identity when the parser later discovers that the
+    /// corresponding content could not be read successfully.
+    func recordDeferred(_ file: ParserDiscoveredFile) {
+        state.withLock { _ = $0.admittedFilesByPath.removeValue(forKey: file.path) }
+    }
+
+    /// Exact identities observed by a complete pass. Missing paths are removed
+    /// from the next successful checkpoint manifest.
+    public var discoveredFiles: [ParserDiscoveredFile] {
+        state.withLock { parserState in
+            parserState.observedFilesByPath.values.sorted { $0.path < $1.path }
+        }
+    }
+
+    /// Safe progress after a deferred pass: retain the prior manifest and merge
+    /// only inputs admitted during this pass. Observed-but-deferred identities
+    /// remain absent or stale so the next pass retries them.
+    public var partialCheckpointFiles: [ParserDiscoveredFile] {
+        state.withLock { parserState in
+            var filesByPath = knownFilesByPath
+            for file in parserState.admittedFilesByPath.values {
+                filesByPath[file.path] = file
+            }
+            return filesByPath.values.sorted { $0.path < $1.path }
+        }
+    }
+
+    public var hasAdmittedFiles: Bool {
+        state.withLock { !$0.admittedFilesByPath.isEmpty }
+    }
+}
+
 public enum ParserDeferredReason: String, Sendable {
     case byteBudget
     case metadataUnavailable
@@ -151,7 +252,20 @@ public struct ParserFileReadGate {
 
         let attributes = try? fileManager.attributesOfItem(atPath: file.path)
         let modificationDate = attributes?[.modificationDate] as? Date ?? fallbackModificationDate
-        if let boundary = options.minimumFileModificationDate {
+        let identity = ParserDiscoveredFile.capture(
+            for: file,
+            attributes: attributes,
+            fallbackModificationDate: fallbackModificationDate
+        )
+        let isNewlyDiscovered = options.fileDiscoveryTracker?.record(identity) ?? false
+
+        // A tracker identity is stronger than the wall-clock watermark. Exact
+        // known inputs were already committed; absent or changed inputs must be
+        // admitted even when a copied file preserves an old modification date.
+        if options.fileDiscoveryTracker != nil, !isNewlyDiscovered {
+            return false
+        }
+        if options.fileDiscoveryTracker == nil, let boundary = options.minimumFileModificationDate {
             guard let modificationDate else {
                 recordDeferred(.metadataUnavailable)
                 return false
@@ -159,22 +273,11 @@ public struct ParserFileReadGate {
             guard modificationDate >= boundary else { return false }
         }
 
-        let size = (attributes?[.size] as? NSNumber)?.int64Value
-        guard let governor = options.resourceGovernor else {
-            options.metrics?.recordContentRead(bytes: max(0, size ?? 0))
-            return true
+        let admitted = try admitFile(withSize: identity.fileSizeBytes)
+        if admitted {
+            options.fileDiscoveryTracker?.recordAdmitted(identity)
         }
-        guard let size else {
-            recordDeferred(.metadataUnavailable)
-            return false
-        }
-        let admittedBytes = max(0, size)
-        guard governor.admitFile(estimatedBytes: admittedBytes) else {
-            options.metrics?.recordDeferred(.byteBudget)
-            return false
-        }
-        options.metrics?.recordContentRead(bytes: admittedBytes)
-        return true
+        return admitted
     }
 
     /// Atomically admits the files needed to parse one logical session. This
@@ -189,27 +292,41 @@ public struct ParserFileReadGate {
             options.metrics?.recordCandidate()
         }
 
+        var identities: [ParserDiscoveredFile] = []
+        identities.reserveCapacity(files.count)
         var totalBytes: Int64 = 0
-        var boundaryPassed = options.minimumFileModificationDate == nil
+        var boundaryPassed = options.fileDiscoveryTracker == nil
+            && options.minimumFileModificationDate == nil
         for file in files {
             options.metrics?.recordMetadataStat()
             let attributes = try? fileManager.attributesOfItem(atPath: file.path)
-            if let boundary = options.minimumFileModificationDate {
-                guard let modificationDate = attributes?[.modificationDate] as? Date else {
-                    recordDeferred(.metadataUnavailable)
-                    return false
-                }
-                if modificationDate >= boundary {
-                    boundaryPassed = true
-                }
+            let identity = ParserDiscoveredFile.capture(
+                for: file,
+                attributes: attributes
+            )
+            identities.append(identity)
+            let isNewlyDiscovered = options.fileDiscoveryTracker?.record(identity) ?? false
+            if isNewlyDiscovered {
+                boundaryPassed = true
+            }
+            if options.fileDiscoveryTracker == nil,
+               let boundary = options.minimumFileModificationDate,
+               let modificationDate = identity.modificationDate,
+               modificationDate >= boundary {
+                boundaryPassed = true
+            } else if options.fileDiscoveryTracker == nil,
+                      options.minimumFileModificationDate != nil,
+                      identity.modificationDate == nil {
+                recordDeferred(.metadataUnavailable)
+                return false
             }
 
             if options.resourceGovernor != nil {
-                guard let size = attributes?[.size] as? NSNumber else {
+                guard let size = identity.fileSizeBytes else {
                     recordDeferred(.metadataUnavailable)
                     return false
                 }
-                let (sum, overflow) = totalBytes.addingReportingOverflow(max(0, size.int64Value))
+                let (sum, overflow) = totalBytes.addingReportingOverflow(max(0, size))
                 guard !overflow else {
                     recordDeferred(.byteCountOverflow)
                     return false
@@ -219,15 +336,34 @@ public struct ParserFileReadGate {
         }
 
         guard boundaryPassed else { return false }
+        if let governor = options.resourceGovernor {
+            guard governor.admitFile(estimatedBytes: totalBytes) else {
+                options.metrics?.recordDeferred(.byteBudget)
+                return false
+            }
+        }
+        for identity in identities {
+            options.fileDiscoveryTracker?.recordAdmitted(identity)
+        }
+        options.metrics?.recordContentRead(count: files.count, bytes: totalBytes)
+        return true
+    }
+
+    private func admitFile(withSize size: Int64?) throws -> Bool {
         guard let governor = options.resourceGovernor else {
-            options.metrics?.recordContentRead(count: files.count, bytes: totalBytes)
+            options.metrics?.recordContentRead(bytes: max(0, size ?? 0))
             return true
         }
-        guard governor.admitFile(estimatedBytes: totalBytes) else {
+        guard let size else {
+            recordDeferred(.metadataUnavailable)
+            return false
+        }
+        let admittedBytes = max(0, size)
+        guard governor.admitFile(estimatedBytes: admittedBytes) else {
             options.metrics?.recordDeferred(.byteBudget)
             return false
         }
-        options.metrics?.recordContentRead(count: files.count, bytes: totalBytes)
+        options.metrics?.recordContentRead(bytes: admittedBytes)
         return true
     }
 

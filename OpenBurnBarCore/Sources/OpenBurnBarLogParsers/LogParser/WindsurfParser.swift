@@ -92,14 +92,22 @@ public final class WindsurfParser: LogParser, Sendable {
                     options.metrics?.recordDeferred(.metadataUnavailable)
                     continue
                 }
+                let discoveredFile = ParserDiscoveredFile.capture(
+                    for: URL(fileURLWithPath: pbFile),
+                    attributes: attrs
+                )
+                let isNewlyDiscovered = options.fileDiscoveryTracker?.record(discoveredFile) ?? false
                 let created = (attrs[.creationDate] as? Date) ?? Date()
                 let modified = (attrs[.modificationDate] as? Date) ?? created
                 let fileSize = (attrs[.size] as? Int) ?? 0
 
                 guard fileSize > 100 else { continue }
-                if let cutoff = options.minimumFileModificationDate, modified < cutoff {
+                if let cutoff = options.minimumFileModificationDate,
+                   modified < cutoff,
+                   !isNewlyDiscovered {
                     continue
                 }
+                options.fileDiscoveryTracker?.recordAdmitted(discoveredFile)
 
                 let model = canReadStateDB ? (extractModelFromStateDB(sessionId: sessionId) ?? "unknown") : "unknown"
 
@@ -134,7 +142,8 @@ public final class WindsurfParser: LogParser, Sendable {
                 )
                 usages.append(usage)
 
-                if options.includeConversationBodies {
+                if options.includeConversationBodies,
+                   options.fileDiscoveryTracker == nil || isNewlyDiscovered {
                     let title = canReadStateDB ? (extractSessionTitle(sessionId: sessionId) ?? "Windsurf Cascade Session") : "Windsurf Cascade Session"
                     conversations.append(ConversationRecord(
                         id: ConversationRecord.stableId(provider: provider, sessionId: sessionId),

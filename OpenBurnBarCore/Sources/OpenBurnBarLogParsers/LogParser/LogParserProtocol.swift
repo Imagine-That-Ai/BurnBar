@@ -18,6 +18,10 @@ public struct LogParseOptions: Sendable {
     /// When set, parsers may return cached older rows but should not parse
     /// uncached files whose modification date is before this boundary.
     public var minimumFileModificationDate: Date?
+    /// Per-pass manifest of file identities already observed by a successful
+    /// indexing checkpoint. Parsers use it to admit newly discovered files
+    /// even when their preserved modification date predates the watermark.
+    public var fileDiscoveryTracker: ParserFileDiscoveryTracker?
     /// Shared per-pass resource accounting: byte budget for new file content
     /// and a process memory ceiling. `nil` leaves direct, non-registry calls
     /// ungoverned. Production registry entries install an unlimited governor
@@ -32,11 +36,13 @@ public struct LogParseOptions: Sendable {
     public init(
         includeConversationBodies: Bool,
         minimumFileModificationDate: Date? = nil,
+        fileDiscoveryTracker: ParserFileDiscoveryTracker? = nil,
         resourceGovernor: ParserResourceGovernor? = nil,
         metrics: ParserPassMetrics? = nil
     ) {
         self.includeConversationBodies = includeConversationBodies
         self.minimumFileModificationDate = minimumFileModificationDate
+        self.fileDiscoveryTracker = fileDiscoveryTracker
         self.resourceGovernor = resourceGovernor
         self.metrics = metrics
     }

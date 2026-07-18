@@ -61,6 +61,24 @@ final class ParserCheckpointStore: Sendable {
         }
     }
 
+    /// Loads the exact input identities observed by the provider's last
+    /// successful indexing checkpoint.
+    func fetchDiscoveredFiles(for provider: AgentProvider) async throws -> [ParserDiscoveredFile] {
+        try await dbQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT path, fileSizeBytes, modificationDate, creationDate,
+                           fileSystemNumber, fileNumber
+                    FROM parser_checkpoint_files
+                    WHERE provider = ?
+                    ORDER BY path
+                    """,
+                arguments: [provider.rawValue]
+            ).compactMap(Self.discoveredFile(from:))
+        }
+    }
+
     // MARK: - Write
 
     /// Advances the checkpoint for a provider after successful commit.
@@ -70,10 +88,11 @@ final class ParserCheckpointStore: Sendable {
     func advanceCheckpoint(
         for provider: AgentProvider,
         checkpointToken: String,
-        lastProcessedFilePath: String?
+        lastProcessedFilePath: String?,
+        lastProcessedAt: Date = Date(),
+        discoveredFiles: [ParserDiscoveredFile]? = nil
     ) async throws {
         try await dbQueue.write { db in
-            let now = Date()
             try db.execute(sql: """
                 INSERT INTO parser_checkpoints (provider, checkpointToken, lastProcessedFilePath, lastProcessedAt, version)
                 VALUES (?, ?, ?, ?, 1)
@@ -86,8 +105,28 @@ final class ParserCheckpointStore: Sendable {
                     provider.rawValue,
                     checkpointToken,
                     lastProcessedFilePath,
-                    now
+                    lastProcessedAt
                 ])
+
+            if let discoveredFiles {
+                try Self.updateDiscoveredFiles(
+                    discoveredFiles,
+                    for: provider,
+                    in: db
+                )
+            }
+        }
+    }
+
+    /// Persists only the manifest, without moving the provider watermark.
+    /// Used after a successfully indexed but byte-deferred pass so a cold scan
+    /// can converge across ticks without skipping the files still deferred.
+    func saveDiscoveredFiles(
+        _ discoveredFiles: [ParserDiscoveredFile],
+        for provider: AgentProvider
+    ) async throws {
+        try await dbQueue.write { db in
+            try Self.updateDiscoveredFiles(discoveredFiles, for: provider, in: db)
         }
     }
 
@@ -102,17 +141,95 @@ final class ParserCheckpointStore: Sendable {
     /// VAL-PERSIST-014: Parser cache corruption/reset recovery is safe.
     func clearCheckpoint(for provider: AgentProvider) async throws {
         try await dbQueue.write { db in
-            try db.execute(sql: """
-                DELETE FROM parser_checkpoints WHERE provider = ?
-                """, arguments: [provider.rawValue])
+            try db.execute(
+                sql: "DELETE FROM parser_checkpoint_files WHERE provider = ?",
+                arguments: [provider.rawValue]
+            )
+            try db.execute(
+                sql: "DELETE FROM parser_checkpoints WHERE provider = ?",
+                arguments: [provider.rawValue]
+            )
         }
     }
 
     /// Clears all checkpoints (e.g., for a full reset).
     func clearAllCheckpoints() async throws {
         try await dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM parser_checkpoint_files")
             try db.execute(sql: "DELETE FROM parser_checkpoints")
         }
+    }
+
+    private static func updateDiscoveredFiles(
+        _ discoveredFiles: [ParserDiscoveredFile],
+        for provider: AgentProvider,
+        in db: Database
+    ) throws {
+        let existingFiles = try Row.fetchAll(
+            db,
+            sql: """
+                SELECT path, fileSizeBytes, modificationDate, creationDate,
+                       fileSystemNumber, fileNumber
+                FROM parser_checkpoint_files
+                WHERE provider = ?
+                """,
+            arguments: [provider.rawValue]
+        ).compactMap(discoveredFile(from:))
+        let existingByPath = Dictionary(uniqueKeysWithValues: existingFiles.map { ($0.path, $0) })
+        let currentByPath = discoveredFiles.reduce(into: [String: ParserDiscoveredFile]()) { filesByPath, file in
+            filesByPath[file.path] = file
+        }
+
+        let removedPaths = Set(existingByPath.keys).subtracting(currentByPath.keys).sorted()
+        for path in removedPaths {
+            try db.execute(
+                sql: "DELETE FROM parser_checkpoint_files WHERE provider = ? AND path = ?",
+                arguments: [provider.rawValue, path]
+            )
+        }
+
+        let changedFiles = currentByPath.values
+            .filter { existingByPath[$0.path] != $0 }
+            .sorted { $0.path < $1.path }
+        for file in changedFiles {
+            try db.execute(
+                sql: """
+                    INSERT INTO parser_checkpoint_files (
+                        provider, path, fileSizeBytes, modificationDate, creationDate,
+                        fileSystemNumber, fileNumber
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(provider, path) DO UPDATE SET
+                        fileSizeBytes = excluded.fileSizeBytes,
+                        modificationDate = excluded.modificationDate,
+                        creationDate = excluded.creationDate,
+                        fileSystemNumber = excluded.fileSystemNumber,
+                        fileNumber = excluded.fileNumber
+                    """,
+                arguments: [
+                    provider.rawValue,
+                    file.path,
+                    file.fileSizeBytes,
+                    file.modificationDate,
+                    file.creationDate,
+                    file.fileSystemNumber.map(String.init),
+                    file.fileNumber.map(String.init)
+                ]
+            )
+        }
+    }
+
+    private static func discoveredFile(from row: Row) -> ParserDiscoveredFile? {
+        guard let path: String = row["path"] else { return nil }
+        let fileSystemNumber = (row["fileSystemNumber"] as String?).flatMap(UInt64.init)
+        let fileNumber = (row["fileNumber"] as String?).flatMap(UInt64.init)
+        return ParserDiscoveredFile(
+            path: path,
+            fileSizeBytes: row["fileSizeBytes"],
+            modificationDate: row["modificationDate"],
+            creationDate: row["creationDate"],
+            fileSystemNumber: fileSystemNumber,
+            fileNumber: fileNumber
+        )
     }
 }
 

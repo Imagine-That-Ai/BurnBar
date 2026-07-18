@@ -49,6 +49,14 @@ struct ConversationIndexingResult: Sendable {
     var duration: TimeInterval = 0
 }
 
+private enum ConversationIndexCheckpointToken {
+    static let prefix = "idx2:"
+
+    static func make(scanStartWatermark: Date) -> String {
+        prefix + String(scanStartWatermark.timeIntervalSince1970)
+    }
+}
+
 // MARK: - Refresh Background Work
 
 /// Stateless namespace for off-main-thread refresh work.
@@ -155,14 +163,12 @@ enum RefreshBackgroundWork {
     ///    and will be indexed. Files modified after this moment are genuine
     ///    new changes that the next tick will see.
     /// 2. The parser runs with the **previous** watermark as
-    ///    `minimumFileModificationDate`: files untouched since the last
-    ///    successful pass are never content-read (2026-07-16 incident fix —
-    ///    conversation bodies are privacy-transient and never disk-cached, so
-    ///    without the boundary every pass re-read the entire multi-gigabyte
-    ///    corpus), and a shared `ParserResourceGovernor` bounds the bytes
-    ///    read per pass. Known limitation: a session file restored from
-    ///    backup with an old mtime while its checkpoint survives is not
-    ///    re-indexed until the file is touched again.
+    ///    `minimumFileModificationDate` and the previous checkpoint's file
+    ///    discovery manifest. Known unchanged files are skipped before content
+    ///    read, while a restored/copied/replaced transcript absent from that
+    ///    manifest is admitted even when its preserved mtime is older than the
+    ///    watermark. Conversation bodies remain privacy-transient and never
+    ///    disk-cached; a shared `ParserResourceGovernor` bounds bytes per pass.
     /// 3. Conversations whose `fileModifiedAt` is ≤ the **previous** checkpoint
     ///    watermark AND whose ID already exists in the database are filtered
     ///    out before reaching the indexer — no DB fetch, no upsert, no
@@ -184,9 +190,9 @@ enum RefreshBackgroundWork {
     ///    budget-deferred file is caught up with instead of skipped forever.
     ///
     /// At steady state (no file changes): step 2 skips every content read,
-    /// step 3 filters out 100% of any cached records, the indexer receives an
-    /// empty array, and the only work is the parser's file-stat loop + one
-    /// checkpoint read per provider — explicitly bounded, not O(corpus).
+    /// step 3 filters out 100% of any cached records, and the indexer receives
+    /// an empty array. Work is limited to metadata enumeration plus one indexed
+    /// checkpoint-manifest read per provider; transcript content is not re-read.
     static func runConversationIndexing(
         parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
         dataStore: DataStore,
@@ -221,12 +227,28 @@ enum RefreshBackgroundWork {
                     existingCheckpoint = nil // safe recovery — full reprocess (VAL-PERSIST-014)
                 }
                 let previousWatermark: Date? = existingCheckpoint?.lastProcessedAt
+                let fileDiscoveryTracker: OpenBurnBarCore.ParserFileDiscoveryTracker?
+                if indexingEnabled {
+                    let knownFiles: [OpenBurnBarCore.ParserDiscoveredFile]
+                    do {
+                        knownFiles = try await checkpointStore.fetchDiscoveredFiles(for: provider)
+                    } catch {
+                        // Missing/corrupt manifest safely falls back to a full scan.
+                        knownFiles = []
+                    }
+                    fileDiscoveryTracker = OpenBurnBarCore.ParserFileDiscoveryTracker(
+                        knownFiles: knownFiles
+                    )
+                } else {
+                    fileDiscoveryTracker = nil
+                }
 
                 let deferredFilesBeforeProvider = governor.deferredFileCount
                 let parseResult = try await parser.parse(
                     options: OpenBurnBarCore.LogParseOptions(
                         includeConversationBodies: indexingEnabled,
                         minimumFileModificationDate: indexingEnabled ? previousWatermark : nil,
+                        fileDiscoveryTracker: fileDiscoveryTracker,
                         resourceGovernor: governor
                     )
                 )
@@ -235,36 +257,30 @@ enum RefreshBackgroundWork {
 
                 guard indexingEnabled else { continue }
 
-                // Filter to changed/appended conversations and newly
-                // discovered sessions.
-                //
-                // Review finding 2: a transcript discovered after the
-                // checkpoint but with an older fileModifiedAt (restored
-                // archive, copied directory, parser starts watching an older
-                // path) would be silently dropped by a mtime-only filter. We
-                // also pass through any conversation whose ID is NOT yet in
-                // the database — those are genuine new sessions that must be
-                // indexed regardless of file mtime.
+                // The per-file identity manifest is authoritative when a parser
+                // admitted content this pass. This catches restored/copied files
+                // whose path or bytes changed while their mtime stayed behind the
+                // wall-clock watermark, including replacements of an existing ID.
+                // The legacy ID/mtime filter remains a safe fallback for custom
+                // parsers that do not yet report their input identities.
                 let allConversations = parseResult.conversations
-                let existingIDs: Set<String>
-                do {
-                    existingIDs = try await dataStore.fetchExistingConversationIDs(
-                        ids: allConversations.map(\.id)
-                    )
-                } catch {
-                    // If we can't check existence, process all — safe over-processing
-                    existingIDs = []
-                }
-
                 let changedConversations: [OpenBurnBarCore.ConversationRecord]
-                if let previousWatermark {
-                    changedConversations = allConversations.filter { convo in
-                        // New session: not in DB → always index (finding 2).
-                        if !existingIDs.contains(convo.id) { return true }
-                        // fileModifiedAt nil → can't determine → always index.
-                        guard let mtime = convo.fileModifiedAt else { return true }
-                        // Changed since last successful index.
-                        return mtime > previousWatermark
+                if fileDiscoveryTracker?.hasAdmittedFiles == true {
+                    changedConversations = allConversations
+                } else if let previousWatermark {
+                    let existingIDs: Set<String>
+                    do {
+                        existingIDs = try await dataStore.fetchExistingConversationIDs(
+                            ids: allConversations.map(\.id)
+                        )
+                    } catch {
+                        // If we cannot check existence, process all — safe over-processing.
+                        existingIDs = []
+                    }
+                    changedConversations = allConversations.filter { conversation in
+                        if !existingIDs.contains(conversation.id) { return true }
+                        guard let modificationDate = conversation.fileModifiedAt else { return true }
+                        return modificationDate > previousWatermark
                     }
                 } else {
                     changedConversations = allConversations
@@ -283,13 +299,24 @@ enum RefreshBackgroundWork {
                     // provider's files, the watermark must NOT move — the
                     // deferred files would land behind it and be skipped
                     // forever. The old watermark re-admits them next pass.
-                    guard !providerHadDeferrals else { continue }
-                    let token = "idx:\(scanStartWatermark.timeIntervalSince1970)"
+                    if providerHadDeferrals {
+                        await savePartialManifest(
+                            fileDiscoveryTracker,
+                            provider: provider,
+                            checkpointStore: checkpointStore
+                        )
+                        continue
+                    }
                     do {
+                        let token = ConversationIndexCheckpointToken.make(
+                            scanStartWatermark: scanStartWatermark
+                        )
                         try await checkpointStore.advanceCheckpoint(
                             for: provider,
                             checkpointToken: token,
-                            lastProcessedFilePath: nil
+                            lastProcessedFilePath: nil,
+                            lastProcessedAt: scanStartWatermark,
+                            discoveredFiles: fileDiscoveryTracker?.discoveredFiles ?? []
                         )
                     } catch {
                         // Checkpoint write failed — next tick re-evaluates (safe)
@@ -329,15 +356,27 @@ enum RefreshBackgroundWork {
                 // (review finding 5). Harmless bounded reprocessing is
                 // preferable to loss.
                 //
-                // Budget deferrals freeze the watermark (see the empty-set
-                // branch above): deferred files must stay ahead of it.
-                guard !providerHadDeferrals else { continue }
-                let token = "idx:\(scanStartWatermark.timeIntervalSince1970)"
+                // Deferred inputs freeze the watermark, but already committed
+                // admitted identities persist so the next bounded tick advances
+                // to the remaining files instead of rereading the same prefix.
+                if providerHadDeferrals {
+                    await savePartialManifest(
+                        fileDiscoveryTracker,
+                        provider: provider,
+                        checkpointStore: checkpointStore
+                    )
+                    continue
+                }
                 do {
+                    let token = ConversationIndexCheckpointToken.make(
+                        scanStartWatermark: scanStartWatermark
+                    )
                     try await checkpointStore.advanceCheckpoint(
                         for: provider,
                         checkpointToken: token,
-                        lastProcessedFilePath: nil
+                        lastProcessedFilePath: nil,
+                        lastProcessedAt: scanStartWatermark,
+                        discoveredFiles: fileDiscoveryTracker?.discoveredFiles ?? []
                     )
                 } catch {
                     // Checkpoint write failed — next tick retries against old watermark (safe)
@@ -495,6 +534,26 @@ enum RefreshBackgroundWork {
             )
         )
     }
+
+    private static func savePartialManifest(
+        _ tracker: OpenBurnBarCore.ParserFileDiscoveryTracker?,
+        provider: AgentProvider,
+        checkpointStore: ParserCheckpointStore
+    ) async {
+        guard let tracker else { return }
+        do {
+            try await checkpointStore.saveDiscoveredFiles(
+                tracker.partialCheckpointFiles,
+                for: provider
+            )
+        } catch {
+            // The old watermark and manifest remain safe; the next tick retries.
+            AppLogger.parser.error(
+                "Partial parser manifest save failed for \(provider.rawValue): \(error.localizedDescription)"
+            )
+        }
+    }
+
 }
 
 // MARK: - Settings Snapshot

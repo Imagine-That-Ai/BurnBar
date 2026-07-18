@@ -245,6 +245,72 @@ final class ParserResourceGovernorTests: XCTestCase {
         XCTAssertEqual(governor.deferredFileCount, 1, "missing metadata must freeze the caller's checkpoint")
     }
 
+    func test_fileReadGateSkipsHistoricalManifestIdentityWithoutByteAdmission() throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("openburnbar-parser-historical-file-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let file = directory.appendingPathComponent("historical-session.jsonl")
+        let bytes = Data("historical transcript".utf8)
+        try bytes.write(to: file)
+        let historicalDate = Date(timeIntervalSince1970: 1_600_000_000)
+        try fileManager.setAttributes([.modificationDate: historicalDate], ofItemAtPath: file.path)
+
+        let historicalIdentity = try parserDiscoveredFileIdentity(for: file, fileManager: fileManager)
+        let tracker = ParserFileDiscoveryTracker(knownFiles: [historicalIdentity])
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let metrics = ParserPassMetrics()
+        let gate = ParserFileReadGate(options: LogParseOptions(
+            includeConversationBodies: false,
+            minimumFileModificationDate: historicalDate.addingTimeInterval(60),
+            fileDiscoveryTracker: tracker,
+            resourceGovernor: governor,
+            metrics: metrics
+        ), fileManager: fileManager)
+
+        XCTAssertFalse(try gate.shouldRead(file))
+        XCTAssertEqual(governor.consumedBytes, 0, "a known historical identity must not consume byte admission")
+        XCTAssertEqual(metrics.snapshot().contentReadCount, 0)
+    }
+
+    func test_fileReadGateAdmitsDistinctDiscoveredFileWithPreservedHistoricalModificationDate() throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("openburnbar-parser-discovered-file-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let historicalFile = directory.appendingPathComponent("known-session.jsonl")
+        let discoveredFile = directory.appendingPathComponent("restored-session.jsonl")
+        let bytes = Data("preserved transcript".utf8)
+        try bytes.write(to: historicalFile)
+        try bytes.write(to: discoveredFile)
+        let historicalDate = Date(timeIntervalSince1970: 1_600_000_000)
+        try fileManager.setAttributes([.modificationDate: historicalDate], ofItemAtPath: historicalFile.path)
+        try fileManager.setAttributes([.modificationDate: historicalDate], ofItemAtPath: discoveredFile.path)
+
+        let historicalIdentity = try parserDiscoveredFileIdentity(for: historicalFile, fileManager: fileManager)
+        let discoveredIdentity = try parserDiscoveredFileIdentity(for: discoveredFile, fileManager: fileManager)
+        let boundary = historicalDate.addingTimeInterval(60)
+        XCTAssertEqual(discoveredIdentity.modificationDate, historicalIdentity.modificationDate)
+        XCTAssertLessThan(try XCTUnwrap(discoveredIdentity.modificationDate), boundary)
+
+        let tracker = ParserFileDiscoveryTracker(knownFiles: [historicalIdentity])
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let gate = ParserFileReadGate(options: LogParseOptions(
+            includeConversationBodies: false,
+            minimumFileModificationDate: boundary,
+            fileDiscoveryTracker: tracker,
+            resourceGovernor: governor
+        ), fileManager: fileManager)
+
+        XCTAssertTrue(try gate.shouldRead(discoveredFile))
+        XCTAssertEqual(governor.consumedBytes, Int64(bytes.count))
+        XCTAssertEqual(tracker.discoveredFiles, [discoveredIdentity])
+    }
+
     func test_passMetricsSnapshotsPreserveReasonBreakdownAndMonotonicElapsedTime() {
         let metrics = ParserPassMetrics()
         metrics.recordCandidate(count: 4)
@@ -298,6 +364,21 @@ final class ParserResourceGovernorTests: XCTestCase {
         XCTAssertTrue(a.description.contains("2MB"), "description must report footprint in MB: \(a.description)")
         XCTAssertTrue(a.description.contains("1MB"), "description must report ceiling in MB: \(a.description)")
     }
+}
+
+private func parserDiscoveredFileIdentity(
+    for file: URL,
+    fileManager: FileManager
+) throws -> ParserDiscoveredFile {
+    let attributes = try fileManager.attributesOfItem(atPath: file.path)
+    return ParserDiscoveredFile(
+        path: file.standardizedFileURL.path,
+        fileSizeBytes: (attributes[.size] as? NSNumber)?.int64Value,
+        modificationDate: attributes[.modificationDate] as? Date,
+        creationDate: attributes[.creationDate] as? Date,
+        fileSystemNumber: (attributes[.systemNumber] as? NSNumber)?.uint64Value,
+        fileNumber: (attributes[.systemFileNumber] as? NSNumber)?.uint64Value
+    )
 }
 
 private actor ParserOptionsInvocationRecorder {

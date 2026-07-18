@@ -59,14 +59,34 @@ public final class HermesParser: LogParser, Sendable {
             let sessionsDir = hermesHome.appendingPathComponent("sessions", isDirectory: true)
 
             let dbURL = hermesHome.appendingPathComponent("state.db")
+            let dbIdentity = ParserDiscoveredFile.capture(
+                for: dbURL,
+                attributes: try? fileManager.attributesOfItem(atPath: dbURL.path)
+            )
+            let dbFileWasKnown = options.fileDiscoveryTracker?
+                .wasKnownAtCheckpoint(dbIdentity) ?? true
             if fileManager.fileExists(atPath: dbURL.path), fileSize(at: dbURL) > 0, try gate.shouldRead(dbURL) {
                 do {
-                    let sqliteResult = try parseSQLiteDatabase(dbURL: dbURL, scope: scope, options: options)
+                    var sqliteOptions = options
+                    if !dbFileWasKnown {
+                        // A newly watched/restored database may contain only
+                        // historical session timestamps; the file-discovery
+                        // decision is authoritative for this first scan.
+                        sqliteOptions.minimumFileModificationDate = nil
+                    }
+                    let sqliteResult = try parseSQLiteDatabase(
+                        dbURL: dbURL,
+                        scope: scope,
+                        options: sqliteOptions
+                    )
                     usages.append(contentsOf: sqliteResult.usages)
                     conversations.append(contentsOf: sqliteResult.conversations)
                     seenSessionIds.formUnion(sqliteResult.usages.map(\.sessionId))
                     seenSessionIds.formUnion(sqliteResult.conversations.map(\.sessionId))
                 } catch {
+                    options.resourceGovernor?.recordDeferredFile()
+                    options.fileDiscoveryTracker?.recordDeferred(dbIdentity)
+                    options.metrics?.recordDeferred(.contentReadFailed)
                     ParserDiagnostics.silentFailure(
                         "hermes_sqlite_scope_unreadable path=\(dbURL.path)",
                         error: error
