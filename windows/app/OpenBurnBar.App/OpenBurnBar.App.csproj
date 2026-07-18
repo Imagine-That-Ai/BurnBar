@@ -284,10 +284,24 @@
           Condition="'$(DesignTimeBuild)' != 'true'">
     <MSBuild Projects="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\OpenBurnBar.Cli.csproj"
              Targets="GetTargetPath"
-             Properties="Configuration=$(Configuration)">
+             Properties="Configuration=$(Configuration);Platform=$(Platform)">
       <Output TaskParameter="TargetOutputs"
-              ItemName="_OpenBurnBarUsageScanWorkerTarget" />
+              ItemName="_OpenBurnBarUsageScanWorkerPlatformTarget" />
     </MSBuild>
+    <MSBuild Projects="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\OpenBurnBar.Cli.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);Platform=AnyCPU">
+      <Output TaskParameter="TargetOutputs"
+              ItemName="_OpenBurnBarUsageScanWorkerAnyCpuTarget" />
+    </MSBuild>
+    <ItemGroup>
+      <_OpenBurnBarUsageScanWorkerTarget
+        Include="@(_OpenBurnBarUsageScanWorkerPlatformTarget)"
+        Condition="Exists('%(_OpenBurnBarUsageScanWorkerPlatformTarget.Identity)')" />
+      <_OpenBurnBarUsageScanWorkerTarget
+        Include="@(_OpenBurnBarUsageScanWorkerAnyCpuTarget)"
+        Condition="'@(_OpenBurnBarUsageScanWorkerTarget)' == '' and Exists('%(_OpenBurnBarUsageScanWorkerAnyCpuTarget.Identity)')" />
+    </ItemGroup>
     <Error Condition="'@(_OpenBurnBarUsageScanWorkerTarget)' == ''"
            Text="The OpenBurnBar usage-scan worker build produced no target output." />
     <ItemGroup>

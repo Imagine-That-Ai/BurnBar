@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
@@ -155,41 +156,55 @@ public sealed class CompanionCliPackagingTests
                 ';',
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
-        XElement msBuild = stagingTarget
+        List<XElement> msBuildTasks = stagingTarget
             .Descendants()
             .Where(element =>
                 string.Equals(
                     element.Name.LocalName,
                     "MSBuild",
                     StringComparison.Ordinal))
-            .Single();
+            .ToList();
 
-        string msBuildTargets = (string?)msBuild.Attribute("Targets") ?? string.Empty;
+        Assert.Equal(2, msBuildTasks.Count);
+        Assert.All(msBuildTasks, msBuild =>
+        {
+            string msBuildTargets = (string?)msBuild.Attribute("Targets") ?? string.Empty;
+            Assert.Contains(
+                "GetTargetPath",
+                msBuildTargets.Split(
+                    ';',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+            string msBuildProjects = (string?)msBuild.Attribute("Projects") ?? string.Empty;
+            bool invokesCliProject = msBuildProjects
+                .Split(
+                    ';',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Any(project =>
+                    string.Equals(
+                        project,
+                        "@(ProjectReference)",
+                        StringComparison.Ordinal)
+                    || project
+                        .Replace('\\', '/')
+                        .EndsWith(
+                            "/../OpenBurnBar.Cli/OpenBurnBar.Cli.csproj",
+                            StringComparison.Ordinal));
+
+            Assert.True(
+                invokesCliProject,
+                "StageUsageScanWorker must invoke MSBuild GetTargetPath for the companion CLI project.");
+        });
+
+        string[] msBuildProperties = msBuildTasks
+            .Select(msBuild => (string?)msBuild.Attribute("Properties") ?? string.Empty)
+            .ToArray();
         Assert.Contains(
-            "GetTargetPath",
-            msBuildTargets.Split(
-                ';',
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-
-        string msBuildProjects = (string?)msBuild.Attribute("Projects") ?? string.Empty;
-        bool invokesCliProject = msBuildProjects
-            .Split(
-                ';',
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Any(project =>
-                string.Equals(
-                    project,
-                    "@(ProjectReference)",
-                    StringComparison.Ordinal)
-                || project
-                    .Replace('\\', '/')
-                    .EndsWith(
-                        "/../OpenBurnBar.Cli/OpenBurnBar.Cli.csproj",
-                        StringComparison.Ordinal));
-
-        Assert.True(
-            invokesCliProject,
-            "StageUsageScanWorker must invoke MSBuild GetTargetPath for the companion CLI project.");
+            msBuildProperties,
+            properties => properties.Contains("Platform=$(Platform)", StringComparison.Ordinal));
+        Assert.Contains(
+            msBuildProperties,
+            properties => properties.Contains("Platform=AnyCPU", StringComparison.Ordinal));
 
         XElement copy = stagingTarget
             .Descendants()
