@@ -14,6 +14,31 @@ namespace OpenBurnBar.App.UsageRuntime;
 public static class UsageScanWorkerProtocol
 {
     public const string WorkerArgument = "--internal-usage-scan-worker";
+    private const int RuntimeFailureExitCodeBase = 16;
+
+    internal static int ExitCodeForFailure(UsageRuntimeFailureKind kind)
+    {
+        if (!Enum.IsDefined(typeof(UsageRuntimeFailureKind), kind))
+        {
+            throw new ArgumentOutOfRangeException(nameof(kind));
+        }
+        return RuntimeFailureExitCodeBase + (int)kind;
+    }
+
+    internal static bool TryFailureKindForExitCode(
+        int exitCode,
+        out UsageRuntimeFailureKind kind)
+    {
+        int rawKind = exitCode - RuntimeFailureExitCodeBase;
+        if (rawKind >= 0 && Enum.IsDefined(typeof(UsageRuntimeFailureKind), rawKind))
+        {
+            kind = (UsageRuntimeFailureKind)rawKind;
+            return true;
+        }
+
+        kind = default;
+        return false;
+    }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -108,6 +133,13 @@ public static class UsageScanWorkerHost
         {
             await error.WriteLineAsync("usage_scan_worker_cancelled").ConfigureAwait(false);
             return 2;
+        }
+        catch (UsageRuntimeException exception)
+        {
+            await error.WriteLineAsync(
+                $"usage_scan_worker_failed: {exception.GetType().Name}: {exception.Message}")
+                .ConfigureAwait(false);
+            return UsageScanWorkerProtocol.ExitCodeForFailure(exception.Kind);
         }
         catch (Exception exception)
         {

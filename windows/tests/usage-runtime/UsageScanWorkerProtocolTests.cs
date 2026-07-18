@@ -49,6 +49,46 @@ public sealed class UsageScanWorkerProtocolTests
     }
 
     [Fact]
+    public void FailureExitCodes_AreDistinctNonzeroAndRoundTripForEveryDefinedKind()
+    {
+        UsageRuntimeFailureKind[] failureKinds = Enum.GetValues<UsageRuntimeFailureKind>();
+        Assert.NotEmpty(failureKinds);
+
+        int[] exitCodes = failureKinds
+            .Select(UsageScanWorkerProtocol.ExitCodeForFailure)
+            .ToArray();
+
+        Assert.All(exitCodes, exitCode => Assert.NotEqual(0, exitCode));
+        Assert.Equal(exitCodes.Length, exitCodes.Distinct().Count());
+
+        foreach (UsageRuntimeFailureKind expectedKind in failureKinds)
+        {
+            int exitCode = UsageScanWorkerProtocol.ExitCodeForFailure(expectedKind);
+
+            bool decoded = UsageScanWorkerProtocol.TryFailureKindForExitCode(
+                exitCode,
+                out UsageRuntimeFailureKind actualKind);
+
+            Assert.True(decoded);
+            Assert.Equal(expectedKind, actualKind);
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(15)]
+    [InlineData(255)]
+    public void UnknownFailureExitCodes_DoNotDecode(int exitCode)
+    {
+        bool decoded = UsageScanWorkerProtocol.TryFailureKindForExitCode(
+            exitCode,
+            out UsageRuntimeFailureKind _);
+
+        Assert.False(decoded);
+    }
+
+    [Fact]
     public async Task WorkerHost_ExecutesExactlyOneScanAndWritesResponse()
     {
         await using var input = new MemoryStream();
@@ -79,7 +119,30 @@ public sealed class UsageScanWorkerProtocolTests
 
         int exitCode = await UsageScanWorkerHost.RunAsync(engine, input, output, error);
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(
+            UsageScanWorkerProtocol.ExitCodeForFailure(
+                UsageRuntimeFailureKind.NativeEngineFailure),
+            exitCode);
+        Assert.Equal(0, output.Length);
+        Assert.Contains("usage_scan_worker_failed", error.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WorkerHost_NativeEngineUnavailable_ReturnsMappedCodeWithoutWritingSuccessJson()
+    {
+        await using var input = new MemoryStream();
+        await UsageScanWorkerProtocol.WriteRequestAsync(input, Request());
+        input.Position = 0;
+        await using var output = new MemoryStream();
+        using var error = new StringWriter();
+        var engine = new ThrowingEngine(UsageRuntimeFailureKind.NativeEngineUnavailable);
+
+        int exitCode = await UsageScanWorkerHost.RunAsync(engine, input, output, error);
+
+        Assert.Equal(
+            UsageScanWorkerProtocol.ExitCodeForFailure(
+                UsageRuntimeFailureKind.NativeEngineUnavailable),
+            exitCode);
         Assert.Equal(0, output.Length);
         Assert.Contains("usage_scan_worker_failed", error.ToString(), StringComparison.Ordinal);
     }
@@ -136,13 +199,12 @@ public sealed class UsageScanWorkerProtocolTests
         }
     }
 
-    private sealed class ThrowingEngine : IUsageEngine
+    private sealed class ThrowingEngine(
+        UsageRuntimeFailureKind kind = UsageRuntimeFailureKind.NativeEngineFailure) : IUsageEngine
     {
         public ValueTask<UsageEngineScanResponse> ScanAsync(
             UsageEngineScanRequest request,
             CancellationToken cancellationToken = default) =>
-            throw new UsageRuntimeException(
-                UsageRuntimeFailureKind.NativeEngineFailure,
-                "fixture failure");
+            throw new UsageRuntimeException(kind, "fixture failure");
     }
 }

@@ -73,8 +73,14 @@ public sealed class OutOfProcessUsageEngine : IUsageEngine
             if (process.ExitCode != 0)
             {
                 await ObserveFailureAsync(responseTask).ConfigureAwait(false);
+                UsageRuntimeFailureKind failureKind =
+                    UsageScanWorkerProtocol.TryFailureKindForExitCode(
+                        process.ExitCode,
+                        out UsageRuntimeFailureKind workerFailureKind)
+                        ? workerFailureKind
+                        : UsageRuntimeFailureKind.NativeEngineFailure;
                 throw new UsageRuntimeException(
-                    UsageRuntimeFailureKind.NativeEngineFailure,
+                    failureKind,
                     string.IsNullOrWhiteSpace(error)
                         ? $"The isolated usage scanner exited with code {process.ExitCode}."
                         : error);
