@@ -502,6 +502,7 @@ jobs:
           $publishedRoot = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64"
           $smokeRoot = Join-Path $env:RUNNER_TEMP "openburnbar-published-x64-parser-smoke"
           $testOutputRoot = Join-Path $env:RUNNER_TEMP "openburnbar-published-x64-parser-testhost"
+          $dotnetExecutable = (Get-Command dotnet -CommandType Application -ErrorAction Stop).Source
           Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item -LiteralPath $testOutputRoot -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
@@ -512,7 +513,7 @@ jobs:
           # the equivalent Windows DLL search path for the engine's Swift runtimes.
           $env:PATH = "$smokeRoot;$env:PATH"
           $testProject = "windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj"
-          dotnet build $testProject -c Release --output $testOutputRoot
+          & $dotnetExecutable build $testProject -c Release --output $testOutputRoot
 
           # Swift Bundle.module resolves beside the host process on Windows. Stage only
           # resource bundles there; copying the self-contained runtime would shadow net10.
@@ -538,7 +539,7 @@ jobs:
             }
           }
 
-          dotnet test $testProject `
+          & $dotnetExecutable test $testProject `
             -c Release `
             --no-build `
             --output $testOutputRoot `
