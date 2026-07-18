@@ -42,20 +42,24 @@
     Code Quality §SERIOUS-4 (Operation 9): the flagship OpenBurnBar.App.csproj was
     the only project missing TreatWarningsAsErrors, and the ~94 projects under windows/
     each set the same Nullable / LangVersion / TreatWarningsAsErrors block individually.
-    This file centralizes those three properties so every project inherits them from a
-    single source — and a new project added tomorrow is strict by default, not by
+    This file centralizes those strictness properties so every project inherits them
+    from a single source — and a new project added tomorrow is strict by default, not by
     remembering to copy the block.
 
-    The values are quoted from OpenBurnBar.App.Presentation.csproj:31-40, which was the
-    canonical block already proven on macOS CI authoring + Windows CI build.
+    The first three values come from the proven OpenBurnBar.App.Presentation.csproj:31-40
+    block. Built-in SDK analyzers use the current toolchain's default rule set; new
+    recommended rules do not silently become build-breaking before the codebase adopts them.
 
     Individual projects may still override (e.g. AllowUnsafeBlocks for the overlay PAL),
-    but the three below are the repo-wide floor — no project should weaken them.
+    but the settings below are the repo-wide floor — no project should weaken them.
   -->
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Default</AnalysisMode>
   </PropertyGroup>
 
 </Project>
