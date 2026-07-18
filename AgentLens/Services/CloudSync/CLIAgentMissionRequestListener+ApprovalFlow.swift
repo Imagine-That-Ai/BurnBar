@@ -5,7 +5,18 @@ import OpenBurnBarCore
 import OSLog
 
 // Mission cancellation, approval, and failure state flow.
-// Extracted from CLIAgentMissionRequestListener.swift (god-file decomposition) — same module, verbatim.
+// Extracted from CLIAgentMissionRequestListener.swift (god-file decomposition) — same module.
+
+enum CLIAgentMissionApprovalDecision: Equatable {
+    case proceed
+    case cancel(approvalStatus: String)
+    case cliAssistantDisabled
+    case waitForApproval
+    case requestApproval
+
+    var willPauseForApproval: Bool { self != .proceed }
+    var isTerminalDenial: Bool { self == .cliAssistantDisabled }
+}
 
 extension CLIAgentMissionRequestListener {
     func handleCancellation(document: QueryDocumentSnapshot, backend: CLIAgentMissionBackend) async {
@@ -103,37 +114,48 @@ extension CLIAgentMissionRequestListener {
         }
     }
 
-    func shouldPauseForApproval(
-        document: QueryDocumentSnapshot,
+    func approvalDecision(
         data: [String: Any],
         backend: CLIAgentMissionBackend
-    ) async -> Bool {
+    ) -> CLIAgentMissionApprovalDecision {
         let approvalStatus = ((data["approvalStatus"] as? String) ?? "none").lowercased()
         let status = ((data["status"] as? String) ?? "pending").lowercased()
         if approvalStatus == "rejected" || approvalStatus == "canceled" || approvalStatus == "cancelled" {
-            await cancelAfterApprovalDecision(document: document, approvalStatus: approvalStatus)
-            return true
+            return .cancel(approvalStatus: approvalStatus)
         }
         if CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend),
            !settingsManager.cliAssistantAllowed {
+            return .cliAssistantDisabled
+        }
+        if approvalStatus == "approved" {
+            return .proceed
+        }
+        guard missionRequiresApproval(data: data, backend: backend) else {
+            return .proceed
+        }
+        return status == "waiting_for_approval" ? .waitForApproval : .requestApproval
+    }
+
+    func applyApprovalDecision(
+        _ decision: CLIAgentMissionApprovalDecision,
+        document: QueryDocumentSnapshot,
+        data: [String: Any],
+        backend: CLIAgentMissionBackend
+    ) async {
+        switch decision {
+        case .proceed, .waitForApproval:
+            return
+        case .cancel(let approvalStatus):
+            await cancelAfterApprovalDecision(document: document, approvalStatus: approvalStatus)
+        case .cliAssistantDisabled:
             await failAfterTrustedClaim(
                 document: document,
                 backend: backend,
                 message: "Mac CLI assistants are off. Enable Mac CLI assistants in Settings -> Privacy & Indexing before this Mac can run remote agent missions."
             )
-            return true
+        case .requestApproval:
+            await requestApproval(document: document, data: data, backend: backend)
         }
-        if approvalStatus == "approved" {
-            return false
-        }
-        guard missionRequiresApproval(data: data, backend: backend) else {
-            return false
-        }
-        if status == "waiting_for_approval" {
-            return true
-        }
-        await requestApproval(document: document, data: data, backend: backend)
-        return true
     }
 
     func missionRequiresApproval(data: [String: Any], backend: CLIAgentMissionBackend) -> Bool {

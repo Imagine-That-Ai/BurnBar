@@ -15,7 +15,12 @@ final class CLIAgentMissionRequestListener {
     var listener: ListenerRegistration?
     var listenerUID: String?
     var attachTask: Task<Void, Never>?
-    var processingDocs = Set<String>()
+    private var processingTask: Task<Void, Never>?
+    private var queuedDocs: [QueryDocumentSnapshot] = []
+    private var queuedDocIndex = 0
+    private var processingGeneration: UInt = 0
+    private var isStarted = false
+    private var processingDocs = Set<String>()
     var lastAttachState: String?
     var missionEventSequences: [String: Int] = [:]
 
@@ -33,6 +38,7 @@ final class CLIAgentMissionRequestListener {
 
     func start() {
         logger.info("mission listener start requested")
+        isStarted = true
         if attachTask == nil {
             attachTask = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
@@ -46,16 +52,22 @@ final class CLIAgentMissionRequestListener {
 
     func stop() {
         logger.info("mission listener stopped")
+        isStarted = false
+        processingGeneration &+= 1
         attachTask?.cancel()
         attachTask = nil
         listener?.remove()
         listener = nil
         listenerUID = nil
+        processingTask?.cancel()
+        queuedDocs.removeAll()
+        queuedDocIndex = 0
         processingDocs.removeAll()
         missionEventSequences.removeAll()
     }
 
     func attachIfPossible() {
+        guard isStarted else { return }
         guard accountManager.isFirebaseAvailable, let uid = accountManager.currentUID else {
             let state = "waiting firebase=\(accountManager.isFirebaseAvailable) uid=\(accountManager.currentUID == nil ? "nil" : "present")"
             if lastAttachState != state {
@@ -91,12 +103,41 @@ final class CLIAgentMissionRequestListener {
     }
 
     func processDocs(_ docs: [QueryDocumentSnapshot]) {
-        for doc in docs where !processingDocs.contains(doc.documentID) {
-            processingDocs.insert(doc.documentID)
-            Task { @MainActor in
-                defer { processingDocs.remove(doc.documentID) }
-                await handle(document: doc)
+        guard isStarted else { return }
+        for document in docs where processingDocs.insert(document.documentID).inserted {
+            queuedDocs.append(document)
+        }
+        startProcessingQueueIfNeeded()
+    }
+
+    private func startProcessingQueueIfNeeded() {
+        guard processingTask == nil, queuedDocIndex < queuedDocs.count else { return }
+        let generation = processingGeneration
+        processingTask = Task { @MainActor [weak self] in
+            await self?.drainProcessingQueue(generation: generation)
+        }
+    }
+
+    private func drainProcessingQueue(generation: UInt) async {
+        while isStarted,
+              generation == processingGeneration,
+              !Task.isCancelled,
+              queuedDocIndex < queuedDocs.count {
+            let document = queuedDocs[queuedDocIndex]
+            queuedDocIndex += 1
+            await handle(document: document)
+            if generation == processingGeneration {
+                processingDocs.remove(document.documentID)
             }
+        }
+
+        if generation == processingGeneration, queuedDocIndex == queuedDocs.count {
+            queuedDocs.removeAll(keepingCapacity: true)
+            queuedDocIndex = 0
+        }
+        processingTask = nil
+        if isStarted {
+            startProcessingQueueIfNeeded()
         }
     }
 }
