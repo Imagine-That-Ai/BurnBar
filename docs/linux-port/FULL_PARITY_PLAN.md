@@ -64,24 +64,29 @@ The latest continuation also adds Arch/pacman update-channel handling and
 fail-closed notification payload/route validation (`85b167205`, `a852af8c5`).
 These source and focused-test improvements do not promote any ledger row.
 
-Exact-head Release run `29639365863` completed successfully at
-`3d63b856b8ed081675be5abdd6a879b0d02cce06` after a transient aarch64 Arch
-mirror timeout was cleared by rerun job `88070073214`; x86_64 job `88070073419`
-and aggregate job `88073048979` passed as well. Package construction,
-ownership/install/uninstall, rollback/data preservation, daemon/desktop/tray,
-route/accessibility sessions, and attestation passed. Aggregate digest:
-`sha256:a0a62617a6cb44b5413e2e7236d29142038727abee6c93c2eb61442c42480287`.
-Exact-head Nightly run `29639366606` completed at the same head. macOS/Linux
+Exact-head Release run `29643064655` completed successfully at
+`473217fac228649355e10f70c9702ac8b7b10feb`; x86_64 job `88076682475`,
+aarch64 job `88076682489`, and aggregate job `88079754029` passed package
+construction, ownership/install/uninstall, rollback/data preservation,
+daemon/desktop/tray, route/accessibility sessions, and attestation. Aggregate
+digest: `sha256:54c07e78e60841b7cb999d87a28d7d1125d4f63dcfcaa10cbe47d9738f327dbf`.
+Exact-head Nightly run `29643065163` completed at the same head. macOS/Linux
 matched soak, GNOME Wayland portal, Arch/wlroots, and Fedora/KDE passed. Ubuntu
-GNOME/X11 passed shell, Swift, AT-SPI, onboarding, text-expansion, and matched
-workload checks but failed `route.navigation` p95 at `161.8 ms` versus the
-`120 ms` budget. The matched soak passed with Linux RSS growth of 81,920 bytes.
-Source commit `fb20c38dc2` now defers the packaged route body behind a bounded
-skeleton and two-frame/idle boundary; a fresh Nightly must prove the X11 budget.
+GNOME/X11 ran all nine Swift suites (**414/414**), shell, AT-SPI, onboarding,
+text-expansion, matched workload, and route performance; `route.navigation`
+p95 was `93.4 ms` versus the `120 ms` budget. The job failed only because the
+host wrapper could not rewrite a Docker-owned transcript (`EACCES`) after the
+packaged session passed. The source wrapper now treats transcript normalization
+as best-effort and retains the raw evidence; a fresh Nightly must promote this
+shell gate.
 
 The physical iPad preflight passes but approval XCTest execution is blocked by
-the worktree hygiene ceiling; production callable drift and the missing UTM VM
-remain external blockers.
+the worktree hygiene ceiling. Production callable drift remains open. The UTM
+Ubuntu 24.04 ARM64 guest is now registered and reachable over SSH, but its
+systemd service still launches a stale `/usr/local` daemon that exits `127`
+because `libsqlcipher.so.0` is missing; the packaged `/usr/bin` binary carries
+the native library. No live daemon or installed-product receipt is promoted
+until the launcher state is repaired and rechecked.
 
 The honest status is therefore **0/40 product** and **0/7 environment** certified.
 A non-certifying engineering maturity estimate is approximately **68%**. The
@@ -162,7 +167,7 @@ requirement rows.
 | R1 | Release scripts: `upload-linux-downloads-r2.sh`, update/rollback feed, `verify-public-linux-download-trust.sh`. | `scripts/linux-port/`, `scripts/ci/`, `Makefile` | `verify-linux-release.mjs --allow-blocked` passes; scripts run green. |
 | R2 | Sentry + observability: add `sentry-rust` to Tauri and daemon, configure DSN. | `apps/linux-desktop/src-tauri/Cargo.toml`, `OpenBurnBarDaemon/` | Build passes; errors captured in dev. |
 | R3 | Nightly matrix: fix Wayland/Fedora/Arch runners, add `xdg-desktop-portal` consent test. | `.github/workflows/linux-nightly.yml` | Nightly matrix produces artifacts. |
-| R4 | Route performance closure: validate `fb20c38dc2` packaged route-body skeleton/idle hydration on Ubuntu GNOME/X11; preserve eager fixture/browser behavior. | `apps/linux-desktop/src/surfaces/SurfaceRouter.tsx`, `SurfaceRouter.test.tsx`, `system/system.css`, `.github/workflows/linux-nightly.yml` | Fresh exact-head Nightly route p95 <= 120 ms; no threshold relaxation; route shell remains accessible during hydration. |
+| R4 | Route performance and packaged-evidence closure: validate `fb20c38dc2` packaged route-body skeleton/idle hydration and the root-owned transcript normalization fix on Ubuntu GNOME/X11; preserve eager fixture/browser behavior. | `apps/linux-desktop/src/surfaces/SurfaceRouter.tsx`, `SurfaceRouter.test.tsx`, `system/system.css`, `scripts/linux-port/run-shell-desktop-session.mjs`, `scripts/linux-port/accessibility-harness-contract.test.mjs`, `.github/workflows/linux-nightly.yml` | Fresh exact-head Nightly route p95 <= 120 ms and shell-smoke success; no threshold relaxation; route shell remains accessible during hydration and raw Docker-owned transcripts remain valid evidence. |
 | D1 | Pensieve watcher: replace stub with inotify. | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/PensieveKnowledgeWatcherLinux.swift` | `OpenBurnBarDaemonLinuxGatewayTests` pass. |
 | D2 | Switcher shell: implement `BurnBarCLIShellExecutor` and `ShimInstaller` for Linux. | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/OpenBurnBarSwitcherShellLinux.swift` | CLI tests pass. |
 | D3 | Test backfill: replace Linux compile-only paths with deterministic behavior suites; retain placeholders only as platform fallbacks. | `OpenBurnBarCore/Tests/*/Linux*BehaviorTests.swift`, `OpenBurnBarCore/Package.swift`, `scripts/linux-port/linux-swift-test-manifest.json` | Linux manifest declares 9 suites / 92 minimum tests; each selected target executes non-tautological tests and `swift test` passes on the release runner. |

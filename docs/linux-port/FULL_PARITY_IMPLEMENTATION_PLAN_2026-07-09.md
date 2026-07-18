@@ -60,36 +60,38 @@ host receipts remain required.
 
 ### Exact-head release verification - 2026-07-18
 
-Exact-head Release workflow `29639365863` completed successfully at
-`3d63b856b8ed081675be5abdd6a879b0d02cce06`. The first aarch64 dependency-smoke
-attempt hit a transient Arch mirror timeout; rerun job `88070073214` passed,
-alongside x86_64 job `88070073419` and aggregate job `88073048979`. The two
-architecture jobs and aggregate covered package construction, DEB/RPM/Arch
-ownership/install/uninstall, rollback/data preservation, packaged daemon and
-desktop/tray/accessibility/route sessions, and attestation. Aggregate evidence
-digest: `sha256:a0a62617a6cb44b5413e2e7236d29142038727abee6c93c2eb61442c42480287`.
+Exact-head Release workflow `29643064655` completed successfully at
+`473217fac228649355e10f70c9702ac8b7b10feb`. x86_64 job `88076682475`,
+aarch64 job `88076682489`, and aggregate job `88079754029` covered package
+construction, DEB/RPM/Arch ownership/install/uninstall, rollback/data
+preservation, packaged daemon and desktop/tray/accessibility/route sessions,
+and attestation. Aggregate evidence digest:
+`sha256:54c07e78e60841b7cb999d87a28d7d1125d4f63dcfcaa10cbe47d9738f327dbf`.
 
-Exact-head Nightly workflow `29639366606` completed at the same source head.
+Exact-head Nightly workflow `29643065163` completed at the same source head.
 macOS matched soak, Linux matched soak, GNOME Wayland portal, Arch/wlroots,
-and Fedora/KDE jobs passed. Ubuntu GNOME/X11 passed Swift, shell, AT-SPI,
-onboarding, text-expansion, and matched-workload checks but failed the route
-performance budget: `route.navigation` p95 `161.8 ms` across 33 samples versus
-the `120 ms` threshold. The previous `263.2 ms` p95 was reduced by
-`15e0037531`, `9e391fe72`, and `3d63b856b8`; the remaining outliers are
-onboarding/overview startup plus projects, settings, and account transitions.
-The matched 30-minute comparison passed with Linux RSS growth of 81,920 bytes.
-Source commit `fb20c38dc2` adds packaged-only route-body skeleton/idle hydration
-and deterministic scheduler tests; the threshold remains unchanged and a fresh
-Nightly is still required to prove the X11 p95 clears it.
+and Fedora/KDE jobs passed. Ubuntu GNOME/X11 ran all nine Linux Swift suites
+(**414/414**), npm install/test/build, the packaged
+route/accessibility/onboarding/text-expansion session, and matched workload.
+Its `route.navigation` p95 passed at `93.4 ms` across 33 samples versus the
+`120 ms` budget. The job nevertheless failed after the packaged session because
+Docker-owned transcript files were readable but not writable by the host
+wrapper (`EACCES` rewriting `linux-deb-install-run-transcript.txt`). The source
+wrapper now treats normalization as best-effort and retains the raw transcript;
+a fresh exact-head Nightly is required to promote the shell gate.
 
 The physical iPad preflight passed, but the focused approval build was stopped
-by the 10 GiB hygiene guard before XCTest discovery; production callable
-inventory is drifted and the UTM VM remains unavailable. These facts are
-recorded in the independent audit and do not promote any ledger row.
+by the 10 GiB hygiene guard before XCTest discovery. Production callable
+inventory is drifted. The UTM guest is now registered and reachable over SSH,
+but its service still points to a stale `/usr/local` daemon binary that exits
+`127` because `libsqlcipher.so.0` is absent; the package-owned `/usr/bin`
+binary has the bundled library. No live daemon or installed-product receipt is
+promoted until that VM launcher state is repaired and rechecked. These facts
+are recorded in the independent audit and do not promote any ledger row.
 
 For planning purposes only, source maturity is approximately **68%**. This is
-not a release percentage. The remaining dependency order is: clear the fresh
-X11 route budget with the packaged route-body follow-up, produce a signed
+not a release percentage. The remaining dependency order is: rerun the fresh
+X11 shell gate after the root-owned transcript wrapper fix, produce a signed
 candidate from that verified head, deploy and verify production App Check/OAuth
 callables, run the physical iPad approval journey, close the remaining Linux
 desktop/architecture/keyring/portal rows, collect installed Computer Use,
@@ -538,10 +540,12 @@ Full parity remains **NO-GO** until all of these gates are met in order:
    enrollment, fingerprint confirmation, approval, refresh, revoke, and sign-out.
 7. Prove real Browser Computer Use actions, approval/deny, panic, audit/tamper,
    credential loss, account switch, and daemon restart/replay behavior.
-8. Clear the exact-head Ubuntu GNOME/X11 route budget. Commit `fb20c38dc2`
-   defers packaged route bodies behind a stable skeleton and idle hydration;
-   rerun the Nightly and require `route.navigation` p95 <= 120 ms without
-   relaxing the threshold.
+8. Clear the exact-head Ubuntu GNOME/X11 packaged shell gate. Commit
+   `fb20c38dc2` defers packaged route bodies behind a stable skeleton and idle
+   hydration; `440635120f` makes host-side transcript normalization best-effort
+   for root-owned Docker evidence. Rerun the Nightly and require both
+   `route.navigation` p95 <= 120 ms and shell-smoke success without relaxing
+   the threshold.
 9. Complete GNOME X11/Wayland, KDE Wayland, wlroots, architecture,
    accessibility, performance, update/rollback, and release-promotion
    certification.
@@ -1539,10 +1543,12 @@ The original foundation sequence is substantially implemented. From the
    - Run GNOME X11/Wayland, KDE Wayland, wlroots, x86_64/aarch64,
      accessibility, performance, update/rollback, and package lifecycle proof.
 
-8. **Route performance closure**
-   - Validate `fb20c38dc2` on the exact packaged Ubuntu GNOME/X11 job. Keep the
-     route shell accessible during two-frame/idle hydration, confirm fixture
-     and browser previews remain eager, and reject any threshold relaxation.
+8. **Route performance and evidence-wrapper closure**
+   - Validate `fb20c38dc2` plus the root-owned transcript handling fix on the
+     exact packaged Ubuntu GNOME/X11 job. Keep the route shell accessible during
+     two-frame/idle hydration, confirm fixture and browser previews remain eager,
+     and reject any threshold relaxation. Raw Docker-owned transcripts remain
+     valid evidence when host-side normalization is not permitted.
 
 9. **Remaining product-parity PRs**
    - Complete installed chat export/resume, pop-out, remaining backends,
