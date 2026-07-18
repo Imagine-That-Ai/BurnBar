@@ -67,12 +67,16 @@ Windows verifier service:
 
 - `OPENBURNBAR_TPM_VERIFIER_APP_ID` (same Firebase app ID)
 - `OPENBURNBAR_TPM_VERIFIER_TOKEN` (same service credential)
+- `OPENBURNBAR_TPM_VERIFIER_TRUSTED_PROXIES` when TLS terminates at a reverse
+  proxy (comma-separated exact proxy IPv4/IPv6 addresses)
 - standard ASP.NET Core HTTPS endpoint/certificate configuration
 
-The verifier rejects plain HTTP, wrong app IDs, malformed CNG blobs, stale
-claims, and invalid bearer credentials. Missing configuration leaves the TPM
-verifier unregistered, so minting fails closed. There is no production debug or
-mock fallback.
+The verifier rejects plain HTTP, forwarded HTTPS from an unlisted proxy, wrong
+app IDs, malformed CNG blobs, stale claims, and invalid bearer credentials.
+Forwarded headers are disabled unless the exact proxy allowlist is configured;
+the service trusts only one forwarded hop and only `X-Forwarded-Proto`. Missing
+configuration leaves the TPM verifier unregistered, so minting fails closed.
+There is no production debug or mock fallback.
 
 ## Build and deploy
 

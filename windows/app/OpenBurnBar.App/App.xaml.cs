@@ -9,6 +9,7 @@ using Microsoft.Windows.AppLifecycle;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Shell;
 using OpenBurnBar.App.Theme;
+using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Interop;
@@ -189,7 +190,8 @@ public partial class App : Application
 
         WindowsUpdateService.Configure(WindowsSettingsComposition.SharedPersistence);
         _ = WindowsUpdateService.RunAutomaticCheckIfDueAsync(WindowsSettingsComposition.SharedPersistence);
-        WindowsSettingsComposition.TryConfigureProductionCloudSync();
+        WindowsAppCheckComposition.RegisterIfConfigured();
+        WinAppCloudSyncHost.ConfigureFromAppConfiguration();
         StartComputerUseWatchdog();
         StartPrivilegedInputBroker();
         StartPensieveKnowledgeWatcher();

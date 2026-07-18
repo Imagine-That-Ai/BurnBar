@@ -1,9 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.AspNetCore.HttpOverrides;
 using OpenBurnBar.CloudSync.AppCheck.Windows;
 
 const string TokenEnvironment = "OPENBURNBAR_TPM_VERIFIER_TOKEN";
 const string AppIdEnvironment = "OPENBURNBAR_TPM_VERIFIER_APP_ID";
+const string TrustedProxiesEnvironment = "OPENBURNBAR_TPM_VERIFIER_TRUSTED_PROXIES";
 const int MaxClaimBytes = 64 * 1024;
 const int EcdsaP256PublicBlobBytes = 72;
 const long MaxAgeMs = 5 * 60 * 1000;
@@ -11,6 +13,8 @@ const long MaxForwardSkewMs = 60 * 1000;
 
 string verifierToken = Environment.GetEnvironmentVariable(TokenEnvironment) ?? "";
 string expectedAppId = Environment.GetEnvironmentVariable(AppIdEnvironment) ?? "";
+IReadOnlyList<System.Net.IPAddress> trustedProxies = TrustedProxyAddressParser.Parse(
+    Environment.GetEnvironmentVariable(TrustedProxiesEnvironment));
 if (verifierToken.Length < 32)
     throw new InvalidOperationException($"{TokenEnvironment} must contain at least 32 characters.");
 if (string.IsNullOrWhiteSpace(expectedAppId))
@@ -22,8 +26,26 @@ if (!expectedAppId.StartsWith("1:", StringComparison.Ordinal) ||
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 128 * 1024);
+if (trustedProxies.Count > 0)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
+        options.ForwardLimit = 1;
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+        foreach (System.Net.IPAddress address in trustedProxies)
+        {
+            options.KnownProxies.Add(address);
+        }
+    });
+}
 var app = builder.Build();
 
+if (trustedProxies.Count > 0)
+{
+    app.UseForwardedHeaders();
+}
 app.Use(async (context, next) =>
 {
     if (!context.Request.IsHttps)
