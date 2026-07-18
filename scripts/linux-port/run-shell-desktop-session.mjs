@@ -34,7 +34,20 @@ function normalizeTranscriptFile(filePath) {
     }
     throw error;
   }
-  fs.writeFileSync(filePath, normalizeTranscript(current));
+  try {
+    fs.writeFileSync(filePath, normalizeTranscript(current));
+  } catch (error) {
+    // The desktop session runs as root inside the toolchain container, so a
+    // bind-mounted transcript can be readable but not writable by the host
+    // runner. The raw transcript is still valid evidence; normalization is
+    // best-effort and must not turn a passed desktop session into a false
+    // shell-smoke failure.
+    if (error.code === 'EACCES' || error.code === 'EPERM') {
+      process.stderr.write(`unable to normalize ${filePath}: ${error.code}; retaining raw transcript\n`);
+      return;
+    }
+    throw error;
+  }
 }
 
 const dockerArgs = [

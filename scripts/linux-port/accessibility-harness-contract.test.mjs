@@ -12,6 +12,7 @@ const session = read('scripts/linux-port/linux-desktop-session.sh');
 const verifier = read('scripts/linux-port/verify-shell-evidence.mjs');
 const evidenceRunner = read('scripts/linux-port/run-shell-evidence.mjs');
 const smokeRunner = read('scripts/linux-port/run-shell-smoke.mjs');
+const desktopWrapper = read('scripts/linux-port/run-shell-desktop-session.mjs');
 const toolchainDockerfile = read('tools/linux-toolchain/Dockerfile');
 const toolchainSmoke = read('tools/linux-toolchain/smoke.sh');
 const workflow = read('.github/workflows/linux-pr-gate.yml');
@@ -109,6 +110,11 @@ test('toolchain and artifact reuse preserve the complete accessibility proof', (
     'report?.accessibility?.keyboardFocus?.pass === true',
     'report?.accessibility?.zoom?.pass === true'
   ]) assert.ok(smokeRunner.includes(marker), marker);
+  for (const marker of [
+    'best-effort',
+    "error.code === 'EACCES' || error.code === 'EPERM'",
+    'retaining raw transcript'
+  ]) assert.ok(desktopWrapper.includes(marker), marker);
   for (const marker of [
     'function persistTranscript()',
     'function recordStep(step)',
