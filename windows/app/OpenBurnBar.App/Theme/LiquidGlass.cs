@@ -565,8 +565,12 @@ public static class LiquidGlass
         }
 
         // Neutral / frosty: a translucent plate over Mica. Frost adds opacity as t -> -1.
+        // Plate = Aurora surfaceElevated (#1F2630): dark slate glass, matching the macOS
+        // ultraThin/thickMaterial fallbacks and the Linux --glass-tint-* recipes. (White
+        // plates rendered as light-gray blobs with inverted text on the dark canvas —
+        // the "amateur hour" look in the first physical screenshots.)
         double plate = 0.14 + (t < 0 ? 0.70 * -t : 0);
-        Color plateColor = tint ?? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+        Color plateColor = tint ?? Color.FromArgb(0xFF, 0x1F, 0x26, 0x30);
         return new SolidColorBrush(Color.FromArgb(ToByte(plate), plateColor.R, plateColor.G, plateColor.B));
     }
 

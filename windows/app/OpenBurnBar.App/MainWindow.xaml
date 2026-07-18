@@ -8,7 +8,8 @@
     xmlns:theme="using:OpenBurnBar.App.Theme"
     Title="OpenBurnBar">
 
-    <Grid x:Name="RootGrid" RowSpacing="0" Background="Transparent" RequestedTheme="Dark">
+    <Grid x:Name="RootGrid" RowSpacing="0" Background="Transparent" RequestedTheme="Dark"
+          FontFamily="{StaticResource AuroraBodyFont}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -18,23 +19,12 @@
                 Grid.RowSpan="2"
                 IsHitTestVisible="False" />
 
-        <Border Grid.Row="0"
-                Style="{StaticResource LiquidGlassToolbarStyle}"
-                Margin="8,4,8,0"
-                theme:LiquidGlass.Surface="True">
-            <Grid x:Name="TitleBar" Height="32" ColumnSpacing="10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <components:AppLogoView Grid.Column="0" Size="18" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1"
-                           VerticalAlignment="Center"
-                           Text="OpenBurnBar"
-                           FontWeight="SemiBold"
-                           Foreground="{ThemeResource AuroraTextBrush}" />
-            </Grid>
-        </Border>
+        <!-- Bare drag strip for the caption buttons (the command deck in AppShell is the
+             single brand row — no duplicate wordmark up here). -->
+        <Grid x:Name="TitleBar"
+              Grid.Row="0"
+              Height="32"
+              Background="Transparent" />
 
         <shell:AppShell x:Name="ShellControl" Grid.Row="1" />
     </Grid>
