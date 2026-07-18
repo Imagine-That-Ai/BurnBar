@@ -161,11 +161,12 @@ StyleDictionary.registerFormat({
       }
     }
 
-    // Shell semantic aliases — the OBB* keys the WinUI shell binds to. Accent /
-    // surface / stroke resolve to Pensieve primitives (brand now flows from the
-    // token pipeline); the CLI-stream / mono / card values are Windows-shell
+    // Shell semantic aliases — the OBB* keys the WinUI shell binds to. Accent
+    // resolves to the macOS Aurora ember (the shell's design oracle — see
+    // tokens/aurora.tokens.json); surface / stroke resolve to Pensieve
+    // primitives; the CLI-stream / mono / card values are Windows-shell
     // semantics not yet promoted to the shared token source (documented drift).
-    const accent = toXamlColor(resolved.get("colorBrassCore")); // brand ember/CTA
+    const accent = toXamlColor(resolved.get("colorMacosEmber")); // macOS Aurora ember/CTA
     const semantic = [
       `    <Color x:Key="OBBAccentColor">${accent}</Color>`,
       `    <SolidColorBrush x:Key="OBBAccentBrush" Color="{StaticResource OBBAccentColor}" />`,
@@ -175,7 +176,7 @@ StyleDictionary.registerFormat({
       `    <SolidColorBrush x:Key="OBBStderrBrush" Color="#FFFF8A7A" />`,
       `    <SolidColorBrush x:Key="OBBToolBrush" Color="#FF6AB0FF" />`,
       `    <SolidColorBrush x:Key="OBBSystemBrush" Color="#FF9AA0AA" />`,
-      `    <x:String x:Key="OBBMonoFontFamily">Cascadia Mono, Consolas, Courier New</x:String>`,
+      `    <x:String x:Key="OBBMonoFontFamily">'JetBrains Mono Variable', 'Cascadia Mono', Consolas, 'Courier New'</x:String>`,
       `    <CornerRadius x:Key="OBBCardCornerRadius">10</CornerRadius>`,
       `    <Thickness x:Key="OBBCardPadding">14</Thickness>`,
     ];

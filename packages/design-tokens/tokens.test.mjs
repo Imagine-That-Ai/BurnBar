@@ -85,6 +85,37 @@ test("WinUI XAML emits every color as #AARRGGBB (WinUI cannot parse rgba())", ()
   assert.ok(winuiXaml.includes('x:Key="PensieveColorBrassCore">#FFFA6B06<'), "brass.core opaque alpha missing");
 });
 
+test("aurora.tokens.json (macOS Aurora + liquid glass) lands on every platform", () => {
+  // CSS custom properties (kebab-case).
+  for (const v of [
+    "--color-macos-ember: #fa5053",
+    "--color-macos-bg: #0d1117",
+    "--color-aurora-light-bg: #f3e8e6",
+    "--glass-tint-elevated: rgba(31, 38, 48, 0.55)",
+    "--glass-stroke-frost: rgba(255, 255, 255, 0.12)",
+    "--glass-inner-light: rgba(255, 255, 255, 0.12)",
+    "--type-size-body: 14px",
+    "--radius-xl: 22px",
+  ]) {
+    assert.ok(css.includes(v), `CSS missing aurora token: ${v}`);
+  }
+  // WinUI XAML: alpha folds + type sizes as x:Double + radius convenience shapes.
+  assert.ok(winuiXaml.includes('x:Key="PensieveColorMacosEmber">#FFFA5053<'), "macos.ember missing from XAML");
+  assert.ok(winuiXaml.includes('x:Key="PensieveGlassTintElevated">#8C1F2630<'), "glass.tint.elevated alpha fold drifted");
+  assert.ok(winuiXaml.includes('x:Key="PensieveGlassTintBase">#7A161B22<'), "glass.tint.base alpha fold drifted");
+  assert.ok(winuiXaml.includes('x:Key="PensieveGlassSelectionFill">#14FA5053<'), "glass.selection.fill alpha fold drifted");
+  assert.ok(winuiXaml.includes('x:Key="PensieveColorAuroraLightEmber">#FFF45B69<'), "auroraLight.ember missing from XAML");
+  assert.ok(winuiXaml.includes('x:Key="PensieveTypeSizeBody">14<'), "type.size.body must emit as x:Double");
+  assert.ok(winuiXaml.includes('x:Key="PensieveRadiusXlCorner">22<'), "radius.xl must emit a CornerRadius");
+  assert.ok(winuiXaml.includes('x:Key="PensieveSpaceXxsThickness">2<'), "space.xxs must emit a Thickness");
+  // Swift + C# constants (verbatim rgba strings, same as CSS).
+  assert.ok(swift.includes('colorMacosEmber: String = "#fa5053"'), "Swift missing macos.ember");
+  assert.ok(swift.includes('glassTintElevated: String = "rgba(31, 38, 48, 0.55)"'), "Swift missing glass.tint.elevated");
+  assert.ok(winuiCs.includes('public const string ColorMacosEmber = "#fa5053";'), "C# missing macos.ember");
+  // Shell accent now resolves to the macOS Aurora ember (design oracle), not Pensieve brass.
+  assert.ok(winuiXaml.includes('x:Key="OBBAccentColor">#FFFA5053<'), "OBBAccentColor must be macOS ember");
+});
+
 test("WinUI XAML preserves the shell semantic OBB* keys + demonstrates every WinUI type", () => {
   for (const key of [
     "OBBAccentColor", "OBBAccentBrush", "OBBStdoutBrush", "OBBStderrBrush",
