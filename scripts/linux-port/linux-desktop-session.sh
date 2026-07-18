@@ -909,13 +909,17 @@ else
   }
 
   build_root="$work_dir/build-root"
-  mkdir -p "$build_root/apps" "$build_root/packages" "$build_root/scripts" "$build_root/packaging"
+  mkdir -p "$build_root/apps" "$build_root/packages" "$build_root/scripts" "$build_root/packaging" "$build_root/crates"
   cp -R "$root/apps/linux-desktop" "$build_root/apps/linux-desktop"
   # Preserve the repository-relative paths consumed by package.json, Vite,
   # the production scanner, native include_str!, and Tauri bundle resources.
   for shared_package in design-tokens entitlements gl-engine; do
     cp -R "$root/packages/$shared_package" "$build_root/packages/$shared_package"
   done
+  # Tauri resolves the optional media dependency from this repository-relative
+  # path while building the packaged shell. Keep the crate in the copied build
+  # root even when the current host does not enable its runtime feature.
+  cp -R "$root/crates/openburnbar-media" "$build_root/crates/openburnbar-media"
   cp -R "$root/scripts/linux-port" "$build_root/scripts/linux-port"
   cp -R "$root/packaging/linux" "$build_root/packaging/linux"
   mkdir -p "$build_root/OpenBurnBarDaemon/Resources"
