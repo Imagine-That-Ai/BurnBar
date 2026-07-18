@@ -88,7 +88,9 @@ final class JunieParser: LogParser, Sendable {
             indexProjects = [:]
         }
 
+        // try?-ok(absent or unreadable session root yields no sessions)
         let sessionDirs = (try? fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey]))
+            // try?-ok(unreadable directory metadata excludes that entry)
             .map { $0.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } }
             ?? []
 
@@ -165,6 +167,7 @@ final class JunieParser: LogParser, Sendable {
                 continue
             }
 
+            // try?-ok(one malformed session must not abort other sessions)
             let parsed = try? parseSession(
                 sessionId: sessionId,
                 eventsFile: eventsFile,

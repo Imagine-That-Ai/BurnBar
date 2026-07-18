@@ -31,9 +31,11 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
         var usages: [TokenUsage] = []
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
 
+        // try?-ok(absent or unreadable session root yields no sessions)
         let sessionDirs = (try? fm.contentsOfDirectory(
             at: URL(fileURLWithPath: sessionStatePath),
             includingPropertiesForKeys: [.isDirectoryKey]
+        // try?-ok(unreadable directory metadata excludes that entry)
         ))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
 
         for sessionDir in sessionDirs {
@@ -94,9 +96,12 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
         processLogData: (input: Int, output: Int)?,
         includeConversationBody: Bool
     ) -> (usage: TokenUsage?, conversation: OpenBurnBarCore.ConversationRecord?)? {
+        // try?-ok(unreadable optional session file is skipped)
         guard let handle = try? FileHandle(forReadingFrom: eventsFile) else { return nil }
+        // try?-ok(best-effort read-handle teardown)
         defer { try? handle.close() }
 
+        // try?-ok(missing modification metadata preserves a nil timestamp)
         let mtime = (try? FileManager.default.attributesOfItem(atPath: eventsFile.path)[.modificationDate]) as? Date
 
         var exactInputTokens = 0
@@ -117,6 +122,7 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
+                  // try?-ok(malformed JSONL records are skipped independently)
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 continue
             }
@@ -269,6 +275,7 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
 
         var result: [String: (input: Int, output: Int)] = [:]
 
+        // try?-ok(absent or unreadable fallback log directory yields no logs)
         guard let logFiles = try? fm.contentsOfDirectory(atPath: logsPath)
             .filter({ $0.hasPrefix("process-") && $0.hasSuffix(".log") }) else {
             return [:]

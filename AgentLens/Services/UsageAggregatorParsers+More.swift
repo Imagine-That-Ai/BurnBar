@@ -62,6 +62,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         var cacheMutated = false
 
         let projectDirs = try fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])
+            // try?-ok(unreadable directory metadata excludes that entry)
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
         for projectDir in projectDirs {
@@ -130,6 +131,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
                     continue
                 }
 
+                // try?-ok(one malformed session must not abort other sessions)
                 let parsed = try? parseSession(file: jsonlFile, projectName: projectName)
                 appendParsed(
                     parsed,
@@ -832,6 +834,7 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
         }
 
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
+        // try?-ok(absent or unreadable session root yields no sessions)
         let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))?
             .filter { $0.pathExtension == "jsonl" } ?? []
 
