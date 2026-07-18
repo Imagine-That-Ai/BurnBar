@@ -173,6 +173,9 @@ jobs:
       - name: Verify GitHub Actions pins
         run: node scripts/ci/verify-github-action-pins.mjs
 
+      - name: Self-test Firebase CI config generation
+        run: node scripts/ci/write-firebase-hosting-ci-config.test.mjs
+
       - name: Self-test QA artifact redaction
         run: node scripts/ci/redact-qa-artifacts.test.mjs
 

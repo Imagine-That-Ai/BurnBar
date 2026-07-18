@@ -9,6 +9,7 @@ const args = process.argv.slice(2);
 let sourcePath = resolve(repoRoot, "firebase.json");
 let outputPath = resolve(repoRoot, "firebase-hosting.ci.json");
 let manifestPath = "";
+let storageBucket = "";
 let mode = "hosting";
 let check = false;
 
@@ -21,6 +22,7 @@ function usage() {
       "  --source <path>     Firebase config to read (default: firebase.json)",
       "  --output <path>     CI config to write (default: firebase-hosting.ci.json)",
       "  --manifest <path>   Public-dir manifest path for hosting mode",
+      "  --storage-bucket <name>  Explicit bucket for firestore mode",
       "  --mode <mode>       hosting | functions | firestore (default: hosting)",
       "  --check             Verify the generated config contains no predeploy hooks",
     ].join("\n"),
@@ -35,6 +37,8 @@ for (let index = 0; index < args.length; index += 1) {
     outputPath = resolve(repoRoot, args[++index] ?? "");
   } else if (arg === "--manifest") {
     manifestPath = resolve(repoRoot, args[++index] ?? "");
+  } else if (arg === "--storage-bucket") {
+    storageBucket = args[++index] ?? "";
   } else if (arg === "--mode") {
     mode = args[++index] ?? "";
   } else if (arg === "--check") {
@@ -50,6 +54,18 @@ for (let index = 0; index < args.length; index += 1) {
 const supportedModes = new Set(["hosting", "functions", "firestore"]);
 if (!supportedModes.has(mode)) {
   throw new Error(`Unsupported mode ${mode}; expected one of ${[...supportedModes].join(", ")}`);
+}
+if (storageBucket) {
+  if (mode !== "firestore") {
+    throw new Error("--storage-bucket is supported only in firestore mode");
+  }
+  if (
+    storageBucket.length < 3 ||
+    storageBucket.length > 222 ||
+    !/^[a-z0-9][a-z0-9._-]*[a-z0-9]$/.test(storageBucket)
+  ) {
+    throw new Error("--storage-bucket must be a valid lowercase Cloud Storage bucket name");
+  }
 }
 
 function readJson(path) {
@@ -234,21 +250,27 @@ function buildFirestoreConfig(firebaseJson) {
   }
   if (firebaseJson.storage !== undefined) {
     const storage = requirePlainObject(firebaseJson.storage, "firebase.json storage");
-    config.storage = { ...storage };
-    if (config.storage.rules !== undefined) {
-      config.storage.rules = resolveRepoFilePath(config.storage.rules, "storage.rules");
+    const storageConfig = { ...storage };
+    if (storageConfig.rules !== undefined) {
+      storageConfig.rules = resolveRepoFilePath(storageConfig.rules, "storage.rules");
     }
+    // Firebase CLI looks up a project's default bucket only for object-form
+    // storage config. Staging binds the already-provisioned bucket explicitly
+    // so deploys do not depend on eventually-consistent control-plane discovery.
+    config.storage = storageBucket ? [{ ...storageConfig, bucket: storageBucket }] : storageConfig;
   }
   if (!config.firestore && !config.storage) {
     throw new Error("firebase.json must contain firestore or storage config for firestore mode");
   }
   assertNoPredeploy(config, "firebase-firestore.ci.json");
+  const generatedStorage = Array.isArray(config.storage) ? config.storage[0] : config.storage;
   return {
     config,
     manifest: {
       firestoreRules: config.firestore?.rules,
       firestoreIndexes: config.firestore?.indexes,
-      storageRules: config.storage?.rules,
+      storageRules: generatedStorage?.rules,
+      storageBucket: generatedStorage?.bucket,
     },
   };
 }
