@@ -182,6 +182,12 @@ output_path = os.environ.get("DIFF_OUTPUT") or ""
 # reason` on the specific lines.
 # ---------------------------------------------------------------------------
 COVERAGE_ALLOWLIST = {
+    "packages/design-tokens/dist/swift/PensieveTokens.swift": (
+        "Generated compile-time constants emitted by the canonical design-token "
+        "pipeline. Generator byte equality and token semantics are enforced by "
+        "packages/design-tokens/tokens.test.mjs; the generated file is not linked "
+        "into a coverage-bearing Swift target."
+    ),
     "OpenBurnBarMobile/": (
         "Measured by the iOS Mobile lane's own xcresult; that artifact is not "
         "yet wired into this gate. Tracked residual — wire the artifact "
