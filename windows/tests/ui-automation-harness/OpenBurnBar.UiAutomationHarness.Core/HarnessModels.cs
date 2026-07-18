@@ -36,6 +36,10 @@ public sealed record UiCertificationScenario(
     string Acceptance)
 {
     public bool RunsRouteSmoke { get; init; } = true;
+
+    public int? WindowWidth { get; init; }
+
+    public int? WindowHeight { get; init; }
 }
 
 public sealed record RouteSmokeEvidence(

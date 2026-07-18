@@ -89,6 +89,7 @@ public sealed class ReportWriterTests : IDisposable
         Assert.Contains(scenarios, scenario => scenario.Key == "high-contrast" && scenario.AppearanceMode == "highcontrast" && scenario.ReduceTransparency == true);
         Assert.Contains(scenarios, scenario => scenario.Key == "reduced-transparency" && scenario.ReduceTransparency == true);
         Assert.Contains(scenarios, scenario => scenario.Key == "dpi-100" && scenario.DpiScalePercent == 100 && scenario.RunsRouteSmoke);
+        Assert.Contains(scenarios, scenario => scenario.Key == "compact-640" && scenario.WindowWidth == 640 && scenario.WindowHeight == 720 && scenario.RunsRouteSmoke);
         Assert.Contains(scenarios, scenario => scenario.Key == "keyboard-contract" && scenario.RequiresKeyboardOnly && scenario.RequiresNarratorProtocol && !scenario.RunsRouteSmoke);
     }
 

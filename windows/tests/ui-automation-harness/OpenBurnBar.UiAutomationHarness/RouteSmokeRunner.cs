@@ -131,6 +131,9 @@ internal sealed class RouteSmokeRunner
         startInfo.Environment["DOTNET_ROLL_FORWARD"] = Environment.GetEnvironmentVariable("DOTNET_ROLL_FORWARD") ?? "Major";
         startInfo.Environment["OPENBURNBAR_SAMPLE_MODE"] = "1";
         startInfo.Environment["OPENBURNBAR_DISABLE_QUOTA_ACQUISITION"] = "1";
+        // The dashboard backdrop is an airspace-free CanvasImageSource in the XAML
+        // tree, so route smoke intentionally runs with native rendering enabled.
+        // This would have caught the WebView2/CanvasControl cover-up in v1.0.37.
         startInfo.Environment["OPENBURNBAR_AUTOMATION_PROFILE_ROOT"] = profileRoot;
         startInfo.ArgumentList.Add("--route-smoke");
         startInfo.ArgumentList.Add(route.Key);
@@ -152,6 +155,18 @@ internal sealed class RouteSmokeRunner
         {
             startInfo.ArgumentList.Add("--automation-reduce-transparency");
             startInfo.ArgumentList.Add(reduceTransparency ? "true" : "false");
+        }
+
+        if (scenario.WindowWidth is int windowWidth)
+        {
+            startInfo.ArgumentList.Add("--route-smoke-window-width");
+            startInfo.ArgumentList.Add(windowWidth.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (scenario.WindowHeight is int windowHeight)
+        {
+            startInfo.ArgumentList.Add("--route-smoke-window-height");
+            startInfo.ArgumentList.Add(windowHeight.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
         return startInfo;

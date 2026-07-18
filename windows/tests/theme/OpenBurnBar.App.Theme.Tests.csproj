@@ -30,11 +30,13 @@
     <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelCatalog.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelBackdropBridge.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelBackdropSelection.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelSubstrateSelection.cs" />
     <Compile Include="LiquidGlassTransparencyTests.cs" />
     <Compile Include="LiquidGlassPreferenceStoreTests.cs" />
     <Compile Include="KernelBackdropBridgeTests.cs" />
     <Compile Include="KernelBackdropSelectionTests.cs" />
     <Compile Include="KernelCatalogTests.cs" />
+    <Compile Include="KernelSubstrateSelectionTests.cs" />
   </ItemGroup>
 
 </Project>

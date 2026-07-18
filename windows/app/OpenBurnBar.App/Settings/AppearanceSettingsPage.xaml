@@ -126,7 +126,7 @@
 
             <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="0">
                 <tk:SettingsCard x:Name="KernelBackdropCard" Header="Window Backdrop"
-                                 Description="Live WebGL2 dashboard backdrop with a static native fallback">
+                                 Description="Live native dashboard backdrop with a GPU-safe fallback">
                     <ToggleSwitch x:Name="KernelEnabledToggle" Toggled="KernelEnabledToggle_Toggled" />
                 </tk:SettingsCard>
             </Border>

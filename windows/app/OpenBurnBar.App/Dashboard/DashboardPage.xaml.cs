@@ -18,7 +18,7 @@ namespace OpenBurnBar.App.Dashboard;
 /// <summary>
 /// Dashboard surface — macOS <c>DashboardView</c> parity:
 /// NavigationSplitView with Command sidebar (<c>DashboardSidebarView</c>) + concept detail.
-/// Owns WebGL2 kernel / Win2D swarm layers, layout switcher, and easter-egg overlay.
+/// Owns native kernel/substrate layers, the layout switcher, and easter-egg overlay.
 /// </summary>
 public sealed partial class DashboardPage : Page
 {
@@ -27,7 +27,7 @@ public sealed partial class DashboardPage : Page
     private readonly EasterEggCanvasHost? _egg;
     private readonly EasterEggController _controller = new();
     private readonly UISettings _uiSettings = new();
-    private readonly bool _webView2Capable;
+    private readonly bool _nativeKernelCapable;
     private bool _kernelEnabled;
     /// <summary>True only after an attempted kernel construction failed (not "never tried").</summary>
     private bool _kernelConstructionFailed;
@@ -39,8 +39,8 @@ public sealed partial class DashboardPage : Page
     {
         InitializeComponent();
 
-        _webView2Capable = NativeCapability.IsWebView2Enabled(out _);
-        // Sample/dev guest builds should show the living WebGL2 field without a
+        _nativeKernelCapable = NativeCapability.IsWin2DEnabled(out _);
+        // Sample/dev guest builds should show the living native kernel field without a
         // Settings dig — product default stays off when no preference is set
         // outside sample mode (macOS @AppStorage default false).
         if (RuntimeDataMode.SampleModeEnabled
@@ -177,7 +177,7 @@ public sealed partial class DashboardPage : Page
 
     private void EnsureKernelHostStarted()
     {
-        if (!_webView2Capable || _kernel is not null || _kernelConstructionFailed)
+        if (!_nativeKernelCapable || _kernel is not null || _kernelConstructionFailed)
         {
             return;
         }
@@ -204,7 +204,7 @@ public sealed partial class DashboardPage : Page
 
     private void ApplyBackdropLayers()
     {
-        bool capable = _webView2Capable && _kernel is not null;
+        bool capable = _nativeKernelCapable && _kernel is not null;
         bool showKernel = KernelBackdropSelection.ShouldShowKernel(
             _kernelEnabled, capable, HostReady, HostFailed, _backdrop is not null);
         // Prefer Win2D whenever the kernel is not ready/active so layout switches
@@ -262,7 +262,7 @@ public sealed partial class DashboardPage : Page
             _backdrop.Paused = false;
         }
 
-        // When the WebGL2 kernel field is active, also switch its kernel so the
+        // When the native kernel field is active, also switch its kernel so the
         // background actually changes with the layout switcher (FamilyFor map).
         if (_kernelEnabled && _kernel is not null && !_kernel.IsFailed)
         {
@@ -283,7 +283,7 @@ public sealed partial class DashboardPage : Page
     }
 
     /// <summary>
-    /// Map each dashboard concept to a signature WebGL2 kernel id — mirrors
+    /// Map each dashboard concept to a signature kernel id — mirrors
     /// <c>DashboardBackdrop.FamilyFor</c> (Volumetric / Constellation / Mesh / Aurora / Flow).
     /// </summary>
     internal static string KernelForLayout(DashboardLayout layout) => layout switch

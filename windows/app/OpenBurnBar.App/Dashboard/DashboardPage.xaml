@@ -20,9 +20,14 @@
 
     <Grid Background="Transparent">
         <!-- Backdrop layers span full page (macOS DashboardBackdrop behind split). -->
-        <Grid x:Name="KernelHost" IsHitTestVisible="False" Visibility="Collapsed" />
-        <Grid x:Name="BackdropHost" />
-        <Border IsHitTestVisible="False">
+        <Grid x:Name="KernelHost"
+              Canvas.ZIndex="-30"
+              IsHitTestVisible="False"
+              Visibility="Collapsed" />
+        <Grid x:Name="BackdropHost"
+              Canvas.ZIndex="-20"
+              IsHitTestVisible="False" />
+        <Border Canvas.ZIndex="-10" IsHitTestVisible="False">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                     <GradientStop Offset="0.0" Color="{ThemeResource AuroraGlassTintSunkenColor}" />
@@ -33,7 +38,7 @@
         </Border>
 
         <!-- NavigationSplitView: Command sidebar | detail -->
-        <Grid>
+        <Grid Canvas.ZIndex="10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="SidebarColumn" Width="280" MinWidth="260" MaxWidth="320" />
                 <ColumnDefinition x:Name="SidebarDividerColumn" Width="1" />
@@ -100,6 +105,6 @@
             </Grid>
         </Grid>
 
-        <Grid x:Name="EggHost" IsHitTestVisible="False" />
+        <Grid x:Name="EggHost" Canvas.ZIndex="20" IsHitTestVisible="False" />
     </Grid>
 </Page>
