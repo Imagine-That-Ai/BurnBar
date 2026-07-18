@@ -105,7 +105,10 @@ public sealed partial class ProvidersStepPage : Page
             }
         });
 
-        WindowsSettingsComposition.TryConfigureProductionCloudSync();
+        if (!WindowsSettingsComposition.TryConfigureProductionCloudSync())
+        {
+            WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+        }
         DbStatusText.Text = AppConfiguration.Current.HasSqlCipherCredentials
             ? "Saved — real SQLCipher stores will load on next surface open."
             : "Saved path; add passphrase and an existing file to enable SQLCipher.";

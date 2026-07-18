@@ -165,6 +165,7 @@ internal static class WindowsSettingsComposition
         DesktopOAuthCredentialsProvider oauth,
         FirebaseOAuthSession session)
     {
+        string appCheckAppId = CloudAuthProductionComposition.RequireAppCheckAppId();
         AppConfiguration config = AppConfiguration.Current;
         byte[] vaultKey = string.IsNullOrWhiteSpace(config.EffectiveVaultKeyB64())
             ? CloudVaultCrypto.GenerateVaultKey()
@@ -181,7 +182,7 @@ internal static class WindowsSettingsComposition
             vaultKey,
             new TpmAttestationProducer(),
             AppCheckTransport.Value,
-            CloudAuthProductionComposition.RequireAppCheckAppId());
+            appCheckAppId);
     }
 
     public static object? Create(SettingsTab tab) => tab switch
