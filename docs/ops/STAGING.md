@@ -1,12 +1,14 @@
 # Staging / pre-prod environment runbook
 
-**Status:** PARTIALLY PROVISIONED. The isolated `burnbar-staging` GCP/Firebase
-project, least-privilege deploy service account and role bindings, GitHub OIDC
-provider, and protected `staging` GitHub Environment exist. Billing and the
-deployable Firebase surfaces are not enabled, so the staging lane remains a
-**safe no-op**. Nothing here touches production (`burnbar`).
+**Status:** FOUNDATION PROVISIONED; LIVE VALIDATION IN PROGRESS. The isolated
+`burnbar-staging` GCP/Firebase project is billing-enabled and now has Firestore,
+Firebase Storage, Firebase Authentication, and a Windows staging Web app. The
+least-privilege deploy service account, repository-scoped GitHub OIDC provider,
+and protected `staging` GitHub Environment remain in place. Rules deployment,
+Desktop OAuth, real Windows TPM App Check verification, CloudVault, and staging
+Functions are still fail-closed. Nothing here touches production (`burnbar`).
 
-## Live provisioning snapshot - 2026-07-17
+## Live provisioning snapshot - 2026-07-18
 
 Read-only inspection produced this fail-closed state:
 
@@ -16,28 +18,32 @@ Read-only inspection produced this fail-closed state:
 | Deploy service account | `burnbar-staging-deployer` exists with all nine documented project roles |
 | GitHub OIDC | `github-pool/github-provider` is active and repository-scoped |
 | GitHub Environment | `staging` requires review and permits deployments from `main` only |
-| Billing | **Disabled**; no billing account is linked |
-| Firestore database | Missing |
-| Firebase Storage bucket | Missing |
-| Registered Firebase apps | None |
-| Deploy APIs | Core Firebase APIs exist; Functions, Build, Run, Tasks, Scheduler, and Artifact Registry still need enablement |
-| GitHub staging secrets | `STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER` and `STAGING_GCP_DEPLOY_SERVICE_ACCOUNT` are set in the protected `staging` environment |
-| Repository deploy switch | `STAGING_ENABLED` is unset |
+| Billing | Enabled through the approved company billing account |
+| Firestore database | Native-mode `(default)` database active in `us-central1` |
+| Firebase Storage bucket | `burnbar-staging.firebasestorage.app` active in `us-central1`; uniform bucket-level access and public-access prevention enforced |
+| Firebase Authentication | Identity Platform initialized; only the staging Firebase domains are authorized |
+| Registered Firebase apps | Active Web app `OpenBurnBar Windows Staging` |
+| Deploy APIs | All APIs required by `deploy-staging.yml` are enabled |
+| GitHub staging secrets | WIF provider, deploy service account, and Windows Firebase Web API key are set in the protected `staging` environment |
+| GitHub staging variables | Windows App Check app id and `STAGING_ENABLED=true` are set in the protected `staging` environment; the project id override remains a repository variable |
+| Rules deployment | Protected dry run `29655721165` passed: rules emulator tests and deploy-config checks succeeded; authentication and deployment were skipped by `dry_run=true` as designed |
+| Windows Desktop OAuth | Pending creation of a staging-only Desktop OAuth client in Google Auth Platform |
+| Windows App Check | Client TPM/CNG producer exists; the Functions backend still lacks the real TPM verifier and therefore cannot pass live physical attestation |
 | Functions runtime config | Template only; no reviewed `functions/.env.burnbar-staging` |
 
 Do not recreate the project, service account, OIDC pool/provider, GitHub
-Environment, or environment secrets. Resume at billing linkage, then
-verify/finish the remaining steps idempotently. Keep `STAGING_ENABLED` unset
-until billing, APIs, Firestore, Storage, Firebase apps, and runtime configuration
-have been independently verified.
+Environment, Firebase resources, or environment secrets. Resume with a
+reviewed real rules deployment to staging. Keep Functions deployment disabled
+until `functions/.env.burnbar-staging` is reviewed and every provider secret
+points to a non-production or sandbox account.
 
 ## Why this exists
 
 Historically `.firebaserc` exposed only the production project (`default:
 burnbar`), so every Firestore rules / indexes / Storage rules / Cloud Functions
 change went straight to real users. The repository now has a `staging` alias and
-an isolated cloud project, but the rehearsal surface is not usable until the
-remaining provisioning gates in this document pass.
+an isolated cloud project. Its foundation is usable; each remaining live
+protocol stays fail-closed until its own evidence passes.
 
 Staging fixes that: an isolated Firebase/GCP project (`burnbar-staging`) that is
 byte-for-byte the same `firestore.rules` / `firestore.indexes.json` /
@@ -108,16 +114,32 @@ gcloud services enable \
 # Create the Firestore database (Native mode) in the accepted production region.
 gcloud firestore databases create --location=us-central1 --project=burnbar-staging
 
-# Create the Firebase Storage default bucket in the same region. Use Firebase
-# Console → Build → Storage → Get started if your local Firebase CLI cannot
-# create the default bucket non-interactively; the bucket name must be the modern
-# default, not the legacy appspot.com bucket.
-gcloud storage buckets create "gs://burnbar-staging.firebasestorage.app" \
-  --project=burnbar-staging \
-  --location=us-central1 \
-  --uniform-bucket-level-access || true
+# Create the reserved Firebase default bucket through the Firebase Storage API;
+# generic `gcloud storage buckets create` cannot claim this namespace.
+curl --fail-with-body --silent --show-error \
+  -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  --data '{"location":"us-central1"}' \
+  "https://firebasestorage.googleapis.com/v1alpha/projects/burnbar-staging/defaultBucket"
+gcloud storage buckets update "gs://burnbar-staging.firebasestorage.app" \
+  --uniform-bucket-level-access \
+  --public-access-prevention
 gcloud storage buckets describe "gs://burnbar-staging.firebasestorage.app" \
   --project=burnbar-staging >/dev/null
+
+# Initialize Firebase Authentication/Identity Platform, then register the
+# Windows staging Web app. Create a separate Desktop OAuth client in Google Auth
+# Platform for the Windows PKCE loopback flow; never reuse the production client.
+curl --fail-with-body --silent --show-error \
+  -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "x-goog-user-project: burnbar-staging" \
+  -H "Content-Type: application/json" \
+  --data '{}' \
+  "https://identitytoolkit.googleapis.com/v2/projects/burnbar-staging/identityPlatform:initializeAuth"
+firebase apps:create WEB "OpenBurnBar Windows Staging" \
+  --project=burnbar-staging
 ```
 
 > If you pick a project id other than `burnbar-staging`, either edit the
@@ -204,25 +226,36 @@ echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/
 
 ### 5. Set the staging secrets + variables
 
-**Environment secrets** (scope: `staging` environment):
+**Environment secrets** (scope: protected `staging` environment):
 
 | Secret | Value |
 | --- | --- |
 | `STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER` | the provider resource name printed in step 3 |
 | `STAGING_GCP_DEPLOY_SERVICE_ACCOUNT` | `burnbar-staging-deployer@burnbar-staging.iam.gserviceaccount.com` |
+| `STAGING_WINDOWS_FIREBASE_WEB_API_KEY` | API key from the `OpenBurnBar Windows Staging` Web app SDK config |
+| `STAGING_WINDOWS_GOOGLE_OAUTH_CLIENT_ID` | staging-only Desktop OAuth client id |
 | `STAGING_SENTRY_DSN_FUNCTIONS` | *(optional)* staging functions Sentry DSN |
 
-**Repository variables** (`Settings → Secrets and variables → Actions → Variables`):
+**Environment variables** (scope: protected `staging` environment):
 
 | Variable | Value | Effect |
 | --- | --- | --- |
 | `STAGING_ENABLED` | `true` | **Flips the workflow on.** Until this is `true`, the preflight job reports "not provisioned" and every deploy job is skipped. |
+| `STAGING_WINDOWS_APPCHECK_APP_ID` | Windows staging Web app id | Binds custom Windows App Check tokens to the staging app. |
+
+**Repository variable:**
+
+| Variable | Value | Effect |
+| --- | --- | --- |
 | `STAGING_FIREBASE_PROJECT` | *(optional)* staging project id | Overrides the `burnbar-staging` default if you named the project differently. |
 
 ```bash
 gh secret set STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER --env staging --repo Imagine-That-Ai/BurnBar
 gh secret set STAGING_GCP_DEPLOY_SERVICE_ACCOUNT     --env staging --repo Imagine-That-Ai/BurnBar
-gh variable set STAGING_ENABLED --body true --repo Imagine-That-Ai/BurnBar
+gh secret set STAGING_WINDOWS_FIREBASE_WEB_API_KEY   --env staging --repo Imagine-That-Ai/BurnBar
+gh secret set STAGING_WINDOWS_GOOGLE_OAUTH_CLIENT_ID --env staging --repo Imagine-That-Ai/BurnBar
+gh variable set STAGING_WINDOWS_APPCHECK_APP_ID --env staging --repo Imagine-That-Ai/BurnBar
+gh variable set STAGING_ENABLED --env staging --body true --repo Imagine-That-Ai/BurnBar
 ```
 
 ### 6. Staging functions runtime config (only if deploying functions)
