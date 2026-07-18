@@ -814,6 +814,100 @@ if [[ "${OB_REUSE_EXISTING_DEB:-0}" == "1" ]]; then
   fi
   echo "reusing_deb=$deb"
 else
+  stage_native_package_inputs() {
+    local native_root="$work_dir/native-package-inputs"
+    local iroh_target_dir="$native_root/iroh-target"
+    local iroh_library_dir="$iroh_target_dir/release"
+    local daemon_scratch="$native_root/daemon-build"
+    local swift_jobs="${OPENBURNBAR_LINUX_SWIFT_BUILD_JOBS:-4}"
+    local iroh_jobs="${OPENBURNBAR_LINUX_IROH_BUILD_JOBS:-1}"
+    local swift_bin_dir
+    local resource_bundle
+
+    # A release package must be built from a coherent native input set.  Keep
+    # caller-provided artifacts as an explicit fast path, but never accept a
+    # partial set: the Swift manifest requires both iroh libraries and the
+    # payload preflight requires the daemon, CLI, and resource bundle together.
+    if [[ -x "${OPENBURNBAR_LINUX_DAEMON_BIN:-}" \
+      && -x "${OPENBURNBAR_LINUX_CLI_BIN:-}" \
+      && -d "${OPENBURNBAR_LINUX_RESOURCE_BUNDLE:-}" \
+      && -f "${OPENBURNBAR_LINUX_IROH_LIBRARY_DIR:-}/libopenburnbar_iroh.so" \
+      && -f "${OPENBURNBAR_LINUX_IROH_LIBRARY_DIR:-}/libopenburnbar_iroh.a" ]]; then
+      echo "reusing_existing_native_package_inputs=true"
+      return 0
+    fi
+
+    mkdir -p "$native_root" "$iroh_target_dir" "$daemon_scratch"
+    echo "== stage iroh native package inputs =="
+    cargo build \
+      --manifest-path "$root/crates/openburnbar-iroh/Cargo.toml" \
+      --target-dir "$iroh_target_dir" \
+      --locked \
+      --release \
+      --jobs "$iroh_jobs"
+    for iroh_library in libopenburnbar_iroh.so libopenburnbar_iroh.a; do
+      if [[ ! -f "$iroh_library_dir/$iroh_library" ]]; then
+        echo "Missing staged iroh library: $iroh_library_dir/$iroh_library" >&2
+        exit 1
+      fi
+    done
+
+    # SwiftPM evaluates OpenBurnBarCore/Package.swift while resolving the
+    # daemon graph.  Export the iroh directory before either product build so
+    # the real FFI target is linked instead of silently pruning it.
+    export OPENBURNBAR_LINUX_IROH_LIBRARY_DIR="$iroh_library_dir"
+    echo "== stage OpenBurnBarDaemon and CLI native package inputs =="
+    swift build \
+      --disable-automatic-resolution \
+      --jobs "$swift_jobs" \
+      --package-path "$root/OpenBurnBarDaemon" \
+      --scratch-path "$daemon_scratch" \
+      -c release \
+      --product OpenBurnBarDaemon \
+      -Xlinker \
+      --allow-shlib-undefined
+    swift build \
+      --disable-automatic-resolution \
+      --jobs "$swift_jobs" \
+      --package-path "$root/OpenBurnBarDaemon" \
+      --scratch-path "$daemon_scratch" \
+      -c release \
+      --product OpenBurnBarCLI \
+      -Xlinker \
+      --allow-shlib-undefined
+
+    swift_bin_dir="$(swift build \
+      --disable-automatic-resolution \
+      --jobs "$swift_jobs" \
+      --package-path "$root/OpenBurnBarDaemon" \
+      --scratch-path "$daemon_scratch" \
+      -c release \
+      --show-bin-path)"
+    resource_bundle="$(find "$swift_bin_dir" -maxdepth 1 -type d \
+      -name 'OpenBurnBarCore_OpenBurnBarCore.resources' -print -quit)"
+    export OPENBURNBAR_LINUX_DAEMON_BIN="$swift_bin_dir/OpenBurnBarDaemon"
+    export OPENBURNBAR_LINUX_CLI_BIN="$swift_bin_dir/OpenBurnBarCLI"
+    export OPENBURNBAR_LINUX_RESOURCE_BUNDLE="$resource_bundle"
+
+    for native_input in \
+      "$OPENBURNBAR_LINUX_DAEMON_BIN" \
+      "$OPENBURNBAR_LINUX_CLI_BIN"; do
+      if [[ ! -x "$native_input" ]]; then
+        echo "Missing staged Swift executable: $native_input" >&2
+        exit 1
+      fi
+    done
+    if [[ ! -d "$OPENBURNBAR_LINUX_RESOURCE_BUNDLE" ]]; then
+      echo "Missing staged OpenBurnBarCore resource bundle: ${OPENBURNBAR_LINUX_RESOURCE_BUNDLE:-unset}" >&2
+      exit 1
+    fi
+    printf 'daemon=%s\ncli=%s\nresource_bundle=%s\niroh_library_dir=%s\n' \
+      "$OPENBURNBAR_LINUX_DAEMON_BIN" \
+      "$OPENBURNBAR_LINUX_CLI_BIN" \
+      "$OPENBURNBAR_LINUX_RESOURCE_BUNDLE" \
+      "$OPENBURNBAR_LINUX_IROH_LIBRARY_DIR"
+  }
+
   build_root="$work_dir/build-root"
   mkdir -p "$build_root/apps" "$build_root/packages" "$build_root/scripts" "$build_root/packaging"
   cp -R "$root/apps/linux-desktop" "$build_root/apps/linux-desktop"
@@ -824,6 +918,10 @@ else
   done
   cp -R "$root/scripts/linux-port" "$build_root/scripts/linux-port"
   cp -R "$root/packaging/linux" "$build_root/packaging/linux"
+  mkdir -p "$build_root/OpenBurnBarDaemon/Resources"
+  cp -R "$root/OpenBurnBarDaemon/Resources/PlaywrightBridge" \
+    "$build_root/OpenBurnBarDaemon/Resources/PlaywrightBridge"
+  stage_native_package_inputs
   cd "$build_root/apps/linux-desktop"
   npm ci --no-audit --no-fund
   npm run build

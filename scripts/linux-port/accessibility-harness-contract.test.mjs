@@ -65,6 +65,23 @@ test('packaged session provisions and exercises the Linux accessibility stack', 
   ]) assert.ok(verifier.includes(marker), marker);
 });
 
+test('fresh packaged sessions stage native payload inputs before Tauri packaging', () => {
+  assert.match(session, /stage_native_package_inputs\(\)/u);
+  assert.match(session, /cargo build[\s\S]*--manifest-path "\$root\/crates\/openburnbar-iroh\/Cargo\.toml"[\s\S]*--target-dir "\$iroh_target_dir"[\s\S]*--locked[\s\S]*--release/u);
+  assert.match(session, /libopenburnbar_iroh\.so/u);
+  assert.match(session, /libopenburnbar_iroh\.a/u);
+  assert.match(session, /--scratch-path "\$daemon_scratch"/u);
+  assert.match(session, /--product OpenBurnBarDaemon/u);
+  assert.match(session, /--product OpenBurnBarCLI/u);
+  assert.match(session, /OPENBURNBAR_LINUX_RESOURCE_BUNDLE/u);
+  assert.match(session, /OpenBurnBarDaemon\/Resources\/PlaywrightBridge/u);
+
+  const stageIndex = session.indexOf('stage_native_package_inputs');
+  const packageIndex = session.indexOf('npm run tauri:build');
+  assert.ok(stageIndex >= 0 && packageIndex > stageIndex, 'native staging must precede Tauri packaging');
+  assert.match(session, /OB_REUSE_EXISTING_DEB:-0/u);
+});
+
 test('toolchain and artifact reuse preserve the complete accessibility proof', () => {
   for (const dependency of ['orca', 'python3-pyatspi']) {
     assert.match(toolchainDockerfile, new RegExp(`\\n        ${dependency} \\\\`), dependency);
