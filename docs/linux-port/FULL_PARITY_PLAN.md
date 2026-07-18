@@ -23,11 +23,11 @@ shared daemon foundations are substantially implemented, while the remaining
 work is the macOS-level **surface depth**, **installed runtime evidence**,
 **visual/system integration**, and **release/promotion** layer.
 
-### Current continuation checkpoint — 2026-07-17
+### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 
-The integration branch is at `85b167205` with executable Linux behavior suites,
-desktop-shell hardening, and nightly evidence hardening plus
-nightly evidence hardening: the real
+The code checkpoint used by the latest verification is
+`3a9010e229ccad6263b45de622aa97f4e706b6f5`, with executable Linux behavior suites,
+desktop-shell hardening, and the real
 P-39 parser differential producer (`dd7c588db`, focused suite **45/45**) and
 provider-catalog enforcement in first-run onboarding (`29fa77791`). Candidate run
 `29546157464` passed both release architectures and the installed P-40 proof at
@@ -64,13 +64,33 @@ The latest continuation also adds Arch/pacman update-channel handling and
 fail-closed notification payload/route validation (`85b167205`, `a852af8c5`).
 These source and focused-test improvements do not promote any ledger row.
 
+Exact-head Release run `29639365863` completed successfully at
+`3d63b856b8ed081675be5abdd6a879b0d02cce06` after a transient aarch64 Arch
+mirror timeout was cleared by rerun job `88070073214`; x86_64 job `88070073419`
+and aggregate job `88073048979` passed as well. Package construction,
+ownership/install/uninstall, rollback/data preservation, daemon/desktop/tray,
+route/accessibility sessions, and attestation passed. Aggregate digest:
+`sha256:a0a62617a6cb44b5413e2e7236d29142038727abee6c93c2eb61442c42480287`.
+Exact-head Nightly run `29639366606` completed at the same head. macOS/Linux
+matched soak, GNOME Wayland portal, Arch/wlroots, and Fedora/KDE passed. Ubuntu
+GNOME/X11 passed shell, Swift, AT-SPI, onboarding, text-expansion, and matched
+workload checks but failed `route.navigation` p95 at `161.8 ms` versus the
+`120 ms` budget. The matched soak passed with Linux RSS growth of 81,920 bytes.
+Source commit `fb20c38dc2` now defers the packaged route body behind a bounded
+skeleton and two-frame/idle boundary; a fresh Nightly must prove the X11 budget.
+
+The physical iPad preflight passes but approval XCTest execution is blocked by
+the worktree hygiene ceiling; production callable drift and the missing UTM VM
+remain external blockers.
+
 The honest status is therefore **0/40 product** and **0/7 environment** certified.
 A non-certifying engineering maturity estimate is approximately **68%**. The
-remaining order is: recover the X11 failure evidence and rerun nightly, produce a
-fresh exact-head signed candidate, deploy and verify production App Check/OAuth
-callables, execute approval on the physical iPad, close the six Linux desktop
-matrix rows, collect installed Computer Use/Mercury/SmartHub/IME/keyring/
-accessibility/performance/update receipts, then promote all 40 requirement rows.
+remaining order is: clear the fresh X11 route budget, produce a signed candidate
+from that verified head, deploy and verify production App Check/OAuth callables,
+execute approval on the physical iPad, close the remaining Linux desktop,
+architecture, keyring, and portal rows, collect installed Computer Use/Mercury/
+SmartHub/IME/accessibility/performance/update receipts, then promote all 40
+requirement rows.
 
 ---
 
@@ -142,6 +162,7 @@ accessibility/performance/update receipts, then promote all 40 requirement rows.
 | R1 | Release scripts: `upload-linux-downloads-r2.sh`, update/rollback feed, `verify-public-linux-download-trust.sh`. | `scripts/linux-port/`, `scripts/ci/`, `Makefile` | `verify-linux-release.mjs --allow-blocked` passes; scripts run green. |
 | R2 | Sentry + observability: add `sentry-rust` to Tauri and daemon, configure DSN. | `apps/linux-desktop/src-tauri/Cargo.toml`, `OpenBurnBarDaemon/` | Build passes; errors captured in dev. |
 | R3 | Nightly matrix: fix Wayland/Fedora/Arch runners, add `xdg-desktop-portal` consent test. | `.github/workflows/linux-nightly.yml` | Nightly matrix produces artifacts. |
+| R4 | Route performance closure: validate `fb20c38dc2` packaged route-body skeleton/idle hydration on Ubuntu GNOME/X11; preserve eager fixture/browser behavior. | `apps/linux-desktop/src/surfaces/SurfaceRouter.tsx`, `SurfaceRouter.test.tsx`, `system/system.css`, `.github/workflows/linux-nightly.yml` | Fresh exact-head Nightly route p95 <= 120 ms; no threshold relaxation; route shell remains accessible during hydration. |
 | D1 | Pensieve watcher: replace stub with inotify. | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/PensieveKnowledgeWatcherLinux.swift` | `OpenBurnBarDaemonLinuxGatewayTests` pass. |
 | D2 | Switcher shell: implement `BurnBarCLIShellExecutor` and `ShimInstaller` for Linux. | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/OpenBurnBarSwitcherShellLinux.swift` | CLI tests pass. |
 | D3 | Test backfill: replace Linux compile-only paths with deterministic behavior suites; retain placeholders only as platform fallbacks. | `OpenBurnBarCore/Tests/*/Linux*BehaviorTests.swift`, `OpenBurnBarCore/Package.swift`, `scripts/linux-port/linux-swift-test-manifest.json` | Linux manifest declares 9 suites / 92 minimum tests; each selected target executes non-tautological tests and `swift test` passes on the release runner. |

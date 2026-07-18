@@ -18,11 +18,11 @@ known platform divergences.
 
 Linux is not at full macOS parity.
 
-### Live continuation checkpoint — 2026-07-17
+### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 
 The authoritative ledger is **0/40 product requirements** and **0/7 environment
-receipts**; `productParityClaim=false`. The integration branch currently ends at
-`85b167205`. Recent source work includes the real P-39 parser differential
+receipts**; `productParityClaim=false`. The code checkpoint used by the latest
+verification is `3a9010e229ccad6263b45de622aa97f4e706b6f5`. Recent source work includes the real P-39 parser differential
 producer (`dd7c588db`, **45/45** focused checks) and provider-catalog enforcement
 for first-run onboarding (`29fa77791`). Candidate run `29546157464` passed both
 architectures and the installed P-40 RPC proof at `46425c540`, but it is stale
@@ -58,13 +58,43 @@ fail-closed notification payload/route validation (`85b167205`, `a852af8c5`).
 These are bounded source improvements; installed update/rollback and desktop
 host receipts remain required.
 
+### Exact-head release verification - 2026-07-18
+
+Exact-head Release workflow `29639365863` completed successfully at
+`3d63b856b8ed081675be5abdd6a879b0d02cce06`. The first aarch64 dependency-smoke
+attempt hit a transient Arch mirror timeout; rerun job `88070073214` passed,
+alongside x86_64 job `88070073419` and aggregate job `88073048979`. The two
+architecture jobs and aggregate covered package construction, DEB/RPM/Arch
+ownership/install/uninstall, rollback/data preservation, packaged daemon and
+desktop/tray/accessibility/route sessions, and attestation. Aggregate evidence
+digest: `sha256:a0a62617a6cb44b5413e2e7236d29142038727abee6c93c2eb61442c42480287`.
+
+Exact-head Nightly workflow `29639366606` completed at the same source head.
+macOS matched soak, Linux matched soak, GNOME Wayland portal, Arch/wlroots,
+and Fedora/KDE jobs passed. Ubuntu GNOME/X11 passed Swift, shell, AT-SPI,
+onboarding, text-expansion, and matched-workload checks but failed the route
+performance budget: `route.navigation` p95 `161.8 ms` across 33 samples versus
+the `120 ms` threshold. The previous `263.2 ms` p95 was reduced by
+`15e0037531`, `9e391fe72`, and `3d63b856b8`; the remaining outliers are
+onboarding/overview startup plus projects, settings, and account transitions.
+The matched 30-minute comparison passed with Linux RSS growth of 81,920 bytes.
+Source commit `fb20c38dc2` adds packaged-only route-body skeleton/idle hydration
+and deterministic scheduler tests; the threshold remains unchanged and a fresh
+Nightly is still required to prove the X11 p95 clears it.
+
+The physical iPad preflight passed, but the focused approval build was stopped
+by the 10 GiB hygiene guard before XCTest discovery; production callable
+inventory is drifted and the UTM VM remains unavailable. These facts are
+recorded in the independent audit and do not promote any ledger row.
+
 For planning purposes only, source maturity is approximately **68%**. This is
-not a release percentage. The remaining dependency order is: diagnose and close
-the X11 shell smoke, produce a fresh signed exact-head candidate, deploy and
-verify production App Check/OAuth callables, run the physical iPad approval
-journey, close the six remaining Linux desktop environments, collect installed
-Computer Use/Mercury/SmartHub/IME/keyring/accessibility/performance/update
-receipts, and only then promote the 40 product rows.
+not a release percentage. The remaining dependency order is: clear the fresh
+X11 route budget with the packaged route-body follow-up, produce a signed
+candidate from that verified head, deploy and verify production App Check/OAuth
+callables, run the physical iPad approval journey, close the remaining Linux
+desktop/architecture/keyring/portal rows, collect installed Computer Use,
+Mercury, SmartHub, IME, accessibility, performance, and update receipts, and
+only then promote the 40 product rows.
 
 ### Execution checkpoint — 2026-07-14
 
@@ -508,8 +538,13 @@ Full parity remains **NO-GO** until all of these gates are met in order:
    enrollment, fingerprint confirmation, approval, refresh, revoke, and sign-out.
 7. Prove real Browser Computer Use actions, approval/deny, panic, audit/tamper,
    credential loss, account switch, and daemon restart/replay behavior.
-8. Complete GNOME X11/Wayland, KDE Wayland, wlroots, architecture, accessibility,
-   performance, update/rollback, and release-promotion certification.
+8. Clear the exact-head Ubuntu GNOME/X11 route budget. Commit `fb20c38dc2`
+   defers packaged route bodies behind a stable skeleton and idle hydration;
+   rerun the Nightly and require `route.navigation` p95 <= 120 ms without
+   relaxing the threshold.
+9. Complete GNOME X11/Wayland, KDE Wayland, wlroots, architecture,
+   accessibility, performance, update/rollback, and release-promotion
+   certification.
 
 An iPhone or simulator may support development coverage, but neither is accepted
 as a substitute for the physical-iPad authority gate in this plan.
@@ -1504,7 +1539,12 @@ The original foundation sequence is substantially implemented. From the
    - Run GNOME X11/Wayland, KDE Wayland, wlroots, x86_64/aarch64,
      accessibility, performance, update/rollback, and package lifecycle proof.
 
-8. **Remaining product-parity PRs**
+8. **Route performance closure**
+   - Validate `fb20c38dc2` on the exact packaged Ubuntu GNOME/X11 job. Keep the
+     route shell accessible during two-frame/idle hydration, confirm fixture
+     and browser previews remain eager, and reject any threshold relaxation.
+
+9. **Remaining product-parity PRs**
    - Complete installed chat export/resume, pop-out, remaining backends,
      provider/account/cloud, activity source resolution and full-history export,
      passphrase-wrapped recovery bundles, live Insights qualitative/citation
@@ -1514,7 +1554,7 @@ The original foundation sequence is substantially implemented. From the
      lifecycle source parity is covered by PR #1688; installed/release evidence
      and the 10k-session migration acceptance suite remain open.
 
-9. **Promotion and public truth-sync PR**
+10. **Promotion and public truth-sync PR**
    - Require zero Critical/High gaps, strict evidence closure, valid signed public
      feed, current support matrix, release/rollback docs, and exact-candidate
      parity before stable promotion.

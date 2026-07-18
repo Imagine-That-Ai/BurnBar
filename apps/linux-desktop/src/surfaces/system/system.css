@@ -23,6 +23,26 @@
   max-width: 28rem;
 }
 
+/* Route navigation paints this stable shell before the packaged surface body
+ * hydrates. Keep the content field occupied so the route does not jump when
+ * its heavier panels mount on an idle turn. */
+.surface-body-skeleton {
+  min-height: min(620px, calc(100vh - 168px));
+  align-content: start;
+  padding: clamp(32px, 7vh, 88px) clamp(24px, 6vw, 96px);
+  border-block: 1px solid var(--color-glass-line);
+  background: color-mix(in srgb, var(--color-surface) 86%, transparent);
+}
+
+.surface-body-skeleton .system-skeleton-line:first-child {
+  width: min(16rem, 56vw);
+  height: 1.25rem;
+}
+
+.surface-body-skeleton .system-skeleton-line:last-child {
+  width: min(28rem, 76vw);
+}
+
 .system-path-row {
   display: flex;
   flex-wrap: wrap;
