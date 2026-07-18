@@ -57,10 +57,11 @@ Cloud Functions:
 - Secret Manager secret `WINDOWS_TPM_VERIFIER_TOKEN` (minimum 32 characters;
   bound only to `mintWindowsAppCheckToken`)
 
-Enable Firestore TTL on the `expiresAt` field for the
-`windows_app_check_challenges` collection group so consumed/expired challenge
-receipts are eventually deleted; transactional replay enforcement uses the
-stored document until TTL cleanup.
+The committed TTL manifest declares the `expiresAt` field for the
+`windows_app_check_challenges` collection group. Deploy it to staging and verify
+the live policy before enabling the mint path; consumed/expired challenge
+receipts remain available for transactional replay enforcement until TTL
+cleanup.
 
 Windows verifier service:
 

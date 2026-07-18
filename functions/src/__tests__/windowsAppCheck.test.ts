@@ -37,6 +37,9 @@ const {
   DEFAULT_MINT_TTL_MS,
   TPM_ATTESTATION_KIND,
   issueWindowsAppCheckChallengeCore,
+  MAX_TPM_PLATFORM_CLAIM_BASE64_LENGTH,
+  MAX_TPM_SUBJECT_PUBLIC_KEY_BASE64_LENGTH,
+  MAX_TPM_CHALLENGE_ID_LENGTH,
 } = __testing__;
 
 const NOW = 1_900_000_000_000;
@@ -332,6 +335,7 @@ describe("VAL-P0-AC-013 production TPM verifier and challenge binding", () => {
 
   it("mints only after the Windows verifier binds uid/app/challenge/nonce and the challenge is consumed", async () => {
     const fetcher = async (_provider: string, _operation: string, _url: string | URL, init?: RequestInit) => {
+      expect(init?.redirect).toBe("error");
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       expect(body).toMatchObject({
         uid: "user-1",
@@ -384,6 +388,45 @@ describe("VAL-P0-AC-013 production TPM verifier and challenge binding", () => {
     });
     expect(result.appId).toBe(realAppId);
     expect(consumeCalls).toBe(1);
+  });
+
+  it("rejects oversized TPM fields before calling the verifier service", async () => {
+    let fetchCalls = 0;
+    const verifiers = buildWindowsAttestationVerifiers({
+      allowMock: false,
+      expectedAppId: realAppId,
+      tpmVerifierURL: "https://attestation.example.test/verify",
+      tpmVerifierToken: "d".repeat(32),
+      tpmVerifierFetch: async () => {
+        fetchCalls += 1;
+        throw new Error("oversized claims must not reach the network");
+      },
+    });
+    const oversizedClaims: WindowsAttestationClaim[] = [
+      { ...tpmClaim, mac: "A".repeat(MAX_TPM_PLATFORM_CLAIM_BASE64_LENGTH + 1) },
+      { ...tpmClaim, subjectPublicKey: "A".repeat(MAX_TPM_SUBJECT_PUBLIC_KEY_BASE64_LENGTH + 1) },
+      { ...tpmClaim, challengeId: "c".repeat(MAX_TPM_CHALLENGE_ID_LENGTH + 1) },
+    ];
+
+    for (const claim of oversizedClaims) {
+      await expect(
+        mintWindowsAppCheckTokenCore({
+          claim,
+          verifiers,
+          allowedAppIDs: [realAppId],
+          createToken: stubMinter(),
+          nowMillis: NOW,
+          uid: "user-1",
+          challengeStore: {
+            issue: async () => {
+              throw new Error("not used");
+            },
+            consume: async () => "ok",
+          },
+        }),
+      ).rejects.toThrow(/malformed/i);
+    }
+    expect(fetchCalls).toBe(0);
   });
 
   it("fails closed when verifier service binding differs or the challenge was replayed", async () => {

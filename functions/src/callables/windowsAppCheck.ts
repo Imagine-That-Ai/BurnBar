@@ -74,6 +74,12 @@ const TPM_ATTESTATION_KIND = "tpm" as const;
 const TPM_ATTESTATION_MAX_AGE_MS = 5 * 60 * 1000;
 const CHALLENGE_TTL_MS = 2 * 60 * 1000;
 const WINDOWS_CHALLENGE_COLLECTION = "windows_app_check_challenges";
+const MAX_TPM_UID_LENGTH = 256;
+const MAX_TPM_APP_ID_LENGTH = 256;
+const MAX_TPM_CHALLENGE_ID_LENGTH = 256;
+const MAX_TPM_SUBJECT_PUBLIC_KEY_BASE64_LENGTH = 128;
+const MAX_TPM_PLATFORM_CLAIM_BYTES = 64 * 1024;
+const MAX_TPM_PLATFORM_CLAIM_BASE64_LENGTH = 4 * Math.ceil(MAX_TPM_PLATFORM_CLAIM_BYTES / 3);
 const WINDOWS_TPM_VERIFIER_TOKEN = defineSecret("WINDOWS_TPM_VERIFIER_TOKEN");
 
 /** A Windows platform attestation claim presented to the mint endpoint. */
@@ -196,12 +202,18 @@ function isWellFormedTpmClaim(claim: WindowsAttestationClaim, uid: string | unde
   return (
     typeof uid === "string" &&
     uid.length > 0 &&
+    uid.length <= MAX_TPM_UID_LENGTH &&
+    claim.appId.length > 0 &&
+    claim.appId.length <= MAX_TPM_APP_ID_LENGTH &&
     typeof claim.challengeId === "string" &&
     claim.challengeId.length >= 16 &&
+    claim.challengeId.length <= MAX_TPM_CHALLENGE_ID_LENGTH &&
     typeof claim.subjectPublicKey === "string" &&
     claim.subjectPublicKey.length >= 32 &&
+    claim.subjectPublicKey.length <= MAX_TPM_SUBJECT_PUBLIC_KEY_BASE64_LENGTH &&
     typeof claim.mac === "string" &&
     claim.mac.length >= 32 &&
+    claim.mac.length <= MAX_TPM_PLATFORM_CLAIM_BASE64_LENGTH &&
     typeof claim.nonce === "string" &&
     claim.nonce.length >= MIN_NONCE_LENGTH &&
     claim.nonce.length <= MAX_NONCE_LENGTH &&
@@ -236,6 +248,7 @@ class WindowsTpmAttestationVerifier implements WindowsAttestationVerifier {
     try {
       const response = await this.fetcher("windows-tpm-attestation", "verify-claim", this.verifierURL, {
         method: "POST",
+        redirect: "error",
         headers: {
           authorization: `Bearer ${this.verifierToken}`,
           "content-type": "application/json",
@@ -522,6 +535,9 @@ export const __testing__ = {
   DEFAULT_MINT_TTL_MS,
   TPM_ATTESTATION_KIND,
   CHALLENGE_TTL_MS,
+  MAX_TPM_PLATFORM_CLAIM_BASE64_LENGTH,
+  MAX_TPM_SUBJECT_PUBLIC_KEY_BASE64_LENGTH,
+  MAX_TPM_CHALLENGE_ID_LENGTH,
   makeReplayStore: (): Set<string> => new Set<string>(),
 };
 
