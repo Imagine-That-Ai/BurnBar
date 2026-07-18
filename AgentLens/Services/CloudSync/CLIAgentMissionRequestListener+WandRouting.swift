@@ -64,14 +64,8 @@ private enum CLIAgentMissionWandRoutingError: LocalizedError, Sendable {
 }
 
 extension CLIAgentMissionRequestListener {
-    static func shouldResolveWandRouting(
-        context: MissionGroupClaimContext?,
-        data: [String: Any]
-    ) -> Bool {
-        guard context != nil else { return false }
-        let requestedModelID = (data["requestedModelID"] as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return requestedModelID?.isEmpty ?? true
+    static func shouldResolveWandRouting(context: MissionGroupClaimContext?, data: [String: Any]) -> Bool {
+        context != nil && (data["requestedModelID"] as? String)?.nilIfEmpty == nil
     }
 
     func resolveWandRoutingIfNeeded(
@@ -134,20 +128,17 @@ private enum CLIAgentMissionWandRouter {
                 arguments += ["--repo-root", repoRoot.path]
             }
             process.arguments = arguments
-
             var environment = ProcessInfo.processInfo.environment
             environment["OPENBURNBAR_WAND_PARALLEL_MAX"] = "\(context.tierCap)"
             if let targetProject {
                 environment["OPENBURNBAR_WAND_TARGET_PROJECT"] = targetProject
             }
             process.environment = environment
-
             let stdout = Pipe()
             let stderr = Pipe()
             process.standardOutput = stdout
             process.standardError = stderr
             try process.run()
-
             let deadline = Date().addingTimeInterval(12)
             while process.isRunning && Date() < deadline {
                 try await Task.sleep(nanoseconds: 50_000_000)
@@ -157,7 +148,6 @@ private enum CLIAgentMissionWandRouter {
                 process.waitUntilExit()
                 throw CLIAgentMissionWandRoutingError.selectorFailed("selector timed out")
             }
-
             let output = stdout.fileHandleForReading.readDataToEndOfFile()
             let errorOutput = stderr.fileHandleForReading.readDataToEndOfFile()
             let decoder = JSONDecoder()
@@ -178,7 +168,6 @@ private enum CLIAgentMissionWandRouter {
             }
         }.value
     }
-
     private static func selectorScriptURL() -> URL? {
         let env = ProcessInfo.processInfo.environment
         if let override = env["OPENBURNBAR_MINISTRY_SELECTOR_CLI"]?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {

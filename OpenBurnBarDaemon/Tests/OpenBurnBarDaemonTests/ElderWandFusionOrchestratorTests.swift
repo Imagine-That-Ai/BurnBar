@@ -146,7 +146,8 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
 
         guard case .buffered = result else {
-            return XCTFail("A duplicate-free panel should still synthesize, got \(result)")
+            XCTFail("A duplicate-free panel should still synthesize, got \(result)")
+            return
         }
         let panelRecords = await recorder.records.filter {
             if case .panel = $0.stage { return true }
@@ -183,7 +184,8 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
 
         guard case .buffered = result else {
-            return XCTFail("Malformed judge output should degrade to raw panel evidence, got \(result)")
+            XCTFail("Malformed judge output should degrade to raw panel evidence, got \(result)")
+            return
         }
         let recordedSynthesisBody = await synthesisBodies.last()
         let synthesisBody = try XCTUnwrap(recordedSynthesisBody)
@@ -239,7 +241,8 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
 
         guard case .buffered = result else {
-            return XCTFail("One timed-out panel member should not discard a successful answer, got \(result)")
+            XCTFail("One timed-out panel member should not discard a successful answer, got \(result)")
+            return
         }
         let failures = await recorder.records.filter { !$0.succeeded }
         XCTAssertEqual(failures.count, 1)
@@ -268,7 +271,8 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         let result = await task.value
 
         guard case .failed(let failure) = result else {
-            return XCTFail("Cancellation should be terminal, got \(result)")
+            XCTFail("Cancellation should be terminal, got \(result)")
+            return
         }
         let attemptedModels = await probe.models()
         let records = await recorder.records
