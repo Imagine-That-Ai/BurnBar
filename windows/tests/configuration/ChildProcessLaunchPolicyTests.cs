@@ -28,6 +28,7 @@ public sealed class ChildProcessLaunchPolicyTests
             "project-code.static-parser",
             "quota.claude-statusline-forwarder",
             "switcher.conpty-cli",
+            "usage.native-parser-worker",
         }, ids);
     }
 

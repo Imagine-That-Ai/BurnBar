@@ -179,6 +179,8 @@
     <ProjectReference Include="../OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.MemorySearch/OpenBurnBar.App.MemorySearch.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />
+    <ProjectReference Include="../OpenBurnBar.Cli/OpenBurnBar.Cli.csproj"
+                      ReferenceOutputAssembly="false" />
     <ProjectReference Include="../OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.ManagedAgentRuntime/OpenBurnBar.App.ManagedAgentRuntime.csproj" />
     <ProjectReference Include="../OpenBurnBar.App.PrivilegedInput/OpenBurnBar.App.PrivilegedInput.csproj" />
@@ -270,6 +272,52 @@
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!--
+    The long-lived app executes native usage scans in a short-lived companion
+    process. Keep the worker in the normal build graph without taking an
+    assembly reference, then stage its complete framework-dependent launch set
+    beside the app for `dotnet run` and unpackaged development builds.
+  -->
+  <Target Name="StageUsageScanWorker"
+          AfterTargets="Build"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\OpenBurnBar.Cli.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);Platform=$(Platform)">
+      <Output TaskParameter="TargetOutputs"
+              ItemName="_OpenBurnBarUsageScanWorkerPlatformTarget" />
+    </MSBuild>
+    <MSBuild Projects="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\OpenBurnBar.Cli.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);Platform=AnyCPU">
+      <Output TaskParameter="TargetOutputs"
+              ItemName="_OpenBurnBarUsageScanWorkerAnyCpuTarget" />
+    </MSBuild>
+    <ItemGroup>
+      <_OpenBurnBarUsageScanWorkerTarget
+        Include="@(_OpenBurnBarUsageScanWorkerPlatformTarget)"
+        Condition="Exists('%(_OpenBurnBarUsageScanWorkerPlatformTarget.Identity)')" />
+      <_OpenBurnBarUsageScanWorkerTarget
+        Include="@(_OpenBurnBarUsageScanWorkerAnyCpuTarget)"
+        Condition="'@(_OpenBurnBarUsageScanWorkerTarget)' == '' and Exists('%(_OpenBurnBarUsageScanWorkerAnyCpuTarget.Identity)')" />
+    </ItemGroup>
+    <Error Condition="'@(_OpenBurnBarUsageScanWorkerTarget)' == ''"
+           Text="The OpenBurnBar usage-scan worker build produced no target output." />
+    <ItemGroup>
+      <_OpenBurnBarUsageScanWorkerFile
+        Include="@(_OpenBurnBarUsageScanWorkerTarget->'%(RootDir)%(Directory)OpenBurnBar.Cli.exe')" />
+      <_OpenBurnBarUsageScanWorkerFile
+        Include="@(_OpenBurnBarUsageScanWorkerTarget->'%(RootDir)%(Directory)OpenBurnBar.Cli.dll')" />
+      <_OpenBurnBarUsageScanWorkerFile
+        Include="@(_OpenBurnBarUsageScanWorkerTarget->'%(RootDir)%(Directory)OpenBurnBar.Cli.deps.json')" />
+      <_OpenBurnBarUsageScanWorkerFile
+        Include="@(_OpenBurnBarUsageScanWorkerTarget->'%(RootDir)%(Directory)OpenBurnBar.Cli.runtimeconfig.json')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OpenBurnBarUsageScanWorkerFile)"
+          DestinationFolder="$(TargetDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
 
   <!--
     Managed PE-hardening props (Phase 5 · R19): HighEntropyVA + Deterministic so the shipped
