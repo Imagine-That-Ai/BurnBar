@@ -30,8 +30,8 @@ public sealed class CompanionCliPackagingTests
         Assert.Contains("OpenBurnBar*.exe,OpenBurnBar*.dll", workflow, StringComparison.Ordinal);
         Assert.Contains("OpenBurnBar.Cli.deps.json", workflow, StringComparison.Ordinal);
         Assert.Contains("OpenBurnBar.Cli.runtimeconfig.json", workflow, StringComparison.Ordinal);
-        Assert.Contains("OPENBURNBAR_REQUIRE_USAGE_SCAN_WORKER_INTEGRATION", workflow, StringComparison.Ordinal);
-        Assert.Contains("OPENBURNBAR_USAGE_SCAN_WORKER_PATH", workflow, StringComparison.Ordinal);
+        Assert.Contains("OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION", workflow, StringComparison.Ordinal);
+        Assert.Contains("FullyQualifiedName~NativeUsageEngineIntegrationTests", workflow, StringComparison.Ordinal);
     }
 
     [Fact]

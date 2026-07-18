@@ -52,7 +52,8 @@ dotnet test windows/tests/configuration/OpenBurnBar.App.Configuration.Tests.cspr
 dotnet test windows/tests/dist/OpenBurnBar.Dist.Tests.csproj -c Release
 ```
 
-The real worker/native-engine integration is fail-closed in the Windows release
-workflow through `OPENBURNBAR_REQUIRE_USAGE_SCAN_WORKER_INTEGRATION=1`. A new
-signed candidate must repeat the physical x64 performance protocol; unit and
-hosted-runner success do not promote the failed `windows-v1.0.35` evidence.
+The Windows release workflow's existing native-engine integration run discovers
+the sibling CLI from `OPENBURNBAR_CORE_CABI_PATH` and exercises the real worker
+from that exact published layout before signing. A new signed candidate must
+repeat the physical x64 performance protocol; unit and hosted-runner success do
+not promote the failed `windows-v1.0.35` evidence.

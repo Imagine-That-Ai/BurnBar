@@ -11,7 +11,7 @@ public sealed class NativeUsageEngineIntegrationTests
     [Fact]
     public async Task ScanAsync_RealWorker_IsolatesNativeParserProcess()
     {
-        string? workerPath = Environment.GetEnvironmentVariable("OPENBURNBAR_USAGE_SCAN_WORKER_PATH");
+        string? workerPath = ResolveWorkerPath();
         bool required = string.Equals(
             Environment.GetEnvironmentVariable("OPENBURNBAR_REQUIRE_USAGE_SCAN_WORKER_INTEGRATION"),
             "1",
@@ -51,6 +51,31 @@ public sealed class NativeUsageEngineIntegrationTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    private static string? ResolveWorkerPath()
+    {
+        string? explicitPath = Environment.GetEnvironmentVariable("OPENBURNBAR_USAGE_SCAN_WORKER_PATH");
+        if (!string.IsNullOrWhiteSpace(explicitPath))
+        {
+            return explicitPath;
+        }
+
+        string? nativeEnginePath = Environment.GetEnvironmentVariable("OPENBURNBAR_CORE_CABI_PATH");
+        if (string.IsNullOrWhiteSpace(nativeEnginePath))
+        {
+            return null;
+        }
+
+        string? publishedRoot = Path.GetDirectoryName(Path.GetFullPath(nativeEnginePath));
+        if (string.IsNullOrWhiteSpace(publishedRoot))
+        {
+            return null;
+        }
+
+        string workerName = OperatingSystem.IsWindows() ? "OpenBurnBar.Cli.exe" : "OpenBurnBar.Cli";
+        string candidate = Path.Combine(publishedRoot, workerName);
+        return File.Exists(candidate) ? candidate : null;
     }
 
     [Fact]
