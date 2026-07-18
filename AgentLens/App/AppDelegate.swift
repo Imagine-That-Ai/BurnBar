@@ -97,9 +97,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var menuBarIconObservation: Any?
     var updateBadgeObservation: Any?
     var updateBadgeView: NSView?
-    private static let performanceGateVisibilityNotification = Notification.Name(
-        "com.openburnbar.performance-gate.window-visibility"
-    )
     private var performanceGateVisibilityObserver: NSObjectProtocol?
     private var performanceGateHiddenWindows: [NSWindow] = []
     private var performanceGateWindowDidExposeObserver: NSObjectProtocol?
@@ -165,8 +162,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
               performanceGateVisibilityObserver == nil else { return }
 
         performanceGateVisibilityObserver = DistributedNotificationCenter.default().addObserver(
-            forName: Self.performanceGateVisibilityNotification,
-            object: String(ProcessInfo.processInfo.processIdentifier),
+            forName: OpenBurnBarRuntime.performanceGateVisibilityNotification,
+            object: OpenBurnBarRuntime.currentPerformanceGateNotificationObject,
             queue: .main
         ) { [weak self] notification in
             guard let visible = notification.userInfo?["visible"] as? Bool else { return }

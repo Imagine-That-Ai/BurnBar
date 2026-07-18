@@ -28,7 +28,50 @@ final class MacOSIdleOcclusionGateTests: XCTestCase {
         )
     }
 
+    func testPolicy_performanceGateTrueOverride_activatesOtherwiseOccludedState() {
+        XCTAssertTrue(
+            OcclusionVisibilityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: [],
+                performanceGateOverride: true
+            ),
+            "An explicit performance-gate enable must take precedence over ordinary occluded-state behavior."
+        )
+    }
+
     // MARK: - OcclusionVisibilityPolicy: live window state
+
+    func testPolicy_performanceGateFalseOverride_deactivatesOtherwiseVisibleState() {
+        XCTAssertFalse(
+            OcclusionVisibilityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: .visible,
+                performanceGateOverride: false
+            ),
+            "An explicit performance-gate disable must take precedence over ordinary visible-state behavior."
+        )
+    }
+
+    func testPolicy_nilPerformanceGateOverride_preservesOrdinaryStateBehavior() {
+        XCTAssertTrue(
+            OcclusionVisibilityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: .visible,
+                performanceGateOverride: nil
+            )
+        )
+        XCTAssertFalse(
+            OcclusionVisibilityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: [],
+                performanceGateOverride: nil
+            )
+        )
+    }
 
     func testPolicy_visibleWindow_returnsActive() {
         XCTAssertTrue(

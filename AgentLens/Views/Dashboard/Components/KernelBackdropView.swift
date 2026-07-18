@@ -2,32 +2,35 @@ import OpenBurnBarCore
 import SwiftUI
 import WebKit
 
-/// Pure occlusion visibility policy — the decision of whether the backdrop
-/// render loop should be active, extracted from the Coordinator so it can be
-/// unit-tested without a real `NSWindow` or source-string matching.
-///
-/// The policy is: the backdrop is active only when the host window is ordered
-/// visible, not minimized, and its occlusion state contains `.visible`. Every
-/// other state — including a stale `.visible` bit during minimization — is inactive.
+/// Backdrop activity policy. Normal launches derive activity from AppKit window
+/// visibility. The DEBUG performance harness may supply an explicit visibility
+/// override because virtual CI sessions do not reliably update
+/// `NSWindow.occlusionState` even after CGWindow reports an on-screen window.
 @MainActor
 enum OcclusionVisibilityPolicy {
-    /// Returns `true` (active) when the window is visible, `false` (inactive)
-    /// when occluded or detached.
-    static func shouldBackdropBeActive(window: NSWindow?) -> Bool {
+    /// Returns `true` (active) when the performance harness explicitly shows
+    /// the dashboard, or when the ordinary AppKit window state is visible.
+    static func shouldBackdropBeActive(
+        window: NSWindow?,
+        performanceGateOverride: Bool? = nil
+    ) -> Bool {
         guard let window else { return false }
         return shouldBackdropBeActive(
             isVisible: window.isVisible,
             isMiniaturized: window.isMiniaturized,
-            occlusionState: window.occlusionState
+            occlusionState: window.occlusionState,
+            performanceGateOverride: performanceGateOverride
         )
     }
 
     static func shouldBackdropBeActive(
         isVisible: Bool,
         isMiniaturized: Bool,
-        occlusionState: NSWindow.OcclusionState
+        occlusionState: NSWindow.OcclusionState,
+        performanceGateOverride: Bool? = nil
     ) -> Bool {
-        isVisible && !isMiniaturized && occlusionState.contains(.visible)
+        if let performanceGateOverride { return performanceGateOverride }
+        return isVisible && !isMiniaturized && occlusionState.contains(.visible)
     }
 }
 
@@ -134,7 +137,7 @@ struct KernelBackdropView: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
-        coordinator.detachOcclusionObserver()
+        coordinator.detachVisibilityObservers()
         (webView as? NonInteractiveWebView)?.onWindowChange = nil
         webView.navigationDelegate = nil
         webView.stopLoading()
@@ -157,6 +160,8 @@ struct KernelBackdropView: NSViewRepresentable {
         private var isLoaded = false
         private weak var observedWebView: WKWebView?
         private var occlusionObservers: [NSObjectProtocol] = []
+        private var performanceGateVisibilityObserver: NSObjectProtocol?
+        private var performanceGateVisibilityOverride: Bool?
         /// Last state pushed to JS, so occlusion churn doesn't spam evaluateJavaScript.
         private var lastReportedActive: Bool?
 
@@ -170,7 +175,8 @@ struct KernelBackdropView: NSViewRepresentable {
 
         func hostWindowChanged(for webView: WKWebView) {
             observedWebView = webView
-            detachOcclusionObserver()
+            detachVisibilityObservers()
+            installPerformanceGateVisibilityObserverIfNeeded()
             guard let window = webView.window else {
                 // Detached from any window: nothing can be seen; pause.
                 pushBackdropActive(false, to: webView)
@@ -193,16 +199,38 @@ struct KernelBackdropView: NSViewRepresentable {
             syncOcclusionState()
         }
 
-        func detachOcclusionObserver() {
+        func detachVisibilityObservers() {
             for observer in occlusionObservers {
                 NotificationCenter.default.removeObserver(observer)
             }
             occlusionObservers.removeAll()
+            if let observer = performanceGateVisibilityObserver {
+                DistributedNotificationCenter.default().removeObserver(observer)
+                performanceGateVisibilityObserver = nil
+            }
+        }
+
+        private func installPerformanceGateVisibilityObserverIfNeeded() {
+            guard OpenBurnBarRuntime.isPerformanceGateLaunch else { return }
+            performanceGateVisibilityObserver = DistributedNotificationCenter.default().addObserver(
+                forName: OpenBurnBarRuntime.performanceGateVisibilityNotification,
+                object: OpenBurnBarRuntime.currentPerformanceGateNotificationObject,
+                queue: .main
+            ) { [weak self] notification in
+                guard let visible = notification.userInfo?["visible"] as? Bool else { return }
+                MainActor.assumeIsolated {
+                    self?.performanceGateVisibilityOverride = visible
+                    self?.syncOcclusionState()
+                }
+            }
         }
 
         private func syncOcclusionState() {
             guard let webView = observedWebView else { return }
-            let visible = OcclusionVisibilityPolicy.shouldBackdropBeActive(window: webView.window)
+            let visible = OcclusionVisibilityPolicy.shouldBackdropBeActive(
+                window: webView.window,
+                performanceGateOverride: performanceGateVisibilityOverride
+            )
             pushBackdropActive(visible, to: webView)
         }
 

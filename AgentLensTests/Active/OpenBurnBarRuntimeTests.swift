@@ -120,6 +120,23 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
         ))
     }
 
+    func test_performanceGateNotificationObject_mapsPIDToDecimalString() {
+        let expectedMappings: [(processIdentifier: Int32, notificationObject: String)] = [
+            (1, "1"),
+            (42_424, "42424"),
+            (Int32.max, "2147483647")
+        ]
+
+        for mapping in expectedMappings {
+            XCTAssertEqual(
+                OpenBurnBarRuntime.performanceGateNotificationObject(
+                    processIdentifier: mapping.processIdentifier
+                ),
+                mapping.notificationObject
+            )
+        }
+    }
+
     func test_shouldDisableAutomaticTerminationForHarness_honorsE2EEnvironment() {
         XCTAssertTrue(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForHarness(
             environment: ["OPENBURNBAR_FORCE_LIVE_SCENE": "1"]
