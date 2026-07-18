@@ -58,7 +58,7 @@ fail-closed notification payload/route validation (`85b167205`, `a852af8c5`).
 These are bounded source improvements; installed update/rollback and desktop
 host receipts remain required.
 
-### Latest Release verification - 2026-07-18 (source `1b4c3b1e26`; current source `1dced585af`)
+### Historical Release verification - 2026-07-18 (source `1b4c3b1e26`)
 
 Release workflow `29652889294` completed successfully at
 `1b4c3b1e269b3d58d38226af1084f88bc7c6f742`. x86_64 job `88102165389`,
@@ -73,6 +73,18 @@ Both architecture sessions passed the strict AT-SPI tree contract after
 `1b4c3b1e26` retained diagnostics for initial-capture failures. Lifecycle
 update/rollback/data-preservation is still blocked because no compatible
 previous same-architecture package was supplied.
+
+### Current-head Release verification - 2026-07-18 (source `1dced585af`)
+
+Release Candidate `29664085758` completed successfully at
+`1dced585af2441ac8ac1d4fdcb2e4666177f0474`. Both native shards and the
+aggregate/attestation job passed package construction, install/uninstall,
+packaged daemon and desktop/tray/accessibility/route sessions, native
+lifecycle checks, signed closure, and installed-product proof closure. The
+immutable `linux-release-evidence` artifact is `8435577756` with digest
+`sha256:cb4eeed2f2263707bbf5d563200d02367065067b5c6e4ff6deed651f47299807`.
+No compatible previous same-architecture package was supplied, so the
+resolver kept real update/rollback/data-preservation promotion blocked.
 
 The current-head Nightly is recorded below; the earlier `29652890031` attempt
 is historical and was superseded after a transient GitHub artifact-service DNS

@@ -17,7 +17,7 @@ ledger is still **0/40 product requirements ready** and **0/7 environment
 receipts complete**; implementation progress must not be reported as a release
 percentage. The active remediation stack now contains these reviewable slices:
 
-### Latest Release verification - 2026-07-18 (source `1b4c3b1e26`; current source is `1dced585af`)
+### Historical Release verification - 2026-07-18 (source `1b4c3b1e26`)
 
 - **Exact-head Release:** run `29652889294` completed successfully at
   `1b4c3b1e269b3d58d38226af1084f88bc7c6f742`. x86_64 job `88102165389`,
@@ -38,6 +38,24 @@ percentage. The active remediation stack now contains these reviewable slices:
   fails. The exact-head x86_64 Release session now passes; the earlier
   four-node race is closed as a Release blocker, not promoted as a product
   parity receipt.
+
+### Current-head Release verification - 2026-07-18 (source `1dced585af`)
+
+- **Exact-head Release Candidate:** run `29664085758` completed successfully at
+  `1dced585af2441ac8ac1d4fdcb2e4666177f0474`. x86_64 job `88131531712`,
+  aarch64 job `88131531733`, and aggregate/attest job `88134572099` passed
+  native package construction, DEB/RPM/Arch ownership/install/uninstall,
+  packaged daemon, desktop/tray/accessibility/route sessions, native
+  update/rollback/data-preservation checks, finalization, and signed closure.
+  The immutable `linux-release-evidence` artifact is `8435577756`
+  (3,681,812,676 bytes) with zip digest
+  `sha256:cb4eeed2f2263707bbf5d563200d02367065067b5c6e4ff6deed651f47299807`.
+  Compact receipt: `evidence/mission-005-exact-head-release-1dced585af/`.
+- **Lifecycle boundary:** the candidate passed the lifecycle contract without
+  a compatible previous same-architecture package. The resolver correctly
+  left update/rollback/data-preservation promotion blocked; this run must not
+  be described as proof of a real upgrade or rollback.
+
 ### Current-head Nightly verification - 2026-07-18 (source `1dced585af`)
 
 - **Full matrix:** run `29660228199` completed successfully at

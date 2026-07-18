@@ -11,13 +11,15 @@ Current parity status as of 2026-07-18:
   `1b4c3b1e26` Release evidence remains valid for its source; current-head
   Nightly `29660228199` is the current shell/performance receipt.
 
-- Exact-head Release `29652889294` produced signed x86_64/aarch64 candidate
-  `0.1.1` and passed package, daemon, desktop, tray, accessibility, route, and
-  attestation checks at the current source. The evidence artifact is
-  `8432407756` (digest
-  `sha256:d3d26e5a2d57148babfca11646aeecdb89280b95e16446c7cd186b388cb64bf0`).
-  Update/rollback/data-preservation remains blocked until a compatible
-  previous same-architecture package is supplied.
+- Current-head Release Candidate `29664085758` produced signed x86_64/aarch64
+  candidate `0.1.1` and passed package, daemon, desktop, tray, accessibility,
+  route, lifecycle-contract, and attestation checks at `1dced585af`. The
+  immutable evidence artifact is `8435577756` (digest
+  `sha256:cb4eeed2f2263707bbf5d563200d02367065067b5c6e4ff6deed651f47299807`).
+  A compatible previous same-architecture package was not supplied, so real
+  update/rollback/data-preservation promotion remains blocked. The compact
+  receipt is under
+  [`evidence/mission-005-exact-head-release-1dced585af/`](evidence/mission-005-exact-head-release-1dced585af/).
 - Current-head Nightly `29660228199` passed macOS and Linux matched workloads,
   the Ubuntu GNOME/X11 packaged shell gate, and the explicit blocked-row
   contracts for GNOME Wayland, Fedora/KDE Wayland, and Arch/wlroots. The X11
