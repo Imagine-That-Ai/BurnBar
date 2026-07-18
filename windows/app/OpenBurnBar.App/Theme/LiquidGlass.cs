@@ -372,11 +372,20 @@ public static class LiquidGlass
             }
         }
 
+        border.ActualThemeChanged += OnSurfaceActualThemeChanged;
         SurfaceTargets.Add(new WeakReference<Border>(border));
     }
 
+    private static void OnSurfaceActualThemeChanged(FrameworkElement sender, object args)
+    {
+        if (sender is Border border)
+        {
+            ApplySurfaceBrush(border);
+        }
+    }
+
     private static void ApplySurfaceBrush(Border border) =>
-        border.Background = ResolveSurfaceBrush(LiquidGlassEnvironment.Current, tint: null);
+        border.Background = ResolveSurfaceBrush(LiquidGlassEnvironment.Current, tint: null, border.ActualTheme);
 
     /// <summary>
     /// Re-resolve every registered glass plate after a transparency preference change.
@@ -531,7 +540,10 @@ public static class LiquidGlass
     /// surfaces are disabled — mirroring the three Swift branches
     /// (<c>.clear</c> glass / <c>.regular</c> glass / fallback material).
     /// </summary>
-    public static Brush ResolveSurfaceBrush(LiquidGlassEnvironment env, Color? tint)
+    public static Brush ResolveSurfaceBrush(
+        LiquidGlassEnvironment env,
+        Color? tint,
+        ElementTheme theme = ElementTheme.Dark)
     {
         if (env is null)
         {
@@ -540,11 +552,20 @@ public static class LiquidGlass
 
         LiquidGlassBackdropKind kind = ResolveBackdropKind(env);
         double t = env.EffectiveTransparency;
+        bool isLight = theme == ElementTheme.Light;
+        Color surface = isLight
+            ? Color.FromArgb(0xFF, 0xFA, 0xF5, 0xF2)
+            : Color.FromArgb(0xFF, 0x16, 0x1B, 0x22);
+        Color surfaceElevated = isLight
+            ? Color.FromArgb(0xFF, 0xFD, 0xF8, 0xF5)
+            : Color.FromArgb(0xFF, 0x1F, 0x26, 0x30);
 
         if (kind == LiquidGlassBackdropKind.Solid)
         {
             // Swift fallback branch: fallback material at fallbackPlateOpacity, tinted if asked.
-            Color baseColor = tint ?? Color.FromArgb(0xFF, 0x1C, 0x1C, 0x1E);
+            // The code-painted plate must follow the element theme because it replaces the
+            // XAML ThemeResource background when glass is disabled or unavailable.
+            Color baseColor = tint ?? surface;
             byte alpha = ToByte(LiquidGlassTransparency.FallbackPlateOpacity(t));
             return new SolidColorBrush(Color.FromArgb(alpha, baseColor.R, baseColor.G, baseColor.B));
         }
@@ -555,16 +576,20 @@ public static class LiquidGlass
             double tintOpacity = Math.Clamp(0.40 * (1 - 0.5 * t), 0.12, 0.60);
             var acrylic = new AcrylicBrush
             {
-                TintColor = tint ?? Color.FromArgb(0xFF, 0x20, 0x20, 0x24),
+                TintColor = tint ?? surface,
                 TintOpacity = tintOpacity,
-                FallbackColor = Color.FromArgb(0xF2, 0x20, 0x20, 0x24),
+                FallbackColor = Color.FromArgb(0xF2, surface.R, surface.G, surface.B),
             };
             return acrylic;
         }
 
         // Neutral / frosty: a translucent plate over Mica. Frost adds opacity as t -> -1.
+        // Plate = Aurora surfaceElevated (#1F2630): dark slate glass, matching the macOS
+        // ultraThin/thickMaterial fallbacks and the Linux --glass-tint-* recipes. (White
+        // plates rendered as light-gray blobs with inverted text on the dark canvas —
+        // the "amateur hour" look in the first physical screenshots.)
         double plate = 0.14 + (t < 0 ? 0.70 * -t : 0);
-        Color plateColor = tint ?? Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
+        Color plateColor = tint ?? surfaceElevated;
         return new SolidColorBrush(Color.FromArgb(ToByte(plate), plateColor.R, plateColor.G, plateColor.B));
     }
 
@@ -599,12 +624,13 @@ public static class LiquidGlassWindowBlend
     {
         env ??= LiquidGlassEnvironment.Current;
         double opacity = LiquidGlass.ResolveScrimOpacity(env);
+        // Scrim color = macOS Aurora canvas (#0D1117) — matches the Linux --macos-bg window field.
         return new Border
         {
             IsHitTestVisible = false,
             Background = new SolidColorBrush(Color.FromArgb(
                 (byte)Math.Round(Math.Clamp(opacity, 0, 1) * 255),
-                0x0A, 0x0A, 0x0E)),
+                0x0D, 0x11, 0x17)),
             Opacity = opacity <= 0 ? 0 : 1,
         };
     }
@@ -620,7 +646,7 @@ public static class LiquidGlassWindowBlend
         env ??= LiquidGlassEnvironment.Current;
         double opacity = LiquidGlass.ResolveScrimOpacity(env);
         byte alpha = (byte)Math.Round(Math.Clamp(opacity, 0, 1) * 255);
-        scrim.Background = new SolidColorBrush(Color.FromArgb(alpha, 0x0A, 0x0A, 0x0E));
+        scrim.Background = new SolidColorBrush(Color.FromArgb(alpha, 0x0D, 0x11, 0x17));
         scrim.Opacity = opacity <= 0 ? 0 : 1;
     }
 }

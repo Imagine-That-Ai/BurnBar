@@ -89,6 +89,30 @@ check "generated UniFFI Kotlin does not require app JaCoCo" "0" "$rc"
 check "generated-only change reports no production Kotlin" \
   "no_production_kotlin" "$(json_get "$tmp_root/generated.json" 'v["diffCoverage"]["method"]')"
 
+# The canonical Style Dictionary output is compile-time-only generated Kotlin.
+repo="$tmp_root/generated-design-tokens"
+new_repo "$repo"
+mkdir -p "$repo/android/app/src/main/java/com/openburnbar/ui/tokens"
+printf 'package com.openburnbar.ui.tokens\nobject PensieveTokens { const val Color = "#fff" }\n' \
+  > "$repo/android/app/src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt"
+base="$(commit_change "$repo")"
+rc="$(run_gate "$repo" "$base" "$repo/does-not-exist.xml" "$tmp_root/generated-design-tokens.json" "$tmp_root/generated-design-tokens.err")"
+check "generated design-token Kotlin does not require app JaCoCo" "0" "$rc"
+check "generated design-token-only change reports no production Kotlin" \
+  "no_production_kotlin" "$(json_get "$tmp_root/generated-design-tokens.json" 'v["diffCoverage"]["method"]')"
+
+# Only the canonical generated path is excluded; adjacent handwritten tokens remain gated.
+repo="$tmp_root/handwritten-design-tokens"
+new_repo "$repo"
+add_kotlin "$repo" com/openburnbar/ui/tokens HandwrittenTokens 1
+base="$(commit_change "$repo")"
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/handwritten-design-tokens.json" "$tmp_root/handwritten-design-tokens.err")"
+check "handwritten design-token Kotlin remains coverage-gated" "1" "$rc"
+check "handwritten design-token Kotlin requires its own evidence" \
+  "no_jacoco_source" "$(json_get "$tmp_root/handwritten-design-tokens.json" 'v["details"][0]["method"]')"
+
 # A similarly named directory in any other module is handwritten production code.
 repo="$tmp_root/handwritten-uniffi"
 new_repo "$repo"

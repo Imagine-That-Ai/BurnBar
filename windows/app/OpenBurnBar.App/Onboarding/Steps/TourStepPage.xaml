@@ -28,7 +28,7 @@
         <Border Grid.Row="1"
                 theme:LiquidGlass.Surface="True"
                 CornerRadius="14"
-                BorderBrush="{StaticResource OBBStrokeBrush}"
+                BorderBrush="{ThemeResource AuroraGlassStrokeBrush}"
                 BorderThickness="1"
                 Padding="28"
                 VerticalAlignment="Center">

@@ -15,10 +15,10 @@
         <Border x:Name="WindowBlendScrim" IsHitTestVisible="False" />
 
         <Border Padding="0"
-                CornerRadius="{StaticResource PensieveRadiusLgCorner}"
+                CornerRadius="{StaticResource PensieveRadiusXlCorner}"
                 Style="{StaticResource LiquidGlassSurfaceStyle}"
                 theme:LiquidGlass.Surface="True"
-                Background="{StaticResource PensieveColorGlassBgElevatedBrush}"
+                Background="{ThemeResource AuroraGlassTintElevatedBrush}"
                 Margin="4">
             <Grid>
                 <Grid.RowDefinitions>
@@ -33,7 +33,7 @@
 
                 <!-- 1. Header -->
                 <Border Grid.Row="0" Padding="16,12" theme:LiquidGlass.Surface="True"
-                        Background="{StaticResource PensieveColorGlassBgBrush}">
+                        Background="{ThemeResource AuroraGlassTintClearBrush}">
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -43,10 +43,9 @@
                         <components:AppLogoView Grid.Column="0" Size="28" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1"
                                    Text="OpenBurnBar"
-                                   FontSize="16"
-                                   FontWeight="SemiBold"
+                                   Style="{StaticResource AuroraHeadlineTextStyle}"
                                    VerticalAlignment="Center"
-                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                   Foreground="{ThemeResource AuroraTextBrush}" />
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
                             <Button x:Name="ScanButton"
                                     Style="{StaticResource LiquidGlassCircleButtonStyle}"
@@ -55,14 +54,14 @@
                                     AutomationProperties.Name="Scan provider activity"
                                     Click="Scan_Click">
                                 <FontIcon Glyph="&#xE72C;" FontSize="11"
-                                          Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                          Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                             </Button>
                             <Button Style="{StaticResource LiquidGlassCircleButtonStyle}"
                                     theme:LiquidGlass.CircleButtonDiameter="28"
                                     ToolTipService.ToolTip="Settings"
                                     Click="Settings_Click">
                                 <FontIcon Glyph="&#xE713;" FontSize="11"
-                                          Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                          Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                             </Button>
                         </StackPanel>
                     </Grid>
@@ -70,33 +69,34 @@
 
                 <!-- 2. Freshness -->
                 <Border Grid.Row="1" Padding="16,8"
-                        Background="#66000000">
+                        Background="{ThemeResource AuroraGlassTintSunkenBrush}">
                     <Grid>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <Border Width="6" Height="6" CornerRadius="3"
-                                    Background="#FF34D399" />
-                            <TextBlock x:Name="FreshnessText" Text="Updated just now" FontSize="11"
-                                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                    Background="{ThemeResource AuroraSuccessBrush}" />
+                            <TextBlock x:Name="FreshnessText" Text="Updated just now"
+                                       Style="{StaticResource AuroraTinyTextStyle}"
+                                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
                             <TextBlock x:Name="FreshnessMetric" Text="$0.00" FontSize="11"
-                                       FontFamily="Cascadia Mono, Consolas"
+                                       FontFamily="{StaticResource AuroraMonoFont}"
                                        Foreground="{StaticResource OBBAccentBrush}" />
                             <TextBlock Text="·" FontSize="11"
-                                       Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
                             <TextBlock x:Name="FreshnessSessions" Text="0 sessions" FontSize="11"
-                                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
                         </StackPanel>
                     </Grid>
                 </Border>
 
                 <!-- 3. Quota rail -->
                 <Border Grid.Row="2" Padding="16,10"
-                        BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                        BorderBrush="{ThemeResource AuroraGlassStrokeBrush}"
                         BorderThickness="0,1,0,1">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="QUOTAS" FontSize="10" FontWeight="Bold" CharacterSpacing="80"
-                                   Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                        <TextBlock Text="QUOTAS" CharacterSpacing="80"
+                                   Style="{StaticResource AuroraStatCardLabelStyle}" />
                         <StackPanel x:Name="QuotaHost" Spacing="6" />
                     </StackPanel>
                 </Border>
@@ -106,29 +106,31 @@
                     <StackPanel Spacing="14">
                         <!-- Summary -->
                         <StackPanel Spacing="6">
-                            <TextBlock Text="SUMMARY" FontSize="10" FontWeight="Bold" CharacterSpacing="80"
-                                       Foreground="{StaticResource PensieveColorTextDimBrush}" />
-                            <TextBlock x:Name="SummaryToday" Text="$0.00" FontSize="28" FontWeight="Bold"
-                                       FontFamily="Cascadia Mono, Consolas"
-                                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                            <TextBlock Text="today" FontSize="11"
-                                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                            <TextBlock Text="SUMMARY" CharacterSpacing="80"
+                                       Style="{StaticResource AuroraStatCardLabelStyle}" />
+                            <TextBlock x:Name="SummaryToday" Text="$0.00"
+                                       Style="{StaticResource AuroraMonoLargeTextStyle}" />
+                            <TextBlock Text="today"
+                                       Style="{StaticResource AuroraTinyTextStyle}"
+                                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
                             <Grid ColumnSpacing="12" Margin="0,4,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="This week" FontSize="10"
-                                               Foreground="{StaticResource PensieveColorTextDimBrush}" />
-                                    <TextBlock x:Name="SummaryWeek" Text="$0.00" FontSize="13" FontWeight="SemiBold"
-                                               FontFamily="Cascadia Mono, Consolas" />
+                                    <TextBlock Text="This week"
+                                               Style="{StaticResource AuroraTinyTextStyle}"
+                                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
+                                    <TextBlock x:Name="SummaryWeek" Text="$0.00"
+                                               Style="{StaticResource AuroraMonoTextStyle}" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="1">
-                                    <TextBlock Text="This month" FontSize="10"
-                                               Foreground="{StaticResource PensieveColorTextDimBrush}" />
-                                    <TextBlock x:Name="SummaryMonth" Text="$0.00" FontSize="13" FontWeight="SemiBold"
-                                               FontFamily="Cascadia Mono, Consolas" />
+                                    <TextBlock Text="This month"
+                                               Style="{StaticResource AuroraTinyTextStyle}"
+                                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
+                                    <TextBlock x:Name="SummaryMonth" Text="$0.00"
+                                               Style="{StaticResource AuroraMonoTextStyle}" />
                                 </StackPanel>
                             </Grid>
                             <Canvas x:Name="SummarySpark" Height="28" Margin="0,6,0,0" />
@@ -136,15 +138,15 @@
 
                         <!-- Providers -->
                         <StackPanel Spacing="6">
-                            <TextBlock Text="PROVIDERS" FontSize="10" FontWeight="Bold" CharacterSpacing="80"
-                                       Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                            <TextBlock Text="PROVIDERS" CharacterSpacing="80"
+                                       Style="{StaticResource AuroraStatCardLabelStyle}" />
                             <StackPanel x:Name="ProviderHost" Spacing="4" />
                         </StackPanel>
 
                         <!-- Insights -->
                         <StackPanel Spacing="6">
-                            <TextBlock Text="INSIGHTS" FontSize="10" FontWeight="Bold" CharacterSpacing="80"
-                                       Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                            <TextBlock Text="INSIGHTS" CharacterSpacing="80"
+                                       Style="{StaticResource AuroraStatCardLabelStyle}" />
                             <StackPanel x:Name="InsightHost" Spacing="6" />
                         </StackPanel>
                     </StackPanel>
@@ -152,26 +154,26 @@
 
                 <!-- 5. Cloud strip -->
                 <Border Grid.Row="4" Padding="14,10"
-                        BorderBrush="{StaticResource PensieveColorGlassLineBrush}"
+                        BorderBrush="{ThemeResource AuroraGlassStrokeBrush}"
                         BorderThickness="0,1,0,0"
-                        Background="#1AFA6B06">
+                        Background="{ThemeResource AuroraGlassSelectionFillBrush}">
                     <Grid ColumnSpacing="10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Border Width="28" Height="28" CornerRadius="14"
-                                Background="{StaticResource PensieveColorGlassBgElevatedBrush}">
+                                Background="{ThemeResource AuroraGlassTintElevatedBrush}">
                             <FontIcon Glyph="&#xE753;" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"
                                       Foreground="{StaticResource OBBAccentBrush}" />
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                             <TextBlock Text="Cloud Pro unlocks multi-device sync"
                                        FontSize="12" FontWeight="SemiBold"
-                                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                       Foreground="{ThemeResource AuroraTextBrush}" />
                             <TextBlock Text="Free plan · sample mode"
                                        FontSize="11"
-                                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -184,13 +186,13 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Button Grid.Column="0" Content="Dashboard" HorizontalAlignment="Stretch"
-                            Style="{StaticResource LiquidGlassInteractiveStyle}"
+                            Style="{StaticResource AuroraGlassButtonProminentStyle}"
                             Click="OpenFull_Click" />
                     <Button Grid.Column="1" Content="Settings" HorizontalAlignment="Stretch"
-                            Style="{StaticResource LiquidGlassInteractiveStyle}"
+                            Style="{StaticResource AuroraGlassButtonRegularStyle}"
                             Click="Settings_Click" />
                     <Button Grid.Column="2" Content="Quit" HorizontalAlignment="Stretch"
-                            Style="{StaticResource LiquidGlassInteractiveStyle}"
+                            Style="{StaticResource AuroraGlassButtonCoolStyle}"
                             Click="Quit_Click" />
                 </Grid>
 

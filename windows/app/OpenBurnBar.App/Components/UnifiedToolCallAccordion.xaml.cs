@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
+using OpenBurnBar.App.Theme;
 using Windows.UI;
 
 namespace OpenBurnBar.App.Components;
@@ -196,7 +197,7 @@ public sealed partial class UnifiedToolCallAccordion : UserControl
             Child = new TextBlock
             {
                 Text = text,
-                FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+                FontFamily = BrandFonts.Mono,
                 FontSize = 11,
                 TextWrapping = TextWrapping.Wrap,
                 IsTextSelectionEnabled = true,

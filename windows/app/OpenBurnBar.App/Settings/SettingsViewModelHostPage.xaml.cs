@@ -302,7 +302,7 @@ public sealed partial class SettingsViewModelHostPage : Page
             identity.Children.Add(new TextBlock
             {
                 Text = route.Endpoint,
-                FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+                FontFamily = Theme.BrandFonts.Mono,
                 FontSize = 11,
                 Opacity = 0.72,
                 TextWrapping = TextWrapping.Wrap,

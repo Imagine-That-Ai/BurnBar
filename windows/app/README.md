@@ -27,6 +27,25 @@ ConPTY-backed source behind the same `ICliStream` seam. See the runbook for exac
 
 Source files here (`.cs` / `.xaml`) are ratcheted by the per-tree budget under the `app` area.
 
+### Theme system (Aurora / liquid glass — see `docs/windows-port/MAC_GLASS_PARITY_PASS.md`)
+
+The shell renders the **macOS Aurora design language** (the design oracle), not a Fluent recolor:
+
+| Layer | File(s) | What it carries |
+|------|---------|-----------------|
+| Token pipeline output (generated — **do not edit**; regenerate via `packages/design-tokens`) | `Theme/Tokens.xaml`, `Theme/PensieveTokens.cs` | Pensieve + Aurora color/glass/type tokens as `Color`/`Brush`/`x:Double`/… |
+| Aurora shell overrides, theme-aware (`ThemeDictionaries`: Default=dark slate, Light=coral dust) | `Theme/PensieveShell.xaml` | Fluent system brushes, NavigationView chrome, `Aurora*` alias brushes |
+| Liquid-glass vocabulary + transparency math | `Theme/LiquidGlass.xaml`, `Theme/LiquidGlass.cs` | card/toolbar/pill/interactive glass styles; Mica/Acrylic/solid plate resolution |
+| Brand fonts + macOS type scale | `Theme/Typography.xaml`, `Assets/Fonts/*.ttf` (OFL) | Outfit/Geist/JetBrains Mono/Fraunces + named TextBlock styles |
+| Glass component library | `Theme/GlassControls.xaml` | cards, prominent/regular/cool buttons, inputs, alerts, dialogs, implicit `SettingsCard`/`SettingsExpander` |
+| Code-behind font chokepoint | `Theme/BrandFonts.cs` | `BrandFonts.Mono/Body/Display` with safe fallbacks |
+
+**Rule:** surfaces consume tokens/styles — no raw hex colors or hardcoded `FontFamily`
+outside `Theme/`. Enforced by `scripts/windows-port/check-xaml-token-discipline.sh`
+(documented exceptions: `scripts/windows-port/xaml-token-allowlist.txt`), which runs in
+`pr-windows-fast.yml`.
+
+
 ### `OpenBurnBar.App.Settings/` + `OpenBurnBar.App/Settings/` — Settings shell + search (W7)
 
 The **Settings** surface, split into a portable core and its WinUI face — the Windows peer of

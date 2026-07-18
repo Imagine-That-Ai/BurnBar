@@ -19,12 +19,20 @@
     SizeChanged="OnSizeChanged">
 
     <Grid>
+        <!-- Typed ThemeResource probes for the code-built Pretext fragments. -->
+        <Border x:Name="AuroraTextBrushProbe" Visibility="Collapsed"
+                Background="{ThemeResource AuroraTextBrush}" />
+        <Border x:Name="AuroraAccentBrushProbe" Visibility="Collapsed"
+                Background="{ThemeResource AuroraAccentBrush}" />
+        <Border x:Name="AuroraGlassTintElevatedBrushProbe" Visibility="Collapsed"
+                Background="{ThemeResource AuroraGlassTintElevatedBrush}" />
         <!-- Pretext-resolved lines (one horizontal row per wrapped line). -->
         <StackPanel x:Name="LinesPanel" Orientation="Vertical" Spacing="0" />
 
         <!-- Inline fallback shown until the first Pretext layout resolves. -->
         <RichTextBlock x:Name="Fallback"
                        TextWrapping="Wrap"
-                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                       FontFamily="{StaticResource AuroraBodyFont}"
+                       Foreground="{ThemeResource AuroraTextBrush}" />
     </Grid>
 </UserControl>

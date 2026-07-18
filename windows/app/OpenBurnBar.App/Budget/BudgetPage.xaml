@@ -40,18 +40,18 @@
                 </tk:SettingsCard.Header>
                 <tk:SettingsCard.Description>
                     <TextBlock Text="{x:Bind local:BudgetFormat.RuleSubtitle(Behavior, PausedUntil, IsEnabled)}"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </tk:SettingsCard.Description>
                 <StackPanel HorizontalAlignment="Right" Spacing="0">
                     <TextBlock Text="{x:Bind local:BudgetFormat.Amount(AmountUsd)}"
-                               FontFamily="Cascadia Mono, Consolas"
+                               FontFamily="{StaticResource AuroraMonoFont}"
                                FontWeight="SemiBold"
                                HorizontalAlignment="Right"
-                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                               Foreground="{ThemeResource AuroraTextBrush}" />
                     <TextBlock Text="{x:Bind local:BudgetFormat.PeriodLabel(Period)}"
                                FontSize="11"
                                HorizontalAlignment="Right"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
             </tk:SettingsCard>
         </DataTemplate>
@@ -72,40 +72,40 @@
                 <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
                     <TextBlock Text="{x:Bind local:BudgetFormat.EventTitle(Kind)}"
                                FontSize="13"
-                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                               Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                     <TextBlock Text="{x:Bind local:BudgetFormat.EventTimestamp(OccurredAt)}"
                                FontSize="11"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
                 <TextBlock Grid.Column="2"
                            Text="{x:Bind local:BudgetFormat.EventAmounts(AmountAtEvent, LimitAtEvent)}"
-                           FontFamily="Cascadia Mono, Consolas"
+                           FontFamily="{StaticResource AuroraMonoFont}"
                            FontSize="11"
                            VerticalAlignment="Center"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
             </Grid>
         </DataTemplate>
     </Page.Resources>
 
-    <ScrollViewer Padding="{StaticResource PensieveSpace6Thickness}" Background="{StaticResource PensieveColorInkBaseBrush}">
+    <ScrollViewer Padding="{StaticResource PensieveSpace6Thickness}" Background="{ThemeResource AuroraCanvasBrush}">
         <StackPanel Spacing="10" MaxWidth="760" HorizontalAlignment="Left">
 
             <TextBlock Style="{StaticResource TitleTextBlockStyle}"
-                       Foreground="{StaticResource PensieveColorTextBrightBrush}"
+                       Foreground="{ThemeResource AuroraTextBrush}"
                        Text="Budgets" />
             <TextBlock Margin="0,0,0,4"
                        TextWrapping="Wrap"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                       Foreground="{ThemeResource AuroraTextMutedBrush}"
                        Text="Spending limits enforced locally. Per-usage credentials (Anthropic / OpenAI API keys, OpenRouter, etc.) get hard blocks when a rule is exceeded. Subscription credentials (Claude Pro, bundled CLI plans) are exempt — they cost flat." />
 
             <!-- Global cap -->
             <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="0,8,0,0"
-                       Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                       Foreground="{ThemeResource AuroraTextSecondaryBrush}"
                        Text="Global cap" />
             <TextBlock FontSize="12"
                        TextWrapping="Wrap"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                       Foreground="{ThemeResource AuroraTextMutedBrush}"
                        Text="A single ceiling across every per-usage credential. The most permissive global rule wins." />
             <ItemsControl x:Name="GlobalList" ItemTemplate="{StaticResource RuleRowTemplate}" />
             <Button x:Name="AddGlobalButton" Tag="global" Click="Add_Click"
@@ -119,11 +119,11 @@
             <!-- Per credential / API key -->
             <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="0,12,0,0"
-                       Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                       Foreground="{ThemeResource AuroraTextSecondaryBrush}"
                        Text="Per credential / API key" />
             <TextBlock FontSize="12"
                        TextWrapping="Wrap"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                       Foreground="{ThemeResource AuroraTextMutedBrush}"
                        Text="Hard-blocks a specific API key (Anthropic Console, OpenAI, OpenRouter, etc.). Use this when one project should not drain your monthly OpenAI budget." />
             <ItemsControl x:Name="CredentialList" ItemTemplate="{StaticResource RuleRowTemplate}" />
             <Button x:Name="AddCredentialButton" Tag="credential" Click="Add_Click"
@@ -137,11 +137,11 @@
             <!-- Per project -->
             <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="0,12,0,0"
-                       Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                       Foreground="{ThemeResource AuroraTextSecondaryBrush}"
                        Text="Per project" />
             <TextBlock FontSize="12"
                        TextWrapping="Wrap"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                       Foreground="{ThemeResource AuroraTextMutedBrush}"
                        Text="Cap a single project's monthly burn. Names match the project labels rendered in the Project Ranking lane." />
             <ItemsControl x:Name="ProjectList" ItemTemplate="{StaticResource RuleRowTemplate}" />
             <Button x:Name="AddProjectButton" Tag="project" Click="Add_Click"
@@ -155,20 +155,20 @@
             <!-- Recent activity -->
             <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="0,16,0,0"
-                       Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                       Foreground="{ThemeResource AuroraTextSecondaryBrush}"
                        Text="Recent activity" />
             <components:UnifiedGlassCard x:Name="EventsCardHost" Visibility="Collapsed">
                 <ItemsControl x:Name="EventsList" ItemTemplate="{StaticResource EventRowTemplate}" />
             </components:UnifiedGlassCard>
             <TextBlock x:Name="NoEventsText"
                        FontSize="12"
-                       Foreground="{StaticResource PensieveColorTextDimBrush}"
+                       Foreground="{ThemeResource AuroraTextMutedBrush}"
                        Text="No warnings, blocks, or rule changes yet." />
 
             <!-- Reconciliation -->
             <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="0,16,0,0"
-                       Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                       Foreground="{ThemeResource AuroraTextSecondaryBrush}"
                        Text="Reconciliation" />
             <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
@@ -177,22 +177,22 @@
                 </Grid.ColumnDefinitions>
                 <FontIcon Grid.Column="0" FontSize="13" Glyph="&#xE895;"
                           VerticalAlignment="Top" Margin="0,2,0,0"
-                          Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                          Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 <TextBlock Grid.Column="1"
                            FontSize="12"
                            TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                           Foreground="{ThemeResource AuroraTextMutedBrush}"
                            Text="Billing API reconciliation compares local-pricing spend against Anthropic / OpenAI / OpenRouter billing APIs. Drift over 5% is flagged in the audit log above." />
             </Grid>
 
             <!-- Live component preview (dev-host proof of the reusable chip + blocked card). -->
             <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="0,16,0,0"
-                       Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                       Foreground="{ThemeResource AuroraTextSecondaryBrush}"
                        Text="Preview" />
             <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                 <TextBlock Text="Top-rail chip:" FontSize="12" VerticalAlignment="Center"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 <local:BurnRailBudgetChip x:Name="PreviewChip" VerticalAlignment="Center" />
             </StackPanel>
             <local:BudgetBlockedCard x:Name="PreviewBlockedCard" MaxWidth="420" HorizontalAlignment="Left" />

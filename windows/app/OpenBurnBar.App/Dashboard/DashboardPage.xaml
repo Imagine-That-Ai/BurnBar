@@ -24,9 +24,9 @@
         <Border IsHitTestVisible="False">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                    <GradientStop Offset="0.0" Color="#66070A12" />
+                    <GradientStop Offset="0.0" Color="{ThemeResource AuroraGlassTintSunkenColor}" />
                     <GradientStop Offset="0.5" Color="#1A070A12" />
-                    <GradientStop Offset="1.0" Color="#66070A12" />
+                    <GradientStop Offset="1.0" Color="{ThemeResource AuroraGlassTintSunkenColor}" />
                 </LinearGradientBrush>
             </Border.Background>
         </Border>
@@ -68,12 +68,12 @@
                                        VerticalAlignment="Center"
                                        FontSize="18"
                                        FontWeight="SemiBold"
-                                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                       Foreground="{ThemeResource AuroraTextBrush}" />
                             <TextBlock x:Name="DetailSubtitle"
                                        VerticalAlignment="Center"
                                        FontSize="12"
                                        Opacity="0.55"
-                                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
                         </StackPanel>
                         <dashboard:DashboardLayoutSwitcher Grid.Column="2"
                                                            x:Name="Switcher"
