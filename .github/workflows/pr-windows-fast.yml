@@ -216,6 +216,31 @@ jobs:
       - name: Build Windows solution
         run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=x64
 
+      - name: Verify usage-scan worker staging
+        run: |
+          $appOutputRoot = "windows/app/OpenBurnBar.App/bin/x64/Debug"
+          $workers = @(
+            Get-ChildItem -Path $appOutputRoot -Recurse -File -Filter "OpenBurnBar.Cli.exe"
+          )
+          if ($workers.Count -eq 0) {
+            throw "The normal Windows app build did not stage OpenBurnBar.Cli.exe."
+          }
+          $requiredWorkerFiles = @(
+            "OpenBurnBar.Cli.exe",
+            "OpenBurnBar.Cli.dll",
+            "OpenBurnBar.Cli.deps.json",
+            "OpenBurnBar.Cli.runtimeconfig.json"
+          )
+          foreach ($worker in $workers) {
+            foreach ($requiredWorkerFile in $requiredWorkerFiles) {
+              $candidate = Join-Path $worker.DirectoryName $requiredWorkerFile
+              if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                throw "The normal Windows app build is missing usage-scan worker artifact: $candidate"
+              }
+            }
+            Write-Host "Usage-scan worker staged beside app output: $($worker.DirectoryName)"
+          }
+
       - name: Run Windows test suite
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"

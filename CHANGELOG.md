@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Windows physical x64 usage-scan memory
+
+- **Isolated native Swift parsing from the long-lived WinUI process**: usage
+  scans now execute once in the signed companion CLI and exit, giving Windows a
+  deterministic native-heap reclamation boundary. The worker uses a reviewed
+  no-shell launch policy, bounded diagnostics, cancellation and timeout cleanup,
+  typed fail-closed errors, and a streamed internal protocol. Release CI proves
+  the real worker against the exact published x64 native-engine layout before
+  signing and locks the app composition root against an in-process regression.
 ### Changed
 
 - **Droid wiki generation is local-only** — retired the failing unattended

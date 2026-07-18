@@ -367,7 +367,7 @@ public partial class App : Application
     private WindowsUsageRuntime CreateUsageRuntime()
     {
         GeneralSettingsSnapshot generalSettings = WindowsGeneralSettingsComposition.Load();
-        var engine = new CAbiUsageEngine();
+        var engine = new OutOfProcessUsageEngine();
         var store = new SqlCipherUsageRuntimeSnapshotStore(() =>
         {
             var (path, passphrase) = WindowsStorageDevHost.ResolveCredentials();

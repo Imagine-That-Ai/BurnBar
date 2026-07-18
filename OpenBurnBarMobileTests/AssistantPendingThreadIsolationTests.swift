@@ -14,16 +14,16 @@ import OpenBurnBarCore
 @MainActor
 final class AssistantPendingThreadIsolationTests: XCTestCase {
 
-    override func setUp() async throws {
-        try await super.setUp()
+    override func setUp() {
+        super.setUp()
         AssistantPendingThread.shared.clear(.hermes)
         AssistantPendingThread.shared.clear(.pi)
     }
 
-    override func tearDown() async throws {
+    override func tearDown() {
         AssistantPendingThread.shared.clear(.hermes)
         AssistantPendingThread.shared.clear(.pi)
-        try await super.tearDown()
+        super.tearDown()
     }
 
     // MARK: - Consume semantics
