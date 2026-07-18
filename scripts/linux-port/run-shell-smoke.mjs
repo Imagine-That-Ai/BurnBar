@@ -230,7 +230,10 @@ function recordStep(step) {
 recordStep(run('npm', ['install', '--no-audit', '--no-fund'], appDir, evidenceEnv, 240000));
 recordStep(run('npm', ['test'], appDir, unitEnv, 180000));
 recordStep(run('npm', ['run', 'build'], appDir, evidenceEnv, 180000));
-const desktopSessionTimeoutMs = Number.parseInt(process.env.OB_SHELL_DESKTOP_TIMEOUT_MS || '1500000', 10);
+// Fresh arm64 packaging can spend more than 25 minutes compiling the native
+// daemon/CLI before the desktop evidence matrix begins. Match the wrapper's
+// 60-minute default while keeping the workflow's 75-minute job cap intact.
+const desktopSessionTimeoutMs = Number.parseInt(process.env.OB_SHELL_DESKTOP_TIMEOUT_MS || '3600000', 10);
 recordStep(currentDesktopArtifactsAreReusable()
   ? reusedDesktopStep()
   : run('node', [path.join(root, 'scripts/linux-port/run-shell-desktop-session.mjs')], root, evidenceEnv, desktopSessionTimeoutMs));

@@ -113,7 +113,8 @@ test('toolchain and artifact reuse preserve the complete accessibility proof', (
     'function persistTranscript()',
     'function recordStep(step)',
     'persistTranscript();',
-    'shell smoke step failed:'
+    'shell smoke step failed:',
+    "OB_SHELL_DESKTOP_TIMEOUT_MS || '3600000'"
   ]) assert.ok(smokeRunner.includes(marker), marker);
 });
 

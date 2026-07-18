@@ -10,7 +10,11 @@ const outDir = evidenceOutput
   ? path.resolve(evidenceOutput)
   : path.join(root, 'docs/linux-port/evidence/mission-001-shell-ux');
 fs.mkdirSync(outDir, { recursive: true });
-const desktopSessionTimeoutMs = Number.parseInt(process.env.OB_SHELL_DESKTOP_TIMEOUT_MS || '1500000', 10);
+// A fresh arm64 session compiles the Swift daemon/CLI before starting the
+// packaged desktop. Keep enough headroom for that native build plus the full
+// AT-SPI route/tray/accessibility matrix; the workflow job itself remains
+// bounded by its 75-minute timeout.
+const desktopSessionTimeoutMs = Number.parseInt(process.env.OB_SHELL_DESKTOP_TIMEOUT_MS || '3600000', 10);
 
 function normalizeTranscript(text) {
   return text
