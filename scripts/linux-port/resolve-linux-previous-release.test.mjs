@@ -74,7 +74,9 @@ test('Debian payload inspection requires exact identity and the daemon launcher'
   const calls = [];
   const run = (command, args) => {
     calls.push([command, args]);
-    if (args[0] === '-f') return { exitCode: 0, stdout: 'open-burn-bar\n1.2.3\namd64\n', stderr: '' };
+    if (args[0] === '-f' && args[2] === 'Package') return { exitCode: 0, stdout: 'open-burn-bar\n', stderr: '' };
+    if (args[0] === '-f' && args[2] === 'Version') return { exitCode: 0, stdout: '1.2.3\n', stderr: '' };
+    if (args[0] === '-f' && args[2] === 'Architecture') return { exitCode: 0, stdout: 'amd64\n', stderr: '' };
     return {
       exitCode: 0,
       stdout: '-rwxr-xr-x root/root 123 2026-01-01 00:00 ./usr/libexec/openburnbar-daemon-launch\n',
@@ -82,11 +84,15 @@ test('Debian payload inspection requires exact identity and the daemon launcher'
     };
   };
   assert.deepEqual(assertDebianLifecyclePayload({ packagePath: '/tmp/candidate.deb', version: '1.2.3', architecture: 'x86_64', run }), { passed: true });
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 4);
 
-  const missingLauncher = (command, args) => args[0] === '-f'
-    ? { exitCode: 0, stdout: 'open-burn-bar\n1.2.3\namd64\n', stderr: '' }
-    : { exitCode: 0, stdout: './usr/bin/openburnbar-linux-desktop\n', stderr: '' };
+  const missingLauncher = (command, args) => args[0] === '-f' && args[2] === 'Package'
+    ? { exitCode: 0, stdout: 'open-burn-bar\n', stderr: '' }
+    : args[0] === '-f' && args[2] === 'Version'
+      ? { exitCode: 0, stdout: '1.2.3\n', stderr: '' }
+      : args[0] === '-f' && args[2] === 'Architecture'
+        ? { exitCode: 0, stdout: 'amd64\n', stderr: '' }
+        : { exitCode: 0, stdout: './usr/bin/openburnbar-linux-desktop\n', stderr: '' };
   const rejected = assertDebianLifecyclePayload({ packagePath: '/tmp/candidate.deb', version: '1.2.3', architecture: 'x86_64', run: missingLauncher });
   assert.equal(rejected.passed, false);
   assert.match(rejected.reason, /missing .*daemon-launch/u);

@@ -90,9 +90,12 @@ export function releaseCandidates({ releases, currentVersion, requestedVersion =
 }
 
 export function assertDebianLifecyclePayload({ packagePath, version, architecture, run = defaultRun }) {
-  const result = run('dpkg-deb', ['-f', packagePath, 'Package', 'Version', 'Architecture']);
-  if (result.exitCode !== 0) return { passed: false, reason: `${architecture}: dpkg-deb metadata inspection failed` };
-  const fields = result.stdout.trim().split(/\n/u);
+  const fields = [];
+  for (const field of ['Package', 'Version', 'Architecture']) {
+    const result = run('dpkg-deb', ['-f', packagePath, field]);
+    if (result.exitCode !== 0) return { passed: false, reason: `${architecture}: dpkg-deb metadata inspection failed` };
+    fields.push(result.stdout.trim());
+  }
   const expectedArchitecture = architecture === 'aarch64' ? 'arm64' : 'amd64';
   if (fields[0] !== 'open-burn-bar' || fields[1] !== version || fields[2] !== expectedArchitecture) {
     return { passed: false, reason: `${architecture}: Debian package identity is not open-burn-bar ${version} ${expectedArchitecture}` };
