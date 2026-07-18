@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` current source checkpoint `1dced585af2441ac8ac1d4fdcb2e4666177f0474`; Release `29652889294` passed both native architectures at the prior `1b4c3b1e26` source, and Nightly `29660228199` passed the current-head macOS/Linux matched soak plus Ubuntu X11 shell gate. Full certification remains intentionally blocked because product evidence and live integration receipts are still missing. |
+| Remediation evidence | Documentation head `6c4e809e7aacc1646c9cc8c28d9510e2e100ece1`; latest behavioral evidence is bound to implementation checkpoint `1dced585af2441ac8ac1d4fdcb2e4666177f0474`. Release `29664085758` and Nightly `29660228199` passed at that implementation checkpoint. Full certification remains intentionally blocked because product evidence and live integration receipts are still missing. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 

@@ -74,7 +74,7 @@ Both architecture sessions passed the strict AT-SPI tree contract after
 update/rollback/data-preservation is still blocked because no compatible
 previous same-architecture package was supplied.
 
-### Current-head Release verification - 2026-07-18 (source `1dced585af`)
+### Latest implementation-head Release verification - 2026-07-18 (source `1dced585af`)
 
 Release Candidate `29664085758` completed successfully at
 `1dced585af2441ac8ac1d4fdcb2e4666177f0474`. Both native shards and the
@@ -90,7 +90,7 @@ The current-head Nightly is recorded below; the earlier `29652890031` attempt
 is historical and was superseded after a transient GitHub artifact-service DNS
 failure (`ENOTFOUND`).
 
-### Current-head Nightly verification - 2026-07-18 (source `1dced585af`)
+### Latest implementation-head Nightly verification - 2026-07-18 (source `1dced585af`)
 
 Nightly `29660228199` completed successfully at
 `1dced585af2441ac8ac1d4fdcb2e4666177f0474`. The macOS matched soak

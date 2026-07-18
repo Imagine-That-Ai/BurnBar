@@ -5,11 +5,13 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-18:
 
-- Current source checkpoint is `1dced585af2441ac8ac1d4fdcb2e4666177f0474`.
-  It adds the startup/deep-link measurement boundary that keeps synthetic
-  startup routing out of user-navigation performance receipts. The prior
-  `1b4c3b1e26` Release evidence remains valid for its source; current-head
-  Nightly `29660228199` is the current shell/performance receipt.
+- The current documentation head is `6c4e809e7aacc1646c9cc8c28d9510e2e100ece1`.
+  The latest behavioral evidence is bound to implementation checkpoint
+  `1dced585af2441ac8ac1d4fdcb2e4666177f0474`, which adds the
+  startup/deep-link measurement boundary that keeps synthetic startup routing
+  out of user-navigation performance receipts. The Release and Nightly
+  receipts below are therefore evidence for that implementation checkpoint,
+  not a claim that the docs-only head has a new candidate artifact.
 
 - Current-head Release Candidate `29664085758` produced signed x86_64/aarch64
   candidate `0.1.1` and passed package, daemon, desktop, tray, accessibility,
