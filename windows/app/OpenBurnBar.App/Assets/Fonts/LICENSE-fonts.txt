@@ -11,6 +11,7 @@ All four families are licensed under the SIL Open Font License 1.1 (OFL), which 
 bundling with the application. The full license text:
 https://openfontlicense.org/open-font-license-official-text/
 
-Note: the Outfit TTF's name table records family "Outfit" (nameID 1/16 patched during
-the woff2→ttf conversion so WinUI's ms-appx font resolution finds the family); this is
-a metadata-only change, permitted by the OFL as no Reserved Font Name applies.
+Note: the Outfit TTF is the source variable font restricted to its regular-through-black
+weight range (400-900), with a 400 default and family name "Outfit" so WinUI can select
+the requested regular, semibold, and bold axes. This conversion and metadata change are
+permitted by the OFL; Outfit has no Reserved Font Name.

@@ -34,6 +34,7 @@ public sealed partial class StreamingBubble : UserControl
         InitializeComponent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        ActualThemeChanged += OnActualThemeChanged;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -55,6 +56,8 @@ public sealed partial class StreamingBubble : UserControl
             Engine = engine;
         }
     }
+
+    private void OnActualThemeChanged(FrameworkElement sender, object args) => Refresh();
 
     /// The parsed run stream to render (from <see cref="HermesAtomParser.Parse"/>).
     public IReadOnlyList<HermesRichRun>? Runs
@@ -290,19 +293,13 @@ public sealed partial class StreamingBubble : UserControl
     // so an Application-level lookup resolves it (see Theme/BrandFonts.cs).
     private static FontFamily BrandMonoFont() => BrandFonts.Mono;
 
-    // Element-level lookup first: resolves the theme dictionaries (Aurora* aliases)
-    // against this control's ActualTheme, so Light/Dark swaps paint correctly.
-    // Application.Current.Resources cannot see theme-dictionary entries (theme-blind).
-    private Brush Brush(string key)
+    // The hidden XAML probes use real ThemeResource bindings. Reading their typed
+    // Background values keeps code-built fragments aligned with the current theme.
+    private Brush Brush(string key) => key switch
     {
-        if (Resources.TryGetValue(key, out var value) && value is Brush brush)
-        {
-            return brush;
-        }
-        if (Application.Current.Resources.TryGetValue(key, out var appValue) && appValue is Brush appBrush)
-        {
-            return appBrush;
-        }
-        return new SolidColorBrush(Microsoft.UI.Colors.White);
-    }
+        "AuroraTextBrush" => AuroraTextBrushProbe.Background,
+        "AuroraAccentBrush" => AuroraAccentBrushProbe.Background,
+        "AuroraGlassTintElevatedBrush" => AuroraGlassTintElevatedBrushProbe.Background,
+        _ => null,
+    } ?? new SolidColorBrush(Microsoft.UI.Colors.White);
 }

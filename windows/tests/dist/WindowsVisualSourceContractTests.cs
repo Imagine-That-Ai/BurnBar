@@ -154,6 +154,72 @@ public sealed class WindowsVisualSourceContractTests
     }
 
     [Fact]
+    public void OutfitDisplayFontDefaultsToARealRegularWeight()
+    {
+        string path = Path.Combine(
+            DistTestSupport.RepositoryRoot(),
+            "windows",
+            "app",
+            "OpenBurnBar.App",
+            "Assets",
+            "Fonts",
+            "outfit.ttf");
+        byte[] font = File.ReadAllBytes(path);
+        ushort tableCount = ReadUInt16BigEndian(font, 4);
+        int os2Offset = -1;
+        for (int index = 0; index < tableCount; index++)
+        {
+            int record = 12 + (index * 16);
+            if (font[record] == (byte)'O' && font[record + 1] == (byte)'S' &&
+                font[record + 2] == (byte)'/' && font[record + 3] == (byte)'2')
+            {
+                os2Offset = checked((int)ReadUInt32BigEndian(font, record + 8));
+                break;
+            }
+        }
+
+        Assert.True(os2Offset >= 0, "Outfit font is missing its OS/2 metadata table.");
+        Assert.InRange(ReadUInt16BigEndian(font, os2Offset + 4), 400, 700);
+    }
+
+    [Fact]
+    public void CodeBuiltAuroraSurfacesUseThemeResourceProbesAndRefreshOnThemeChange()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string dashboard = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Dashboard", "DashboardCommandSidebar.xaml.cs"));
+        string bubble = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Chat", "StreamingBubble.xaml.cs"));
+
+        Assert.Contains("InitializeComponent();\n        ApplyModeChrome();", dashboard, StringComparison.Ordinal);
+        Assert.Contains("ActualThemeChanged += OnActualThemeChanged;", dashboard, StringComparison.Ordinal);
+        Assert.Contains("AuroraTextBrushProbe.Background", dashboard, StringComparison.Ordinal);
+        Assert.DoesNotContain("Resources.TryGetValue", dashboard, StringComparison.Ordinal);
+        Assert.Contains("ActualThemeChanged += OnActualThemeChanged;", bubble, StringComparison.Ordinal);
+        Assert.Contains("AuroraTextBrushProbe.Background", bubble, StringComparison.Ordinal);
+        Assert.DoesNotContain("Resources.TryGetValue", bubble, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PretextStagesAndLoadsTheBundledProductionFontsBeforeReadiness()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string host = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Pretext", "WebView2PretextHost.cs"));
+        string html = File.ReadAllText(Path.Combine(
+            root, "windows", "pretext", "OpenBurnBar.Pretext", "Resources", "Pretext", "index.html"));
+
+        Assert.Contains("StageBundledFonts();", host, StringComparison.Ordinal);
+        Assert.Contains("\"geist.ttf\", \"jetbrains-mono.ttf\"", host, StringComparison.Ordinal);
+        Assert.Contains("url(\"fonts/geist.ttf\")", html, StringComparison.Ordinal);
+        Assert.Contains("url(\"fonts/jetbrains-mono.ttf\")", html, StringComparison.Ordinal);
+        Assert.True(
+            html.IndexOf("document.fonts.load", StringComparison.Ordinal) <
+            html.IndexOf("value: { ready: true }", StringComparison.Ordinal),
+            "Pretext must load bundled fonts before sending the ready heartbeat.");
+    }
+
+    [Fact]
     public void CodePaintedGlassAndBudgetCanvasFollowTheActualTheme()
     {
         string root = DistTestSupport.RepositoryRoot();
@@ -179,4 +245,13 @@ public sealed class WindowsVisualSourceContractTests
         Assert.Contains("theme == ElementTheme.Light", liquidGlass, StringComparison.Ordinal);
         Assert.Equal("{ThemeResource AuroraCanvasBrush}", (string?)scrollViewer.Attribute("Background"));
     }
+
+    private static ushort ReadUInt16BigEndian(byte[] bytes, int offset) =>
+        checked((ushort)((bytes[offset] << 8) | bytes[offset + 1]));
+
+    private static uint ReadUInt32BigEndian(byte[] bytes, int offset) =>
+        ((uint)bytes[offset] << 24) |
+        ((uint)bytes[offset + 1] << 16) |
+        ((uint)bytes[offset + 2] << 8) |
+        bytes[offset + 3];
 }

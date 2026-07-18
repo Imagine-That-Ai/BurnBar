@@ -23,6 +23,8 @@ public sealed partial class DashboardCommandSidebar : UserControl
     public DashboardCommandSidebar()
     {
         InitializeComponent();
+        ApplyModeChrome();
+        ActualThemeChanged += OnActualThemeChanged;
     }
 
     /// <summary>Raised when the user picks Overview / a provider / a model row.</summary>
@@ -75,6 +77,12 @@ public sealed partial class DashboardCommandSidebar : UserControl
 
     private void OnModelsModeClick(object sender, RoutedEventArgs e) =>
         SetViewMode(DashboardCommandViewMode.Models, raise: true);
+
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+    {
+        ApplyModeChrome();
+        RebuildRows();
+    }
 
     private async void OnCursorClick(object sender, RoutedEventArgs e)
     {
@@ -217,7 +225,7 @@ public sealed partial class DashboardCommandSidebar : UserControl
                 : ResourceBrush("AuroraGlassStrokeBrush") ?? new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
             Background = selected
                 ? new SolidColorBrush(Color.FromArgb(0x14, accentColor.R, accentColor.G, accentColor.B))
-                : new SolidColorBrush(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)),
+                : ResourceBrush("AuroraGlassTintBaseBrush"),
         };
 
         var grid = new Grid { ColumnSpacing = 10 };
@@ -309,13 +317,16 @@ public sealed partial class DashboardCommandSidebar : UserControl
     private void RaiseSelection(DashboardCommandSelection selection) =>
         SelectionChanged?.Invoke(this, selection);
 
-    private Brush? ResourceBrush(string key) =>
-        // Element-level lookup first: resolves the theme dictionaries (Aurora* aliases)
-        // against this control's ActualTheme, so Light/Dark swaps paint correctly.
-        // Application.Current.Resources cannot see theme-dictionary entries (theme-blind).
-        Resources.TryGetValue(key, out object? value)
-            ? value as Brush
-            : Application.Current.Resources.TryGetValue(key, out object? appValue) ? appValue as Brush : null;
+    private Brush? ResourceBrush(string key) => key switch
+    {
+        "AuroraGlassTintBaseBrush" => AuroraGlassTintBaseBrushProbe.Background,
+        "AuroraGlassTintElevatedBrush" => AuroraGlassTintElevatedBrushProbe.Background,
+        "AuroraGlassStrokeBrush" => AuroraGlassStrokeBrushProbe.Background,
+        "AuroraTextBrush" => AuroraTextBrushProbe.Background,
+        "AuroraTextSecondaryBrush" => AuroraTextSecondaryBrushProbe.Background,
+        "AuroraTextMutedBrush" => AuroraTextMutedBrushProbe.Background,
+        _ => null,
+    };
 }
 
 /// <summary>Selection payload from the Command sidebar.</summary>
