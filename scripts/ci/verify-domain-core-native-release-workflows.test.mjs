@@ -462,8 +462,9 @@ test("Windows signing and canonical evidence consume the exact gate", () => {
   assert.match(evidence, /create-windows-domain-core-release-bundle\.py/u);
   assert.match(
     supplyChain,
-    /if \[\[ "\$PROFILE" == "public-production-rollback" \]\]; then[\s\S]*\.domains \| length == 0[\s\S]*else[\s\S]*\.domains \| length > 0/u,
+    /expected_native_set="\$\([\s\S]*\.modes \| to_entries\[\][\s\S]*\.key == "quota" or \.key == "cloudVault"[\s\S]*\.value == "rust"[\s\S]*\| sort[\s\S]*\.schemaVersion == 2 and \.consumer == "windows" and \(\[\.domains\[\]\.domain\] \| sort\) == \$expected/u,
   );
+  assert.doesNotMatch(supplyChain, /\.domains \| length > 0/u);
   assert.match(evidence, /verify-domain-core-observed-identity\.mjs/u);
   assert.match(evidence, /create-domain-core-native-release-evidence\.mjs/u);
   assert.match(
