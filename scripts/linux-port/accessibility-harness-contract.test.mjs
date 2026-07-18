@@ -76,10 +76,23 @@ test('fresh packaged sessions stage native payload inputs before Tauri packaging
   assert.match(session, /OPENBURNBAR_LINUX_RESOURCE_BUNDLE/u);
   assert.match(session, /OpenBurnBarDaemon\/Resources\/PlaywrightBridge/u);
 
-  const stageIndex = session.indexOf('stage_native_package_inputs');
+  const buildRootIndex = session.indexOf('build_root="$work_dir/build-root"');
+  const stageIndex = session.indexOf('\n  stage_native_package_inputs\n', buildRootIndex);
   const packageIndex = session.indexOf('npm run tauri:build');
   assert.ok(stageIndex >= 0 && packageIndex > stageIndex, 'native staging must precede Tauri packaging');
   assert.match(session, /OB_REUSE_EXISTING_DEB:-0/u);
+
+  const mediaCopyIndex = session.indexOf('cp -R "$root/crates/openburnbar-media"', buildRootIndex);
+  const mediaDestinationIndex = session.indexOf('"$build_root/crates/openburnbar-media"', mediaCopyIndex);
+  assert.ok(buildRootIndex >= 0, 'fresh shell sessions must define a build root');
+  assert.ok(mediaCopyIndex > buildRootIndex, 'fresh shell sessions must copy the media crate into the build root');
+  assert.ok(mediaDestinationIndex > mediaCopyIndex, 'media crate copy must preserve its repository-relative destination');
+  assert.ok(mediaCopyIndex < stageIndex, 'media crate source must be present before native staging');
+  assert.match(
+    session.slice(buildRootIndex, stageIndex),
+    /mkdir -p[\s\S]*"\$build_root\/crates"/u,
+    'fresh shell build roots must provision the crates directory'
+  );
 });
 
 test('toolchain and artifact reuse preserve the complete accessibility proof', () => {
