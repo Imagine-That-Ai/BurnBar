@@ -187,9 +187,11 @@ public sealed class WindowsVisualSourceContractTests
     {
         string root = DistTestSupport.RepositoryRoot();
         string dashboard = File.ReadAllText(Path.Combine(
-            root, "windows", "app", "OpenBurnBar.App", "Dashboard", "DashboardCommandSidebar.xaml.cs"));
+            root, "windows", "app", "OpenBurnBar.App", "Dashboard", "DashboardCommandSidebar.xaml.cs"))
+            .ReplaceLineEndings("\n");
         string bubble = File.ReadAllText(Path.Combine(
-            root, "windows", "app", "OpenBurnBar.App", "Chat", "StreamingBubble.xaml.cs"));
+            root, "windows", "app", "OpenBurnBar.App", "Chat", "StreamingBubble.xaml.cs"))
+            .ReplaceLineEndings("\n");
 
         Assert.Contains("InitializeComponent();\n        ApplyModeChrome();", dashboard, StringComparison.Ordinal);
         Assert.Contains("ActualThemeChanged += OnActualThemeChanged;", dashboard, StringComparison.Ordinal);
