@@ -205,21 +205,25 @@ assert.match(
   /OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"[\s\S]*publish\/win-x64[\s\S]*\$smokeRoot = Join-Path \$env:RUNNER_TEMP[\s\S]*\$testOutputRoot = Join-Path \$env:RUNNER_TEMP[\s\S]*Copy-Item[\s\S]*OpenBurnBarCoreCAbi\.dll/,
   "the published-layout parser smoke must load the published native engine",
 );
-const testhostBuildIndex = publishedParserSmokeBlock.indexOf("dotnet build $testProject");
+const trustedDotnetCaptureIndex = publishedParserSmokeBlock.indexOf(
+  "$dotnetExecutable = (Get-Command dotnet -CommandType Application -ErrorAction Stop).Source",
+);
+const testhostBuildIndex = publishedParserSmokeBlock.indexOf("& $dotnetExecutable build $testProject");
 const resourceCopyIndex = publishedParserSmokeBlock.indexOf("$requiredResourceBundles = @(");
 const nativeDllSearchPathIndex = publishedParserSmokeBlock.indexOf(
   '$env:PATH = "$smokeRoot;$env:PATH"',
 );
-const parserTestIndex = publishedParserSmokeBlock.indexOf("dotnet test $testProject");
+const parserTestIndex = publishedParserSmokeBlock.indexOf("& $dotnetExecutable test $testProject");
 assert.ok(
-  testhostBuildIndex >= 0 &&
+  trustedDotnetCaptureIndex >= 0 &&
+    testhostBuildIndex > trustedDotnetCaptureIndex &&
     resourceCopyIndex > testhostBuildIndex &&
     parserTestIndex > resourceCopyIndex,
   "the isolated testhost must build before resource staging and execute afterward",
 );
 assert.ok(
-  nativeDllSearchPathIndex >= 0 && nativeDllSearchPathIndex < parserTestIndex,
-  "the isolated testhost must resolve native dependencies from the copied publish layout",
+  nativeDllSearchPathIndex > trustedDotnetCaptureIndex && nativeDllSearchPathIndex < parserTestIndex,
+  "the isolated testhost must pin trusted dotnet before exposing copied native dependencies",
 );
 for (const bundleName of [
   "OpenBurnBarCore_OpenBurnBarCore.resources",
@@ -237,7 +241,7 @@ assert.match(
 );
 assert.match(
   publishedParserSmokeBlock,
-  /\$forbiddenRuntimeFiles = @\("hostfxr\.dll", "hostpolicy\.dll", "coreclr\.dll"\)[\s\S]*dotnet test \$testProject[\s\S]*--no-build[\s\S]*--output \$testOutputRoot[\s\S]*NativeUsageEngineIntegrationTests/,
+  /\$forbiddenRuntimeFiles = @\("hostfxr\.dll", "hostpolicy\.dll", "coreclr\.dll"\)[\s\S]*& \$dotnetExecutable test \$testProject[\s\S]*--no-build[\s\S]*--output \$testOutputRoot[\s\S]*NativeUsageEngineIntegrationTests/,
   "the parser smoke must reject app-local runtimes and execute the prebuilt isolated testhost",
 );
 assert.doesNotMatch(
