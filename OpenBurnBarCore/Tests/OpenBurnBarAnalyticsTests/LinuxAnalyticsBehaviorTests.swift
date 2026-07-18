@@ -46,80 +46,97 @@ private func makeLinuxAnalyticsDefaults() -> (defaults: UserDefaults, suiteName:
 }
 
 final class LinuxAnalyticsBehaviorTests: XCTestCase {
-    func testConsentGateStaysDarkUntilGrantAndAfterRevoke() {
-        let (defaults, suiteName) = makeLinuxAnalyticsDefaults()
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+    func testConsentGateStaysDarkUntilGrantAndAfterRevoke() async {
+        let observation = await MainActor.run {
+            let (defaults, suiteName) = makeLinuxAnalyticsDefaults()
+            defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let consent = AnalyticsConsentStore(defaults: defaults)
-        let transport = LinuxAnalyticsTransport()
-        let analytics = Analytics(
-            consent: consent,
-            transport: transport,
-            superProperties: { ["platform": "linux", "app_build": "test"] }
-        )
+            let consent = AnalyticsConsentStore(defaults: defaults)
+            let transport = LinuxAnalyticsTransport()
+            let analytics = Analytics(
+                consent: consent,
+                transport: transport,
+                superProperties: { ["platform": "linux", "app_build": "test"] }
+            )
 
-        analytics.track(.screenViewed, ["surface": "dashboard"])
-        XCTAssertTrue(transport.sent.isEmpty)
-        XCTAssertFalse(transport.isStarted)
-        XCTAssertEqual(transport.startCount, 0)
+            analytics.track(.screenViewed, ["surface": "dashboard"])
+            let dark = (
+                transport.sent.isEmpty,
+                !transport.isStarted,
+                transport.startCount == 0
+            )
 
-        consent.grant()
-        analytics.consentDidChange()
-        XCTAssertTrue(transport.isStarted)
-        XCTAssertEqual(transport.sent.count, 1)
-        XCTAssertEqual(transport.sent[0].name, AnalyticsEvent.consentAnalyticsGranted.rawValue)
+            consent.grant()
+            analytics.consentDidChange()
+            let granted = (
+                transport.isStarted,
+                transport.sent.count == 1,
+                transport.sent.first?.name == AnalyticsEvent.consentAnalyticsGranted.rawValue
+            )
 
-        analytics.track(.screenViewed, ["surface": "dashboard"])
-        XCTAssertEqual(transport.sent.count, 2)
-        XCTAssertEqual(transport.sent[1].category, AnalyticsCategory.screenView.rawValue)
-        XCTAssertEqual(transport.sent[1].properties["platform"], .string("linux"))
-        XCTAssertEqual(transport.sent[1].properties["surface"], .string("dashboard"))
+            analytics.track(.screenViewed, ["surface": "dashboard"])
+            let tracked = (
+                transport.sent.count == 2,
+                transport.sent[safe: 1]?.category == AnalyticsCategory.screenView.rawValue,
+                transport.sent[safe: 1]?.properties["platform"] == .string("linux"),
+                transport.sent[safe: 1]?.properties["surface"] == .string("dashboard")
+            )
 
-        consent.revoke()
-        analytics.consentDidChange()
-        XCTAssertFalse(transport.isStarted)
-        XCTAssertEqual(transport.stopCount, 1)
+            consent.revoke()
+            analytics.consentDidChange()
+            let sentBeforeRevokedTrack = transport.sent.count
+            analytics.track(.screenViewed, ["surface": "dashboard"])
+            return LinuxAnalyticsGateObservation(
+                dark: dark.0 && dark.1 && dark.2,
+                granted: granted.0 && granted.1 && granted.2,
+                tracked: tracked.0 && tracked.1 && tracked.2 && tracked.3,
+                revoked: !transport.isStarted && transport.stopCount == 1
+                    && transport.sent.count == sentBeforeRevokedTrack
+            )
+        }
 
-        let sentBeforeRevokedTrack = transport.sent.count
-        analytics.track(.screenViewed, ["surface": "dashboard"])
-        XCTAssertEqual(transport.sent.count, sentBeforeRevokedTrack)
+        XCTAssertTrue(observation.dark)
+        XCTAssertTrue(observation.granted)
+        XCTAssertTrue(observation.tracked)
+        XCTAssertTrue(observation.revoked)
     }
 
-    func testConsentPersistsAndExtensionReaderSeesGrantAndRevoke() {
-        let (defaults, suiteName) = makeLinuxAnalyticsDefaults()
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+    func testConsentPersistsAndExtensionReaderSeesGrantAndRevoke() async {
+        let observation = await MainActor.run {
+            let (defaults, suiteName) = makeLinuxAnalyticsDefaults()
+            defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let store = AnalyticsConsentStore(defaults: defaults)
-        XCTAssertFalse(store.hasDecided)
-        XCTAssertFalse(store.isGranted)
-        XCTAssertFalse(
-            AnalyticsConsentReader.isGranted(
-                appGroupIdentifier: suiteName,
-                key: AnalyticsConsentStore.key
-            )
-        )
+            let store = AnalyticsConsentStore(defaults: defaults)
+            let key = AnalyticsConsentStore.key
+            let initial = !store.hasDecided && !store.isGranted
+                && !AnalyticsConsentReader.isGranted(
+                    appGroupIdentifier: suiteName,
+                    key: key
+                )
 
-        store.grant()
-        XCTAssertTrue(store.isGranted)
-        XCTAssertTrue(store.hasDecided)
-        XCTAssertTrue(
-            AnalyticsConsentReader.isGranted(
-                appGroupIdentifier: suiteName,
-                key: AnalyticsConsentStore.key
-            )
-        )
+            store.grant()
+            let granted = store.isGranted && store.hasDecided
+                && AnalyticsConsentReader.isGranted(
+                    appGroupIdentifier: suiteName,
+                    key: key
+                )
 
-        let reloaded = AnalyticsConsentStore(defaults: defaults)
-        XCTAssertEqual(reloaded.consent, .granted)
+            let reloaded = AnalyticsConsentStore(defaults: defaults)
+            let reloadedGranted = reloaded.consent == .granted
 
-        store.revoke()
-        XCTAssertFalse(store.isGranted)
-        XCTAssertFalse(
-            AnalyticsConsentReader.isGranted(
-                appGroupIdentifier: suiteName,
-                key: AnalyticsConsentStore.key
-            )
-        )
+            store.revoke()
+            let revoked = !store.isGranted
+                && !AnalyticsConsentReader.isGranted(
+                    appGroupIdentifier: suiteName,
+                    key: key
+                )
+            return (initial, granted, reloadedGranted, revoked)
+        }
+
+        XCTAssertTrue(observation.0)
+        XCTAssertTrue(observation.1)
+        XCTAssertTrue(observation.2)
+        XCTAssertTrue(observation.3)
     }
 
     func testBucketsAndTaxonomyUseStablePrivacySafeWireValues() {
@@ -162,5 +179,18 @@ final class LinuxAnalyticsBehaviorTests: XCTestCase {
         XCTAssertEqual(first, second)
         XCTAssertNotNil(UUID(uuidString: first))
         XCTAssertEqual(defaults.string(forKey: AnalyticsIdentity.deviceIdKey), first)
+    }
+}
+
+private struct LinuxAnalyticsGateObservation: Sendable {
+    let dark: Bool
+    let granted: Bool
+    let tracked: Bool
+    let revoked: Bool
+}
+
+private extension Array {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
