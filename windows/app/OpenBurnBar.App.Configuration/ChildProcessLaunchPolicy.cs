@@ -37,6 +37,7 @@ public static class ChildProcessLaunchPolicy
             new ChildProcessLaunchReview("project-code.language-server", ChildProcessProfile.ProjectTool, "LanguageServerProjectCodeParserClient", false),
             new ChildProcessLaunchReview("project-code.static-parser", ChildProcessProfile.ProjectTool, "JsonLinesProjectCodeStaticParserClient", false),
             new ChildProcessLaunchReview("quota.claude-statusline-forwarder", ChildProcessProfile.Chat, "ClaudeStatuslineHookInstaller", false),
+            new ChildProcessLaunchReview("usage.native-parser-worker", ChildProcessProfile.UsageScanner, "OutOfProcessUsageEngine", false),
         };
 
     public static ChildProcessHost CurrentHost =>
