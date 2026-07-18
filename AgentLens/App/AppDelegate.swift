@@ -198,7 +198,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 return
             }
             for window in windows {
-                window.orderFrontRegardless()
+                if window.isMiniaturized {
+                    window.deminiaturize(nil)
+                } else {
+                    window.orderFrontRegardless()
+                }
             }
             return
         }
@@ -213,7 +217,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if !performanceGateHiddenWindows.contains(where: { $0 === window }) {
             performanceGateHiddenWindows.append(window)
         }
-        window.orderOut(nil)
+        if window.styleMask.contains(.miniaturizable) {
+            window.miniaturize(nil)
+        }
+        if window.isVisible {
+            window.orderOut(nil)
+        }
     }
 
     /// Registers the foreground + post-revoke triggers for the RR-5 Cloud Vault
