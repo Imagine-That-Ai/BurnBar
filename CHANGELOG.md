@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Droid wiki generation is local-only** — retired the failing unattended
+  Factory workflow after proving user-scoped API keys are rejected without an
+  active paid subscription. Committed `droid-wiki/` pages still reconcile to
+  mem0 through the post-commit hook and nightly mirror job.
+
 ### Added — Liquid dashboard command deck
 
 - **A live, customizable command deck for the dashboard**: Added a dominant
