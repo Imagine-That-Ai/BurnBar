@@ -226,6 +226,39 @@
     <ProjectReference Include="../../pal/ipc-windows/OpenBurnBar.Pal.Ipc.Windows.csproj" />
   </ItemGroup>
 
+  <!--
+    The long-lived WinUI process never loads the native usage parser. Instead it
+    launches this short-lived companion for each scan. Keep the worker in the
+    normal app output so ResolveWorkerPath() works in developer and CI builds;
+    release packaging publishes and signs the same companion separately.
+  -->
+  <Target Name="StageUsageScanWorker"
+          AfterTargets="Build"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\OpenBurnBar.Cli.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishTrimmed" />
+    <PropertyGroup>
+      <OpenBurnBarUsageScanWorkerPlatformDirectory
+        Condition="'$(Platform)' != '' and '$(Platform)' != 'AnyCPU'">$(Platform)\</OpenBurnBarUsageScanWorkerPlatformDirectory>
+    </PropertyGroup>
+    <ItemGroup>
+      <OpenBurnBarUsageScanWorkerFile Include="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\bin\$(OpenBurnBarUsageScanWorkerPlatformDirectory)$(Configuration)\net8.0\OpenBurnBar.Cli.exe"
+                                      Condition="'$(OS)' == 'Windows_NT'" />
+      <OpenBurnBarUsageScanWorkerFile Include="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\bin\$(OpenBurnBarUsageScanWorkerPlatformDirectory)$(Configuration)\net8.0\OpenBurnBar.Cli"
+                                      Condition="'$(OS)' != 'Windows_NT'" />
+      <OpenBurnBarUsageScanWorkerFile Include="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\bin\$(OpenBurnBarUsageScanWorkerPlatformDirectory)$(Configuration)\net8.0\OpenBurnBar.Cli.dll" />
+      <OpenBurnBarUsageScanWorkerFile Include="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\bin\$(OpenBurnBarUsageScanWorkerPlatformDirectory)$(Configuration)\net8.0\OpenBurnBar.Cli.deps.json" />
+      <OpenBurnBarUsageScanWorkerFile Include="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\bin\$(OpenBurnBarUsageScanWorkerPlatformDirectory)$(Configuration)\net8.0\OpenBurnBar.Cli.runtimeconfig.json" />
+    </ItemGroup>
+    <Error Condition="!Exists('%(OpenBurnBarUsageScanWorkerFile.FullPath)')"
+           Text="Usage-scan worker artifact was not produced: %(OpenBurnBarUsageScanWorkerFile.FullPath)" />
+    <Copy SourceFiles="@(OpenBurnBarUsageScanWorkerFile)"
+          DestinationFolder="$(TargetDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
   <ItemGroup>
     <!--
       DLL-load hardening core (Phase 5 · R19 library-validation equivalent). net8.0, no WinUI.

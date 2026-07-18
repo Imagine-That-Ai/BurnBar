@@ -1245,6 +1245,7 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarDomainCoreRuntime",
                 "OpenBurnBarKernel",
                 "OpenBurnBarLogParsers",
+                "OpenBurnBarSQLiteReader",
                 "OpenBurnBarFirestoreModels",
                 "OpenBurnBarLinuxSecurity",
                 // P-13 AE-TESTABLE: `ZAIQuotaAdapterTests` reaches the INTERNAL

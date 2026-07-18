@@ -77,4 +77,73 @@ public sealed class CompanionCliPackagingTests
         Assert.Contains("OpenBurnBar.Cli.exe", portable, StringComparison.Ordinal);
         Assert.Contains("Authenticated companion CLI 'OpenBurnBar.Cli.exe' is missing", portable, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void AppBuildStagesTheUsageScanWorkerWithHostSpecificArtifacts()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        XDocument project = XDocument.Load(Path.Combine(
+            root,
+            "windows",
+            "app",
+            "OpenBurnBar.App",
+            "OpenBurnBar.App.csproj"));
+        XNamespace ns = project.Root?.Name.Namespace
+            ?? throw new InvalidOperationException("OpenBurnBar.App.csproj has no root element.");
+
+        XElement target = project
+            .Descendants(ns + "Target")
+            .Single(element => string.Equals(
+                (string?)element.Attribute("Name"),
+                "StageUsageScanWorker",
+                StringComparison.Ordinal));
+        string[] afterTargets = ((string?)target.Attribute("AfterTargets") ?? string.Empty)
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Assert.Contains(afterTargets, value => string.Equals(value, "Build", StringComparison.Ordinal));
+
+        XElement workerBuild = target.Elements(ns + "MSBuild").Single();
+        Assert.Contains(
+            "OpenBurnBar.Cli.csproj",
+            (string?)workerBuild.Attribute("Projects") ?? string.Empty,
+            StringComparison.Ordinal);
+        string[] removedProperties = ((string?)workerBuild.Attribute("RemoveProperties") ?? string.Empty)
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Assert.Contains("RuntimeIdentifier", removedProperties);
+
+        XElement[] workerFiles = target
+            .Descendants(ns + "OpenBurnBarUsageScanWorkerFile")
+            .ToArray();
+        string[] includes = workerFiles
+            .Select(element => (string?)element.Attribute("Include") ?? string.Empty)
+            .ToArray();
+        Assert.Contains(includes, include => include.EndsWith("OpenBurnBar.Cli.exe", StringComparison.Ordinal));
+        Assert.Contains(includes, include => include.EndsWith("OpenBurnBar.Cli.dll", StringComparison.Ordinal));
+        Assert.Contains(includes, include => include.EndsWith("OpenBurnBar.Cli.deps.json", StringComparison.Ordinal));
+        Assert.Contains(includes, include => include.EndsWith("OpenBurnBar.Cli.runtimeconfig.json", StringComparison.Ordinal));
+        Assert.All(includes, include => Assert.Contains(
+            "$(OpenBurnBarUsageScanWorkerPlatformDirectory)",
+            include,
+            StringComparison.Ordinal));
+
+        XElement executable = workerFiles.Single(element =>
+            ((string?)element.Attribute("Include") ?? string.Empty)
+                .EndsWith("OpenBurnBar.Cli.exe", StringComparison.Ordinal));
+        Assert.Contains(
+            "Windows_NT",
+            (string?)executable.Attribute("Condition") ?? string.Empty,
+            StringComparison.Ordinal);
+
+        XElement error = target.Elements(ns + "Error").Single();
+        Assert.Contains(
+            "Exists('%(OpenBurnBarUsageScanWorkerFile.FullPath)')",
+            (string?)error.Attribute("Condition") ?? string.Empty,
+            StringComparison.Ordinal);
+        XElement copy = target.Elements(ns + "Copy").Single();
+        Assert.Contains(
+            "@(OpenBurnBarUsageScanWorkerFile)",
+            (string?)copy.Attribute("SourceFiles") ?? string.Empty,
+            StringComparison.Ordinal);
+        Assert.Equal("$(TargetDir)", (string?)copy.Attribute("DestinationFolder"));
+    }
+
 }
