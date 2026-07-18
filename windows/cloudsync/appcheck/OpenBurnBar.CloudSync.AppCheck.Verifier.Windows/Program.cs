@@ -1,13 +1,12 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.HttpOverrides;
+using OpenBurnBar.CloudSync.AppCheck.Verifier.Windows;
 using OpenBurnBar.CloudSync.AppCheck.Windows;
 
 const string TokenEnvironment = "OPENBURNBAR_TPM_VERIFIER_TOKEN";
 const string AppIdEnvironment = "OPENBURNBAR_TPM_VERIFIER_APP_ID";
 const string TrustedProxiesEnvironment = "OPENBURNBAR_TPM_VERIFIER_TRUSTED_PROXIES";
-const int MaxClaimBytes = 64 * 1024;
-const int EcdsaP256PublicBlobBytes = 72;
 const long MaxAgeMs = 5 * 60 * 1000;
 const long MaxForwardSkewMs = 60 * 1000;
 
@@ -61,7 +60,11 @@ app.MapGet("/healthz", () => Results.Ok(new { ok = true }));
 app.MapPost("/verify", (HttpRequest request, TpmVerificationRequest input) =>
 {
     if (!HasValidBearer(request, verifierToken)) return Results.Unauthorized();
-    if (!IsWellFormed(input, expectedAppId, out byte[] publicKey, out byte[] platformClaim))
+    if (!TpmVerificationInputValidator.TryValidate(
+            input,
+            expectedAppId,
+            out byte[] publicKey,
+            out byte[] platformClaim))
         return Results.BadRequest(new { valid = false, reason = "malformed" });
 
     long age = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - input.IssuedAtMs;
@@ -97,44 +100,3 @@ static bool HasValidBearer(HttpRequest request, string expectedToken)
     byte[] expected = Encoding.UTF8.GetBytes(expectedToken);
     return actual.Length == expected.Length && CryptographicOperations.FixedTimeEquals(actual, expected);
 }
-
-static bool IsWellFormed(
-    TpmVerificationRequest input,
-    string expectedAppId,
-    out byte[] publicKey,
-    out byte[] platformClaim)
-{
-    publicKey = Array.Empty<byte>();
-    platformClaim = Array.Empty<byte>();
-    if (
-        input.Version != 1 ||
-        input.AppId != expectedAppId ||
-        string.IsNullOrWhiteSpace(input.Uid) || input.Uid.Length > 256 ||
-        string.IsNullOrWhiteSpace(input.ChallengeId) || input.ChallengeId.Length is < 16 or > 256 ||
-        string.IsNullOrWhiteSpace(input.Nonce) || input.Nonce.Length is < 16 or > 256 ||
-        input.IssuedAtMs <= 0)
-    {
-        return false;
-    }
-    try
-    {
-        publicKey = Convert.FromBase64String(input.SubjectPublicKey);
-        platformClaim = Convert.FromBase64String(input.PlatformClaim);
-        return publicKey.Length == EcdsaP256PublicBlobBytes &&
-            platformClaim.Length is > 0 and <= MaxClaimBytes;
-    }
-    catch (FormatException)
-    {
-        return false;
-    }
-}
-
-internal sealed record TpmVerificationRequest(
-    int Version,
-    string Uid,
-    string AppId,
-    string ChallengeId,
-    string Nonce,
-    long IssuedAtMs,
-    string PlatformClaim,
-    string SubjectPublicKey);

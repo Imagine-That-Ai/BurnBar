@@ -48,4 +48,17 @@ public sealed class AppCheckChallengeClientTests
         await Assert.ThrowsAsync<AppCheckMintException>(() =>
             malformed.IssueAsync(TestConstants.PlaceholderAppId, TestConstants.SampleIdToken));
     }
+
+    [Fact]
+    public async Task IssueAsync_RejectsOutOfRangeExpiry_FailClosed()
+    {
+        var client = new AppCheckChallengeClient(
+            AppCheckChallengeEndpoint.ForUrl(new Uri("https://example.test/challenge")),
+            new FakeMintTransport(_ => new AppCheckMintHttpResponse(
+                200,
+                "{\"result\":{\"ok\":true,\"challengeId\":\"challenge-0123456789abcdef\",\"nonce\":\"nonce-0123456789abcdef\",\"expiresAtMs\":9223372036854775808}}")));
+
+        await Assert.ThrowsAsync<AppCheckMintException>(() =>
+            client.IssueAsync(TestConstants.PlaceholderAppId, TestConstants.SampleIdToken));
+    }
 }

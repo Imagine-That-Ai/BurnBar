@@ -63,7 +63,10 @@ public sealed class AppCheckChallengeClient
             }
             var challengeId = result.GetProperty("challengeId").GetString();
             var nonce = result.GetProperty("nonce").GetString();
-            var expiresAtMs = result.GetProperty("expiresAtMs").GetInt64();
+            if (!result.GetProperty("expiresAtMs").TryGetInt64(out var expiresAtMs))
+            {
+                throw AppCheckMintException.Malformed("invalid challenge expiry");
+            }
             if (string.IsNullOrWhiteSpace(challengeId) || string.IsNullOrWhiteSpace(nonce) || expiresAtMs <= 0)
             {
                 throw AppCheckMintException.Malformed("invalid challenge payload");
