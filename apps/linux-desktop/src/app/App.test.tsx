@@ -13,7 +13,11 @@ import { OnboardingSurface } from '../surfaces/OnboardingSurface.js';
 
 function resetShell(): void {
   localStorage.clear();
-  location.hash = '';
+  // Clear the route without queueing a hashchange event for the next test.
+  // jsdom delivers location.hash assignments asynchronously; a stale reset
+  // event can otherwise overwrite the route established by the following
+  // test and make shortcut assertions order-dependent.
+  window.history.replaceState(null, '', `${location.pathname}${location.search}`);
   useOverviewStore.setState({ summary: null, loading: false, error: null, cacheHitRatePct: null, lastRefreshedAt: null });
   useShellStore.setState({
     route: 'overview',
@@ -431,6 +435,9 @@ describe('App shell', () => {
     render(<App />);
 
     await waitFor(() => expect(nativeShortcutStatus).toHaveBeenCalled());
+    await act(async () => {
+      await nativeShortcutStatus.mock.results[0]?.value;
+    });
     fireEvent.keyDown(window, {
       key: 'o',
       code: 'KeyO',
