@@ -133,7 +133,10 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
         XCTAssertTrue(schemaSQL.contains("CREATE TABLE provider_accounts"))
         XCTAssertTrue(schemaSQL.contains("CREATE TABLE provider_quota_snapshots"))
         XCTAssertTrue(schemaSQL.contains("CREATE VIRTUAL TABLE search_chunks_fts"))
-        XCTAssertTrue(schemaSQL.contains("-- Schema hash: \(schemaHash)"))
+        XCTAssertTrue(
+            schemaSQL.contains("-- Schema hash: \(schemaHash)"),
+            "docs/SCHEMA_SQLITE.sql schema hash is stale; expected \(schemaHash)"
+        )
     }
 
     public func testWALBackupRestoreFailureInjectionAndConcurrentReadWrite() throws {
