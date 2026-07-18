@@ -21,10 +21,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   __testing__,
-  type AppCheckTokenMinter,
-  type WindowsAttestationClaim,
-  type WindowsAttestationVerifier,
-  type WindowsAttestationChallengeStore,
 } from "../callables/windowsAppCheck.js";
 import { PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID } from "../config.js";
 
@@ -41,6 +37,13 @@ const {
   MAX_TPM_SUBJECT_PUBLIC_KEY_BASE64_LENGTH,
   MAX_TPM_CHALLENGE_ID_LENGTH,
 } = __testing__;
+
+type WindowsAttestationVerifier = ReturnType<typeof buildWindowsAttestationVerifiers> extends Map<string, infer T>
+  ? T
+  : never;
+type WindowsAttestationClaim = Parameters<WindowsAttestationVerifier["verify"]>[0];
+type AppCheckTokenMinter = Parameters<typeof mintWindowsAppCheckTokenCore>[0]["createToken"];
+type WindowsAttestationChallengeStore = Parameters<typeof issueWindowsAppCheckChallengeCore>[0]["store"];
 
 const NOW = 1_900_000_000_000;
 const APP_ID = PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID;
@@ -336,7 +339,7 @@ describe("VAL-P0-AC-013 production TPM verifier and challenge binding", () => {
   it("mints only after the Windows verifier binds uid/app/challenge/nonce and the challenge is consumed", async () => {
     const fetcher = async (_provider: string, _operation: string, _url: string | URL, init?: RequestInit) => {
       expect(init?.redirect).toBe("error");
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      const body: unknown = JSON.parse(String(init?.body));
       expect(body).toMatchObject({
         uid: "user-1",
         appId: realAppId,

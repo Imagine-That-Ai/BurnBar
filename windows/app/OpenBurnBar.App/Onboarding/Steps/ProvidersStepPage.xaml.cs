@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Interop;
+using OpenBurnBar.App.Settings.Winui;
 using OpenBurnBar.App.Theme;
 using Windows.Storage.Pickers;
 using Windows.Storage;

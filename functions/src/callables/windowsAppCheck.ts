@@ -83,7 +83,7 @@ const MAX_TPM_PLATFORM_CLAIM_BASE64_LENGTH = 4 * Math.ceil(MAX_TPM_PLATFORM_CLAI
 const WINDOWS_TPM_VERIFIER_TOKEN = defineSecret("WINDOWS_TPM_VERIFIER_TOKEN");
 
 /** A Windows platform attestation claim presented to the mint endpoint. */
-export interface WindowsAttestationClaim {
+interface WindowsAttestationClaim {
   /** Verifier discriminator, e.g. {@link MOCK_ATTESTATION_KIND}. */
   kind: string;
   /** App Check app id the attestation is bound to (must be allowlisted). */
@@ -117,7 +117,7 @@ type AttestationRejectReason =
  * The registry maps a claim `kind` to the verifier that can prove it. In Phase 0
  * implementations cover the non-production mock and production TPM paths.
  */
-export interface WindowsAttestationVerifier {
+interface WindowsAttestationVerifier {
   readonly kind: string;
   verify(claim: WindowsAttestationClaim, nowMillis: number, uid?: string): VerifyResult | Promise<VerifyResult>;
 }
@@ -191,7 +191,7 @@ class MockWindowsAttestationVerifier implements WindowsAttestationVerifier {
   }
 }
 
-export type WindowsTpmVerifierFetch = (
+type WindowsTpmVerifierFetch = (
   provider: string,
   operation: string,
   url: string | URL,
@@ -374,15 +374,15 @@ function clampTtl(raw: unknown): number {
 }
 
 /** Injectable createToken so the mint path is unit-testable without live Firebase. */
-export type AppCheckTokenMinter = (appId: string, options?: AppCheckTokenOptions) => Promise<AppCheckToken>;
+type AppCheckTokenMinter = (appId: string, options?: AppCheckTokenOptions) => Promise<AppCheckToken>;
 
-export interface WindowsAttestationChallenge {
+interface WindowsAttestationChallenge {
   challengeId: string;
   nonce: string;
   expiresAtMs: number;
 }
 
-export interface WindowsAttestationChallengeStore {
+interface WindowsAttestationChallengeStore {
   issue(uid: string, appId: string, nowMillis: number): Promise<WindowsAttestationChallenge>;
   consume(
     uid: string,
