@@ -102,6 +102,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     )
     private var performanceGateVisibilityObserver: NSObjectProtocol?
     private var performanceGateHiddenWindows: [NSWindow] = []
+    private var performanceGateWindowDidExposeObserver: NSObjectProtocol?
+    private var performanceGateWindowsShouldBeVisible = true
 
     nonisolated func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated {
@@ -172,9 +174,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self?.setPerformanceGateWindowsVisible(visible)
             }
         }
+        performanceGateWindowDidExposeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didExposeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let window = notification.object as? NSWindow else { return }
+            MainActor.assumeIsolated {
+                self?.hidePerformanceGateWindowIfNeeded(window)
+            }
+        }
     }
 
     private func setPerformanceGateWindowsVisible(_ visible: Bool) {
+        performanceGateWindowsShouldBeVisible = visible
         if visible {
             let windows = performanceGateHiddenWindows
             performanceGateHiddenWindows.removeAll(keepingCapacity: true)
@@ -185,24 +198,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 return
             }
             for window in windows {
-                if window.isMiniaturized {
-                    window.deminiaturize(nil)
-                } else {
-                    window.orderFrontRegardless()
-                }
+                window.orderFrontRegardless()
             }
             return
         }
 
-        guard performanceGateHiddenWindows.isEmpty else { return }
-        performanceGateHiddenWindows = NSApplication.shared.windows.filter(\.isVisible)
-        for window in performanceGateHiddenWindows {
-            if window.styleMask.contains(.miniaturizable) {
-                window.miniaturize(nil)
-            } else {
-                window.orderOut(nil)
-            }
+        for window in NSApplication.shared.windows where window.isVisible {
+            hidePerformanceGateWindowIfNeeded(window)
         }
+    }
+
+    private func hidePerformanceGateWindowIfNeeded(_ window: NSWindow) {
+        guard !performanceGateWindowsShouldBeVisible else { return }
+        if !performanceGateHiddenWindows.contains(where: { $0 === window }) {
+            performanceGateHiddenWindows.append(window)
+        }
+        window.orderOut(nil)
     }
 
     /// Registers the foreground + post-revoke triggers for the RR-5 Cloud Vault
