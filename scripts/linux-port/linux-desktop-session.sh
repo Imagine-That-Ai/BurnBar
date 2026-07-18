@@ -108,12 +108,26 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus \
     --method org.a11y.Bus.GetAddress >"$out_dir/atspi-bus-address.txt"
   orca --list-apps >"$out_dir/orca-applications.txt" 2>"$out_dir/orca-list-apps.err"
-  python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+  if ! python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
     --application OpenBurnBar \
     --wait-for-meaningful-seconds "${OB_ATSPI_READY_TIMEOUT_SECONDS:-45}" \
     --output "$out_dir/atspi-tree-linux-desktop.json" \
     --tree-text "$out_dir/accessibility-tree-linux-desktop.txt" \
-    --expected-name OpenBurnBar
+    --expected-name OpenBurnBar; then
+    echo "Initial AT-SPI tree did not become meaningful before the readiness deadline" >&2
+    for diagnostic in \
+      "$out_dir/openburnbar-linux-desktop.stdout.log" \
+      "$out_dir/openburnbar-linux-desktop.stderr.log" \
+      "$out_dir/daemon-shell-session.log" \
+      "$out_dir/daemon-socket-gui-session.log" \
+      "$out_dir/orca.stderr.log"; do
+      if [[ -f "$diagnostic" ]]; then
+        echo "===== ${diagnostic} =====" >&2
+        tail -200 "$diagnostic" >&2 || true
+      fi
+    done
+    exit 1
+  fi
 
   route_tsv="$work_dir/packaged-route-session.tsv"
   : >"$route_tsv"
