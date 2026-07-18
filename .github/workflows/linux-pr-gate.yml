@@ -139,6 +139,7 @@ jobs:
           scripts/linux-port/linux-toolchain-node-runtime.test.mjs
           scripts/linux-port/verify-linux-release.test.mjs
           scripts/linux-port/resolve-linux-release-version.test.mjs
+          scripts/linux-port/resolve-linux-previous-release.test.mjs
 
       - name: Verify Linux workflow wiring
         run: |

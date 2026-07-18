@@ -84,17 +84,14 @@ jobs:
           CURRENT_VERSION: ${{ steps.release-version.outputs.version }}
         run: |
           set -euo pipefail
-          previous="${INPUT_PREVIOUS_VERSION:-}"
-          if [[ -z "$previous" ]]; then
-            previous="$(gh release list --limit 100 --json tagName,isDraft --jq '.[] | select(.isDraft == false) | .tagName' \
-              | sed -n 's/^linux-v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$/\1/p' \
-              | grep -Fvx "$CURRENT_VERSION" | head -n 1 || true)"
-          fi
-          if [[ -n "$previous" && ! "$previous" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "previous Linux version must be strict X.Y.Z semver" >&2
-            exit 1
-          fi
-          printf 'version=%s\n' "$previous" >> "$GITHUB_OUTPUT"
+          # Select only a published, complete two-architecture release whose
+          # Debian payload still contains the package-owned daemon launcher.
+          # The first 0.1.0 release is intentionally skipped because it
+          # predates that contract; an empty automatic result remains an
+          # explicit blocked lifecycle input for prerelease assembly.
+          node scripts/linux-port/resolve-linux-previous-release.mjs \
+            --current-version "$CURRENT_VERSION" \
+            --github-output
 
   build-architecture:
     name: Build Linux ${{ matrix.architecture }} shard
