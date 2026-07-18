@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
 namespace OpenBurnBar.App.Theme;
@@ -19,6 +20,10 @@ public sealed class AppearanceModeOption
 
     /// <summary>Segoe MDL2 Assets glyph shown beside the label.</summary>
     public string Glyph { get; }
+
+    /// <summary>Shows the system-color preview only for the explicit high-contrast option.</summary>
+    public Visibility HighContrastVisibility =>
+        Mode == AppearanceMode.HighContrast ? Visibility.Visible : Visibility.Collapsed;
 }
 
 /// <summary>
