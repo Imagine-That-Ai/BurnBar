@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   copyFileSync,
   mkdirSync,
   mkdtempSync,
@@ -23,6 +24,7 @@ const GATE = join(SCRIPT_DIR, "verify-pr-harness-aggregate-gates.mjs");
 const WORKFLOW = ".github/workflows/openburnbar-pr-harness.yml";
 const APP_WORKFLOW = ".github/workflows/app-pr-gate.yml";
 const FAST_WORKFLOW = ".github/workflows/fast-feedback.yml";
+const BRANCH_PROTECTION = "governance/branch-protection.main.json";
 const roots = [];
 
 process.on("exit", () => {
@@ -79,6 +81,27 @@ function workflowStep(job, name) {
     : job.slice(start, start + marker.length + next);
 }
 
+function workflowSteps(job) {
+  const steps = new Map();
+  for (const match of job.matchAll(/^      - name: (.+)$/gmu)) {
+    const name = match[1];
+    const start = match.index;
+    const remainder = job.slice(start + match[0].length);
+    const next = remainder.search(/^      - (?:name:|uses:)/mu);
+    steps.set(
+      name,
+      next === -1 ? job.slice(start) : job.slice(start, start + match[0].length + next),
+    );
+  }
+  return steps;
+}
+
+function optionalStepField(step, field) {
+  const prefix = `        ${field}: `;
+  const line = step.split("\n").find((candidate) => candidate.startsWith(prefix));
+  return line?.slice(prefix.length);
+}
+
 function jobField(job, field) {
   const prefix = `    ${field}: `;
   const line = job.split("\n").find((candidate) => candidate.startsWith(prefix));
@@ -116,16 +139,29 @@ function stepEnvironment(step) {
 }
 
 function stepScript(step) {
-  const marker = "        run: |\n";
-  const start = step.indexOf(marker);
-  assert.notEqual(start, -1, "missing multiline run script");
+  const match = /^        run: (?:\||>-)\n/mu.exec(step);
+  assert.ok(match, "missing multiline run script");
   const script = [];
-  for (const line of step.slice(start + marker.length).split("\n")) {
+  for (const line of step.slice(match.index + match[0].length).split("\n")) {
     if (!line.startsWith("          ")) break;
     script.push(line.slice(10));
   }
   assert.ok(script.length > 0, "empty multiline run script");
   return `${script.join("\n")}\n`;
+}
+
+function stepRun(step) {
+  const scalar = optionalStepField(step, "run");
+  return scalar === "|" || scalar === ">-" ? stepScript(step) : `${scalar}\n`;
+}
+
+function bindNeedsJSON(script) {
+  const bound = script.replace(
+    "results='${{ toJSON(needs) }}'",
+    'results="$NEEDS_JSON"',
+  );
+  assert.notEqual(bound, script, "aggregate script must consume toJSON(needs)");
+  return bound;
 }
 
 function runShell(script, env) {
@@ -141,6 +177,14 @@ function runShell(script, env) {
 }
 
 let passed = 0;
+
+function needsEnvironment(names, overrideName, overrideResult) {
+  const needs = Object.fromEntries(names.map((name) => [name, { result: "success" }]));
+  if (overrideName) {
+    needs[overrideName] = overrideResult === undefined ? {} : { result: overrideResult };
+  }
+  return { NEEDS_JSON: JSON.stringify(needs) };
+}
 let failed = 0;
 
 function expect(label, mutator, wantExit) {
@@ -220,6 +264,49 @@ function expectShell(label, script, env, wantExit) {
   });
 }
 
+const harnessWorkflow = readFileSync(join(REPO_ROOT, WORKFLOW), "utf8");
+const harnessRequired = workflowJob(harnessWorkflow, "harness-required");
+const harnessInformational = workflowJob(harnessWorkflow, "harness-informational");
+const requiredNames = jobNeeds(harnessRequired);
+const informationalNames = jobNeeds(harnessInformational);
+const requiredScript = bindNeedsJSON(stepScript(workflowStep(
+  harnessRequired,
+  "Check all required (deterministic) harness jobs passed",
+)));
+const informationalScript = bindNeedsJSON(stepScript(workflowStep(
+  harnessInformational,
+  "Report informational harness job results (alerts, does not block)",
+)));
+
+expectShell(
+  "Harness Required accepts successful prerequisites",
+  requiredScript,
+  needsEnvironment(requiredNames),
+  0,
+);
+
+for (const [resultName, result] of [
+  ["missing", undefined],
+  ["skipped", "skipped"],
+  ["cancelled", "cancelled"],
+  ["neutral", "neutral"],
+  ["failed", "failure"],
+]) {
+  expectShell(
+    `Harness Required rejects ${resultName} prerequisite results`,
+    requiredScript,
+    needsEnvironment(requiredNames, requiredNames[0], result),
+    1,
+  );
+}
+
+expectShell(
+  "Harness Informational permits skipped prerequisites",
+  informationalScript,
+  needsEnvironment(informationalNames, informationalNames[0], "skipped"),
+  0,
+);
+
 const appWorkflow = readFileSync(join(REPO_ROOT, APP_WORKFLOW), "utf8");
 const appGate = workflowJob(appWorkflow, "app-pr-gate");
 const appStep = workflowStep(
@@ -269,6 +356,45 @@ for (const prerequisite of ["AGENTLENS_RESULT", "MOBILE_RESULT"]) {
     );
   }
 }
+
+const appBuildJob = workflowJob(appWorkflow, "app-build-test");
+const appBuildSteps = workflowSteps(appBuildJob);
+const rafStep = appBuildSteps.get("macOS rAF pause prerequisite (P-PERF-3)");
+const buildStep = appBuildSteps.get("Build AgentLens app for real-process CPU gate");
+const realGateStep = appBuildSteps.get("Enforce real macOS idle/occluded CPU budget (P-PERF-3)");
+const evidenceStep = appBuildSteps.get("Upload macOS idle/occlusion CPU evidence");
+
+check("P-PERF-3 runs the deterministic rAF test before building the real OpenBurnBar app", () => {
+  assert.ok(rafStep && buildStep && realGateStep && evidenceStep, "missing P-PERF-3 workflow step");
+  assert.ok(appBuildJob.indexOf("macOS rAF pause prerequisite (P-PERF-3)")
+    < appBuildJob.indexOf("Build AgentLens app for real-process CPU gate"));
+  assert.ok(appBuildJob.indexOf("Build AgentLens app for real-process CPU gate")
+    < appBuildJob.indexOf("Enforce real macOS idle/occluded CPU budget (P-PERF-3)"));
+  assert.equal(stepRun(rafStep).trim(), "node --test scripts/ci/macos-idle-occlusion-gate.test.mjs");
+  const build = stepRun(buildStep);
+  assert.match(build, /xcodebuild build \\\n/u);
+  assert.match(build, /-project OpenBurnBar\.xcodeproj/u);
+  assert.match(build, /-scheme OpenBurnBar/u);
+  assert.match(build, /-derivedDataPath "\$PERF_DERIVED_DATA"/u);
+});
+
+check("P-PERF-3 invokes only the real-process gate output sink and cannot continue on error", () => {
+  assert.equal(
+    stepRun(realGateStep).trim().replace(/\s+/gu, " "),
+    'node scripts/ci/macos-idle-occlusion-gate.mjs --output "$RUNNER_TEMP/macos-idle-occlusion-evidence/result.json"',
+  );
+  for (const step of [rafStep, buildStep, realGateStep]) {
+    assert.equal(optionalStepField(step, "continue-on-error"), undefined);
+  }
+});
+
+check("P-PERF-3 always uploads required evidence and fails when evidence is absent", () => {
+  assert.equal(optionalStepField(evidenceStep, "if"), "always()");
+  assert.match(optionalStepField(evidenceStep, "uses"), /^actions\/upload-artifact@/u);
+  assert.match(evidenceStep, /^          path: \$\{\{ runner\.temp \}\}\/macos-idle-occlusion-evidence\/result\.json$/mu);
+  assert.match(evidenceStep, /^          if-no-files-found: error$/mu);
+  assert.equal(optionalStepField(evidenceStep, "continue-on-error"), undefined);
+});
 
 const fastWorkflow = readFileSync(join(REPO_ROOT, FAST_WORKFLOW), "utf8");
 const rustJob = workflowJob(fastWorkflow, "rust-deny-fast");
@@ -386,6 +512,37 @@ for (const [resultName, options] of [
     1,
   );
 }
+
+const packageLintJob = workflowJob(fastWorkflow, "typescript-surfaces-lint");
+const packageLintSteps = workflowSteps(packageLintJob);
+
+check("TypeScript package lint floors install, lint, and typecheck linux-desktop", () => {
+  const fakeBin = mkdtempSync(join(tmpdir(), "typescript-lint-floor-npm-"));
+  roots.push(fakeBin);
+  const calls = join(fakeBin, "npm-calls.txt");
+  const fakeNpm = join(fakeBin, "npm");
+  writeFileSync(fakeNpm, '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$NPM_CALLS"\n');
+  chmodSync(fakeNpm, 0o755);
+
+  const install = packageLintSteps.get("Install TypeScript package dependencies");
+  const lint = packageLintSteps.get("ESLint + typecheck package floors");
+  const typecheck = packageLintSteps.get("Linux desktop TypeScript typecheck floor");
+  assert.ok(install && lint && typecheck, "missing TypeScript package lint floor step");
+  const status = runShell(
+    `${stepRun(install)}\n${stepRun(lint)}\n${stepRun(typecheck)}`,
+    { PATH: `${fakeBin}:${process.env.PATH}`, NPM_CALLS: calls },
+  );
+  assert.equal(status, 0);
+  const invocations = readFileSync(calls, "utf8").trim().split("\n");
+  assert.ok(invocations.includes("ci --prefix apps/linux-desktop"));
+  assert.ok(invocations.includes("run lint --prefix apps/linux-desktop"));
+  assert.ok(invocations.includes("run typecheck --prefix apps/linux-desktop"));
+});
+
+check("desired main branch protection requires Mobile build + unit test", () => {
+  const protection = JSON.parse(readFileSync(join(REPO_ROOT, BRANCH_PROTECTION), "utf8"));
+  assert.ok(protection.required_status_checks.contexts.includes("Mobile build + unit test"));
+});
 
 if (failed > 0) {
   console.error(`\nFAIL: ${failed} PR harness aggregate gate self-test case(s) failed.`);

@@ -281,6 +281,7 @@ jobs:
             packages/libsignal-bridge/package-lock.json
             packages/libsignal-protocol/package-lock.json
             packages/signal-envelope-contracts/package-lock.json
+            apps/linux-desktop/package-lock.json
 
       - name: Install TypeScript package dependencies
         run: |
@@ -291,7 +292,8 @@ jobs:
             tools/openburnbar-mcp-remote \
             packages/libsignal-bridge \
             packages/libsignal-protocol \
-            packages/signal-envelope-contracts
+            packages/signal-envelope-contracts \
+            apps/linux-desktop
           do
             echo "::group::npm ci --prefix ${dir}"
             npm ci --prefix "${dir}"
@@ -306,12 +308,16 @@ jobs:
             services/hosted-mcp \
             tools/openburnbar-mcp-remote \
             packages/libsignal-protocol \
-            packages/signal-envelope-contracts
+            packages/signal-envelope-contracts \
+            apps/linux-desktop
           do
             echo "::group::npm run lint --prefix ${dir}"
             npm run lint --prefix "${dir}"
             echo "::endgroup::"
           done
+
+      - name: Linux desktop TypeScript typecheck floor
+        run: npm run typecheck --prefix apps/linux-desktop
 
   # ── Shell scripts: syntax validation ────────────────────────────────────
   sqlite-schema-doc:
