@@ -123,10 +123,7 @@ public sealed partial class DataSourceSettingsPage : Page
             model.VaultKeyB64 = NullIfEmpty(VaultKeyBox.Text);
         });
 
-        if (!WindowsSettingsComposition.TryConfigureProductionCloudSync())
-        {
-            WinAppCloudSyncHost.ConfigureFromAppConfiguration();
-        }
+        WindowsSettingsComposition.ConfigureCloudSync();
         RenderStorageStatus(WindowsStorageDevHost.InitializeRuntime());
 
         StatusLabel.Text = AppConfiguration.Current.HasSqlCipherCredentials

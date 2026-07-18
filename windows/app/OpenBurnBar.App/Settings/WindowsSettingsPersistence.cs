@@ -161,6 +161,14 @@ internal static class WindowsSettingsComposition
         return true;
     }
 
+    public static void ConfigureCloudSync()
+    {
+        if (!TryConfigureProductionCloudSync())
+        {
+            WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+        }
+    }
+
     private static void ConfigureProductionCloudSync(
         DesktopOAuthCredentialsProvider oauth,
         FirebaseOAuthSession session)
