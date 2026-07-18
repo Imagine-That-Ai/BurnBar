@@ -140,6 +140,7 @@ jobs:
         run: |
           node scripts/ci/write-firebase-hosting-ci-config.mjs \
             --mode firestore \
+            --storage-bucket "${FIREBASE_PROJECT}.firebasestorage.app" \
             --output "$RUNNER_TEMP/firebase-firestore.ci.json" \
             --check
           bash scripts/ci/prepare-firebase-tools.sh

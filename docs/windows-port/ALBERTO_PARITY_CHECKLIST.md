@@ -6,13 +6,13 @@
 the complete set of items only Alberto can do. Each unblocks a named wave of
 agent-executable work; nothing here requires writing code.
 
-## Current status - 2026-07-17
+## Current status - 2026-07-18
 
 This checklist is retained as the original external-prerequisite runbook. Its
 July 8 blocking state has materially advanced:
 
 - **B - complete:** Azure Artifact Signing identity validation and the public
-  trust certificate profile are active. The exact `windows-v1.0.35` x64 and
+  trust certificate profile are active. The exact `windows-v1.0.37` x64 and
   ARM64 release completed with Authenticode and RFC 3161 verification.
 - **C - account complete, lifecycle open:** the Imagine That AI LLC Store
   developer account is verified and `BurnBar` is reserved as Store product
@@ -22,14 +22,21 @@ July 8 blocking state has materially advanced:
   and Firebase API key are configured as repository variables. End-to-end
   OAuth, App Check, TPM, and CloudVault certification still requires deployed
   `burnbar-staging` services.
-- **A - VM preparation only:** ARM64 UTM evidence remains useful build and
-  package preparation, but does not count as physical ARM64 certification.
+- **A - VM validation complete:** the exact `windows-v1.0.37` ARM64 MSIX
+  lifecycle, portable launch, and 25/25 UIA route/scenario rerun passed under
+  UTM. This does not count as physical ARM64 certification.
+- **Physical x64 completed, candidate failed:** the exact v1.0.37 Intel run
+  passed signature, lifecycle, soak, and evidence validation but returned
+  **NO-GO** because native backdrop surfaces covered the Providers/dashboard
+  content and compact/accessibility defects remained. PR #1854 contains the
+  source remediation; v1.0.37 must not be submitted or promoted.
 
-The current operator actions are therefore narrower: run the exact v1.0.35
-candidate on the physical Intel x64 laptop, authorize and finish isolated
-staging billing/provisioning, and authorize a non-public Partner Center
-submission for Store lifecycle testing. Physical ARM64 remains an explicit beta
-limitation until qualifying hardware exists.
+The current operator actions are therefore narrower: wait for PR #1854 and a
+new signed candidate, rerun that successor on the physical Intel x64 laptop,
+finish the isolated staging protocols, and authorize a non-public Partner
+Center submission only after the replacement candidate passes local physical
+gates. Physical ARM64 remains an explicit beta limitation until qualifying
+hardware exists.
 
 Ordering is by urgency (lead time), not effort.
 
