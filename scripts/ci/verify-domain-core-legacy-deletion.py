@@ -4011,9 +4011,26 @@ def run_gate(
     if not repo_root.is_dir():
         raise GateError(f"repository root is missing: {repo_root}")
     repo_root = repo_root.resolve(strict=True)
+    manifest_path = manifest_path if manifest_path.is_absolute() else repo_root / manifest_path
+    try:
+        manifest_relative = manifest_path.relative_to(repo_root).as_posix()
+    except ValueError as error:
+        raise GateError("manifest path must be inside repository root") from error
+    manifest_path = secure_path(repo_root, manifest_relative, "manifest", must_exist=False)
     deletion_sensitive = False
     if base_ref is not None:
         _ensure_base_ref_available(repo_root, base_ref, trusted_root)
+        fork_point = git_output(
+            repo_root,
+            ["merge-base", base_ref, "HEAD"],
+            "legacy deletion ledger fork point",
+        ).strip()
+        if not COMMIT_RE.fullmatch(fork_point):
+            raise GateError("legacy deletion ledger baseline: cannot determine fork point")
+        if not manifest_path.exists() and git_file_exists(
+            repo_root, fork_point, manifest_relative, "fork-point legacy deletion ledger"
+        ):
+            raise GateError("candidate cannot remove the legacy deletion ledger")
         sensitivity_inventory = _deletion_sensitivity_inventory(repo_root, base_ref)
         changed_paths = _candidate_changed_paths(repo_root, base_ref)
         deletion_sensitive = classify_deletion_sensitivity(
@@ -4031,20 +4048,7 @@ def run_gate(
         if not deletion_sensitive:
             return
     verify_append_only_artifacts(repo_root, base_ref)
-    manifest_path = manifest_path if manifest_path.is_absolute() else repo_root / manifest_path
-    try:
-        manifest_relative = manifest_path.relative_to(repo_root).as_posix()
-    except ValueError as error:
-        raise GateError("manifest path must be inside repository root") from error
-    manifest_path = secure_path(repo_root, manifest_relative, "manifest", must_exist=False)
     if not manifest_path.exists():
-        if base_ref is not None and git_file_exists(
-            repo_root,
-            base_ref,
-            manifest_relative,
-            "base legacy deletion ledger",
-        ):
-            raise GateError("candidate cannot remove the legacy deletion ledger")
         if deletion_sensitive:
             raise GateError("deletion-sensitive candidate has no legacy deletion ledger to anchor validation")
         return

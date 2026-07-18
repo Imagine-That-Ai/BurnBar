@@ -5,7 +5,6 @@ import XCTest
 final class ParserResourceGovernorTests: XCTestCase {
     // MARK: - ParserResourceLimits
 
-
     // MARK: - byte budget admission
 
     func test_nilByteBudgetAdmitsEveryFileAndChargesConsumedBytes() {

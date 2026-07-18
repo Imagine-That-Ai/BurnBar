@@ -578,7 +578,6 @@ private struct StubParser: LogParser {
     let provider: AgentProvider
     let conversations: [ConversationRecord]
 
-
     func parse(options: LogParseOptions) async throws -> ParseResult {
         ParseResult(usages: [], conversations: conversations)
     }
@@ -586,7 +585,6 @@ private struct StubParser: LogParser {
 
 private struct FailingParser: LogParser {
     let provider: AgentProvider = .factory
-
 
     func parse(options: LogParseOptions) async throws -> ParseResult {
         throw OpenBurnBarError.parse("test", message: "simulated parser failure")
@@ -604,7 +602,6 @@ private struct CancellingParser: LogParser {
 private struct DeferringParser: LogParser {
     let provider: AgentProvider
     let conversations: [ConversationRecord]
-
 
     func parse(options: LogParseOptions) async throws -> ParseResult {
         options.resourceGovernor?.recordDeferredFile()

@@ -13,30 +13,18 @@ enum CLIAgentMissionApprovalDecision: Equatable {
     case cliAssistantDisabled
     case waitForApproval
     case requestApproval
-
     var willPauseForApproval: Bool { self != .proceed }
     var isTerminalDenial: Bool { self == .cliAssistantDisabled }
 
-    static func resolve(
-        data: [String: Any],
-        backend: CLIAgentMissionBackend,
-        cliAssistantAllowed: Bool
-    ) -> Self {
+    static func resolve(data: [String: Any], backend: CLIAgentMissionBackend, cliAssistantAllowed: Bool) -> Self {
         let approvalStatus = ((data["approvalStatus"] as? String) ?? "none").lowercased()
         let status = ((data["status"] as? String) ?? "pending").lowercased()
-        if approvalStatus == "rejected" || approvalStatus == "canceled" || approvalStatus == "cancelled" {
-            return .cancel(approvalStatus: approvalStatus)
-        }
-        if CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend),
-           !cliAssistantAllowed {
+        if ["rejected", "canceled", "cancelled"].contains(approvalStatus) { return .cancel(approvalStatus: approvalStatus) }
+        if CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend), !cliAssistantAllowed {
             return .cliAssistantDisabled
         }
-        if approvalStatus == "approved" {
-            return .proceed
-        }
-        guard CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(data: data, backend: backend) else {
-            return .proceed
-        }
+        if approvalStatus == "approved" { return .proceed }
+        guard CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(data: data, backend: backend) else { return .proceed }
         return status == "waiting_for_approval" ? .waitForApproval : .requestApproval
     }
 }
@@ -74,11 +62,7 @@ extension CLIAgentMissionRequestListener {
         )
     }
 
-    func modelAwareSuccessMessage(
-        backend: CLIAgentMissionBackend,
-        requestedModelID: String?,
-        fallback: String
-    ) -> String {
+    func modelAwareSuccessMessage(backend: CLIAgentMissionBackend, requestedModelID: String?, fallback: String) -> String {
         let preview = fallback.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         if let preview {
             return "\(backend.displayName): \(preview.prefix(180).description)"
@@ -89,11 +73,7 @@ extension CLIAgentMissionRequestListener {
         return "\(backend.displayName) returned a result."
     }
 
-    func modelAwareFailureMessage(
-        backend: CLIAgentMissionBackend,
-        requestedModelID: String?,
-        errorMessage: String?
-    ) -> String {
+    func modelAwareFailureMessage(backend: CLIAgentMissionBackend, requestedModelID: String?, errorMessage: String?) -> String {
         let safeError = errorMessage
             .flatMap { CLIAgentMissionEventFactory.mobileSafeText($0, limit: 1800).nilIfEmpty }
         let prefix = requestedModelID.map {
@@ -137,15 +117,8 @@ extension CLIAgentMissionRequestListener {
         }
     }
 
-    func approvalDecision(
-        data: [String: Any],
-        backend: CLIAgentMissionBackend
-    ) -> CLIAgentMissionApprovalDecision {
-        CLIAgentMissionApprovalDecision.resolve(
-            data: data,
-            backend: backend,
-            cliAssistantAllowed: settingsManager.cliAssistantAllowed
-        )
+    func approvalDecision(data: [String: Any], backend: CLIAgentMissionBackend) -> CLIAgentMissionApprovalDecision {
+        .resolve(data: data, backend: backend, cliAssistantAllowed: settingsManager.cliAssistantAllowed)
     }
 
     func applyApprovalDecision(
@@ -155,23 +128,16 @@ extension CLIAgentMissionRequestListener {
         backend: CLIAgentMissionBackend
     ) async {
         switch decision {
-        case .proceed, .waitForApproval:
-            return
-        case .cancel(let approvalStatus):
-            await cancelAfterApprovalDecision(document: document, approvalStatus: approvalStatus)
+        case .proceed, .waitForApproval: return
+        case .cancel(let approvalStatus): await cancelAfterApprovalDecision(document: document, approvalStatus: approvalStatus)
         case .cliAssistantDisabled:
             await failAfterTrustedClaim(
                 document: document,
                 backend: backend,
                 message: "Mac CLI assistants are off. Enable Mac CLI assistants in Settings -> Privacy & Indexing before this Mac can run remote agent missions."
             )
-        case .requestApproval:
-            await requestApproval(document: document, data: data, backend: backend)
+        case .requestApproval: await requestApproval(document: document, data: data, backend: backend)
         }
-    }
-
-    func missionRequiresApproval(data: [String: Any], backend: CLIAgentMissionBackend) -> Bool {
-        CLIAgentMissionRuntimePlanner.requiresPreDispatchApproval(data: data, backend: backend)
     }
 
     func failAfterTrustedClaim(document: QueryDocumentSnapshot, backend: CLIAgentMissionBackend, message: String) async {

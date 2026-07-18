@@ -271,27 +271,20 @@ extension CLIAgentMissionRequestListener {
                     originPlatform: data["originPlatform"] as? String, source: data["source"] as? String,
                     personaScopeJSON: data["personaScopeJSON"] as? String, approvalMode: data["approvalMode"] as? String,
                     approvalStatus: data["approvalStatus"] as? String, approverDeviceID: data["approverDeviceID"] as? String,
-                    entitlementTier: data["entitlementTier"] as? String,
-                    workingDirectory: CLIAgentMissionRuntimePlanner.workingDirectoryPath(from: data)
+                    entitlementTier: data["entitlementTier"] as? String, workingDirectory: CLIAgentMissionRuntimePlanner.workingDirectoryPath(from: data)
                 ),
-                missionID: id,
-                prompt: p,
-                fanOutCount: fanOut
+                missionID: id, prompt: p, fanOutCount: fanOut
             )
         }
         let missionGroupContext: MissionGroupClaimContext?
         do {
             missionGroupContext = try await validateMissionGroupClaimIfNeeded(
-                data: data,
-                uid: uid,
-                requestID: document.documentID
-            )
+                data: data, uid: uid, requestID: document.documentID)
         } catch {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
             // cov:ignore-start -- live Firestore mission-listener denial telemetry; reducer behavior is unit-tested.
             MissionRemoteAuthorizationShadow.observeDeny(
-                ctx: shadowCtx(document.documentID, "", 1),
-                executorTrustState: "trusted")
+                ctx: shadowCtx(document.documentID, "", 1), executorTrustState: "trusted")
             // cov:ignore-end
             await fail(document: document, message: error.localizedDescription)
             return
@@ -320,8 +313,7 @@ extension CLIAgentMissionRequestListener {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused for untrusted Mac device=\(self.accountManager.deviceId, privacy: .public)")
             // cov:ignore-start -- live Firestore mission-listener denial telemetry; reducer behavior is unit-tested.
             MissionRemoteAuthorizationShadow.observeDeny(
-                ctx: shadowCtx(document.documentID, prompt, missionGroupContext?.siblingCount ?? 1),
-                executorTrustState: "untrusted")
+                ctx: shadowCtx(document.documentID, prompt, missionGroupContext?.siblingCount ?? 1), executorTrustState: "untrusted")
             // cov:ignore-end
             return
         }
@@ -354,45 +346,24 @@ extension CLIAgentMissionRequestListener {
         }
         let localApprovalDecision = approvalDecision(data: data, backend: backend)
         let ctx = shadowCtx(document.documentID, prompt, missionGroupContext?.siblingCount ?? 1)
-        let personaMalformed: Bool
-        if case .refused = CLIAgentMissionPersonaScopeResolution.resolve(from: data) {
-            personaMalformed = true
-        } else {
-            personaMalformed = false
-        }
+        let personaMalformed: Bool = { if case .refused = CLIAgentMissionPersonaScopeResolution.resolve(from: data) { return true }; return false }()
         let outcome = await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
-            ctx: ctx,
-            isTerminalDenial: localApprovalDecision.isTerminalDenial,
-            personaScopeMalformed: personaMalformed,
-            willPauseForApproval: localApprovalDecision.willPauseForApproval
-        )
+            ctx: ctx, isTerminalDenial: localApprovalDecision.isTerminalDenial,
+            personaScopeMalformed: personaMalformed, willPauseForApproval: localApprovalDecision.willPauseForApproval)
         switch outcome {
-        case .proceed:
-            break
+        case .proceed: break
         case .authorized(let response):
             guard let grantCeiling = response.grantCeiling else {
-                await fail(
-                    document: document,
-                    message: "The Mac daemon returned an authorized mission without a capability ceiling, so the mission was rejected. Re-send the mission from your device."
-                )
+                await fail(document: document, message: "The Mac daemon returned an authorized mission without a capability ceiling, so the mission was rejected. Re-send the mission from your device.")
                 return
             }
-            data["commandsAllowed"] = ((data["commandsAllowed"] as? Bool) ?? false)
-                && grantCeiling.commandsAllowed
-            data["fileEditsAllowed"] = ((data["fileEditsAllowed"] as? Bool) ?? false)
-                && grantCeiling.fileEditsAllowed
+            data["commandsAllowed"] = ((data["commandsAllowed"] as? Bool) ?? false) && grantCeiling.commandsAllowed
+            data["fileEditsAllowed"] = ((data["fileEditsAllowed"] as? Bool) ?? false) && grantCeiling.fileEditsAllowed
             // Backend routing remains owned by the existing launch planner.
         case .pauseForApproval:
-            await applyApprovalDecision(
-                localApprovalDecision,
-                document: document,
-                data: data,
-                backend: backend
-            )
+            await applyApprovalDecision(localApprovalDecision, document: document, data: data, backend: backend)
             return
-        case .deny(let message):
-            await fail(document: document, message: message)
-            return
+        case .deny(let message): await fail(document: document, message: message); return
         }
 
         if cancellationTracker.isCancelled {

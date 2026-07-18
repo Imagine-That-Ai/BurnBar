@@ -477,7 +477,6 @@ final class ParserParseOptionsTests: XCTestCase {
         XCTAssertEqual(readFailureMetrics.snapshot().contentReadCount, 1, "failed content reads remain charged after admission")
     }
 
-
     private var futureUsageOnlyOptions: LogParseOptions {
         LogParseOptions(
             includeConversationBodies: false,
