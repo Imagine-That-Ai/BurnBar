@@ -97,6 +97,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var menuBarIconObservation: Any?
     var updateBadgeObservation: Any?
     var updateBadgeView: NSView?
+    private static let performanceGateVisibilityNotification = Notification.Name(
+        "com.openburnbar.performance-gate.window-visibility"
+    )
+    private var performanceGateVisibilityObserver: NSObjectProtocol?
+    private var performanceGateHiddenWindows: [NSWindow] = []
 
     nonisolated func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated {
@@ -121,6 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func applicationDidFinishLaunchingOnMainActor() {
         guard enforceSingleOpenBurnBarInstance() else { return }
         OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
+        installPerformanceGateVisibilityControlIfNeeded()
 
         NSAppleEventManager.shared().setEventHandler(
             self,
@@ -146,6 +152,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // for — on every foreground and once right after a local revoke.
         observeCloudVaultRotationPickupTriggers()
         pickUpPendingCloudVaultRotations(force: true)
+    }
+    private func installPerformanceGateVisibilityControlIfNeeded() {
+        guard OpenBurnBarRuntime.isPerformanceGateLaunch,
+              performanceGateVisibilityObserver == nil else { return }
+
+        performanceGateVisibilityObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Self.performanceGateVisibilityNotification,
+            object: String(ProcessInfo.processInfo.processIdentifier),
+            queue: .main
+        ) { [weak self] notification in
+            guard let visible = notification.userInfo?["visible"] as? Bool else { return }
+            MainActor.assumeIsolated {
+                self?.setPerformanceGateWindowsVisible(visible)
+            }
+        }
+    }
+
+    private func setPerformanceGateWindowsVisible(_ visible: Bool) {
+        if visible {
+            let windows = performanceGateHiddenWindows
+            performanceGateHiddenWindows.removeAll(keepingCapacity: true)
+            if windows.isEmpty {
+                if !NSApplication.shared.windows.contains(where: \.isVisible) {
+                    AppCommandRouter.shared.openDashboard?()
+                }
+                return
+            }
+            for window in windows {
+                if window.isMiniaturized {
+                    window.deminiaturize(nil)
+                } else {
+                    window.orderFrontRegardless()
+                }
+            }
+            return
+        }
+
+        guard performanceGateHiddenWindows.isEmpty else { return }
+        performanceGateHiddenWindows = NSApplication.shared.windows.filter(\.isVisible)
+        for window in performanceGateHiddenWindows {
+            if window.styleMask.contains(.miniaturizable) {
+                window.miniaturize(nil)
+            } else {
+                window.orderOut(nil)
+            }
+        }
     }
 
     /// Registers the foreground + post-revoke triggers for the RR-5 Cloud Vault
@@ -292,6 +344,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if let observer = appResignActiveAnalyticsObserver {
             NotificationCenter.default.removeObserver(observer)
             appResignActiveAnalyticsObserver = nil
+        }
+        if let observer = performanceGateVisibilityObserver {
+            DistributedNotificationCenter.default().removeObserver(observer)
+            performanceGateVisibilityObserver = nil
         }
     }
 }

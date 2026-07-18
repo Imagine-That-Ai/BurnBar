@@ -99,6 +99,27 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
         ))
     }
 
+    func test_performanceGateLaunch_requiresPerformanceAndUITestMarkers() {
+        let performanceGate = ["OPENBURNBAR_PERFORMANCE_GATE": "1"]
+
+        XCTAssertFalse(OpenBurnBarRuntime.isPerformanceGateLaunch(
+            environment: performanceGate,
+            arguments: []
+        ))
+        XCTAssertFalse(OpenBurnBarRuntime.isPerformanceGateLaunch(
+            environment: ["OPENBURNBAR_UITEST": "1"],
+            arguments: []
+        ))
+        XCTAssertTrue(OpenBurnBarRuntime.isPerformanceGateLaunch(
+            environment: performanceGate.merging(["OPENBURNBAR_UITEST": "1"]) { _, new in new },
+            arguments: []
+        ))
+        XCTAssertTrue(OpenBurnBarRuntime.isPerformanceGateLaunch(
+            environment: performanceGate,
+            arguments: ["--uitest"]
+        ))
+    }
+
     func test_shouldDisableAutomaticTerminationForHarness_honorsE2EEnvironment() {
         XCTAssertTrue(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForHarness(
             environment: ["OPENBURNBAR_FORCE_LIVE_SCENE": "1"]

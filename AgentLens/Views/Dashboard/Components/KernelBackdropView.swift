@@ -6,15 +6,28 @@ import WebKit
 /// render loop should be active, extracted from the Coordinator so it can be
 /// unit-tested without a real `NSWindow` or source-string matching.
 ///
-/// The policy is: the backdrop is active only when the host window exists AND
-/// its occlusion state contains `.visible`. A nil window (detached), or a
-/// window that is fully occluded/minimized/app-hidden, yields `inactive`.
+/// The policy is: the backdrop is active only when the host window is ordered
+/// visible, not minimized, and its occlusion state contains `.visible`. Every
+/// other state — including a stale `.visible` bit during minimization — is inactive.
+@MainActor
 enum OcclusionVisibilityPolicy {
     /// Returns `true` (active) when the window is visible, `false` (inactive)
     /// when occluded or detached.
     static func shouldBackdropBeActive(window: NSWindow?) -> Bool {
         guard let window else { return false }
-        return window.occlusionState.contains(.visible)
+        return shouldBackdropBeActive(
+            isVisible: window.isVisible,
+            isMiniaturized: window.isMiniaturized,
+            occlusionState: window.occlusionState
+        )
+    }
+
+    static func shouldBackdropBeActive(
+        isVisible: Bool,
+        isMiniaturized: Bool,
+        occlusionState: NSWindow.OcclusionState
+    ) -> Bool {
+        isVisible && !isMiniaturized && occlusionState.contains(.visible)
     }
 }
 
@@ -143,7 +156,7 @@ struct KernelBackdropView: NSViewRepresentable {
         var requestedTheme: String = "dark"
         private var isLoaded = false
         private weak var observedWebView: WKWebView?
-        private var occlusionObserver: NSObjectProtocol?
+        private var occlusionObservers: [NSObjectProtocol] = []
         /// Last state pushed to JS, so occlusion churn doesn't spam evaluateJavaScript.
         private var lastReportedActive: Bool?
 
@@ -163,21 +176,28 @@ struct KernelBackdropView: NSViewRepresentable {
                 pushBackdropActive(false, to: webView)
                 return
             }
-            occlusionObserver = NotificationCenter.default.addObserver(
-                forName: NSWindow.didChangeOcclusionStateNotification,
-                object: window,
-                queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.syncOcclusionState() }
+            let stateChangeNotifications: [Notification.Name] = [
+                NSWindow.didChangeOcclusionStateNotification,
+                NSWindow.didMiniaturizeNotification,
+                NSWindow.didDeminiaturizeNotification
+            ]
+            occlusionObservers = stateChangeNotifications.map { name in
+                NotificationCenter.default.addObserver(
+                    forName: name,
+                    object: window,
+                    queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.syncOcclusionState() }
+                }
             }
             syncOcclusionState()
         }
 
         func detachOcclusionObserver() {
-            if let observer = occlusionObserver {
+            for observer in occlusionObservers {
                 NotificationCenter.default.removeObserver(observer)
-                occlusionObserver = nil
             }
+            occlusionObservers.removeAll()
         }
 
         private func syncOcclusionState() {

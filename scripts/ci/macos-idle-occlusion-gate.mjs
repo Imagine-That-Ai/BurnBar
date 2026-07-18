@@ -31,10 +31,10 @@ const helperSourcePath = path.join(scriptDirectory, "macos-idle-occlusion-gate-h
 const supportedGateVersion = "P-PERF-3-macos-real-process-v1";
 const measurementMethod = Object.freeze({
   processCPU: "two proc_pidinfo(PROC_PIDTASKINFO) cumulative CPU snapshots divided by monotonic uptime",
-  windowControl: "NSRunningApplication hide/unhide with CGWindow on-screen verification",
+  windowControl: "DEBUG gate channel minimizes/restores the real dashboard window with CGWindow on-screen verification",
   workload: "idle dashboard with the existing --uitest seam and fluid-aurora kernel enabled",
-  pairing: "alternating visible-idle then app-hidden/fully-occluded-idle samples from one PID",
-  limitation: "app-hidden is the deterministic fully occluded path; partial window overlap is not simulated",
+  pairing: "alternating visible-idle then fully-occluded-idle samples from one PID",
+  limitation: "window minimization is the deterministic fully occluded path; partial window overlap is not simulated",
 });
 
 function assertFinitePositive(value, name) {
@@ -461,6 +461,7 @@ async function launchOrAttach(helperBinaryPath, buildIdentity, config, workDirec
       OPENBURNBAR_UITEST: "1",
       OPENBURNBAR_FORCE_LIVE_SCENE: "1",
       OPENBURNBAR_E2E_HOLD_OPEN: "1",
+      OPENBURNBAR_PERFORMANCE_GATE: "1",
       NSUnbufferedIO: "YES",
     },
     stdio: ["ignore", logHandle, logHandle],
@@ -505,8 +506,8 @@ function assertProcessIdentity(state, pid, buildIdentity, config, expectedVisibi
   if (expectedVisibility === "visible" && (state.hidden || state.visibleWindowCount < 1)) {
     throw new Error(`pid ${pid} did not have a visible dashboard window`);
   }
-  if (expectedVisibility === "occluded" && (!state.hidden || state.visibleWindowCount !== 0)) {
-    throw new Error(`pid ${pid} was not app-hidden and fully occluded`);
+  if (expectedVisibility === "occluded" && state.visibleWindowCount !== 0) {
+    throw new Error(`pid ${pid} still had an on-screen application window`);
   }
 }
 

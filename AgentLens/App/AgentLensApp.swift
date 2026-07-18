@@ -66,6 +66,27 @@ enum OpenBurnBarRuntime {
         #endif
     }
 
+    /// Limits the window-visibility control channel to the DEBUG real-process
+    /// performance harness. Production launches never register the channel.
+    static var isPerformanceGateLaunch: Bool {
+        isPerformanceGateLaunch(
+            environment: ProcessInfo.processInfo.environment,
+            arguments: ProcessInfo.processInfo.arguments
+        )
+    }
+
+    static func isPerformanceGateLaunch(
+        environment: [String: String],
+        arguments: [String]
+    ) -> Bool {
+        #if DEBUG
+        environment["OPENBURNBAR_PERFORMANCE_GATE"] == "1"
+            && isUITestLaunch(environment: environment, arguments: arguments)
+        #else
+        false
+        #endif
+    }
+
     static var shouldOpenSettingsForUITest: Bool {
         ProcessInfo.processInfo.environment["OPENBURNBAR_UITEST_OPEN_SETTINGS"] == "1"
     }

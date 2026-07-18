@@ -53,6 +53,7 @@ public struct SwarmCanvasView: View {
     @Environment(\.uiMode) private var uiMode
 
     @State private var simulation: SwarmSimulation
+    @State private var isHostWindowActive = true
 
     public enum Pace {
         /// Snappy, energetic — matches the website home page.
@@ -132,7 +133,10 @@ public struct SwarmCanvasView: View {
 
     public var body: some View {
         let fps = Self.sanitizedFrameRate(maxFrameRate, fallback: isBatteryThrottled ? 15.0 : Self.defaultFrameRate)
-        TimelineView(.animation(minimumInterval: 1.0 / fps, paused: reduceMotion)) { timeline in
+        TimelineView(.animation(
+            minimumInterval: 1.0 / fps,
+            paused: reduceMotion || !isHostWindowActive
+        )) { timeline in
             Canvas(rendersAsynchronously: rendersAsynchronously) { context, size in
                 simulation.panOffsets = logoOffsets
                 simulation.advance(
@@ -174,6 +178,12 @@ public struct SwarmCanvasView: View {
         .drawingGroup(opaque: false, colorMode: .nonLinear)
         .accessibilityHidden(true)
         .allowsHitTesting(false)
+#if canImport(AppKit)
+        .background(
+            SwarmWindowActivityReader(isActive: $isHostWindowActive)
+                .frame(width: 0, height: 0)
+        )
+#endif
         .onChange(of: colorDriver) {
             simulation.setColorDriver(colorDriver)
         }
@@ -264,6 +274,123 @@ public struct SwarmCanvasView: View {
         return frameRate.clamped(to: 1.0...120.0)
     }
 }
+
+#if canImport(AppKit)
+@MainActor
+enum SwarmWindowVisibilityPolicy {
+    static func isActive(
+        isVisible: Bool,
+        isMiniaturized: Bool,
+        occlusionState: NSWindow.OcclusionState
+    ) -> Bool {
+        isVisible && !isMiniaturized && occlusionState.contains(.visible)
+    }
+}
+
+@MainActor
+private struct SwarmWindowActivityReader: NSViewRepresentable {
+    @Binding var isActive: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isActive: $isActive)
+    }
+
+    func makeNSView(context: Context) -> SwarmWindowTrackingView {
+        let view = SwarmWindowTrackingView()
+        view.onWindowChange = { [weak coordinator = context.coordinator] window in
+            coordinator?.attach(to: window)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: SwarmWindowTrackingView, context: Context) {
+        context.coordinator.isActive = $isActive
+        context.coordinator.attachIfNeeded(to: nsView.window)
+    }
+
+    static func dismantleNSView(_ nsView: SwarmWindowTrackingView, coordinator: Coordinator) {
+        nsView.onWindowChange = nil
+        coordinator.detach()
+    }
+
+    @MainActor
+    final class Coordinator {
+        var isActive: Binding<Bool>
+        private weak var window: NSWindow?
+        private var observers: [NSObjectProtocol] = []
+
+        init(isActive: Binding<Bool>) {
+            self.isActive = isActive
+        }
+
+        func attachIfNeeded(to window: NSWindow?) {
+            guard self.window !== window else { return }
+            attach(to: window)
+        }
+
+        func attach(to window: NSWindow?) {
+            detach()
+            self.window = window
+
+            guard let window else {
+                setActive(false)
+                return
+            }
+
+            let stateChangeNotifications: [Notification.Name] = [
+                NSWindow.didChangeOcclusionStateNotification,
+                NSWindow.didMiniaturizeNotification,
+                NSWindow.didDeminiaturizeNotification
+            ]
+            observers = stateChangeNotifications.map { name in
+                NotificationCenter.default.addObserver(
+                    forName: name,
+                    object: window,
+                    queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.sync() }
+                }
+            }
+            sync()
+        }
+
+        func detach() {
+            for observer in observers {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            observers.removeAll()
+            window = nil
+        }
+
+        private func sync() {
+            guard let window else {
+                setActive(false)
+                return
+            }
+            setActive(SwarmWindowVisibilityPolicy.isActive(
+                isVisible: window.isVisible,
+                isMiniaturized: window.isMiniaturized,
+                occlusionState: window.occlusionState
+            ))
+        }
+
+        private func setActive(_ active: Bool) {
+            guard isActive.wrappedValue != active else { return }
+            isActive.wrappedValue = active
+        }
+    }
+}
+
+@MainActor
+private final class SwarmWindowTrackingView: NSView {
+    var onWindowChange: ((NSWindow?) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onWindowChange?(window)
+    }
+}
+#endif
 
 // MARK: - Simulation Core
 

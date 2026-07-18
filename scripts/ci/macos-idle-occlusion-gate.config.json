@@ -8,6 +8,10 @@
     "maximumBuildAgeSeconds": 7200,
     "launchArguments": [
       "--uitest",
+      "-enableDesktopWallpaper",
+      "NO",
+      "-swarmSubstrateEnabled",
+      "NO",
       "-useKernelBackdrop",
       "YES",
       "-backdropKernel",
