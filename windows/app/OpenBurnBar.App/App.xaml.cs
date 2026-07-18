@@ -260,8 +260,9 @@ public partial class App : Application
 
     private void StartRouteSmoke(RouteSmokeOptions smoke)
     {
-        _mainWindow = new MainWindow(_theme!, _usageRuntime);
-        _mainWindow.Shell.CommandPaletteRequested += (_, _) => OpenCommandPalette();
+        // The route-smoke harness captures XAML routes — pin the native shell for it.
+        _mainWindow = new MainWindow(_theme!, _usageRuntime, _gateway, _localAccessToken, forceXamlShell: true);
+        _mainWindow.Shell!.CommandPaletteRequested += (_, _) => OpenCommandPalette();
         _mainWindow.Activate();
         _mainWindow.Shell.Navigate(smoke.RouteKey);
         _ = RouteSmokeHost.CaptureAndExitAsync(_mainWindow, smoke);
@@ -299,7 +300,7 @@ public partial class App : Application
         if (route.OpensMainWindow)
         {
             ShowMainWindow();
-            _mainWindow?.Shell.Navigate(route.RouteKey);
+            _mainWindow?.Shell?.Navigate(route.RouteKey);
         }
     }
 
@@ -322,8 +323,11 @@ public partial class App : Application
     {
         if (_mainWindow is null)
         {
-            _mainWindow = new MainWindow(_theme!, _usageRuntime);
-            _mainWindow.Shell.CommandPaletteRequested += (_, _) => OpenCommandPalette();
+            _mainWindow = new MainWindow(_theme!, _usageRuntime, _gateway, _localAccessToken);
+            if (_mainWindow.Shell is { } shell)
+            {
+                shell.CommandPaletteRequested += (_, _) => OpenCommandPalette();
+            }
             // Null the field when the user closes the window so a later open re-creates it.
             _mainWindow.Closed += (_, _) => _mainWindow = null;
         }
@@ -353,7 +357,7 @@ public partial class App : Application
 
             if (palette.ChosenDestinationKey is { } key)
             {
-                _mainWindow.Shell.Navigate(key, palette.ChosenSessionId);
+                _mainWindow.Shell?.Navigate(key, palette.ChosenSessionId);
             }
         }
         catch (Exception ex)
