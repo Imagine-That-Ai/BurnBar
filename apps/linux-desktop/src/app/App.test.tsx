@@ -388,4 +388,56 @@ describe('App shell', () => {
       expect(computerUsePanicHalt).toHaveBeenCalledWith({ sessionId: '*', source: 'hotkey' });
     });
   });
+
+  it('keeps dashboard and pet shortcuts usable in the focused window when native grabs are unavailable', async () => {
+    useShellStore.setState({ route: 'chat', bridge: null, bridgeReady: true });
+    render(<App />);
+
+    fireEvent.keyDown(window, {
+      key: 'o',
+      code: 'KeyO',
+      ctrlKey: true,
+      altKey: true,
+      metaKey: true
+    });
+    expect(useShellStore.getState().route).toBe('overview');
+
+    fireEvent.keyDown(window, {
+      key: 'p',
+      code: 'KeyP',
+      ctrlKey: true,
+      altKey: true,
+      metaKey: true
+    });
+    await waitFor(() => expect(useShellStore.getState().route).toBe('pet'));
+  });
+
+  it('does not double-handle a binding that the native shell registered', async () => {
+    const nativeShortcutStatus = vi.fn().mockResolvedValue({
+      available: true,
+      registered: true,
+      backend: 'x11',
+      shortcuts: ['Ctrl+Alt+Super+O', 'Ctrl+Alt+Super+P'],
+      bindings: [
+        { id: 'open-dashboard', shortcut: 'Ctrl+Alt+Super+O', state: 'registered' },
+        { id: 'summon-pet', shortcut: 'Ctrl+Alt+Super+P', state: 'registered' }
+      ]
+    });
+    useShellStore.setState({
+      route: 'chat',
+      bridge: { nativeShortcutStatus } as unknown as LinuxShellBridge,
+      bridgeReady: true
+    });
+    render(<App />);
+
+    await waitFor(() => expect(nativeShortcutStatus).toHaveBeenCalled());
+    fireEvent.keyDown(window, {
+      key: 'o',
+      code: 'KeyO',
+      ctrlKey: true,
+      altKey: true,
+      metaKey: true
+    });
+    expect(useShellStore.getState().route).toBe('chat');
+  });
 });

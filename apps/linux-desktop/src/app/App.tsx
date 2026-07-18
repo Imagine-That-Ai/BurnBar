@@ -9,6 +9,7 @@ import { PetSurface } from '../surfaces/PetSurface.js';
 import { ROUTES, type ShellRoute } from '../routes.js';
 import { readPersistedKernelId, writePersistedKernelId } from '../state/kernelPrefs.js';
 import { useShellStore } from '../state/shellStore.js';
+import type { NativeShortcutStatus } from '../tauriBridge.js';
 import { isChatPopoutWindow } from '../surfaces/chat/chatWindow.js';
 import {
   isNativePetSummonPayload,
@@ -21,6 +22,31 @@ import { CHAT_COMPOSER_FOCUS_EVENT } from '../surfaces/chat/chatComposerEvents.j
 function isComputerUsePanicHotkey(event: KeyboardEvent): boolean {
   const isPeriod = event.key === '.' || event.code === 'Period';
   return isPeriod && event.ctrlKey && event.altKey && (event.metaKey || event.shiftKey);
+}
+
+function nativeShortcutBindingNeedsFallback(
+  status: NativeShortcutStatus | null | undefined,
+  bindingID: string
+): boolean {
+  // Wait for the packaged shell's status query before adding a renderer
+  // fallback. This prevents a healthy X11 grab from opening the pet twice.
+  if (status === undefined) return false;
+  if (status === null) return true;
+  if (!status.bindings) return !status.registered;
+  const binding = status.bindings.find((candidate) => candidate.id === bindingID);
+  return binding ? binding.state !== 'registered' : !status.registered;
+}
+
+function isLinuxNativeRouteShortcut(event: KeyboardEvent, key: string): boolean {
+  const physicalKey = `Key${key.toUpperCase()}`;
+  return (
+    (event.key.toLowerCase() === key || event.code === physicalKey) &&
+    event.ctrlKey &&
+    event.altKey &&
+    event.metaKey &&
+    !event.shiftKey &&
+    !event.repeat
+  );
 }
 
 /**
@@ -37,6 +63,28 @@ export function App() {
   const bridge = useShellStore((s) => s.bridge);
   const chatPopout = isChatPopoutWindow();
   const petCompanion = isPetCompanionWindow();
+  const [nativeShortcutStatus, setNativeShortcutStatus] = useState<NativeShortcutStatus | null | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    setNativeShortcutStatus(undefined);
+    if (!bridge?.nativeShortcutStatus) {
+      setNativeShortcutStatus(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void bridge.nativeShortcutStatus()
+      .then((status) => {
+        if (!cancelled) setNativeShortcutStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setNativeShortcutStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge]);
 
   useEffect(() => {
     window.addEventListener('hashchange', syncRouteFromHash);
@@ -178,6 +226,30 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [bridge]);
+
+  // X11 grabs run outside the renderer. Wayland and hosts with a conflicting
+  // native binding cannot provide that global grab, so preserve the same
+  // commands while the OpenBurnBar window is focused. The status-aware gate
+  // avoids duplicate route/window actions when the native binding is healthy.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (isLinuxNativeRouteShortcut(event, 'o')) {
+        if (!nativeShortcutBindingNeedsFallback(nativeShortcutStatus, 'open-dashboard')) return;
+        event.preventDefault();
+        setRoute('overview');
+        return;
+      }
+      if (!isLinuxNativeRouteShortcut(event, 'p')) return;
+      if (!nativeShortcutBindingNeedsFallback(nativeShortcutStatus, 'summon-pet')) return;
+      event.preventDefault();
+      setRoute('pet');
+      void openPetCompanionWindow().catch(() => {
+        // The contained route remains available when the native child is not.
+      });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [nativeShortcutStatus, setRoute]);
 
   useEffect(() => {
     document.documentElement.dataset.skin = skin;
