@@ -1,6 +1,69 @@
 import { useEffect, useRef } from 'react';
 import { useShellStore } from './shellStore.js';
 
+type IdleDeadlineLike = {
+  didTimeout: boolean;
+  timeRemaining(): number;
+};
+
+type IdleCallback = (deadline: IdleDeadlineLike) => void;
+
+type IdleSchedulerWindow = Window & {
+  requestIdleCallback?: (callback: IdleCallback, options?: { timeout?: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+
+/**
+ * The packaged WebKit renderer can resolve a daemon RPC before the second
+ * animation frame used by route.navigation. Defer those first loads until
+ * after that frame so the navigation mark measures route rendering rather
+ * than background lane hydration. Browser previews and jsdom stay eager so
+ * fixtures and unit tests retain their deterministic behavior.
+ */
+function shouldDeferPackagedLoad(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+function schedulePackagedLoad(task: () => void): () => void {
+  let cancelled = false;
+  let firstFrame: number | null = null;
+  let secondFrame: number | null = null;
+  let timeout: number | null = null;
+  let idleHandle: number | null = null;
+
+  const run = () => {
+    if (!cancelled) task();
+  };
+
+  const queueIdle = () => {
+    if (cancelled) return;
+    const idleWindow = window as IdleSchedulerWindow;
+    if (idleWindow.requestIdleCallback) {
+      idleHandle = idleWindow.requestIdleCallback(run, { timeout: 500 });
+    } else {
+      timeout = window.setTimeout(run, 0);
+    }
+  };
+
+  if (typeof window.requestAnimationFrame === 'function') {
+    firstFrame = window.requestAnimationFrame(() => {
+      if (cancelled) return;
+      secondFrame = window.requestAnimationFrame(queueIdle);
+    });
+  } else {
+    timeout = window.setTimeout(queueIdle, 0);
+  }
+
+  return () => {
+    cancelled = true;
+    if (firstFrame !== null) window.cancelAnimationFrame(firstFrame);
+    if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
+    if (timeout !== null) window.clearTimeout(timeout);
+    const idleWindow = window as IdleSchedulerWindow;
+    if (idleHandle !== null) idleWindow.cancelIdleCallback?.(idleHandle);
+  };
+}
+
 /**
  * Mount-time data loader that re-fires when the shell bridge becomes ready.
  *
@@ -43,6 +106,14 @@ export function useLaneLoad(load: () => Promise<void>): void {
         stateRef.current.running = false;
       }
     };
-    void run();
+
+    if (!shouldDeferPackagedLoad()) {
+      void run();
+      return;
+    }
+
+    return schedulePackagedLoad(() => {
+      void run();
+    });
   }, [load, bridgeReady, dataRevision]);
 }

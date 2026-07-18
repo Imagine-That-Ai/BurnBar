@@ -88,6 +88,9 @@ export const useShellStore = create<ShellState>()((set, get) => ({
 
   syncRouteFromHash() {
     const route = routeFromHash(location.hash);
+    // setRoute updates the store before the browser dispatches hashchange.
+    // Ignore that echo so one user navigation produces one honest perf mark.
+    if (route === get().route) return;
     markAfterPaint('route.navigation', `packaged-ui-hash-route-after-paint:${route}`);
     set({ route });
   },
