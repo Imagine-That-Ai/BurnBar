@@ -43,6 +43,7 @@ test('packaged session provisions and exercises the Linux accessibility stack', 
   }
   for (const marker of [
     'capture-atspi-tree.py',
+    '--wait-for-meaningful-seconds',
     'design-tokens entitlements gl-engine',
     'WEBKIT_DISABLE_DMABUF_RENDERER=1',
     'OB_XVFB_PRESTARTED=1',

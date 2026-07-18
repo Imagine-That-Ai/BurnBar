@@ -110,6 +110,7 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   orca --list-apps >"$out_dir/orca-applications.txt" 2>"$out_dir/orca-list-apps.err"
   python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
     --application OpenBurnBar \
+    --wait-for-meaningful-seconds "${OB_ATSPI_READY_TIMEOUT_SECONDS:-45}" \
     --output "$out_dir/atspi-tree-linux-desktop.json" \
     --tree-text "$out_dir/accessibility-tree-linux-desktop.txt" \
     --expected-name OpenBurnBar
