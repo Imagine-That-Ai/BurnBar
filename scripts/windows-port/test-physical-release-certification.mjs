@@ -23,7 +23,7 @@ const protocolCatalog = JSON.parse(
 const performanceBudgetBytes = readFileSync(join(root, "release-performance-budgets.json"));
 const performanceBudget = JSON.parse(performanceBudgetBytes.toString("utf8"));
 const physicalRunbook = readFileSync(
-  join(root, "../../docs/windows-port/evidence/windows-v1.0.35-release/PHYSICAL_X64_RUNBOOK.md"),
+  join(root, "../../docs/windows-port/evidence/windows-v1.0.37-release/PHYSICAL_X64_RUNBOOK.md"),
   "utf8",
 );
 const localRunner = readFileSync(join(root, "run-local-certification-checks.mjs"), "utf8");
@@ -155,14 +155,18 @@ assert.match(physicalRunbook, /\$Repo = Join-Path \$Root 'candidate'/);
 assert.match(physicalRunbook, /\$Harness = Join-Path \$Root 'harness'/);
 assert.match(
   physicalRunbook,
-  /\$ExpectedHarnessCommit = '0ff07832c9a2a8137d7a342682d4ccd785be7034'/,
+  /\$ExpectedHarnessCommit = '2757652e89440eb647d21721895fc61ec89935d3'/,
 );
 assert.match(
   physicalRunbook,
   /\$ExpectedPerformanceBudgetHash = '0824f341d0a7dea318a831e6ce67de016c9589d909e6982a678102130078fa92'/,
 );
 assert.match(physicalRunbook, /Active release performance budget mismatch/);
-assert.match(physicalRunbook, /git -C \$Repo checkout --detach windows-v1\.0\.35/);
+assert.match(physicalRunbook, /git -C \$Repo checkout --detach windows-v1\.0\.37/);
+assert.match(
+  physicalRunbook,
+  /\$ExpectedMsixHash = '63a9c374bb8d817f4642ddbcbc1c4847d5bcc0388d40fdac4c45b202e7e64bd9'/,
+);
 assert.match(physicalRunbook, /git -C \$Harness checkout --detach \$ExpectedHarnessCommit/);
 assert.match(
   physicalRunbook,

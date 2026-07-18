@@ -3,7 +3,45 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** F1 source/product implementation and applicable WPD-0006 F2 substitutions are complete; corrected signed successor `windows-v1.0.35` passes the automated exact-candidate release gate; fresh physical x64, manual, live-staging, safety, and Store/update lifecycle certification remain
+**Status:** F1 source/product implementation and applicable WPD-0006 F2 substitutions are complete; corrected signed successor `windows-v1.0.37` passes the automated exact-candidate release gate and the applicable ARM64 VM lifecycle/UIA protocol; fresh physical x64, manual, live-staging, safety, and Store/update lifecycle certification remain
+
+## Exact v1.0.37 Candidate and ARM64 VM Result - 2026-07-18
+
+Protected tag `windows-v1.0.37` resolves exactly to PR #1849 merge commit
+`2757652e89440eb647d21721895fc61ec89935d3`. Release workflow
+[29650389335](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29650389335)
+completed successfully with unsigned direct-download output forbidden. Both
+native Swift engine legs, the published-layout usage-scan smoke, WinUI publish,
+portable and direct-MSIX Authenticode verification, x64 hosted lifecycle,
+Store-identity packaging, Ed25519 update-feed signing, SPDX SBOM, OpenVEX, and
+Sigstore provenance passed.
+
+The exact downloaded release artifact independently matched every checksum:
+
+- x64 portable ZIP: `145276bef5a5940393bd8141b0bdd80fe3cd664dfe645634643944e7aa7b60f2`
+- ARM64 portable ZIP: `72bf88caa615a8a08ccb5e17742e992927987f99aab58d011b33dd8b32d89865`
+- x64 direct MSIX: `63a9c374bb8d817f4642ddbcbc1c4847d5bcc0388d40fdac4c45b202e7e64bd9`
+- ARM64 direct MSIX: `70de3a3dbd22fc51b21346d8d213532601ee79bb234be66c8998b86bf6b01918`
+- x64 Store MSIX: `ebca146a9504a6e8d68846b99de5324950c0098f7088084abbf2591d9cc2e0b7`
+- ARM64 Store MSIX: `06b0230ccea93f1f8c36860def5c07b2ded38ae4c110fed78bd1661a91e18144`
+
+The hosted x64 clean-install, responsive 20-second launch, uninstall,
+reinstall, and second responsive 20-second launch passed with zero crash
+events. The exact ARM64 direct MSIX then passed the same lifecycle in Windows
+11 Pro ARM64 under UTM. Its portable layout and 20-second launch passed, both
+Swift resource bundles were present and manifest-hashed, and an exact rerun of
+the UI Automation certification profile passed all 25 route/scenario runs.
+The content-addressed external ARM64 evidence ZIP has SHA-256
+`7cb325721430934d765cf32d115bcbf027e23f18589a41b0b1f653d2b1357e95`.
+
+This supersedes `windows-v1.0.35` as the only current physical-certification
+candidate. It does not relabel that candidate's failed physical memory result,
+and UTM remains VM evidence rather than physical ARM64 certification. The next
+required hardware action is a fresh physical Intel x64 run against `v1.0.37`.
+Manual Narrator/keyboard/DPI/high-contrast, authorized staging cloud, physical
+media/Computer Use safety, and controlled private Store/update lifecycle gates
+remain independently fail-closed. Physical ARM64 remains an explicit beta
+limitation until qualifying hardware is available.
 
 ## Corrected Signed Successor - 2026-07-17
 

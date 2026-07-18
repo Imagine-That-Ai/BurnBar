@@ -6,13 +6,13 @@
 the complete set of items only Alberto can do. Each unblocks a named wave of
 agent-executable work; nothing here requires writing code.
 
-## Current status - 2026-07-17
+## Current status - 2026-07-18
 
 This checklist is retained as the original external-prerequisite runbook. Its
 July 8 blocking state has materially advanced:
 
 - **B - complete:** Azure Artifact Signing identity validation and the public
-  trust certificate profile are active. The exact `windows-v1.0.35` x64 and
+  trust certificate profile are active. The exact `windows-v1.0.37` x64 and
   ARM64 release completed with Authenticode and RFC 3161 verification.
 - **C - account complete, lifecycle open:** the Imagine That AI LLC Store
   developer account is verified and `BurnBar` is reserved as Store product
@@ -22,10 +22,11 @@ July 8 blocking state has materially advanced:
   and Firebase API key are configured as repository variables. End-to-end
   OAuth, App Check, TPM, and CloudVault certification still requires deployed
   `burnbar-staging` services.
-- **A - VM preparation only:** ARM64 UTM evidence remains useful build and
-  package preparation, but does not count as physical ARM64 certification.
+- **A - VM validation complete:** the exact `windows-v1.0.37` ARM64 MSIX
+  lifecycle, portable launch, and 25/25 UIA route/scenario rerun passed under
+  UTM. This does not count as physical ARM64 certification.
 
-The current operator actions are therefore narrower: run the exact v1.0.35
+The current operator actions are therefore narrower: run the exact v1.0.37
 candidate on the physical Intel x64 laptop, authorize and finish isolated
 staging billing/provisioning, and authorize a non-public Partner Center
 submission for Store lifecycle testing. Physical ARM64 remains an explicit beta
