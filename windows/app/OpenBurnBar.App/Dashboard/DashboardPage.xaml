@@ -45,8 +45,10 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <dashboard:DashboardCommandSidebar x:Name="CommandSidebar"
-                                               Grid.Column="0" />
+            <ContentControl x:Name="DesktopCommandHost"
+                            Grid.Column="0">
+                <dashboard:DashboardCommandSidebar x:Name="CommandSidebar" />
+            </ContentControl>
 
             <Border x:Name="SidebarDivider"
                     Grid.Column="1"
@@ -75,6 +77,21 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button x:Name="CompactCommandButton"
+                                    Visibility="Collapsed"
+                                    Width="36"
+                                    Height="36"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    AutomationProperties.Name="Provider and model commands"
+                                    ToolTipService.ToolTip="Provider and model commands">
+                                <FontIcon Glyph="&#xE700;" FontSize="16" />
+                                <Button.Flyout>
+                                    <Flyout x:Name="CompactCommandFlyout"
+                                            Placement="BottomEdgeAlignedLeft" />
+                                </Button.Flyout>
+                            </Button>
                             <TextBlock x:Name="DetailTitle"
                                        Text="Overview"
                                        VerticalAlignment="Center"

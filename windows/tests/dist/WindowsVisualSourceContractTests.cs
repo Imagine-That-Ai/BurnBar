@@ -231,6 +231,10 @@ public sealed class WindowsVisualSourceContractTests
             root, "windows", "app", "OpenBurnBar.App", "Particles", "SwarmCanvasHost.cs"));
         string page = File.ReadAllText(Path.Combine(
             root, "windows", "app", "OpenBurnBar.App", "Dashboard", "DashboardPage.xaml"));
+        string pageCode = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Dashboard", "DashboardPage.xaml.cs"));
+        string backdrop = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Dashboard", "DashboardBackdrop.cs"));
 
         Assert.Contains("private readonly DashboardBackdrop _backdrop", kernel, StringComparison.Ordinal);
         Assert.Contains("_backdrop.SetKernel(kernelId)", kernel, StringComparison.Ordinal);
@@ -246,6 +250,12 @@ public sealed class WindowsVisualSourceContractTests
         Assert.Contains("Canvas.ZIndex=\"-20\"", page, StringComparison.Ordinal);
         Assert.Contains("<Grid Canvas.ZIndex=\"10\">", page, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"EggHost\" Canvas.ZIndex=\"20\"", page, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"CompactCommandButton\"", page, StringComparison.Ordinal);
+        Assert.Contains("CompactCommandFlyout.Content = CommandSidebar;", pageCode, StringComparison.Ordinal);
+        Assert.Contains("_backdrop.SetTheme(theme);", kernel, StringComparison.Ordinal);
+        Assert.Contains("dark: _isDark", backdrop, StringComparison.Ordinal);
+        Assert.Contains("_sprites.Clear();", swarm, StringComparison.Ordinal);
+        Assert.Contains("_shafts.Clear();", swarm, StringComparison.Ordinal);
     }
 
     [Fact]

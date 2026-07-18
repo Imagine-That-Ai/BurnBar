@@ -195,6 +195,8 @@ public sealed class SwarmCanvasHost : IDisposable
         Control.SizeChanged -= OnSizeChanged;
         Control.Source = null;
         _imageSource = null;
+        _sprites.Clear();
+        _shafts.Clear();
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e) => RecreateImageSource();
@@ -235,6 +237,8 @@ public sealed class SwarmCanvasHost : IDisposable
         }
 
         _device.DeviceLost -= OnDeviceLost;
+        _sprites.Clear();
+        _shafts.Clear();
         _device = CanvasDevice.GetSharedDevice();
         _device.DeviceLost += OnDeviceLost;
         RecreateImageSource();

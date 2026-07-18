@@ -42,6 +42,7 @@ internal static class RouteSmokeHost
             AppDiagnostics.LogEvent("route-smoke.capture.after-png", $"{options.RouteKey} -> {screenshotPath}");
             string expectedAutomationId = ExpectedAutomationId(options.RouteKey);
             bool expectedAutomationIdFound = ContainsAutomationId(root, expectedAutomationId);
+            Windows.Graphics.SizeInt32 appWindowSize = WindowChrome.GetAppWindow(window).Size;
             result = RouteSmokeResult.Pass(
                 options.RouteKey,
                 screenshotPath,
@@ -49,6 +50,8 @@ internal static class RouteSmokeHost
                 DateTimeOffset.UtcNow - started,
                 root.ActualWidth,
                 root.ActualHeight,
+                appWindowSize.Width,
+                appWindowSize.Height,
                 root.ActualTheme.ToString(),
                 (int)Math.Round((root.XamlRoot?.RasterizationScale ?? 0) * 100),
                 expectedAutomationId,
@@ -181,6 +184,8 @@ internal static class RouteSmokeHost
         double ElapsedMs,
         double ActualWidth,
         double ActualHeight,
+        int AppWindowWidth,
+        int AppWindowHeight,
         string? Theme,
         int ActualDpiScalePercent,
         string ExpectedAutomationId,
@@ -195,6 +200,8 @@ internal static class RouteSmokeHost
             TimeSpan elapsed,
             double actualWidth,
             double actualHeight,
+            int appWindowWidth,
+            int appWindowHeight,
             string theme,
             int actualDpiScalePercent,
             string expectedAutomationId,
@@ -211,6 +218,8 @@ internal static class RouteSmokeHost
                 elapsed.TotalMilliseconds,
                 actualWidth,
                 actualHeight,
+                appWindowWidth,
+                appWindowHeight,
                 theme,
                 actualDpiScalePercent,
                 expectedAutomationId,
@@ -233,6 +242,8 @@ internal static class RouteSmokeHost
                 0,
                 NearUniform: true,
                 elapsed.TotalMilliseconds,
+                0,
+                0,
                 0,
                 0,
                 null,

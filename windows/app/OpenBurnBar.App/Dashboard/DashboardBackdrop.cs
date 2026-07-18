@@ -38,6 +38,7 @@ public sealed class DashboardBackdrop : IDisposable
     private double _fieldHeight;
     private SubstrateFamily _family = SubstrateFamily.Constellation;
     private SubstrateStage _stage;
+    private bool _isDark = true;
 
     public DashboardBackdrop()
     {
@@ -74,6 +75,19 @@ public sealed class DashboardBackdrop : IDisposable
         SubstrateDescriptor descriptor = SubstrateCatalog.SubstrateList.First(
             candidate => string.Equals(candidate.Id, substrateId, StringComparison.Ordinal));
         ApplyDescriptor(descriptor);
+    }
+
+    /// <summary>Apply the active XAML theme polarity to every generated native frame.</summary>
+    public void SetTheme(string? theme)
+    {
+        bool isDark = !string.Equals(theme, "light", StringComparison.OrdinalIgnoreCase);
+        if (_isDark == isDark)
+        {
+            return;
+        }
+
+        _isDark = isDark;
+        _stage = BuildStage(_family);
     }
 
     private void ApplyDescriptor(SubstrateDescriptor descriptor)
@@ -127,9 +141,10 @@ public sealed class DashboardBackdrop : IDisposable
 
         double t = elapsed.TotalSeconds;
         return new SwarmSubstrateFrame(
-            width: w, height: h, dark: true, reduced: false, batteryThrottled: false,
+            width: w, height: h, dark: _isDark, reduced: false, batteryThrottled: false,
             uiMode: UIMode.Standard, isShapeMode: false, formed: false, settleProgress: 0.0,
-            t: t, dt: 1.0, stage: _stage, backdrop: new Rgba(0.03, 0.04, 0.08, 1.0),
+            t: t, dt: 1.0, stage: _stage,
+            backdrop: _isDark ? new Rgba(0.03, 0.04, 0.08, 1.0) : new Rgba(0.96, 0.97, 1.0, 1.0),
             dots: _dots, cx: w / 2, cy: h / 2, cloudRadius: Math.Min(w, h) * 0.32,
             sizePx: 1.6);
     }
@@ -167,12 +182,12 @@ public sealed class DashboardBackdrop : IDisposable
         return dots;
     }
 
-    private static SubstrateStage BuildStage(SubstrateFamily family)
+    private SubstrateStage BuildStage(SubstrateFamily family)
     {
         Rgba accent = FamilyAccent.A(family);
         Rgba accent2 = FamilyAccent.A2(family);
-        var ink = new Rgba(0.90, 0.93, 1.0);
-        return new SubstrateStage(accent, accent2, ink, dark: true);
+        Rgba ink = _isDark ? new Rgba(0.90, 0.93, 1.0) : new Rgba(0.10, 0.14, 0.22);
+        return new SubstrateStage(accent, accent2, ink, dark: _isDark);
     }
 
     public void Dispose() => _host.Dispose();

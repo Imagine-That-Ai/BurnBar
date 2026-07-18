@@ -33,6 +33,7 @@ public sealed partial class DashboardPage : Page
     private bool _kernelConstructionFailed;
     private DashboardCommandSnapshot _commandSnapshot = DashboardCommandSnapshot.Empty;
     private DashboardCommandSelection _commandSelection = DashboardCommandSelection.Overview();
+    private bool _compactDashboard;
     private const double CompactDashboardBreakpoint = 900;
 
     public DashboardPage()
@@ -62,6 +63,7 @@ public sealed partial class DashboardPage : Page
             try
             {
                 _backdrop = new DashboardBackdrop();
+                _backdrop.SetTheme(ActualTheme == ElementTheme.Light ? "light" : "dark");
                 BackdropHost.Children.Add(_backdrop.Control);
             }
             catch (Exception ex)
@@ -141,6 +143,10 @@ public sealed partial class DashboardPage : Page
     {
         _commandSelection = selection;
         ApplyDetailChrome();
+        if (_compactDashboard)
+        {
+            CompactCommandFlyout.Hide();
+        }
     }
 
     private void OnCommandViewModeChanged(object? sender, DashboardCommandViewMode mode)
@@ -238,16 +244,45 @@ public sealed partial class DashboardPage : Page
     private void OnDashboardSizeChanged(object sender, SizeChangedEventArgs e)
     {
         bool compact = e.NewSize.Width < CompactDashboardBreakpoint;
+        MoveCommandSidebar(compact, e.NewSize.Height);
         SidebarColumn.MinWidth = compact ? 0 : 260;
         SidebarColumn.MaxWidth = compact ? 0 : 320;
         SidebarColumn.Width = compact ? new GridLength(0) : new GridLength(280);
         SidebarDividerColumn.Width = compact ? new GridLength(0) : new GridLength(1);
-        CommandSidebar.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         SidebarDivider.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        CompactCommandButton.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
         DetailSubtitle.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         DetailHost.Padding = compact ? new Thickness(10, 8, 10, 0) : new Thickness(16, 12, 16, 0);
         Switcher.Width = compact ? 190 : double.NaN;
         Switcher.MaxWidth = compact ? 190 : double.PositiveInfinity;
+    }
+
+    private void MoveCommandSidebar(bool compact, double availableHeight)
+    {
+        if (compact)
+        {
+            if (!_compactDashboard)
+            {
+                DesktopCommandHost.Content = null;
+                CompactCommandFlyout.Content = CommandSidebar;
+                _compactDashboard = true;
+            }
+
+            CommandSidebar.Width = 320;
+            CommandSidebar.MaxHeight = Math.Max(320, Math.Min(640, availableHeight - 96));
+            return;
+        }
+
+        if (_compactDashboard)
+        {
+            CompactCommandFlyout.Hide();
+            CompactCommandFlyout.Content = null;
+            DesktopCommandHost.Content = CommandSidebar;
+            _compactDashboard = false;
+        }
+
+        CommandSidebar.Width = double.NaN;
+        CommandSidebar.MaxHeight = double.PositiveInfinity;
     }
 
     private void ShowLayout(DashboardLayout layout)
@@ -326,7 +361,9 @@ public sealed partial class DashboardPage : Page
 
     private void OnActualThemeChanged(FrameworkElement sender, object args)
     {
-        _kernel?.SetTheme(ActualTheme == ElementTheme.Light ? "light" : "dark");
+        string theme = ActualTheme == ElementTheme.Light ? "light" : "dark";
+        _kernel?.SetTheme(theme);
+        _backdrop?.SetTheme(theme);
     }
 
     private void OnGlassPreferencesChanged(object? sender, EventArgs e)

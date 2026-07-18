@@ -94,6 +94,19 @@ public sealed class ReportWriterTests : IDisposable
     }
 
     [Fact]
+    public void CompactScenario_FailsClosedWhenTheRequestedWindowSizeWasNotApplied()
+    {
+        UiCertificationScenario compact = Assert.Single(
+            CertificationScenarioCatalog.Select("accessibility"),
+            scenario => scenario.Key == "compact-640");
+
+        Assert.True(compact.MatchesRequestedWindowSize(640, 720));
+        Assert.True(compact.MatchesRequestedWindowSize(639, 721));
+        Assert.False(compact.MatchesRequestedWindowSize(1040, 720));
+        Assert.False(compact.MatchesRequestedWindowSize(640, 800));
+    }
+
+    [Fact]
     public void HtmlReportWriter_RedactsInputRouteMessages()
     {
         string factoryKey = "fk-" + new string('B', 24);

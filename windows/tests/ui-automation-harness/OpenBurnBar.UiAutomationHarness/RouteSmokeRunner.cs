@@ -192,10 +192,13 @@ internal sealed class RouteSmokeRunner
         double lumaStdDev = ReadDouble(root, "LumaStdDev");
         double elapsedMs = ReadDouble(root, "ElapsedMs");
         int actualDpiScalePercent = ReadInt(root, "ActualDpiScalePercent", defaultValue: 0);
+        int actualWindowWidth = ReadInt(root, "AppWindowWidth", defaultValue: 0);
+        int actualWindowHeight = ReadInt(root, "AppWindowHeight", defaultValue: 0);
         bool dpiScaleMatches = scenario.DpiScalePercent is null ||
             (actualDpiScalePercent > 0 && Math.Abs(actualDpiScalePercent - scenario.DpiScalePercent.Value) <= 1);
+        bool windowSizeMatches = scenario.MatchesRequestedWindowSize(actualWindowWidth, actualWindowHeight);
         int effectiveExitCode = processExitCode == 0 ? reportedExitCode : processExitCode;
-        var verdict = effectiveExitCode == 0 && !nearUniform && expectedAutomationIdFound && dpiScaleMatches
+        var verdict = effectiveExitCode == 0 && !nearUniform && expectedAutomationIdFound && dpiScaleMatches && windowSizeMatches
             ? HarnessVerdict.Pass
             : HarnessVerdict.Fail;
         if (processExitCode != 0)
@@ -209,6 +212,12 @@ internal sealed class RouteSmokeRunner
         if (!dpiScaleMatches)
         {
             message = AppendMessage(message, $"Expected {scenario.DpiScalePercent}% DPI but measured {actualDpiScalePercent}%.");
+        }
+        if (!windowSizeMatches)
+        {
+            message = AppendMessage(
+                message,
+                $"Expected app window {scenario.WindowWidth?.ToString() ?? "current"} x {scenario.WindowHeight?.ToString() ?? "current"} but measured {actualWindowWidth} x {actualWindowHeight}.");
         }
 
         return new RouteSmokeEvidence(
@@ -234,6 +243,9 @@ internal sealed class RouteSmokeRunner
         {
             ActualDpiScalePercent = actualDpiScalePercent > 0 ? actualDpiScalePercent : null,
             DpiScaleMatches = dpiScaleMatches,
+            ActualWindowWidth = actualWindowWidth > 0 ? actualWindowWidth : null,
+            ActualWindowHeight = actualWindowHeight > 0 ? actualWindowHeight : null,
+            WindowSizeMatches = windowSizeMatches,
         };
     }
 

@@ -42,6 +42,7 @@ public sealed class KernelBackdropHost : IDisposable
         _started = true;
         try
         {
+            _backdrop.SetTheme(theme);
             _backdrop.SetKernel(kernelId);
             _isReady = true;
             Ready?.Invoke(this, EventArgs.Empty);
@@ -65,7 +66,10 @@ public sealed class KernelBackdropHost : IDisposable
 
     public void SetTheme(string theme)
     {
-        // The native substrate stage follows the app's XAML theme resources.
+        if (!_disposed && !_isFailed)
+        {
+            _backdrop.SetTheme(theme);
+        }
     }
 
     public void SetBackdropActive(bool active)
