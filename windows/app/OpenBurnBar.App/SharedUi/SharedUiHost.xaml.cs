@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
+using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.UsageRuntime;
@@ -234,7 +235,9 @@ public sealed partial class SharedUiHost : UserControl
             throw new ArgumentException($"refusing to open non-http(s) url: {url}");
         }
 
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.ToString()) { UseShellExecute = true });
+        // Through the reviewed child-process policy (explorer.exe <url>, scrubbed env) —
+        // never a raw Process.Start (the Configuration policy tests enforce this).
+        ChildProcessLaunchPolicy.StartDefaultBrowser(uri);
         return Task.FromResult<object?>(true);
     }
 
