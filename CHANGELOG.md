@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   typed fail-closed errors, and a streamed internal protocol. Release CI proves
   the real worker against the exact published x64 native-engine layout before
   signing and locks the app composition root against an in-process regression.
+### Changed
+
+- **Droid wiki generation is local-only** — retired the failing unattended
+  Factory workflow after proving user-scoped API keys are rejected without an
+  active paid subscription. Committed `droid-wiki/` pages still reconcile to
+  mem0 through the post-commit hook and nightly mirror job.
 
 ### Added — Liquid dashboard command deck
 
