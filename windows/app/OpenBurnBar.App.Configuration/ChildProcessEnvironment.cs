@@ -15,6 +15,7 @@ public enum ChildProcessProfile
     Watchdog,
     PrivilegedInput,
     ProjectTool,
+    UsageScanner,
     ReleaseTool,
     Diagnostics,
 }

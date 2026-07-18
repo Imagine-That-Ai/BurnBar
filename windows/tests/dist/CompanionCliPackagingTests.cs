@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
@@ -28,6 +29,34 @@ public sealed class CompanionCliPackagingTests
         Assert.Contains("dotnet publish \"$cli\"", workflow, StringComparison.Ordinal);
         Assert.Contains("OpenBurnBar.Cli.exe", workflow, StringComparison.Ordinal);
         Assert.Contains("OpenBurnBar*.exe,OpenBurnBar*.dll", workflow, StringComparison.Ordinal);
+        Assert.Contains("OpenBurnBar.Cli.deps.json", workflow, StringComparison.Ordinal);
+        Assert.Contains("OpenBurnBar.Cli.runtimeconfig.json", workflow, StringComparison.Ordinal);
+        Assert.Contains("OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION", workflow, StringComparison.Ordinal);
+        Assert.Contains("FullyQualifiedName~NativeUsageEngineIntegrationTests", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppUsesPublishedCompanionCliAsNativeUsageScanWorker()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string appComposition = File.ReadAllText(Path.Combine(
+            root,
+            "windows",
+            "app",
+            "OpenBurnBar.App",
+            "App.xaml.cs"));
+        string cliEntryPoint = File.ReadAllText(Path.Combine(
+            root,
+            "windows",
+            "app",
+            "OpenBurnBar.Cli",
+            "Program.cs"));
+
+        Assert.Contains("new OutOfProcessUsageEngine()", appComposition, StringComparison.Ordinal);
+        Assert.DoesNotContain("new CAbiUsageEngine()", appComposition, StringComparison.Ordinal);
+        Assert.Contains("UsageScanWorkerProtocol.WorkerArgument", cliEntryPoint, StringComparison.Ordinal);
+        Assert.Contains("new CAbiUsageEngine()", cliEntryPoint, StringComparison.Ordinal);
+        Assert.Contains("UsageScanWorkerHost.RunAsync", cliEntryPoint, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -156,4 +185,38 @@ public sealed class CompanionCliPackagingTests
         Assert.Equal("$(TargetDir)", (string?)copy.Attribute("DestinationFolder"));
     }
 
+    [Fact]
+    public void FastPrWorkflowVerifiesTheBuiltUsageScanWorker()
+    {
+        string workflow = File.ReadAllText(Path.Combine(
+            DistTestSupport.RepositoryRoot(),
+            ".github",
+            "workflows",
+            "pr-windows-fast.yml"));
+        int buildStepIndex = workflow.IndexOf(
+            "name: Build Windows solution",
+            StringComparison.Ordinal);
+        int verifyStepIndex = workflow.IndexOf(
+            "name: Verify usage-scan worker staging",
+            StringComparison.Ordinal);
+        int testStepIndex = workflow.IndexOf(
+            "name: Run Windows test suite",
+            StringComparison.Ordinal);
+
+        Assert.True(buildStepIndex >= 0, "The fast Windows PR workflow must contain the build step.");
+        Assert.True(verifyStepIndex > buildStepIndex, "Worker staging verification must run after the Windows solution build.");
+        Assert.True(testStepIndex > verifyStepIndex, "Worker staging verification must run before the Windows test suite.");
+
+        string verificationStep = workflow.Substring(
+            verifyStepIndex,
+            testStepIndex - verifyStepIndex);
+        string normalizedVerificationStep = verificationStep.Replace('\\', '/');
+
+        Assert.Contains("Get-ChildItem", verificationStep, StringComparison.Ordinal);
+        Assert.Contains("Test-Path", verificationStep, StringComparison.Ordinal);
+        Assert.Contains(
+            "windows/app/OpenBurnBar.App/bin",
+            normalizedVerificationStep,
+            StringComparison.OrdinalIgnoreCase);
+    }
 }

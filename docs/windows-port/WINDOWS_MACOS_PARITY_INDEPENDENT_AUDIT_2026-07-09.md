@@ -58,6 +58,35 @@ closes an evidence-integrity gap but is not physical performance evidence: the
 Intel x64 protocol must still run against the exact signed candidate, and ARM64
 physical performance remains the documented beta limitation.
 
+## Physical Intel x64 Performance Finding - 2026-07-17
+
+The fresh native Intel x64 run for exact signed candidate `windows-v1.0.35`
+remains **NO-GO**. Artifact binding, Authenticode identity and timestamp,
+install/uninstall/reinstall, local automated checks, hardware attestation, and
+the final seven-receipt evidence validator passed. The app completed a 30-minute
+soak without a crash or hang, but private memory grew from 99.16 MB to 325.13 MB
+across 1,801 samples: +227.88% against a +10% release budget. The sample series
+was flat near 99-106 MB for roughly 24 minutes, then recorded two retained
+high-water steps around 1,434 and 1,601 seconds. This is a physical performance
+failure, not a harness or evidence-integrity failure.
+
+The durable remediation moves the Swift C ABI parser out of the long-lived
+WinUI tray process. `OutOfProcessUsageEngine` invokes the already-packaged,
+signed `OpenBurnBar.Cli.exe` in a hidden one-scan worker mode over redirected
+JSON standard streams. The reviewed launch policy forbids shell execution,
+filters inherited environment, bounds stderr, enforces cancellation and a
+five-minute timeout, and kills the worker tree on communication failure. Each
+successful scan exits the worker so Windows reclaims the complete native heap.
+The release workflow executes this real worker against the exact published x64
+native engine and Swift resource layout before signing; distribution tests pin
+the WinUI composition root to the out-of-process engine.
+
+This source fix does not relabel the failed `windows-v1.0.35` result. A new
+signed candidate must pass the same physical Intel x64 performance protocol.
+Accessibility/display, authorized live staging, advanced media/Computer Use
+safety, and private Store/update lifecycle evidence remain separate open gates.
+Physical ARM64 remains the explicit beta limitation.
+
 ## Physical Intel x64 Packaging Finding - 2026-07-16
 
 Independent certification on an HP ENVY x360 15-ew0xxx running native Intel
