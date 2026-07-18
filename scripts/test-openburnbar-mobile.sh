@@ -41,6 +41,13 @@
 #                                           Keep redirected Signal FFI
 #                                           intermediates for post-run forensics
 #                                           (default: clean when scratch-rooted).
+#   OPENBURNBAR_MOBILE_PRUNE_UNUSED_SPM_ARTIFACTS=1
+#                                           In an owned scratch root, remove
+#                                           unused Sentry binary variants from
+#                                           the SwiftPM cache before XCTest.
+#                                           The mobile host links static Sentry;
+#                                           this avoids a multi-gigabyte cache
+#                                           expansion on physical-device runs.
 #   OPENBURNBAR_MOBILE_ALLOW_PROVISIONING_UPDATES=0
 #                                           Disable Xcode automatic profile/device updates on physical-device runs.
 #
@@ -204,6 +211,7 @@ signal_ffi_build_default="${mobile_scratch_root:+$mobile_scratch_root/signal-ffi
 signal_ffi_target_default="${mobile_scratch_root:+$mobile_scratch_root/signal-ffi-cargo-target}"
 signal_ffi_build_root="$(resolve_mobile_root "Signal FFI build root" OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_ROOT "$signal_ffi_build_default")" || exit $?
 signal_ffi_cargo_target_root="$(resolve_mobile_root "Signal FFI Cargo target root" OPENBURNBAR_MOBILE_SIGNAL_FFI_CARGO_TARGET_ROOT "$signal_ffi_target_default")" || exit $?
+disable_automatic_package_resolution=0
 
 attempt_log_path="$artifact_root/test-openburnbar-mobile-attempts.jsonl"
 
@@ -646,6 +654,24 @@ cleanup_signal_ffi_intermediates() {
     done
 }
 
+prune_unused_spm_artifacts() {
+    [[ "${OPENBURNBAR_MOBILE_PRUNE_UNUSED_SPM_ARTIFACTS:-0}" == "1" ]] || return 0
+    if [[ -z "$mobile_scratch_root" ]]; then
+        echo "ERROR: OPENBURNBAR_MOBILE_PRUNE_UNUSED_SPM_ARTIFACTS=1 requires OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT." >&2
+        return 64
+    fi
+    validate_path_within_root "$mobile_scratch_root" "$cache_dir" "SwiftPM artifact-prune cache" 1
+    if [[ ! -f "$cache_dir/workspace-state.json" ]]; then
+        echo ">>> SwiftPM cache has no workspace-state.json; retaining all artifacts for the initial package resolution."
+        return 0
+    fi
+    "$repo_root/scripts/lib/prune-mobile-swiftpm-cache.sh" "$cache_dir"
+    # The pruned cache is a resolved, reusable package graph. Prevent Xcode
+    # from trying to refresh every package and repopulate unused binary
+    # variants during the build.
+    disable_automatic_package_resolution=1
+}
+
 cleanup() {
     if [ -n "$xcodebuild_log" ]; then
         rm -f "$xcodebuild_log" 2>/dev/null || true
@@ -714,6 +740,9 @@ populate_xcodebuild_args() {
         SWIFT_ENABLE_BATCH_MODE=NO
         -parallel-testing-enabled NO
     )
+    if [[ "$disable_automatic_package_resolution" -eq 1 ]]; then
+        xcodebuild_args+=(-disableAutomaticPackageResolution)
+    fi
     test_selectors=()
     for selector in "${test_filters[@]}"; do
         test_selectors+=("$selector")
@@ -803,6 +832,8 @@ else
         "$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh"
     fi
 fi
+
+prune_unused_spm_artifacts
 
 openburnbar_app_test_hang_substrings+=(
     "test runner hung before establishing connection"

@@ -172,3 +172,28 @@ fi
 [[ ! -e "$tmp_root/simulator-preclean.marker" ]] || fail "preflight-only simulator path ran stale-process cleanup"
 
 echo "test-openburnbar-mobile root boundary and physical-device preflight tests passed"
+
+prune_cache="$tmp_root/prune-cache"
+mkdir -p "$prune_cache/artifacts/sentry-cocoa/Sentry" \
+  "$prune_cache/artifacts/sentry-cocoa/Sentry-Dynamic" \
+  "$prune_cache/artifacts/sentry-cocoa/Sentry-Dynamic-WithARM64e" \
+  "$prune_cache/artifacts/sentry-cocoa/Sentry-WithoutUIKitOrAppKit" \
+  "$prune_cache/artifacts/sentry-cocoa/Sentry-WithoutUIKitOrAppKit-WithARM64e"
+printf 'static\n' > "$prune_cache/artifacts/sentry-cocoa/Sentry/marker"
+printf 'unused\n' > "$prune_cache/artifacts/sentry-cocoa/Sentry-Dynamic/marker"
+
+prune_output="$tmp_root/prune.out"
+"$repo_root/scripts/lib/prune-mobile-swiftpm-cache.sh" "$prune_cache" > "$prune_output"
+[[ -d "$prune_cache/artifacts/sentry-cocoa/Sentry" ]] || fail "static Sentry artifact was pruned"
+[[ -f "$prune_cache/artifacts/sentry-cocoa/Sentry/marker" ]] || fail "static Sentry artifact contents changed"
+for unused in \
+  Sentry-Dynamic \
+  Sentry-Dynamic-WithARM64e \
+  Sentry-WithoutUIKitOrAppKit \
+  Sentry-WithoutUIKitOrAppKit-WithARM64e; do
+  [[ ! -e "$prune_cache/artifacts/sentry-cocoa/$unused" ]] || fail "unused Sentry artifact was retained: $unused"
+done
+grep -q "Pruned 4 unused Sentry SwiftPM artifact variant(s)" "$prune_output" ||
+  fail "cache-prune helper did not report the removed variants"
+
+echo "test-openburnbar-mobile SwiftPM cache-prune test passed"
