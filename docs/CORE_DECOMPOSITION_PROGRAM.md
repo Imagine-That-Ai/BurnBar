@@ -522,6 +522,12 @@ against the extracted sibling targets. (Three non-`.swift` resources also remain
 | `OpenBurnBarCoreCAbi` | 5 | 878 | yes (dynamic) | the C-ABI `@_cdecl` export surface (Windows/Linux FFI): `OBBCAbi*` (P-22) + the pre-existing dylib wrapper |
 | **13 targets total** | **464** | **123,667** | | (exceeds the 95.6k start because SQLiteReader/Quota carry their own scaffolding and Kernel absorbed cross-cutting utilities; the metric that matters is the Core main-target shrink above) |
 
+**Operation 9 parser-safety ceiling adjustment (2026-07-18):** scanner-wide exact
+file-identity tracking, byte/file/memory admission limits, and bounded-pass telemetry
+raise `OpenBurnBarLogParsers` to 35 files / 11,735 LOC. Its planned ceiling is now
+11,800 LOC: 65 lines of explicit headroom, not a measured-baseline reset. Further growth
+must decompose the target or update this rationale under independent review.
+
 ### Whole-program composition proof (verbatim results)
 
 Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated
