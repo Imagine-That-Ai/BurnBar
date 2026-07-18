@@ -82,6 +82,8 @@ const ENVIRONMENT_ATTESTATION_FIELDS = [
 const ENVIRONMENT_INPUT_FIELDS = ['path', 'sha256', 'passed', 'commit'];
 const ENVIRONMENT_CHECK_FIELDS = ['id', 'passed', 'detail'];
 const ENVIRONMENT_GIT_FIELDS = ['commit', 'branch', 'remote', 'dirty', 'dirtyEntries', 'gitAvailable'];
+const ENVIRONMENT_DECLARED_FIELDS = ['id', 'os', 'desktop', 'session', 'architecture'];
+const HEAD_PATTERN = /^[a-f0-9]{40,64}$/u;
 
 export const PRODUCT_ATTESTER_PATH = 'scripts/linux-port/attest-product-requirement.mjs';
 export const PRODUCT_EVIDENCE_POLICY_PATH = 'docs/linux-port/product-parity-evidence-policies.json';
@@ -331,6 +333,33 @@ function sameStringArray(actual, expected) {
   return Array.isArray(actual)
     && actual.length === expected.length
     && actual.every((value, index) => value === expected[index]);
+}
+
+function normalizeEnvironmentArchitecture(value) {
+  if (value === 'x64' || value === 'amd64') return 'x86_64';
+  if (value === 'arm64' || value === 'armv8l') return 'aarch64';
+  return value;
+}
+
+function normalizeEnvironmentSession(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : value;
+}
+
+function environmentDesktopMatches(expected, actual) {
+  const value = typeof actual === 'string' ? actual.toLowerCase() : '';
+  if (expected === 'GNOME') return value.includes('gnome');
+  if (expected === 'KDE Plasma') return value.includes('kde') || value.includes('plasma');
+  if (expected === 'Sway/wlroots') return value.includes('sway') || value.includes('wlroots');
+  return false;
+}
+
+function environmentOSMatches(expected, detected) {
+  if (expected === 'Ubuntu 24.04') {
+    return detected?.osId === 'ubuntu' && detected?.osVersion === '24.04';
+  }
+  if (expected === 'Fedora') return detected?.osId === 'fedora';
+  if (expected === 'Arch Linux') return detected?.osId === 'arch';
+  return false;
 }
 
 function validateAttestation(attestation, row, policy, options, failPromotion, failStructural) {
@@ -673,6 +702,49 @@ function validateEnvironmentAttestation(attestation, coverage, options, failProm
     failStructural(`${coverage.id} environment evidence note is required.`);
   }
 
+  // The matrix harness records declared and detected identity separately. Bind both
+  // to the canonical support row so a current-HEAD artifact from another desktop,
+  // session, OS, or architecture cannot be promoted by changing only environmentId.
+  const expectedEnvironment = options.requirements?.minimumSupportMatrix?.find(
+    (environment) => environment.id === coverage.id
+  );
+  if (expectedEnvironment?.desktop && expectedEnvironment?.session && expectedEnvironment?.architecture) {
+    const declared = attestation.declared;
+    const declaredFields = declared && typeof declared === 'object' && !Array.isArray(declared)
+      ? Object.keys(declared).sort()
+      : [];
+    if (!sameStringArray(declaredFields, [...ENVIRONMENT_DECLARED_FIELDS].sort())) {
+      failStructural(`${coverage.id} declared environment fields are not canonical.`);
+    } else {
+      for (const field of ENVIRONMENT_DECLARED_FIELDS) {
+        if (declared[field] !== expectedEnvironment[field]) {
+          failPromotion(`${coverage.id} declared ${field} does not match the support matrix.`);
+        }
+      }
+    }
+
+    const detected = attestation.detected;
+    if (detected === null || typeof detected !== 'object' || Array.isArray(detected)) {
+      failPromotion(`${coverage.id} detected environment identity is missing.`);
+    } else {
+      if (detected.platform !== 'linux') {
+        failPromotion(`${coverage.id} detected platform is not Linux.`);
+      }
+      if (normalizeEnvironmentArchitecture(detected.architecture) !== expectedEnvironment.architecture) {
+        failPromotion(`${coverage.id} detected architecture does not match the support matrix.`);
+      }
+      if (normalizeEnvironmentSession(detected.session) !== normalizeEnvironmentSession(expectedEnvironment.session)) {
+        failPromotion(`${coverage.id} detected session does not match the support matrix.`);
+      }
+      if (!environmentDesktopMatches(expectedEnvironment.desktop, detected.desktop)) {
+        failPromotion(`${coverage.id} detected desktop does not match the support matrix.`);
+      }
+      if (!environmentOSMatches(expectedEnvironment.os, detected)) {
+        failPromotion(`${coverage.id} detected OS does not match the support matrix.`);
+      }
+    }
+  }
+
   const gitFields = attestation.git && typeof attestation.git === 'object' && !Array.isArray(attestation.git)
     ? Object.keys(attestation.git).sort()
     : [];
@@ -860,6 +932,10 @@ export function validateParityLedger(ledger, options) {
     promotionFailures.push({ message, row: row?.id ?? null });
   };
   const warn = (message, row = null) => warnings.push({ message, row: row?.id ?? null });
+
+  if (!HEAD_PATTERN.test(options.currentHead ?? '')) {
+    structural('current HEAD must be a canonical 40-64 character lowercase git SHA.');
+  }
 
   if (ledger.schemaVersion !== 2) structural('product parity ledger schemaVersion must be 2.');
   if (ledger.requirementsManifest !== 'docs/linux-port/product-parity-requirements.json') {

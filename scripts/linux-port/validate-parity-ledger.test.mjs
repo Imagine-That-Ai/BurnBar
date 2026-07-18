@@ -198,7 +198,7 @@ function writeReadyEvidence(repoRoot, targetRow, options = {}) {
   return artifactPath;
 }
 
-function writeReadyEnvironmentEvidence(repoRoot, environmentId = 'test-linux') {
+function writeReadyEnvironmentEvidence(repoRoot, environmentId = 'test-linux', options = {}) {
   const artifactRoot = `docs/linux-port/evidence/product-parity/environments/${environmentId}`;
   const installedArtifactRel = `${artifactRoot}/installed-proof.txt`;
   const accessibilityArtifactRel = `${artifactRoot}/accessibility-proof.txt`;
@@ -229,14 +229,14 @@ function writeReadyEnvironmentEvidence(repoRoot, environmentId = 'test-linux') {
       dirtyEntries: [],
       gitAvailable: true
     },
-    declared: {
+    declared: options.declared ?? {
       id: environmentId,
       os: 'Test OS',
       desktop: 'Test Desktop',
       session: 'test',
       architecture: 'x86_64'
     },
-    detected: { platform: 'linux' },
+    detected: options.detected ?? { platform: 'linux' },
     evidenceInputs: {
       installedEvidence: {
         path: installedArtifactRel,
@@ -251,7 +251,7 @@ function writeReadyEnvironmentEvidence(repoRoot, environmentId = 'test-linux') {
         commit: HEAD
       }
     },
-    checks: [
+    checks: options.checks ?? [
       { id: 'installed-package-evidence', passed: true, detail: 'ok' },
       { id: 'installed-accessibility-evidence', passed: true, detail: 'ok' }
     ],
@@ -263,6 +263,53 @@ function writeReadyEnvironmentEvidence(repoRoot, environmentId = 'test-linux') {
     status: 'ready',
     evidencePath,
     command: `node scripts/linux-port/run-linux-matrix-harness.mjs --environment ${environmentId}`
+  };
+}
+
+function fullMatrixCatalog() {
+  const catalog = requirements(['P-01'], ['ubuntu']);
+  catalog.minimumSupportMatrix = [{
+    id: 'ubuntu',
+    os: 'Ubuntu 24.04',
+    desktop: 'GNOME',
+    session: 'X11',
+    architecture: 'x86_64'
+  }];
+  return catalog;
+}
+
+function fullMatrixEvidenceOptions(overrides = {}) {
+  return {
+    declared: {
+      id: 'ubuntu',
+      os: 'Ubuntu 24.04',
+      desktop: 'GNOME',
+      session: 'X11',
+      architecture: 'x86_64'
+    },
+    detected: {
+      platform: 'linux',
+      architecture: 'x86_64',
+      osId: 'ubuntu',
+      osVersion: '24.04',
+      session: 'X11',
+      desktop: 'GNOME'
+    },
+    checks: [
+      'os-linux',
+      'checkout-clean',
+      'session-bus',
+      'display-server',
+      'runtime-directory',
+      'declared-os',
+      'declared-architecture',
+      'declared-session',
+      'declared-desktop',
+      'secret-tool',
+      'installed-package-evidence',
+      'installed-accessibility-evidence'
+    ].map((id) => ({ id, passed: true, detail: 'ok' })),
+    ...overrides
   };
 }
 
@@ -299,6 +346,19 @@ test('blocked complete inventory is structurally valid but never promotable', ()
   assert.equal(result.structuralPassed, true, JSON.stringify(result.structuralFailures));
   assert.equal(result.promotionPassed, false);
   assert.ok(result.promotionFailures.some((failure) => /P-01 is blocked/.test(failure.message)));
+});
+
+test('validator rejects a malformed current HEAD even in diagnostic mode', () => {
+  const result = validate(
+    ledger(),
+    repo(),
+    requirements(),
+    true,
+    undefined,
+    { currentHead: 'not-a-commit' }
+  );
+  assert.equal(result.structuralPassed, false);
+  assert.ok(result.structuralFailures.some((failure) => /current HEAD must be a canonical/u.test(failure.message)));
 });
 
 test('missing canonical attester is structural red even in diagnostic mode', () => {
@@ -464,6 +524,56 @@ test('current-HEAD attestation with valid artifact hashes can promote', () => {
       path.join(root, 'docs/linux-port/evidence/product-parity-inputs/P-01/proof.txt')
     )).digest('hex') }
   }]);
+});
+
+test('ready environment evidence binds declared support-matrix identity', () => {
+  const root = repo();
+  const catalog = fullMatrixCatalog();
+  const ready = row('P-01', { status: 'ready' });
+  writeReadyEvidence(root, ready, { environmentId: 'ubuntu' });
+  const environment = writeReadyEnvironmentEvidence(
+    root,
+    'ubuntu',
+    fullMatrixEvidenceOptions()
+  );
+  const value = ledger([ready], {
+    semantics: { productParityClaim: true },
+    environmentCoverage: [environment]
+  });
+  const baseline = validate(value, root, catalog, false);
+  assert.equal(baseline.promotionPassed, true, JSON.stringify(baseline.promotionFailures));
+
+  const evidencePath = path.join(root, environment.evidencePath);
+  const evidence = JSON.parse(fs.readFileSync(evidencePath, 'utf8'));
+  evidence.declared.architecture = 'aarch64';
+  fs.writeFileSync(evidencePath, `${JSON.stringify(evidence)}\n`);
+  const result = validate(value, root, catalog, false);
+  assert.equal(result.promotionPassed, false);
+  assert.ok(result.promotionFailures.some((failure) => /declared architecture does not match/u.test(failure.message)));
+});
+
+test('ready environment evidence binds detected live identity', () => {
+  const root = repo();
+  const catalog = fullMatrixCatalog();
+  const ready = row('P-01', { status: 'ready' });
+  writeReadyEvidence(root, ready, { environmentId: 'ubuntu' });
+  const environment = writeReadyEnvironmentEvidence(
+    root,
+    'ubuntu',
+    fullMatrixEvidenceOptions()
+  );
+  const value = ledger([ready], {
+    semantics: { productParityClaim: true },
+    environmentCoverage: [environment]
+  });
+
+  const evidencePath = path.join(root, environment.evidencePath);
+  const evidence = JSON.parse(fs.readFileSync(evidencePath, 'utf8'));
+  evidence.detected.session = 'Wayland';
+  fs.writeFileSync(evidencePath, `${JSON.stringify(evidence)}\n`);
+  const result = validate(value, root, catalog, false);
+  assert.equal(result.promotionPassed, false);
+  assert.ok(result.promotionFailures.some((failure) => /detected session does not match/u.test(failure.message)));
 });
 
 test('strict validation rejects a product matrix that mixes release candidates', () => {
