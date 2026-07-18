@@ -94,7 +94,6 @@ public sealed partial class AppShell : UserControl
                 Style = normal,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Center,
-                ToolTipService.ToolTip = destination is null ? label : $"{label} — {destination.Subtitle}",
                 Content = new StackPanel
                 {
                     Orientation = Orientation.Horizontal,
@@ -111,6 +110,7 @@ public sealed partial class AppShell : UserControl
                     },
                 },
             };
+            ToolTipService.SetToolTip(button, destination is null ? label : $"{label} — {destination.Subtitle}");
             button.Click += (_, _) => Navigate(key);
             Grid.SetColumn(button, i);
             TopTabsHost.Children.Add(button);

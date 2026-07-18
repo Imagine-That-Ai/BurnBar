@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   typed fail-closed errors, and a streamed internal protocol. Release CI proves
   the real worker against the exact published x64 native-engine layout before
   signing and locks the app composition root against an in-process regression.
+
+### Fixed - Windows Aurora physical validation
+
+- **Closed the physical-build and command-palette regressions found by the x64
+  screenshot run**: programmatic tab tooltips now use the WinUI attached-property
+  setter, the global brand font is inherited from a valid `Control`, and the
+  Aurora dialog style retains WinUI's required `ContentDialog` template so
+  `Ctrl+K` renders its controls instead of only the dimmed backdrop. Portable
+  source-contract tests lock all three framework requirements.
+
 ### Changed
 
 - **Droid wiki generation is local-only** — retired the failing unattended

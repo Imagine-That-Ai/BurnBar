@@ -66,12 +66,14 @@ swaps.
      copies them as Content.
    - `Theme/BrandFonts.cs` — NEW: code-behind chokepoint for the bundled families
      (`BrandFonts.Mono/Body/Display` with safe fallbacks).
-3. **Shell chrome:** `Shell/AppShell.xaml` (omnibar glass pill "Search or jump to… Ctrl K",
-   hardcoded `RequestedTheme="Dark"` removed so ThemeService governs), `MainWindow.xaml`
-   (titlebar), `FlyoutWindow.xaml` (radius-22 popover plate, Aurora freshness/quota/section
-   chrome, prominent Dashboard / regular Settings / cool Quit), `Shell/CommandPalette.xaml`
-   (glass dialog), `Shell/BurnHeroControl.xaml`, `Shell/KernelSwitcherControl.xaml`,
-   `Shell/SurfaceStubPage.xaml`.
+3. **Shell chrome:** `Shell/AppShell.xaml` now follows the Linux TopChrome layout: one command
+   deck (brand, omnibar, kernel, BURN hero, appearance, overflow) over seven equal-width tabs
+   (Chat, Providers, Database, Projects, Missions, Activity, Memory). The root starts dark to
+   prevent a system-light backdrop from mixing with dark resources; `ThemeService` still owns
+   explicit Light/High Contrast changes. `MainWindow.xaml` keeps only a transparent drag strip,
+   `FlyoutWindow.xaml` carries the radius-22 popover plate and prominent/regular/cool actions,
+   and `Shell/CommandPalette.xaml` uses a glass dialog based on WinUI's required default dialog
+   template.
 4. **Surfaces:** chat (user bubble = ember→amber gradient + violet `chatUserStroke` edge;
    assistant = glass plate; atom chips/thinking view/composer), all Settings leaf pages,
    onboarding (window now registered with `ThemeService` like MainWindow; gradient →
@@ -94,8 +96,9 @@ swaps.
 
 ## Invariants preserved
 
-- No view-model/logic/behavior changes; no binding, `x:Name`, or event-handler edits (except
-  the single `OnboardingWindow.xaml.cs` constructor theme registration, mirroring MainWindow).
+- No data-model, provider, storage, security, or cloud-contract changes. Shell navigation is
+  intentionally recomposed into the seven-tab TopChrome layout; existing destinations remain
+  reachable through the tab strip, overflow menu, or command palette.
 - Pensieve token values unchanged — Data Control Center identity kept.
 - macOS/Linux app sources untouched (reference only); the shared-tree edit is additive.
 - R7 accepted glass drift unchanged: no content refraction, no glass-over-glass, no
@@ -105,18 +108,34 @@ swaps.
 
 | Check | Result |
 |---|---|
-| `cd packages/design-tokens && npm test` (build + 11 token tests incl. new aurora group + drift guards) | ✅ 11/11 on macOS |
+| `node --test packages/design-tokens/tokens.test.mjs` | ✅ 12/12 on macOS, including font packaging + generated-output drift |
 | `xmllint --noout` over all `windows/app/OpenBurnBar.App/**/*.xaml` | ✅ 110/110 |
 | `scripts/windows-port/check-xaml-token-discipline.sh` | ✅ green; negative test (planted `#FF0000`) fails closed |
-| Resource-key existence sweep (every new key referenced from XAML/C#) | ✅ all present in generated/handwritten dictionaries |
-| `dotnet test windows/tests/presentation|quota|quota-acquisition` (macOS host) | ⚠️ **blocked by pre-existing breakage** — see Named blocker |
-| WinUI compile + visual verification | ⛔ deferred — WinUI 3 cannot build/render on macOS; happens on the Windows dev host / `pr-windows-full.yml` (x64 + ARM64 legs) |
+| `scripts/diff-coverage-self-test.sh` + Android counterpart | ✅ generated token paths excluded/waived exactly; adjacent handwritten sources still fail closed |
+| `dotnet test windows/tests/dist/OpenBurnBar.Dist.Tests.csproj` | ✅ 111/111 on macOS, including three WinUI source contracts |
+| `dotnet test windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj` | ✅ 796/796 on macOS |
+| Cross-host `dotnet build ... -p:EnableWindowsTargeting=true` | ⚠️ managed projects compile; macOS cannot execute WinUI's Windows-only `XamlCompiler.exe` |
+| WinUI x64 + ARM64 compile | ⏳ required from the fresh PR head in Windows CI |
+| Physical visual verification | ⏳ fresh rerun required after the fixes below |
 
-**Named blocker (not this pass):** `windows/app/OpenBurnBar.App.Presentation/Quota/
-DomainCoreQuotaShadowEvidence.cs:610` has a syntax error from the **uncommitted, in-flight
-domain-core workstream** already dirty in the working tree before this pass. It breaks every
-portable `dotnet test` suite that references `OpenBurnBar.App.Presentation`. Left untouched
-(another session owns it); fix there, then re-run the portable suites.
+## Physical x64 feedback folded into the source
+
+The flash evidence pack from commit `cbb46fe140` is historical feedback, not evidence for the
+current head. It recorded 25 UI-automation routes with zero route failures and valid captures of
+the live main window and tray flyout, while also finding three fail-closed defects:
+
+1. A WPF-style `ToolTipService.ToolTip = ...` member inside a C# object initializer did not
+   compile under WinUI. The canonical source now calls `ToolTipService.SetToolTip` after creating
+   each tab button.
+2. The v3 source placed `FontFamily` on `Grid`, which the WinUI XAML compiler rejects. The brand
+   font now inherits from the root `AppShell` `UserControl` instead.
+3. Ctrl+K showed only the dimmed modal backdrop because `AuroraGlassDialogStyle` replaced the
+   default `ContentDialog` style without preserving its template. The style now derives from
+   `DefaultContentDialogStyle`, restoring the dialog body and controls.
+
+`WindowsVisualSourceContractTests` locks all three framework contracts. A fresh native Windows
+x64 build and screenshot run must confirm the command palette, dark-default chrome, brand fonts,
+Light mode, and transparency profiles before this pass can claim physical visual completion.
 
 ## Windows-host evidence checklist (G3-style)
 

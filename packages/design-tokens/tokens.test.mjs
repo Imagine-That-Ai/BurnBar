@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -114,6 +114,31 @@ test("aurora.tokens.json (macOS Aurora + liquid glass) lands on every platform",
   assert.ok(winuiCs.includes('public const string ColorMacosEmber = "#fa5053";'), "C# missing macos.ember");
   // Shell accent now resolves to the macOS Aurora ember (design oracle), not Pensieve brass.
   assert.ok(winuiXaml.includes('x:Key="OBBAccentColor">#FFFA5053<'), "OBBAccentColor must be macOS ember");
+  assert.ok(
+    winuiXaml.includes('x:Key="OBBMonoFontFamily">ms-appx:///Assets/Fonts/jetbrains-mono.ttf#JetBrains Mono,'),
+    "legacy shell mono resources must resolve the bundled JetBrains Mono font",
+  );
+});
+
+test("Windows brand fonts are packaged and referenced by their ms-appx family URIs", () => {
+  const appRoot = join(HERE, "..", "..", "windows", "app", "OpenBurnBar.App");
+  const typography = readFileSync(join(appRoot, "Theme", "Typography.xaml"), "utf8");
+  const project = readFileSync(join(appRoot, "OpenBurnBar.App.csproj"), "utf8");
+  const fonts = [
+    ["outfit.ttf", "Outfit"],
+    ["geist.ttf", "Geist"],
+    ["jetbrains-mono.ttf", "JetBrains Mono"],
+    ["fraunces.ttf", "Fraunces"],
+  ];
+
+  assert.ok(project.includes('Content Include="Assets\\Fonts\\*.ttf"'), "WinUI project must package the font assets");
+  for (const [file, family] of fonts) {
+    assert.ok(existsSync(join(appRoot, "Assets", "Fonts", file)), `missing packaged font: ${file}`);
+    assert.ok(
+      typography.includes(`ms-appx:///Assets/Fonts/${file}#${family}`),
+      `Typography.xaml does not bind ${file} to ${family}`,
+    );
+  }
 });
 
 test("WinUI XAML preserves the shell semantic OBB* keys + demonstrates every WinUI type", () => {

@@ -191,7 +191,9 @@
 
     <!-- ═══ Dialogs (Linux CommandPalette: radius 20 elevated glass over dim scrim) ═══ -->
 
-    <Style x:Key="AuroraGlassDialogStyle" TargetType="ContentDialog">
+    <Style x:Key="AuroraGlassDialogStyle"
+           TargetType="ContentDialog"
+           BasedOn="{StaticResource DefaultContentDialogStyle}">
         <Setter Property="Background" Value="{ThemeResource AuroraGlassTintElevatedBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AuroraGlassStrokeBrush}" />
         <Setter Property="BorderThickness" Value="1" />
