@@ -236,7 +236,7 @@
           AfterTargets="Build"
           Condition="'$(DesignTimeBuild)' != 'true'">
     <MSBuild Projects="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\OpenBurnBar.Cli.csproj"
-             Targets="Build"
+             Targets="Restore;Build"
              Properties="Configuration=$(Configuration)"
              RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishTrimmed" />
     <PropertyGroup>

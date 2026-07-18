@@ -106,6 +106,16 @@ public sealed class CompanionCliPackagingTests
             "OpenBurnBar.Cli.csproj",
             (string?)workerBuild.Attribute("Projects") ?? string.Empty,
             StringComparison.Ordinal);
+        string[] workerTargets = ((string?)workerBuild.Attribute("Targets") ?? string.Empty)
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        int restoreIndex = Array.FindIndex(workerTargets, value =>
+            string.Equals(value, "Restore", StringComparison.Ordinal));
+        int buildIndex = Array.FindIndex(workerTargets, value =>
+            string.Equals(value, "Build", StringComparison.Ordinal));
+        Assert.True(restoreIndex >= 0, "The separately invoked worker project must restore on a clean runner.");
+        Assert.True(
+            buildIndex > restoreIndex,
+            "The separately invoked worker project must build only after restore completes.");
         string[] removedProperties = ((string?)workerBuild.Attribute("RemoveProperties") ?? string.Empty)
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         Assert.Contains("RuntimeIdentifier", removedProperties);
