@@ -127,7 +127,7 @@ public sealed partial class AtelierLayoutView : UserControl
         {
             Text = row.MetricLabel,
             FontSize = 12,
-            FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            FontFamily = BrandFonts.Mono,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = new SolidColorBrush(accent),
         };

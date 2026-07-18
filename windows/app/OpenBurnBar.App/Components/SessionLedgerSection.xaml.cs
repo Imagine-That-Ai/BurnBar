@@ -200,7 +200,7 @@ public sealed partial class SessionLedgerSection : UserControl
         {
             Text = $"{count} session{(count == 1 ? string.Empty : "s")}",
             FontSize = 10,
-            FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            FontFamily = BrandFonts.Mono,
             Foreground = new SolidColorBrush(Color.FromArgb(0x8C, 0xFF, 0xFF, 0xFF)),
         };
         Grid.SetColumn(countText, 1);
@@ -249,7 +249,7 @@ public sealed partial class SessionLedgerSection : UserControl
         {
             Text = usage.StartTime.ToString("h:mm tt", CultureInfo.InvariantCulture),
             FontSize = 11,
-            FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            FontFamily = BrandFonts.Mono,
             Foreground = new SolidColorBrush(accent),
         });
         if (ShowsAgentBadge)
@@ -285,7 +285,7 @@ public sealed partial class SessionLedgerSection : UserControl
         {
             Text = DisplayMode == "currency" ? FormatCost(usage.Cost) : FormatTokens(usage.TotalTokens),
             FontSize = 13,
-            FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            FontFamily = BrandFonts.Mono,
             HorizontalAlignment = HorizontalAlignment.Right,
             Foreground = new SolidColorBrush(Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF)),
         });

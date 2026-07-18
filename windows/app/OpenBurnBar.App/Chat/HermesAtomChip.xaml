@@ -2,7 +2,7 @@
 <!--
   Windows render of AgentLens/Views/Chat/HermesAtomComponents.swift `HermesAtomChip`
   — the atomic, tappable inline chip an atom run renders as. A leading kind glyph
-  plus the atom label inside a brass-tinted pill; tapping raises Invoked so the
+  plus the atom label inside a glass pill; tapping raises Invoked so the
   host can navigate (the macOS HermesAtomRouter.open analog). Pretext lays this out
   as a break:never fragment so it never wraps across a line.
 -->
@@ -16,10 +16,10 @@
 
     <Border x:Name="ChipRoot"
             Padding="7,1,8,2"
-            CornerRadius="7"
-            Background="{StaticResource PensieveColorGlassBgElevatedBrush}"
+            CornerRadius="{StaticResource PensieveRadiusPillCorner}"
+            Background="{ThemeResource AuroraGlassTintClearBrush}"
             BorderThickness="1"
-            BorderBrush="{StaticResource PensieveColorBrassGlowBrush}"
+            BorderBrush="{ThemeResource AuroraGlassStrokeBrush}"
             Tapped="OnTapped"
             PointerEntered="OnPointerEntered"
             PointerExited="OnPointerExited">
@@ -27,11 +27,11 @@
             <FontIcon x:Name="KindGlyph"
                       FontFamily="{ThemeResource SymbolThemeFontFamily}"
                       FontSize="10"
-                      Foreground="{StaticResource PensieveColorBrassCoreBrush}" />
+                      Foreground="{ThemeResource AuroraAccentBrush}" />
             <TextBlock x:Name="LabelText"
-                       FontSize="12"
+                       Style="{StaticResource AuroraMonoTinyTextStyle}"
                        FontWeight="SemiBold"
-                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                       Foreground="{ThemeResource AuroraTextBrush}" />
         </StackPanel>
     </Border>
 </UserControl>
