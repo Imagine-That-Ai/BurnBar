@@ -5,21 +5,24 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-18:
 
-- Current source checkpoint is `63f23dcfb1`. It adds compatible-baseline
-  discovery, strict declared/detected environment identity binding, and an
-  opt-in scratch-only iPad SPM cache prune. These source safeguards require a
-  fresh Release/Nightly run before they can support promotion.
+- Current source checkpoint is `1b4c3b1e269b3d58d38226af1084f88bc7c6f742`.
+  It adds compatible-baseline discovery, strict declared/detected environment
+  identity binding, scratch-only iPad SPM cache pruning, and a bounded wait
+  for a meaningful packaged AT-SPI tree with failure diagnostics. These source
+  safeguards require complete current-head Release/Nightly and product rows
+  before they can support promotion.
 
-- Exact-head Release `29646670068` produced signed x86_64/aarch64 candidate
-  `0.1.1` (`linux-v0.1.1`) and passed package, daemon, desktop, tray,
-  accessibility, route, and attestation checks. Update/rollback/data-
-  preservation remains blocked until a compatible previous same-architecture
-  package is supplied.
-- Exact-head Nightly `29646670763` passed the matched 30-minute soak, the
-  runnable Ubuntu GNOME/X11 gate, 9 Linux Swift suites (414 tests), and the
-  packaged X11 shell/accessibility/onboarding/text-expansion gate. Arch/
-  wlroots, GNOME Wayland, and Fedora/KDE remain explicit blocked rows. Route
-  navigation p95 was 95.6 ms against a 120 ms budget.
+- Exact-head Release `29652889294` produced signed x86_64/aarch64 candidate
+  `0.1.1` and passed package, daemon, desktop, tray, accessibility, route, and
+  attestation checks at the current source. The evidence artifact is
+  `8432407756` (digest
+  `sha256:d3d26e5a2d57148babfca11646aeecdb89280b95e16446c7cd186b388cb64bf0`).
+  Update/rollback/data-preservation remains blocked until a compatible
+  previous same-architecture package is supplied.
+- Current-head Nightly `29652890031` was rerun after its first attempt hit a
+  GitHub artifact-service DNS error (`ENOTFOUND`) after macOS soak success.
+  Linux and environment results are pending that rerun; the older successful
+  Nightly is historical evidence only.
 - Full macOS parity is not complete and the strict ledger remains 0/40 product
   rows and 0/7 environment receipts. See
   the browser-ready

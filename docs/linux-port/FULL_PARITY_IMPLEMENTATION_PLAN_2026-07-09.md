@@ -58,7 +58,28 @@ fail-closed notification payload/route validation (`85b167205`, `a852af8c5`).
 These are bounded source improvements; installed update/rollback and desktop
 host receipts remain required.
 
-### Exact-head release verification - 2026-07-18 (source `70ab4eb0b9`)
+### Exact-head release verification - 2026-07-18 (source `1b4c3b1e26`)
+
+Release workflow `29652889294` completed successfully at
+`1b4c3b1e269b3d58d38226af1084f88bc7c6f742`. x86_64 job `88102165389`,
+aarch64 job `88102165384`, and aggregate/attest job `88105582539` covered
+package construction, DEB/RPM/Arch ownership/install/uninstall, packaged
+daemon and desktop/tray/accessibility/route sessions, final verification, and
+signed closure. The immutable `linux-release-evidence` artifact is `8432407756`
+(3,681,156,161 bytes), digest
+`sha256:d3d26e5a2d57148babfca11646aeecdb89280b95e16446c7cd186b388cb64bf0`.
+Both architecture sessions passed the strict AT-SPI tree contract after
+`5e0c7093cb` added bounded meaningful-tree readiness polling and
+`1b4c3b1e26` retained diagnostics for initial-capture failures. Lifecycle
+update/rollback/data-preservation is still blocked because no compatible
+previous same-architecture package was supplied.
+
+The current-head Nightly `29652890031` was initially stopped by a transient
+GitHub artifact-service DNS failure (`ENOTFOUND`) after the macOS workload
+passed. Its failed jobs were rerun in place; do not treat the Nightly or its
+Linux/environment rows as current-head evidence until that rerun completes.
+
+### Historical exact-head release verification - 2026-07-18 (source `70ab4eb0b9`)
 
 Exact-head Release workflow `29646670068` completed successfully at
 `70ab4eb0b9e66394d709dac246296a3b050e8a3f`. x86_64 job `88086012965`,
@@ -101,7 +122,7 @@ remaining Linux desktop/architecture/keyring/portal rows, collect installed
 Computer Use, Mercury, SmartHub, IME, accessibility, performance, and update
 receipts, and only then promote the 40 product rows.
 
-### Current source follow-up - 2026-07-18 (source `63f23dcfb1`)
+### Historical source follow-up - 2026-07-18 (source `63f23dcfb1`)
 
 The Release/Nightly receipts above remain bound to `70ab4eb0b9` and are stale
 for promotion after the current source commits. The follow-up implementation

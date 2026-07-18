@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-integration-final` current source checkpoint `63f23dcfb1`; the audit record is carried by documentation and source-validation commits. The existing exact-head Release/Nightly receipts are bound to `70ab4eb0b9` and are not promoted to this newer source. Compatible-baseline discovery, support-matrix identity binding, scratch-only iPad cache pruning, and external package-fixture hygiene are linked below. Full certification remains intentionally blocked. |
+| Remediation evidence | `codex/linux-parity-integration-final` current source checkpoint `1b4c3b1e269b3d58d38226af1084f88bc7c6f742`; the audit record is carried by documentation, source-validation, and exact-head Release evidence. Release `29652889294` passed both native architectures at this source. Nightly `29652890031` is being rerun after a transient macOS artifact-service `ENOTFOUND` upload failure; its Linux and environment rows are not yet available. Full certification remains intentionally blocked. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -17,7 +17,35 @@ ledger is still **0/40 product requirements ready** and **0/7 environment
 receipts complete**; implementation progress must not be reported as a release
 percentage. The active remediation stack now contains these reviewable slices:
 
-### Latest exact-head Release/Nightly verification - 2026-07-18 (source `70ab4eb0b9`)
+### Latest exact-head Release verification - 2026-07-18 (source `1b4c3b1e26`)
+
+- **Exact-head Release:** run `29652889294` completed successfully at
+  `1b4c3b1e269b3d58d38226af1084f88bc7c6f742`. x86_64 job `88102165389`,
+  aarch64 job `88102165384`, and aggregate/attest job `88105582539` passed
+  native package construction, DEB/RPM/Arch ownership/install/uninstall,
+  packaged daemon, desktop/tray/accessibility/route sessions, finalization,
+  and signed closure. The immutable `linux-release-evidence` artifact is
+  `8432407756` (3,681,156,161 bytes) with zip digest
+  `sha256:d3d26e5a2d57148babfca11646aeecdb89280b95e16446c7cd186b388cb64bf0`.
+  Both packaged sessions passed accessibility after the readiness fix:
+  aarch64 recorded 34 nodes/22 named/15 actionable with two readiness
+  attempts, and x86_64 recorded the same tree with one attempt. Update/
+  rollback/data-preservation remains blocked because no compatible previous
+  same-architecture package was supplied.
+- **Accessibility race correction:** `5e0c7093cb` makes the packaged AT-SPI
+  capture wait for a meaningful tree without lowering thresholds, and
+  `1b4c3b1e26` retains app/daemon/Orca diagnostics when the initial capture
+  fails. The exact-head x86_64 Release session now passes; the earlier
+  four-node race is closed as a Release blocker, not promoted as a product
+  parity receipt.
+- **Exact-head Nightly:** run `29652890031` at this source was first stopped
+  by GitHub artifact-service DNS failure (`ENOTFOUND`) after the macOS matched
+  workload itself passed. The failed jobs were rerun in place. Until that
+  rerun completes, Linux matched-performance and the desktop environment
+  rows remain unobserved for this source; the prior successful Nightly is
+  historical evidence only.
+
+### Historical exact-head Release/Nightly verification - 2026-07-18 (source `70ab4eb0b9`)
 
 - **Exact-head Release:** run `29646670068` completed successfully at
   `70ab4eb0b9e66394d709dac246296a3b050e8a3f`. x86_64 job `88086012965`,
@@ -72,7 +100,7 @@ percentage. The active remediation stack now contains these reviewable slices:
   validator promotion remain open. The fresh X11 gate is now clear; remaining
   P-32/P-37/P-38 work is broader environment and promotion evidence.
 
-### Current source follow-up - 2026-07-18 (source `63f23dcfb1`)
+### Historical source follow-up - 2026-07-18 (source `63f23dcfb1`)
 
 - **Lifecycle discovery:** `b6d662d503` and `63f23dcfb1` add
   `resolve-linux-previous-release.mjs`. Automatic selection now requires a
