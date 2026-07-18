@@ -13,13 +13,16 @@ Acceptance:
     generator is invoked and produces ``domain-core-native-evidence-plan.json``.
   * A valid plan emits all expected Windows domain predicates (the generator
     derives them from ``RELEASE_CONSUMERS.windows.domains`` + profile modes).
-  * A malformed or empty plan fails nonzero — the step validates the plan with
-    ``jq -e '.schemaVersion == 2 and .consumer == "windows" and (.domains |
-    length > 0)'`` and iterates over a real predicate-list file.
+  * An all-legacy ``public-production`` profile may emit an empty plan before
+    activation, while any Rust-active Windows domain requires the exact
+    corresponding native-evidence entry.
+  * Rollback remains fail-closed: its canonical plan must stay empty.
+  * A malformed plan fails nonzero, and predicate iteration uses a real file.
   * The supply-chain job structurally needs the native-release gate and carries the gate-output env keys (dependency-free; actionlint owns YAML syntax).
 """
 
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -41,6 +44,17 @@ def _evidence_step_source() -> str:
     if next_step == -1:
         raise AssertionError("could not find end of evidence step")
     return rest[:next_step]
+
+
+def _plan_validation_source() -> str:
+    """Return the executable plan-validation and predicate-list fragment."""
+    step = _evidence_step_source()
+    start = step.index(
+        'plan="$evidence_dir/domain-core-native-evidence-plan.json"'
+    )
+    end = step.index("while IFS= read -r predicate; do", start)
+    return textwrap.dedent(step[start:end])
+
 
 def _job_block(source: str, job_name: str) -> str:
     """Return the YAML text of a top-level ``jobs:`` entry by indentation scope.
@@ -173,16 +187,6 @@ class WindowsReleaseEvidencePlanTests(unittest.TestCase):
         )
         self.assertIn('test -s "$plan"', step)
 
-    def test_plan_validated_with_schema_and_nonempty_domains(self) -> None:
-        """The plan must be validated with jq -e against schemaVersion,
-        consumer, and non-empty domains — fail closed on any violation."""
-        step = _evidence_step_source()
-        self.assertIn(
-            'jq -e \'.schemaVersion == 2 and .consumer == "windows" and (.domains | length > 0)\'',
-            step,
-        )
-        self.assertIn('"$plan" >/dev/null', step)
-
     def test_predicate_paths_written_to_file_before_iteration(self) -> None:
         """Predicate paths must be extracted from the plan to a real file
         before the cosign loop so a jq failure propagates through set -e."""
@@ -212,30 +216,70 @@ class WindowsReleaseEvidencePlanSimulationTests(unittest.TestCase):
     synthetic canonical plan to prove fail-closed behavior at the shell level.
     """
 
-    def _run_plan_validation(self, plan_json: str) -> subprocess.CompletedProcess:
-        """Run a minimal reproduction of the workflow's plan validation +
-        predicate-path extraction."""
+    @staticmethod
+    def _profile(profile_name: str, **modes: str) -> str:
+        return json.dumps({"name": profile_name, "modes": modes})
+
+    @staticmethod
+    def _plan(profile_name: str, domains: list[str]) -> str:
+        return json.dumps({
+            "schemaVersion": 2,
+            "consumer": "windows",
+            "version": "1.0.28",
+            "tag": "windows-v1.0.28",
+            "commit": "a" * 40,
+            "profileName": profile_name,
+            "domains": [
+                {
+                    "domain": domain,
+                    "publicProfileSha256": "a" * 64,
+                    "predicatePath": f"/tmp/evidence/{domain}.predicate.json",
+                    "predicateType": "https://openburnbar.dev/attestations/domain-core-release-artifact/v2",
+                    "bundleAssetName": f"{domain}.sigstore.json",
+                }
+                for domain in domains
+            ],
+        })
+
+    def _run_plan_validation(
+        self,
+        plan_json: str,
+        *,
+        profile_json: str | None = None,
+        profile_name: str = "public-production",
+    ) -> subprocess.CompletedProcess:
+        """Execute the workflow's real validation + predicate extraction."""
         with tempfile.TemporaryDirectory() as tmp:
-            plan = Path(tmp) / "domain-core-native-evidence-plan.json"
+            evidence_dir = Path(tmp) / "evidence"
+            evidence_dir.mkdir()
+            plan = evidence_dir / "domain-core-native-evidence-plan.json"
             plan.write_text(plan_json, encoding="utf-8")
-            predicate_list = Path(tmp) / "predicate-paths.txt"
-            script = textwrap.dedent(
-                f"""\
-                set -euo pipefail
-                plan="{plan}"
-                predicate_list="{predicate_list}"
-                test -s "$plan"
-                jq -e '.schemaVersion == 2 and .consumer == "windows" and (.domains | length > 0)' "$plan" >/dev/null
-                domain_count="$(jq '.domains | length' "$plan")"
-                echo "OK: $domain_count domain(s)"
-                jq -r '.domains[].predicatePath' "$plan" > "$predicate_list"
-                cat "$predicate_list"
-                """
+            gate_dir = Path(tmp) / "gate"
+            gate_dir.mkdir()
+            selected_profile = gate_dir / "domain-core-selected-public-profile.json"
+            selected_profile.write_text(
+                profile_json
+                or self._profile(
+                    profile_name,
+                    quota="rust",
+                    cloudVault="rust",
+                ),
+                encoding="utf-8",
             )
+            script = "set -euo pipefail\n" + _plan_validation_source()
+            script += '\ncat "$predicate_list"\n'
+            env = os.environ.copy()
+            env.update({
+                "PROFILE": profile_name,
+                "RUNNER_TEMP": tmp,
+                "evidence_dir": str(evidence_dir),
+                "gate_dir": str(gate_dir),
+            })
             return subprocess.run(
                 ["bash", "-c", script],
                 capture_output=True,
                 text=True,
+                env=env,
             )
 
     def test_valid_plan_emits_quota_and_cloudvault_predicates(self) -> None:
@@ -267,23 +311,83 @@ class WindowsReleaseEvidencePlanSimulationTests(unittest.TestCase):
         }, indent=2)
         result = self._run_plan_validation(plan)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("OK: 2 domain(s)", result.stdout)
+        self.assertIn("2 domain(s)", result.stdout)
         self.assertIn("quota-domain-core.predicate.json", result.stdout)
         self.assertIn("cloudVault-domain-core.predicate.json", result.stdout)
 
-    def test_empty_domains_plan_fails_nonzero(self) -> None:
-        """A plan with zero domains must fail the jq -e validation."""
-        plan = json.dumps({
-            "schemaVersion": 2,
-            "consumer": "windows",
-            "version": "1.0.28",
-            "tag": "windows-v1.0.28",
-            "commit": "a" * 40,
-            "profileName": "public-production",
-            "domains": [],
-        }, indent=2)
-        result = self._run_plan_validation(plan)
-        self.assertNotEqual(result.returncode, 0)
+    def test_all_legacy_public_production_allows_empty_plan(self) -> None:
+        profile = self._profile(
+            "public-production",
+            quota="legacy",
+            cloudVault="legacy",
+            hermes="legacy",
+        )
+        result = self._run_plan_validation(
+            self._plan("public-production", []),
+            profile_json=profile,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rust_active_public_production_requires_exact_windows_domains(self) -> None:
+        for active_domain in ("quota", "cloudVault"):
+            with self.subTest(active_domain=active_domain):
+                modes = {
+                    "quota": "legacy",
+                    "cloudVault": "legacy",
+                    "hermes": "rust",
+                }
+                modes[active_domain] = "rust"
+                profile = self._profile("public-production", **modes)
+
+                exact = self._run_plan_validation(
+                    self._plan("public-production", [active_domain]),
+                    profile_json=profile,
+                )
+                self.assertEqual(exact.returncode, 0, exact.stderr)
+
+                missing = self._run_plan_validation(
+                    self._plan("public-production", []),
+                    profile_json=profile,
+                )
+                self.assertNotEqual(missing.returncode, 0)
+
+                extra = self._run_plan_validation(
+                    self._plan("public-production", ["quota", "cloudVault"]),
+                    profile_json=profile,
+                )
+                self.assertNotEqual(extra.returncode, 0)
+
+    def test_same_cardinality_wrong_windows_domain_fails(self) -> None:
+        profile = self._profile(
+            "public-production",
+            quota="rust",
+            cloudVault="legacy",
+        )
+        wrong_domain = self._run_plan_validation(
+            self._plan("public-production", ["cloudVault"]),
+            profile_json=profile,
+        )
+        self.assertNotEqual(wrong_domain.returncode, 0)
+
+    def test_rollback_plan_remains_fail_closed(self) -> None:
+        profile = self._profile(
+            "public-production-rollback",
+            quota="legacy",
+            cloudVault="legacy",
+        )
+        empty = self._run_plan_validation(
+            self._plan("public-production-rollback", []),
+            profile_json=profile,
+            profile_name="public-production-rollback",
+        )
+        self.assertEqual(empty.returncode, 0, empty.stderr)
+
+        nonempty = self._run_plan_validation(
+            self._plan("public-production-rollback", ["quota"]),
+            profile_json=profile,
+            profile_name="public-production-rollback",
+        )
+        self.assertNotEqual(nonempty.returncode, 0)
 
     def test_wrong_consumer_plan_fails_nonzero(self) -> None:
         """A plan with the wrong consumer must fail validation."""

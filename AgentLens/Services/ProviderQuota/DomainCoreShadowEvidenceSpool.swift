@@ -1134,6 +1134,10 @@ final class MacDomainCoreShadowEvidenceRecorder: Sendable {
         if let resolvedCoordinator {
             Task { await resolvedCoordinator.flush() }
         }
+        installGenericComparisonCollector()
+    }
+
+    func installGenericComparisonCollector() {
         DomainCoreShadowComparisonCollector.configure { [weak self] comparison in
             self?.record(comparison)
         }

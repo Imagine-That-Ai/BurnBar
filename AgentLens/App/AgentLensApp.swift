@@ -221,6 +221,9 @@ struct OpenBurnBarApp: App {
         StartupProfiler.interval("configure_firebase") {
             Self.configureFirebaseIfAvailable(accountManager: .shared)
         }
+        StartupProfiler.interval("domain_core_shadow_evidence_init") {
+            ProviderQuotaMacPlatform.installDomainCoreShadowEvidenceRecorder()
+        }
         StartupProfiler.interval("configure_sentry") {
             Self.configureSentryIfAvailable()
         }

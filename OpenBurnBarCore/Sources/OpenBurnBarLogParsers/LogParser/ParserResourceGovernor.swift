@@ -90,6 +90,13 @@ public final class ParserResourceGovernor: Sendable {
         self.onSoftLimit = onSoftLimit
     }
 
+    /// True when this governor accounts work without imposing any resource cap.
+    var isUnlimited: Bool {
+        limits.fileByteBudget == nil
+            && limits.memoryCeilingBytes == nil
+            && limits.memorySoftLimitBytes == nil
+    }
+
     /// Whether a file of `estimatedBytes` of new content may be read in this
     /// pass. Answers `false` (and counts a deferral) once the budget is
     /// exhausted; the caller keeps its cached/estimated values for that file

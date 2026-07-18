@@ -1232,15 +1232,18 @@ jobs:
           # create-domain-core-native-release-evidence.mjs writeCreateOnly).
           plan="$evidence_dir/domain-core-native-evidence-plan.json"
           test -s "$plan"
-          # Fail closed: public-production must attest at least one Rust domain.
-          # The separately authorized rollback profile is all-legacy by contract,
-          # so its canonical plan must be empty and publishes the native artifact
-          # without fabricating Rust-domain evidence.
-          if [[ "$PROFILE" == "public-production-rollback" ]]; then
-            jq -e '.schemaVersion == 2 and .consumer == "windows" and (.domains | length == 0)' "$plan" >/dev/null
-          else
-            jq -e '.schemaVersion == 2 and .consumer == "windows" and (.domains | length > 0)' "$plan" >/dev/null
-          fi
+          # Fail closed against the canonical Windows consumer domain set. An
+          # all-legacy public-production profile legitimately has no native
+          # predicates before first activation; once quota and/or CloudVault is
+          # Rust-active, the plan must contain exactly those native domains.
+          expected_native_set="$(
+            jq -c '[.modes | to_entries[] | select(
+              (.key == "quota" or .key == "cloudVault") and .value == "rust"
+            ) | .key] | sort' "$gate_dir/domain-core-selected-public-profile.json"
+          )"
+          jq -e --argjson expected "$expected_native_set" \
+            '.schemaVersion == 2 and .consumer == "windows" and ([.domains[].domain] | sort) == $expected' \
+            "$plan" >/dev/null
           domain_count="$(jq '.domains | length' "$plan")"
           echo "Windows domain-core evidence plan: $domain_count domain(s) from canonical generator"
           # Write predicate paths to a real file before iteration so a jq

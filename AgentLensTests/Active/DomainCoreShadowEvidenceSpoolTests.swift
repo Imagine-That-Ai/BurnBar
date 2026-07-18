@@ -494,7 +494,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         ))
     }
 
-    func testMacRecorderPersistsGenericCollectorComparisons() async throws {
+    func testEligibleRecorderCapturesCrossDomainComparisonEmittedBeforeAnyQuotaComparison() async throws {
         defer { DomainCoreShadowComparisonCollector.configure(nil) }
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -525,6 +525,11 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
         try await eventually {
             await submitter.batchSizes() == [1]
         }
+        let submitted = await submitter.submittedSamples()
+        let sample = try XCTUnwrap(submitted.single?.single)
+        XCTAssertEqual(sample.domain, "cloudvault")
+        XCTAssertEqual(sample.slice, "search")
+        XCTAssertEqual(sample.operation, "query")
         withExtendedLifetime(recorder) {}
     }
 
@@ -884,6 +889,7 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
     }
 
     func testMacRecorderOnlyPersistsValidatedSamplesForEnabledChannels() async throws {
+        defer { DomainCoreShadowComparisonCollector.configure(nil) }
         let enabledDirectory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: enabledDirectory) }
         let enabledSubmitter = RecordingDomainCoreShadowSubmitter()
@@ -921,7 +927,16 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
             debounceNanoseconds: 1_000_000
         )
 
-        disabledRecorder.record(makeComparison(legacyMicros: 3))
+        DomainCoreShadowComparisonCollector.record(.init(
+            domain: "cloudvault",
+            slice: "search",
+            operation: "query",
+            coreVersion: "0.3.0",
+            outcome: "match",
+            mismatchCategory: nil,
+            legacyMicros: 3,
+            rustMicros: 2
+        ))
         let disabledSpool = try DomainCoreShadowEvidenceSpool(directory: disabledDirectory)
         let disabledBatchSizes = await disabledSubmitter.batchSizes()
         XCTAssertEqual(disabledBatchSizes, [])
@@ -1999,14 +2014,17 @@ private final class LockedCounter: @unchecked Sendable {
 private actor RecordingDomainCoreShadowSubmitter: DomainCoreShadowSampleSubmitting {
     private var sizes: [Int] = []
     private var channels: [[String]] = []
+    private var submissions: [[DomainCoreShadowSampleV3]] = []
 
     func submit(_ samples: [DomainCoreShadowSampleV3]) async throws {
         sizes.append(samples.count)
         channels.append(samples.map(\.channel))
+        submissions.append(samples)
     }
 
     func batchSizes() -> [Int] { sizes }
     func submittedChannels() -> [[String]] { channels }
+    func submittedSamples() -> [[DomainCoreShadowSampleV3]] { submissions }
 }
 
 private actor FailOnceDomainCoreShadowSubmitter: DomainCoreShadowSampleSubmitting {

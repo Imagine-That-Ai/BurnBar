@@ -181,10 +181,32 @@ final class AppLoggerSanitizationTests: XCTestCase {
         XCTAssertEqual(recorded.read(), [comparison])
     }
 
-    func testQuotaLogger_defaultShadowRecorderCanBeConstructedLazily() {
-        let logger = AppLoggerQuotaLogger()
+    func testMacPlatformCompositionInstallsShadowSinkIdempotentlyBeforeFirstQuotaComparison() {
+        let escapedComparisons = Locked<[DomainCoreShadowComparison]>([])
+        DomainCoreShadowComparisonCollector.configure { comparison in
+            escapedComparisons.withLock { $0.append(comparison) }
+        }
+        defer { DomainCoreShadowComparisonCollector.configure(nil) }
 
-        withExtendedLifetime(logger) {}
+        // The startup composition call must install one lifetime-owned app sink.
+        // No quota comparison has happened before this cross-domain record.
+        ProviderQuotaMacPlatform.installDomainCoreShadowEvidenceRecorder()
+        ProviderQuotaMacPlatform.installDomainCoreShadowEvidenceRecorder()
+        DomainCoreShadowComparisonCollector.record(.init(
+            domain: "cloudvault",
+            slice: "search",
+            operation: "query",
+            coreVersion: "0.3.0",
+            outcome: "match",
+            mismatchCategory: nil,
+            legacyMicros: 10,
+            rustMicros: 8
+        ))
+
+        XCTAssertTrue(
+            escapedComparisons.read().isEmpty,
+            "The macOS composition owner left the collector's pre-install sink active"
+        )
     }
 
     #if canImport(Sentry)

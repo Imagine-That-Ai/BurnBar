@@ -158,12 +158,40 @@ test("rollback profile is all-legacy and cannot emit native domain attestations"
   for (const consumer of ["apple", "android", "windows"]) {
     assert.deepEqual(nativeEvidenceDomains(consumer, value, value.name), []);
   }
-  const hostile = structuredClone(value);
-  hostile.modes.quota = "rust";
-  assert.throws(
-    () => validateResolvedProfile(hostile, hostile.name, CANDIDATE),
-    /permanently select legacy/,
+  for (const domain of ["quota", "cloudVault"]) {
+    const hostile = structuredClone(value);
+    hostile.modes[domain] = "rust";
+    assert.throws(
+      () => validateResolvedProfile(hostile, hostile.name, CANDIDATE),
+      /permanently select legacy/,
+    );
+  }
+});
+
+test("Windows public evidence is empty before activation and exact after activation", () => {
+  const preActivation = profile();
+  preActivation.modes = Object.fromEntries(
+    Object.keys(preActivation.modes).map((domain) => [domain, "legacy"]),
   );
+  assert.deepEqual(
+    nativeEvidenceDomains("windows", preActivation, preActivation.name),
+    [],
+  );
+
+  const nonWindowsActive = structuredClone(preActivation);
+  nonWindowsActive.modes.hermes = "rust";
+  assert.deepEqual(
+    nativeEvidenceDomains("windows", nonWindowsActive, nonWindowsActive.name),
+    [],
+  );
+
+  for (const domain of ["quota", "cloudVault"]) {
+    const active = structuredClone(nonWindowsActive);
+    active.modes[domain] = "rust";
+    assert.deepEqual(nativeEvidenceDomains("windows", active, active.name), [
+      domain,
+    ]);
+  }
 });
 
 test("public evidence includes only Rust-authoritative consumer domains", () => {

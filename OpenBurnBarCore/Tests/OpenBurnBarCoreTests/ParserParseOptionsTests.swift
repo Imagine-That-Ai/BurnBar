@@ -35,6 +35,72 @@ final class ParserParseOptionsTests: XCTestCase {
         XCTAssertTrue(deferred.conversations.isEmpty)
     }
 
+    func testAntigravityRegistryInjectedUnlimitedGovernorUsesConfiguredFallbackModel() async throws {
+        let root = try makeTemporaryDirectory("antigravity-registry-fallback")
+        defer { try? fileManager.removeItem(at: root) }
+
+        try write(
+            #"{"model":"Configured Registry Fallback Model"}"#,
+            to: root.appendingPathComponent("settings.json")
+        )
+        let transcript = root
+            .appendingPathComponent("brain/session-1/.system_generated/logs", isDirectory: true)
+            .appendingPathComponent("transcript_full.jsonl")
+        try write(
+            """
+            {"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-05-27T06:00:00Z","content":"Use the configured model."}
+            {"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-05-27T06:00:01Z","content":"Done."}
+            """,
+            to: transcript
+        )
+
+        let parser = AntigravityParser(logDirectoryOverride: root.path)
+        let result = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true,
+            resourceGovernor: ParserResourceGovernor(limits: .unlimited)
+        ))
+
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(usage.model, "Configured Registry Fallback Model")
+    }
+
+    func testAntigravityBoundedGovernorDoesNotReadConfiguredFallbackModel() async throws {
+        let root = try makeTemporaryDirectory("antigravity-bounded-fallback")
+        defer { try? fileManager.removeItem(at: root) }
+
+        try write(
+            #"{"model":"Configured Model Must Stay Unread"}"#,
+            to: root.appendingPathComponent("settings.json")
+        )
+        let transcript = root
+            .appendingPathComponent("brain/session-1/.system_generated/logs", isDirectory: true)
+            .appendingPathComponent("transcript_full.jsonl")
+        try write(
+            """
+            {"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-05-27T06:00:00Z","content":"Respect the bounded pass."}
+            {"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-05-27T06:00:01Z","content":"Done."}
+            """,
+            to: transcript
+        )
+
+        let metrics = ParserPassMetrics()
+        let parser = AntigravityParser(logDirectoryOverride: root.path)
+        let result = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true,
+            resourceGovernor: ParserResourceGovernor(
+                limits: ParserResourceLimits(fileByteBudget: 1_000_000)
+            ),
+            metrics: metrics
+        ))
+
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(usage.model, "Claude Opus 4.6 (Thinking)")
+        XCTAssertEqual(metrics.snapshot().contentReadCount, 1,
+                       "A bounded pass should admit only the transcript, not settings.json")
+    }
+
     func testClaudeCodeOptionsUseCachedHistoricalRowsWithoutParsingUncachedHistory() async throws {
         let root = try makeTemporaryDirectory("claude")
         defer { try? fileManager.removeItem(at: root) }

@@ -40,7 +40,7 @@ public final class AntigravityParser: LogParser, Sendable {
 
         let settingsURL = URL(fileURLWithPath: basePath).appendingPathComponent("settings.json")
         let fallbackModelName: String
-        if options.resourceGovernor == nil,
+        if options.resourceGovernor?.isUnlimited ?? true,
            fm.fileExists(atPath: settingsURL.path),
            try gate.shouldRead(settingsURL),
            let data = try? Data(contentsOf: settingsURL),
