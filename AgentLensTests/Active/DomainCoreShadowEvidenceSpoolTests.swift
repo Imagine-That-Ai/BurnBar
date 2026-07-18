@@ -1954,6 +1954,8 @@ final class DomainCoreShadowEvidenceSpoolTests: XCTestCase {
 private final class BlockingReadyBatchReader: @unchecked Sendable {
     let started = DispatchSemaphore(value: 0)
     let release = DispatchSemaphore(value: 0)
+    private let stateLock = NSLock()
+    private var shouldBlock = true
     private let afterRelease: @Sendable () throws -> Void
 
     init(afterRelease: @escaping @Sendable () throws -> Void = {}) {
@@ -1962,9 +1964,15 @@ private final class BlockingReadyBatchReader: @unchecked Sendable {
 
     func read(_ url: URL) throws -> Data {
         let data = try Data(contentsOf: url)
-        started.signal()
-        release.wait()
-        try afterRelease()
+        stateLock.lock()
+        let blocksThisRead = shouldBlock
+        shouldBlock = false
+        stateLock.unlock()
+        if blocksThisRead {
+            started.signal()
+            release.wait()
+            try afterRelease()
+        }
         return data
     }
 }
