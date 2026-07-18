@@ -24,7 +24,7 @@
             <Border Width="48" Height="48" CornerRadius="24">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                        <GradientStop Color="{ThemeResource AuroraGlassSelectionFillBrush}" Offset="0" />
+                        <GradientStop Color="{ThemeResource AuroraGlassSelectionFillColor}" Offset="0" />
                         <GradientStop Color="#40FDC42C" Offset="1" />
                     </LinearGradientBrush>
                 </Border.Background>

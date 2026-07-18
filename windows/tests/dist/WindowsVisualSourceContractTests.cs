@@ -9,6 +9,49 @@ namespace OpenBurnBar.Dist.Tests;
 public sealed class WindowsVisualSourceContractTests
 {
     [Fact]
+    public void GradientStopsNeverReferenceBrushResourcesAsColors()
+    {
+        string appRoot = Path.Combine(
+            DistTestSupport.RepositoryRoot(),
+            "windows",
+            "app",
+            "OpenBurnBar.App");
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        var violations = Directory
+            .EnumerateFiles(appRoot, "*.xaml", SearchOption.AllDirectories)
+            .SelectMany(path => XDocument.Load(path)
+                .Descendants(presentation + "GradientStop")
+                .Select(element => new
+                {
+                    Path = path,
+                    Color = (string?)element.Attribute("Color"),
+                }))
+            .Where(item => item.Color?.EndsWith("Brush}", StringComparison.Ordinal) == true)
+            .Select(item => $"{Path.GetRelativePath(appRoot, item.Path)}: {item.Color}")
+            .ToArray();
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XDocument shell = XDocument.Load(Path.Combine(appRoot, "Theme", "PensieveShell.xaml"));
+        string[] themeColorKeys =
+        [
+            "AuroraGlassSelectionFillColor",
+            "AuroraGlassTintSunkenColor",
+            "AuroraGlassSheenFromColor",
+            "AuroraGlassSheenToColor",
+            "AuroraGlassEdgeColor",
+            "AuroraGlassEdgeBorderColor",
+        ];
+
+        Assert.Empty(violations);
+        foreach (string key in themeColorKeys)
+        {
+            Assert.Equal(
+                3,
+                shell.Descendants(presentation + "Color").Count(element =>
+                    string.Equals((string?)element.Attribute(xaml + "Key"), key, StringComparison.Ordinal)));
+        }
+    }
+
+    [Fact]
     public void AuroraDialogStylePreservesTheWinUiContentDialogTemplate()
     {
         string root = DistTestSupport.RepositoryRoot();
@@ -80,5 +123,32 @@ public sealed class WindowsVisualSourceContractTests
         Assert.Equal(
             "{StaticResource AuroraBodyFont}",
             (string?)shell.Root?.Attribute("FontFamily"));
+    }
+
+    [Fact]
+    public void CodePaintedGlassAndBudgetCanvasFollowTheActualTheme()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string liquidGlass = File.ReadAllText(Path.Combine(
+            root,
+            "windows",
+            "app",
+            "OpenBurnBar.App",
+            "Theme",
+            "LiquidGlass.cs"));
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XDocument budget = XDocument.Load(Path.Combine(
+            root,
+            "windows",
+            "app",
+            "OpenBurnBar.App",
+            "Budget",
+            "BudgetPage.xaml"));
+        XElement scrollViewer = budget.Descendants(presentation + "ScrollViewer").Single();
+
+        Assert.Contains("border.ActualThemeChanged += OnSurfaceActualThemeChanged;", liquidGlass, StringComparison.Ordinal);
+        Assert.Contains("border.ActualTheme);", liquidGlass, StringComparison.Ordinal);
+        Assert.Contains("theme == ElementTheme.Light", liquidGlass, StringComparison.Ordinal);
+        Assert.Equal("{ThemeResource AuroraCanvasBrush}", (string?)scrollViewer.Attribute("Background"));
     }
 }

@@ -112,7 +112,7 @@ swaps.
 | `xmllint --noout` over all `windows/app/OpenBurnBar.App/**/*.xaml` | ✅ 110/110 |
 | `scripts/windows-port/check-xaml-token-discipline.sh` | ✅ green; negative test (planted `#FF0000`) fails closed |
 | `scripts/diff-coverage-self-test.sh` + Android counterpart | ✅ generated token paths excluded/waived exactly; adjacent handwritten sources still fail closed |
-| `dotnet test windows/tests/dist/OpenBurnBar.Dist.Tests.csproj` | ✅ 111/111 on macOS, including three WinUI source contracts |
+| `dotnet test windows/tests/dist/OpenBurnBar.Dist.Tests.csproj` | ✅ 113/113 on macOS, including WinUI source + theme contracts |
 | `dotnet test windows/tests/presentation/OpenBurnBar.App.Presentation.Tests.csproj` | ✅ 796/796 on macOS |
 | Cross-host `dotnet build ... -p:EnableWindowsTargeting=true` | ⚠️ managed projects compile; macOS cannot execute WinUI's Windows-only `XamlCompiler.exe` |
 | WinUI x64 + ARM64 compile | ⏳ required from the fresh PR head in Windows CI |
@@ -132,8 +132,12 @@ the live main window and tray flyout, while also finding three fail-closed defec
 3. Ctrl+K showed only the dimmed modal backdrop because `AuroraGlassDialogStyle` replaced the
    default `ContentDialog` style without preserving its template. The style now derives from
    `DefaultContentDialogStyle`, restoring the dialog body and controls.
+4. Independent review found brush resources assigned to `GradientStop.Color`, fixed-dark code
+   plates under Light/reduced-transparency paths, and a fixed-dark Budget canvas. Theme-aware
+   `Color` aliases now feed every gradient stop, glass plates re-resolve on `ActualThemeChanged`,
+   and Budget consumes `AuroraCanvasBrush`.
 
-`WindowsVisualSourceContractTests` locks all three framework contracts. A fresh native Windows
+`WindowsVisualSourceContractTests` locks these framework and theme contracts. A fresh native Windows
 x64 build and screenshot run must confirm the command palette, dark-default chrome, brand fonts,
 Light mode, and transparency profiles before this pass can claim physical visual completion.
 

@@ -24,7 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   setter, the global brand font is inherited from a valid `Control`, and the
   Aurora dialog style retains WinUI's required `ContentDialog` template so
   `Ctrl+K` renders its controls instead of only the dimmed backdrop. Portable
-  source-contract tests lock all three framework requirements.
+  source-contract tests lock all three framework requirements. Theme-aware
+  color aliases now feed gradient stops, code-painted glass plates re-resolve
+  for Light mode and reduced-transparency fallback, and Budget follows the
+  active Aurora canvas instead of mixing light text with a fixed dark plate.
 
 ### Changed
 

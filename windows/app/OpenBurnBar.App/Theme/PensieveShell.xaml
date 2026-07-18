@@ -60,12 +60,18 @@
             <SolidColorBrush x:Key="AuroraGlassStrokeBrush" Color="{StaticResource PensieveGlassStrokeBase}" />
             <SolidColorBrush x:Key="AuroraGlassStrokeFrostBrush" Color="{StaticResource PensieveGlassStrokeFrost}" />
             <SolidColorBrush x:Key="AuroraGlassInnerLightBrush" Color="{StaticResource PensieveGlassInnerLight}" />
-            <SolidColorBrush x:Key="AuroraGlassSelectionFillBrush" Color="{StaticResource PensieveGlassSelectionFill}" />
+            <Color x:Key="AuroraGlassSelectionFillColor">{StaticResource PensieveGlassSelectionFill}</Color>
+            <Color x:Key="AuroraGlassTintSunkenColor">{StaticResource PensieveGlassTintSunken}</Color>
+            <Color x:Key="AuroraGlassSheenFromColor">{StaticResource PensieveGlassSheenDarkFrom}</Color>
+            <Color x:Key="AuroraGlassSheenToColor">{StaticResource PensieveGlassSheenDarkTo}</Color>
+            <Color x:Key="AuroraGlassEdgeColor">{StaticResource PensieveGlassEdgeLight}</Color>
+            <Color x:Key="AuroraGlassEdgeBorderColor">{StaticResource PensieveGlassEdgeDarkBorder}</Color>
+            <SolidColorBrush x:Key="AuroraGlassSelectionFillBrush" Color="{StaticResource AuroraGlassSelectionFillColor}" />
             <SolidColorBrush x:Key="AuroraGlassSelectionStrokeBrush" Color="{StaticResource PensieveGlassSelectionStroke}" />
-            <SolidColorBrush x:Key="AuroraGlassSheenFromBrush" Color="{StaticResource PensieveGlassSheenDarkFrom}" />
-            <SolidColorBrush x:Key="AuroraGlassSheenToBrush" Color="{StaticResource PensieveGlassSheenDarkTo}" />
-            <SolidColorBrush x:Key="AuroraGlassEdgeBrush" Color="{StaticResource PensieveGlassEdgeLight}" />
-            <SolidColorBrush x:Key="AuroraGlassEdgeBorderBrush" Color="{StaticResource PensieveGlassEdgeDarkBorder}" />
+            <SolidColorBrush x:Key="AuroraGlassSheenFromBrush" Color="{StaticResource AuroraGlassSheenFromColor}" />
+            <SolidColorBrush x:Key="AuroraGlassSheenToBrush" Color="{StaticResource AuroraGlassSheenToColor}" />
+            <SolidColorBrush x:Key="AuroraGlassEdgeBrush" Color="{StaticResource AuroraGlassEdgeColor}" />
+            <SolidColorBrush x:Key="AuroraGlassEdgeBorderBrush" Color="{StaticResource AuroraGlassEdgeBorderColor}" />
 
             <!-- NavigationView: translucent slate pane + glass selection (macOS sidebar analogue:
                  selected = ember @8% fill, hover = text @8–12% — macOS SidebarItem semantics). -->
@@ -127,18 +133,24 @@
             <SolidColorBrush x:Key="AuroraErrorBrush" Color="{StaticResource PensieveColorAuroraLightError}" />
             <SolidColorBrush x:Key="AuroraGlassTintBaseBrush" Color="{StaticResource PensieveGlassLightTintBase}" />
             <SolidColorBrush x:Key="AuroraGlassTintElevatedBrush" Color="{StaticResource PensieveGlassLightTintElevated}" />
-            <SolidColorBrush x:Key="AuroraGlassTintSunkenBrush" Color="#B8F3E8E6" />
+            <Color x:Key="AuroraGlassSelectionFillColor">#14F45B69</Color>
+            <Color x:Key="AuroraGlassTintSunkenColor">#B8F3E8E6</Color>
+            <Color x:Key="AuroraGlassSheenFromColor">{StaticResource PensieveGlassSheenLightFrom}</Color>
+            <Color x:Key="AuroraGlassSheenToColor">{StaticResource PensieveGlassSheenLightTo}</Color>
+            <Color x:Key="AuroraGlassEdgeColor">{StaticResource PensieveGlassEdgeLight}</Color>
+            <Color x:Key="AuroraGlassEdgeBorderColor">{StaticResource PensieveGlassEdgeLightBorder}</Color>
+            <SolidColorBrush x:Key="AuroraGlassTintSunkenBrush" Color="{StaticResource AuroraGlassTintSunkenColor}" />
             <SolidColorBrush x:Key="AuroraGlassTintClearBrush" Color="#8CFAF5F2" />
             <SolidColorBrush x:Key="AuroraGlassTintInteractiveBrush" Color="#61FDF8F5" />
             <SolidColorBrush x:Key="AuroraGlassStrokeBrush" Color="{StaticResource PensieveGlassStrokeLightBase}" />
             <SolidColorBrush x:Key="AuroraGlassStrokeFrostBrush" Color="{StaticResource PensieveGlassStrokeLightFrost}" />
             <SolidColorBrush x:Key="AuroraGlassInnerLightBrush" Color="{StaticResource PensieveGlassStrokeLightFrost}" />
-            <SolidColorBrush x:Key="AuroraGlassSelectionFillBrush" Color="#14F45B69" />
+            <SolidColorBrush x:Key="AuroraGlassSelectionFillBrush" Color="{StaticResource AuroraGlassSelectionFillColor}" />
             <SolidColorBrush x:Key="AuroraGlassSelectionStrokeBrush" Color="#4DF45B69" />
-            <SolidColorBrush x:Key="AuroraGlassSheenFromBrush" Color="{StaticResource PensieveGlassSheenLightFrom}" />
-            <SolidColorBrush x:Key="AuroraGlassSheenToBrush" Color="{StaticResource PensieveGlassSheenLightTo}" />
-            <SolidColorBrush x:Key="AuroraGlassEdgeBrush" Color="{StaticResource PensieveGlassEdgeLight}" />
-            <SolidColorBrush x:Key="AuroraGlassEdgeBorderBrush" Color="{StaticResource PensieveGlassEdgeLightBorder}" />
+            <SolidColorBrush x:Key="AuroraGlassSheenFromBrush" Color="{StaticResource AuroraGlassSheenFromColor}" />
+            <SolidColorBrush x:Key="AuroraGlassSheenToBrush" Color="{StaticResource AuroraGlassSheenToColor}" />
+            <SolidColorBrush x:Key="AuroraGlassEdgeBrush" Color="{StaticResource AuroraGlassEdgeColor}" />
+            <SolidColorBrush x:Key="AuroraGlassEdgeBorderBrush" Color="{StaticResource AuroraGlassEdgeBorderColor}" />
 
             <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="#E6FAF5F2" />
             <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="#E6FAF5F2" />
@@ -201,12 +213,18 @@
             <SolidColorBrush x:Key="AuroraGlassStrokeBrush" Color="{StaticResource PensieveGlassStrokeBase}" />
             <SolidColorBrush x:Key="AuroraGlassStrokeFrostBrush" Color="{StaticResource PensieveGlassStrokeFrost}" />
             <SolidColorBrush x:Key="AuroraGlassInnerLightBrush" Color="{StaticResource PensieveGlassInnerLight}" />
-            <SolidColorBrush x:Key="AuroraGlassSelectionFillBrush" Color="{StaticResource PensieveGlassSelectionFill}" />
+            <Color x:Key="AuroraGlassSelectionFillColor">{StaticResource PensieveGlassSelectionFill}</Color>
+            <Color x:Key="AuroraGlassTintSunkenColor">{StaticResource PensieveGlassTintSunken}</Color>
+            <Color x:Key="AuroraGlassSheenFromColor">{StaticResource PensieveGlassSheenDarkFrom}</Color>
+            <Color x:Key="AuroraGlassSheenToColor">{StaticResource PensieveGlassSheenDarkTo}</Color>
+            <Color x:Key="AuroraGlassEdgeColor">{StaticResource PensieveGlassEdgeLight}</Color>
+            <Color x:Key="AuroraGlassEdgeBorderColor">{StaticResource PensieveGlassEdgeDarkBorder}</Color>
+            <SolidColorBrush x:Key="AuroraGlassSelectionFillBrush" Color="{StaticResource AuroraGlassSelectionFillColor}" />
             <SolidColorBrush x:Key="AuroraGlassSelectionStrokeBrush" Color="{StaticResource PensieveGlassSelectionStroke}" />
-            <SolidColorBrush x:Key="AuroraGlassSheenFromBrush" Color="{StaticResource PensieveGlassSheenDarkFrom}" />
-            <SolidColorBrush x:Key="AuroraGlassSheenToBrush" Color="{StaticResource PensieveGlassSheenDarkTo}" />
-            <SolidColorBrush x:Key="AuroraGlassEdgeBrush" Color="{StaticResource PensieveGlassEdgeLight}" />
-            <SolidColorBrush x:Key="AuroraGlassEdgeBorderBrush" Color="{StaticResource PensieveGlassEdgeDarkBorder}" />
+            <SolidColorBrush x:Key="AuroraGlassSheenFromBrush" Color="{StaticResource AuroraGlassSheenFromColor}" />
+            <SolidColorBrush x:Key="AuroraGlassSheenToBrush" Color="{StaticResource AuroraGlassSheenToColor}" />
+            <SolidColorBrush x:Key="AuroraGlassEdgeBrush" Color="{StaticResource AuroraGlassEdgeColor}" />
+            <SolidColorBrush x:Key="AuroraGlassEdgeBorderBrush" Color="{StaticResource AuroraGlassEdgeBorderColor}" />
             <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="#E6161B22" />
             <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="#E6161B22" />
             <SolidColorBrush x:Key="NavigationViewTopPaneBackground" Color="#CC0D1117" />
