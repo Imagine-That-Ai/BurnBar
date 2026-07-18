@@ -13,8 +13,7 @@
     xmlns:theme="using:OpenBurnBar.App.Theme"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d"
-    RequestedTheme="Dark">
+    mc:Ignorable="d">
 
     <Grid Background="Transparent" RowSpacing="0">
         <Grid.RowDefinitions>
@@ -52,9 +51,9 @@
                         <components:AppLogoView Size="26" VerticalAlignment="Center" />
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="0">
                             <TextBlock Text="Open" FontSize="13" FontWeight="SemiBold"
-                                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                       Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                             <TextBlock Text="BurnBar" FontSize="13" FontWeight="SemiBold"
-                                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                       Foreground="{ThemeResource AuroraTextBrush}" />
                         </StackPanel>
                     </StackPanel>
                 </Button>
@@ -71,35 +70,59 @@
                                   FontFamily="Segoe MDL2 Assets"
                                   FontSize="12"
                                   Glyph="&#xE80F;"
-                                  Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                  Foreground="{ThemeResource AuroraTextBrush}" />
                         <TextBlock x:Name="SectionTitle"
                                    Text="Dashboard"
                                    FontSize="13"
                                    FontWeight="SemiBold"
-                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                   Foreground="{ThemeResource AuroraTextBrush}" />
                         <FontIcon FontFamily="Segoe MDL2 Assets"
                                   FontSize="10"
                                   Glyph="&#xE70D;"
-                                  Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                  Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                     </StackPanel>
                     <Button.Flyout>
                         <MenuFlyout x:Name="SectionMenu" Placement="Bottom" />
                     </Button.Flyout>
                 </Button>
 
-                <!-- Ctrl+K -->
+                <!-- Omnibar: wide glass search pill (macOS BurnBarTopRail / Linux TopChrome) -->
                 <Button Grid.Column="2"
                         Style="{StaticResource LiquidGlassInteractiveStyle}"
                         theme:LiquidGlass.Interactive="True"
                         Click="Palette_Click"
                         VerticalAlignment="Center"
+                        CornerRadius="999"
+                        MinWidth="220"
+                        MaxWidth="400"
+                        HorizontalContentAlignment="Stretch"
                         ToolTipService.ToolTip="Command palette (Ctrl+K)">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="12" Glyph="&#xE721;"
-                                  Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                        <TextBlock Text="Ctrl K" FontSize="11" Opacity="0.65"
-                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
-                    </StackPanel>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0"
+                                  FontFamily="Segoe MDL2 Assets"
+                                  FontSize="12"
+                                  Glyph="&#xE721;"
+                                  Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
+                        <TextBlock Grid.Column="1"
+                                   Text="Search or jump to…"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource AuroraTextMutedBrush}" />
+                        <Border Grid.Column="3"
+                                VerticalAlignment="Center"
+                                CornerRadius="4"
+                                Padding="6,2"
+                                Background="{ThemeResource AuroraGlassTintElevatedBrush}">
+                            <TextBlock Text="Ctrl K"
+                                       FontSize="10"
+                                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
+                        </Border>
+                    </Grid>
                 </Button>
 
                 <Border Grid.Column="3" />
@@ -122,7 +145,7 @@
                         VerticalAlignment="Center"
                         ToolTipService.ToolTip="Appearance">
                     <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE771;"
-                              Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                              Foreground="{ThemeResource AuroraTextBrush}" />
                     <Button.Flyout>
                         <Flyout x:Name="AppearanceFlyout" Opening="AppearanceFlyout_Opening">
                             <theme:AppearanceModeControl x:Name="AppearanceControl" MinWidth="300" />
@@ -137,7 +160,7 @@
                         VerticalAlignment="Center"
                         ToolTipService.ToolTip="More">
                     <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE712;"
-                              Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                              Foreground="{ThemeResource AuroraTextBrush}" />
                     <Button.Flyout>
                         <MenuFlyout x:Name="OverflowMenu" Placement="Bottom" />
                     </Button.Flyout>

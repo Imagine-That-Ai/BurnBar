@@ -30,7 +30,7 @@
         <StackPanel Spacing="8">
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <TextBlock Text="01 · KIND" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="12"
-                           FontWeight="Bold" Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                           FontWeight="Bold" Foreground="{ThemeResource AuroraTextMutedBrush}"
                            VerticalAlignment="Center" />
                 <Border Height="1" Width="200" VerticalAlignment="Center"
                         Background="{StaticResource PensieveColorGlassLineBrush}" Opacity="0.6" />
@@ -58,7 +58,7 @@
                                 <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="13" Glyph="{x:Bind Glyph}"
                                           Foreground="{StaticResource OBBAccentBrush}" />
                                 <TextBlock Text="{x:Bind DisplayName}" FontSize="13" FontWeight="SemiBold"
-                                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                           Foreground="{ThemeResource AuroraTextBrush}" />
                             </StackPanel>
                         </Button>
                     </DataTemplate>
@@ -67,7 +67,7 @@
             </ScrollViewer>
 
             <TextBlock Text="{x:Bind ViewModel.KindTagline, Mode=OneWay}"
-                       FontSize="12" Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                       FontSize="12" Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
         </StackPanel>
 
         <!-- 02 · RUNTIME -->
@@ -76,7 +76,7 @@
         <!-- 03 · BRIEF -->
         <StackPanel Spacing="8">
             <TextBlock Text="03 · BRIEF" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="12"
-                       FontWeight="Bold" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       FontWeight="Bold" Foreground="{ThemeResource AuroraTextMutedBrush}" />
             <TextBox x:Name="TitleBox"
                      Header="Title (optional)"
                      PlaceholderText="Name this mission…"
@@ -99,32 +99,32 @@
 
             <StackPanel Grid.Column="0" Spacing="6">
                 <TextBlock Text="DEPTH" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="11"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 <RadioButtons x:Name="DepthChoice" MaxColumns="1" SelectionChanged="Depth_SelectionChanged">
                     <RadioButton Content="Light" />
                     <RadioButton Content="Standard" />
                     <RadioButton Content="Deep" />
                 </RadioButtons>
                 <TextBlock x:Name="DepthSubtitle" FontSize="12"
-                           Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                           Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
             </StackPanel>
 
             <StackPanel Grid.Column="1" Spacing="6">
                 <TextBlock Text="APPROVAL" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="11"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 <RadioButtons x:Name="ApprovalChoice" MaxColumns="1" SelectionChanged="Approval_SelectionChanged">
                     <RadioButton Content="Honor existing policy" />
                     <RadioButton Content="Require my approval" />
                 </RadioButtons>
                 <TextBlock x:Name="ApprovalCaption" FontSize="12" TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                           Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
             </StackPanel>
         </Grid>
 
         <!-- 05 · PERMISSIONS -->
         <StackPanel Spacing="6">
             <TextBlock Text="05 · PERMISSIONS" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="12"
-                       FontWeight="Bold" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       FontWeight="Bold" Foreground="{ThemeResource AuroraTextMutedBrush}" />
             <ToggleSwitch Header="Allow shell commands"
                           IsOn="{x:Bind ViewModel.CommandsAllowed, Mode=TwoWay}" />
             <ToggleSwitch Header="Allow file edits"
@@ -134,7 +134,7 @@
         <!-- 06 · PROJECT -->
         <StackPanel Spacing="6">
             <TextBlock Text="06 · PROJECT" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="12"
-                       FontWeight="Bold" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       FontWeight="Bold" Foreground="{ThemeResource AuroraTextMutedBrush}" />
             <TextBox x:Name="ProjectBox"
                      PlaceholderText="Target project (defaults to scratch)"
                      Text="{x:Bind ViewModel.TargetProject, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -147,8 +147,8 @@
         <Border x:Name="ErrorBanner"
                 Padding="12"
                 CornerRadius="{StaticResource PensieveRadiusSmCorner}"
-                Background="#1AFF8A7A"
-                BorderBrush="#73FF8A7A"
+                Background="{ThemeResource AuroraGlassSelectionFillBrush}"
+                BorderBrush="{ThemeResource AuroraGlassSelectionStrokeBrush}"
                 BorderThickness="1"
                 Visibility="{x:Bind ViewModel.HasInlineError, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
             <Grid ColumnSpacing="8">
@@ -158,12 +158,12 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <FontIcon Grid.Column="0" FontFamily="Segoe MDL2 Assets" Glyph="&#xEA39;" FontSize="14"
-                          Foreground="#FFFF8A7A" VerticalAlignment="Top" />
+                          Foreground="{ThemeResource AuroraErrorBrush}" VerticalAlignment="Top" />
                 <StackPanel Grid.Column="1" Spacing="2">
                     <TextBlock Text="Dispatch failed" FontSize="12" FontWeight="SemiBold"
-                               Foreground="#FFFF8A7A" />
+                               Foreground="{ThemeResource AuroraErrorBrush}" />
                     <TextBlock Text="{x:Bind ViewModel.InlineError, Mode=OneWay}" FontSize="13" TextWrapping="Wrap"
-                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                               Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                 </StackPanel>
                 <Button Grid.Column="2" Click="ClearError_Click" Style="{StaticResource LiquidGlassCircleButtonStyle}">
                     <FontIcon FontFamily="Segoe MDL2 Assets" Glyph="&#xE711;" FontSize="11" />

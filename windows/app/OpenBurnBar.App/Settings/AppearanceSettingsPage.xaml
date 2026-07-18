@@ -22,11 +22,11 @@
 
             <TextBlock
                 Style="{StaticResource TitleTextBlockStyle}"
-                Foreground="{StaticResource PensieveColorTextBrightBrush}"
+                Foreground="{ThemeResource AuroraTextBrush}"
                 Text="Appearance" />
             <TextBlock
                 Margin="0,0,0,8"
-                Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                Foreground="{ThemeResource AuroraTextMutedBrush}"
                 Text="Theme, skin, glass, and the animated backdrops." />
 
             <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="0">
@@ -73,7 +73,7 @@
                                    VerticalAlignment="Center"
                                    FontSize="12"
                                    Opacity="0.7"
-                                   Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                                   Foreground="{ThemeResource AuroraTextMutedBrush}"
                                    Text="System" />
                         <ToggleSwitch x:Name="ContentSurfacesToggle"
                                       Grid.Column="1"
@@ -107,7 +107,7 @@
             <TextBlock
                 Margin="0,10,0,2"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
-                Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                Foreground="{ThemeResource AuroraTextSecondaryBrush}"
                 Text="Backdrops" />
 
             <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="0">

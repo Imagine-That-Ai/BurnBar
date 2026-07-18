@@ -8,7 +8,7 @@
     xmlns:theme="using:OpenBurnBar.App.Theme"
     Title="OpenBurnBar">
 
-    <Grid x:Name="RootGrid" RowSpacing="0" Background="Transparent" RequestedTheme="Dark">
+    <Grid x:Name="RootGrid" RowSpacing="0" Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -32,7 +32,7 @@
                            VerticalAlignment="Center"
                            Text="OpenBurnBar"
                            FontWeight="SemiBold"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Foreground="{ThemeResource AuroraTextBrush}" />
             </Grid>
         </Border>
 
