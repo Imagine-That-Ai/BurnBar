@@ -94,11 +94,18 @@ if ($Manifest.sourceCommit -cne $ExpectedCommit -or
     $Manifest.signatureResult -cne 'verified') {
     throw 'Signed artifact manifest is not bound to the exact candidate.'
 }
-if (Get-AppxPackage -Name 'ImagineThat.OpenBurnBar') {
-    Get-AppxPackage -Name 'ImagineThat.OpenBurnBar' |
+$OpenBurnBarPackageNames = @(
+    'ImagineThat.OpenBurnBar',
+    'ImagineThatAiLLC.BurnBar'
+)
+$PreexistingPackages = @($OpenBurnBarPackageNames | ForEach-Object {
+    Get-AppxPackage -Name $_ -ErrorAction SilentlyContinue
+})
+if ($PreexistingPackages.Count -gt 0) {
+    $PreexistingPackages |
         ConvertTo-Json -Depth 6 |
-        Set-Content (Join-Path $Root 'preexisting-package.json')
-    throw 'OpenBurnBar is already installed. Preserve the receipt and obtain operator approval before replacement.'
+        Set-Content (Join-Path $Root 'preexisting-packages.json')
+    throw 'A direct-download or Store OpenBurnBar package is already installed. Preserve the receipt and obtain operator approval before replacement.'
 }
 ```
 
@@ -180,10 +187,20 @@ Leave anything not genuinely observed as `NOT_RUN` or `BLOCKED`.
 
 ```powershell
 foreach ($Gate in $AvailableGates) {
+    $GateResultsPath = Join-Path $ProtocolWork ($Gate + '.json')
+    $GateResults = Get-Content -Raw $GateResultsPath | ConvertFrom-Json
+    $IncompleteAssertions = @($GateResults.assertions | Where-Object {
+        [string]$_.status -cne 'PASS'
+    })
+    if ($IncompleteAssertions.Count -gt 0) {
+        Write-Warning "$Gate remains BLOCKED: $($IncompleteAssertions.Count) assertion(s) are not PASS."
+        continue
+    }
+
     pwsh $ReceiptTool `
         -RepoRoot $Repo `
         -Gate $Gate `
-        -ResultsPath (Join-Path $ProtocolWork ($Gate + '.json')) `
+        -ResultsPath $GateResultsPath `
         -BaselineBundle $Evidence `
         -OutputDirectory $Supplemental
 }

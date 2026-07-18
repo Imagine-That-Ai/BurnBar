@@ -68,7 +68,14 @@ successful upload:
 
 1. Private audience and known-user-group restriction.
 2. Clean Store install and responsive launch.
-3. Upgrade from the prescribed private predecessor.
+3. Upgrade from an exact certified private predecessor. **BLOCKED for the first
+   private submission:** no earlier BurnBar package has been certified and made
+   available to the authorized private audience. Do not substitute an unsigned,
+   sideloaded, draft, or merely uploaded package. To unblock, retain the exact
+   Store-signed version/hash/identity receipt from the first private
+   certification, then publish a distinct higher-version private successor to
+   the same audience and exercise the Store-managed upgrade between those two
+   exact packages.
 4. Repair.
 5. Rollback/recovery.
 6. Uninstall and reinstall.
@@ -84,3 +91,6 @@ successful upload:
 Capture these through the canonical `store-update-lifecycle` supplemental
 receipt and retain raw hashed evidence. No evidence may contain credentials,
 access tokens, private account data, or an unrestricted acquisition link.
+The lifecycle gate remains `BLOCKED` until assertion 3 has that real predecessor
+and successor evidence; the first private certification alone cannot be called
+a lifecycle PASS.
