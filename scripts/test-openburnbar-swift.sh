@@ -17,23 +17,23 @@ prepare_libsignal_ffi() {
   local libsignal_dir="${repo_root}/Vendor/libsignal"
   local macos_xcframework="${repo_root}/Vendor/OpenBurnBarSignalFfiMac.xcframework"
   local legacy_xcframework="${repo_root}/Vendor/OpenBurnBarSignalFfi.xcframework"
-  local build_script="${libsignal_dir}/swift/build_ffi.sh"
-  local cargo_cmd=()
+  local libsignal_build_script="${libsignal_dir}/swift/build_ffi.sh"
   local auth_messages_service="${libsignal_dir}/swift/Sources/LibSignalClient/chat/AuthMessagesService.swift"
+  local host_target
 
   if [[ -d "${macos_xcframework}" || -d "${legacy_xcframework}" ]]; then
     echo "Using prebuilt Signal FFI XCFramework."
     return
   fi
 
-  if [[ ! -x "${build_script}" ]]; then
+  if [[ ! -x "${libsignal_build_script}" ]]; then
     if [[ -f "${repo_root}/.gitmodules" ]] && command -v git >/dev/null 2>&1; then
       bash "${repo_root}/scripts/ci/update-submodules-with-retry.sh" Vendor/libsignal
     fi
   fi
 
-  if [[ ! -x "${build_script}" ]]; then
-    echo "Missing ${build_script}; initialize Vendor/libsignal before running Swift tests." >&2
+  if [[ ! -x "${libsignal_build_script}" ]]; then
+    echo "Missing ${libsignal_build_script}; initialize Vendor/libsignal before running Swift tests." >&2
     exit 1
   fi
 
@@ -41,31 +41,29 @@ prepare_libsignal_ffi() {
     perl -0pi -e 's/\bextendLifetime\(([^)]+)\)/withExtendedLifetime($1) {}/g' "${auth_messages_service}"
   fi
 
-  if command -v rustup >/dev/null 2>&1; then
-    cargo_cmd=(rustup run stable cargo)
-  elif command -v cargo >/dev/null 2>&1; then
-    cargo_cmd=(cargo)
-  else
-    echo "Missing cargo; install Rust before running Swift libsignal tests." >&2
-    exit 1
-  fi
-
   if ! command -v protoc >/dev/null 2>&1; then
     echo "Missing protoc; install protobuf before running Swift libsignal tests." >&2
     exit 1
   fi
 
-  echo "Building host libsignal FFI for SwiftPM tests."
-  (
-    cd "${libsignal_dir}"
-    CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" \
-    MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-14.0}" \
-    PATH="${HOME}/.cargo/bin:${PATH}" \
-      "${cargo_cmd[@]}" rustc \
-        -p libsignal-ffi \
-        --features "libsignal-bridge-testing log/release_max_level_info" \
-        -- --crate-type staticlib
-  )
+  case "$(uname -m)" in
+    arm64) host_target="aarch64-apple-darwin" ;;
+    x86_64) host_target="x86_64-apple-darwin" ;;
+    *)
+      echo "Unsupported macOS architecture for Signal FFI: $(uname -m)" >&2
+      exit 1
+      ;;
+  esac
+
+  # macOS must not link libsignal and domain-core as two Rust static archives:
+  # both bundle Rust std and collide on symbols such as rust_eh_personality.
+  # Reuse the production builder's reviewed cdylib/XCFramework path instead.
+  echo "Building host dynamic Signal FFI XCFramework for SwiftPM tests."
+  CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" \
+  MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-14.0}" \
+  SIGNAL_FFI_BUILD_TARGETS="${host_target}" \
+  SIGNAL_FFI_BUILD_PROFILE=debug \
+    bash "${repo_root}/scripts/build-signal-ffi-xcframework.sh"
 }
 
 coverage_flags=()
@@ -76,11 +74,6 @@ fi
 if [[ "${OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE:-}" != "1" ]]; then
   prepare_libsignal_ffi
 fi
-libsignal_linker_flags=()
-if [[ "${OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE:-}" != "1" ]] \
-  && [[ ! -d "${repo_root}/Vendor/OpenBurnBarSignalFfiMac.xcframework" && ! -d "${repo_root}/Vendor/OpenBurnBarSignalFfi.xcframework" ]]; then
-  libsignal_linker_flags=(-Xlinker "-L${repo_root}/Vendor/libsignal/target/debug")
-fi
 
 run_swift_tests() {
   local package_path="$1"
@@ -90,9 +83,6 @@ run_swift_tests() {
   if ((${#coverage_flags[@]})); then
     args+=("${coverage_flags[@]}")
   fi
-  if ((${#libsignal_linker_flags[@]})); then
-    args+=("${libsignal_linker_flags[@]}")
-  fi
   if [[ -n "$filter" ]]; then
     args+=(--filter "$filter")
   fi
@@ -101,9 +91,6 @@ run_swift_tests() {
     local build_args=(--package-path "$package_path" --build-tests)
     if ((${#coverage_flags[@]})); then
       build_args+=("${coverage_flags[@]}")
-    fi
-    if ((${#libsignal_linker_flags[@]})); then
-      build_args+=("${libsignal_linker_flags[@]}")
     fi
 
     swift build "${build_args[@]}"
