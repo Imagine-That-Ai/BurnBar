@@ -186,63 +186,97 @@ impl MediaViewer {
     }
 
     pub fn render_frame(&self, frame: &MediaFrame) {
+        #[cfg(feature = "media-gst")]
+        {
+            self.render_frame_with_sink_mode(frame, openburnbar_media::DecodeSinkMode::Auto);
+            return;
+        }
+
+        #[cfg(not(feature = "media-gst"))]
+        {
+            let Ok(mut inner) = self.inner.lock() else {
+                return;
+            };
+            inner.received_frames += 1;
+            eprintln!(
+                "openburnbar media viewer stub: frame kind={} flags={} pts_ms={} bytes={}",
+                frame.kind,
+                frame.flags,
+                frame.pts_ms,
+                frame.payload.len()
+            );
+        }
+    }
+
+    #[cfg(feature = "media-gst")]
+    fn render_frame_with_sink_mode(
+        &self,
+        frame: &MediaFrame,
+        sink_mode: openburnbar_media::DecodeSinkMode,
+    ) {
         let Ok(mut inner) = self.inner.lock() else {
             return;
         };
         inner.received_frames += 1;
-        #[cfg(feature = "media-gst")]
-        {
-            // The daemon currently sends VP9 video NAL frames over this
-            // socket. Ignore future audio/control frames until their native
-            // sinks are wired rather than feeding them to a video decoder.
-            const VIDEO_NAL_KIND: u8 = 0x01;
-            const KEYFRAME_FLAG: u8 = 1 << 0;
-            if !inner.open || frame.kind != VIDEO_NAL_KIND {
-                return;
-            }
-            if inner.awaiting_keyframe && frame.flags & KEYFRAME_FLAG == 0 {
-                return;
-            }
-            let decode_error = match inner.decoder.as_ref() {
-                Some(decoder) => decoder
-                    .push_frame(&frame.payload, frame.pts_ms, frame.flags)
-                    .err(),
-                None => return,
-            };
-            if let Some(error) = decode_error {
-                eprintln!("openburnbar media viewer decode failed: {error}");
-                // A transient bus/pipeline error must not leave an otherwise
-                // healthy socket session with a permanently dead viewer. The
-                // decoder can be reset to NULL/Playing and will then accept a
-                // fresh keyframe from the same stream. Only tear it down when
-                // that recovery path fails.
-                let restart_error = inner
-                    .decoder
-                    .as_ref()
-                    .and_then(|decoder| decoder.restart().err());
-                if let Some(restart_error) = restart_error {
-                    eprintln!("openburnbar media viewer decoder restart failed: {restart_error}");
-                    let decoder = inner.decoder.take();
-                    drop(inner);
-                    if let Some(decoder) = decoder {
-                        let _ = decoder.stop();
-                    }
-                } else {
+
+        // The daemon currently sends VP9 video NAL frames over this socket.
+        // Ignore future audio/control frames until their native sinks are
+        // wired rather than feeding them to a video decoder.
+        const VIDEO_NAL_KIND: u8 = 0x01;
+        const KEYFRAME_FLAG: u8 = 1 << 0;
+        if !inner.open || frame.kind != VIDEO_NAL_KIND {
+            return;
+        }
+        if inner.awaiting_keyframe && frame.flags & KEYFRAME_FLAG == 0 {
+            return;
+        }
+
+        // A decoder can fail during initial construction while the daemon's
+        // socket remains connected (for example while GStreamer plugins are
+        // still coming up). Retry on the next keyframe instead of leaving an
+        // open viewer permanently black until the peer reconnects.
+        if inner.decoder.is_none() {
+            match openburnbar_media::DecodePipeline::new("vp9", sink_mode) {
+                Ok(decoder) => {
+                    inner.decoder = Some(decoder);
                     inner.awaiting_keyframe = true;
+                }
+                Err(error) => {
+                    eprintln!("openburnbar media viewer decoder unavailable: {error}");
                     return;
                 }
-                return;
             }
-            inner.awaiting_keyframe = false;
         }
-        #[cfg(not(feature = "media-gst"))]
-        eprintln!(
-            "openburnbar media viewer stub: frame kind={} flags={} pts_ms={} bytes={}",
-            frame.kind,
-            frame.flags,
-            frame.pts_ms,
-            frame.payload.len()
-        );
+
+        let decode_error = match inner.decoder.as_ref() {
+            Some(decoder) => decoder
+                .push_frame(&frame.payload, frame.pts_ms, frame.flags)
+                .err(),
+            None => return,
+        };
+        if let Some(error) = decode_error {
+            eprintln!("openburnbar media viewer decode failed: {error}");
+            // A transient bus/pipeline error must not leave an otherwise
+            // healthy socket session with a permanently dead viewer. The
+            // decoder can be reset to NULL/Playing and will then accept a
+            // fresh keyframe from the same stream. Only tear it down when
+            // that recovery path fails.
+            inner.awaiting_keyframe = true;
+            let restart_error = inner
+                .decoder
+                .as_ref()
+                .and_then(|decoder| decoder.restart().err());
+            if let Some(restart_error) = restart_error {
+                eprintln!("openburnbar media viewer decoder restart failed: {restart_error}");
+                let decoder = inner.decoder.take();
+                drop(inner);
+                if let Some(decoder) = decoder {
+                    let _ = decoder.stop();
+                }
+            }
+            return;
+        }
+        inner.awaiting_keyframe = false;
     }
 }
 
@@ -460,6 +494,55 @@ mod tests {
         assert!(
             inner.awaiting_keyframe,
             "restart must re-arm keyframe gating"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "media-gst")]
+    fn viewer_retries_decoder_on_keyframe_without_socket_reconnect() {
+        let viewer = super::MediaViewer::new();
+        {
+            let mut inner = viewer.inner.lock().expect("viewer lock");
+            inner.open = true;
+            inner.decoder = None;
+            inner.awaiting_keyframe = true;
+        }
+
+        // Delta frames must not trigger repeated pipeline construction while
+        // the viewer waits for a stream anchor.
+        viewer.render_frame_with_sink_mode(
+            &MediaFrame {
+                kind: 0x01,
+                flags: 0,
+                pts_ms: 0,
+                payload: Vec::new(),
+            },
+            openburnbar_media::DecodeSinkMode::Fake,
+        );
+        {
+            let inner = viewer.inner.lock().expect("viewer lock");
+            assert!(inner.decoder.is_none());
+            assert!(inner.awaiting_keyframe);
+        }
+
+        // A subsequent keyframe retries construction even though the Unix
+        // media socket never disconnected. An empty payload then forces the
+        // deterministic decode-error recovery path while retaining the new
+        // decoder for the next stream anchor.
+        viewer.render_frame_with_sink_mode(
+            &MediaFrame {
+                kind: 0x01,
+                flags: 1,
+                pts_ms: 33,
+                payload: Vec::new(),
+            },
+            openburnbar_media::DecodeSinkMode::Fake,
+        );
+        let inner = viewer.inner.lock().expect("viewer lock");
+        assert!(inner.decoder.is_some(), "keyframe did not recreate decoder");
+        assert!(
+            inner.awaiting_keyframe,
+            "recreated decoder must wait for a valid keyframe"
         );
     }
 }

@@ -467,13 +467,32 @@ public actor BurnBarLinuxOnboardingService {
 
     public nonisolated static func verifyProductionSecretStore() throws -> String {
         #if os(Linux)
-        let custodian = LinuxSecretStoreFactory.production()
+        return try verifyProductionSecretStore(using: LinuxSecretStoreFactory.production())
+        #else
+        throw BurnBarLinuxOnboardingError.secretStoreUnavailable(
+            "native Secret Service verification requires Linux"
+        )
+        #endif
+    }
+
+    #if os(Linux)
+    /// Runs the ephemeral production probe against an injected custodian so
+    /// the same health-before-mutation contract is testable without touching
+    /// a user's keyring. Production callers use the zero-argument overload.
+    public nonisolated static func verifyProductionSecretStore(
+        using custodian: LinuxSecretCustodian
+    ) throws -> String {
         let probeID = "openburnbar-onboarding-\(UUID().uuidString)"
         let probeValue = UUID().uuidString.replacingOccurrences(of: "-", with: "")
         var lastError: Error?
         for backend in custodian.backends
             where backend.supportsMutations && backend.trustLevel.approvedForHighValueSecrets {
             do {
+                // Secret Service and KWallet can expose an executable command
+                // while their session/keyring is locked. Health must succeed
+                // before any write so onboarding never mutates a backend that
+                // cannot be read back and cleaned up reliably.
+                try backend.healthCheck()
                 _ = try backend.storeSecret(
                     probeValue,
                     id: probeID,
@@ -499,12 +518,8 @@ public actor BurnBarLinuxOnboardingService {
         let detail = lastError.map { String(describing: $0) }
             ?? "no writable approved Secret Service or KWallet backend is available"
         throw BurnBarLinuxOnboardingError.secretStoreUnavailable(detail)
-        #else
-        throw BurnBarLinuxOnboardingError.secretStoreUnavailable(
-            "native Secret Service verification requires Linux"
-        )
-        #endif
     }
+    #endif
 
     public nonisolated static func verifyWritableDirectory(
         _ directoryURL: URL,

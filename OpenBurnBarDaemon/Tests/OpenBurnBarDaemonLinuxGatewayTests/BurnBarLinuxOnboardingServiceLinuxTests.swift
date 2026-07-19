@@ -1,4 +1,5 @@
 import OpenBurnBarCore
+import OpenBurnBarLinuxSecurity
 @testable import OpenBurnBarDaemon
 import Foundation
 import XCTest
@@ -127,6 +128,19 @@ final class BurnBarLinuxOnboardingServiceLinuxTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directoryURL.path), [])
     }
 
+    func testLinuxSecretStoreProbeChecksHealthBeforeMutatingLockedBackend() throws {
+        let backend = HealthGatedSecretBackend()
+        let custodian = LinuxSecretCustodian(backends: [backend])
+
+        XCTAssertThrowsError(
+            try BurnBarLinuxOnboardingService.verifyProductionSecretStore(using: custodian)
+        ) { error in
+            XCTAssertTrue(String(describing: error).contains("Secret Service is locked"))
+        }
+        XCTAssertEqual(backend.healthCheckCount, 1)
+        XCTAssertEqual(backend.storeCount, 0)
+    }
+
     private func makeService(stateURL: URL) -> BurnBarLinuxOnboardingService {
         BurnBarLinuxOnboardingService(
             stateURL: stateURL,
@@ -168,5 +182,48 @@ final class BurnBarLinuxOnboardingServiceLinuxTests: XCTestCase {
         try await service.perform(
             BurnBarLinuxOnboardingActionRequest(stepID: stepID, action: .skip)
         )
+    }
+}
+
+private final class HealthGatedSecretBackend: LinuxSecretStoreBackend, @unchecked Sendable {
+    let backendName = "test-secret-service"
+    let trustLevel = LinuxSecretTrustLevel.secretService
+    let supportsMutations = true
+    private let lock = NSLock()
+    private(set) var healthCheckCount = 0
+    private(set) var storeCount = 0
+
+    func readSecret(
+        id: String,
+        secretClass: LinuxHighValueSecretClass
+    ) throws -> LinuxSecretRecord? {
+        nil
+    }
+
+    func storeSecret(
+        _ secret: String,
+        id: String,
+        secretClass: LinuxHighValueSecretClass
+    ) throws -> LinuxSecretMetadata {
+        lock.lock()
+        storeCount += 1
+        lock.unlock()
+        return LinuxSecretMetadata(
+            id: id,
+            secretClass: secretClass,
+            trustLevel: trustLevel,
+            backend: backendName,
+            createdAtMillis: 0,
+            note: "test"
+        )
+    }
+
+    func deleteSecret(id: String, secretClass: LinuxHighValueSecretClass) throws {}
+
+    func healthCheck() throws {
+        lock.lock()
+        healthCheckCount += 1
+        lock.unlock()
+        throw LinuxSecretStoreError.backendUnavailable("Secret Service is locked")
     }
 }
