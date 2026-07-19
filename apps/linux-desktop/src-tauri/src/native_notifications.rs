@@ -313,18 +313,22 @@ fn native_notification_id(id: &str) -> u32 {
 
 /// Return the action that should be emitted for a response from the server.
 ///
-/// A default click has no action identifier, so it resolves to the one action
-/// attached to the notification.  Explicit responses must match that action;
-/// accepting a different identifier would make the renderer act on an action
-/// the user did not select (or that this notification never exposed).
+/// A default click has no action identifier and always means "open" the
+/// notification's route. Explicit responses must match the action that was
+/// actually attached; accepting a different identifier would make the
+/// renderer act on an action the user did not select (or that this
+/// notification never exposed). The optional action also lets body clicks
+/// remain useful when the server has no `actions` capability.
 fn routed_response_action(
     response: &linux::NativeNotificationResponse,
-    attached_action: NativeNotificationAction,
+    attached_action: Option<NativeNotificationAction>,
 ) -> Option<&'static str> {
     match response {
-        linux::NativeNotificationResponse::Default => Some(attached_action.as_str()),
-        linux::NativeNotificationResponse::Action(action) if action == attached_action.as_str() => {
-            Some(attached_action.as_str())
+        linux::NativeNotificationResponse::Default => Some(NativeNotificationAction::Open.as_str()),
+        linux::NativeNotificationResponse::Action(action)
+            if attached_action.is_some_and(|attached| action == attached.as_str()) =>
+        {
+            attached_action.map(NativeNotificationAction::as_str)
         }
         linux::NativeNotificationResponse::Action(_)
         | linux::NativeNotificationResponse::Closed => None,
@@ -381,32 +385,30 @@ pub fn native_notification_show(
                 return Ok(degraded_delivery_result(request.id, error));
             }
         };
-        if actions_attached {
-            let app_for_response = app.clone();
-            let route = request.route.as_str().to_string();
-            let attached_action = request.action;
-            let notification_id = request.id.clone();
-            linux::wait_for_response(notification, move |response| {
-                let Some(action) = routed_response_action(&response, attached_action) else {
-                    return;
-                };
-                let app_for_route = app_for_response.clone();
-                let route = route.clone();
-                let action = action.to_string();
-                let notification_id = notification_id.clone();
-                let app_for_emit = app_for_route.clone();
-                let _ = app_for_route.run_on_main_thread(move || {
-                    let _ = app_for_emit.emit(
-                        "notification-action",
-                        serde_json::json!({
-                            "notificationId": notification_id,
-                            "route": route,
-                            "action": action
-                        }),
-                    );
-                });
+        let app_for_response = app.clone();
+        let route = request.route.as_str().to_string();
+        let attached_action = actions_attached.then_some(request.action);
+        let notification_id = request.id.clone();
+        linux::wait_for_response(notification, move |response| {
+            let Some(action) = routed_response_action(&response, attached_action) else {
+                return;
+            };
+            let app_for_route = app_for_response.clone();
+            let route = route.clone();
+            let action = action.to_string();
+            let notification_id = notification_id.clone();
+            let app_for_emit = app_for_route.clone();
+            let _ = app_for_route.run_on_main_thread(move || {
+                let _ = app_for_emit.emit(
+                    "notification-action",
+                    serde_json::json!({
+                        "notificationId": notification_id,
+                        "route": route,
+                        "action": action
+                    }),
+                );
             });
-        }
+        });
         return Ok(NativeNotificationResult {
             notification_id: request.id,
             delivered: true,
@@ -483,42 +485,60 @@ mod tests {
         assert_eq!(
             routed_response_action(
                 &linux::NativeNotificationResponse::Default,
-                NativeNotificationAction::Open,
+                Some(NativeNotificationAction::Open),
             ),
             Some("open")
         );
         assert_eq!(
             routed_response_action(
                 &linux::NativeNotificationResponse::Action("open".into()),
-                NativeNotificationAction::Open
+                Some(NativeNotificationAction::Open)
             ),
             Some("open")
         );
         assert_eq!(
             routed_response_action(
                 &linux::NativeNotificationResponse::Action("reply".into()),
-                NativeNotificationAction::Reply
+                Some(NativeNotificationAction::Reply)
             ),
             Some("reply")
         );
         assert_eq!(
             routed_response_action(
                 &linux::NativeNotificationResponse::Action("dismiss".into()),
-                NativeNotificationAction::Open
+                Some(NativeNotificationAction::Open)
             ),
             None
         );
         assert_eq!(
             routed_response_action(
                 &linux::NativeNotificationResponse::Action("reply".into()),
-                NativeNotificationAction::Open
+                Some(NativeNotificationAction::Open)
             ),
             None
         );
         assert_eq!(
             routed_response_action(
                 &linux::NativeNotificationResponse::Closed,
-                NativeNotificationAction::Open
+                Some(NativeNotificationAction::Open)
+            ),
+            None
+        );
+        assert_eq!(
+            routed_response_action(
+                &linux::NativeNotificationResponse::Default,
+                Some(NativeNotificationAction::Reply)
+            ),
+            Some("open")
+        );
+        assert_eq!(
+            routed_response_action(&linux::NativeNotificationResponse::Default, None),
+            Some("open")
+        );
+        assert_eq!(
+            routed_response_action(
+                &linux::NativeNotificationResponse::Action("open".into()),
+                None
             ),
             None
         );

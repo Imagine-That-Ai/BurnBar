@@ -74,6 +74,14 @@
       "media-gst",
       "media-viewer-ready"
     ],
+    "gstreamerRuntimeProbes": {
+      "version": "1.24.2",
+      "vp9dec": true,
+      "waylandsink": true,
+      "ximagesink": true,
+      "glimagesink": true,
+      "pipewiresink": true
+    },
     "runtimeLog": "No openburnbar media viewer stub message or fatal startup/panic was observed; the only graphics warning was the non-fatal GBM/WebGL fallback."
   },
   "mediaBackendReference": "The daemon-owned media capability/file RPC receipt remains in ../current-a570c9b087/live-receipt.json; direct ad-hoc Python RPC was intentionally rejected by executable-peer authentication and is not used as product evidence.",
