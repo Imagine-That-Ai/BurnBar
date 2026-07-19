@@ -38,6 +38,24 @@ The unsigned bundle must say `promotionAuthorized: false` and require the protec
 - `protected-verification.json`, which is diagnostic signer output;
 - a provenance bundle from another workflow, repository, ref, commit, run, or attempt.
 
+### Protected governance credential
+
+The signer must re-read the live `main` branch-protection policy after the
+required environment review. GitHub's ordinary `GITHUB_TOKEN` cannot read the
+repository Administration API, so the `domain-core-promotion` environment must
+define the environment-scoped secret
+`DOMAIN_CORE_GOVERNANCE_READ_TOKEN`. Use a fine-grained personal access token or
+GitHub App installation token restricted to this repository with only
+**Administration: read** (plus GitHub's implicit Metadata read). Do not grant
+contents write.
+
+Configure the secret under **Settings → Environments →
+`domain-core-promotion` → Environment secrets**. The signer fails before
+attestation when the secret is absent, expired, or lacks access. Only the
+trusted-main branch-control verifier receives this token; candidate discovery,
+artifact download, and attestation continue to use the job-scoped
+`GITHUB_TOKEN`.
+
 Create a promotion receipt only after downloading the exact candidate bundle and official provenance bundle:
 
 ```bash
