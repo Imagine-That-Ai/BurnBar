@@ -817,12 +817,12 @@ cleanup_stale_derived_data() {
     validate_owned_directory "$derived_data_root" "Derived-data cleanup root"
 
     local candidate basename
-    local -a stale_candidates=()
-    shopt -s nullglob
-    stale_candidates=("$derived_data_root"/openburnbar-mobile-tests.*)
-    shopt -u nullglob
+    # Leave nullglob disabled so an empty directory yields a literal pattern;
+    # the existence guard below skips that sentinel without tripping nounset.
+    local -a stale_candidates=("$derived_data_root"/openburnbar-mobile-tests.*)
 
     for candidate in "${stale_candidates[@]}"; do
+        [[ -e "$candidate" || -L "$candidate" ]] || continue
         basename="${candidate##*/}"
         # mktemp creates exactly six alphanumeric suffix characters. Requiring
         # that shape prevents this opt-in cleanup from deleting arbitrary

@@ -4,7 +4,23 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/openburnbar-mobile-runner-test.XXXXXX")"
-trap 'rm -rf "$tmp_root"' EXIT
+test_artifact_dir="$repo_root/Vendor/OpenBurnBarSignalFfiIOS.xcframework"
+test_artifact_dir_created=0
+if [[ ! -d "$test_artifact_dir" ]]; then
+  # The non-preflight cleanup contract is tested with a fake xcodebuild. Give
+  # the wrapper the smallest valid artifact marker without requiring a multi-
+  # gigabyte Signal build in a deterministic shell test.
+  mkdir -p "$test_artifact_dir"
+  test_artifact_dir_created=1
+fi
+cleanup_test_artifacts() {
+  if [[ "$test_artifact_dir_created" == "1" ]]; then
+    rmdir "$test_artifact_dir" 2>/dev/null ||
+      echo "WARNING: test artifact marker was not empty; retaining $test_artifact_dir" >&2
+  fi
+  rm -rf "$tmp_root"
+}
+trap cleanup_test_artifacts EXIT
 
 fail() {
   echo "FAIL: $*" >&2
