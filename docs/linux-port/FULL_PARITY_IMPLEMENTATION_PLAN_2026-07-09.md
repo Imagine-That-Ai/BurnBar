@@ -20,6 +20,30 @@ Linux is not at full macOS parity.
 
 ### Current source hardening — 2026-07-19 UTC
 
+The Activity history parity gap is now implemented on `c94e7b6113`: a daemon-
+owned `daemon.usage.history` RPC returns one bounded indexed snapshot with an
+explicit `historyComplete` proof, stable conversation identities, tombstone
+filtering, and per-session/aggregate body limits. Linux export requires that
+proof and refuses paged or partial data. Focused Activity/bridge coverage is
+**102 tests**, TypeScript and Rust checks pass. The exact-head arm64 package is
+installed and healthy in the UTM guest; the non-certifying receipt is
+`evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/health.json`.
+
+The installed Linux CLI parity fix is now on `d58b6a958f`: the Swift CLI
+resolves the canonical XDG daemon token file when no token environment override
+is supplied, matching the Tauri bridge and daemon launcher. Focused tests cover
+direct-token, explicit-token-file, and Linux canonical-token precedence. This
+removes a real post-install failure where bare `openburnbar-cli health` returned
+`Unauthorized` against a healthy daemon. Strict product/environment promotion
+is still unchanged until signed current-head receipts exist.
+
+Packaging hardening is now on `13caa70a1e`: DEB/RPM post-install and Arch
+post-transaction hooks move an unmanaged stale `/usr/local/bin/openburnbar-cli`
+out of PATH to a versioned backup, while leaving package-owned, identical,
+symlink, and non-regular paths untouched. Focused migration, Arch, AUR, and
+signed-package wiring checks pass. This closes the VM's stale-CLI shadowing
+failure without deleting user data.
+
 Two reviewable source slices are now on the candidate branch. `6f57349c66`
 keeps Linux settings search and detail-tab selection synchronized, including
 an explicit no-results state; its focused settings suite (40 tests), TypeScript
@@ -99,9 +123,10 @@ The latest local recheck keeps the strict ledger at **0/40 product** and **0/7
 environment**: Linux desktop **83 files / 767 tests**, TypeScript, production
 bundle verification, and Tauri Rust **118/118** pass, while the physical iPad
 focused receipt remains **44/44** and non-certifying. The Ubuntu 24.04 GNOME/X11
-aarch64 UTM guest is now running and reachable at `192.168.64.5`; its mutable
-baseline daemon service still exits 127 until the package-owned Swift runtime
-launcher is restored. Installed-candidate receipts remain the next gate.
+aarch64 UTM guest is live at `192.168.64.5`; authenticated daemon and bare CLI
+health now pass after restoring the package-owned Swift runtime and canonical
+token resolution. Signed current-head installation and the remaining live
+receipts are still required.
 
 ### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 

@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/ipc/generate-burnbarrpc-canon.mjs",
-  "methodCount": 152,
+  "methodCount": 153,
   "methods": [
     {
       "id": "approval.respond",
@@ -1360,6 +1360,16 @@
       "owner": "OpenBurnBarDaemon",
       "params": "BurnBarTextExpansionUpsertRequest",
       "result": "BurnBarTextExpansionWireSnippet",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.usage.history",
+      "caseName": "usageHistory",
+      "domain": "usage",
+      "capability": "observability",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarActivityHistoryRequest",
+      "result": "BurnBarActivityHistoryResponse",
       "error": "BurnBarRPCError"
     },
     {

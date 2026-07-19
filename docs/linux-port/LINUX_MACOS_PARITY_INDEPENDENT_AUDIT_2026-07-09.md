@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | Current source hardening reaches `45ba462953`; the clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
+| Remediation evidence | Current parity hardening reaches `c94e7b6113`; the clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -23,10 +23,14 @@ The earlier 9-case theme receipt remains useful supplemental coverage. These
 are non-certifying focused mobile results; neither proves installed Linux
 enrollment, fingerprint confirmation, approve/revoke, or cross-device Computer
 Use behavior. The live UTM Ubuntu 24.04 GNOME/X11 aarch64 guest is now running at
-`192.168.64.5` and is reachable over the documented SSH key. Its mutable
-baseline daemon service currently exits 127 because it bypasses the
-package-owned Swift runtime launcher; no installed product receipt is claimed
-until that launch path is repaired and re-run.
+`192.168.64.5` and is reachable over the documented SSH key. The exact-head
+`c94e7b6113` arm64 package is installed; its daemon is healthy through the
+package-owned launcher, the installed desktop peer reports authenticated health,
+and the bare CLI resolves the canonical token file. The package migration hook
+also preserved both deliberately stale CLI backups. This is a live runtime
+receipt, not strict certification: the installed manifest is unsigned and the
+product/environment receipt matrix remains open. The receipt is
+`evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/health.json`.
 
 Two additional source-only parity hardening slices are now on the candidate
 branch. `6f57349c66` keeps Linux settings search selection synchronized with
@@ -107,6 +111,15 @@ green at **83 files / 767 tests**. The current focused approval receipt is
 **44/44**, 0 failures,
 xcodebuild exit 0; it remains non-certifying mobile coverage.
 
+`c94e7b6113` adds the missing daemon-owned Activity history contract. Linux now
+requests one bounded indexed snapshot with explicit `historyComplete`, cursor,
+identity, tombstone, and body-size checks; the renderer refuses export unless
+the completeness proof is true, rather than replaying bounded recent usage as
+full history. The focused Activity/bridge suite passed **102 tests**, the
+TypeScript check passed, and the Rust RPC test passed. The exact-head package is
+now installed and healthy in the UTM guest; its non-certifying live receipt is
+`evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/health.json`.
+
 The latest current-head hardening adds `b0d27caffa`, which treats malformed,
 future-version, or unsafe persisted Insights workspace records as invalid and
 restores a safe default instead of partially applying renderer state (focused
@@ -119,9 +132,11 @@ These source-only fixes improve fail-closed behavior but do not change the
 strict **0/40** product or **0/7** environment certification state. The latest
 full Linux desktop run is **83 files / 767 tests**; TypeScript, production
 bundle verification, and Tauri Rust **118/118** also pass. The physical iPad
-receipt remains **44/44** and non-certifying. The Linux guest is available for
-the next installed-candidate run, but its daemon launch path must be repaired
-before live receipts can be collected.
+receipt remains **44/44** and non-certifying. The Ubuntu guest is live at
+`192.168.64.5`; authenticated daemon and bare CLI health now pass after
+restoring the package-owned Swift runtime and canonical token resolution.
+Signed current-head installation and the remaining live receipts are still
+required.
 
 ## Execution Status — 2026-07-18
 

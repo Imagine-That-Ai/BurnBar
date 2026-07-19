@@ -5,7 +5,7 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- The current source hardening reaches `45ba462953`; the clean parity-ledger
+- The current parity hardening reaches `c94e7b6113`; the clean parity-ledger
   validation is bound to checkpoint `073c2aba45`. The Release and
   Nightly receipts below are historical engineering evidence for an older
   checkpoint, not a claim that the current docs head has a promoted artifact.
@@ -55,15 +55,25 @@ Current parity status as of 2026-07-19:
   unavailable instead of claiming complete history (focused Activity
   history/export/resume tests **30/30**). These source results do not promote
   the strict ledger.
+- `13caa70a1e` adds DEB/RPM post-install and Arch post-transaction migration
+  hooks that move unmanaged stale `/usr/local/bin/openburnbar-cli` binaries to
+  versioned backups, so PATH cannot shadow the packaged CLI. Migration tests and
+  package-wiring checks pass without deleting user data.
+- `c94e7b6113` adds the daemon-owned `daemon.usage.history` RPC and requires an
+  explicit completeness proof before Linux exports full Activity history. The
+  focused Activity/bridge suite passes **102 tests**. The exact-head arm64 DEB
+  is installed and healthy in the UTM guest; the non-certifying receipt is
+  [`evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/`](evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/).
 - Fresh local recheck: the wired iPad is paired, booted, has Developer Mode
   enabled, and a current-checkout focused approval receipt passed **44/44**
   tests with xcodebuild exit 0 (see
   [`evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19.json`](evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19.json)).
   This does not prove installed Linux enrollment, approval/revoke, or
   cross-device Computer Use. The OpenBurnBar Linux UTM guest is now running
-  and reachable, but its mutable baseline daemon service still exits 127 until
-  the package-owned Swift runtime launcher is restored. The full release-mobile
-  approval suite remains unverified.
+  and reachable; authenticated daemon health and bare installed CLI health pass
+  through the package-owned Swift runtime launcher and canonical token file for
+  the exact `c94e7b6113` package. The full release-mobile approval suite remains
+  unverified.
   The product-parity workflow is not present on `main`, and GitHub currently
   has zero self-hosted runners for its required Linux environment labels.
 - For the detailed audit and implementation plan, see
