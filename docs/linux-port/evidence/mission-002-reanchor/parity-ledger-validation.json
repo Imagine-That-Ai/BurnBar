@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-07-10T01:48:25.757Z",
-  "targetHead": "1188e23299e841169fb7573d5c6369279838a77a",
+  "generatedAt": "2026-07-19T04:38:57.897Z",
+  "targetHead": "5d83b589b371fe11c54949d8a4825bc3d281a2b6",
   "allowBlocked": true,
   "git": {
-    "commit": "1188e23299e841169fb7573d5c6369279838a77a",
+    "commit": "5d83b589b371fe11c54949d8a4825bc3d281a2b6",
     "dirtyEntries": []
   },
   "semantics": {
@@ -15,6 +15,7 @@
   },
   "productParityClaim": false,
   "requirementsManifest": "openburnbar-linux-macos-parity-v1",
+  "evidencePolicyManifest": "openburnbar-linux-product-parity-evidence-policies-v1",
   "passed": true,
   "structuralPassed": true,
   "promotionPassed": false,
@@ -563,5 +564,6 @@
       "message": "blocked row evidence has not been generated",
       "row": "P-40"
     }
-  ]
+  ],
+  "validatedAttestations": []
 }
