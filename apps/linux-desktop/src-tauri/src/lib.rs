@@ -917,6 +917,7 @@ fn store_forwarded_route(route: String) {
     }
 }
 
+#[cfg(test)]
 fn queue_notification_action(queue: &Mutex<Vec<serde_json::Value>>, event: serde_json::Value) {
     let Ok(mut queued) = queue.lock() else {
         return;
