@@ -109,6 +109,18 @@ test("deterministic workflow implements every exact policy job and a fail-closed
   );
 });
 
+test("Wasm KAT reports bind distinct package execution contexts", () => {
+  const wasm = workflowJob(core, "wasm");
+  assert.match(
+    wasm,
+    /printf '%s\\n' 'suite=wasm-browser-kat'[\s\S]*tee "\$RUNNER_TEMP\/wasm-browser-kat\.log"/u,
+  );
+  assert.match(
+    wasm,
+    /printf '%s\\n' 'suite=wasm-node-kat'[\s\S]*tee "\$RUNNER_TEMP\/wasm-node-kat\.log"/u,
+  );
+});
+
 test("native consumer jobs keep their measured execution margin and emulator shell context", () => {
   const android = workflowJob(core, "android");
   const apple = workflowJob(core, "apple");
