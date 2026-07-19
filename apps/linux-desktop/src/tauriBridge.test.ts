@@ -17,6 +17,7 @@ import {
   decodeNativeNotificationResult,
   decodeNativeNotificationActionEvent,
   decodeNativeShortcutStatus,
+  decodeLaunchAtLoginStatus,
   decodePetCompanionStatus
 } from './tauriBridge';
 
@@ -81,6 +82,33 @@ describe('daemon-owned qualitative insights decoding', () => {
       sourceID: 'daemon.usage.ledger'
     });
     expect(result.qualitative?.analysis?.findings[0]?.title).toBe('Codex is the main spend driver');
+  });
+});
+
+describe('Linux launch-at-login decoding', () => {
+  it('accepts the typed packaged and user override states', () => {
+    expect(decodeLaunchAtLoginStatus({
+      enabled: false,
+      userOverride: true,
+      source: 'user',
+      path: '/home/alberto/.config/autostart/openburnbar.desktop',
+      detail: 'User autostart override disables the packaged entry.'
+    })).toMatchObject({ enabled: false, userOverride: true, source: 'user' });
+  });
+
+  it('rejects unknown source values and malformed booleans', () => {
+    expect(() => decodeLaunchAtLoginStatus({
+      enabled: true,
+      userOverride: false,
+      source: 'shell',
+      path: '/home/alberto/.config/autostart/openburnbar.desktop'
+    })).toThrow(/source is unsupported/);
+    expect(() => decodeLaunchAtLoginStatus({
+      enabled: 'yes',
+      userOverride: false,
+      source: 'packaged',
+      path: '/home/alberto/.config/autostart/openburnbar.desktop'
+    })).toThrow(/enabled state/);
   });
 });
 

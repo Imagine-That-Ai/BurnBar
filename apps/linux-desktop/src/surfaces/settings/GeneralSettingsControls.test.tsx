@@ -5,7 +5,7 @@ import { useDatabaseStore } from '../../state/databaseStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import type { LinuxShellBridge } from '../../tauriBridge.js';
 import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
-import { DashboardDefaultsControls, IndexingSummaryControl } from './GeneralSettingsControls.js';
+import { DashboardDefaultsControls, IndexingSummaryControl, LaunchAtLoginControl } from './GeneralSettingsControls.js';
 
 function reset() {
   localStorage.clear();
@@ -89,5 +89,43 @@ describe('IndexingSummaryControl', () => {
     expect(await screen.findByRole('status', { name: 'Ready' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Index project' }));
     expect(await screen.findByText(/Indexed 42 files for fixture-project/i)).toBeTruthy();
+  });
+});
+
+describe('LaunchAtLoginControl', () => {
+  it('fails closed when the packaged shell has no autostart bridge', () => {
+    render(<LaunchAtLoginControl />);
+
+    expect(screen.getByRole('status', { name: 'Unavailable' })).toBeTruthy();
+    expect(screen.getByText(/safe XDG autostart preference/i)).toBeTruthy();
+  });
+
+  it('loads the packaged state and writes a typed user override', async () => {
+    const launchAtLoginStatus = vi.fn(async () => ({
+      enabled: true,
+      userOverride: false,
+      source: 'packaged' as const,
+      path: '/home/alberto/.config/autostart/openburnbar.desktop',
+      detail: 'Using the packaged XDG autostart entry.'
+    }));
+    const launchAtLoginSet = vi.fn(async (enabled: boolean) => ({
+      enabled,
+      userOverride: true,
+      source: 'user' as const,
+      path: '/home/alberto/.config/autostart/openburnbar.desktop',
+      detail: enabled ? 'User autostart override is enabled.' : 'User autostart override disables the packaged entry.'
+    }));
+    useShellStore.setState({
+      bridge: { ...bridgeStubDefaults, launchAtLoginStatus, launchAtLoginSet } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+    render(<LaunchAtLoginControl />);
+
+    const toggle = await screen.findByRole('checkbox', { name: 'Launch OpenBurnBar at login' }) as HTMLInputElement;
+    await waitFor(() => expect(toggle.checked).toBe(true));
+    expect(screen.getByRole('status', { name: 'Enabled' })).toBeTruthy();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(launchAtLoginSet).toHaveBeenCalledWith(false));
+    expect(await screen.findByRole('status', { name: 'Disabled' })).toBeTruthy();
   });
 });

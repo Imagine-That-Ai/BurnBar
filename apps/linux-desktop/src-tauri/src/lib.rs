@@ -277,6 +277,369 @@ fn linux_support_dir() -> PathBuf {
         .join(".local/share/openburnbar")
 }
 
+const PACKAGED_AUTOSTART_PATH: &str = "/etc/xdg/autostart/openburnbar.desktop";
+const PACKAGED_AUTOSTART_EXEC: &str = "openburnbar-linux-desktop --background";
+const AUTOSTART_MAX_BYTES: u64 = 64 * 1024;
+
+/// The packaged desktop entry is the only executable template the renderer is
+/// allowed to select. Login-at-startup preferences only toggle the entry's
+/// standard enable/hidden keys; they never accept a command, path, or shell
+/// fragment from the renderer.
+const PACKAGED_AUTOSTART_TEMPLATE: &str =
+    include_str!("../../../../packaging/linux/autostart/openburnbar.desktop");
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchAtLoginStatus {
+    enabled: bool,
+    user_override: bool,
+    source: String,
+    path: String,
+    detail: Option<String>,
+}
+
+fn validate_safe_absolute_path(path: &Path, label: &str) -> Result<PathBuf, String> {
+    let text = path
+        .to_str()
+        .ok_or_else(|| format!("{label}_path_invalid"))?;
+    if !path.is_absolute()
+        || text.len() > 4096
+        || text.chars().any(char::is_control)
+        || path
+            .components()
+            .any(|component| matches!(component, Component::CurDir | Component::ParentDir))
+    {
+        return Err(format!("{label}_path_unsafe"));
+    }
+    Ok(path.to_path_buf())
+}
+
+fn linux_config_home() -> Result<PathBuf, String> {
+    if let Some(xdg) = first_non_empty_env(&["XDG_CONFIG_HOME"]) {
+        return validate_safe_absolute_path(Path::new(&xdg), "xdg_config_home");
+    }
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| "home_path_unavailable".to_string())?;
+    let home = validate_safe_absolute_path(&home, "home")?;
+    Ok(home.join(".config"))
+}
+
+/// Check a path component-by-component without following a symlink. Missing
+/// components may be created with owner-only permissions for user preferences.
+fn ensure_autostart_directory_chain(path: &Path, create: bool) -> Result<bool, String> {
+    let path = validate_safe_absolute_path(path, "autostart_directory")?;
+    if path == Path::new("/") {
+        return Ok(true);
+    }
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err("autostart_directory_unsafe".to_string());
+            }
+            // A symlink in any parent is also rejected. This canonical check
+            // is intentionally strict because the setting changes a desktop
+            // startup boundary.
+            if fs::canonicalize(&path).map_err(|_| "autostart_directory_unsafe".to_string())?
+                != path
+            {
+                return Err("autostart_directory_unsafe".to_string());
+            }
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && create => {
+            let parent = path
+                .parent()
+                .ok_or_else(|| "autostart_directory_unsafe".to_string())?;
+            if !ensure_autostart_directory_chain(parent, true)? {
+                return Err("autostart_directory_unsafe".to_string());
+            }
+            fs::create_dir(&path).map_err(|_| "autostart_directory_create_failed".to_string())?;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o700))
+                .map_err(|_| "autostart_directory_create_failed".to_string())?;
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(_) => Err("autostart_directory_unavailable".to_string()),
+    }
+}
+
+fn ensure_user_autostart_parent(create: bool) -> Result<Option<PathBuf>, String> {
+    let config_home = linux_config_home()?;
+    if !ensure_autostart_directory_chain(&config_home, create)? {
+        return Ok(None);
+    }
+    let config_metadata = fs::symlink_metadata(&config_home)
+        .map_err(|_| "autostart_directory_unavailable".to_string())?;
+    let uid = unsafe { libc::geteuid() };
+    if config_metadata.uid() != uid || config_metadata.permissions().mode() & 0o022 != 0 {
+        return Err("autostart_directory_unsafe".to_string());
+    }
+    let autostart_dir = config_home.join("autostart");
+    if !ensure_autostart_directory_chain(&autostart_dir, create)? {
+        return Ok(None);
+    }
+    let metadata = fs::symlink_metadata(&autostart_dir)
+        .map_err(|_| "autostart_directory_unavailable".to_string())?;
+    if metadata.uid() != uid || metadata.permissions().mode() & 0o022 != 0 {
+        return Err("autostart_directory_unsafe".to_string());
+    }
+    Ok(Some(autostart_dir))
+}
+
+fn user_autostart_path(create_parent: bool) -> Result<Option<PathBuf>, String> {
+    Ok(ensure_user_autostart_parent(create_parent)?.map(|dir| dir.join("openburnbar.desktop")))
+}
+
+fn read_autostart_entry(path: &Path, require_user_owner: bool) -> Result<Option<String>, String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err("autostart_entry_unavailable".to_string()),
+    };
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.nlink() != 1
+        || metadata.len() > AUTOSTART_MAX_BYTES
+    {
+        return Err("autostart_entry_unsafe".to_string());
+    }
+    if require_user_owner {
+        let uid = unsafe { libc::geteuid() };
+        if metadata.uid() != uid || metadata.permissions().mode() & 0o022 != 0 {
+            return Err("autostart_entry_unsafe".to_string());
+        }
+    }
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+        .open(path)
+        .map_err(|_| "autostart_entry_unavailable".to_string())?;
+    let opened = file
+        .metadata()
+        .map_err(|_| "autostart_entry_unavailable".to_string())?;
+    if opened.file_type().is_symlink()
+        || !opened.is_file()
+        || opened.nlink() != 1
+        || opened.len() > AUTOSTART_MAX_BYTES
+    {
+        return Err("autostart_entry_unsafe".to_string());
+    }
+    if require_user_owner {
+        let uid = unsafe { libc::geteuid() };
+        if opened.uid() != uid || opened.permissions().mode() & 0o022 != 0 {
+            return Err("autostart_entry_unsafe".to_string());
+        }
+    }
+    let mut contents = String::new();
+    let mut bounded = file.take(AUTOSTART_MAX_BYTES + 1);
+    bounded
+        .read_to_string(&mut contents)
+        .map_err(|_| "autostart_entry_unavailable".to_string())?;
+    if contents.len() as u64 > AUTOSTART_MAX_BYTES {
+        return Err("autostart_entry_unsafe".to_string());
+    }
+    Ok(Some(contents))
+}
+
+fn autostart_exec(content: &str) -> Result<&str, String> {
+    let mut exec = None;
+    for line in content.lines() {
+        if let Some(value) = line.strip_prefix("Exec=") {
+            if exec.replace(value).is_some() {
+                return Err("autostart_entry_unsafe".to_string());
+            }
+        }
+    }
+    exec.ok_or_else(|| "autostart_entry_unsafe".to_string())
+}
+
+fn validate_autostart_template(content: &str) -> Result<(), String> {
+    if autostart_exec(content)? != PACKAGED_AUTOSTART_EXEC {
+        return Err("autostart_entry_unsafe".to_string());
+    }
+    if !content.lines().any(|line| line == "Type=Application") {
+        return Err("autostart_entry_unsafe".to_string());
+    }
+    Ok(())
+}
+
+fn autostart_enabled(content: &str) -> Result<bool, String> {
+    validate_autostart_template(content)?;
+    let mut hidden = false;
+    let mut gnome_enabled = true;
+    let mut saw_hidden = false;
+    let mut saw_gnome = false;
+    for line in content.lines() {
+        if let Some(value) = line.strip_prefix("Hidden=") {
+            if saw_hidden {
+                return Err("autostart_entry_unsafe".to_string());
+            }
+            saw_hidden = true;
+            hidden = match value {
+                "true" => true,
+                "false" => false,
+                _ => return Err("autostart_entry_unsafe".to_string()),
+            };
+        } else if let Some(value) = line.strip_prefix("X-GNOME-Autostart-enabled=") {
+            if saw_gnome {
+                return Err("autostart_entry_unsafe".to_string());
+            }
+            saw_gnome = true;
+            gnome_enabled = match value {
+                "true" => true,
+                "false" => false,
+                _ => return Err("autostart_entry_unsafe".to_string()),
+            };
+        }
+    }
+    Ok(!hidden && gnome_enabled)
+}
+
+fn render_autostart_entry(template: &str, enabled: bool) -> Result<String, String> {
+    validate_autostart_template(template)?;
+    let mut rendered = String::with_capacity(template.len() + 16);
+    let mut saw_gnome = false;
+    let mut saw_hidden = false;
+    for line in template.lines() {
+        if line.starts_with("X-GNOME-Autostart-enabled=") {
+            rendered.push_str("X-GNOME-Autostart-enabled=");
+            rendered.push_str(if enabled { "true" } else { "false" });
+            saw_gnome = true;
+        } else if line.starts_with("Hidden=") {
+            saw_hidden = true;
+            if !enabled {
+                rendered.push_str("Hidden=true");
+            } else {
+                continue;
+            }
+        } else {
+            rendered.push_str(line);
+        }
+        rendered.push('\n');
+    }
+    if !saw_gnome {
+        return Err("autostart_entry_unsafe".to_string());
+    }
+    if !enabled && !saw_hidden {
+        rendered.push_str("Hidden=true\n");
+    }
+    Ok(rendered)
+}
+
+fn write_autostart_entry(path: &Path, content: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "autostart_directory_unsafe".to_string())?;
+    let parent_metadata =
+        fs::symlink_metadata(parent).map_err(|_| "autostart_directory_unavailable".to_string())?;
+    if parent_metadata.file_type().is_symlink()
+        || !parent_metadata.is_dir()
+        || parent_metadata.uid() != unsafe { libc::geteuid() }
+        || parent_metadata.permissions().mode() & 0o022 != 0
+    {
+        return Err("autostart_directory_unsafe".to_string());
+    }
+    if let Ok(existing) = fs::symlink_metadata(path) {
+        if existing.file_type().is_symlink()
+            || !existing.is_file()
+            || existing.uid() != unsafe { libc::geteuid() }
+            || existing.permissions().mode() & 0o022 != 0
+        {
+            return Err("autostart_entry_unsafe".to_string());
+        }
+    }
+    let temporary = parent.join(format!(
+        ".openburnbar.desktop.{}.tmp",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+            .open(&temporary)
+            .map_err(|_| "autostart_entry_write_failed".to_string())?;
+        file.write_all(content)
+            .map_err(|_| "autostart_entry_write_failed".to_string())?;
+        file.sync_all()
+            .map_err(|_| "autostart_entry_write_failed".to_string())?;
+        drop(file);
+        fs::rename(&temporary, path).map_err(|_| "autostart_entry_write_failed".to_string())?;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+            .map_err(|_| "autostart_entry_write_failed".to_string())?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+fn launch_at_login_status_with_paths(
+    user_path: &Path,
+    packaged_path: &Path,
+) -> Result<LaunchAtLoginStatus, String> {
+    let user = read_autostart_entry(user_path, true)?;
+    if let Some(content) = user {
+        let enabled = autostart_enabled(&content)?;
+        return Ok(LaunchAtLoginStatus {
+            enabled,
+            user_override: true,
+            source: "user".to_string(),
+            path: user_path.display().to_string(),
+            detail: Some(if enabled {
+                "User autostart override is enabled.".to_string()
+            } else {
+                "User autostart override disables the packaged entry.".to_string()
+            }),
+        });
+    }
+    let packaged = read_autostart_entry(packaged_path, false)?;
+    let Some(content) = packaged else {
+        return Ok(LaunchAtLoginStatus {
+            enabled: false,
+            user_override: false,
+            source: "unavailable".to_string(),
+            path: user_path.display().to_string(),
+            detail: Some("The packaged XDG autostart entry is unavailable.".to_string()),
+        });
+    };
+    let enabled = autostart_enabled(&content)?;
+    Ok(LaunchAtLoginStatus {
+        enabled,
+        user_override: false,
+        source: "packaged".to_string(),
+        path: user_path.display().to_string(),
+        detail: Some("Using the packaged XDG autostart entry.".to_string()),
+    })
+}
+
+#[tauri::command]
+fn launch_at_login_status() -> Result<LaunchAtLoginStatus, String> {
+    validate_autostart_template(PACKAGED_AUTOSTART_TEMPLATE)?;
+    let user_path = user_autostart_path(false)?.unwrap_or_else(|| {
+        linux_config_home()
+            .unwrap_or_else(|_| PathBuf::from("/"))
+            .join("autostart")
+            .join("openburnbar.desktop")
+    });
+    launch_at_login_status_with_paths(&user_path, Path::new(PACKAGED_AUTOSTART_PATH))
+}
+
+#[tauri::command]
+fn launch_at_login_set(enabled: bool) -> Result<LaunchAtLoginStatus, String> {
+    validate_autostart_template(PACKAGED_AUTOSTART_TEMPLATE)?;
+    let user_path = user_autostart_path(true)?
+        .ok_or_else(|| "autostart_directory_create_failed".to_string())?;
+    let packaged = read_autostart_entry(Path::new(PACKAGED_AUTOSTART_PATH), false)?
+        .ok_or_else(|| "packaged_autostart_unavailable".to_string())?;
+    let rendered = render_autostart_entry(&packaged, enabled)?;
+    write_autostart_entry(&user_path, rendered.as_bytes())?;
+    launch_at_login_status_with_paths(&user_path, Path::new(PACKAGED_AUTOSTART_PATH))
+}
+
 fn linux_socket_path() -> PathBuf {
     if let Some(override_path) = first_non_empty_env(&[
         "OPENBURNBAR_SOCKET_PATH",
@@ -7163,6 +7526,8 @@ pub fn run() {
             open_dashboard,
             initial_deep_link_route,
             quit_app,
+            launch_at_login_status,
+            launch_at_login_set,
             tray_degraded,
             record_perf_sample,
             measure_perf_operation,
@@ -7348,6 +7713,106 @@ mod tests {
             "c".repeat(43),
             "s".repeat(43)
         )
+    }
+
+    struct AutostartTestRoot(PathBuf);
+
+    impl std::ops::Deref for AutostartTestRoot {
+        type Target = Path;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl Drop for AutostartTestRoot {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn autostart_test_root() -> AutostartTestRoot {
+        let root = std::env::temp_dir().join(format!(
+            "openburnbar-autostart-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        fs::create_dir_all(root.join("autostart")).unwrap();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::set_permissions(root.join("autostart"), fs::Permissions::from_mode(0o700)).unwrap();
+        AutostartTestRoot(root)
+    }
+
+    fn write_autostart_test_file(path: &Path, content: &str, mode: u32) {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(mode)
+            .open(path)
+            .unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+        file.sync_all().unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
+    }
+
+    #[test]
+    fn launch_at_login_template_only_toggles_native_enable_keys() {
+        let disabled = render_autostart_entry(PACKAGED_AUTOSTART_TEMPLATE, false).unwrap();
+        assert_eq!(autostart_exec(&disabled).unwrap(), PACKAGED_AUTOSTART_EXEC);
+        assert!(!autostart_enabled(&disabled).unwrap());
+        assert!(disabled.lines().any(|line| line == "Hidden=true"));
+
+        let enabled = render_autostart_entry(&disabled, true).unwrap();
+        assert_eq!(autostart_exec(&enabled).unwrap(), PACKAGED_AUTOSTART_EXEC);
+        assert!(autostart_enabled(&enabled).unwrap());
+        assert!(!enabled.lines().any(|line| line == "Hidden=true"));
+    }
+
+    #[test]
+    fn launch_at_login_rejects_arbitrary_exec_and_unsafe_paths() {
+        let arbitrary = PACKAGED_AUTOSTART_TEMPLATE.replace(
+            "Exec=openburnbar-linux-desktop --background",
+            "Exec=/tmp/attacker --shell",
+        );
+        assert!(render_autostart_entry(&arbitrary, true).is_err());
+        assert!(validate_safe_absolute_path(Path::new("../.config"), "home").is_err());
+        assert!(validate_safe_absolute_path(Path::new("relative/.config"), "home").is_err());
+    }
+
+    #[test]
+    fn launch_at_login_status_prefers_owner_checked_user_override() {
+        let root = autostart_test_root();
+        let user_path = root.join("autostart/openburnbar.desktop");
+        let packaged_path = root.join("packaged.desktop");
+        write_autostart_test_file(&packaged_path, PACKAGED_AUTOSTART_TEMPLATE, 0o644);
+
+        let packaged = launch_at_login_status_with_paths(&user_path, &packaged_path).unwrap();
+        assert!(packaged.enabled);
+        assert!(!packaged.user_override);
+        assert_eq!(packaged.source, "packaged");
+
+        let disabled = render_autostart_entry(PACKAGED_AUTOSTART_TEMPLATE, false).unwrap();
+        write_autostart_test_file(&user_path, &disabled, 0o600);
+        let user = launch_at_login_status_with_paths(&user_path, &packaged_path).unwrap();
+        assert!(!user.enabled);
+        assert!(user.user_override);
+        assert_eq!(user.source, "user");
+
+        let metadata = fs::metadata(&user_path).unwrap();
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+    }
+
+    #[test]
+    fn launch_at_login_atomic_write_rejects_symlink_destination() {
+        let root = autostart_test_root();
+        let target = root.join("target.desktop");
+        write_autostart_test_file(&target, PACKAGED_AUTOSTART_TEMPLATE, 0o600);
+        let link = root.join("autostart/openburnbar.desktop");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let content = render_autostart_entry(PACKAGED_AUTOSTART_TEMPLATE, false).unwrap();
+        assert_eq!(
+            write_autostart_entry(&link, content.as_bytes()).unwrap_err(),
+            "autostart_entry_unsafe"
+        );
     }
 
     fn computer_use_broker_test_guard() -> std::sync::MutexGuard<'static, ()> {

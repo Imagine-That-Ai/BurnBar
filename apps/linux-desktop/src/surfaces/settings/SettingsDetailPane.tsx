@@ -36,7 +36,7 @@ import { SettingRow } from './SettingRow.js';
 import { RecoveryAndRestoreControl } from './RecoveryAndRestoreControl.js';
 import { SettingsHomeView } from './SettingsHomeView.js';
 import { SettingsAppearanceControls } from './SettingsAppearanceControls.js';
-import { DashboardDefaultsControls, IndexingSummaryControl } from './GeneralSettingsControls.js';
+import { DashboardDefaultsControls, IndexingSummaryControl, LaunchAtLoginControl } from './GeneralSettingsControls.js';
 import { SettingsDrillRow } from './SettingsDrillRow.js';
 import { settingsTabMeta, type SettingsTabId } from './settingsTabs.js';
 import { fixtureAccountStatus } from '../../daemonFixture.js';
@@ -1574,6 +1574,9 @@ export function SettingsDetailPane({
           <>
             <SettingGroup title="Appearance" sectionHeader hideTitle>
               <SettingsAppearanceControls />
+            </SettingGroup>
+            <SettingGroup title="Startup" sectionHeader hideTitle>
+              <LaunchAtLoginControl />
             </SettingGroup>
             <SettingGroup title="Dashboard defaults" sectionHeader hideTitle>
               <DashboardDefaultsControls />

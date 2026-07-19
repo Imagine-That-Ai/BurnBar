@@ -924,6 +924,13 @@ export type NativeShortcutBindingStatus = {
   state: 'registered' | 'degraded' | 'unavailable';
   degradedReason?: string;
 };
+export type LinuxLaunchAtLoginStatus = {
+  enabled: boolean;
+  userOverride: boolean;
+  source: 'user' | 'packaged' | 'unavailable';
+  path: string;
+  detail?: string;
+};
 
 export type PetCompanionStatus = {
   state: 'available' | 'degraded' | 'unavailable';
@@ -1612,6 +1619,9 @@ export interface LinuxShellBridge {
   nativeNotificationCapabilities?(): Promise<NativeNotificationCapabilities>;
   nativeNotificationShow?(request: NativeNotificationRequest): Promise<NativeNotificationResult>;
   nativeShortcutStatus?(): Promise<NativeShortcutStatus>;
+  /** Optional on older packaged shells; writes only the fixed XDG desktop entry. */
+  launchAtLoginStatus?(): Promise<LinuxLaunchAtLoginStatus>;
+  launchAtLoginSet?(enabled: boolean): Promise<LinuxLaunchAtLoginStatus>;
   /** Optional on older packaged shells; native X11-only companion contract. */
   petCompanionStatus?(): Promise<PetCompanionStatus>;
   textExpansionList?(): Promise<TextExpansionSnapshot>;
@@ -4503,6 +4513,21 @@ export function decodeNativeShortcutStatus(raw: RawJsonValue): NativeShortcutSta
   };
 }
 
+export function decodeLaunchAtLoginStatus(raw: RawJsonValue): LinuxLaunchAtLoginStatus {
+  const value = requireObject(raw, 'launch-at-login status');
+  const source = requireString(pick(value, 'source'), 'launch-at-login source');
+  if (source !== 'user' && source !== 'packaged' && source !== 'unavailable') {
+    throw new Error(`launch-at-login source is unsupported: ${source}`);
+  }
+  return {
+    enabled: requireBoolean(pick(value, 'enabled'), 'launch-at-login enabled state'),
+    userOverride: requireBoolean(pick(value, 'userOverride', 'user_override'), 'launch-at-login user override'),
+    source: source as LinuxLaunchAtLoginStatus['source'],
+    path: requireString(pick(value, 'path'), 'launch-at-login path'),
+    ...(str(pick(value, 'detail')) ? { detail: str(pick(value, 'detail')) } : {})
+  };
+}
+
 export function decodePetCompanionStatus(raw: RawJsonValue): PetCompanionStatus {
   const value = requireObject(raw, 'pet companion status');
   const state = requireString(pick(value, 'state'), 'pet companion state');
@@ -5159,6 +5184,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       decodeNativeNotificationResult(await invoke<RawJsonValue>('native_notification_show', { request })),
     nativeShortcutStatus: async () =>
       decodeNativeShortcutStatus(await invoke<RawJsonValue>('native_shortcut_status')),
+    launchAtLoginStatus: async () =>
+      decodeLaunchAtLoginStatus(await invoke<RawJsonValue>('launch_at_login_status')),
+    launchAtLoginSet: async (enabled) =>
+      decodeLaunchAtLoginStatus(await invoke<RawJsonValue>('launch_at_login_set', { enabled })),
     petCompanionStatus: async () =>
       decodePetCompanionStatus(await invoke<RawJsonValue>('pet_companion_status')),
     // P29 — authenticated daemon-owned encrypted text-expansion storage.

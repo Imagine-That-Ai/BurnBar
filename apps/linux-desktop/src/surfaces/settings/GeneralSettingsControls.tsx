@@ -11,6 +11,7 @@ import {
 } from '../../components/deckPrimaryRoutes.js';
 import { useDatabaseStore } from '../../state/databaseStore.js';
 import { useShellStore } from '../../state/shellStore.js';
+import type { LinuxLaunchAtLoginStatus } from '../../tauriBridge.js';
 
 /**
  * macOS General → Dashboard Defaults, backed by the same persisted contract
@@ -63,6 +64,97 @@ export function DashboardDefaultsControls() {
         }
       />
     </>
+  );
+}
+
+/**
+ * Linux-native equivalent of macOS General → Launch at Login. The native
+ * bridge owns the XDG path and writes a user override from the packaged
+ * desktop-entry template; the renderer receives only the boolean preference.
+ */
+export function LaunchAtLoginControl() {
+  const bridge = useShellStore((state) => state.bridge);
+  const readStatus = bridge?.launchAtLoginStatus;
+  const setStatus = bridge?.launchAtLoginSet;
+  const supported = typeof readStatus === 'function' && typeof setStatus === 'function';
+  const [status, setStatusValue] = useState<LinuxLaunchAtLoginStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!readStatus) {
+      setStatusValue(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setError(null);
+    void readStatus()
+      .then((next) => {
+        if (!cancelled) setStatusValue(next);
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [readStatus]);
+
+  if (!supported) {
+    return (
+      <SettingRow
+        iconGlyph="⇥"
+        label="Launch at login"
+        description="Start OpenBurnBar in the background when your Linux desktop session begins."
+        control={<span className="muted" role="status" aria-label="Unavailable">Unavailable</span>}
+        readOnlyNote="This packaged shell does not expose the safe XDG autostart preference."
+      />
+    );
+  }
+
+  const toggle = async (enabled: boolean) => {
+    if (!setStatus) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setStatusValue(await setStatus(enabled));
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const statusText = status
+    ? status.enabled
+      ? 'Enabled'
+      : 'Disabled'
+    : busy
+      ? 'Saving…'
+      : 'Loading…';
+
+  return (
+    <SettingRow
+      iconGlyph="⇥"
+      label="Launch at login"
+      description="Start OpenBurnBar in the background when your Linux desktop session begins."
+      control={
+        <label className="setting-toggle">
+          <input
+            type="checkbox"
+            checked={status?.enabled ?? false}
+            disabled={busy || !status}
+            aria-busy={busy || !status}
+            aria-label="Launch OpenBurnBar at login"
+            onChange={(event) => void toggle(event.currentTarget.checked)}
+          />
+          <span className="muted" role="status" aria-live="polite" aria-label={statusText}>{statusText}</span>
+        </label>
+      }
+      readOnlyNote={error ?? status?.detail}
+    />
   );
 }
 
