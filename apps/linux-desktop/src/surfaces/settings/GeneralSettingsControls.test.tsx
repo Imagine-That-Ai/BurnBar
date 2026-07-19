@@ -128,4 +128,24 @@ describe('LaunchAtLoginControl', () => {
     await waitFor(() => expect(launchAtLoginSet).toHaveBeenCalledWith(false));
     expect(await screen.findByRole('status', { name: 'Disabled' })).toBeTruthy();
   });
+
+  it('keeps the toggle disabled when the packaged entry is unavailable', async () => {
+    const launchAtLoginStatus = vi.fn(async () => ({
+      enabled: false,
+      userOverride: false,
+      source: 'unavailable' as const,
+      path: '/home/alberto/.config/autostart/openburnbar.desktop',
+      detail: 'The packaged XDG autostart entry is unavailable.'
+    }));
+    const launchAtLoginSet = vi.fn();
+    useShellStore.setState({
+      bridge: { ...bridgeStubDefaults, launchAtLoginStatus, launchAtLoginSet } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+    render(<LaunchAtLoginControl />);
+
+    const toggle = await screen.findByRole('checkbox', { name: 'Launch OpenBurnBar at login' }) as HTMLInputElement;
+    await waitFor(() => expect(toggle.disabled).toBe(true));
+    expect(launchAtLoginSet).not.toHaveBeenCalled();
+  });
 });

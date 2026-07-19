@@ -29,7 +29,7 @@ proof and refuses paged or partial data. Focused Activity/bridge coverage is
 the preceding installed baseline in the UTM guest; its non-certifying receipt is
 `evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/health.json`.
 
-The current source hardening reaches `ff2de99f65`; the current installed live
+The current source hardening reaches `1bddc6d22a`; the current installed live
 integration slice is still `992ef5c580` (with the WebKit startup fallback from
 `6321897d4e`). Its release graph builds
 the daemon-owned `crates/openburnbar-media` library before Swift linking, so a
@@ -74,7 +74,7 @@ receipt is `evidence/mission-002-reanchor/vm-e2e/current-992ef5c580-settings-ind
 
 The next source slice adds a verified, capped Insights comparison workspace
 (`c31c17aa6e`, `ee679e2ed0`, `eb6a5975d4`) and a secure user-level XDG
-**Launch at login** preference (`f6d3843937`). Focused comparison coverage is
+**Launch at login** preference (`f6d3843937`, hardened in `1bddc6d22a`). Focused comparison coverage is
 **28/28**; autostart Rust coverage is **4/4**, renderer/bridge coverage is
 **38/38**, and the Settings/accessibility slice is **32/32**. These changes
 still require an exact-head package rebuild and installed receipt.
