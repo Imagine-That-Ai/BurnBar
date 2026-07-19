@@ -1,5 +1,6 @@
 import type {
   InsightsQualitativeCapability,
+  UsageInsightsQualitativeCitation,
   UsageInsights,
   UsageInsightsSource
 } from '../../tauriBridge.js';
@@ -66,4 +67,36 @@ export function resolveQualitativeCapability(data: UsageInsights): InsightsQuali
     state: 'unavailable',
     reason: 'The qualitative-analysis capability returned an unknown state.'
   };
+}
+
+/**
+ * Build the bounded chat handoff used by Linux citation chips.
+ *
+ * The daemon intentionally returns opaque citation IDs rather than renderer
+ * routes. Keep that boundary intact: the shell carries both the label and ID
+ * into chat, where the daemon can resolve the evidence against its current
+ * authority. Do not turn an ID into a guessed URL or local file path.
+ */
+export function insightsCitationPrompt(citation: UsageInsightsQualitativeCitation): string {
+  return `Explain the Insights evidence "${citation.label}" (citation ${citation.id}) from the current daemon response.`;
+}
+
+/**
+ * Preserve citation order while removing duplicate IDs. The macOS brief shows
+ * a compact chip flow; the Linux inspector follows the same bounded shape so
+ * a repeated citation cannot flood the workspace.
+ */
+export function uniqueInsightsCitations(
+  citations: readonly UsageInsightsQualitativeCitation[],
+  limit = 8
+): UsageInsightsQualitativeCitation[] {
+  const seen = new Set<string>();
+  const unique: UsageInsightsQualitativeCitation[] = [];
+  for (const citation of citations) {
+    if (seen.has(citation.id)) continue;
+    seen.add(citation.id);
+    unique.push(citation);
+    if (unique.length >= limit) break;
+  }
+  return unique;
 }

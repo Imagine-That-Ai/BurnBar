@@ -14,7 +14,12 @@ import { InsightsSurface } from './InsightsSurface.js';
 import { InsightsWorkspace } from './InsightsWorkspace.js';
 import { TrendChart } from './TrendChart.js';
 import { buildInsightsBrief } from './insightsBrief.js';
-import { resolveInsightsEvidence, resolveQualitativeCapability } from './insightsEvidence.js';
+import {
+  insightsCitationPrompt,
+  resolveInsightsEvidence,
+  resolveQualitativeCapability,
+  uniqueInsightsCitations
+} from './insightsEvidence.js';
 import {
   accountScopeForInsights,
   insightsWorkspaceStorageKey,
@@ -102,6 +107,20 @@ describe('insights evidence and workspace persistence', () => {
       source: { id: 'daemon.usage.recent', kind: 'fixture', label: 'forged' }
     } as unknown as UsageInsights;
     expect(resolveInsightsEvidence(mismatchedKind, 'live daemon usage insights').state).toBe('unavailable');
+  });
+
+  it('keeps citation IDs opaque, bounded, and ordered for the evidence chip flow', () => {
+    const citations = [
+      { id: 'citation-1', label: 'Codex session' },
+      { id: 'citation-1', label: 'duplicate label' },
+      { id: 'citation-2', label: 'Provider mix' }
+    ];
+    expect(uniqueInsightsCitations(citations, 2)).toEqual([
+      citations[0],
+      citations[2]
+    ]);
+    expect(insightsCitationPrompt(citations[0])).toContain('citation citation-1');
+    expect(insightsCitationPrompt(citations[0])).toContain('Codex session');
   });
 
   it('persists selection and density per account scope without storing the identity in the key', () => {
@@ -212,6 +231,51 @@ describe('InsightsSurface', () => {
     expect(followUp).toHaveBeenCalledWith('Compare provider mix with last week');
     fireEvent.click(screen.getByRole('button', { name: /refresh insights/i }));
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders daemon citations for qualitative findings and hands opaque evidence to chat', () => {
+    const followUp = vi.fn();
+    const data: UsageInsights = {
+      ...fixtureUsageInsights(),
+      source: { id: 'daemon.usage.insights', kind: 'daemon-method', label: 'daemon-authored qualitative insights' },
+      qualitative: {
+        state: 'available',
+        reason: 'Bounded local-rules analysis.',
+        method: 'daemon.usage.insights',
+        sourceID: 'daemon.usage.ledger',
+        analysis: {
+          requestID: 'request-1',
+          generatedAt: '2026-07-19T00:00:00Z',
+          executiveSummary: 'Codex is the main spend driver.',
+          modelDisplayName: 'Linux local rules',
+          citations: [{ id: 'citation-1', label: 'Codex session' }],
+          findings: [{
+            id: 'finding-1',
+            title: 'Codex is the main spend driver',
+            whyItMatters: 'It accounts for the included spend.',
+            recommendedAction: 'Compare lower-cost routes.',
+            evidence: [{ id: 'citation-1', label: 'Codex session' }]
+          }]
+        }
+      }
+    };
+
+    render(
+      <InsightsWorkspace
+        data={data}
+        sourceLabel="daemon-authored qualitative insights"
+        onRefresh={vi.fn()}
+        onFollowUp={followUp}
+      />
+    );
+
+    expect(screen.getByText('It accounts for the included spend.')).toBeTruthy();
+    const citationButtons = screen.getAllByRole('button', { name: /Open citation: Codex session/i });
+    expect(citationButtons.length).toBe(2);
+    fireEvent.click(citationButtons[0]!);
+    expect(followUp).toHaveBeenCalledWith(
+      'Explain the Insights evidence "Codex session" (citation citation-1) from the current daemon response.'
+    );
   });
 
   it('restores the selected widget and compact density for the same account scope', () => {

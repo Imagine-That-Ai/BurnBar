@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import type { UsageInsights } from '../../tauriBridge.js';
+import type { UsageInsights, UsageInsightsQualitativeCitation } from '../../tauriBridge.js';
 import { MixBar } from './MixBar.js';
 import { StatCallout } from './StatCallout.js';
 import { TrendChart } from './TrendChart.js';
 import { weekOverWeekTokenDeltaPct } from './insightsChartMath.js';
-import { resolveInsightsEvidence, resolveQualitativeCapability } from './insightsEvidence.js';
+import {
+  insightsCitationPrompt,
+  resolveInsightsEvidence,
+  resolveQualitativeCapability,
+  uniqueInsightsCitations
+} from './insightsEvidence.js';
 import {
   readInsightsWorkspace,
   writeInsightsWorkspace,
@@ -30,6 +35,39 @@ type InsightsWorkspaceProps = {
   onFollowUp: (question: string) => void;
   accountScope?: string;
 };
+
+function InsightsCitationChips({
+  citations,
+  label,
+  onOpen
+}: {
+  citations: readonly UsageInsightsQualitativeCitation[];
+  label: string;
+  onOpen: (citation: UsageInsightsQualitativeCitation) => void;
+}) {
+  const bounded = uniqueInsightsCitations(citations);
+  if (bounded.length === 0) return null;
+  return (
+    <div className="insights-citation-group">
+      <span className="insights-citation-label">{label}</span>
+      <div className="insights-citation-chips" role="list" aria-label={label}>
+        {bounded.map((citation) => (
+          <button
+            type="button"
+            key={citation.id}
+            className="insights-citation-chip"
+            onClick={() => onOpen(citation)}
+            aria-label={`Open citation: ${citation.label}`}
+            title={`Citation ${citation.id}`}
+          >
+            <span aria-hidden="true">&gt;</span>
+            {citation.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function widgetsFor(data: UsageInsights, sourceLabel: string): InsightWidget[] {
   const evidence = resolveInsightsEvidence(data, sourceLabel);
@@ -318,12 +356,23 @@ export function InsightsWorkspace({
               <section className="insights-qualitative-brief" aria-label="Daemon qualitative brief">
                 <span className="insights-eyebrow">Daemon brief · {qualitative.analysis.modelDisplayName}</span>
                 <p>{qualitative.analysis.executiveSummary}</p>
+                <InsightsCitationChips
+                  citations={qualitative.analysis.citations}
+                  label="Analysis evidence"
+                  onOpen={(citation) => onFollowUp(insightsCitationPrompt(citation))}
+                />
                 {qualitative.analysis.findings.length > 0 ? (
-                  <ul>
+                  <ul className="insights-qualitative-findings">
                     {qualitative.analysis.findings.slice(0, 3).map((finding) => (
                       <li key={finding.id}>
                         <strong>{finding.title}</strong>
+                        <span>{finding.whyItMatters}</span>
                         <span>{finding.recommendedAction}</span>
+                        <InsightsCitationChips
+                          citations={finding.evidence}
+                          label={`Evidence for ${finding.title}`}
+                          onOpen={(citation) => onFollowUp(insightsCitationPrompt(citation))}
+                        />
                       </li>
                     ))}
                   </ul>
