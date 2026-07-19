@@ -48,9 +48,9 @@
     "OpenBurnBarMobileTests/testSealedApprovalDecisionCarriesKindAndActionAtRootOfSealedPayload"
   ],
   "artifacts": {
-    "telemetry": "/private/tmp/burnbar-linux-parity-continuation/.tmp/ipad-live/focused-50/artifacts/test-openburnbar-mobile-attempts.jsonl",
-    "resultBundle": "/private/tmp/burnbar-linux-parity-continuation/.tmp/ipad-live/focused-50/derived-data/openburnbar-mobile-tests.qiaoY3/OpenBurnBarMobileTests-attempt-1.xcresult",
-    "transcript": "/private/tmp/burnbar-linux-parity-continuation/.tmp/ipad-live/focused-50/run.log"
+    "compactTranscript": "docs/linux-port/evidence/parity-audit-2026-07-10/ipad-approval-focused-2026-07-19.txt",
+    "originalTelemetry": "/private/tmp/burnbar-linux-parity-continuation/.tmp/ipad-live/focused-50/artifacts/test-openburnbar-mobile-attempts.jsonl",
+    "originalResultBundle": "/private/tmp/burnbar-linux-parity-continuation/.tmp/ipad-live/focused-50/derived-data/openburnbar-mobile-tests.qiaoY3/OpenBurnBarMobileTests-attempt-1.xcresult"
   },
   "diagnosticNotes": [
     "xcodebuild reported a partial devicectl diagnose archive after the successful test session; this did not change the XCTest result.",
