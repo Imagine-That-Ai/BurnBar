@@ -1,4 +1,6 @@
 import { useMemo, useSyncExternalStore, type ReactNode } from 'react';
+import { KERNEL_META } from '@openburnbar/gl-engine/engine/registry';
+import { KERNEL_RESOLUTION_EVENT } from '../../components/KernelBackdrop.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { listPerfSamples } from '../../perfMarks.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
@@ -31,6 +33,187 @@ function groupPerfSamples(samples: { name: string; ms: number }[]) {
     map.set(s.name, list);
   }
   return [...map.entries()].map(([name, values]) => ({ name, values, latest: values[values.length - 1] }));
+}
+
+type BackdropRuntimeEvidence = {
+  available: boolean;
+  mode: string | null;
+  requestedKernel: string | null;
+  requestedSubstrate: string | null;
+  resolvedKernel: string | null;
+  resolvedSubstrate: string | null;
+  resolution: string | null;
+  fallback: boolean | null;
+  glSupported: boolean | null;
+};
+
+const EMPTY_BACKDROP_RUNTIME_EVIDENCE: BackdropRuntimeEvidence = {
+  available: false,
+  mode: null,
+  requestedKernel: null,
+  requestedSubstrate: null,
+  resolvedKernel: null,
+  resolvedSubstrate: null,
+  resolution: null,
+  fallback: null,
+  glSupported: null
+};
+
+function readBackdropRuntimeEvidence(): string {
+  if (typeof document === 'undefined') return JSON.stringify(EMPTY_BACKDROP_RUNTIME_EVIDENCE);
+
+  const backdrop = document.querySelector<HTMLElement>('[data-backdrop-mode]');
+  if (!backdrop) return JSON.stringify(EMPTY_BACKDROP_RUNTIME_EVIDENCE);
+
+  const requestedKernel = backdrop.dataset.kernelRequested?.trim() || null;
+  const resolvedKernel = backdrop.dataset.kernelResolved?.trim() || null;
+  const resolvedSubstrate = backdrop.dataset.kernelSubstrate?.trim() || null;
+  const glSupported =
+    backdrop.dataset.glSupported === '1'
+      ? true
+      : backdrop.dataset.glSupported === '0'
+        ? false
+        : null;
+  const requestedSubstrate =
+    KERNEL_META.find((kernel) => kernel.id === requestedKernel)?.substrate ?? null;
+
+  const evidence: BackdropRuntimeEvidence = {
+    available: Boolean(requestedKernel && resolvedKernel && resolvedSubstrate && glSupported !== null),
+    mode: backdrop.dataset.backdropMode?.trim() || null,
+    requestedKernel,
+    requestedSubstrate,
+    resolvedKernel,
+    resolvedSubstrate,
+    resolution: backdrop.dataset.kernelResolution?.trim() || null,
+    fallback:
+      backdrop.dataset.kernelFallback === '1'
+        ? true
+        : backdrop.dataset.kernelFallback === '0'
+          ? false
+          : null,
+    glSupported
+  };
+  return JSON.stringify(evidence);
+}
+
+function subscribeBackdropRuntimeEvidence(onChange: () => void): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+
+  const onResolution = () => onChange();
+  window.addEventListener(KERNEL_RESOLUTION_EVENT, onResolution);
+
+  // The backdrop is mounted before the Support route and publishes its first
+  // receipt from an effect. Attribute observation covers that initial mount,
+  // later context-loss recovery, and kernel switches without polling.
+  const observer = typeof MutationObserver === 'undefined' ? null : new MutationObserver(onChange);
+  const target = document.documentElement;
+  observer?.observe(target, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: [
+      'data-backdrop-mode',
+      'data-gl-supported',
+      'data-kernel-fallback',
+      'data-kernel-requested',
+      'data-kernel-resolution',
+      'data-kernel-resolved',
+      'data-kernel-substrate'
+    ]
+  });
+
+  return () => {
+    window.removeEventListener(KERNEL_RESOLUTION_EVENT, onResolution);
+    observer?.disconnect();
+  };
+}
+
+function useBackdropRuntimeEvidence(): BackdropRuntimeEvidence {
+  const snapshot = useSyncExternalStore(
+    subscribeBackdropRuntimeEvidence,
+    readBackdropRuntimeEvidence,
+    readBackdropRuntimeEvidence
+  );
+  return JSON.parse(snapshot) as BackdropRuntimeEvidence;
+}
+
+function kernelLabel(id: string | null): string {
+  if (!id) return 'Unavailable';
+  return KERNEL_META.find((kernel) => kernel.id === id)?.label ?? id;
+}
+
+function runtimeValue(value: string | null): string {
+  return value ?? 'Unavailable';
+}
+
+function BackdropRuntimeRow() {
+  const evidence = useBackdropRuntimeEvidence();
+  const bridge = useShellStore((state) => state.bridge);
+  const fixtureMode = useShellStore((state) => state.fixtureMode);
+
+  const source = evidence.available
+    ? 'Live renderer receipt'
+    : fixtureMode
+      ? 'Fixture data (no live renderer receipt)'
+      : bridge
+        ? 'Packaged shell (renderer receipt unavailable)'
+        : 'Browser preview (packaged shell unavailable)';
+  const description = evidence.available
+    ? 'The backdrop reported the kernel and graphics capability it is actually using.'
+    : fixtureMode
+      ? 'Fixture mode does not fabricate WebGL2 or kernel facts. Run the packaged shell for a live renderer receipt.'
+      : bridge
+        ? 'The packaged shell is present, but the backdrop has not reported a live renderer receipt yet.'
+        : 'This browser preview cannot verify the packaged renderer. Install and launch the Linux app for live facts.';
+  const rendererState = evidence.fallback
+    ? evidence.resolution === 'webgl2-unavailable'
+      ? '2D fallback (WebGL2 unavailable)'
+      : `Fallback (${runtimeValue(evidence.resolution)})`
+    : evidence.available
+      ? 'Native'
+      : 'Unavailable';
+  const webgl2 = evidence.glSupported === true
+    ? 'Available'
+    : evidence.glSupported === false
+      ? 'Unavailable'
+      : 'Unavailable';
+
+  const rows = [
+    { label: 'Requested kernel', value: kernelLabel(evidence.requestedKernel) },
+    { label: 'Resolved kernel', value: kernelLabel(evidence.resolvedKernel) },
+    { label: 'Requested substrate', value: runtimeValue(evidence.requestedSubstrate) },
+    { label: 'Active substrate', value: runtimeValue(evidence.resolvedSubstrate) },
+    { label: 'WebGL2 capability', value: webgl2 },
+    { label: 'Renderer state', value: rendererState }
+  ];
+
+  return (
+    <section
+      className="p09-runtime-card"
+      aria-labelledby="p09-runtime-heading"
+      aria-live="polite"
+      data-provenance={evidence.available ? 'renderer' : fixtureMode ? 'fixture-unavailable' : 'unavailable'}
+    >
+      <div className="p09-runtime-card__header">
+        <div>
+          <h3 id="p09-runtime-heading">Backdrop runtime</h3>
+          <p className="muted">{description}</p>
+        </div>
+        <span className={`p09-runtime-card__state${evidence.available ? ' p09-runtime-card__state--ok' : ''}`}>
+          {evidence.available ? source : 'Unavailable'}
+        </span>
+      </div>
+      <dl className="p09-runtime-facts" aria-label="Backdrop renderer facts">
+        {rows.map((row) => (
+          <div className="p09-runtime-fact" key={row.label}>
+            <dt>{row.label}</dt>
+            <dd>{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {!evidence.available ? <p className="p09-runtime-unavailable" role="status">Live backdrop capability data is unavailable.</p> : null}
+    </section>
+  );
 }
 
 export function SupportSurface() {
@@ -75,6 +258,7 @@ export function SupportSurface() {
     <>
       <SystemStatusSection />
       <DiagnosticsStatusSummary />
+      <BackdropRuntimeRow />
       {versionBlock}
       <DiagnosticsExportCard />
       <MediaSection />

@@ -103,6 +103,22 @@ function mockBridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge
   } as LinuxShellBridge;
 }
 
+function mountBackdropReceipt(overrides: Record<string, string> = {}): () => void {
+  const backdrop = document.createElement('div');
+  backdrop.dataset.backdropMode = 'canvas';
+  backdrop.dataset.kernelRequested = 'aurora';
+  backdrop.dataset.kernelResolved = 'constellation';
+  backdrop.dataset.kernelResolution = 'webgl2-unavailable';
+  backdrop.dataset.kernelFallback = '1';
+  backdrop.dataset.kernelSubstrate = '2d';
+  backdrop.dataset.glSupported = '0';
+  for (const [key, value] of Object.entries(overrides)) {
+    backdrop.dataset[key] = value;
+  }
+  document.body.appendChild(backdrop);
+  return () => backdrop.remove();
+}
+
 describe('P09 updates and support', () => {
   beforeEach(resetStores);
   afterEach(cleanup);
@@ -459,6 +475,42 @@ describe('P09 updates and support', () => {
     expect(empty?.getAttribute('role')).toBe('status');
     expect(empty?.getAttribute('colspan')).toBe('3');
     expect(empty?.textContent).toMatch(/No performance samples yet/);
+  });
+
+  it('shows the live 2D fallback and truthful WebGL2-unavailable receipt', () => {
+    const removeReceipt = mountBackdropReceipt();
+    try {
+      render(<SupportSurface />);
+      const runtime = screen.getByRole('region', { name: 'Backdrop runtime' });
+      expect(runtime.getAttribute('data-provenance')).toBe('renderer');
+      expect(within(runtime).getByText('Aurora')).toBeTruthy();
+      expect(within(runtime).getByText('Constellation')).toBeTruthy();
+      expect(within(runtime).getByText('2D fallback (WebGL2 unavailable)')).toBeTruthy();
+      const webglRow = within(runtime).getByText('WebGL2 capability').parentElement;
+      expect(webglRow?.querySelector('dd')?.textContent).toBe('Unavailable');
+      const substrateRow = within(runtime).getByText('Active substrate').parentElement;
+      expect(substrateRow?.querySelector('dd')?.textContent).toBe('2d');
+    } finally {
+      removeReceipt();
+    }
+  });
+
+  it('does not guess renderer facts when the live receipt is missing', () => {
+    render(<SupportSurface />);
+    const runtime = screen.getByRole('region', { name: 'Backdrop runtime' });
+    expect(runtime.getAttribute('data-provenance')).toBe('unavailable');
+    expect(within(runtime).getAllByText('Unavailable').length).toBeGreaterThan(0);
+    expect(within(runtime).getByRole('status').textContent).toContain('Live backdrop capability data is unavailable.');
+    expect(within(runtime).queryByText('2D fallback (WebGL2 unavailable)')).toBeNull();
+  });
+
+  it('labels fixture mode without presenting synthetic renderer capability facts', () => {
+    useShellStore.setState({ fixtureMode: true, bridge: null });
+    render(<SupportSurface />);
+    const runtime = screen.getByRole('region', { name: 'Backdrop runtime' });
+    expect(runtime.getAttribute('data-provenance')).toBe('fixture-unavailable');
+    expect(within(runtime).getByText(/Fixture mode does not fabricate WebGL2/)).toBeTruthy();
+    expect(within(runtime).getByRole('status').textContent).toContain('Live backdrop capability data is unavailable.');
   });
 
   it('shows fixture provenance and disables copying metadata-only output', async () => {
