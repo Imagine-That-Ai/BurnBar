@@ -5605,6 +5605,7 @@ final class GatewayHarness: @unchecked Sendable {
         authToken: String? = nil,
         rateLimit: BurnBarRateLimitConfiguration? = nil,
         catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog,
+        secretStore: any BurnBarProviderSecretStoring = BurnBarInMemorySecretStore(),
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
         factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
@@ -5631,7 +5632,7 @@ final class GatewayHarness: @unchecked Sendable {
         self.configStore = BurnBarConfigStore(
             fileURL: tempDirectory.appendingPathComponent("provider-config.json"),
             catalog: catalog,
-            secretStore: BurnBarInMemorySecretStore(),
+            secretStore: secretStore,
             logger: BurnBarDaemonLogger(category: "gateway-tests")
         )
         self.usageRecorder = BurnBarUsageRecorder(

@@ -225,8 +225,55 @@ extension BurnBarHTTPGatewayServer {
             return response
         } catch {
             await recordElderWandRouteFailure(resolved, error: error)
-            throw error
+            guard shouldRetryRotatedCurrentClaudeCredential(error, route: resolved),
+                  let refreshed = await refreshedCurrentClaudeElderWandRoute(replacing: resolved) else {
+                throw error
+            }
+
+            do {
+                let response = try await proxyChatCompletions(
+                    body: body,
+                    route: refreshed.route,
+                    formatFamily: refreshed.formatFamily,
+                    variant: nil
+                )
+                await recordElderWandRouteSuccess(refreshed)
+                return response
+            } catch {
+                await recordElderWandRouteFailure(refreshed, error: error)
+                throw error
+            }
         }
+    }
+
+    private func shouldRetryRotatedCurrentClaudeCredential(
+        _ error: Error,
+        route: ElderWandResolvedRoute
+    ) -> Bool {
+        guard route.route.providerID.caseInsensitiveCompare("anthropic") == .orderedSame,
+              route.route.credentialSlotID?
+                .caseInsensitiveCompare("current-claude-code-login") == .orderedSame,
+              let providerError = error as? BurnBarProviderExecutorError,
+              let statusCode = providerError.upstreamStatusAndBody?.statusCode else {
+            return false
+        }
+        return statusCode == 401 || statusCode == 403
+    }
+
+    private func refreshedCurrentClaudeElderWandRoute(
+        replacing stale: ElderWandResolvedRoute
+    ) async -> ElderWandResolvedRoute? {
+        guard let refreshed = await resolveElderWandRoute(modelSlug: stale.wireModelSlug),
+              refreshed.formatFamily == stale.formatFamily,
+              refreshed.route.providerID.caseInsensitiveCompare(stale.route.providerID) == .orderedSame,
+              refreshed.route.credentialSlotID?
+                .caseInsensitiveCompare(stale.route.credentialSlotID ?? "") == .orderedSame,
+              refreshed.route.canonicalModelID == stale.route.canonicalModelID,
+              refreshed.route.resolvedModelID == stale.route.resolvedModelID,
+              refreshed.route.apiKey != stale.route.apiKey else {
+            return nil
+        }
+        return refreshed
     }
 
     private func recordElderWandRouteSuccess(_ resolved: ElderWandResolvedRoute) async {
