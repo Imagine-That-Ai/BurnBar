@@ -192,6 +192,7 @@ public partial class App : Application
         _ = WindowsUpdateService.RunAutomaticCheckIfDueAsync(WindowsSettingsComposition.SharedPersistence);
         WindowsAppCheckComposition.RegisterIfConfigured();
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+        StartWindowsRuntimeSafetyConfig();
         StartComputerUseWatchdog();
         StartPrivilegedInputBroker();
         StartPensieveKnowledgeWatcher();

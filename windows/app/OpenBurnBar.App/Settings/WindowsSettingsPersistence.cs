@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using OpenBurnBar.App.CloudSync;
+using OpenBurnBar.App.CloudSync.RuntimeSafety;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Gateway;
 using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
@@ -166,6 +167,7 @@ internal static class WindowsSettingsComposition
         if (!TryConfigureProductionCloudSync())
         {
             WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+            _ = App.Current.RefreshWindowsRuntimeSafetyConfigAsync();
         }
     }
 
@@ -191,6 +193,7 @@ internal static class WindowsSettingsComposition
             new TpmAttestationProducer(),
             AppCheckTransport.Value,
             appCheckAppId);
+        _ = App.Current.RefreshWindowsRuntimeSafetyConfigAsync();
     }
 
     public static object? Create(SettingsTab tab) => tab switch
@@ -211,7 +214,8 @@ internal static class WindowsSettingsComposition
             new FileComputerUseAuditService(ComputerUseAuditRoot()),
             new ComputerUsePermissionsStore(Persistence),
             new ComputerUseBrowserSettingsStore(Persistence),
-            new WindowsBrowserComputerUseService()),
+            new WindowsBrowserComputerUseService(),
+            CreateComputerUseFleetSafetySource()),
         SettingsTab.Pets => new PetsSettingsViewModel(store: new PetStore(Persistence)),
         SettingsTab.Account => new AccountSettingsViewModel(
             new OAuthAccountSessionGate(OAuth.Value),
@@ -224,9 +228,25 @@ internal static class WindowsSettingsComposition
             store: new DevicesSyncStore(Persistence),
             session: new OAuthAccountSessionGate(OAuth.Value)),
         SettingsTab.Media => new MercuryMediaSettingsViewModel(
-            new StaticMercuryMediaCapabilitySource(captureRuntimeSupported: OperatingSystem.IsWindows())),
+            new FleetAwareMercuryMediaCapabilitySource(
+                () =>
+                {
+                    WindowsRuntimeSafetySnapshot snapshot = WindowsRuntimeSafetyState.Shared.Current;
+                    return !snapshot.IsFresh(DateTimeOffset.UtcNow) || snapshot.MediaKillSwitch;
+                },
+                new StaticMercuryMediaCapabilitySource(captureRuntimeSupported: OperatingSystem.IsWindows()))),
         _ => null,
     };
+
+    private static IComputerUseFleetSafetySource CreateComputerUseFleetSafetySource() =>
+        new DelegatingComputerUseFleetSafetySource(
+            isResolved: () => WindowsRuntimeSafetyState.Shared.Current.IsFresh(DateTimeOffset.UtcNow),
+            killSwitchActive: () => WindowsRuntimeSafetyState.Shared.Current.ComputerUseKillSwitch,
+            watchEnabled: () => WindowsRuntimeSafetyState.Shared.Current.ComputerUseWatchEnabled,
+            browserEnabled: () => WindowsRuntimeSafetyState.Shared.Current.ComputerUseBrowserEnabled,
+            systemEnabled: () => WindowsRuntimeSafetyState.Shared.Current.ComputerUseSystemEnabled,
+            phoneControlEnabled: () => WindowsRuntimeSafetyState.Shared.Current.ComputerUsePhoneControlEnabled,
+            trustModesEnabled: () => WindowsRuntimeSafetyState.Shared.Current.ComputerUseTrustModesEnabled);
 
     private sealed class AlertStore(WindowsSettingsPersistence persistence) : IAlertSettingsStore
     {
@@ -549,6 +569,7 @@ internal static class WindowsSettingsComposition
         {
             oauth?.SignOut();
             AppConfiguration.Current.UpdateAndSave(model => model.FirebaseUid = null);
+            App.Current.InvalidateWindowsRuntimeSafetyConfig();
             return AccountActionResult.Ok;
         }
     }

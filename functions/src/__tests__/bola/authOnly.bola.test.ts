@@ -49,6 +49,7 @@ export const AUTH_ONLY_CALLABLES = [
   "mintLinuxAppCheckToken",
   "mintWindowsAppCheckToken",
   "issueWindowsAppCheckChallenge",
+  "getWindowsRuntimeSafetyConfig",
   "issueHighRiskActionNonce",
   "searchStreams",
   "issueRemoteMcpGrant",

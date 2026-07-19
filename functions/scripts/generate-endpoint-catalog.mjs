@@ -176,6 +176,27 @@ const CATALOG_OVERRIDES = {
     ],
     highRiskComputerUse: false,
   },
+  getWindowsRuntimeSafetyConfig: {
+    trigger: "callable",
+    authMethod: "Firebase Auth plus Windows TPM-backed App Check",
+    appCheck: "required",
+    tenantSource: "request.auth.uid; response contains global safety flags only",
+    objectIdsFromClient: [],
+    handlerModule: "callables/windowsRuntimeSafetyConfig.ts",
+    ownershipCheck:
+      "handler requires Auth and App Check, accepts no object ids, and returns only bounded global Remote Config booleans",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["getWindowsRuntimeSafetyConfig"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   burnBarHermesGateway: {
     trigger: "http",
     bolaCoverage: [

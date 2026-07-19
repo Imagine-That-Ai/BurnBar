@@ -255,6 +255,9 @@ jobs:
             --output "$RUNNER_TEMP/firebase-functions.ci.json" \
             --check
           bash scripts/ci/prepare-firebase-tools.sh
+          node scripts/ci/prepare-scoped-functions-deploy.mjs \
+            --targets "$FUNCTION_TARGETS" \
+            --functions-dir functions
 
       - name: Require staging functions runtime config
         run: |
