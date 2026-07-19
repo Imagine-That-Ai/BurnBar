@@ -1392,6 +1392,82 @@ public struct BurnBarRecentUsageResponse: Codable, Hashable, Sendable {
     }
 }
 
+/// Requests a bounded, daemon-owned snapshot of the indexed conversation
+/// history used by Activity export. Unlike `BurnBarRecentUsageRequest`, this
+/// contract carries an explicit completeness proof and persisted session body.
+public struct BurnBarActivityHistoryRequest: Codable, Hashable, Sendable {
+    public let limit: Int
+
+    public init(limit: Int = 500) {
+        self.limit = limit
+    }
+}
+
+public struct BurnBarActivityHistorySession: Codable, Hashable, Sendable {
+    public let id: String
+    public let provider: String
+    public let model: String
+    public let startedAt: String
+    public let tokens: Int
+    public let costUsd: Double
+    public let title: String
+    public let sourceID: String
+    public let providerSessionID: String
+    public let runID: String?
+    public let projectName: String?
+    public let bodyMD: String
+
+    public init(
+        id: String,
+        provider: String,
+        model: String,
+        startedAt: String,
+        tokens: Int,
+        costUsd: Double,
+        title: String,
+        sourceID: String,
+        providerSessionID: String,
+        runID: String? = nil,
+        projectName: String? = nil,
+        bodyMD: String
+    ) {
+        self.id = id
+        self.provider = provider
+        self.model = model
+        self.startedAt = startedAt
+        self.tokens = tokens
+        self.costUsd = costUsd
+        self.title = title
+        self.sourceID = sourceID
+        self.providerSessionID = providerSessionID
+        self.runID = runID
+        self.projectName = projectName
+        self.bodyMD = bodyMD
+    }
+}
+
+public struct BurnBarActivityHistoryResponse: Codable, Hashable, Sendable {
+    public let sessions: [BurnBarActivityHistorySession]
+    public let nextCursor: String?
+    public let historyComplete: Bool
+    public let historyLimit: Int
+    public let totalCount: Int
+
+    public init(
+        sessions: [BurnBarActivityHistorySession],
+        nextCursor: String?,
+        historyComplete: Bool,
+        historyLimit: Int,
+        totalCount: Int
+    ) {
+        self.sessions = sessions
+        self.nextCursor = nextCursor
+        self.historyComplete = historyComplete
+        self.historyLimit = historyLimit
+        self.totalCount = totalCount
+    }
+}
+
 /// Requests a privacy-bounded, daemon-owned qualitative insight brief. The
 /// daemon builds the digest from its usage ledger; the renderer never receives
 /// raw transcripts or provider credentials.

@@ -47,8 +47,8 @@ export type ActivityHistoryExportUnavailableCode =
  * `sessionList` is also used by the bounded `daemon.usage.recent` surface.
  * That surface has no cursor or completeness contract, so a nullable cursor
  * and a mapper-provided `complete` boolean are not sufficient proof of full
- * history. A future daemon-owned history bridge must carry this explicit
- * marker through the bridge before this path can claim completeness.
+ * history. New shells use `sessionHistory`, whose daemon-owned response
+ * carries this explicit marker; the legacy path remains only for older shells.
  */
 type CompleteActivityHistoryList = Awaited<ReturnType<LinuxShellBridge['sessionList']>> & {
   historyComplete?: boolean;
@@ -148,10 +148,104 @@ function unavailable(
  */
 export async function buildDaemonActivityHistoryExport(
   bridge: Pick<LinuxShellBridge, 'sessionList'> & {
+    sessionHistory?: LinuxShellBridge['sessionHistory'];
     sessionReplay?: LinuxShellBridge['sessionReplay'];
   },
   generatedAt = new Date().toISOString()
 ): Promise<ActivityHistoryExportResult> {
+  if (typeof bridge.sessionHistory === 'function') {
+    let history: Awaited<ReturnType<NonNullable<LinuxShellBridge['sessionHistory']>>>;
+    try {
+      history = await bridge.sessionHistory();
+    } catch {
+      return unavailable(
+        'daemon_error',
+        'The daemon could not provide a stable activity history snapshot.'
+      );
+    }
+    if (
+      history.nextCursor !== null ||
+      history.complete !== true ||
+      history.historyComplete !== true
+    ) {
+      return unavailable(
+        'history_not_complete',
+        'Full activity history export is unavailable because the daemon returned a paged or incomplete history.'
+      );
+    }
+    if (history.sessions.length > ACTIVITY_HISTORY_EXPORT_LIMIT) {
+      return unavailable(
+        'history_limit_exceeded',
+        `Full activity history export is limited to ${ACTIVITY_HISTORY_EXPORT_LIMIT} sessions.`
+      );
+    }
+    if (history.sessions.length !== history.totalCount) {
+      return unavailable(
+        'history_not_complete',
+        'Full activity history export is unavailable because the daemon history count did not match the returned rows.'
+      );
+    }
+
+    const sessions: ActivityExportSession[] = [];
+    const sourceIDs = new Set<string>();
+    let bodyBytes = 0;
+    for (const session of history.sessions) {
+      const sourceID = session.sourceID?.trim() || null;
+      if (!sourceID) {
+        return unavailable(
+          'source_identity_unavailable',
+          'Full activity history export is unavailable for a row without a verified conversation identity.'
+        );
+      }
+      if (sourceIDs.has(sourceID)) {
+        return unavailable(
+          'source_identity_unavailable',
+          'Full activity history export is unavailable because the daemon returned duplicate conversation identities.'
+        );
+      }
+      sourceIDs.add(sourceID);
+      const body = session.bodyMD;
+      if (!body) {
+        return unavailable(
+          'session_body_unavailable',
+          'Full activity history export is unavailable because one or more session bodies could not be read.'
+        );
+      }
+      const sessionBodyBytes = utf8Bytes(body);
+      if (sessionBodyBytes > ACTIVITY_SESSION_BODY_MAX_BYTES) {
+        return unavailable(
+          'session_body_truncated',
+          'Full activity history export is unavailable because one or more session bodies were truncated.'
+        );
+      }
+      bodyBytes += sessionBodyBytes;
+      if (bodyBytes > ACTIVITY_HISTORY_EXPORT_MAX_BYTES) {
+        return unavailable(
+          'history_size_exceeded',
+          `Full activity history export is limited to ${ACTIVITY_HISTORY_EXPORT_MAX_BYTES} UTF-8 bytes.`
+        );
+      }
+      sessions.push({
+        ...exportSession(session),
+        sourceID,
+        bodyMD: body
+      });
+    }
+    return {
+      kind: 'available',
+      document: {
+        version: 1,
+        scope: 'daemon-session-history',
+        source: 'live daemon session index',
+        generatedAt,
+        loadedCount: sessions.length,
+        sessions,
+        historyComplete: true,
+        historyLimit: history.historyLimit
+      }
+    };
+  }
+
   if (typeof bridge.sessionList !== 'function' || typeof bridge.sessionReplay !== 'function') {
     return unavailable(
       'bridge_unavailable',

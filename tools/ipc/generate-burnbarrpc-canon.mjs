@@ -142,6 +142,7 @@ const explicitTypes = {
   "daemon.chat.thread.list": ["BurnBarChatThreadListRequest", "BurnBarChatThreadListResponse"],
   "daemon.chat.thread.get": ["BurnBarChatThreadGetRequest", "BurnBarChatThreadGetResponse"],
   "daemon.chat.message.append": ["BurnBarChatMessageAppendRequest", "BurnBarChatMessageAppendResponse"],
+  "daemon.usage.history": ["BurnBarActivityHistoryRequest", "BurnBarActivityHistoryResponse"],
   "daemon.usage.insights": ["BurnBarUsageInsightsRequest", "BurnBarUsageInsightsResponse"],
   "client.attach": ["BurnBarClientAttachRequest", "BurnBarClientAttachResponse"],
   "client.claimControl": ["BurnBarClientClaimControlRequest", "BurnBarClientArbitrationSnapshot"],

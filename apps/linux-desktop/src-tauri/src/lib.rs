@@ -390,6 +390,7 @@ const DAEMON_SUBSCRIPTION_START_METHOD: &str = "subscription.start";
 const DAEMON_SUBSCRIPTION_RESUME_METHOD: &str = "subscription.resume";
 const DAEMON_SUBSCRIPTION_STOP_METHOD: &str = "subscription.stop";
 const DAEMON_RUN_RESUME_METHOD: &str = "run.resume";
+const DAEMON_USAGE_HISTORY_METHOD: &str = "daemon.usage.history";
 
 static INITIAL_DEEP_LINK_ROUTE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static FORWARDED_ROUTE_QUEUE: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
@@ -3138,6 +3139,17 @@ fn provider_catalog() -> Result<serde_json::Value, String> {
 fn session_list() -> Result<serde_json::Value, String> {
     call_daemon_method(
         "daemon.usage.recent",
+        Some(serde_json::json!({"limit": 500})),
+    )
+}
+
+// Full-history export uses a daemon-owned indexed-conversation snapshot. The
+// response must carry `historyComplete: true`; the renderer never infers it
+// from the bounded recent-usage result.
+#[tauri::command]
+fn session_history() -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        DAEMON_USAGE_HISTORY_METHOD,
         Some(serde_json::json!({"limit": 500})),
     )
 }
@@ -7101,6 +7113,7 @@ pub fn run() {
             usage_summary,
             provider_catalog,
             session_list,
+            session_history,
             session_search,
             session_replay,
             session_resume,
@@ -9141,6 +9154,11 @@ mod tests {
             validated_session_id("bad\u{0000}id".to_string()).unwrap_err(),
             "session_id_invalid"
         );
+    }
+
+    #[test]
+    fn activity_session_history_uses_the_explicit_daemon_history_rpc() {
+        assert_eq!(DAEMON_USAGE_HISTORY_METHOD, "daemon.usage.history");
     }
 
     #[test]

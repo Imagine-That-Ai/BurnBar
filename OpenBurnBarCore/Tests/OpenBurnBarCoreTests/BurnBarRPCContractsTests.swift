@@ -53,6 +53,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .providerModelDisplayNameClear: "daemon.provider.model_display_name.clear",
         .usageRecord: "daemon.usage.record",
         .usageRecent: "daemon.usage.recent",
+        .usageHistory: "daemon.usage.history",
         .usageInsights: "daemon.usage.insights",
         .chatThreadList: "daemon.chat.thread.list",
         .chatThreadGet: "daemon.chat.thread.get",

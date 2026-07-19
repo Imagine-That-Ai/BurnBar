@@ -103,6 +103,18 @@ export type SessionListResult = {
   /** True only when the daemon explicitly says this bounded result is complete. */
   complete?: boolean;
 };
+export type SessionHistoryEntry = SessionEntry & {
+  bodyMD: string;
+};
+export type SessionHistoryResult = {
+  sessions: SessionHistoryEntry[];
+  nextCursor: string | null;
+  /** Derived from the daemon's explicit historyComplete proof and cursor. */
+  complete: boolean;
+  historyComplete: boolean;
+  historyLimit: number;
+  totalCount: number;
+};
 export type SessionReplayResult = {
   kind: string;
   briefingMD?: string;
@@ -1502,6 +1514,8 @@ export interface LinuxShellBridge {
   providerCatalog(): Promise<ProviderCatalog>;
   sessionList(): Promise<SessionListResult>;
   sessionSearch(query: string): Promise<SessionListResult>;
+  /** Optional on older packaged shells; backed by an explicit full-history RPC. */
+  sessionHistory?(): Promise<SessionHistoryResult>;
   /** Optional on older packaged shells; backed by persisted conversation rows. */
   sessionReplay?(sessionID: string): Promise<SessionReplayResult>;
   /** Optional on older packaged shells; launches native or explicit handoff resume. */
@@ -2206,6 +2220,107 @@ function mapSessionList(raw: RawJsonValue): SessionListResult {
 }
 
 const SESSION_BRIEFING_MAX_BYTES = 65_536;
+
+function mapSessionHistory(raw: RawJsonValue): SessionHistoryResult {
+  const source = obj(pick(raw, 'result') ?? raw);
+  const historyComplete = pick(source, 'historyComplete', 'history_complete') === true;
+  const nextCursorValue = pick(source, 'nextCursor', 'next_cursor', 'cursor');
+  const nextCursor =
+    nextCursorValue === undefined || nextCursorValue === null
+      ? null
+      : requireBoundedString(nextCursorValue, 'activity history nextCursor', 256);
+  const historyLimit = requireCount(
+    pick(source, 'historyLimit', 'history_limit'),
+    'activity history historyLimit'
+  );
+  const totalCount = requireCount(
+    pick(source, 'totalCount', 'total_count'),
+    'activity history totalCount'
+  );
+  if (historyLimit < 1 || historyLimit > 500 || totalCount > 100_000) {
+    throw new Error('activity history metadata is outside the supported bounds.');
+  }
+
+  if (!historyComplete) {
+    return {
+      sessions: [],
+      nextCursor,
+      complete: false,
+      historyComplete: false,
+      historyLimit,
+      totalCount
+    };
+  }
+
+  const rows = arr(pick(source, 'sessions'));
+  const sessions = rows.map((row, index): SessionHistoryEntry => {
+    const provider = requireBoundedString(
+      pick(row, 'provider', 'providerID', 'providerId'),
+      `activity history session ${index} provider`,
+      256
+    );
+    const sourceID = requireBoundedString(
+      pick(row, 'sourceID', 'sourceId', 'source_id'),
+      `activity history session ${index} sourceID`,
+      512
+    );
+    const providerSessionID = requireBoundedString(
+      pick(row, 'providerSessionID', 'providerSessionId', 'provider_session_id'),
+      `activity history session ${index} providerSessionID`,
+      512
+    );
+    const tokens = requireCount(
+      pick(row, 'tokens', 'totalTokens', 'tokenCount'),
+      `activity history session ${index} tokens`
+    );
+    const costUsd = num(pick(row, 'costUsd', 'cost', 'estimatedCostUsd'), NaN);
+    if (!Number.isFinite(costUsd) || costUsd < 0) {
+      throw new Error(`activity history session ${index} costUsd must be a non-negative number.`);
+    }
+    const bodyMD = requireBoundedString(
+      pick(row, 'bodyMD', 'body_md', 'briefingMD', 'briefing_md'),
+      `activity history session ${index} bodyMD`,
+      SESSION_BRIEFING_MAX_BYTES
+    );
+    return {
+      id: requireBoundedString(pick(row, 'id'), `activity history session ${index} id`, 512),
+      provider,
+      model: requireBoundedString(
+        pick(row, 'model', 'modelID', 'modelId'),
+        `activity history session ${index} model`,
+        512
+      ),
+      startedAt: requireBoundedString(
+        pick(row, 'startedAt', 'started_at', 'startTime'),
+        `activity history session ${index} startedAt`,
+        128
+      ),
+      tokens,
+      costUsd,
+      title: requireBoundedString(
+        pick(row, 'title', 'summary', 'name'),
+        `activity history session ${index} title`,
+        4_096
+      ),
+      sourceID,
+      providerSessionID,
+      runID: safeSessionIdentity(pick(row, 'runID', 'runId', 'run_id')),
+      projectName: safeSessionIdentity(pick(row, 'projectName', 'project', 'workspaceName', 'workspace')),
+      bodyMD
+    };
+  });
+  if (sessions.length !== totalCount) {
+    throw new Error('activity history complete response does not match totalCount.');
+  }
+  return {
+    sessions,
+    nextCursor,
+    complete: historyComplete && nextCursor === null,
+    historyComplete,
+    historyLimit,
+    totalCount
+  };
+}
 
 function mapSessionReplay(raw: RawJsonValue): SessionReplayResult {
   const source = obj(pick(raw, 'result') ?? raw);
@@ -4867,6 +4982,11 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     sessionList: async () => {
       const raw = await invoke<RawJsonValue>('session_list');
       return mapSessionList(raw);
+    },
+    // P03 — daemon.usage.history → explicit complete-history snapshot
+    sessionHistory: async () => {
+      const raw = await invoke<RawJsonValue>('session_history');
+      return mapSessionHistory(raw);
     },
     // P03 — daemon.search.query → session search
     sessionSearch: async (query) => {

@@ -1372,6 +1372,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.usage.history",
+    "caseName": "usageHistory",
+    "domain": "usage",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarActivityHistoryRequest",
+    "result": "BurnBarActivityHistoryResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.usage.insights",
     "caseName": "usageInsights",
     "domain": "usage",

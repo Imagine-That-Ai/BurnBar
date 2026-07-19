@@ -426,6 +426,68 @@ describe('VAL-RPC-002 bridge behavior', () => {
     });
   });
 
+  it('maps the explicit daemon full-history response and preserves its proof', async () => {
+    invoke.mockResolvedValueOnce({
+      sessions: [{
+        id: 'Codex:history-1',
+        provider: 'Codex',
+        model: 'gpt-5',
+        startedAt: '2026-07-13 12:00:00.000',
+        tokens: 20,
+        costUsd: 0.12,
+        title: 'History row',
+        sourceID: 'Codex:history-1',
+        providerSessionID: 'history-1',
+        projectName: 'BurnBar',
+        bodyMD: '# Persisted body'
+      }],
+      nextCursor: null,
+      historyComplete: true,
+      historyLimit: 500,
+      totalCount: 1
+    });
+    const b = await bridge();
+    await expect(b.sessionHistory?.()).resolves.toEqual({
+      sessions: [{
+        id: 'Codex:history-1',
+        provider: 'Codex',
+        model: 'gpt-5',
+        startedAt: '2026-07-13 12:00:00.000',
+        tokens: 20,
+        costUsd: 0.12,
+        title: 'History row',
+        sourceID: 'Codex:history-1',
+        providerSessionID: 'history-1',
+        projectName: 'BurnBar',
+        bodyMD: '# Persisted body'
+      }],
+      nextCursor: null,
+      complete: true,
+      historyComplete: true,
+      historyLimit: 500,
+      totalCount: 1
+    });
+    expect(invoke).toHaveBeenCalledWith('session_history');
+  });
+
+  it('fails closed when the daemon history proof is false', async () => {
+    invoke.mockResolvedValueOnce({
+      sessions: [],
+      nextCursor: 'more',
+      historyComplete: false,
+      historyLimit: 500,
+      totalCount: 501
+    });
+    const b = await bridge();
+    await expect(b.sessionHistory?.()).resolves.toMatchObject({
+      sessions: [],
+      nextCursor: 'more',
+      complete: false,
+      historyComplete: false,
+      totalCount: 501
+    });
+  });
+
   it('does not synthesize a project from a title-only daemon row', async () => {
     invoke.mockResolvedValueOnce({ projects: [{ title: 'Apollo', path: '/tmp/Apollo' }] });
     const b = await bridge();

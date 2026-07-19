@@ -20,6 +20,32 @@ extension BurnBarDaemonServer {
                 result: BurnBarRecentUsageResponse(usage: usage)
             )
             return encode(response)
+        case .usageHistory:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarActivityHistoryRequest>.self,
+                from: requestData
+            )
+            let limit = min(max(typedRequest.params.limit, 1), 500)
+            let result: BurnBarActivityHistoryResponse
+            if let resumeService {
+                result = try resumeService.activityHistory(
+                    limit: limit,
+                    usage: try await usageRecorder.records()
+                )
+            } else {
+                result = BurnBarActivityHistoryResponse(
+                    sessions: [],
+                    nextCursor: nil,
+                    historyComplete: false,
+                    historyLimit: limit,
+                    totalCount: 0
+                )
+            }
+            return encode(BurnBarRPCResponseEnvelope(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: result
+            ))
         case .usageRecord:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRecordUsageRequest>.self,

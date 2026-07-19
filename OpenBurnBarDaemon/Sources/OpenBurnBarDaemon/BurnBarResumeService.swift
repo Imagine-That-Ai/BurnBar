@@ -19,6 +19,10 @@ private let resumeSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_typ
 // conformance reflects that manual confinement.
 // sendable-allowlist: sqlite-raw-pointer
 final class BurnBarResumeService: @unchecked Sendable {
+    private static let activityHistoryMaxLimit = 500
+    private static let activityHistoryMaxBodyBytes = 65_536
+    private static let activityHistoryMaxTotalBodyBytes = 8 * 1024 * 1024
+
     private struct ConversationRow {
         let id: String
         let provider: String
@@ -197,6 +201,134 @@ final class BurnBarResumeService: @unchecked Sendable {
         }
     }
 
+    /// Returns a daemon-owned snapshot for Activity's full-history export.
+    ///
+    /// The response intentionally carries no partial rows: `historyComplete`
+    /// is true only when the bounded query saw the same number of live rows as
+    /// the count query and every persisted body passed the per-session and
+    /// aggregate size limits. A caller must treat false as unavailable, never
+    /// infer completeness from an empty cursor.
+    func activityHistory(
+        limit: Int,
+        usage: [BurnBarUsageRecord] = []
+    ) throws -> BurnBarActivityHistoryResponse {
+        try queue.sync {
+            let boundedLimit = min(max(limit, 1), Self.activityHistoryMaxLimit)
+            let tombstoneFilter = columnExists("conversations", "deletedAt")
+                ? " AND deletedAt IS NULL"
+                : ""
+            let totalCount = try countConversations(tombstoneFilter: tombstoneFilter)
+            let rows = try fetchConversations(
+                sql: """
+                SELECT * FROM conversations
+                WHERE 1 = 1\(tombstoneFilter)
+                ORDER BY COALESCE(endTime, startTime, indexedAt) DESC, id ASC
+                LIMIT \(boundedLimit + 1)
+                """,
+                args: []
+            )
+
+            guard rows.count == totalCount, rows.count <= boundedLimit else {
+                return BurnBarActivityHistoryResponse(
+                    sessions: [],
+                    nextCursor: totalCount > boundedLimit ? "more" : "changed",
+                    historyComplete: false,
+                    historyLimit: boundedLimit,
+                    totalCount: totalCount
+                )
+            }
+
+            var sessions: [BurnBarActivityHistorySession] = []
+            sessions.reserveCapacity(rows.count)
+            var totalBodyBytes = 0
+            for row in rows {
+                guard let sourceID = nonBlank(row.id),
+                      let providerSessionID = nonBlank(row.sessionID) else {
+                    return BurnBarActivityHistoryResponse(
+                        sessions: [],
+                        nextCursor: "invalid_identity",
+                        historyComplete: false,
+                        historyLimit: boundedLimit,
+                        totalCount: totalCount
+                    )
+                }
+
+                let body = try renderBriefing(conversation: row)
+                let bodyBytes = body.utf8.count
+                totalBodyBytes += bodyBytes
+                guard bodyBytes <= Self.activityHistoryMaxBodyBytes,
+                      totalBodyBytes <= Self.activityHistoryMaxTotalBodyBytes else {
+                    return BurnBarActivityHistoryResponse(
+                        sessions: [],
+                        nextCursor: "body_limit",
+                        historyComplete: false,
+                        historyLimit: boundedLimit,
+                        totalCount: totalCount
+                    )
+                }
+
+                let totals = usageTotals(for: row, records: usage)
+                let startedAt = nonBlank(row.startTime)
+                    ?? nonBlank(row.endTime)
+                    ?? nonBlank(row.indexedAt)
+                    ?? "unknown"
+                let title = nonBlank(row.title) ?? providerSessionID
+                let model = nonBlank(row.summaryModel) ?? totals.model ?? "unknown"
+                sessions.append(BurnBarActivityHistorySession(
+                    id: sourceID,
+                    provider: nonBlank(row.provider) ?? "unknown",
+                    model: model,
+                    startedAt: startedAt,
+                    tokens: totals.tokens,
+                    costUsd: totals.costUsd,
+                    title: title,
+                    sourceID: sourceID,
+                    providerSessionID: providerSessionID,
+                    projectName: nonBlank(row.projectName),
+                    bodyMD: body
+                ))
+            }
+
+            return BurnBarActivityHistoryResponse(
+                sessions: sessions,
+                nextCursor: nil,
+                historyComplete: true,
+                historyLimit: boundedLimit,
+                totalCount: totalCount
+            )
+        }
+    }
+
+    private struct UsageTotals {
+        var tokens = 0
+        var costUsd = 0.0
+        var model: String?
+    }
+
+    private func usageTotals(for row: ConversationRow, records: [BurnBarUsageRecord]) -> UsageTotals {
+        var totals = UsageTotals()
+        for record in records {
+            let event = record.event
+            let matchesSession = event.sessionID == row.sessionID
+            let matchesSource = event.runID?.rawValue == row.id
+            guard matchesSession || matchesSource else { continue }
+            let eventTokens = [event.inputTokens, event.outputTokens, event.reasoningTokens]
+                .reduce(into: 0) { partial, value in
+                    let (sum, overflow) = partial.addingReportingOverflow(max(0, value))
+                    partial = overflow ? Int.max : sum
+                }
+            let (tokenTotal, tokenOverflow) = totals.tokens.addingReportingOverflow(eventTokens)
+            totals.tokens = tokenOverflow ? Int.max : tokenTotal
+            if event.cost.isFinite {
+                totals.costUsd += max(0, event.cost)
+            }
+            if totals.model == nil, let model = nonBlank(event.modelID) {
+                totals.model = model
+            }
+        }
+        return totals
+    }
+
     private func lookupConversation(_ input: String) throws -> ConversationRow? {
         // A tombstoned conversation (cross-device soft-delete) must not be
         // resumable. Append the filter only when the column is present so the
@@ -242,6 +374,15 @@ final class BurnBarResumeService: @unchecked Sendable {
             ))
         }
         return rows
+    }
+
+    private func countConversations(tombstoneFilter: String) throws -> Int {
+        let stmt = try prepare("SELECT COUNT(*) FROM conversations WHERE 1 = 1\(tombstoneFilter)")
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else {
+            throw sqliteError(context: "count conversations")
+        }
+        return max(0, Int(sqlite3_column_int64(stmt, 0)))
     }
 
     private func renderBriefing(conversation: ConversationRow) throws -> String {

@@ -136,6 +136,33 @@ describe('activity export', () => {
     expect(markdown).toContain('Untrusted persisted body');
   });
 
+  it('uses the explicit daemon history snapshot without replaying each session again', async () => {
+    const sessionReplay = vi.fn();
+    const result = await buildDaemonActivityHistoryExport({
+      sessionList: vi.fn(),
+      sessionHistory: async () => ({
+        sessions: [{
+          ...sessions[0]!,
+          sourceID: 'Codex:history-session',
+          providerSessionID: 'history-session',
+          bodyMD: '# Persisted body\n\nComplete history snapshot'
+        }],
+        nextCursor: null,
+        complete: true,
+        historyComplete: true,
+        historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT,
+        totalCount: 1
+      }),
+      sessionReplay
+    });
+
+    expect(result.kind).toBe('available');
+    if (result.kind !== 'available') return;
+    expect(result.document.sessions[0]?.bodyMD).toContain('Complete history snapshot');
+    expect(result.document.historyLimit).toBe(ACTIVITY_HISTORY_EXPORT_LIMIT);
+    expect(sessionReplay).not.toHaveBeenCalled();
+  });
+
   it('round-trips a complete JSON history export with resume identities', async () => {
     const sourceID = 'Codex:session-round-trip';
     const built = await buildDaemonActivityHistoryExport({

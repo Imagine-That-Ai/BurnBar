@@ -54,6 +54,7 @@ enum BurnBarDaemonSocketRPCCoverage {
     static let usage: Set<BurnBarRPCMethod> = [
         .usageRecord,
         .usageRecent,
+        .usageHistory,
         .usageInsights
     ]
 

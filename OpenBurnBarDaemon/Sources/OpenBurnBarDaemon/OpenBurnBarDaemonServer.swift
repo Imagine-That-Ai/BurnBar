@@ -1315,7 +1315,7 @@ public actor BurnBarDaemonServer {
                     message: "Linux privacy RPCs are unavailable on macOS."
                 )
 #endif
-            case .usageRecord, .usageRecent, .usageInsights:
+            case .usageRecord, .usageRecent, .usageHistory, .usageInsights:
                 return try await handleUsageRPC(
                     method: method,
                     decoder: decoder,

@@ -51,6 +51,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.health))
         XCTAssertTrue(profile.permits(.linuxOnboardingSnapshot))
         XCTAssertTrue(profile.permits(.usageRecent))
+        XCTAssertTrue(profile.permits(.usageHistory))
         XCTAssertTrue(profile.permits(.searchQuery))
         XCTAssertTrue(profile.permits(.memoryRecall))
         XCTAssertTrue(profile.permits(.codeSearch))

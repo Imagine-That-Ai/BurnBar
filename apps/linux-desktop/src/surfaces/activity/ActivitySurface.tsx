@@ -108,9 +108,11 @@ export function ActivitySurface() {
 
   const exportActivityHistory = async () => {
     setHistoryExportStatus(null);
-    if (historyExportDisabled || fixtureMode || !bridge || typeof bridge.sessionReplay !== 'function') {
+    const hasHistoryBridge =
+      typeof bridge?.sessionHistory === 'function' || typeof bridge?.sessionReplay === 'function';
+    if (historyExportDisabled || fixtureMode || !bridge || !hasHistoryBridge) {
       setHistoryExportStatus(
-        'Full activity history export is unavailable until the live daemon and persisted session replay are connected.'
+        'Full activity history export is unavailable until the live daemon and complete-history bridge are connected.'
       );
       return;
     }
@@ -356,8 +358,8 @@ export function ActivitySurface() {
               disabled={historyExportDisabled}
               title={
                 historyExportDisabled
-                  ? 'Full history export requires a live daemon with persisted session replay'
-                  : fixtureMode || !bridge?.sessionReplay
+                  ? 'Full history export requires a live daemon with an explicit complete-history bridge'
+                  : fixtureMode || (!bridge?.sessionHistory && !bridge?.sessionReplay)
                     ? 'Full history export is unavailable in fixture or older shells'
                   : 'Export only when the daemon provides an explicit complete-history proof and persisted bodies'
               }

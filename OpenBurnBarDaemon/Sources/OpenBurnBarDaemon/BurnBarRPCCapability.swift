@@ -81,7 +81,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .databaseRecoveryStatus,
              .databaseRecoveryBundleExport, .databaseRecoveryBundleImport:
             return .config
-        case .usageRecord, .usageRecent, .usageInsights,
+        case .usageRecord, .usageRecent, .usageHistory, .usageInsights,
              .proxyRouteLogRecent, .proxyRouteLogClear,
              .quotaSignalsRecent, .perfMeasure:
             return .observability

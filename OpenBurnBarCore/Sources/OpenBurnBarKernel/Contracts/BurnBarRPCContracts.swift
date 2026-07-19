@@ -50,6 +50,7 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case providerModelDisplayNameClear = "daemon.provider.model_display_name.clear"
     case usageRecord = "daemon.usage.record"
     case usageRecent = "daemon.usage.recent"
+    case usageHistory = "daemon.usage.history"
     case usageInsights = "daemon.usage.insights"
     case chatThreadList = "daemon.chat.thread.list"
     case chatThreadGet = "daemon.chat.thread.get"
