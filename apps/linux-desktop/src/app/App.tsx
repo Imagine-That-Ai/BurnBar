@@ -281,7 +281,6 @@ export function App() {
       {/* Keep the fixed backdrop outside the shell stacking context. */}
       <KernelBackdrop skin={skin} kernelId={kernelId} />
       <div className="shell">
-        <div className="shell-key-capture" tabIndex={0} aria-hidden="true" />
         <a
           className="skip-link"
           href="#main"
