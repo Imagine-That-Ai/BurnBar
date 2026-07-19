@@ -29,6 +29,12 @@ fallback with the explicit `WebGL2 unavailable` label. This guest reports
 seven-environment matrix. The prior `5b70a3d320` package remains the historical
 Settings-hydration baseline below.
 
+Packaging hardening `59d49c7d59` also makes an explicit staged
+`OPENBURNBAR_SWIFT_LIB_DIR` authoritative, allowing a Swift-less Linux build
+host to package an already-provisioned runtime. Focused package-payload
+coverage is **11/11**. The installed receipt above predates this packaging-only
+change and is intentionally non-certifying.
+
 The Ubuntu GNOME/X11 UTM guest now runs source candidate `5b70a3d320` from an
 exact rebuilt arm64 DEB. The Settings loading defect found during live QA was
 caused by the packaged route shell deferring the entire Settings surface before

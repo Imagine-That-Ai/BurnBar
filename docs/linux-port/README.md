@@ -17,7 +17,10 @@ Current parity status as of 2026-07-19:
   not a public release. The previous exact `5b70a3d320` package remains the
   historical installed baseline in
   [`evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/).
-  The current code head is `4ca71a859d`; its focused iPad navigation receipt is
+  The latest packaging hardening is `59d49c7d59`: an explicit staged Swift
+  runtime now bypasses the `swift` probe, with focused coverage **11/11**. The
+  VM package receipt predates that packaging-only fix. The focused iPad
+  navigation receipt is
   [`evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json`](evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json).
   The Settings route now mounts and hydrates deterministically: AT-SPI reports
   105 nodes and 50 actionable controls with no `Loading Settings` node; the
