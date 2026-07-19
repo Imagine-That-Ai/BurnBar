@@ -6,7 +6,7 @@ implemented as reviewable infrastructure, not a public availability claim.
 Current parity status as of 2026-07-19:
 
 - **Current source head:** the integration branch now includes source changes
-  through `66b280162f`. It passes 90 frontend files /
+  through `b4cd3e8b8b`. It passes 90 frontend files /
   851 tests, TypeScript, production bundle verification, Tauri Rust 129/129,
   package-payload contract checks (2 pass, 2 historical skips), and product
   validators 12/12. `1130524331` recovers a visible 2D backdrop after
@@ -48,14 +48,14 @@ Current parity status as of 2026-07-19:
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is unsigned
   and non-certifying. The latest exact implementation receipt includes the
   post-unlock visible/animated packaged-shell capture and is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-534d7aae65-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-534d7aae65-postinstall-2026-07-19.json).
-  The preceding `872074af3a` and `ded781e94d` receipts remain historical
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json).
+  The preceding `534d7aae65`, `872074af3a`, and `ded781e94d` receipts remain historical
   visible-shell evidence.
   The strict ledger remains **0/40 product rows and 0/7 environment receipts**.
 
-- **Latest live VM candidate:** the exact `534d7aae65` ARM64 DEB is installed in
+- **Latest live VM candidate:** the exact `b4cd3e8b8b` ARM64 DEB is installed in
   the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its non-certifying receipt is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-534d7aae65-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-534d7aae65-postinstall-2026-07-19.json).
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json).
   Daemon/CLI health is green and the desktop window exists at `/usr/bin`. A
   clean launch in the unlocked GNOME session rendered the first-run
   Secret Service / SQLCipher setup card and Fluid Aurora 2D fallback. Two

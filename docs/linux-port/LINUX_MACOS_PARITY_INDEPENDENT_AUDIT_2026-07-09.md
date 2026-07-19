@@ -6,8 +6,8 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh; `465431d0fc` hardens startup forwarding; `7ac2e021c9` makes Browser Computer Use capability checks fail closed; `c0a725447d` adds a trusted embedded autostart fallback; `447abb0564` fences stale Mercury capability responses; `9e868e60a7` refreshes tray state periodically; `3e7ede75e3` bounds expired browser authorization polling; `ebab7da744` fences stale concurrent update/version checks; `534d7aae65` completes overflow-menu keyboard/focus behavior; `519f0456a7` adds a packaged-shell reconnect action for degraded daemon health; `811d84172a` queues native notification actions until renderer bootstrap completes; and `66b280162f` fixes the Linux-only AppHandle ownership path caught by the ARM64 build. Source-only checks are green at 851/851 frontend tests and 129/129 Rust tests; the current-head package build is now being retried. |
-| Latest VM proof | The exact `534d7aae65` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-current-534d7aae65-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-534d7aae65-postinstall-2026-07-19.json). Daemon/CLI health is green and a clean unlocked GNOME launch renders the first-run setup surface and Fluid Aurora 2D fallback. Two captures two seconds apart differ in 453,846 pixels. |
+| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh; `465431d0fc` hardens startup forwarding; `7ac2e021c9` makes Browser Computer Use capability checks fail closed; `c0a725447d` adds a trusted embedded autostart fallback; `447abb0564` fences stale Mercury capability responses; `9e868e60a7` refreshes tray state periodically; `3e7ede75e3` bounds expired browser authorization polling; `ebab7da744` fences stale concurrent update/version checks; `534d7aae65` completes overflow-menu keyboard/focus behavior; `519f0456a7` adds a packaged-shell reconnect action for degraded daemon health; `811d84172a` queues native notification actions until renderer bootstrap completes; and `66b280162f` fixes the Linux-only AppHandle ownership path caught by the ARM64 build. Source-only checks are green at 851/851 frontend tests and 129/129 Rust tests; the exact current-source ARM64 package is now built, installed, and smoke-verified. |
+| Latest VM proof | The exact `b4cd3e8b8b` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json). Daemon/CLI health is green and a clean unlocked GNOME active-window capture renders the first-run setup surface and animated Fluid Aurora 2D fallback. Two captures two seconds apart differ in 570,365 pixels. |
 | Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
@@ -15,10 +15,8 @@
 ## Current Source Checkpoint — 2026-07-19
 
 The current integration branch includes source changes through
-`66b280162f`; the latest installed package is still bound to the earlier
-source checkpoint `534d7aae65` because the two newest source fixes have not yet
-been packaged in the UTM guest. This is a source and build checkpoint, not a
-promotion claim:
+`b4cd3e8b8b`; the latest installed package is bound to that exact source head.
+This is a source and build checkpoint, not a promotion claim:
 
 - `1130524331` immediately reveals a visible 2D backdrop when a WebGL context
   is lost while the window is backgrounded, then retries the requested kernel
@@ -76,10 +74,10 @@ promotion claim:
 - The ARM64 VM validated the supported Swift-less staged-payload path with
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`; the exact implementation package
   is installed and captured separately in
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-534d7aae65-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-534d7aae65-postinstall-2026-07-19.json);
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json);
   it remains unsigned and non-certifying. The initial blank/locked-era process
-  was superseded by the clean unlocked exact-head launch recorded in the new
-  receipt.
+  was superseded by the clean unlocked exact-head active-window launch recorded
+  in that receipt.
 
 The strict certification ledger remains **0/40 product rows** and **0/7
 environment receipts**. The remaining blockers are signed exact-head artifacts,
