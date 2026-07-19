@@ -5,13 +5,16 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-18:
 
-- The current documentation head is `6c4e809e7aacc1646c9cc8c28d9510e2e100ece1`.
+- The current documentation head is `5cff4281ec`.
   The latest behavioral evidence is bound to implementation checkpoint
   `1dced585af2441ac8ac1d4fdcb2e4666177f0474`, which adds the
   startup/deep-link measurement boundary that keeps synthetic startup routing
   out of user-navigation performance receipts. The Release and Nightly
   receipts below are therefore evidence for that implementation checkpoint,
   not a claim that the docs-only head has a new candidate artifact.
+- The physical-device runner now accepts either the CoreDevice identifier from
+  `devicectl` or the hardware UDID required by Xcode, with deterministic
+  missing/ambiguous-device failures (`5cff4281ec`).
 
 - Current-head Release Candidate `29664085758` produced signed x86_64/aarch64
   candidate `0.1.1` and passed package, daemon, desktop, tray, accessibility,

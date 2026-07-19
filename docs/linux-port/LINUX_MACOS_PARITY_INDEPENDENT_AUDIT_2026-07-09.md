@@ -103,6 +103,12 @@ percentage. The active remediation stack now contains these reviewable slices:
 - **UTM:** live `utmctl list` now reports the OpenBurnBar Linux guest as
   started. No VM was modified during this recheck; the historical stale
   `/usr/local` launcher diagnosis remains an open repair gate.
+- **iPad runner correction:** `5cff4281ec` makes the mobile test driver accept
+  either the CoreDevice identifier shown by `devicectl` or the hardware UDID
+  required by Xcode. Deterministic tests cover successful mapping, an already
+  hardware-shaped UDID, missing devices, and ambiguous mappings. This fixes
+  destination selection; it does not substitute for executing the focused
+  physical approval XCTest.
 - **Product evidence infrastructure:** the product-parity workflow is absent
   from `main`, and the repository has zero registered self-hosted runners.
   The strict product validator cannot produce the required P-01 through P-40

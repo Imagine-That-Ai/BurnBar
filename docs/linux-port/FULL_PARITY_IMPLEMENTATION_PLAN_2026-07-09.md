@@ -607,6 +607,11 @@ has not been modified. The product-parity workflow is not yet on `main`, and
 GitHub has no registered self-hosted runners for the seven required Linux
 environment labels.
 
+The mobile runner correction in `5cff4281ec` accepts both CoreDevice and
+hardware-UDID forms, fails closed for missing or ambiguous mappings, and is
+covered by deterministic shell tests. It removes destination-format ambiguity
+but does not count as physical approval execution.
+
 1. Provision the dedicated Google Desktop OAuth client.
 2. Set and validate the remaining `OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID`; the
    `OPENBURNBAR_FIREBASE_API_KEY` and
