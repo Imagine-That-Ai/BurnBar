@@ -173,15 +173,30 @@ impl MediaViewer {
     }
 
     pub fn close_window(&self) {
-        if let Ok(mut inner) = self.inner.lock() {
+        #[cfg(feature = "media-gst")]
+        let decoder = {
+            let Ok(mut inner) = self.inner.lock() else {
+                return;
+            };
             inner.open = false;
-            #[cfg(feature = "media-gst")]
-            {
-                if let Some(decoder) = inner.decoder.take() {
-                    let _ = decoder.stop();
-                }
-                inner.awaiting_keyframe = true;
-            }
+            inner.awaiting_keyframe = true;
+            inner.decoder.take()
+        };
+
+        #[cfg(not(feature = "media-gst"))]
+        {
+            let Ok(mut inner) = self.inner.lock() else {
+                return;
+            };
+            inner.open = false;
+        }
+
+        // Native sink teardown can wait on the compositor. Do it after the
+        // state transition so a concurrent frame/reconnect path never waits
+        // behind GStreamer while holding the viewer mutex.
+        #[cfg(feature = "media-gst")]
+        if let Some(decoder) = decoder {
+            let _ = decoder.stop();
         }
     }
 
@@ -544,5 +559,33 @@ mod tests {
             inner.awaiting_keyframe,
             "recreated decoder must wait for a valid keyframe"
         );
+    }
+
+    #[test]
+    #[cfg(feature = "media-gst")]
+    fn close_window_detaches_decoder_and_rearms_stream() {
+        let viewer = super::MediaViewer::new();
+        {
+            let mut inner = viewer.inner.lock().expect("viewer lock");
+            inner.open = true;
+            inner.awaiting_keyframe = false;
+            inner.decoder = Some(
+                openburnbar_media::DecodePipeline::new(
+                    "vp9",
+                    openburnbar_media::DecodeSinkMode::Fake,
+                )
+                .expect("fake decoder"),
+            );
+        }
+
+        // close_window must publish the detached state before waiting for
+        // GStreamer teardown, so a reconnect cannot observe a live viewer
+        // with an already-stopped decoder.
+        viewer.close_window();
+
+        let inner = viewer.inner.lock().expect("viewer lock");
+        assert!(!inner.open);
+        assert!(inner.decoder.is_none());
+        assert!(inner.awaiting_keyframe);
     }
 }
