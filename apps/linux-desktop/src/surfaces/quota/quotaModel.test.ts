@@ -51,4 +51,36 @@ describe('quotaModel', () => {
     expect(ids).not.toContain('google');
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  it('explains preferred account routing and quota-drain fallback', () => {
+    const entries = buildSubscriptionEntries([{
+      id: 'anthropic',
+      label: 'Anthropic',
+      accountLabel: 'Team',
+      preferredCredentialSlotID: 'team',
+      credentialSlots: [
+        { slotID: 'team', label: 'Team', isEnabled: true, status: 'ready', lastQuotaRemainingPercent: 72 },
+        { slotID: 'backup', label: 'Backup', isEnabled: true, status: 'ready', lastQuotaRemainingPercent: 95 }
+      ],
+      quotaBuckets: [{ id: 'five-hour', label: '5h', usedPct: 28, state: 'ok' }]
+    }]);
+    expect(entries[0]?.routing).toMatchObject({ mode: 'preferred', activeSlotLabel: 'Team', eligibleSlotCount: 2, slotCount: 2 });
+    expect(entries[0]?.routing.detail).toMatch(/drain to another eligible account/);
+  });
+
+  it('falls back to automatic routing when the preferred slot is exhausted', () => {
+    const entries = buildSubscriptionEntries([{
+      id: 'openai',
+      label: 'OpenAI',
+      accountLabel: 'Primary',
+      preferredCredentialSlotID: 'primary',
+      credentialSlots: [
+        { slotID: 'primary', label: 'Primary', isEnabled: true, status: 'ready', lastQuotaRemainingPercent: 0 },
+        { slotID: 'backup', label: 'Backup', isEnabled: true, status: 'ready', lastQuotaRemainingPercent: 80 }
+      ],
+      quotaBuckets: [{ id: 'requests', label: 'Requests', usedPct: 20, state: 'ok' }]
+    }]);
+    expect(entries[0]?.routing).toMatchObject({ mode: 'automatic', preferredSlotLabel: 'Primary', eligibleSlotCount: 1 });
+    expect(entries[0]?.routing.detail).toMatch(/Preferred account Primary is unavailable/);
+  });
 });

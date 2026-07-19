@@ -89,6 +89,14 @@ describe('ProvidersSurface (quota workspace)', () => {
     await waitFor(() => expect(screen.queryByText(/Focused on/i)).toBeNull());
   });
 
+  it('opens provider settings from a quota card Manage action', async () => {
+    useShellStore.setState({ fixtureMode: true });
+    render(<ProvidersSurface />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Manage →' }).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Manage →' })[0]!);
+    expect(useShellStore.getState().route).toBe('settings');
+  });
+
   it('shows offline notice without bridge or fixture', async () => {
     const { container } = render(<ProvidersSurface />);
     await waitFor(() => {

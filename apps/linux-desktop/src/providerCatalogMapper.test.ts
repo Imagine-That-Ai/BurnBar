@@ -35,6 +35,9 @@ describe('mapProviderCatalog', () => {
       catalogAvailable: true,
       failover: { mode: 'exactModelOnly', eligible: true }
     });
+    expect(mapped[0]?.credentialSlots).toEqual([
+      expect.objectContaining({ slotID: 'team', label: 'Team', status: 'ready' })
+    ]);
     expect(mapped[0]?.models?.[0]).toMatchObject({
       id: 'gpt-5.5',
       label: 'GPT-5.5',
@@ -109,5 +112,25 @@ describe('mapProviderCatalog', () => {
     expect(mapped[0]).toMatchObject({ id: 'openai', label: 'openai', health: 'unavailable' });
     expect(JSON.stringify(mapped)).not.toContain('sk-secret');
     expect(JSON.stringify(mapped)).not.toContain('Provider 1');
+  });
+
+  it('uses the preferred enabled slot as the quota account label and keeps slot metadata redacted', () => {
+    const mapped = mapProviderCatalog({
+      snapshot: {
+        providers: [{
+          providerID: 'anthropic',
+          isEnabled: true,
+          preferredCredentialSlotID: 'backup',
+          credentialSlots: [
+            { slotID: 'team', label: 'Team', isEnabled: true, status: 'ready', apiKey: 'sk-team' },
+            { slotID: 'backup', label: 'Backup', isEnabled: true, status: 'ready', apiKey: 'sk-backup' }
+          ]
+        }]
+      }
+    });
+    expect(mapped[0]).toMatchObject({ accountLabel: 'Backup', preferredCredentialSlotID: 'backup' });
+    expect(mapped[0]?.credentialSlots?.map((slot) => slot.slotID)).toEqual(['team', 'backup']);
+    expect(JSON.stringify(mapped)).not.toContain('sk-team');
+    expect(JSON.stringify(mapped)).not.toContain('sk-backup');
   });
 });

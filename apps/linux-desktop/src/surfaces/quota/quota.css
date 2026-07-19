@@ -266,6 +266,26 @@
   font-size: 0.82rem;
 }
 
+.quota-card-routing {
+  display: grid;
+  gap: 2px;
+  margin: var(--space-1) 0 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--color-text-mute);
+}
+
+.quota-card-routing strong {
+  color: var(--color-text);
+  font-size: 0.64rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.quota-card-routing[data-routing='unavailable'] strong {
+  color: var(--color-tier-error-readable);
+}
+
 .quota-card-badges,
 .quota-card-title-row {
   display: flex;
@@ -435,6 +455,10 @@
   border-radius: var(--radius-md);
   border: 1px solid var(--color-glass-line);
   background: color-mix(in srgb, var(--color-glass-bg-elevated) 45%, transparent);
+}
+
+.quota-list-manage {
+  justify-self: start;
 }
 
 .quota-list-pct {

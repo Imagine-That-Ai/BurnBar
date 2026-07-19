@@ -35,6 +35,10 @@ export type ProviderCatalogEntry = {
   label: string;
   accountLabel: string;
   quotaBuckets: QuotaBucket[];
+  /** Redacted credential-slot metadata used to explain account routing. */
+  credentialSlots?: ProviderCredentialSlot[];
+  /** Daemon preference; quota pressure may still drain to another eligible slot. */
+  preferredCredentialSlotID?: string;
   /** Canonical daemon catalog models; empty means no model catalog was proven. */
   models?: ProviderCatalogModel[];
   /** Provider capabilities are daemon-advertised, never inferred from a logo. */
@@ -2060,7 +2064,16 @@ export function mapProviderCatalog(raw: RawJsonValue): ProviderCatalog {
     ));
     const label = str(pick(provider, 'label', 'displayName', 'name')).trim() || str(pick(catalogProvider, 'displayName', 'label', 'name')).trim() || providerID;
     const slots = arr(pick(provider, 'credentialSlots', 'credentials', 'accounts'));
-    const accountLabel = str(pick(provider, 'accountLabel', 'account')).trim() || str(pick(slots[0], 'label', 'name')).trim() || (provider ? 'Not configured' : 'Catalog only');
+    const credentialSlots = slots.map((slot, index) => mapCredentialSlot(slot, index));
+    const preferredCredentialSlotID = str(pick(provider, 'preferredCredentialSlotID', 'preferredCredentialSlotId')).trim() || undefined;
+    const preferredSlot = preferredCredentialSlotID
+      ? credentialSlots.find((slot) => slot.slotID === preferredCredentialSlotID)
+      : undefined;
+    const accountLabel = str(pick(provider, 'accountLabel', 'account')).trim()
+      || preferredSlot?.label
+      || credentialSlots.find((slot) => slot.isEnabled)?.label
+      || credentialSlots[0]?.label
+      || (provider ? 'Not configured' : 'Catalog only');
     const capabilities = arr(pick(catalogProvider, 'capabilities', 'features')).map((value) => str(value).trim()).filter(Boolean).slice(0, 32);
     const provenance: ProviderCatalogProvenance = catalogProvider && provider
       ? 'daemon-catalog+daemon-config'
@@ -2074,6 +2087,8 @@ export function mapProviderCatalog(raw: RawJsonValue): ProviderCatalog {
       label,
       accountLabel,
       quotaBuckets: mapQuotaBuckets(provider ?? catalogProvider),
+      credentialSlots,
+      preferredCredentialSlotID,
       models,
       capabilities,
       health,

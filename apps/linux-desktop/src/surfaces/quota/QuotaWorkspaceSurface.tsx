@@ -24,6 +24,7 @@ import './quota.css';
 
 export function QuotaWorkspaceSurface() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
+  const setRoute = useShellStore((s) => s.setRoute);
   const bridge = useShellStore((s) => s.bridge);
   const status = useDaemonStatusCopy();
   const catalog = useProvidersStore((s) => s.catalog);
@@ -160,13 +161,13 @@ export function QuotaWorkspaceSurface() {
           ) : prefs.viewMode === 'list' ? (
             <div className="quota-list" role="list">
               {displayedEntries.map((entry) => (
-                <QuotaListRow key={entry.id} entry={entry} />
+                <QuotaListRow key={entry.id} entry={entry} onManage={() => setRoute('settings')} />
               ))}
             </div>
           ) : (
             <div className="quota-card-grid">
               {displayedEntries.map((entry) => (
-                <QuotaCard key={entry.id} entry={entry} />
+                <QuotaCard key={entry.id} entry={entry} onManage={() => setRoute('settings')} />
               ))}
             </div>
           )}
