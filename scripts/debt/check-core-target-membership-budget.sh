@@ -47,6 +47,7 @@ const mainTarget = "OpenBurnBarCore";
 const siblingTargets = [
   "OpenBurnBarDomainCoreRuntime",
   "OpenBurnBarKernel",
+  "OpenBurnBarParserSupport",
   "OpenBurnBarSQLiteReader",
   "OpenBurnBarLogParsers",
   "OpenBurnBarQuota",
@@ -124,6 +125,7 @@ const PLANNED_CEILINGS = {
   // generic shadow selector without allowing domain business logic to move in.
   OpenBurnBarDomainCoreRuntime: { maxFiles: 8, maxLines: 1000 },
   OpenBurnBarKernel: { maxFiles: 185, maxLines: 46250 },
+  OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1000 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
   OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 11800 },
   OpenBurnBarQuota: { maxFiles: 55, maxLines: 13000 },

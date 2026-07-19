@@ -5,24 +5,6 @@ import Darwin
 #endif
 
 // MARK: - Parser Resource Governance
-//
-// Usage-refresh parsers scan user-controlled log corpora that can be
-// arbitrarily large (a machine running many agent lanes accumulates tens of
-// gigabytes of JSONL under ~/.codex and ~/.claude). A single ungoverned pass
-// over such a corpus is what took the whole machine down on 2026-07-16:
-// 25.4GB of process footprint and 80+ minutes of CPU inside one refresh tick.
-//
-// The governor gives every parse pass two independent bounds:
-//
-//  * a **byte budget** — how many bytes of *new file content* one pass may
-//    read. Files beyond the budget are deferred to the next tick (parsers
-//    fall back to their cached/estimated values), so a cold cache converges
-//    over several ticks instead of one unbounded pass;
-//  * a **memory ceiling** — a hard cap on process physical footprint.
-//    Crossing it aborts the pass with `ParserResourceExceeded.memoryCeiling`,
-//    which callers surface as parser health. This is defense in depth: even
-//    if a future parser regresses, it cannot take the machine into swap
-//    death again.
 
 /// Limits for one governed parse pass. `nil` fields are unenforced.
 public struct ParserResourceLimits: Sendable {

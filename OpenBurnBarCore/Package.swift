@@ -1000,8 +1000,12 @@ let firstPartyTargetsBase: [Target] = [
             exclude: openBurnBarSQLiteReaderExcludes
         ),
         .target(
+            name: "OpenBurnBarParserSupport",
+            dependencies: ["OpenBurnBarKernel"]
+        ),
+        .target(
             name: "OpenBurnBarLogParsers",
-            dependencies: ["OpenBurnBarKernel", "OpenBurnBarSQLiteReader"]
+            dependencies: ["OpenBurnBarKernel", "OpenBurnBarSQLiteReader", "OpenBurnBarParserSupport"]
                 + domainCoreDependencies,
             exclude: openBurnBarLogParsersExcludes
         ),
