@@ -34,14 +34,14 @@ Current parity status as of 2026-07-19:
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is unsigned
   and non-certifying. The latest exact implementation receipt includes the
   post-unlock visible/animated packaged-shell capture and is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json).
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-e7613adf8d-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e7613adf8d-postinstall-2026-07-19.json).
   The preceding `872074af3a` and `ded781e94d` receipts remain historical
   visible-shell evidence.
   The strict ledger remains **0/40 product rows and 0/7 environment receipts**.
 
-- **Latest live VM candidate:** the exact `e4f3109ca8` ARM64 DEB is installed in
+- **Latest live VM candidate:** the exact `e7613adf8d` ARM64 DEB is installed in
   the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its non-certifying receipt is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json).
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-e7613adf8d-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e7613adf8d-postinstall-2026-07-19.json).
   Daemon/CLI health is green and the desktop window exists at `/usr/bin`. A
   clean launch in the unlocked GNOME session rendered the first-run
   Secret Service / SQLCipher setup card and Fluid Aurora 2D fallback. Two
