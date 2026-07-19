@@ -33,7 +33,7 @@ as typed failures; focused source tests cover timeout, exit status, and a
 successful parse. These changes improve behavior and reliability but do not
 create installed Linux receipts or change the strict 0/40 and 0/7 ledger.
 The current Linux desktop regression run at this candidate head passed **82
-files / 745 tests**; the TypeScript check and production bundle verifier also
+files / 748 tests**; the TypeScript check and production bundle verifier also
 passed.
 
 Additional source hardening is now on the candidate head: `c095761b07` binds

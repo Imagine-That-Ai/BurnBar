@@ -31,7 +31,7 @@ cannot execute them because the package runner lacks `SQLCipher.framework`.
 Neither slice changes the strict **0/40 product** or **0/7 environment**
 certification state; installed Linux and live cross-device receipts remain the
 next gate. The complete Linux desktop regression run at this head passed **82
-files / 745 tests**, with TypeScript and the production bundle verifier green.
+files / 748 tests**, with TypeScript and the production bundle verifier green.
 The same candidate also carries `c095761b07` (first-party release-path checks
 for signed feed URLs, 19 Rust tests), `50a0684e75` (fail-closed onboarding
 symlink protection), and `a5522bfc54` (bounded JSON history import/resume with
