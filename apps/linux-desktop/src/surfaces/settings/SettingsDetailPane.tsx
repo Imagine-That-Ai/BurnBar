@@ -36,6 +36,7 @@ import { SettingRow } from './SettingRow.js';
 import { RecoveryAndRestoreControl } from './RecoveryAndRestoreControl.js';
 import { SettingsHomeView } from './SettingsHomeView.js';
 import { SettingsAppearanceControls } from './SettingsAppearanceControls.js';
+import { DashboardDefaultsControls, IndexingSummaryControl } from './GeneralSettingsControls.js';
 import { SettingsDrillRow } from './SettingsDrillRow.js';
 import { settingsTabMeta, type SettingsTabId } from './settingsTabs.js';
 import { fixtureAccountStatus } from '../../daemonFixture.js';
@@ -1574,8 +1575,21 @@ export function SettingsDetailPane({
             <SettingGroup title="Appearance" sectionHeader hideTitle>
               <SettingsAppearanceControls />
             </SettingGroup>
+            <SettingGroup title="Dashboard defaults" sectionHeader hideTitle>
+              <DashboardDefaultsControls />
+            </SettingGroup>
             <SettingGroup title="Data refresh" sectionHeader hideTitle>
               <ConfigRefreshRow onRefresh={onRefreshConfig} busy={refreshBusy} />
+            </SettingGroup>
+            <SettingGroup title="Search & summaries" sectionHeader hideTitle>
+              <IndexingSummaryControl onOpenDatabase={onOpenDatabase} />
+              <SettingRow
+                iconGlyph="▤"
+                label="Session summaries"
+                description="Automatic transcript summaries require the macOS summary worker; Linux keeps this control read-only until a daemon contract exists."
+                control={<span className="muted" role="status">Unavailable</span>}
+                readOnlyNote="No Linux summary-generation setting or RPC is exposed; no summaries are generated from this pane."
+              />
             </SettingGroup>
             <SettingGroup title="First-run setup" sectionHeader hideTitle>
               <p className="muted settings-tab-lede">
