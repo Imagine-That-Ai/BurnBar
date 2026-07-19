@@ -13,8 +13,10 @@ Current parity status as of 2026-07-19:
   `2a19ac301a` adds the Support performance empty state. The ARM VM also passed
   the supported Swift-less staged-payload `pretauri:build`/`tauri:build` path via
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is still an
-  older unsigned, non-certifying candidate, and the strict ledger remains
-  **0/40 product rows and 0/7 environment receipts**.
+  older unsigned, non-certifying candidate. The rebuilt exact implementation
+  receipt is
+  [`evidence/parity-audit-2026-07-10/linux-arm64-exact-implementation-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-exact-implementation-2026-07-19.json).
+  The strict ledger remains **0/40 product rows and 0/7 environment receipts**.
 
 - **Latest live VM candidate:** a local ARM64 DEB built from the current parity
   branch is now installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its

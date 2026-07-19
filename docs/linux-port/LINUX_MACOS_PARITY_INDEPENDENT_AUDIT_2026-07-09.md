@@ -30,6 +30,9 @@ checkpoint, not a promotion claim:
 - The ARM64 VM validated the supported Swift-less staged-payload path with
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`; the installed DEB is still an
   earlier non-certifying candidate and has not been relabeled as exact-head.
+  The exact implementation package is now installed and captured separately in
+  [`evidence/parity-audit-2026-07-10/linux-arm64-exact-implementation-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-exact-implementation-2026-07-19.json);
+  it remains unsigned and non-certifying.
 
 The strict certification ledger remains **0/40 product rows** and **0/7
 environment receipts**. The remaining blockers are signed exact-head artifacts,

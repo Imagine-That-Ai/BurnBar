@@ -1,0 +1,63 @@
+{
+  "schema": "openburnbar.parity.linux-installed-runtime-receipt.v1",
+  "capturedAt": "2026-07-19T17:51:00Z",
+  "certificationScope": "non-certifying exact implementation ARM64 package and live VM smoke receipt",
+  "sourceCommit": "804ced4523",
+  "sourceDescription": "Implementation head synced into the Ubuntu guest before the Swift-less staged-payload build and DEB install",
+  "environment": {
+    "guest": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11",
+    "display": ":0",
+    "vmAddress": "192.168.64.5",
+    "webgl2": false,
+    "webgl1": true,
+    "webkitNote": "WebKitGTK reports the GBM WebGL2 path unavailable; the app uses its animated Canvas2D fallback"
+  },
+  "package": {
+    "name": "open-burn-bar",
+    "version": "0.1.1",
+    "architecture": "arm64",
+    "archiveBytes": 151375064,
+    "archiveSha256": "ee0d58e320b2df6a36982ea73a599567b94df66d4c10f297356f0c77cda9d987",
+    "desktopSha256": "97c2ae9a894959ee5e1006885c4f042ca23a7001d4178ab46b738c8337d7247f",
+    "daemonSha256": "fb0f87ccc0638f84c2ba9f2a34ca97f8cec707534a5473f19bf6f317291c480c",
+    "cliSha256": "db0d6931ca8644a91f78ee3dccac27364bab5a373e63917a53915cf836e180e5",
+    "signed": false,
+    "publicFeed": false
+  },
+  "runtime": {
+    "daemonService": "active",
+    "daemonHealth": {
+      "ok": true,
+      "protocolVersion": 1,
+      "daemonVersion": "1.0.29",
+      "socketPath": "/run/user/1000/openburnbar/daemon.sock"
+    },
+    "installedDesktopPid": 182130
+  },
+  "backdrop": {
+    "requestedKernel": "fluid-aurora",
+    "resolvedSubstrate": "2d",
+    "resolutionLabel": "Fluid Aurora - 2D fallback (WebGL2 unavailable)",
+    "captureIntervalSeconds": 2,
+    "captureASha256": "2f504f46b52aeeb1647051018f752a13fe95e2b323f4321b9ef6168a635f29d1",
+    "captureBSha256": "f847ad57d7e536d8f4ee3b3f596942a02c37098af9e92c95957571d7c12ceafc",
+    "animated": true,
+    "backgroundRecovery": "Current exact implementation package remained visibly rendered while the VM app was backgrounded in the desktop session"
+  },
+  "onboarding": {
+    "daemonVerifyAction": "passed",
+    "advancedToStep": 2
+  },
+  "limitations": [
+    "The package is locally built and unsigned; it is not release provenance evidence.",
+    "This guest does not certify WebGL2-only kernels, KDE/Wayland/wlroots, x86_64, or cross-device workflows.",
+    "The strict ledger remains 0/40 product requirements and 0/7 environment receipts."
+  ],
+  "strictLedger": {
+    "productRequirementsReady": "0/40",
+    "environmentReceiptsComplete": "0/7",
+    "productParityClaim": false
+  }
+}

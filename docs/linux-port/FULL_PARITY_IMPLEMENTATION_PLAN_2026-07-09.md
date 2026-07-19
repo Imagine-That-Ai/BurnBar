@@ -29,8 +29,12 @@ Support performance empty state (`2a19ac301a`). `804ced4523` also provides a
 read-only staged-payload validation path so a Swift-less ARM host can use the
 normal `pretauri:build`/`tauri:build` flow without probing for a local Swift
 toolchain. The UTM guest passed that path, but its installed package remains an
-older unsigned/non-certifying candidate. These changes improve the engineering
-baseline; they do not close the strict 0/40 product and 0/7 environment gates.
+older unsigned/non-certifying candidate. The implementation package has since
+been rebuilt and installed from the synced `804ced4523` source wave; the
+non-certifying receipt is
+`evidence/parity-audit-2026-07-10/linux-arm64-exact-implementation-2026-07-19.json`.
+These changes improve the engineering baseline; they do not close the strict
+0/40 product and 0/7 environment gates.
 
 ### Latest installed checkpoint — 2026-07-19 UTC
 
