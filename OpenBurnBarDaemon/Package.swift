@@ -134,6 +134,25 @@ if let mediaLibrary = linuxMediaCaptureLibraryIfPresent() {
 } else {
     daemonSwiftSettings.append(.define("OPENBURNBAR_MEDIA_CAPTURE_UNAVAILABLE"))
 }
+
+// The Linux package carries the FTS5-enabled SQLCipher runtime as
+// `libsqlcipher.so.0`. When a release build supplies that staged directory,
+// link the exact file instead of allowing pkg-config to select a distro
+// `libsqlcipher.so.1` that may omit FTS5. The explicit path also gives the
+// final executable the packaged SONAME and keeps runtime behavior aligned with
+// the native library copied into deb/rpm/AppImage payloads.
+if let configuredSQLCipherDirectory = ProcessInfo.processInfo.environment["OPENBURNBAR_SQLCIPHER_LIB_DIR"],
+   configuredSQLCipherDirectory.isEmpty == false {
+    let sqlcipherLibrary = URL(fileURLWithPath: configuredSQLCipherDirectory)
+        .appendingPathComponent("libsqlcipher.so.0")
+        .standardizedFileURL
+    if FileManager.default.fileExists(atPath: sqlcipherLibrary.path) {
+        daemonLinkerSettings.append(.unsafeFlags([sqlcipherLibrary.path]))
+        daemonLinkerSettings.append(.unsafeFlags([
+            "-Xlinker", "-rpath", "-Xlinker", configuredSQLCipherDirectory
+        ]))
+    }
+}
 linuxSupportTargets.append(
     .systemLibrary(
         name: "COpenBurnBarMediaCapture",

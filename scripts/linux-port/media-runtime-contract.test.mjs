@@ -14,6 +14,12 @@ test('release builds ship the GStreamer Mercury viewer contract', () => {
   assert.match(releaseBuilder, /OPENBURNBAR_MEDIA_CAPTURE_LIBRARY_DIR/);
   assert.match(releaseBuilder, /OPENBURNBAR_MEDIA_CAPTURE_RELEASE/);
   assert.match(releaseBuilder, /libopenburnbar_media\.so/);
+  assert.match(releaseBuilder, /OPENBURNBAR_SQLCIPHER_LIB_DIR/);
+  assert.match(releaseBuilder, /OPENBURNBAR_SQLCIPHER_PREFIX/);
+
+  const daemonManifest = read('OpenBurnBarDaemon/Package.swift');
+  assert.match(daemonManifest, /OPENBURNBAR_SQLCIPHER_LIB_DIR/);
+  assert.match(daemonManifest, /libsqlcipher\.so\.0/);
 
   const dockerfile = read('tools/linux-toolchain/Dockerfile');
   for (const packageName of [

@@ -87,6 +87,15 @@ const cargoBuildJobs = process.env.OPENBURNBAR_LINUX_CARGO_BUILD_JOBS?.trim() ||
 const irohCargoBuildJobs = process.env.OPENBURNBAR_LINUX_IROH_BUILD_JOBS?.trim() || '1';
 const swiftBuildJobs = process.env.OPENBURNBAR_LINUX_SWIFT_BUILD_JOBS?.trim() || '4';
 const packageBuildEnv = withoutLinuxReleasePrivateKey(process.env);
+const sqlcipherLibraryDirectory = process.env.OPENBURNBAR_SQLCIPHER_LIB_DIR?.trim()
+  || (process.env.OPENBURNBAR_SQLCIPHER_PREFIX?.trim()
+    ? path.join(process.env.OPENBURNBAR_SQLCIPHER_PREFIX.trim(), 'lib')
+    : '');
+if (sqlcipherLibraryDirectory) {
+  // Keep SwiftPM's GRDB target on the same staged FTS5-enabled library that
+  // the package payload resolver copies into the final native runtime.
+  packageBuildEnv.OPENBURNBAR_SQLCIPHER_LIB_DIR = sqlcipherLibraryDirectory;
+}
 Object.assign(packageBuildEnv, {
   OPENBURNBAR_LINUX_RELEASE_BUILD: '1',
   OPENBURNBAR_LINUX_CLI_BIN: cliBinary,
