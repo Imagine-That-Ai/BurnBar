@@ -25,8 +25,8 @@ Current parity status as of 2026-07-19:
   The ARM VM also passed
   the supported Swift-less staged-payload `pretauri:build`/`tauri:build` path via
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is unsigned
-  and non-certifying. The latest exact implementation receipt (including the
-  current black packaged-shell capture) is
+  and non-certifying. The latest exact implementation receipt includes the
+  post-unlock visible/animated packaged-shell capture and is
   [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json).
   The preceding `ded781e94d` receipt remains historical visible-shell evidence.
   The strict ledger remains **0/40 product rows and 0/7 environment receipts**.
@@ -34,12 +34,12 @@ Current parity status as of 2026-07-19:
 - **Latest live VM candidate:** the exact `872074af3a` ARM64 DEB is installed in
   the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its non-certifying receipt is
   [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json).
-  Daemon/CLI health is green and the desktop window exists at `/usr/bin`, but
-  both current packaged-shell captures are black. The earlier visible
-  Canvas2D/onboarding capture belongs to the prior `ded781e94d` receipt and is
-  historical until the current compositor/safe-mode behavior is rechecked. The
-  guest reports `webgl2=false` and `webgl1=true`; WebGL2-only requests should
-  use the `2D fallback (WebGL2 unavailable)` path once the shell surface renders.
+  Daemon/CLI health is green and the desktop window exists at `/usr/bin`. The
+  first capture attempt was black because GNOME session 1 was locked; after
+  `loginctl unlock-session 1`, the same package rendered the Overview route and
+  Fluid Aurora 2D fallback. Two captures two seconds apart differ in 382,024
+  pixels. The guest reports `webgl2=false` and `webgl1=true`; the visible
+  switcher labels the fallback `2D fallback (WebGL2 unavailable)`.
   This package is unsigned and is not a public release. The previous exact
   `5b70a3d320` package remains the
   historical installed baseline in

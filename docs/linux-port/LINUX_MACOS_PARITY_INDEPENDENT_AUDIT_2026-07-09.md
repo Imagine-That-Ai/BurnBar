@@ -7,8 +7,8 @@
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
 | Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards. Focused payload coverage is green and Rust is 125/125. |
-| Latest VM proof | The exact `872074af3a` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json). Daemon/CLI health is green and the desktop window exists, but both current packaged-shell captures are black; visible UI/backdrop and onboarding interaction are not claimed for this receipt. The earlier visible Canvas2D capture is retained as historical evidence in the preceding `ded781e94d` receipt. |
-| Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the source fallback is designed to use Canvas2D, but current packaged-shell rendering needs a safe-mode/compositor recheck. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
+| Latest VM proof | The exact `872074af3a` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json). Daemon/CLI health is green and the desktop window exists. Initial black captures were caused by locked GNOME session 1; after `loginctl unlock-session 1`, the same package rendered the Overview route and Fluid Aurora 2D fallback. Two captures two seconds apart differ in 382,024 pixels. |
+| Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -43,8 +43,9 @@ checkpoint, not a promotion claim:
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`; the exact implementation package
   is installed and captured separately in
   [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json);
-  it remains unsigned and non-certifying, and the current packaged desktop
-  capture is black.
+  it remains unsigned and non-certifying. The initial locked-session black
+  capture was superseded by the unlocked visible/animated capture recorded in
+  the receipt.
 
 The strict certification ledger remains **0/40 product rows** and **0/7
 environment receipts**. The remaining blockers are signed exact-head artifacts,
@@ -83,10 +84,11 @@ package receipt remains the historical `5b70a3d320` candidate. The preceding
 `ded781e94d` package receipt is also historical: it contains a visible
 shell/setup capture, daemon health, and a Canvas2D fallback label. The current
 `872074af3a` ARM64 package is installed at `/usr/bin` and reports daemon health
-`ok=true`, but both current packaged-shell captures are black. The current
-receipt therefore does not claim visible routes, onboarding interaction,
-backdrop animation, or visual parity until a safe-mode/compositor recheck
-produces a nonblack surface:
+`ok=true`. Initial black captures were caused by the locked GNOME session; after
+`loginctl unlock-session 1`, the same package rendered the Overview route and
+Fluid Aurora 2D fallback, with two captures two seconds apart differing in
+382,024 pixels. This is still bounded visual evidence, not a full visual-parity
+claim:
 `evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`.
 
 The connected physical iPad was rechecked against the current checkout using
