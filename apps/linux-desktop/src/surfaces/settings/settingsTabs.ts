@@ -159,7 +159,7 @@ export const SETTINGS_TABS: SettingsTabMeta[] = [
     subtitle: 'Vault inventory, exports, telemetry, and consent',
     iconGlyph: '⛨',
     iconTint: 'var(--color-tier-end-to-end)',
-    section: 'extras',
+    section: 'system',
     detailTitle: 'Data & Privacy'
   },
   {
@@ -168,7 +168,7 @@ export const SETTINGS_TABS: SettingsTabMeta[] = [
     subtitle: 'Browser automation, approvals, panic, and audit',
     iconGlyph: '⌁',
     iconTint: 'var(--color-seal-crimson)',
-    section: 'system',
+    section: 'extras',
     detailTitle: 'Computer Use'
   },
   {
@@ -190,8 +190,8 @@ export const SETTINGS_SECTIONS: { id: SettingsSectionId; title: string; tabIds: 
     title: 'Account & Sync',
     tabIds: ['account', 'cloud', 'devices-and-sync', 'alerts', 'notifications']
   },
-  { id: 'system', title: 'System', tabIds: ['daemon', 'updates', 'computer-use', 'data-privacy'] },
-  { id: 'extras', title: 'More', tabIds: ['text-expansion', 'media', 'pets'] }
+  { id: 'system', title: 'System', tabIds: ['daemon', 'updates', 'data-privacy'] },
+  { id: 'extras', title: 'More', tabIds: ['text-expansion', 'media', 'computer-use', 'pets'] }
 ];
 
 /**
