@@ -40,6 +40,8 @@ The compact machine-readable index is
 [`physical-x64-retry-summary.json`](physical-x64-retry-summary.json). The
 detailed result and exact recovery actions are in
 [`PHYSICAL_X64_RETRY_RESULT.md`](PHYSICAL_X64_RETRY_RESULT.md).
+The native-operator continuation prompt is
+[`HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt`](HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt).
 
 ## Certification boundary
 
