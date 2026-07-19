@@ -70,7 +70,8 @@ Current parity status as of 2026-07-19:
   running from `/usr/bin`. The release graph now builds the daemon-owned
   `openburnbar-media` crate; the live media capability probe reports capture
   available with known VP9/AV1/Opus codecs, and file-transfer capability is
-  available. The Linux peer-auth test passes 1/1 on the VM. This remains a
+  available. The Linux peer-auth test passes 1/1 and `MercuryLinuxMediaTests`
+  passes 21/21 on the VM. This remains a
   non-certifying runtime receipt: two-device iPad/Linux media, Computer Use,
   signed provenance, and the strict 0/40 product plus 0/7 environment ledger
   remain open. See

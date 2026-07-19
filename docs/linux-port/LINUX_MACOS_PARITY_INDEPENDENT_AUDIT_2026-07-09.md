@@ -41,6 +41,8 @@ release graph now builds and stages `libopenburnbar_media.so`, and the package
 post-install hook registers the user daemon service. Linux peer auth hashes
 the kernel `/proc/<pid>/exe` link without `O_NOFOLLOW`, which is incompatible
 with that kernel magic link; the actual Linux-target test passes 1/1 on Ubuntu.
+The full `MercuryLinuxMediaTests` class also passes **21/21** against the linked
+GStreamer backend on the same guest.
 
 Two additional source-only parity hardening slices are now on the candidate
 branch. `6f57349c66` keeps Linux settings search selection synchronized with

@@ -39,7 +39,9 @@ the Ubuntu 24.04 GNOME/X11 guest with service `enabled/active`, authenticated
 desktop health, and live media/file capability probes. Receipt:
 `evidence/mission-002-reanchor/vm-e2e/current-ac42d02e4b/live-receipt.json`.
 This closes the package/service/media-backend source slice; iPad enrollment,
-two-device media, and signed certification remain dependencies for parity.
+two-device media, and signed certification remain dependencies for parity. The
+VM's full `MercuryLinuxMediaTests` class passes **21/21** with the linked
+GStreamer backend; this is transport/backend proof, not a two-device receipt.
 
 The installed Linux CLI parity fix is now on `d58b6a958f`: the Swift CLI
 resolves the canonical XDG daemon token file when no token environment override

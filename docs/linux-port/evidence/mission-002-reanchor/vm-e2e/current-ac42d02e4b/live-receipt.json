@@ -98,6 +98,7 @@
     "hostNodeTests": "7/7 passed: migration and media runtime contracts",
     "hostPackagingSync": "3/3 pairs passed",
     "linuxPeerCredentialTest": "1/1 passed on Ubuntu VM",
+    "linuxMercuryMediaTests": "21/21 passed on Ubuntu VM with the linked GStreamer media backend",
     "daemonHealth": "pass",
     "packageInstall": "pass"
   },
