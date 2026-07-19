@@ -5,8 +5,9 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- The current parity hardening reaches `a570c9b087` (with the WebKit startup
-  fallback from `6321897d4e`); the clean parity-ledger
+- The current parity hardening reaches `fdbc7d718b` (with the WebKit startup
+  fallback from `6321897d4e`); the installed live receipt is bound to the
+  `a570c9b087` package; the clean parity-ledger
   validation is bound to checkpoint `073c2aba45`. The Release and
   Nightly receipts below are historical engineering evidence for an older
   checkpoint, not a claim that the current docs head has a promoted artifact.

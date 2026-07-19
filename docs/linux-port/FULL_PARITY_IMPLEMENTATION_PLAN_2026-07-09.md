@@ -29,8 +29,9 @@ proof and refuses paged or partial data. Focused Activity/bridge coverage is
 the preceding installed baseline in the UTM guest; its non-certifying receipt is
 `evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/health.json`.
 
-The current live integration slice is `a570c9b087` (with the WebKit startup
-fallback from `6321897d4e`). Its release graph builds
+The current source hardening reaches `fdbc7d718b`; the current installed live
+integration slice is `a570c9b087` (with the WebKit startup fallback from
+`6321897d4e`). Its release graph builds
 the daemon-owned `crates/openburnbar-media` library before Swift linking, so a
 signed release cannot silently ship the shell's GStreamer viewer without the
 capture backend. The DEB post-install hook registers the package-owned user
