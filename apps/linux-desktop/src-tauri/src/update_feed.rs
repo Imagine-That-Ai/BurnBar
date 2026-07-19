@@ -665,10 +665,12 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
     {
         return Err("Update feed signing identity does not match the pinned release key.".into());
     }
-    let signature_url = reqwest::Url::parse(&feed.signature.url)
+    reqwest::Url::parse(&feed.signature.url)
         .map_err(|_| "Update feed signature URL is invalid.".to_string())?;
-    if !allowed_download_url(&signature_url) {
-        return Err("Update feed signature URL is not allowlisted HTTPS.".into());
+    if validate_update_artifact_url(&feed.signature.url).is_err() {
+        return Err(
+            "Update feed signature URL is not allowlisted first-party release HTTPS.".into(),
+        );
     }
     if feed.artifacts.is_empty() {
         return Err("Update feed has no artifacts.".into());
@@ -692,10 +694,12 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
             return Err("Update feed contains duplicate artifact metadata.".into());
         }
         for raw_url in [&artifact.url, &artifact.signature_url] {
-            let url = reqwest::Url::parse(raw_url)
+            reqwest::Url::parse(raw_url)
                 .map_err(|_| "Update artifact URL is invalid.".to_string())?;
-            if !allowed_download_url(&url) {
-                return Err("Update artifact URL is not allowlisted HTTPS.".into());
+            if validate_update_artifact_url(raw_url).is_err() {
+                return Err(
+                    "Update artifact URL is not allowlisted first-party release HTTPS.".into(),
+                );
             }
         }
     }
@@ -1158,6 +1162,30 @@ mod tests {
         let mut bad = feed();
         bad.signature.public_key_spki_sha256 = "c".repeat(64);
         assert!(validate_feed(&bad).unwrap_err().contains("pinned"));
+    }
+
+    #[test]
+    fn rejects_allowlisted_hosts_with_non_first_party_release_paths() {
+        let mut bad_artifact = feed();
+        bad_artifact.artifacts[0].url =
+            "https://github.com/another/repo/releases/download/linux-v1.2.3/app".into();
+        assert!(validate_feed(&bad_artifact)
+            .unwrap_err()
+            .contains("first-party release"));
+
+        let mut bad_signature = feed();
+        bad_signature.signature.url =
+            "https://github.com/another/repo/releases/download/linux-v1.2.3/feed.sig".into();
+        assert!(validate_feed(&bad_signature)
+            .unwrap_err()
+            .contains("first-party release"));
+
+        let mut bad_artifact_host = feed();
+        bad_artifact_host.artifacts[0].signature_url =
+            "https://burnbar.ai/not-downloads/artifact.sig".into();
+        assert!(validate_feed(&bad_artifact_host)
+            .unwrap_err()
+            .contains("first-party release"));
     }
 
     #[test]
