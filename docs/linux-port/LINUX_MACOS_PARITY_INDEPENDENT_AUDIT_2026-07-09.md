@@ -6,15 +6,15 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery. Focused payload coverage is green and Rust is 125/125. |
-| Latest VM proof | The exact `ded781e94d` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json). Daemon health is green, onboarding verification advances to step 2, two stable captures differ, minimize/restore renders, and the UI labels the WebGL2 request as `2D fallback (WebGL2 unavailable)`. |
-| Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The current exact-head ARM64 install and receipt are recorded above; the WebKitGTK probe still reports `webgl2=false`, `webgl1=true`, so the current app uses the animated Canvas2D fallback. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
+| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards. Focused payload coverage is green and Rust is 125/125. |
+| Latest VM proof | The exact `872074af3a` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json). Daemon/CLI health is green and the desktop window exists, but both current packaged-shell captures are black; visible UI/backdrop and onboarding interaction are not claimed for this receipt. The earlier visible Canvas2D capture is retained as historical evidence in the preceding `ded781e94d` receipt. |
+| Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the source fallback is designed to use Canvas2D, but current packaged-shell rendering needs a safe-mode/compositor recheck. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
 ## Current Source Checkpoint — 2026-07-19
 
-The current integration head is `ded781e94d`. This is a source and build
+The current integration head is `872074af3a`. This is a source and build
 checkpoint, not a promotion claim:
 
 - `1130524331` immediately reveals a visible 2D backdrop when a WebGL context
@@ -32,13 +32,19 @@ checkpoint, not a promotion claim:
   `58e21e5f9c` add a typed privacy-export receipt with a metadata-safe fallback,
   `65f4931c36` keeps onboarding provider recovery actionable, and `ded781e94d`
   adds route-level render-error recovery with Retry/Open Support actions.
-- Source gates pass: 89 frontend files / 835 tests, TypeScript, production
-  bundle verification, Tauri Rust 125/125, and package-payload 13/13.
+  `8cafd2d7e0` preserves the last provider workspace during transient catalog
+  errors, `da42c16a78` discards delayed daemon events across subscription
+  restarts, and `872074af3a` cancels typed SmartHub work when the shell bridge
+  disappears.
+- Source gates pass: 89 frontend files / 839 tests, TypeScript, production
+  bundle verification, Tauri Rust 125/125, package-payload contract checks
+  (2 pass, 2 historical skips), and product validators 12/12.
 - The ARM64 VM validated the supported Swift-less staged-payload path with
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`; the exact implementation package
   is installed and captured separately in
-  [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json);
-  it remains unsigned and non-certifying.
+  [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json);
+  it remains unsigned and non-certifying, and the current packaged desktop
+  capture is black.
 
 The strict certification ledger remains **0/40 product rows** and **0/7
 environment receipts**. The remaining blockers are signed exact-head artifacts,
@@ -50,7 +56,7 @@ macOS/Linux differential evidence.
 ## Current Live Checkpoint — 2026-07-19
 
 The historical live checkpoint below records the earlier `1b80f2ca08` kernel
-capability slice. The current source checkpoint is `ded781e94d`; the kernel
+capability slice. The current source checkpoint is `872074af3a`; the kernel
 capability slice at
 `50d40b9acb` adds a typed kernel
 resolution receipt from the shared backdrop engine and exposes the requested
@@ -73,15 +79,15 @@ showed the rendered shell, setup card, and the `Aurora - 2D fallback (WebGL2
 unavailable)` status. The direct tree launch intentionally has no packaged
 daemon, so its setup card reports daemon authority unavailable; that is a
 separate packaging/runtime check from backdrop rendering. The prior installed
-package receipt remains the historical `5b70a3d320` candidate. The latest VM
-proof is now a locally built ARM64 package containing the current parity
-frontend and Tauri shell; it is installed at `/usr/bin`, reports daemon health
-`ok=true`, and advances onboarding from step 1 to step 2. Its two stable
-two-second captures differ, and its switcher visibly reads
-`Fluid Aurora - 2D fallback (WebGL2 unavailable)`. This is useful live evidence
-but remains non-certifying because the package is unsigned and the VM is not a
-WebGL2-capable target. The exact current receipt is
-`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json`.
+package receipt remains the historical `5b70a3d320` candidate. The preceding
+`ded781e94d` package receipt is also historical: it contains a visible
+shell/setup capture, daemon health, and a Canvas2D fallback label. The current
+`872074af3a` ARM64 package is installed at `/usr/bin` and reports daemon health
+`ok=true`, but both current packaged-shell captures are black. The current
+receipt therefore does not claim visible routes, onboarding interaction,
+backdrop animation, or visual parity until a safe-mode/compositor recheck
+produces a nonblack surface:
+`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`.
 
 The connected physical iPad was rechecked against the current checkout using
 the bounded approval/navigation selectors: the existing approval-focused

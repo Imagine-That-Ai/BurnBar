@@ -5,9 +5,10 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- **Current source head:** `ded781e94d`. The branch now passes 89 frontend files
-  / 835 tests, TypeScript, production bundle verification, Tauri Rust 125/125,
-  and package-payload 13/13. `1130524331` recovers a visible 2D backdrop after
+- **Current source head:** `872074af3a`. The branch now passes 89 frontend files
+  / 839 tests, TypeScript, production bundle verification, Tauri Rust 125/125,
+  package-payload contract checks (2 pass, 2 historical skips), and product
+  validators 12/12. `1130524331` recovers a visible 2D backdrop after
   backgrounded WebGL context loss and retries the requested kernel on resume;
   `db8a52f2f2` makes kernel selection keyboard-complete with focus restoration;
   `2a19ac301a` adds the Support performance empty state; `6ce5ec8623` adds
@@ -18,24 +19,29 @@ Current parity status as of 2026-07-19:
   add a typed privacy-export receipt with a metadata-safe fallback;
   `65f4931c36` keeps onboarding provider recovery actionable; and
   `ded781e94d` adds route-level render-error recovery with Retry/Open Support
-  actions.
+  actions; `8cafd2d7e0` preserves provider workspace during transient catalog
+  recovery; `da42c16a78` guards daemon subscription lifecycle restarts; and
+  `872074af3a` cancels SmartHub work when the packaged shell loses its bridge.
   The ARM VM also passed
   the supported Swift-less staged-payload `pretauri:build`/`tauri:build` path via
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is unsigned
-  and non-certifying. The rebuilt exact implementation
-  receipt is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json).
+  and non-certifying. The latest exact implementation receipt (including the
+  current black packaged-shell capture) is
+  [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json).
+  The preceding `ded781e94d` receipt remains historical visible-shell evidence.
   The strict ledger remains **0/40 product rows and 0/7 environment receipts**.
 
-- **Latest live VM candidate:** the exact `ded781e94d` ARM64 DEB is installed in
+- **Latest live VM candidate:** the exact `872074af3a` ARM64 DEB is installed in
   the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its non-certifying receipt is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json).
-  Daemon/CLI health is green, the desktop is running from `/usr/bin`, the
-  onboarding daemon verification advances to step 2, and two captures prove
-  that the Canvas2D fallback is live. The guest reports `webgl2=false` and
-  `webgl1=true`, so WebGL2-only requests are labeled `2D fallback (WebGL2
-  unavailable)` instead of appearing blank. This package is unsigned and is
-  not a public release. The previous exact `5b70a3d320` package remains the
+  [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json).
+  Daemon/CLI health is green and the desktop window exists at `/usr/bin`, but
+  both current packaged-shell captures are black. The earlier visible
+  Canvas2D/onboarding capture belongs to the prior `ded781e94d` receipt and is
+  historical until the current compositor/safe-mode behavior is rechecked. The
+  guest reports `webgl2=false` and `webgl1=true`; WebGL2-only requests should
+  use the `2D fallback (WebGL2 unavailable)` path once the shell surface renders.
+  This package is unsigned and is not a public release. The previous exact
+  `5b70a3d320` package remains the
   historical installed baseline in
   [`evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/).
   The packaging history includes `59d49c7d59`, which made an explicit staged
@@ -47,9 +53,10 @@ Current parity status as of 2026-07-19:
   105 nodes and 50 actionable controls with no `Loading Settings` node; the
   General startup checkbox and Media & Sharing route are reachable.
   The package is unsigned and this receipt is non-certifying.
-- Current source gates are **89 frontend files / 835 tests**, focused
-  Settings/route **51/51**, Support **29/29**, media **38/38**, Tauri Rust **125/125**,
-  TypeScript, formatting, and production-bundle verification. The strict ledger remains
+- Current source gates are **89 frontend files / 839 tests**, focused provider
+  recovery **11/11**, daemon subscription lifecycle **8/8**, SmartHub **9/9**,
+  Settings/route **51/51**, Support **29/29**, media **38/38**, Tauri Rust
+  **125/125**, TypeScript, formatting, and production-bundle verification. The strict ledger remains
   **0/40 product rows and 0/7 environment receipts**; this is a certification
   gate, not a source-progress percentage.
 - The immediate Settings fix is split into two reviewable commits:
