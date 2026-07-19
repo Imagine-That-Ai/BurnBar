@@ -1362,7 +1362,7 @@ required gates and were not made green by the Ed25519 result.
 | P-28 | SmartHub | Discovery, status, allowlisted device actions | Runtime requires a trusted root-owned packaged CLI and otherwise fails closed. Typed operation allowlists, request/output bounds, concurrent drain, bounded Avahi timeout, cancellation, and degraded renderer states are integrated; real device/Avahi outcomes remain unproven | Partial | High |
 | P-29 | Text expansion | Global, secure-field-aware expansion, persistence, sync, previews | Daemon-owned AES-GCM persistence with native Secret Service/KWallet custody, owner-only sealed files, consent, in-app Composer expansion, no renderer localStorage/global capture, and fail-closed corruption/missing-key handling are integrated. Renderer consent/import/snippet/edit/delete controls now fail closed until live daemon storage hydration succeeds (`1ddc8bc33a`). The daemon exposes a bounded IBus/Fcitx reachability and secure-field policy probe (`6c76df084f`) and `d2dbbe8df8` adds a trigger-only signed-engine request/response path with strict bounds, secure-field denial before write, and cancellation/kill-switch teardown. Linux keyring/IME runtime receipts, sync/conflict handling, and installed secure-field proof remain open | Partial | High |
 | P-30 | Pet companion | Animated ambient overlay, click-through, summon, selection, interactions | Typed runtime-manifest probe, contained draggable fallback, accessible summon/focus/status, and selection/clear controls are honest. `3b652f9b9e` adds bounded pointer/mouse drag and Arrow/Home keyboard repositioning with focus metadata and announcements for the Wayland-safe contained substitute. `5c3caab2e` adds a fixed-marker X11-only `Ctrl+Alt+Super+P` native summon route and `2b85f1431` exposes `aria-keyshortcuts`; native overlay/click-through and installed compositor proof remain open | Partial | High |
-| P-31 | Accessibility | Semantic UI, keyboard flows, assistive announcements, reduced effects | All routes pass axe; global reduced-motion, forced-colors, and prefers-contrast styling plus keyboard/status contracts are implemented in [PR #1683](https://github.com/Imagine-That-Ai/BurnBar/pull/1683), with live reduced-motion preference updates and cleanup in `7cd30e2e71`; `fdd3ff61ad` adds command-palette dialog/combobox/listbox semantics, focus containment/restoration, active-option announcements, and names for icon-only toolbar actions; focused accessibility coverage is 10/10. Nightly `29646670763` passed 19-route X11 AT-SPI/Orca, keyboard, 200% zoom, onboarding, and text-expansion evidence, while broader desktop/high-contrast breadth remains | Near parity | High |
+| P-31 | Accessibility | Semantic UI, keyboard flows, assistive announcements, reduced effects | All routes pass axe; global reduced-motion, forced-colors, and prefers-contrast styling plus keyboard/status contracts are implemented in [PR #1683](https://github.com/Imagine-That-Ai/BurnBar/pull/1683), with live reduced-motion preference updates and cleanup in `7cd30e2e71`; `fdd3ff61ad` adds command-palette dialog/combobox/listbox semantics, focus containment/restoration, active-option announcements, and names for icon-only toolbar actions; `534d7aae65` makes the command-deck overflow menu keyboard-complete with Arrow/Home/End, Enter/Space, Escape, and trigger-focus restoration (focused overflow tests 2/2). Nightly `29646670763` passed 19-route X11 AT-SPI/Orca, keyboard, 200% zoom, onboarding, and text-expansion evidence, while broader desktop/high-contrast breadth remains | Near parity | High |
 | P-32 | Performance | Startup/recovery/frame/cadence budgets and mature profiling | Nightly `29646670763` passed matched 30-minute macOS/Linux correctness/resource soak and packaged X11 thresholds: `route.navigation` p95 `95.6 ms` across 33 samples versus the `120 ms` budget, app start p95 `333.9 ms`, IPC health p95 `111.65 ms`, and tray-open p95 `123.55 ms`; comparable hardware, suspend/keyring recovery, and broader matrix profiling remain open | Near parity | High |
 | P-33 | Reliability | Backoff, supervisor, recovery, subscriptions, migrations, long-idle stability | Daemon-owned bounded start/resume/stop subscriptions, monotonic restart recovery, offline-aware single-flight cadence, cancellation, coalesced route refresh, and soak contracts exist; native push and installed suspend/portal/keyring/matrix certification remain | Partial | High |
 | P-34 | Security hardening | Native URL/secret/process boundaries | Generic renderer shell permission and token exposure removed; production fixtures disabled; full installed adversarial matrix remains | Near parity | Critical |
@@ -2144,7 +2144,7 @@ open; this row is therefore still **Partial**, not closed.
 
 ### GAP-019 - Replace synthetic accessibility evidence with assistive-tech proof
 
-**Implementation update (2026-07-13): source polish is now explicit; certification
+**Implementation update (2026-07-19): source polish is now explicit; certification
 remains open.** All 19 routes and important states run through axe; the installed
 `.deb` is exercised through AT-SPI actions, Orca process/focus observation,
 keyboard-only traversal, and requested 200% zoom. PR #1683 adds shared
@@ -2152,16 +2152,21 @@ keyboard-only traversal, and requested 200% zoom. PR #1683 adds shared
 tokens/focus/status rules with DOM keyboard/status contracts. The full shell
 verifier rejects missing or synthetic accessibility artifacts. GNOME/KDE matrix
 breadth, high-contrast visual captures, and physical assistive-tech execution
-remain open.
+remain open. `534d7aae65` closes a concrete command-deck gap: the overflow menu
+now enters focus on open, supports roving Arrow/Home/End navigation and
+Enter/Space activation, and returns focus to its trigger after Escape or an
+action; its focused regression suite is 2/2.
 
 - **Difference:** macOS has broad semantic labels/actions and targeted tests.
   Linux has useful landmarks, a skip link, ARIA live regions, focus styling, and
-  reduced-motion CSS, but its automated scan returns hardcoded rows and its
-  purported AT-SPI proof contains only bus/window properties, not accessible
-  nodes and actions.
+  reduced-motion CSS. Before `534d7aae65`, the command-deck overflow menu
+  exposed a menu role but left keyboard users on the trigger, lacked predictable
+  list navigation, and did not consistently restore focus after actions; broader
+  AT-SPI proof still needs the full desktop matrix.
 - **Why it matters:** visual/component tests do not prove keyboard completion,
   screen-reader meaning, focus order, contrast, reflow, or live announcements.
-- **Recommended solution:** run axe on every route and important state; add
+- **Recommended solution:** keep the new overflow-menu keyboard contract and
+  regression tests, then run axe on every route and important state; add
   Playwright keyboard/zoom/forced-colors/reduced-motion checks; exercise the
   packaged app with Orca and AT-SPI; fix focusable `aria-hidden` elements and any
   focus rules that remove the indicator.
@@ -2169,8 +2174,10 @@ remain open.
 - **Implementation notes:** subscribe to media-query changes, test dynamic
   state, standardize names/roles/states/errors, and record the actual AT-SPI tree
   plus action transcript; include hardware/software rendering and high contrast.
-- **QA verification:** zero serious axe violations, every flow keyboard-complete,
-  visible focus, no focus trap, 200% zoom/reflow, Orca names/roles/states/actions,
+- **QA verification:** zero serious axe violations; overflow menu opens with
+  ArrowDown, cycles with Arrow/Home/End, activates with Enter/Space, closes with
+  Escape, and restores trigger focus; every other flow remains keyboard-complete
+  with visible focus, no trap, 200% zoom/reflow, Orca names/roles/states/actions,
   live regions, GNOME High Contrast, reduced motion, and no color-only meaning.
 
 ### GAP-020 - Add real reliability, performance, and installed-shell gates
