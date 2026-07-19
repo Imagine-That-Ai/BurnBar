@@ -43,7 +43,13 @@
     "captureIntervalSeconds": 2,
     "captureASha256": "2aa4541358637578f6f9ba6149a1e759ac1ac08ad4e394fa3918422148e381bb",
     "captureBSha256": "64cb9875615f5a77151c2f8fd326330ab3b9250a93766098cb7e33c1057fabc5",
-    "animated": true
+    "animated": true,
+    "afterLockUnlockCapture": {
+      "captureASha256": "6e6422e1156c18936d23a5f3f5e7679496bfacd456d62073423ba5c56aeec16d",
+      "captureBSha256": "9772e0efa122ce115f3aa9f30c9b1d9f2cb42cec460f12029dfacf55ba566a81",
+      "animated": true,
+      "result": "rendering recovered after GNOME lock/unlock"
+    }
   },
   "onboarding": {
     "daemonVerifyAction": "passed",
