@@ -5,7 +5,6 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { onCallProduction } from "../logging.js";
 import { remoteConfigStringValue } from "../remoteConfigGuards.js";
-import { externalApiWithResilience } from "../resilienceHelpers.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 const SCHEMA_VERSION = "openburnbar.windows.runtime-safety.v1";
@@ -80,7 +79,7 @@ export async function readWindowsRuntimeSafetyConfig(
   fetchTemplate: () => Promise<RemoteConfigTemplate> = () => getRemoteConfig().getTemplate(),
   nowEpochMillis: number = Date.now(),
 ): Promise<WindowsRuntimeSafetyConfig> {
-  const template = await externalApiWithResilience("windows-runtime-safety-config", fetchTemplate);
+  const template = await fetchTemplate();
   return decodeWindowsRuntimeSafetyConfig(template, nowEpochMillis);
 }
 

@@ -87,6 +87,27 @@ public sealed class WindowsRuntimeSafetyConfigTests
         await monitor.DisposeAsync();
     }
 
+    [Fact]
+    public async Task Monitor_InvalidatePreventsInflightResponseFromReopeningState()
+    {
+        var state = new WindowsRuntimeSafetyState();
+        var response = new TaskCompletionSource<WindowsRuntimeSafetyConfigResponse>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var monitor = new WindowsRuntimeSafetyConfigMonitor(
+            _ => response.Task,
+            state,
+            new FixedTimeProvider(Now));
+
+        Task refresh = monitor.RefreshOnceAsync();
+        monitor.Invalidate();
+        response.SetResult(ValidResponse());
+        await refresh;
+
+        Assert.False(state.Current.IsResolved);
+        Assert.True(state.Current.ComputerUseKillSwitch);
+        await monitor.DisposeAsync();
+    }
+
     private static WindowsRuntimeSafetyConfigResponse ValidResponse() => new()
     {
         SchemaVersion = WindowsRuntimeSafetySnapshot.ExpectedSchemaVersion,

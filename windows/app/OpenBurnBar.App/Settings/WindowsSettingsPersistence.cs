@@ -167,8 +167,8 @@ internal static class WindowsSettingsComposition
         if (!TryConfigureProductionCloudSync())
         {
             WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+            _ = App.Current.RefreshWindowsRuntimeSafetyConfigAsync();
         }
-        _ = App.Current.RefreshWindowsRuntimeSafetyConfigAsync();
     }
 
     private static void ConfigureProductionCloudSync(
@@ -193,6 +193,7 @@ internal static class WindowsSettingsComposition
             new TpmAttestationProducer(),
             AppCheckTransport.Value,
             appCheckAppId);
+        _ = App.Current.RefreshWindowsRuntimeSafetyConfigAsync();
     }
 
     public static object? Create(SettingsTab tab) => tab switch
@@ -568,6 +569,7 @@ internal static class WindowsSettingsComposition
         {
             oauth?.SignOut();
             AppConfiguration.Current.UpdateAndSave(model => model.FirebaseUid = null);
+            App.Current.InvalidateWindowsRuntimeSafetyConfig();
             return AccountActionResult.Ok;
         }
     }

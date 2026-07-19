@@ -51,6 +51,17 @@ public partial class App
     internal Task RefreshWindowsRuntimeSafetyConfigAsync(CancellationToken cancellationToken = default) =>
         _runtimeSafetyMonitor?.RefreshOnceAsync(cancellationToken) ?? Task.CompletedTask;
 
+    internal void InvalidateWindowsRuntimeSafetyConfig()
+    {
+        if (_runtimeSafetyMonitor is { } monitor)
+        {
+            monitor.Invalidate();
+            return;
+        }
+        WindowsRuntimeSafetyState.Shared.Publish(
+            WindowsRuntimeSafetySnapshot.SecureDefault(DateTimeOffset.UtcNow));
+    }
+
     private void OnRuntimeSafetySnapshotChanged(object? sender, WindowsRuntimeSafetySnapshot snapshot)
     {
         WindowsRuntimeSafetySnapshot previous;

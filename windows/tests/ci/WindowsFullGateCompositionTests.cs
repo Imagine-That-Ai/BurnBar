@@ -65,6 +65,22 @@ public sealed class WindowsFullGateCompositionTests
         Assert.Contains("getWindowsRuntimeSafetyConfig", index, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void RuntimeSafetyState_RefreshesOnSignInAndInvalidatesOnSignOut()
+    {
+        string root = FindRepoRoot();
+        string settings = File.ReadAllText(Path.Combine(
+            root,
+            "windows",
+            "app",
+            "OpenBurnBar.App",
+            "Settings",
+            "WindowsSettingsPersistence.cs"));
+
+        Assert.Contains("App.Current.RefreshWindowsRuntimeSafetyConfigAsync()", settings, StringComparison.Ordinal);
+        Assert.Contains("App.Current.InvalidateWindowsRuntimeSafetyConfig()", settings, StringComparison.Ordinal);
+    }
+
     private static string FindRepoRoot()
     {
         string dir = Directory.GetCurrentDirectory();

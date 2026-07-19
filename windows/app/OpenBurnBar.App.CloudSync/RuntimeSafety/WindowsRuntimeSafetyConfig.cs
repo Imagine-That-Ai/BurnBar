@@ -195,8 +195,10 @@ public sealed class WindowsRuntimeSafetyConfigMonitor : IAsyncDisposable
     private readonly TimeSpan _pollInterval;
     private readonly TimeSpan _fetchTimeout;
     private readonly CancellationTokenSource _stop = new();
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly object _gate = new();
     private Task? _loop;
+    private long _generation;
 
     public WindowsRuntimeSafetyConfigMonitor(
         Func<CancellationToken, Task<WindowsRuntimeSafetyConfigResponse>> fetch,
@@ -225,26 +227,53 @@ public sealed class WindowsRuntimeSafetyConfigMonitor : IAsyncDisposable
 
     public async Task RefreshOnceAsync(CancellationToken cancellationToken = default)
     {
-        DateTimeOffset now = _timeProvider.GetUtcNow();
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_fetchTimeout);
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _stop.Token);
+        await _refreshGate.WaitAsync(lifetime.Token).ConfigureAwait(false);
         try
         {
-            WindowsRuntimeSafetyConfigResponse response = await _fetch(timeout.Token).ConfigureAwait(false);
-            if (WindowsRuntimeSafetySnapshot.TryCreate(response, now, out WindowsRuntimeSafetySnapshot snapshot))
+            long generation = Interlocked.Read(ref _generation);
+            DateTimeOffset now = _timeProvider.GetUtcNow();
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+            timeout.CancelAfter(_fetchTimeout);
+            try
             {
-                _state.Publish(snapshot);
-                return;
+                WindowsRuntimeSafetyConfigResponse response = await _fetch(timeout.Token).ConfigureAwait(false);
+                if (generation == Interlocked.Read(ref _generation)
+                    && WindowsRuntimeSafetySnapshot.TryCreate(response, now, out WindowsRuntimeSafetySnapshot snapshot))
+                {
+                    _state.Publish(snapshot);
+                    return;
+                }
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception)
+            {
+            }
+
+            if (generation == Interlocked.Read(ref _generation))
+            {
+                _state.Publish(WindowsRuntimeSafetySnapshot.SecureDefault(now));
             }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        finally
         {
+            _refreshGate.Release();
         }
-        catch (Exception)
-        {
-        }
+    }
 
-        _state.Publish(WindowsRuntimeSafetySnapshot.SecureDefault(now));
+    /// <summary>
+    /// Immediately closes the shared state and invalidates every in-flight
+    /// response. Used on sign-out so a request carrying the prior session token
+    /// cannot re-authorize the process after local credentials are removed.
+    /// </summary>
+    public void Invalidate()
+    {
+        Interlocked.Increment(ref _generation);
+        _state.Publish(WindowsRuntimeSafetySnapshot.SecureDefault(_timeProvider.GetUtcNow()));
     }
 
     public static Task<WindowsRuntimeSafetyConfigResponse> FetchFromCallableAsync(
