@@ -6,7 +6,8 @@ import {
   resolveLinuxResourceBundle,
   resolveSqlcipherLibDir,
   resolveSwiftRuntimeDir,
-  stageLinuxPackagePayload
+  stageLinuxPackagePayload,
+  validateLinuxPackagePayload
 } from './lib/linux-package-payload.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -34,19 +35,27 @@ const payloadRoot = process.env.OPENBURNBAR_LINUX_PACKAGE_PAYLOAD?.trim()
   || path.join(repoRoot, 'apps/linux-desktop/src-tauri/target/openburnbar-package-payload');
 
 try {
-  const report = stageLinuxPackagePayload({
-    daemonBinary,
-    cliBinary,
-    playwrightBridge,
-    browserRuntimeProbe,
-    browserRuntimeRequirements,
-    releasePublicKey,
-    resourceBundle: resolveLinuxResourceBundle({ repoRoot }),
-    payloadRoot,
-    swiftRuntimeDir: resolveSwiftRuntimeDir(),
-    sqlcipherLibDir: resolveSqlcipherLibDir(),
-    irohNativeLibrary: resolveIrohNativeLibrary()
-  });
+  const reuseStagedPayload = process.env.OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD === '1';
+  if (reuseStagedPayload && process.env.OPENBURNBAR_LINUX_RELEASE_BUILD === '1') {
+    throw new Error(
+      'OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD is forbidden for release builds; stage fresh architecture inputs'
+    );
+  }
+  const report = reuseStagedPayload
+    ? validateLinuxPackagePayload({ payloadRoot })
+    : stageLinuxPackagePayload({
+      daemonBinary,
+      cliBinary,
+      playwrightBridge,
+      browserRuntimeProbe,
+      browserRuntimeRequirements,
+      releasePublicKey,
+      resourceBundle: resolveLinuxResourceBundle({ repoRoot }),
+      payloadRoot,
+      swiftRuntimeDir: resolveSwiftRuntimeDir(),
+      sqlcipherLibDir: resolveSqlcipherLibDir(),
+      irohNativeLibrary: resolveIrohNativeLibrary()
+    });
   console.log(JSON.stringify(report, null, 2));
 } catch (error) {
   console.error(`prepare-linux-package-payload: ${error.message}`);

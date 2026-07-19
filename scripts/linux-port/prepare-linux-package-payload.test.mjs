@@ -9,7 +9,8 @@ import {
   resolveLinuxResourceBundle,
   resolveSqlcipherLibDir,
   resolveSwiftRuntimeDir,
-  stageLinuxPackagePayload
+  stageLinuxPackagePayload,
+  validateLinuxPackagePayload
 } from './lib/linux-package-payload.mjs';
 
 const fixtureFirebaseAPIKey = ['AI', 'za', '12345678901234567890123456789012345'].join('');
@@ -337,6 +338,69 @@ test('payload staging rejects SQLCipher trees without the required SONAME', () =
     irohNativeLibrary: iroh,
     probe: false
   }), /missing required SONAME/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('staged payload reuse validates in place without deleting the payload', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-staged-package-payload-'));
+  const payload = path.join(root, 'payload');
+  fs.mkdirSync(path.join(payload, 'OpenBurnBarCore_OpenBurnBarCore.resources'), { recursive: true });
+  fs.mkdirSync(path.join(payload, 'swift'));
+  fs.mkdirSync(path.join(payload, 'native'));
+  fs.mkdirSync(path.join(payload, 'playwright'));
+  fs.mkdirSync(path.join(payload, 'attestation'));
+  fs.writeFileSync(path.join(payload, 'openburnbar-daemon'), 'daemon', { mode: 0o755 });
+  fs.writeFileSync(path.join(payload, 'openburnbar-cli'), 'cli', { mode: 0o755 });
+  fs.writeFileSync(
+    path.join(payload, 'OpenBurnBarCore_OpenBurnBarCore.resources', 'catalog.json'),
+    '{}\n'
+  );
+  fs.writeFileSync(path.join(payload, 'swift', 'libswiftCore.so'), 'swift');
+  fs.writeFileSync(path.join(payload, 'native', 'libsqlcipher.so.0'), 'sqlcipher');
+  fs.writeFileSync(path.join(payload, 'native', 'libopenburnbar_iroh.so'), 'iroh', { mode: 0o644 });
+  fs.writeFileSync(path.join(payload, 'playwright', 'openburnbar-playwright-bridge.js'), 'bridge', { mode: 0o644 });
+  fs.writeFileSync(path.join(payload, 'playwright', 'openburnbar-browser-runtime-probe'), 'probe', { mode: 0o755 });
+  fs.writeFileSync(path.join(payload, 'playwright', 'browser-runtime-requirements.json'), '{}', { mode: 0o644 });
+  fs.writeFileSync(path.join(payload, 'cloud-auth.json'), '{"schemaVersion":1,"configured":false}\n', { mode: 0o644 });
+  fs.writeFileSync(path.join(payload, 'attestation', 'release-ed25519.pub.pem'), 'public-key', { mode: 0o644 });
+  fs.writeFileSync(path.join(payload, 'attestation', 'installed-manifest.json'), '{}\n', { mode: 0o644 });
+  fs.writeFileSync(path.join(payload, 'attestation', 'installed-manifest.json.sig'), Buffer.alloc(64), { mode: 0o644 });
+
+  const before = fs.readdirSync(payload).sort();
+  const report = validateLinuxPackagePayload({ payloadRoot: payload, probe: false });
+
+  assert.equal(report.staged, true);
+  assert.equal(report.payloadRoot, path.resolve(payload));
+  assert.equal(report.daemon, path.join(path.resolve(payload), 'openburnbar-daemon'));
+  assert.deepEqual(report.sqlcipherFiles, ['libsqlcipher.so.0']);
+  assert.deepEqual(fs.readdirSync(payload).sort(), before);
+  assert.equal(fs.readFileSync(path.join(payload, 'openburnbar-daemon'), 'utf8'), 'daemon');
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('staged payload reuse fails closed when attestation is incomplete', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-staged-package-payload-invalid-'));
+  const payload = path.join(root, 'payload');
+  fs.mkdirSync(path.join(payload, 'OpenBurnBarCore_OpenBurnBarCore.resources'), { recursive: true });
+  fs.mkdirSync(path.join(payload, 'swift'));
+  fs.mkdirSync(path.join(payload, 'native'));
+  fs.mkdirSync(path.join(payload, 'playwright'));
+  fs.mkdirSync(path.join(payload, 'attestation'));
+  fs.writeFileSync(path.join(payload, 'openburnbar-daemon'), 'daemon', { mode: 0o755 });
+  fs.writeFileSync(path.join(payload, 'openburnbar-cli'), 'cli', { mode: 0o755 });
+  fs.writeFileSync(path.join(payload, 'native', 'libsqlcipher.so.0'), 'sqlcipher');
+  fs.writeFileSync(path.join(payload, 'native', 'libopenburnbar_iroh.so'), 'iroh', { mode: 0o644 });
+  fs.writeFileSync(path.join(payload, 'playwright', 'openburnbar-playwright-bridge.js'), 'bridge', { mode: 0o644 });
+  fs.writeFileSync(path.join(payload, 'playwright', 'openburnbar-browser-runtime-probe'), 'probe', { mode: 0o755 });
+  fs.writeFileSync(path.join(payload, 'playwright', 'browser-runtime-requirements.json'), '{}', { mode: 0o644 });
+  fs.writeFileSync(path.join(payload, 'cloud-auth.json'), '{}', { mode: 0o644 });
+  fs.writeFileSync(path.join(payload, 'attestation', 'release-ed25519.pub.pem'), 'public-key', { mode: 0o644 });
+  fs.writeFileSync(path.join(payload, 'attestation', 'installed-manifest.json'), '{}\n', { mode: 0o644 });
+
+  assert.throws(
+    () => validateLinuxPackagePayload({ payloadRoot: payload, probe: false }),
+    /installed manifest signature file not found/
+  );
   fs.rmSync(root, { recursive: true, force: true });
 });
 

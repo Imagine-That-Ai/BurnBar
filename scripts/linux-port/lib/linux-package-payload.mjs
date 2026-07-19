@@ -267,6 +267,131 @@ function runRuntimeProbe(daemon, cli, swiftDir, nativeDir, env) {
   };
 }
 
+function payloadRegularFile(root, relativePath, label, mode = null) {
+  const candidate = requireRegularFile(path.join(root, relativePath), label);
+  if (mode !== null && (fs.statSync(candidate).mode & 0o777) !== mode) {
+    throw new Error(`${label} mode must be ${mode.toString(8)}: ${candidate}`);
+  }
+  return candidate;
+}
+
+/**
+ * Validate a payload that was assembled by another native build host.
+ *
+ * This is intentionally read-only. The normal staging path owns and replaces
+ * its destination, while this path is for Swift-less packaging hosts that
+ * receive an architecture-matched payload from a separate builder.
+ */
+export function validateLinuxPackagePayload({
+  payloadRoot,
+  env = process.env,
+  probe = true
+}) {
+  const root = requireDirectory(payloadRoot, 'Linux package payload');
+  const daemon = payloadRegularFile(root, 'openburnbar-daemon', 'OpenBurnBar daemon', 0o755);
+  const cli = payloadRegularFile(root, 'openburnbar-cli', 'OpenBurnBar CLI', 0o755);
+  const resourceBundle = requireDirectory(
+    path.join(root, linuxResourceBundleName),
+    'OpenBurnBarCore Linux resource bundle'
+  );
+  const swiftRuntime = requireDirectory(path.join(root, 'swift'), 'Swift runtime');
+  const nativeRuntime = requireDirectory(path.join(root, 'native'), 'Linux native runtime');
+  payloadRegularFile(
+    root,
+    'native/libsqlcipher.so.0',
+    'SQLCipher runtime SONAME'
+  );
+  const sqlcipherFiles = fs.readdirSync(nativeRuntime)
+    .filter((entry) => entry.startsWith('libsqlcipher.so'))
+    .sort();
+  for (const entry of sqlcipherFiles) {
+    payloadRegularFile(root, `native/${entry}`, `SQLCipher runtime ${entry}`);
+  }
+  const irohNativeLibrary = payloadRegularFile(
+    root,
+    'native/libopenburnbar_iroh.so',
+    'Linux iroh native runtime',
+    0o644
+  );
+  const playwrightRuntime = requireDirectory(path.join(root, 'playwright'), 'Playwright runtime');
+  const playwrightBridge = payloadRegularFile(
+    root,
+    'playwright/openburnbar-playwright-bridge.js',
+    'Playwright bridge',
+    0o644
+  );
+  const browserRuntimeProbe = payloadRegularFile(
+    root,
+    'playwright/openburnbar-browser-runtime-probe',
+    'browser runtime probe',
+    0o755
+  );
+  const browserRuntimeRequirements = payloadRegularFile(
+    root,
+    'playwright/browser-runtime-requirements.json',
+    'browser runtime requirements',
+    0o644
+  );
+  const cloudAuthConfig = payloadRegularFile(root, 'cloud-auth.json', 'cloud auth config', 0o644);
+  let cloudAuth;
+  try {
+    cloudAuth = JSON.parse(fs.readFileSync(cloudAuthConfig, 'utf8'));
+  } catch (error) {
+    throw new Error(`cloud auth config is invalid JSON: ${error.message}`);
+  }
+  const attestation = path.join(root, 'attestation');
+  requireDirectory(attestation, 'Linux release attestation');
+  const releasePublicKey = payloadRegularFile(
+    root,
+    'attestation/release-ed25519.pub.pem',
+    'Linux release public key',
+    0o644
+  );
+  const installedManifest = payloadRegularFile(
+    root,
+    'attestation/installed-manifest.json',
+    'installed manifest',
+    0o644
+  );
+  const installedManifestSignature = payloadRegularFile(
+    root,
+    'attestation/installed-manifest.json.sig',
+    'installed manifest signature',
+    0o644
+  );
+  if (fs.statSync(installedManifestSignature).size !== 64) {
+    throw new Error(`installed manifest signature must be exactly 64 bytes: ${installedManifestSignature}`);
+  }
+
+  const runtimeProbe = probe
+    ? runRuntimeProbe(daemon, cli, swiftRuntime, nativeRuntime, env)
+    : null;
+
+  return {
+    schemaVersion: 1,
+    architecture: process.arch === 'arm64' ? 'aarch64' : process.arch === 'x64' ? 'x86_64' : process.arch,
+    staged: true,
+    payloadRoot: root,
+    daemon,
+    resourceBundle,
+    cli,
+    swiftRuntime,
+    nativeRuntime,
+    irohNativeLibrary,
+    playwrightRuntime,
+    playwrightBridge,
+    browserRuntimeProbe,
+    browserRuntimeRequirements,
+    cloudAuthConfig,
+    cloudAuthConfigured: cloudAuth.configured === true,
+    releasePublicKey,
+    installedManifest,
+    installedManifestSignature,
+    sqlcipherFiles,
+    runtimeProbe
+  };
+}
+
 export function stageLinuxPackagePayload({
   daemonBinary,
   cliBinary = null,
