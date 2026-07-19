@@ -13,16 +13,17 @@
 ## Execution Status — 2026-07-19
 
 The strict ledger is unchanged at **0/40 product requirements ready** and
-**0/7 environment receipts complete**. A focused physical-iPad receipt is now
-closed: source commit `e0d295e92a` built the arm64 Signal FFI slice and the
-source-safe Firestore graph (`grpc-ios` plus `BoringSSL-SwiftPM`) and executed
-**44 selected XCTest cases with 0 failures** on Alberto's paired iPad. The
-receipt is
-`evidence/parity-audit-2026-07-10/ipad-approval-focused-2026-07-19.json`.
-This is non-certifying mobile coverage; it does not prove installed Linux
-enrollment, fingerprint confirmation, approve/revoke, or cross-device
-Computer Use behavior. The current live UTM query reports the Linux guest as
-stopped, so no VM evidence was claimed or modified in this check.
+**0/7 environment receipts complete**. The latest bounded physical-iPad
+receipt, from source commit `2a80e30921`, built the arm64 Signal FFI slice and
+the source-safe Firestore graph (`grpc-ios` plus `BoringSSL-SwiftPM`) and
+executed **9 `MobileThemeTests` cases with 0 failures** on Alberto's paired
+iPad. The receipt is
+`evidence/parity-audit-2026-07-10/ipad-mobile-theme-2026-07-19.json`.
+This is non-certifying focused mobile coverage; the older 44-case receipt is
+historical, and neither receipt proves installed Linux enrollment, fingerprint
+confirmation, approve/revoke, or cross-device Computer Use behavior. The
+current live UTM query reports the Linux guest as stopped, so no VM evidence
+was claimed or modified in this check.
 
 Two additional source-only parity hardening slices are now on the candidate
 branch. `6f57349c66` keeps Linux settings search selection synchronized with
@@ -172,18 +173,19 @@ percentage. The active remediation stack now contains these reviewable slices:
   approval execution, live UTM daemon repair, and installed Mercury/Computer
   Use/SmartHub/IME/keyring/accessibility/update receipts.
 
-### Fresh local device and infrastructure recheck — 2026-07-18
+### Fresh local device and infrastructure recheck — 2026-07-19
 
 - **Physical iPad:** after the wired reconnection, `xcrun devicectl` sees
   Alberto's paired, booted iPad with Developer Mode enabled and a mounted
   developer image. The physical XCTest readiness preflight passes when the
-  hardware UDID (`00008132-001158191E9A401C`) is used; the earlier failed
-  attempt supplied the CoreDevice identifier instead. XCTest execution still
-  has no promoted result because the worktree is over the 10 GiB hygiene
-  ceiling, so the focused approval build has not started.
-- **UTM:** live `utmctl list` now reports the OpenBurnBar Linux guest as
-  started. No VM was modified during this recheck; the historical stale
-  `/usr/local` launcher diagnosis remains an open repair gate.
+  hardware UDID (`00008132-001158191E9A401C`) is used. The bounded current-
+  checkout `MobileThemeTests` run passed **9/9**, with xcodebuild exit 0; the
+  non-certifying receipt is
+  `evidence/parity-audit-2026-07-10/ipad-mobile-theme-2026-07-19.json`.
+  Parser/store/mutation approval tests and cross-device execution remain open.
+- **UTM:** the current `utmctl list` reports the OpenBurnBar Linux guest as
+  stopped. No VM was modified during this recheck; installed Linux proof and
+  the historical stale `/usr/local` launcher diagnosis remain open repair gates.
 - **iPad runner correction:** `5cff4281ec` makes the mobile test driver accept
   either the CoreDevice identifier shown by `devicectl` or the hardware UDID
   required by Xcode. Deterministic tests cover successful mapping, an already
