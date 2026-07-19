@@ -8,6 +8,7 @@ import { useShellStore } from '../../state/shellStore.js';
 import { useSupportStore } from '../../state/supportStore.js';
 import { isSafeDiagnosticsPath, type LinuxShellBridge } from '../../tauriBridge.js';
 import { UpdatesSurface } from '../updates/UpdatesSurface.js';
+import { KERNEL_RESOLUTION_EVENT } from '../../components/KernelBackdrop.js';
 import { SupportSurface } from './SupportSurface.js';
 
 function resetStores(): void {
@@ -493,6 +494,27 @@ describe('P09 updates and support', () => {
     } finally {
       removeReceipt();
     }
+  });
+
+  it('accepts the typed renderer receipt while backdrop attributes are transitioning', () => {
+    render(<SupportSurface />);
+    fireEvent(
+      window,
+      new CustomEvent(KERNEL_RESOLUTION_EVENT, {
+        detail: {
+          requestedId: 'aurora',
+          resolvedId: 'constellation',
+          requestedSubstrate: 'webgl2',
+          resolvedSubstrate: '2d',
+          reason: 'webgl2-unavailable',
+          fallback: true,
+          glSupported: false
+        }
+      })
+    );
+    const runtime = screen.getByRole('region', { name: 'Backdrop runtime' });
+    expect(within(runtime).getByText('2D fallback (WebGL2 unavailable)')).toBeTruthy();
+    expect(within(runtime).getByText('Aurora')).toBeTruthy();
   });
 
   it('does not guess renderer facts when the live receipt is missing', () => {

@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { KERNEL_META } from '@openburnbar/gl-engine/engine/registry';
+import type { KernelResolution } from '@openburnbar/gl-engine/engine/types';
 import { KERNEL_RESOLUTION_EVENT } from '../../components/KernelBackdrop.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { listPerfSamples } from '../../perfMarks.js';
@@ -59,38 +60,44 @@ const EMPTY_BACKDROP_RUNTIME_EVIDENCE: BackdropRuntimeEvidence = {
   glSupported: null
 };
 
+let latestKernelResolution: KernelResolution | null = null;
+let runtimeSubscriberCount = 0;
+
 function readBackdropRuntimeEvidence(): string {
   if (typeof document === 'undefined') return JSON.stringify(EMPTY_BACKDROP_RUNTIME_EVIDENCE);
 
   const backdrop = document.querySelector<HTMLElement>('[data-backdrop-mode]');
-  if (!backdrop) return JSON.stringify(EMPTY_BACKDROP_RUNTIME_EVIDENCE);
+  if (!backdrop && !latestKernelResolution) return JSON.stringify(EMPTY_BACKDROP_RUNTIME_EVIDENCE);
 
-  const requestedKernel = backdrop.dataset.kernelRequested?.trim() || null;
-  const resolvedKernel = backdrop.dataset.kernelResolved?.trim() || null;
-  const resolvedSubstrate = backdrop.dataset.kernelSubstrate?.trim() || null;
+  const requestedKernel = backdrop?.dataset.kernelRequested?.trim() || latestKernelResolution?.requestedId || null;
+  const resolvedKernel = backdrop?.dataset.kernelResolved?.trim() || latestKernelResolution?.resolvedId || null;
+  const resolvedSubstrate =
+    backdrop?.dataset.kernelSubstrate?.trim() || latestKernelResolution?.resolvedSubstrate || null;
   const glSupported =
-    backdrop.dataset.glSupported === '1'
+    backdrop?.dataset.glSupported === '1'
       ? true
-      : backdrop.dataset.glSupported === '0'
+      : backdrop?.dataset.glSupported === '0'
         ? false
-        : null;
+        : latestKernelResolution?.glSupported ?? null;
   const requestedSubstrate =
-    KERNEL_META.find((kernel) => kernel.id === requestedKernel)?.substrate ?? null;
+    KERNEL_META.find((kernel) => kernel.id === requestedKernel)?.substrate ??
+    latestKernelResolution?.requestedSubstrate ??
+    null;
 
   const evidence: BackdropRuntimeEvidence = {
     available: Boolean(requestedKernel && resolvedKernel && resolvedSubstrate && glSupported !== null),
-    mode: backdrop.dataset.backdropMode?.trim() || null,
+    mode: backdrop?.dataset.backdropMode?.trim() || null,
     requestedKernel,
     requestedSubstrate,
     resolvedKernel,
     resolvedSubstrate,
-    resolution: backdrop.dataset.kernelResolution?.trim() || null,
+    resolution: backdrop?.dataset.kernelResolution?.trim() || latestKernelResolution?.reason || null,
     fallback:
-      backdrop.dataset.kernelFallback === '1'
+      backdrop?.dataset.kernelFallback === '1'
         ? true
-        : backdrop.dataset.kernelFallback === '0'
+        : backdrop?.dataset.kernelFallback === '0'
           ? false
-          : null,
+          : latestKernelResolution?.fallback ?? null,
     glSupported
   };
   return JSON.stringify(evidence);
@@ -99,7 +106,24 @@ function readBackdropRuntimeEvidence(): string {
 function subscribeBackdropRuntimeEvidence(onChange: () => void): () => void {
   if (typeof window === 'undefined') return () => undefined;
 
-  const onResolution = () => onChange();
+  runtimeSubscriberCount += 1;
+  const onResolution = (event: Event) => {
+    const detail = (event as CustomEvent<KernelResolution>).detail;
+    if (
+      detail &&
+      typeof detail === 'object' &&
+      typeof detail.requestedId === 'string' &&
+      typeof detail.resolvedId === 'string' &&
+      typeof detail.requestedSubstrate === 'string' &&
+      typeof detail.resolvedSubstrate === 'string' &&
+      typeof detail.reason === 'string' &&
+      typeof detail.fallback === 'boolean' &&
+      typeof detail.glSupported === 'boolean'
+    ) {
+      latestKernelResolution = detail;
+    }
+    onChange();
+  };
   window.addEventListener(KERNEL_RESOLUTION_EVENT, onResolution);
 
   // The backdrop is mounted before the Support route and publishes its first
@@ -125,6 +149,8 @@ function subscribeBackdropRuntimeEvidence(onChange: () => void): () => void {
   return () => {
     window.removeEventListener(KERNEL_RESOLUTION_EVENT, onResolution);
     observer?.disconnect();
+    runtimeSubscriberCount = Math.max(0, runtimeSubscriberCount - 1);
+    if (runtimeSubscriberCount === 0) latestKernelResolution = null;
   };
 }
 
