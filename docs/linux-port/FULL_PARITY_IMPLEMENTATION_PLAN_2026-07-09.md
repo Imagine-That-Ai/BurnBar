@@ -67,11 +67,23 @@ Tauri Rust **115/115**). `2a80e30921` recovers the Mercury decoder in place
 after transient frame failures, and `8131b51aec` adds a portal-backed native
 diagnostics save destination with a Rust path-validation boundary and private
 atomic output (diagnostics **6/6**, support UI **24/24**). The integrated
-desktop suite is now **82 files / 755 tests**, Tauri Rust is **117/117**, and
-TypeScript plus production bundle verification pass. A bounded physical-iPad
-`MobileThemeTests` run also passed **9/9** with xcodebuild exit 0; it remains
-non-certifying mobile coverage and does not prove Linux enrollment or
+desktop suite is now **83 files / 758 tests**, Tauri Rust is **118/118**, and
+TypeScript plus production bundle verification pass. A current-checkout focused
+physical-iPad approval run also passed **44/44** with xcodebuild exit 0; it
+remains non-certifying mobile coverage and does not prove Linux enrollment or
 cross-device approval behavior.
+
+The current source wave adds `9fb6e88c33`, which canonicalizes membership RPC
+names and maps older-daemon unknown methods to a deterministic capability-absent
+state (Tauri Rust **118/118**), and `f9d3b429e5`, which adds persisted Dashboard
+Defaults plus truthful daemon-backed Indexing & Search posture and an explicit
+unavailable Session Summaries state (focused settings **45/45**, new controls
+**3/3**). The full desktop suite is green at **83 files / 758 tests**, with
+TypeScript and production bundle verification passing. A current-checkout focused physical-iPad approval receipt also passed
+**44/44**, xcodebuild exit 0; see
+`evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19.json`.
+These source and device results remain non-certifying until the exact Linux
+candidate is installed, enrolled, and exercised end to end.
 
 ### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 
@@ -188,9 +200,10 @@ The wrapper emitted root-owned transcript `EACCES` warnings but retained raw
 evidence and exited successfully with `linux-desktop-session-ok`, so the prior
 false shell failure is closed.
 
-The physical iPad preflight and a bounded current-checkout `MobileThemeTests`
-run now pass on the paired device (**9/9**, xcodebuild exit 0). This is mobile
-coverage only; the focused parser/store/mutation approval journey remains open.
+The physical iPad preflight and a bounded current-checkout focused approval
+run now pass on the paired device (**44/44**, xcodebuild exit 0). This is mobile
+coverage only; installed Linux enrollment, fingerprint confirmation, and the
+cross-device approval journey remain open.
 Production callable inventory is still drifted. The current `utmctl` query
 reports the OpenBurnBar Linux guest as stopped, so no live daemon or installed-
 product receipt is promoted from this check. These facts are recorded in the
@@ -656,17 +669,16 @@ Full parity remains **NO-GO** until all of these gates are met in order:
 
 Live recheck on 2026-07-19: the wired paired iPad is booted with Developer
 Mode enabled, resolves from its CoreDevice identifier to the hardware UDID, and
-passes the bounded current-checkout `MobileThemeTests` run: **9 tests, 0
-failures**. The source-safe Firestore graph (`grpc-ios` plus
-`BoringSSL-SwiftPM`) and arm64-only Signal FFI build were used. The
-non-certifying receipt is
-`evidence/parity-audit-2026-07-10/ipad-mobile-theme-2026-07-19.json`.
-This closes only focused mobile theme coverage, not the parser/store/mutation
-approval journey, installed Linux enrollment, approval/revoke, or cross-device
-Computer Use proof. The current `utmctl` query reports the OpenBurnBar Linux
-guest as stopped; it was not modified. The product-parity workflow is not yet
-on `main`, and GitHub has no registered self-hosted runners for the seven
-required Linux environment labels.
+passes the current-checkout focused approval run: **44 tests, 0 failures**. The
+source-safe Firestore graph (`grpc-ios` plus `BoringSSL-SwiftPM`) and arm64-only
+Signal FFI build were used. The non-certifying receipt is
+`evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19.json`.
+This closes focused mobile approval/decoder coverage only, not installed Linux
+enrollment, fingerprint confirmation, approve/revoke, or cross-device Computer
+Use proof. The current `utmctl` query reports the OpenBurnBar Linux guest as
+stopped; it was not modified. The product-parity workflow is not yet on `main`,
+and GitHub has no registered self-hosted runners for the seven required Linux
+environment labels.
 
 The mobile runner correction in `5cff4281ec` accepts both CoreDevice and
 hardware-UDID forms, fails closed for missing or ambiguous mappings, and is
@@ -681,11 +693,10 @@ but does not count as physical approval execution.
    absent or malformed.
 3. Deploy the Linux App Check callables, policy, and Firestore rules.
 4. Keep the focused mobile XCTest receipt green on the connected physical iPad.
-   The 2026-07-19 current-checkout run passed `MobileThemeTests` 9/9. This is
-   only focused mobile coverage: parser/store/mutation approval tests, installed
-   Linux enrollment, fingerprint confirmation, approve/revoke, and cross-device
-   action proof remain required. The visible iPhone and simulator targets remain
-   invalid substitutes.
+   The 2026-07-19 current-checkout focused approval run passed 44/44. This is
+   only focused mobile coverage: installed Linux enrollment, fingerprint
+   confirmation, approve/revoke, and cross-device action proof remain required.
+   The visible iPhone and simulator targets remain invalid substitutes.
 5. Build and sign the exact deb/rpm/AppImage candidate, including the final-byte
    AppImage peer manifest. Candidate `0.1.1` is now built and signed by Release
    `29646670068`; compatible previous-package lifecycle proof and public
@@ -1673,10 +1684,10 @@ The original foundation sequence is substantially implemented. From the
      focused mobile tests.
    - Preserve the passing generic iOS build-for-testing coverage.
    - Run focused tests on the connected physical iPad; do not substitute an iPhone or
-     simulator for the final physical-device gate. A bounded `MobileThemeTests`
-     receipt now passes 9/9 on the paired device; launch/liveness is proven, while
-     parser/store/mutation approval execution remains blocked until the exact Linux
-     candidate is paired.
+     simulator for the final physical-device gate. The current bounded focused
+     approval receipt passes 44/44 on the paired device; mobile decoder/approval
+     coverage is proven, while installed Linux enrollment and cross-device
+     execution remain blocked until the exact Linux candidate is paired.
 
 4. **Production configuration change**
    - Create the dedicated Desktop OAuth client.

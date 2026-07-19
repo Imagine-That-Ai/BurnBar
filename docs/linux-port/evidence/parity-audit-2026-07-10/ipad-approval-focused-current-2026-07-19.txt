@@ -1,0 +1,24 @@
+OpenBurnBar focused physical-iPad approval XCTest receipt
+Captured: 2026-07-19T06:11:08Z
+Source checkout at test start: c56ce9749a
+Device: Alberto's iPad (iPadOS, paired USB)
+CoreDevice identifier: 407C0B12-010B-5970-8E85-D0E43DA8F457
+Xcode hardware UDID: 00008132-001158191E9A401C
+Xcode: Xcode-27.0.0-Beta
+Configuration: Debug; automatic provisioning disabled
+Signal FFI targets: aarch64-apple-ios
+Firestore graph: grpc-ios@1.69.0 + BoringSSL-SwiftPM@0.32.1
+
+Selectors:
+- OpenBurnBarMobileTests/AgentLiveStagePresenterTests (22)
+- OpenBurnBarMobileTests/AgentLiveStageWiringTests (6)
+- OpenBurnBarMobileTests/DevicesStoreTests (13)
+- OpenBurnBarMobileTests/HermesGatewayApprovalDetailIndexTests (3)
+- OpenBurnBarMobileTests/testAgentWatchOverlayCoordinatorClassifiesApprovalStreamAndResponds
+- OpenBurnBarMobileTests/testGatewaySealedApprovalDetailDecodesActionIdAndKind
+- OpenBurnBarMobileTests/testSealedApprovalDecisionCarriesKindAndActionAtRootOfSealedPayload
+
+Result: **TEST SUCCEEDED**; 44 tests, 0 failures, 0 unexpected failures.
+XCTest operation duration: 18.589 seconds; wrapper command duration: 383 seconds; xcodebuild exit code: 0.
+Scope: non-certifying focused mobile coverage only. Installed Linux enrollment,
+fingerprint confirmation, approve/revoke, and cross-device Computer Use remain open.

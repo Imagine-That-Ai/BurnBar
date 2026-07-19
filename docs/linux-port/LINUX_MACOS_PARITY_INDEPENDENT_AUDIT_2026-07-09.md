@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | Current source hardening reaches `ac3fd3b044`; the clean parity-ledger validation is bound to source checkpoint `a92cea995c`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
+| Remediation evidence | Current source hardening reaches `f9d3b429e5`; the clean parity-ledger validation is bound to source checkpoint `a92cea995c`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -14,16 +14,16 @@
 
 The strict ledger is unchanged at **0/40 product requirements ready** and
 **0/7 environment receipts complete**. The latest bounded physical-iPad
-receipt, from source commit `2a80e30921`, built the arm64 Signal FFI slice and
+receipt, from source checkout `c56ce9749a`, built the arm64 Signal FFI slice and
 the source-safe Firestore graph (`grpc-ios` plus `BoringSSL-SwiftPM`) and
-executed **9 `MobileThemeTests` cases with 0 failures** on Alberto's paired
+executed **44 focused approval cases with 0 failures** on Alberto's paired
 iPad. The receipt is
-`evidence/parity-audit-2026-07-10/ipad-mobile-theme-2026-07-19.json`.
-This is non-certifying focused mobile coverage; the older 44-case receipt is
-historical, and neither receipt proves installed Linux enrollment, fingerprint
-confirmation, approve/revoke, or cross-device Computer Use behavior. The
-current live UTM query reports the Linux guest as stopped, so no VM evidence
-was claimed or modified in this check.
+`evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19.json`.
+The earlier 9-case theme receipt remains useful supplemental coverage. These
+are non-certifying focused mobile results; neither proves installed Linux
+enrollment, fingerprint confirmation, approve/revoke, or cross-device Computer
+Use behavior. The current live UTM query reports the Linux guest as stopped, so
+no VM evidence was claimed or modified in this check.
 
 Two additional source-only parity hardening slices are now on the candidate
 branch. `6f57349c66` keeps Linux settings search selection synchronized with
@@ -83,14 +83,25 @@ directories and atomic bundles have private permissions, and symlinked support
 directories fail closed (focused support UI **24/24**, Tauri Rust **115/115**).
 `2a80e30921` now recovers the Mercury GStreamer decoder in place after a
 transient frame failure, preserving the socket session and re-arming keyframe
-gating (default Tauri Rust **117/117**). `8131b51aec` adds a portal-backed native
+gating (default Tauri Rust **118/118** after the membership contract slice).
+`8131b51aec` adds a portal-backed native
 diagnostics save destination with a second Rust path-validation boundary and
 owner-only atomic output (diagnostics **6/6**, support UI **24/24**). The
-current desktop regression run is **82 files / 755 tests**, with TypeScript and
-the production bundle verifier passing. The paired iPad also completed a
-bounded current-checkout `MobileThemeTests` receipt (**9/9**, 0 failures,
-xcodebuild exit 0); this remains non-certifying mobile coverage and does not
-prove Linux enrollment, approval/revoke, or cross-device Computer Use.
+current desktop regression run is **83 files / 758 tests**, with TypeScript and
+the production bundle verifier passing. A prior bounded current-checkout
+`MobileThemeTests` receipt passed **9/9**, 0 failures, and xcodebuild exit 0;
+the newer focused approval receipt is recorded below. Both remain
+non-certifying mobile coverage and do not prove Linux enrollment,
+approval/revoke, or cross-device Computer Use.
+
+The current source-only wave also includes `9fb6e88c33`, which canonicalizes
+membership RPC names and maps unknown methods to a deterministic capability-
+absent state (Tauri Rust **118/118**), and `f9d3b429e5`, which adds persisted
+Dashboard Defaults plus truthful daemon-backed Indexing & Search posture and
+an explicit unavailable Session Summaries state (focused settings **45/45**,
+new controls **3/3**). The full desktop-suite rerun after these two slices is
+green at **83 files / 758 tests**. The current focused approval receipt is **44/44**, 0 failures,
+xcodebuild exit 0; it remains non-certifying mobile coverage.
 
 ## Execution Status — 2026-07-18
 
