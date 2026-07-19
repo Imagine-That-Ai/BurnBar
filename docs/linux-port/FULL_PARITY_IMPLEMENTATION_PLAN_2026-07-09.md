@@ -38,6 +38,8 @@ symlink protection), and `a5522bfc54` (bounded JSON history import/resume with
 duplicate identity checks and 27 focused activity tests). These source slices
 improve the implementation baseline but do not create installed Linux,
 production, or cross-device certification receipts.
+`d1cb5e517d` also corrects the Linux settings section taxonomy to match macOS
+exactly; focused settings-catalog coverage passes 4/4.
 
 ### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 

@@ -44,6 +44,9 @@ adds bounded, duplicate-identity-checked JSON history import/resume through
 the daemon, with **27 focused activity tests** and TypeScript passing. The
 history importer preserves normal multi-line Markdown bodies. These changes
 remain non-certifying until installed Linux and live production receipts exist.
+`d1cb5e517d` also aligns the Linux settings section order with the macOS oracle:
+System contains Daemon, Updates, and Data & Privacy, while More contains Text
+Expansion, Media & Sharing, Computer Use, and Pets.
 
 ## Execution Status — 2026-07-18
 
@@ -1697,6 +1700,8 @@ the intended `0700`/`0600` ownership boundary (`50a0684e75`).
   current Linux shell shares the settings matcher between sidebar and detail,
   keeps the current tab when it still matches, selects the first matching tab
   for a new query, and reports an explicit no-results state (`6f57349c66`).
+  Its section grouping now mirrors the macOS settings taxonomy exactly
+  (`d1cb5e517d`); deeper per-tab daemon writes and installed proof remain open.
 - **QA verification:** search/deep-link every setting, keyboard navigation,
   persistence/restart, policy conflicts, telemetry opt-out at emission source,
   unavailable capability copy, and migration from existing localStorage keys.
