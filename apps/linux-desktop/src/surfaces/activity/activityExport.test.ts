@@ -252,6 +252,24 @@ describe('activity export', () => {
     });
     expect(failed).toMatchObject({ kind: 'unavailable', code: 'source_resolution_unavailable' });
     expect(resume).not.toHaveBeenCalled();
+
+    const boundedRecent = await resumeActivityHistoryExportSession(document, sourceID, {
+      // A current daemon.usage.recent response can look complete after the
+      // shell mapper adds `complete: true`, but it still has no full-history
+      // proof and must not reach run.resume.
+      sessionList: async () => ({
+        sessions: [{ ...sessions[0]!, sourceID }],
+        nextCursor: null,
+        complete: true
+      }),
+      sessionResume: resume
+    });
+    expect(boundedRecent).toMatchObject({
+      kind: 'unavailable',
+      code: 'source_resolution_unavailable',
+      message: expect.stringMatching(/explicit complete-history proof/i)
+    });
+    expect(resume).not.toHaveBeenCalled();
   });
 
   it('rejects edited, duplicate, or presentation-only exports before daemon resume', async () => {
