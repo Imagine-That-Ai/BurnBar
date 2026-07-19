@@ -24,6 +24,15 @@ enrollment, fingerprint confirmation, approve/revoke, or cross-device
 Computer Use behavior. The current live UTM query reports the Linux guest as
 stopped, so no VM evidence was claimed or modified in this check.
 
+Two additional source-only parity hardening slices are now on the candidate
+branch. `6f57349c66` keeps Linux settings search selection synchronized with
+the matching detail tab, shares one matcher between the sidebar and detail
+surface, and renders an explicit no-results state. `5624ad1f6b` makes Linux
+Avahi peer discovery honor bounded deadlines and report non-zero helper exits
+as typed failures; focused source tests cover timeout, exit status, and a
+successful parse. These changes improve behavior and reliability but do not
+create installed Linux receipts or change the strict 0/40 and 0/7 ledger.
+
 ## Execution Status — 2026-07-18
 
 The audit remains the source of truth for the parity claim. The current Linux
@@ -1665,7 +1674,10 @@ remains required.
 - **Priority:** **Medium**.
 - **Implementation notes:** unavailable controls must explain the native
   substitute; store UI navigation locally but product policy in the daemon;
-  preserve distro/compositor-specific help without forking the schema.
+  preserve distro/compositor-specific help without forking the schema. The
+  current Linux shell shares the settings matcher between sidebar and detail,
+  keeps the current tab when it still matches, selects the first matching tab
+  for a new query, and reports an explicit no-results state (`6f57349c66`).
 - **QA verification:** search/deep-link every setting, keyboard navigation,
   persistence/restart, policy conflicts, telemetry opt-out at emission source,
   unavailable capability copy, and migration from existing localStorage keys.

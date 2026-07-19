@@ -18,6 +18,20 @@ known platform divergences.
 
 Linux is not at full macOS parity.
 
+### Current source hardening — 2026-07-19 UTC
+
+Two reviewable source slices are now on the candidate branch. `6f57349c66`
+keeps Linux settings search and detail-tab selection synchronized, including
+an explicit no-results state; its focused settings suite (40 tests), TypeScript
+check, production build, and bundle verifier passed. `5624ad1f6b` bounds Linux
+Avahi peer discovery, terminates stalled helpers, and reports non-zero exits as
+typed failures; focused Linux-only source tests cover timeout, exit status, and
+successful parsing. The macOS host can parse/build the Linux-only tests but
+cannot execute them because the package runner lacks `SQLCipher.framework`.
+Neither slice changes the strict **0/40 product** or **0/7 environment**
+certification state; installed Linux and live cross-device receipts remain the
+next gate.
+
 ### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 
 The authoritative ledger is **0/40 product requirements** and **0/7 environment
