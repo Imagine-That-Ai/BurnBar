@@ -1,9 +1,9 @@
 {
   "schema": "openburnbar.parity.linux-installed-runtime-receipt.v1",
-  "capturedAt": "2026-07-19T18:00:00Z",
+  "capturedAt": "2026-07-19T19:00:57Z",
   "certificationScope": "non-certifying exact implementation ARM64 package and live VM smoke receipt",
-  "sourceCommit": "aa188d24fa",
-  "sourceDescription": "Exact integration head synced into the Ubuntu guest; Swift-less staged-payload build, DEB install, and live smoke checks completed",
+  "sourceCommit": "ded781e94d",
+  "sourceDescription": "Exact integration head synced into the Ubuntu guest; Swift-less staged-payload build, DEB install, route-error recovery, and live smoke checks completed",
   "environment": {
     "guest": "Ubuntu 24.04.4 LTS",
     "architecture": "aarch64",
@@ -18,9 +18,9 @@
     "name": "open-burn-bar",
     "version": "0.1.1",
     "architecture": "arm64",
-    "archiveBytes": 151385696,
-    "archiveSha256": "3f4beb58983a125af5dcf06fbf99a86a9c5fe098470f5f64d90996f72eba9c47",
-    "desktopSha256": "455528d4d0eebc397c0ef6531cac4b6b4a594c7044f89eb4e6aba884baf6eb08",
+    "archiveBytes": 151388402,
+    "archiveSha256": "c580b3f577983a8ce05e18bc831dbeb5397c8ccbad7090cedd8e0aa6f674ba8a",
+    "desktopSha256": "42a74b1b4ab78870339717a9388f59d8059591263fa6079a2eca2f41bec3c7c0",
     "daemonSha256": "fb0f87ccc0638f84c2ba9f2a34ca97f8cec707534a5473f19bf6f317291c480c",
     "cliSha256": "db0d6931ca8644a91f78ee3dccac27364bab5a373e63917a53915cf836e180e5",
     "signed": false,
@@ -34,19 +34,19 @@
       "daemonVersion": "1.0.29",
       "socketPath": "/run/user/1000/openburnbar/daemon.sock"
     },
-    "installedDesktopPid": 187290
+    "installedDesktopPid": 194940
   },
   "backdrop": {
     "requestedKernel": "fluid-aurora",
     "resolvedSubstrate": "2d",
     "resolutionLabel": "Fluid Aurora - 2D fallback (WebGL2 unavailable)",
     "captureIntervalSeconds": 2,
-    "captureASha256": "49a5b458df4f1357976da4117986363f0071a488bd5d84e1eb7e18fc3abb9ebd",
-    "captureBSha256": "7279f22c1167c1e2296129b04b36aeb78292877685aae881142b41d593c517ed",
+    "captureASha256": "793a28171de226e7c4ac09a7916f6156dd20ffcd738c9920024f47f8504a9be9",
+    "captureBSha256": "cc13fa43a4cf2159c39239ec37059ec2fd2513fbcee07329735b99f72ac65618",
     "animated": true,
     "backgroundRecovery": {
       "mode": "window-minimize-restore",
-      "captureSha256": "416bd5e5934f806ee45aa11426cdebe6849b855c8aeb9bd03c3b1490f02843",
+      "captureSha256": "405ec6ac3c5f53d0e1e074bfb17fc8d1ba05b3b9e7f1fa17f814a2849b9d63",
       "rendered": true
     }
   },

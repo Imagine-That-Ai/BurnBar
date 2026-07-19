@@ -6,15 +6,15 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; focused payload coverage is 13/13 and Rust is 125/125. |
-| Latest VM proof | The exact `aa188d24fa` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json). Daemon health is green, onboarding verification advances to step 2, two captures differ, minimize/restore renders, and the UI labels the WebGL2 request as `2D fallback (WebGL2 unavailable)`. |
-| Remediation evidence | The installed non-certifying arm64 DEB remains source `5b70a3d320` in the Ubuntu 24.04.4 GNOME/X11 UTM guest; its receipt is `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/live-installed-receipt.json`. Current code head is `1b80f2ca08`; the kernel capability implementation is `50d40b9acb` with focused paint regression tests at `a561c5ea3e`, `1dc1328818`, and `0ae08b3baf`, and the focused physical-iPad receipts are bound to `c9c679f43b` plus the current-head navigation receipt `evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json`. A live WebKitGTK probe against the Ubuntu guest reported `webgl2=false`, `webgl1=true`; the current-head release visibly resolves Aurora to the Canvas2D fallback with an explicit `WebGL2 unavailable` label. The installed baseline's two root-window captures two seconds apart changed only 256 bytes, exposing a real first-paint/lazy-kernel regression; `1dc1328818` eagerly constructs the Linux `swarmEmber` default so the candidate paints before dynamic import resolution, while `907187f767`/`0ae08b3baf` keep lazy 2D fallbacks opaque and retryable when a chunk rejects or throws synchronously. `1f5a158e3d` enables Tauri's release custom protocol and `a01a60824b` makes Cargo watch every frontend asset so release binaries cannot reuse stale embedded `dist` files. `fdd3ff61ad` adds command-palette and icon-control accessibility semantics, `7bcf432bf4` revalidates pinned Computer Use authority on every inbound frame before dispatch, and `1b80f2ca08` reveals a 2D fallback synchronously when a WebGL2 context disappears mid-switch. A fresh current-head `npx tauri build --no-bundle --no-sign` render was visually verified in the unlocked VM; the direct tree run correctly shows the daemon-unavailable setup card because it does not launch the packaged daemon. Daemon/CLI health is green on the installed candidate, and the current-head physical iPad navigation slice passed 21/21 with xcodebuild exit 0. Signed provenance, current-head package installation, cross-device proof, and the strict product/environment receipts remain open. |
+| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery. Focused payload coverage is green and Rust is 125/125. |
+| Latest VM proof | The exact `ded781e94d` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json). Daemon health is green, onboarding verification advances to step 2, two stable captures differ, minimize/restore renders, and the UI labels the WebGL2 request as `2D fallback (WebGL2 unavailable)`. |
+| Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The current exact-head ARM64 install and receipt are recorded above; the WebKitGTK probe still reports `webgl2=false`, `webgl1=true`, so the current app uses the animated Canvas2D fallback. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
 ## Current Source Checkpoint — 2026-07-19
 
-The current integration head is `aa188d24fa`. This is a source and build
+The current integration head is `ded781e94d`. This is a source and build
 checkpoint, not a promotion claim:
 
 - `1130524331` immediately reveals a visible 2D backdrop when a WebGL context
@@ -28,8 +28,11 @@ checkpoint, not a promotion claim:
 - `6ce5ec8623` adds quota/account routing state; `149cfec503` plus `bd10c71919`
   harden provider refresh and stale-event handling; `ed940164ce` hardens
   Mercury recovery; and `aa188d24fa` invalidates embedded assets when hashed
-  chunks rotate.
-- Source gates pass: 88 frontend files / 830 tests, TypeScript, production
+  chunks rotate. `cf9499d437` adds viewer capability retry, `7e7e7efdf7` plus
+  `58e21e5f9c` add a typed privacy-export receipt with a metadata-safe fallback,
+  `65f4931c36` keeps onboarding provider recovery actionable, and `ded781e94d`
+  adds route-level render-error recovery with Retry/Open Support actions.
+- Source gates pass: 89 frontend files / 835 tests, TypeScript, production
   bundle verification, Tauri Rust 125/125, and package-payload 13/13.
 - The ARM64 VM validated the supported Swift-less staged-payload path with
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`; the exact implementation package
@@ -47,7 +50,7 @@ macOS/Linux differential evidence.
 ## Current Live Checkpoint — 2026-07-19
 
 The historical live checkpoint below records the earlier `1b80f2ca08` kernel
-capability slice. The current source checkpoint is `aa188d24fa`; the kernel
+capability slice. The current source checkpoint is `ded781e94d`; the kernel
 capability slice at
 `50d40b9acb` adds a typed kernel
 resolution receipt from the shared backdrop engine and exposes the requested
@@ -73,12 +76,12 @@ separate packaging/runtime check from backdrop rendering. The prior installed
 package receipt remains the historical `5b70a3d320` candidate. The latest VM
 proof is now a locally built ARM64 package containing the current parity
 frontend and Tauri shell; it is installed at `/usr/bin`, reports daemon health
-`ok=true`, and advances onboarding from step 1 to step 2. Its two two-second
-captures differ, and its switcher visibly reads
+`ok=true`, and advances onboarding from step 1 to step 2. Its two stable
+two-second captures differ, and its switcher visibly reads
 `Fluid Aurora - 2D fallback (WebGL2 unavailable)`. This is useful live evidence
 but remains non-certifying because the package is unsigned and the VM is not a
-WebGL2-capable target. The historical receipt is
-`evidence/parity-audit-2026-07-10/linux-arm64-current-head-2026-07-19.json`.
+WebGL2-capable target. The exact current receipt is
+`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json`.
 
 The connected physical iPad was rechecked against the current checkout using
 the bounded approval/navigation selectors: the existing approval-focused
