@@ -30,7 +30,7 @@ actionable controls, no `Loading Settings` node, a reachable startup checkbox,
 and a working Media & Sharing route:
 `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/`.
 
-Final source gates are **87 frontend files / 806 tests**, focused Settings and
+Final source gates are **87 frontend files / 807 tests**, focused Settings and
 route coverage **45/45**, accessibility coverage **10/10**, Tauri Rust
 **125/125**, TypeScript, formatting, and production-bundle verification. The
 connected physical iPad focused navigation suite passed with xcodebuild exit 0.
@@ -38,7 +38,7 @@ This is an implementation and live-QA
 milestone only; the strict product/environment promotion boundary remains
 **0/40 product rows and 0/7 environment receipts**.
 
-The current source checkpoint is `7bcf432bf4`; the kernel capability slice at
+The current source checkpoint is `1b80f2ca08`; the kernel capability slice at
 `50d40b9acb` adds a typed backdrop kernel
 resolution receipt and surfaces requested-versus-resolved kernel state in the
 Linux switcher. The live Ubuntu WebKitGTK probe reports `webgl2=false` and
@@ -61,7 +61,8 @@ frontend assets after an in-place Vite output change. `fdd3ff61ad` adds
 command-palette/listbox semantics, focus containment, and stable names for
 icon-only toolbar actions; `7bcf432bf4` revalidates pinned Computer Use
 authority before every inbound controller frame and tears down a stale runtime
-before dispatch. A fresh current-head
+before dispatch. `1b80f2ca08` reveals the 2D fallback synchronously when a
+WebGL2 context disappears during a switch. A fresh current-head
 release build was visually verified in the unlocked UTM guest: the shell and
 Canvas2D Aurora fallback rendered, with the explicit `WebGL2 unavailable`
 status. The direct tree launch does not start the packaged daemon, so its setup
