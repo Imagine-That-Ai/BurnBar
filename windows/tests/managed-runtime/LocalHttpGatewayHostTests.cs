@@ -8,6 +8,7 @@ using Xunit;
 
 namespace OpenBurnBar.App.ManagedAgentRuntime.Tests;
 
+[Collection(LoopbackGatewayCollection.Name)]
 public sealed class LocalHttpGatewayHostTests
 {
     [Fact]
@@ -322,7 +323,9 @@ public sealed class LocalHttpGatewayHostTests
                     true));
             }),
             accessToken: "test-token",
-            rateLimiter: new GatewayRateLimiter(new GatewayRateLimitConfiguration(0.1, 1)));
+            rateLimiter: new GatewayRateLimiter(
+                new GatewayRateLimitConfiguration(0.1, 1),
+                new FrozenTimeProvider()));
         host.Start();
         using var client = new HttpClient { BaseAddress = host.BaseAddress };
         client.DefaultRequestHeaders.Authorization =
@@ -439,4 +442,11 @@ public sealed class LocalHttpGatewayHostTests
                 "{\"model\":\"local\",\"messages\":[]}",
                 Encoding.UTF8,
                 "application/json"));
+
+    private sealed class FrozenTimeProvider : System.TimeProvider
+    {
+        public override long TimestampFrequency => global::System.TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => 0;
+    }
 }
