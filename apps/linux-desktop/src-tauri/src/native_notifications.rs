@@ -8,8 +8,6 @@
 
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
-#[cfg(target_os = "linux")]
-use tauri::Emitter;
 
 const MAX_NOTIFICATION_ID_BYTES: usize = 96;
 const MAX_NOTIFICATION_TITLE_CHARS: usize = 160;
@@ -397,10 +395,9 @@ pub fn native_notification_show(
             let route = route.clone();
             let action = action.to_string();
             let notification_id = notification_id.clone();
-            let app_for_emit = app_for_route.clone();
             let _ = app_for_route.run_on_main_thread(move || {
-                let _ = app_for_emit.emit(
-                    "notification-action",
+                super::emit_notification_action(
+                    &app_for_route,
                     serde_json::json!({
                         "notificationId": notification_id,
                         "route": route,

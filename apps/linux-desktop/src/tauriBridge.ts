@@ -1508,6 +1508,8 @@ export interface LinuxShellBridge {
   gatewayChatCancel(requestId: string): Promise<void>;
   openDashboard(): Promise<void>;
   initialDeepLinkRoute?(): Promise<string | null>;
+  /** Drains native notification actions received before the renderer listener was ready. */
+  initialNotificationActions?(): Promise<NativeNotificationActionEvent[]>;
   quitApp(): Promise<void>;
   trayDegraded(): Promise<boolean>;
   measurePerfOperation(
@@ -4496,6 +4498,11 @@ export function decodeNativeNotificationActionEvent(raw: RawJsonValue): NativeNo
   };
 }
 
+export function decodeNativeNotificationActionEvents(raw: RawJsonValue): NativeNotificationActionEvent[] {
+  if (!Array.isArray(raw)) throw new Error('native notification action queue must be an array.');
+  return raw.map((event) => decodeNativeNotificationActionEvent(event));
+}
+
 export function decodeNativeShortcutStatus(raw: RawJsonValue): NativeShortcutStatus {
   const value = requireObject(raw, 'native shortcut status');
   const backend = str(pick(value, 'backend'));
@@ -4977,6 +4984,8 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     gatewayChatCancel: (requestId) => invoke<void>('gateway_chat_cancel', { requestId }),
     openDashboard: () => invoke<void>('open_dashboard'),
     initialDeepLinkRoute: () => invoke<string | null>('initial_deep_link_route'),
+    initialNotificationActions: async () =>
+      decodeNativeNotificationActionEvents(await invoke<RawJsonValue>('initial_notification_actions')),
     quitApp: () => invoke<void>('quit_app'),
     trayDegraded: () => invoke<boolean>('tray_degraded'),
     measurePerfOperation: (name) =>

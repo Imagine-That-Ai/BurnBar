@@ -16,6 +16,7 @@ import {
   decodeNativeNotificationCapabilities,
   decodeNativeNotificationResult,
   decodeNativeNotificationActionEvent,
+  decodeNativeNotificationActionEvents,
   decodeNativeShortcutStatus,
   decodeLaunchAtLoginStatus,
   decodePetCompanionStatus
@@ -514,6 +515,16 @@ describe('native Linux notification and shortcut decoding', () => {
       action: 'open',
       payload: 'thread-42'
     })).toThrow('payload');
+  });
+
+  it('strictly decodes the cold-start notification action queue', () => {
+    expect(decodeNativeNotificationActionEvents([
+      { notificationId: 'n-1', route: 'chat', action: 'reply' }
+    ])).toEqual([{ notificationId: 'n-1', route: 'chat', action: 'reply' }]);
+    expect(() => decodeNativeNotificationActionEvents({})).toThrow('must be an array');
+    expect(() => decodeNativeNotificationActionEvents([
+      { notificationId: 'n-2', route: 'unknown', action: 'open' }
+    ])).toThrow('unsupported');
   });
 });
 

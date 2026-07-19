@@ -169,30 +169,46 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
+    const handleNotificationAction = (payload: unknown) => {
+      if (cancelled) return;
+      try {
+        const action = decodeNativeNotificationActionEvent(payload);
+        setRoute(action.route);
+        if (action.action === 'reply' && action.route === 'chat') {
+          // Let React mount the Chat route before asking its composer to
+          // focus. The event contains only the validated notification ID;
+          // no notification body or untrusted text crosses this boundary.
+          window.setTimeout(() => {
+            if (cancelled) return;
+            window.dispatchEvent(new CustomEvent(CHAT_COMPOSER_FOCUS_EVENT, {
+              detail: { notificationId: action.notificationId }
+            }));
+          }, 0);
+        }
+      } catch (error) {
+        console.warn('linux_notification_action_rejected', error);
+      }
+    };
     void import('@tauri-apps/api/event')
       .then(async ({ listen }) => {
         const stop = await listen<unknown>('notification-action', (event) => {
-          if (cancelled) return;
-          try {
-            const action = decodeNativeNotificationActionEvent(event.payload);
-            setRoute(action.route);
-            if (action.action === 'reply' && action.route === 'chat') {
-              // Let React mount the Chat route before asking its composer to
-              // focus. The event contains only the validated notification ID;
-              // no notification body or untrusted text crosses this boundary.
-              window.setTimeout(() => {
-                if (cancelled) return;
-                window.dispatchEvent(new CustomEvent(CHAT_COMPOSER_FOCUS_EVENT, {
-                  detail: { notificationId: action.notificationId }
-                }));
-              }, 0);
-            }
-          } catch (error) {
-            console.warn('linux_notification_action_rejected', error);
-          }
+          handleNotificationAction(event.payload);
         });
         if (cancelled) stop();
-        else unlisten = stop;
+        else {
+          unlisten = stop;
+          // Native actions received during cold start are held until this
+          // listener is installed, preserving Reply intent instead of only
+          // forwarding the route.
+          if (bridge?.initialNotificationActions) {
+            try {
+              const pending = await bridge.initialNotificationActions();
+              pending.forEach(handleNotificationAction);
+            } catch (error) {
+              console.warn('linux_notification_action_queue_unavailable', error);
+            }
+          }
+        }
       })
       .catch(() => {
         // Browser preview has no Tauri event bus.
@@ -201,7 +217,7 @@ export function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [setRoute]);
+  }, [bridge, setRoute]);
 
   // Window-level so the shortcut keeps working after the palette closes and
   // focus falls back to document.body (a React onKeyDown on .shell only sees

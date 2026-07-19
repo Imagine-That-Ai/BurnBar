@@ -766,7 +766,11 @@ const DAEMON_USAGE_HISTORY_METHOD: &str = "daemon.usage.history";
 
 static INITIAL_DEEP_LINK_ROUTE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static FORWARDED_ROUTE_QUEUE: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+static FORWARDED_NOTIFICATION_ACTION_QUEUE: OnceLock<Mutex<Vec<serde_json::Value>>> =
+    OnceLock::new();
+static NOTIFICATION_ACTIONS_READY: AtomicBool = AtomicBool::new(false);
 const SINGLE_INSTANCE_NOTIFICATION_ID_MAX_BYTES: usize = 96;
+const FORWARDED_NOTIFICATION_ACTION_QUEUE_MAX: usize = 16;
 
 fn initial_deep_link_route_store() -> &'static Mutex<Option<String>> {
     INITIAL_DEEP_LINK_ROUTE.get_or_init(|| Mutex::new(None))
@@ -774,6 +778,10 @@ fn initial_deep_link_route_store() -> &'static Mutex<Option<String>> {
 
 fn forwarded_route_queue() -> &'static Mutex<Vec<String>> {
     FORWARDED_ROUTE_QUEUE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn forwarded_notification_action_queue() -> &'static Mutex<Vec<serde_json::Value>> {
+    FORWARDED_NOTIFICATION_ACTION_QUEUE.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 /// Accept only the routes registered by the Linux shell. External URLs,
@@ -909,6 +917,60 @@ fn store_forwarded_route(route: String) {
     }
 }
 
+fn queue_notification_action(queue: &Mutex<Vec<serde_json::Value>>, event: serde_json::Value) {
+    let Ok(mut queued) = queue.lock() else {
+        return;
+    };
+    queue_notification_action_locked(&mut queued, event);
+}
+
+fn queue_notification_action_locked(queued: &mut Vec<serde_json::Value>, event: serde_json::Value) {
+    queued.push(event);
+    if queued.len() > FORWARDED_NOTIFICATION_ACTION_QUEUE_MAX {
+        let excess = queued.len() - FORWARDED_NOTIFICATION_ACTION_QUEUE_MAX;
+        queued.drain(0..excess);
+    }
+}
+
+/// Deliver a notification action immediately once the renderer has installed
+/// its listener; otherwise retain a bounded copy for the bootstrap command.
+/// Emitting before the listener exists loses Reply intent (the route may still
+/// be forwarded, but the composer-focus action is gone).
+fn emit_notification_action(app: &AppHandle, event: serde_json::Value) {
+    let queue = forwarded_notification_action_queue();
+    let Ok(mut queued) = queue.lock() else {
+        return;
+    };
+    if !NOTIFICATION_ACTIONS_READY.load(Ordering::Acquire) {
+        queue_notification_action_locked(&mut queued, event);
+        return;
+    }
+    drop(queued);
+    let _ = app.emit("notification-action", event);
+}
+
+fn take_notification_actions_from(
+    queue: &Mutex<Vec<serde_json::Value>>,
+    ready: &AtomicBool,
+) -> Vec<serde_json::Value> {
+    let Ok(mut queued) = queue.lock() else {
+        return Vec::new();
+    };
+    let pending = std::mem::take(&mut *queued);
+    // Keep the state transition under the same mutex as the drain. An action
+    // arriving concurrently cannot be lost between taking the queue and
+    // marking the renderer ready.
+    ready.store(true, Ordering::Release);
+    pending
+}
+
+fn take_initial_notification_actions() -> Vec<serde_json::Value> {
+    take_notification_actions_from(
+        forwarded_notification_action_queue(),
+        &NOTIFICATION_ACTIONS_READY,
+    )
+}
+
 fn start_single_instance_dispatcher(app: AppHandle, receiver: Receiver<single_instance::Message>) {
     let _ = thread::Builder::new()
         .name("openburnbar-single-instance-dispatch".to_string())
@@ -920,7 +982,7 @@ fn start_single_instance_dispatcher(app: AppHandle, receiver: Receiver<single_in
                 }
                 if let single_instance::Message::NotificationAction { action, payload } = message {
                     if let Some(event) = notification_action_event(&action, &payload) {
-                        let _ = app.emit("notification-action", event);
+                        emit_notification_action(&app, event);
                     }
                 }
             }
@@ -3043,6 +3105,11 @@ fn take_next_deep_link_route(
         .lock()
         .ok()
         .and_then(|mut routes| routes.first().cloned().map(|_| routes.remove(0)))
+}
+
+#[tauri::command]
+fn initial_notification_actions() -> Vec<serde_json::Value> {
+    take_initial_notification_actions()
 }
 
 #[tauri::command]
@@ -7605,6 +7672,7 @@ pub fn run() {
             open_update_url,
             open_dashboard,
             initial_deep_link_route,
+            initial_notification_actions,
             quit_app,
             launch_at_login_status,
             launch_at_login_set,
@@ -8448,6 +8516,24 @@ mod tests {
             Some("settings")
         );
         assert_eq!(take_next_deep_link_route(&initial, &forwarded), None);
+    }
+
+    #[test]
+    fn notification_action_bootstrap_drains_bounded_queue_and_marks_renderer_ready() {
+        let queue = Mutex::new(Vec::new());
+        let ready = AtomicBool::new(false);
+        for index in 0..(FORWARDED_NOTIFICATION_ACTION_QUEUE_MAX + 1) {
+            queue_notification_action(
+                &queue,
+                serde_json::json!({"notificationId": format!("n-{index}")}),
+            );
+        }
+
+        let pending = take_notification_actions_from(&queue, &ready);
+        assert_eq!(pending.len(), FORWARDED_NOTIFICATION_ACTION_QUEUE_MAX);
+        assert_eq!(pending[0]["notificationId"], "n-1");
+        assert!(ready.load(Ordering::Acquire));
+        assert!(take_notification_actions_from(&queue, &ready).is_empty());
     }
 
     #[test]
