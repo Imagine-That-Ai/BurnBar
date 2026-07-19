@@ -144,6 +144,14 @@ describe('SurfaceRouter packaged body scheduling', () => {
     expect(container.querySelector('.surface-body-skeleton')).toBeNull();
     expect(container.querySelector('.overview-atelier')).not.toBeNull();
   });
+
+  it('mounts Settings immediately in packaged mode so config hydration can start', () => {
+    setTauriInternals({});
+    useShellStore.setState({ fixtureMode: false });
+    const { container } = render(<SurfaceRouter route="settings" />);
+    expect(container.querySelector('.surface-body-skeleton')).toBeNull();
+    expect(screen.queryByLabelText('Loading Settings')).toBeNull();
+  });
 });
 
 const packagedBridge = {} as LinuxShellBridge;

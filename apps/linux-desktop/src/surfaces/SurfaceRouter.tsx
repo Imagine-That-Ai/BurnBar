@@ -181,7 +181,10 @@ export function SurfaceRouter({ route }: { route: ShellRoute }) {
 
   const repairRoute: ShellRoute = route === 'support' ? 'onboarding' : 'support';
   const blocked = boundary ? capabilityBlocksSurface(boundary) : false;
-  const deferSurfaceBody = isPackagedSurfaceMode(fixtureMode);
+  // Settings owns a bounded config loader and must mount immediately so its
+  // bridge request cannot be starved behind the packaged route paint queue.
+  // Other routes keep the deferred first paint budget.
+  const deferSurfaceBody = isPackagedSurfaceMode(fixtureMode) && route !== 'settings';
   return (
     <div className="surface-bleed">
       <h2 id="route-title" className="sr-only">
