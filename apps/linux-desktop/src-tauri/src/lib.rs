@@ -4271,33 +4271,65 @@ async fn account_rotate_identity() -> Result<serde_json::Value, String> {
 }
 
 // ───────────────── P10: membership status ─────────────────
-// Proposed wire: daemon.membership.status. Older daemons reject it; the TS
-// store treats unknown-method errors as capability-absent, not fatal UI spam.
+// Canonical wire: daemon.membership.status (BurnBarRPCMethod.membershipStatus).
+// Older packaged daemons may not implement the contract yet; preserve the
+// existing capability-absent UX instead of exposing a raw method-not-found
+// failure as a generic membership error.
+const MEMBERSHIP_STATUS_METHOD: &str = "daemon.membership.status";
+const MEMBERSHIP_CHECKOUT_METHOD: &str = "daemon.membership.checkoutUrl";
+const MEMBERSHIP_RESTORE_METHOD: &str = "daemon.membership.restore";
+
+/// Return true only for errors that mean the daemon does not implement the
+/// requested wire method. Authentication, cloud, and transport failures must
+/// remain actionable errors rather than being mislabeled as an absent feature.
+fn daemon_method_is_capability_absent(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    let mentions_method = lower.contains("method") || lower.contains("rpc");
+    mentions_method
+        && (lower.contains("unsupported")
+            || lower.contains("unrecognized")
+            || lower.contains("not implemented")
+            || lower.contains("no such method")
+            || lower.contains("invalid method")
+            || lower.contains("unknown")
+            || lower.contains("not found"))
+}
+
+fn membership_rpc_error(error: String) -> String {
+    if daemon_method_is_capability_absent(&error) {
+        "membership_capability_absent".to_string()
+    } else {
+        error
+    }
+}
+
 #[tauri::command]
 fn membership_status() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.membership.status", None)
+    call_daemon_method(MEMBERSHIP_STATUS_METHOD, None).map_err(membership_rpc_error)
 }
 
 // ───────────────── P10: membership checkout URL ─────────────────
-// Proposed wire: daemon.membership.checkoutUrl. Tier-C StoreKit substitute:
+// Canonical wire: daemon.membership.checkoutUrl. Tier-C StoreKit substitute:
 // the daemon mints the Stripe URL; the React layer opens it externally.
 #[tauri::command]
 fn membership_checkout_url() -> Result<serde_json::Value, String> {
     call_daemon_method(
-        "daemon.membership.checkoutUrl",
+        MEMBERSHIP_CHECKOUT_METHOD,
         Some(serde_json::json!({
             "success_url": "openburnbar://membership/success",
             "cancel_url": "openburnbar://membership/cancel"
         })),
     )
+    .map_err(membership_rpc_error)
 }
 
 // ───────────────── P10: membership restore ─────────────────
-// Proposed wire: daemon.membership.restore. Older daemons reject it; the UI
-// presents the membership capability as absent and keeps fixture mode usable.
+// Canonical wire: daemon.membership.restore (BurnBarRPCMethod.membershipRestore).
+// Older daemons reject it; the UI presents the membership capability as absent
+// and keeps fixture mode usable.
 #[tauri::command]
 fn membership_restore() -> Result<serde_json::Value, String> {
-    call_daemon_method("daemon.membership.restore", None)
+    call_daemon_method(MEMBERSHIP_RESTORE_METHOD, None).map_err(membership_rpc_error)
 }
 
 // ───────────────── P09: app version info ─────────────────
@@ -4884,12 +4916,7 @@ fn start_media_session_poll_loop(app: AppHandle) {
                         last_request_id = request_id;
                     }
                     Err(error) => {
-                        let lower = error.to_lowercase();
-                        let is_absent = lower.contains("unknown")
-                            || lower.contains("unsupported")
-                            || lower.contains("not implemented")
-                            || lower.contains("no such method");
-                        if !capability_absent && is_absent {
+                        if !capability_absent && daemon_method_is_capability_absent(&error) {
                             capability_absent = true;
                             let _ = app.emit(
                                 "media-call-state-changed",
@@ -7274,6 +7301,35 @@ mod tests {
             "id": "project-apollo"
         }))
         .expect("canonical identity fields should validate");
+    }
+
+    #[test]
+    fn membership_rpc_uses_canonical_names_and_degrades_unsupported_methods() {
+        assert_eq!(MEMBERSHIP_STATUS_METHOD, "daemon.membership.status");
+        assert_eq!(MEMBERSHIP_CHECKOUT_METHOD, "daemon.membership.checkoutUrl");
+        assert_eq!(MEMBERSHIP_RESTORE_METHOD, "daemon.membership.restore");
+
+        let unsupported =
+            "Unsupported OpenBurnBar RPC method 'daemon.membership.status'.".to_string();
+        assert!(daemon_method_is_capability_absent(&unsupported));
+        assert_eq!(
+            membership_rpc_error(unsupported),
+            "membership_capability_absent"
+        );
+
+        let not_found = "RPC method not found: daemon.membership.restore".to_string();
+        assert_eq!(
+            membership_rpc_error(not_found),
+            "membership_capability_absent"
+        );
+
+        let actionable = "Membership checkout requires a connected account.".to_string();
+        assert!(!daemon_method_is_capability_absent(&actionable));
+        assert_eq!(membership_rpc_error(actionable.clone()), actionable);
+
+        let account_error = "Membership tier is unsupported for this account.".to_string();
+        assert!(!daemon_method_is_capability_absent(&account_error));
+        assert_eq!(membership_rpc_error(account_error.clone()), account_error);
     }
 
     #[test]
