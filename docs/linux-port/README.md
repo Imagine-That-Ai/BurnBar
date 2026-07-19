@@ -5,18 +5,20 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- **Latest live candidate:** source `5b70a3d320` is installed in the Ubuntu
+- **Latest live candidate:** source `5b70a3d320` remains installed in the Ubuntu
   24.04.4 GNOME/X11 UTM guest. The exact arm64 DEB is recorded in
   [`evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/).
   Daemon/CLI health is green, the desktop is running from `/usr/bin`, and the
-  physical iPad focused navigation suite passed on the connected device.
+  physical iPad focused navigation suite passed on the connected device. The
+  current source head is `de906876a4`; its focused iPad navigation receipt is
+  [`evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json`](evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json).
   The Settings route now mounts and hydrates deterministically: AT-SPI reports
   105 nodes and 50 actionable controls with no `Loading Settings` node; the
   General startup checkbox and Media & Sharing route are reachable.
   The package is unsigned and this receipt is non-certifying.
-- Final source gates for this candidate are **83 frontend files / 793 tests**,
-  focused Settings/route **45/45**, Tauri Rust **125/125**, TypeScript,
-  formatting, and production-bundle verification. The strict ledger remains
+- Current source gates are **87 frontend files / 806 tests**, focused
+  Settings/route **45/45**, accessibility **10/10**, Tauri Rust **125/125**,
+  TypeScript, formatting, and production-bundle verification. The strict ledger remains
   **0/40 product rows and 0/7 environment receipts**; this is a certification
   gate, not a source-progress percentage.
 - The immediate Settings fix is split into two reviewable commits:
