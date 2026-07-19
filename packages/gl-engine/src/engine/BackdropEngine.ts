@@ -47,6 +47,9 @@ interface Slot {
   substrate: KernelSubstrate;
   outgoing: boolean;
   disposeTimer: number | null;
+  contextLost: boolean;
+  onContextLost: ((event: Event) => void) | null;
+  onContextRestored: (() => void) | null;
 }
 
 export interface BackdropEngineOptions {
@@ -82,6 +85,8 @@ export class BackdropEngine {
   private container: HTMLElement;
   private slots: Slot[] = [];
   private activeId: KernelId;
+  /** Latest user request, kept separately from the resolved/visible slot. */
+  private requestedKernelId: KernelId;
   private theme: ThemeName;
   private palette: KernelPalette;
   private swarmEmberOptions?: SwarmEmberKernelOptions;
@@ -96,6 +101,8 @@ export class BackdropEngine {
 
   private visible = true;
   private pageVisible = true;
+  /** A lost WebGL slot should be retried once the window is visible again. */
+  private retryRequestedKernelOnVisible = false;
   private reducedMotion = false;
 
   private pointer = { x: 0, y: 0, active: false };
@@ -127,6 +134,7 @@ export class BackdropEngine {
     this.onResolve = opts.onResolve;
     this.onStatus = opts.onStatus;
     this.activeId = opts.initialKernel ?? DEFAULT_KERNEL_ID;
+    this.requestedKernelId = this.activeId;
 
     this.reducedMotion =
       typeof window !== "undefined" &&
@@ -144,10 +152,22 @@ export class BackdropEngine {
   // ── Public API ─────────────────────────────────────────────
 
   setKernel(id: KernelId): void {
+    this.transitionKernel(id, false);
+  }
+
+  /**
+   * Mount a request, optionally rebuilding an otherwise matching active slot.
+   * The force path is used after a compositor-driven WebGL context loss: the
+   * resolved id can still equal `activeId` even though the existing slot is
+   * no longer renderable.
+   */
+  private transitionKernel(id: KernelId, force: boolean): void {
+    this.requestedKernelId = id;
     const requested = this.resolveKernel(id);
     if (
+      !force &&
       requested.resolvedId === this.activeId &&
-      this.slots.some((s) => s.id === requested.resolvedId && !s.outgoing)
+      this.slots.some((s) => s.id === requested.resolvedId && !s.outgoing && !s.contextLost)
     ) {
       // A different WebGL2 request can resolve to the already-mounted 2D
       // default. Still publish the request so the UI does not claim that the
@@ -165,6 +185,9 @@ export class BackdropEngine {
 
     const slot = this.createSlot(requested.resolvedId);
     this.activeId = slot.id;
+    if (slot.id === requested.resolvedId && slot.substrate === requested.resolvedSubstrate) {
+      this.retryRequestedKernelOnVisible = false;
+    }
     this.publishResolution(this.withSlotResolution(requested, slot));
     this.harvestObstacles(true); // a freshly-switched kernel gets current geometry
 
@@ -347,7 +370,17 @@ export class BackdropEngine {
       `transition:opacity ${FADE_MS}ms ease;will-change:opacity;`;
     this.container.appendChild(canvas);
 
-    const slot: Slot = { id: kernel.id, canvas, kernel, substrate, outgoing: false, disposeTimer: null };
+    const slot: Slot = {
+      id: kernel.id,
+      canvas,
+      kernel,
+      substrate,
+      outgoing: false,
+      disposeTimer: null,
+      contextLost: false,
+      onContextLost: null,
+      onContextRestored: null,
+    };
     this.sizeCanvas(slot);
     // Track the slot BEFORE init so every failure path can dispose it cleanly
     // (removes the canvas, runs kernel.dispose(), untracks) — no orphans.
@@ -392,6 +425,26 @@ export class BackdropEngine {
       }
     }
 
+    if (substrate === "webgl2") {
+      // The kernel also listens so it can rebuild its own programs. The host
+      // listener is deliberately attached first and owns the user-visible
+      // fallback: a compositor can lose a context while rAF is throttled, so
+      // waiting for the next frame would leave the whole backdrop transparent.
+      slot.onContextLost = (event: Event) => {
+        event.preventDefault();
+        slot.contextLost = true;
+        if (!slot.outgoing && this.slots.includes(slot)) {
+          this.retryRequestedKernelOnVisible = true;
+          this.transitionKernel(this.requestedKernelId, true);
+        }
+      };
+      slot.onContextRestored = () => {
+        slot.contextLost = false;
+      };
+      canvas.addEventListener("webglcontextlost", slot.onContextLost, false);
+      canvas.addEventListener("webglcontextrestored", slot.onContextRestored, false);
+    }
+
     kernel.init(ctx, this.frameCtx(substrate));
     // Replay the live field so a newly mounted/crossfading world inherits the
     // active mark (it survives switches — spec §2.2).
@@ -403,6 +456,14 @@ export class BackdropEngine {
     if (slot.disposeTimer !== null) {
       clearTimeout(slot.disposeTimer);
       slot.disposeTimer = null;
+    }
+    if (slot.onContextLost) {
+      slot.canvas.removeEventListener("webglcontextlost", slot.onContextLost);
+      slot.onContextLost = null;
+    }
+    if (slot.onContextRestored) {
+      slot.canvas.removeEventListener("webglcontextrestored", slot.onContextRestored);
+      slot.onContextRestored = null;
     }
     try {
       slot.kernel.dispose();
@@ -501,7 +562,14 @@ export class BackdropEngine {
   }
 
   private onVisibility = (): void => {
+    const wasVisible = this.pageVisible;
     this.pageVisible = !document.hidden;
+    if (!wasVisible && this.pageVisible && this.retryRequestedKernelOnVisible) {
+      // A context can remain unavailable for the hidden window's lifetime and
+      // recover only after the compositor presents it again. Force a fresh
+      // slot so the requested shader gets another context acquisition attempt.
+      this.transitionKernel(this.requestedKernelId, true);
+    }
   };
 
   private onPointerMove = (e: PointerEvent): void => {

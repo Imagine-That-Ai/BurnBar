@@ -16,6 +16,7 @@ const originalElementRect = Object.getOwnPropertyDescriptor(
   'getBoundingClientRect'
 );
 const originalMatchMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+const originalDocumentHidden = Object.getOwnPropertyDescriptor(document, 'hidden');
 const originalVitestFlag = process.env.VITEST;
 
 let rafQueue: RafCallback[] = [];
@@ -121,6 +122,9 @@ afterEach(() => {
   } else {
     delete (window as Partial<Window>).matchMedia;
   }
+  if (originalDocumentHidden) {
+    Object.defineProperty(document, 'hidden', originalDocumentHidden);
+  }
   if (originalVitestFlag === undefined) {
     delete process.env.VITEST;
   } else {
@@ -218,6 +222,56 @@ describe('KernelBackdrop Linux capability fallback', () => {
     // The fallback cannot wait for the next rAF: hidden/backgrounded windows
     // may throttle that callback indefinitely.
     expect(canvases.at(-1)?.style.opacity).toBe('1');
+
+    engine.destroy();
+    host.remove();
+  });
+
+  it('falls back immediately on background context loss and retries the requested shader on resume', () => {
+    const context = makeCanvasContext();
+    const webgl = { getExtension: () => null } as unknown as WebGL2RenderingContext;
+    let contextAvailable = true;
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      configurable: true,
+      value(type: string) {
+        if (type === 'webgl2') return contextAvailable ? webgl : null;
+        return context;
+      }
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const statuses: string[] = [];
+    const engine = new BackdropEngine(host, {
+      theme: 'dark',
+      initialKernel: 'constellation',
+      onStatus: (status) => statuses.push(status.reason)
+    });
+
+    engine.setKernel('aurora');
+    const shaderCanvas = host.querySelectorAll('canvas').item(1);
+    expect(shaderCanvas).not.toBeNull();
+    expect(engine.getResolvedKernel()).toBe('aurora');
+
+    // Model WebKitGTK losing its context while the window is backgrounded.
+    // The host must not wait for a throttled rAF to reveal the safe fallback.
+    contextAvailable = false;
+    shaderCanvas?.dispatchEvent(new Event('webglcontextlost', { cancelable: true }));
+    const fallbackCanvas = host.querySelectorAll('canvas').item(1);
+    expect(engine.getResolvedKernel()).toBe('constellation');
+    expect(statuses.at(-1)).toBe('context-unavailable');
+    expect(fallbackCanvas?.style.opacity).toBe('1');
+    expect(host.querySelectorAll('canvas')).toHaveLength(2);
+
+    // Once the compositor presents the window again, reacquire the user's
+    // requested shader instead of leaving the 2D recovery world installed.
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    contextAvailable = true;
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(engine.getResolvedKernel()).toBe('aurora');
+    expect(host.querySelectorAll('canvas')).toHaveLength(2);
 
     engine.destroy();
     host.remove();
