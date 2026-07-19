@@ -1,8 +1,8 @@
 {
   "schema": "openburnbar.parity.mobile-focused-test-receipt.v1",
-  "capturedAt": "2026-07-19T06:11:08Z",
+  "capturedAt": "2026-07-19T15:09:36Z",
   "certificationScope": "non-certifying focused physical-iPad test receipt",
-  "sourceCommit": "c56ce9749a",
+  "sourceCommit": "c9c679f43b",
   "sourceWorktree": "/private/tmp/burnbar-linux-parity-continuation",
   "device": {
     "name": "Alberto's iPad",
@@ -21,7 +21,7 @@
     },
     "automaticProvisioning": false,
     "xcodebuildExitCode": 0,
-    "commandDurationSeconds": 383
+    "commandDurationSeconds": 19
   },
   "focusedSuite": "OpenBurnBarMobileTests",
   "result": {
@@ -49,12 +49,12 @@
     "OpenBurnBarMobileTests/testSealedApprovalDecisionCarriesKindAndActionAtRootOfSealedPayload"
   ],
   "artifacts": {
-    "wrapperTelemetry": ".tmp/ipad-live/current/artifacts/test-openburnbar-mobile-attempts.jsonl",
+    "wrapperTelemetry": ".tmp/ipad-live-current/artifacts/test-openburnbar-mobile-attempts.jsonl",
     "resultBundle": "cleaned after verification"
   },
   "diagnosticNotes": [
-    "The wrapper telemetry recorded one passing attempt with exit code 0; derived data was cleaned after the run.",
-    "The integration branch advanced with Linux-only commits while Xcode was compiling; this receipt remains bound to the source checkout at test start.",
+    "The wrapper telemetry recorded one passing attempt with exit code 0; the bounded rerun used the owned scratch cache and derived-data root.",
+    "The rerun was bound to the current Linux parity source checkout at test start; no iPad source changes were required for this Linux lane.",
     "The receipt covers focused XCTest execution only; it is not a full mobile-suite, installed Linux, or cross-device approval certification."
   ],
   "limitations": [
