@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards. Focused payload coverage is green and Rust is 125/125. |
+| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh. Focused payload coverage is green and Rust is 125/125. |
 | Latest VM proof | The exact `872074af3a` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json). Daemon/CLI health is green and the desktop window exists. Initial black captures were caused by locked GNOME session 1; after `loginctl unlock-session 1`, the same package rendered the Overview route and Fluid Aurora 2D fallback. Two captures two seconds apart differ in 382,024 pixels. |
 | Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
@@ -14,7 +14,8 @@
 
 ## Current Source Checkpoint — 2026-07-19
 
-The current integration head is `872074af3a`. This is a source and build
+The current integration head is `e61ccd0e35` (docs receipt), with source
+changes through `c6bf8f2881` and `e6c32ec2b2`. This is a source and build
 checkpoint, not a promotion claim:
 
 - `1130524331` immediately reveals a visible 2D backdrop when a WebGL context
@@ -35,8 +36,10 @@ checkpoint, not a promotion claim:
   `8cafd2d7e0` preserves the last provider workspace during transient catalog
   errors, `da42c16a78` discards delayed daemon events across subscription
   restarts, and `872074af3a` cancels typed SmartHub work when the shell bridge
-  disappears.
-- Source gates pass: 89 frontend files / 839 tests, TypeScript, production
+  disappears. `e6c32ec2b2` repairs stale custom-model provider selection after
+  a catalog refresh. `c6bf8f2881` stabilizes the asynchronous chat pop-out
+  status test.
+- Source gates pass: 89 frontend files / 840 tests, TypeScript, production
   bundle verification, Tauri Rust 125/125, package-payload contract checks
   (2 pass, 2 historical skips), and product validators 12/12.
 - The ARM64 VM validated the supported Swift-less staged-payload path with
@@ -53,6 +56,14 @@ the hosted architecture/compositor matrix, production cloud configuration,
 physical-iPad enrollment and cross-device Computer Use, two-device Mercury
 flows, live SmartHub/IME/keyring/assistive-tech proofs, and same-commit
 macOS/Linux differential evidence.
+
+The focused physical-iPad approval run at the current checkout passed **44/44
+tests** with xcodebuild exit 0. Its exact receipt is
+`evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19-v2.json`.
+The test process started at `eace4cc200` before the provider source commit was
+created, so the receipt is intentionally non-certifying and does not claim
+coverage for installed-Linux enrollment, approval/revoke, or cross-device
+Computer Use.
 
 ## Current Live Checkpoint — 2026-07-19
 

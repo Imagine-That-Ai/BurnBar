@@ -5,8 +5,9 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- **Current source head:** `872074af3a`. The branch now passes 89 frontend files
-  / 839 tests, TypeScript, production bundle verification, Tauri Rust 125/125,
+- **Current source head:** `e61ccd0e35` (docs receipt; source changes through
+  `c6bf8f2881` and `e6c32ec2b2`). The branch now passes 89 frontend files /
+  840 tests, TypeScript, production bundle verification, Tauri Rust 125/125,
   package-payload contract checks (2 pass, 2 historical skips), and product
   validators 12/12. `1130524331` recovers a visible 2D backdrop after
   backgrounded WebGL context loss and retries the requested kernel on resume;
@@ -21,7 +22,10 @@ Current parity status as of 2026-07-19:
   `ded781e94d` adds route-level render-error recovery with Retry/Open Support
   actions; `8cafd2d7e0` preserves provider workspace during transient catalog
   recovery; `da42c16a78` guards daemon subscription lifecycle restarts; and
-  `872074af3a` cancels SmartHub work when the packaged shell loses its bridge.
+  `872074af3a` cancels SmartHub work when the packaged shell loses its bridge;
+  `e6c32ec2b2` repairs stale custom-model provider selection after catalog
+  refreshes; and `c6bf8f2881` makes the chat pop-out status assertion await the
+  asynchronous window-open result.
   The ARM VM also passed
   the supported Swift-less staged-payload `pretauri:build`/`tauri:build` path via
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is unsigned
@@ -53,12 +57,17 @@ Current parity status as of 2026-07-19:
   105 nodes and 50 actionable controls with no `Loading Settings` node; the
   General startup checkbox and Media & Sharing route are reachable.
   The package is unsigned and this receipt is non-certifying.
-- Current source gates are **89 frontend files / 839 tests**, focused provider
+- Current source gates are **89 frontend files / 840 tests**, focused provider
   recovery **11/11**, daemon subscription lifecycle **8/8**, SmartHub **9/9**,
   Settings/route **51/51**, Support **29/29**, media **38/38**, Tauri Rust
   **125/125**, TypeScript, formatting, and production-bundle verification. The strict ledger remains
   **0/40 product rows and 0/7 environment receipts**; this is a certification
   gate, not a source-progress percentage.
+- The current focused physical-iPad approval receipt is
+  [`evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19-v2.json):
+  44/44 tests passed on the paired device. It is model/UI coverage only and
+  does not certify installed-Linux enrollment, approval/revoke, or cross-device
+  Computer Use.
 - The immediate Settings fix is split into two reviewable commits:
   `2f75f3269e` bypasses the packaged route idle gate for Settings, and
   `5b70a3d320` makes its first config hydration eager while preserving deferred
