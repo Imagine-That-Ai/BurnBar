@@ -90,11 +90,11 @@ directories and atomic bundles have private permissions, and symlinked support
 directories fail closed (focused support UI **24/24**, Tauri Rust **115/115**).
 `2a80e30921` now recovers the Mercury GStreamer decoder in place after a
 transient frame failure, preserving the socket session and re-arming keyframe
-gating (default Tauri Rust **118/118** after the membership contract slice).
+gating (default Tauri Rust **119/119** after the membership contract slice).
 `8131b51aec` adds a portal-backed native
 diagnostics save destination with a second Rust path-validation boundary and
 owner-only atomic output (diagnostics **6/6**, support UI **24/24**). The
-current desktop regression run is **83 files / 767 tests**, with TypeScript and
+current desktop regression run is **83 files / 770 tests**, with TypeScript and
 the production bundle verifier passing. A prior bounded current-checkout
 `MobileThemeTests` receipt passed **9/9**, 0 failures, and xcodebuild exit 0;
 the newer focused approval receipt is recorded below. Both remain
@@ -103,11 +103,11 @@ approval/revoke, or cross-device Computer Use.
 
 The current source-only wave also includes `9fb6e88c33`, which canonicalizes
 membership RPC names and maps unknown methods to a deterministic capability-
-absent state (Tauri Rust **118/118**), and `f9d3b429e5`, which adds persisted
+absent state (Tauri Rust **119/119**), and `f9d3b429e5`, which adds persisted
 Dashboard Defaults plus truthful daemon-backed Indexing & Search posture and
 an explicit unavailable Session Summaries state (focused settings **45/45**,
 new controls **3/3**). The full desktop-suite rerun after these two slices is
-green at **83 files / 767 tests**. The current focused approval receipt is
+green at **83 files / 770 tests**. The current focused approval receipt is
 **44/44**, 0 failures,
 xcodebuild exit 0; it remains non-certifying mobile coverage.
 
@@ -130,8 +130,8 @@ cannot claim completeness and therefore stays typed-unavailable until that
 proof exists (focused Activity history/export/resume coverage **30/30**).
 These source-only fixes improve fail-closed behavior but do not change the
 strict **0/40** product or **0/7** environment certification state. The latest
-full Linux desktop run is **83 files / 767 tests**; TypeScript, production
-bundle verification, and Tauri Rust **118/118** also pass. The physical iPad
+full Linux desktop run is **83 files / 770 tests**; TypeScript, production
+bundle verification, and Tauri Rust **119/119** also pass. The physical iPad
 receipt remains **44/44** and non-certifying. The Ubuntu guest is live at
 `192.168.64.5`; authenticated daemon and bare CLI health now pass after
 restoring the package-owned Swift runtime and canonical token resolution.

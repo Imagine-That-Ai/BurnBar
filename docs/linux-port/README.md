@@ -31,21 +31,21 @@ Current parity status as of 2026-07-19:
   rows and 0/7 environment receipts. The Nightly pass is engineering evidence,
   not a promotion claim; production, lifecycle, installed integration, and
   registered product evidence remain open.
-- The candidate branch now has **83 desktop test files / 767 tests** passing,
+- The candidate branch now has **83 desktop test files / 770 tests** passing,
   plus current-checkout P-39 corpus binding, daemon-authoritative activity
   export resume, forced-colors metric fallbacks, and a focusable-hidden-node
   accessibility fix. The latest source slices also add the persisted Calendar
   notification hold-duration selector (`3004da3b72`), redacted/symlink-safe
   diagnostics exports (`bdd57173e9`), Mercury decoder recovery
   (`2a80e30921`), and a portal-backed native diagnostics save destination
-  (`8131b51aec`). Tauri Rust is **118/118**, focused diagnostics UI is **24/24**,
+  (`8131b51aec`). Tauri Rust is **119/119**, focused diagnostics UI is **24/24**,
   TypeScript and the production bundle verifier pass. These source results do
   not promote the ledger.
 - `9fb6e88c33` canonicalizes membership RPC names and degrades unknown methods
-  truthfully (Tauri Rust **118/118**). `f9d3b429e5` adds persisted Dashboard
+  truthfully (Tauri Rust **119/119**). `f9d3b429e5` adds persisted Dashboard
   Defaults and truthful Indexing & Search posture, with Session Summaries
   explicitly unavailable until a Linux RPC exists (focused settings **45/45**,
-  new controls **3/3**). The full desktop suite is green at **83 files / 767
+  new controls **3/3**). The full desktop suite is green at **83 files / 770
   tests**, with TypeScript and production bundle verification passing.
 - `b0d27caffa` hardens persisted Insights workspace state by rejecting malformed,
   future-version, or unsafe records and restoring safe defaults (focused
