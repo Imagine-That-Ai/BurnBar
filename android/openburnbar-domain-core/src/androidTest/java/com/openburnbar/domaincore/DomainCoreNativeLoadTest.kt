@@ -3,6 +3,9 @@ package com.openburnbar.domaincore
 import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.sun.jna.NativeLibrary
+import com.sun.jna.Pointer
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -27,25 +30,51 @@ import uniffi.openburnbar_domain_ffi.cloudVaultSearch
 import uniffi.openburnbar_domain_ffi.cloudVaultSearchAnalyze
 import uniffi.openburnbar_domain_ffi.cloudVaultValidateP256X963PublicKey
 import uniffi.openburnbar_domain_ffi.domainCoreAbiVersion
+import uniffi.openburnbar_domain_ffi.domainCoreCandidateCommit
 import uniffi.openburnbar_domain_ffi.domainCoreSourceFingerprint
 import uniffi.openburnbar_domain_ffi.domainCoreVersion
 import uniffi.openburnbar_domain_ffi.hermesGatewayRelaySafetyCode
+import java.io.File
+import java.io.FileInputStream
+import java.security.MessageDigest
+import java.util.zip.ZipFile
 
 @RunWith(AndroidJUnit4::class)
 class DomainCoreNativeLoadTest {
     @Test
     fun generatedBindingLoadsAbiVersionThreeNativeLibrary() {
-        assertEquals(3u, domainCoreAbiVersion())
-        assertTrue(domainCoreVersion().isNotBlank())
+        val assets = InstrumentationRegistry.getInstrumentation().context.assets
+        val expectedIdentity =
+            assets.open("union-abi-manifest.json").bufferedReader().use { JSONObject(it.readText()) }
+        assertEquals(expectedIdentity.getLong("abiVersion").toUInt(), domainCoreAbiVersion())
+        assertEquals(expectedIdentity.getString("coreVersion"), domainCoreVersion())
         val sourceFingerprint = domainCoreSourceFingerprint()
         assertTrue(sourceFingerprint.matches(Regex("[0-9a-f]{64}")))
         val expectedSourceFingerprint =
-            InstrumentationRegistry.getInstrumentation().context.assets
+            assets
                 .open("openburnbar-domain-core-source.sha256")
                 .bufferedReader()
                 .use { it.readText().trim() }
         assertTrue(expectedSourceFingerprint.matches(Regex("[0-9a-f]{64}")))
+        assertEquals(expectedIdentity.getString("sourceSha256"), expectedSourceFingerprint)
         assertEquals(expectedSourceFingerprint, sourceFingerprint)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val expectedCandidateCommit = InstrumentationRegistry.getArguments().getString("candidateCommit").orEmpty()
+        val candidateCommit = domainCoreCandidateCommit()
+        assertTrue(candidateCommit.matches(Regex("[0-9a-f]{40}")))
+        assertTrue(candidateCommit.any { it != '0' })
+        assertEquals(expectedCandidateCommit, candidateCommit)
+        val binarySha256 = getLoadedLibrarySha256()
+        File(instrumentation.context.filesDir, "domain-core-observed-identity.json")
+            .writeText(
+                JSONObject()
+                    .put("candidateCommit", candidateCommit)
+                    .put("coreVersion", domainCoreVersion())
+                    .put("abiVersion", domainCoreAbiVersion().toLong())
+                    .put("sourceSha256", sourceFingerprint)
+                    .put("binarySha256", binarySha256)
+                    .toString() + "\n",
+            )
         assertEquals(
             "97AB 6CD8 FEF0 9594 D5ED FAF1 1D10 B6F7",
             hermesGatewayRelaySafetyCode(
@@ -198,4 +227,119 @@ class DomainCoreNativeLoadTest {
     ): List<String> = cloudVaultSearch(CloudVaultSearchRequest(operation, text, key, limit)).hashes
 
     private fun hex(value: String): ByteArray = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+
+    private fun getLoadedLibrarySha256(): String {
+        val mapsFile = File("/proc/self/maps")
+        if (!mapsFile.isFile || !mapsFile.canRead()) {
+            throw AssertionError("/proc/self/maps must be readable regular file")
+        }
+
+        val function =
+            NativeLibrary
+                .getInstance("openburnbar_domain_ffi")
+                .getFunction("uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version")
+        val functionAddress = Pointer.nativeValue(function).toULong()
+        if (functionAddress == 0uL) {
+            throw AssertionError("Domain-core ABI symbol resolved to a null address")
+        }
+
+        val matchingMappings = mutableListOf<String>()
+        mapsFile.forEachLine { line ->
+            val parts = line.trim().split(Regex("\\s+"), limit = 6)
+            if (parts.size < 6) return@forEachLine
+
+            val bounds = parts[0].split('-', limit = 2)
+            val start = bounds.getOrNull(0)?.toULongOrNull(16) ?: return@forEachLine
+            val end = bounds.getOrNull(1)?.toULongOrNull(16) ?: return@forEachLine
+            if (functionAddress < start || functionAddress >= end) return@forEachLine
+
+            val permissions = parts[1]
+            val pathname = parts[5]
+            if (!permissions.contains('x') || pathname.contains("(deleted)") || pathname.contains(Regex("\\s"))) {
+                throw AssertionError("Invalid mapping for loaded domain-core ABI symbol: ${line.trim()}")
+            }
+            matchingMappings.add(pathname)
+        }
+
+        if (matchingMappings.size != 1) {
+            throw AssertionError(
+                "Expected exactly one executable mapping for the loaded domain-core ABI symbol, found ${matchingMappings.size}",
+            )
+        }
+
+        val pathname = matchingMappings.single()
+        if (pathname.contains("!/")) {
+            val archiveParts = pathname.split("!/", limit = 2)
+            if (archiveParts.size != 2 || pathname.indexOf("!/") != pathname.lastIndexOf("!/")) {
+                throw AssertionError("Ambiguous APK mapping for loaded domain-core ABI symbol: $pathname")
+            }
+            return sha256ApkEntry(File(archiveParts[0]), archiveParts[1])
+        }
+
+        if (pathname.endsWith(".apk")) {
+            val supportedAbis =
+                if (android.os.Process.is64Bit()) {
+                    android.os.Build.SUPPORTED_64_BIT_ABIS
+                } else {
+                    android.os.Build.SUPPORTED_32_BIT_ABIS
+                }
+            val runtimeAbi = supportedAbis.firstOrNull() ?: throw AssertionError("No supported ABI for Android process")
+            return sha256ApkEntry(
+                File(pathname),
+                "lib/$runtimeAbi/libopenburnbar_domain_ffi.so",
+            )
+        }
+
+        val libraryFile = File(pathname)
+        if (libraryFile.name != "libopenburnbar_domain_ffi.so" || !libraryFile.isFile || !libraryFile.canRead()) {
+            throw AssertionError("Mapped domain-core library is not an accessible exact file: $pathname")
+        }
+        return sha256(libraryFile)
+    }
+
+    private fun sha256ApkEntry(
+        apkFile: File,
+        entryPath: String,
+    ): String {
+        if (!apkFile.isFile || !apkFile.canRead() || apkFile.extension != "apk") {
+            throw AssertionError("Mapped APK is not an accessible exact file: ${apkFile.path}")
+        }
+        val entryPattern = Regex("lib/([^/]+)/libopenburnbar_domain_ffi\\.so")
+        val entryMatch =
+            entryPattern.matchEntire(entryPath)
+                ?: throw AssertionError("Mapped APK entry is not the exact domain-core library: $entryPath")
+        if (entryMatch.groupValues[1] !in android.os.Build.SUPPORTED_ABIS) {
+            throw AssertionError("Mapped domain-core ABI is unsupported: ${entryMatch.groupValues[1]}")
+        }
+
+        ZipFile(apkFile).use { zipFile ->
+            val entries = zipFile.entries().toList().filter { !it.isDirectory && it.name == entryPath }
+            if (entries.size != 1) {
+                throw AssertionError("Expected exactly one $entryPath entry in ${apkFile.path}, found ${entries.size}")
+            }
+            zipFile.getInputStream(entries.single()).use { input ->
+                val digest = MessageDigest.getInstance("SHA-256")
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
+                return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            }
+        }
+    }
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
 }

@@ -14,8 +14,10 @@
  * constant) — never let the two drift without a recorded decision.
  */
 import { afterEach, describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
 
 import {
   LEGACY_KIMI_WIRE_MODEL,
@@ -28,6 +30,7 @@ import {
   configureDomainCorePricingShadowEvidenceSink,
   DomainCorePricingError,
   flushDomainCorePricingShadowEvidence,
+  loadedDomainCorePricingIdentity,
   resolveDomainCorePricingMode,
 } from "../domainCorePricing.js";
 import { isRecord } from "../guards.js";
@@ -48,6 +51,13 @@ type CatalogModel = {
   };
 };
 type Catalog = { providers: { id: string; models: CatalogModel[] }[] };
+type DomainCoreWasmModule = {
+  domainCoreVersion(): string;
+  domainCoreAbiVersion(): number;
+  domainCoreSourceFingerprint(): string;
+};
+
+const LOADED_CORE_SOURCE_SHA256 = loadedDomainCorePricingIdentity().sourceSha256;
 
 // Mirrors BurnBarModelMatcher.matches in OpenBurnBarCatalog.swift.
 function matches(matcher: Matcher, normalized: string): boolean {
@@ -61,6 +71,15 @@ function isCatalog(value: unknown): value is Catalog {
   if (!value || typeof value !== "object") return false;
   const providers = Object.getOwnPropertyDescriptor(value, "providers")?.value;
   return Array.isArray(providers);
+}
+
+function isDomainCoreWasmModule(value: unknown): value is DomainCoreWasmModule {
+  return (
+    isRecord(value) &&
+    typeof value.domainCoreVersion === "function" &&
+    typeof value.domainCoreAbiVersion === "function" &&
+    typeof value.domainCoreSourceFingerprint === "function"
+  );
 }
 
 function loadMoonshotModels(): CatalogModel[] {
@@ -190,10 +209,48 @@ function loadPricingFixture(): PricingFixture {
 
 describe("shared domain-core pricing", () => {
   const fixture = loadPricingFixture();
+  const signedInternalReceipt = () => ({
+    schemaVersion: 1,
+    name: "internal",
+    artifactAuthority: "signed",
+    distribution: "internal",
+    rolloutChannel: "internal",
+    evidenceEnabled: true,
+    candidateIdentity: {
+      candidateCommit: "a".repeat(40),
+      coreVersion: "0.1.0",
+      abiVersion: 3,
+      sourceSha256: LOADED_CORE_SOURCE_SHA256,
+    },
+    modes: {
+      quota: "shadow",
+      cloudVault: "shadow",
+      cloudVaultRewrap: "shadow",
+      cloudVaultSearch: "shadow",
+      hermes: "shadow",
+      pricing: "shadow",
+    },
+  });
 
   afterEach(async () => {
     configureDomainCorePricingShadowEvidenceSink(undefined);
     await flushDomainCorePricingShadowEvidence();
+  });
+
+  it("reports the digest of the exact WASM bytes loaded by production pricing", () => {
+    const require = createRequire(__filename);
+    const modulePath = require.resolve("@openburnbar/domain-core-wasm");
+    const loaded: unknown = require(modulePath);
+    if (!isDomainCoreWasmModule(loaded)) throw new Error("domain-core WASM module has an invalid API");
+    const expectedWasmSha256 = createHash("sha256")
+      .update(readFileSync(resolve(dirname(modulePath), "openburnbar_domain_core_bg.wasm")))
+      .digest("hex");
+    expect(loadedDomainCorePricingIdentity()).toEqual({
+      version: loaded.domainCoreVersion(),
+      abiVersion: loaded.domainCoreAbiVersion(),
+      sourceSha256: loaded.domainCoreSourceFingerprint(),
+      wasmSha256: expectedWasmSha256,
+    });
   });
 
   it.each(["legacy", "shadow", "rust"] as const)("matches canonical vectors in %s mode", (mode) => {
@@ -251,6 +308,16 @@ describe("shared domain-core pricing", () => {
     expect(resolveDomainCorePricingMode({ OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "surprise" })).toBe("legacy");
   });
 
+  it("rejects explicit receipt injection outside the test runtime", () => {
+    const original = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      expect(() => resolveDomainCorePricingMode({}, signedInternalReceipt())).toThrow(DomainCorePricingError);
+    } finally {
+      process.env.NODE_ENV = original;
+    }
+  });
+
   it.each([
     { rates: { inputPerMToken: -1, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: 1 },
     { rates: { inputPerMToken: Number.NaN, outputPerMToken: 1, cacheReadPerMToken: 0 }, inputTokens: 1 },
@@ -287,7 +354,7 @@ describe("shared domain-core pricing", () => {
     ).toBe(42);
   });
 
-  it("emits one generic V2 whole-call comparison to the configured sink", () => {
+  it("emits one candidate-bound V3 whole-call comparison with the loaded Wasm identity", () => {
     const samples: unknown[] = [];
     configureDomainCorePricingShadowEvidenceSink((sample) => {
       samples.push(sample);
@@ -310,17 +377,67 @@ describe("shared domain-core pricing", () => {
           OPENBURNBAR_DOMAIN_CORE_HERMES_MODE: "shadow",
           OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL: "internal",
         },
+        signedInternalReceipt(),
       ),
     ).toBe(3);
     expect(samples).toHaveLength(1);
     expect(samples[0]).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       domain: "pricing",
       slice: "token-cost",
       consumer: "functions",
       operation: "calculate_token_cost",
+      candidateCommit: "a".repeat(40),
+      expectedCoreVersion: "0.1.0",
+      expectedCoreAbiVersion: 3,
+      expectedCoreSourceSha256: LOADED_CORE_SOURCE_SHA256,
+      loadedCoreVersion: "0.1.0",
+      loadedCoreAbiVersion: 3,
+      loadedCoreSourceSha256: LOADED_CORE_SOURCE_SHA256,
       outcome: "match",
       mismatchCategory: null,
+    });
+    expect(samples[0]).not.toHaveProperty("coreVersion");
+  });
+
+  it("classifies a different loaded Wasm tuple as loaded_identity_mismatch", () => {
+    const samples: unknown[] = [];
+    configureDomainCorePricingShadowEvidenceSink((sample) => {
+      samples.push(sample);
+    });
+    const receipt = signedInternalReceipt();
+    if (!receipt.candidateIdentity) throw new Error("signed test receipt is missing candidate identity");
+    receipt.candidateIdentity.sourceSha256 = "c".repeat(64);
+
+    calculateTokenCost(
+      { inputPerMToken: 3, outputPerMToken: 15, cacheReadPerMToken: 0.5 },
+      { inputTokens: 1_000_000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
+      () => 3,
+      {
+        OPENBURNBAR_DOMAIN_CORE_BUILD_AUTHORITY: "signed",
+        OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE: "internal",
+        OPENBURNBAR_DOMAIN_CORE_DISTRIBUTION: "internal",
+        OPENBURNBAR_DOMAIN_CORE_EVIDENCE_ENABLED: "1",
+        OPENBURNBAR_DOMAIN_CORE_PRICING_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_HERMES_MODE: "shadow",
+        OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL: "internal",
+      },
+      receipt,
+    );
+
+    expect(samples).toHaveLength(1);
+    expect(samples[0]).toMatchObject({
+      schemaVersion: 3,
+      expectedCoreSourceSha256: "c".repeat(64),
+      loadedCoreVersion: "0.1.0",
+      loadedCoreAbiVersion: 3,
+      loadedCoreSourceSha256: LOADED_CORE_SOURCE_SHA256,
+      outcome: "mismatch",
+      mismatchCategory: "loaded_identity_mismatch",
     });
   });
 
@@ -350,6 +467,7 @@ describe("shared domain-core pricing", () => {
         { inputTokens: 1_000_000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
         () => 3,
         environment,
+        signedInternalReceipt(),
       );
 
     calculate();
@@ -392,6 +510,7 @@ describe("shared domain-core pricing", () => {
         OPENBURNBAR_DOMAIN_CORE_HERMES_MODE: "shadow",
         OPENBURNBAR_DOMAIN_CORE_ROLLOUT_CHANNEL: "internal",
       },
+      signedInternalReceipt(),
     );
 
     await expect(flushDomainCorePricingShadowEvidence()).resolves.toBeUndefined();

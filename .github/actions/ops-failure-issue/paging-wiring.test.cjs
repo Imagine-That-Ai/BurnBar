@@ -16,13 +16,14 @@ const ACTION_DIR = __dirname;
 const WORKFLOWS_DIR = path.resolve(ACTION_DIR, "..", "..", "workflows");
 const ACTION_YML = path.join(ACTION_DIR, "action.yml");
 
-// The 7 workflows that call ops-failure-issue with mode: open. Each maps to
+// Every workflow that calls ops-failure-issue with mode: open. Each maps to
 // every exact lane value its open calls declare (used as a cross-check that we
 // matched every block independently).
 const OPEN_WORKFLOWS = [
   { file: "deploy-cloud-run.yml", lanes: ["deploy-cloud-run"] },
   { file: "deploy-firestore.yml", lanes: ["deploy-firestore"] },
   { file: "deploy-hosting.yml", lanes: ["deploy-hosting"] },
+  { file: "deploy-production.yml", lanes: ["deploy-production"] },
   { file: "linux-nightly.yml", lanes: ["linux-nightly"] },
   { file: "nightly-dast-sandbox.yml", lanes: ["nightly-sandbox"] },
   { file: "nightly-e2e.yml", lanes: ["nightly-e2e"] },
@@ -90,6 +91,42 @@ function extractActionBlocks(relFile) {
   return blocks;
 }
 
+/**
+ * Extract one top-level workflow job, including its steps but excluding the
+ * next job. Assertions below exercise alert behavior inside the result jobs,
+ * not unrelated occurrences elsewhere in the workflow.
+ */
+function extractJob(relFile, jobName) {
+  const source = readLines(relFile).join("\n");
+  const start = source.indexOf(`  ${jobName}:\n`);
+  assert.notEqual(start, -1, `${relFile} must define job ${jobName}`);
+  const remainder = source.slice(start + 2);
+  const next = remainder.search(/^  [A-Za-z0-9_-]+:\n/m);
+  return next === -1
+    ? source.slice(start)
+    : source.slice(start, start + 2 + next);
+}
+
+/** Extract a named step from an already isolated job. */
+function extractStep(job, stepName) {
+  const marker = `      - name: ${stepName}\n`;
+  const start = job.indexOf(marker);
+  assert.notEqual(start, -1, `job must define step ${stepName}`);
+  const remainder = job.slice(start + marker.length);
+  const next = remainder.search(/^      - /m);
+  return next === -1
+    ? job.slice(start)
+    : job.slice(start, start + marker.length + next);
+}
+
+/** Return the workflow preamble above jobs, where triggers/concurrency live. */
+function workflowPreamble(relFile) {
+  const source = readLines(relFile).join("\n");
+  const jobs = source.indexOf("\njobs:\n");
+  assert.notEqual(jobs, -1, `${relFile} must define jobs`);
+  return source.slice(0, jobs);
+}
+
 // ---------------------------------------------------------------------------
 // Per-workflow wiring: open must page, close must not.
 // ---------------------------------------------------------------------------
@@ -140,11 +177,122 @@ for (const { file, lanes } of OPEN_WORKFLOWS) {
   });
 }
 
+test("Functions result pages any failed deploy stage and closes only after full recovery", () => {
+  const job = extractJob("deploy-production.yml", "functions-result");
+  assert.match(
+    job,
+    /^    needs: \[prepare-functions-deploy, deploy-functions, functions-health-gate\]$/m
+  );
+  assert.match(
+    job,
+    /^    if: \$\{\{ always\(\) && github\.event\.inputs\.dry_run != 'true' \}\}$/m,
+    "the result job must run after failed or skipped non-dry-run stages"
+  );
+
+  const open = extractStep(
+    job,
+    "Record Functions deploy or health failure (per-lane dedupe; page once)"
+  );
+  for (const dependency of [
+    "prepare-functions-deploy",
+    "deploy-functions",
+    "functions-health-gate",
+  ]) {
+    assert.match(
+      open,
+      new RegExp(`needs\\.${dependency}\\.result != 'success'`),
+      `${dependency} failure must open and page the Functions incident`
+    );
+  }
+  assert.match(open, /^          mode: open$/m);
+  assert.match(open, /^          lane: deploy-production$/m);
+  assert.match(
+    open,
+    /^          title-prefix: Production Functions deploy or health gate failed$/m
+  );
+  assert.match(
+    open,
+    /^          paging-slack-webhook: \$\{\{ secrets\.OPS_PAGING_SLACK_WEBHOOK \}\}$/m
+  );
+
+  const close = extractStep(job, "Close resolved Functions deploy failure issue");
+  for (const dependency of [
+    "prepare-functions-deploy",
+    "deploy-functions",
+    "functions-health-gate",
+  ]) {
+    assert.match(
+      close,
+      new RegExp(`needs\\.${dependency}\\.result == 'success'`),
+      `${dependency} must recover before the Functions incident closes`
+    );
+  }
+  assert.match(close, /^          mode: close$/m);
+  assert.match(close, /^          lane: deploy-production$/m);
+  assert.match(
+    close,
+    /^          title-prefix: Production Functions deploy or health gate failed$/m
+  );
+});
+
+test("Hosting opens and closes its incident for tag and manual non-dry-run outcomes", () => {
+  const preamble = workflowPreamble("deploy-hosting.yml");
+  assert.match(preamble, /^    tags: \["v\*"\]$/m);
+  assert.match(preamble, /^  workflow_dispatch:$/m);
+
+  const job = extractJob("deploy-hosting.yml", "hosting-smoke-result");
+  assert.match(
+    job,
+    /^    if: \$\{\{ always\(\) && github\.event\.inputs\.dry_run != 'true' \}\}$/m
+  );
+  const open = extractStep(
+    job,
+    "Record hosting deploy failure (per-lane dedupe; comment, never silent-skip)"
+  );
+  const close = extractStep(job, "Close resolved hosting deploy failure issue");
+  assert.match(open, /^        if: failure\(\)$/m);
+  assert.match(close, /^        if: success\(\)$/m);
+  assert.doesNotMatch(open, /github\.ref|refs\/heads\/main/);
+  assert.doesNotMatch(close, /github\.ref|refs\/heads\/main/);
+});
+
+test("Firestore manual production failures open an incident and successful recovery closes it", () => {
+  const preamble = workflowPreamble("deploy-firestore.yml");
+  assert.match(preamble, /^  workflow_dispatch:$/m);
+
+  const job = extractJob("deploy-firestore.yml", "firestore-result");
+  assert.match(
+    job,
+    /^    if: \$\{\{ always\(\) && \(github\.event_name != 'workflow_dispatch' \|\| github\.event\.inputs\.dry_run != 'true'\) \}\}$/m,
+    "manual non-dry-run deploys must reach the result job"
+  );
+  const open = extractStep(
+    job,
+    "Record Firestore deploy failure (per-lane dedupe; comment, never silent-skip)"
+  );
+  const close = extractStep(job, "Close resolved Firestore deploy failure issue");
+  assert.match(open, /^        if: failure\(\)$/m);
+  assert.match(open, /^          mode: open$/m);
+  assert.match(close, /^        if: success\(\)$/m);
+  assert.match(close, /^          mode: close$/m);
+});
+
+test("Firestore serializes every trigger through one project-scoped concurrency group", () => {
+  const preamble = workflowPreamble("deploy-firestore.yml");
+  for (const trigger of ["push", "schedule", "workflow_dispatch"]) {
+    assert.match(preamble, new RegExp(`^  ${trigger}:`, "m"));
+  }
+  const groupLines = preamble.match(/^  group: .*$/gm) || [];
+  assert.deepEqual(groupLines, ["  group: deploy-firestore-production-burnbar"]);
+  assert.doesNotMatch(groupLines[0], /\$\{\{/);
+  assert.match(preamble, /^  cancel-in-progress: false$/m);
+});
+
 // ---------------------------------------------------------------------------
 // Sanity: every open caller is accounted for (no missing/extra wiring).
 // ---------------------------------------------------------------------------
 
-test("exactly the 7 expected workflows call ops-failure-issue with mode: open", () => {
+test("exactly the 8 expected workflows call ops-failure-issue with mode: open", () => {
   const allYml = fs
     .readdirSync(WORKFLOWS_DIR)
     .filter((f) => f.endsWith(".yml"));
@@ -162,7 +310,7 @@ test("exactly the 7 expected workflows call ops-failure-issue with mode: open", 
   assert.deepEqual(
     actual,
     expected,
-    "the set of workflows with a mode: open call to ops-failure-issue must be exactly the 7 P-OPS-4 paging lanes"
+    "the set of workflows with a mode: open call to ops-failure-issue must be exactly the 8 P-OPS-4 paging lanes"
   );
 });
 

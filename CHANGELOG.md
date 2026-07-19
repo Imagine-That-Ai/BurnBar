@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Incremental conversation indexing
+
+- **Stopped steady-state conversation indexing from re-reading the full log
+  corpus every minute**: parser checkpoints now persist exact, content-free file
+  identities in a normalized SQLite manifest. Claude Code, Codex, Factory Droid,
+  Windsurf, and Hermes skip inputs already represented by the last successful
+  checkpoint while still admitting restored or copied transcripts whose
+  modification times predate the watermark. Byte-bounded passes persist only
+  safely committed identities and freeze the watermark until deferred inputs
+  are retried, so cold scans converge without gaps or silent truncation.
 ### Added - Windows fleet safety parity
 
 - **Added fail-closed Remote Config polling for Windows Computer Use and
@@ -44,6 +54,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Factory workflow after proving user-scoped API keys are rejected without an
   active paid subscription. Committed `droid-wiki/` pages still reconcile to
   mem0 through the post-commit hook and nightly mirror job.
+
+## [1.0.30] - 2026-07-17
+
+### Added — Shared Rust Console release evidence
+
+- Stable and Rust-authoritative Hosting deploys now consume the exact protected
+  Shared Rust candidate proof and rollback bytes. Live smoke verifies a
+  no-redirect deployment identity, normal evidence publishes immutably, and
+  explicit rollback is separately review-gated and every retained result binds
+  the exact deploy and evidence workflow attempts.
+- Protected Android bundles now embed the immutable release tag as their
+  `versionName`; native release verification rejects any filename/manifest
+  version split before publishing evidence.
 
 ### Changed — Windows shell now renders the macOS Aurora liquid-glass design
 
@@ -94,6 +117,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Candidate-bound Shared Rust Functions releases** - production Functions
+  releases now verify the exact deterministic source run, protected signer run
+  and attempt, rollback bytes, selected compiled receipt, live source/version,
+  domain-core profile, and Sentry state before publishing immutable v2 release
+  evidence; manual legacy rollback uses a separately authorized and retained
+  proof path.
 - **Production Windows TPM App Check transport** - added authenticated
   server-issued challenges, durable one-time replay protection, TPM-backed CNG
   claim/public-key transport, a Windows `NCryptVerifyClaim` service, and

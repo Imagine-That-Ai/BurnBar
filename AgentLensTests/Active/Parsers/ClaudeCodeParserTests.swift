@@ -11,7 +11,7 @@ private final class ActiveTestableClaudeCodeParser: LogParser, Sendable {
         self.fileManager = fileManager
     }
 
-    func parse() async throws -> ParseResult {
+    func parse(options _: LogParseOptions) async throws -> ParseResult {
         guard fileManager.fileExists(atPath: testProjectsPath.path) else {
             return ParseResult(usages: [], conversations: [])
         }

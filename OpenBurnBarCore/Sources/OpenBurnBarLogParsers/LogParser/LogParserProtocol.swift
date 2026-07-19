@@ -18,38 +18,61 @@ public struct LogParseOptions: Sendable {
     /// When set, parsers may return cached older rows but should not parse
     /// uncached files whose modification date is before this boundary.
     public var minimumFileModificationDate: Date?
+    /// Per-pass manifest of file identities already observed by a successful
+    /// indexing checkpoint. Parsers use it to admit newly discovered files
+    /// even when their preserved modification date predates the watermark.
+    public var fileDiscoveryTracker: ParserFileDiscoveryTracker?
     /// Shared per-pass resource accounting: byte budget for new file content
-    /// and a process memory ceiling. `nil` leaves the pass ungoverned.
-    /// Governed parsers throw `ParserResourceExceeded` on the hard ceiling.
+    /// and a process memory ceiling. `nil` leaves direct, non-registry calls
+    /// ungoverned. Production registry entries install an unlimited governor
+    /// when their caller does not supply stricter limits.
     public var resourceGovernor: ParserResourceGovernor?
+    /// Per-parser, path-free scan telemetry. Production registry entries
+    /// install a fresh recorder for every parse pass.
+    public var metrics: ParserPassMetrics?
 
     public static let `default` = LogParseOptions(includeConversationBodies: true)
 
     public init(
         includeConversationBodies: Bool,
         minimumFileModificationDate: Date? = nil,
-        resourceGovernor: ParserResourceGovernor? = nil
+        fileDiscoveryTracker: ParserFileDiscoveryTracker? = nil,
+        resourceGovernor: ParserResourceGovernor? = nil,
+        metrics: ParserPassMetrics? = nil
     ) {
         self.includeConversationBodies = includeConversationBodies
         self.minimumFileModificationDate = minimumFileModificationDate
+        self.fileDiscoveryTracker = fileDiscoveryTracker
         self.resourceGovernor = resourceGovernor
+        self.metrics = metrics
     }
 }
 
 // MARK: - Log Parser Protocol
 
+public struct ParserOptionsUnsupported: Error, CustomStringConvertible, Sendable {
+    public let provider: AgentProvider
+
+    public init(provider: AgentProvider) {
+        self.provider = provider
+    }
+
+    public var description: String {
+        "Parser \(provider.rawValue) does not implement bounded LogParseOptions reads"
+    }
+}
+
 public protocol LogParser: LogParserProtocol {
-    func parse() async throws -> ParseResult
+    /// The only required parser entry point. Every conformer must explicitly
+    /// honor the incremental boundary and resource governor before content I/O.
     func parse(options: LogParseOptions) async throws -> ParseResult
 }
 
 extension LogParser {
-    public func parse(options: LogParseOptions) async throws -> ParseResult {
-        let result = try await parse()
-        guard options.includeConversationBodies else {
-            return ParseResult(usages: result.usages, conversations: [])
-        }
-        return result
+    /// Convenience for direct callers. Delegation flows toward the governed
+    /// entry point; there is no options fallback that can bypass it.
+    public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
     }
 }
 

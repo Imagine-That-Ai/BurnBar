@@ -128,6 +128,42 @@ private final class DatabaseEncryptionKeychainClientBox: @unchecked Sendable {
     }
 }
 
+#if DEBUG
+// AUDIT(@unchecked Sendable): test injection state is guarded by `lock`;
+// sendable-allowlist: foundation-sdk-shim
+private final class OrphanSizeLookupBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: DatabaseEncryptionService.OrphanSizeLookup
+
+    init() {
+        current = { fileManager, path in
+            try fileManager.attributesOfItem(atPath: path)
+        }
+    }
+
+    func lookup(_ fileManager: FileManager, _ path: String) throws -> [FileAttributeKey: Any] {
+        lock.lock()
+        let fn = current
+        lock.unlock()
+        return try fn(fileManager, path)
+    }
+
+    func withLookup<T>(_ lookup: @escaping DatabaseEncryptionService.OrphanSizeLookup, _ body: () throws -> T) rethrows -> T {
+        let previous = swap(lookup)
+        defer { _ = swap(previous) }
+        return try body()
+    }
+
+    private func swap(_ fn: @escaping DatabaseEncryptionService.OrphanSizeLookup) -> DatabaseEncryptionService.OrphanSizeLookup {
+        lock.lock()
+        defer { lock.unlock() }
+        let previous = current
+        current = fn
+        return previous
+    }
+}
+#endif
+
 enum DatabaseEncryptionService {
     private static let service = "com.openburnbar.database-encryption"
     private static let keyIdentifierAccount = "database-encryption-key-v1"
@@ -404,6 +440,34 @@ enum DatabaseEncryptionService {
     }
 
     #if DEBUG
+    typealias OrphanSizeLookup = (_ fileManager: FileManager, _ path: String) throws -> [FileAttributeKey: Any]
+
+    private static let orphanSizeLookupBox = OrphanSizeLookupBox()
+
+    private static func orphanSizeLookup(_ fileManager: FileManager, _ path: String) throws -> [FileAttributeKey: Any] {
+        try orphanSizeLookupBox.lookup(fileManager, path)
+    }
+
+    /// Swaps the orphan size-lookup closure for the duration of `body`,
+    /// restoring the previous closure on exit. Mirrors
+    /// `withKeychainClientForTesting`. Used to exercise the fail-open catch
+    /// branch in `removeOrphanedMigrationArtifacts` deterministically.
+    static func withOrphanSizeLookupForTesting<T>(
+        _ lookup: @escaping OrphanSizeLookup,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        try orphanSizeLookupBox.withLookup(lookup, body)
+    }
+#else
+    private static func orphanSizeLookup(
+        _ fileManager: FileManager,
+        _ path: String
+    ) throws -> [FileAttributeKey: Any] {
+        try fileManager.attributesOfItem(atPath: path)
+    }
+    #endif
+
+    #if DEBUG
     static func withKeychainClientForTesting<T>(
         _ client: DatabaseEncryptionKeychainClient,
         _ body: () throws -> T
@@ -621,11 +685,29 @@ extension DatabaseEncryptionService {
         guard databaseFileName.isEmpty == false else { return }
         let orphanPrefix = databaseFileName + ".sqlcipher-migrating-"
         let directoryURL = databaseURL.deletingLastPathComponent()
-        guard let entries = try? fileManager.contentsOfDirectory(atPath: directoryURL.path) else { return } // try?-ok(best-effort orphan cleanup)
+        let entries: [String]
+        do {
+            entries = try fileManager.contentsOfDirectory(atPath: directoryURL.path)
+        } catch {
+            AppLogger.dataStore.error(
+                "database_migration_orphan_enumeration_failed",
+                metadata: ["path": directoryURL.path, "error": "\(error)"]
+            )
+            return
+        }
         for entry in entries where entry.hasPrefix(orphanPrefix) {
             let orphanPath = directoryURL.appendingPathComponent(entry).path
-            let attributes = try? fileManager.attributesOfItem(atPath: orphanPath) // try?-ok(size metadata is optional for cleanup)
-            let orphanBytes = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+            let orphanBytes: Int64
+            do {
+                let attributes = try orphanSizeLookup(fileManager, orphanPath)
+                orphanBytes = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+            } catch {
+                AppLogger.dataStore.debug(
+                    "database_migration_orphan_size_unavailable",
+                    metadata: ["path": orphanPath, "error": "\(error)"]
+                )
+                orphanBytes = 0
+            }
             do {
                 try fileManager.removeItem(atPath: orphanPath)
                 AppLogger.dataStore.notice(

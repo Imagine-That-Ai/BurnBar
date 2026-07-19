@@ -585,6 +585,47 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         )
     }
 
+    /// The orphan sweep's size lookup (`attributesOfItem`) can fail when a
+    /// stranded migration temp file is removed between the directory enumeration
+    /// and the per-entry stat (a TOCTOU race against another reaper, or a
+    /// filesystem that declines to report size). Cleanup must fail OPEN: a
+    /// size-lookup failure must NOT abort removal of the orphan — the strand is
+    /// reclaimed exactly as it would be when the size is known, and no error is
+    /// propagated. Exercises the `do { attributes… } catch` branch in
+    /// `removeOrphanedMigrationArtifacts`.
+    func testOrphanSweep_removesOrphanEvenWhenSizeLookupFails() throws {
+        let directory = try makeOrphanSweepDirectory()
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        let dbPath = (directory as NSString).appendingPathComponent("openburnbar.sqlite")
+
+        // A real orphan matching the prefix so the sweep reaches the size-lookup.
+        let orphanPath = dbPath + ".sqlcipher-migrating-" + UUID().uuidString
+        try Data("orphaned migration payload".utf8).write(to: URL(fileURLWithPath: orphanPath))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: orphanPath), "Precondition: orphan must exist")
+
+        // Inject a size lookup that always fails, simulating the TOCTOU/stat-failure
+        // branch deterministically (the real path is only reachable via a
+        // non-deterministic race). The default lookup is restored on exit.
+        var sizeLookupWasCalled = false
+        try DatabaseEncryptionService.withOrphanSizeLookupForTesting(
+            { _, _ in
+                sizeLookupWasCalled = true
+                throw CocoaError(.fileReadNoSuchFile)
+            },
+            {
+                DatabaseEncryptionService.removeOrphanedMigrationArtifacts(forDatabaseAt: dbPath)
+            }
+        )
+
+        // The failing size lookup must have been consulted (proves the branch ran)
+        // and — the real contract — the orphan must STILL be removed despite it.
+        XCTAssertTrue(sizeLookupWasCalled, "Sweep must consult the size lookup for a matching orphan")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: orphanPath),
+            "Sweep must delete the orphan even when its size lookup fails (fail-open cleanup)"
+        )
+    }
+
     private func makeOrphanSweepDirectory() throws -> String {
         let directory = (NSTemporaryDirectory() as NSString)
             .appendingPathComponent("obb-orphan-sweep-\(UUID().uuidString)")

@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 
 public enum DomainCoreRuntimeNativeStatus: Equatable, Sendable {
@@ -26,7 +27,7 @@ public enum DomainCoreShadowRuntime {
             return try rust()
         }
 
-        let legacyStarted = Date.timeIntervalSinceReferenceDate
+        let legacyStarted = DispatchTime.now().uptimeNanoseconds
         let old = try legacy()
         let legacyMicros = elapsedMicros(since: legacyStarted)
         switch nativeStatus() {
@@ -48,7 +49,7 @@ public enum DomainCoreShadowRuntime {
         }
 
         let comparisonCoreVersion = coreVersion()
-        let rustStarted = Date.timeIntervalSinceReferenceDate
+        let rustStarted = DispatchTime.now().uptimeNanoseconds
         let value: Value
         do {
             value = try rust()
@@ -102,7 +103,7 @@ public enum DomainCoreShadowRuntime {
             return try rustAuthority()
         }
 
-        let legacyStarted = Date.timeIntervalSinceReferenceDate
+        let legacyStarted = DispatchTime.now().uptimeNanoseconds
         let old = try legacy()
         let legacyMicros = elapsedMicros(since: legacyStarted)
         switch nativeStatus() {
@@ -124,7 +125,7 @@ public enum DomainCoreShadowRuntime {
         }
 
         let comparisonCoreVersion = coreVersion()
-        let rustStarted = Date.timeIntervalSinceReferenceDate
+        let rustStarted = DispatchTime.now().uptimeNanoseconds
         let matches: Bool
         do {
             matches = try verifyLegacyWithRust(old)
@@ -157,7 +158,9 @@ public enum DomainCoreShadowRuntime {
         return old
     }
 
-    private static func elapsedMicros(since started: TimeInterval) -> UInt64 {
-        UInt64(min(600_000_000, max(0, ((Date.timeIntervalSinceReferenceDate - started) * 1_000_000).rounded())))
+    private static func elapsedMicros(since started: UInt64) -> UInt64 {
+        let now = DispatchTime.now().uptimeNanoseconds
+        let elapsedNanoseconds = now >= started ? now - started : 0
+        return min(600_000_000, elapsedNanoseconds / 1_000)
     }
 }

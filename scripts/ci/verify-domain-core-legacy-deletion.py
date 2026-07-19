@@ -219,9 +219,14 @@ RELEASE_SIGNER_WORKFLOWS = {
     "linux": ".github/workflows/linux-release.yml",
     "android": ".github/workflows/release.yml",
     "windows": ".github/workflows/openburnbar-release-windows.yml",
+    "console": ".github/workflows/domain-core-console-release-evidence.yml",
+    "functions": ".github/workflows/domain-core-functions-release-evidence.yml",
+}
+ROLLBACK_ACTION_WORKFLOWS = {
     "console": ".github/workflows/deploy-hosting.yml",
     "functions": ".github/workflows/deploy-production.yml",
 }
+ROLLBACK_COMPLETION_ROOT = "config/domain-core-rollback-completions"
 RELEASE_PREDICATE_TYPES = {
     consumer: "https://openburnbar.dev/attestations/domain-core-release-artifact/v2"
     for consumer in RELEASE_SIGNER_WORKFLOWS
@@ -254,6 +259,7 @@ ACTIVATION_ALLOWED_PREFIXES = (
     f"{ATTESTATION_ROOT}/",
     f"{PROMOTION_BUNDLE_ROOT}/",
     f"{PROMOTION_PROVENANCE_ROOT}/",
+    f"{ROLLBACK_COMPLETION_ROOT}/",
     "docs/runbooks/shared-rust-",
     "docs/SHARED_RUST_DOMAIN_",
 )
@@ -281,6 +287,7 @@ SENSITIVE_PREFIXES = (
     f"{PROMOTION_PROVENANCE_ROOT}/",
     f"{RELEASE_PROVENANCE_ROOT}/",
     f"{DELETION_PLAN_ROOT}/",
+    f"{ROLLBACK_COMPLETION_ROOT}/",
 )
 SECURITY_REVIEW_ROWS = {
     "cloudvault.portable_primitives",
@@ -874,6 +881,10 @@ class SignedEvidenceVerifier:
                 ).get("candidate")
                 == item["candidate"]
                 and predicate["rollbackArtifact"].get("activation") == item["activation"]
+                and (
+                    "_retainedRollbackSha256" not in item
+                    or predicate["rollbackArtifact"].get("sha256") == item["_retainedRollbackSha256"]
+                )
             ]
             if item["consumer"] == "ios":
                 matching = [
@@ -889,6 +900,196 @@ class SignedEvidenceVerifier:
             if self.cache_root is None:
                 artifact.unlink(missing_ok=True)
                 artifact.parent.rmdir()
+
+    def verify_rollback_completion(
+        self,
+        item: dict[str, Any],
+        artifact: Path,
+        bundle: Path,
+        *,
+        candidate: dict[str, Any],
+        activation: dict[str, Any],
+        source_run: dict[str, Any],
+        promotion_signer: dict[str, Any],
+        candidate_bundle_sha256: str,
+        retained_rollback_sha256: str,
+        domain: str,
+    ) -> datetime:
+        consumer = item["consumer"]
+        label = f"{consumer} rollback completion"
+        artifact_digest = require_digest(item["artifactSha256"], f"{label}.artifactSha256")
+        bundle_digest = require_digest(item["provenanceSha256"], f"{label}.provenanceSha256")
+        if sha256_path(artifact) != artifact_digest or sha256_path(bundle) != bundle_digest:
+            raise GateError(f"{label}: committed completion evidence digest does not match its bytes")
+        release = item["release"]
+        signer = item["signer"]
+        action_run = item["actionRun"]
+        verified = self._verify_bundle(
+            artifact,
+            bundle,
+            signer_workflow=RELEASE_SIGNER_WORKFLOWS[consumer],
+            source_digest=activation["activationCommit"],
+            source_ref=f"refs/tags/{release['tag']}",
+            predicate_type=RELEASE_PREDICATE_TYPES[consumer],
+            signer_digest=activation["activationCommit"],
+            label=label,
+        )
+        expected_public_profile = {
+            "profile": "public-production-rollback",
+            "domain": domain,
+            "mode": "legacy",
+            "sha256": item["rollbackProfileSha256"],
+        }
+        expected_release = {
+            "version": release["version"],
+            "tag": release["tag"],
+            "commit": activation["activationCommit"],
+            "publicProfileSha256": item["rollbackProfileSha256"],
+        }
+        expected_artifact_identity = RELEASE_ARTIFACT_IDENTITIES[consumer]
+        predicates: list[dict[str, Any]] = []
+        invocations: set[tuple[int, int]] = set()
+        invocation_prefix = f"https://github.com/{self.repository}/actions/runs/"
+        for result in verified:
+            verification = result.get("verificationResult")
+            if not isinstance(verification, dict):
+                continue
+            statement = verification.get("statement")
+            predicate = statement.get("predicate") if isinstance(statement, dict) else None
+            if isinstance(predicate, dict):
+                predicates.append(predicate)
+            signature = verification.get("signature")
+            certificate = signature.get("certificate") if isinstance(signature, dict) else None
+            invocation = certificate.get("runInvocationURI") if isinstance(certificate, dict) else None
+            if isinstance(invocation, str) and invocation.startswith(invocation_prefix):
+                match = re.fullmatch(r"([1-9][0-9]*)/attempts/([1-9][0-9]*)", invocation[len(invocation_prefix) :])
+                if match is not None:
+                    invocations.add((int(match.group(1)), int(match.group(2))))
+        signer_identity = (
+            positive_integer(signer["runId"], f"{label}.signer.runId"),
+            positive_integer(signer["runAttempt"], f"{label}.signer.runAttempt"),
+        )
+        if invocations != {signer_identity}:
+            raise GateError(f"{label}: signed provenance does not bind the exact signer run and attempt")
+        matching: list[dict[str, Any]] = []
+        for predicate in predicates:
+            if (
+                predicate.get("schemaVersion") != 2
+                or predicate.get("predicateType") != RELEASE_PREDICATE_TYPES[consumer]
+                or predicate.get("consumer") != consumer
+                or predicate.get("domain") != domain
+                or (predicate.get("artifactKind"), predicate.get("target")) != expected_artifact_identity
+                or predicate.get("candidate") != candidate
+                or predicate.get("activation") != activation
+                or predicate.get("publicProfile") != expected_public_profile
+                or predicate.get("release") != expected_release
+                or require_object(predicate.get("artifact"), f"{label} predicate.artifact").get("sha256")
+                != artifact_digest
+                or predicate.get("sourceRun") != source_run
+            ):
+                continue
+            promotion = require_object(predicate.get("promotionProof"), f"{label} predicate.promotionProof")
+            subject = require_object(
+                promotion.get("attestationSubject"),
+                f"{label} predicate.promotionProof.attestationSubject",
+            )
+            promotion_run = require_object(
+                promotion.get("signerRun"),
+                f"{label} predicate.promotionProof.signerRun",
+            )
+            rollback_artifact = require_object(
+                predicate.get("rollbackArtifact"),
+                f"{label} predicate.rollbackArtifact",
+            )
+            if (
+                promotion.get("signerWorkflow") != PROMOTION_SIGNER_WORKFLOW
+                or promotion.get("predicateType") != "https://slsa.dev/provenance/v1"
+                or subject.get("sha256") != candidate_bundle_sha256
+                or promotion_run.get("runId") != promotion_signer["runId"]
+                or promotion_run.get("runAttempt") != promotion_signer["runAttempt"]
+                or rollback_artifact.get("sha256") != retained_rollback_sha256
+                or rollback_artifact.get("candidate") != candidate
+                or rollback_artifact.get("activation") != activation
+            ):
+                continue
+            deployment = predicate.get("deployment")
+            if consumer in ROLLBACK_ACTION_WORKFLOWS:
+                if not isinstance(deployment, dict) or deployment.get("status") != "healthy":
+                    continue
+                deploy_run = deployment.get("deployRun")
+                if not isinstance(deploy_run, dict) or deploy_run != action_run:
+                    continue
+                if deployment.get("deployedArtifact", {}).get("sha256") != item["deployedArtifactSha256"]:
+                    continue
+                if deployment.get("healthArtifactSha256") != item["healthArtifactSha256"]:
+                    continue
+            elif action_run != {
+                "repository": self.repository,
+                "workflowPath": RELEASE_SIGNER_WORKFLOWS[consumer],
+                "runId": signer_identity[0],
+                "runAttempt": signer_identity[1],
+                "event": action_run.get("event"),
+                "ref": f"refs/tags/{release['tag']}",
+                "headSha": activation["activationCommit"],
+            }:
+                continue
+            matching.append(predicate)
+        if len(matching) != 1:
+            raise GateError(f"{label}: expected exactly one signed predicate for the completed rollback target")
+
+        signer_run = self._github_json(
+            f"repos/{self.repository}/actions/runs/{signer_identity[0]}/attempts/{signer_identity[1]}",
+            f"{label} signer run",
+        )
+        expected_signer_run = {
+            "path": RELEASE_SIGNER_WORKFLOWS[consumer],
+            "head_sha": activation["activationCommit"],
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": signer_identity[1],
+            "head_branch": release["tag"],
+        }
+        for key, expected in expected_signer_run.items():
+            if signer_run.get(key) != expected:
+                raise GateError(f"{label} signer run.{key} must equal {expected!r}")
+        if (
+            require_object(signer_run.get("repository"), f"{label} signer run.repository").get("full_name")
+            != self.repository
+        ):
+            raise GateError(f"{label}: signer run repository is not trusted")
+        if consumer in ROLLBACK_ACTION_WORKFLOWS:
+            action_run_id = positive_integer(action_run.get("runId"), f"{label}.actionRun.runId")
+            action_run_attempt = positive_integer(
+                action_run.get("runAttempt"),
+                f"{label}.actionRun.runAttempt",
+            )
+            authoritative_run = self._github_json(
+                f"repos/{self.repository}/actions/runs/{action_run_id}/attempts/{action_run_attempt}",
+                f"{label} action run",
+            )
+            expected_action_run = {
+                "path": ROLLBACK_ACTION_WORKFLOWS[consumer],
+                "event": "workflow_dispatch",
+                "head_sha": activation["activationCommit"],
+                "status": "completed",
+                "conclusion": "success",
+                "run_attempt": action_run_attempt,
+                "head_branch": release["tag"],
+            }
+            for key, expected in expected_action_run.items():
+                if authoritative_run.get(key) != expected:
+                    raise GateError(f"{label} action run.{key} must equal {expected!r}")
+        else:
+            authoritative_run = signer_run
+        if (
+            require_object(authoritative_run.get("repository"), f"{label} action run.repository").get("full_name")
+            != self.repository
+        ):
+            raise GateError(f"{label}: action run repository is not trusted")
+        completed_at = parse_rfc3339_utc(authoritative_run.get("updated_at"), f"{label} action run.updated_at")
+        if completed_at != parse_rfc3339_utc(item["completedAt"], f"{label}.completedAt"):
+            raise GateError(f"{label}: completion timestamp does not match the authoritative action run")
+        return completed_at
 
     def verify_rollback_artifact(
         self,
@@ -1352,6 +1553,7 @@ class Receipt:
     digest: str
     evidence: tuple[str, ...]
     payload: dict[str, Any]
+    approved_by: str = ""
 
 
 def validate_receipt(
@@ -1445,6 +1647,7 @@ def validate_receipt(
         digest=sha256_path(path),
         evidence=tuple(evidence),
         payload=require_object(receipt[expected_field], f"receipt {receipt_path}.{expected_field}"),
+        approved_by=approved_by,
     )
 
 
@@ -1697,6 +1900,7 @@ def validate_ios_app_store_receipt(
         {
             "OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1",
             "uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version",
+            "uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit",
             "uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint",
             "uniffi_openburnbar_domain_ffi_fn_func_domain_core_version",
         }
@@ -2124,6 +2328,425 @@ def validate_promotion_attestation(
     return candidate, bundle_digest, expected_identity["coreVersion"]
 
 
+def validate_deletion_review_receipt(
+    repo_root: Path,
+    row_id: str,
+    generation: int,
+    deletion: Receipt,
+    stable: Receipt,
+    targets: list[Target],
+    deletion_reviewers: dict[str, set[str]] | None,
+    evidence_verifier: SignedEvidenceVerifier | Any | None,
+) -> None:
+    """Validate a deletionReview receipt's authority, plan digest, and ancestry.
+
+    Pure shared verifier extracted from validate_receipt_chain so that the
+    post-deletion completion gate can reuse the exact same fail-closed checks
+    without duplicating a weaker parser.  Enforces:
+
+    * deletionReview payload binds the current stable receipt digest
+    * review URI, reviewer handle, review class, and outcome are canonical
+    * reviewer is qualified by the trusted base catalog
+    * approved deletion plan binds the exact row, generation, stable receipt,
+      reviewer, review class, and legacy target inventory digest
+    * reviewedCommit is a valid commit and an ancestor of the deletion receipt commit
+    * live independent deletion review verification is performed (fail-closed)
+    """
+    payload = deletion.payload
+    fields = {
+        "stableReceiptSha256",
+        "reviewUri",
+        "reviewedCommit",
+        "reviewer",
+        "reviewClass",
+        "outcome",
+        "planPath",
+        "planSha256",
+    }
+    exact_keys(payload, fields, fields, f"row {row_id} deletionReview")
+    require_ancestor(
+        repo_root,
+        stable.commit,
+        deletion.commit,
+        f"row {row_id} deletionReview.commit",
+    )
+    if payload["stableReceiptSha256"] != stable.digest:
+        raise GateError(f"row {row_id}: deletion review does not bind the current stable receipt")
+    validate_https_uri(payload["reviewUri"], f"row {row_id} deletionReview.reviewUri")
+    if not isinstance(payload["reviewer"], str) or not RECEIPT_ACTOR_RE.fullmatch(payload["reviewer"]):
+        raise GateError(f"row {row_id}: deletion reviewer must be a GitHub handle")
+    expected_review_class = "security_crypto" if row_id in SECURITY_REVIEW_ROWS else "domain_owner"
+    if payload["reviewClass"] != expected_review_class or payload["outcome"] != "approved":
+        raise GateError(f"row {row_id}: deletion review class or outcome is invalid")
+    qualified = (deletion_reviewers or {}).get(expected_review_class, set())
+    if payload["reviewer"].casefold() not in qualified:
+        raise GateError(f"row {row_id}: {expected_review_class} reviewer is not qualified by the trusted base catalog")
+    expected_plan_path = f"{DELETION_PLAN_ROOT}/{row_id}/{generation}.json"
+    plan_path_value = repository_path(payload["planPath"], f"row {row_id} deletionReview.planPath")
+    if plan_path_value != expected_plan_path:
+        raise GateError(f"row {row_id}: deletion plan must use exact path {expected_plan_path}")
+    plan_path = secure_path(repo_root, plan_path_value, f"row {row_id} deletion plan", must_exist=True)
+    plan_digest = require_digest(payload["planSha256"], f"row {row_id} deletionReview.planSha256")
+    if not plan_path.is_file() or sha256_path(plan_path) != plan_digest:
+        raise GateError(f"row {row_id}: deletion plan digest does not match committed bytes")
+    reviewed_commit = payload["reviewedCommit"]
+    reviewed_commit = require_commit(repo_root, reviewed_commit, f"row {row_id} deletion reviewedCommit")
+    require_ancestor(
+        repo_root,
+        reviewed_commit,
+        deletion.commit,
+        f"row {row_id} deletion reviewedCommit",
+    )
+    plan = require_object(
+        load_json(plan_path, f"row {row_id} deletion plan"),
+        f"row {row_id} deletion plan",
+    )
+    plan_fields = {
+        "schemaVersion",
+        "rowId",
+        "authorityGeneration",
+        "stableReceiptSha256",
+        "reviewer",
+        "reviewClass",
+        "legacyTargetsSha256",
+        "requestedAction",
+    }
+    exact_keys(plan, plan_fields, plan_fields, f"row {row_id} deletion plan")
+    target_digest = canonical_json_sha256(
+        [
+            {
+                "kind": target.kind,
+                "role": target.role,
+                "root": target.root,
+                "path": target.path,
+                "value": target.value,
+            }
+            for target in sorted(targets, key=lambda item: item.identity)
+        ]
+    )
+    expected_plan = {
+        "schemaVersion": 1,
+        "rowId": row_id,
+        "authorityGeneration": generation,
+        "stableReceiptSha256": stable.digest,
+        "reviewer": payload["reviewer"],
+        "reviewClass": expected_review_class,
+        "legacyTargetsSha256": target_digest,
+        "requestedAction": "approve_legacy_deletion",
+    }
+    if plan != expected_plan:
+        raise GateError(f"row {row_id}: deletion plan does not match the exact reviewed row and target inventory")
+    if evidence_verifier is None:
+        raise GateError(f"row {row_id}: live independent deletion review verification is required")
+    evidence_verifier.verify_deletion_review(
+        payload,
+        {plan_path_value: plan_digest, stable.path: stable.digest},
+        expected_descendant_commit=deletion.commit,
+    )
+
+
+def rollback_authority_binding(
+    repo_root: Path,
+    row_id: str,
+    generation: int,
+    promotion: Receipt,
+    stable: Receipt,
+) -> dict[str, Any]:
+    pointer = require_object(promotion.payload, f"row {row_id} promotionAttestation")
+    attestation_path = secure_path(
+        repo_root,
+        repository_path(pointer["path"], f"row {row_id} promotionAttestation.path"),
+        f"row {row_id} promotion attestation",
+        must_exist=True,
+    )
+    attestation = require_object(
+        load_json(attestation_path, f"row {row_id} promotion attestation"),
+        f"row {row_id} promotion attestation",
+    )
+    unsigned = require_object(attestation.get("unsignedBundle"), f"row {row_id} promotion unsignedBundle")
+    provenance = require_object(attestation.get("provenance"), f"row {row_id} promotion provenance")
+    release = stable.payload
+    candidate = require_object(release.get("candidate"), f"row {row_id} release.candidate")
+    activation = require_object(release.get("activation"), f"row {row_id} release.activation")
+    retained = require_object(release.get("rollbackArtifact"), f"row {row_id} release.rollbackArtifact")
+    return {
+        "candidate": candidate,
+        "activation": activation,
+        "candidateBundleSha256": require_digest(
+            unsigned.get("sha256"),
+            f"row {row_id} promotion unsignedBundle.sha256",
+        ),
+        "sourceRun": {
+            "repository": SignedEvidenceVerifier.repository,
+            "workflowPath": SOURCE_WORKFLOW,
+            "runId": positive_integer(
+                unsigned.get("sourceRunId"),
+                f"row {row_id} promotion unsignedBundle.sourceRunId",
+            ),
+            "runAttempt": positive_integer(
+                unsigned.get("sourceRunAttempt"),
+                f"row {row_id} promotion unsignedBundle.sourceRunAttempt",
+            ),
+            "event": "push",
+            "ref": "refs/heads/main",
+            "headSha": candidate["candidateCommit"],
+        },
+        "promotionSigner": {
+            "workflowPath": PROMOTION_SIGNER_WORKFLOW,
+            "runId": positive_integer(
+                provenance.get("signerRunId"),
+                f"row {row_id} promotion provenance.signerRunId",
+            ),
+            "runAttempt": positive_integer(
+                provenance.get("signerRunAttempt"),
+                f"row {row_id} promotion provenance.signerRunAttempt",
+            ),
+            "trustedMainCommit": require_commit(
+                repo_root,
+                provenance.get("trustedMainCommit"),
+                f"row {row_id} promotion provenance.trustedMainCommit",
+            ),
+            "provenanceSha256": require_digest(
+                provenance.get("sha256"),
+                f"row {row_id} promotion provenance.sha256",
+            ),
+        },
+        "retainedRollbackArtifact": {
+            "artifactUri": retained["artifactUri"],
+            "artifactSha256": require_digest(
+                retained["artifactSha256"],
+                f"row {row_id} release.rollbackArtifact.artifactSha256",
+            ),
+            "provenanceSha256": require_digest(
+                retained["provenanceSha256"],
+                f"row {row_id} release.rollbackArtifact.provenanceSha256",
+            ),
+            "retentionPolicy": retained["retentionPolicy"],
+        },
+    }
+
+
+def validate_rollback_receipt(
+    repo_root: Path,
+    row_id: str,
+    generation: int,
+    rollback: Receipt,
+    promotion: Receipt,
+    stable: Receipt,
+    evidence_verifier: SignedEvidenceVerifier | Any | None,
+) -> datetime:
+    payload = rollback.payload
+    fields = {
+        "stableReceiptSha256",
+        "issueUri",
+        "activatedAt",
+        "candidate",
+        "activation",
+        "authority",
+        "retainedRollbackArtifact",
+        "approverAuthority",
+        "completionEvidence",
+    }
+    exact_keys(payload, fields, fields, f"row {row_id} rollback")
+    require_ancestor(repo_root, stable.commit, rollback.commit, f"row {row_id} rollback.commit")
+    if payload["stableReceiptSha256"] != stable.digest:
+        raise GateError(f"row {row_id}: rollback does not bind the current stable receipt")
+    issue_uri = validate_https_uri(payload["issueUri"], f"row {row_id} rollback.issueUri")
+    parsed_issue = urlsplit(issue_uri)
+    if (
+        parsed_issue.hostname != "github.com"
+        or re.fullmatch(r"/Imagine-That-Ai/BurnBar/issues/[1-9][0-9]*", parsed_issue.path) is None
+    ):
+        raise GateError(f"row {row_id}: rollback issue must be an exact OpenBurnBar GitHub issue")
+    expected_authority = rollback_authority_binding(repo_root, row_id, generation, promotion, stable)
+    if payload["candidate"] != expected_authority["candidate"]:
+        raise GateError(f"row {row_id}: rollback candidate does not match the governed promotion")
+    if payload["activation"] != expected_authority["activation"]:
+        raise GateError(f"row {row_id}: rollback activation does not match the governed stable release")
+    authority = require_object(payload["authority"], f"row {row_id} rollback.authority")
+    authority_fields = {"candidateBundleSha256", "sourceRun", "promotionSigner"}
+    exact_keys(authority, authority_fields, authority_fields, f"row {row_id} rollback.authority")
+    if authority != {key: expected_authority[key] for key in ("candidateBundleSha256", "sourceRun", "promotionSigner")}:
+        raise GateError(f"row {row_id}: rollback does not bind the exact source and promotion authority")
+    retained = require_object(
+        payload["retainedRollbackArtifact"],
+        f"row {row_id} rollback.retainedRollbackArtifact",
+    )
+    retained_fields = {"artifactUri", "artifactSha256", "provenanceSha256", "retentionPolicy"}
+    exact_keys(
+        retained,
+        retained_fields,
+        retained_fields,
+        f"row {row_id} rollback.retainedRollbackArtifact",
+    )
+    if retained != expected_authority["retainedRollbackArtifact"]:
+        raise GateError(f"row {row_id}: rollback does not bind the exact retained rollback artifact")
+    approver = require_object(payload["approverAuthority"], f"row {row_id} rollback.approverAuthority")
+    approver_fields = {"reviewClass", "catalogSha256", "trustedMainCommit"}
+    exact_keys(approver, approver_fields, approver_fields, f"row {row_id} rollback.approverAuthority")
+    review_class = "security_crypto" if row_id in SECURITY_REVIEW_ROWS else "domain_owner"
+    trusted_approver_commit = expected_authority["promotionSigner"]["trustedMainCommit"]
+    if approver["reviewClass"] != review_class or approver["trustedMainCommit"] != trusted_approver_commit:
+        raise GateError(f"row {row_id}: rollback approver authority is not bound to protected trusted main")
+    catalog_sha256 = hashlib.sha256(
+        git_file(
+            repo_root,
+            trusted_approver_commit,
+            DELETION_REVIEWERS_PATH,
+            "rollback approver catalog",
+        )
+    ).hexdigest()
+    if approver["catalogSha256"] != catalog_sha256:
+        raise GateError(f"row {row_id}: rollback approver catalog digest does not match trusted main")
+    qualified = load_deletion_reviewers(repo_root, trusted_approver_commit)[review_class]
+    approved_by = rollback.approved_by
+    if not isinstance(approved_by, str) or approved_by.casefold() not in qualified:
+        raise GateError(f"row {row_id}: rollback approver is not qualified by trusted main")
+
+    if evidence_verifier is None:
+        raise GateError(f"row {row_id}: independent signed rollback completion verification is required")
+    completions = require_array(payload["completionEvidence"], f"row {row_id} rollback.completionEvidence")
+    consumers: set[str] = set()
+    completion_times: list[datetime] = []
+    domain = profile_domain_for_row(row_id)
+    for index, raw_completion in enumerate(completions):
+        label = f"row {row_id} rollback.completionEvidence[{index}]"
+        completion = require_object(raw_completion, label)
+        completion_fields = {
+            "consumer",
+            "domain",
+            "artifactPath",
+            "artifactSha256",
+            "provenancePath",
+            "provenanceSha256",
+            "rollbackProfileSha256",
+            "release",
+            "signer",
+            "actionRun",
+            "deployedArtifactSha256",
+            "healthArtifactSha256",
+            "completedAt",
+        }
+        exact_keys(completion, completion_fields, completion_fields, label)
+        consumer = completion["consumer"]
+        if consumer not in RELEASE_ARTIFACT_IDENTITIES or consumer in consumers:
+            raise GateError(f"{label}: consumer must be known and unique")
+        consumers.add(consumer)
+        if completion["domain"] != domain:
+            raise GateError(f"{label}: domain does not match the governed row")
+        require_digest(completion["rollbackProfileSha256"], f"{label}.rollbackProfileSha256")
+        release = require_object(completion["release"], f"{label}.release")
+        exact_keys(release, {"version", "tag", "commit"}, {"version", "tag", "commit"}, f"{label}.release")
+        expected_release_tag = (
+            f"windows-v{release['version']}"
+            if consumer == "windows"
+            else f"linux-v{release['version']}"
+            if consumer == "linux"
+            else f"v{release['version']}"
+        )
+        if (
+            not isinstance(release["version"], str)
+            or not VERSION_RE.fullmatch(release["version"])
+            or release["tag"] != expected_release_tag
+            or release["commit"] != expected_authority["activation"]["activationCommit"]
+        ):
+            raise GateError(f"{label}: release identity does not match activation P")
+        signer = require_object(completion["signer"], f"{label}.signer")
+        signer_fields = {"workflowPath", "runId", "runAttempt", "runInvocationUri"}
+        exact_keys(signer, signer_fields, signer_fields, f"{label}.signer")
+        if signer["workflowPath"] != RELEASE_SIGNER_WORKFLOWS[consumer]:
+            raise GateError(f"{label}: signer workflow is not the governed consumer signer")
+        signer_id = positive_integer(signer["runId"], f"{label}.signer.runId")
+        signer_attempt = positive_integer(signer["runAttempt"], f"{label}.signer.runAttempt")
+        if signer["runInvocationUri"] != (
+            f"https://github.com/{SignedEvidenceVerifier.repository}/actions/runs/{signer_id}/attempts/{signer_attempt}"
+        ):
+            raise GateError(f"{label}: signer invocation URI does not bind the exact run attempt")
+        action_run = require_object(completion["actionRun"], f"{label}.actionRun")
+        action_fields = {
+            "repository",
+            "workflowPath",
+            "runId",
+            "runAttempt",
+            "event",
+            "ref",
+            "headSha",
+        }
+        if consumer in ROLLBACK_ACTION_WORKFLOWS:
+            action_fields.add("jobSetSha256")
+        exact_keys(action_run, action_fields, action_fields, f"{label}.actionRun")
+        if (
+            action_run["repository"] != SignedEvidenceVerifier.repository
+            or action_run["workflowPath"] != ROLLBACK_ACTION_WORKFLOWS.get(consumer, RELEASE_SIGNER_WORKFLOWS[consumer])
+            or action_run["ref"] != f"refs/tags/{release['tag']}"
+            or action_run["headSha"] != release["commit"]
+        ):
+            raise GateError(f"{label}: action run does not bind the exact rollback target")
+        if consumer in ROLLBACK_ACTION_WORKFLOWS:
+            require_digest(action_run["jobSetSha256"], f"{label}.actionRun.jobSetSha256")
+            require_digest(completion["deployedArtifactSha256"], f"{label}.deployedArtifactSha256")
+            require_digest(completion["healthArtifactSha256"], f"{label}.healthArtifactSha256")
+        elif (
+            completion["deployedArtifactSha256"] != completion["artifactSha256"]
+            or completion["healthArtifactSha256"] is not None
+        ):
+            raise GateError(
+                f"{label}: native completion must bind its signed release artifact without fake health evidence"
+            )
+        artifact_relative = repository_path(completion["artifactPath"], f"{label}.artifactPath")
+        provenance_relative = repository_path(completion["provenancePath"], f"{label}.provenancePath")
+        expected_artifact_relative = f"{ROLLBACK_COMPLETION_ROOT}/{row_id}/{generation}/{consumer}.json"
+        expected_provenance_relative = f"{ROLLBACK_COMPLETION_ROOT}/{row_id}/{generation}/{consumer}.sigstore.json"
+        if artifact_relative != expected_artifact_relative or provenance_relative != expected_provenance_relative:
+            raise GateError(f"{label}: completion evidence must use its exact immutable repository path")
+        artifact_path = secure_path(repo_root, artifact_relative, f"{label}.artifactPath", must_exist=True)
+        provenance_path = secure_path(repo_root, provenance_relative, f"{label}.provenancePath", must_exist=True)
+        for path_value, digest_key, file_label in (
+            (artifact_path, "artifactSha256", "artifact"),
+            (provenance_path, "provenanceSha256", "provenance"),
+        ):
+            digest = require_digest(completion[digest_key], f"{label}.{digest_key}")
+            if sha256_path(path_value) != digest:
+                raise GateError(f"{label}: committed {file_label} digest does not match working bytes")
+            if (
+                hashlib.sha256(
+                    git_file(
+                        repo_root,
+                        rollback.commit,
+                        path_value.relative_to(repo_root).as_posix(),
+                        f"{label} {file_label}",
+                    )
+                ).hexdigest()
+                != digest
+            ):
+                raise GateError(f"{label}: {file_label} bytes are not immutable at trusted main")
+        completed_at = evidence_verifier.verify_rollback_completion(
+            completion,
+            artifact_path,
+            provenance_path,
+            candidate=expected_authority["candidate"],
+            activation=expected_authority["activation"],
+            source_run=expected_authority["sourceRun"],
+            promotion_signer=expected_authority["promotionSigner"],
+            candidate_bundle_sha256=expected_authority["candidateBundleSha256"],
+            retained_rollback_sha256=expected_authority["retainedRollbackArtifact"]["artifactSha256"],
+            domain=domain,
+        )
+        if completed_at < stable.approved_at or completed_at > rollback.approved_at:
+            raise GateError(
+                f"{label}: rollback action must complete after stable approval and before rollback approval"
+            )
+        completion_times.append(completed_at)
+    if consumers != release_consumers_for_row(row_id):
+        raise GateError(f"row {row_id}: rollback completion must cover the exact governed consumer set")
+    if not completion_times:
+        raise GateError(f"row {row_id}: rollback cannot be activated from a plan without completion evidence")
+    activated_at = parse_rfc3339_utc(payload["activatedAt"], f"row {row_id} rollback.activatedAt")
+    if activated_at != max(completion_times):
+        raise GateError(f"row {row_id}: rollback activation must equal the last verified completion")
+    return activated_at
+
+
 def validate_receipt_chain(
     repo_root: Path,
     row_id: str,
@@ -2293,7 +2916,20 @@ def validate_receipt_chain(
                 raise GateError(f"{label}: provenance digest does not match committed bytes")
             if evidence_verifier is None:
                 raise GateError(f"{label}: signed release evidence verification is required")
-            evidence_verifier.verify_release(item, provenance_path, artifact_digest, profile_domain)
+            verification_item = dict(item)
+            verification_item["_retainedRollbackSha256"] = require_digest(
+                require_object(
+                    release["rollbackArtifact"],
+                    f"row {row_id} release.rollbackArtifact",
+                ).get("artifactSha256"),
+                f"row {row_id} release.rollbackArtifact.artifactSha256",
+            )
+            evidence_verifier.verify_release(
+                verification_item,
+                provenance_path,
+                artifact_digest,
+                profile_domain,
+            )
         if consumers != release_consumers_for_row(row_id):
             raise GateError(f"row {row_id}: stable receipt must cover the exact applicable consumer set")
         rollback_item = require_object(release["rollbackArtifact"], f"row {row_id} release.rollbackArtifact")
@@ -2404,115 +3040,31 @@ def validate_receipt_chain(
     rollback = receipts.get("rollback")
     rollback_activated_at: datetime | None = None
     if rollback is not None:
-        payload = rollback.payload
-        fields = {"stableReceiptSha256", "issueUri", "activatedAt"}
-        exact_keys(payload, fields, fields, f"row {row_id} rollback")
         assert stable is not None
-        require_ancestor(repo_root, stable.commit, rollback.commit, f"row {row_id} rollback.commit")
-        if payload["stableReceiptSha256"] != stable.digest:
-            raise GateError(f"row {row_id}: rollback does not bind the current stable receipt")
-        validate_https_uri(payload["issueUri"], f"row {row_id} rollback.issueUri")
-        rollback_activated_at = parse_rfc3339_utc(payload["activatedAt"], f"row {row_id} rollback.activatedAt")
-        if rollback_activated_at < stable.approved_at or rollback_activated_at > rollback.approved_at:
-            raise GateError(f"row {row_id}: rollback activation must follow stable approval")
+        rollback_activated_at = validate_rollback_receipt(
+            repo_root,
+            row_id,
+            generation,
+            rollback,
+            promotion,
+            stable,
+            evidence_verifier,
+        )
 
     deletion = receipts.get("deletionReview")
     if deletion is not None:
-        payload = deletion.payload
-        fields = {
-            "stableReceiptSha256",
-            "reviewUri",
-            "reviewedCommit",
-            "reviewer",
-            "reviewClass",
-            "outcome",
-            "planPath",
-            "planSha256",
-        }
-        exact_keys(payload, fields, fields, f"row {row_id} deletionReview")
         assert stable is not None
-        require_ancestor(
-            repo_root,
-            stable.commit,
-            deletion.commit,
-            f"row {row_id} deletionReview.commit",
-        )
-        if payload["stableReceiptSha256"] != stable.digest:
-            raise GateError(f"row {row_id}: deletion review does not bind the current stable receipt")
-        validate_https_uri(payload["reviewUri"], f"row {row_id} deletionReview.reviewUri")
-        if not isinstance(payload["reviewer"], str) or not RECEIPT_ACTOR_RE.fullmatch(payload["reviewer"]):
-            raise GateError(f"row {row_id}: deletion reviewer must be a GitHub handle")
-        expected_review_class = "security_crypto" if row_id in SECURITY_REVIEW_ROWS else "domain_owner"
-        if payload["reviewClass"] != expected_review_class or payload["outcome"] != "approved":
-            raise GateError(f"row {row_id}: deletion review class or outcome is invalid")
-        qualified = (deletion_reviewers or {}).get(expected_review_class, set())
-        if payload["reviewer"].casefold() not in qualified:
-            raise GateError(
-                f"row {row_id}: {expected_review_class} reviewer is not qualified by the trusted base catalog"
-            )
-        expected_plan_path = f"{DELETION_PLAN_ROOT}/{row_id}/{generation}.json"
-        plan_path_value = repository_path(payload["planPath"], f"row {row_id} deletionReview.planPath")
-        if plan_path_value != expected_plan_path:
-            raise GateError(f"row {row_id}: deletion plan must use exact path {expected_plan_path}")
-        plan_path = secure_path(repo_root, plan_path_value, f"row {row_id} deletion plan", must_exist=True)
-        plan_digest = require_digest(payload["planSha256"], f"row {row_id} deletionReview.planSha256")
-        if not plan_path.is_file() or sha256_path(plan_path) != plan_digest:
-            raise GateError(f"row {row_id}: deletion plan digest does not match committed bytes")
-        reviewed_commit = payload["reviewedCommit"]
-        reviewed_commit = require_commit(repo_root, reviewed_commit, f"row {row_id} deletion reviewedCommit")
-        require_ancestor(
-            repo_root,
-            reviewed_commit,
-            deletion.commit,
-            f"row {row_id} deletion reviewedCommit",
-        )
-        plan = require_object(
-            load_json(plan_path, f"row {row_id} deletion plan"),
-            f"row {row_id} deletion plan",
-        )
-        plan_fields = {
-            "schemaVersion",
-            "rowId",
-            "authorityGeneration",
-            "stableReceiptSha256",
-            "reviewer",
-            "reviewClass",
-            "legacyTargetsSha256",
-            "requestedAction",
-        }
-        exact_keys(plan, plan_fields, plan_fields, f"row {row_id} deletion plan")
         if targets is None:
             raise GateError(f"row {row_id}: deletion plan validation requires the row target inventory")
-        target_digest = canonical_json_sha256(
-            [
-                {
-                    "kind": target.kind,
-                    "role": target.role,
-                    "root": target.root,
-                    "path": target.path,
-                    "value": target.value,
-                }
-                for target in sorted(targets, key=lambda item: item.identity)
-            ]
-        )
-        expected_plan = {
-            "schemaVersion": 1,
-            "rowId": row_id,
-            "authorityGeneration": generation,
-            "stableReceiptSha256": stable.digest,
-            "reviewer": payload["reviewer"],
-            "reviewClass": expected_review_class,
-            "legacyTargetsSha256": target_digest,
-            "requestedAction": "approve_legacy_deletion",
-        }
-        if plan != expected_plan:
-            raise GateError(f"row {row_id}: deletion plan does not match the exact reviewed row and target inventory")
-        if evidence_verifier is None:
-            raise GateError(f"row {row_id}: live independent deletion review verification is required")
-        evidence_verifier.verify_deletion_review(
-            payload,
-            {plan_path_value: plan_digest, stable.path: stable.digest},
-            expected_descendant_commit=deletion.commit,
+        validate_deletion_review_receipt(
+            repo_root,
+            row_id,
+            generation,
+            deletion,
+            stable,
+            targets,
+            deletion_reviewers,
+            evidence_verifier,
         )
         if rollback is not None:
             require_ancestor(
@@ -2633,23 +3185,28 @@ def validate_rollback_history(
         )
 
 
-def _sensitive_target_paths(repo_root: Path, revision: str) -> set[str]:
-    """Extract ledger-covered target paths from the manifest at a trusted revision.
+@dataclass(frozen=True)
+class DeletionSensitivityInventory:
+    target_paths: frozenset[str]
+    legacy_roots: frozenset[str]
+    deleted_legacy_roots: tuple[tuple[str, tuple[str, ...]], ...]
 
-    Reads the manifest's ``rows[].targets[].path`` and ``sharedTargets[].target.path``
-    values so the classifier treats any diff touching a legacy target, rollback control,
-    or post-deletion primitive path as deletion-sensitive.
-    """
-    paths: set[str] = set()
+
+def _deletion_sensitivity_inventory(repo_root: Path, revision: str) -> DeletionSensitivityInventory:
+    """Load the trusted deletion paths and root ownership used to classify a PR."""
     relative = "config/domain-core-legacy-deletion.json"
     if not git_file_exists(repo_root, revision, relative, "base legacy deletion ledger"):
-        return paths
+        return DeletionSensitivityInventory(frozenset(), frozenset(), ())
+
     manifest = require_object(
         load_json_bytes(git_file(repo_root, revision, relative, "base legacy deletion ledger"), relative),
         relative,
     )
     raw_rows = require_array(manifest.get("rows"), "base manifest rows")
     seen_row_ids: set[str] = set()
+    row_states: dict[str, str] = {}
+    target_records: list[tuple[str, dict[str, Any]]] = []
+    target_paths: set[str] = set()
     for raw_row in raw_rows:
         row = require_object(raw_row, "base manifest row")
         row_id = row.get("id")
@@ -2658,20 +3215,70 @@ def _sensitive_target_paths(repo_root: Path, revision: str) -> set[str]:
         if row_id in seen_row_ids:
             raise GateError(f"base manifest row: duplicate stable row id: {row_id}")
         seen_row_ids.add(row_id)
+        state = row.get("state")
+        if not isinstance(state, str) or state not in STATES:
+            raise GateError(f"base manifest row {row_id}: invalid state: {state!r}")
+        row_states[row_id] = state
         raw_targets = require_array(row.get("targets"), f"base manifest row {row_id} targets")
         if not raw_targets:
             raise GateError(f"base manifest row {row_id} targets must not be empty")
         for raw_target in raw_targets:
             target = require_object(raw_target, "base manifest target")
-            paths.add(repository_path(target.get("path"), "base manifest target.path"))
+            target_paths.add(repository_path(target.get("path"), "base manifest target.path"))
+            target_records.append((row_id, target))
     if seen_row_ids != set(ROW_IDS) or len(raw_rows) != len(ROW_IDS):
         missing = sorted(set(ROW_IDS) - seen_row_ids)
         raise GateError(f"base manifest rows must contain the stable row set; missing={missing}")
+
     for raw_shared in require_array(manifest.get("sharedTargets"), "base manifest sharedTargets"):
         shared = require_object(raw_shared, "base manifest sharedTarget")
         target = require_object(shared.get("target"), "base manifest sharedTarget.target")
-        paths.add(repository_path(target.get("path"), "base manifest sharedTarget.target.path"))
-    return paths
+        target_paths.add(repository_path(target.get("path"), "base manifest sharedTarget.target.path"))
+
+    raw_roots = require_object(manifest.get("sourceRoots"), "base manifest sourceRoots")
+    if not raw_roots:
+        raise GateError("base manifest sourceRoots must not be empty")
+    source_roots: dict[str, str] = {}
+    seen_root_paths: set[str] = set()
+    for root_id, raw_path in raw_roots.items():
+        if not isinstance(root_id, str) or not ID_RE.fullmatch(root_id):
+            raise GateError(f"base manifest sourceRoots: invalid root id: {root_id!r}")
+        root_path = repository_path(raw_path, f"base manifest sourceRoots.{root_id}")
+        if root_path in seen_root_paths:
+            raise GateError(f"base manifest sourceRoots: duplicate root path: {root_path}")
+        seen_root_paths.add(root_path)
+        source_roots[root_id] = root_path
+
+    legacy_root_rows: dict[str, set[str]] = {}
+    for row_id, target in target_records:
+        root_id = target.get("root")
+        if not isinstance(root_id, str) or root_id not in source_roots:
+            raise GateError(f"base manifest target.root: unknown source root: {root_id!r}")
+        role = target.get("role")
+        if role not in {"legacy_implementation", "rollback_control"}:
+            raise GateError(f"base manifest target.role: invalid role: {role!r}")
+        target_path = repository_path(target.get("path"), "base manifest target.path")
+        root_path = source_roots[root_id]
+        if target_path != root_path and not target_path.startswith(root_path + "/"):
+            raise GateError(f"base manifest target.path must be inside source root {root_id}")
+        if role == "legacy_implementation":
+            legacy_root_rows.setdefault(root_path, set()).add(row_id)
+
+    deleted_legacy_roots = tuple(
+        (root_path, tuple(sorted(row_id for row_id in row_ids if row_states[row_id] == "legacy_deleted")))
+        for root_path, row_ids in sorted(legacy_root_rows.items())
+        if any(row_states[row_id] == "legacy_deleted" for row_id in row_ids)
+    )
+    return DeletionSensitivityInventory(
+        target_paths=frozenset(target_paths),
+        legacy_roots=frozenset(legacy_root_rows),
+        deleted_legacy_roots=deleted_legacy_roots,
+    )
+
+
+def _sensitive_target_paths(repo_root: Path, revision: str) -> set[str]:
+    """Extract ledger-covered target paths from the manifest at a trusted revision."""
+    return set(_deletion_sensitivity_inventory(repo_root, revision).target_paths)
 
 
 def _post_deletion_primitive_paths() -> set[str]:
@@ -2679,7 +3286,15 @@ def _post_deletion_primitive_paths() -> set[str]:
     return {rule[2] for rule in POST_DELETION_PRIMITIVE_RULES}
 
 
-def _is_sensitive_path(path: str, target_paths: set[str]) -> bool:
+def _path_is_within_root(path: str, root: str) -> bool:
+    return path == root or path.startswith(root + "/")
+
+
+def _is_sensitive_path(
+    path: str,
+    target_paths: set[str] | frozenset[str],
+    root_paths: set[str] | frozenset[str] = frozenset(),
+) -> bool:
     """Return True if a repository-relative path touches a deletion-covered surface."""
     if path in SENSITIVE_EXACT_PATHS:
         return True
@@ -2687,9 +3302,63 @@ def _is_sensitive_path(path: str, target_paths: set[str]) -> bool:
         return True
     if path in target_paths:
         return True
-    if any(path.startswith(tp + "/") for tp in target_paths):
+    if any(_path_is_within_root(path, target_path) for target_path in target_paths):
         return True
-    return False
+    return any(_path_is_within_root(path, root_path) for root_path in root_paths)
+
+
+def _candidate_changed_paths(repo_root: Path, base_ref: str) -> frozenset[str]:
+    """Return every source and destination path changed since the PR fork point.
+
+    ``--find-copies-harder`` is intentional. A pure copy leaves its source path
+    unchanged, but copying code out of an immutable deleted legacy root is still
+    deletion-sensitive. Name-status output retains both paths for copies and
+    renames; NUL delimiters preserve unusual but valid Git path names.
+    """
+    fork_point = git_output(
+        repo_root,
+        ["merge-base", base_ref, "HEAD"],
+        "non-deletion classification fork point",
+    ).strip()
+    if not COMMIT_RE.fullmatch(fork_point):
+        raise GateError("non-deletion classification: cannot determine fork point")
+
+    fields = git_output(
+        repo_root,
+        [
+            "diff",
+            "--name-status",
+            "-z",
+            "--find-renames=50%",
+            "--find-copies=50%",
+            "--find-copies-harder",
+            "--diff-filter=ACDMRTUXB",
+            f"{fork_point}..HEAD",
+        ],
+        "non-deletion classification diff",
+    ).split("\0")
+
+    changed_paths: set[str] = set()
+    field_index = 0
+    while field_index < len(fields):
+        status = fields[field_index]
+        field_index += 1
+        if not status:
+            if field_index == len(fields):
+                break
+            raise GateError("non-deletion classification: malformed empty diff status")
+        if status[0] not in "ACDMRTUXB":
+            raise GateError(f"non-deletion classification: unsupported diff status: {status!r}")
+
+        path_count = 2 if status[0] in "CR" else 1
+        if field_index + path_count > len(fields):
+            raise GateError("non-deletion classification: truncated name-status diff")
+        for _ in range(path_count):
+            path = fields[field_index]
+            field_index += 1
+            changed_paths.add(repository_path(path, "non-deletion classification path"))
+
+    return frozenset(changed_paths)
 
 
 def _ensure_base_ref_available(repo_root: Path, base_ref: str, trusted_root: Path | None) -> None:
@@ -2740,57 +3409,91 @@ def _ensure_base_ref_available(repo_root: Path, base_ref: str, trusted_root: Pat
         raise GateError("base ref: trusted commit is unavailable in both candidate and trusted checkouts")
 
 
-def classify_deletion_sensitivity(repo_root: Path, base_ref: str) -> bool:
+def classify_deletion_sensitivity(
+    repo_root: Path,
+    base_ref: str,
+    *,
+    inventory: DeletionSensitivityInventory | None = None,
+    changed_paths: frozenset[str] | None = None,
+) -> bool:
     """Classify whether the candidate diff touches any deletion-covered surface.
 
     Uses trusted default-branch code and inventory only. The fork point
     (``merge-base(base_ref, HEAD)``) isolates the PR author's own changes from
     main's independent advance, so a behind-base ordinary PR whose diff touches
     none of the sensitive surfaces is classified non-deletion and may bypass the
-    current-base ancestry requirement. Any touch of a ledger-covered target,
-    rollback control, immutable artifact, reviewer catalog, policy, workflow,
-    verifier, or guard surface is deletion-sensitive and must proceed through
-    full ancestry + signed-evidence validation.
+    current-base ancestry requirement. Every path below a trusted legacy source
+    root is sensitive, including a newly added nested path that was never named as
+    a target. Rename detection is disabled so both sides of a rename remain visible.
 
     Returns ``True`` if deletion-sensitive, ``False`` if non-deletion.
     """
     if not COMMIT_RE.fullmatch(base_ref):
         raise GateError("base ref must be a full lowercase Git SHA")
-    fork_point = git_output(
-        repo_root,
-        ["merge-base", base_ref, "HEAD"],
-        "non-deletion classification fork point",
-    ).strip()
-    if not COMMIT_RE.fullmatch(fork_point):
-        raise GateError("non-deletion classification: cannot determine fork point")
-    changed = [
-        line
-        for line in git_output(
-            repo_root,
-            [
-                "diff",
-                "--name-only",
-                "--no-renames",
-                "--diff-filter=ACDMRTUXB",
-                f"{fork_point}..HEAD",
-            ],
-            "non-deletion classification diff",
-        ).splitlines()
-        if line
-    ]
+    if inventory is None:
+        inventory = _deletion_sensitivity_inventory(repo_root, base_ref)
+    if changed_paths is None:
+        changed_paths = _candidate_changed_paths(repo_root, base_ref)
     static_target_paths = _post_deletion_primitive_paths()
-    if any(_is_sensitive_path(path, static_target_paths) for path in changed):
-        return True
-    target_paths = _sensitive_target_paths(repo_root, base_ref) | static_target_paths
-    return any(_is_sensitive_path(path, target_paths) for path in changed)
+    return any(
+        _is_sensitive_path(path, static_target_paths)
+        or _is_sensitive_path(path, inventory.target_paths, inventory.legacy_roots)
+        for path in changed_paths
+    )
+
+
+def verify_post_deletion_root_changes(
+    repo_root: Path,
+    base_ref: str,
+    *,
+    inventory: DeletionSensitivityInventory | None = None,
+    changed_paths: frozenset[str] | None = None,
+) -> None:
+    """Reject every PR-authored change below a root with a deleted legacy owner."""
+    if inventory is None:
+        inventory = _deletion_sensitivity_inventory(repo_root, base_ref)
+    if not inventory.deleted_legacy_roots:
+        return
+    if changed_paths is None:
+        changed_paths = _candidate_changed_paths(repo_root, base_ref)
+    violations = sorted(
+        (path, root_path, row_ids)
+        for path in changed_paths
+        for root_path, row_ids in inventory.deleted_legacy_roots
+        if _path_is_within_root(path, root_path)
+    )
+    if not violations:
+        return
+    details = "; ".join(
+        f"{path} (root {root_path}; legacy_deleted rows {', '.join(row_ids)})"
+        for path, root_path, row_ids in violations
+    )
+    raise GateError(f"post-deletion governed legacy roots are immutable: {details}")
 
 
 def verify_append_only_artifacts(repo_root: Path, base_ref: str | None) -> None:
+    """Verify immutable artifacts at the PR fork point are unchanged in the candidate.
+
+    The append-only baseline is the fork point ``merge-base(base_ref, HEAD)`` — the
+    commit the candidate actually branched from — rather than ``base_ref`` itself.
+    When the default branch has advanced past the PR branch point, ``base_ref`` is no
+    longer an ancestor of ``HEAD`` and ``require_commit`` would false-fail before any
+    artifact comparison runs. The fork point is always an ancestor of ``HEAD`` and
+    isolates the PR author's own changes from main's independent advance, so comparing
+    the fork point's immutable artifact tree against the candidate working tree enforces
+    the same append-only invariant without the false ancestry gate.
+    """
     if base_ref is None:
         return
     if not COMMIT_RE.fullmatch(base_ref):
         raise GateError("base ref must be a full lowercase Git SHA")
-    require_commit(repo_root, base_ref, "base ref")
+    fork_point = git_output(
+        repo_root,
+        ["merge-base", base_ref, "HEAD"],
+        "append-only artifact fork point",
+    ).strip()
+    if not COMMIT_RE.fullmatch(fork_point):
+        raise GateError("append-only artifact baseline: cannot determine fork point")
     roots = (
         RECEIPT_ROOT,
         ATTESTATION_ROOT,
@@ -2801,7 +3504,7 @@ def verify_append_only_artifacts(repo_root: Path, base_ref: str | None) -> None:
     )
     raw = git_output(
         repo_root,
-        ["ls-tree", "-r", "-z", base_ref, "--", *roots],
+        ["ls-tree", "-r", "-z", fork_point, "--", *roots],
         "base artifact inventory",
     )
     for entry in raw.split("\0"):
@@ -2820,7 +3523,7 @@ def verify_append_only_artifacts(repo_root: Path, base_ref: str | None) -> None:
             raise GateError(f"immutable artifact {relative}: expected regular file")
         if current.stat().st_mode & 0o111:
             raise GateError(f"immutable artifact {relative}: executable mode cannot change")
-        if current.read_bytes() != git_file(repo_root, base_ref, relative, f"immutable artifact {relative}"):
+        if current.read_bytes() != git_file(repo_root, fork_point, relative, f"immutable artifact {relative}"):
             raise GateError(f"immutable artifact {relative}: committed history cannot be rewritten")
 
 
@@ -3308,25 +4011,46 @@ def run_gate(
     if not repo_root.is_dir():
         raise GateError(f"repository root is missing: {repo_root}")
     repo_root = repo_root.resolve(strict=True)
-    if base_ref is not None:
-        _ensure_base_ref_available(repo_root, base_ref, trusted_root)
-        if not classify_deletion_sensitivity(repo_root, base_ref):
-            return
-    verify_append_only_artifacts(repo_root, base_ref)
     manifest_path = manifest_path if manifest_path.is_absolute() else repo_root / manifest_path
     try:
         manifest_relative = manifest_path.relative_to(repo_root).as_posix()
     except ValueError as error:
         raise GateError("manifest path must be inside repository root") from error
     manifest_path = secure_path(repo_root, manifest_relative, "manifest", must_exist=False)
-    if not manifest_path.exists():
-        if base_ref is not None and git_file_exists(
+    deletion_sensitive = False
+    if base_ref is not None:
+        _ensure_base_ref_available(repo_root, base_ref, trusted_root)
+        fork_point = git_output(
             repo_root,
-            base_ref,
-            manifest_relative,
-            "base legacy deletion ledger",
+            ["merge-base", base_ref, "HEAD"],
+            "legacy deletion ledger fork point",
+        ).strip()
+        if not COMMIT_RE.fullmatch(fork_point):
+            raise GateError("legacy deletion ledger baseline: cannot determine fork point")
+        if not manifest_path.exists() and git_file_exists(
+            repo_root, fork_point, manifest_relative, "fork-point legacy deletion ledger"
         ):
             raise GateError("candidate cannot remove the legacy deletion ledger")
+        sensitivity_inventory = _deletion_sensitivity_inventory(repo_root, base_ref)
+        changed_paths = _candidate_changed_paths(repo_root, base_ref)
+        deletion_sensitive = classify_deletion_sensitivity(
+            repo_root,
+            base_ref,
+            inventory=sensitivity_inventory,
+            changed_paths=changed_paths,
+        )
+        verify_post_deletion_root_changes(
+            repo_root,
+            base_ref,
+            inventory=sensitivity_inventory,
+            changed_paths=changed_paths,
+        )
+        if not deletion_sensitive:
+            return
+    verify_append_only_artifacts(repo_root, base_ref)
+    if not manifest_path.exists():
+        if deletion_sensitive:
+            raise GateError("deletion-sensitive candidate has no legacy deletion ledger to anchor validation")
         return
     if not manifest_path.is_file():
         raise GateError("manifest: expected regular file")

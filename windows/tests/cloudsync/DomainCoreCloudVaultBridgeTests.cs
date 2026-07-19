@@ -19,12 +19,12 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
         public void NativeLibrary_ReportsBuildIdentity()
         {
             if (!NativeRequired()) return;
-            Assert.Equal(3u, DomainCore.DomainCoreAbiVersion());
-            Assert.False(string.IsNullOrWhiteSpace(DomainCore.DomainCoreVersion()));
-            var sourceFingerprint = DomainCore.DomainCoreSourceFingerprint();
-            Assert.Matches("^[0-9a-f]{64}$", sourceFingerprint);
             using var manifest = JsonDocument.Parse(File.ReadAllText(
                 Path.Combine(AppContext.BaseDirectory, "Fixtures", "domain-core-union-abi-manifest.json")));
+            Assert.Equal(manifest.RootElement.GetProperty("abiVersion").GetUInt32(), DomainCore.DomainCoreAbiVersion());
+            Assert.Equal(manifest.RootElement.GetProperty("coreVersion").GetString(), DomainCore.DomainCoreVersion());
+            var sourceFingerprint = DomainCore.DomainCoreSourceFingerprint();
+            Assert.Matches("^[0-9a-f]{64}$", sourceFingerprint);
             var expectedSourceFingerprint = manifest.RootElement.GetProperty("sourceSha256").GetString();
             Assert.Matches("^[0-9a-f]{64}$", expectedSourceFingerprint!);
             Assert.Equal(expectedSourceFingerprint, sourceFingerprint);
@@ -119,6 +119,26 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
         }
 
         [Fact]
+        public void RustMode_ConsumesOpaqueIdentifierKatWithoutLegacyFallback()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "rust");
+            using var document = JsonDocument.Parse(File.ReadAllText(
+                Path.Combine(AppContext.BaseDirectory, "Fixtures", "opaque-identifiers-kat.json")));
+            var root = document.RootElement;
+            var key = Convert.FromHexString(root.GetProperty("vaultKeyHex").GetString()!);
+
+            var pensieve = root.GetProperty("pensieve");
+            Assert.Equal(
+                pensieve.GetProperty("dedupHash").GetString(),
+                CloudVaultCrypto.PensieveDedupHash(pensieve.GetProperty("plaintext").GetString()!, key));
+
+            Assert.Equal(
+                pensieve.GetProperty("slugHmac").GetString(),
+                CloudVaultCrypto.PensieveSlugHmac(pensieve.GetProperty("slug").GetString()!, key));
+        }
+
+        [Fact]
         public void ShadowMode_ReturnsLegacyResult()
         {
             if (!NativeRequired()) return;
@@ -194,6 +214,106 @@ namespace OpenBurnBar.CloudSync.Crypto.Tests
 
             Assert.Same(expected, result);
             Assert.Equal(1, legacyInvocations);
+        }
+
+        [Fact]
+        public void ShadowEvidence_OperationLoadFailureRetainsReadableLoadedIdentity()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "shadow");
+            DomainCoreCloudVaultShadowComparison? comparison = null;
+            DomainCoreCloudVaultShadowEvidence.Configure(value => comparison = value);
+            try
+            {
+                var result = DomainCoreCloudVaultBridge.Apply(
+                    "cloudvault_sha256",
+                    () => throw new DllNotFoundException("forced native load failure"),
+                    () => "legacy-result",
+                    StringComparer.Ordinal.Equals);
+
+                Assert.Equal("legacy-result", result);
+                Assert.NotNull(comparison);
+                Assert.Equal("native_error", comparison.MismatchCategory);
+                Assert.False(string.IsNullOrWhiteSpace(comparison.LoadedCoreVersion));
+                Assert.Equal(3u, comparison.LoadedCoreAbiVersion);
+                Assert.Matches("^[0-9a-f]{64}$", comparison.LoadedCoreSourceSha256);
+            }
+            finally
+            {
+                DomainCoreCloudVaultShadowEvidence.Configure(null);
+            }
+        }
+
+        [Fact]
+        public void ShadowEvidence_MatchingCallCarriesCompleteLoadedIdentity()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "shadow");
+            DomainCoreCloudVaultShadowComparison? comparison = null;
+            DomainCoreCloudVaultShadowEvidence.Configure(value => comparison = value);
+            try
+            {
+                _ = DomainCoreCloudVaultBridge.Sha256Hex(Array.Empty<byte>(), () =>
+                    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+
+                Assert.NotNull(comparison);
+                Assert.Equal("match", comparison.Outcome);
+                Assert.False(string.IsNullOrWhiteSpace(comparison.LoadedCoreVersion));
+                Assert.Equal(3u, comparison.LoadedCoreAbiVersion);
+                Assert.Matches("^[0-9a-f]{64}$", comparison.LoadedCoreSourceSha256!);
+            }
+            finally
+            {
+                DomainCoreCloudVaultShadowEvidence.Configure(null);
+            }
+        }
+
+        [Fact]
+        public void ShadowEvidence_PensieveOpaqueIdentifiersUseCanonicalRoute()
+        {
+            if (!NativeRequired()) return;
+            using var mode = new EnvironmentVariableScope("OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE", "shadow");
+            var comparisons = new DomainCoreCloudVaultShadowComparison?[2];
+            var index = 0;
+            DomainCoreCloudVaultShadowEvidence.Configure(value => comparisons[index++] = value);
+            try
+            {
+                var key = new byte[32];
+                const string plaintext = "pensieve opaque identifier";
+                const string slug = "pensieve-opaque-identifier";
+
+                _ = DomainCoreCloudVaultBridge.PensieveDedupHash(
+                    plaintext,
+                    key,
+                    () => DomainCore.CloudVaultPensieveDedupHash(plaintext, key));
+                _ = DomainCoreCloudVaultBridge.PensieveSlugHmac(
+                    slug,
+                    key,
+                    () => DomainCore.CloudVaultPensieveSlugHmac(slug, key));
+
+                Assert.Collection(
+                    comparisons,
+                    comparison =>
+                    {
+                        Assert.NotNull(comparison);
+                        Assert.Equal("cloudvault", comparison.Domain);
+                        Assert.Equal("opaque-identifiers", comparison.Slice);
+                        Assert.Equal("windows", comparison.Consumer);
+                        Assert.Equal("pensieve_dedup_hash", comparison.Operation);
+                    },
+                    comparison =>
+                    {
+                        Assert.NotNull(comparison);
+                        Assert.Equal("cloudvault", comparison.Domain);
+                        Assert.Equal("opaque-identifiers", comparison.Slice);
+                        Assert.Equal("windows", comparison.Consumer);
+                        Assert.Equal("pensieve_slug_hmac", comparison.Operation);
+                    });
+            }
+            finally
+            {
+                DomainCoreCloudVaultShadowEvidence.Configure(null);
+            }
         }
 
         [Fact]

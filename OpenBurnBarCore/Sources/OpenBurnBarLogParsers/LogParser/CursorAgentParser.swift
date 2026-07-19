@@ -26,11 +26,16 @@ public final class CursorAgentParser: LogParser, Sendable {
     }
 
     public func parse() async throws -> ParseResult {
-        try parseSynchronously()
+        try parseSynchronously(options: .default)
     }
 
-    public func parseSynchronously() throws -> ParseResult {
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
+        try parseSynchronously(options: options)
+    }
+
+    public func parseSynchronously(options: LogParseOptions = .default) throws -> ParseResult {
         let fm = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fm)
         let sessionsRoot = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
 
         guard fm.fileExists(atPath: sessionsRoot) else {
@@ -41,13 +46,12 @@ public final class CursorAgentParser: LogParser, Sendable {
         var conversations: [ConversationRecord] = []
 
         let sessionsURL = URL(fileURLWithPath: sessionsRoot)
-        let contents = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? [] // try?-ok(missing dir empty list)
+        let contents = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
 
         for item in contents {
-            let isDirectory = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true // try?-ok(metadata read fallback)
+            let isDirectory = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
 
             if isDirectory {
-                // Scenario 1: Nested Directory Mode
                 let sessionId = item.lastPathComponent
                 let transcriptJSONL = item.appendingPathComponent("transcript.jsonl")
                 let chatHistoryJSONL = item.appendingPathComponent("chat_history.jsonl")
@@ -59,17 +63,26 @@ public final class CursorAgentParser: LogParser, Sendable {
 
                 guard let file = transcriptFile else { continue }
                 let summaryURL = item.appendingPathComponent("summary.json")
+                var sessionFiles = [file]
+                if fm.fileExists(atPath: summaryURL.path) {
+                    sessionFiles.append(summaryURL)
+                }
+                guard try gate.shouldRead(sessionFiles) else { continue }
 
-                if let pair = try parseSession(file: file, sessionId: sessionId, summaryURL: summaryURL) {
+                if let pair = try parseSession(
+                    file: file,
+                    sessionId: sessionId,
+                    summaryURL: sessionFiles.count == 2 ? summaryURL : nil
+                ) {
                     if let usage = pair.usage { usages.append(usage) }
-                    if let conv = pair.conversation { conversations.append(conv) }
+                    if options.includeConversationBodies, let conv = pair.conversation { conversations.append(conv) }
                 }
             } else if item.pathExtension == "jsonl" {
-                // Scenario 2: Flat File Mode
+                guard try gate.shouldRead(item) else { continue }
                 let sessionId = item.deletingPathExtension().lastPathComponent
                 if let pair = try parseSession(file: item, sessionId: sessionId, summaryURL: nil) {
                     if let usage = pair.usage { usages.append(usage) }
-                    if let conv = pair.conversation { conversations.append(conv) }
+                    if options.includeConversationBodies, let conv = pair.conversation { conversations.append(conv) }
                 }
             }
         }
