@@ -285,7 +285,7 @@ def test_concurrent_wand_saves_are_atomic_and_do_not_share_temp_file(monkeypatch
     assert [result["status"] for result in results] == ["ok", "ok"]
     payload = json.loads(store.read_text(encoding="utf-8"))
     assert payload["wands"][0]["name"] in {"Pareto A", "Pareto B"}
-    assert list(tmp_path.glob("*.tmp")) == []
+    assert not any(path.suffix == ".tmp" for path in tmp_path.iterdir())
 
 
 def test_wand_save_failure_is_structured_and_cleans_temp_file(monkeypatch, tmp_path: Path) -> None:
@@ -302,7 +302,7 @@ def test_wand_save_failure_is_structured_and_cleans_temp_file(monkeypatch, tmp_p
     assert result["code"] == "WAND_STORE_WRITE_FAILED"
     assert "read-only volume" in result["reason"]
     assert store.exists() is False
-    assert list(tmp_path.glob("*.tmp")) == []
+    assert not any(path.suffix == ".tmp" for path in tmp_path.iterdir())
 
 
 def test_resolved_wand_parallel_max_env_and_clamp(monkeypatch) -> None:

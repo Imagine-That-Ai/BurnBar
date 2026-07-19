@@ -46,4 +46,96 @@ final class AgentsComposeSmokeUITests: SmokeUITestCase {
             "Send did not enable after composing text.\n\(app.debugDescription)"
         )
     }
+
+    /// Opt-in production-surface proof. This intentionally uses the signed-in
+    /// device state and real Firestore instead of the seeded smoke fixture.
+    func testLiveParetoDispatchFromPhysicalDevice() throws {
+        let environment = ProcessInfo.processInfo.environment
+        try XCTSkipUnless(
+            environment["OPENBURNBAR_LIVE_WAND_E2E"] == "1",
+            "Set OPENBURNBAR_LIVE_WAND_E2E=1 for the physical-device sales proof."
+        )
+        #if targetEnvironment(simulator)
+        throw XCTSkip("The live Pareto sales proof requires a physical iPhone.")
+        #endif
+
+        guard let missionTitle = environment["OPENBURNBAR_LIVE_WAND_MISSION_TITLE"],
+              !missionTitle.isEmpty,
+              let missionPrompt = environment["OPENBURNBAR_LIVE_WAND_MISSION_PROMPT"],
+              !missionPrompt.isEmpty else {
+            XCTFail("The live Pareto proof requires a unique mission title and prompt.")
+            return
+        }
+
+        let app = XCUIApplication()
+        app.launch()
+
+        selectAuroraTab("hermes", in: app)
+        XCTAssertTrue(
+            screenMarker("agents", in: app).waitForExistence(timeout: 30),
+            "Hermes Square did not render from the real signed-in device state.\n\(app.debugDescription)"
+        )
+
+        let compose = app.buttons["Compose"].firstMatch
+        XCTAssertTrue(
+            scrollToHittable(compose, in: app),
+            "The Wand Compose action was not reachable.\n\(app.debugDescription)"
+        )
+        compose.tap()
+
+        let wandSheet = app.navigationBars["The Wand"].firstMatch
+        XCTAssertTrue(
+            wandSheet.waitForExistence(timeout: 20),
+            "The Wand composer did not open.\n\(app.debugDescription)"
+        )
+
+        let title = app.textFields["Title (optional)"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        title.tap()
+        title.typeText(missionTitle)
+
+        let prompt = app.textViews.firstMatch
+        XCTAssertTrue(prompt.waitForExistence(timeout: 10))
+        prompt.tap()
+        prompt.typeText(missionPrompt)
+
+        let pareto = app.buttons["Pareto wand: Best value per quota"].firstMatch
+        XCTAssertTrue(
+            pareto.waitForExistence(timeout: 20),
+            "Pareto was not available to the signed-in account.\n\(app.debugDescription)"
+        )
+        pareto.tap()
+        XCTAssertTrue(
+            waitFor(pareto, predicateFormat: "isSelected == true", timeout: 10),
+            "Pareto did not become selected.\n\(app.debugDescription)"
+        )
+
+        let armedScreenshot = XCTAttachment(screenshot: app.screenshot())
+        armedScreenshot.name = "pareto-wand-armed"
+        armedScreenshot.lifetime = .keepAlways
+        add(armedScreenshot)
+
+        let cast = app.buttons["Cast"].firstMatch
+        XCTAssertTrue(
+            waitFor(cast, predicateFormat: "exists == true AND isEnabled == true", timeout: 30),
+            "Cast never became available for the real mission.\n\(app.debugDescription)"
+        )
+        cast.tap()
+
+        XCTAssertTrue(
+            waitFor(wandSheet, predicateFormat: "exists == false", timeout: 60),
+            "The Pareto mission was not accepted.\n\(app.debugDescription)"
+        )
+
+        let persistedMissionTitle = app.staticTexts[missionTitle].firstMatch
+        XCTAssertTrue(
+            persistedMissionTitle.waitForExistence(timeout: 60),
+            "The accepted Pareto mission was not read back from Firebase.\n\(app.debugDescription)"
+        )
+
+        let dispatchedScreenshot = XCTAttachment(screenshot: app.screenshot())
+        dispatchedScreenshot.name = "pareto-wand-dispatched"
+        dispatchedScreenshot.lifetime = .keepAlways
+        add(dispatchedScreenshot)
+    }
 }

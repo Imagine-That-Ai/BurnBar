@@ -197,6 +197,19 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         XCTAssertFalse(synthesisPrompt.contains("not a five-field verdict"))
     }
 
+    func testJudgeVerdictRequiresExactlyFiveStringFields() {
+        let valid = #"{"consensus":"c","contradictions":"x","partial_coverage":"p","unique_insights":"u","blind_spots":"b"}"#
+        let missing = #"{"consensus":"c","contradictions":"x","partial_coverage":"p","unique_insights":"u"}"#
+        let extra = #"{"consensus":"c","contradictions":"x","partial_coverage":"p","unique_insights":"u","blind_spots":"b","score":"1"}"#
+        let wrongType = #"{"consensus":"c","contradictions":[],"partial_coverage":"p","unique_insights":"u","blind_spots":"b"}"#
+
+        XCTAssertEqual(ElderWandFusionOrchestrator.validatedJudgeVerdict(valid), valid)
+        XCTAssertNil(ElderWandFusionOrchestrator.validatedJudgeVerdict(missing))
+        XCTAssertNil(ElderWandFusionOrchestrator.validatedJudgeVerdict(extra))
+        XCTAssertNil(ElderWandFusionOrchestrator.validatedJudgeVerdict(wrongType))
+        XCTAssertNil(ElderWandFusionOrchestrator.validatedJudgeVerdict("not json"))
+    }
+
     func testPanelPartialFailureDegradesNotFails() async throws {
         let recorder = SubCallRecorder()
         // "bad" has no route; "good" succeeds. Pipeline must still synthesize.

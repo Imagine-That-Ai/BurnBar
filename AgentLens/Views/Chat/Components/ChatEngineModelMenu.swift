@@ -95,7 +95,7 @@ struct ChatEngineModelMenu: View {
         for backend: ChatBackendID,
         automaticTitle: String
     ) -> [ModelMenuRow] {
-        let models = controller.liveAdvertisedModels(for: backend)
+        let models = controller.chatModelCatalog(for: backend)
         var rows: [ModelMenuRow] = []
         let defaultModel = models.first { $0.routeEligible }?.id
         if let defaultModel, !defaultModel.isEmpty {
@@ -168,6 +168,11 @@ struct ChatEngineModelMenu: View {
         .animation(DesignSystem.Animation.snappy, value: controller.hermesModelName)
         .task(id: controller.chatBackend) {
             await refreshCLIRowsIfNeeded()
+        }
+        .task(id: controller.isElderWandActive) {
+            if controller.isElderWandActive {
+                await controller.probeBurnBarGatewayAvailability()
+            }
         }
     }
 

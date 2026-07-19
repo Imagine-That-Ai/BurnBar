@@ -34,6 +34,25 @@ boundaries.
 
 ## Elder Wand behavior
 
+### Entry points and configuration
+
+The dashboard **Wand models** shortcut, the Settings search result, and the
+in-chat wand button all open the Analysis Models configurator. In the running
+macOS app, the configurator receives the shared `ChatSessionController` so its
+panel and judge pickers use the gateway's live advertised-model catalog. A
+controller-free preview or test surface may show the guidance-only empty state;
+a production entry point with a runtime context must not.
+
+An active preset is sent through the existing OpenAI-compatible chat surfaces:
+Hermes, OpenClaw, or Pi Agent. The selected surface is transport UI only; Fusion
+executes in the BurnBar daemon. While Fusion is active, the chat model picker
+therefore switches to the daemon's exact `route_eligible` catalog. Automatic
+uses the first eligible daemon model as the originating synthesis model. An
+explicit model selection is preserved, but a stale or unroutable selection
+fails before send with a recovery message instead of being silently replaced.
+CLI-only chat engines do not carry the Fusion plugin and fail visibly while the
+preset is active.
+
 ### Input and bypass
 
 The active plugin id is `fusion`. An absent plugin or `enabled: false` bypasses
@@ -145,6 +164,7 @@ the last complete atomic replace wins. Validation ignores only the volatile
 | Contract | Primary regression surface |
 |---|---|
 | Fusion decoding, panel/judge/synthesis, ordering, duplicate suppression, timeout, cancellation, tool protocol, SSRF/search fallback | `OpenBurnBarDaemonTests/ElderWandFusionOrchestratorTests` and `ElderWandToolLoopTests` |
+| Dashboard/Settings destination and live model-catalog wiring | `OpenBurnBarTests/SettingsDeepLinkRoutingTests` plus signed-app UI proof |
 | Preset bounds, one-default persistence, reload, wire payload, local auth boundary | `OpenBurnBarTests/ElderWandPresetTests`, `ElderWandSettingsTests`, and `TextExpansionRewriteBoundaryTests` |
 | Hosted search auth, provider fallback, quota reservation | Functions Elder Wand unit tests |
 | Windows preset/configurator/persistence/fusion parity | Windows presentation tests filtered by `ElderWand` plus XAML parse checks |

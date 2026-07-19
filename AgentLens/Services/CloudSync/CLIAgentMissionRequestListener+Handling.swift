@@ -333,7 +333,7 @@ extension CLIAgentMissionRequestListener {
         )
         let wandRoutingSelection: CLIAgentMissionWandRoutingSelection?
         do {
-            wandRoutingSelection = try await resolveWandRoutingIfNeeded(
+            wandRoutingSelection = try await Self.resolveWandRoutingIfNeeded(
                 context: missionGroupContext,
                 data: data
             )

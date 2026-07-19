@@ -70,6 +70,33 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testConcreteDispatchRouteBypassesMinistryAtListenerBoundary() async {
+        let context = MissionGroupClaimContext(
+            groupID: "group",
+            siblingIndex: 0,
+            siblingCount: 2,
+            parallelismLimit: 2,
+            tierCap: 2
+        )
+
+        do {
+            let concreteSelection = try await CLIAgentMissionRequestListener.resolveWandRoutingIfNeeded(
+                context: context,
+                data: ["requestedModelID": "anthropic/claude-sonnet-4"]
+            )
+            let ungroupedSelection = try await CLIAgentMissionRequestListener.resolveWandRoutingIfNeeded(
+                context: nil,
+                data: [:]
+            )
+
+            XCTAssertNil(concreteSelection)
+            XCTAssertNil(ungroupedSelection)
+        } catch {
+            XCTFail("Concrete and ungrouped routes must bypass Ministry without error: \(error)")
+        }
+    }
+
     // MARK: - Legitimate "no scope" path stays open
 
     func testMissingScopeResolvesToEmptyWithoutRefusing() {

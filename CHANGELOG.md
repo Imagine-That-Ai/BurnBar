@@ -23,6 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer mutates caller data, concurrent saves use unique durable temp files,
   read/write permission failures are structured, and freshly saved stores no
   longer report timestamp-only rewrites.
+- **Made the signed Mac Elder workflow use one executable model contract**:
+  Wand settings and compatible chat engines now load the daemon's live catalog,
+  Automatic selection follows the gateway default, stale explicit choices fail
+  visibly, and exact advertised local Ollama IDs route without letting a local
+  provider shadow unrelated cloud models.
+- **Fixed signed-app startup and Wand settings navigation**: the packaged daemon
+  now carries its SQLCipher runtime before signing, background wiring repair no
+  longer crosses a main-actor boundary, and the dashboard opens Wand settings
+  on the requested page with the same live chat controller.
+- **Hardened production App Check readiness**: signed macOS builds select
+  DeviceCheck instead of trusting an inapplicable App Attest support probe, and
+  the production verifier now requires both enforcement and an uploaded
+  DeviceCheck key for the canonical Firebase app.
 
 ### Fixed - Windows physical x64 usage-scan memory
 

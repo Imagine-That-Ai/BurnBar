@@ -36,15 +36,13 @@ final class OpenBurnBarAppCheckProviderFactoryTests: XCTestCase {
                 AppCheckDebugTokenEnvironment.firebaseDebugTokenKey: "env-token",
                 AppCheckDebugTokenEnvironment.firaDebugTokenKey: "env-token"
             ],
-            isDebugBuild: false
+            isDebugBuild: false,
+            appAttestIsSupported: false,
+            deviceCheckIsSupported: true
         )
 
         XCTAssertNotEqual(selection, .debug)
-        if #available(macOS 11.0, *) {
-            XCTAssertEqual(selection, .appAttest)
-        } else {
-            XCTAssertEqual(selection, .deviceCheck)
-        }
+        XCTAssertEqual(selection, .deviceCheck)
     }
 
     func testReleaseWithBuiltInternalFlagAndTokenSelectsDebugProvider() throws {
@@ -61,6 +59,36 @@ final class OpenBurnBarAppCheckProviderFactoryTests: XCTestCase {
                 isDebugBuild: false
             ),
             .debug
+        )
+    }
+
+    func testMacProductionIgnoresMisleadingAppAttestSupportAndUsesDeviceCheck() {
+        XCTAssertEqual(
+            OpenBurnBarAppCheckProviderFactory.productionProviderSelection(
+                appAttestIsSupported: true,
+                deviceCheckIsSupported: true
+            ),
+            .deviceCheck
+        )
+    }
+
+    func testProductionFallsBackToDeviceCheckWhenAppAttestIsUnsupported() {
+        XCTAssertEqual(
+            OpenBurnBarAppCheckProviderFactory.productionProviderSelection(
+                appAttestIsSupported: false,
+                deviceCheckIsSupported: true
+            ),
+            .deviceCheck
+        )
+    }
+
+    func testProductionFailsClosedWhenNoAttestationProviderIsSupported() {
+        XCTAssertEqual(
+            OpenBurnBarAppCheckProviderFactory.productionProviderSelection(
+                appAttestIsSupported: false,
+                deviceCheckIsSupported: false
+            ),
+            .unsupported
         )
     }
 

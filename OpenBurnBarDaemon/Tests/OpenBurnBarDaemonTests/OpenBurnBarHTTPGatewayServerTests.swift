@@ -2118,6 +2118,33 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(upstreamRequests.last?.body.contains(#""model":"glm-5-live-new""#), true)
     }
 
+    func testGatewayRoutesAdvertisedLocalOllamaModelWithColonID() async throws {
+        let configuration = URLSessionConfiguration.ephemeral; configuration.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let tags = #"{"models":[{"name":"gemma4:12b-mlx","model":"gemma4:12b-mlx"}]}"#
+        GatewayUpstreamURLProtocol.enqueue(status: 200, body: tags, path: "/api/tags"); GatewayUpstreamURLProtocol.enqueue(status: 200, body: tags, path: "/api/tags")
+        let answer = #"{"model":"gemma4:12b-mlx","message":{"role":"assistant","content":"local model answered"},"done":true,"done_reason":"stop","prompt_eval_count":1,"eval_count":2}"#
+        GatewayUpstreamURLProtocol.enqueue(status: 200, body: answer, path: "/api/chat")
+        let harness = try GatewayHarness(providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session), modelCatalogSession: session)
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+        let (modelsResponse, modelsBody) = try await sendGatewayRequest(port: harness.port, method: "GET", path: "/v1/models")
+        XCTAssertEqual(modelsResponse.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: modelsBody) as? [String: Any])
+        let rows = try XCTUnwrap(object["data"] as? [[String: Any]])
+        XCTAssertTrue(rows.contains { row in
+            row["id"] as? String == "gemma4:12b-mlx" && row["provider_id"] as? String == "ollama-local" && row["route_eligible"] as? Bool == true
+        })
+        let requestBody = Data(#"{"model":"gemma4:12b-mlx","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        let (chatResponse, chatBody) = try await sendGatewayRequest(port: harness.port, method: "POST", path: "/v1/chat/completions", headers: ["Content-Type": "application/json"], body: requestBody)
+        let chatText = String(decoding: chatBody, as: UTF8.self)
+        XCTAssertEqual(chatResponse.statusCode, 200, "body was: \(chatText)")
+        XCTAssertTrue(chatText.contains("local model answered"))
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/api/tags", "/api/tags", "/api/chat"])
+        XCTAssertEqual(upstreamRequests.last?.body.contains(#""model":"gemma4:12b-mlx""#), true)
+    }
+
     func testGatewayModelsOnlyAdvertisesMiniMaxLiveModelsTheRouterCanServe() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
@@ -5987,7 +6014,7 @@ final class GatewayUpstreamURLProtocol: URLProtocol {
 
     override static func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host else { return false }
-        return host == "gateway-upstream.test" || host == "ollama.com"
+        return ["gateway-upstream.test", "ollama.com", "127.0.0.1", "localhost"].contains(host)
     }
 
     override static func canonicalRequest(for request: URLRequest) -> URLRequest {

@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import XCTest
 @testable import OpenBurnBar
 
@@ -34,6 +35,33 @@ final class SettingsDeepLinkRoutingTests: XCTestCase {
         XCTAssertNil(SettingsDeepLinkRouting.item(matching: ""))
         XCTAssertNil(SettingsDeepLinkRouting.item(matching: "   "))
         XCTAssertNil(SettingsDeepLinkRouting.item(matching: "agents.doesNotExist"))
+    }
+
+    func test_initialItemIDMountsElderWandRouteBeforeSettingsPresentation() {
+        let router = SettingsRouter(initialItemID: SettingsAnchor.analysisConfigurator)
+
+        XCTAssertEqual(router.selectedTab, .agents)
+        XCTAssertEqual(router.path, [.analysisConfigurator])
+        XCTAssertEqual(router.pendingAnchor, SettingsAnchor.analysisConfigurator)
+
+        let unknownRouter = SettingsRouter(initialItemID: "agents.doesNotExist")
+        XCTAssertEqual(unknownRouter.selectedTab, .home)
+        XCTAssertTrue(unknownRouter.path.isEmpty)
+    }
+
+    func test_settingsKeepsLiveChatControllerForElderWandConfigurator() throws {
+        let store = try XCTUnwrap(try? DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false))
+        let settingsManager = SettingsManager()
+        let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
+
+        let view = SettingsView(
+            settingsManager: settingsManager,
+            dataStore: store,
+            chatController: controller,
+            initialItemID: SettingsAnchor.analysisConfigurator
+        )
+
+        XCTAssertIdentical(view.chatController, controller)
     }
 
     // MARK: - route(to:)

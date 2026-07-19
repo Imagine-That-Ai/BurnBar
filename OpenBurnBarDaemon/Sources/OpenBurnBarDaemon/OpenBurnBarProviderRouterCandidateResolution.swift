@@ -27,7 +27,8 @@ extension BurnBarProviderRouter {
             modelName: modelName,
             preferredProviderID: effectivePreferredProviderID,
             requestedFormatFamily: requestedFormatFamily,
-            configurations: configurations
+            configurations: configurations,
+            allowForeignCatalogModelForPinnedLocalProvider: preferredProviderID != nil
         )
         let resolvedRequiredCapabilityClassID = resolveRequiredCapabilityClassID(
             explicitCapabilityClassID: requiredCapabilityClassID,
@@ -97,7 +98,8 @@ extension BurnBarProviderRouter {
 
         let allRoutes = selectRoutes(
             for: trimmedModelName,
-            configurations: scopedConfigurations
+            configurations: scopedConfigurations,
+            allowForeignCatalogModelForPinnedLocalProvider: preferredProviderID != nil
         ).filter { route in
             !excludedRouteKeys.contains(routeKey(providerID: route.providerID, slotID: route.credentialSlotID))
         }
@@ -251,12 +253,17 @@ extension BurnBarProviderRouter {
 
     func selectRoutes(
         for modelName: String,
-        configurations: [BurnBarResolvedProviderConfiguration]
+        configurations: [BurnBarResolvedProviderConfiguration],
+        allowForeignCatalogModelForPinnedLocalProvider: Bool = false
     ) -> [BurnBarProviderRoute] {
         var routes: [BurnBarProviderRoute] = []
 
         for configuration in configurations {
-            guard let resolvedModel = resolveModel(named: modelName, in: configuration) else {
+            guard let resolvedModel = resolveModel(
+                named: modelName,
+                in: configuration,
+                allowForeignCatalogModelForPinnedLocalProvider: allowForeignCatalogModelForPinnedLocalProvider
+            ) else {
                 continue
             }
 
@@ -473,7 +480,8 @@ extension BurnBarProviderRouter {
 
     func resolveModel(
         named modelName: String,
-        in configuration: BurnBarResolvedProviderConfiguration
+        in configuration: BurnBarResolvedProviderConfiguration,
+        allowForeignCatalogModelForPinnedLocalProvider: Bool = false
     ) -> BurnBarCatalogModel? {
         let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalized.isEmpty, configStore.catalogSupport.modelID(normalized, isNamespaceSafeFor: configuration.provider.id) else { return nil }
@@ -505,7 +513,8 @@ extension BurnBarProviderRouter {
 
         if let dynamicModel = dynamicDiscoveredProviderModel(
             named: modelName,
-            in: configuration
+            in: configuration,
+            allowForeignCatalogModelForPinnedLocalProvider: allowForeignCatalogModelForPinnedLocalProvider
         ) {
             return dynamicModel
         }
@@ -527,7 +536,8 @@ extension BurnBarProviderRouter {
 
     private func dynamicDiscoveredProviderModel(
         named modelName: String,
-        in configuration: BurnBarResolvedProviderConfiguration
+        in configuration: BurnBarResolvedProviderConfiguration,
+        allowForeignCatalogModelForPinnedLocalProvider: Bool
     ) -> BurnBarCatalogModel? {
         guard allowDynamicOpenAICompatibleModels,
               [.openaiCompat, .anthropic].contains(configuration.provider.formatFamily),
@@ -562,6 +572,7 @@ extension BurnBarProviderRouter {
         // "gpt-oss:120b", "qwen3.6:27b-coding-nvfp4") stay routable locally,
         // since the user may well have pulled them, so advertised local models stay callable.
         if configuration.provider.local,
+           !allowForeignCatalogModelForPinnedLocalProvider,
            let vendor = configStore.catalogSupport.catalog.vendorForModel(named: trimmed),
            !vendor.local,
            vendor.id.caseInsensitiveCompare("ollama") != .orderedSame {
@@ -682,7 +693,8 @@ extension BurnBarProviderRouter {
         modelName: String,
         preferredProviderID: String?,
         requestedFormatFamily: BurnBarProviderFormatFamily?,
-        configurations: [BurnBarResolvedProviderConfiguration]
+        configurations: [BurnBarResolvedProviderConfiguration],
+        allowForeignCatalogModelForPinnedLocalProvider: Bool
     ) -> String? {
         if let normalized = BurnBarCatalogModel.normalizedCanonicalModelID(explicitCanonicalModelID) {
             return normalized
@@ -695,7 +707,11 @@ extension BurnBarProviderRouter {
         }
 
         let canonicalIDs = matchingConfigurations.compactMap { configuration -> String? in
-            resolveModel(named: modelName, in: configuration)?.canonicalModelID
+            resolveModel(
+                named: modelName,
+                in: configuration,
+                allowForeignCatalogModelForPinnedLocalProvider: allowForeignCatalogModelForPinnedLocalProvider
+            )?.canonicalModelID
         }
         let uniqueCanonicalIDs = Set(canonicalIDs)
         return uniqueCanonicalIDs.count == 1 ? uniqueCanonicalIDs.first : nil

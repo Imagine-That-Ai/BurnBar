@@ -615,6 +615,49 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert "Library/Application Support/OpenBurnBar/openburnbar-daemon.sock" not in workflow
 
 
+def test_local_source_builds_package_daemon_sqlcipher_runtime_before_signing():
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    rpath_command = (
+        'install_name_tool -add_rpath "@executable_path/../Frameworks" '
+        '"$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"'
+    )
+    framework_guard = (
+        "links SQLCipher.framework but the app bundle is missing "
+        "Contents/Frameworks/SQLCipher.framework"
+    )
+
+    build_section = makefile.split("build: bootstrap preflight", 1)[1].split(
+        "build-signed: bootstrap preflight", 1
+    )[0]
+    signed_section = makefile.split("build-signed: bootstrap preflight", 1)[1].split(
+        "release-mas: preflight", 1
+    )[0]
+
+    assert rpath_command in build_section
+    assert framework_guard in build_section
+    assert rpath_command in signed_section
+    assert framework_guard in signed_section
+    assert signed_section.index(rpath_command) < signed_section.index("scripts/sign-openburnbar-local.sh")
+
+
+def test_macos_release_does_not_require_unsupported_app_attest_entitlement():
+    import plistlib
+
+    local = plistlib.loads((ROOT / "AgentLens/Resources/OpenBurnBar.entitlements").read_bytes())
+    direct = plistlib.loads((ROOT / "AgentLens/Resources/OpenBurnBarRelease.entitlements").read_bytes())
+    app_store = plistlib.loads((ROOT / "AgentLens/Resources/OpenBurnBarMAS.entitlements").read_bytes())
+    website_release = (ROOT / "scripts/build-macos-website-release.sh").read_text(encoding="utf-8")
+    release_workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    key = "com.apple.developer.devicecheck.appattest-environment"
+    assert key not in local
+    assert key not in direct
+    assert key not in app_store
+
+    for release_surface in (website_release, release_workflow):
+        assert key not in release_surface
+
+
 def test_local_app_signing_uses_same_privileged_peer_policy_as_release():
     script = (ROOT / "scripts/sign-openburnbar-local.sh").read_text(encoding="utf-8")
 

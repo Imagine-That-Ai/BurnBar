@@ -1251,6 +1251,122 @@ final class CLIBridgeTests: XCTestCase {
         ))
     }
 
+    func test_resolvedElderWandOriginatingModel_automaticUsesBurnBarGatewayDefault() {
+        let burnBarModels = [
+            OpenAICompatibleAdvertisedModel(
+                id: "claude-haiku-4-5", displayName: "Claude Haiku",
+                providerID: "anthropic", providerName: "Anthropic", routeEligible: true
+            ),
+            OpenAICompatibleAdvertisedModel(
+                id: "disabled-model", displayName: "Disabled",
+                providerID: "example", providerName: "Example", routeEligible: false
+            )
+        ]
+
+        XCTAssertEqual(
+            ChatSessionController.resolvedElderWandOriginatingModel(
+                selection: "",
+                liveModels: burnBarModels
+            ),
+            "claude-haiku-4-5"
+        )
+    }
+
+    func test_resolvedElderWandOriginatingModel_preservesExplicitStaleChoiceForVisibleFailure() {
+        let burnBarModels = [
+            OpenAICompatibleAdvertisedModel(
+                id: "claude-haiku-4-5", displayName: "Claude Haiku",
+                providerID: "anthropic", providerName: "Anthropic", routeEligible: true
+            )
+        ]
+
+        XCTAssertEqual(
+            ChatSessionController.resolvedElderWandOriginatingModel(
+                selection: " hermes-agent ",
+                liveModels: burnBarModels
+            ),
+            "hermes-agent"
+        )
+        XCTAssertEqual(
+            ChatSessionController.elderWandRoutingError(
+                backend: .hermes,
+                selectedModel: "hermes-agent",
+                gatewayAvailable: true,
+                authRejected: false,
+                liveModels: burnBarModels
+            ),
+            "The Elder Wand final-answer model 'hermes-agent' is not routed by the BurnBar gateway. Choose a live model from the chat model menu."
+        )
+    }
+
+    func test_elderWandRoutingError_coversBackendAvailabilityAuthAndEmptyCatalog() {
+        let model = OpenAICompatibleAdvertisedModel(
+            id: "claude-haiku-4-5", displayName: "Claude Haiku",
+            providerID: "anthropic", providerName: "Anthropic", routeEligible: true
+        )
+
+        XCTAssertNotNil(ChatSessionController.elderWandRoutingError(
+            backend: .codex,
+            selectedModel: model.id,
+            gatewayAvailable: true,
+            authRejected: false,
+            liveModels: [model]
+        ))
+        XCTAssertNotNil(ChatSessionController.elderWandRoutingError(
+            backend: .hermes,
+            selectedModel: model.id,
+            gatewayAvailable: false,
+            authRejected: false,
+            liveModels: []
+        ))
+        XCTAssertNotNil(ChatSessionController.elderWandRoutingError(
+            backend: .hermes,
+            selectedModel: model.id,
+            gatewayAvailable: false,
+            authRejected: true,
+            liveModels: []
+        ))
+        XCTAssertNotNil(ChatSessionController.elderWandRoutingError(
+            backend: .hermes,
+            selectedModel: "",
+            gatewayAvailable: true,
+            authRejected: false,
+            liveModels: []
+        ))
+        for backend in [ChatBackendID.hermes, .openclaw, .piAgent] {
+            XCTAssertTrue(ChatSessionController.supportsElderWandGateway(backend))
+            XCTAssertNil(ChatSessionController.elderWandRoutingError(
+                backend: backend,
+                selectedModel: model.id,
+                gatewayAvailable: true,
+                authRejected: false,
+                liveModels: [model]
+            ))
+        }
+        XCTAssertFalse(ChatSessionController.supportsElderWandGateway(.codex))
+    }
+
+    func test_elderWandModelGrouping_usesBurnBarRowsAndDeduplicatesByModelID() {
+        let groups = ElderWandModelGrouping.groups(from: [
+            OpenAICompatibleAdvertisedModel(
+                id: "claude-haiku-4-5", displayName: "Claude Haiku",
+                providerID: "anthropic", providerName: "Anthropic", routeEligible: true
+            ),
+            OpenAICompatibleAdvertisedModel(
+                id: "claude-haiku-4-5", displayName: "Duplicate",
+                providerID: "other", providerName: "Other", routeEligible: true
+            ),
+            OpenAICompatibleAdvertisedModel(
+                id: "gemma4:12b-mlx", displayName: "Gemma 4",
+                providerID: "ollama-local", providerName: "Ollama (Local)", routeEligible: false
+            )
+        ])
+
+        XCTAssertEqual(groups.map(\.providerName), ["Anthropic", "Ollama (Local)"])
+        XCTAssertEqual(groups.flatMap(\.options).map(\.id), ["claude-haiku-4-5", "gemma4:12b-mlx"])
+        XCTAssertEqual(groups.flatMap(\.options).map(\.isRouteEligible), [true, false])
+    }
+
     func test_cliBridge_codexArguments_includesReasoningEffort() {
         let args = CLIBridge.codexArguments(prompt: "test")
         XCTAssertTrue(args.contains(#"model_reasoning_effort="high""#))

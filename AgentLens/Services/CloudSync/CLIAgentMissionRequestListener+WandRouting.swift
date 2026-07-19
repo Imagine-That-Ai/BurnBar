@@ -68,7 +68,7 @@ extension CLIAgentMissionRequestListener {
         context != nil && (data["requestedModelID"] as? String)?.nilIfEmpty == nil
     }
 
-    func resolveWandRoutingIfNeeded(
+    static func resolveWandRoutingIfNeeded(
         context: MissionGroupClaimContext?,
         data: [String: Any]
     ) async throws -> CLIAgentMissionWandRoutingSelection? {
