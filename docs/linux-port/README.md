@@ -6,8 +6,11 @@ implemented as reviewable infrastructure, not a public availability claim.
 Current parity status as of 2026-07-19:
 
 - The current parity hardening reaches `fdbc7d718b` (with the WebKit startup
-  fallback from `6321897d4e`); the installed live receipt is bound to the
-  `a570c9b087` package; the clean parity-ledger
+  fallback from `6321897d4e`). The VM now also has a rebuilt arm64 package
+  containing the current media UI/state slice; its non-certifying receipt is
+  [`evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-ui-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-ui-arm64/).
+  The daemon/media capability receipt remains bound to the `a570c9b087`
+  runtime package; the clean parity-ledger
   validation is bound to checkpoint `073c2aba45`. The Release and
   Nightly receipts below are historical engineering evidence for an older
   checkpoint, not a claim that the current docs head has a promoted artifact.

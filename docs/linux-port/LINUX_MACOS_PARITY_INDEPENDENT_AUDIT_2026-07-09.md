@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | Current parity hardening reaches `fdbc7d718b` (with the WebKit startup fallback in `6321897d4e`); the installed live receipt remains bound to the `a570c9b087` arm64 package. The clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
+| Remediation evidence | Current parity hardening reaches `fdbc7d718b` (with the WebKit startup fallback in `6321897d4e`). The VM also has a rebuilt arm64 package containing the current media UI/state slice; its non-certifying receipt is `evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-ui-arm64/live-ui-receipt.json`. The daemon/media capability receipt remains bound to the `a570c9b087` runtime package. The clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -52,7 +52,9 @@ pass on the same guest.
 `fdbc7d718b` also makes the Linux media UI distinguish receive-only socket
 transport from authenticated daemon call RPCs, preserves valid call actions,
 and disables stale file-offer actions; the focused media UI/state lane passes
-**31/31** plus TypeScript.
+**33/33** plus TypeScript. The current slice is installed in the UTM guest;
+the bounded UI/runtime receipt is
+`evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-ui-arm64/live-ui-receipt.json`.
 
 Two additional source-only parity hardening slices are now on the candidate
 branch. `6f57349c66` keeps Linux settings search selection synchronized with

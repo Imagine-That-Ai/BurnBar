@@ -46,8 +46,16 @@ iPad enrollment, two-device media, and signed certification remain dependencies
 for parity. The VM's full `MercuryLinuxMediaTests` class passes **21/21**, the
 project/code-memory bootstrap slice passes **3/3**, and the Linux peer test
 passes **1/1**; `fdbc7d718b` separately gates receive-only media transport in
-the Linux UI while preserving daemon RPC calls (focused media UI/state **31/31**);
+the Linux UI while preserving daemon RPC calls (focused media UI/state **33/33**);
 this is transport/backend proof, not a two-device receipt.
+
+The VM follow-up rebuilt and installed the current `fdbc7d718b` media
+UI/state files around the existing daemon runtime. The arm64 DEB is installed,
+the desktop remains running after a daemon restart, bare CLI health passes, and
+the focused media UI lane passes **33/33** on Ubuntu. Receipt:
+`evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-ui-arm64/live-ui-receipt.json`.
+This is still a non-certifying UI/runtime receipt because it is not a signed
+exact-head candidate and does not prove cross-device media.
 
 The installed Linux CLI parity fix is now on `d58b6a958f`: the Swift CLI
 resolves the canonical XDG daemon token file when no token environment override
