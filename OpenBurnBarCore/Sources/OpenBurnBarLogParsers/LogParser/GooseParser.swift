@@ -24,7 +24,6 @@ public final class GooseParser: LogParser, Sendable {
 
     private let pricingCost: PricingCost
 
-
     private struct LegacyContentReadError: Error {
         let underlying: Error
     }

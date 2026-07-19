@@ -7,7 +7,6 @@ final class JunieParserTests: XCTestCase {
     // MARK: - Helpers
     private struct ExpectedOpenFailure: Error {}
 
-
     /// Builds `<root>/sessions/<sessionId>/…` mirroring Junie's documented
     /// on-disk layout (`~/.junie/sessions/index.jsonl` +
     /// `<sessionId>/events.jsonl` + `<sessionId>/state.json`).

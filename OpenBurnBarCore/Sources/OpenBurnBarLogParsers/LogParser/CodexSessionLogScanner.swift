@@ -691,7 +691,7 @@ public enum CodexSessionLogScanner {
 
                     if options.includeConversationBodies,
                        !boundaryDeferred,
-                       (!isUnchanged || options.fileDiscoveryTracker == nil),
+                       !isUnchanged || options.fileDiscoveryTracker == nil,
                        !contentUnavailable {
                         let conversationBytes = signature?.sizeBytes ?? 0
                         if governor?.admitFile(estimatedBytes: conversationBytes) ?? true {

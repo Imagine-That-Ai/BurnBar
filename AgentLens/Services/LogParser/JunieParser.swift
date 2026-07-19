@@ -786,7 +786,7 @@ final class JunieParser: LogParser, Sendable {
         }
         for file in files {
             options.metrics?.recordMetadataStat()
-            let attributes = try? fileManager.attributesOfItem(atPath: file.path)
+            let attributes = try fileManager.attributesOfItem(atPath: file.path)
             _ = tracker.record(discoveredFile(for: file, attributes: attributes))
         }
     }

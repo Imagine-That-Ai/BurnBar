@@ -221,7 +221,11 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         let handle = try fileHandleForReading(file)
         defer { try? handle.close() } // try?-ok(handle teardown)
         let data = try handle.readToEnd() ?? Data()
-        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        do {
+            return try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        } catch {
+            return nil
+        }
     }
 
     private func parseSession(file: URL, projectName: String) throws -> (usage: TokenUsage?, conversation: OpenBurnBarCore.ConversationRecord?)? {
@@ -474,14 +478,14 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         try options.resourceGovernor?.checkpoint()
         for file in files {
             options.metrics?.recordMetadataStat()
-            let attributes = try? fileManager.attributesOfItem(atPath: file.path)
+            let attributes = try fileManager.attributesOfItem(atPath: file.path)
             _ = tracker.record(OpenBurnBarCore.ParserDiscoveredFile(
                 path: file.standardizedFileURL.path,
-                fileSizeBytes: (attributes?[.size] as? NSNumber)?.int64Value,
-                modificationDate: normalizedCheckpointDate(attributes?[.modificationDate] as? Date),
-                creationDate: normalizedCheckpointDate(attributes?[.creationDate] as? Date),
-                fileSystemNumber: (attributes?[.systemNumber] as? NSNumber)?.uint64Value,
-                fileNumber: (attributes?[.systemFileNumber] as? NSNumber)?.uint64Value
+                fileSizeBytes: (attributes[.size] as? NSNumber)?.int64Value,
+                modificationDate: normalizedCheckpointDate(attributes[.modificationDate] as? Date),
+                creationDate: normalizedCheckpointDate(attributes[.creationDate] as? Date),
+                fileSystemNumber: (attributes[.systemNumber] as? NSNumber)?.uint64Value,
+                fileNumber: (attributes[.systemFileNumber] as? NSNumber)?.uint64Value
             ))
         }
     }

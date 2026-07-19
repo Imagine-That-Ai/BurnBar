@@ -81,7 +81,6 @@ final class CodexSessionLogScannerTests: XCTestCase {
         }
     }
 
-
     private var tempDirectory: URL!
     private let fileManager = FileManager.default
 
@@ -559,7 +558,6 @@ final class CodexSessionLogScannerTests: XCTestCase {
         XCTAssertEqual(governor.deferredFileCount, 1, "the full-rescan charge exhausts the pass budget before the next file")
         XCTAssertNil(cacheStore.load().fileEntries[deferredFile.standardizedFileURL.path])
     }
-
 
     func test_processThreadRows_boundaryDefer_uncachedFileEmitsNothingAndIsNeverRead() throws {
         let file = try write(cumulativeEvent(input: 1000, output: 100) + "\n", to: "rollout-boundary.jsonl")
