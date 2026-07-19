@@ -5,7 +5,7 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- The latest parity hardening reaches `992ef5c580` (including the WebKit
+- The latest parity hardening reaches `f6d3843937` (including the WebKit
   startup fallback from `6321897d4e`). The VM now has a freshly rebuilt and
   installed arm64 package with the real `media-gst` shell viewer enabled; its
   non-certifying receipt is
@@ -18,8 +18,11 @@ Current parity status as of 2026-07-19:
   validation is bound to checkpoint `073c2aba45`. The Release and
   Nightly receipts below are historical engineering evidence for an older
   checkpoint, not a claim that the current docs head has a promoted artifact.
-- The latest source hardening adds a fixture-safe daemon-backed **Index project**
-  action in General Settings (`992ef5c580`), single-flight native pet-window launch
+- The latest source hardening adds a macOS-style, evidence-bounded Insights
+  comparison workspace (`c31c17aa6e`, `ee679e2ed0`, `eb6a5975d4`) and a secure
+  Linux-native **Launch at login** preference (`f6d3843937`) alongside the
+  fixture-safe daemon-backed **Index project** action in General Settings
+  (`992ef5c580`), single-flight native pet-window launch
   (`511c8a1049`), body-click `open` routing for notification servers without
   action buttons (`1397313284`), GStreamer decoder retry without requiring a
   socket reconnect, and Secret Service/KWallet health-before-write onboarding
