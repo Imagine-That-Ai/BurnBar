@@ -77,35 +77,44 @@ export function lazyKernel(
   function ensure(): Promise<Kernel> {
     if (real) return Promise.resolve(real);
     if (!pending) {
-      pending = loader()
-        .then((factory) => {
-          // If dispose() fired while the import was in-flight, abandon: never
-          // construct a real kernel (it would orphan GL resources on a dead slot).
-          if (disposed) {
+      try {
+        pending = loader()
+          .then((factory) => {
+            // If dispose() fired while the import was in-flight, abandon: never
+            // construct a real kernel (it would orphan GL resources on a dead slot).
+            if (disposed) {
+              pending = null;
+              return null as unknown as Kernel;
+            }
+            real = factory();
+            // If init was called before the module loaded, run it now.
+            if (pendingInit) {
+              real.init(pendingInit.ctx, pendingInit.frame);
+              pendingInit = null;
+            }
+            // Replay a static frame requested during load (reduced-motion path).
+            if (pendingStatic) {
+              real.renderStatic?.();
+              pendingStatic = false;
+            }
+            pending = null;
+            return real;
+          })
+          .catch(() => {
+            // Dynamic imports can fail on a stale/offline WebView. Keep the
+            // already-painted 2D base and let a later init retry instead of
+            // creating an unhandled Promise rejection.
             pending = null;
             return null as unknown as Kernel;
-          }
-          real = factory();
-          // If init was called before the module loaded, run it now.
-          if (pendingInit) {
-            real.init(pendingInit.ctx, pendingInit.frame);
-            pendingInit = null;
-          }
-          // Replay a static frame requested during load (reduced-motion path).
-          if (pendingStatic) {
-            real.renderStatic?.();
-            pendingStatic = false;
-          }
+          });
+      } catch {
+        // A wrapper around a dynamic import can throw before returning its
+        // Promise. Treat that boundary like a rejected chunk as well.
+        pending = Promise.resolve(null as unknown as Kernel).then((result) => {
           pending = null;
-          return real;
-        })
-        .catch(() => {
-          // Dynamic imports can fail on a stale/offline WebView. Keep the
-          // already-painted 2D base and let a later init retry instead of
-          // creating an unhandled Promise rejection.
-          pending = null;
-          return null as unknown as Kernel;
+          return result;
         });
+      }
     }
     return pending;
   }

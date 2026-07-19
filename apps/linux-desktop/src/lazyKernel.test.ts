@@ -168,4 +168,26 @@ describe('lazyKernel loading boundary', () => {
     kernel.resize(frame({ width: 400, height: 200, dpr: 1 }));
     expect(canvas.fills.at(-1)).toEqual({ style: 'rgb(7,8,15)', width: 400, height: 200 });
   });
+
+  it('absorbs a loader that throws before returning its Promise', async () => {
+    const canvas = mock2d();
+    const load = deferred<KernelFactory>();
+    const real = mockKernel('flow', '2d');
+    let attempts = 0;
+    const kernel = lazyKernel('flow', 'Flow Field', '2d', () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('chunk bootstrap failed');
+      return load.promise;
+    });
+
+    expect(() => kernel.init(canvas.context, frame())).not.toThrow();
+    await expect(flushImport()).resolves.toBeUndefined();
+    expect(canvas.fills).toHaveLength(1);
+
+    kernel.init(canvas.context, frame({ width: 400, height: 200, dpr: 1 }));
+    expect(attempts).toBe(2);
+    load.resolve(() => real);
+    await flushImport();
+    expect(real.init).toHaveBeenCalledOnce();
+  });
 });
