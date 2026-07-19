@@ -93,15 +93,15 @@ percentage. The active remediation stack now contains these reviewable slices:
 
 ### Fresh local device and infrastructure recheck — 2026-07-18
 
-- **Physical iPad:** `xcrun devicectl` sees Alberto's paired, booted iPad with
-  Developer Mode enabled, but reports that the developer disk image cannot be
-  mounted. `xcodebuild` consequently reports no matching physical destination;
-  `OPENBURNBAR_MOBILE_PREFLIGHT_ONLY=1` stopped before package preparation or
-  XCTest discovery. No device test result is promoted. The fix is to restore
-  the Xcode-to-device connection (USB/unlock/trust and a compatible developer
-  image), then rerun the focused approval suite on this iPad.
-- **UTM:** live `utmctl list` reports the OpenBurnBar Linux guest as stopped.
-  No VM was started or modified during this recheck; the historical stale
+- **Physical iPad:** after the wired reconnection, `xcrun devicectl` sees
+  Alberto's paired, booted iPad with Developer Mode enabled and a mounted
+  developer image. The physical XCTest readiness preflight passes when the
+  hardware UDID (`00008132-001158191E9A401C`) is used; the earlier failed
+  attempt supplied the CoreDevice identifier instead. XCTest execution still
+  has no promoted result because the worktree is over the 10 GiB hygiene
+  ceiling, so the focused approval build has not started.
+- **UTM:** live `utmctl list` now reports the OpenBurnBar Linux guest as
+  started. No VM was modified during this recheck; the historical stale
   `/usr/local` launcher diagnosis remains an open repair gate.
 - **Product evidence infrastructure:** the product-parity workflow is absent
   from `main`, and the repository has zero registered self-hosted runners.

@@ -31,10 +31,11 @@ Current parity status as of 2026-07-18:
   rows and 0/7 environment receipts. The Nightly pass is engineering evidence,
   not a promotion claim; production, lifecycle, physical iPad, installed
   integration, and registered product evidence remain open.
-- Fresh local recheck: CoreDevice sees the iPad as paired, booted, and with
-  Developer Mode enabled, but Xcode cannot mount its developer disk image, so
-  the physical XCTest preflight stops before build/test. `utmctl` reports the
-  OpenBurnBar Linux VM stopped. The product-parity workflow is not present on
+- Fresh local recheck: the wired iPad is paired, booted, has Developer Mode
+  enabled, and passes the physical XCTest readiness preflight when addressed
+  by its hardware UDID. XCTest execution remains paused only because this
+  worktree is over the 10 GiB hygiene ceiling. `utmctl` now reports the
+  OpenBurnBar Linux VM started. The product-parity workflow is not present on
   `main`, and GitHub currently has zero self-hosted runners for its required
   Linux environment labels.
 - For the detailed audit and implementation plan, see
