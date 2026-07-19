@@ -28,9 +28,10 @@ function requireRegularFile(candidate, label) {
   return path.resolve(candidate);
 }
 
-export function swiftTargetInfo(command = 'swift') {
+export function swiftTargetInfo(command = 'swift', env = process.env) {
   const result = spawnSync(command, ['-print-target-info'], {
     encoding: 'utf8',
+    env: { ...process.env, ...env },
     maxBuffer: 4 * 1024 * 1024
   });
   if ((result.status ?? 1) !== 0) {
@@ -44,11 +45,14 @@ export function swiftTargetInfo(command = 'swift') {
 }
 
 export function resolveSwiftRuntimeDir({ env = process.env, targetInfo = null } = {}) {
-  const candidates = [];
-  if (env.OPENBURNBAR_SWIFT_LIB_DIR?.trim()) {
-    candidates.push(env.OPENBURNBAR_SWIFT_LIB_DIR.trim());
+  const override = env.OPENBURNBAR_SWIFT_LIB_DIR?.trim();
+  if (override) {
+    // An explicit runtime is authoritative. Avoid probing Swift (which may
+    // be unavailable on a packaging host) and fail directly for bad paths.
+    return requireDirectory(override, 'Swift runtime');
   }
-  const info = targetInfo ?? swiftTargetInfo();
+  const candidates = [];
+  const info = targetInfo ?? swiftTargetInfo('swift', env);
   candidates.push(...(info.paths?.runtimeLibraryPaths ?? []));
   candidates.push('/usr/lib/swift/linux', '/usr/local/swift/usr/lib/swift/linux');
   const found = candidates.find((candidate) => candidate && fs.existsSync(candidate));

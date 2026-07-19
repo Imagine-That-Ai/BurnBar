@@ -47,6 +47,82 @@ test('runtime discovery honors explicit architecture-local directories', () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test('valid Swift runtime override bypasses the swift target-info probe', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-runtime-override-'));
+  const swift = path.join(root, 'swift-runtime');
+  const probe = path.join(root, 'swift');
+  const marker = path.join(root, 'probe-invoked');
+  fs.mkdirSync(swift);
+  fs.writeFileSync(
+    probe,
+    `#!/bin/sh\nprintf probe > "$OPENBURNBAR_TEST_SWIFT_MARKER"\nexit 91\n`
+  );
+  fs.chmodSync(probe, 0o755);
+
+  assert.equal(
+    resolveSwiftRuntimeDir({
+      env: {
+        OPENBURNBAR_SWIFT_LIB_DIR: swift,
+        OPENBURNBAR_TEST_SWIFT_MARKER: marker,
+        PATH: root
+      }
+    }),
+    swift
+  );
+  assert.equal(fs.existsSync(marker), false);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('invalid Swift runtime override fails clearly without falling back to swift', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-runtime-invalid-'));
+  const probe = path.join(root, 'swift');
+  const marker = path.join(root, 'probe-invoked');
+  fs.writeFileSync(
+    probe,
+    `#!/bin/sh\nprintf probe > "$OPENBURNBAR_TEST_SWIFT_MARKER"\nexit 91\n`
+  );
+  fs.chmodSync(probe, 0o755);
+
+  assert.throws(
+    () => resolveSwiftRuntimeDir({
+      env: {
+        OPENBURNBAR_SWIFT_LIB_DIR: path.join(root, 'missing-runtime'),
+        OPENBURNBAR_TEST_SWIFT_MARKER: marker,
+        PATH: root
+      }
+    }),
+    /Swift runtime directory not found:/
+  );
+  assert.equal(fs.existsSync(marker), false);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('default Swift runtime discovery still probes swift target info', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-runtime-default-'));
+  const swift = path.join(root, 'swift');
+  const runtime = path.join(root, 'swift-runtime');
+  const marker = path.join(root, 'probe-invoked');
+  fs.mkdirSync(runtime);
+  const targetInfo = JSON.stringify({ paths: { runtimeLibraryPaths: [runtime] } });
+  fs.writeFileSync(
+    swift,
+    `#!/bin/sh\nprintf probe > "$OPENBURNBAR_TEST_SWIFT_MARKER"\nprintf '%s' '${targetInfo}'\n`
+  );
+  fs.chmodSync(swift, 0o755);
+
+  assert.equal(
+    resolveSwiftRuntimeDir({
+      env: {
+        OPENBURNBAR_TEST_SWIFT_MARKER: marker,
+        PATH: root
+      }
+    }),
+    runtime
+  );
+  assert.equal(fs.readFileSync(marker, 'utf8'), 'probe');
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test('resource bundle discovery honors the Linux SwiftPM output name', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-resource-bundle-'));
   const bundle = path.join(root, 'OpenBurnBarCore_OpenBurnBarCore.resources');
