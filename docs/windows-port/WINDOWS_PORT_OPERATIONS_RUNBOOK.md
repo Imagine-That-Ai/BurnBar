@@ -2,7 +2,7 @@
 
 **Owner:** OpenBurnBar release engineering
 
-**Last verified:** 2026-07-18
+**Last verified:** 2026-07-19
 
 **Applies to:** Windows x64 and ARM64 source, CI, staging, signing, physical certification, and Microsoft Store flights
 
@@ -33,7 +33,8 @@ This checkpoint is history, not a substitute for live verification:
 - Windows x64 and ARM64 full CI: passed in run `29674350739`
 - Staging deployment: passed in run `29675617068`
 - Signed release workflow: run `29676266545`
-- Last physical x64 candidate, `windows-v1.0.37`: `NO-GO`; it exposed and led to fixes for hidden dashboard content, unnamed controls, and narrow-window clipping.
+- Physical x64 retry for `windows-v1.0.38`: validator-clean `NO-GO`. Exact package integrity, native hardware identity, clean checkout, 20/20 cold launches, 20/20 warm launches, uninstall/reinstall, 300-second idle capture, and a 30-minute/1,800-sample soak passed with no crash or hang. Accessibility/display, the remaining interactive performance measurements, staging fixtures, paired-device safety, and private Store lifecycle receipts remain incomplete.
+- Physical retry evidence ZIP SHA-256: `bf10318474556b1ea3f69b05831fa09dfc4f8b36ac9470fb113092ec4f7ed876`.
 - Physical ARM64 certification: explicit beta limitation until qualifying hardware exists. Hosted ARM64 CI and an ARM64 VM are useful functional evidence, but neither is physical certification.
 
 Before repeating any of those facts, refresh them with GitHub and the live
