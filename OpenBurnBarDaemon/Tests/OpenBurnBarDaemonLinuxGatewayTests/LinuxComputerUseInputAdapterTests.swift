@@ -582,7 +582,7 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
         XCTAssertFalse(script.calls[0].arguments.contains(secret))
     }
 
-    func testRemoteDesktopSessionKillSwitchBlocksCreateAndClose() async throws {
+    func testRemoteDesktopSessionKillSwitchBlocksCreateButAllowsSafeClose() async throws {
         let script = PortalCommandScript(results: [
             .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/create',)")
         ])
@@ -605,13 +605,12 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
             consentGranted: true,
             reason: "fixture"
         )
-        do {
-            _ = try await adapter.stopWaylandRemoteDesktopSession(receipt)
-            XCTFail("the kill switch must block portal session close as well")
-        } catch let error as LinuxComputerUseInputAdapter.AdapterError {
-            XCTAssertEqual(error, .killSwitchActive("environment"))
-        }
-        XCTAssertTrue(script.calls.isEmpty)
+        let stopped = try await adapter.stopWaylandRemoteDesktopSession(receipt)
+        XCTAssertEqual(stopped.state, .stopped)
+        XCTAssertFalse(stopped.consentGranted)
+        XCTAssertFalse(stopped.canDispatchInput)
+        XCTAssertEqual(script.calls.count, 1)
+        XCTAssertEqual(script.calls[0].arguments.last, "org.freedesktop.portal.Session.Close")
     }
 
     func testRemoteDesktopSessionStopValidatesIdentityAndReportsStoppedStatus() async throws {

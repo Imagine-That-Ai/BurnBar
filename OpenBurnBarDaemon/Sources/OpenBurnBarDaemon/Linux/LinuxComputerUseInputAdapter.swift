@@ -561,8 +561,10 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     public func stopWaylandRemoteDesktopSession(
         _ session: WaylandRemoteDesktopSession
     ) async throws -> WaylandRemoteDesktopSession {
+        // Closing an already-consented portal grant is teardown, not input.
+        // It must remain available while the kill switch is active so panic
+        // paths cannot leave a live RemoteDesktop session behind.
         try Task.checkCancellation()
-        try assertKillSwitchNotActive()
         guard let sessionHandle = session.sessionHandle,
               let validatedHandle = parsePortalObjectPath(
                   sessionHandle,
@@ -577,7 +579,8 @@ public struct LinuxComputerUseInputAdapter: Sendable {
                 "--object-path", validatedHandle,
                 "--method", "\(Self.sessionInterface).Close"
             ],
-            timeoutMillis: portalProbeTimeoutMillis
+            timeoutMillis: portalProbeTimeoutMillis,
+            allowWhenKillSwitchActive: true
         )
         guard result.exitCode == 0 else {
             throw portalCommandError(operation: "close_session", exitCode: result.exitCode)
@@ -1076,10 +1079,13 @@ public struct LinuxComputerUseInputAdapter: Sendable {
 
     private func runFixedPortalCommand(
         _ arguments: [String],
-        timeoutMillis: Int
+        timeoutMillis: Int,
+        allowWhenKillSwitchActive: Bool = false
     ) throws -> CommandResult {
         try Task.checkCancellation()
-        try assertKillSwitchNotActive()
+        if !allowWhenKillSwitchActive {
+            try assertKillSwitchNotActive()
+        }
         guard let gdbus = resolveExecutable("gdbus") else {
             throw AdapterError.portalUnavailable("gdbus_unavailable")
         }
@@ -1092,7 +1098,9 @@ public struct LinuxComputerUseInputAdapter: Sendable {
             throw AdapterError.portalUnavailable("remote_desktop_portal_command_failed")
         }
         try Task.checkCancellation()
-        try assertKillSwitchNotActive()
+        if !allowWhenKillSwitchActive {
+            try assertKillSwitchNotActive()
+        }
         return result
     }
 
@@ -1165,9 +1173,10 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     }
 
     private func closeRemoteDesktopSessionBestEffort(_ sessionHandle: String) {
-        guard LinuxPrivilegedInputKillFlag.isActive(environment: environment) == false,
-              LinuxPrivilegedInputKillFlag.environmentKillSwitchActive(environment: environment) == false,
-              let validatedHandle = parsePortalObjectPath(sessionHandle, requiredComponent: "session") else {
+        guard let validatedHandle = parsePortalObjectPath(
+            sessionHandle,
+            requiredComponent: "session"
+        ) else {
             return
         }
         _ = try? runFixedPortalCommand(
@@ -1177,7 +1186,8 @@ public struct LinuxComputerUseInputAdapter: Sendable {
                 "--object-path", validatedHandle,
                 "--method", "\(Self.sessionInterface).Close"
             ],
-            timeoutMillis: portalProbeTimeoutMillis
+            timeoutMillis: portalProbeTimeoutMillis,
+            allowWhenKillSwitchActive: true
         )
     }
 
