@@ -5,6 +5,44 @@ import Foundation
 import XCTest
 
 final class BurnBarCLITests: XCTestCase {
+    func testSocketAuthTokenUsesExplicitEnvironmentPrecedence() throws {
+        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "  direct-token  ",
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE": "/does/not/exist"
+        ])
+        XCTAssertEqual(token, "direct-token")
+    }
+
+    func testSocketAuthTokenReadsExplicitTokenFile() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-token-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("token")
+        try "file-token\n".write(to: file, atomically: true, encoding: .utf8)
+
+        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE": file.path
+        ])
+        XCTAssertEqual(token, "file-token")
+    }
+
+    #if os(Linux)
+    func testSocketAuthTokenReadsCanonicalLinuxSupportFile() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-linux-token-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("daemon-socket-auth-token")
+        try "canonical-token\n".write(to: file, atomically: true, encoding: .utf8)
+
+        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+            "OPENBURNBAR_DAEMON_SUPPORT_DIR": directory.path
+        ])
+        XCTAssertEqual(token, "canonical-token")
+    }
+    #endif
+
     func testStartupPreflightReturnsUsageBeforeRunnerConstruction() {
         for arguments in [[], ["help"], ["--help"], ["-h"], ["--", "help"]] {
             let result = BurnBarCLIRunner.startupPreflightResult(

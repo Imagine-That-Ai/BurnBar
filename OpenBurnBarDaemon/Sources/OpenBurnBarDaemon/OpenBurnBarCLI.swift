@@ -50,6 +50,33 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
     public let socketURL: URL
     public let authToken: String?
 
+    /// Resolve the daemon socket credential using the same precedence as the
+    /// launcher and Tauri bridge. Packaged Linux CLI invocations should work
+    /// without requiring users to export an implementation detail first.
+    public static func resolvedSocketAuthToken(environment: [String: String]) throws -> String? {
+        if let direct = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN"]
+            ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN"],
+           let trimmed = direct.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+            return trimmed
+        }
+        if let tokenFile = environment["OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE"]
+            ?? environment["BURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE"],
+           let trimmed = tokenFile.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+            return try readTokenFile(trimmed)
+        }
+
+        #if os(Linux)
+        do {
+            return try readTokenFile(OpenBurnBarLinuxPaths.authTokenURL(environment: environment).path)
+        } catch BurnBarTokenFileError.fileNotFound {
+            // Development launches may intentionally run without a token.
+            return nil
+        }
+        #else
+        return nil
+        #endif
+    }
+
     public static func resolvedSocketURL(environment: [String: String]) -> URL {
         if let socketPath = environment["OPENBURNBAR_DAEMON_SOCKET_PATH"]
             ?? environment["BURNBAR_DAEMON_SOCKET_PATH"],
