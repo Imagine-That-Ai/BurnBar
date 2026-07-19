@@ -28,6 +28,8 @@ function makeCanvasContext(): CanvasRenderingContext2D {
       if (!(property in object)) {
         if (property === 'createRadialGradient') {
           object[property] = () => ({ addColorStop: () => undefined });
+        } else if (property === 'getImageData') {
+          object[property] = () => ({ data: new Uint8ClampedArray(400 * 400 * 4) });
         } else {
           object[property] = (..._args: unknown[]) => {
             contextCalls.push(property);
@@ -126,6 +128,30 @@ afterEach(() => {
 });
 
 describe('KernelBackdrop Linux capability fallback', () => {
+  it('paints the Linux default 2D kernel during init without waiting on a chunk', () => {
+    // Swarm Ember groups particles through Path2D. WebKitGTK exposes this API;
+    // jsdom does not, so provide the smallest shape-compatible test double.
+    vi.stubGlobal(
+      'Path2D',
+      class {
+        arc(): void {}
+      }
+    );
+    process.env.VITEST = '';
+    const view = render(<KernelBackdrop skin={'editorial' satisfies ShellSkin} kernelId="swarmEmber" />);
+    const backdrop = view.container.querySelector<HTMLElement>('.kernel-backdrop');
+    expect(backdrop?.dataset.kernelRequested).toBe('swarmEmber');
+    expect(backdrop?.dataset.kernelResolved).toBe('swarmEmber');
+    expect(backdrop?.dataset.kernelResolution).toBe('native');
+    expect(backdrop?.dataset.kernelSubstrate).toBe('2d');
+    expect(backdrop?.dataset.glSupported).toBe('0');
+    expect(contextCalls.filter((method) => method === 'fillRect').length).toBeGreaterThan(0);
+
+    const paintsAfterInit = contextCalls.filter((method) => method === 'fillRect').length;
+    pumpAnimationFrame(16);
+    expect(contextCalls.filter((method) => method === 'fillRect').length).toBeGreaterThan(paintsAfterInit);
+  });
+
   it('publishes a truthful 2D receipt and keeps the fallback animated', () => {
     // KernelBackdrop intentionally avoids constructing a rendering engine in
     // ordinary Vitest tests. Temporarily opt into the real host lifecycle for
