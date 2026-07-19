@@ -82,6 +82,7 @@ describe('ComputerUseSurface', () => {
     );
     useShellStore.setState({
       fixtureMode: false,
+      runtimeCapabilities: makeAvailableRuntimeCapabilityManifest(),
       bridge: {
         computerUseSessionAuthorityStatus: vi.fn(async () => ({ state: 'available' as const })),
         computerUseSessionStart,
@@ -237,6 +238,49 @@ describe('ComputerUseSurface', () => {
     expect(await screen.findByText(/System Computer Use is unavailable/i)).toBeTruthy();
     expect(screen.queryByRole('option', { name: /System/i })).toBeNull();
     expect((screen.getByRole('button', { name: /Start session/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('fails closed when the native capability probe rejects', async () => {
+    const computerUseSessionStart = vi.fn(async () => ({ sessionId: 'should-not-start' }));
+    useShellStore.setState({
+      fixtureMode: false,
+      runtimeCapabilities: null,
+      bridge: {
+        runtimeCapabilities: vi.fn(async () => {
+          throw new Error('daemon capability probe failed');
+        }),
+        computerUseSessionAuthorityStatus: vi.fn(async () => ({ state: 'available' as const })),
+        computerUseSessionStart,
+        computerUseApprovalPending: vi.fn(async () => ({ requests: [] }))
+      } as never
+    });
+
+    render(<ComputerUseSurface />);
+    expect(await screen.findByText(/Browser Computer Use is unavailable until/i)).toBeTruthy();
+    const start = screen.getByRole('button', { name: /Start session/i }) as HTMLButtonElement;
+    expect(start.disabled).toBe(true);
+    fireEvent.click(start);
+    expect(computerUseSessionStart).not.toHaveBeenCalled();
+    expect(screen.getByText(/daemon capability probe failed/i)).toBeTruthy();
+  });
+
+  it('fails closed when a native bridge has no capability probe', async () => {
+    const computerUseSessionStart = vi.fn(async () => ({ sessionId: 'should-not-start' }));
+    useShellStore.setState({
+      fixtureMode: false,
+      runtimeCapabilities: null,
+      bridge: {
+        computerUseSessionAuthorityStatus: vi.fn(async () => ({ state: 'available' as const })),
+        computerUseSessionStart,
+        computerUseApprovalPending: vi.fn(async () => ({ requests: [] }))
+      } as never
+    });
+
+    render(<ComputerUseSurface />);
+    expect(await screen.findByText(/Browser Computer Use is unavailable until/i)).toBeTruthy();
+    expect(screen.getByText(/runtime capability probe is unavailable/i)).toBeTruthy();
+    expect((screen.getByRole('button', { name: /Start session/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(computerUseSessionStart).not.toHaveBeenCalled();
   });
 
   it('uses a fixture approval result without dispatching a native action', async () => {

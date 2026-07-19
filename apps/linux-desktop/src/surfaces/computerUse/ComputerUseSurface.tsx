@@ -211,6 +211,7 @@ export function ComputerUseSurface() {
       ? { state: 'authorized' }
       : { state: 'unavailable' }
   );
+  const [capabilityProbeError, setCapabilityProbeError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
 
@@ -221,11 +222,11 @@ export function ComputerUseSurface() {
   const systemCapability = capabilityManifest
     ? findRuntimeCapability(capabilityManifest, 'computer-use.system')
     : null;
-  // SurfaceRouter blocks an unprobed packaged session. Direct renders may not
-  // have a manifest yet, so only an explicit native-unavailable state blocks.
+  // A native Browser Computer Use session is only safe after the daemon has
+  // explicitly advertised the capability. SurfaceRouter normally enforces the
+  // same boundary, but direct/stale route renders must not turn a missing or
+  // failed probe into a fail-open action path.
   const browserModeAvailable = fixtureMode
-    || !bridge?.runtimeCapabilities
-    || !capabilityManifest
     || browserCapability?.state === 'available';
 
   const pushLog = useCallback((line: string) => {
@@ -233,12 +234,31 @@ export function ComputerUseSurface() {
   }, []);
 
   useEffect(() => {
-    if (fixtureMode || runtimeCapabilities || !bridge?.runtimeCapabilities) return;
+    if (fixtureMode || runtimeCapabilities) {
+      setProbedCapabilities(null);
+      setCapabilityProbeError(null);
+      return;
+    }
+    // A bridge replacement invalidates any manifest returned by the previous
+    // native peer. Do not briefly reuse stale capability authority while the
+    // new probe is pending.
+    setProbedCapabilities(null);
+    if (!bridge?.runtimeCapabilities) {
+      setCapabilityProbeError('The Linux runtime capability probe is unavailable.');
+      return;
+    }
     let cancelled = false;
+    setCapabilityProbeError(null);
     void bridge.runtimeCapabilities().then((manifest) => {
-      if (!cancelled) setProbedCapabilities(manifest);
-    }).catch(() => {
-      if (!cancelled) setProbedCapabilities(null);
+      if (!cancelled) {
+        setProbedCapabilities(manifest);
+        setCapabilityProbeError(null);
+      }
+    }).catch((err) => {
+      if (!cancelled) {
+        setProbedCapabilities(null);
+        setCapabilityProbeError(errorMessage(err));
+      }
     });
     return () => {
       cancelled = true;
@@ -579,6 +599,13 @@ export function ComputerUseSurface() {
         <p className="computer-use-surface__capability" role="status">
           System Computer Use is unavailable on this Linux session. Browser actions remain the only enabled mode.
           {systemCapability.reason ? ` ${systemCapability.reason}` : ''}
+        </p>
+      ) : null}
+      {!fixtureMode && !browserModeAvailable ? (
+        <p className="computer-use-surface__capability" aria-live="polite">
+          Browser Computer Use is unavailable until the Linux runtime capability probe confirms it.
+          {browserCapability?.reason ? ` ${browserCapability.reason}` : ''}
+          {capabilityProbeError ? ` ${capabilityProbeError}` : ''}
         </p>
       ) : null}
 
