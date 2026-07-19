@@ -14,6 +14,10 @@ fn emit_frontend_asset_dependencies() {
         .map(std::path::PathBuf::from)
         .expect("CARGO_MANIFEST_DIR is required for the Tauri build");
     let dist = manifest_dir.join("../dist");
+    // Vite content-hashes chunk filenames. Watching only the files present at
+    // the previous build misses a deleted/renamed chunk, leaving Tauri's
+    // generated context pointing at a file that no longer exists.
+    println!("cargo:rerun-if-changed={}", dist.display());
     emit_file_dependencies(&dist);
 }
 
