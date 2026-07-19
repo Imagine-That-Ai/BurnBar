@@ -827,7 +827,7 @@ final class CodexSessionLogScannerTests: XCTestCase {
 
         XCTAssertEqual(result.usages.map(\.sessionId), ["thread-known-body", "thread-new-body"])
         XCTAssertEqual(result.conversations.map(\.sessionId), ["thread-new-body"], "known manifest content stays skipped while newly admitted content emits its body")
-        XCTAssertEqual(result.conversations.first?.fullText, "## You\n\nnewly admitted body")
+        XCTAssertEqual(result.conversations.first?.fullText, "## User\n\nnewly admitted body")
         XCTAssertEqual(governor.consumedBytes, newSize * 2, "only the new file's token and conversation scans consume the pass")
         XCTAssertEqual(governor.deferredFileCount, 0)
         XCTAssertEqual(metrics.snapshot().contentReadCount, 2)
@@ -877,7 +877,7 @@ final class CodexSessionLogScannerTests: XCTestCase {
             cacheStore: cacheStore
         )
         XCTAssertEqual(recoveredPass.conversations.map(\.sessionId), ["thread-conversation-open-race"])
-        XCTAssertEqual(recoveredPass.conversations.first?.fullText, "## You\n\nretry this conversation")
+        XCTAssertEqual(recoveredPass.conversations.first?.fullText, "## User\n\nretry this conversation")
     }
 
     func test_processThreadRows_emptyConversationIsSuccessfulAndCheckpointable() throws {
