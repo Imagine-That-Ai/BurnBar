@@ -89,7 +89,21 @@ public sealed class ReportWriterTests : IDisposable
         Assert.Contains(scenarios, scenario => scenario.Key == "high-contrast" && scenario.AppearanceMode == "highcontrast" && scenario.ReduceTransparency == true);
         Assert.Contains(scenarios, scenario => scenario.Key == "reduced-transparency" && scenario.ReduceTransparency == true);
         Assert.Contains(scenarios, scenario => scenario.Key == "dpi-100" && scenario.DpiScalePercent == 100 && scenario.RunsRouteSmoke);
+        Assert.Contains(scenarios, scenario => scenario.Key == "compact-640" && scenario.WindowWidth == 640 && scenario.WindowHeight == 720 && scenario.RunsRouteSmoke);
         Assert.Contains(scenarios, scenario => scenario.Key == "keyboard-contract" && scenario.RequiresKeyboardOnly && scenario.RequiresNarratorProtocol && !scenario.RunsRouteSmoke);
+    }
+
+    [Fact]
+    public void CompactScenario_FailsClosedWhenTheRequestedWindowSizeWasNotApplied()
+    {
+        UiCertificationScenario compact = Assert.Single(
+            CertificationScenarioCatalog.Select("accessibility"),
+            scenario => scenario.Key == "compact-640");
+
+        Assert.True(compact.MatchesRequestedWindowSize(640, 720));
+        Assert.True(compact.MatchesRequestedWindowSize(639, 721));
+        Assert.False(compact.MatchesRequestedWindowSize(1040, 720));
+        Assert.False(compact.MatchesRequestedWindowSize(640, 800));
     }
 
     [Fact]

@@ -57,7 +57,7 @@ internal static class Program
         var notes = new List<string>
         {
             "Runs in a throwaway OPENBURNBAR_AUTOMATION_PROFILE_ROOT per route; no production user profile is touched.",
-            "Route captures use the app route-smoke RenderTargetBitmap path; the semantic main-window probe also emits an external window screenshot.",
+            "Route captures use RenderTargetBitmap with the airspace-free native dashboard renderer enabled; the semantic probe also emits an external window screenshot.",
             "Input route evidence is classifier proof, not synthetic secure input dispatch; non-bypassable actions remain ViGEm/driver-gated.",
             $"Certification profile: {options.CertificationProfile}.",
         };

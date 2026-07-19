@@ -222,6 +222,111 @@ public sealed class WindowsVisualSourceContractTests
     }
 
     [Fact]
+    public void DashboardBackdropsUseXamlSafeCompositionSurfaces()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string kernel = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Dashboard", "KernelBackdropHost.cs"));
+        string swarm = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Particles", "SwarmCanvasHost.cs"));
+        string page = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Dashboard", "DashboardPage.xaml"));
+        string pageCode = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Dashboard", "DashboardPage.xaml.cs"));
+        string backdrop = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Dashboard", "DashboardBackdrop.cs"));
+
+        Assert.Contains("private readonly DashboardBackdrop _backdrop", kernel, StringComparison.Ordinal);
+        Assert.Contains("_backdrop.SetKernel(kernelId)", kernel, StringComparison.Ordinal);
+        Assert.DoesNotContain("CoreWebView2", kernel, StringComparison.Ordinal);
+        Assert.DoesNotContain("CapturePreviewAsync", kernel, StringComparison.Ordinal);
+        Assert.DoesNotContain("new WebView2", kernel, StringComparison.Ordinal);
+        Assert.Contains("new CanvasImageSource", swarm, StringComparison.Ordinal);
+        Assert.Contains("Control = new Image", swarm, StringComparison.Ordinal);
+        Assert.DoesNotContain("new CanvasControl", swarm, StringComparison.Ordinal);
+        Assert.DoesNotContain("new CanvasAnimatedControl", swarm, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"Dashboard.Content\"", page, StringComparison.Ordinal);
+        Assert.Contains("Canvas.ZIndex=\"-30\"", page, StringComparison.Ordinal);
+        Assert.Contains("Canvas.ZIndex=\"-20\"", page, StringComparison.Ordinal);
+        Assert.Contains("<Grid Canvas.ZIndex=\"10\">", page, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"EggHost\" Canvas.ZIndex=\"20\"", page, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"CompactCommandButton\"", page, StringComparison.Ordinal);
+        Assert.Contains("CompactCommandFlyout.Content = CommandSidebar;", pageCode, StringComparison.Ordinal);
+        Assert.Contains("_backdrop.SetTheme(theme);", kernel, StringComparison.Ordinal);
+        Assert.Contains("dark: _isDark", backdrop, StringComparison.Ordinal);
+        Assert.Contains("_sprites.Clear();", swarm, StringComparison.Ordinal);
+        Assert.Contains("_shafts.Clear();", swarm, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SemanticWindowCaptureRejectsEmptyCompositionEvidence()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string capture = File.ReadAllText(Path.Combine(
+            root,
+            "windows",
+            "tests",
+            "ui-automation-harness",
+            "OpenBurnBar.UiAutomationHarness",
+            "WindowBitmapCapture.cs"));
+        string probe = File.ReadAllText(Path.Combine(
+            root,
+            "windows",
+            "tests",
+            "ui-automation-harness",
+            "OpenBurnBar.UiAutomationHarness",
+            "SemanticProbeRunner.cs"));
+        string routeRunner = File.ReadAllText(Path.Combine(
+            root,
+            "windows",
+            "tests",
+            "ui-automation-harness",
+            "OpenBurnBar.UiAutomationHarness",
+            "RouteSmokeRunner.cs"));
+
+        Assert.Contains("!printWindowSucceeded || IsNearUniform(bitmap)", capture, StringComparison.Ordinal);
+        Assert.Contains("graphics.CopyFromScreen", capture, StringComparison.Ordinal);
+        Assert.Contains("SetWindowPos(hwnd, new IntPtr(-1)", capture, StringComparison.Ordinal);
+        Assert.Contains("!HasLowerBodyDetail(bitmap)", capture, StringComparison.Ordinal);
+        Assert.Contains("capture remained blank or omitted the routed body", capture, StringComparison.Ordinal);
+        Assert.Contains("Task.Delay(3_000", probe, StringComparison.Ordinal);
+        Assert.DoesNotContain("OPENBURNBAR_DISABLE_WEBVIEW2", routeRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("OPENBURNBAR_DISABLE_WIN2D", routeRunner, StringComparison.Ordinal);
+        Assert.Contains("airspace-free CanvasImageSource", routeRunner, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ShellKeyboardControlsExposeStableAccessibleNames()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string shellXaml = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Shell", "AppShell.xaml"));
+        string shellCode = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Shell", "AppShell.xaml.cs"));
+        string kernelXaml = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Shell", "KernelSwitcherControl.xaml"));
+
+        Assert.Contains("AutomationProperties.Name=\"OpenBurnBar dashboard\"", shellXaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Command palette\"", shellXaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Appearance\"", shellXaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"More navigation and settings\"", shellXaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.SetName(button, label);", shellCode, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Backdrop kernel\"", kernelXaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StreamingBubbleObservesEveryPretextMeasurementFault()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string bubble = File.ReadAllText(Path.Combine(
+            root, "windows", "app", "OpenBurnBar.App", "Chat", "StreamingBubble.xaml.cs"));
+
+        Assert.Contains("catch (Exception ex)", bubble, StringComparison.Ordinal);
+        Assert.Contains("AppDiagnostics.LogException(\"chat.pretext.measure\", ex);", bubble, StringComparison.Ordinal);
+        Assert.Contains("await engine.ReleaseAsync(prepared)", bubble, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CodePaintedGlassAndBudgetCanvasFollowTheActualTheme()
     {
         string root = DistTestSupport.RepositoryRoot();

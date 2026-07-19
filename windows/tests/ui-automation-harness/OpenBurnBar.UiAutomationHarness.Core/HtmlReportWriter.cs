@@ -35,7 +35,7 @@ public static class HtmlReportWriter
             html.Append($"<td class=\"{Css(route.Verdict)}\">{route.Verdict}</td>");
             html.Append($"<td><code>{Esc(route.ExpectedAutomationId)}</code> {route.ExpectedAutomationIdFound}</td>");
             html.Append($"<td>expected={route.DpiScalePercent?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "current"}, actual={route.ActualDpiScalePercent?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown"}, match={route.DpiScaleMatches}</td>");
-            html.Append($"<td>{route.Width:0} x {route.Height:0}</td>");
+            html.Append($"<td>screenshot={route.Width:0} x {route.Height:0}; window={route.ActualWindowWidth?.ToString() ?? "unknown"} x {route.ActualWindowHeight?.ToString() ?? "unknown"}; match={route.WindowSizeMatches}</td>");
             html.Append($"<td>{route.LumaStdDev:0.##}</td>");
             html.Append("<td>");
             if (!string.IsNullOrWhiteSpace(route.ScreenshotPath))

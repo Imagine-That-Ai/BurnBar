@@ -1,10 +1,12 @@
 // WINDOWS-ONLY / CI-DEFERRED (Win2D + WinUI). See Win2DSubstrateDrawingSession.cs header.
 
 using System;
+using System.Diagnostics;
 using Microsoft.Graphics.Canvas;
-using Microsoft.Graphics.Canvas.UI;
 using Microsoft.Graphics.Canvas.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using OpenBurnBar.Particles.Model;
 using OpenBurnBar.Particles.Substrates;
 using WinColor = Windows.UI.Color;
@@ -18,9 +20,10 @@ namespace OpenBurnBar.App.Particles;
 /// <c>SwarmCanvasView+Substrate.swift</c>).
 /// </summary>
 /// <remarks>
-/// Owns a <see cref="CanvasAnimatedControl"/> (hardware-accelerated, retained-mode,
-/// vsync-driven — the WinUI 3 equivalent of SwiftUI's <c>TimelineView</c>-driven
-/// <c>Canvas</c>). Each frame it:
+/// Owns a XAML <see cref="Image"/> backed by a Win2D <see cref="CanvasImageSource"/>
+/// and redraws it from the compositor render tick. SurfaceImageSource participates in
+/// normal XAML z-order, unlike the native CanvasControl/WebView surfaces that can cover
+/// sibling dashboard content. Each frame it:
 /// <list type="number">
 ///   <item>Asks <see cref="FrameProvider"/> for the current
 ///   <see cref="SwarmSubstrateFrame"/> — in production this decodes the per-frame
@@ -40,20 +43,46 @@ public sealed class SwarmCanvasHost : IDisposable
 {
     private readonly GlowSpriteCache _sprites = new();
     private readonly ShaftSpriteCache _shafts = new();
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private CanvasDevice _device;
+    private CanvasImageSource? _imageSource;
     private ISwarmSubstrate _substrate = new PlainDotsSubstrate();
+    private bool _renderingSubscribed;
+    private bool _paused;
+    private bool _rendering;
+    private bool _disposed;
+    private TimeSpan _lastFrame;
 
     public SwarmCanvasHost()
     {
-        Control = new CanvasAnimatedControl
+        _device = CanvasDevice.GetSharedDevice();
+        _device.DeviceLost += OnDeviceLost;
+        Control = new Image
         {
-            ClearColor = WinColor.FromArgb(0, 0, 0, 0),
+            Stretch = Stretch.Fill,
+            IsHitTestVisible = false,
         };
-        Control.CreateResources += OnCreateResources;
-        Control.Draw += OnDraw;
+        Control.Loaded += OnLoaded;
+        Control.Unloaded += OnUnloaded;
+        Control.SizeChanged += OnSizeChanged;
     }
 
-    /// <summary>The XAML element to place in the visual tree.</summary>
-    public CanvasAnimatedControl Control { get; }
+    /// <summary>The airspace-free XAML element to place in the visual tree.</summary>
+    public Image Control { get; }
+
+    /// <summary>Stops invalidation while another backdrop is active or the page is hidden.</summary>
+    public bool Paused
+    {
+        get => _paused;
+        set
+        {
+            _paused = value;
+            if (!value && Control.IsLoaded && _imageSource is null)
+            {
+                RecreateImageSource();
+            }
+        }
+    }
 
     /// <summary>The active substrate painter (defaults to <see cref="PlainDotsSubstrate"/>).</summary>
     public ISwarmSubstrate Substrate
@@ -68,17 +97,65 @@ public sealed class SwarmCanvasHost : IDisposable
     /// </summary>
     public Func<Windows.Foundation.Size, TimeSpan, SwarmSubstrateFrame?>? FrameProvider { get; set; }
 
-    private void OnCreateResources(CanvasAnimatedControl sender, CanvasCreateResourcesEventArgs args)
+    private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Sprites are baked lazily on first Resolve; nothing eager to load here yet.
+        if (_renderingSubscribed)
+        {
+            return;
+        }
+
+        CompositionTarget.Rendering += OnRendering;
+        _renderingSubscribed = true;
+        RecreateImageSource();
     }
 
-    private void OnDraw(ICanvasAnimatedControl sender, CanvasAnimatedDrawEventArgs args)
+    private void OnUnloaded(object sender, RoutedEventArgs e) => UnsubscribeRendering();
+
+    private void OnRendering(object? sender, object args)
     {
-        SwarmSubstrateFrame? frame = FrameProvider?.Invoke(sender.Size, args.Timing.TotalTime);
+        if (_disposed || _paused || _rendering || Control.Visibility != Visibility.Visible || _imageSource is null)
+        {
+            return;
+        }
+
+        TimeSpan now = _clock.Elapsed;
+        // The substrate field is ambient. Thirty frames per second keeps it fluid while
+        // avoiding duplicate redraws on high-refresh displays.
+        if (now - _lastFrame < TimeSpan.FromMilliseconds(30))
+        {
+            return;
+        }
+
+        _rendering = true;
+        try
+        {
+            RenderFrame(now);
+            _lastFrame = now;
+        }
+        catch (Exception ex) when (_device.IsDeviceLost(ex.HResult))
+        {
+            RecreateDevice();
+        }
+        finally
+        {
+            _rendering = false;
+        }
+    }
+
+    private void RenderFrame(TimeSpan elapsed)
+    {
+        if (_imageSource is null)
+        {
+            return;
+        }
+
+        var size = new Windows.Foundation.Size(Control.ActualWidth, Control.ActualHeight);
+        SwarmSubstrateFrame? frame = FrameProvider?.Invoke(size, elapsed);
         if (frame is null) return;
 
-        var session = new Win2DSubstrateDrawingSession(args.DrawingSession, _sprites, _shafts);
+        using CanvasDrawingSession drawingSession = _imageSource.CreateDrawingSession(
+            WinColor.FromArgb(0, 0, 0, 0));
+        var session = new Win2DSubstrateDrawingSession(drawingSession, _sprites, _shafts);
         bool handled = _substrate.Paint(frame, session);
         if (!handled)
         {
@@ -105,8 +182,76 @@ public sealed class SwarmCanvasHost : IDisposable
 
     public void Dispose()
     {
-        Control.CreateResources -= OnCreateResources;
-        Control.Draw -= OnDraw;
-        Control.RemoveFromVisualTree();
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        UnsubscribeRendering();
+        _device.DeviceLost -= OnDeviceLost;
+        Control.Loaded -= OnLoaded;
+        Control.Unloaded -= OnUnloaded;
+        Control.SizeChanged -= OnSizeChanged;
+        Control.Source = null;
+        _imageSource = null;
+        _sprites.Clear();
+        _shafts.Clear();
+    }
+
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e) => RecreateImageSource();
+
+    private void RecreateImageSource()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        int width = (int)Math.Ceiling(Control.ActualWidth);
+        int height = (int)Math.Ceiling(Control.ActualHeight);
+        if (width < 1 || height < 1)
+        {
+            return;
+        }
+
+        Control.Source = null;
+        _imageSource = new CanvasImageSource(_device, width, height, 96);
+        Control.Source = _imageSource;
+        _lastFrame = TimeSpan.Zero;
+    }
+
+    private void OnDeviceLost(CanvasDevice sender, object args)
+    {
+        if (!_disposed)
+        {
+            Control.DispatcherQueue.TryEnqueue(RecreateDevice);
+        }
+    }
+
+    private void RecreateDevice()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _device.DeviceLost -= OnDeviceLost;
+        _sprites.Clear();
+        _shafts.Clear();
+        _device = CanvasDevice.GetSharedDevice();
+        _device.DeviceLost += OnDeviceLost;
+        RecreateImageSource();
+    }
+
+    private void UnsubscribeRendering()
+    {
+        if (!_renderingSubscribed)
+        {
+            return;
+        }
+
+        CompositionTarget.Rendering -= OnRendering;
+        _renderingSubscribed = false;
     }
 }
