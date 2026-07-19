@@ -3,7 +3,13 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** F1 source/product implementation and applicable WPD-0006 F2 substitutions are complete, but exact signed candidate `windows-v1.0.37` is a physical Intel x64 **NO-GO** because native backdrop surfaces cover the Providers/dashboard XAML and compact/accessibility defects remain; source fix PR #1854 and a newly signed candidate are required before certification can resume
+**Status:** F1 source/product implementation and applicable WPD-0006 F2 substitutions are complete. Exact signed candidate `windows-v1.0.37` remains a physical Intel x64 **NO-GO**. Its dashboard composition, accessible-name, and compact-layout fixes plus fail-closed remote safety configuration are merged in successor source candidate `48837746490b6468efa4dc06a476f305d496039c` (`windows-v1.0.38`), but that successor is not a release `GO` until its new signed artifacts and complete physical, staging, safety, accessibility, and private Store evidence pass.
+
+**Day-two operations:** use
+[`WINDOWS_PORT_OPERATIONS_RUNBOOK.md`](WINDOWS_PORT_OPERATIONS_RUNBOOK.md) for
+the current release sequence, cost model, maintenance cadence, evidence gates,
+rollback steps, and agent handoff format. This audit preserves the detailed
+historical evidence; the runbook owns repeatable operations.
 
 ## Physical Intel x64 UI/Accessibility Finding - 2026-07-18
 
