@@ -511,6 +511,17 @@ stage_dynamic_target() {
   cp "${HEADERS_DIR}/"* "${out_dir}/Headers/"
 }
 
+# Pruned builds stage each slice before deleting its Cargo target directory.
+# The final packaging pass must reuse those staged files instead of asking
+# Cargo for outputs that have intentionally been removed.
+stage_dynamic_target_if_needed() {
+  [[ "${pruned_staging_ready:-0}" == "1" ]] || stage_dynamic_target "$@"
+}
+
+stage_static_target_if_needed() {
+  [[ "${pruned_staging_ready:-0}" == "1" ]] || stage_static_target "$@"
+}
+
 stage_built_target_for_pruned_build() {
   local target="$1"
   case "${target}" in
@@ -607,11 +618,11 @@ macos_xcframework_args=()
 
 macos_library_args=()
 if [[ " ${TARGETS[*]} " == *" aarch64-apple-darwin "* ]]; then
-  stage_dynamic_target aarch64-apple-darwin macos-arm64
+  stage_dynamic_target_if_needed aarch64-apple-darwin macos-arm64
   macos_library_args+=("${ARCHS_DIR}/macos-arm64/libsignal_ffi.dylib")
 fi
 if [[ " ${TARGETS[*]} " == *" x86_64-apple-darwin "* ]]; then
-  stage_dynamic_target x86_64-apple-darwin macos-x86_64
+  stage_dynamic_target_if_needed x86_64-apple-darwin macos-x86_64
   macos_library_args+=("${ARCHS_DIR}/macos-x86_64/libsignal_ffi.dylib")
 fi
 if [[ "${#macos_library_args[@]}" -eq 2 ]]; then
@@ -632,13 +643,13 @@ elif [[ "${#macos_library_args[@]}" -eq 1 ]]; then
 fi
 
 if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios "* ]]; then
-  stage_static_target aarch64-apple-ios ios-arm64
+  stage_static_target_if_needed aarch64-apple-ios ios-arm64
   ios_xcframework_args+=(-library "${ARCHS_DIR}/ios-arm64/libsignal_ffi.a" -headers "${ARCHS_DIR}/ios-arm64/Headers")
 fi
 
 if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios-sim "* && " ${TARGETS[*]} " == *" x86_64-apple-ios "* ]]; then
-  stage_static_target aarch64-apple-ios-sim ios-arm64-simulator
-  stage_static_target x86_64-apple-ios ios-x86_64-simulator
+  stage_static_target_if_needed aarch64-apple-ios-sim ios-arm64-simulator
+  stage_static_target_if_needed x86_64-apple-ios ios-x86_64-simulator
   local_sim_dir="${ARCHS_DIR}/ios-simulator"
   mkdir -p "${local_sim_dir}/Headers"
   /usr/bin/lipo -create \
@@ -649,11 +660,11 @@ if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios-sim "* && " ${TARGETS[*]} " == *
   ios_xcframework_args+=(-library "${local_sim_dir}/libsignal_ffi.a" -headers "${local_sim_dir}/Headers")
 else
   if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios-sim "* ]]; then
-    stage_static_target aarch64-apple-ios-sim ios-arm64-simulator
+    stage_static_target_if_needed aarch64-apple-ios-sim ios-arm64-simulator
     ios_xcframework_args+=(-library "${ARCHS_DIR}/ios-arm64-simulator/libsignal_ffi.a" -headers "${ARCHS_DIR}/ios-arm64-simulator/Headers")
   fi
   if [[ " ${TARGETS[*]} " == *" x86_64-apple-ios "* ]]; then
-    stage_static_target x86_64-apple-ios ios-x86_64-simulator
+    stage_static_target_if_needed x86_64-apple-ios ios-x86_64-simulator
     ios_xcframework_args+=(-library "${ARCHS_DIR}/ios-x86_64-simulator/libsignal_ffi.a" -headers "${ARCHS_DIR}/ios-x86_64-simulator/Headers")
   fi
 fi
