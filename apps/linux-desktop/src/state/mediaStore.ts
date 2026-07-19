@@ -13,6 +13,13 @@ import { useShellStore } from './shellStore.js';
 
 export type MercuryStage = MercurySessionState;
 export type MediaLoadState = 'idle' | 'loading' | 'ready' | 'capability-absent' | 'empty' | 'error' | 'offline';
+export type MercuryMediaControlState = 'idle' | 'available' | 'degraded' | 'error';
+
+export type MercuryMediaControlSnapshot = {
+  state: MercuryMediaControlState;
+  supportsShellToDaemonControl: boolean | null;
+  reason: string | null;
+};
 
 export type MercuryStageEvent = {
   state: MercuryStage;
@@ -34,6 +41,12 @@ export type MercuryCallState = {
 export type MediaStoreState = {
   status: MercuryMediaStatus | null;
   loadState: MediaLoadState;
+  /** Media socket direction; does not describe authenticated daemon RPCs. */
+  mediaControlState: MercuryMediaControlState;
+  mediaControlReason: string | null;
+  /** Call/file RPC availability, kept separate from the one-way media socket. */
+  mediaRpcControlState: MercuryMediaControlState;
+  mediaRpcControlReason: string | null;
   error: string | null;
   callError: string | null;
   callState: MercuryCallState;
@@ -65,6 +78,11 @@ const STAGE_ORDER: MercuryStage[] = ['staged', 'connecting', 'active', 'ended'];
 const FIXTURE_REQUEST_ID = 'fixture-call-001';
 const FIXTURE_FILE_TRANSFER_ID = 'fixture-file-001';
 const IDLE_CALL: MercuryCallState = { phase: 'idle', kind: 'call', source: 'live' };
+const IDLE_MEDIA_CONTROL: MercuryMediaControlSnapshot = {
+  state: 'idle',
+  supportsShellToDaemonControl: null,
+  reason: null
+};
 
 let mediaPollInterval: ReturnType<typeof setInterval> | null = null;
 let eventListenersStarted = false;
@@ -85,6 +103,57 @@ export function normalizeCallPhase(state: string): MercuryCallPhase {
   if (lower.includes('stream') || lower.includes('active') || lower.includes('accepted') || lower.includes('viewer')) return 'streaming';
   if (lower.includes('cool') || lower.includes('declin') || lower.includes('end') || lower.includes('stop')) return 'cooldown';
   return 'idle';
+}
+
+/**
+ * Resolve the daemon's media control direction without guessing from the
+ * capture capability. Linux deliberately ships a daemon-to-shell media
+ * socket today, so a capture-capable daemon can still be unable to accept
+ * shell-originated media control frames.
+ */
+export function resolveMercuryMediaControl(value: unknown): MercuryMediaControlSnapshot {
+  const objects: Record<string, unknown>[] = [];
+  const visit = (candidate: unknown): void => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return;
+    const object = candidate as Record<string, unknown>;
+    objects.push(object);
+    for (const key of ['capability', 'mediaCapability', 'media_capability']) {
+      visit(object[key]);
+    }
+  };
+  visit(value);
+
+  const reason = objects
+    .flatMap((object) => ['reason', 'detail', 'error'].map((key) => object[key]))
+    .find((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0)
+    ?.trim() ?? null;
+  const explicit = objects
+    .flatMap((object) => ['supportsShellToDaemonControl', 'supports_shell_to_daemon_control'].map((key) => object[key]))
+    .find((candidate): candidate is boolean => typeof candidate === 'boolean');
+  const oneWayDetail = reason && /daemon(?:-|\s)to(?:-|\s)shell(?:-|\s)only|shell media socket is daemon-to-shell only|no control route/i.test(reason);
+  const supportsShellToDaemonControl = explicit ?? (oneWayDetail ? false : null);
+
+  if (supportsShellToDaemonControl === true) {
+    return { state: 'available', supportsShellToDaemonControl, reason };
+  }
+  if (supportsShellToDaemonControl === false) {
+    return {
+      state: 'degraded',
+      supportsShellToDaemonControl,
+      reason: reason ?? 'The daemon exposes capture, but this Linux media route does not accept shell control.'
+    };
+  }
+  return {
+    state: 'degraded',
+    supportsShellToDaemonControl: null,
+    reason: reason ?? 'The daemon did not advertise the media socket control direction; shell-originated media frames remain disabled.'
+  };
+}
+
+function controlError(state: MercuryMediaControlState, reason: string | null): string {
+  if (state === 'idle') return reason ?? 'Mercury controls are still loading.';
+  if (state === 'error') return reason ?? 'Mercury control capability could not be verified.';
+  return reason ?? 'Mercury controls are unavailable on this Linux session.';
 }
 
 export function mergeStageEvent(
@@ -218,6 +287,10 @@ function filenameFromPath(path: string): string {
 export const useMediaStore = create<MediaStoreState>()((set, get) => ({
   status: null,
   loadState: 'idle',
+  mediaControlState: IDLE_MEDIA_CONTROL.state,
+  mediaControlReason: IDLE_MEDIA_CONTROL.reason,
+  mediaRpcControlState: IDLE_MEDIA_CONTROL.state,
+  mediaRpcControlReason: IDLE_MEDIA_CONTROL.reason,
   error: null,
   callError: null,
   callState: IDLE_CALL,
@@ -248,6 +321,12 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
       set({
         status,
         loadState,
+        mediaControlState: 'available',
+        mediaControlReason: null,
+        mediaRpcControlState: status.capabilityAvailable ? 'available' : 'degraded',
+        mediaRpcControlReason: status.capabilityAvailable
+          ? null
+          : status.reason ?? 'Mercury daemon RPC capability is unavailable on this session.',
         error: null,
         callError: null,
         callState: fixtureRingingState(),
@@ -264,6 +343,10 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
       set({
         status: null,
         loadState: 'offline',
+        mediaControlState: 'idle',
+        mediaControlReason: 'Connect the packaged shell before using Mercury controls.',
+        mediaRpcControlState: 'idle',
+        mediaRpcControlReason: 'Connect the packaged shell before using Mercury controls.',
         error: null,
         callError: null,
         callState: IDLE_CALL,
@@ -276,7 +359,15 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
       });
       return;
     }
-    set({ loadState: 'loading', error: null, callError: null });
+    set({
+      loadState: 'loading',
+      mediaControlState: 'idle',
+      mediaControlReason: null,
+      mediaRpcControlState: 'idle',
+      mediaRpcControlReason: null,
+      error: null,
+      callError: null
+    });
     try {
       const status = await bridge.mediaStatus();
       let fileList: MercuryFileOfferListResponse | null = null;
@@ -294,9 +385,30 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
         : status.pairedDevices.length === 0 && !status.activeSession && !hasFileRows
           ? 'empty'
           : 'ready';
+      let mediaControl = resolveMercuryMediaControl(status);
+      // Older bridge payloads may omit the nested capability detail. Ask the
+      // dedicated probe before failing closed, while preserving the status
+      // result as the source of truth when it already declares a direction.
+      if (mediaControl.supportsShellToDaemonControl === null) {
+        try {
+          mediaControl = resolveMercuryMediaControl(await bridge.mediaCapabilityGet());
+        } catch (e) {
+          mediaControl = {
+            state: 'error',
+            supportsShellToDaemonControl: null,
+            reason: e instanceof Error ? e.message : 'Mercury control capability request failed'
+          };
+        }
+      }
       set({
         status,
         loadState,
+        mediaControlState: mediaControl.state,
+        mediaControlReason: mediaControl.reason,
+        mediaRpcControlState: status.capabilityAvailable ? 'available' : 'degraded',
+        mediaRpcControlReason: status.capabilityAvailable
+          ? null
+          : status.reason ?? 'Mercury daemon RPC capability is unavailable on this session.',
         error: null,
         stageEvents: initialStageEvents(status),
         fileTransfers,
@@ -310,16 +422,28 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
           get().ingestSessionState(await bridge.mediaSessionState(), 'live');
           get().startLiveSessionObservers();
         } catch (e) {
-          set({ callError: e instanceof Error ? e.message : 'Media session state request failed' });
+          const reason = e instanceof Error ? e.message : 'Media session state request failed';
+          set({
+            callError: reason,
+            mediaControlState: 'error',
+            mediaControlReason: reason,
+            mediaRpcControlState: 'error',
+            mediaRpcControlReason: reason
+          });
         }
       } else {
         set({ callState: { phase: 'capability-absent', kind: 'call', source: 'absent' } });
       }
     } catch (e) {
+      const reason = e instanceof Error ? e.message : 'Media status request failed';
       set({
         status: null,
         loadState: 'error',
-        error: e instanceof Error ? e.message : 'Media status request failed',
+        mediaControlState: 'error',
+        mediaControlReason: reason,
+        mediaRpcControlState: 'error',
+        mediaRpcControlReason: reason,
+        error: reason,
         stageEvents: []
       });
     }
@@ -342,6 +466,10 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
         },
         'fixture'
       );
+      return;
+    }
+    if (get().mediaRpcControlState !== 'available') {
+      set({ callError: controlError(get().mediaRpcControlState, get().mediaRpcControlReason) });
       return;
     }
     if (!bridge) return;
@@ -372,6 +500,10 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
       });
       return;
     }
+    if (get().mediaRpcControlState !== 'available') {
+      set({ callError: controlError(get().mediaRpcControlState, get().mediaRpcControlReason) });
+      return;
+    }
     if (!bridge) return;
     try {
       get().ingestSessionState(await bridge.mediaDeclineCall(id), 'live');
@@ -393,6 +525,10 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
         },
         callError: null
       });
+      return;
+    }
+    if (get().mediaRpcControlState !== 'available') {
+      set({ callError: controlError(get().mediaRpcControlState, get().mediaRpcControlReason) });
       return;
     }
     if (!bridge) return;
@@ -456,6 +592,10 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
       set({ fileTransfers: upsertTransfer(get().fileTransfers, completed), fileError: null });
       return;
     }
+    if (get().fileCapabilityAvailable === false) {
+      set({ fileError: 'File transfer capability is unavailable on this daemon.' });
+      return;
+    }
     if (!bridge) return;
     const busyID = transferID ?? manifestID ?? transfer?.transferID ?? null;
     set({ fileBusyTransferID: busyID, fileError: null });
@@ -488,6 +628,10 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
         }),
         fileError: null
       });
+      return;
+    }
+    if (get().fileCapabilityAvailable === false) {
+      set({ fileError: 'File transfer capability is unavailable on this daemon.' });
       return;
     }
     if (!bridge) return;
@@ -546,6 +690,10 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
         }),
         fileError: null
       });
+      return;
+    }
+    if (get().fileCapabilityAvailable === false) {
+      set({ fileError: 'File transfer capability is unavailable on this daemon.' });
       return;
     }
     if (!bridge) return;
@@ -627,7 +775,16 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
         void bridge
           .mediaSessionState()
           .then((state) => get().ingestSessionState(state, 'live'))
-          .catch((e) => set({ callError: e instanceof Error ? e.message : 'Media session poll failed' }));
+          .catch((e) => {
+            const reason = e instanceof Error ? e.message : 'Media session poll failed';
+            set({
+              callError: reason,
+              mediaControlState: 'error',
+              mediaControlReason: reason,
+              mediaRpcControlState: 'error',
+              mediaRpcControlReason: reason
+            });
+          });
         void bridge
           .mediaFileOfferList()
           .then((response) => get().ingestFileOfferList(response))
@@ -665,6 +822,10 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
     set({
       status: null,
       loadState: 'idle',
+      mediaControlState: IDLE_MEDIA_CONTROL.state,
+      mediaControlReason: IDLE_MEDIA_CONTROL.reason,
+      mediaRpcControlState: IDLE_MEDIA_CONTROL.state,
+      mediaRpcControlReason: IDLE_MEDIA_CONTROL.reason,
       error: null,
       callError: null,
       callState: IDLE_CALL,

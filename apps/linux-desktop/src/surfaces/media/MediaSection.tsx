@@ -11,6 +11,10 @@ import type { MercuryFileTransfer, MercuryViewerCapability } from '../../tauriBr
 export function MediaSection() {
   const status = useMediaStore((s) => s.status);
   const loadState = useMediaStore((s) => s.loadState);
+  const mediaControlState = useMediaStore((s) => s.mediaControlState);
+  const mediaControlReason = useMediaStore((s) => s.mediaControlReason);
+  const mediaRpcControlState = useMediaStore((s) => s.mediaRpcControlState);
+  const mediaRpcControlReason = useMediaStore((s) => s.mediaRpcControlReason);
   const error = useMediaStore((s) => s.error);
   const callError = useMediaStore((s) => s.callError);
   const callState = useMediaStore((s) => s.callState);
@@ -93,10 +97,15 @@ export function MediaSection() {
     body = (
       <>
         {viewerUnavailable ? <MercuryViewerCapabilityNotice capability={viewerCapability!} /> : null}
+        {status?.capabilityAvailable && mediaControlState === 'degraded' ? (
+          <MercuryReceiveOnlyNotice reason={mediaControlReason} />
+        ) : null}
         {!viewerUnavailable ? (
           <MercuryCallHUD
             call={callState}
             error={callError}
+            controlState={mediaRpcControlState}
+            controlReason={mediaRpcControlReason}
             onAccept={(requestId) => void acceptCall(requestId)}
             onDecline={(requestId) => void declineCall(requestId)}
             onEnd={() => void endCall()}
@@ -156,6 +165,16 @@ function MercuryViewerCapabilityNotice({ capability }: { capability: MercuryView
       <p>{viewerCapabilityReason(capability)}</p>
       {capability.installHint ? <p className="p12-viewer-install-hint">{capability.installHint}</p> : null}
       <small>File transfer remains available when the daemon advertises it.</small>
+    </div>
+  );
+}
+
+function MercuryReceiveOnlyNotice({ reason }: { reason: string | null }) {
+  return (
+    <div className="p12-absent-state p12-viewer-absent" role="status">
+      <span className="p12-absent-kicker">Media stream receive-only</span>
+      <p>{reason ?? 'The Linux media socket does not accept shell-originated control frames.'}</p>
+      <small>Authenticated daemon controls remain available for supported calls and transfers.</small>
     </div>
   );
 }
@@ -275,7 +294,7 @@ function MercuryFileTransferPanel({
             <button
               type="button"
               onClick={() => onAccept(transfer)}
-              disabled={busyTransferID === transfer.transferID}
+              disabled={!canUseFiles || busyTransferID === transfer.transferID}
             >
               Accept file
             </button>
@@ -283,7 +302,7 @@ function MercuryFileTransferPanel({
               type="button"
               className="ghost danger"
               onClick={() => onDecline(transfer)}
-              disabled={busyTransferID === transfer.transferID}
+              disabled={!canUseFiles || busyTransferID === transfer.transferID}
             >
               Decline file
             </button>

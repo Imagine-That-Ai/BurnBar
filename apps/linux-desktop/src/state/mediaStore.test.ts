@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bridgeStubDefaults } from '../testing/bridgeStubs.js';
-import type { LinuxShellBridge, MercuryFileTransfer, MercuryMediaSessionState } from '../tauriBridge.js';
+import type { LinuxShellBridge, MercuryFileTransfer, MercuryMediaSessionState, MercuryMediaStatus } from '../tauriBridge.js';
 import {
   mergeStageEvent,
   normalizeCallPhase,
   normalizeMercuryStage,
+  resolveMercuryMediaControl,
   useMediaStore,
   type MercuryStageEvent
 } from './mediaStore.js';
@@ -123,6 +124,30 @@ describe('mediaStore stage reducer', () => {
   });
 });
 
+describe('mediaStore media control capability', () => {
+  it('represents a daemon-to-shell-only media socket as degraded without guessing writable control', () => {
+    expect(
+      resolveMercuryMediaControl({
+        capability: {
+          available: true,
+          supportsShellToDaemonControl: false,
+          detail: 'The shell media socket is daemon-to-shell only.'
+        }
+      })
+    ).toMatchObject({
+      state: 'degraded',
+      supportsShellToDaemonControl: false
+    });
+  });
+
+  it('fails closed when the daemon omits the control direction', () => {
+    expect(resolveMercuryMediaControl({ available: true })).toMatchObject({
+      state: 'degraded',
+      supportsShellToDaemonControl: null
+    });
+  });
+});
+
 describe('mediaStore live call state machine', () => {
   beforeEach(resetStores);
   afterEach(resetStores);
@@ -154,6 +179,47 @@ describe('mediaStore live call state machine', () => {
     expect(mediaAcceptCall).toHaveBeenCalledWith('req-1');
     expect(useMediaStore.getState().callState.phase).toBe('streaming');
     expect(useMediaStore.getState().stageEvents.some((event) => event.state === 'active')).toBe(true);
+  });
+
+  it('keeps authenticated daemon call RPCs available when the media socket is receive-only', async () => {
+    const status = {
+      capabilityAvailable: true,
+      supportsShellToDaemonControl: false,
+      pairedDevices: [
+        {
+          id: 'peer-1',
+          name: 'Live iPhone',
+          platform: 'ios',
+          isOnline: true,
+          lastSeenAt: new Date().toISOString(),
+          capabilities: ['call.receive']
+        }
+      ]
+    } as unknown as MercuryMediaStatus;
+    const ringing: MercuryMediaSessionState = {
+      phase: 'ringing',
+      requestId: 'req-receive-only',
+      peerName: 'Live iPhone',
+      kind: 'call',
+      capabilityAvailable: true
+    };
+    const streaming: MercuryMediaSessionState = { ...ringing, phase: 'streaming' };
+    const mediaAcceptCall = vi.fn().mockResolvedValue(streaming);
+    useShellStore.setState({
+      bridge: bridgeWithSession({
+        mediaStatus: vi.fn().mockResolvedValue(status),
+        mediaSessionState: vi.fn().mockResolvedValue(ringing),
+        mediaAcceptCall
+      })
+    });
+
+    await useMediaStore.getState().load();
+    expect(useMediaStore.getState().mediaControlState).toBe('degraded');
+    expect(useMediaStore.getState().mediaRpcControlState).toBe('available');
+    await useMediaStore.getState().acceptCall();
+
+    expect(mediaAcceptCall).toHaveBeenCalledWith('req-receive-only');
+    expect(useMediaStore.getState().callState.phase).toBe('streaming');
   });
 
   it('declines a ringing fixture call into cooldown', async () => {
