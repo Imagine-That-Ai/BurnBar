@@ -26,6 +26,7 @@ import { ProjectsSurface } from './projects/ProjectsSurface.js';
 import { ComputerUseSurface } from './computerUse/ComputerUseSurface.js';
 import { MercurySurface } from './media/MercurySurface.js';
 import { SmartHubSurface } from './smarthub/SmartHubSurface.js';
+import { SurfaceErrorBoundary } from './SurfaceErrorBoundary.js';
 import './capability-boundary.css';
 import './system/system.css';
 
@@ -223,13 +224,19 @@ export function SurfaceRouter({ route }: { route: ShellRoute }) {
               </span>
             </div>
           ) : null}
-          <SurfaceBody
+          <SurfaceErrorBoundary
             key={route}
-            Surface={Surface}
-            route={route}
             label={meta?.label ?? route}
-            defer={deferSurfaceBody}
-          />
+            repairRoute={repairRoute}
+            onRepair={() => setRoute(repairRoute)}
+          >
+            <SurfaceBody
+              Surface={Surface}
+              route={route}
+              label={meta?.label ?? route}
+              defer={deferSurfaceBody}
+            />
+          </SurfaceErrorBoundary>
         </>
       )}
     </div>
