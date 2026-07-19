@@ -851,9 +851,11 @@ jobs:
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/browser-wasm-observed-identity.json
         run: |
           set -o pipefail
-          node crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs \
-            apps/console/vendor/openburnbar-domain-core-wasm \
-            2>&1 | tee "$RUNNER_TEMP/wasm-browser-kat.log"
+          {
+            printf '%s\n' 'suite=wasm-browser-kat'
+            node crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs \
+              apps/console/vendor/openburnbar-domain-core-wasm
+          } 2>&1 | tee "$RUNNER_TEMP/wasm-browser-kat.log"
 
       - name: Freeze the observed browser Wasm before loading another package
         run: >-
@@ -867,9 +869,11 @@ jobs:
           DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/node-wasm-observed-identity.json
         run: |
           set -o pipefail
-          node crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs \
-            functions/vendor/openburnbar/domain-core-wasm \
-            2>&1 | tee "$RUNNER_TEMP/wasm-node-kat.log"
+          {
+            printf '%s\n' 'suite=wasm-node-kat'
+            node crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs \
+              functions/vendor/openburnbar/domain-core-wasm
+          } 2>&1 | tee "$RUNNER_TEMP/wasm-node-kat.log"
 
       - name: Run remote MCP CloudVault consumer contracts
         run: |
