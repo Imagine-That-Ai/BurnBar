@@ -179,6 +179,24 @@ export function SmartHubSurface() {
     if (requestID && bridge?.smartHubCancel) void bridge.smartHubCancel(requestID);
   }, [bridge]);
 
+  // A daemon disconnect can leave the bridge object intact while the shell
+  // marks it not ready. Cancel the native request and clear its result so the
+  // surface cannot display a late device response from a dead session.
+  useEffect(() => {
+    if (bridgeReady) return;
+    const requestID = activeRequestID.current;
+    if (!requestID) return;
+    activeRequestID.current = null;
+    setBusy(false);
+    setResult(null);
+    setError('SmartHub operation stopped because the packaged shell is unavailable.');
+    if (bridge?.smartHubCancel) {
+      void bridge.smartHubCancel(requestID).catch(() => {
+        setError('SmartHub cancellation could not be delivered after the shell disconnected.');
+      });
+    }
+  }, [bridge, bridgeReady]);
+
   useEffect(() => {
     if (bridgeReady) void run();
   }, [bridgeReady, run]);

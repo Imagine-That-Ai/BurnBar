@@ -141,4 +141,21 @@ describe('P28 SmartHub surface', () => {
     resolveCommand?.(statusResult());
     await waitFor(() => expect(screen.queryByText('blocked_bridge_not_reachable')).toBeNull());
   });
+
+  it('cancels an in-flight operation when the shell becomes unavailable', async () => {
+    let resolveCommand: ((result: SmartHubCommandResult) => void) | undefined;
+    const command = vi.fn(() => new Promise<SmartHubCommandResult>((resolve) => {
+      resolveCommand = resolve;
+    }));
+    const cancel = vi.fn(async () => undefined);
+    useShellStore.setState({ bridge: { ...bridgeWithCommand(command), smartHubCancel: cancel } });
+    render(<SmartHubSurface />);
+    await waitFor(() => expect(command).toHaveBeenCalled());
+
+    act(() => useShellStore.setState({ bridgeReady: false }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/shell is unavailable/i));
+    expect(cancel).toHaveBeenCalledWith(expect.stringMatching(/^smarthub-/));
+    resolveCommand?.(statusResult());
+    await waitFor(() => expect(screen.queryByText('blocked_bridge_not_reachable')).toBeNull());
+  });
 });
