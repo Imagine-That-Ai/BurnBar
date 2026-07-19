@@ -5,7 +5,7 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- **Current source head:** `e61ccd0e35` (docs receipt; source changes through
+- **Current source head:** `e4f3109ca8` (docs receipt; source changes through
   `c6bf8f2881` and `e6c32ec2b2`). The branch now passes 89 frontend files /
   840 tests, TypeScript, production bundle verification, Tauri Rust 125/125,
   package-payload contract checks (2 pass, 2 historical skips), and product
@@ -31,19 +31,21 @@ Current parity status as of 2026-07-19:
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is unsigned
   and non-certifying. The latest exact implementation receipt includes the
   post-unlock visible/animated packaged-shell capture and is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json).
-  The preceding `ded781e94d` receipt remains historical visible-shell evidence.
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json).
+  The preceding `872074af3a` and `ded781e94d` receipts remain historical
+  visible-shell evidence.
   The strict ledger remains **0/40 product rows and 0/7 environment receipts**.
 
-- **Latest live VM candidate:** the exact `872074af3a` ARM64 DEB is installed in
+- **Latest live VM candidate:** the exact `e4f3109ca8` ARM64 DEB is installed in
   the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its non-certifying receipt is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json).
-  Daemon/CLI health is green and the desktop window exists at `/usr/bin`. The
-  first capture attempt was black because GNOME session 1 was locked; after
-  `loginctl unlock-session 1`, the same package rendered the Overview route and
-  Fluid Aurora 2D fallback. Two captures two seconds apart differ in 382,024
-  pixels. The guest reports `webgl2=false` and `webgl1=true`; the visible
-  switcher labels the fallback `2D fallback (WebGL2 unavailable)`.
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json).
+  Daemon/CLI health is green and the desktop window exists at `/usr/bin`. A
+  clean launch in the unlocked GNOME session rendered the first-run
+  Secret Service / SQLCipher setup card and Fluid Aurora 2D fallback. Two
+  captures two seconds apart differ in 971,972 pixels. The guest reports
+  `webgl2=false` and `webgl1=true`; the visible switcher labels the fallback
+  `2D fallback (WebGL2 unavailable)`. A stale autostart/locked-era blank
+  process was discarded as launch-context evidence, not a package failure.
   This package is unsigned and is not a public release. The previous exact
   `5b70a3d320` package remains the
   historical installed baseline in

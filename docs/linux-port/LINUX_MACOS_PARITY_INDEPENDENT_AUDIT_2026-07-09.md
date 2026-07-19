@@ -7,14 +7,14 @@
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
 | Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh. Focused payload coverage is green and Rust is 125/125. |
-| Latest VM proof | The exact `872074af3a` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json). Daemon/CLI health is green and the desktop window exists. Initial black captures were caused by locked GNOME session 1; after `loginctl unlock-session 1`, the same package rendered the Overview route and Fluid Aurora 2D fallback. Two captures two seconds apart differ in 382,024 pixels. |
+| Latest VM proof | The exact `e4f3109ca8` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json). Daemon/CLI health is green and a clean unlocked GNOME launch renders the first-run setup surface and Fluid Aurora 2D fallback. Two captures two seconds apart differ in 971,972 pixels. |
 | Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
 ## Current Source Checkpoint — 2026-07-19
 
-The current integration head is `e61ccd0e35` (docs receipt), with source
+The current integration head is `e4f3109ca8` (docs receipt), with source
 changes through `c6bf8f2881` and `e6c32ec2b2`. This is a source and build
 checkpoint, not a promotion claim:
 
@@ -45,10 +45,10 @@ checkpoint, not a promotion claim:
 - The ARM64 VM validated the supported Swift-less staged-payload path with
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`; the exact implementation package
   is installed and captured separately in
-  [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19-v2.json);
-  it remains unsigned and non-certifying. The initial locked-session black
-  capture was superseded by the unlocked visible/animated capture recorded in
-  the receipt.
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json);
+  it remains unsigned and non-certifying. The initial blank/locked-era process
+  was superseded by the clean unlocked exact-head launch recorded in the new
+  receipt.
 
 The strict certification ledger remains **0/40 product rows** and **0/7
 environment receipts**. The remaining blockers are signed exact-head artifacts,
