@@ -37,6 +37,11 @@ grep -q "Signal FFI build root: $scratch/signal-ffi-build" "$dry_output" ||
   fail "dry run did not resolve the scratch-rooted Signal FFI build root"
 grep -q "Signal FFI Cargo target root: $scratch/signal-ffi-cargo-target" "$dry_output" ||
   fail "dry run did not resolve the scratch-rooted Cargo target root"
+grep -q "Mobile Signal FFI build targets: aarch64-apple-ios$" "$dry_output" ||
+  fail "physical-device dry run did not select the iOS arm64 target"
+if grep -q "apple-darwin" "$dry_output"; then
+  fail "physical-device dry run inherited a macOS Signal FFI target"
+fi
 [[ ! -e "$scratch" ]] || fail "dry run created scratch directories"
 
 outside_output="$tmp_root/outside.out"
@@ -88,6 +93,15 @@ printf 'unexpected fake xcrun invocation: %s\n' "$*" >&2
 exit 64
 SH
 chmod +x "$fake_bin/xcrun"
+
+cat >"$fake_bin/xcodebuild" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%s\n' "Test Suite 'Selected tests' passed"
+printf '%s\n' 'Executed 1 test, with 0 failures (0 unexpected)'
+SH
+chmod +x "$fake_bin/xcodebuild"
 
 cat >"$fake_bin/pkill" <<'SH'
 #!/usr/bin/env bash
@@ -171,10 +185,41 @@ grep -q "CI environment: using iOS Simulator destination" "$simulator_output" ||
   fail "simulator path did not retain CI destination resolution"
 grep -q "Mobile preflight passed" "$simulator_output" ||
   fail "simulator path did not complete the preflight-only exit"
+grep -q "Mobile Signal FFI build targets: aarch64-apple-ios-sim x86_64-apple-ios" "$simulator_output" ||
+  fail "simulator preflight did not select both iOS simulator targets"
 if grep -qi "physical iOS device is locked" "$simulator_output"; then
   fail "simulator path incorrectly ran the physical-device lock guard"
 fi
 [[ ! -e "$tmp_root/simulator-preclean.marker" ]] || fail "preflight-only simulator path ran stale-process cleanup"
+
+mobile_target_override_output="$tmp_root/mobile-target-override.out"
+OPENBURNBAR_IOS_DESTINATION="$destination" \
+  OPENBURNBAR_MOBILE_DRY_RUN=1 \
+  OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_TARGETS="x86_64-apple-darwin aarch64-apple-ios" \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$mobile_target_override_output"
+grep -q "Mobile Signal FFI build targets: x86_64-apple-darwin aarch64-apple-ios" "$mobile_target_override_output" ||
+  fail "mobile Signal FFI target override was not preserved"
+
+lower_target_override_output="$tmp_root/lower-target-override.out"
+SIGNAL_FFI_BUILD_TARGETS="x86_64-apple-darwin" \
+  OPENBURNBAR_IOS_DESTINATION="$destination" \
+  OPENBURNBAR_MOBILE_DRY_RUN=1 \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$lower_target_override_output"
+grep -q "Mobile Signal FFI build targets: x86_64-apple-darwin" "$lower_target_override_output" ||
+  fail "lower-level Signal FFI target override was not preserved"
+
+mobile_prune_output="$tmp_root/mobile-prune-output.out"
+OPENBURNBAR_IOS_DESTINATION="$destination" \
+  OPENBURNBAR_MOBILE_DRY_RUN=1 \
+  OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT="$scratch" \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$mobile_prune_output"
+# Dry-run evidence confirms the scratch-root contract that causes the real
+# preparation path to forward the bounded Cargo-pruning alias.
+grep -q "Mobile scratch root: $scratch" "$mobile_prune_output" ||
+  fail "scratch-rooted mobile run did not report its owned scratch root"
 
 coredevice_id="407C0B12-010B-5970-8E85-D0E43DA8F457"
 hardware_udid="00008132-001158191E9A401C"
@@ -289,7 +334,94 @@ fi
 grep -qi "matched multiple physical iOS devices" "$ambiguous_coredevice_output" ||
   fail "ambiguous CoreDevice mapping did not fail closed"
 
-echo "test-openburnbar-mobile root boundary and physical-device preflight tests passed"
+cleanup_scratch="$tmp_root/cleanup-scratch"
+cleanup_scratch="$(python3 - "$cleanup_scratch" <<'PY'
+import os
+import sys
+
+print(os.path.realpath(sys.argv[1]))
+PY
+)"
+cleanup_derived="$cleanup_scratch/derived-data"
+mkdir -p "$cleanup_derived"
+stale_derived="$cleanup_derived/openburnbar-mobile-tests.stale1"
+mkdir -p "$stale_derived"
+printf 'stale\n' > "$stale_derived/marker"
+ready_json="$tmp_root/ready.json"
+printf '%s\n' '[{"simulator":false,"platform":"com.apple.platform.iphoneos","available":true,"identifier":"00008132-001158191E9A401C","name":"Alberto iPad"}]' > "$ready_json"
+cleanup_output="$tmp_root/cleanup.out"
+if ! PATH="$fake_bin:$PATH" \
+  FAKE_XCDEVICE_JSON="$ready_json" \
+  FAKE_PRECLEAN_MARKER="$tmp_root/cleanup-preclean.marker" \
+  OPENBURNBAR_IOS_DESTINATION="name=Alberto iPad" \
+  OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT="$cleanup_scratch" \
+  OPENBURNBAR_MOBILE_TEST_DERIVED_DATA_ROOT="$cleanup_derived" \
+  OPENBURNBAR_MOBILE_TEST_ARTIFACT_ROOT="$cleanup_scratch/artifacts" \
+  OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP=1 \
+  OPENBURNBAR_MOBILE_CLEAN_STALE_DERIVED_DATA=1 \
+  OPENBURNBAR_MOBILE_TEST_ATTEMPTS=1 \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$cleanup_output" 2>&1; then
+  fail "opt-in stale derived-data cleanup run failed"
+fi
+[[ ! -e "$stale_derived" ]] || fail "prior wrapper-generated derived-data child was retained"
+grep -q "Removed prior mobile derived-data child" "$cleanup_output" ||
+  fail "opt-in stale derived-data cleanup did not report the removed child"
+if compgen -G "$cleanup_derived/openburnbar-mobile-tests.*" >/dev/null; then
+  fail "cleanup run left a wrapper-generated derived-data child behind"
+fi
+
+default_derived="$cleanup_scratch/default-derived-data"
+mkdir -p "$default_derived/openburnbar-mobile-tests.keep1"
+OPENBURNBAR_IOS_DESTINATION="$destination" \
+  OPENBURNBAR_MOBILE_PREFLIGHT_ONLY=1 \
+  OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT="$cleanup_scratch" \
+  OPENBURNBAR_MOBILE_TEST_DERIVED_DATA_ROOT="$default_derived" \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >/dev/null
+[[ -d "$default_derived/openburnbar-mobile-tests.keep1" ]] ||
+  fail "stale derived-data child was removed without explicit cleanup opt-in"
+
+outside_derived="$tmp_root/outside-derived"
+mkdir -p "$outside_derived"
+outside_cleanup_output="$tmp_root/outside-cleanup.out"
+if OPENBURNBAR_IOS_DESTINATION="$destination" \
+  OPENBURNBAR_MOBILE_DRY_RUN=1 \
+  OPENBURNBAR_MOBILE_CLEAN_STALE_DERIVED_DATA=1 \
+  OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT="$cleanup_scratch" \
+  OPENBURNBAR_MOBILE_TEST_DERIVED_DATA_ROOT="$outside_derived" \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$outside_cleanup_output" 2>&1; then
+  fail "outside derived-data root unexpectedly passed cleanup containment validation"
+fi
+grep -q "derived-data root must remain under OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT" "$outside_cleanup_output" ||
+  fail "outside derived-data cleanup error did not identify the containment rule"
+
+outside_symlink_target="$tmp_root/outside-derived-symlink-target"
+mkdir -p "$outside_symlink_target"
+symlink_derived="$cleanup_scratch/symlink-derived-data"
+mkdir -p "$symlink_derived"
+ln -s "$outside_symlink_target" "$symlink_derived/openburnbar-mobile-tests.escape"
+symlink_cleanup_output="$tmp_root/symlink-cleanup.out"
+if PATH="$fake_bin:$PATH" \
+  FAKE_XCDEVICE_JSON="$ready_json" \
+  FAKE_PRECLEAN_MARKER="$tmp_root/symlink-cleanup-preclean.marker" \
+  OPENBURNBAR_IOS_DESTINATION="name=Alberto iPad" \
+  OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT="$cleanup_scratch" \
+  OPENBURNBAR_MOBILE_TEST_DERIVED_DATA_ROOT="$symlink_derived" \
+  OPENBURNBAR_MOBILE_TEST_ARTIFACT_ROOT="$cleanup_scratch/symlink-artifacts" \
+  OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP=1 \
+  OPENBURNBAR_MOBILE_CLEAN_STALE_DERIVED_DATA=1 \
+  OPENBURNBAR_MOBILE_TEST_ATTEMPTS=1 \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$symlink_cleanup_output" 2>&1; then
+  fail "symlinked prior derived-data child unexpectedly passed cleanup validation"
+fi
+grep -q "Prior mobile derived-data child must not be a symlink" "$symlink_cleanup_output" ||
+  fail "symlinked derived-data cleanup error did not fail closed"
+[[ -d "$outside_symlink_target" ]] || fail "symlink target was unexpectedly removed"
+
+echo "test-openburnbar-mobile root boundary, physical-device preflight, and derived-data cleanup tests passed"
 
 prune_cache="$tmp_root/prune-cache"
 mkdir -p "$prune_cache/artifacts/sentry-cocoa/Sentry" \

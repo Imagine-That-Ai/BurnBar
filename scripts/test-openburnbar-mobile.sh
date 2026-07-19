@@ -26,6 +26,13 @@
 #   OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP=1
 #                                           Skip Signal FFI prep when the caller
 #                                           already prepared the Signal FFI XCFramework artifacts.
+#   OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_TARGETS=<targets>
+#                                           Explicit Signal FFI target override for this
+#                                           mobile run. Defaults to iOS-only targets
+#                                           (physical: aarch64-apple-ios; simulator:
+#                                           aarch64-apple-ios-sim and x86_64-apple-ios).
+#   SIGNAL_FFI_BUILD_TARGETS=<targets>      Preserve an explicit lower-level target
+#                                           override when the mobile override is unset.
 #   OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT=<absolute path>
 #                                           Keep all transient mobile-test
 #                                           roots below this caller-owned path.
@@ -33,10 +40,24 @@
 #                                           Override cloned SwiftPM package cache.
 #   OPENBURNBAR_MOBILE_TEST_ARTIFACT_ROOT=<path>
 #                                           Override telemetry/coverage root.
+#   OPENBURNBAR_MOBILE_TEST_DERIVED_DATA_ROOT=<path>
+#                                           Override the derived-data parent.
+#   OPENBURNBAR_MOBILE_CLEAN_STALE_DERIVED_DATA=1
+#                                           Opt in to removing prior wrapper-generated
+#                                           derived-data children from the scratch-rooted
+#                                           derived-data parent before the run. The cleanup
+#                                           is fail-closed: it requires
+#                                           OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT, validates
+#                                           current-user ownership and path containment, and
+#                                           never follows symlinks. Default: keep all prior
+#                                           children untouched.
 #   OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_ROOT=<path>
 #                                           Override Signal FFI staging root.
 #   OPENBURNBAR_MOBILE_SIGNAL_FFI_CARGO_TARGET_ROOT=<path>
 #                                           Override Signal FFI Cargo target root.
+#   OPENBURNBAR_MOBILE_PRUNE_SIGNAL_FFI_CARGO_TARGETS=0|1
+#                                           Override scratch-run Cargo target pruning
+#                                           (default: 1 when scratch-rooted).
 #   OPENBURNBAR_MOBILE_CLEANUP_SIGNAL_FFI_ROOT=0
 #                                           Keep redirected Signal FFI
 #                                           intermediates for post-run forensics
@@ -204,6 +225,13 @@ if [[ "${OPENBURNBAR_MOBILE_SIGNAL_FFI_CARGO_TARGET_ROOT+x}" != "x" ]]; then
         OPENBURNBAR_MOBILE_SIGNAL_FFI_CARGO_TARGET_ROOT="$SIGNAL_FFI_CARGO_TARGET_ROOT"
     elif [[ "${OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT+x}" == "x" ]]; then
         OPENBURNBAR_MOBILE_SIGNAL_FFI_CARGO_TARGET_ROOT="$OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT"
+    fi
+fi
+if [[ "${OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_TARGETS+x}" != "x" ]]; then
+    if [[ "${SIGNAL_FFI_BUILD_TARGETS+x}" == "x" ]]; then
+        OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_TARGETS="$SIGNAL_FFI_BUILD_TARGETS"
+    elif [[ "${OPENBURNBAR_SIGNAL_FFI_BUILD_TARGETS+x}" == "x" ]]; then
+        OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_TARGETS="$OPENBURNBAR_SIGNAL_FFI_BUILD_TARGETS"
     fi
 fi
 
@@ -677,6 +705,23 @@ if [[ "$uses_ios_simulator" -eq 1 ]]; then
     ios_destination="$simulator_destination"
 fi
 
+if [[ "${OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_TARGETS+x}" == "x" ]]; then
+    signal_ffi_build_targets="$OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_TARGETS"
+    if [[ -z "$signal_ffi_build_targets" || "$signal_ffi_build_targets" =~ ^[[:space:]]*$ ]]; then
+        echo "ERROR: OPENBURNBAR_MOBILE_SIGNAL_FFI_BUILD_TARGETS cannot be empty." >&2
+        exit 64
+    fi
+elif [[ "$uses_ios_simulator" -eq 1 ]]; then
+    # Keep both simulator slices so the generated iOS XCFramework works on
+    # Apple Silicon and Intel simulator hosts.
+    signal_ffi_build_targets="aarch64-apple-ios-sim x86_64-apple-ios"
+else
+    # A physical iPad/iPhone only needs the arm64 device slice. In particular,
+    # never inherit the macOS darwin targets from the shared build helper.
+    signal_ffi_build_targets="aarch64-apple-ios"
+fi
+echo ">>> Mobile Signal FFI build targets: $signal_ffi_build_targets"
+
 if [[ "$uses_ios_simulator" -eq 0 && -z "${OPENBURNBAR_APP_CHECK_PROVIDER:-}" ]] \
     && [[ "${OPENBURNBAR_LIVE_HERMES_RELAY_E2E:-}" == "1" || "${OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E:-}" == "1" || -n "${OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_CODE:-}" ]]; then
     export OPENBURNBAR_APP_CHECK_PROVIDER=appattest
@@ -720,11 +765,83 @@ mkdir -p "$cache_dir"
 mkdir -p "$artifact_root"
 mkdir -p "$derived_data_root"
 
-derived_data_dir="$(mktemp -d "$derived_data_root/openburnbar-mobile-tests.XXXXXX")"
+derived_data_dir=""
 xcodebuild_log=""
 xcodebuild_args=()
 last_test_exit_code=0
 test_selectors=()
+
+validate_owned_directory() {
+    local path="$1"
+    local label="$2"
+    python3 - "$path" "$label" <<'PY'
+import os
+import stat
+import sys
+
+path, label = sys.argv[1:]
+try:
+    info = os.lstat(path)
+except OSError as exc:
+    print(f"ERROR: {label} cannot be inspected: {exc}", file=sys.stderr)
+    raise SystemExit(64)
+
+if stat.S_ISLNK(info.st_mode):
+    print(f"ERROR: {label} must not be a symlink: {path}", file=sys.stderr)
+    raise SystemExit(64)
+if not stat.S_ISDIR(info.st_mode):
+    print(f"ERROR: {label} must be a directory: {path}", file=sys.stderr)
+    raise SystemExit(64)
+if info.st_uid != os.getuid():
+    print(
+        f"ERROR: {label} is not owned by the current user: {path}",
+        file=sys.stderr,
+    )
+    raise SystemExit(64)
+PY
+}
+
+cleanup_stale_derived_data() {
+    [[ "${OPENBURNBAR_MOBILE_CLEAN_STALE_DERIVED_DATA:-0}" == "1" ]] || return 0
+
+    if [[ -z "$mobile_scratch_root" ]]; then
+        echo "ERROR: OPENBURNBAR_MOBILE_CLEAN_STALE_DERIVED_DATA=1 requires OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT." >&2
+        return 64
+    fi
+
+    # Re-validate immediately before deletion. This protects against a
+    # scratch-root or derived-data path being replaced after initial
+    # resolution, and makes the ownership boundary explicit for cleanup.
+    validate_owned_directory "$mobile_scratch_root" "Mobile test scratch root"
+    validate_path_within_root "$mobile_scratch_root" "$derived_data_root" "Derived-data cleanup root" 1
+    validate_owned_directory "$derived_data_root" "Derived-data cleanup root"
+
+    local candidate basename
+    local -a stale_candidates=()
+    shopt -s nullglob
+    stale_candidates=("$derived_data_root"/openburnbar-mobile-tests.*)
+    shopt -u nullglob
+
+    for candidate in "${stale_candidates[@]}"; do
+        basename="${candidate##*/}"
+        # mktemp creates exactly six alphanumeric suffix characters. Requiring
+        # that shape prevents this opt-in cleanup from deleting arbitrary
+        # caller-owned directories that merely share a loose prefix.
+        [[ "$basename" =~ ^openburnbar-mobile-tests\.[[:alnum:]]{6}$ ]] || continue
+
+        if [[ -L "$candidate" ]]; then
+            echo "ERROR: Prior mobile derived-data child must not be a symlink: $candidate" >&2
+            return 64
+        fi
+        validate_path_within_root "$derived_data_root" "$candidate" "Prior mobile derived-data child" 1
+        validate_owned_directory "$candidate" "Prior mobile derived-data child"
+        rm -rf "$candidate"
+        echo ">>> Removed prior mobile derived-data child: $candidate"
+    done
+}
+
+cleanup_stale_derived_data
+derived_data_dir="$(mktemp -d "$derived_data_root/openburnbar-mobile-tests.XXXXXX")"
 
 emit_attempt_event() {
     local attempt="$1"
@@ -820,7 +937,9 @@ cleanup() {
     if [ -n "$xcodebuild_log" ]; then
         rm -f "$xcodebuild_log" 2>/dev/null || true
     fi
-    cleanup_derived_data "$derived_data_dir"
+    if [ -n "$derived_data_dir" ]; then
+        cleanup_derived_data "$derived_data_dir"
+    fi
     cleanup_signal_ffi_intermediates
 }
 
@@ -964,6 +1083,16 @@ if [[ "${OPENBURNBAR_MOBILE_SKIP_SIGNAL_FFI_PREP:-}" == "1" ]]; then
     echo ">>> Reusing prebuilt Signal FFI XCFramework."
 else
     signal_ffi_prepare_environment=()
+    signal_ffi_prepare_environment+=("SIGNAL_FFI_BUILD_TARGETS=$signal_ffi_build_targets")
+    if [[ -n "$mobile_scratch_root" &&
+        "${SIGNAL_FFI_PRUNE_CARGO_TARGETS+x}" != "x" &&
+        "${OPENBURNBAR_MOBILE_PRUNE_SIGNAL_FFI_CARGO_TARGETS+x}" != "x" ]]; then
+        # Scratch-rooted mobile builds may compile several large Rust targets.
+        # The builder stages each requested slice before pruning its Cargo
+        # target directory, keeping physical-device runs within the caller's
+        # disk budget without changing the default desktop build behavior.
+        signal_ffi_prepare_environment+=("OPENBURNBAR_MOBILE_PRUNE_SIGNAL_FFI_CARGO_TARGETS=1")
+    fi
     if [[ -n "$signal_ffi_build_root" ]]; then
         signal_ffi_prepare_environment+=("SIGNAL_FFI_BUILD_ROOT=$signal_ffi_build_root")
     fi
