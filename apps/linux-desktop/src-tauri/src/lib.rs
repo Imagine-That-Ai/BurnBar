@@ -2379,14 +2379,15 @@ fn map_parity_row(row: DeviceParityRow) -> Option<IntegrationStatusRow> {
 #[tauri::command]
 fn integrations_status() -> Result<IntegrationsStatusPayload, String> {
     let cli = trusted_openburnbar_cli()?;
-    let output = Command::new(cli)
-        .args(["devices", "parity", "--json"])
-        .output()
-        .map_err(|_| "openburnbar_cli_launch_failed".to_string())?;
-    if !output.status.success() {
-        return Err("openburnbar_cli_integrations_failed".to_string());
-    }
-    let rows = serde_json::from_slice::<Vec<DeviceParityRow>>(&output.stdout)
+    // Keep settings/status on the same bounded, process-group-aware path as
+    // the SmartHub surface. `Command::output()` would wait forever on a
+    // broken adapter and retain unbounded stdout/stderr in memory.
+    let command = run_smarthub_cli(
+        "parity".to_string(),
+        cli,
+        tokio_util::sync::CancellationToken::new(),
+    )?;
+    let rows = serde_json::from_value::<Vec<DeviceParityRow>>(command.payload)
         .map_err(|e| format!("Invalid devices parity JSON: {e}"))?;
     Ok(IntegrationsStatusPayload {
         integrations: rows.into_iter().filter_map(map_parity_row).collect(),
@@ -8085,6 +8086,22 @@ mod tests {
             .try_wait()
             .expect("test shell status should be readable")
             .is_some());
+    }
+
+    #[test]
+    fn smarthub_cli_rejects_oversized_output_before_json_decode() {
+        // `yes` ignores the fixed SmartHub argv and continuously writes. The
+        // bounded reader must stop at the native cap and terminate the whole
+        // process group instead of allowing settings/status to grow memory.
+        let result = run_smarthub_cli(
+            "parity".to_string(),
+            PathBuf::from("/usr/bin/yes"),
+            tokio_util::sync::CancellationToken::new(),
+        );
+        assert_eq!(
+            result.unwrap_err(),
+            "openburnbar_cli_smarthub_output_too_large"
+        );
     }
 
     #[test]
