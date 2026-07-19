@@ -37,7 +37,8 @@ is untouched by every slice.
 |---|---|---|---|---|
 | `OpenBurnBarKernel` | yes (exists) | ~37k | root mission contracts (NOT `OpenBurnBarSearchContracts.swift` — VectorKit-bound, see P-03 re-slice), TraceContext, pure/crypto SharedModels, catalog-model SharedModels (`CLIRuntimeModelCatalog`/`WandModelRouter` — via P-04c, after P-02 lands the loader), MissionGroupContracts + MissionConsoleTypes (post-inversion), catalog loader + PII gate + their resources, Platform/ | FirestoreModels, crypto |
 | `OpenBurnBarSQLiteReader` | **no** | 325 | `Services/SQLite/` + the SQLite backend conditional. The K3 fix. | SQLite backend |
-| `OpenBurnBarLogParsers` | yes | ~9.3k | `Services/LogParser/` + `Services/LogPath/` + 2 log-discovery SharedModels | Kernel, SQLiteReader |
+| `OpenBurnBarLogParsers` | yes | ~9.3k | `Services/LogParser/` + `Services/LogPath/` + 2 log-discovery SharedModels | Kernel, SQLiteReader, ParserSupport |
+| `OpenBurnBarParserSupport` | **no** | ~400 | parser resource governor, file-discovery checkpoint identities, and path-free pass telemetry | Kernel |
 | `OpenBurnBarQuota` | yes | ~10.4k | `ProviderQuota/` + root `XAISuperGrokPacingLog.swift` | Kernel, SQLiteReader, crypto |
 | `OpenBurnBarVectorKit` | yes | ~3.6k | HNSW/Persistent/Signpost vector indexes, VectorIndexDelta, SearchPlanner, **`OpenBurnBarSearchContracts.swift`** (references `BurnBarEmbeddingDistanceMetric` + `BurnBarSearchPlan` — VectorKit symbols, so it cannot precede them into Kernel), Pensieve chunker/cloak | Kernel |
 | `OpenBurnBarInsights` | yes (Apple-only) | ~16k | `Services/Insights/` (minus ShareCardRenderer) + `SharedModels/Insights/` + AgentInsights models + Demo fixture | Kernel |
@@ -521,6 +522,15 @@ against the extracted sibling targets. (Three non-`.swift` resources also remain
 | `OpenBurnBarUI` | 130 | 33,710 | yes (Apple-only) | all Views/, theme/RGBA/design-token SharedModels, PixelClock, ShareCardRenderer, LiveActivity (K4) |
 | `OpenBurnBarCoreCAbi` | 5 | 878 | yes (dynamic) | the C-ABI `@_cdecl` export surface (Windows/Linux FFI): `OBBCAbi*` (P-22) + the pre-existing dylib wrapper |
 | **13 targets total** | **464** | **123,667** | | (exceeds the 95.6k start because SQLiteReader/Quota carry their own scaffolding and Kernel absorbed cross-cutting utilities; the metric that matters is the Core main-target shrink above) |
+
+**Operation 9 parser-safety ceiling adjustment (2026-07-18):** scanner-wide exact
+file-identity tracking, byte/file/memory admission limits, and bounded-pass telemetry
+initially raised `OpenBurnBarLogParsers` beyond its 35-file / 11,800-LOC planned ceiling.
+The reusable resource, checkpoint-identity, and telemetry primitives now live in the
+package-internal `OpenBurnBarParserSupport` leaf (2 files / 397 LOC), which depends only
+on Kernel; LogParsers retains source-compatible public aliases and depends on the leaf.
+ParserSupport has an explicit 5-file / 1,000-LOC planned ceiling. This keeps the existing
+LogParsers ceiling intact instead of resetting it to fit the implementation.
 
 ### Whole-program composition proof (verbatim results)
 

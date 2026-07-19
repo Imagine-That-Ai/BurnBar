@@ -161,22 +161,86 @@ fingerprint. Promotion evidence must read this tuple from the loaded module and
 compare it with the candidate's signed build metadata. A package sidecar alone
 does not prove which library the process loaded, and a version string alone does
 not distinguish two source revisions built with the same semantic version.
-
 ### Promotion evidence
 
-The quantitative promotion evaluator implemented in
-[#1612](https://github.com/Imagine-That-Ai/BurnBar/pull/1612) is the only quota
-shadow evidence gate. It requires 14 consecutive days for each required Apple
-and Windows consumer, 10,000 aggregate internal/beta samples, zero unexplained
-mismatches, and at most five percent p95 regression. It emits a fail-closed
-machine-readable readiness result. No second evaluator, policy override, or
-synthetic passing evidence is accepted.
+Signed builds derive that expected identity once from a clean, exact Git
+checkout. The build receipt contains the candidate commit plus the manifest's
+core version, ABI version, and source fingerprint; the resolver independently
+checks those values against Cargo, the Rust ABI constant, and the complete
+fingerprinted source roots. Apple plist metadata, Android BuildConfig/AAB
+receipt, Windows assembly metadata/publish receipt, Console static values, and
+the compiled Functions module all receive the same tuple. Release verification
+binds the built runtime surface back to the authorized checkout. Runtime
+environment variables are never signed authority, and an expected commit
+argument may assert equality but may not rename the checkout.
 
-A passing quantitative result is necessary but insufficient. Native artifact
-loads, fixtures, one stable Rust-authoritative release, and the separate legacy
-deletion proof remain required. Crypto migrations additionally require KATs,
-bidirectional cross-open, wrong-key/AAD/tamper rejection, boundary fuzzing, and
-independent security review.
+### Promotion proof and diagnostic telemetry
+
+Promotion authority is deterministic and candidate-bound. The `main` push
+workflow runs the exact job, suite, artifact, coverage, benchmark, and rollback
+contract in `config/domain-core-promotion-policy.json`. Each job emits a fragment
+bound to the same GitHub run ID, attempt, commit, core version, ABI, and source
+fingerprint. The final job rejects failed, skipped, missing, duplicate, extra,
+mixed-run, or mixed-candidate fragments and creates an unsigned bundle. That
+bundle states only `eligible_for_attestation`; it cannot authorize promotion.
+
+The protected promotion workflow is the authority boundary. It pins the trusted
+evaluator and policy checkout to the exact `main` commit that GitHub used to
+dispatch the protected workflow, requires the candidate to be reachable
+from `main`, queries every page of GitHub jobs for the exact successful `push`
+run, and downloads that attempt's immutable bundle, proof fragments, observed
+artifact inputs, and rollback artifact. Before using candidate data, it requires
+the candidate workflow, proof/evaluator scripts, identity observers, policy,
+schemas, build profiles, and union identity manifest to be regular,
+non-symlinked files whose bytes match trusted `main`. Only trusted-main code
+recomputes the candidate source fingerprint, reaggregates the fragments, and
+rehashes the downloaded artifact and observed-identity bytes. No candidate code
+executes in the protected credential context. A dispatch or PR run,
+user-supplied job JSON, a hand-authored bundle, an incomplete jobs page, or the
+uploaded verification receipt cannot authorize promotion. The receipt records
+what was checked, including the pinned evaluator commit and control-plane
+manifest digest, but is not itself signed authority.
+
+Each observed artifact is frozen immediately after its narrow native-load
+observer and before broader candidate tests continue. Directory artifacts are
+identified by sorted relative file paths and exact file contents; Unix mode and
+directory metadata are intentionally excluded because GitHub artifact transport
+normalizes them. This keeps the protected rehash transport-stable without
+weakening code-byte or path identity.
+
+The `domain-core-promotion` GitHub environment is part of the trust boundary,
+not a decorative YAML name. It must have a required reviewer and an allowlist
+containing only the `main` branch. The signer checks those live controls before
+attesting. As verified on 2026-07-14, the environment requires reviewer
+`Ajnunezg` and permits only `main`; operators must preserve and re-verify those
+settings.
+
+Client durability is candidate-scoped. Apple, Android, Windows, and Console
+derive their active queue namespace from the complete expected candidate tuple
+and never read, upload, translate, or relabel a prior candidate's queue as new
+evidence. Functions comparisons are a trusted server-side exception to client
+claims only: the production process must hold an immutable signed compiled
+receipt, record the identity independently observed from the loaded Wasm
+module, and pass the same V3 parser before it may persist evidence. Only an
+identical loaded tuple can produce a promotable success; a different readable
+tuple is retained as `loaded_identity_mismatch`, and an unreadable tuple as
+`native_unavailable`. Unsigned, local, test, or incomplete processes emit no
+production evidence.
+
+Candidate-bound V3 shadow samples remain optional diagnostic telemetry. Each
+signed enrollment binds one internal/beta channel and consumer allowlist to one
+exact app commit and expected loaded Rust tuple. The server validates those
+claims and retains loaded identity mismatch, native-unavailable, native-error,
+and result mismatch categories for diagnosis. No observation duration, daily
+continuity, user count, or sample count is required for promotion. V1 and V2 are
+accepted only so durable spools can drain idempotently and remain
+non-promotable. The exact operator procedure is the
+[Shared Rust Promotion Evidence runbook](../runbooks/shared-rust-promotion-evidence.md).
+
+Crypto migrations additionally require deterministic KATs, bidirectional
+cross-open, wrong-key/AAD/tamper rejection, boundary fuzzing, and independent
+security review. Every domain still requires one stable Rust-authoritative
+release with the explicit rollback path intact before legacy deletion.
 
 ## Landing and rollback
 
@@ -185,12 +249,15 @@ are retargeted to ABI 3. Consumer changes then move through `legacy`, `shadow`,
 and reviewed `rust` promotion. Merging a consumer into a feature branch is not
 production promotion.
 
-Before legacy deletion, rollback is an explicit configuration change from
-`rust` to `legacy`; it is never an implicit exception handler. A mismatch,
+Before legacy deletion, rollback uses the separate signed, candidate-bound
+`public-production-rollback` artifact. That profile is permanently all-legacy
+and independent of the primary `public-production` modes; it is never an
+implicit exception handler. A mismatch,
 latency regression, ABI/provenance failure, or unresolved security finding
 blocks promotion. After a rollback, retain the evidence, fix the cause, and
-restart the applicable evidence window. Legacy code is removed only in a
-separate reviewed change after one stable Rust-authoritative release, and
+produce a new exact candidate attestation. Legacy code is removed only in a
+separate reviewed change after one stable Rust-authoritative release has
+published and retained that exact rollback artifact, and
 source/compile gates must prove the named legacy implementations and selector
 are absent.
 
@@ -205,9 +272,10 @@ category, core version, and count.
 
 - The shared crate removes real duplication without forcing UI, persistence,
   networking, or key custody through FFI.
-- Swift, Kotlin, and C# use generated UniFFI bindings. Tauri may link the pure
-  crate directly only for a domain it actually executes. Cloud Functions use
-  the reviewed Wasm adapter only for applicable pricing operations.
+- Swift (including the Linux daemon-owned parser/runtime path), Kotlin, and C#
+  use generated UniFFI bindings. Browser and Node consumers use the reviewed
+  Wasm adapters. The current Tauri/Linux UI only displays daemon-produced
+  values and has no domain-core dependency or separate selector.
 - Browser private keys remain non-extractable WebCrypto handles.
 - Existing iroh, remote, media, and libsignal crates remain separate ownership
   boundaries.

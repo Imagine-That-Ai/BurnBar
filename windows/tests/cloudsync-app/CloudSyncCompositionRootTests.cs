@@ -27,8 +27,9 @@ public sealed class CloudSyncCompositionRootTests
             oauth,
             "project-test",
             "uid-test",
+            new RecordingProducer(),
             mintTransport,
-            appCheckAttestationProducer: new RecordingProducer());
+            "1:123456:web:test");
 
         Assert.NotNull(root.AppCheck);
         Assert.Equal("tpm-test", root.AppCheck!.AttestationKind);
@@ -38,9 +39,12 @@ public sealed class CloudSyncCompositionRootTests
     {
         public string Kind => "tpm-test";
 
+        public bool RequiresServerChallenge => true;
+
         public ValueTask<WindowsAttestationClaim> ProduceAsync(
             string appId,
             long nowMillis,
+            AttestationChallenge? challenge = null,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException("The composition test only inspects the selected producer.");
     }

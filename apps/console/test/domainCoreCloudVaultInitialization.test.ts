@@ -28,13 +28,17 @@ describe("CloudVault domain-core initialization boundary", () => {
   it("returns the exact legacy value and emits sanitized evidence when Wasm initialization fails", async () => {
     const comparisons: unknown[] = [];
     const legacyValue = { authority: "legacy" };
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("private loader failure"));
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      new Error("private loader failure"),
+    );
     configureCloudVaultDomainCoreForTests("shadow");
-    configureCloudVaultShadowCollector((comparison) => comparisons.push(comparison));
+    configureCloudVaultShadowCollector((comparison) =>
+      comparisons.push(comparison),
+    );
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     const actual = await applyCloudVaultDomainCore(
-      "cloudvault_aes_open",
+      "cloudvault_aes_open_combined",
       () => legacyValue,
       () => ({ authority: "rust" }),
     );
@@ -45,8 +49,10 @@ describe("CloudVault domain-core initialization boundary", () => {
         domain: "cloudvault",
         slice: "aes",
         consumer: "console",
-        operation: "cloudvault_aes_open",
-        coreVersion: "0.0.0-native-unavailable",
+        operation: "cloudvault_aes_open_combined",
+        loadedCoreVersion: null,
+        loadedCoreAbiVersion: null,
+        loadedCoreSourceSha256: null,
         outcome: "mismatch",
         mismatchCategory: "native_unavailable",
         legacyMicros: expect.any(Number),
@@ -59,8 +65,12 @@ describe("CloudVault domain-core initialization boundary", () => {
     expect(isCloudVaultDomainCoreInitialized()).toBe(false);
     configureCloudVaultDomainCoreForTests("shadow");
     const comparisons: unknown[] = [];
-    configureCloudVaultShadowCollector((comparison) => comparisons.push(comparison));
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    configureCloudVaultShadowCollector((comparison) =>
+      comparisons.push(comparison),
+    );
+    const warning = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
 
     expect(bytesToBase64(Uint8Array.of(0))).toBe("AA==");
     expect(base64ToBytes("AA==")).toEqual(Uint8Array.of(0));
@@ -73,13 +83,17 @@ describe("CloudVault domain-core initialization boundary", () => {
     expect(comparisons).toEqual([
       expect.objectContaining({
         operation: "base64_encode",
-        coreVersion: "0.0.0-native-unavailable",
+        loadedCoreVersion: null,
+        loadedCoreAbiVersion: null,
+        loadedCoreSourceSha256: null,
         mismatchCategory: "native_unavailable",
         rustMicros: 0,
       }),
       expect.objectContaining({
         operation: "base64_decode",
-        coreVersion: "0.0.0-native-unavailable",
+        loadedCoreVersion: null,
+        loadedCoreAbiVersion: null,
+        loadedCoreSourceSha256: null,
         mismatchCategory: "native_unavailable",
         rustMicros: 0,
       }),

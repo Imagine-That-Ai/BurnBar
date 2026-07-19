@@ -11,14 +11,24 @@ permissions:
 on:
   push:
     branches: [main]
+    tags: ["v*"]
     paths:
       - "website/**"
       - "apps/console/**"
+      - "crates/openburnbar-domain-core/union-abi-manifest.json"
+      - "config/domain-core-build-profiles.json"
       - "firebase.json"
       - ".firebaserc"
       - "scripts/ci/deploy-firebase-hosting-rest.mjs"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
+      - "scripts/ci/create-domain-core-deployment-identity.mjs"
+      - "scripts/ci/verify-domain-core-build-profile-artifact.mjs"
+      - "scripts/ci/verify-domain-core-release-gate.mjs"
+      - "scripts/lib/domain-core-build-profile.mjs"
+      - "scripts/lib/domain-core-candidate-receipt.mjs"
+      - "scripts/lib/domain-core-release-evidence.mjs"
       - ".github/workflows/deploy-hosting.yml"
+      - ".github/workflows/domain-core-console-release-evidence.yml"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -26,51 +36,305 @@ on:
         required: false
         type: boolean
         default: false
+      domain_core_profile:
+        description: "Signed public profile; rollback is explicit and review-gated"
+        required: true
+        type: choice
+        default: public-production
+        options:
+          - public-production
+          - public-production-rollback
+      protected_signer_run_id:
+        description: "Exact protected signer run (optional when uniquely discoverable)"
+        required: false
+        type: string
+      protected_signer_run_attempt:
+        description: "Exact protected signer attempt (required with run ID)"
+        required: false
+        type: string
 
 concurrency:
   group: deploy-hosting
   cancel-in-progress: false
 
 jobs:
+  authorize-domain-core-rollback:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.domain_core_profile == 'public-production-rollback' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: domain-core-promotion
+    steps:
+      - name: Record protected rollback authorization
+        run: echo "Protected reviewer authorized an explicit Console rollback deployment."
+
   build-hosting-artifacts:
+    needs: authorize-domain-core-rollback
+    if: >-
+      ${{ always()
+          && (inputs.domain_core_profile != 'public-production-rollback'
+              || needs.authorize-domain-core-rollback.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
+      actions: read
+      attestations: read
       contents: read
+    outputs:
+      commit: ${{ steps.ref.outputs.commit }}
+      release_tag: ${{ steps.ref.outputs.release_tag }}
+      stable_release: ${{ steps.ref.outputs.stable_release }}
+      domain_core_profile: ${{ steps.ref.outputs.domain_core_profile }}
+      requires_proof: ${{ steps.ref.outputs.requires_proof }}
+      source_run_id: ${{ steps.proof.outputs.source_run_id }}
+      source_run_attempt: ${{ steps.proof.outputs.source_run_attempt }}
+      protected_signer_run_id: ${{ steps.proof.outputs.protected_signer_run_id }}
+      protected_signer_run_attempt: ${{ steps.proof.outputs.protected_signer_run_attempt }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify hosting deploy ref
+        id: ref
         env:
           EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_PROFILE: ${{ inputs.domain_core_profile || 'public-production' }}
         run: |
           set -euo pipefail
-
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
-            echo "::error::Manual hosting deploys must run from refs/heads/main, not ${GITHUB_REF}."
-            echo "::error::Select main as the workflow dispatch ref so production hosting artifacts are main-bound."
-            exit 1
-          fi
-
           git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::Hosting deploy commit ${GITHUB_SHA} is not reachable from origin/main."
+          release_tag=""
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            commit="$GITHUB_SHA"
+          elif [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+            release_tag="${GITHUB_REF#refs/tags/}"
+            git fetch --force --tags origin "+$GITHUB_REF:$GITHUB_REF"
+            commit="$(git rev-parse "$GITHUB_REF^{commit}")"
+            [[ "$GITHUB_SHA" == "$commit" ]] || { echo "::error::Release tag moved away from workflow commit."; exit 1; }
+          else
+            echo "::error::Hosting deploys require main or an exact stable v* tag, not ${GITHUB_REF}."
             exit 1
           fi
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "::error::Hosting deploy commit ${commit} is not reachable from origin/main."
+            exit 1
+          fi
+          profile="public-production"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            profile="$REQUESTED_PROFILE"
+          fi
+          if [[ "$profile" == "public-production-rollback" ]]; then
+            if [[ "$EVENT_NAME" != "workflow_dispatch" || -z "$release_tag" ]]; then
+              echo "::error::Rollback is manual-only and must target an exact stable release tag."
+              exit 1
+            fi
+          elif [[ "$profile" != "public-production" ]]; then
+            echo "::error::Unsupported Console production profile ${profile}."
+            exit 1
+          fi
+          stable_release=false
+          [[ -z "$release_tag" ]] || stable_release=true
+          cloud_vault_mode="$(jq -er --arg profile "$profile" '.profiles[$profile].modes.cloudVault' config/domain-core-build-profiles.json)"
+          requires_proof=false
+          if [[ "$stable_release" == "true" || "$cloud_vault_mode" == "rust" || "$profile" == "public-production-rollback" ]]; then
+            requires_proof=true
+          fi
+          {
+            echo "commit=$commit"
+            echo "release_tag=$release_tag"
+            echo "stable_release=$stable_release"
+            echo "domain_core_profile=$profile"
+            echo "requires_proof=$requires_proof"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
           node-version: 24
 
+      - name: Resolve protected candidate C and activation P
+        if: ${{ steps.ref.outputs.requires_proof == 'true' }}
+        id: activation
+        env:
+          RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
+        run: node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format github-output >> "$GITHUB_OUTPUT"
+
+      - name: Resolve exact protected signer and source proof
+        if: ${{ steps.ref.outputs.requires_proof == 'true' }}
+        id: proof
+        env:
+          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit }}
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_SIGNER_RUN_ID: ${{ inputs.protected_signer_run_id }}
+          REQUESTED_SIGNER_RUN_ATTEMPT: ${{ inputs.protected_signer_run_attempt }}
+        run: |
+          set -euo pipefail
+          artifact_name="domain-core-protected-verification-${CANDIDATE_COMMIT}"
+          signer_run_id="$REQUESTED_SIGNER_RUN_ID"
+          if [[ -n "$signer_run_id" ]]; then
+            [[ "$signer_run_id" =~ ^[1-9][0-9]*$ && "$REQUESTED_SIGNER_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] \
+              || { echo "::error::Signer run ID and attempt must be positive integers supplied together."; exit 1; }
+          else
+            [[ -z "$REQUESTED_SIGNER_RUN_ATTEMPT" ]] \
+              || { echo "::error::Signer run attempt cannot be supplied without a run ID."; exit 1; }
+            gh api --paginate --slurp \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact_name&per_page=100" \
+              > "$RUNNER_TEMP/protected-artifact-pages.json"
+            signer_run_id="$(jq -er '
+              if length == 0 then error("artifacts API returned no pages") else . end
+              | ([.[].artifacts[]] | map(select(.expired == false))) as $artifacts
+              | (.[0].total_count) as $total
+              | if $total != ([.[].artifacts[]] | length) then error("artifacts API pagination incomplete") else $artifacts end
+              | if length == 1 then .[0].workflow_run.id else error("expected exactly one unexpired protected verification artifact; dispatch with an exact signer run ID") end
+            ' "$RUNNER_TEMP/protected-artifact-pages.json")"
+          fi
+
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$signer_run_id" > "$RUNNER_TEMP/protected-signer-run.json"
+          signer_run_attempt="$(jq -er '.run_attempt' "$RUNNER_TEMP/protected-signer-run.json")"
+          if [[ -n "$REQUESTED_SIGNER_RUN_ATTEMPT" && "$signer_run_attempt" != "$REQUESTED_SIGNER_RUN_ATTEMPT" ]]; then
+            echo "::error::Protected signer run attempt does not match the requested immutable attempt."
+            exit 1
+          fi
+          gh api --paginate --slurp \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$signer_run_id/attempts/$signer_run_attempt/jobs?per_page=100" \
+            > "$RUNNER_TEMP/protected-signer-job-pages.json"
+          jq -e '
+            if length == 0 then error("signer jobs API returned no pages") else . end
+            | {total: .[0].total_count, jobs: [.[].jobs[]]}
+            | select(.total == (.jobs | length))
+            | select((.jobs | length) == 1)
+            | select(.jobs[0].name == "protected-domain-core-signer")
+            | select(.jobs[0].status == "completed" and .jobs[0].conclusion == "success")
+          ' "$RUNNER_TEMP/protected-signer-job-pages.json" >/dev/null
+          jq -e '
+            select(.path == ".github/workflows/domain-core-promotion-proof.yml")
+            | select(.event == "workflow_dispatch" and .status == "completed" and .conclusion == "success")
+          ' "$RUNNER_TEMP/protected-signer-run.json" >/dev/null
+
+          mkdir -p "$RUNNER_TEMP/protected-verification"
+          gh run download "$signer_run_id" --repo "$GITHUB_REPOSITORY" \
+            --name "$artifact_name" --dir "$RUNNER_TEMP/protected-verification"
+          verification="$RUNNER_TEMP/protected-verification/protected-verification.json"
+          jq -e --arg sha "$CANDIDATE_COMMIT" '.candidate.candidateCommit == $sha' "$verification" >/dev/null
+          source_run_id="$(jq -er '.sourceRun.runId' "$verification")"
+          source_run_attempt="$(jq -er '.sourceRun.runAttempt' "$verification")"
+          [[ "$source_run_id" =~ ^[1-9][0-9]*$ && "$source_run_attempt" =~ ^[1-9][0-9]*$ ]]
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$source_run_id" > "$RUNNER_TEMP/domain-core-source-run.json"
+          jq -e --arg sha "$CANDIDATE_COMMIT" --argjson attempt "$source_run_attempt" '
+            select(.path == ".github/workflows/domain-core.yml")
+            | select(.event == "push" and .head_branch == "main" and .head_sha == $sha)
+            | select(.run_attempt == $attempt and .status == "completed" and .conclusion == "success")
+          ' "$RUNNER_TEMP/domain-core-source-run.json" >/dev/null
+          printf 'source_run_id=%s\nsource_run_attempt=%s\nprotected_signer_run_id=%s\nprotected_signer_run_attempt=%s\n' \
+            "$source_run_id" "$source_run_attempt" "$signer_run_id" "$signer_run_attempt" >> "$GITHUB_OUTPUT"
+
+      - name: Download and cryptographically verify exact release proof
+        if: ${{ steps.ref.outputs.requires_proof == 'true' }}
+        env:
+          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit }}
+          RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ steps.proof.outputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.proof.outputs.source_run_attempt }}
+          SIGNER_RUN_ID: ${{ steps.proof.outputs.protected_signer_run_id }}
+          SIGNER_RUN_ATTEMPT: ${{ steps.proof.outputs.protected_signer_run_attempt }}
+          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/domain-core-release-inputs/candidate" \
+            "$RUNNER_TEMP/domain-core-release-inputs/rollback" \
+            "$RUNNER_TEMP/domain-core-release-inputs/promotion"
+          gh run download "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "domain-core-candidate-bundle-${CANDIDATE_COMMIT}-${SOURCE_RUN_ID}-${SOURCE_RUN_ATTEMPT}" \
+            --dir "$RUNNER_TEMP/domain-core-release-inputs/candidate"
+          gh run download "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "domain-core-public-production-rollback-${CANDIDATE_COMMIT}-${SOURCE_RUN_ID}-${SOURCE_RUN_ATTEMPT}" \
+            --dir "$RUNNER_TEMP/domain-core-release-inputs/rollback"
+          candidate="$RUNNER_TEMP/domain-core-release-inputs/candidate/domain-core-candidate-bundle.json"
+          rollback="$RUNNER_TEMP/domain-core-release-inputs/rollback/domain-core-public-production-rollback.json"
+          release_rollback="$RUNNER_TEMP/domain-core-release-inputs/domain-core-public-production-rollback-release.json"
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile public-production-rollback \
+            --expected-candidate-commit "$CANDIDATE_COMMIT" \
+            --expected-release-commit "$RELEASE_COMMIT" \
+            --expected-release-version "${RELEASE_TAG#v}" \
+            --expected-release-tag "$RELEASE_TAG" \
+            --format json --output "$release_rollback"
+          (
+            cd "$RUNNER_TEMP/domain-core-release-inputs/promotion"
+            gh attestation download "$candidate" --repo "$GITHUB_REPOSITORY" \
+              --predicate-type https://slsa.dev/provenance/v1 --limit 30
+          )
+          mapfile -t attestations < <(find "$RUNNER_TEMP/domain-core-release-inputs/promotion" -maxdepth 1 -type f -name '*.jsonl' -print)
+          [[ "${#attestations[@]}" -eq 1 ]] \
+            || { echo "::error::Expected one downloaded candidate attestation bundle file."; exit 1; }
+          mv "${attestations[0]}" "$RUNNER_TEMP/domain-core-release-inputs/promotion.sigstore.jsonl"
+          rmdir "$RUNNER_TEMP/domain-core-release-inputs/promotion"
+          jq -e --arg sha "$CANDIDATE_COMMIT" '.candidate.candidateCommit == $sha' "$candidate" >/dev/null
+          node scripts/ci/verify-domain-core-release-gate.mjs \
+            --candidate-bundle "$candidate" \
+            --promotion-attestation "$RUNNER_TEMP/domain-core-release-inputs/promotion.sigstore.jsonl" \
+            --candidate-rollback-artifact "$rollback" \
+            --rollback-artifact "$release_rollback" \
+            --rollback-profile "$release_rollback" \
+            --candidate-commit "$CANDIDATE_COMMIT" \
+            --release-commit "$RELEASE_COMMIT" \
+            --release-version "${RELEASE_TAG#v}" \
+            --release-tag "$RELEASE_TAG" \
+            --core-version "$(jq -er '.candidate.coreVersion' "$candidate")" \
+            --abi-version "$(jq -er '.candidate.abiVersion' "$candidate")" \
+            --source-sha256 "$(jq -er '.candidate.sourceSha256' "$candidate")" \
+            --source-run-id "$SOURCE_RUN_ID" \
+            --source-run-attempt "$SOURCE_RUN_ATTEMPT" \
+            --protected-signer-run-id "$SIGNER_RUN_ID" \
+            --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
+            --rollback-sha256 "$(sha256sum "$release_rollback" | cut -d' ' -f1)" \
+            --output "$RUNNER_TEMP/domain-core-release-inputs/domain-core-release-gate.json"
+
+      - name: Resolve signed public domain-core profile
+        env:
+          DOMAIN_CORE_PROFILE: ${{ steps.ref.outputs.domain_core_profile }}
+          RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
+          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}
+          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          profile_args=(
+            --profile "$DOMAIN_CORE_PROFILE"
+            --expected-candidate-commit "$CANDIDATE_COMMIT"
+          )
+          if [[ -n "$RELEASE_TAG" ]]; then
+            profile_args+=(
+              --expected-release-commit "$RELEASE_COMMIT"
+              --expected-release-version "${RELEASE_TAG#v}"
+              --expected-release-tag "$RELEASE_TAG"
+            )
+          fi
+          node scripts/ci/resolve-domain-core-build-profile.mjs "${profile_args[@]}" --format github-env-web >> "$GITHUB_ENV"
+          node scripts/ci/resolve-domain-core-build-profile.mjs "${profile_args[@]}" --format json --output "$RUNNER_TEMP/domain-core-build-profile.json"
+          cp "$RUNNER_TEMP/domain-core-build-profile.json" apps/console/public/domain-core-build-profile.json
+
+      - name: Embed exact Console deployment identity
+        env:
+          RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
+          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}
+          REQUIRES_PROOF: ${{ steps.ref.outputs.requires_proof }}
+        run: |
+          set -euo pipefail
+          args=(
+            --consumer console
+            --commit "$RELEASE_COMMIT"
+            --profile-receipt "$RUNNER_TEMP/domain-core-build-profile.json"
+            --output apps/console/public/domain-core-deployment-identity.json
+          )
+          [[ -z "$RELEASE_TAG" ]] || args+=(--tag "$RELEASE_TAG")
+          [[ "$REQUIRES_PROOF" != "true" ]] \
+            || args+=(--release-gate "$RUNNER_TEMP/domain-core-release-inputs/domain-core-release-gate.json")
+          node scripts/ci/create-domain-core-deployment-identity.mjs "${args[@]}"
+
       - name: Install hosting dependencies
         run: |
           npm ci --prefix website
           npm ci --prefix apps/console
-
-      - name: Resolve signed public domain-core profile
-        run: |
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format github-env-web >> "$GITHUB_ENV"
-          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format json --output apps/console/public/domain-core-build-profile.json
 
       - name: Trust copy drift gates (block deploy)
         run: |
@@ -82,27 +346,60 @@ jobs:
 
       - name: Build immutable hosting outputs
         env:
-          PUBLIC_SOURCE_COMMIT: ${{ github.sha }}
+          PUBLIC_SOURCE_COMMIT: ${{ steps.ref.outputs.commit }}
         run: |
           npm run verify --prefix website
           npm run build --prefix apps/console
+          node scripts/ci/create-domain-core-runtime-artifact-manifest.mjs \
+            --consumer console \
+            --root apps/console/out \
+            --profile-receipt "$RUNNER_TEMP/domain-core-build-profile.json" \
+            --output apps/console/out/domain-core-runtime-artifact-manifest.json
 
       - name: Stage hosting deploy artifact
         env:
           ARTIFACT_ROOT: ${{ runner.temp }}/hosting-artifact
+          DOMAIN_CORE_PROFILE: ${{ steps.ref.outputs.domain_core_profile }}
+          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}
+          RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
+          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}
+          REQUIRES_PROOF: ${{ steps.ref.outputs.requires_proof }}
         run: |
           set -euo pipefail
           rm -rf "$ARTIFACT_ROOT"
-          mkdir -p "$ARTIFACT_ROOT/website" "$ARTIFACT_ROOT/apps/console" "$ARTIFACT_ROOT/scripts/ci"
+          mkdir -p "$ARTIFACT_ROOT/website" "$ARTIFACT_ROOT/apps/console" \
+            "$ARTIFACT_ROOT/scripts/ci" "$ARTIFACT_ROOT/scripts/lib" \
+            "$ARTIFACT_ROOT/domain-core-release-inputs"
 
           cp -a website/dist "$ARTIFACT_ROOT/website/dist"
           cp -a apps/console/out "$ARTIFACT_ROOT/apps/console/out"
           cp .firebaserc "$ARTIFACT_ROOT/.firebaserc"
           cp scripts/ci/deploy-firebase-hosting-rest.mjs "$ARTIFACT_ROOT/scripts/ci/"
+          cp scripts/ci/create-domain-core-runtime-artifact-manifest.mjs "$ARTIFACT_ROOT/scripts/ci/"
+          cp scripts/ci/verify-existing-domain-core-deployment.mjs "$ARTIFACT_ROOT/scripts/ci/"
+          cp scripts/lib/atomic-regular-file.mjs "$ARTIFACT_ROOT/scripts/lib/"
+          cp scripts/lib/curl-bearer.sh "$ARTIFACT_ROOT/scripts/lib/"
+          cp scripts/lib/firebase-hosting-rest-url.mjs "$ARTIFACT_ROOT/scripts/lib/"
+          cp "$RUNNER_TEMP/domain-core-build-profile.json" \
+            "$ARTIFACT_ROOT/domain-core-release-inputs/domain-core-build-profile.json"
+          if [[ "$REQUIRES_PROOF" == "true" ]]; then
+            cp -a "$RUNNER_TEMP/domain-core-release-inputs/." \
+              "$ARTIFACT_ROOT/domain-core-release-inputs/"
+          fi
 
-          node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
-            --profile public-production \
+          verify_args=(
+            --profile "$DOMAIN_CORE_PROFILE"
+            --expected-candidate-commit "$CANDIDATE_COMMIT"
             --console-dir "$ARTIFACT_ROOT/apps/console/out"
+          )
+          if [[ -n "$RELEASE_TAG" ]]; then
+            verify_args+=(
+              --expected-release-commit "$RELEASE_COMMIT"
+              --expected-release-version "${RELEASE_TAG#v}"
+              --expected-release-tag "$RELEASE_TAG"
+            )
+          fi
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs "${verify_args[@]}"
 
           node scripts/ci/write-firebase-hosting-ci-config.mjs \
             --mode hosting \
@@ -127,10 +424,10 @@ jobs:
       - name: Upload immutable hosting artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: hosting-artifacts-${{ github.sha }}
+          name: hosting-artifacts-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/hosting-artifact
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 90
           include-hidden-files: true
 
       - name: Dry-run summary
@@ -146,11 +443,14 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    outputs:
+      provider_coordinates: ${{ steps.hosting-release.outputs.provider_coordinates || steps.stable-replay.outputs.provider_coordinates }}
+      reused_existing_evidence: ${{ steps.stable-replay.outputs.reused }}
     steps:
       - name: Download immutable hosting artifact
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0 (node24-native)
         with:
-          name: hosting-artifacts-${{ github.sha }}
+          name: hosting-artifacts-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/hosting-artifact
 
       - name: Verify hosting artifact and CI config
@@ -208,7 +508,112 @@ jobs:
           token_format: access_token
           access_token_scopes: https://www.googleapis.com/auth/cloud-platform
 
+      - name: Refuse non-identical stable-tag redeploy
+        if: ${{ needs.build-hosting-artifacts.outputs.stable_release == 'true' && needs.build-hosting-artifacts.outputs.domain_core_profile == 'public-production' }}
+        id: stable-replay
+        env:
+          ARTIFACT_ROOT: ${{ runner.temp }}/hosting-artifact
+          FIREBASE_HOSTING_REST_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build-hosting-artifacts.outputs.release_tag }}
+          RELEASE_COMMIT: ${{ needs.build-hosting-artifacts.outputs.commit }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          asset="OpenBurnBar-${version}-console-deployment.json"
+          bundle_asset="OpenBurnBar-${version}-console-cloudVault-domain-core-attestation.sigstore.json"
+          if ! gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/existing-release.json" 2>"$RUNNER_TEMP/existing-release.err"; then
+            if grep -q "HTTP 404" "$RUNNER_TEMP/existing-release.err"; then
+              echo "reused=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            cat "$RUNNER_TEMP/existing-release.err" >&2
+            exit 1
+          fi
+          if ! jq -e --arg asset "$asset" '.assets | any(.name == $asset)' "$RUNNER_TEMP/existing-release.json" >/dev/null; then
+            # The release exists but its immutable Console receipt is missing.
+            # The live v2 deployment identity is the only authoritative way to
+            # distinguish a safe first deployment from an unverifiable replay.
+            # An unavailable or malformed identity is therefore a hard failure,
+            # not permission to mutate production.
+            identity="$RUNNER_TEMP/existing-console-deployment-identity.json"
+            if ! curl --fail --silent --show-error \
+                "https://app.burnbar.ai/domain-core-deployment-identity.json" \
+                > "$identity" 2>"$RUNNER_TEMP/existing-identity.err"; then
+              cat "$RUNNER_TEMP/existing-identity.err" >&2
+              echo "::error::Cannot establish the live Console release identity while the immutable deployment receipt is missing. Refusing production mutation."
+              exit 1
+            fi
+            jq -e '
+              if .schemaVersion != 2 or .consumer != "console"
+                or (.commit | type != "string" or (test("^[0-9a-f]{40}$") | not))
+              then error("live Console deployment identity is not a v2 console identity")
+              else . end
+            ' "$identity" >/dev/null
+            live_commit="$(jq -er '.commit' "$identity")"
+            if [[ "$live_commit" == "$RELEASE_COMMIT" ]]; then
+              echo "::error::The release commit is already live (deployment identity commit ${live_commit}) but its immutable Console deployment receipt is missing. Refusing an unverifiable same-tag redeploy."
+              exit 1
+            fi
+            echo "reused=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir "$RUNNER_TEMP/existing-console-evidence"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$asset" \
+            --pattern "$bundle_asset" \
+            --dir "$RUNNER_TEMP/existing-console-evidence"
+          gh attestation verify \
+            "$RUNNER_TEMP/existing-console-evidence/$asset" \
+            --bundle "$RUNNER_TEMP/existing-console-evidence/$bundle_asset" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/domain-core-console-release-evidence.yml" \
+            --source-digest "$RELEASE_COMMIT" \
+            --source-ref "refs/tags/$RELEASE_TAG" \
+            --signer-digest "$RELEASE_COMMIT" \
+            --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --deny-self-hosted-runners \
+            --predicate-type "https://openburnbar.dev/attestations/domain-core-release-artifact/v2" \
+            --format json \
+            | jq -e 'type == "array" and length > 0' >/dev/null
+          # shellcheck source=/dev/null
+          source "$ARTIFACT_ROOT/scripts/lib/curl-bearer.sh"
+          curl --fail --silent --show-error \
+            "https://app.burnbar.ai/domain-core-runtime-artifact-manifest.json" \
+            > "$RUNNER_TEMP/existing-console-runtime-manifest.json"
+          : > "$RUNNER_TEMP/existing-hosting-sites.jsonl"
+          for mapping in "marketing:burnbar" "console:burnbar-console"; do
+            target="${mapping%%:*}"
+            site="${mapping#*:}"
+            response="$RUNNER_TEMP/existing-hosting-${target}.json"
+            obb_curl_with_bearer "$FIREBASE_HOSTING_REST_ACCESS_TOKEN" \
+              --fail --silent --show-error \
+              "https://firebasehosting.googleapis.com/v1beta1/sites/${site}/channels/live/releases?pageSize=1" \
+              > "$response"
+            jq -ce --arg target "$target" --arg site "$site" '
+              if (.releases | length) != 1 then error("expected exactly one current live Hosting release") else .releases[0] end
+              | {target: $target, site: $site, versionName: .version.name, releaseName: .name}
+              | select(.versionName | startswith("sites/" + $site + "/versions/"))
+              | select(.releaseName | startswith("sites/" + $site + "/channels/live/releases/"))
+            ' "$response" >> "$RUNNER_TEMP/existing-hosting-sites.jsonl"
+          done
+          jq -s '{sites: .}' "$RUNNER_TEMP/existing-hosting-sites.jsonl" \
+            > "$RUNNER_TEMP/existing-hosting-provider-coordinates.json"
+          result="$(node "$ARTIFACT_ROOT/scripts/ci/verify-existing-domain-core-deployment.mjs" \
+            --consumer console \
+            --receipt "$RUNNER_TEMP/existing-console-evidence/$asset" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --artifact "$ARTIFACT_ROOT/apps/console/out/domain-core-runtime-artifact-manifest.json" \
+            --live "$RUNNER_TEMP/existing-console-runtime-manifest.json" \
+            --provider-coordinates "$RUNNER_TEMP/existing-hosting-provider-coordinates.json" \
+            --release-gate "$ARTIFACT_ROOT/domain-core-release-inputs/domain-core-release-gate.json")"
+          echo "reused=true" >> "$GITHUB_OUTPUT"
+          echo "provider_coordinates=$(jq -c '{schemaVersion: 1, project: "burnbar", sites: .providerCoordinates.sites}' <<< "$result")" >> "$GITHUB_OUTPUT"
+
       - name: Deploy Hosting (marketing + console)
+        if: ${{ steps.stable-replay.outputs.reused != 'true' }}
+        id: hosting-release
         env:
           ARTIFACT_ROOT: ${{ runner.temp }}/hosting-artifact
           FIREBASE_HOSTING_CI_CONFIG: ${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json
@@ -231,15 +636,27 @@ jobs:
             echo "::error::Firebase Hosting CI config is missing from the immutable artifact root."
             exit 1
           fi
+          recomputed_manifest="$RUNNER_TEMP/domain-core-console-runtime-manifest-recomputed.json"
+          node "$ARTIFACT_ROOT/scripts/ci/create-domain-core-runtime-artifact-manifest.mjs" \
+            --consumer console \
+            --root "$ARTIFACT_ROOT/apps/console/out" \
+            --profile-receipt "$ARTIFACT_ROOT/domain-core-release-inputs/domain-core-build-profile.json" \
+            --output "$recomputed_manifest"
+          if ! cmp -s "$ARTIFACT_ROOT/apps/console/out/domain-core-runtime-artifact-manifest.json" "$recomputed_manifest"; then
+            echo "::error::Console runtime bytes changed after the immutable manifest was created."
+            exit 1
+          fi
           cd "$ARTIFACT_ROOT"
           node "$ARTIFACT_ROOT/scripts/ci/deploy-firebase-hosting-rest.mjs" \
             --project burnbar \
             --config "$FIREBASE_HOSTING_CI_CONFIG" \
             --firebaserc "$ARTIFACT_ROOT/.firebaserc" \
-            --message "GitHub Actions ${GITHUB_SHA}"
+            --message "GitHub Actions ${GITHUB_SHA}" \
+            --result "$RUNNER_TEMP/domain-core-hosting-provider-coordinates.json"
+          echo "provider_coordinates=$(jq -c . "$RUNNER_TEMP/domain-core-hosting-provider-coordinates.json")" >> "$GITHUB_OUTPUT"
 
   hosting-smoke-result:
-    needs: deploy-hosting
+    needs: [build-hosting-artifacts, deploy-hosting]
     if: ${{ always() && github.event.inputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -249,6 +666,12 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
+      - name: Download exact deployed hosting artifact
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0 (node24-native)
+        with:
+          name: hosting-artifacts-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hosting-artifact
+
       - name: Fail when deploy job did not succeed
         if: ${{ needs.deploy-hosting.result != 'success' }}
         run: |
@@ -257,6 +680,13 @@ jobs:
 
       - name: Post-deploy hosting smoke
         env:
+          HOSTING_SMOKE_EXPECTED_COMMIT: ${{ needs.build-hosting-artifacts.outputs.commit }}
+          HOSTING_SMOKE_EXPECTED_TAG: ${{ needs.build-hosting-artifacts.outputs.release_tag }}
+          HOSTING_SMOKE_PROFILE_RECEIPT: ${{ runner.temp }}/hosting-artifact/domain-core-release-inputs/domain-core-build-profile.json
+          HOSTING_SMOKE_RELEASE_GATE: ${{ needs.build-hosting-artifacts.outputs.requires_proof == 'true' && format('{0}/hosting-artifact/domain-core-release-inputs/domain-core-release-gate.json', runner.temp) || '' }}
+          CONSOLE_DEPLOY_HEALTH_JSON: ${{ needs.build-hosting-artifacts.outputs.stable_release == 'true' && 'console-deploy-health.json' || '' }}
+          HOSTING_SMOKE_RUNTIME_MANIFEST: ${{ runner.temp }}/hosting-artifact/apps/console/out/domain-core-runtime-artifact-manifest.json
+          HOSTING_DEPLOY_COORDINATES_JSON: ${{ needs.deploy-hosting.outputs.provider_coordinates }}
           # The signed macOS update feed is produced by release.yml, which
           # fail-closes on its own freshly published feed (verify-live-update-feed
           # job). Hosting deploys still monitor the live feed continuously:
@@ -267,6 +697,15 @@ jobs:
           OPENBURNBAR_REQUIRE_DOWNLOAD_FEED: ${{ vars.OPENBURNBAR_REQUIRE_DOWNLOAD_FEED || 'warn' }}
         run: bash scripts/ci/hosting-smoke.sh
 
+      - name: Upload exact Console deploy health evidence
+        if: ${{ needs.build-hosting-artifacts.outputs.stable_release == 'true' }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: console-deploy-health-${{ github.run_id }}-${{ github.run_attempt }}
+          path: console-deploy-health.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Deployment summary
         if: always()
         run: |
@@ -276,6 +715,7 @@ jobs:
             echo "- Project: burnbar"
             echo "- Trigger: ${{ github.event_name }}"
             echo "- Artifact SHA: ${{ github.sha }}"
+            echo "- Domain core profile: ${{ needs.build-hosting-artifacts.outputs.domain_core_profile }}"
             echo ""
             echo "### Rollback"
             echo "- Firebase Console -> Hosting -> select the site -> Release history -> Rollback, or:"
@@ -284,7 +724,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Record hosting deploy failure (per-lane dedupe; comment, never silent-skip)
-        if: failure() && github.ref == 'refs/heads/main'
+        if: failure()
         uses: ./.github/actions/ops-failure-issue
         with:
           mode: open
@@ -297,9 +737,35 @@ jobs:
           paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}
 
       - name: Close resolved hosting deploy failure issue
-        if: success() && github.ref == 'refs/heads/main'
+        if: success()
         uses: ./.github/actions/ops-failure-issue
         with:
           mode: close
           lane: deploy-hosting
           title-prefix: Hosting deploy smoke failed
+
+  dispatch-domain-core-console-evidence:
+    needs: [build-hosting-artifacts, deploy-hosting, hosting-smoke-result]
+    if: >-
+      ${{ needs.build-hosting-artifacts.result == 'success'
+          && needs.deploy-hosting.result == 'success'
+          && needs.hosting-smoke-result.result == 'success'
+          && needs.build-hosting-artifacts.outputs.stable_release == 'true'
+          && needs.deploy-hosting.outputs.reused_existing_evidence != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch tag-bound Console evidence publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build-hosting-artifacts.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run domain-core-console-release-evidence.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$RELEASE_TAG" \
+            --field deploy_run_id="$GITHUB_RUN_ID" \
+            --field deploy_run_attempt="$GITHUB_RUN_ATTEMPT"

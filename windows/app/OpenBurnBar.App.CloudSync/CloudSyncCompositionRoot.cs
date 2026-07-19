@@ -12,8 +12,8 @@ namespace OpenBurnBar.App.CloudSync;
 
 /// <summary>
 /// App-level wiring for Firestore REST, callables, offline queue, and App Check.
-/// Portable callers retain the deterministic mock producer for tests; the WinUI
-/// desktop supplies the Windows TPM producer through the platform composition hook.
+/// Dev-host callers retain the deterministic mock producer for tests; the
+/// shipping WinUI desktop supplies the Windows TPM producer and a live transport.
 /// </summary>
 public sealed class CloudSyncCompositionRoot
 {
@@ -100,48 +100,48 @@ public sealed class CloudSyncCompositionRoot
 
     /// <summary>
     /// Live root: a signed-in <see cref="DesktopOAuthCredentialsProvider"/> supplies
-    /// the real Firebase id token for both Firestore auth and the App Check mint
-    /// (the provider is the id-token source). This is the credential gate that
-    /// flips the "Authored→Real" surfaces on. App Check stays optional: pass an
-    /// <paramref name="appCheckMintTransport"/> (e.g. the HttpClient mint transport)
-    /// to require + attach <c>X-Firebase-AppCheck</c>; omit it to run id-token-only
-    /// The WinUI host supplies a platform producer (TPM on Windows); portable
-    /// callers may omit it for the deterministic mock producer used by tests.
+    /// the real Firebase id token for both Firestore auth and the App Check mint.
+    /// Production App Check is mandatory: the caller supplies the Windows TPM
+    /// producer, live HTTP transport, and provisioned Firebase app id.
     /// </summary>
     public static CloudSyncCompositionRoot CreateWithOAuth(
         DesktopOAuthCredentialsProvider oauth,
         string firebaseProjectId,
         string firebaseUid,
-        IAppCheckMintTransport? appCheckMintTransport = null,
-        bool? requireAppCheckOnFirestore = null,
-        IAttestationProducer? appCheckAttestationProducer = null)
+        IAttestationProducer attestationProducer,
+        IAppCheckMintTransport appCheckMintTransport,
+        string appCheckAppId)
     {
         if (oauth is null) throw new ArgumentNullException(nameof(oauth));
         if (string.IsNullOrWhiteSpace(firebaseProjectId)) throw new ArgumentException("firebaseProjectId is required.", nameof(firebaseProjectId));
         if (string.IsNullOrWhiteSpace(firebaseUid)) throw new ArgumentException("firebaseUid is required.", nameof(firebaseUid));
-
-        bool requireAppCheck = requireAppCheckOnFirestore ?? (appCheckMintTransport is not null);
-
-        WindowsAppCheckProvider? appCheckProvider = null;
-        if (appCheckMintTransport is not null)
+        if (attestationProducer is null) throw new ArgumentNullException(nameof(attestationProducer));
+        if (appCheckMintTransport is null) throw new ArgumentNullException(nameof(appCheckMintTransport));
+        if (string.IsNullOrWhiteSpace(appCheckAppId)) throw new ArgumentException("appCheckAppId is required.", nameof(appCheckAppId));
+        if (!attestationProducer.RequiresServerChallenge)
         {
-            var endpoint = AppCheckMintEndpoint.ForProject(firebaseProjectId);
-            var mintClient = new AppCheckMintClient(endpoint, appCheckMintTransport);
-            string appId = Environment.GetEnvironmentVariable(CloudAuthProductionComposition.AppCheckAppIdEnv)
-                ?? $"1:openburnbar:web:{firebaseProjectId}";
-            var options = new AppCheckProviderOptions { AppId = appId };
-            appCheckProvider = new WindowsAppCheckProvider(
-                appCheckAttestationProducer ?? new MockAttestationProducer(),
-                mintClient,
-                oauth, // the live Firebase id token drives the mint bearer
-                options,
-                SystemClock.Instance);
+            throw new ArgumentException("Production OAuth requires a server-challenge attestation producer.", nameof(attestationProducer));
         }
+
+        var mintClient = new AppCheckMintClient(
+            AppCheckMintEndpoint.ForProject(firebaseProjectId),
+            appCheckMintTransport);
+        var challengeClient = new AppCheckChallengeClient(
+            AppCheckChallengeEndpoint.ForProject(firebaseProjectId),
+            appCheckMintTransport);
+        var options = new AppCheckProviderOptions { AppId = appCheckAppId };
+        var appCheckProvider = new WindowsAppCheckProvider(
+            attestationProducer,
+            mintClient,
+            oauth,
+            options,
+            SystemClock.Instance,
+            challengeClient);
 
         var credentials = new AppCheckCredentialsProvider(oauth, appCheckProvider);
         var http = new HttpClientCloudSyncTransport(new HttpClient());
         var database = new FirestoreDatabase(firebaseProjectId);
-        var gateway = new FirestoreRestGateway(http, credentials, database, requireAppCheck);
+        var gateway = new FirestoreRestGateway(http, credentials, database, requireAppCheck: true);
         var callable = new CallableClient(http, credentials, new CallableEndpoint("us-central1", firebaseProjectId));
         var queue = new OfflineWriteQueue(gateway, startOnline: true);
 

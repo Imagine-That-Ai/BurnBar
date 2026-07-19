@@ -1,7 +1,6 @@
 
 package com.openburnbar.data.hermes.relay
 
-import java.io.ByteArrayOutputStream
 import java.security.AlgorithmParameters
 import java.security.GeneralSecurityException
 import java.security.KeyFactory
@@ -9,10 +8,6 @@ import java.security.SecureRandom
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.ECParameterSpec
 import java.security.spec.ECPrivateKeySpec
-import javax.crypto.Cipher
-import javax.crypto.Mac
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 import uniffi.openburnbar_domain_ffi.HermesFfiException
 
 enum class HermesRatchetError {
@@ -85,18 +80,16 @@ object HermesRatchetCrypto {
     const val DEFAULT_MAX_SKIP = 64
 
     internal const val AAD_DOMAIN = "OpenBurnBar-HermesRatchet-v1-AAD"
-    internal const val ROOT_INFO = "OpenBurnBar-HermesRatchet-v1-root"
-    internal const val CHAIN_LABEL = "OpenBurnBar-HermesRatchet-v1-chain"
-    internal const val MESSAGE_LABEL = "OpenBurnBar-HermesRatchet-v1-message"
+    internal const val ROOT_INFO = HermesRatchetLegacyCrypto.ROOT_INFO
+    internal const val CHAIN_LABEL = HermesRatchetLegacyCrypto.CHAIN_LABEL
+    internal const val MESSAGE_LABEL = HermesRatchetLegacyCrypto.MESSAGE_LABEL
 
     private const val AES_KEY_BYTES = 32
-    private const val GCM_IV_BYTES = 12
-    private const val GCM_TAG_BITS = 128
+    private const val GCM_IV_BYTES = HermesRatchetLegacyCrypto.GCM_IV_BYTES
     private const val HKDF_ROOT_OUTPUT_BYTES = 64
     private const val P256_PRIVATE_BYTES = 32
     private const val P256_PUBLIC_BYTES = 65
     private const val P256_CURVE_NAME = "secp256r1"
-    private const val BYTE_MASK = 0xffL
 
     private val secureRandom = SecureRandom()
 
@@ -210,21 +203,7 @@ object HermesRatchetCrypto {
     }
 
     internal fun envelopeAAD(header: HermesRatchetHeader, associatedData: ByteArray): ByteArray {
-        val legacy = {
-            ByteArrayOutputStream().apply {
-                write(AAD_DOMAIN.toByteArray(Charsets.UTF_8))
-                appendPart(associatedData)
-                appendPart(header.algorithm.toByteArray(Charsets.UTF_8))
-                appendPart(header.sessionID.toByteArray(Charsets.UTF_8))
-                appendPart(header.senderDeviceID.toByteArray(Charsets.UTF_8))
-                appendPart(header.receiverDeviceID.toByteArray(Charsets.UTF_8))
-                appendPart(header.ratchetPublicKeyBase64.toByteArray(Charsets.UTF_8))
-                appendUInt64(header.version)
-                appendUInt64(header.previousChainLength)
-                appendUInt64(header.messageNumber)
-                appendUInt64(header.epoch)
-            }.toByteArray()
-        }
+        val legacy = { HermesRatchetLegacyCrypto.envelopeAAD(header, associatedData) }
         return HermesDomainCoreAdapter.ratchetAad(header, associatedData, legacy)
     }
 
@@ -287,12 +266,7 @@ object HermesRatchetCrypto {
         return try {
             val aad = envelopeAAD(envelope.header, associatedData)
             HermesDomainCoreAdapter.openCombined(combined, messageKey, aad) {
-                val nonce = combined.copyOfRange(0, GCM_IV_BYTES)
-                val body = combined.copyOfRange(GCM_IV_BYTES, combined.size)
-                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(messageKey, "AES"), GCMParameterSpec(GCM_TAG_BITS, nonce))
-                cipher.updateAAD(aad)
-                cipher.doFinal(body)
+                HermesRatchetLegacyCrypto.open(combined, messageKey, aad)
             }
         } catch (error: GeneralSecurityException) {
             authenticationFailure(error)
@@ -331,8 +305,7 @@ object HermesRatchetCrypto {
     private fun rootKDF(rootKey: ByteArray, dhOutput: ByteArray): RootDerivation {
         val info = ROOT_INFO.toByteArray(Charsets.UTF_8)
         val output = HermesDomainCoreAdapter.hkdf(dhOutput, rootKey, info, HKDF_ROOT_OUTPUT_BYTES) {
-            val prk = HermesRelayCryptoHkdf.hkdfExtract(salt = rootKey, ikm = dhOutput)
-            HermesRelayCryptoHkdf.hkdfExpand(prk = prk, info = info, length = HKDF_ROOT_OUTPUT_BYTES)
+            HermesRatchetLegacyCrypto.rootKDF(rootKey, dhOutput, HKDF_ROOT_OUTPUT_BYTES)
         }
         return RootDerivation(output.copyOfRange(0, AES_KEY_BYTES), output.copyOfRange(AES_KEY_BYTES, output.size))
     }
@@ -341,28 +314,19 @@ object HermesRatchetCrypto {
         val chainLabel = CHAIN_LABEL.toByteArray(Charsets.UTF_8)
         val messageLabel = MESSAGE_LABEL.toByteArray(Charsets.UTF_8)
         val next = HermesDomainCoreAdapter.hmac(chainKey, chainLabel, "ratchet_chain_kdf") {
-            hmacSha256(chainKey, chainLabel)
+            HermesRatchetLegacyCrypto.nextChainKey(chainKey)
         }
         val message = HermesDomainCoreAdapter.hmac(chainKey, messageLabel, "ratchet_message_kdf") {
-            hmacSha256(chainKey, messageLabel)
+            HermesRatchetLegacyCrypto.messageKey(chainKey)
         }
         return ChainDerivation(next, message)
-    }
-
-    private fun hmacSha256(key: ByteArray, data: ByteArray): ByteArray {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(key, "HmacSHA256"))
-        return mac.doFinal(data)
     }
 
     private fun seal(plaintext: ByteArray, keyData: ByteArray, aad: ByteArray): ByteArray {
         validateSymmetricKey(keyData, "messageKey")
         return HermesDomainCoreAdapter.sealCombined(plaintext, keyData, aad) {
             val nonce = ByteArray(GCM_IV_BYTES).also(secureRandom::nextBytes)
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(keyData, "AES"), GCMParameterSpec(GCM_TAG_BITS, nonce))
-            cipher.updateAAD(aad)
-            nonce + cipher.doFinal(plaintext)
+            HermesRatchetLegacyCrypto.seal(plaintext, keyData, aad, nonce)
         }
     }
 
@@ -439,19 +403,6 @@ object HermesRatchetCrypto {
     }
 
     private fun skippedKeyID(ratchetPublicKeyBase64: String, messageNumber: Int): String = "$ratchetPublicKeyBase64:$messageNumber"
-
-    private fun ByteArrayOutputStream.appendPart(part: ByteArray) {
-        appendUInt64(part.size)
-        write(part)
-    }
-
-    private fun ByteArrayOutputStream.appendUInt64(value: Int) {
-        require(value >= 0) { "UInt64 ratchet field cannot be negative" }
-        val longValue = value.toLong()
-        for (shift in 56 downTo 0 step 8) {
-            write((longValue ushr shift and BYTE_MASK).toInt())
-        }
-    }
 
     private data class RootDerivation(val rootKey: ByteArray, val chainKey: ByteArray)
 

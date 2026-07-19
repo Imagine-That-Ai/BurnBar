@@ -1717,7 +1717,7 @@ private final class MockParser: LogParser, @unchecked Sendable {
         self.provider = provider
     }
 
-    func parse() async throws -> ParseResult {
+    func parse(options _: LogParseOptions) async throws -> ParseResult {
         parseCallCount += 1
         if parseDelayNanoseconds > 0 {
             try await Task.sleep(nanoseconds: parseDelayNanoseconds)

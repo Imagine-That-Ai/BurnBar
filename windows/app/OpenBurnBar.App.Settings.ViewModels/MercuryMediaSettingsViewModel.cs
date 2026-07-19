@@ -56,6 +56,28 @@ public sealed class StaticMercuryMediaCapabilitySource : IMercuryMediaCapability
     public bool CaptureRuntimeSupported { get; }
 }
 
+/// <summary>Wraps a conservative static source with a live fleet kill-switch projection.</summary>
+public sealed class FleetAwareMercuryMediaCapabilitySource : IMercuryMediaCapabilitySource
+{
+    private readonly IMercuryMediaCapabilitySource _inner;
+    private readonly Func<bool> _killSwitchActive;
+
+    public FleetAwareMercuryMediaCapabilitySource(
+        Func<bool> killSwitchActive,
+        IMercuryMediaCapabilitySource? inner = null)
+    {
+        _killSwitchActive = killSwitchActive ?? throw new ArgumentNullException(nameof(killSwitchActive));
+        _inner = inner ?? new StaticMercuryMediaCapabilitySource(killSwitchActive: true);
+    }
+
+    public MediaEntitlementState Entitlement => _inner.Entitlement;
+    public MediaBudgetStatus Budget => _inner.Budget;
+    public MediaQuotaUsageSnapshot Usage => _inner.Usage;
+    public bool KillSwitchActive => _killSwitchActive();
+    public int ConcurrentSessions => _inner.ConcurrentSessions;
+    public bool CaptureRuntimeSupported => _inner.CaptureRuntimeSupported;
+}
+
 /// <summary>
 /// Mercury settings projection. It owns admission checks only; actual capture,
 /// encoding, transport, and transfer are separate runtime services. Every

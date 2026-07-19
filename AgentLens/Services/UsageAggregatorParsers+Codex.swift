@@ -151,18 +151,21 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
         self.sessionsDirectory = sessionsDirectory
     }
 
-    func parse() async throws -> OpenBurnBarCore.ParseResult {
+    func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
         guard fileManager.fileExists(atPath: sessionsDirectory.path) else {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
+        let gate = OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fileManager)
         let files = sessionFiles(in: sessionsDirectory)
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
         var usages: [TokenUsage] = []
 
         for file in files {
-            guard let parsed = parseSession(file: file) else { continue }
-            conversations.append(parsed.conversation)
+            guard try gate.shouldRead(file), let parsed = parseSession(file: file) else { continue }
+            if options.includeConversationBodies {
+                conversations.append(parsed.conversation)
+            }
             if let usage = parsed.usage {
                 usages.append(usage)
             }
@@ -292,9 +295,10 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
     /// Streams session objects to `handler` without materializing whole files.
     ///
     /// JSONL-style content is decoded line by line (buffered reads, one
-    /// `autoreleasepool` per line — the JSON object graphs are autoreleased
-    /// and parse loops run in contexts that never drain). Only when a file
-    /// yields no line objects does the legacy whole-file JSON fallback run.
+    /// `parserAutoReleasePool` per line — the JSON object graphs are
+    /// autoreleased on Darwin and parse loops run in contexts that never
+    /// drain). Only when a file yields no line objects does the legacy
+    /// whole-file JSON fallback run.
     private static func enumerateSessionObjects(
         from file: URL,
         fileManager: FileManager,
@@ -304,7 +308,7 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
         if let handle = try? FileHandle(forReadingFrom: file) { // try?-ok(unreadable file falls back below)
             defer { try? handle.close() } // try?-ok(handle teardown)
             for line in handle.readAllUTF8Lines() {
-                autoreleasepool {
+                parserAutoReleasePool {
                     guard let lineData = line.data(using: .utf8),
                           let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else { // try?-ok(per-line decode, skip)
                         return
@@ -319,7 +323,7 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
         // Whole-file fallback: single-document JSON sessions (arrays or
         // nested `messages`/`turns`/… containers).
         guard let data = try? Data(contentsOf: file) else { return } // try?-ok(session read, skip if absent)
-        autoreleasepool {
+        parserAutoReleasePool {
             guard let root = try? JSONSerialization.jsonObject(with: data) else { return } // try?-ok(whole-file decode, empty fallback)
             for object in flattenSessionObjects(root) {
                 handler(object)

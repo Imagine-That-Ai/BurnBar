@@ -23,7 +23,10 @@
 // (bound = one dispatch-check, zero additional synthesized actions).
 
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Linq;
 using OpenBurnBar.ComputerUse.Core.Gate;
 
 namespace OpenBurnBar.ComputerUse.Core.KillSwitch;
@@ -125,6 +128,150 @@ public sealed class FileKillSwitchFlag : IKillSwitchFlag
         {
             File.Delete(_path);
         }
+    }
+
+    /// <summary>
+    /// Atomically creates the flag only when no owner already holds it. This is
+    /// used for startup interlocks so an unresolved remote-config marker cannot
+    /// overwrite the reason from an earlier manual or watchdog panic.
+    /// </summary>
+    public bool TryActivateIfInactive(string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        var directory = Path.GetDirectoryName(_path);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        try
+        {
+            using var stream = new FileStream(_path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+            using var writer = new StreamWriter(stream);
+            writer.Write(reason);
+            return true;
+        }
+        catch (IOException) when (File.Exists(_path))
+        {
+            return false;
+        }
+    }
+}
+
+/// <summary>
+/// A writable primary kill flag combined with independent read-only interlocks.
+/// Activate/Clear only mutate the primary panic latch; every dispatch observes
+/// all layers, and an unreadable layer fails closed.
+/// </summary>
+public sealed class LayeredKillSwitchFlag : IKillSwitchFlag
+{
+    private readonly IKillSwitchFlag _primary;
+    private readonly IReadOnlyList<IKillSwitchFlag> _interlocks;
+
+    public LayeredKillSwitchFlag(IKillSwitchFlag primary, params IKillSwitchFlag[] interlocks)
+    {
+        _primary = primary ?? throw new ArgumentNullException(nameof(primary));
+        _interlocks = interlocks?.ToArray() ?? throw new ArgumentNullException(nameof(interlocks));
+        if (_interlocks.Any(static flag => flag is null))
+        {
+            throw new ArgumentException("Interlock flags cannot contain null.", nameof(interlocks));
+        }
+    }
+
+    public bool IsActive
+    {
+        get
+        {
+            try
+            {
+                return _primary.IsActive || _interlocks.Any(static flag => flag.IsActive);
+            }
+            catch (Exception)
+            {
+                return true;
+            }
+        }
+    }
+
+    public void Activate(string? reason = null) => _primary.Activate(reason);
+
+    public void Clear() => _primary.Clear();
+}
+
+/// <summary>
+/// Cross-process remote-safety lease. Missing, malformed, explicitly blocked,
+/// or expired content all mean active. Only a fresh authenticated config poll
+/// may write an allow lease, so a crashed app automatically re-closes the
+/// privileged broker without relying on process-lifetime coupling.
+/// </summary>
+public sealed class RemoteSafetyLeaseKillSwitchFlag : IKillSwitchFlag
+{
+    private const string AllowPrefix = "openburnbar-remote-safety-v1:allow-until:";
+    private const string BlockPrefix = "openburnbar-remote-safety-v1:blocked:";
+
+    private readonly string _path;
+    private readonly TimeProvider _timeProvider;
+
+    public RemoteSafetyLeaseKillSwitchFlag(string path, TimeProvider? timeProvider = null)
+    {
+        _path = path ?? throw new ArgumentNullException(nameof(path));
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+
+    public bool IsActive
+    {
+        get
+        {
+            try
+            {
+                if (!File.Exists(_path)) return true;
+                string value = File.ReadAllText(_path).Trim();
+                if (!value.StartsWith(AllowPrefix, StringComparison.Ordinal)
+                    || !long.TryParse(
+                        value.AsSpan(AllowPrefix.Length),
+                        NumberStyles.None,
+                        CultureInfo.InvariantCulture,
+                        out long expiresAtMillis))
+                {
+                    return true;
+                }
+                return _timeProvider.GetUtcNow().ToUnixTimeMilliseconds() >= expiresAtMillis;
+            }
+            catch (Exception)
+            {
+                return true;
+            }
+        }
+    }
+
+    public void Activate(string? reason = null) => Write(BlockPrefix + NormalizeReason(reason));
+
+    /// <summary>A generic clear cannot authorize execution without a bounded lease.</summary>
+    public void Clear() => Activate("clear_requires_authenticated_lease");
+
+    public void AuthorizeUntil(DateTimeOffset expiresAt)
+    {
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+        if (expiresAt <= now || expiresAt > now.AddMinutes(5))
+        {
+            throw new ArgumentOutOfRangeException(nameof(expiresAt), "Remote safety leases must expire within five minutes.");
+        }
+        Write(AllowPrefix + expiresAt.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
+    }
+
+    private void Write(string value)
+    {
+        string? directory = Path.GetDirectoryName(_path);
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+        string temporary = _path + ".tmp-" + Guid.NewGuid().ToString("N");
+        File.WriteAllText(temporary, value);
+        File.Move(temporary, _path, overwrite: true);
+    }
+
+    private static string NormalizeReason(string? reason)
+    {
+        string value = string.IsNullOrWhiteSpace(reason) ? "remote_config" : reason.Trim();
+        return value.Length <= 64 ? value : value[..64];
     }
 }
 

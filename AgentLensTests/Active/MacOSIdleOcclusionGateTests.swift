@@ -14,8 +14,8 @@ import XCTest
 /// is in `scripts/ci/macos-idle-occlusion-gate.test.mjs`, which loads the real
 /// `kernel-backdrop.js` bundle in a mock DOM+rAF harness.
 ///
-/// This Swift test does NOT skip in CI — it tests a pure function with mock
-/// NSWindow occlusion states, no source-string matching, no real window required.
+/// This Swift test does NOT skip in CI — it exercises the policy's input tuple
+/// directly, without source-string matching or a real window server connection.
 @MainActor
 final class MacOSIdleOcclusionGateTests: XCTestCase {
 
@@ -28,50 +28,90 @@ final class MacOSIdleOcclusionGateTests: XCTestCase {
         )
     }
 
-    // MARK: - OcclusionVisibilityPolicy: visible window
+    func testPolicy_performanceGateTrueOverride_activatesOtherwiseOccludedState() {
+        XCTAssertTrue(
+            OcclusionVisibilityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: [],
+                performanceGateOverride: true
+            ),
+            "An explicit performance-gate enable must take precedence over ordinary occluded-state behavior."
+        )
+    }
+
+    // MARK: - OcclusionVisibilityPolicy: live window state
+
+    func testPolicy_performanceGateFalseOverride_deactivatesOtherwiseVisibleState() {
+        XCTAssertFalse(
+            OcclusionVisibilityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: .visible,
+                performanceGateOverride: false
+            ),
+            "An explicit performance-gate disable must take precedence over ordinary visible-state behavior."
+        )
+    }
+
+    func testPolicy_nilPerformanceGateOverride_preservesOrdinaryStateBehavior() {
+        XCTAssertTrue(
+            OcclusionVisibilityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: .visible,
+                performanceGateOverride: nil
+            )
+        )
+        XCTAssertFalse(
+            OcclusionVisibilityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: [],
+                performanceGateOverride: nil
+            )
+        )
+    }
 
     func testPolicy_visibleWindow_returnsActive() {
-        let window = TestWindow(occlusionState: .visible)
         XCTAssertTrue(
-            OcclusionVisibilityPolicy.shouldBackdropBeActive(window: window),
-            "A visible window must yield active — the backdrop renders."
+            OcclusionVisibilityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: .visible
+            )
         )
     }
-
-    // MARK: - OcclusionVisibilityPolicy: occluded window
 
     func testPolicy_occludedWindow_returnsInactive() {
-        // .visible is NOT in the occlusion state when the window is fully covered
-        let window = TestWindow(occlusionState: [])
         XCTAssertFalse(
-            OcclusionVisibilityPolicy.shouldBackdropBeActive(window: window),
-            "An occluded window (no .visible in occlusionState) must yield inactive."
+            OcclusionVisibilityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: []
+            )
         )
     }
 
-    // MARK: - OcclusionVisibilityPolicy: transition visible → occluded
-
-    func testPolicy_transitionVisibleToOccluded_changesToInactive() {
-        let window = TestWindow(occlusionState: .visible)
-        XCTAssertTrue(OcclusionVisibilityPolicy.shouldBackdropBeActive(window: window))
-
-        window.occlusionState = []
+    func testPolicy_orderedOffWindowWithStaleVisibleBit_returnsInactive() {
         XCTAssertFalse(
-            OcclusionVisibilityPolicy.shouldBackdropBeActive(window: window),
-            "After the window transitions from visible to occluded, the policy must return inactive."
+            OcclusionVisibilityPolicy.shouldBackdropBeActive(
+                isVisible: false,
+                isMiniaturized: false,
+                occlusionState: .visible
+            ),
+            "An ordered-off window must pause even while AppKit retains a stale .visible bit."
         )
     }
 
-    // MARK: - OcclusionVisibilityPolicy: transition occluded → visible
-
-    func testPolicy_transitionOccludedToVisible_changesToActive() {
-        let window = TestWindow(occlusionState: [])
-        XCTAssertFalse(OcclusionVisibilityPolicy.shouldBackdropBeActive(window: window))
-
-        window.occlusionState = .visible
-        XCTAssertTrue(
-            OcclusionVisibilityPolicy.shouldBackdropBeActive(window: window),
-            "After the window transitions from occluded to visible, the policy must return active."
+    func testPolicy_miniaturizedWindowWithStaleVisibleBit_returnsInactive() {
+        XCTAssertFalse(
+            OcclusionVisibilityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: true,
+                occlusionState: .visible
+            ),
+            "A minimized window must pause even while AppKit retains a stale .visible bit."
         )
     }
 
@@ -80,34 +120,13 @@ final class MacOSIdleOcclusionGateTests: XCTestCase {
     func testPolicy_existsAndIsCallable() {
         // If OcclusionVisibilityPolicy is removed or renamed, this test fails to compile.
         // That is the tripwire: the policy seam cannot be silently deleted.
-        let active = OcclusionVisibilityPolicy.shouldBackdropBeActive(window: TestWindow(occlusionState: .visible))
+        let active = OcclusionVisibilityPolicy.shouldBackdropBeActive(
+            isVisible: true,
+            isMiniaturized: false,
+            occlusionState: .visible
+        )
         let inactive = OcclusionVisibilityPolicy.shouldBackdropBeActive(window: nil)
         XCTAssertTrue(active)
         XCTAssertFalse(inactive)
-    }
-}
-
-// MARK: - TestWindow: a minimal NSWindow subclass with controllable occlusionState
-
-/// A minimal NSWindow subclass that allows tests to set `occlusionState`
-/// without a real window server connection. `occlusionState` is normally
-/// read-only; we override it with a stored property.
-@MainActor
-private final class TestWindow: NSWindow {
-    private var _occlusionState: NSWindow.OcclusionState
-
-    init(occlusionState: NSWindow.OcclusionState) {
-        _occlusionState = occlusionState
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 100, height: 100),
-            styleMask: .borderless,
-            backing: .buffered,
-            defer: false
-        )
-    }
-
-    override var occlusionState: NSWindow.OcclusionState {
-        get { _occlusionState }
-        set { _occlusionState = newValue }
     }
 }

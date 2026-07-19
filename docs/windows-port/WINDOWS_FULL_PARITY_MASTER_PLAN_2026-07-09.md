@@ -314,6 +314,8 @@ Tasks:
    Devices settings to real authenticated stores.
 6. Close C5 with live Windows-to-Mac CloudVault E2EE.
 7. Add Remote Config polling parity for kill switches and feature flags.
+   Source implementation: [`WINDOWS_REMOTE_SAFETY_CONFIG.md`](WINDOWS_REMOTE_SAFETY_CONFIG.md).
+   Release truth remains blocked until its signed staging toggle matrix passes.
 
 Exit criteria:
 

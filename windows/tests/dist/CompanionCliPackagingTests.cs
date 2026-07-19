@@ -1,7 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Threading.Tasks;
 using System.Xml.Linq;
 using Xunit;
 
@@ -108,167 +113,285 @@ public sealed class CompanionCliPackagingTests
     }
 
     [Fact]
-    public void AppBuildStagesCompleteCompanionCliAndFastPrWorkflowVerifiesTheBuiltOutput()
+    public void AppBuildStagesUsageWorkerFromOutputGroupsWithHostSpecificExecutable()
     {
         string root = DistTestSupport.RepositoryRoot();
-        string appProjectPath = Path.Combine(
+        XDocument project = XDocument.Load(Path.Combine(
+            root,
+            "windows",
+            "app",
+            "OpenBurnBar.App",
+            "OpenBurnBar.App.csproj"));
+        XNamespace ns = project.Root?.Name.Namespace
+            ?? throw new InvalidOperationException("OpenBurnBar.App.csproj has no root element.");
+
+        XElement target = project
+            .Descendants(ns + "Target")
+            .Single(element => string.Equals(
+                (string?)element.Attribute("Name"),
+                "StageUsageScanWorker",
+                StringComparison.Ordinal));
+        string[] afterTargets = ((string?)target.Attribute("AfterTargets") ?? string.Empty)
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Assert.Contains(afterTargets, value => string.Equals(value, "Build", StringComparison.Ordinal));
+
+        XElement[] workerBuilds = target.Elements(ns + "MSBuild").ToArray();
+        (string Targets, string OutputItem)[] expectedBuildOutputs =
+        {
+            ("Restore;Build", "_OpenBurnBarUsageScanWorkerPrimaryOutput"),
+            ("GetCopyToOutputDirectoryItems", "_OpenBurnBarUsageScanWorkerContentOutput"),
+            ("ReferenceCopyLocalPathsOutputGroup", "_OpenBurnBarUsageScanWorkerReferenceOutput"),
+            ("SatelliteDllsProjectOutputGroup", "_OpenBurnBarUsageScanWorkerSatelliteOutput"),
+        };
+        Assert.Equal(expectedBuildOutputs.Length, workerBuilds.Length);
+
+        foreach ((string expectedTargets, string expectedOutputItem) in expectedBuildOutputs)
+        {
+            XElement workerBuild = workerBuilds.Single(element => string.Equals(
+                (string?)element.Attribute("Targets"),
+                expectedTargets,
+                StringComparison.Ordinal));
+            Assert.Contains(
+                "OpenBurnBar.Cli.csproj",
+                (string?)workerBuild.Attribute("Projects") ?? string.Empty,
+                StringComparison.Ordinal);
+            Assert.Equal("Configuration=$(Configuration)", (string?)workerBuild.Attribute("Properties"));
+            string[] removedProperties = ((string?)workerBuild.Attribute("RemoveProperties") ?? string.Empty)
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            Assert.Equal(
+                new[] { "RuntimeIdentifier", "SelfContained", "PublishSingleFile", "PublishTrimmed" },
+                removedProperties);
+
+            XElement output = workerBuild.Elements(ns + "Output").Single();
+            Assert.Equal("TargetOutputs", (string?)output.Attribute("TaskParameter"));
+            Assert.Equal(expectedOutputItem, (string?)output.Attribute("ItemName"));
+        }
+
+        XElement[] workerFiles = target
+            .Descendants(ns + "OpenBurnBarUsageScanWorkerFile")
+            .ToArray();
+        XElement primaryOutput = workerFiles.Single(element => string.Equals(
+            (string?)element.Attribute("Include"),
+            "@(_OpenBurnBarUsageScanWorkerPrimaryOutput)",
+            StringComparison.Ordinal));
+        Assert.Equal("%(Filename)%(Extension)", primaryOutput.Element(ns + "TargetPath")?.Value);
+
+        XElement groupedOutputs = workerFiles.Single(element =>
+            ((string?)element.Attribute("Include"))?.Contains(
+                "@(_OpenBurnBarUsageScanWorkerContentOutput)",
+                StringComparison.Ordinal) == true);
+        string groupedIncludes = (string?)groupedOutputs.Attribute("Include") ?? string.Empty;
+        Assert.Contains("@(_OpenBurnBarUsageScanWorkerReferenceOutput)", groupedIncludes, StringComparison.Ordinal);
+        Assert.Contains("@(_OpenBurnBarUsageScanWorkerSatelliteOutput)", groupedIncludes, StringComparison.Ordinal);
+
+        XElement contentApphostRemoval = target
+            .Descendants(ns + "_OpenBurnBarUsageScanWorkerContentOutput")
+            .Single(element => element.Attribute("Remove") is not null);
+        Assert.Equal(
+            "@(_OpenBurnBarUsageScanWorkerContentOutput)",
+            (string?)contentApphostRemoval.Attribute("Remove"));
+        string removalCondition = (string?)contentApphostRemoval.Attribute("Condition") ?? string.Empty;
+        Assert.Contains("OpenBurnBar.Cli.exe", removalCondition, StringComparison.Ordinal);
+        Assert.Contains("OpenBurnBar.Cli'", removalCondition, StringComparison.Ordinal);
+
+        XElement windowsExecutable = workerFiles.Single(element => string.Equals(
+            element.Element(ns + "TargetPath")?.Value,
+            "OpenBurnBar.Cli.exe",
+            StringComparison.Ordinal));
+        Assert.Equal(
+            @"$(OpenBurnBarUsageScanWorkerPlatformDirectory)\OpenBurnBar.Cli.exe",
+            (string?)windowsExecutable.Attribute("Include"));
+        Assert.Contains(
+            "'$(OS)' == 'Windows_NT'",
+            (string?)windowsExecutable.Attribute("Condition") ?? string.Empty,
+            StringComparison.Ordinal);
+
+        XElement nonWindowsExecutable = workerFiles.Single(element => string.Equals(
+            element.Element(ns + "TargetPath")?.Value,
+            "OpenBurnBar.Cli",
+            StringComparison.Ordinal));
+        Assert.Equal(
+            @"$(OpenBurnBarUsageScanWorkerPlatformDirectory)\OpenBurnBar.Cli",
+            (string?)nonWindowsExecutable.Attribute("Include"));
+        Assert.Contains(
+            "'$(OS)' != 'Windows_NT'",
+            (string?)nonWindowsExecutable.Attribute("Condition") ?? string.Empty,
+            StringComparison.Ordinal);
+
+        Assert.Contains(target.Elements(ns + "Error"), element =>
+            ((string?)element.Attribute("Condition"))?.Contains(
+                "!Exists('%(OpenBurnBarUsageScanWorkerFile.FullPath)')",
+                StringComparison.Ordinal) == true);
+        XElement copy = target.Elements(ns + "Copy").Single();
+        Assert.Equal("@(OpenBurnBarUsageScanWorkerFile)", (string?)copy.Attribute("SourceFiles"));
+        Assert.Equal(
+            "@(OpenBurnBarUsageScanWorkerFile->'$(TargetDir)%(TargetPath)')",
+            (string?)copy.Attribute("DestinationFiles"));
+        Assert.Null(copy.Attribute("DestinationFolder"));
+    }
+
+    [Fact]
+    public async Task DirectAppStageTargetReconcilesExactRunnableWorkerClosure()
+    {
+        string root = DistTestSupport.RepositoryRoot();
+        string configuration = "WorkerStageTest" + Guid.NewGuid().ToString("N");
+        string platform = RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.Arm64 => "arm64",
+            Architecture.X64 => "x64",
+            Architecture.X86 => "x86",
+            Architecture.Arm => "arm",
+            _ => throw new PlatformNotSupportedException(
+                $"No explicit MSBuild Platform maps to {RuntimeInformation.ProcessArchitecture}."),
+        };
+        string appProject = Path.Combine(
             root,
             "windows",
             "app",
             "OpenBurnBar.App",
             "OpenBurnBar.App.csproj");
-        XDocument appProject = XDocument.Load(appProjectPath);
+        string appOutput = Path.Combine(
+            root,
+            "windows",
+            "app",
+            "OpenBurnBar.App",
+            "bin",
+            platform,
+            configuration,
+            "net8.0-windows10.0.19041.0");
+        string workerOutput = Path.Combine(
+            root,
+            "windows",
+            "app",
+            "OpenBurnBar.Cli",
+            "bin",
+            platform,
+            configuration,
+            "net8.0");
+        string manifestPath = Path.Combine(
+            appOutput,
+            ".openburnbar-usage-scan-worker.manifest");
 
-        XElement cliProjectReference = appProject
-            .Descendants()
-            .Where(element =>
-                string.Equals(
-                    element.Name.LocalName,
-                    "ProjectReference",
-                    StringComparison.Ordinal))
-            .Single(element =>
-                string.Equals(
-                    ((string?)element.Attribute("Include"))?.Replace('\\', '/'),
-                    "../OpenBurnBar.Cli/OpenBurnBar.Cli.csproj",
-                    StringComparison.Ordinal));
-
-        Assert.Equal(
-            "false",
-            (string?)cliProjectReference.Attribute("ReferenceOutputAssembly"));
-
-        XElement stagingTarget = appProject
-            .Descendants()
-            .Where(element =>
-                string.Equals(
-                    element.Name.LocalName,
-                    "Target",
-                    StringComparison.Ordinal))
-            .Single(element =>
-                string.Equals(
-                    (string?)element.Attribute("Name"),
-                    "StageUsageScanWorker",
-                    StringComparison.Ordinal));
-
-        string afterTargets = (string?)stagingTarget.Attribute("AfterTargets") ?? string.Empty;
-        Assert.Contains(
-            "Build",
-            afterTargets.Split(
-                ';',
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-
-        List<XElement> msBuildTasks = stagingTarget
-            .Descendants()
-            .Where(element =>
-                string.Equals(
-                    element.Name.LocalName,
-                    "MSBuild",
-                    StringComparison.Ordinal))
-            .ToList();
-
-        Assert.Equal(2, msBuildTasks.Count);
-        Assert.All(msBuildTasks, msBuild =>
+        try
         {
-            string msBuildTargets = (string?)msBuild.Attribute("Targets") ?? string.Empty;
-            Assert.Contains(
-                "GetTargetPath",
-                msBuildTargets.Split(
-                    ';',
-                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            Assert.False(
+                Directory.Exists(appOutput),
+                "The direct staging regression must begin with a clean app target directory.");
 
-            string msBuildProjects = (string?)msBuild.Attribute("Projects") ?? string.Empty;
-            bool invokesCliProject = msBuildProjects
-                .Split(
-                    ';',
-                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Any(project =>
-                    string.Equals(
-                        project,
-                        "@(ProjectReference)",
-                        StringComparison.Ordinal)
-                    || project
-                        .Replace('\\', '/')
-                        .EndsWith(
-                            "/../OpenBurnBar.Cli/OpenBurnBar.Cli.csproj",
-                            StringComparison.Ordinal));
+            await RunAppStageTargetAsync(root, appProject, configuration, platform);
 
             Assert.True(
-                invokesCliProject,
-                "StageUsageScanWorker must invoke MSBuild GetTargetPath for the companion CLI project.");
-        });
+                File.Exists(manifestPath),
+                "Direct staging must persist the exact worker-owned closure for the next incremental run.");
+            string[] workerDeploymentClosure = (await File.ReadAllLinesAsync(manifestPath))
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(NormalizeRelativePath)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            Assert.NotEmpty(workerDeploymentClosure);
 
-        string[] msBuildProperties = msBuildTasks
-            .Select(msBuild => (string?)msBuild.Attribute("Properties") ?? string.Empty)
-            .ToArray();
-        Assert.Contains(
-            msBuildProperties,
-            properties => properties.Contains("Platform=$(Platform)", StringComparison.Ordinal));
-        Assert.Contains(
-            msBuildProperties,
-            properties => properties.Contains("Platform=AnyCPU", StringComparison.Ordinal));
+            const string obsoleteRelativePath = "obsolete-worker-owned.fixture";
+            const string appSentinelRelativePath = "app-owned-sentinel.fixture";
+            const string sentinelContents = "the worker staging target must not delete app-owned files";
+            string obsoletePath = Path.Combine(appOutput, obsoleteRelativePath);
+            string appSentinelPath = Path.Combine(appOutput, appSentinelRelativePath);
+            await File.WriteAllTextAsync(obsoletePath, "owned by the prior worker closure");
+            await File.WriteAllTextAsync(appSentinelPath, sentinelContents);
+            string[] priorWorkerClosure = (await File.ReadAllLinesAsync(manifestPath))
+                .Append(obsoleteRelativePath)
+                .ToArray();
+            await File.WriteAllLinesAsync(manifestPath, priorWorkerClosure);
 
-        XElement copy = stagingTarget
-            .Descendants()
-            .Where(element =>
-                string.Equals(
-                    element.Name.LocalName,
-                    "Copy",
-                    StringComparison.Ordinal))
-            .Single();
+            await RunAppStageTargetAsync(root, appProject, configuration, platform);
 
-        Assert.Equal("$(TargetDir)", (string?)copy.Attribute("DestinationFolder"));
+            Assert.False(
+                File.Exists(obsoletePath),
+                "An artifact owned only by the prior worker closure must be removed.");
+            Assert.Equal(sentinelContents, await File.ReadAllTextAsync(appSentinelPath));
 
-        string sourceFiles = (string?)copy.Attribute("SourceFiles") ?? string.Empty;
-        Assert.True(
-            sourceFiles.StartsWith("@(", StringComparison.Ordinal)
-            && sourceFiles.EndsWith(")", StringComparison.Ordinal),
-            "The staging Copy task must copy a declared MSBuild item.");
+            string[] stagedWorkerClosure = (await File.ReadAllLinesAsync(manifestPath))
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(NormalizeRelativePath)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(workerDeploymentClosure, stagedWorkerClosure);
 
-        int transformIndex = sourceFiles.IndexOf("->", StringComparison.Ordinal);
-        int closingParenthesisIndex = sourceFiles.IndexOf(')');
-        int itemNameEnd = transformIndex >= 0
-            ? transformIndex
-            : closingParenthesisIndex;
-        Assert.True(
-            itemNameEnd > 2,
-            "The staging Copy task must reference a named MSBuild item.");
+            var closureFailures = new List<string>();
+            foreach (string relativePath in workerDeploymentClosure)
+            {
+                string platformRelativePath = relativePath.Replace('/', Path.DirectorySeparatorChar);
+                string sourcePath = Path.Combine(workerOutput, platformRelativePath);
+                string stagedPath = Path.Combine(appOutput, platformRelativePath);
+                if (!File.Exists(stagedPath))
+                {
+                    closureFailures.Add($"missing: {relativePath}");
+                }
+                else if (!FilesHaveEqualSha256(sourcePath, stagedPath))
+                {
+                    closureFailures.Add($"content mismatch: {relativePath}");
+                }
+            }
 
-        string copiedItemName = sourceFiles.Substring(2, itemNameEnd - 2).Trim();
-        string[] copiedIncludes = stagingTarget
-            .Descendants()
-            .Where(element =>
-                string.Equals(
-                    element.Name.LocalName,
-                    copiedItemName,
-                    StringComparison.Ordinal)
-                && element.Attribute("Include") is not null)
-            .SelectMany(element =>
-                element.Attribute("Include")!.Value.Split(
-                    ';',
-                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            .ToArray();
-        string[] requiredSuffixes =
-        [
-            "OpenBurnBar.Cli.exe",
-            "OpenBurnBar.Cli.dll",
-            "OpenBurnBar.Cli.deps.json",
-            "OpenBurnBar.Cli.runtimeconfig.json",
-        ];
+            Assert.True(
+                closureFailures.Count == 0,
+                "Direct staging did not copy the worker's complete deployment closure:\n"
+                + string.Join("\n", closureFailures));
 
-        Assert.Equal(requiredSuffixes.Length, copiedIncludes.Length);
-        Assert.All(
-            copiedIncludes,
-            include => Assert.Single(
-                requiredSuffixes,
-                suffix => include.Contains(suffix, StringComparison.Ordinal)));
-        foreach (string requiredSuffix in requiredSuffixes)
-        {
-            Assert.Single(
-                copiedIncludes,
-                include => include.Contains(requiredSuffix, StringComparison.Ordinal));
+            string[] expectedAppOutput = workerDeploymentClosure
+                .Append(Path.GetFileName(manifestPath))
+                .Append(appSentinelRelativePath)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            string[] actualAppOutput = Directory
+                .EnumerateFiles(appOutput, "*", SearchOption.AllDirectories)
+                .Select(path => NormalizeRelativePath(Path.GetRelativePath(appOutput, path)))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(expectedAppOutput, actualAppOutput);
+
+            string workerHostRelativePath = OperatingSystem.IsWindows()
+                ? "OpenBurnBar.Cli.exe"
+                : "OpenBurnBar.Cli";
+            Assert.Contains(workerHostRelativePath, stagedWorkerClosure);
+            string workerHost = Path.Combine(appOutput, workerHostRelativePath);
+            string invalidNativeEngine = Path.Combine(appOutput, "invalid-native-engine.fixture");
+            await File.WriteAllTextAsync(invalidNativeEngine, "not a native library");
+            string request = JsonSerializer.Serialize(new
+            {
+                supportDirectory = appOutput,
+                homeDirectory = appOutput,
+                claudeProjectsDirectory = appOutput,
+                codexHomeDirectory = appOutput,
+                cursorSessionsDirectory = appOutput,
+                factorySessionsDirectory = appOutput,
+                hermesHomeDirectory = appOutput,
+                includeConversationBodies = false,
+            });
+
+            (int exitCode, string workerStandardOutput, string workerStandardError) =
+                await RunStagedWorkerAsync(workerHost, appOutput, invalidNativeEngine, request);
+
+            Assert.True(
+                exitCode == 16,
+                $"The staged worker returned exit code {exitCode}.\nstdout:\n{workerStandardOutput}\nstderr:\n{workerStandardError}");
+            Assert.Equal(string.Empty, workerStandardOutput);
+            Assert.Contains(
+                "usage_scan_worker_failed: UsageRuntimeException: "
+                + "The OpenBurnBar parser engine could not be loaded.",
+                workerStandardError,
+                StringComparison.Ordinal);
         }
+        finally
+        {
+            DeleteBuildConfiguration(root, configuration, platform);
+        }
+    }
 
+    [Fact]
+    public void FastPrWorkflowVerifiesTheBuiltUsageScanWorker()
+    {
         string workflow = File.ReadAllText(Path.Combine(
-            root,
+            DistTestSupport.RepositoryRoot(),
             ".github",
             "workflows",
             "pr-windows-fast.yml"));
@@ -297,5 +420,128 @@ public sealed class CompanionCliPackagingTests
             "windows/app/OpenBurnBar.App/bin",
             normalizedVerificationStep,
             StringComparison.OrdinalIgnoreCase);
+    }
+
+
+    private static bool FilesHaveEqualSha256(string leftPath, string rightPath)
+    {
+        using FileStream left = File.OpenRead(leftPath);
+        using FileStream right = File.OpenRead(rightPath);
+        byte[] leftHash = SHA256.HashData(left);
+        byte[] rightHash = SHA256.HashData(right);
+        return CryptographicOperations.FixedTimeEquals(leftHash, rightHash);
+    }
+
+    private static string NormalizeRelativePath(string path) => path.Replace('\\', '/');
+
+    private static async Task RunAppStageTargetAsync(
+        string root,
+        string appProject,
+        string configuration,
+        string platform)
+    {
+        var startInfo = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = root,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add("msbuild");
+        startInfo.ArgumentList.Add(appProject);
+        startInfo.ArgumentList.Add("-target:StageUsageScanWorker");
+        startInfo.ArgumentList.Add($"-property:Configuration={configuration}");
+        startInfo.ArgumentList.Add($"-property:Platform={platform}");
+        startInfo.ArgumentList.Add("-property:EnableWindowsTargeting=true");
+        startInfo.ArgumentList.Add("-nodeReuse:false");
+        startInfo.ArgumentList.Add("-property:UseSharedCompilation=false");
+
+        using Process process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("dotnet msbuild did not start.");
+        Task<string> standardOutput = process.StandardOutput.ReadToEndAsync();
+        Task<string> standardError = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        string output = await standardOutput;
+        string error = await standardError;
+
+        Assert.True(
+            process.ExitCode == 0,
+            $"Direct worker staging failed with exit code {process.ExitCode}.\n{output}\n{error}");
+    }
+
+    private static async Task<(int ExitCode, string StandardOutput, string StandardError)>
+        RunStagedWorkerAsync(
+            string workerHost,
+            string workingDirectory,
+            string invalidNativeEngine,
+            string request)
+    {
+        var startInfo = new ProcessStartInfo(workerHost)
+        {
+            WorkingDirectory = workingDirectory,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        startInfo.Environment["DOTNET_ROLL_FORWARD"] = "Major";
+        startInfo.ArgumentList.Add("--internal-usage-scan-worker");
+        startInfo.Environment["OPENBURNBAR_CORE_CABI_PATH"] = invalidNativeEngine;
+
+        using Process process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("The directly staged usage-scan worker did not start.");
+        Task<string> standardOutput = process.StandardOutput.ReadToEndAsync();
+        Task<string> standardError = process.StandardError.ReadToEndAsync();
+        await process.StandardInput.WriteAsync(request);
+        process.StandardInput.Close();
+
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+        }
+        catch (TimeoutException exception)
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync();
+            }
+            throw new TimeoutException(
+                "The directly staged usage-scan worker did not answer the bounded protocol request within 15 seconds.",
+                exception);
+        }
+
+        return (process.ExitCode, await standardOutput, await standardError);
+    }
+
+    private static void DeleteBuildConfiguration(
+        string root,
+        string configuration,
+        string platform)
+    {
+        string[][] projectSegments =
+        {
+            new[] { "windows", "app", "OpenBurnBar.App" },
+            new[] { "windows", "app", "OpenBurnBar.Cli" },
+            new[] { "windows", "app", "OpenBurnBar.App.ManagedAgentRuntime" },
+            new[] { "windows", "app", "OpenBurnBar.App.Configuration" },
+            new[] { "windows", "app", "OpenBurnBar.App.UsageRuntime" },
+            new[] { "windows", "computeruse", "OpenBurnBar.ComputerUse.Core" },
+            new[] { "windows", "storage", "OpenBurnBar.Storage" },
+        };
+
+        foreach (string[] segments in projectSegments)
+        {
+            string projectRoot = segments.Aggregate(root, Path.Combine);
+            foreach (string buildRoot in new[] { "bin", "obj" })
+            {
+                string configurationRoot = Path.Combine(projectRoot, buildRoot, platform, configuration);
+                if (Directory.Exists(configurationRoot))
+                {
+                    Directory.Delete(configurationRoot, recursive: true);
+                }
+            }
+        }
     }
 }

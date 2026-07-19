@@ -216,7 +216,6 @@ function physicalPassReceipt(gate = "physical-performance-x64") {
     /duplicate assertion/,
   );
 }
-
 {
   const sample = receipt("local-automated-checks");
   const result = validateReceipt(sample, { bundleDir: sample.root });

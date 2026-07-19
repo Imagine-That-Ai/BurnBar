@@ -15,7 +15,8 @@ final class CLIAgentMissionRequestListener {
     var listener: ListenerRegistration?
     var listenerUID: String?
     var attachTask: Task<Void, Never>?
-    var processingDocs = Set<String>()
+    private let processingQueue = SerialAsyncWorkQueue<QueryDocumentSnapshot, String> { $0.documentID }
+    private var isStarted = false
     var lastAttachState: String?
     var missionEventSequences: [String: Int] = [:]
 
@@ -33,6 +34,8 @@ final class CLIAgentMissionRequestListener {
 
     func start() {
         logger.info("mission listener start requested")
+        isStarted = true
+        processingQueue.start { [weak self] document in await self?.handle(document: document) }
         if attachTask == nil {
             attachTask = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
@@ -46,16 +49,18 @@ final class CLIAgentMissionRequestListener {
 
     func stop() {
         logger.info("mission listener stopped")
+        isStarted = false
         attachTask?.cancel()
         attachTask = nil
         listener?.remove()
         listener = nil
         listenerUID = nil
-        processingDocs.removeAll()
+        processingQueue.stop()
         missionEventSequences.removeAll()
     }
 
     func attachIfPossible() {
+        guard isStarted else { return }
         guard accountManager.isFirebaseAvailable, let uid = accountManager.currentUID else {
             let state = "waiting firebase=\(accountManager.isFirebaseAvailable) uid=\(accountManager.currentUID == nil ? "nil" : "present")"
             if lastAttachState != state {
@@ -91,12 +96,7 @@ final class CLIAgentMissionRequestListener {
     }
 
     func processDocs(_ docs: [QueryDocumentSnapshot]) {
-        for doc in docs where !processingDocs.contains(doc.documentID) {
-            processingDocs.insert(doc.documentID)
-            Task { @MainActor in
-                defer { processingDocs.remove(doc.documentID) }
-                await handle(document: doc)
-            }
-        }
+        guard isStarted else { return }
+        processingQueue.enqueue(docs)
     }
 }

@@ -10,7 +10,12 @@ public final class AugmentParser: LogParser, Sendable {
     public let provider: AgentProvider = .augment
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fm)
         let roots = candidateRoots().filter { fm.fileExists(atPath: $0.path) }
         guard !roots.isEmpty else {
             return ParseResult(usages: [], conversations: [])
@@ -21,6 +26,7 @@ public final class AugmentParser: LogParser, Sendable {
 
         for root in roots {
             for file in recursiveJSONFiles(in: root) {
+                guard try gate.shouldRead(file) else { continue }
                 let sessionId = sessionIdentifier(for: file, root: root)
                 let pair = try (file.pathExtension == "jsonl"
                     ? parseJSONL(file: file, sessionId: sessionId)
@@ -29,7 +35,7 @@ public final class AugmentParser: LogParser, Sendable {
                 if let usage = pair?.usage {
                     usagesBySessionId[usage.sessionId] = usage
                 }
-                if let conversation = pair?.conversation {
+                if options.includeConversationBodies, let conversation = pair?.conversation {
                     conversationsBySessionId[conversation.sessionId] = conversation
                 }
             }

@@ -50,6 +50,16 @@ public sealed class GlowSpriteCache
         return rt;
     }
 
+    public void Clear()
+    {
+        foreach (CanvasBitmap bitmap in _cache.Values)
+        {
+            bitmap.Dispose();
+        }
+
+        _cache.Clear();
+    }
+
     private static CanvasGradientStop[] StopsFor(GlowProfile profile, in Rgba tint) => profile switch
     {
         GlowProfile.Sphere => new[]

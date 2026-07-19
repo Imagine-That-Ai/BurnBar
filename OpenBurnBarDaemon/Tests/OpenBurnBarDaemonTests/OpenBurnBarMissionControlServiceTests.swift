@@ -3330,13 +3330,15 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
 
     func testVAL_GOV_010_VAL_CROSS_013_ScheduledReviewLaunchPersistsDeterministicNotificationIntents() async throws {
         let launcher = ReviewLauncherRecorder()
-        let now = Date()
-        let dueAt = Calendar.current.date(
+        // Anchor at local noon so now + 60s stays in the same due window.
+        let calendar = Calendar.current
+        let now = try XCTUnwrap(calendar.date(bySettingHour: 12, minute: 0, second: 0, of: Date()))
+        let dueAt = calendar.date(
             bySettingHour: 0,
             minute: 0,
             second: 0,
-            of: Calendar.current.startOfDay(for: now)
-        ) ?? Calendar.current.startOfDay(for: now)
+            of: calendar.startOfDay(for: now)
+        ) ?? calendar.startOfDay(for: now)
         let harness = try makeHarness(
             name: "val-gov-010-cross-013-scheduled-intents",
             transport: BurnBarMissionControlTransport(
