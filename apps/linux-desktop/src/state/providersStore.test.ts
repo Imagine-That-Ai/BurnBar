@@ -75,4 +75,29 @@ describe('providersStore custom model lifecycle', () => {
     expect(useProvidersStore.getState().mutationBusy).toBeNull();
     expect(useProvidersStore.getState().mutationError).toBe('Provider custom-model RPC bridge is unavailable.');
   });
+
+  it('ignores an older catalog response after a newer refresh invalidates it', async () => {
+    let resolveOld: ((catalog: ReturnType<typeof fixtureProviderCatalog>) => void) | undefined;
+    let resolveNew: ((catalog: ReturnType<typeof fixtureProviderCatalog>) => void) | undefined;
+    const providerCatalog = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveNew = resolve; }));
+    useShellStore.setState({ fixtureMode: false, bridge: { providerCatalog } as never });
+
+    const oldLoad = useProvidersStore.getState().load();
+    await vi.waitFor(() => expect(providerCatalog).toHaveBeenCalledTimes(1));
+    useProvidersStore.getState().invalidate();
+    const newLoad = useProvidersStore.getState().load();
+    await vi.waitFor(() => expect(providerCatalog).toHaveBeenCalledTimes(2));
+
+    const freshCatalog = fixtureProviderCatalog().slice(0, 1);
+    resolveNew?.(freshCatalog);
+    await newLoad;
+    expect(useProvidersStore.getState().catalog).toEqual(freshCatalog);
+
+    const staleCatalog = fixtureProviderCatalog().slice(1, 2);
+    resolveOld?.(staleCatalog);
+    await oldLoad;
+    expect(useProvidersStore.getState().catalog).toEqual(freshCatalog);
+  });
 });

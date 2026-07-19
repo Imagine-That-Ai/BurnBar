@@ -28,6 +28,7 @@ import type {
   LinuxPrivacyRetentionStatus,
   LinuxPrivacyStoreID
 } from '../tauriBridge.js';
+import { useProvidersStore } from './providersStore.js';
 import { useShellStore } from './shellStore.js';
 import { useSystemStore } from './systemStore.js';
 
@@ -124,10 +125,38 @@ function message(error: unknown, fallback: string): string {
 
 async function refreshSnapshotFrom(result: ConfigSnapshot): Promise<void> {
   useSystemStore.setState({ config: result, loading: false, error: null });
+  // Invalidate quota-facing state before the follow-up config RPC so the old
+  // account cannot remain visible while either refresh is in flight.
+  const providerRefresh = refreshProviderCatalogAfterMutation();
   const { fixtureMode, bridge } = useShellStore.getState();
   if (!fixtureMode && bridge) {
     await useSystemStore.getState().loadConfig();
   }
+  await providerRefresh;
+}
+
+/**
+ * Config mutations also change the provider catalog consumed by quota and
+ * provider routes. Drop the old catalog before asking the daemon again so a
+ * successful account switch cannot leave the previous account visible while
+ * the refresh is in flight. The request-generation guard in providersStore
+ * prevents an older route hydration response from resurrecting that state.
+ */
+async function refreshProviderCatalogAfterMutation(): Promise<void> {
+  const { fixtureMode, bridge } = useShellStore.getState();
+  useProvidersStore.getState().invalidate();
+
+  if (fixtureMode) {
+    await useProvidersStore.getState().load();
+    return;
+  }
+
+  if (!bridge || typeof bridge.providerCatalog !== 'function') {
+    useProvidersStore.getState().invalidate('Provider catalog refresh RPC bridge is unavailable.');
+    return;
+  }
+
+  await useProvidersStore.getState().load();
 }
 
 function mutateFixture(mutator: (snapshot: ConfigSnapshot) => ConfigSnapshot): ConfigSnapshot {

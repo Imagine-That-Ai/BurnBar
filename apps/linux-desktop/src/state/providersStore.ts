@@ -10,6 +10,8 @@ export type ProvidersState = {
   mutationBusy: string | null;
   mutationError: string | null;
   load(): Promise<void>;
+  /** Clear the catalog and invalidate any in-flight response. */
+  invalidate(error?: string | null): void;
   addCustomModel(providerID: string, customModel: CustomModel): Promise<void>;
   removeCustomModel(providerID: string, modelID: string): Promise<void>;
 };
@@ -44,19 +46,28 @@ function updateFixtureCatalog(
   );
 }
 
+let catalogLoadGeneration = 0;
+
 export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   catalog: null,
   loading: false,
   error: null,
   mutationBusy: null,
   mutationError: null,
+  invalidate(error = null) {
+    catalogLoadGeneration += 1;
+    set({ catalog: null, loading: false, error });
+  },
   async load() {
+    const requestGeneration = ++catalogLoadGeneration;
     const { fixtureMode, bridge } = useShellStore.getState();
     if (fixtureMode) {
+      if (requestGeneration !== catalogLoadGeneration) return;
       set({ catalog: fixtureProviderCatalog(), loading: false, error: null });
       return;
     }
     if (!bridge) {
+      if (requestGeneration !== catalogLoadGeneration) return;
       set({
         catalog: null,
         loading: false,
@@ -67,8 +78,10 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
     set({ loading: true, error: null });
     try {
       const catalog = await bridge.providerCatalog();
+      if (requestGeneration !== catalogLoadGeneration) return;
       set({ catalog, loading: false, error: null });
     } catch (e) {
+      if (requestGeneration !== catalogLoadGeneration) return;
       set({
         catalog: null,
         loading: false,
