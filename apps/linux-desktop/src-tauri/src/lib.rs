@@ -616,6 +616,16 @@ fn launch_at_login_status_with_paths(
     })
 }
 
+fn packaged_autostart_content(packaged_path: &Path) -> Result<String, String> {
+    match read_autostart_entry(packaged_path, false)? {
+        Some(content) => Ok(content),
+        // Relocatable installs (and development launches) may not have a
+        // system-wide /etc/xdg entry, but the trusted entry is compiled into
+        // the shell and can be installed as the user's override.
+        None => Ok(PACKAGED_AUTOSTART_TEMPLATE.to_string()),
+    }
+}
+
 #[tauri::command]
 fn launch_at_login_status() -> Result<LaunchAtLoginStatus, String> {
     validate_autostart_template(PACKAGED_AUTOSTART_TEMPLATE)?;
@@ -633,8 +643,7 @@ fn launch_at_login_set(enabled: bool) -> Result<LaunchAtLoginStatus, String> {
     validate_autostart_template(PACKAGED_AUTOSTART_TEMPLATE)?;
     let user_path = user_autostart_path(true)?
         .ok_or_else(|| "autostart_directory_create_failed".to_string())?;
-    let packaged = read_autostart_entry(Path::new(PACKAGED_AUTOSTART_PATH), false)?
-        .ok_or_else(|| "packaged_autostart_unavailable".to_string())?;
+    let packaged = packaged_autostart_content(Path::new(PACKAGED_AUTOSTART_PATH))?;
     let rendered = render_autostart_entry(&packaged, enabled)?;
     write_autostart_entry(&user_path, rendered.as_bytes())?;
     launch_at_login_status_with_paths(&user_path, Path::new(PACKAGED_AUTOSTART_PATH))
@@ -7765,6 +7774,23 @@ mod tests {
         assert_eq!(autostart_exec(&enabled).unwrap(), PACKAGED_AUTOSTART_EXEC);
         assert!(autostart_enabled(&enabled).unwrap());
         assert!(!enabled.lines().any(|line| line == "Hidden=true"));
+    }
+
+    #[test]
+    fn launch_at_login_uses_embedded_template_when_packaged_entry_is_missing() {
+        let root = autostart_test_root();
+        let user_path = root.join("autostart/openburnbar.desktop");
+        let missing_packaged_path = root.join("missing/openburnbar.desktop");
+
+        let packaged = packaged_autostart_content(&missing_packaged_path).unwrap();
+        assert_eq!(packaged, PACKAGED_AUTOSTART_TEMPLATE);
+        let rendered = render_autostart_entry(&packaged, true).unwrap();
+        write_autostart_test_file(&user_path, &rendered, 0o600);
+
+        let status = launch_at_login_status_with_paths(&user_path, &missing_packaged_path).unwrap();
+        assert!(status.enabled);
+        assert!(status.user_override);
+        assert_eq!(status.source, "user");
     }
 
     #[test]
