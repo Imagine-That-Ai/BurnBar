@@ -6,8 +6,11 @@ implemented as reviewable infrastructure, not a public availability claim.
 Current parity status as of 2026-07-19:
 
 - The current parity hardening reaches `fdbc7d718b` (with the WebKit startup
-  fallback from `6321897d4e`). The VM now also has a rebuilt arm64 package
-  containing the current media UI/state slice; its non-certifying receipt is
+  fallback from `6321897d4e`). The VM now has a rebuilt arm64 package with the
+  real `media-gst` shell viewer feature enabled; its non-certifying receipt is
+  [`evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-media-gst-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-media-gst-arm64/).
+  The earlier non-GStreamer UI receipt remains available as a historical
+  baseline at
   [`evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-ui-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-ui-arm64/).
   The daemon/media capability receipt remains bound to the `a570c9b087`
   runtime package; the clean parity-ledger
@@ -79,7 +82,9 @@ Current parity status as of 2026-07-19:
   socket, and file-transfer capability. The Linux peer-auth test passes 1/1,
   `MercuryLinuxMediaTests` passes 21/21, and the project/code-memory bootstrap
   slice passes 3/3 on the VM. The Linux media UI also gates receive-only
-  transport separately from daemon call RPCs (`fdbc7d718b`, focused lane 33/33).
+  transport separately from daemon call RPCs (`fdbc7d718b`, focused lane 33/33),
+  and the installed shell is linked against the GStreamer app/base/core/video
+  libraries through the `media-gst` feature.
   This remains a non-certifying runtime receipt:
   two-device iPad/Linux media, Computer Use, signed provenance, and the strict
   0/40 product plus 0/7 environment ledger remain open. See
