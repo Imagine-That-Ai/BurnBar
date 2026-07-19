@@ -63,9 +63,15 @@ The next source slices are also complete: `3004da3b72` adds a persisted,
 Calendar-enabled default hold-duration selector matching the macOS notification
 settings (focused SettingsSurface **30/30**), and `bdd57173e9` makes diagnostics
 exports redacted, private, atomic, and symlink-safe (support UI **24/24** and
-Tauri Rust **115/115**). Current physical-iPad preflight passed, but the
-release-mobile build was stopped at the 10 GiB named-worktree safety ceiling
-before XCTest execution; this is not a device or app pass.
+Tauri Rust **115/115**). `2a80e30921` recovers the Mercury decoder in place
+after transient frame failures, and `8131b51aec` adds a portal-backed native
+diagnostics save destination with a Rust path-validation boundary and private
+atomic output (diagnostics **6/6**, support UI **24/24**). The integrated
+desktop suite is now **82 files / 755 tests**, Tauri Rust is **117/117**, and
+TypeScript plus production bundle verification pass. A bounded physical-iPad
+`MobileThemeTests` run also passed **9/9** with xcodebuild exit 0; it remains
+non-certifying mobile coverage and does not prove Linux enrollment or
+cross-device approval behavior.
 
 ### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 
@@ -182,17 +188,17 @@ The wrapper emitted root-owned transcript `EACCES` warnings but retained raw
 evidence and exited successfully with `linux-desktop-session-ok`, so the prior
 false shell failure is closed.
 
-The physical iPad preflight passed, but the focused approval build was stopped
-by the 10 GiB hygiene guard before XCTest discovery. Production callable
-inventory is drifted. The UTM guest is now registered and reachable over SSH,
-but its service still points to a stale `/usr/local` daemon binary that exits
-`127` because `libsqlcipher.so.0` is absent; the package-owned `/usr/bin`
-binary has the bundled library. No live daemon or installed-product receipt is
-promoted until that VM launcher state is repaired and rechecked. These facts
-are recorded in the independent audit and do not promote any ledger row.
+The physical iPad preflight and a bounded current-checkout `MobileThemeTests`
+run now pass on the paired device (**9/9**, xcodebuild exit 0). This is mobile
+coverage only; the focused parser/store/mutation approval journey remains open.
+Production callable inventory is still drifted. The current `utmctl` query
+reports the OpenBurnBar Linux guest as stopped, so no live daemon or installed-
+product receipt is promoted from this check. These facts are recorded in the
+independent audit and do not promote any ledger row.
 
-For planning purposes only, source maturity is approximately **68%**. This is
-not a release percentage. The remaining dependency order is: supply a
+There is intentionally no numeric source-completion percentage: source tests
+measure implementation slices, while the strict release state remains 0/40
+product rows and 0/7 environments. The remaining dependency order is: supply a
 compatible previous same-architecture package for
 update/rollback/data-preservation proof, deploy and verify production App
 Check/OAuth callables, run the physical iPad approval journey, close the
@@ -1665,8 +1671,10 @@ The original foundation sequence is substantially implemented. From the
      focused mobile tests.
    - Preserve the passing generic iOS build-for-testing coverage.
    - Run focused tests on the connected physical iPad; do not substitute an iPhone or
-     simulator for the final physical-device gate. Launch/liveness is proven;
-     approval execution remains blocked until the exact Linux candidate is paired.
+     simulator for the final physical-device gate. A bounded `MobileThemeTests`
+     receipt now passes 9/9 on the paired device; launch/liveness is proven, while
+     parser/store/mutation approval execution remains blocked until the exact Linux
+     candidate is paired.
 
 4. **Production configuration change**
    - Create the dedicated Desktop OAuth client.

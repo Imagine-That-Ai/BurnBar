@@ -5,13 +5,10 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- The current documentation head is `5cff4281ec`.
-  The latest behavioral evidence is bound to implementation checkpoint
-  `1dced585af2441ac8ac1d4fdcb2e4666177f0474`, which adds the
-  startup/deep-link measurement boundary that keeps synthetic startup routing
-  out of user-navigation performance receipts. The Release and Nightly
-  receipts below are therefore evidence for that implementation checkpoint,
-  not a claim that the docs-only head has a new candidate artifact.
+- The current source hardening reaches `ac3fd3b044`; the clean parity-ledger
+  validation is bound to source checkpoint `a92cea995c`. The Release and
+  Nightly receipts below are historical engineering evidence for an older
+  checkpoint, not a claim that the current docs head has a promoted artifact.
 - The physical-device runner now accepts either the CoreDevice identifier from
   `devicectl` or the hardware UDID required by Xcode, with deterministic
   missing/ambiguous-device failures (`5cff4281ec`).
@@ -34,22 +31,24 @@ Current parity status as of 2026-07-19:
   rows and 0/7 environment receipts. The Nightly pass is engineering evidence,
   not a promotion claim; production, lifecycle, installed integration, and
   registered product evidence remain open.
-- The candidate branch now has **82 desktop test files / 753 tests** passing,
+- The candidate branch now has **82 desktop test files / 755 tests** passing,
   plus current-checkout P-39 corpus binding, daemon-authoritative activity
   export resume, forced-colors metric fallbacks, and a focusable-hidden-node
-  accessibility fix. The latest source slices also add a persisted Calendar
-  notification hold-duration selector (`3004da3b72`) and redacted,
-  symlink-safe atomic diagnostics exports (`bdd57173e9`). These source results
-  do not promote the ledger.
+  accessibility fix. The latest source slices also add the persisted Calendar
+  notification hold-duration selector (`3004da3b72`), redacted/symlink-safe
+  diagnostics exports (`bdd57173e9`), Mercury decoder recovery
+  (`2a80e30921`), and a portal-backed native diagnostics save destination
+  (`8131b51aec`). Tauri Rust is **117/117**, focused diagnostics UI is **24/24**,
+  TypeScript and the production bundle verifier pass. These source results do
+  not promote the ledger.
 - Fresh local recheck: the wired iPad is paired, booted, has Developer Mode
-  enabled, and the focused physical XCTest receipt passed 44/44 tests at
-  `e0d295e92a` (see
-  [`evidence/parity-audit-2026-07-10/ipad-approval-focused-2026-07-19.json`](evidence/parity-audit-2026-07-10/ipad-approval-focused-2026-07-19.json)).
+  enabled, and a current-checkout focused `MobileThemeTests` receipt passed
+  **9/9** tests with xcodebuild exit 0 (see
+  [`evidence/parity-audit-2026-07-10/ipad-mobile-theme-2026-07-19.json`](evidence/parity-audit-2026-07-10/ipad-mobile-theme-2026-07-19.json)).
   This does not prove installed Linux enrollment, approval/revoke, or
   cross-device Computer Use. `utmctl` currently reports the OpenBurnBar Linux
-  VM stopped; no VM was modified during the recheck. A current-head bounded
-  release-mobile build was stopped before XCTest execution after its scratch
-  worktree exceeded the 10 GiB hygiene limit; no new mobile pass is claimed.
+  VM stopped; no VM was modified during the recheck. The full release-mobile
+  approval suite remains unverified.
   The product-parity workflow is not present on `main`, and GitHub currently
   has zero self-hosted runners for its required Linux environment labels.
 - For the detailed audit and implementation plan, see
