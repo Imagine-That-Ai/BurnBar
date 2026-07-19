@@ -15,11 +15,11 @@ dependencies, acceptance contracts, proof commands, loophole controls, and
 known platform divergences.
 
 > **Live status (2026-07-19):** The implementation branch is
-> `b4cd3e8b8b` and passes **90 frontend files / 851 tests**, TypeScript,
+> `b2c8579835` and passes **90 frontend files / 853 tests**, TypeScript,
 > production-bundle verification, and **129/129 Rust tests**. An exact-head
 > ARM64 DEB is installed and visibly rendering in the unlocked Ubuntu
 > GNOME/X11 UTM guest; the non-certifying receipt is
-> [`evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json).
+> [`evidence/parity-audit-2026-07-10/linux-arm64-current-b2c8579835-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-b2c8579835-postinstall-2026-07-19.json).
 > The strict certification ledger is still **0/40 product rows and 0/7
 > environment receipts** because the package is unsigned and production,
 > cross-device, keyring, compositor, and same-commit macOS differential proof
@@ -32,14 +32,15 @@ Linux is not at full macOS parity.
 
 ### Current source wave — 2026-07-19 UTC
 
-Integration head `b4cd3e8b8b` passes 90 frontend files / 851 tests, TypeScript,
+Integration head `b2c8579835` passes 90 frontend files / 853 tests, TypeScript,
 production bundle verification, Tauri Rust 129/129, and package-payload
 contract checks. The current wave includes immediate Canvas2D recovery after
 WebGL context loss, keyboard-complete kernel selection, truthful Support
 performance empty state, stale-update/provider/subscription guards, periodic
 tray refresh, packaged-shell Reconnect, keyboard-complete overflow actions,
 cold-start notification-action retention, and the ARM64-only AppHandle fix
-found by the real Linux build. The UTM guest passed the read-only staged-payload
+found by the real Linux build, and stale diagnostics exports are now fenced
+across bridge replacement and overlapping requests. The UTM guest passed the read-only staged-payload
 path and the exact current-head package is installed and smoke-verified. These
 changes improve the engineering baseline; they do not close the strict 0/40
 product and 0/7 environment gates.
@@ -48,7 +49,7 @@ product and 0/7 environment gates.
 
 The live Ubuntu guest has the exact current-head ARM64 DEB from the parity
 branch installed at `/usr/bin`. The non-certifying receipt is
-`evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json`.
+`evidence/parity-audit-2026-07-10/linux-arm64-current-b2c8579835-postinstall-2026-07-19.json`.
 It proves daemon health, an unlocked active-window launch, and an animated
 Canvas2D fallback with the explicit `WebGL2 unavailable` label. This guest
 reports `webgl2=false`, so it does not certify WebGL2-only kernels or the

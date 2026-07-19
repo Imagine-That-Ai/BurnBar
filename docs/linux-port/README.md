@@ -6,8 +6,8 @@ implemented as reviewable infrastructure, not a public availability claim.
 Current parity status as of 2026-07-19:
 
 - **Current source head:** the integration branch now includes source changes
-  through `b4cd3e8b8b`. It passes 90 frontend files /
-  851 tests, TypeScript, production bundle verification, Tauri Rust 129/129,
+  through `b2c8579835`. It passes 90 frontend files /
+  853 tests, TypeScript, production bundle verification, Tauri Rust 129/129,
   package-payload contract checks (2 pass, 2 historical skips), and product
   validators 12/12. `1130524331` recovers a visible 2D backdrop after
   backgrounded WebGL context loss and retries the requested kernel on resume;
@@ -42,24 +42,25 @@ Current parity status as of 2026-07-19:
   `811d84172a` queues native notification actions until renderer bootstrap and
   drains them once so cold-start Reply/open intent is preserved. `66b280162f`
   fixes the Linux-only Tauri handle ownership compile failure found by the ARM64
-  package build.
+  package build. `b2c8579835` fences stale/overlapping diagnostics exports when
+  a bridge is replaced or concurrent requests resolve out of order.
   The ARM VM also passed
   the supported Swift-less staged-payload `pretauri:build`/`tauri:build` path via
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is unsigned
   and non-certifying. The latest exact implementation receipt includes the
   post-unlock visible/animated packaged-shell capture and is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json).
-  The preceding `534d7aae65`, `872074af3a`, and `ded781e94d` receipts remain historical
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-b2c8579835-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-b2c8579835-postinstall-2026-07-19.json).
+  The preceding `b4cd3e8b8b`, `534d7aae65`, `872074af3a`, and `ded781e94d` receipts remain historical
   visible-shell evidence.
   The strict ledger remains **0/40 product rows and 0/7 environment receipts**.
 
-- **Latest live VM candidate:** the exact `b4cd3e8b8b` ARM64 DEB is installed in
+- **Latest live VM candidate:** the exact `b2c8579835` ARM64 DEB is installed in
   the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its non-certifying receipt is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json).
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-b2c8579835-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-b2c8579835-postinstall-2026-07-19.json).
   Daemon/CLI health is green and the desktop window exists at `/usr/bin`. A
   clean launch in the unlocked GNOME session rendered the first-run
   Secret Service / SQLCipher setup card and Fluid Aurora 2D fallback. Two
-  captures two seconds apart differ in 453,846 pixels. The guest reports
+  captures two seconds apart differ in 497,053 pixels. The guest reports
   `webgl2=false` and `webgl1=true`; the visible switcher labels the fallback
   `2D fallback (WebGL2 unavailable)`. A stale autostart/locked-era blank
   process was discarded as launch-context evidence, not a package failure.
@@ -76,9 +77,9 @@ Current parity status as of 2026-07-19:
   105 nodes and 50 actionable controls with no `Loading Settings` node; the
   General startup checkbox and Media & Sharing route are reachable.
   The package is unsigned and this receipt is non-certifying.
-- Current source gates are **90 frontend files / 851 tests**, focused provider
+- Current source gates are **90 frontend files / 853 tests**, focused provider
   recovery **11/11**, daemon subscription lifecycle **8/8**, SmartHub **9/9**,
-  Settings/route **51/51**, Support **32/32**, media **38/38**, Tauri Rust
+  Settings/route **51/51**, Support **34/34**, media **38/38**, Tauri Rust
   **129/129**, TypeScript, formatting, and production-bundle verification. The strict ledger remains
   **0/40 product rows and 0/7 environment receipts**; this is a certification
   gate, not a source-progress percentage.
