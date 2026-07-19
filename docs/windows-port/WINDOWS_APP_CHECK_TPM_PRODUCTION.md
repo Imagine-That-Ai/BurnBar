@@ -22,6 +22,10 @@ from portable tests.
 6. Firebase Admin mints the custom App Check token. The Windows credential
    provider attaches it as `X-Firebase-AppCheck`; `submitDomainCoreShadowSamples`
    and other enforced callables retain their existing App Check gate.
+7. The authenticated client uses that token to poll
+   `getWindowsRuntimeSafetyConfig`; the response becomes an expiring local
+   broker lease. See
+   [`WINDOWS_REMOTE_SAFETY_CONFIG.md`](WINDOWS_REMOTE_SAFETY_CONFIG.md).
 
 Cloud Functions never parses or approximates the opaque Microsoft claim on
 Linux. The verifier must run on Windows Server 2019 or newer: the

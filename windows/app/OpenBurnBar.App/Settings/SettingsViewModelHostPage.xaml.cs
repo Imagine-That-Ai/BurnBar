@@ -525,7 +525,10 @@ public sealed partial class SettingsViewModelHostPage : Page
                     {
                         throw new InvalidOperationException("Computer Use permissions are not ready.");
                     }
-                    await App.Current.ClearComputerUsePanicAsync();
+                    if (computerUse.SelectedMode == OpenBurnBar.ComputerUse.Core.Gate.ComputerUseMode.System)
+                    {
+                        await App.Current.ClearComputerUsePanicAsync();
+                    }
                 }
                 else if (method.Name == "EndSession")
                 {

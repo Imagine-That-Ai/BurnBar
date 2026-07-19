@@ -1229,6 +1229,28 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "getWindowsRuntimeSafetyConfig",
+    trigger: "callable",
+    authMethod: "Firebase Auth plus Windows TPM-backed App Check",
+    appCheck: "required",
+    tenantSource: "request.auth.uid; response contains global safety flags only",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler requires Auth and App Check, accepts no object ids, and returns only bounded global Remote Config booleans",
+    handlerModule: "callables/windowsRuntimeSafetyConfig.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["getWindowsRuntimeSafetyConfig"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
     exportedName: "grantMediaGrandfather",
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",

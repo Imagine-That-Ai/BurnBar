@@ -21,6 +21,9 @@ public static class PrivilegedInputBrokerEndpoint
             ?? throw new InvalidOperationException("The current Windows SID is unavailable.");
         string digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sid)))
             .ToLowerInvariant();
-        return "OpenBurnBar.PrivilegedInputBroker.v1." + digest[..16];
+        // v2 is the first broker protocol whose execution leaf requires the
+        // expiring Remote Config safety lease. A distinct pipe prevents an
+        // upgraded app from reusing a still-running v1 broker that lacks it.
+        return "OpenBurnBar.PrivilegedInputBroker.v2." + digest[..16];
     }
 }

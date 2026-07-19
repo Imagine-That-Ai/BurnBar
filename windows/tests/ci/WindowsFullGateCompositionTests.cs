@@ -26,6 +26,45 @@ public sealed class WindowsFullGateCompositionTests
         Assert.Equal("repo_root_missing", result.Error);
     }
 
+    [Fact]
+    public void RuntimeSafetyInterlock_StartsBeforePrivilegedProcessesAndUsesVersionedBroker()
+    {
+        string root = FindRepoRoot();
+        string app = File.ReadAllText(Path.Combine(root, "windows", "app", "OpenBurnBar.App", "App.xaml.cs"));
+        int safetyStart = app.IndexOf("StartWindowsRuntimeSafetyConfig();", StringComparison.Ordinal);
+        int watchdogStart = app.IndexOf("StartComputerUseWatchdog();", StringComparison.Ordinal);
+        int brokerStart = app.IndexOf("StartPrivilegedInputBroker();", StringComparison.Ordinal);
+
+        Assert.True(safetyStart >= 0, "Windows runtime safety monitor is not started.");
+        Assert.True(safetyStart < watchdogStart, "Runtime safety must close before the watchdog starts.");
+        Assert.True(safetyStart < brokerStart, "Runtime safety must close before the input broker starts.");
+
+        string endpoint = File.ReadAllText(Path.Combine(
+            root,
+            "windows",
+            "pal",
+            "ipc-windows",
+            "PrivilegedInputBrokerEndpoint.cs"));
+        Assert.Contains("OpenBurnBar.PrivilegedInputBroker.v2.", endpoint, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RuntimeSafetyCallable_RequiresAuthAndAppCheckAndIsExported()
+    {
+        string root = FindRepoRoot();
+        string callable = File.ReadAllText(Path.Combine(
+            root,
+            "functions",
+            "src",
+            "callables",
+            "windowsRuntimeSafetyConfig.ts"));
+        string index = File.ReadAllText(Path.Combine(root, "functions", "src", "index.ts"));
+
+        Assert.Contains("enforceAuthAndAppCheck(request, uid)", callable, StringComparison.Ordinal);
+        Assert.Contains("enforceAppCheck: getConfig().enforceAppCheck", callable, StringComparison.Ordinal);
+        Assert.Contains("getWindowsRuntimeSafetyConfig", index, StringComparison.Ordinal);
+    }
+
     private static string FindRepoRoot()
     {
         string dir = Directory.GetCurrentDirectory();
