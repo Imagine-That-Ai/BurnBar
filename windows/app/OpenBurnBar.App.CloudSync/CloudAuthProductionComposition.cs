@@ -18,12 +18,29 @@ public static class CloudAuthProductionComposition
     public const string AppCheckAppIdEnv = "OPENBURNBAR_APPCHECK_APP_ID";
 
     /// <summary>
-    /// True when the caller explicitly opts into the live App Check path. The
-    /// switch is intentionally separate from OAuth so a normal local install
-    /// does not attempt staging mint calls with a missing server verifier.
+    /// True when a provisioned App Check app id is available. Callers that only
+    /// probe launch-time readiness can use this without weakening the production
+    /// composition path, which validates the id again through
+    /// <see cref="RequireAppCheckAppId"/>.
     /// </summary>
     public static bool IsAppCheckConfigured() =>
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(AppCheckAppIdEnv));
+
+    public static string RequireAppCheckAppId()
+    {
+        string? appId = Environment.GetEnvironmentVariable(AppCheckAppIdEnv);
+        if (string.IsNullOrWhiteSpace(appId))
+        {
+            throw new InvalidOperationException($"{AppCheckAppIdEnv} is required for production Windows sign-in.");
+        }
+        if (!appId.StartsWith("1:", StringComparison.Ordinal) ||
+            !appId.Contains(":web:", StringComparison.Ordinal) ||
+            appId.Contains("placeholder", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"{AppCheckAppIdEnv} must be a provisioned Firebase web app id.");
+        }
+        return appId;
+    }
 
     /// <summary>True when Desktop OAuth client id + Firebase API key are configured.</summary>
     public static bool IsOAuthConfigured()
@@ -100,9 +117,7 @@ public static class CloudAuthProductionComposition
         AppCheckMintClient mintClient,
         string? appId = null)
     {
-        string resolvedAppId = appId
-            ?? Environment.GetEnvironmentVariable(AppCheckAppIdEnv)
-            ?? "1:000000000000:web:openburnbar-windows";
+        string resolvedAppId = appId ?? RequireAppCheckAppId();
         var options = new AppCheckProviderOptions { AppId = resolvedAppId };
         return new WindowsAppCheckProvider(producer, mintClient, idTokenSource, options);
     }

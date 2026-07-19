@@ -23,7 +23,8 @@ namespace OpenBurnBar.CloudSync.AppCheck.Mint;
 ///   <item>Success: HTTP 200, body <c>{ "result": &lt;result&gt; }</c>.</item>
 ///   <item>Error: an <c>{ "error": { status, message } }</c> envelope.</item>
 /// </list>
-/// The payload is <c>{ attestation: { kind, appId, nonce, issuedAtMs, mac }, ttlMillis? }</c>
+/// The payload is <c>{ attestation: { kind, appId, nonce, issuedAtMs, mac,
+/// challengeId?, subjectPublicKey? }, ttlMillis? }</c>
 /// — exactly what the server's handler reads. There is NO App Check header on this
 /// call: it is the bootstrap that MINTS App Check, so it cannot demand one
 /// (<c>enforceAppCheck: false</c> server-side); the gate is the attestation verifier.
@@ -104,6 +105,14 @@ public sealed class AppCheckMintClient
             writer.WriteString("nonce", claim.Nonce);
             writer.WriteNumber("issuedAtMs", claim.IssuedAtMs);
             writer.WriteString("mac", claim.Mac);
+            if (!string.IsNullOrWhiteSpace(claim.ChallengeId))
+            {
+                writer.WriteString("challengeId", claim.ChallengeId);
+            }
+            if (!string.IsNullOrWhiteSpace(claim.SubjectPublicKey))
+            {
+                writer.WriteString("subjectPublicKey", claim.SubjectPublicKey);
+            }
             writer.WriteEndObject();
 
             if (ttlMillisRequest.HasValue)

@@ -115,6 +115,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   domain-core profile, and Sentry state before publishing immutable v2 release
   evidence; manual legacy rollback uses a separately authorized and retained
   proof path.
+- **Production Windows TPM App Check transport** - added authenticated
+  server-issued challenges, durable one-time replay protection, TPM-backed CNG
+  claim/public-key transport, a Windows `NCryptVerifyClaim` service, and
+  mandatory OAuth composition with no shipping mock-attestation fallback.
 - **Launch-readiness hardening** — added durable account-erasure barriers,
   resumable oldest-first reconciliation with poison-record quarantine, and
   privacy-safe retained audit receipts across Functions, Firestore, and Storage.

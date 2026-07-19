@@ -5,8 +5,8 @@
     · App Check client lane). R14 / AC-013 / DEV-HOST DEFERRED.
 
     This is the PLATFORM half of the attestation seam: the REAL CNG
-    NCryptCreateClaim(NCRYPT_CLAIM_PLATFORM) producer that proves the client is a
-    genuine, unmodified app on genuine hardware via a TPM key-attestation claim. It
+    NCryptCreateClaim(NCRYPT_CLAIM_PLATFORM) producer that proves possession of a
+    hardware-backed installation key via a TPM key-attestation claim. It
     sits behind the portable IAttestationProducer interface, so the whole
     mint/refresh/attach lifecycle is unit-tested off-Windows (with the mock
     producer) and only this thin TPM shim is Windows-bound.
@@ -16,8 +16,8 @@
     (NETSDK1100); EnableWindowsTargeting=true is set so the C# cross-compiles on
     macOS for evidence that every P/Invoke + type Roslyn-resolves and compiles
     clean. It does NOT run off-Windows — a real Platform Crypto Provider + TPM is a
-    Windows dev-host step, and the end-to-end verify additionally needs AC-013's
-    server-side TPM verifier (the server today registers only the mock verifier).
+    Windows dev-host step. The companion Verifier.Windows service performs remote
+    NCryptVerifyClaim validation.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
