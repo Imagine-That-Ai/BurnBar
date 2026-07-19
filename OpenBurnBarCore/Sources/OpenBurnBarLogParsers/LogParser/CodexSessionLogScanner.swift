@@ -112,13 +112,20 @@ public enum CodexSessionLogScanner {
         public let state: CodexTokenScanState
     }
 
+    private enum TokenScanAttempt {
+        case scanned(TokenScanResult, contentReadBytes: Int64)
+        case deferred(contentReadBytes: Int64)
+        case unavailable(contentReadBytes: Int64)
+    }
+
     // MARK: - Token Scanning
 
     /// Scans a rollout file for token counts, resuming from `previousState`
     /// when the file has only grown since that state was captured.
     ///
-    /// Returns `nil` when the file does not exist or cannot be opened.
-    /// Throws only `ParserResourceExceeded` (from the governor).
+    /// Returns `nil` when the file does not exist, cannot be opened, or the
+    /// governor defers the planned content read.
+    /// Throws only `ParserResourceExceeded` (from governor checkpoints).
     ///
     /// Token semantics are byte-for-byte those of the original full-file
     /// loop (VAL-TOKEN-002 / VAL-TOKEN-010): cumulative totals overwrite and
@@ -130,34 +137,131 @@ public enum CodexSessionLogScanner {
         previousState: CodexTokenScanState?,
         governor: ParserResourceGovernor? = nil
     ) throws -> TokenScanResult? {
-        guard fileManager.fileExists(atPath: path),
-              let handle = FileHandle(forReadingAtPath: path) else {
+        try scanTokens(
+            path: path,
+            fileManager: fileManager,
+            previousState: previousState,
+            governor: governor,
+            openFileForReading: { FileHandle(forReadingAtPath: $0) }
+        )
+    }
+
+    static func scanTokens(
+        path: String,
+        fileManager: FileManager,
+        previousState: CodexTokenScanState?,
+        governor: ParserResourceGovernor?,
+        openFileForReading: (String) -> FileHandle?
+    ) throws -> TokenScanResult? {
+        switch try scanTokenFile(
+            path: path,
+            fileManager: fileManager,
+            previousState: previousState,
+            governor: governor,
+            openFileForReading: openFileForReading
+        ) {
+        case let .scanned(result, _):
+            return result
+        case .deferred, .unavailable:
             return nil
+        }
+    }
+
+    private static func scanTokenFile(
+        path: String,
+        fileManager: FileManager,
+        previousState: CodexTokenScanState?,
+        governor: ParserResourceGovernor?,
+        openFileForReading: (String) -> FileHandle?
+    ) throws -> TokenScanAttempt {
+        guard fileManager.fileExists(atPath: path),
+              let rawFileSize = (try? fileManager.attributesOfItem(atPath: path))?[.size] as? NSNumber,
+              rawFileSize.int64Value >= 0 else {
+            return .unavailable(contentReadBytes: 0)
+        }
+
+        let fileSize = rawFileSize.int64Value
+        var contentReadBytes: Int64 = 0
+        func admitAdditionalRead(_ bytes: Int64) -> Bool {
+            guard bytes > 0 else { return true }
+            guard governor?.admitFile(estimatedBytes: bytes) ?? true else { return false }
+            contentReadBytes += bytes
+            return true
+        }
+
+        let canProbePreviousHead: Bool
+        if let previous = previousState {
+            canProbePreviousHead = previous.byteOffset >= 0
+                && previous.byteOffset <= fileSize
+                && previous.headDigestLength > 0
+                && previous.headDigestLength <= headDigestSpan
+                && Int64(previous.headDigestLength) <= fileSize
+        } else {
+            canProbePreviousHead = false
+        }
+
+        let probeBytes = canProbePreviousHead ? Int64(previousState?.headDigestLength ?? 0) : 0
+        let appendBytes = canProbePreviousHead
+            ? max(fileSize - (previousState?.byteOffset ?? fileSize), 0)
+            : 0
+        // A cached scan must validate its old head before it can trust the
+        // append offset. Admit that probe before opening the file; a matching
+        // append tail is admitted separately immediately before it is read.
+        // Cold scans admit their full known span up front.
+        let initialReadBytes = canProbePreviousHead ? probeBytes : fileSize
+        guard admitAdditionalRead(initialReadBytes) else {
+            return .deferred(contentReadBytes: contentReadBytes)
+        }
+        guard let handle = openFileForReading(path) else {
+            return .unavailable(contentReadBytes: contentReadBytes)
         }
         defer { try? handle.close() } // try?-ok(handle teardown)
 
-        let fileSize = ((try? fileManager.attributesOfItem(atPath: path))?[.size] as? Int64) ?? 0
-
         var accumulator: TokenAccumulator
-        var resumeOffset: Int64 = 0
-        var headDigest: String
-        var headDigestLength: Int
+        var resumeOffset: Int64
+        let headDigest: String
+        let headDigestLength: Int
 
-        if let previous = previousState,
-           previous.byteOffset <= fileSize,
-           matchesHeadDigest(previous, handle: handle) {
-            accumulator = TokenAccumulator(
-                input: previous.inputTokens,
-                output: previous.outputTokens,
-                cacheRead: previous.cacheReadTokens,
-                foundCumulative: previous.foundCumulative,
-                foundDelta: previous.foundDelta
-            )
-            resumeOffset = previous.byteOffset
-            headDigest = previous.headDigest
-            headDigestLength = previous.headDigestLength
+        if let previous = previousState, canProbePreviousHead {
+            let observedHeadDigest = digestOfHead(handle: handle, length: previous.headDigestLength)
+            if observedHeadDigest == previous.headDigest,
+               !admitAdditionalRead(appendBytes) {
+                return .deferred(contentReadBytes: contentReadBytes)
+            }
+            if observedHeadDigest == previous.headDigest {
+                accumulator = TokenAccumulator(
+                    input: previous.inputTokens,
+                    output: previous.outputTokens,
+                    cacheRead: previous.cacheReadTokens,
+                    foundCumulative: previous.foundCumulative,
+                    foundDelta: previous.foundDelta
+                )
+                resumeOffset = previous.byteOffset
+                headDigest = previous.headDigest
+                headDigestLength = previous.headDigestLength
+
+            } else {
+                accumulator = TokenAccumulator()
+                resumeOffset = 0
+                headDigestLength = Int(min(Int64(headDigestSpan), fileSize))
+
+                // A mismatched head restarts from byte zero. The head probe
+                // was already charged for this attempt; admit the unread
+                // remainder so the rewrite totals one full file.
+                let additionalBytes = max(fileSize - probeBytes, 0)
+                guard admitAdditionalRead(additionalBytes) else {
+                    return .deferred(contentReadBytes: contentReadBytes)
+                }
+                headDigest = previous.headDigestLength == headDigestLength
+                    ? observedHeadDigest
+                    : digestOfHead(handle: handle, length: headDigestLength)
+            }
         } else {
+            // Cold scans, truncations, and legacy empty-head states all read
+            // from byte zero. Their full known span was admitted before the
+            // handle was opened, so the digest cannot bypass the byte budget.
             accumulator = TokenAccumulator()
+            resumeOffset = 0
             headDigestLength = Int(min(Int64(headDigestSpan), fileSize))
             headDigest = digestOfHead(handle: handle, length: headDigestLength)
         }
@@ -216,7 +320,7 @@ public enum CodexSessionLogScanner {
             (effective.foundCumulative || effective.foundDelta)
             ? (effective.input, effective.output, effective.cacheRead)
             : nil
-        return TokenScanResult(usage: usage, state: state)
+        return .scanned(TokenScanResult(usage: usage, state: state), contentReadBytes: contentReadBytes)
     }
 
     struct TokenAccumulator {
@@ -267,6 +371,11 @@ public enum CodexSessionLogScanner {
         }
     }
 
+    private enum ConversationScanAttempt {
+        case scanned(CodexConversationCacheEntry?)
+        case unavailable
+    }
+
     // MARK: - Conversation Scanning
 
     /// Full-file conversation extraction (message turns, tools, key files).
@@ -276,17 +385,18 @@ public enum CodexSessionLogScanner {
     /// the cost by only scanning files whose modification date crossed the
     /// indexing watermark.
     ///
-    /// Returns `nil` when the file cannot be read or holds no message turns.
-    /// Throws only `ParserResourceExceeded` (from the governor).
-    public static func scanConversation(
+    /// Distinguishes an unreadable file from a successful scan with no message
+    /// turns so token-only rollouts can still advance the discovery manifest.
+    private static func scanConversation(
         path: String,
         fallbackTitle: String,
-        fileManager: FileManager = .default,
-        governor: ParserResourceGovernor? = nil
-    ) throws -> CodexConversationCacheEntry? {
+        fileManager: FileManager,
+        governor: ParserResourceGovernor?,
+        openFileForReading: (String) -> FileHandle?
+    ) throws -> ConversationScanAttempt {
         guard fileManager.fileExists(atPath: path),
-              let handle = FileHandle(forReadingAtPath: path) else {
-            return nil
+              let handle = openFileForReading(path) else {
+            return .unavailable
         }
         defer { try? handle.close() } // try?-ok(handle teardown)
 
@@ -323,36 +433,43 @@ public enum CodexSessionLogScanner {
             }
         }
 
-        guard !turns.isEmpty else { return nil }
+        guard !turns.isEmpty else { return .scanned(nil) }
 
-        let markdown = turns.map { turn -> String in
-            let header = turn.role == "assistant" ? "## Assistant" : "## You"
-            return "\(header)\n\n\(turn.text)"
+        let markdown = turns.map { turn in
+            turn.role == "user"
+                ? "## User\n\n\(turn.text)"
+                : "## Assistant\n\n\(turn.text)"
         }.joined(separator: "\n\n")
-        let title = turns.first(where: { $0.role == "user" })?.text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .nonEmpty
-            ?? fallbackTitle.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-            ?? "Codex session"
-        let lastAssistant = turns.last(where: { $0.role == "assistant" })?.text ?? ""
-        let userWords = turns
-            .filter { $0.role == "user" }
-            .reduce(0) { $0 + $1.text.split(separator: " ").count }
-        let assistantWords = turns
-            .filter { $0.role == "assistant" }
-            .reduce(0) { $0 + $1.text.split(separator: " ").count }
 
-        return CodexConversationCacheEntry(
+        let firstUser = turns.first(where: { $0.role == "user" })?.text ?? fallbackTitle
+        let title = firstUser
+            .split(separator: "\n")
+            .first
+            .map(String.init)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty ?? fallbackTitle
+        let lastAssistant = turns.last(where: { $0.role == "assistant" })?.text ?? ""
+        let userWordCount = turns
+            .filter { $0.role == "user" }
+            .reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count }
+        let assistantWordCount = turns
+            .filter { $0.role == "assistant" }
+            .reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count }
+        let sortedKeyFiles = Array(Array(keyFiles).sorted().prefix(12))
+        let sortedKeyCommands = Array(Array(keyCommands).sorted().prefix(12))
+        let sortedKeyTools = Array(Array(keyTools).sorted().prefix(12))
+        let conversation = CodexConversationCacheEntry(
             title: String(title.prefix(160)),
             markdown: markdown,
             messageCount: turns.count,
-            userWordCount: userWords,
-            assistantWordCount: assistantWords,
-            keyFiles: Array(Array(keyFiles).sorted().prefix(12)),
-            keyCommands: Array(Array(keyCommands).sorted().prefix(12)),
-            keyTools: Array(Array(keyTools).sorted().prefix(12)),
+            userWordCount: userWordCount,
+            assistantWordCount: assistantWordCount,
+            keyFiles: sortedKeyFiles,
+            keyCommands: sortedKeyCommands,
+            keyTools: sortedKeyTools,
             lastAssistantMessage: String(lastAssistant.prefix(500))
         )
+        return .scanned(conversation)
     }
 
     public static func extractCodexMessage(from json: [String: Any]) -> (role: String, text: String)? {
@@ -417,6 +534,22 @@ public enum CodexSessionLogScanner {
         fileManager: FileManager,
         cacheStore: ParserDiskCacheStore<CodexCacheEntry>
     ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
+        try processThreadRows(
+            threadRows,
+            options: options,
+            fileManager: fileManager,
+            cacheStore: cacheStore,
+            openFileForReading: { FileHandle(forReadingAtPath: $0) }
+        )
+    }
+
+    static func processThreadRows(
+        _ threadRows: [CodexThreadRow],
+        options: LogParseOptions,
+        fileManager: FileManager,
+        cacheStore: ParserDiskCacheStore<CodexCacheEntry>,
+        openFileForReading: (String) -> FileHandle?
+    ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var sessionCache = cacheStore.load()
@@ -438,6 +571,7 @@ public enum CodexSessionLogScanner {
             var cacheReadTokens = 0
             var foundExact = false
             var deferredWithoutCache = false
+            var contentUnavailable = false
 
             var parsedConversation: CodexConversationCacheEntry?
             var shouldEmitConversation = options.includeConversationBodies && row.expandedRolloutPath == nil
@@ -493,32 +627,25 @@ public enum CodexSessionLogScanner {
                             deferredWithoutCache = true
                         }
                     } else {
-                        let fileSize = signature?.sizeBytes ?? 0
-                        let resumeOffset = cached?.scanState?.byteOffset ?? 0
-                        let newBytes = max(fileSize - min(resumeOffset, fileSize), 0)
-
-                        if governor?.admitFile(estimatedBytes: newBytes) ?? true {
+                        switch try scanTokenFile(
+                            path: expandedPath,
+                            fileManager: fileManager,
+                            previousState: cached?.scanState,
+                            governor: governor,
+                            openFileForReading: openFileForReading
+                        ) {
+                        case let .scanned(scan, contentReadBytes):
                             options.fileDiscoveryTracker?.recordAdmitted(discoveredFile)
-                            options.metrics?.recordContentRead(bytes: newBytes)
-                            let scan = try scanTokens(
-                                path: expandedPath,
-                                fileManager: fileManager,
-                                previousState: cached?.scanState,
-                                governor: governor
-                            )
-                            if scan == nil {
-                                governor?.recordDeferredFile()
-                                options.fileDiscoveryTracker?.recordDeferred(discoveredFile)
-                                options.metrics?.recordDeferred(.contentReadFailed)
-                            }
-                            if let usage = scan?.usage {
+                            options.metrics?.recordContentRead(bytes: contentReadBytes)
+
+                            if let usage = scan.usage {
                                 inputTokens = usage.input
                                 outputTokens = usage.output
                                 cacheReadTokens = usage.cacheRead
                                 foundExact = true
                             }
 
-                            if let signature, let scan {
+                            if let signature {
                                 sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
                                     signature: signature,
                                     tokenUsage: scan.usage.map {
@@ -527,11 +654,13 @@ public enum CodexSessionLogScanner {
                                     scanState: scan.state
                                 )
                                 cacheMutated = true
-                            } else if cached != nil {
-                                sessionCache.fileEntries.removeValue(forKey: cacheKey)
-                                cacheMutated = true
                             }
-                        } else {
+
+                        case let .deferred(contentReadBytes):
+                            if contentReadBytes > 0 {
+                                options.metrics?.recordContentRead(bytes: contentReadBytes)
+                            }
+                            options.fileDiscoveryTracker?.recordDeferred(discoveredFile)
                             options.metrics?.recordDeferred(.byteBudget)
                             if let tokenUsage = cached?.tokenUsage {
                                 inputTokens = tokenUsage.input
@@ -541,22 +670,57 @@ public enum CodexSessionLogScanner {
                             } else {
                                 deferredWithoutCache = true
                             }
+
+                        case let .unavailable(contentReadBytes):
+                            if contentReadBytes > 0 {
+                                options.metrics?.recordContentRead(bytes: contentReadBytes)
+                            }
+                            governor?.recordDeferredFile()
+                            options.fileDiscoveryTracker?.recordDeferred(discoveredFile)
+                            options.metrics?.recordDeferred(.contentReadFailed)
+                            deferredWithoutCache = cached?.tokenUsage == nil
+                            contentUnavailable = true
+                            if let tokenUsage = cached?.tokenUsage {
+                                inputTokens = tokenUsage.input
+                                outputTokens = tokenUsage.output
+                                cacheReadTokens = tokenUsage.cacheRead
+                                foundExact = true
+                            }
                         }
                     }
 
-                    if options.includeConversationBodies, !boundaryDeferred {
+                    if options.includeConversationBodies,
+                       !boundaryDeferred,
+                       (!isUnchanged || options.fileDiscoveryTracker == nil),
+                       !contentUnavailable {
                         let conversationBytes = signature?.sizeBytes ?? 0
                         if governor?.admitFile(estimatedBytes: conversationBytes) ?? true {
                             options.metrics?.recordContentRead(bytes: conversationBytes)
-                            parsedConversation = try scanConversation(
-                                path: expandedPath,
-                                fallbackTitle: row.rawTitle,
-                                fileManager: fileManager,
-                                governor: governor
-                            )
-                            shouldEmitConversation = parsedConversation != nil
+                            do {
+                                switch try scanConversation(
+                                    path: expandedPath,
+                                    fallbackTitle: row.rawTitle,
+                                    fileManager: fileManager,
+                                    governor: governor,
+                                    openFileForReading: openFileForReading
+                                ) {
+                                case let .scanned(conversation):
+                                    parsedConversation = conversation
+                                    shouldEmitConversation = conversation != nil
+                                case .unavailable:
+                                    governor?.recordDeferredFile()
+                                    options.metrics?.recordDeferred(.contentReadFailed)
+                                    options.fileDiscoveryTracker?.recordDeferred(discoveredFile)
+                                    parsedConversation = nil
+                                    shouldEmitConversation = false
+                                }
+                            } catch {
+                                options.fileDiscoveryTracker?.recordDeferred(discoveredFile)
+                                throw error
+                            }
                         } else {
                             options.metrics?.recordDeferred(.byteBudget)
+                            options.fileDiscoveryTracker?.recordDeferred(discoveredFile)
                             parsedConversation = nil
                             shouldEmitConversation = false
                         }

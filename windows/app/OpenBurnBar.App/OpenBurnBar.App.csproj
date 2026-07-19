@@ -237,28 +237,138 @@
   <Target Name="StageUsageScanWorker"
           AfterTargets="Build"
           Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <OpenBurnBarUsageScanWorkerPlatformDirectory
+        Condition="'$(Platform)' == '' Or '$(Platform)' == 'AnyCPU'">$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\bin\$(Configuration)\net8.0</OpenBurnBarUsageScanWorkerPlatformDirectory>
+      <OpenBurnBarUsageScanWorkerPlatformDirectory
+        Condition="'$(Platform)' != '' And '$(Platform)' != 'AnyCPU'">$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\bin\$(Platform)\$(Configuration)\net8.0</OpenBurnBarUsageScanWorkerPlatformDirectory>
+      <OpenBurnBarUsageScanWorkerManifest>$(TargetDir).openburnbar-usage-scan-worker.manifest</OpenBurnBarUsageScanWorkerManifest>
+      <OpenBurnBarUsageScanWorkerManifestTemp>$(TargetDir).openburnbar-usage-scan-worker.manifest.tmp</OpenBurnBarUsageScanWorkerManifestTemp>
+    </PropertyGroup>
+
     <MSBuild Projects="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\OpenBurnBar.Cli.csproj"
              Targets="Restore;Build"
              Properties="Configuration=$(Configuration)"
-             RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishTrimmed" />
-    <PropertyGroup>
-      <OpenBurnBarUsageScanWorkerPlatformDirectory
-        Condition="'$(Platform)' != '' and '$(Platform)' != 'AnyCPU'">$(Platform)\</OpenBurnBarUsageScanWorkerPlatformDirectory>
-    </PropertyGroup>
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishTrimmed">
+      <Output TaskParameter="TargetOutputs"
+              ItemName="_OpenBurnBarUsageScanWorkerPrimaryOutput" />
+    </MSBuild>
+    <MSBuild Projects="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\OpenBurnBar.Cli.csproj"
+             Targets="GetCopyToOutputDirectoryItems"
+             Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishTrimmed">
+      <Output TaskParameter="TargetOutputs"
+              ItemName="_OpenBurnBarUsageScanWorkerContentOutput" />
+    </MSBuild>
+    <MSBuild Projects="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\OpenBurnBar.Cli.csproj"
+             Targets="ReferenceCopyLocalPathsOutputGroup"
+             Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishTrimmed">
+      <Output TaskParameter="TargetOutputs"
+              ItemName="_OpenBurnBarUsageScanWorkerReferenceOutput" />
+    </MSBuild>
+    <MSBuild Projects="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\OpenBurnBar.Cli.csproj"
+             Targets="SatelliteDllsProjectOutputGroup"
+             Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishTrimmed">
+      <Output TaskParameter="TargetOutputs"
+              ItemName="_OpenBurnBarUsageScanWorkerSatelliteOutput" />
+    </MSBuild>
+
     <ItemGroup>
-      <OpenBurnBarUsageScanWorkerFile Include="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\bin\$(OpenBurnBarUsageScanWorkerPlatformDirectory)$(Configuration)\net8.0\OpenBurnBar.Cli.exe"
-                                      Condition="'$(OS)' == 'Windows_NT'" />
-      <OpenBurnBarUsageScanWorkerFile Include="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\bin\$(OpenBurnBarUsageScanWorkerPlatformDirectory)$(Configuration)\net8.0\OpenBurnBar.Cli"
-                                      Condition="'$(OS)' != 'Windows_NT'" />
-      <OpenBurnBarUsageScanWorkerFile Include="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\bin\$(OpenBurnBarUsageScanWorkerPlatformDirectory)$(Configuration)\net8.0\OpenBurnBar.Cli.dll" />
-      <OpenBurnBarUsageScanWorkerFile Include="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\bin\$(OpenBurnBarUsageScanWorkerPlatformDirectory)$(Configuration)\net8.0\OpenBurnBar.Cli.deps.json" />
-      <OpenBurnBarUsageScanWorkerFile Include="$(MSBuildProjectDirectory)\..\OpenBurnBar.Cli\bin\$(OpenBurnBarUsageScanWorkerPlatformDirectory)$(Configuration)\net8.0\OpenBurnBar.Cli.runtimeconfig.json" />
+      <!-- The apphost is selected explicitly for the build host. Remove the
+           output-group apphost so a stale host from another OS cannot be staged
+           beside the selected sibling executable. -->
+      <_OpenBurnBarUsageScanWorkerContentOutput
+        Remove="@(_OpenBurnBarUsageScanWorkerContentOutput)"
+        Condition="'%(_OpenBurnBarUsageScanWorkerContentOutput.TargetPath)' == 'OpenBurnBar.Cli.exe'
+                   Or '%(_OpenBurnBarUsageScanWorkerContentOutput.TargetPath)' == 'OpenBurnBar.Cli'" />
+
+      <OpenBurnBarUsageScanWorkerFile Include="@(_OpenBurnBarUsageScanWorkerPrimaryOutput)">
+        <TargetPath>%(Filename)%(Extension)</TargetPath>
+      </OpenBurnBarUsageScanWorkerFile>
+      <OpenBurnBarUsageScanWorkerFile Include="@(_OpenBurnBarUsageScanWorkerContentOutput);
+                                                     @(_OpenBurnBarUsageScanWorkerReferenceOutput);
+                                                     @(_OpenBurnBarUsageScanWorkerSatelliteOutput)" />
+      <OpenBurnBarUsageScanWorkerFile
+        Include="$(OpenBurnBarUsageScanWorkerPlatformDirectory)\OpenBurnBar.Cli.exe"
+        Condition="'$(OS)' == 'Windows_NT'">
+        <TargetPath>OpenBurnBar.Cli.exe</TargetPath>
+      </OpenBurnBarUsageScanWorkerFile>
+      <OpenBurnBarUsageScanWorkerFile
+        Include="$(OpenBurnBarUsageScanWorkerPlatformDirectory)\OpenBurnBar.Cli"
+        Condition="'$(OS)' != 'Windows_NT'">
+        <TargetPath>OpenBurnBar.Cli</TargetPath>
+      </OpenBurnBarUsageScanWorkerFile>
     </ItemGroup>
+
+    <Error Condition="'@(OpenBurnBarUsageScanWorkerFile)' == ''"
+           Text="Usage-scan worker build did not report any staging artifacts." />
+    <Error Condition="'%(OpenBurnBarUsageScanWorkerFile.TargetPath)' == ''"
+           Text="Usage-scan worker artifact has no target path: %(OpenBurnBarUsageScanWorkerFile.FullPath)" />
     <Error Condition="!Exists('%(OpenBurnBarUsageScanWorkerFile.FullPath)')"
            Text="Usage-scan worker artifact was not produced: %(OpenBurnBarUsageScanWorkerFile.FullPath)" />
+
+    <ItemGroup>
+      <_OpenBurnBarUsageScanWorkerManifestEntry
+        Include="$([System.String]::Copy('%(OpenBurnBarUsageScanWorkerFile.TargetPath)').Replace('\', '/'))" />
+    </ItemGroup>
+    <RemoveDuplicates Inputs="@(_OpenBurnBarUsageScanWorkerManifestEntry)">
+      <Output TaskParameter="Filtered"
+              ItemName="_OpenBurnBarUsageScanWorkerCurrentPath" />
+    </RemoveDuplicates>
+
+    <!-- Only normalized relative paths may ever become deletion candidates. -->
+    <Error Condition="$([System.IO.Path]::IsPathRooted('%(_OpenBurnBarUsageScanWorkerCurrentPath.Identity)'))
+                      Or '%(_OpenBurnBarUsageScanWorkerCurrentPath.Identity)' == '..'
+                      Or $([System.String]::Copy('%(_OpenBurnBarUsageScanWorkerCurrentPath.Identity)').StartsWith('../'))
+                      Or $([System.String]::Copy('%(_OpenBurnBarUsageScanWorkerCurrentPath.Identity)').Contains('/../'))
+                      Or $([System.String]::Copy('%(_OpenBurnBarUsageScanWorkerCurrentPath.Identity)').EndsWith('/..'))
+                      Or $([System.String]::Copy('%(_OpenBurnBarUsageScanWorkerCurrentPath.Identity)').Contains(':'))"
+           Text="Usage-scan worker artifact has an unsafe target path: %(_OpenBurnBarUsageScanWorkerCurrentPath.Identity)" />
+
+    <ReadLinesFromFile File="$(OpenBurnBarUsageScanWorkerManifest)"
+                       Condition="Exists('$(OpenBurnBarUsageScanWorkerManifest)')">
+      <Output TaskParameter="Lines"
+              ItemName="_OpenBurnBarPriorUsageScanWorkerManifestLine" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_OpenBurnBarPriorUsageScanWorkerPath
+        Include="$([System.String]::Copy('%(_OpenBurnBarPriorUsageScanWorkerManifestLine.Identity)').Replace('\', '/'))"
+        Condition="'%(_OpenBurnBarPriorUsageScanWorkerManifestLine.Identity)' != ''" />
+    </ItemGroup>
+    <RemoveDuplicates Inputs="@(_OpenBurnBarPriorUsageScanWorkerPath)">
+      <Output TaskParameter="Filtered"
+              ItemName="_OpenBurnBarPriorUsageScanWorkerDistinctPath" />
+    </RemoveDuplicates>
+
+    <Error Condition="$([System.IO.Path]::IsPathRooted('%(_OpenBurnBarPriorUsageScanWorkerDistinctPath.Identity)'))
+                      Or '%(_OpenBurnBarPriorUsageScanWorkerDistinctPath.Identity)' == '..'
+                      Or $([System.String]::Copy('%(_OpenBurnBarPriorUsageScanWorkerDistinctPath.Identity)').StartsWith('../'))
+                      Or $([System.String]::Copy('%(_OpenBurnBarPriorUsageScanWorkerDistinctPath.Identity)').Contains('/../'))
+                      Or $([System.String]::Copy('%(_OpenBurnBarPriorUsageScanWorkerDistinctPath.Identity)').EndsWith('/..'))
+                      Or $([System.String]::Copy('%(_OpenBurnBarPriorUsageScanWorkerDistinctPath.Identity)').Contains(':'))"
+           Text="Usage-scan worker staging manifest contains an unsafe path: %(_OpenBurnBarPriorUsageScanWorkerDistinctPath.Identity)" />
+
+    <ItemGroup>
+      <_OpenBurnBarObsoleteUsageScanWorkerPath
+        Include="@(_OpenBurnBarPriorUsageScanWorkerDistinctPath)"
+        Exclude="@(_OpenBurnBarUsageScanWorkerCurrentPath)" />
+    </ItemGroup>
+
+    <!-- Write the complete next ownership set first, but keep the prior manifest
+         authoritative until every copy and manifest-owned cleanup succeeds. -->
+    <WriteLinesToFile File="$(OpenBurnBarUsageScanWorkerManifestTemp)"
+                      Lines="@(_OpenBurnBarUsageScanWorkerCurrentPath)"
+                      Overwrite="true"
+                      Encoding="UTF-8" />
     <Copy SourceFiles="@(OpenBurnBarUsageScanWorkerFile)"
-          DestinationFolder="$(TargetDir)"
+          DestinationFiles="@(OpenBurnBarUsageScanWorkerFile->'$(TargetDir)%(TargetPath)')"
           SkipUnchangedFiles="true" />
+    <Delete Files="@(_OpenBurnBarObsoleteUsageScanWorkerPath->'$(TargetDir)%(Identity)')" />
+    <Move SourceFiles="$(OpenBurnBarUsageScanWorkerManifestTemp)"
+          DestinationFiles="$(OpenBurnBarUsageScanWorkerManifest)"
+          OverwriteReadOnlyFiles="true" />
   </Target>
 
   <ItemGroup>

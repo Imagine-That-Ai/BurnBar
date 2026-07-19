@@ -223,21 +223,42 @@ public sealed partial class WindowsSqlCipherProvisioner
             {
                 throw Recovery(databasePath, WindowsStorageFailureKind.UnsupportedSchema, null);
             }
+
             return;
         }
 
         long count = SqlCipherConnection.ReadMigrationCount(connection);
         string endpoint = count == 0 ? string.Empty : SqlCipherConnection.ReadMigrationEndpoint(connection);
         long userVersion = SqlCipherConnection.ReadUserVersion(connection);
-        if (count > CurrentMigrationCount
-            || userVersion > CurrentUserVersion
-            || (endpoint.Length > 0
-                && !Array.Exists(
-                    AppliedMigrationIdentifiers,
-                    identifier => string.Equals(identifier, endpoint, StringComparison.Ordinal))))
+        if (count != CurrentMigrationCount
+            || userVersion != CurrentUserVersion
+            || !string.Equals(endpoint, CurrentMigrationEndpoint, StringComparison.Ordinal)
+            || !HasExactMigrationHistory(connection)
+            || !TableExists(connection, "parser_checkpoints")
+            || !TableExists(connection, "parser_checkpoint_files"))
         {
             throw Recovery(databasePath, WindowsStorageFailureKind.UnsupportedSchema, null);
         }
+    }
+
+    private static bool HasExactMigrationHistory(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT identifier FROM grdb_migrations ORDER BY rowid";
+        using var reader = command.ExecuteReader();
+        int index = 0;
+        while (reader.Read())
+        {
+            if (index >= AppliedMigrationIdentifiers.Length
+                || !string.Equals(reader.GetString(0), AppliedMigrationIdentifiers[index], StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            index += 1;
+        }
+
+        return index == AppliedMigrationIdentifiers.Length;
     }
 
     private static bool HasApplicationTables(SqliteConnection connection)
@@ -265,6 +286,33 @@ public sealed partial class WindowsSqlCipherProvisioner
     private static readonly string[] SchemaStatements =
     {
         "CREATE TABLE IF NOT EXISTS grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)",
+        // v29_parser_checkpoints is a prerequisite of the v56 file manifest.
+        // Keep its canonical GRDB column/index shape before stamping v56.
+        """
+        CREATE TABLE IF NOT EXISTS parser_checkpoints (
+            provider TEXT PRIMARY KEY,
+            checkpointToken TEXT NOT NULL,
+            lastProcessedFilePath TEXT,
+            lastProcessedAt DATETIME NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS parser_checkpoints_provider_idx ON parser_checkpoints(provider)",
+        // v56_parser_checkpoint_file_manifest. This DDL must precede the
+        // grdb_migrations stamp below; otherwise a fresh/reset Windows database
+        // claims v56 while ParserCheckpointStore has no manifest table.
+        """
+        CREATE TABLE IF NOT EXISTS parser_checkpoint_files (
+            provider TEXT NOT NULL,
+            path TEXT NOT NULL,
+            fileSizeBytes INTEGER,
+            modificationDate DATETIME,
+            creationDate DATETIME,
+            fileSystemNumber TEXT,
+            fileNumber TEXT,
+            PRIMARY KEY (provider, path)
+        )
+        """,
         """
         CREATE TABLE IF NOT EXISTS token_usage (
             id TEXT NOT NULL PRIMARY KEY,

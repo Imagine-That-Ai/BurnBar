@@ -309,6 +309,7 @@ final class ParserResourceGovernorTests: XCTestCase {
         XCTAssertTrue(try gate.shouldRead(discoveredFile))
         XCTAssertEqual(governor.consumedBytes, Int64(bytes.count))
         XCTAssertEqual(tracker.discoveredFiles, [discoveredIdentity])
+        XCTAssertEqual(tracker.partialCheckpointFiles, [historicalIdentity, discoveredIdentity].sorted { $0.path < $1.path })
     }
 
     func test_passMetricsSnapshotsPreserveReasonBreakdownAndMonotonicElapsedTime() {
@@ -371,11 +372,16 @@ private func parserDiscoveredFileIdentity(
     fileManager: FileManager
 ) throws -> ParserDiscoveredFile {
     let attributes = try fileManager.attributesOfItem(atPath: file.path)
+    let normalizedDate: (Date?) -> Date? = { date in
+        date.map {
+            Date(timeIntervalSince1970: ($0.timeIntervalSince1970 * 1_000).rounded() / 1_000)
+        }
+    }
     return ParserDiscoveredFile(
         path: file.standardizedFileURL.path,
         fileSizeBytes: (attributes[.size] as? NSNumber)?.int64Value,
-        modificationDate: attributes[.modificationDate] as? Date,
-        creationDate: attributes[.creationDate] as? Date,
+        modificationDate: normalizedDate(attributes[.modificationDate] as? Date),
+        creationDate: normalizedDate(attributes[.creationDate] as? Date),
         fileSystemNumber: (attributes[.systemNumber] as? NSNumber)?.uint64Value,
         fileNumber: (attributes[.systemFileNumber] as? NSNumber)?.uint64Value
     )

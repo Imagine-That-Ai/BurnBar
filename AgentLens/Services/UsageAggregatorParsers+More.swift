@@ -14,13 +14,17 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
     private let sessionsURL: URL
     private let cacheURL: URL
     private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<ModelFilterCacheEntry>
+    private let fileHandleForReading: @Sendable (URL) throws -> FileHandle
 
     init(
         modelPattern: String,
         provider: AgentProvider,
         fileManager: FileManager = .default,
         appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live(),
-        sessionsDirectoryOverride: URL? = nil
+        sessionsDirectoryOverride: URL? = nil,
+        fileHandleForReading: @escaping @Sendable (URL) throws -> FileHandle = { url in
+            try FileHandle(forReadingFrom: url)
+        }
     ) {
         self.modelPattern = modelPattern.lowercased()
         self.provider = provider
@@ -28,6 +32,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         self.appPaths = appPaths
         self.sessionsURL = sessionsDirectoryOverride
             ?? URL(fileURLWithPath: ("~/.factory/sessions" as NSString).expandingTildeInPath)
+        self.fileHandleForReading = fileHandleForReading
 
         let providerKey = provider.rawValue
             .lowercased()
@@ -78,48 +83,80 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
                 activePaths.insert(cacheKey)
 
                 options.metrics?.recordCandidate()
-                options.metrics?.recordMetadataStat(count: 3)
                 let signature = compositeSignature(
                     jsonlFile: jsonlFile,
                     settingsFile: settingsFile,
                     metadataFile: metadataFile
                 )
+                var sessionFiles = [jsonlFile]
+                if fileManager.fileExists(atPath: settingsFile.path) { sessionFiles.append(settingsFile) }
+                if fileManager.fileExists(atPath: metadataFile.path) { sessionFiles.append(metadataFile) }
 
-                if let minimumFileModificationDate = options.minimumFileModificationDate {
-                    guard let signature else {
-                        options.resourceGovernor?.recordDeferredFile()
-                        options.metrics?.recordDeferred(.metadataUnavailable)
-                        continue
-                    }
-                    guard Date(timeIntervalSince1970: signature.primary.modifiedAt) >= minimumFileModificationDate else {
-                        continue
-                    }
+                let cached = signature.flatMap { signature in
+                    parseCache.fileEntries[cacheKey].flatMap { $0.signature == signature ? $0 : nil }
                 }
 
-                if let signature,
-                   let cached = parseCache.fileEntries[cacheKey],
-                   cached.signature == signature {
-                    appendCached(
-                        cached,
-                        includeConversation: includeConversationBodies,
-                        usages: &usages,
-                        conversations: &conversations
-                    )
-                    if !includeConversationBodies, cached.conversation != nil {
-                        parseCache.fileEntries[cacheKey] = ModelFilterCacheEntry(
-                            signature: cached.signature,
-                            usage: cached.usage,
-                            conversation: nil
+                if let cached {
+                    if includeConversationBodies, cached.conversation == nil {
+                        let sessionAdmitted = try gate.shouldRead(sessionFiles, candidateAlreadyRecorded: true)
+                        guard sessionAdmitted else {
+                            appendCached(
+                                cached,
+                                includeConversation: false,
+                                usages: &usages,
+                                conversations: &conversations
+                            )
+                            continue
+                        }
+
+                        do {
+                            let parsed = try parseSession(file: jsonlFile, projectName: projectName)
+                            let refreshed = ModelFilterCacheEntry(
+                                signature: cached.signature,
+                                usage: cached.usage ?? parsed?.usage,
+                                conversation: parsed?.conversation
+                            )
+                            if refreshed != cached {
+                                parseCache.fileEntries[cacheKey] = refreshed
+                                cacheMutated = true
+                            }
+                            appendCached(
+                                refreshed,
+                                includeConversation: true,
+                                usages: &usages,
+                                conversations: &conversations
+                            )
+                        } catch {
+                            gate.recordContentReadFailure(for: sessionFiles)
+                            appendCached(
+                                cached,
+                                includeConversation: false,
+                                usages: &usages,
+                                conversations: &conversations
+                            )
+                        }
+                    } else {
+                        try recordObservedFiles(sessionFiles, options: options)
+                        appendCached(
+                            cached,
+                            includeConversation: includeConversationBodies,
+                            usages: &usages,
+                            conversations: &conversations
                         )
-                        cacheMutated = true
+                        if !includeConversationBodies, cached.conversation != nil {
+                            parseCache.fileEntries[cacheKey] = ModelFilterCacheEntry(
+                                signature: cached.signature,
+                                usage: cached.usage,
+                                conversation: nil
+                            )
+                            cacheMutated = true
+                        }
                     }
                     continue
                 }
 
-                var sessionFiles = [jsonlFile]
-                if fileManager.fileExists(atPath: settingsFile.path) { sessionFiles.append(settingsFile) }
-                if fileManager.fileExists(atPath: metadataFile.path) { sessionFiles.append(metadataFile) }
-                guard try gate.shouldRead(sessionFiles, candidateAlreadyRecorded: true) else {
+                let sessionAdmitted = try gate.shouldRead(sessionFiles, candidateAlreadyRecorded: true)
+                guard sessionAdmitted else {
                     if let cached = parseCache.fileEntries[cacheKey] {
                         appendCached(
                             cached,
@@ -131,22 +168,25 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
                     continue
                 }
 
-                // try?-ok(one malformed session must not abort other sessions)
-                let parsed = try? parseSession(file: jsonlFile, projectName: projectName)
-                appendParsed(
-                    parsed,
-                    includeConversation: includeConversationBodies,
-                    usages: &usages,
-                    conversations: &conversations
-                )
-
-                if let signature {
-                    parseCache.fileEntries[cacheKey] = ModelFilterCacheEntry(
-                        signature: signature,
-                        usage: parsed?.usage,
-                        conversation: includeConversationBodies ? parsed?.conversation : nil
+                do {
+                    let parsed = try parseSession(file: jsonlFile, projectName: projectName)
+                    appendParsed(
+                        parsed,
+                        includeConversation: includeConversationBodies,
+                        usages: &usages,
+                        conversations: &conversations
                     )
-                    cacheMutated = true
+
+                    if let signature {
+                        parseCache.fileEntries[cacheKey] = ModelFilterCacheEntry(
+                            signature: signature,
+                            usage: parsed?.usage,
+                            conversation: includeConversationBodies ? parsed?.conversation : nil
+                        )
+                        cacheMutated = true
+                    }
+                } catch {
+                    gate.recordContentReadFailure(for: sessionFiles)
                 }
             }
         }
@@ -176,10 +216,16 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         return decoded
     }
 
+    private func readOptionalSidecarJSON(_ file: URL) throws -> [String: Any]? {
+        guard fileManager.fileExists(atPath: file.path) else { return nil }
+        let handle = try fileHandleForReading(file)
+        defer { try? handle.close() } // try?-ok(handle teardown)
+        let data = try handle.readToEnd() ?? Data()
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
     private func parseSession(file: URL, projectName: String) throws -> (usage: TokenUsage?, conversation: OpenBurnBarCore.ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { // try?-ok(log open, skip if absent)
-            return nil
-        }
+        let handle = try fileHandleForReading(file)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
         let mtime = (try? fileManager.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(optional mtime)
@@ -198,8 +244,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         var usedFallbackEstimate = false
         var settingsModel: String?
 
-        if let data = try? Data(contentsOf: settingsURL), // try?-ok(optional sidecar read)
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(sidecar decode)
+        if let json = try readOptionalSidecarJSON(settingsURL) {
             if let m = json["model"] as? String {
                 settingsModel = OpenBurnBarCore.TokenExtractionUtility.normalizeModelName(m)
             }
@@ -216,8 +261,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         }
 
         if !usedSettingsTotals,
-           let data = try? Data(contentsOf: metadataURL), // try?-ok(optional sidecar read)
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(sidecar decode)
+           let json = try readOptionalSidecarJSON(metadataURL) {
             if settingsModel == nil, let m = json["model"] as? String {
                 settingsModel = OpenBurnBarCore.TokenExtractionUtility.normalizeModelName(m)
             }
@@ -420,6 +464,32 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         if includeConversation, let conversation = parsed.conversation {
             conversations.append(conversation)
         }
+    }
+
+    private func recordObservedFiles(
+        _ files: [URL],
+        options: OpenBurnBarCore.LogParseOptions
+    ) throws {
+        guard let tracker = options.fileDiscoveryTracker else { return }
+        try options.resourceGovernor?.checkpoint()
+        for file in files {
+            options.metrics?.recordMetadataStat()
+            let attributes = try? fileManager.attributesOfItem(atPath: file.path)
+            _ = tracker.record(OpenBurnBarCore.ParserDiscoveredFile(
+                path: file.standardizedFileURL.path,
+                fileSizeBytes: (attributes?[.size] as? NSNumber)?.int64Value,
+                modificationDate: normalizedCheckpointDate(attributes?[.modificationDate] as? Date),
+                creationDate: normalizedCheckpointDate(attributes?[.creationDate] as? Date),
+                fileSystemNumber: (attributes?[.systemNumber] as? NSNumber)?.uint64Value,
+                fileNumber: (attributes?[.systemFileNumber] as? NSNumber)?.uint64Value
+            ))
+        }
+    }
+
+    private func normalizedCheckpointDate(_ date: Date?) -> Date? {
+        guard let date else { return nil }
+        let milliseconds = (date.timeIntervalSince1970 * 1_000).rounded()
+        return Date(timeIntervalSince1970: milliseconds / 1_000)
     }
 
     private func compositeSignature(

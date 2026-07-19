@@ -24,6 +24,22 @@ public final class AntigravityParser: LogParser, Sendable {
         let model: String?
     }
 
+    private struct SessionContentReadError: Error {
+        let underlying: Error
+    }
+
+    private struct SettingsCacheEntry: Sendable {
+        let identity: ParserDiscoveredFile
+        let model: String
+    }
+
+    /// `settings.json` contains one model selector. A fixed metadata ceiling
+    /// prevents a corrupt file from exploiting the governor's soft first-file
+    /// admission rule to allocate an unbounded `Data` payload.
+    static let maximumSettingsFileBytes = 64 * 1024
+
+    private let settingsCache = Locked<SettingsCacheEntry?>(nil)
+
     public func parse() async throws -> ParseResult {
         try await parse(options: .default)
     }
@@ -39,17 +55,12 @@ public final class AntigravityParser: LogParser, Sendable {
         }
 
         let settingsURL = URL(fileURLWithPath: basePath).appendingPathComponent("settings.json")
-        let fallbackModelName: String
-        if options.resourceGovernor?.isUnlimited ?? true,
-           fm.fileExists(atPath: settingsURL.path),
-           try gate.shouldRead(settingsURL),
-           let data = try? Data(contentsOf: settingsURL),
-           let settings = try? JSONDecoder().decode(SettingsFile.self, from: data),
-           let model = settings.model, !model.isEmpty {
-            fallbackModelName = model
-        } else {
-            fallbackModelName = "Claude Opus 4.6 (Thinking)"
-        }
+        let fallbackModelName = try configuredFallbackModel(
+            at: settingsURL,
+            options: options,
+            fileManager: fm,
+            readGate: gate
+        )
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
@@ -71,19 +82,104 @@ public final class AntigravityParser: LogParser, Sendable {
 
             guard fm.fileExists(atPath: transcriptFile.path), try gate.shouldRead(transcriptFile) else { continue }
 
-            if let pair = try parseSession(
-                transcriptFile: transcriptFile,
-                sessionId: sessionId,
-                fallbackModel: fallbackModelName
-            ) {
-                if let usage = pair.usage { usages.append(usage) }
-                if options.includeConversationBodies, let conv = pair.conversation {
-                    conversations.append(conv)
+            do {
+                if let pair = try parseSession(
+                    transcriptFile: transcriptFile,
+                    sessionId: sessionId,
+                    fallbackModel: fallbackModelName
+                ) {
+                    if let usage = pair.usage { usages.append(usage) }
+                    if options.includeConversationBodies, let conv = pair.conversation {
+                        conversations.append(conv)
+                    }
                 }
+            } catch let error as SessionContentReadError {
+                gate.recordContentReadFailure(for: transcriptFile)
+                ParserDiagnostics.silentFailure(
+                    "antigravity_transcript_unreadable path=\(transcriptFile.path)",
+                    error: error.underlying
+                )
             }
         }
 
         return ParseResult(usages: usages, conversations: conversations)
+    }
+
+    private func configuredFallbackModel(
+        at settingsURL: URL,
+        options: LogParseOptions,
+        fileManager: FileManager,
+        readGate: ParserFileReadGate
+    ) throws -> String {
+        let defaultModel = "Claude Opus 4.6 (Thinking)"
+        guard fileManager.fileExists(atPath: settingsURL.path) else {
+            settingsCache.withLock { $0 = nil }
+            return defaultModel
+        }
+
+        try options.resourceGovernor?.checkpoint()
+        options.metrics?.recordCandidate()
+        options.metrics?.recordMetadataStat()
+
+        let attributes = try? fileManager.attributesOfItem(atPath: settingsURL.path)
+        let identity = ParserDiscoveredFile.capture(for: settingsURL, attributes: attributes)
+        _ = options.fileDiscoveryTracker?.record(identity)
+
+        if let cachedModel = settingsCache.withLock({ entry in
+            entry.flatMap { $0.identity == identity ? $0.model : nil }
+        }) {
+            options.fileDiscoveryTracker?.recordAdmitted(identity)
+            return cachedModel
+        }
+
+        func deferOversizedSettings() {
+            options.resourceGovernor?.recordDeferredFile()
+            options.metrics?.recordDeferred(.byteBudget)
+            options.fileDiscoveryTracker?.recordDeferred(identity)
+        }
+
+        if let fileSize = identity.fileSizeBytes,
+           fileSize > Int64(Self.maximumSettingsFileBytes) {
+            deferOversizedSettings()
+            return defaultModel
+        }
+
+        if let governor = options.resourceGovernor {
+            guard let fileSize = identity.fileSizeBytes else {
+                governor.recordDeferredFile()
+                options.metrics?.recordDeferred(.metadataUnavailable)
+                options.fileDiscoveryTracker?.recordDeferred(identity)
+                return defaultModel
+            }
+            guard governor.admitFile(estimatedBytes: max(0, fileSize)) else {
+                options.metrics?.recordDeferred(.byteBudget)
+                options.fileDiscoveryTracker?.recordDeferred(identity)
+                return defaultModel
+            }
+        }
+
+        let data: Data
+        do {
+            let handle = try FileHandle(forReadingFrom: settingsURL)
+            defer { try? handle.close() } // try?-ok(handle teardown)
+            data = try handle.read(upToCount: Self.maximumSettingsFileBytes + 1) ?? Data()
+        } catch {
+            readGate.recordContentReadFailure(for: settingsURL)
+            return defaultModel
+        }
+        options.metrics?.recordContentRead(bytes: Int64(data.count))
+
+        guard data.count <= Self.maximumSettingsFileBytes else {
+            deferOversizedSettings()
+            return defaultModel
+        }
+
+        try options.resourceGovernor?.checkpoint()
+        let settings = try? JSONDecoder().decode(SettingsFile.self, from: data)
+        let model = settings?.model.flatMap { $0.isEmpty ? nil : $0 } ?? defaultModel
+        settingsCache.withLock { $0 = SettingsCacheEntry(identity: identity, model: model) }
+        options.fileDiscoveryTracker?.recordAdmitted(identity)
+        return model
     }
 
     // MARK: - Session Parsing
@@ -93,8 +189,19 @@ public final class AntigravityParser: LogParser, Sendable {
         sessionId: String,
         fallbackModel: String
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: transcriptFile) else { return nil } // try?-ok(open read, guard-return-nil)
+        let handle: FileHandle
+        do {
+            handle = try FileHandle(forReadingFrom: transcriptFile)
+        } catch {
+            throw SessionContentReadError(underlying: error)
+        }
         defer { try? handle.close() } // try?-ok(handle teardown)
+        do {
+            _ = try handle.read(upToCount: 1)
+            try handle.seek(toOffset: 0)
+        } catch {
+            throw SessionContentReadError(underlying: error)
+        }
 
         let mtime = (try? FileManager.default.attributesOfItem(atPath: transcriptFile.path)[.modificationDate]) as? Date // try?-ok(mtime read, Date() fallback)
 

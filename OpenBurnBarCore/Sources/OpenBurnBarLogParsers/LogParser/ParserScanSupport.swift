@@ -55,6 +55,16 @@ public struct ParserDiscoveredFile: Codable, Hashable, Sendable {
         self.fileSystemNumber = fileSystemNumber
         self.fileNumber = fileNumber
     }
+
+    /// Canonicalize filesystem dates to the manifest's millisecond precision.
+    /// `ParserCheckpointStore` persists the resulting payload numerically so an
+    /// unchanged file compares bit-for-bit after a database round trip.
+    private static func normalizedCheckpointDate(_ date: Date?) -> Date? {
+        guard let date else { return nil }
+        let milliseconds = (date.timeIntervalSince1970 * 1_000).rounded()
+        return Date(timeIntervalSince1970: milliseconds / 1_000)
+    }
+
     static func capture(
         for file: URL,
         attributes: [FileAttributeKey: Any]?,
@@ -63,8 +73,10 @@ public struct ParserDiscoveredFile: Codable, Hashable, Sendable {
         ParserDiscoveredFile(
             path: file.standardizedFileURL.path,
             fileSizeBytes: (attributes?[.size] as? NSNumber)?.int64Value,
-            modificationDate: attributes?[.modificationDate] as? Date ?? fallbackModificationDate,
-            creationDate: attributes?[.creationDate] as? Date,
+            modificationDate: normalizedCheckpointDate(
+                attributes?[.modificationDate] as? Date ?? fallbackModificationDate
+            ),
+            creationDate: normalizedCheckpointDate(attributes?[.creationDate] as? Date),
             fileSystemNumber: (attributes?[.systemNumber] as? NSNumber)?.uint64Value,
             fileNumber: (attributes?[.systemFileNumber] as? NSNumber)?.uint64Value
         )
@@ -111,7 +123,11 @@ public final class ParserFileDiscoveryTracker: Sendable {
     /// Removes an admitted identity when the parser later discovers that the
     /// corresponding content could not be read successfully.
     func recordDeferred(_ file: ParserDiscoveredFile) {
-        state.withLock { _ = $0.admittedFilesByPath.removeValue(forKey: file.path) }
+        recordDeferred(path: file.path)
+    }
+
+    func recordDeferred(path: String) {
+        state.withLock { _ = $0.admittedFilesByPath.removeValue(forKey: path) }
     }
 
     /// Exact identities observed by a complete pass. Missing paths are removed
@@ -347,6 +363,28 @@ public struct ParserFileReadGate {
         }
         options.metrics?.recordContentRead(count: files.count, bytes: totalBytes)
         return true
+    }
+
+    /// Rolls back admitted identities when opening or reading their content fails.
+    /// Admission accounting remains charged for the attempted read, while each
+    /// path stays retryable in both partial and complete checkpoints.
+    public func recordContentReadFailure(for file: URL) {
+        recordContentReadFailure(for: [file])
+    }
+
+    public func recordContentReadFailure(for files: [URL]) {
+        guard !files.isEmpty else { return }
+        options.resourceGovernor?.recordDeferredFile()
+        options.metrics?.recordDeferred(.contentReadFailed)
+        discardAdmission(for: files)
+    }
+
+    /// Removes checkpoint eligibility without recording an additional deferral.
+    /// Use when another already-accounted admission decision invalidates a group.
+    public func discardAdmission(for files: [URL]) {
+        for file in files {
+            options.fileDiscoveryTracker?.recordDeferred(path: file.standardizedFileURL.path)
+        }
     }
 
     private func admitFile(withSize size: Int64?) throws -> Bool {

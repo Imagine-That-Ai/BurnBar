@@ -729,7 +729,9 @@ let legacyLinuxTestSources: [String]? = ["LinuxEmptyTests.swift"]
 let openBurnBarCoreOffAppleTestSources: [String]? = [
     "LiftedParserBoundaryTests.swift",
     "LLMSafeWrapVectorTests.swift",
-    "ParserAutoReleasePoolTests.swift"
+    "ParserAutoReleasePoolTests.swift",
+    "ParserParseOptionsTests.swift",
+    "ParserResourceGovernorTests.swift"
 ]
 let openBurnBarCorePlaceholderExcludes = ["LinuxEmptyTests.swift"]
 let computerUseCoreOffAppleTestSources: [String]? = [
@@ -741,7 +743,9 @@ let openBurnBarCoreOffAppleTestSources: [String]? = [
     "LiftedParserBoundaryTests.swift",
     "LinuxEmptyTests.swift",
     "LLMSafeWrapVectorTests.swift",
-    "ParserAutoReleasePoolTests.swift"
+    "ParserAutoReleasePoolTests.swift",
+    "ParserParseOptionsTests.swift",
+    "ParserResourceGovernorTests.swift"
 ]
 let openBurnBarCorePlaceholderExcludes: [String] = []
 let computerUseCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift"]
@@ -765,6 +769,8 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
             "LiftedParserBoundaryTests.swift",
             "LLMSafeWrapVectorTests.swift",
             "ParserAutoReleasePoolTests.swift",
+            "ParserParseOptionsTests.swift",
+            "ParserResourceGovernorTests.swift",
             "LinuxSecretStorageTests.swift",
             "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
         ].contains(relativePath)

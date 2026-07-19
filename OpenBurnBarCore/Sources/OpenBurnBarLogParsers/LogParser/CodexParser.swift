@@ -67,22 +67,35 @@ public final class CodexParser: LogParser, Sendable {
             .appendingPathComponent(".codex", isDirectory: true)
             .appendingPathComponent("state_5.sqlite", isDirectory: false)
 
-        guard fileManager.fileExists(atPath: dbURL.path),
-              try ParserFileReadGate(options: options, fileManager: fileManager).shouldRead(dbURL) else {
+        guard fileManager.fileExists(atPath: dbURL.path) else {
             return ParseResult(usages: [], conversations: [])
         }
+
+        // The state database is a bounded (LIMIT 500) enumeration index, not
+        // rollout content. Charging its on-disk size to the rollout byte budget
+        // can starve every rollout forever when the index is larger than one
+        // pass. Account for the metadata probe and enforce memory checkpoints,
+        // but reserve the byte budget for the rollout bytes actually scanned.
+        options.metrics?.recordCandidate()
+        options.metrics?.recordMetadataStat()
+        try options.resourceGovernor?.checkpoint()
 
         let parsed = try parseCodexDatabase(dbPath: dbURL.path, options: options)
         return ParseResult(usages: parsed.usages, conversations: parsed.conversations)
     }
 
-    private func fetchThreadRows(dbPath: String) throws -> [CodexThreadRow] {
+    private func fetchThreadRows(
+        dbPath: String,
+        governor: ParserResourceGovernor?
+    ) throws -> [CodexThreadRow] {
         // Read-only, plain SQLite (matches GRDB `Configuration.readonly = true`).
+        try governor?.checkpoint()
         let reader = try SQLiteConnection.openReadOnly(path: dbPath)
         defer { reader.close() }
 
-        // Check if rollout_path column exists
+        // Check if rollout_path column exists.
         let columnNames = Set(try reader.columnNames(ofTable: "threads"))
+        try governor?.checkpoint()
         let hasRolloutPath = columnNames.contains("rollout_path")
 
         let sql: String
@@ -109,10 +122,14 @@ public final class CodexParser: LogParser, Sendable {
         }
 
         let rows = try reader.query(sql)
+        try governor?.checkpoint()
         var threadRows: [CodexThreadRow] = []
         threadRows.reserveCapacity(rows.count)
 
-        for row in rows {
+        for (index, row) in rows.enumerated() {
+            if index.isMultiple(of: 128) {
+                try governor?.checkpoint()
+            }
             guard let threadId: String = row.string("id"),
                   let createdAt: Int64 = row.int64("created_at"),
                   let updatedAt: Int64 = row.int64("updated_at") else {
@@ -142,7 +159,10 @@ public final class CodexParser: LogParser, Sendable {
     ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
         // Rows first, reader closed, then file scanning — never hold a read
         // connection on Codex's live database across multi-second file work.
-        let threadRows = try fetchThreadRows(dbPath: dbPath)
+        let threadRows = try fetchThreadRows(
+            dbPath: dbPath,
+            governor: options.resourceGovernor
+        )
         return try CodexSessionLogScanner.processThreadRows(
             threadRows,
             options: options,

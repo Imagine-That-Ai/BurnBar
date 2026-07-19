@@ -30,6 +30,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
     private let cacheURL: URL
     private let cacheStore: ParserDiskCacheStore<ClaudeCodeCacheEntry>
     private let projectsDirectoryOverride: URL?
+    private let openFileForReading: @Sendable (URL) -> FileHandle?
 
     /// Files at or above this size keep incremental scan state in the cache;
     /// smaller files re-parse fully (cheap) without carrying state.
@@ -39,14 +40,29 @@ public final class ClaudeCodeParser: LogParser, Sendable {
     /// How many bytes of file head the rewrite-detection digest covers.
     static let headDigestSpan = 4096
 
-    public init(
+    public convenience init(
         fileManager: FileManager = .default,
         appPaths: OpenBurnBarAppPaths = .live(),
         projectsDirectoryOverride: URL? = nil
     ) {
+        self.init(
+            fileManager: fileManager,
+            appPaths: appPaths,
+            projectsDirectoryOverride: projectsDirectoryOverride,
+            openFileForReading: { try? FileHandle(forReadingFrom: $0) }
+        )
+    }
+
+    init(
+        fileManager: FileManager,
+        appPaths: OpenBurnBarAppPaths,
+        projectsDirectoryOverride: URL?,
+        openFileForReading: @escaping @Sendable (URL) -> FileHandle?
+    ) {
         self.fileManager = fileManager
         self.appPaths = appPaths
         self.projectsDirectoryOverride = projectsDirectoryOverride
+        self.openFileForReading = openFileForReading
         self.cacheURL = appPaths.claudeCodeParserCacheURL
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
@@ -319,7 +335,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         previousState: ClaudeTokenScanState?,
         governor: ParserResourceGovernor?
     ) throws -> SessionScanOutcome? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { // try?-ok(unreadable file skip)
+        guard let handle = openFileForReading(file) else {
             return nil
         }
         defer { try? handle.close() } // try?-ok(handle teardown)

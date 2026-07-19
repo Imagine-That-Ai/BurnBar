@@ -66,12 +66,12 @@ final class ParserParseOptionsTests: XCTestCase {
         XCTAssertEqual(usage.model, "Configured Registry Fallback Model")
     }
 
-    func testAntigravityBoundedGovernorDoesNotReadConfiguredFallbackModel() async throws {
+    func testAntigravityBoundedGovernorReadsConfiguredFallbackModel() async throws {
         let root = try makeTemporaryDirectory("antigravity-bounded-fallback")
         defer { try? fileManager.removeItem(at: root) }
 
         try write(
-            #"{"model":"Configured Model Must Stay Unread"}"#,
+            #"{"model":"Configured Bounded Model"}"#,
             to: root.appendingPathComponent("settings.json")
         )
         let transcript = root
@@ -97,9 +97,337 @@ final class ParserParseOptionsTests: XCTestCase {
 
         let usage = try XCTUnwrap(result.usages.first)
         XCTAssertEqual(result.usages.count, 1)
-        XCTAssertEqual(usage.model, "Claude Opus 4.6 (Thinking)")
-        XCTAssertEqual(metrics.snapshot().contentReadCount, 1,
-                       "A bounded pass should admit only the transcript, not settings.json")
+        XCTAssertEqual(usage.model, "Configured Bounded Model")
+        XCTAssertEqual(
+            metrics.snapshot().contentReadCount,
+            2,
+            "the bounded pass must account for both settings.json and the transcript"
+        )
+    }
+
+    func testAntigravityOversizedSettingsAreRejectedBeforeContentAllocation() async throws {
+        let root = try makeTemporaryDirectory("antigravity-oversized-settings")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let settings = root.appendingPathComponent("settings.json")
+        let oversizedSettings = #"{"model":""#
+            + String(repeating: "x", count: AntigravityParser.maximumSettingsFileBytes)
+            + #""}"#
+        try write(oversizedSettings, to: settings)
+        let transcript = root
+            .appendingPathComponent("brain/session-oversized/.system_generated/logs", isDirectory: true)
+            .appendingPathComponent("transcript_full.jsonl")
+        let transcriptFixture = """
+        {"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-05-27T06:00:00Z","content":"Use the safe fallback."}
+        {"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-05-27T06:00:01Z","content":"Done."}
+        """
+        try write(transcriptFixture, to: transcript)
+
+        let tracker = ParserFileDiscoveryTracker()
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let metrics = ParserPassMetrics()
+        let result = try await AntigravityParser(logDirectoryOverride: root.path).parse(
+            options: LogParseOptions(
+                includeConversationBodies: false,
+                fileDiscoveryTracker: tracker,
+                resourceGovernor: governor,
+                metrics: metrics
+            )
+        )
+
+        XCTAssertEqual(result.usages.first?.model, "Claude Opus 4.6 (Thinking)")
+        XCTAssertEqual(governor.deferredFileCount, 1)
+        XCTAssertEqual(metrics.snapshot().byteBudgetDeferredCount, 1)
+        XCTAssertEqual(metrics.snapshot().contentReadCount, 1, "oversized metadata must not be content-read")
+        XCTAssertEqual(
+            metrics.snapshot().contentReadBytes,
+            Int64(transcriptFixture.utf8.count)
+        )
+        XCTAssertEqual(
+            tracker.partialCheckpointFiles.map(\.path),
+            [transcript.standardizedFileURL.path],
+            "the oversized settings identity remains retryable while the transcript advances"
+        )
+    }
+
+    func testAntigravityPartialCheckpointRetryReusesConfiguredFallbackModel() async throws {
+        let root = try makeTemporaryDirectory("antigravity-partial-checkpoint-fallback")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let configuredModel = "Configured Partial Retry Model"
+        let settings = root.appendingPathComponent("settings.json")
+        try write(
+            #"{"model":"Configured Partial Retry Model"}"#,
+            to: settings
+        )
+        let transcript = root
+            .appendingPathComponent("brain/session-retry/.system_generated/logs", isDirectory: true)
+            .appendingPathComponent("transcript_full.jsonl")
+        try write(
+            """
+            {"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-05-27T06:00:00Z","content":"Retry this bounded Antigravity transcript."}
+            {"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-05-27T06:00:01Z","content":"Retried."}
+            """,
+            to: transcript
+        )
+
+        let parser = AntigravityParser(logDirectoryOverride: root.path)
+        let firstTracker = ParserFileDiscoveryTracker(knownFiles: [])
+        let firstMetrics = ParserPassMetrics()
+        let settingsSize = Int64(try Data(contentsOf: settings).count)
+        let first = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true,
+            fileDiscoveryTracker: firstTracker,
+            resourceGovernor: ParserResourceGovernor(
+                limits: ParserResourceLimits(fileByteBudget: settingsSize)
+            ),
+            metrics: firstMetrics
+        ))
+
+        XCTAssertTrue(first.usages.isEmpty, "the transcript must remain deferred after settings consume the pass budget")
+        XCTAssertEqual(firstMetrics.snapshot().contentReadCount, 1, "only settings.json is admitted on the bounded pass")
+        XCTAssertEqual(firstMetrics.snapshot().byteBudgetDeferredCount, 1)
+        XCTAssertEqual(
+            firstTracker.partialCheckpointFiles.map(\.path),
+            [settings.standardizedFileURL.path],
+            "the partial manifest must checkpoint admitted settings without checkpointing the deferred transcript"
+        )
+
+        let retryTracker = ParserFileDiscoveryTracker(knownFiles: firstTracker.partialCheckpointFiles)
+        let retry = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true,
+            fileDiscoveryTracker: retryTracker,
+            resourceGovernor: ParserResourceGovernor(limits: .unlimited)
+        ))
+
+        let usage = try XCTUnwrap(retry.usages.first)
+        XCTAssertEqual(retry.usages.count, 1)
+        XCTAssertEqual(usage.model, configuredModel, "retrying only the transcript must preserve the admitted settings model")
+        XCTAssertEqual(
+            retryTracker.partialCheckpointFiles.map(\.path),
+            [transcript, settings].map { $0.standardizedFileURL.path }.sorted()
+        )
+    }
+
+    func testAntigravitySettingsDecodeFailureCheckpointsAndChangedIdentityRetries() async throws {
+        let root = try makeTemporaryDirectory("antigravity-settings-decode-retry")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let settings = root.appendingPathComponent("settings.json")
+        try write(#"{"model":"#, to: settings)
+        let transcript = root
+            .appendingPathComponent("brain/session-decode-retry/.system_generated/logs", isDirectory: true)
+            .appendingPathComponent("transcript_full.jsonl")
+        try write(
+            """
+            {"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-05-27T06:00:00Z","content":"Parse despite malformed settings."}
+            {"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-05-27T06:00:01Z","content":"Parsed."}
+            """,
+            to: transcript
+        )
+
+        let parser = AntigravityParser(logDirectoryOverride: root.path)
+        let failedTracker = ParserFileDiscoveryTracker(knownFiles: [])
+        _ = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            fileDiscoveryTracker: failedTracker,
+            resourceGovernor: ParserResourceGovernor(limits: .unlimited)
+        ))
+
+        XCTAssertEqual(
+            failedTracker.partialCheckpointFiles.map(\.path),
+            [settings, transcript].map { $0.standardizedFileURL.path }.sorted(),
+            "readable malformed settings and their successfully parsed transcript must not freeze checkpoint progress"
+        )
+
+        let recoveredModel = "Recovered Settings Model"
+        try write(#"{"model":"Recovered Settings Model"}"#, to: settings)
+        try write(
+            """
+            {"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-05-27T06:00:00Z","content":"Parse the repaired settings and changed transcript."}
+            {"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-05-27T06:00:01Z","content":"Recovered with the configured model."}
+            """,
+            to: transcript
+        )
+
+        let retryTracker = ParserFileDiscoveryTracker(knownFiles: failedTracker.partialCheckpointFiles)
+        let retry = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            fileDiscoveryTracker: retryTracker,
+            resourceGovernor: ParserResourceGovernor(limits: .unlimited)
+        ))
+
+        XCTAssertEqual(retry.usages.first?.model, recoveredModel)
+        XCTAssertTrue(
+            retryTracker.partialCheckpointFiles.contains { $0.path == settings.standardizedFileURL.path },
+            "successfully decoded settings must become checkpointable after the retry"
+        )
+    }
+
+    func testAntigravityContentReadFailureDefersOnlyFailedTranscriptAndRetriesIt() async throws {
+        let root = try makeTemporaryDirectory("antigravity-content-read-failure")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let failedTranscript = root
+            .appendingPathComponent("brain/failed-session/.system_generated/logs", isDirectory: true)
+            .appendingPathComponent("transcript_full.jsonl")
+        try fileManager.createDirectory(at: failedTranscript, withIntermediateDirectories: true)
+
+        let successfulTranscript = root
+            .appendingPathComponent("brain/successful-session/.system_generated/logs", isDirectory: true)
+            .appendingPathComponent("transcript_full.jsonl")
+        try write(
+            """
+            {"source":"USER_EXPLICIT","type":"USER_INPUT","created_at":"2026-05-27T06:00:00Z","content":"Keep parsing after the sibling transcript fails."}
+            {"source":"MODEL","type":"PLANNER_RESPONSE","created_at":"2026-05-27T06:00:01Z","content":"The successful sibling was preserved."}
+            """,
+            to: successfulTranscript
+        )
+
+        let parser = AntigravityParser(logDirectoryOverride: root.path)
+        let firstTracker = ParserFileDiscoveryTracker()
+        let firstGovernor = ParserResourceGovernor(limits: .unlimited)
+        let firstMetrics = ParserPassMetrics()
+        let first = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            fileDiscoveryTracker: firstTracker,
+            resourceGovernor: firstGovernor,
+            metrics: firstMetrics
+        ))
+
+        XCTAssertEqual(first.usages.map(\.sessionId), ["successful-session"])
+        XCTAssertEqual(firstGovernor.deferredFileCount, 1)
+        XCTAssertEqual(firstMetrics.snapshot().contentReadFailedDeferredCount, 1)
+        XCTAssertEqual(firstMetrics.snapshot().contentReadCount, 2, "both metadata-admitted transcripts must reach content reading")
+        XCTAssertEqual(
+            firstTracker.partialCheckpointFiles.map(\.path),
+            [successfulTranscript.standardizedFileURL.path],
+            "overall progress must not make the unreadable transcript checkpointable"
+        )
+
+        try fileManager.removeItem(at: failedTranscript)
+        try write(
+            """
+            {"source":"USER_EXPLICIT","type":"USER_INPUT","created_at":"2026-05-27T06:01:00Z","content":"Retry the transcript that could not be read."}
+            {"source":"MODEL","type":"PLANNER_RESPONSE","created_at":"2026-05-27T06:01:01Z","content":"The deferred transcript was retried."}
+            """,
+            to: failedTranscript
+        )
+
+        let retryTracker = ParserFileDiscoveryTracker(knownFiles: firstTracker.partialCheckpointFiles)
+        let retryMetrics = ParserPassMetrics()
+        let retry = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            fileDiscoveryTracker: retryTracker,
+            resourceGovernor: ParserResourceGovernor(limits: .unlimited),
+            metrics: retryMetrics
+        ))
+
+        XCTAssertEqual(retry.usages.map(\.sessionId), ["failed-session"])
+        XCTAssertEqual(retryMetrics.snapshot().contentReadFailedDeferredCount, 0)
+        XCTAssertEqual(retryMetrics.snapshot().contentReadCount, 1, "the successful sibling must remain checkpointed while the failed transcript retries")
+        XCTAssertEqual(
+            retryTracker.partialCheckpointFiles.map(\.path),
+            [failedTranscript, successfulTranscript].map { $0.standardizedFileURL.path }.sorted()
+        )
+    }
+
+    func testGooseDatabaseOpenFailureDefersOnlyFailedDatabaseAndRetriesIt() async throws {
+        let failedRoot = try makeTemporaryDirectory("goose-database-open-failure")
+        defer { try? fileManager.removeItem(at: failedRoot) }
+        let successfulRoot = try makeTemporaryDirectory("goose-database-open-success")
+        defer { try? fileManager.removeItem(at: successfulRoot) }
+
+        let failedDatabase = failedRoot.appendingPathComponent("sessions.db")
+        try fileManager.createDirectory(at: failedDatabase, withIntermediateDirectories: true)
+        let successfulDatabase = successfulRoot.appendingPathComponent("sessions.db")
+        try createGooseSessionDatabase(
+            at: successfulDatabase,
+            sessionId: "successful-goose-session",
+            inputTokens: 120,
+            outputTokens: 30
+        )
+
+        let parser = GooseParser(sessionDirectoriesOverride: [failedRoot.path, successfulRoot.path])
+        let firstTracker = ParserFileDiscoveryTracker()
+        let firstGovernor = ParserResourceGovernor(limits: .unlimited)
+        let firstMetrics = ParserPassMetrics()
+        let first = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            fileDiscoveryTracker: firstTracker,
+            resourceGovernor: firstGovernor,
+            metrics: firstMetrics
+        ))
+
+        XCTAssertEqual(first.usages.map(\.sessionId), ["successful-goose-session"])
+        XCTAssertEqual(firstGovernor.deferredFileCount, 1)
+        XCTAssertEqual(firstMetrics.snapshot().contentReadFailedDeferredCount, 1)
+        XCTAssertEqual(firstMetrics.snapshot().contentReadCount, 2, "both metadata-admitted databases must reach SQLite opening")
+        XCTAssertEqual(
+            firstTracker.partialCheckpointFiles.map(\.path),
+            [successfulDatabase.standardizedFileURL.path],
+            "a successful sibling database must not hide the failed database from the retry manifest"
+        )
+
+        try fileManager.removeItem(at: failedDatabase)
+        try createGooseSessionDatabase(
+            at: failedDatabase,
+            sessionId: "retried-goose-session",
+            inputTokens: 75,
+            outputTokens: 15
+        )
+
+        let retryTracker = ParserFileDiscoveryTracker(knownFiles: firstTracker.partialCheckpointFiles)
+        let retryMetrics = ParserPassMetrics()
+        let retry = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            fileDiscoveryTracker: retryTracker,
+            resourceGovernor: ParserResourceGovernor(limits: .unlimited),
+            metrics: retryMetrics
+        ))
+
+        XCTAssertEqual(retry.usages.map(\.sessionId), ["retried-goose-session"])
+        XCTAssertEqual(retryMetrics.snapshot().contentReadFailedDeferredCount, 0)
+        XCTAssertEqual(retryMetrics.snapshot().contentReadCount, 1, "only the formerly failed database should be retried")
+        XCTAssertEqual(
+            retryTracker.partialCheckpointFiles.map(\.path),
+            [failedDatabase, successfulDatabase].map { $0.standardizedFileURL.path }.sorted()
+        )
+    }
+
+    func testGoosePricingFailurePropagatesInsteadOfMasqueradingAsDatabaseReadFailure() async throws {
+        let root = try makeTemporaryDirectory("goose-pricing-failure")
+        defer { try? fileManager.removeItem(at: root) }
+        let database = root.appendingPathComponent("sessions.db")
+        try createGooseSessionDatabase(
+            at: database,
+            sessionId: "pricing-failure-session",
+            inputTokens: 120,
+            outputTokens: 30
+        )
+
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let metrics = ParserPassMetrics()
+        let parser = GooseParser(
+            sessionDirectoriesOverride: [root.path],
+            pricingCost: { _, _, _, _, _ in
+                throw ModelPricingError.domainCoreRejected
+            }
+        )
+
+        do {
+            _ = try await parser.parse(options: LogParseOptions(
+                includeConversationBodies: false,
+                resourceGovernor: governor,
+                metrics: metrics
+            ))
+            XCTFail("semantic pricing failures must escape the parser")
+        } catch ModelPricingError.domainCoreRejected {
+            // Expected: only SQLite failures are classified as unreadable input.
+        }
+
+        XCTAssertEqual(governor.deferredFileCount, 0)
+        XCTAssertEqual(metrics.snapshot().contentReadFailedDeferredCount, 0)
     }
 
     func testClaudeCodeOptionsUseCachedHistoricalRowsWithoutParsingUncachedHistory() async throws {
@@ -219,6 +547,120 @@ final class ParserParseOptionsTests: XCTestCase {
         let usageOnly = try await parser.parse(options: futureUsageOnlyOptions)
         XCTAssertTrue(usageOnly.usages.isEmpty)
         XCTAssertTrue(usageOnly.conversations.isEmpty)
+    }
+
+    func testCodexBodyBudgetDeferralRemovesAdmittedIdentityAndRetriesConversation() async throws {
+        let root = try makeTemporaryDirectory("codex-body-budget-retry")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let codexRoot = root.appendingPathComponent(".codex", isDirectory: true)
+        try fileManager.createDirectory(at: codexRoot, withIntermediateDirectories: true)
+        let rollout = codexRoot.appendingPathComponent("rollout-retry.jsonl")
+        let rolloutFixture = """
+        {"type":"turn_context","timestamp":"2026-07-18T12:00:00.000Z","payload":{"model":"openai/gpt-5.2-codex"}}
+        {"type":"event_msg","timestamp":"2026-07-18T12:00:01.000Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":160,"cached_input_tokens":40,"output_tokens":16},"model":"openai/gpt-5.2-codex"}}}
+        {"item":{"role":"user","content":"Retry the deferred Codex body."}}
+        {"item":{"role":"assistant","content":"The deferred Codex body was retried."}}
+        """
+        try write(rolloutFixture, to: rollout)
+        _ = try createCodexThreadDatabase(at: codexRoot, rolloutPath: rollout.path)
+        let rolloutSize = Int64(try Data(contentsOf: rollout).count)
+
+        let parser = CodexParser(
+            fileManager: fileManager,
+            appPaths: OpenBurnBarAppPaths(
+                applicationSupportRoot: root.appendingPathComponent("support", isDirectory: true)
+            ),
+            homeDirectoryURL: root
+        )
+        let firstTracker = ParserFileDiscoveryTracker(knownFiles: [])
+        let firstMetrics = ParserPassMetrics()
+        let first = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true,
+            fileDiscoveryTracker: firstTracker,
+            resourceGovernor: ParserResourceGovernor(
+                limits: ParserResourceLimits(fileByteBudget: rolloutSize)
+            ),
+            metrics: firstMetrics
+        ))
+
+        let usage = try XCTUnwrap(first.usages.first)
+        XCTAssertEqual(first.usages.count, 1)
+        XCTAssertEqual(usage.inputTokens, 120)
+        XCTAssertEqual(usage.cacheReadTokens, 40)
+        XCTAssertEqual(usage.outputTokens, 16)
+        XCTAssertTrue(first.conversations.isEmpty, "the body read must defer after usage consumes the pass budget")
+        XCTAssertEqual(firstMetrics.snapshot().byteBudgetDeferredCount, 1)
+        XCTAssertEqual(firstTracker.discoveredFiles.map(\.path), [rollout.standardizedFileURL.path])
+        XCTAssertTrue(
+            firstTracker.partialCheckpointFiles.isEmpty,
+            "a body-deferred rollout identity must stay out of the partial checkpoint"
+        )
+
+        let retryTracker = ParserFileDiscoveryTracker(knownFiles: firstTracker.partialCheckpointFiles)
+        let retry = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true,
+            fileDiscoveryTracker: retryTracker,
+            resourceGovernor: ParserResourceGovernor(limits: .unlimited)
+        ))
+
+        XCTAssertEqual(retry.usages.first?.inputTokens, 120)
+        XCTAssertEqual(retry.usages.first?.cacheReadTokens, 40)
+        let conversation = try XCTUnwrap(retry.conversations.first)
+        XCTAssertEqual(retry.conversations.count, 1)
+        XCTAssertTrue(conversation.fullText.contains("Retry the deferred Codex body."))
+        XCTAssertTrue(conversation.fullText.contains("The deferred Codex body was retried."))
+    }
+
+    func testCodexStateDatabaseDoesNotConsumeRolloutByteBudget() async throws {
+        let root = try makeTemporaryDirectory("codex-enumeration-budget")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let codexRoot = root.appendingPathComponent(".codex", isDirectory: true)
+        try fileManager.createDirectory(at: codexRoot, withIntermediateDirectories: true)
+        let rollout = codexRoot.appendingPathComponent("rollout-budget.jsonl")
+        let rolloutFixture = """
+        {"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":101,"cached_input_tokens":1,"output_tokens":11},"model":"openai/gpt-5.2-codex"}}}
+        """
+        try write(rolloutFixture, to: rollout)
+        let database = try createCodexThreadDatabase(at: codexRoot, rolloutPath: rollout.path)
+        XCTAssertGreaterThan(
+            Int64(try Data(contentsOf: database).count),
+            1,
+            "the enumeration index must exceed the deliberately tiny rollout budget"
+        )
+
+        let governor = ParserResourceGovernor(
+            limits: ParserResourceLimits(fileByteBudget: 1)
+        )
+        let tracker = ParserFileDiscoveryTracker()
+        let parser = CodexParser(
+            fileManager: fileManager,
+            appPaths: OpenBurnBarAppPaths(
+                applicationSupportRoot: root.appendingPathComponent("support", isDirectory: true)
+            ),
+            homeDirectoryURL: root
+        )
+        let result = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            fileDiscoveryTracker: tracker,
+            resourceGovernor: governor
+        ))
+
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(usage.inputTokens, 100)
+        XCTAssertEqual(usage.cacheReadTokens, 1)
+        XCTAssertEqual(usage.outputTokens, 11)
+        XCTAssertEqual(
+            governor.consumedBytes,
+            Int64(rolloutFixture.utf8.count),
+            "only rollout content belongs to the shared file-byte budget"
+        )
+        XCTAssertEqual(
+            tracker.partialCheckpointFiles.map(\.path),
+            [rollout.standardizedFileURL.path]
+        )
     }
 
     func testFactoryOptionsPreserveUsageAndGateConversationBodiesAndHistory() async throws {
@@ -621,14 +1063,16 @@ final class ParserParseOptionsTests: XCTestCase {
         try fileManager.removeItem(at: dangling)
         let unreadable = project.appendingPathComponent("unreadable.jsonl")
         try write(claudeSession(user: "Unreadable", input: 20, output: 4), to: unreadable)
-        try fileManager.setAttributes([.posixPermissions: 0o000], ofItemAtPath: unreadable.path)
-        defer { try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: unreadable.path) }
         let readFailureParser = ClaudeCodeParser(
             fileManager: fileManager,
             appPaths: OpenBurnBarAppPaths(
                 applicationSupportRoot: root.appendingPathComponent("read-failure-support", isDirectory: true)
             ),
-            projectsDirectoryOverride: projectsRoot
+            projectsDirectoryOverride: projectsRoot,
+            openFileForReading: { url in
+                guard url.standardizedFileURL != unreadable.standardizedFileURL else { return nil }
+                return try? FileHandle(forReadingFrom: url)
+            }
         )
         let readFailureGovernor = ParserResourceGovernor(limits: .unlimited)
         let readFailureMetrics = ParserPassMetrics()
@@ -665,6 +1109,86 @@ final class ParserParseOptionsTests: XCTestCase {
             withIntermediateDirectories: true
         )
         try content.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private func createGooseSessionDatabase(
+        at database: URL,
+        sessionId: String,
+        inputTokens: Int,
+        outputTokens: Int
+    ) throws {
+        let connection = try SQLiteConnection.openForWriting(creatingAt: database.path)
+        defer { connection.close() }
+        try connection.execute(
+            """
+            CREATE TABLE sessions (
+                id TEXT PRIMARY KEY,
+                model TEXT,
+                working_dir TEXT,
+                accumulated_input_tokens INTEGER,
+                accumulated_output_tokens INTEGER,
+                created_at TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+        try connection.execute(
+            """
+            INSERT INTO sessions (
+                id, model, working_dir, accumulated_input_tokens,
+                accumulated_output_tokens, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            arguments: [
+                .text(sessionId),
+                .text("anthropic/claude-sonnet-4"),
+                .text("/tmp/\(sessionId)"),
+                .int(Int64(inputTokens)),
+                .int(Int64(outputTokens)),
+                .text("2026-07-19T10:00:00Z"),
+                .text("2026-07-19T10:01:00Z")
+            ]
+        )
+    }
+
+    private func createCodexThreadDatabase(at codexRoot: URL, rolloutPath: String) throws -> URL {
+        let database = codexRoot.appendingPathComponent("state_5.sqlite", isDirectory: false)
+        let connection = try SQLiteConnection.openForWriting(creatingAt: database.path)
+        defer { connection.close() }
+        try connection.execute("""
+            CREATE TABLE threads (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                model TEXT,
+                model_provider TEXT,
+                tokens_used INTEGER,
+                created_at INTEGER,
+                updated_at INTEGER,
+                cwd TEXT,
+                rollout_path TEXT,
+                archived INTEGER DEFAULT 0
+            )
+            """)
+        try connection.execute(
+            """
+            INSERT INTO threads (
+                id, title, model, model_provider, tokens_used,
+                created_at, updated_at, cwd, rollout_path, archived
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            arguments: [
+                .text("codex-body-retry"),
+                .text("Codex body retry"),
+                .text("openai/gpt-5.2-codex"),
+                .text("openai"),
+                .int(176),
+                .int(1_768_651_200),
+                .int(1_768_651_201),
+                .text("/tmp/BurnBar"),
+                .text(rolloutPath)
+            ]
+        )
+        return database
     }
 
     private func setModificationDate(_ date: Date, for urls: [URL]) throws {

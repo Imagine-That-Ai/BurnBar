@@ -188,6 +188,10 @@ final class ParserCheckpointStore: Sendable {
             )
         }
 
+        // Persist dates as numeric timestamps instead of GRDB's millisecond TEXT
+        // format. SQLite REAL preserves the Date payload exactly; formatting and
+        // reparsing can shift its binary representation and rediscover an
+        // unchanged file on every bounded pass.
         let changedFiles = currentByPath.values
             .filter { existingByPath[$0.path] != $0 }
             .sorted { $0.path < $1.path }
@@ -209,8 +213,8 @@ final class ParserCheckpointStore: Sendable {
                     provider.rawValue,
                     file.path,
                     file.fileSizeBytes,
-                    file.modificationDate,
-                    file.creationDate,
+                    file.modificationDate?.timeIntervalSince1970,
+                    file.creationDate?.timeIntervalSince1970,
                     file.fileSystemNumber.map(String.init),
                     file.fileNumber.map(String.init)
                 ]

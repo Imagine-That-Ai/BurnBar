@@ -20,6 +20,8 @@ import XCTest
 /// runnable when the support directory cannot be prepared.
 final class UsageAggregatorParsersMattersTests: XCTestCase {
 
+    private struct ExpectedOpenFailure: Error {}
+
     private var scratchRoots: [URL] = []
 
     override func tearDownWithError() throws {
@@ -377,6 +379,273 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
 
         XCTAssertEqual(result.usages.map(\.sessionId), ["recent-session"])
         XCTAssertTrue(result.conversations.isEmpty)
+    }
+
+    func testModelFilterTrackerAdmitsNewHistoricalSessionBeforeModificationCutoff() async throws {
+        let root = uniqueTempURL()
+        let sessionsURL = root.appendingPathComponent("sessions", isDirectory: true)
+        let projectURL = sessionsURL.appendingPathComponent("-Users-alberto-restored", isDirectory: true)
+        let supportURL = root.appendingPathComponent("support", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+
+        let session = projectURL.appendingPathComponent("restored-session.jsonl")
+        let settings = projectURL.appendingPathComponent("restored-session.settings.json")
+        try Data().write(to: session)
+        try Data(
+            #"{"model":"zai/glm-4.5","tokenUsage":{"input_tokens":321,"output_tokens":45}}"#.utf8
+        ).write(to: settings)
+        let historicalDate = Date(timeIntervalSince1970: 1_600_000_000)
+        for file in [session, settings] {
+            try FileManager.default.setAttributes(
+                [.modificationDate: historicalDate],
+                ofItemAtPath: file.path
+            )
+        }
+        let tracker = ParserFileDiscoveryTracker(knownFiles: [])
+        let parser = ModelFilterParser(
+            modelPattern: "zai",
+            provider: .zai,
+            fileManager: .default,
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportURL),
+            sessionsDirectoryOverride: sessionsURL
+        )
+
+        let result = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            minimumFileModificationDate: historicalDate.addingTimeInterval(60),
+            fileDiscoveryTracker: tracker
+        ))
+
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(usage.sessionId, "restored-session")
+        XCTAssertEqual(usage.inputTokens, 321)
+        XCTAssertEqual(usage.outputTokens, 45)
+        XCTAssertTrue(result.conversations.isEmpty)
+        XCTAssertEqual(
+            tracker.discoveredFiles.map(\.path),
+            [session.standardizedFileURL.path, settings.standardizedFileURL.path].sorted()
+        )
+    }
+
+    func testModelFilterCacheHitKeepsAllInputsInObservedManifest() async throws {
+        let root = uniqueTempURL()
+        let sessionsURL = root.appendingPathComponent("sessions", isDirectory: true)
+        let projectURL = sessionsURL.appendingPathComponent("-Users-alberto-cache-manifest", isDirectory: true)
+        let supportURL = root.appendingPathComponent("support", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+
+        let session = projectURL.appendingPathComponent("cached-session.jsonl")
+        let settings = projectURL.appendingPathComponent("cached-session.settings.json")
+        let metadata = projectURL.appendingPathComponent("cached-session.metadata.json")
+        try Data("""
+        {"timestamp":"2026-07-18T10:00:00.000Z","message":{"role":"user","content":"Keep ModelFilter cache inputs observable."}}
+        {"timestamp":"2026-07-18T10:00:01.000Z","message":{"role":"assistant","content":"The full manifest remains complete."}}
+        """.utf8).write(to: session)
+        try Data(
+            #"{"model":"zai/glm-4.5","tokenUsage":{"input_tokens":101,"output_tokens":19}}"#.utf8
+        ).write(to: settings)
+        try Data(#"{"workspace":"cache-manifest"}"#.utf8).write(to: metadata)
+        let expectedPaths = [session, settings, metadata].map { $0.standardizedFileURL.path }.sorted()
+        let parser = ModelFilterParser(
+            modelPattern: "zai",
+            provider: .zai,
+            fileManager: .default,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportURL),
+            sessionsDirectoryOverride: sessionsURL
+        )
+        let initialTracker = ParserFileDiscoveryTracker(knownFiles: [])
+
+        let initial = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true,
+            fileDiscoveryTracker: initialTracker
+        ))
+        XCTAssertEqual(initial.usages.map(\.sessionId), ["cached-session"])
+        XCTAssertEqual(initial.conversations.count, 1)
+        XCTAssertEqual(initialTracker.discoveredFiles.map(\.path), expectedPaths)
+
+        let cacheHitTracker = ParserFileDiscoveryTracker(knownFiles: initialTracker.discoveredFiles)
+        let cacheHitMetrics = ParserPassMetrics()
+        let cached = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true,
+            fileDiscoveryTracker: cacheHitTracker,
+            metrics: cacheHitMetrics
+        ))
+
+        XCTAssertEqual(cached.usages.map(\.sessionId), ["cached-session"])
+        XCTAssertEqual(cached.conversations.first?.sessionId, "cached-session")
+        XCTAssertEqual(cacheHitTracker.discoveredFiles.map(\.path), expectedPaths)
+        XCTAssertFalse(cacheHitTracker.hasAdmittedFiles, "an unchanged cache hit is observed but does not consume admission")
+        XCTAssertEqual(cacheHitMetrics.snapshot().contentReadCount, 0)
+    }
+
+    func testModelFilterUsageOnlyCacheWithKnownTrackerDoesNotReadBodyButNoTrackerRehydrates() async throws {
+        let root = uniqueTempURL()
+        let sessionsURL = root.appendingPathComponent("sessions", isDirectory: true)
+        let projectURL = sessionsURL.appendingPathComponent("-Users-alberto-body-request", isDirectory: true)
+        let supportURL = root.appendingPathComponent("support", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+
+        let privateMarker = "ModelFilter body requested after usage-only cache"
+        let session = projectURL.appendingPathComponent("body-request-session.jsonl")
+        let settings = projectURL.appendingPathComponent("body-request-session.settings.json")
+        try Data("""
+        {"type":"user","timestamp":"2026-07-18T11:00:00.000Z","message":{"role":"user","content":"\(privateMarker)"}}
+        {"type":"assistant","timestamp":"2026-07-18T11:00:01.000Z","message":{"role":"assistant","content":"The requested body was restored."}}
+        """.utf8).write(to: session)
+        try Data(
+            #"{"model":"zai/glm-4.5","tokenUsage":{"input_tokens":151,"output_tokens":29}}"#.utf8
+        ).write(to: settings)
+        let expectedPaths = [session, settings].map { $0.standardizedFileURL.path }.sorted()
+        let parser = ModelFilterParser(
+            modelPattern: "zai",
+            provider: .zai,
+            fileManager: .default,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportURL),
+            sessionsDirectoryOverride: sessionsURL
+        )
+        let initialTracker = ParserFileDiscoveryTracker(knownFiles: [])
+
+        let usageOnly = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            fileDiscoveryTracker: initialTracker
+        ))
+        XCTAssertEqual(usageOnly.usages.map(\.sessionId), ["body-request-session"])
+        XCTAssertTrue(usageOnly.conversations.isEmpty)
+        XCTAssertEqual(initialTracker.discoveredFiles.map(\.path), expectedPaths)
+
+        let knownBodyTracker = ParserFileDiscoveryTracker(knownFiles: initialTracker.discoveredFiles)
+        let knownBodyMetrics = ParserPassMetrics()
+        let knownBodyRequest = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true,
+            fileDiscoveryTracker: knownBodyTracker,
+            metrics: knownBodyMetrics
+        ))
+
+        XCTAssertEqual(knownBodyRequest.usages.map(\.sessionId), ["body-request-session"])
+        XCTAssertTrue(knownBodyRequest.conversations.isEmpty)
+        XCTAssertEqual(knownBodyTracker.discoveredFiles.map(\.path), expectedPaths)
+        XCTAssertFalse(knownBodyTracker.hasAdmittedFiles)
+        XCTAssertEqual(knownBodyMetrics.snapshot().contentReadCount, 0)
+
+        let explicitBodyRequest = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true
+        ))
+        let conversation = try XCTUnwrap(explicitBodyRequest.conversations.first)
+        XCTAssertEqual(explicitBodyRequest.usages.map(\.sessionId), ["body-request-session"])
+        XCTAssertTrue(conversation.fullText.contains(privateMarker))
+    }
+
+    func testModelFilterTranscriptOpenFailureAfterAdmissionDefersWholeSessionAndDoesNotCache() async throws {
+        let root = uniqueTempURL()
+        let sessionsURL = root.appendingPathComponent("sessions", isDirectory: true)
+        let projectURL = sessionsURL.appendingPathComponent("-Users-alberto-open-failure", isDirectory: true)
+        let supportURL = root.appendingPathComponent("support", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+
+        let session = projectURL.appendingPathComponent("unreadable-session.jsonl")
+        let settings = projectURL.appendingPathComponent("unreadable-session.settings.json")
+        let metadata = projectURL.appendingPathComponent("unreadable-session.metadata.json")
+        try Data(#"{"type":"assistant","message":{"role":"assistant","content":"must not cache"}}"#.utf8).write(to: session)
+        try Data(
+            #"{"model":"zai/glm-4.5","tokenUsage":{"input_tokens":109,"output_tokens":21}}"#.utf8
+        ).write(to: settings)
+        try Data(#"{"workspace":"open-failure"}"#.utf8).write(to: metadata)
+        let sessionPath = session.standardizedFileURL.path
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: supportURL)
+        let parser = ModelFilterParser(
+            modelPattern: "zai",
+            provider: .zai,
+            fileManager: .default,
+            appPaths: appPaths,
+            sessionsDirectoryOverride: sessionsURL,
+            fileHandleForReading: { url in
+                guard url.standardizedFileURL.path != sessionPath else { throw ExpectedOpenFailure() }
+                return try FileHandle(forReadingFrom: url)
+            }
+        )
+        let tracker = ParserFileDiscoveryTracker()
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let metrics = ParserPassMetrics()
+
+        let result = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true,
+            fileDiscoveryTracker: tracker,
+            resourceGovernor: governor,
+            metrics: metrics
+        ))
+
+        XCTAssertTrue(result.usages.isEmpty)
+        XCTAssertTrue(result.conversations.isEmpty)
+        XCTAssertEqual(governor.deferredFileCount, 1)
+        XCTAssertEqual(metrics.snapshot().contentReadFailedDeferredCount, 1)
+        XCTAssertEqual(
+            tracker.discoveredFiles.map(\.path),
+            [session, settings, metadata].map { $0.standardizedFileURL.path }.sorted()
+        )
+        XCTAssertTrue(tracker.partialCheckpointFiles.isEmpty)
+        XCTAssertFalse(tracker.hasAdmittedFiles)
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: appPaths.supportDirectory.appendingPathComponent("model_filter_parser_zai.json").path
+            )
+        )
+    }
+
+    func testModelFilterSidecarOpenFailureAfterAdmissionDefersWholeSessionAndDoesNotCache() async throws {
+        let root = uniqueTempURL()
+        let sessionsURL = root.appendingPathComponent("sessions", isDirectory: true)
+        let projectURL = sessionsURL.appendingPathComponent("-Users-alberto-sidecar-failure", isDirectory: true)
+        let supportURL = root.appendingPathComponent("support", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+
+        let session = projectURL.appendingPathComponent("unreadable-sidecar.jsonl")
+        let settings = projectURL.appendingPathComponent("unreadable-sidecar.settings.json")
+        let metadata = projectURL.appendingPathComponent("unreadable-sidecar.metadata.json")
+        try Data(#"{"type":"assistant","message":{"role":"assistant","content":"must not cache"}}"#.utf8).write(to: session)
+        try Data(
+            #"{"model":"zai/glm-4.5","tokenUsage":{"input_tokens":109,"output_tokens":21}}"#.utf8
+        ).write(to: settings)
+        try Data(#"{"workspace":"sidecar-failure"}"#.utf8).write(to: metadata)
+        let settingsPath = settings.standardizedFileURL.path
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: supportURL)
+        let parser = ModelFilterParser(
+            modelPattern: "zai",
+            provider: .zai,
+            fileManager: .default,
+            appPaths: appPaths,
+            sessionsDirectoryOverride: sessionsURL,
+            fileHandleForReading: { url in
+                guard url.standardizedFileURL.path != settingsPath else { throw ExpectedOpenFailure() }
+                return try FileHandle(forReadingFrom: url)
+            }
+        )
+        let tracker = ParserFileDiscoveryTracker()
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let metrics = ParserPassMetrics()
+
+        let result = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: true,
+            fileDiscoveryTracker: tracker,
+            resourceGovernor: governor,
+            metrics: metrics
+        ))
+
+        XCTAssertTrue(result.usages.isEmpty)
+        XCTAssertTrue(result.conversations.isEmpty)
+        XCTAssertEqual(governor.deferredFileCount, 1)
+        XCTAssertEqual(metrics.snapshot().contentReadFailedDeferredCount, 1)
+        XCTAssertEqual(
+            tracker.discoveredFiles.map(\.path),
+            [session, settings, metadata].map { $0.standardizedFileURL.path }.sorted()
+        )
+        XCTAssertTrue(tracker.partialCheckpointFiles.isEmpty)
+        XCTAssertFalse(tracker.hasAdmittedFiles)
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: appPaths.supportDirectory.appendingPathComponent("model_filter_parser_zai.json").path
+            )
+        )
     }
 
     func testParserRegistryKeepsMimoQuotaApiOnly() {

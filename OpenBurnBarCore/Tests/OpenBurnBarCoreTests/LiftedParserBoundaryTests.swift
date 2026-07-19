@@ -329,6 +329,39 @@ final class LiftedParserBoundaryTests: XCTestCase {
         XCTAssertLessThan(userRange.lowerBound, assistantRange.lowerBound)
     }
 
+    func testGooseDatabaseRemainsAuthoritativeWhenHistoricalDatabaseReadIsSkipped() async throws {
+        let directory = try makeTemporaryDirectory(named: "goose-database-authority")
+        let database = directory.appendingPathComponent("sessions.db")
+        let legacy = directory.appendingPathComponent("legacy-session.jsonl")
+        try write("not opened because it predates the pass boundary", to: database)
+        try write(
+            """
+            {"timestamp":"2026-07-18T10:00:00Z","model":"anthropic/claude-sonnet-4","message":{"role":"user","content":"Legacy fallback must not win."}}
+            {"timestamp":"2026-07-18T10:00:01Z","model":"anthropic/claude-sonnet-4","message":{"role":"assistant","content":"This row would expose an authority regression.","usage":{"input_tokens":210,"output_tokens":55}}}
+            """,
+            to: legacy
+        )
+        let cutoff = Date(timeIntervalSince1970: 1_800_000_000)
+        try FileManager.default.setAttributes(
+            [.modificationDate: cutoff.addingTimeInterval(-60)],
+            ofItemAtPath: database.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: cutoff.addingTimeInterval(60)],
+            ofItemAtPath: legacy.path
+        )
+
+        let result = try await GooseParser(sessionDirectoryOverride: directory.path).parse(
+            options: LogParseOptions(
+                includeConversationBodies: true,
+                minimumFileModificationDate: cutoff
+            )
+        )
+
+        XCTAssertTrue(result.usages.isEmpty, "sessions.db existence must suppress legacy JSONL fallback")
+        XCTAssertTrue(result.conversations.isEmpty)
+    }
+
     func testClineFormatParserSkipsMalformedTasksAndEstimatesBodylessUsage() async throws {
         let storageRoot = try makeTemporaryDirectory(named: "cline-fallback")
         let malformedDirectory = storageRoot.appendingPathComponent("malformed", isDirectory: true)

@@ -93,14 +93,38 @@ const CONSTRAINT_KEYWORDS = new Set([
 export function matchDelimiter(text, openIndex, open = "(", close = ")") {
   let depth = 0;
   let inString = null;
+  let inLineComment = false;
+  let inBlockComment = false;
   for (let i = openIndex; i < text.length; i += 1) {
     const ch = text[i];
+    const next = text[i + 1];
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i += 1;
+      }
+      continue;
+    }
     if (inString) {
       if (ch === "\\") {
         i += 1;
       } else if (ch === inString) {
         inString = null;
       }
+      continue;
+    }
+    if ((ch === "/" && next === "/") || (ch === "-" && next === "-")) {
+      inLineComment = true;
+      i += 1;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i += 1;
       continue;
     }
     if (ch === "'" || ch === '"') {
