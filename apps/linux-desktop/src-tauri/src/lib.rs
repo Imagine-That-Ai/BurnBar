@@ -7252,42 +7252,95 @@ fn emit_tray_route(app: &AppHandle, route: &str) {
     let _ = app.emit("tray-route", route.to_string());
 }
 
+const TRAY_STATUS_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
+
+fn try_begin_tray_refresh(gate: &AtomicBool) -> bool {
+    gate.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+}
+
+struct TrayRefreshGuard(Arc<AtomicBool>);
+
+impl Drop for TrayRefreshGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+async fn refresh_tray_status_items_async(
+    status_item: MenuItem<tauri::Wry>,
+    usage_item: MenuItem<tauri::Wry>,
+    update_item: MenuItem<tauri::Wry>,
+    gate: Arc<AtomicBool>,
+) {
+    if !try_begin_tray_refresh(&gate) {
+        return;
+    }
+    let _refresh_guard = TrayRefreshGuard(gate);
+
+    let health = tauri::async_runtime::spawn_blocking(probe_daemon_health)
+        .await
+        .unwrap_or_default();
+    let status_text = if health.ok {
+        format!(
+            "Daemon: connected{}",
+            health
+                .daemon_version
+                .as_deref()
+                .map(|version| format!(" - {version}"))
+                .unwrap_or_default()
+        )
+    } else {
+        "Daemon: offline".to_string()
+    };
+    let _ = status_item.set_text(status_text);
+
+    let usage = tauri::async_runtime::spawn_blocking(|| usage_summary().ok())
+        .await
+        .ok()
+        .flatten();
+    let _ = usage_item.set_text(
+        usage
+            .as_ref()
+            .map(tray_usage_text)
+            .unwrap_or_else(|| "Usage: unavailable".to_string()),
+    );
+
+    let update = update_status().await;
+    let _ = update_item.set_text(tray_update_text(&update));
+}
+
 fn refresh_tray_status_items(
     status_item: MenuItem<tauri::Wry>,
     usage_item: MenuItem<tauri::Wry>,
     update_item: MenuItem<tauri::Wry>,
+    gate: Arc<AtomicBool>,
+) {
+    tauri::async_runtime::spawn(refresh_tray_status_items_async(
+        status_item,
+        usage_item,
+        update_item,
+        gate,
+    ));
+}
+
+fn start_tray_status_refresh_loop(
+    status_item: MenuItem<tauri::Wry>,
+    usage_item: MenuItem<tauri::Wry>,
+    update_item: MenuItem<tauri::Wry>,
+    gate: Arc<AtomicBool>,
 ) {
     tauri::async_runtime::spawn(async move {
-        let health = tauri::async_runtime::spawn_blocking(probe_daemon_health)
-            .await
-            .unwrap_or_default();
-        let status_text = if health.ok {
-            format!(
-                "Daemon: connected{}",
-                health
-                    .daemon_version
-                    .as_deref()
-                    .map(|version| format!(" - {version}"))
-                    .unwrap_or_default()
+        loop {
+            tokio::time::sleep(TRAY_STATUS_REFRESH_INTERVAL).await;
+            refresh_tray_status_items_async(
+                status_item.clone(),
+                usage_item.clone(),
+                update_item.clone(),
+                gate.clone(),
             )
-        } else {
-            "Daemon: offline".to_string()
-        };
-        let _ = status_item.set_text(status_text);
-
-        let usage = tauri::async_runtime::spawn_blocking(|| usage_summary().ok())
-            .await
-            .ok()
-            .flatten();
-        let _ = usage_item.set_text(
-            usage
-                .as_ref()
-                .map(tray_usage_text)
-                .unwrap_or_else(|| "Usage: unavailable".to_string()),
-        );
-
-        let update = update_status().await;
-        let _ = update_item.set_text(tray_update_text(&update));
+            .await;
+        }
     });
 }
 
@@ -7320,7 +7373,17 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let status_for_events = status_i.clone();
     let usage_for_events = recent_usage_i.clone();
     let update_for_events = update_state_i.clone();
-    refresh_tray_status_items(status_i, recent_usage_i, update_state_i);
+    let tray_refresh_gate = Arc::new(AtomicBool::new(false));
+    refresh_tray_status_items(
+        status_i.clone(),
+        recent_usage_i.clone(),
+        update_state_i.clone(),
+        tray_refresh_gate.clone(),
+    );
+    let status_for_loop = status_i.clone();
+    let usage_for_loop = recent_usage_i.clone();
+    let update_for_loop = update_state_i.clone();
+    let gate_for_events = tray_refresh_gate.clone();
 
     let _tray = TrayIconBuilder::new()
         .menu(&menu)
@@ -7335,6 +7398,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 status_for_events.clone(),
                 usage_for_events.clone(),
                 update_for_events.clone(),
+                gate_for_events.clone(),
             ),
             "health" => {
                 let health = daemon_health();
@@ -7343,6 +7407,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                     status_for_events.clone(),
                     usage_for_events.clone(),
                     update_for_events.clone(),
+                    gate_for_events.clone(),
                 );
             }
             "quit" => quit_app(app.clone()),
@@ -7360,6 +7425,12 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             }
         })
         .build(app)?;
+    start_tray_status_refresh_loop(
+        status_for_loop,
+        usage_for_loop,
+        update_for_loop,
+        tray_refresh_gate,
+    );
     Ok(())
 }
 
@@ -10020,6 +10091,18 @@ mod tests {
         status.state = "available".into();
         status.latest_version = Some("0.2.0".into());
         assert_eq!(tray_update_text(&status), "Update available: 0.2.0");
+    }
+
+    #[test]
+    fn tray_refresh_gate_serializes_requests_and_uses_a_bounded_interval() {
+        assert_eq!(TRAY_STATUS_REFRESH_INTERVAL, Duration::from_secs(30));
+        let gate = Arc::new(AtomicBool::new(false));
+        assert!(try_begin_tray_refresh(&gate));
+        assert!(!try_begin_tray_refresh(&gate));
+
+        let guard = TrayRefreshGuard(gate.clone());
+        drop(guard);
+        assert!(try_begin_tray_refresh(&gate));
     }
 
     #[test]
