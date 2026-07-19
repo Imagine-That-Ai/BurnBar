@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | Current parity hardening reaches `c94e7b6113`; the clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
+| Remediation evidence | Current parity hardening reaches `ac42d02e4b`; the clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -24,13 +24,23 @@ are non-certifying focused mobile results; neither proves installed Linux
 enrollment, fingerprint confirmation, approve/revoke, or cross-device Computer
 Use behavior. The live UTM Ubuntu 24.04 GNOME/X11 aarch64 guest is now running at
 `192.168.64.5` and is reachable over the documented SSH key. The exact-head
-`c94e7b6113` arm64 package is installed; its daemon is healthy through the
-package-owned launcher, the installed desktop peer reports authenticated health,
-and the bare CLI resolves the canonical token file. The package migration hook
-also preserved both deliberately stale CLI backups. This is a live runtime
-receipt, not strict certification: the installed manifest is unsigned and the
-product/environment receipt matrix remains open. The receipt is
-`evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/health.json`.
+`ac42d02e4b` arm64 package is installed; its daemon is enabled and healthy
+through the package-owned user service, the installed desktop peer is running
+from `/usr/bin`, and the bare CLI resolves the canonical token file. The daemon
+now links the Linux Mercury capture crate: the live capability RPC reports
+`available=true`, `codecsKnown=true`, VP9/AV1/Opus support, and the file offer
+capability is available. The package migration hook and executable-peer
+authentication are covered by focused tests. This is a live runtime receipt,
+not strict certification: the installed manifest is unsigned, H.264 is not
+available on this guest, and two-device transfer/call/screen-share plus the
+product/environment receipt matrix remain open. The exact receipt is
+`evidence/mission-002-reanchor/vm-e2e/current-ac42d02e4b/live-receipt.json`.
+
+`ac42d02e4b` also fixes two release/runtime gaps found in the live VM: the
+release graph now builds and stages `libopenburnbar_media.so`, and the package
+post-install hook registers the user daemon service. Linux peer auth hashes
+the kernel `/proc/<pid>/exe` link without `O_NOFOLLOW`, which is incompatible
+with that kernel magic link; the actual Linux-target test passes 1/1 on Ubuntu.
 
 Two additional source-only parity hardening slices are now on the candidate
 branch. `6f57349c66` keeps Linux settings search selection synchronized with
@@ -637,9 +647,12 @@ percentage. The active remediation stack now contains these reviewable slices:
   no-GStreamer stub state; the no-GStreamer contract and Tauri tests pass
   (**98/98** combined). `2a80e30921` restarts the decoder in place after a
   transient decode error and preserves the live socket session when recovery
-  succeeds. The release path is now wired to compile
-  `--features media-gst` and declare GStreamer runtime dependencies, but
-  GStreamer-enabled builds and two-device screen-share receipts remain open.
+  succeeds. `ac42d02e4b` makes the release graph build and stage the daemon's
+  `openburnbar-media` Rust crate alongside the shell's `--features media-gst`
+  build. The installed VM capability probe now reports `available=true`,
+  `codecsKnown=true`, VP9/AV1/Opus support, and file-transfer capability. The
+  two-device file/call/screen-share, PipeWire portal, H.264, and lifecycle
+  receipts remain open.
 - **Chat attachment boundary:** `702f59146e` adds extension-derived MIME
   canonicalization and a preflight that rejects unsupported PDF uploads before
   daemon append/upload, preserving the draft and staged attachment. The
@@ -1256,6 +1269,15 @@ AF_UNIX health path, exercised tray reopen/quit, and uninstalled cleanly. All 19
 routes produced nonblack installed-app screenshots. This closes the observed
 deleted-binary/duplicate-daemon baseline for that package session, but not the
 x86_64, prior-version, suspend/resume, or compositor matrix.
+
+**Current live update (2026-07-19, source `ac42d02e4b`):** the exact arm64 DEB
+is installed in the Ubuntu 24.04 GNOME/X11 guest with the package-owned user
+service enabled and active (`MainPID=32496`, health `ok=true`). The packaged
+desktop is running from `/usr/bin` and the Linux peer-auth test passes against
+the kernel `/proc/<pid>/exe` link. This closes the previously observed service
+registration and Linux peer-lookup failures for this candidate, but it does not
+close signed provenance, x86_64, upgrade/rollback, suspend/resume, compositor,
+or full visual certification.
 
 - **Difference:** macOS owns its daemon lifecycle, startup recovery, and app
   executable. One inspected mutable UTM guest had a running deleted executable,
@@ -2318,7 +2340,7 @@ truth-sync, not the first time behavior is documented.
 | LNX-CU-CREDENTIALS-001 | LNX-AUTH-001, LNX-SEC-001, LNX-IPC-001, LNX-NATIVE-001 | **Implemented in source:** daemon-owned PKCE loopback sign-in, secure refresh-token custody, Firebase ID refresh, per-install Ed25519 App Check enrollment/challenge/mint, account generation, phase-safe sign-out/account-switch teardown, scoped old-account revoke, cancellable HTTP, redacted RPC/Tauri account state, explicit pending-approval reason mapping, permanent-rejection termination, and quota-safe capped polling. **Operational remainder:** deploy the Functions policy/callables, then exercise the exact release configuration | Source acceptance passed the 2026-07-12 full Linux-native aggregate for lifecycle/polling regression cases plus token-redaction checks. Delivery acceptance requires a signed installed candidate to complete sign-in, approval, refresh, expiry, rejection, sign-out, and account switch against deployed production services without token material in renderer, local RPC, logs, or diagnostics |
 | LNX-CU-BROWSER-001 | LNX-CU-CREDENTIALS-001, LNX-CAP-001, LNX-IPC-001, LNX-SESS-001, LNX-NATIVE-001, LNX-EVT-001 | **Implemented in source:** exact waiting-run picker; signed run/call/generation intent; controller-route v2 bootstrap/renewal/revocation; iOS/Android renewal; canonical generated Swift/Kotlin relay-challenge schema; macOS lifecycle policy; Linux directory, identity, endpoint, publisher, broker, metadata/readiness, approval/panic/media/teardown; durable replay; polkit owner gate; checkpoint/restart handling; root-owned packaged runtime; daemon credential authority; signed AppImage peer manifest; redacted account UI; and physical-iPad Linux App Check list/approve/revoke source. **Remaining:** current physical-iPad test execution, production provisioning, signed-candidate installation, and physical-iPad/browser/restart certification | Release build completes navigate/type/click/screenshot with the physical iPad as real paired authority; exact App Check device ID and fingerprint are confirmed before approval; unsigned/forged/replayed/stale/wrong-session/wrong-request responses and swapped transport/authority identities fail; credential expiry/account switch/App Check rejection and route absence/replacement terminate the exact route; deny/panic/timeout/cancel/journal failure revoke only the exact generation; restart never redispatches an in-flight action, requires fresh session authority, and retains replay high-water marks; audit/tamper proof passes |
 | LNX-CU-SYSTEM-001 | LNX-CU-BROWSER-001, LNX-CAP-001, LNX-NATIVE-001 | Portal/PipeWire/AT-SPI/libei plus constrained X11/uinput adapters | `ea82fe5140` adds the bounded fixed-command portal probe; `4423a0934d` adds the consent-backed, session-scoped RemoteDesktop Notify executor and teardown wiring. X11/AT-SPI selection remains authoritative when the portal is not ready. | Run the exact signed candidate through GNOME/KDE/wlroots compositor safety, approval, panic, revocation, restart, and accessibility matrices; unsupported modes stay hidden |
-| LNX-MEDIA-001 | LNX-CAP-001, LNX-IPC-001, LNX-SEC-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-EVT-001 | Mercury transport, secure pairing, files, calls, share, codecs, consent, notification/lifecycle | `56af093923` adds a truthful shell-local GStreamer viewer capability contract (VP9 decoder, native sink, PipeWire factories), explicit no-feature degradation, release feature wiring, and package/runtime dependency declarations. `2a80e30921` restarts the existing decoder in place after transient frame failures and re-arms keyframe gating without dropping the live socket when recovery succeeds. | Run GStreamer-enabled builds and a real two-device file/call/screen-share matrix on supported desktops; prove consent, codec, sink, lifecycle, restart, and teardown receipts |
+| LNX-MEDIA-001 | LNX-CAP-001, LNX-IPC-001, LNX-SEC-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-EVT-001 | Mercury transport, secure pairing, files, calls, share, codecs, consent, notification/lifecycle | `56af093923` adds a truthful shell-local GStreamer viewer capability contract (VP9 decoder, native sink, PipeWire factories), explicit no-feature degradation, release feature wiring, and package/runtime dependency declarations. `2a80e30921` restarts the existing decoder in place after transient frame failures and re-arms keyframe gating without dropping the live socket when recovery succeeds. `ac42d02e4b` builds/stages the daemon-owned `openburnbar-media` crate; the live Ubuntu receipt reports capture available with known VP9/AV1/Opus codecs and file-transfer capability. | Run the exact signed candidate through a real two-device iPad/Linux file, call, and screen-share matrix on supported desktops; prove PipeWire portal consent, codec/sink negotiation (including explicit H.264 fallback), lifecycle, restart, teardown, and cross-device receipts |
 | LNX-IOT-001 | LNX-IPC-001 | Typed SmartHub discovery/action APIs | Real device and hostile-input tests green |
 | LNX-TEXT-001 | LNX-SEC-001, LNX-EVT-001 | **Implemented in source:** app Composer integration and encrypted persistence/safe consent are complete; `6c76df084f` adds bounded IBus/Fcitx reachability, `274f67fba0` adds an explicitly opted-in signed registration gate, and `9598c0b9e8` adds daemon lifecycle status/start/stop RPCs with owner/path/permission/session checks, without keyboard/clipboard/surrounding-text capture. Live engine execution, secure-field hooks, sync, and conflict resolution remain required | Secure-field and desktop/input-method matrix green with a registered engine; unsupported or uninspectable contexts stay disabled |
 | LNX-PET-001 | LNX-CAP-001, LNX-NATIVE-001 | Real glTF renderer, companion window, capability fallback | X11 child/summon source contract is present; visual, focus, compositor, GPU, shortcut, and reduced-motion tests green |
@@ -2345,7 +2367,7 @@ truth-sync, not the first time behavior is documented.
 | 4 | **Daily-use native foundation** | In progress; onboarding and bounded event-refresh foundations implemented, installed matrix pending | LNX-EVT-001, LNX-ONB-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-UPD-001, LNX-CAT-001, LNX-DIFF-001 | Setup, auth, data freshness, alerts/tray, update lifecycle, and current provider diff green |
 | 5 | **Core product workflows** | Pending | LNX-SESS-001, LNX-CHAT-001, LNX-MEM-001, LNX-PROJ-001, LNX-MISSION-001, LNX-INSIGHT-001, LNX-DB-001, LNX-PROVIDER-001, LNX-PRIV-001, LNX-SET-001 | No synthetic state; every primary workspace and privacy workflow completes |
 | 6 | **Browser automation parity** | In progress; controller routing, native iroh runtime, authority/replay/restart safety, polkit owner gate, daemon-owned PKCE/Firebase/App Check credentials, phase-safe account lifecycle, bounded approval polling, redacted account UI, signed AppImage peer admission, and physical-iPad approval source are implemented. Earlier generic iOS build-for-testing coverage passes, and the 2026-07-12 Linux-native aggregate passes. Production OAuth/callable configuration, current physical-iPad execution, signed-candidate installation, and real-device evidence remain open | LNX-CU-CREDENTIALS-001, LNX-CU-BROWSER-001 | Provision Desktop OAuth and release variables, deploy Functions, complete physical-iPad tests, build the signed candidate, then prove iPad-backed sign-in, approval, real actions, panic, audit, and restart recovery |
-| 7 | **Media and system integration** | In progress; Mercury code complete | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety and two-device media proof |
+| 7 | **Media and system integration** | In progress; daemon capture/file capabilities are live on Ubuntu; cross-device proof is open | LNX-CU-SYSTEM-001, LNX-MEDIA-001 | Supported compositor safety, PipeWire consent, and two-device media proof |
 | 8 | **Extended features** | Pending | LNX-IOT-001, LNX-TEXT-001, LNX-PET-001 | SmartHub, input-method, and companion outcomes proven or honestly substituted |
 | 9 | **Candidate and certification** | Blocked on milestones 3-8 | LNX-REL-CANDIDATE-001, LNX-A11Y-CERT-001, LNX-PERF-CERT-001, LNX-QA-001, LNX-DOC-001 | Exact signed candidate, assistive-tech, performance, architecture, desktop matrix, and docs green |
 | 10 | **Stable promotion** | Blocked by design | LNX-PROMOTE-001 | Zero Critical/High gaps and a current reproducible evidence graph |

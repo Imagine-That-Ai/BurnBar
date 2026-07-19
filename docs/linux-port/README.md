@@ -5,7 +5,7 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- The current parity hardening reaches `c94e7b6113`; the clean parity-ledger
+- The current parity hardening reaches `ac42d02e4b`; the clean parity-ledger
   validation is bound to checkpoint `073c2aba45`. The Release and
   Nightly receipts below are historical engineering evidence for an older
   checkpoint, not a claim that the current docs head has a promoted artifact.
@@ -62,8 +62,19 @@ Current parity status as of 2026-07-19:
 - `c94e7b6113` adds the daemon-owned `daemon.usage.history` RPC and requires an
   explicit completeness proof before Linux exports full Activity history. The
   focused Activity/bridge suite passes **102 tests**. The exact-head arm64 DEB
-  is installed and healthy in the UTM guest; the non-certifying receipt is
+  was the preceding installed baseline; its non-certifying receipt is
   [`evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/`](evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/).
+- `ac42d02e4b` is the current live Linux slice. The exact arm64 DEB is installed
+  in the Ubuntu 24.04 GNOME/X11 UTM guest, the package-owned user daemon is
+  `enabled/active`, bare CLI health is green, and the packaged desktop is
+  running from `/usr/bin`. The release graph now builds the daemon-owned
+  `openburnbar-media` crate; the live media capability probe reports capture
+  available with known VP9/AV1/Opus codecs, and file-transfer capability is
+  available. The Linux peer-auth test passes 1/1 on the VM. This remains a
+  non-certifying runtime receipt: two-device iPad/Linux media, Computer Use,
+  signed provenance, and the strict 0/40 product plus 0/7 environment ledger
+  remain open. See
+  [`evidence/mission-002-reanchor/vm-e2e/current-ac42d02e4b/live-receipt.json`](evidence/mission-002-reanchor/vm-e2e/current-ac42d02e4b/live-receipt.json).
 - Fresh local recheck: the wired iPad is paired, booted, has Developer Mode
   enabled, and a current-checkout focused approval receipt passed **44/44**
   tests with xcodebuild exit 0 (see
@@ -72,7 +83,7 @@ Current parity status as of 2026-07-19:
   cross-device Computer Use. The OpenBurnBar Linux UTM guest is now running
   and reachable; authenticated daemon health and bare installed CLI health pass
   through the package-owned Swift runtime launcher and canonical token file for
-  the exact `c94e7b6113` package. The full release-mobile approval suite remains
+  the exact `ac42d02e4b` package. The full release-mobile approval suite remains
   unverified.
   The product-parity workflow is not present on `main`, and GitHub currently
   has zero self-hosted runners for its required Linux environment labels.
