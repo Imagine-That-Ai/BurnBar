@@ -5,7 +5,7 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- The latest parity hardening reaches `82b0fcf11e` (including the WebKit
+- The latest parity hardening reaches `992ef5c580` (including the WebKit
   startup fallback from `6321897d4e`). The VM now has a freshly rebuilt and
   installed arm64 package with the real `media-gst` shell viewer enabled; its
   non-certifying receipt is
@@ -18,13 +18,17 @@ Current parity status as of 2026-07-19:
   validation is bound to checkpoint `073c2aba45`. The Release and
   Nightly receipts below are historical engineering evidence for an older
   checkpoint, not a claim that the current docs head has a promoted artifact.
-- The latest source hardening adds single-flight native pet-window launch
+- The latest source hardening adds a fixture-safe daemon-backed **Index project**
+  action in General Settings (`992ef5c580`), single-flight native pet-window launch
   (`511c8a1049`), body-click `open` routing for notification servers without
   action buttons (`1397313284`), GStreamer decoder retry without requiring a
   socket reconnect, and Secret Service/KWallet health-before-write onboarding
   checks (`82b0fcf11e`). Focused verification is 28/28 pet UI tests, 4/4 native
   notification Rust tests, 5/5 media Rust tests in both feature modes on the
-  VM, and 6/6 Linux onboarding tests on Ubuntu.
+  VM, and 6/6 Linux onboarding tests on Ubuntu. The installed arm64 package
+  carries the settings action; focused settings verification is **34/34** and
+  the non-certifying receipt is
+  [`evidence/mission-002-reanchor/vm-e2e/current-992ef5c580-settings-index-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-992ef5c580-settings-index-arm64/).
 - The physical-device runner now accepts either the CoreDevice identifier from
   `devicectl` or the hardware UDID required by Xcode, with deterministic
   missing/ambiguous-device failures (`5cff4281ec`).

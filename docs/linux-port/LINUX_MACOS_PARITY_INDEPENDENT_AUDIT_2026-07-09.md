@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | Latest parity hardening reaches `82b0fcf11e` (with the WebKit startup fallback in `6321897d4e`). The VM now has a freshly rebuilt arm64 package with the real `media-gst` shell viewer feature installed; its non-certifying receipt is `evidence/mission-002-reanchor/vm-e2e/current-82b0fcf11e-media-gst-arm64/live-installed-receipt.json`. The preceding media-gst and non-GStreamer UI receipts remain historical under `current-fdbc7d718b-media-gst-arm64/` and `current-fdbc7d718b-ui-arm64/`. The daemon/media capability receipt remains bound to the `a570c9b087` runtime package. The clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
+| Remediation evidence | Latest parity hardening reaches `992ef5c580` (with the WebKit startup fallback in `6321897d4e`). The VM now has a freshly rebuilt arm64 package with the real `media-gst` shell viewer and the General Settings Index project action installed; its non-certifying receipt is `evidence/mission-002-reanchor/vm-e2e/current-992ef5c580-settings-index-arm64/live-installed-receipt.json`. The preceding media-gst and non-GStreamer UI receipts remain historical under `current-82b0fcf11e-media-gst-arm64/`, `current-fdbc7d718b-media-gst-arm64/`, and `current-fdbc7d718b-ui-arm64/`. The clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -55,7 +55,7 @@ and disables stale file-offer actions; the focused media UI/state lane passes
 **33/33** plus TypeScript. The current `media-gst` shell feature is installed
 in the UTM guest and links the GStreamer app/base/core/video libraries; the
 bounded UI/runtime receipt is
-`evidence/mission-002-reanchor/vm-e2e/current-82b0fcf11e-media-gst-arm64/live-installed-receipt.json`.
+`evidence/mission-002-reanchor/vm-e2e/current-992ef5c580-settings-index-arm64/live-installed-receipt.json`.
 The subsequent source slices add single-flight native pet summons
 (`511c8a1049`), body-click notification routing (`1397313284`), decoder retry
 without socket reconnect, and health-before-write Secret Service/KWallet
@@ -76,7 +76,10 @@ The current Linux desktop regression run at this candidate head passed **82
 files / 749 tests**; the TypeScript check and production bundle verifier also
 passed.
 
-Additional source hardening is now on the candidate head: `c095761b07` binds
+Additional source hardening is now on the candidate head: `992ef5c580` adds a
+daemon-backed **Index project** action to General Settings Indexing & Search
+(focused settings tests **34/34** and the installed arm64 receipt above).
+`c095761b07` binds
 signed update-feed artifact and signature URLs to first-party release paths
 (19 Rust update-feed tests passed); `50a0684e75` rejects symlinked onboarding
 state files and support directories before persistence; and `a5522bfc54`
@@ -1185,7 +1188,7 @@ required gates and were not made green by the Ed25519 result.
 | P-21 | Insights | Editorial brief, evidence, citations, follow-ups, comparison, audit | Provenance-labeled brief plus selectable canvas/library/inspector workspace, normalized trend/provider/model/cache widgets, bounded audit disclosure, refresh, and chat follow-up handoff are implemented. Daemon-backed citations, qualitative comparison, and persisted canvas state remain open | Partial | Medium |
 | P-22 | Database | Search/inspect indexed sessions, snapshots, watch/recovery, encrypted storage UX | Index/watch foundation plus bounded daemon-owned code search/context-pack inspection are wired in [PR #1680](https://github.com/Imagine-That-Ai/BurnBar/pull/1680), with pagination, trust warnings, and fail-closed capability handling. SQLCipher-gated encrypted snapshots provide owner-only path validation, bounded atomic copy, SHA-256 integrity, rollback, and watcher reopen; `f5d562da82`/`238577c904` add typed recovery status/export/import state, key-loss/device-transfer guidance, partial-capability rendering, passphrase/path validation, and redacted outcomes. Installed proof and backend recovery on real keyrings remain open | Partial | Medium |
 | P-23 | Provider/model workspace | Provider and model deep dives, health, catalog, failover, routing | Daemon-backed provider/model workspace, canonical catalog/config mapping, model variants/aliases, health/failover posture, account chips, config-derived chat backend gates, and source-integrated custom-model add/remove mutation state are integrated. `d7cffc79d6` makes the bridge fetch canonical `daemon.catalog` separately from `daemon.config.get` and exposes an explicit config-only degraded state on catalog failure; live credential routing and installed lifecycle proof remain open | Partial | Medium |
-| P-24 | Settings | 16 searchable tabs with deep links and writable state | 16-tab searchable inventory and deep routes are wired; deeper per-tab backend writes and installed proof remain open | Partial | Medium |
+| P-24 | Settings | 16 searchable tabs with deep links and writable state | 16-tab searchable inventory and deep routes are wired. General Settings Indexing & Search now exposes a fixture-safe daemon-backed **Index project** action through `databaseIndexProject` (`992ef5c580`); deeper per-tab backend writes and installed proof remain open | Partial | Medium |
 | P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed freshness, exact package-channel/architecture selection, shell/daemon compatibility, fail-closed mutation guidance, and run `29646670068` package construction/install checks passed; update/rollback/data-preservation remains blocked without a compatible previous same-architecture package, and valid public feed/promoted history remain open | Partial | High |
 | P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Native tray now exposes dashboard/chat/usage/updates/settings routes, daemon health, recent usage, signed-update state, refresh/reconnect, and quit actions; `dcca8b74b4` packages the canonical XDG autostart entry and honors tray-first `--background` startup; compositor/DE persistence and installed receipts remain open | Partial | High |
 | P-27 | Notifications/deep links | Actionable notifications, OAuth return, global commands, login start | Native startup/deep-link handoff, background tray launch, XDG autostart package installation, desktop MIME registration, strict membership/OAuth URL validation, owner-checked per-user single-instance forwarding, normalized freedesktop `open`/`reply` actions, explicit route aliases, and cold-start precedence are implemented in [PR #1679](https://github.com/Imagine-That-Ai/BurnBar/pull/1679), [PR #1686](https://github.com/Imagine-That-Ai/BurnBar/pull/1686), `5f74018422`, `07153ac3d5`, and `dcca8b74b4`; Reply preserves intent, opens chat, and focuses the composer rather than providing inline notification text input. Global shortcut and installed host integration remain open | Partial | High |

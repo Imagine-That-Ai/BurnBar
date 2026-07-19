@@ -29,8 +29,8 @@ proof and refuses paged or partial data. Focused Activity/bridge coverage is
 the preceding installed baseline in the UTM guest; its non-certifying receipt is
 `evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/health.json`.
 
-The current source hardening reaches `fdbc7d718b`; the current installed live
-integration slice is `a570c9b087` (with the WebKit startup fallback from
+The current source hardening reaches `992ef5c580`; the current installed live
+integration slice is `992ef5c580` (with the WebKit startup fallback from
 `6321897d4e`). Its release graph builds
 the daemon-owned `crates/openburnbar-media` library before Swift linking, so a
 signed release cannot silently ship the shell's GStreamer viewer without the
@@ -49,13 +49,13 @@ passes **1/1**; `fdbc7d718b` separately gates receive-only media transport in
 the Linux UI while preserving daemon RPC calls (focused media UI/state **33/33**);
 this is transport/backend proof, not a two-device receipt.
 
-The VM follow-up rebuilt and installed the current `82b0fcf11e` media
+The VM follow-up rebuilt and installed the current `992ef5c580` settings/media
 UI/state files around the existing daemon runtime with the real `media-gst`
 shell viewer feature enabled. The arm64 DEB is installed, the desktop remains
 running after a daemon restart, bare CLI health passes, the shell links the
 GStreamer app/base/core/video libraries, and the focused media UI lane passes
 **33/33** on Ubuntu. Receipt:
-`evidence/mission-002-reanchor/vm-e2e/current-82b0fcf11e-media-gst-arm64/live-installed-receipt.json`.
+`evidence/mission-002-reanchor/vm-e2e/current-992ef5c580-settings-index-arm64/live-installed-receipt.json`.
 The preceding media-gst receipt remains as a historical baseline under
 `current-fdbc7d718b-media-gst-arm64/`, and the earlier non-GStreamer receipt
 under `current-fdbc7d718b-ui-arm64/`. All three are non-certifying because they
@@ -67,7 +67,10 @@ body clicks to `open` even when the server has no action capability; and
 `82b0fcf11e` retries a missing GStreamer decoder on the next keyframe and runs
 Secret Service/KWallet health checks before onboarding writes. Focused proof is
 28/28 pet UI tests, 4/4 notification Rust tests, 5/5 media Rust tests in both
-feature modes on the VM, and 6/6 Linux onboarding tests on Ubuntu.
+feature modes on the VM, and 6/6 Linux onboarding tests on Ubuntu. `992ef5c580`
+adds the daemon-backed **Index project** action to General Settings Indexing &
+Search; focused settings proof is **34/34** and the latest installed arm64
+receipt is `evidence/mission-002-reanchor/vm-e2e/current-992ef5c580-settings-index-arm64/`.
 
 The installed Linux CLI parity fix is now on `d58b6a958f`: the Swift CLI
 resolves the canonical XDG daemon token file when no token environment override
