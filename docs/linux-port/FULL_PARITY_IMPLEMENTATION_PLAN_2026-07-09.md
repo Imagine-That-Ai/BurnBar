@@ -37,7 +37,7 @@ suite passed with xcodebuild exit 0. This is an implementation and live-QA
 milestone only; the strict product/environment promotion boundary remains
 **0/40 product rows and 0/7 environment receipts**.
 
-The current source checkpoint is `27c5d11b13`; the kernel capability slice at
+The current source checkpoint is `1dc1328818`; the kernel capability slice at
 `50d40b9acb` adds a typed backdrop kernel
 resolution receipt and surfaces requested-versus-resolved kernel state in the
 Linux switcher. The live Ubuntu WebKitGTK probe reports `webgl2=false` and
@@ -45,6 +45,15 @@ Linux switcher. The live Ubuntu WebKitGTK probe reports `webgl2=false` and
 fallback with an explicit `WebGL2 unavailable` label. This closes the silent
 renderer-degradation UX gap while keeping the environment-specific WebGL2
 limitation open for a supported hardware/Wayland matrix.
+
+The installed WebKitGTK baseline also revealed a first-paint regression in the
+Linux default `swarmEmber`: two root-window captures two seconds apart changed
+only 256 bytes, so the background was effectively static while its lazy factory
+resolved. `1dc1328818` makes the Linux 2D default eager while retaining lazy
+loading for shader kernels, and its focused test proves that `fillRect` occurs
+during init and again on the first frame. This is source-fixed but not yet
+installed in the UTM guest; current-head package rebuild/install remains a
+release-runner dependency.
 
 The connected physical iPad was rechecked against this checkout with the
 bounded approval/navigation selectors: **44/44 passed, 0 failures, xcodebuild

@@ -6,13 +6,13 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | The installed non-certifying arm64 DEB remains source `5b70a3d320` in the Ubuntu 24.04.4 GNOME/X11 UTM guest; its receipt is `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/live-installed-receipt.json`. Current source is `27c5d11b13`; the kernel capability implementation is `50d40b9acb` with a focused paint regression test at `a561c5ea3e`, and the focused physical-iPad receipt is bound to the exact pre-documentation source `c9c679f43b`. A live WebKitGTK probe against that build reported `webgl2=false`, `webgl1=true`; selecting Aurora surfaced `Aurora · 2D fallback (WebGL2 unavailable)` while the Canvas2D fallback continued animating. Daemon/CLI health is green on the installed candidate, and the connected iPad approval/navigation slice passed 44/44 with xcodebuild exit 0. Signed provenance, cross-device proof, and the strict product/environment receipts remain open. |
+| Remediation evidence | The installed non-certifying arm64 DEB remains source `5b70a3d320` in the Ubuntu 24.04.4 GNOME/X11 UTM guest; its receipt is `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/live-installed-receipt.json`. Current source is `1dc1328818`; the kernel capability implementation is `50d40b9acb` with focused paint regression tests at `a561c5ea3e` and `1dc1328818`, and the focused physical-iPad receipt is bound to the exact pre-documentation source `c9c679f43b`. A live WebKitGTK probe against the installed build reported `webgl2=false`, `webgl1=true`; the current source resolves Aurora to animated Canvas2D with an explicit `WebGL2 unavailable` label. The installed baseline's two root-window captures two seconds apart changed only 256 bytes, exposing a real first-paint/lazy-kernel regression; `1dc1328818` eagerly constructs the Linux `swarmEmber` default so the candidate paints before dynamic import resolution. Daemon/CLI health is green on the installed candidate, and the connected iPad approval/navigation slice passed 44/44 with xcodebuild exit 0. Signed provenance, current-head package installation, cross-device proof, and the strict product/environment receipts remain open. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
 ## Current Live Checkpoint — 2026-07-19
 
-The current source checkpoint is `27c5d11b13`. The kernel capability slice at
+The current source checkpoint is `1dc1328818`. The kernel capability slice at
 `50d40b9acb` adds a typed kernel
 resolution receipt from the shared backdrop engine and exposes the requested
 kernel, resolved kernel, substrate, and fallback reason through DOM attributes
@@ -20,11 +20,15 @@ and the Linux switcher. The UTM guest's WebKitGTK context probe is
 `webgl2=false`, `webgl1=true`; the live dev-surface check selected Aurora and
 observed `resolved=constellation`, `reason=webgl2-unavailable`,
 `fallback=1`, `substrate=2d`, and the visible switcher label
-`Aurora · 2D fallback (WebGL2 unavailable)`. Two screenshots two seconds apart
-changed 406,879 pixels, so this is a documented renderer capability fallback,
-not a blank or frozen background. The installed package receipt below remains
-the prior `5b70a3d320` candidate until an arm64 Linux release runner rebuilds
-the new source.
+`Aurora · 2D fallback (WebGL2 unavailable)`. The installed baseline also
+exposed a separate first-paint issue for the Linux default: two root-window
+captures two seconds apart changed only 256 bytes, so `swarmEmber` was visibly
+static while its lazy factory resolved. Commit `1dc1328818` makes that 2D
+default eager and adds a regression test that observes `fillRect` during init
+and the first frame. The current source fallback remains animated when the
+Canvas2D path is exercised; the installed package receipt below remains the
+prior `5b70a3d320` candidate until an arm64 Linux release runner rebuilds the
+new source.
 
 The connected physical iPad was rechecked against the current checkout using
 the bounded approval/navigation selectors: **44 tests passed, 0 failed,
