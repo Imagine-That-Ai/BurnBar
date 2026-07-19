@@ -6,8 +6,8 @@ implemented as reviewable infrastructure, not a public availability claim.
 Current parity status as of 2026-07-19:
 
 - **Current source head:** the integration branch now includes source changes
-  through `3e7ede75e3`. It passes 89 frontend files /
-  845 tests, TypeScript, production bundle verification, Tauri Rust 128/128,
+  through `ebab7da744`. It passes 89 frontend files /
+  847 tests, TypeScript, production bundle verification, Tauri Rust 128/128,
   package-payload contract checks (2 pass, 2 historical skips), and product
   validators 12/12. `1130524331` recovers a visible 2D backdrop after
   backgrounded WebGL context loss and retries the requested kernel on resume;
@@ -34,24 +34,26 @@ Current parity status as of 2026-07-19:
   refreshes tray health, usage, and update state every 30 seconds with
   serialized manual refreshes, while `3e7ede75e3` bounds browser sign-in
   polling at the daemon-provided authorization deadline and makes expiry
-  actionable to keyboard and screen-reader users.
+  actionable to keyboard and screen-reader users. `ebab7da744` fences stale
+  concurrent version/feed responses so older update metadata cannot overwrite
+  newer shell facts.
   The ARM VM also passed
   the supported Swift-less staged-payload `pretauri:build`/`tauri:build` path via
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is unsigned
   and non-certifying. The latest exact implementation receipt includes the
   post-unlock visible/animated packaged-shell capture and is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-3e7ede75e3-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-3e7ede75e3-postinstall-2026-07-19.json).
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-ebab7da744-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-ebab7da744-postinstall-2026-07-19.json).
   The preceding `872074af3a` and `ded781e94d` receipts remain historical
   visible-shell evidence.
   The strict ledger remains **0/40 product rows and 0/7 environment receipts**.
 
-- **Latest live VM candidate:** the exact `3e7ede75e3` ARM64 DEB is installed in
+- **Latest live VM candidate:** the exact `ebab7da744` ARM64 DEB is installed in
   the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its non-certifying receipt is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-3e7ede75e3-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-3e7ede75e3-postinstall-2026-07-19.json).
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-ebab7da744-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-ebab7da744-postinstall-2026-07-19.json).
   Daemon/CLI health is green and the desktop window exists at `/usr/bin`. A
   clean launch in the unlocked GNOME session rendered the first-run
   Secret Service / SQLCipher setup card and Fluid Aurora 2D fallback. Two
-  captures two seconds apart differ in 776,489 pixels. The guest reports
+  captures two seconds apart differ in 383,919 pixels. The guest reports
   `webgl2=false` and `webgl1=true`; the visible switcher labels the fallback
   `2D fallback (WebGL2 unavailable)`. A stale autostart/locked-era blank
   process was discarded as launch-context evidence, not a package failure.
@@ -68,7 +70,7 @@ Current parity status as of 2026-07-19:
   105 nodes and 50 actionable controls with no `Loading Settings` node; the
   General startup checkbox and Media & Sharing route are reachable.
   The package is unsigned and this receipt is non-certifying.
-- Current source gates are **89 frontend files / 845 tests**, focused provider
+- Current source gates are **89 frontend files / 847 tests**, focused provider
   recovery **11/11**, daemon subscription lifecycle **8/8**, SmartHub **9/9**,
   Settings/route **51/51**, Support **29/29**, media **38/38**, Tauri Rust
   **128/128**, TypeScript, formatting, and production-bundle verification. The strict ledger remains
