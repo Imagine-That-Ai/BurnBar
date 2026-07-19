@@ -203,18 +203,33 @@ impl MediaViewer {
             if inner.awaiting_keyframe && frame.flags & KEYFRAME_FLAG == 0 {
                 return;
             }
-            let Some(decoder) = inner.decoder.as_ref() else {
-                return;
+            let decode_error = match inner.decoder.as_ref() {
+                Some(decoder) => decoder
+                    .push_frame(&frame.payload, frame.pts_ms, frame.flags)
+                    .err(),
+                None => return,
             };
-            if let Err(error) = decoder.push_frame(&frame.payload, frame.pts_ms, frame.flags) {
+            if let Some(error) = decode_error {
                 eprintln!("openburnbar media viewer decode failed: {error}");
-                let decoder = inner.decoder.take();
-                drop(inner);
-                if let Some(decoder) = decoder {
-                    let _ = decoder.stop();
-                }
-                if let Ok(mut inner) = self.inner.lock() {
+                // A transient bus/pipeline error must not leave an otherwise
+                // healthy socket session with a permanently dead viewer. The
+                // decoder can be reset to NULL/Playing and will then accept a
+                // fresh keyframe from the same stream. Only tear it down when
+                // that recovery path fails.
+                let restart_error = inner
+                    .decoder
+                    .as_ref()
+                    .and_then(|decoder| decoder.restart().err());
+                if let Some(restart_error) = restart_error {
+                    eprintln!("openburnbar media viewer decoder restart failed: {restart_error}");
+                    let decoder = inner.decoder.take();
+                    drop(inner);
+                    if let Some(decoder) = decoder {
+                        let _ = decoder.stop();
+                    }
+                } else {
                     inner.awaiting_keyframe = true;
+                    return;
                 }
                 return;
             }
@@ -410,6 +425,41 @@ mod tests {
         assert_eq!(
             capability.install_hint,
             Some("Install the packaged Linux build with GStreamer support, or rebuild with --features media-gst.")
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "media-gst")]
+    fn viewer_restarts_decoder_after_decode_error() {
+        let viewer = super::MediaViewer::new();
+        {
+            let mut inner = viewer.inner.lock().expect("viewer lock");
+            inner.open = true;
+            inner.decoder = Some(
+                openburnbar_media::DecodePipeline::new(
+                    "vp9",
+                    openburnbar_media::DecodeSinkMode::Fake,
+                )
+                .expect("fake decoder"),
+            );
+        }
+
+        // An empty keyframe is a deterministic decoder error that does not
+        // depend on a particular VP9 plugin's error text. The viewer should
+        // retain the pipeline after the one-shot restart and wait for the
+        // next keyframe instead of going permanently black.
+        viewer.render_frame(&MediaFrame {
+            kind: 0x01,
+            flags: 0x01,
+            pts_ms: 0,
+            payload: Vec::new(),
+        });
+
+        let inner = viewer.inner.lock().expect("viewer lock");
+        assert!(inner.decoder.is_some(), "decoder was torn down too early");
+        assert!(
+            inner.awaiting_keyframe,
+            "restart must re-arm keyframe gating"
         );
     }
 }
