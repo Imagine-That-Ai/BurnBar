@@ -590,11 +590,21 @@ button.ghost:hover { border-color: var(--color-glass-line-bright); background: v
     color: LinkText;
   }
 
+  /*
+   * Gradient text is decorative in the normal shell, but transparent text is
+   * not a usable fallback when a high-contrast theme suppresses gradients.
+   * Keep every metric/brand value readable with system colors. `!important`
+   * is intentional: component styles for these classes are loaded after the
+   * shell stylesheet in the packaged WebView.
+   */
   .deck-wordmark-accent,
-  .brand span {
-    color: CanvasText;
-    background: none;
-    -webkit-text-fill-color: currentColor;
+  .brand span,
+  .burn-hero-cost,
+  .stat-card-value--gradient,
+  .concept-stat-tile-value {
+    color: CanvasText !important;
+    background: none !important;
+    -webkit-text-fill-color: CanvasText !important;
   }
 
   [aria-current='page'],

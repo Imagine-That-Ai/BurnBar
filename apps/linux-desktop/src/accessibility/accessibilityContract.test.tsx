@@ -47,6 +47,10 @@ describe('Linux accessibility preference contracts', () => {
     expect(forcedColors).toContain('ButtonFace');
     expect(forcedColors).toContain('ButtonText');
     expect(forcedColors).toContain('Highlight');
+    expect(forcedColors).toContain('.burn-hero-cost');
+    expect(forcedColors).toContain('.stat-card-value--gradient');
+    expect(forcedColors).toContain('.concept-stat-tile-value');
+    expect(forcedColors).toContain('color: CanvasText !important');
     expect(forcedColors).toContain(':focus-visible');
     expect(forcedColors).toMatch(/\[role=['"]status['"]\]/);
     expect(forcedColors).toMatch(/\[role=['"]alert['"]\]/);
