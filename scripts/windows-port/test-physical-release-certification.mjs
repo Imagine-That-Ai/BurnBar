@@ -22,6 +22,13 @@ const protocolCatalog = JSON.parse(
 );
 const performanceBudgetBytes = readFileSync(join(root, "release-performance-budgets.json"));
 const performanceBudget = JSON.parse(performanceBudgetBytes.toString("utf8"));
+const remoteConfigPublisher = readFileSync(
+  join(root, "publish-staging-remote-config-fixture.ps1"),
+  "utf8",
+);
+const remoteConfigFixtureCatalog = JSON.parse(
+  readFileSync(join(root, "remote-config-certification-fixtures.json"), "utf8"),
+);
 const physicalRunbook = readFileSync(
   join(root, "../../docs/windows-port/evidence/windows-v1.0.37-release/PHYSICAL_X64_RUNBOOK.md"),
   "utf8",
@@ -122,6 +129,53 @@ for (const measurement of performanceBudget.measurements) {
   assert.ok(measurement.minimumSamples >= 1);
   assert.ok(measurement.minimumDurationSeconds >= 0);
 }
+assert.equal(
+  remoteConfigFixtureCatalog.schema,
+  "openburnbar.windows.remote-config-certification-fixtures.v1",
+);
+assert.equal(remoteConfigFixtureCatalog.projectId, "burnbar-staging");
+assert.deepEqual(Object.keys(remoteConfigFixtureCatalog.fixtures).sort(), [
+  "Baseline",
+  "ComputerKill",
+  "MalformedSystem",
+  "MediaKill",
+]);
+assert.equal(
+  remoteConfigFixtureCatalog.baseline.parameters.computer_use_kill_switch.defaultValue.value,
+  "false",
+);
+assert.equal(
+  remoteConfigFixtureCatalog.baseline.parameters.media_kill_switch.defaultValue.value,
+  "false",
+);
+assert.equal(
+  remoteConfigFixtureCatalog.fixtures.ComputerKill.overrides.computer_use_kill_switch,
+  "true",
+);
+assert.equal(
+  remoteConfigFixtureCatalog.fixtures.MediaKill.overrides.media_kill_switch,
+  "true",
+);
+assert.equal(
+  remoteConfigFixtureCatalog.fixtures.MalformedSystem.overrides.computer_use_system_enabled,
+  "invalid-certification-value",
+);
+for (const fixture of Object.values(remoteConfigFixtureCatalog.fixtures)) {
+  for (const parameter of Object.keys(fixture.overrides)) {
+    assert.ok(
+      remoteConfigFixtureCatalog.baseline.parameters[parameter],
+      `Remote Config fixture overrides an unknown parameter: ${parameter}`,
+    );
+  }
+}
+assert.match(remoteConfigPublisher, /ValidateSet\('burnbar-staging'\)/);
+assert.match(remoteConfigPublisher, /hard-bound to burnbar-staging and refuses every other project/);
+assert.doesNotMatch(remoteConfigPublisher, /\[string\] \$CatalogPath/);
+assert.match(remoteConfigPublisher, /config get-value project/);
+assert.match(remoteConfigPublisher, /'If-Match' = \$etag/);
+assert.match(remoteConfigPublisher, /parameters do not match the selected fixture/);
+assert.match(remoteConfigPublisher, /restoreRequired = \(\$Fixture -ne 'Baseline'\)/);
+assert.doesNotMatch(remoteConfigPublisher, /Write-(Host|Output).*\$token/i);
 assert.match(supplementalGenerator, /ParameterSetName = 'Initialize'/);
 assert.match(supplementalGenerator, /status = 'NOT_RUN'/);
 assert.match(supplementalGenerator, /validate-release-certification-evidence\.mjs/);
