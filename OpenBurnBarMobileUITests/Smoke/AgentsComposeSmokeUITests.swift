@@ -79,6 +79,7 @@ final class AgentsComposeSmokeUITests: SmokeUITestCase {
         let app = liveParetoApplication()
         app.launch()
 
+        completeOnboardingIfNeeded(in: app)
         selectAuroraTab("hermes", in: app)
         XCTAssertTrue(
             screenMarker("agents", in: app).waitForExistence(timeout: 30),
@@ -146,6 +147,34 @@ final class AgentsComposeSmokeUITests: SmokeUITestCase {
         dispatchedScreenshot.name = "pareto-wand-dispatched"
         dispatchedScreenshot.lifetime = .keepAlways
         add(dispatchedScreenshot)
+    }
+
+    private func completeOnboardingIfNeeded(in app: XCUIApplication) {
+        let welcome = app.staticTexts["Welcome to OpenBurnBar"].firstMatch
+        let completion = app.staticTexts["You're all set"].firstMatch
+        let getStarted = app.buttons["Get started"].firstMatch
+        let skip = app.buttons["Skip"].firstMatch
+
+        if welcome.waitForExistence(timeout: 5) {
+            getStarted.tap()
+            XCTAssertTrue(
+                skip.waitForExistence(timeout: 10),
+                "Onboarding did not expose its skip action.\n\(app.debugDescription)"
+            )
+            skip.tap()
+        } else if completion.exists {
+            getStarted.tap()
+        } else if skip.waitForExistence(timeout: 2) {
+            skip.tap()
+        } else {
+            return
+        }
+
+        XCTAssertTrue(
+            waitFor(skip, predicateFormat: "exists == false", timeout: 20)
+                && waitFor(completion, predicateFormat: "exists == false", timeout: 20),
+            "Onboarding still covered the signed-in app after completion.\n\(app.debugDescription)"
+        )
     }
 
     private func liveParetoApplication() -> XCUIApplication {

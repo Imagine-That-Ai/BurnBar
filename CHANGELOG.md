@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   DeviceCheck instead of trusting an inapplicable App Attest support probe, and
   the production verifier now requires both enforcement and an uploaded
   DeviceCheck key for the canonical Firebase app.
+- **Stopped database-encryption tests from touching a user's live Keychain**:
+  XCTest now uses an in-memory client plus a process-local account namespace.
+  Startup also preserves an existing encrypted database without creating a
+  replacement key when its original key is missing, and reports a specific
+  recovery error when the stored key is rejected.
 
 ### Fixed - Incremental conversation indexing
 
