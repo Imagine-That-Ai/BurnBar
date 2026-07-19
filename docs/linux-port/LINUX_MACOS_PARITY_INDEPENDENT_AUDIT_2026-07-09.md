@@ -32,6 +32,9 @@ Avahi peer discovery honor bounded deadlines and report non-zero helper exits
 as typed failures; focused source tests cover timeout, exit status, and a
 successful parse. These changes improve behavior and reliability but do not
 create installed Linux receipts or change the strict 0/40 and 0/7 ledger.
+The current Linux desktop regression run at this candidate head passed **82
+files / 745 tests**; the TypeScript check and production bundle verifier also
+passed.
 
 ## Execution Status — 2026-07-18
 

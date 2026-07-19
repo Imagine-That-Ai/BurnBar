@@ -30,7 +30,8 @@ successful parsing. The macOS host can parse/build the Linux-only tests but
 cannot execute them because the package runner lacks `SQLCipher.framework`.
 Neither slice changes the strict **0/40 product** or **0/7 environment**
 certification state; installed Linux and live cross-device receipts remain the
-next gate.
+next gate. The complete Linux desktop regression run at this head passed **82
+files / 745 tests**, with TypeScript and the production bundle verifier green.
 
 ### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 
