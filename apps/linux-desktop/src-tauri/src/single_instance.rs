@@ -17,6 +17,10 @@ use std::time::Duration;
 
 pub(crate) const PROTOCOL_VERSION: u8 = 1;
 const MAX_FRAME_BYTES: usize = 16 * 1024;
+// A launcher can acquire the lock before the primary listener thread is ready.
+// Keep forwarding bounded, but allow normal desktop startup to finish.
+const FORWARD_RETRY_ATTEMPTS: usize = 40;
+const FORWARD_RETRY_DELAY: Duration = Duration::from_millis(50);
 const LOCK_NAME: &str = "openburnbar-linux-desktop.lock";
 const SOCKET_NAME: &str = "openburnbar-linux-desktop.sock";
 const DEEP_LINK_SCHEME_PREFIX: &str = "openburnbar://";
@@ -342,7 +346,7 @@ fn try_lock(file: &fs::File) -> Result<bool, String> {
 
 fn send_message(socket_path: &Path, message: &Message) -> Result<(), String> {
     let bytes = frame_for_message(message.clone())?;
-    for _ in 0..10 {
+    for attempt in 0..FORWARD_RETRY_ATTEMPTS {
         match UnixStream::connect(socket_path) {
             Ok(mut stream) => {
                 stream
@@ -353,7 +357,8 @@ fn send_message(socket_path: &Path, message: &Message) -> Result<(), String> {
                     .map_err(|_| "single_instance_forward_failed".to_string())?;
                 return Ok(());
             }
-            Err(_) => thread::sleep(Duration::from_millis(50)),
+            Err(_) if attempt + 1 < FORWARD_RETRY_ATTEMPTS => thread::sleep(FORWARD_RETRY_DELAY),
+            Err(_) => break,
         }
     }
     Err("single_instance_primary_unreachable".to_string())
@@ -658,6 +663,29 @@ mod tests {
                 "unregistered route: {route}"
             );
         }
+    }
+
+    #[test]
+    fn forwards_while_primary_listener_finishes_starting() {
+        let directory = temp_directory();
+        let (_, socket_path) = paths(&directory);
+        let listener_thread = {
+            let socket_path = socket_path.clone();
+            thread::spawn(move || {
+                // The primary acquires its lock before the listener thread is
+                // ready during normal desktop startup.
+                thread::sleep(Duration::from_millis(650));
+                let listener = UnixListener::bind(&socket_path).unwrap();
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut bytes = Vec::new();
+                stream.read_to_end(&mut bytes).unwrap();
+                assert_eq!(parse_frame(&bytes).unwrap(), Message::Focus);
+            })
+        };
+
+        send_message(&socket_path, &Message::Focus).unwrap();
+        listener_thread.join().unwrap();
+        cleanup(&directory);
     }
 
     #[test]
