@@ -243,22 +243,33 @@ export async function buildDaemonActivityHistoryExport(
 
 const ACTIVITY_EXPORT_ID_MAX_CHARS = 512;
 const ACTIVITY_EXPORT_TEXT_MAX_CHARS = 4_096;
+const ACTIVITY_SESSION_BODY_MAX_BYTES = 65_536;
 const ACTIVITY_EXPORT_JSON_MAX_BYTES = ACTIVITY_HISTORY_EXPORT_MAX_BYTES + 1_048_576;
 
-function boundedExportText(value: unknown, maxChars = ACTIVITY_EXPORT_TEXT_MAX_CHARS): string | null {
+function boundedExportText(
+  value: unknown,
+  maxChars = ACTIVITY_EXPORT_TEXT_MAX_CHARS,
+  allowFormattingWhitespace = false
+): string | null {
   if (typeof value !== 'string') return null;
   const normalized = value.normalize('NFKC');
   if (!normalized || normalized.length > maxChars) return null;
   if ([...normalized].some((character) => {
     const code = character.charCodeAt(0);
+    if (code === 0x09 || code === 0x0a || code === 0x0d) {
+      return !allowFormattingWhitespace;
+    }
     return code < 0x20 || code === 0x7f;
   })) return null;
   return normalized;
 }
 
-function boundedExportOptionalText(value: unknown, maxChars = ACTIVITY_EXPORT_TEXT_MAX_CHARS): string | undefined {
+function boundedExportOptionalText(
+  value: unknown,
+  maxChars = ACTIVITY_EXPORT_TEXT_MAX_CHARS
+): string | undefined | null {
   if (value === undefined) return undefined;
-  return boundedExportText(value, maxChars) ?? undefined;
+  return boundedExportText(value, maxChars);
 }
 
 /**
@@ -308,6 +319,7 @@ export function parseActivityHistoryExport(serialized: string): ActivityExportPa
     historyLimit === null ||
     historyLimit < 1 ||
     historyLimit > ACTIVITY_HISTORY_EXPORT_LIMIT ||
+    loadedCount > historyLimit ||
     !Array.isArray(rawSessions) ||
     rawSessions.length !== loadedCount
   ) {
@@ -331,7 +343,7 @@ export function parseActivityHistoryExport(serialized: string): ActivityExportPa
     const providerSessionID = boundedExportOptionalText(row.providerSessionID, ACTIVITY_EXPORT_ID_MAX_CHARS);
     const runID = boundedExportOptionalText(row.runID, ACTIVITY_EXPORT_ID_MAX_CHARS);
     const projectName = boundedExportOptionalText(row.projectName);
-    const bodyMD = boundedExportText(row.bodyMD, ACTIVITY_HISTORY_EXPORT_MAX_BYTES);
+    const bodyMD = boundedExportText(row.bodyMD, ACTIVITY_SESSION_BODY_MAX_BYTES, true);
     const tokens = typeof row.tokens === 'number' && Number.isFinite(row.tokens) ? row.tokens : null;
     const costUsd = typeof row.costUsd === 'number' && Number.isFinite(row.costUsd) ? row.costUsd : null;
     if (
@@ -342,6 +354,9 @@ export function parseActivityHistoryExport(serialized: string): ActivityExportPa
       !title ||
       !sourceID ||
       !bodyMD ||
+      providerSessionID === null ||
+      runID === null ||
+      projectName === null ||
       tokens === null ||
       costUsd === null
     ) {

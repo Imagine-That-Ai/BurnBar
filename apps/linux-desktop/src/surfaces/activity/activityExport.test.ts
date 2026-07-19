@@ -142,7 +142,11 @@ describe('activity export', () => {
         nextCursor: null,
         complete: true
       }),
-      sessionReplay: async () => ({ kind: 'native', briefingMD: 'stored body', briefingTruncated: false })
+      sessionReplay: async () => ({
+        kind: 'native',
+        briefingMD: '# Stored body\n\nA second paragraph.',
+        briefingTruncated: false
+      })
     }, '2026-07-13T14:00:00Z');
     expect(built.kind).toBe('available');
     if (built.kind !== 'available') return;
@@ -151,6 +155,7 @@ describe('activity export', () => {
     expect(parsed.kind).toBe('valid');
     if (parsed.kind !== 'valid') return;
     expect(parsed.document.sessions[0]).toMatchObject({ sourceID, providerSessionID: 'session-round-trip', runID: 'run-round-trip' });
+    expect(parsed.document.sessions[0]?.bodyMD).toContain('\n\nA second paragraph.');
 
     const resume = vi.fn(async (sessionID: string) => ({ kind: 'spawned', pid: 7, briefingTruncated: false, note: sessionID }));
     const result = await resumeActivityHistoryExportSession(parsed.document, sourceID, { sessionResume: resume });
