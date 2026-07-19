@@ -32,6 +32,12 @@ Neither slice changes the strict **0/40 product** or **0/7 environment**
 certification state; installed Linux and live cross-device receipts remain the
 next gate. The complete Linux desktop regression run at this head passed **82
 files / 745 tests**, with TypeScript and the production bundle verifier green.
+The same candidate also carries `c095761b07` (first-party release-path checks
+for signed feed URLs, 19 Rust tests), `50a0684e75` (fail-closed onboarding
+symlink protection), and `a5522bfc54` (bounded JSON history import/resume with
+duplicate identity checks and 27 focused activity tests). These source slices
+improve the implementation baseline but do not create installed Linux,
+production, or cross-device certification receipts.
 
 ### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 

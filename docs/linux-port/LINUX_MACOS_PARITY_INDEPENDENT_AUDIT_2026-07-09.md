@@ -36,6 +36,15 @@ The current Linux desktop regression run at this candidate head passed **82
 files / 745 tests**; the TypeScript check and production bundle verifier also
 passed.
 
+Additional source hardening is now on the candidate head: `c095761b07` binds
+signed update-feed artifact and signature URLs to first-party release paths
+(19 Rust update-feed tests passed); `50a0684e75` rejects symlinked onboarding
+state files and support directories before persistence; and `a5522bfc54`
+adds bounded, duplicate-identity-checked JSON history import/resume through
+the daemon, with **27 focused activity tests** and TypeScript passing. The
+history importer preserves normal multi-line Markdown bodies. These changes
+remain non-certifying until installed Linux and live production receipts exist.
+
 ## Execution Status — 2026-07-18
 
 The audit remains the source of truth for the parity claim. The current Linux
@@ -1488,7 +1497,9 @@ scan, cloud authentication, portal permission readback, tray host verification,
 update-channel verification, chat-engine selection, and first-data confirmation
 are still explicit optional acknowledgements or separate workflows. Installed
 Ubuntu/Fedora keyboard, screen-reader, restart, denial, and repair evidence also
-remains required.
+remains required. The daemon now also fails closed when the onboarding state
+file or support directory is a symlink, including dangling links, preserving
+the intended `0700`/`0600` ownership boundary (`50a0684e75`).
 
 - **Difference:** macOS onboarding connects providers, scans, requests system
   permissions, configures chat, and gates completion. Linux advances local state
@@ -1503,7 +1514,9 @@ remains required.
 - **Priority:** **High**.
 - **Implementation notes:** persist daemon-owned progress, not browser-local
   assertions; support resume, rollback, diagnostics, distro-specific copy, and
-  explicit optional skips; link failures directly to repair actions.
+  explicit optional skips; link failures directly to repair actions. State-path
+  symlinks are rejected before read/write so onboarding cannot escape its
+  daemon-owned support directory.
 - **QA verification:** clean-user journeys on Ubuntu/Fedora; missing daemon,
   locked keyring, no provider, offline auth, portal denial, icon-only tray,
   partial completion, app restart, upgrade migration, screen reader, and keyboard.
@@ -1572,6 +1585,9 @@ remains required.
 - **Implementation notes:** preserve exact source/session/project IDs; support
   local/cloud conflict and missing-body recovery; make review decisions
   idempotent and auditable; never infer transcript content from usage metadata.
+  Complete daemon-history JSON exports now retain `sourceID`/`runID`, reject
+  duplicate or paged identities, enforce bounded metadata/transcript sizes, and
+  resume only the selected source through the live daemon (`a5522bfc54`).
 - **QA verification:** exact replay, full-text search, source filters, export,
   resume, large pagination, missing/corrupt body, cloud conflict; pending memory
   create/approve/reject/reload/audit/forget/chat retrieval across devices.
@@ -1718,6 +1734,8 @@ requires both supported architectures, rejects downgrade/replay and untrusted
 URLs, and exposes only typed validated state to the renderer. The installed
 `.deb` route was exercised through AT-SPI and correctly rendered **Update
 metadata rejected** against the currently invalid public endpoint. The
+feed validator now also requires first-party release paths for both artifact and
+detached-signature URLs, not only an allowlisted host (`c095761b07`). The
 package-manager-owned install/rollback lifecycle, signed public feed,
 two-architecture artifacts, and prior-version upgrade/rollback evidence remain
 open; this row is therefore still **Partial**, not closed.
