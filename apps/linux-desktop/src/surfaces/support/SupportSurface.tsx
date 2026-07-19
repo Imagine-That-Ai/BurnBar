@@ -87,15 +87,23 @@ export function SupportSurface() {
           </tr>
         </thead>
         <tbody>
-          {grouped.map((row) => (
-            <tr key={row.name}>
-              <td>{row.name}</td>
-              <td>{row.latest.toFixed(1)}</td>
-              <td>
-                <Sparkline values={row.values} label={`${row.name} perf trend`} />
+          {grouped.length === 0 ? (
+            <tr>
+              <td className="p09-perf-empty" colSpan={3} role="status">
+                No performance samples yet. Use the app normally and this table will populate automatically.
               </td>
             </tr>
-          ))}
+          ) : (
+            grouped.map((row) => (
+              <tr key={row.name}>
+                <td>{row.name}</td>
+                <td>{row.latest.toFixed(1)}</td>
+                <td>
+                  <Sparkline values={row.values} label={`${row.name} perf trend`} />
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
       {trayDegraded ? <p className="muted">Tray degraded: use window reopen from launcher.</p> : null}

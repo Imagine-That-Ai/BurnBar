@@ -264,6 +264,12 @@
   vertical-align: middle;
 }
 
+.p09-perf-empty {
+  padding: var(--space-4) var(--space-2) !important;
+  color: var(--color-text-mute);
+  text-align: center !important;
+}
+
 @media (max-width: 900px) {
   .p09-diagnostic-summary__facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

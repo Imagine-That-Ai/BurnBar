@@ -450,6 +450,17 @@ describe('P09 updates and support', () => {
     expect(localStorage.getItem('openburnbar.linux.daemonFixture')).toBe('1');
   });
 
+  it('shows an accessible empty state before any performance samples exist', () => {
+    const { container } = render(<SupportSurface />);
+    const table = container.querySelector('.p09-perf-table');
+    expect(table).not.toBeNull();
+    const empty = table?.querySelector('.p09-perf-empty');
+    expect(empty).not.toBeNull();
+    expect(empty?.getAttribute('role')).toBe('status');
+    expect(empty?.getAttribute('colspan')).toBe('3');
+    expect(empty?.textContent).toMatch(/No performance samples yet/);
+  });
+
   it('shows fixture provenance and disables copying metadata-only output', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
