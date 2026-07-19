@@ -462,24 +462,26 @@ function PrivacyExportControl({ fixtureMode }: { fixtureMode: boolean }) {
           onChange={(event) => setPassphrase(event.currentTarget.value)}
         />
       </label>
-      {exportState.status === 'success' && exportState.result ? (
+      {exportState.status === 'success' ? (
         <>
           <Banner tone="ok" role="status">{exportState.message ?? 'Encrypted local privacy export written.'}</Banner>
-          <div className="actions" aria-label="Encrypted local export receipt">
-            <p className="muted" role="status">
-              Exported {exportState.result.stores.map((store) => PRIVACY_STORE_LABELS[store]).join(', ')} ·{' '}
-              {exportState.result.byteCount.toLocaleString()} bytes · format v{exportState.result.formatVersion}.
-            </p>
-            <p className="system-path-row">
-              <strong>Destination:</strong>
-              <code>{exportState.result.destinationPath}</code>
-              <CopyPathButton path={exportState.result.destinationPath} label="Copy export path" />
-            </p>
-            <p className="muted">
-              Keep the passphrase separate from this owner-only bundle. The export contains only the selected local
-              stores; transcripts, credentials, and account data are not included.
-            </p>
-          </div>
+          {exportState.result ? (
+            <div className="actions" aria-label="Encrypted local export receipt">
+              <p className="muted" role="status">
+                Exported {exportState.result.stores.map((store) => PRIVACY_STORE_LABELS[store]).join(', ')} ·{' '}
+                {exportState.result.byteCount.toLocaleString()} bytes · format v{exportState.result.formatVersion}.
+              </p>
+              <p className="system-path-row">
+                <strong>Destination:</strong>
+                <code>{exportState.result.destinationPath}</code>
+                <CopyPathButton path={exportState.result.destinationPath} label="Copy export path" />
+              </p>
+              <p className="muted">
+                Keep the passphrase separate from this owner-only bundle. The export contains only the selected local
+                stores; transcripts, credentials, and account data are not included.
+              </p>
+            </div>
+          ) : null}
         </>
       ) : null}
       {exportState.status === 'error' ? <Banner tone="degraded" role="alert">{exportState.message}</Banner> : null}
