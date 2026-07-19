@@ -106,6 +106,7 @@ MIGRATIONS=(
   "v53_memory_forget_outbox|atomic|unapplied-only|backup-restore|User-scoped memory forget replication outbox"
   "v54_provider_quota_snapshots|atomic|unapplied-only|backup-restore|Durable provider quota snapshot cache"
   "v55_search_chunks_fts_rowid|atomic|unapplied-only|backup-restore|Backfill search_chunks ftsRowid and sweep orphaned FTS rows for rowid-targeted deletes"
+  "v56_parser_checkpoint_file_manifest|atomic|unapplied-only|backup-restore|Normalized parser checkpoint file-identity manifest"
 )
 
 # ── Commands ─────────────────────────────────────────────────────────────

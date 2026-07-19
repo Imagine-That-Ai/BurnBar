@@ -377,6 +377,15 @@
           ]
         },
         {
+          "source": "/domain-core-deployment-identity.json",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-store, max-age=0"
+            }
+          ]
+        },
+        {
           "source": "**/_next/static/**",
           "headers": [
             {

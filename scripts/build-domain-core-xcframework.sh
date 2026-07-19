@@ -281,6 +281,8 @@ log "assembling xcframework"
 xcodebuild -create-xcframework \
   "${build_xcframework_args[@]}" \
   -output "${XCFRAMEWORK}"
+python3 "${ROOT_DIR}/scripts/lib/canonicalize-xcframework-plist.py" \
+  "${XCFRAMEWORK}/Info.plist"
 printf '%s\n' "${SOURCE_FINGERPRINT}" > "${XCFRAMEWORK}/${FINGERPRINT_NAME}"
 
 log "DONE: ${XCFRAMEWORK}"

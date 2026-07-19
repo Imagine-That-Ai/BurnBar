@@ -24,7 +24,9 @@ HERMES_GATEWAY_PYTESTS=(
 )
 
 HERMES_AGENT_CHECKOUT="${HERMES_AGENT_CHECKOUT:-$HOME/.hermes/hermes-agent}"
-HERMES_ADAPTER="${HERMES_AGENT_CHECKOUT}/plugins/platforms/burnbar/adapter.py"
+HERMES_PLUGIN_SOURCE="$ROOT/tools/hermes-platform-burnbar"
+HERMES_PLUGIN_TARGET="${HERMES_AGENT_CHECKOUT}/plugins/platforms/burnbar"
+HERMES_ADAPTER="${HERMES_PLUGIN_TARGET}/adapter.py"
 
 run_step() {
   local label="$1"
@@ -79,11 +81,42 @@ run_step "Schema sync drift, hand mirror, and budget gate" ./tools/schema-sync/c
 run_step "Gateway vector mirror diff" assert_gateway_vector_mirrors
 
 if [[ -f "$HERMES_ADAPTER" ]]; then
-  run_step "BurnBar adapter mirror diff" \
-    diff -q "$ROOT/tools/hermes-platform-burnbar/adapter.py" "$HERMES_ADAPTER"
   if [[ "${HERMES_GATEWAY_OVERLAY_ADAPTER:-0}" == "1" ]]; then
-    run_step "Overlay BurnBar adapter into Hermes checkout for external tests" \
-      cp "$ROOT/tools/hermes-platform-burnbar/adapter.py" "$HERMES_ADAPTER"
+    run_step "Overlay complete BurnBar plugin into Hermes checkout for external tests" \
+      python3 - "$HERMES_PLUGIN_SOURCE" "$HERMES_PLUGIN_TARGET" <<'PY'
+import shutil
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1])
+target = Path(sys.argv[2])
+target.mkdir(parents=True, exist_ok=True)
+for name in ("adapter.py", "domain_core_hermes.py", "__init__.py", "plugin.yaml", "README.md", "smoke_local.py"):
+    shutil.copy2(source / name, target / name)
+for name in ("legacy", "vendor"):
+    shutil.copytree(
+        source / name,
+        target / name,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+PY
+  else
+    run_step "BurnBar adapter mirror diff" \
+      diff -q "$HERMES_PLUGIN_SOURCE/adapter.py" "$HERMES_ADAPTER"
+    for relative in \
+      domain_core_hermes.py \
+      legacy/__init__.py \
+      legacy/hermes_ratchet_legacy.py \
+      vendor/openburnbar-domain-core-python/openburnbar_domain_ffi.py \
+      vendor/openburnbar-domain-core-python/openburnbar-domain-core-source.sha256; do
+      if [[ ! -f "$HERMES_PLUGIN_TARGET/$relative" ]]; then
+        quarantined_external_hermes_gate "missing BurnBar plugin mirror ${relative}"
+        continue
+      fi
+      run_step "BurnBar plugin mirror diff: ${relative}" \
+        diff -q "$HERMES_PLUGIN_SOURCE/$relative" "$HERMES_PLUGIN_TARGET/$relative"
+    done
   fi
 else
   quarantined_external_hermes_gate "missing adapter mirror at ${HERMES_ADAPTER}"

@@ -66,6 +66,44 @@ enum OpenBurnBarRuntime {
         #endif
     }
 
+    /// Limits the window-visibility control channel to the DEBUG real-process
+    /// performance harness. Production launches never register the channel.
+    static var isPerformanceGateLaunch: Bool {
+        isPerformanceGateLaunch(
+            environment: ProcessInfo.processInfo.environment,
+            arguments: ProcessInfo.processInfo.arguments
+        )
+    }
+
+    static func isPerformanceGateLaunch(
+        environment: [String: String],
+        arguments: [String]
+    ) -> Bool {
+        #if DEBUG
+        environment["OPENBURNBAR_PERFORMANCE_GATE"] == "1"
+            && isUITestLaunch(environment: environment, arguments: arguments)
+        #else
+        false
+        #endif
+    }
+
+    /// Shared contract for the DEBUG performance harness. The native helper
+    /// cannot import the app module, so its notification string must match this
+    /// value exactly.
+    static let performanceGateVisibilityNotification = Notification.Name(
+        "com.openburnbar.performance-gate.window-visibility"
+    )
+
+    static var currentPerformanceGateNotificationObject: String {
+        performanceGateNotificationObject(
+            processIdentifier: ProcessInfo.processInfo.processIdentifier
+        )
+    }
+
+    static func performanceGateNotificationObject(processIdentifier: Int32) -> String {
+        String(processIdentifier)
+    }
+
     static var shouldOpenSettingsForUITest: Bool {
         ProcessInfo.processInfo.environment["OPENBURNBAR_UITEST_OPEN_SETTINGS"] == "1"
     }
@@ -171,6 +209,7 @@ struct OpenBurnBarApp: App {
     @State var didOpenUITestDashboard = false
 
     init() {
+        Self.runDomainCoreReleaseIdentityModeIfRequested()
         StartupProfiler.event("app_init_start")
         if OpenBurnBarRuntime.shouldUseTestStubScene {
             // XCTest host fast path. The developer's real `OpenBurnBar` support
@@ -199,6 +238,9 @@ struct OpenBurnBarApp: App {
         StartupProfiler.interval("configure_firebase") {
             Self.configureFirebaseIfAvailable(accountManager: .shared)
         }
+        StartupProfiler.interval("domain_core_shadow_evidence_init") {
+            ProviderQuotaMacPlatform.installDomainCoreShadowEvidenceRecorder()
+        }
         StartupProfiler.interval("configure_sentry") {
             Self.configureSentryIfAvailable()
         }
@@ -213,6 +255,27 @@ struct OpenBurnBarApp: App {
             Self.makeStartupState()
         })
         StartupProfiler.event("app_init_end")
+    }
+
+    private static func runDomainCoreReleaseIdentityModeIfRequested() {
+        // The irreversible side effects (stderr writes + process exit) live here; the
+        // deterministic argument/env validation and the reporter dispatch are resolved
+        // by the testable `domainCoreReleaseIdentityRequest` helper, which mirrors this
+        // exact policy without touching the process lifecycle.
+        switch domainCoreReleaseIdentityRequest(executableURL: Bundle.main.executableURL) {
+        case .notRequested:
+            return
+        case .invalidInvocation:
+            FileHandle.standardError.write(Data("invalid domain-core release identity invocation\n".utf8))
+            exit(EXIT_FAILURE)
+        case .success:
+            exit(EXIT_SUCCESS)
+        case .failure(let errorDescription):
+            FileHandle.standardError.write(
+                Data("domain-core release identity failed: \(errorDescription)\n".utf8)
+            )
+            exit(EXIT_FAILURE)
+        }
     }
 
     private static func seedUITestDefaultsIfNeeded() {

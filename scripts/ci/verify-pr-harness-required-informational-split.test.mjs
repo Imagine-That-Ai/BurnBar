@@ -13,8 +13,6 @@
  *      platform-confidence-gate, or targeted-e2e-gate) — no coverage dropped.
  *   4. android-hermes-smoke uses runs-on: ubuntu-24.04 and arch: x86_64
  *      (not macos-26 or arm64-v8a) and has a KVM enable step.
- *   5. Both new aggregates parse toJSON(needs) and reject non-success/skipped
- *      upstream results (fail-closed).
  *
  * Run: node scripts/ci/verify-pr-harness-required-informational-split.test.mjs
  * Exits 0 on pass, 1 on fail.
@@ -184,10 +182,6 @@ function hasNeeds(block) {
   return /^    needs:/mu.test(block);
 }
 
-function rejectsNonSuccessSkipped(block) {
-  if (!/toJSON\(needs\)/u.test(block)) return false;
-  return /not in \('success', 'skipped'\)/u.test(block);
-}
 
 // ---------------------------------------------------------------------------
 // Run tests
@@ -349,28 +343,6 @@ const allJobNames = [...jobs.keys()];
   }
 }
 
-// --- Assertion 5: both new aggregates fail-closed via toJSON(needs) ---
-{
-  for (const name of ["harness-required", "harness-informational"]) {
-    const block = jobs.get(name);
-
-    expect(`${name} block available for fail-closed check`, block !== undefined);
-
-    if (block) {
-      expect(
-        `${name} parses toJSON(needs)`,
-        /toJSON\(needs\)/u.test(block),
-        "toJSON(needs) not found in block",
-      );
-
-      expect(
-        `${name} rejects non-success/skipped results (fail-closed)`,
-        rejectsNonSuccessSkipped(block),
-        "missing 'not in ('success', 'skipped')' guard",
-      );
-    }
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Summary

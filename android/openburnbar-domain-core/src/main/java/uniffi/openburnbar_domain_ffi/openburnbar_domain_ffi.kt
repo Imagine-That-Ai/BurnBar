@@ -811,6 +811,26 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -864,6 +884,12 @@ internal interface UniffiLib : Library {
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_normalize_recovery_key(`recoveryKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_dedup_hash(`plaintext`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_slug_hmac(`slug`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_project_memory_doc_id(`slug`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_open_vault_key(`combined`: RustBuffer.ByValue,`recoveryKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_verification_hash(`recoveryKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -882,10 +908,14 @@ internal interface UniffiLib : Library {
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_sha256_hex(`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_subscription_doc_id(`agentUri`: RustBuffer.ByValue,`topicId`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_validate_p256_x963_public_key(`publicKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version(uniffi_out_err: UniffiRustCallStatus,
     ): Int
+    fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit(uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_source_fingerprint(uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_domain_core_version(uniffi_out_err: UniffiRustCallStatus,
@@ -908,6 +938,8 @@ internal interface UniffiLib : Library {
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_envelope_aad(`associatedData`: RustBuffer.ByValue,`algorithm`: RustBuffer.ByValue,`sessionId`: RustBuffer.ByValue,`senderDeviceId`: RustBuffer.ByValue,`receiverDeviceId`: RustBuffer.ByValue,`ratchetPublicKeyBase64`: RustBuffer.ByValue,`version`: Long,`previousChainLength`: Long,`messageNumber`: Long,`epoch`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_prekey_shared_secret(`request`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad(`kind`: RustBuffer.ByValue,`arguments`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_hermes_seal_base64(`plaintext`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`aad`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -925,6 +957,14 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_domain_ffi_fn_func_parse_codex_usage_quota(`payload`: RustBuffer.ByValue,`nowUnix`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(`payload`: RustBuffer.ByValue,`userEmail`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed(`text`: RustBuffer.ByValue,`dimensions`: Int,`isQuery`: Byte,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak(`text`: RustBuffer.ByValue,`dimensions`: Int,`isQuery`: Byte,`vaultKey`: RustBuffer.ByValue,`modelVersion`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_pensieve_l2_normalize(`vector`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    fun uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak(`vector`: RustBuffer.ByValue,`vaultKey`: RustBuffer.ByValue,`modelVersion`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     fun uniffi_openburnbar_domain_ffi_fn_func_price_legacy_kimi_wire_event(`buckets`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -1078,6 +1118,12 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_normalize_recovery_key(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_pensieve_dedup_hash(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_pensieve_slug_hmac(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_project_memory_doc_id(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_open_vault_key(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_verification_hash(
@@ -1096,9 +1142,13 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_subscription_doc_id(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_validate_p256_x963_public_key(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_domain_core_candidate_commit(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_domain_core_source_fingerprint(
     ): Short
@@ -1122,6 +1172,8 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad(
     ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_prekey_shared_secret(
+    ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_relay_aad(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_hermes_seal_base64(
@@ -1139,6 +1191,14 @@ internal interface UniffiLib : Library {
     fun uniffi_openburnbar_domain_ffi_checksum_func_parse_codex_usage_quota(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_pensieve_l2_normalize(
+    ): Short
+    fun uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak(
     ): Short
     fun uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event(
     ): Short
@@ -1215,6 +1275,15 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_normalize_recovery_key() != 12469.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_pensieve_dedup_hash() != 17475.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_pensieve_slug_hmac() != 5859.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_project_memory_doc_id() != 38367.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_recovery_open_vault_key() != 36431.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1242,10 +1311,16 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_sha256_hex() != 36487.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_subscription_doc_id() != 46478.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_cloud_vault_validate_p256_x963_public_key() != 27873.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_abi_version() != 60924.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_candidate_commit() != 33892.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_domain_core_source_fingerprint() != 44982.toShort()) {
@@ -1281,6 +1356,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_envelope_aad() != 11546.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_ratchet_prekey_shared_secret() != 50844.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_hermes_relay_aad() != 34735.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1306,6 +1384,18 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_parse_cursor_usage_quota() != 39634.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed() != 45890.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_deterministic_embed_and_cloak() != 19070.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_l2_normalize() != 26005.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_openburnbar_domain_ffi_checksum_func_pensieve_vector_cloak() != 60626.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_openburnbar_domain_ffi_checksum_func_price_legacy_kimi_wire_event() != 28560.toShort()) {
@@ -2121,6 +2211,74 @@ public object FfiConverterTypeCloudVaultSearchResult: FfiConverterRustBuffer<Clo
     override fun write(value: CloudVaultSearchResult, buf: ByteBuffer) {
             FfiConverterTypeCloudVaultSearchOperation.write(value.`operation`, buf)
             FfiConverterSequenceString.write(value.`hashes`, buf)
+    }
+}
+
+
+
+data class HermesRatchetPrekeyRequest (
+    var `dh1`: kotlin.ByteArray,
+    var `dh2`: kotlin.ByteArray,
+    var `dh3`: kotlin.ByteArray,
+    var `uid`: kotlin.String,
+    var `clientId`: kotlin.String,
+    var `initiatorRole`: kotlin.String,
+    var `initiatorIdentityPublicKeyBase64`: kotlin.String,
+    var `responderIdentityPublicKeyBase64`: kotlin.String,
+    var `initiatorSignedPrekeyPublicKeyBase64`: kotlin.String,
+    var `responderSignedPrekeyPublicKeyBase64`: kotlin.String,
+    var `initiatorInitialRatchetPublicKeyBase64`: kotlin.String
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHermesRatchetPrekeyRequest: FfiConverterRustBuffer<HermesRatchetPrekeyRequest> {
+    override fun read(buf: ByteBuffer): HermesRatchetPrekeyRequest {
+        return HermesRatchetPrekeyRequest(
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HermesRatchetPrekeyRequest) = (
+            FfiConverterByteArray.allocationSize(value.`dh1`) +
+            FfiConverterByteArray.allocationSize(value.`dh2`) +
+            FfiConverterByteArray.allocationSize(value.`dh3`) +
+            FfiConverterString.allocationSize(value.`uid`) +
+            FfiConverterString.allocationSize(value.`clientId`) +
+            FfiConverterString.allocationSize(value.`initiatorRole`) +
+            FfiConverterString.allocationSize(value.`initiatorIdentityPublicKeyBase64`) +
+            FfiConverterString.allocationSize(value.`responderIdentityPublicKeyBase64`) +
+            FfiConverterString.allocationSize(value.`initiatorSignedPrekeyPublicKeyBase64`) +
+            FfiConverterString.allocationSize(value.`responderSignedPrekeyPublicKeyBase64`) +
+            FfiConverterString.allocationSize(value.`initiatorInitialRatchetPublicKeyBase64`)
+    )
+
+    override fun write(value: HermesRatchetPrekeyRequest, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`dh1`, buf)
+            FfiConverterByteArray.write(value.`dh2`, buf)
+            FfiConverterByteArray.write(value.`dh3`, buf)
+            FfiConverterString.write(value.`uid`, buf)
+            FfiConverterString.write(value.`clientId`, buf)
+            FfiConverterString.write(value.`initiatorRole`, buf)
+            FfiConverterString.write(value.`initiatorIdentityPublicKeyBase64`, buf)
+            FfiConverterString.write(value.`responderIdentityPublicKeyBase64`, buf)
+            FfiConverterString.write(value.`initiatorSignedPrekeyPublicKeyBase64`, buf)
+            FfiConverterString.write(value.`responderSignedPrekeyPublicKeyBase64`, buf)
+            FfiConverterString.write(value.`initiatorInitialRatchetPublicKeyBase64`, buf)
     }
 }
 
@@ -3075,6 +3233,12 @@ sealed class HermesFfiException: kotlin.Exception() {
             get() = ""
     }
 
+    class InvalidRatchetSharedSecretLength(
+        ) : HermesFfiException() {
+        override val message
+            get() = ""
+    }
+
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<HermesFfiException> {
         override fun lift(error_buf: RustBuffer.ByValue): HermesFfiException = FfiConverterTypeHermesFfiError.lift(error_buf)
@@ -3101,6 +3265,7 @@ public object FfiConverterTypeHermesFfiError : FfiConverterRustBuffer<HermesFfiE
             8 -> HermesFfiException.InvalidAadComponent()
             9 -> HermesFfiException.InputTooLarge()
             10 -> HermesFfiException.InvalidP256PublicKey()
+            11 -> HermesFfiException.InvalidRatchetSharedSecretLength()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -3147,6 +3312,10 @@ public object FfiConverterTypeHermesFfiError : FfiConverterRustBuffer<HermesFfiE
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
+            is HermesFfiException.InvalidRatchetSharedSecretLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
         }
     }
 
@@ -3190,6 +3359,123 @@ public object FfiConverterTypeHermesFfiError : FfiConverterRustBuffer<HermesFfiE
             }
             is HermesFfiException.InvalidP256PublicKey -> {
                 buf.putInt(10)
+                Unit
+            }
+            is HermesFfiException.InvalidRatchetSharedSecretLength -> {
+                buf.putInt(11)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+}
+
+
+
+
+
+sealed class PensieveVectorFfiException: kotlin.Exception() {
+
+    class InvalidKeyLength(
+        ) : PensieveVectorFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidVector(
+        ) : PensieveVectorFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class InvalidModelVersion(
+        ) : PensieveVectorFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class TextTooLarge(
+        ) : PensieveVectorFfiException() {
+        override val message
+            get() = ""
+    }
+
+    class DerivationFailure(
+        ) : PensieveVectorFfiException() {
+        override val message
+            get() = ""
+    }
+
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<PensieveVectorFfiException> {
+        override fun lift(error_buf: RustBuffer.ByValue): PensieveVectorFfiException = FfiConverterTypePensieveVectorFfiError.lift(error_buf)
+    }
+
+
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePensieveVectorFfiError : FfiConverterRustBuffer<PensieveVectorFfiException> {
+    override fun read(buf: ByteBuffer): PensieveVectorFfiException {
+
+
+        return when(buf.getInt()) {
+            1 -> PensieveVectorFfiException.InvalidKeyLength()
+            2 -> PensieveVectorFfiException.InvalidVector()
+            3 -> PensieveVectorFfiException.InvalidModelVersion()
+            4 -> PensieveVectorFfiException.TextTooLarge()
+            5 -> PensieveVectorFfiException.DerivationFailure()
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: PensieveVectorFfiException): ULong {
+        return when(value) {
+            is PensieveVectorFfiException.InvalidKeyLength -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is PensieveVectorFfiException.InvalidVector -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is PensieveVectorFfiException.InvalidModelVersion -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is PensieveVectorFfiException.TextTooLarge -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is PensieveVectorFfiException.DerivationFailure -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+        }
+    }
+
+    override fun write(value: PensieveVectorFfiException, buf: ByteBuffer) {
+        when(value) {
+            is PensieveVectorFfiException.InvalidKeyLength -> {
+                buf.putInt(1)
+                Unit
+            }
+            is PensieveVectorFfiException.InvalidVector -> {
+                buf.putInt(2)
+                Unit
+            }
+            is PensieveVectorFfiException.InvalidModelVersion -> {
+                buf.putInt(3)
+                Unit
+            }
+            is PensieveVectorFfiException.TextTooLarge -> {
+                buf.putInt(4)
+                Unit
+            }
+            is PensieveVectorFfiException.DerivationFailure -> {
+                buf.putInt(5)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -3582,6 +3868,34 @@ public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?>
 /**
  * @suppress
  */
+public object FfiConverterSequenceDouble: FfiConverterRustBuffer<List<kotlin.Double>> {
+    override fun read(buf: ByteBuffer): List<kotlin.Double> {
+        val len = buf.getInt()
+        return List<kotlin.Double>(len) {
+            FfiConverterDouble.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.Double>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterDouble.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.Double>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterDouble.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
     override fun read(buf: ByteBuffer): List<kotlin.String> {
         val len = buf.getInt()
@@ -3933,6 +4247,36 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     }
 
 
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultPensieveDedupHash`(`plaintext`: kotlin.String, `key`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_dedup_hash(
+        FfiConverterString.lower(`plaintext`),FfiConverterByteArray.lower(`key`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultPensieveSlugHmac`(`slug`: kotlin.String, `key`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_slug_hmac(
+        FfiConverterString.lower(`slug`),FfiConverterByteArray.lower(`key`),_status)
+}
+    )
+    }
+
+
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultProjectMemoryDocId`(`slug`: kotlin.String, `key`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_project_memory_doc_id(
+        FfiConverterString.lower(`slug`),FfiConverterByteArray.lower(`key`),_status)
+}
+    )
+    }
+
+
     @Throws(CloudVaultFfiException::class) fun `cloudVaultRecoveryOpenVaultKey`(`combined`: kotlin.ByteArray, `recoveryKey`: kotlin.String): kotlin.ByteArray {
             return FfiConverterByteArray.lift(
     uniffiRustCallWithError(CloudVaultFfiException) { _status ->
@@ -4023,6 +4367,16 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     }
 
 
+    @Throws(CloudVaultFfiException::class) fun `cloudVaultSubscriptionDocId`(`agentUri`: kotlin.String, `topicId`: kotlin.String, `key`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(CloudVaultFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_subscription_doc_id(
+        FfiConverterString.lower(`agentUri`),FfiConverterString.lower(`topicId`),FfiConverterByteArray.lower(`key`),_status)
+}
+    )
+    }
+
+
     @Throws(CloudVaultFfiException::class) fun `cloudVaultValidateP256X963PublicKey`(`publicKey`: kotlin.ByteArray)
         =
     uniffiRustCallWithError(CloudVaultFfiException) { _status ->
@@ -4035,6 +4389,15 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
             return FfiConverterUInt.lift(
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_domain_core_abi_version(
+        _status)
+}
+    )
+    }
+
+ fun `domainCoreCandidateCommit`(): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_domain_core_candidate_commit(
         _status)
 }
     )
@@ -4149,6 +4512,16 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     }
 
 
+    @Throws(HermesFfiException::class) fun `hermesRatchetPrekeySharedSecret`(`request`: HermesRatchetPrekeyRequest): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(HermesFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_prekey_shared_secret(
+        FfiConverterTypeHermesRatchetPrekeyRequest.lower(`request`),_status)
+}
+    )
+    }
+
+
     @Throws(HermesFfiException::class) fun `hermesRelayAad`(`kind`: HermesAadKind, `arguments`: List<kotlin.String>): kotlin.ByteArray {
             return FfiConverterByteArray.lift(
     uniffiRustCallWithError(HermesFfiException) { _status ->
@@ -4229,6 +4602,46 @@ public object FfiConverterSequenceTypeQuotaBucket: FfiConverterRustBuffer<List<Q
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_parse_cursor_usage_quota(
         FfiConverterByteArray.lower(`payload`),FfiConverterOptionalString.lower(`userEmail`),_status)
+}
+    )
+    }
+
+
+    @Throws(PensieveVectorFfiException::class) fun `pensieveDeterministicEmbed`(`text`: kotlin.String, `dimensions`: kotlin.UInt, `isQuery`: kotlin.Boolean): List<kotlin.Double> {
+            return FfiConverterSequenceDouble.lift(
+    uniffiRustCallWithError(PensieveVectorFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed(
+        FfiConverterString.lower(`text`),FfiConverterUInt.lower(`dimensions`),FfiConverterBoolean.lower(`isQuery`),_status)
+}
+    )
+    }
+
+
+    @Throws(PensieveVectorFfiException::class) fun `pensieveDeterministicEmbedAndCloak`(`text`: kotlin.String, `dimensions`: kotlin.UInt, `isQuery`: kotlin.Boolean, `vaultKey`: kotlin.ByteArray, `modelVersion`: kotlin.String): List<kotlin.Double> {
+            return FfiConverterSequenceDouble.lift(
+    uniffiRustCallWithError(PensieveVectorFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak(
+        FfiConverterString.lower(`text`),FfiConverterUInt.lower(`dimensions`),FfiConverterBoolean.lower(`isQuery`),FfiConverterByteArray.lower(`vaultKey`),FfiConverterString.lower(`modelVersion`),_status)
+}
+    )
+    }
+
+
+    @Throws(PensieveVectorFfiException::class) fun `pensieveL2Normalize`(`vector`: List<kotlin.Double>): List<kotlin.Double> {
+            return FfiConverterSequenceDouble.lift(
+    uniffiRustCallWithError(PensieveVectorFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_pensieve_l2_normalize(
+        FfiConverterSequenceDouble.lower(`vector`),_status)
+}
+    )
+    }
+
+
+    @Throws(PensieveVectorFfiException::class) fun `pensieveVectorCloak`(`vector`: List<kotlin.Double>, `vaultKey`: kotlin.ByteArray, `modelVersion`: kotlin.String): List<kotlin.Double> {
+            return FfiConverterSequenceDouble.lift(
+    uniffiRustCallWithError(PensieveVectorFfiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak(
+        FfiConverterSequenceDouble.lower(`vector`),FfiConverterByteArray.lower(`vaultKey`),FfiConverterString.lower(`modelVersion`),_status)
 }
     )
     }

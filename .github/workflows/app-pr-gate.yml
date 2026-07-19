@@ -9,9 +9,9 @@ name: App PR Gate (Swift)
 # builds + tests the app target on every PR so an app-target compile error or
 # app-test regression cannot merge again.
 #
-# Mirrors daemon-pr-gate.yml (the proven focused-Swift-lane precedent): always
-# runs on non-draft PRs to main, so it can be a required status check directly
-# (no skipped-required-check aggregate needed).
+# The exact required context is emitted by the always-running aggregate below.
+# The aggregate accepts only successful AgentLens and mobile prerequisite jobs;
+# a missing, skipped, cancelled, or failed prerequisite therefore blocks merge.
 #
 # mobile-build-gate (added 2026-07-07): the same gap existed for the iOS app —
 # PR CI compiled macOS + SwiftPM but never the OpenBurnBarMobile target, so
@@ -39,7 +39,7 @@ concurrency:
 
 jobs:
   app-build-test:
-    name: App build + test (AgentLens)
+    name: AgentLens Rust + Swift build/test prerequisites
     runs-on: macos-26
     # Cold cache + libsignal FFI + full xcodebuild of the app target on a hosted
     # runner needs headroom; observed cold macos-26 runs can approach 120
@@ -79,12 +79,46 @@ jobs:
           fi
           protoc --version
 
-      - name: macOS idle/occluded CPU regression gate (P-PERF-3)
-        # Behavioral rAF pause tripwire: loads the real kernel-backdrop.js
-        # bundle in a mock DOM+rAF harness and proves occlusion cancels the
-        # animation loop. Observing-first (non-required until promoted).
-        continue-on-error: true
+      - name: macOS rAF pause prerequisite (P-PERF-3)
+        # Fast deterministic tripwire and real-gate self-tests. This keeps the
+        # shipped bundle behavior check ahead of the slower app build/measurement.
         run: node --test scripts/ci/macos-idle-occlusion-gate.test.mjs
+
+      - name: Prepare macOS libsignal FFI for CPU gate
+        run: >-
+          SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin
+          ./scripts/lib/prepare-signal-ffi-xcframework.sh
+
+      - name: Build AgentLens app for real-process CPU gate
+        run: |
+          set -euo pipefail
+          PERF_DERIVED_DATA="$GITHUB_WORKSPACE/.derived-data/macos-idle-occlusion-gate"
+          rm -rf "$PERF_DERIVED_DATA"
+          FIREBASE_SOURCE_FIRESTORE=1 xcodebuild build \
+            -project OpenBurnBar.xcodeproj \
+            -scheme OpenBurnBar \
+            -configuration Debug \
+            -destination "platform=macOS,arch=arm64" \
+            -clonedSourcePackagesDirPath .spm-cache-new \
+            -derivedDataPath "$PERF_DERIVED_DATA" \
+            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+            SWIFT_COMPILATION_MODE=singlefile \
+            SWIFT_ENABLE_BATCH_MODE=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+
+      - name: Enforce real macOS idle/occluded CPU budget (P-PERF-3)
+        run: >-
+          node scripts/ci/macos-idle-occlusion-gate.mjs
+          --output "$RUNNER_TEMP/macos-idle-occlusion-evidence/result.json"
+
+      - name: Upload macOS idle/occlusion CPU evidence
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: macos-idle-occlusion-cpu-evidence
+          path: ${{ runner.temp }}/macos-idle-occlusion-evidence/result.json
+          if-no-files-found: error
 
       - name: Validate app test classifier
         run: bash scripts/test-openburnbar-app-classifier.sh
@@ -235,3 +269,27 @@ jobs:
 
       - name: Guard against zero-test false greens
         run: ./scripts/ci/check-executed-test-count.sh "$RUNNER_TEMP/Mobile_TestResults.xcresult"
+
+  app-pr-gate:
+    name: App build + test (AgentLens)
+    needs:
+      - app-build-test
+      - mobile-build-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    steps:
+      - name: Require every Rust and Swift prerequisite job
+        env:
+          AGENTLENS_RESULT: ${{ needs.app-build-test.result }}
+          MOBILE_RESULT: ${{ needs.mobile-build-gate.result }}
+        run: |
+          set -euo pipefail
+          printf 'app-build-test=%s\nmobile-build-gate=%s\n' \
+            "$AGENTLENS_RESULT" "$MOBILE_RESULT"
+          for result in "$AGENTLENS_RESULT" "$MOBILE_RESULT"; do
+            if [[ "$result" != "success" ]]; then
+              echo "::error::App Rust/Swift prerequisite did not succeed (result=${result:-missing})."
+              exit 1
+            fi
+          done

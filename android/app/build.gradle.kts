@@ -60,6 +60,9 @@ val openBurnBarUseDebugAppCheck =
 val openBurnBarDebugAppCheckToken =
     providers.environmentVariable("OPENBURNBAR_APP_CHECK_DEBUG_TOKEN")
         .orElse("")
+val openBurnBarAppVersionName =
+    providers.gradleProperty("openBurnBarAppVersionName")
+        .orElse("1.0.30")
 fun Any?.asJsonMap(): Map<*, *> = this as? Map<*, *> ?: emptyMap<Any, Any>()
 fun Any?.asJsonList(): List<*> = this as? List<*> ?: emptyList<Any>()
 
@@ -75,17 +78,58 @@ val domainCoreAuthority = domainCoreProfile["artifactAuthority"] as? String ?: e
 val domainCoreDistribution = domainCoreProfile["distribution"] as? String ?: error("Missing domain-core distribution")
 val domainCoreChannel = domainCoreProfile["rolloutChannel"] as? String ?: ""
 val domainCoreEvidenceEnabled = domainCoreProfile["evidenceEnabled"] as? Boolean ?: error("Missing domain-core evidence policy")
+val domainCoreCandidateCommit = providers.environmentVariable("OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT").orElse("").get()
+val domainCoreExpectedVersion = providers.environmentVariable("OPENBURNBAR_DOMAIN_CORE_EXPECTED_VERSION").orElse("").get()
+val domainCoreExpectedAbiVersionRaw = providers.environmentVariable("OPENBURNBAR_DOMAIN_CORE_EXPECTED_ABI_VERSION").orElse("").get()
+val domainCoreExpectedSourceSha256 = providers.environmentVariable("OPENBURNBAR_DOMAIN_CORE_EXPECTED_SOURCE_SHA256").orElse("").get()
+val domainCoreCandidateValues = listOf(
+    domainCoreCandidateCommit,
+    domainCoreExpectedVersion,
+    domainCoreExpectedAbiVersionRaw,
+    domainCoreExpectedSourceSha256
+)
+val domainCoreCandidateIdentityPresent = domainCoreCandidateValues.any(String::isNotEmpty)
+val canonicalDomainCoreSemVer = Regex(
+    """^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)""" +
+        """(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?""" +
+        """(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?${'$'}"""
+)
+val domainCoreExpectedAbiVersion = domainCoreExpectedAbiVersionRaw.toLongOrNull() ?: 0L
+if (domainCoreCandidateIdentityPresent) {
+    require(Regex("^[0-9a-f]{40}$").matches(domainCoreCandidateCommit)) {
+        "Domain-core candidate commit must be a lowercase 40-character Git commit"
+    }
+    require(domainCoreExpectedVersion.toByteArray().size <= 64 && canonicalDomainCoreSemVer.matches(domainCoreExpectedVersion)) {
+        "Domain-core expected version must be canonical SemVer with at most 64 bytes"
+    }
+    require(
+        Regex("^[1-9]\\d*$").matches(domainCoreExpectedAbiVersionRaw) &&
+            domainCoreExpectedAbiVersion in 1L..4_294_967_295L
+    ) { "Domain-core expected ABI version must be a canonical positive uint32" }
+    require(Regex("^[0-9a-f]{64}$").matches(domainCoreExpectedSourceSha256)) {
+        "Domain-core expected source SHA-256 must be 64 lowercase hexadecimal characters"
+    }
+}
+val domainCoreCandidateIdentityWire = if (domainCoreCandidateIdentityPresent) {
+    domainCoreCandidateValues.joinToString("|")
+} else {
+    ""
+}
 val canonicalDomainCoreModes = domainCoreProfile["modes"].asJsonMap().mapKeys { it.key as String }.mapValues { it.value as String }
 require(canonicalDomainCoreModes.keys == domainCoreDomains.toSet()) { "Domain-core profile modes must exactly cover catalog domains" }
 require(canonicalDomainCoreModes.values.all { it in setOf("legacy", "shadow", "rust") }) { "Invalid domain-core mode" }
 val canonicalDomainCoreIdentity = mapOf(
     "developer" to ("development" to "development"),
     "public-production" to ("signed" to "public"),
+    "public-production-rollback" to ("signed" to "public"),
     "internal" to ("signed" to "internal"),
     "beta" to ("signed" to "beta")
 )[domainCoreProfileName] ?: error("Unknown domain-core profile identity")
 require(domainCoreAuthority == canonicalDomainCoreIdentity.first && domainCoreDistribution == canonicalDomainCoreIdentity.second) {
     "Domain-core profile authority/distribution does not match its canonical identity"
+}
+require(domainCoreAuthority != "signed" || domainCoreCandidateIdentityPresent) {
+    "Signed domain-core profiles require a complete expected candidate identity"
 }
 if (domainCoreAuthority == "signed" && domainCoreDistribution == "public") {
     require(!domainCoreEvidenceEnabled && domainCoreChannel.isEmpty() && "shadow" !in canonicalDomainCoreModes.values) {
@@ -124,6 +168,16 @@ val resolvedDomainCoreProfileArtifact = mapOf(
     "distribution" to domainCoreDistribution,
     "rolloutChannel" to domainCoreChannel.ifEmpty { null },
     "evidenceEnabled" to domainCoreEvidenceEnabled,
+    "candidateIdentity" to if (domainCoreCandidateIdentityPresent) {
+        mapOf(
+            "candidateCommit" to domainCoreCandidateCommit,
+            "coreVersion" to domainCoreExpectedVersion,
+            "abiVersion" to domainCoreExpectedAbiVersion,
+            "sourceSha256" to domainCoreExpectedSourceSha256
+        )
+    } else {
+        null
+    },
     "modes" to canonicalDomainCoreModes
 )
 val generateDomainCoreBuildProfileAsset = tasks.register<GenerateDomainCoreBuildProfileAsset>("generateDomainCoreBuildProfileAsset") {
@@ -217,8 +271,8 @@ android {
         applicationId = "com.openburnbar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 39
-        versionName = "1.0.29"
+        versionCode = 40
+        versionName = openBurnBarAppVersionName.get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // App Check: when this build is meant for Firebase App Distribution
@@ -251,6 +305,7 @@ android {
         buildConfigField("String", "DOMAIN_CORE_DISTRIBUTION", "\"$domainCoreDistribution\"")
         buildConfigField("String", "DOMAIN_CORE_ROLLOUT_CHANNEL", "\"$domainCoreChannel\"")
         buildConfigField("boolean", "DOMAIN_CORE_EVIDENCE_ENABLED", domainCoreEvidenceEnabled.toString())
+        buildConfigField("String", "DOMAIN_CORE_CANDIDATE_IDENTITY", "\"$domainCoreCandidateIdentityWire\"")
 
         // Sentry DSN injected at build time — empty string disables Sentry.
         // CI sets OPENBURNBAR_ANDROID_SENTRY_DSN from the GitHub secret.
@@ -324,6 +379,10 @@ android {
             excludes += setOf("*.dylib", "**/*.dylib")
         }
         jniLibs {
+            // The release identity gate executes this exact AAR library on an
+            // arm64 emulator, then compares its digest with the final AAB.
+            // Preserve identical ELF bytes across debug-test and release packaging.
+            keepDebugSymbols += "**/libopenburnbar_domain_ffi.so"
             // Vendor/openburnbar-iroh.aar ships the same cdylib under two names per ABI;
             // only libopenburnbar_iroh.so is ever loaded (JNA findLibraryName +
             // System.loadLibrary), so drop the byte-identical libuniffi_ duplicate

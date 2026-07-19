@@ -1,6 +1,8 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "f435ea8e6b615ced64059c1f8ceaa9629247200479dc668abdd42afa2b02f600",
+  "coreVersion": "0.1.0",
+  "abiVersion": 3,
+  "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c",
   "sourceRoots": [
     "Cargo.toml",
     "Cargo.lock",
@@ -19,6 +21,7 @@
   "uniffiExports": [
     "domain_core_abi_version",
     "domain_core_version",
+    "domain_core_candidate_commit",
     "domain_core_source_fingerprint",
     "calculate_token_cost_nano_usd",
     "is_legacy_kimi_wire_event",
@@ -30,6 +33,14 @@
     "cloud_vault_key_id",
     "cloud_vault_keyed_hash_hex",
     "cloud_vault_expected_session_body_hash",
+    "cloud_vault_project_memory_doc_id",
+    "cloud_vault_pensieve_dedup_hash",
+    "cloud_vault_pensieve_slug_hmac",
+    "cloud_vault_subscription_doc_id",
+    "pensieve_l2_normalize",
+    "pensieve_vector_cloak",
+    "pensieve_deterministic_embed",
+    "pensieve_deterministic_embed_and_cloak",
     "hermes_relay_aad",
     "hermes_key_wrap_info_v1",
     "hermes_key_wrap_info_v2",
@@ -38,6 +49,7 @@
     "hermes_sha256",
     "hermes_hmac_sha256",
     "hermes_ratchet_envelope_aad",
+    "hermes_ratchet_prekey_shared_secret",
     "hermes_gateway_relay_safety_code",
     "hermes_seal_base64",
     "cloud_vault_aes_gcm_seal_detached",
@@ -71,81 +83,78 @@
   ],
   "domains": {
     "quota": {
-      "rust": [
-        "parse_claude_statusline_quota"
-      ],
+      "rust": ["parse_claude_statusline_quota"],
       "cHeader": [
         "uniffi_openburnbar_domain_ffi_fn_func_parse_claude_statusline_quota"
       ],
-      "swift": [
-        "parseClaudeStatuslineQuota"
-      ],
-      "kotlin": [
-        "parseClaudeStatuslineQuota"
-      ],
-      "csharp": [
-        "ParseClaudeStatuslineQuota"
-      ]
+      "swift": ["parseClaudeStatuslineQuota"],
+      "kotlin": ["parseClaudeStatuslineQuota"],
+      "csharp": ["ParseClaudeStatuslineQuota"]
     },
     "cloudVaultC1a": {
       "rust": [
-        "cloud_vault_aad_v2"
+        "cloud_vault_aad_v2",
+        "cloud_vault_project_memory_doc_id",
+        "cloud_vault_pensieve_dedup_hash",
+        "cloud_vault_pensieve_slug_hmac",
+        "cloud_vault_subscription_doc_id"
       ],
       "cHeader": [
-        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2"
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aad_v2",
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_project_memory_doc_id",
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_dedup_hash",
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_pensieve_slug_hmac",
+        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_subscription_doc_id"
       ],
       "swift": [
-        "cloudVaultAadV2"
+        "cloudVaultAadV2",
+        "cloudVaultProjectMemoryDocId",
+        "cloudVaultPensieveDedupHash",
+        "cloudVaultPensieveSlugHmac",
+        "cloudVaultSubscriptionDocId"
       ],
       "kotlin": [
-        "cloudVaultAadV2"
+        "cloudVaultAadV2",
+        "cloudVaultProjectMemoryDocId",
+        "cloudVaultPensieveDedupHash",
+        "cloudVaultPensieveSlugHmac",
+        "cloudVaultSubscriptionDocId"
       ],
       "csharp": [
-        "CloudVaultAadV2"
+        "CloudVaultAadV2",
+        "CloudVaultProjectMemoryDocId",
+        "CloudVaultPensieveDedupHash",
+        "CloudVaultPensieveSlugHmac",
+        "CloudVaultSubscriptionDocId"
       ],
       "wasm": [
-        "cloudVaultAadV2"
+        "cloudVaultAadV2",
+        "cloudVaultProjectMemoryDocId",
+        "cloudVaultPensieveDedupHash",
+        "cloudVaultPensieveSlugHmac",
+        "cloudVaultSubscriptionDocId",
+        "cloudVaultPensieveProvenanceHash"
       ]
     },
     "cloudVaultC1b": {
-      "rust": [
-        "cloud_vault_aes_gcm_seal_combined"
-      ],
+      "rust": ["cloud_vault_aes_gcm_seal_combined"],
       "cHeader": [
         "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_aes_gcm_seal_combined"
       ],
-      "swift": [
-        "cloudVaultAesGcmSealCombined"
-      ],
-      "kotlin": [
-        "cloudVaultAesGcmSealCombined"
-      ],
-      "csharp": [
-        "CloudVaultAesGcmSealCombined"
-      ],
-      "wasm": [
-        "cloudVaultAesGcmSealCombined"
-      ]
+      "swift": ["cloudVaultAesGcmSealCombined"],
+      "kotlin": ["cloudVaultAesGcmSealCombined"],
+      "csharp": ["CloudVaultAesGcmSealCombined"],
+      "wasm": ["cloudVaultAesGcmSealCombined"]
     },
     "cloudVaultC1c": {
-      "rust": [
-        "cloud_vault_recovery_wrap_vault_key"
-      ],
+      "rust": ["cloud_vault_recovery_wrap_vault_key"],
       "cHeader": [
         "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_recovery_wrap_vault_key"
       ],
-      "swift": [
-        "cloudVaultRecoveryWrapVaultKey"
-      ],
-      "kotlin": [
-        "cloudVaultRecoveryWrapVaultKey"
-      ],
-      "csharp": [
-        "CloudVaultRecoveryWrapVaultKey"
-      ],
-      "wasm": [
-        "cloudVaultRecoveryWrapVaultKey"
-      ]
+      "swift": ["cloudVaultRecoveryWrapVaultKey"],
+      "kotlin": ["cloudVaultRecoveryWrapVaultKey"],
+      "csharp": ["CloudVaultRecoveryWrapVaultKey"],
+      "wasm": ["cloudVaultRecoveryWrapVaultKey"]
     },
     "documentRewrap": {
       "rust": [
@@ -171,65 +180,72 @@
         "CloudVaultResealNonce",
         "InvalidRewrapNoncePlan"
       ],
-      "wasm": [
-        "cloudVaultRewrapDocumentJson"
-      ]
+      "wasm": ["cloudVaultRewrapDocumentJson"]
     },
     "hermes": {
-      "rust": [
-        "hermes_relay_aad"
-      ],
+      "rust": ["hermes_relay_aad", "hermes_ratchet_prekey_shared_secret"],
       "cHeader": [
-        "uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad"
+        "uniffi_openburnbar_domain_ffi_fn_func_hermes_relay_aad",
+        "uniffi_openburnbar_domain_ffi_fn_func_hermes_ratchet_prekey_shared_secret"
       ],
-      "swift": [
-        "hermesRelayAad"
-      ],
-      "kotlin": [
-        "hermesRelayAad"
-      ],
-      "csharp": [
-        "HermesRelayAad"
-      ]
+      "swift": ["hermesRelayAad", "hermesRatchetPrekeySharedSecret"],
+      "kotlin": ["hermesRelayAad", "hermesRatchetPrekeySharedSecret"],
+      "csharp": ["HermesRelayAad", "HermesRatchetPrekeySharedSecret"]
     },
     "pricing": {
-      "rust": [
-        "calculate_token_cost_nano_usd"
-      ],
+      "rust": ["calculate_token_cost_nano_usd"],
       "cHeader": [
         "uniffi_openburnbar_domain_ffi_fn_func_calculate_token_cost_nano_usd"
       ],
-      "swift": [
-        "calculateTokenCostNanoUsd"
-      ],
-      "kotlin": [
-        "calculateTokenCostNanoUsd"
-      ],
-      "csharp": [
-        "CalculateTokenCostNanoUsd"
-      ],
-      "wasm": [
-        "calculateTokenCostNanoUsd"
-      ]
+      "swift": ["calculateTokenCostNanoUsd"],
+      "kotlin": ["calculateTokenCostNanoUsd"],
+      "csharp": ["CalculateTokenCostNanoUsd"],
+      "wasm": ["calculateTokenCostNanoUsd"]
     },
     "encryptedSearch": {
+      "rust": ["cloud_vault_search"],
+      "cHeader": ["uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search"],
+      "swift": ["cloudVaultSearch"],
+      "kotlin": ["cloudVaultSearch"],
+      "csharp": ["CloudVaultSearch"],
+      "wasm": ["cloudVaultSearch"]
+    },
+    "pensieveVectors": {
       "rust": [
-        "cloud_vault_search"
+        "pensieve_l2_normalize",
+        "pensieve_vector_cloak",
+        "pensieve_deterministic_embed",
+        "pensieve_deterministic_embed_and_cloak"
       ],
       "cHeader": [
-        "uniffi_openburnbar_domain_ffi_fn_func_cloud_vault_search"
+        "uniffi_openburnbar_domain_ffi_fn_func_pensieve_l2_normalize",
+        "uniffi_openburnbar_domain_ffi_fn_func_pensieve_vector_cloak",
+        "uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed",
+        "uniffi_openburnbar_domain_ffi_fn_func_pensieve_deterministic_embed_and_cloak"
       ],
       "swift": [
-        "cloudVaultSearch"
+        "pensieveL2Normalize",
+        "pensieveVectorCloak",
+        "pensieveDeterministicEmbed",
+        "pensieveDeterministicEmbedAndCloak"
       ],
       "kotlin": [
-        "cloudVaultSearch"
+        "pensieveL2Normalize",
+        "pensieveVectorCloak",
+        "pensieveDeterministicEmbed",
+        "pensieveDeterministicEmbedAndCloak"
       ],
       "csharp": [
-        "CloudVaultSearch"
+        "PensieveL2Normalize",
+        "PensieveVectorCloak",
+        "PensieveDeterministicEmbed",
+        "PensieveDeterministicEmbedAndCloak"
       ],
       "wasm": [
-        "cloudVaultSearch"
+        "pensieveL2Normalize",
+        "pensieveVectorCloak",
+        "pensieveDeterministicEmbed",
+        "pensieveDeterministicEmbedAndCloak"
       ]
     }
   },
@@ -246,7 +262,8 @@
         "documentRewrap",
         "hermes",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
     },
     {
@@ -266,7 +283,8 @@
         "documentRewrap",
         "hermes",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
     },
     {
@@ -281,7 +299,8 @@
         "documentRewrap",
         "hermes",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
     },
     {
@@ -301,7 +320,8 @@
         "documentRewrap",
         "hermes",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
     },
     {
@@ -321,7 +341,8 @@
         "documentRewrap",
         "hermes",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
     },
     {
@@ -334,7 +355,8 @@
         "cloudVaultC1c",
         "documentRewrap",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ],
       "requiredSymbols": [
         "domainCoreAbiVersion",
@@ -359,7 +381,8 @@
         "cloudVaultC1c",
         "documentRewrap",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
     },
     {
@@ -377,8 +400,20 @@
         "cloudVaultC1c",
         "documentRewrap",
         "pricing",
-        "encryptedSearch"
+        "encryptedSearch",
+        "pensieveVectors"
       ]
+    },
+    {
+      "name": "generated-mcp-remote-node-wasm",
+      "kind": "wasm",
+      "path": "tools/openburnbar-mcp-remote/vendor/openburnbar-domain-core-wasm/openburnbar_domain_core.d.ts",
+      "requiredSymbols": [
+        "domainCoreAbiVersion",
+        "domainCoreVersion",
+        "domainCoreSourceFingerprint"
+      ],
+      "requiredDomains": ["cloudVaultC1a", "pensieveVectors"]
     }
   ]
 }

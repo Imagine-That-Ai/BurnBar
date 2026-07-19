@@ -20,6 +20,7 @@ public final class KimiParser: LogParser, Sendable {
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fileManager = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         let sessionsPath = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
 
@@ -31,13 +32,12 @@ public final class KimiParser: LogParser, Sendable {
         var conversations: [ConversationRecord] = []
 
         let workspaceDirs = try fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])
-            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(skip non-directory entries)
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
         for workspaceDir in workspaceDirs {
             let workspaceId = workspaceDir.lastPathComponent
-
             let sessionDirs = try fileManager.contentsOfDirectory(at: workspaceDir, includingPropertiesForKeys: [.isDirectoryKey])
-                .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(skip non-directory entries)
+                .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
             for sessionDir in sessionDirs {
                 let sessionId = sessionDir.lastPathComponent
@@ -45,16 +45,16 @@ public final class KimiParser: LogParser, Sendable {
                 let wireFile = sessionDir.appendingPathComponent("wire.jsonl")
 
                 guard fileManager.fileExists(atPath: contextFile.path) else { continue }
-                if let minimumFileModificationDate = options.minimumFileModificationDate,
-                   let signature = FileSignature(for: contextFile),
-                   Date(timeIntervalSince1970: signature.modifiedAt) < minimumFileModificationDate {
-                    continue
+                var sessionFiles = [contextFile]
+                if fileManager.fileExists(atPath: wireFile.path) {
+                    sessionFiles.append(wireFile)
                 }
+                guard try gate.shouldRead(sessionFiles) else { continue }
 
                 if let pair = try parseSession(
                     sessionId: sessionId,
                     contextFile: contextFile,
-                    wireFile: fileManager.fileExists(atPath: wireFile.path) ? wireFile : nil,
+                    wireFile: sessionFiles.count == 2 ? wireFile : nil,
                     projectName: workspaceId,
                     includeConversationBodies: options.includeConversationBodies
                 ), let usage = pair.usage {

@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,22 +17,31 @@ const FIXTURES = join(HERE, "fixtures", "deploy-freshness");
  * capture the status and stderr from the thrown error.
  */
 function run(env = {}) {
-  const mergedEnv = { ...process.env, ...env };
+  const mergedEnv = {
+    ...process.env,
+    DEPLOY_FRESHNESS_MAX_AGE_DAYS: "14",
+    ...env,
+  };
   try {
-    execFileSync("node", [SCRIPT], {
+    const stdout = execFileSync("node", [SCRIPT], {
       env: mergedEnv,
+      encoding: "utf8",
       stdio: "pipe",
     });
-    return { code: 0, stderr: "" };
+    return { code: 0, stdout, stderr: "" };
   } catch (e) {
-    return { code: e.status ?? 1, stderr: String(e.stderr ?? "") };
+    return {
+      code: e.status ?? 1,
+      stdout: String(e.stdout ?? ""),
+      stderr: String(e.stderr ?? ""),
+    };
   }
 }
 
 // ---------------------------------------------------------------------------
-// Case 1 — Recent fixture passes (exit 0)
+// Case 1 — Recent fixture passes an explicit 14-day threshold (exit 0)
 // ---------------------------------------------------------------------------
-test("recent fixture (2-day-old deploys) passes with default 14-day threshold", () => {
+test("recent fixture (2-day-old deploys) passes a 14-day threshold", () => {
   const { code } = run({ DEPLOY_FRESHNESS_FIXTURE: join(FIXTURES, "recent.json") });
   assert.equal(code, 0);
 });
@@ -138,4 +149,72 @@ test("non-ACTIVE function (FAILED state) is filtered from freshness check", () =
     DEPLOY_FRESHNESS_FIXTURE: join(FIXTURES, "non-active-filtered.json"),
   });
   assert.equal(code, 0);
+});
+
+const INDEPENDENT_SURFACES = [
+  ["cloudFunctions", "Cloud Functions"],
+  ["hostedMcp", "hosted MCP"],
+  ["quotaRunner", "quota runner"],
+  ["otsVerifier", "OpenTimestamps verifier"],
+];
+
+function fixtureWithOneStaleSurface(staleSurface) {
+  const now = "2026-07-14T12:00:00.000Z";
+  const fresh = "2026-07-13T12:00:00.000Z";
+  const stale = "2026-06-20T12:00:00.000Z";
+  const updateTime = (surface) => (surface === staleSurface ? stale : fresh);
+  const service = (surface, name) => ({
+    name: `projects/burnbar/locations/us-central1/services/${name}`,
+    updateTime: updateTime(surface),
+  });
+  return {
+    now,
+    cloudFunctions: [
+      {
+        name: "projects/burnbar/locations/us-central1/functions/healthLive",
+        updateTime: updateTime("cloudFunctions"),
+        state: "ACTIVE",
+      },
+    ],
+    hostedMcp: service("hostedMcp", "openburnbar-hosted-mcp"),
+    quotaRunner: service("quotaRunner", "openburnbar-quota-runner"),
+    otsVerifier: service("otsVerifier", "openburnbar-ots-verifier"),
+  };
+}
+
+test("each production deploy surface can fail freshness independently", async (t) => {
+  for (const [staleSurface, label] of INDEPENDENT_SURFACES) {
+    await t.test(`${label} staleness fails while fresh siblings remain healthy`, () => {
+      const root = mkdtempSync(join(tmpdir(), "deploy-freshness-test-"));
+      const fixture = join(root, "one-stale-surface.json");
+      writeFileSync(
+        fixture,
+        `${JSON.stringify(fixtureWithOneStaleSurface(staleSurface), null, 2)}\n`,
+      );
+      try {
+        const { code, stdout, stderr } = run({
+          DEPLOY_FRESHNESS_FIXTURE: fixture,
+        });
+        assert.equal(code, 1);
+        assert.match(
+          stdout,
+          new RegExp(`Deploy freshness FAIL \\[${staleSurface}\\]`),
+        );
+        assert.match(
+          stderr,
+          new RegExp(`Deploy freshness FAIL: ${staleSurface}:stale\\.`),
+        );
+        for (const [sibling] of INDEPENDENT_SURFACES) {
+          if (sibling === staleSurface) continue;
+          assert.match(
+            stdout,
+            new RegExp(`Deploy freshness OK \\[${sibling}\\]`),
+          );
+          assert.doesNotMatch(stderr, new RegExp(`${sibling}:stale`));
+        }
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
 });
