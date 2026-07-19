@@ -6,13 +6,13 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | The installed non-certifying arm64 DEB remains source `5b70a3d320` in the Ubuntu 24.04.4 GNOME/X11 UTM guest; its receipt is `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/live-installed-receipt.json`. Current source is `50d40b9acb`, which adds an explicit requested-vs-resolved backdrop capability receipt. A live WebKitGTK probe against that build reported `webgl2=false`, `webgl1=true`; selecting Aurora surfaced `Aurora · 2D fallback (WebGL2 unavailable)` while the Canvas2D fallback continued animating. Daemon/CLI health is green on the installed candidate, and the physical iPad focused navigation suite passed on the connected device. Signed provenance, cross-device proof, and the strict product/environment receipts remain open. |
+| Remediation evidence | The installed non-certifying arm64 DEB remains source `5b70a3d320` in the Ubuntu 24.04.4 GNOME/X11 UTM guest; its receipt is `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/live-installed-receipt.json`. Current source is `9cb7e4db06`, which adds an explicit requested-vs-resolved backdrop capability receipt and refreshes the focused physical-iPad receipt. A live WebKitGTK probe against that build reported `webgl2=false`, `webgl1=true`; selecting Aurora surfaced `Aurora · 2D fallback (WebGL2 unavailable)` while the Canvas2D fallback continued animating. Daemon/CLI health is green on the installed candidate, and the connected iPad approval/navigation slice passed 44/44 with xcodebuild exit 0. Signed provenance, cross-device proof, and the strict product/environment receipts remain open. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
 ## Current Live Checkpoint — 2026-07-19
 
-The current source checkpoint is `50d40b9acb`. It adds a typed kernel
+The current source checkpoint is `9cb7e4db06`. It adds a typed kernel
 resolution receipt from the shared backdrop engine and exposes the requested
 kernel, resolved kernel, substrate, and fallback reason through DOM attributes
 and the Linux switcher. The UTM guest's WebKitGTK context probe is
@@ -25,6 +25,11 @@ not a blank or frozen background. The installed package receipt below remains
 the prior `5b70a3d320` candidate until an arm64 Linux release runner rebuilds
 the new source.
 
+The connected physical iPad was rechecked against the current checkout using
+the bounded approval/navigation selectors: **44 tests passed, 0 failed,
+xcodebuild exit 0**. This is focused mobile coverage only; it does not prove
+Linux enrollment, cross-device approval, or the full mobile suite.
+
 The latest installed candidate is `5b70a3d320`. The Settings live failure found in the
 VM was a route-boundary bug, not a daemon failure: packaged `SurfaceRouter`
 deferred the entire Settings surface behind an idle queue, so no
@@ -35,7 +40,7 @@ now reports 105 AT-SPI nodes and 50 actionable controls, no `Loading Settings`
 node, a reachable `Launch OpenBurnBar at login` checkbox, and a working Media &
 Sharing route. The daemon loaded 21 providers from the live config store.
 
-Source verification is green at **84 frontend files / 796 tests**, focused
+Source verification is green at **84 frontend files / 797 tests**, focused
 Settings/route coverage **45/45**, Tauri Rust **125/125**, TypeScript,
 formatting, and production-bundle verification. The connected physical iPad
 focused navigation suite passed with xcodebuild exit 0. This closes one real
@@ -48,7 +53,7 @@ receipts complete**. The exact live receipt is
 
 The strict ledger is unchanged at **0/40 product requirements ready** and
 **0/7 environment receipts complete**. The latest bounded physical-iPad
-receipt, from source checkout `c56ce9749a`, built the arm64 Signal FFI slice and
+receipt, from source checkout `9cb7e4db06`, built the arm64 Signal FFI slice and
 the source-safe Firestore graph (`grpc-ios` plus `BoringSSL-SwiftPM`) and
 executed **44 focused approval cases with 0 failures** on Alberto's paired
 iPad. The receipt is

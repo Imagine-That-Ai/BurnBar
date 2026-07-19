@@ -30,20 +30,25 @@ actionable controls, no `Loading Settings` node, a reachable startup checkbox,
 and a working Media & Sharing route:
 `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/`.
 
-Final source gates are **84 frontend files / 796 tests**, focused Settings and
+Final source gates are **84 frontend files / 797 tests**, focused Settings and
 route coverage **45/45**, Tauri Rust **125/125**, TypeScript, formatting, and
 production-bundle verification. The connected physical iPad focused navigation
 suite passed with xcodebuild exit 0. This is an implementation and live-QA
 milestone only; the strict product/environment promotion boundary remains
 **0/40 product rows and 0/7 environment receipts**.
 
-The current source checkpoint is `50d40b9acb`. It adds a typed backdrop kernel
+The current source checkpoint is `9cb7e4db06`. It adds a typed backdrop kernel
 resolution receipt and surfaces requested-versus-resolved kernel state in the
 Linux switcher. The live Ubuntu WebKitGTK probe reports `webgl2=false` and
 `webgl1=true`; Aurora therefore resolves to the animated Canvas2D constellation
 fallback with an explicit `WebGL2 unavailable` label. This closes the silent
 renderer-degradation UX gap while keeping the environment-specific WebGL2
 limitation open for a supported hardware/Wayland matrix.
+
+The connected physical iPad was rechecked against this checkout with the
+bounded approval/navigation selectors: **44/44 passed, 0 failures, xcodebuild
+exit 0**. The receipt remains non-certifying and does not substitute for
+installed Linux enrollment or cross-device approval proof.
 
 ### Current source hardening — 2026-07-19 UTC
 
