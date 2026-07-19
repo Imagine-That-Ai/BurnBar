@@ -7007,6 +7007,67 @@ fn init_tracing() {
     let _ = fmt().with_env_filter(filter).with_target(true).try_init();
 }
 
+/// Decide whether WebKit should use its software rendering path.
+///
+/// Linux package sessions can be launched from a display manager before a
+/// DRM render node exists (and Xvfb/UTM sessions never expose one). In that
+/// state WebKitGTK may create a GBM context, fail, and leave a blank surface
+/// while its fallback is negotiated. Keep the decision deterministic and
+/// overrideable for GPU hosts that need to diagnose a compositor issue.
+fn should_enable_webkit_safe_mode(
+    drm_render_node_present: bool,
+    explicit_override: Option<&str>,
+) -> bool {
+    match explicit_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("1") | Some("true") | Some("yes") | Some("on") => true,
+        Some("0") | Some("false") | Some("no") | Some("off") => false,
+        _ => !drm_render_node_present,
+    }
+}
+
+fn linux_drm_render_node_present() -> bool {
+    fs::read_dir("/dev/dri")
+        .map(|entries| {
+            entries.flatten().any(|entry| {
+                entry
+                    .file_name()
+                    .to_str()
+                    .is_some_and(|name| name.starts_with("renderD"))
+            })
+        })
+        .unwrap_or(false)
+}
+
+/// Configure WebKitGTK before Tauri creates its first window.
+///
+/// Existing environment values always win. The package-safe mode is only
+/// selected automatically when the host has no DRM render node, so ordinary
+/// Linux GPU sessions retain native compositing and DMABUF performance.
+fn configure_linux_webkit_runtime() {
+    if !cfg!(target_os = "linux") {
+        return;
+    }
+    let explicit_override = std::env::var("OPENBURNBAR_WEBKIT_SAFE_MODE").ok();
+    if !should_enable_webkit_safe_mode(
+        linux_drm_render_node_present(),
+        explicit_override.as_deref(),
+    ) {
+        return;
+    }
+
+    if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    }
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
 fn should_start_in_background(args: &[String]) -> bool {
     args.iter().any(|arg| arg == "--background")
 }
@@ -7019,6 +7080,7 @@ fn should_hide_startup_window(start_in_background: bool, tray_ready: bool) -> bo
 pub fn run() {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     let start_in_background = should_start_in_background(&args);
+    configure_linux_webkit_runtime();
     let initial_route = args
         .iter()
         .find_map(|arg| validated_deep_link_route(arg).map(str::to_string));
@@ -9481,6 +9543,19 @@ mod tests {
         assert!(should_hide_startup_window(true, true));
         assert!(!should_hide_startup_window(true, false));
         assert!(!should_hide_startup_window(false, true));
+    }
+
+    #[test]
+    fn webkit_safe_mode_defaults_to_headless_or_vm_friendly_path() {
+        assert!(should_enable_webkit_safe_mode(false, None));
+        assert!(!should_enable_webkit_safe_mode(true, None));
+    }
+
+    #[test]
+    fn webkit_safe_mode_override_is_explicit_and_case_insensitive() {
+        assert!(should_enable_webkit_safe_mode(true, Some("YES")));
+        assert!(!should_enable_webkit_safe_mode(false, Some("off")));
+        assert!(!should_enable_webkit_safe_mode(true, Some("unexpected")));
     }
 
     #[test]
