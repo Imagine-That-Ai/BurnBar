@@ -53,6 +53,12 @@ function signedOutStatus(): AccountStatus {
   };
 }
 
+function authorizationExpiryTimestamp(status: AccountStatus | null): number | null {
+  if (status?.state !== 'authorizing' || !status.authorizationExpiresAt) return null;
+  const timestamp = Date.parse(status.authorizationExpiresAt);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
 function unavailableCopy(detail?: string): string {
   switch (detail) {
     case 'missing_cloud_configuration':
@@ -95,14 +101,30 @@ export function AccountSurface() {
   const daemonStatus = useDaemonStatusCopy();
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [confirmingIdentityRotation, setConfirmingIdentityRotation] = useState(false);
+  const [clockNow, setClockNow] = useState(() => Date.now());
+
+  const authorizationExpiresAt = authorizationExpiryTimestamp(data);
+  const authorizationExpired = authorizationExpiresAt !== null && authorizationExpiresAt <= clockNow;
 
   useLaneLoad(load);
 
   useEffect(() => {
+    if (authorizationExpiresAt === null || authorizationExpired) return;
+    const delay = authorizationExpiresAt - Date.now();
+    if (delay <= 0) return;
+    const timer = window.setTimeout(() => setClockNow(Date.now()), delay);
+    return () => window.clearTimeout(timer);
+  }, [authorizationExpiresAt, authorizationExpired]);
+
+  useEffect(() => {
     if (data?.state !== 'authorizing' && data?.state !== 'awaiting-device-approval') return;
+    // Once the daemon-provided browser authorization deadline has passed, stop
+    // polling a potentially abandoned operation. The user can cancel it or
+    // use Check again to obtain a fresh daemon-authoritative snapshot.
+    if (authorizationExpired) return;
     const timer = window.setInterval(() => void load(), 2_000);
     return () => window.clearInterval(timer);
-  }, [data?.state, load]);
+  }, [authorizationExpired, data?.state, load]);
 
   const offline = !fixtureMode && !bridge && !loading && !data && Boolean(error);
   const statusForCard = data ?? (offline || error ? signedOutStatus() : null);
@@ -127,11 +149,15 @@ export function AccountSurface() {
     if (error) return `Account status unavailable: ${error}`;
     if (!data) return 'Account status not loaded.';
     if (data.state === 'unavailable') return `Cloud sign-in unavailable. ${unavailableCopy(data.detail)}`;
-    if (data.state === 'authorizing') return 'Browser sign-in is in progress.';
+    if (data.state === 'authorizing') {
+      return authorizationExpired
+        ? 'Browser sign-in authorization expired. Cancel it, then start sign-in again.'
+        : 'Browser sign-in is in progress.';
+    }
     if (data.state === 'awaiting-device-approval') return 'Linux device approval is pending on a trusted device.';
     if (!data.signedIn) return 'Signed out. Local-first mode is supported.';
     return `Signed in as ${data.identityLabel ?? 'Linux identity'}. Sync ${data.syncState}.`;
-  }, [loading, error, data]);
+  }, [authorizationExpired, loading, error, data]);
 
   return (
     <div className="account-stack">
@@ -152,8 +178,10 @@ export function AccountSurface() {
       ) : null}
 
       {data?.state === 'authorizing' ? (
-        <Banner tone="ok" role="status">
-          Complete sign-in in the browser. This window will update automatically.
+        <Banner tone={authorizationExpired ? 'degraded' : 'ok'} role={authorizationExpired ? 'alert' : 'status'}>
+          {authorizationExpired
+            ? 'Browser sign-in expired. Cancel this request, then start sign-in again.'
+            : 'Complete sign-in in the browser. This window will update automatically.'}
         </Banner>
       ) : null}
 
@@ -269,7 +297,7 @@ export function AccountSurface() {
             disabled={busyAction !== null}
             onClick={() => void cancelSignIn()}
           >
-            {busyAction === 'cancel' ? 'Cancelling…' : 'Cancel sign-in'}
+            {busyAction === 'cancel' ? 'Cancelling…' : authorizationExpired ? 'Cancel expired sign-in' : 'Cancel sign-in'}
           </button>
         ) : null}
         {deviceRejected && !confirmingIdentityRotation ? (

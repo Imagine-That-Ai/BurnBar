@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AccountStatus } from '../../tauriBridge.js';
 import { useAccountStore } from '../../state/accountStore.js';
@@ -225,6 +225,54 @@ describe('AccountSurface', () => {
     expect(screen.getByText(/Loading account and sync posture/i)).toBeTruthy();
   });
 
+  it('makes an expired browser authorization actionable instead of presenting it as active', () => {
+    const cancelSignIn = vi.fn(async () => {});
+    const expiredAuthorization: AccountStatus = {
+      ...signedOut,
+      state: 'authorizing',
+      authorizationOperationID: 'expired-operation',
+      authorizationExpiresAt: new Date(Date.now() - 1_000).toISOString()
+    };
+    useAccountStore.setState({ data: expiredAuthorization, cancelSignIn });
+    render(<AccountSurface />);
+
+    expect(screen.getByText(/Browser sign-in expired\. Cancel this request/i)).toBeTruthy();
+    expect(document.querySelector('.account-status-announcer')?.textContent).not.toMatch(/in progress/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel expired sign-in' }));
+    expect(cancelSignIn).toHaveBeenCalledOnce();
+  });
+
+  it('stops the authorization poll after the daemon-provided deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date());
+      const load = vi.fn(async () => {});
+      const expiresAt = new Date(Date.now() + 5_000).toISOString();
+      useAccountStore.setState({
+        data: {
+          ...signedOut,
+          state: 'authorizing',
+          authorizationOperationID: 'expiring-operation',
+          authorizationExpiresAt: expiresAt
+        },
+        load
+      });
+      render(<AccountSurface />);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_100);
+      });
+      expect(screen.getByText(/Browser sign-in expired\. Cancel this request/i)).toBeTruthy();
+      const callsAfterExpiry = load.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(6_000);
+      });
+      expect(load.mock.calls.length).toBe(callsAfterExpiry);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('renders error state with banner', () => {
     useShellStore.setState({ bridge: { accountStatus: async () => signedInActive } as never });
     setAccount({ error: 'Daemon RPC failed', data: null });
@@ -271,6 +319,9 @@ describe('AccountSurface', () => {
     expect(screen.getByText(/trusted OpenBurnBar device/i)).toBeTruthy();
     expect(screen.getByText(awaitingApproval.installationDeviceID!)).toBeTruthy();
     expect(screen.getByText(awaitingApproval.installationSafetyFingerprint!)).toBeTruthy();
+    // Device-approval is a daemon-owned enrollment phase, not a cancellable
+    // browser operation; the native cancel RPC rejects this state.
+    expect(screen.queryByRole('button', { name: /Cancel sign-in/i })).toBeNull();
     const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     fireEvent.click(screen.getByRole('button', { name: 'Copy fingerprint' }));
