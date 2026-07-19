@@ -72,9 +72,15 @@ function schedulePackagedLoad(task: () => void): () => void {
  * load() is called again once the bridge is available — without this, lane
  * stores write a permanent offline error and never retry.
  */
-export function useLaneLoad(load: () => Promise<void>): void {
+export type LaneLoadOptions = {
+  /** Start this lane immediately in the packaged shell instead of waiting for idle paint. */
+  deferPackaged?: boolean;
+};
+
+export function useLaneLoad(load: () => Promise<void>, options?: LaneLoadOptions): void {
   const bridgeReady = useShellStore((s) => s.bridgeReady);
   const dataRevision = useShellStore((s) => s.dataRevision);
+  const deferPackaged = options?.deferPackaged ?? true;
   const loadRef = useRef(load);
   const stateRef = useRef({ running: false, queued: false, mounted: true });
   const pendingScheduleRef = useRef<(() => void) | null>(null);
@@ -116,7 +122,7 @@ export function useLaneLoad(load: () => Promise<void>): void {
       stateRef.current.queued = true;
       return;
     }
-    if (!shouldDeferPackagedLoad()) {
+    if (!deferPackaged || !shouldDeferPackagedLoad()) {
       void run();
       return;
     }
@@ -128,7 +134,7 @@ export function useLaneLoad(load: () => Promise<void>): void {
       pendingScheduleRef.current = null;
       void run();
     });
-  }, [run]);
+  }, [deferPackaged, run]);
 
   useEffect(() => {
     requestLoad();

@@ -2,10 +2,10 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from './shellStore.js';
-import { useLaneLoad } from './useLaneLoad.js';
+import { useLaneLoad, type LaneLoadOptions } from './useLaneLoad.js';
 
-function Probe({ load }: { load: () => Promise<void> }) {
-  useLaneLoad(load);
+function Probe({ load, options }: { load: () => Promise<void>; options?: LaneLoadOptions }) {
+  useLaneLoad(load, options);
   return null;
 }
 
@@ -201,6 +201,22 @@ describe('useLaneLoad', () => {
       } else {
         delete (window as unknown as Record<string, unknown>).cancelIdleCallback;
       }
+      if (originalTauri === undefined) {
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      } else {
+        Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: originalTauri });
+      }
+    }
+  });
+
+  it('supports eager packaged hydration for recovery-critical lanes', () => {
+    const originalTauri = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
+    try {
+      const spy = vi.fn(() => Promise.resolve());
+      render(<Probe load={spy} options={{ deferPackaged: false }} />);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
       if (originalTauri === undefined) {
         delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
       } else {

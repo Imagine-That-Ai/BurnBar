@@ -50,7 +50,10 @@ export function SettingsSurface() {
   const [query, setQuery] = useState('');
   const [refreshBusy, setRefreshBusy] = useState(false);
 
-  useLaneLoad(loadConfig);
+  // Settings is the recovery surface when the daemon is slow or restarting.
+  // Start its first config request immediately; other lanes retain the
+  // packaged idle-paint budget through the default loader behavior.
+  useLaneLoad(loadConfig, { deferPackaged: false });
 
   useEffect(() => {
     if (fixtureMode || config || !loading) return;
