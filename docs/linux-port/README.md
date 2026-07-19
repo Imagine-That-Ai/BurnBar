@@ -74,7 +74,9 @@ Current parity status as of 2026-07-19:
   available with known VP9/AV1/Opus codecs, an active daemon-to-shell media
   socket, and file-transfer capability. The Linux peer-auth test passes 1/1,
   `MercuryLinuxMediaTests` passes 21/21, and the project/code-memory bootstrap
-  slice passes 3/3 on the VM. This remains a non-certifying runtime receipt:
+  slice passes 3/3 on the VM. The Linux media UI also gates receive-only
+  transport separately from daemon call RPCs (`fdbc7d718b`, focused lane 33/33).
+  This remains a non-certifying runtime receipt:
   two-device iPad/Linux media, Computer Use, signed provenance, and the strict
   0/40 product plus 0/7 environment ledger remain open. See
   [`evidence/mission-002-reanchor/vm-e2e/current-a570c9b087/live-receipt.json`](evidence/mission-002-reanchor/vm-e2e/current-a570c9b087/live-receipt.json).

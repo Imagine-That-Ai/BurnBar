@@ -44,7 +44,9 @@ This closes the package/service/media-backend/database-bootstrap source slice;
 iPad enrollment, two-device media, and signed certification remain dependencies
 for parity. The VM's full `MercuryLinuxMediaTests` class passes **21/21**, the
 project/code-memory bootstrap slice passes **3/3**, and the Linux peer test
-passes **1/1**; this is transport/backend proof, not a two-device receipt.
+passes **1/1**; `fdbc7d718b` separately gates receive-only media transport in
+the Linux UI while preserving daemon RPC calls (focused media UI/state **31/31**);
+this is transport/backend proof, not a two-device receipt.
 
 The installed Linux CLI parity fix is now on `d58b6a958f`: the Swift CLI
 resolves the canonical XDG daemon token file when no token environment override
