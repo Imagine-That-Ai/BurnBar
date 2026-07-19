@@ -6,9 +6,10 @@ import OpenBurnBarEngine
 // OpenRouter "Fusion"-compatible model-fusion router. Runs entirely inside the
 // daemon gateway (`BurnBarHTTPGatewayServer`):
 //
-//   1. PANEL   — 1...8 analysis models answer the originating prompt IN PARALLEL
-//                (`withThrowingTaskGroup`), each on its own resolved route, each
-//                with the server-side web tool-loop (`web_search` + `web_fetch`).
+//   1. PANEL   — 1...8 analysis models answer the originating prompt in parallel
+//                across independent credentials. Members sharing one credential
+//                are serialized to avoid provider concurrency limits. Each uses
+//                the server-side web tool-loop (`web_search` + `web_fetch`).
 //                Graceful degradation: a failed panel member is dropped; the
 //                request fails only if ZERO members succeed.
 //   2. JUDGE   — embeds the N panel answers verbatim and COMPARES them into a
@@ -44,6 +45,7 @@ struct ElderWandFusionOrchestrator: Sendable {
     let tools: [ElderWandTool]
     let recursionMarkerKey: String
     let recursionMarkerValue: String
+    let panelExecutionGate: ElderWandPanelExecutionGate
     let logger: BurnBarDaemonLogger
 
     init(
@@ -53,6 +55,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         tools: [ElderWandTool],
         recursionMarkerKey: String,
         recursionMarkerValue: String,
+        panelExecutionGate: ElderWandPanelExecutionGate = ElderWandPanelExecutionGate(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "elder-wand-fusion")
     ) {
         self.resolveRoute = resolveRoute
@@ -61,6 +64,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         self.tools = tools
         self.recursionMarkerKey = recursionMarkerKey
         self.recursionMarkerValue = recursionMarkerValue
+        self.panelExecutionGate = panelExecutionGate
         self.logger = logger
     }
 
@@ -222,13 +226,15 @@ struct ElderWandFusionOrchestrator: Sendable {
             return nil
         }
         do {
-            let result = try await loop.run(
-                model: route.wireModelSlug,
-                systemPrompt: Self.panelSystemPrompt,
-                userMessagesJSON: originatingMessagesJSON,
-                maxToolCalls: maxToolCalls,
-                chat: { body in try await self.bufferedCompletion(body, route) }
-            )
+            let result = try await panelExecutionGate.perform(route: route.route) {
+                try await loop.run(
+                    model: route.wireModelSlug,
+                    systemPrompt: Self.panelSystemPrompt,
+                    userMessagesJSON: originatingMessagesJSON,
+                    maxToolCalls: maxToolCalls,
+                    chat: { body in try await self.bufferedCompletion(body, route) }
+                )
+            }
             let signature = Self.signature(parentRequestID, "panel", model, index)
             await recordSubCall(.success(
                 stage: .panel(index: index),

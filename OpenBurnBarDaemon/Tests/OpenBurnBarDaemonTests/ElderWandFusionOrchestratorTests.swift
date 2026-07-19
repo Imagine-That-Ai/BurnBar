@@ -131,6 +131,52 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         XCTAssertEqual(synthesisCount, 1)
     }
 
+    func testPanelCallsSharingCredentialAreSerialized() async throws {
+        let recorder = SubCallRecorder()
+        let probe = PanelConcurrencyProbe(panelModels: ["p1", "p2"])
+        let orchestrator = makeStubOrchestrator(
+            recorder: recorder,
+            resolve: { Self.route(for: $0, slotID: "shared-account") },
+            completion: { body in
+                try await probe.observe(body: body)
+                return Self.echoCompletion(body: body)
+            }
+        )
+
+        _ = await orchestrator.run(
+            bodyData: Self.fusionBody(panel: ["p1", "p2"], judge: "judge"),
+            plugin: try Self.plugin(panel: ["p1", "p2"], judge: "judge"),
+            originatingModel: "origin",
+            wantsStream: false
+        )
+
+        let maximumConcurrentCalls = await probe.maximumConcurrentCalls()
+        XCTAssertEqual(maximumConcurrentCalls, 1)
+    }
+
+    func testPanelCallsOnDifferentCredentialsRemainParallel() async throws {
+        let recorder = SubCallRecorder()
+        let probe = PanelConcurrencyProbe(panelModels: ["p1", "p2"])
+        let orchestrator = makeStubOrchestrator(
+            recorder: recorder,
+            resolve: { Self.route(for: $0, slotID: "account-\($0)") },
+            completion: { body in
+                try await probe.observe(body: body)
+                return Self.echoCompletion(body: body)
+            }
+        )
+
+        _ = await orchestrator.run(
+            bodyData: Self.fusionBody(panel: ["p1", "p2"], judge: "judge"),
+            plugin: try Self.plugin(panel: ["p1", "p2"], judge: "judge"),
+            originatingModel: "origin",
+            wantsStream: false
+        )
+
+        let maximumConcurrentCalls = await probe.maximumConcurrentCalls()
+        XCTAssertEqual(maximumConcurrentCalls, 2)
+    }
+
     func testDuplicatePanelModelsAreExecutedOnce() async throws {
         let recorder = SubCallRecorder()
         let orchestrator = makeStubOrchestrator(
@@ -357,11 +403,13 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         )
     }
 
-    private static func route(for model: String) -> ElderWandResolvedRoute {
+    private static func route(for model: String, slotID: String? = nil) -> ElderWandResolvedRoute {
         ElderWandResolvedRoute(
             route: BurnBarProviderRoute(
                 providerID: "stub",
                 providerDisplayName: "Stub",
+                credentialSlotID: slotID,
+                credentialSlotLabel: slotID,
                 baseURL: "https://example.com",
                 requestedModel: model,
                 resolvedModelID: model,
@@ -412,6 +460,37 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         Data("""
         {"model":"origin","messages":[{"role":"user","content":"hello"}]}
         """.utf8)
+    }
+}
+
+private actor PanelConcurrencyProbe {
+    private let panelModels: Set<String>
+    private var activeCalls = 0
+    private var maximumCalls = 0
+
+    init(panelModels: Set<String>) {
+        self.panelModels = panelModels
+    }
+
+    func observe(body: Data) async throws {
+        guard let object = try JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let model = object["model"] as? String,
+              panelModels.contains(model) else {
+            return
+        }
+        activeCalls += 1
+        maximumCalls = max(maximumCalls, activeCalls)
+        do {
+            try await Task.sleep(nanoseconds: 100_000_000)
+        } catch {
+            activeCalls -= 1
+            throw error
+        }
+        activeCalls -= 1
+    }
+
+    func maximumConcurrentCalls() -> Int {
+        maximumCalls
     }
 }
 

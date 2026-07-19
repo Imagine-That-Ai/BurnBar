@@ -496,7 +496,8 @@ extension BurnBarProviderRouter {
            let cloudModel = OllamaCloudModelRoutingPolicy.routeModel(
             named: modelName,
             in: configuration,
-            catalog: configStore.catalogSupport.catalog
+            catalog: configStore.catalogSupport.catalog,
+            allowDynamicModel: allowDynamicOpenAICompatibleModels
            ) {
             return cloudModel
         }
