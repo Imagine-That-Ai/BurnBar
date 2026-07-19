@@ -58,6 +58,19 @@ runtime remains blocked by the unavailable SQLCipher framework. The current
 Linux desktop regression run at this head passed **82 files / 751 tests**;
 TypeScript and the production bundle verifier also passed. None of these
 source-only changes creates installed Linux or live cross-device receipts.
+The next source wave is also on the candidate branch: `e186d83314` re-resolves
+the daemon source identity immediately before activity export resume and fails
+closed on stale, duplicate, paged, or unavailable identities; `fba5d8bcc8`
+binds P-39 parser evidence to the checked-in corpus and verifies generated and
+normalized hashes (29 focused P-39 tests pass); `3d992ce624` preserves metric
+readability in forced-colors mode; and `c721ec18f8` removes a focusable
+`aria-hidden` shell sentinel. The current desktop regression run is now **82
+files / 753 tests**. Segmented Linux evidence-contract suites pass **607
+tests**, with **5 explicit fixture skips**; TypeScript and the production
+bundle verifier remain required after this source checkpoint. The P-38 proof
+fixture now derives its mutation count from the real 24-test workflow suite,
+closing stale-count failures without weakening the validator. These are still
+source/contract improvements, not installed receipts.
 
 ## Execution Status — 2026-07-18
 

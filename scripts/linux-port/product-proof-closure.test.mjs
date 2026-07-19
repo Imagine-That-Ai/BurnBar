@@ -23,7 +23,9 @@ import { deriveReleaseAttestationSubjects } from './lib/product-proof-closure.mj
 import {
   P38_WORKFLOW_PROOF_FILENAME,
   P38_WORKFLOW_SOURCE_PATHS,
-  captureP38SourceRecords
+  captureP38SourceRecords,
+  mutationSuiteSummary,
+  runP38MutationSuite
 } from './lib/p38-release-automation-proof.mjs';
 import { loadLinuxWorkflowWiringInput, verifyLinuxWorkflowWiring } from './verify-linux-workflow-wiring.mjs';
 
@@ -272,6 +274,8 @@ function stageP38WorkflowProof(fixture, inputRoot, environmentId = ENVIRONMENT) 
   }
   const workflowVerification = verifyLinuxWorkflowWiring(loadLinuxWorkflowWiringInput(fixture.root));
   assert.equal(workflowVerification.passed, true);
+  const mutationSuite = mutationSuiteSummary(runP38MutationSuite(fixture.root));
+  assert.equal(mutationSuite.passed, true);
   return writeJson(path.join(inputRoot, P38_WORKFLOW_PROOF_FILENAME), {
     schemaVersion: 1,
     id: 'openburnbar-linux-p38-release-automation-proof-v1',
@@ -281,16 +285,7 @@ function stageP38WorkflowProof(fixture, inputRoot, environmentId = ENVIRONMENT) 
     targetHead: HEAD,
     candidate: { runId: CANDIDATE_RUN_ID, artifactDigest: CANDIDATE_ARTIFACT_DIGEST },
     workflowVerification,
-    mutationSuite: {
-      command: 'node --test scripts/linux-port/verify-linux-workflow-wiring.test.mjs',
-      testPath: 'scripts/linux-port/verify-linux-workflow-wiring.test.mjs',
-      exitCode: 0,
-      testCount: 21,
-      passCount: 21,
-      failCount: 0,
-      outputSha256: '8'.repeat(64),
-      passed: true
-    },
+    mutationSuite,
     sources: captureP38SourceRecords(fixture.root),
     status: 'passed'
   });

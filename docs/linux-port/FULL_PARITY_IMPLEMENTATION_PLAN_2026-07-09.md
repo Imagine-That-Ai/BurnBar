@@ -49,6 +49,15 @@ panic-kill teardown while keeping creation and input blocked; source parse/build
 pass, but macOS XCTest runtime is unavailable without SQLCipher. These slices
 improve source parity only; installed Linux, live production, and cross-device
 receipts remain required for certification.
+The subsequent source wave adds `e186d83314` (daemon source re-resolution before
+activity export resume), `fba5d8bcc8` (current-checkout P-39 corpus and digest
+binding with 29 focused tests), `3d992ce624` (forced-colors metric fallback),
+and `c721ec18f8` (removal of a focusable hidden shell sentinel). The desktop
+suite is now **82 files / 753 tests**. Segmented Linux evidence-contract suites
+pass **607 tests** with **5 explicit fixture skips**. The P-38 proof fixture
+also derives its mutation summary from the live 24-test workflow suite instead
+of a stale hard-coded count. These checks strengthen source and evidence
+contracts only; installed, production, and cross-device receipts remain open.
 
 ### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 

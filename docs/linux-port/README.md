@@ -3,7 +3,7 @@
 This directory tracks the Linux desktop peer release work. The Linux lane is
 implemented as reviewable infrastructure, not a public availability claim.
 
-Current parity status as of 2026-07-18:
+Current parity status as of 2026-07-19:
 
 - The current documentation head is `5cff4281ec`.
   The latest behavioral evidence is bound to implementation checkpoint
@@ -34,12 +34,17 @@ Current parity status as of 2026-07-18:
   rows and 0/7 environment receipts. The Nightly pass is engineering evidence,
   not a promotion claim; production, lifecycle, installed integration, and
   registered product evidence remain open.
+- The candidate branch now has **82 desktop test files / 753 tests** passing,
+  plus current-checkout P-39 corpus binding, daemon-authoritative activity
+  export resume, forced-colors metric fallbacks, and a focusable-hidden-node
+  accessibility fix. These source results do not promote the ledger.
 - Fresh local recheck: the wired iPad is paired, booted, has Developer Mode
   enabled, and the focused physical XCTest receipt passed 44/44 tests at
   `e0d295e92a` (see
   [`evidence/parity-audit-2026-07-10/ipad-approval-focused-2026-07-19.json`](evidence/parity-audit-2026-07-10/ipad-approval-focused-2026-07-19.json)).
   This does not prove installed Linux enrollment, approval/revoke, or
-  cross-device Computer Use. `utmctl` reports the OpenBurnBar Linux VM started.
+  cross-device Computer Use. `utmctl` currently reports the OpenBurnBar Linux
+  VM stopped; no VM was modified during the recheck.
   The product-parity workflow is not present on `main`, and GitHub currently
   has zero self-hosted runners for its required Linux environment labels.
 - For the detailed audit and implementation plan, see
