@@ -621,6 +621,38 @@ describe('SettingsSurface', () => {
     await waitFor(() => expect(notificationCommand).toHaveBeenCalledWith('status', []));
   });
 
+  it('writes the macOS calendar default hold choices through notification config RPC', async () => {
+    let current = {
+      defaultSnoozeMinutes: 30,
+      nudgeHoursLocal: [9],
+      local: { isEnabled: true, quietHoursStart: null, quietHoursEnd: null },
+      telegram: { botTokenConfigured: false, isEnabled: false, botToken: null, botTokenHint: null, chatID: null, supportedCommands: ['status'] },
+      calendar: { isEnabled: false, defaultDurationMinutes: 30, defaultCalendarName: null }
+    };
+    const notificationConfigGet = vi.fn(async () => current);
+    const notificationConfigUpdate = vi.fn(async (next) => {
+      current = next;
+      return next;
+    });
+    useShellStore.setState({ bridge: bridge({ notificationConfigGet, notificationConfigUpdate }) });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^Notifications/i }));
+
+    const duration = await screen.findByLabelText('Calendar default duration minutes') as HTMLSelectElement;
+    expect(duration.disabled).toBe(true);
+    const calendarRow = screen.getByText('Calendar', { selector: '.setting-row-label' }).closest('.setting-row');
+    expect(calendarRow).not.toBeNull();
+    fireEvent.click(calendarRow!.querySelector('button')!);
+    await waitFor(() => expect(duration.disabled).toBe(false));
+    fireEvent.change(duration, { target: { value: '60' } });
+
+    await waitFor(() => expect(notificationConfigUpdate).toHaveBeenLastCalledWith(expect.objectContaining({
+      calendar: expect.objectContaining({ isEnabled: true, defaultDurationMinutes: 60 })
+    })));
+    expect(current.calendar.defaultDurationMinutes).toBe(60);
+  });
+
   it('keeps Devices & Sync and Media honest when no mutation RPC exists', () => {
     useShellStore.setState({ fixtureMode: true });
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });

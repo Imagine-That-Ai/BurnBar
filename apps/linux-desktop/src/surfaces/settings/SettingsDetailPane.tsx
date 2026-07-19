@@ -48,6 +48,8 @@ const UPDATE_CHANNEL_COPY: Record<'deb' | 'rpm' | 'arch' | 'appimage' | 'unknown
   unknown: 'Package channel could not be determined; use your distro package manager or release notes.'
 };
 
+const CALENDAR_DURATION_OPTIONS = [15, 30, 45, 60, 90];
+
 function accountErasureCompleted(result: AccountCloudDataDeletionResult): boolean {
   return result.ok
     && result.cloudDataDeleted
@@ -1226,7 +1228,33 @@ function NotificationsDetail({ mode }: { mode: 'alerts' | 'notifications' }) {
           iconGlyph="□"
           label="Calendar"
           description={`Health: ${channels.get('calendar')?.status ?? 'unknown'} · Default ${config.calendar.defaultDurationMinutes}m`}
-          control={<button type="button" className="ghost" disabled={disabled} onClick={() => patch((c) => ({ ...c, calendar: { ...c.calendar, isEnabled: !c.calendar.isEnabled } }))}>{config.calendar.isEnabled ? 'Disable' : 'Enable'}</button>}
+          control={
+            <span className="settings-verification-value">
+              <button
+                type="button"
+                className="ghost"
+                disabled={disabled}
+                onClick={() => patch((c) => ({ ...c, calendar: { ...c.calendar, isEnabled: !c.calendar.isEnabled } }))}
+              >
+                {config.calendar.isEnabled ? 'Disable' : 'Enable'}
+              </button>
+              <select
+                value={config.calendar.defaultDurationMinutes}
+                disabled={disabled || !config.calendar.isEnabled}
+                aria-label="Calendar default duration minutes"
+                onChange={(event) => {
+                  const minutes = Number(event.currentTarget.value);
+                  if (CALENDAR_DURATION_OPTIONS.includes(minutes)) {
+                    patch((c) => ({ ...c, calendar: { ...c.calendar, defaultDurationMinutes: minutes } }));
+                  }
+                }}
+              >
+                {CALENDAR_DURATION_OPTIONS.map((minutes) => (
+                  <option key={minutes} value={minutes}>{minutes} min</option>
+                ))}
+              </select>
+            </span>
+          }
         />
       </SettingGroup>
       <SettingGroup title="Commands" sectionHeader hideTitle>
