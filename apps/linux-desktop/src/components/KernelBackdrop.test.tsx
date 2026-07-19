@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BackdropEngine } from '@openburnbar/gl-engine/engine/BackdropEngine';
 import type { ShellSkin } from '../state/shellStore.js';
 import { KernelBackdrop } from './KernelBackdrop.js';
 
@@ -177,5 +178,48 @@ describe('KernelBackdrop Linux capability fallback', () => {
     pumpAnimationFrame(32); // second render loop
     const paintsAfterFrames = contextCalls.filter((method) => method === 'fillRect').length;
     expect(paintsAfterFrames).toBeGreaterThan(paintsAfterInit);
+  });
+
+  it('reveals the 2D fallback immediately when a WebGL2 context disappears mid-switch', () => {
+    const context = makeCanvasContext();
+    let probing = true;
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      configurable: true,
+      value(type: string) {
+        if (type === 'webgl2') {
+          // The capability probe succeeds, but the next canvas cannot acquire
+          // a context: this models a suspended WebKit/VM compositor.
+          if (probing) {
+            probing = false;
+            return { getExtension: () => null };
+          }
+          return null;
+        }
+        return context;
+      }
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const statuses: string[] = [];
+    const engine = new BackdropEngine(host, {
+      theme: 'dark',
+      initialKernel: 'constellation',
+      onStatus: (status) => statuses.push(status.reason)
+    });
+
+    expect(engine.glSupported).toBe(true);
+    engine.setKernel('aurora');
+
+    const canvases = [...host.querySelectorAll('canvas')];
+    expect(canvases).toHaveLength(2);
+    expect(statuses.at(-1)).toBe('context-unavailable');
+    expect(canvases.at(-1)?.getAttribute('aria-hidden')).toBe('true');
+    // The fallback cannot wait for the next rAF: hidden/backgrounded windows
+    // may throttle that callback indefinitely.
+    expect(canvases.at(-1)?.style.opacity).toBe('1');
+
+    engine.destroy();
+    host.remove();
   });
 });

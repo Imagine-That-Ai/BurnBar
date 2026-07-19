@@ -168,9 +168,16 @@ export class BackdropEngine {
     this.publishResolution(this.withSlotResolution(requested, slot));
     this.harvestObstacles(true); // a freshly-switched kernel gets current geometry
 
+    // A context can disappear between the capability probe and the switch
+    // (common when a WebKit/VM compositor is suspended). `createSlot` then
+    // returns the visible 2D default. Reveal that fallback synchronously so a
+    // throttled or backgrounded rAF cannot leave every canvas at opacity:0.
+    const contextFallback = slot.id !== requested.resolvedId;
+    if (contextFallback) slot.canvas.style.opacity = "1";
+
     // Fade the newcomer in on the next frame (lets the transition apply).
     requestAnimationFrame(() => {
-      slot.canvas.style.opacity = "1";
+      if (slot.canvas.parentNode) slot.canvas.style.opacity = "1";
     });
     if (this.reducedMotion) slot.kernel.renderStatic?.();
   }
