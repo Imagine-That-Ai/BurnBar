@@ -18,6 +18,25 @@ known platform divergences.
 
 Linux is not at full macOS parity.
 
+### Latest installed checkpoint — 2026-07-19 UTC
+
+The Ubuntu GNOME/X11 UTM guest now runs source candidate `5b70a3d320` from an
+exact rebuilt arm64 DEB. The Settings loading defect found during live QA was
+caused by the packaged route shell deferring the entire Settings surface before
+its loader could run. `2f75f3269e` mounts Settings immediately, and
+`5b70a3d320` opts Settings out of the inner idle hydration queue while leaving
+other routes deferred. The installed receipt records 105 AT-SPI nodes, 50
+actionable controls, no `Loading Settings` node, a reachable startup checkbox,
+and a working Media & Sharing route:
+`evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/`.
+
+Final source gates are **83 frontend files / 793 tests**, focused Settings and
+route coverage **45/45**, Tauri Rust **125/125**, TypeScript, formatting, and
+production-bundle verification. The connected physical iPad focused navigation
+suite passed with xcodebuild exit 0. This is an implementation and live-QA
+milestone only; the strict product/environment promotion boundary remains
+**0/40 product rows and 0/7 environment receipts**.
+
 ### Current source hardening — 2026-07-19 UTC
 
 The Activity history parity gap is now implemented on `c94e7b6113`: a daemon-

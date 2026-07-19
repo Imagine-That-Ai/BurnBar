@@ -5,6 +5,25 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
+- **Latest live candidate:** source `5b70a3d320` is installed in the Ubuntu
+  24.04.4 GNOME/X11 UTM guest. The exact arm64 DEB is recorded in
+  [`evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/).
+  Daemon/CLI health is green, the desktop is running from `/usr/bin`, and the
+  physical iPad focused navigation suite passed on the connected device.
+  The Settings route now mounts and hydrates deterministically: AT-SPI reports
+  105 nodes and 50 actionable controls with no `Loading Settings` node; the
+  General startup checkbox and Media & Sharing route are reachable.
+  The package is unsigned and this receipt is non-certifying.
+- Final source gates for this candidate are **83 frontend files / 793 tests**,
+  focused Settings/route **45/45**, Tauri Rust **125/125**, TypeScript,
+  formatting, and production-bundle verification. The strict ledger remains
+  **0/40 product rows and 0/7 environment receipts**; this is a certification
+  gate, not a source-progress percentage.
+- The immediate Settings fix is split into two reviewable commits:
+  `2f75f3269e` bypasses the packaged route idle gate for Settings, and
+  `5b70a3d320` makes its first config hydration eager while preserving deferred
+  first paint for other routes.
+
 - The latest parity hardening and installed candidate reach `b590d5a77d` (including the WebKit
   startup fallback from `6321897d4e`). The running Ubuntu 24.04.4 GNOME/X11
   UTM guest now has an exact-head arm64 package rebuilt from that commit and

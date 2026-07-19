@@ -6,9 +6,30 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | Latest parity hardening and installed arm64 candidate reach `b590d5a77d` (with the WebKit startup fallback in `6321897d4e`). The running Ubuntu 24.04.4 GNOME/X11 UTM guest has the exact-head DEB installed; its non-certifying live receipt is `evidence/mission-002-reanchor/vm-e2e/current-b590d5a77-media-settings-onboarding-arm64/live-installed-receipt.json`. It records daemon/desktop health, GStreamer, Secret Service, IBus, autostart packaging, foreground AT-SPI, and current source gates. The package is unsigned; the bounded Settings route remained loading and cross-device proof remains open. The earlier `5e0fc0e82` and settings/media receipts remain historical. The clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because the strict product and environment receipts are still missing. |
+| Remediation evidence | Latest live candidate is source `5b70a3d320`, installed as an unsigned arm64 DEB in the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its non-certifying receipt is `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/live-installed-receipt.json`. Daemon/CLI health is green; Settings now mounts and hydrates deterministically, with 105 AT-SPI nodes, 50 actionable controls, and no `Loading Settings` node. General startup and Media & Sharing routes are reachable. The physical iPad focused navigation suite passed on the connected device. Signed provenance, cross-device proof, and the strict product/environment receipts remain open. The earlier `b590d5a77d`, `5e0fc0e82`, and settings/media receipts are historical. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
+
+## Current Live Checkpoint — 2026-07-19
+
+The latest candidate is `5b70a3d320`. The Settings live failure found in the
+VM was a route-boundary bug, not a daemon failure: packaged `SurfaceRouter`
+deferred the entire Settings surface behind an idle queue, so no
+`daemon.config.get` request could start. `2f75f3269e` mounts Settings
+immediately in packaged mode and `5b70a3d320` makes its first config hydration
+eager while retaining deferred paint for other routes. The installed candidate
+now reports 105 AT-SPI nodes and 50 actionable controls, no `Loading Settings`
+node, a reachable `Launch OpenBurnBar at login` checkbox, and a working Media &
+Sharing route. The daemon loaded 21 providers from the live config store.
+
+Source verification is green at **83 frontend files / 793 tests**, focused
+Settings/route coverage **45/45**, Tauri Rust **125/125**, TypeScript,
+formatting, and production-bundle verification. The connected physical iPad
+focused navigation suite passed with xcodebuild exit 0. This closes one real
+installed Linux reliability gap, but it does not change certification: the
+strict ledger remains **0/40 product requirements ready** and **0/7 environment
+receipts complete**. The exact live receipt is
+`evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/`.
 
 ## Execution Status — 2026-07-19
 
