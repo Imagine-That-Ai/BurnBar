@@ -1,3 +1,4 @@
+import DeviceCheck
 import XCTest
 @testable import OpenBurnBar
 import OpenBurnBarCore
@@ -90,6 +91,17 @@ final class OpenBurnBarAppCheckProviderFactoryTests: XCTestCase {
             ),
             .unsupported
         )
+    }
+
+    func testMacProductionSelectionUsesRuntimeDeviceCheckAvailability() {
+        let selection = OpenBurnBarAppCheckProviderFactory.providerSelection(
+            firebasePlistPath: nil,
+            infoDictionary: [:],
+            environment: [:],
+            isDebugBuild: false
+        )
+
+        XCTAssertEqual(selection, DCDevice.current.isSupported ? .deviceCheck : .unsupported)
     }
 
     private func writeGooglePlist(_ values: [String: String]) throws -> URL {
