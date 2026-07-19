@@ -5,23 +5,26 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- **Current source head:** `804ced4523`. The branch now passes 87 frontend files
-  / 811 tests, TypeScript, production bundle verification, Tauri Rust 125/125,
+- **Current source head:** `aa188d24fa`. The branch now passes 88 frontend files
+  / 830 tests, TypeScript, production bundle verification, Tauri Rust 125/125,
   and package-payload 13/13. `1130524331` recovers a visible 2D backdrop after
   backgrounded WebGL context loss and retries the requested kernel on resume;
   `db8a52f2f2` makes kernel selection keyboard-complete with focus restoration;
-  `2a19ac301a` adds the Support performance empty state. The ARM VM also passed
+  `2a19ac301a` adds the Support performance empty state; `6ce5ec8623` adds
+  quota/account routing state; `149cfec503` plus `bd10c71919` harden provider
+  refresh and stale-event handling; `ed940164ce` hardens Mercury recovery; and
+  `aa188d24fa` makes Tauri invalidate embedded assets when hashed chunks rotate.
+  The ARM VM also passed
   the supported Swift-less staged-payload `pretauri:build`/`tauri:build` path via
-  `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is still an
-  older unsigned, non-certifying candidate. The rebuilt exact implementation
+  `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is unsigned
+  and non-certifying. The rebuilt exact implementation
   receipt is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-exact-implementation-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-exact-implementation-2026-07-19.json).
+  [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json).
   The strict ledger remains **0/40 product rows and 0/7 environment receipts**.
 
-- **Latest live VM candidate:** a local ARM64 DEB built from the current parity
-  branch is now installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its
-  non-certifying receipt is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-head-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-head-2026-07-19.json).
+- **Latest live VM candidate:** the exact `aa188d24fa` ARM64 DEB is installed in
+  the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its non-certifying receipt is
+  [`evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-latest-implementation-2026-07-19.json).
   Daemon/CLI health is green, the desktop is running from `/usr/bin`, the
   onboarding daemon verification advances to step 2, and two captures prove
   that the Canvas2D fallback is live. The guest reports `webgl2=false` and
@@ -30,17 +33,17 @@ Current parity status as of 2026-07-19:
   not a public release. The previous exact `5b70a3d320` package remains the
   historical installed baseline in
   [`evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/).
-  The latest packaging hardening is `59d49c7d59`: an explicit staged Swift
-  runtime now bypasses the `swift` probe, with focused coverage **11/11**. The
-  VM package receipt predates that packaging-only fix. The focused iPad
+  The packaging history includes `59d49c7d59`, which made an explicit staged
+  Swift runtime authoritative; the latest package includes that path and the
+  subsequent asset-watcher hardening. The focused iPad
   navigation receipt is
   [`evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json`](evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json).
   The Settings route now mounts and hydrates deterministically: AT-SPI reports
   105 nodes and 50 actionable controls with no `Loading Settings` node; the
   General startup checkbox and Media & Sharing route are reachable.
   The package is unsigned and this receipt is non-certifying.
-- Current source gates are **87 frontend files / 807 tests**, focused
-  Settings/route **45/45**, accessibility **10/10**, Tauri Rust **125/125**,
+- Current source gates are **88 frontend files / 830 tests**, focused
+  Settings/route **51/51**, Support **29/29**, media **38/38**, Tauri Rust **125/125**,
   TypeScript, formatting, and production-bundle verification. The strict ledger remains
   **0/40 product rows and 0/7 environment receipts**; this is a certification
   gate, not a source-progress percentage.
