@@ -10,7 +10,7 @@
     ".github/workflows/domain-core-ios-release-evidence.yml": ["88aeee079286789c","cf489104e8c2dbd6","e2584e9c40e1fce3","8b4005a31d271532"],
     ".github/workflows/domain-core-post-deletion-completion.yml": ["30c194fd64f2f57c","a008c34c63b079cd","d797d7fbaf0dfda2","86d6f750d86e98d3"],
     ".github/workflows/domain-core-promotion-proof.yml": ["9f0487ff5bf47b80","b83dc0c908eb59cb","f553d0f2462dd78e","9f3eaea9e22561f9"],
-    ".github/workflows/domain-core.yml": ["56d20c062978b499","22a0244be5a7c6af","c554b4a9fc8419a9","9bad71868fe6ae3c"],
+    ".github/workflows/domain-core.yml": ["2058db40594eb90a","a2ec743667f6b27b","0f8ad0d3d0252ce7","969fbd6066d7daa3"],
     ".github/workflows/linux-release.yml": ["cd464fa8c252b9e9","527c6e73f7abf71a","7b6746f544b03919","5e55759d86af380d"],
     ".github/workflows/openburnbar-release-windows.yml": ["c2098230458e5135","b2de320748968a77","4cd1cc182e493bd1","cdf571ac4f60e1cd"],
     ".github/workflows/release.yml": ["66483fd6d40de17e","4abeb7afb9427e56","893f1a0e3b44fc43","c9ef78062d7eb934"],

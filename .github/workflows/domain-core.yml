@@ -364,6 +364,7 @@ on:
       - "tests/test_domain_core_trusted_deletion_workflow.py"
       - ".github/workflows/domain-core.yml"
       - ".github/workflows/domain-core-promotion-proof.yml"
+  # Manual runs are diagnostic; protected promotion accepts only successful main pushes.
   workflow_dispatch:
 
 concurrency:
