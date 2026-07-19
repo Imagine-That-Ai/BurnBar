@@ -7,7 +7,7 @@ import { fixtureUsageSummary } from '../daemonFixture.js';
 import { DaemonDataSection } from '../surfaces/DaemonDataSection.js';
 import { useOverviewStore } from '../state/overviewStore.js';
 import { useShellStore } from '../state/shellStore.js';
-import type { LinuxShellBridge } from '../tauriBridge.js';
+import type { LinuxShellBridge, ProviderCatalog } from '../tauriBridge.js';
 import { defaultLinuxOnboardingSnapshot } from '../onboardingStore.js';
 import { OnboardingSurface } from '../surfaces/OnboardingSurface.js';
 
@@ -348,6 +348,74 @@ describe('App shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Verify provider route' }));
     expect(await screen.findByText(/Provider route verified by the daemon/i)).toBeTruthy();
     expect(providerCatalog).toHaveBeenCalledTimes(3);
+  });
+
+  it('ignores stale provider catalog responses after a newer onboarding retry', async () => {
+    const initial = {
+      ...defaultLinuxOnboardingSnapshot(),
+      currentStepID: 'provider_paths' as const,
+      privacyChoices: { telemetryEnabled: false, cloudSyncEnabled: false },
+      steps: defaultLinuxOnboardingSnapshot().steps.map((step) =>
+        step.id === 'provider_paths' ? { ...step, state: 'pending' as const } : { ...step, state: 'verified' as const }
+      )
+    };
+    let resolveFirst: ((catalog: ProviderCatalog) => void) | undefined;
+    let resolveSecond: ((catalog: ProviderCatalog) => void) | undefined;
+    const providerCatalog = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+    useShellStore.setState({
+      bridge: {
+        onboardingSnapshot: vi.fn().mockResolvedValue(initial),
+        providerCatalog
+      } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+
+    render(<OnboardingSurface />);
+    expect(await screen.findByRole('heading', { name: 'Provider connection' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry provider catalog' }));
+    await waitFor(() => expect(providerCatalog).toHaveBeenCalledTimes(2));
+
+    resolveSecond?.([{ id: 'codex', label: 'Codex', accountLabel: 'Fresh daemon state', quotaBuckets: [] }]);
+    expect(await screen.findByText('Fresh daemon state')).toBeTruthy();
+    resolveFirst?.([{ id: 'codex', label: 'Codex', accountLabel: 'Stale daemon state', quotaBuckets: [] }]);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText('Fresh daemon state')).toBeTruthy();
+    expect(screen.queryByText('Stale daemon state')).toBeNull();
+  });
+
+  it('exposes retry and provider-settings recovery when onboarding cannot read the catalog', async () => {
+    const initial = {
+      ...defaultLinuxOnboardingSnapshot(),
+      currentStepID: 'provider_paths' as const,
+      privacyChoices: { telemetryEnabled: false, cloudSyncEnabled: false },
+      steps: defaultLinuxOnboardingSnapshot().steps.map((step) =>
+        step.id === 'provider_paths' ? { ...step, state: 'pending' as const } : { ...step, state: 'verified' as const }
+      )
+    };
+    const providerCatalog = vi.fn()
+      .mockRejectedValueOnce(new Error('catalog temporarily unavailable'))
+      .mockResolvedValueOnce([
+        { id: 'codex', label: 'Codex', accountLabel: 'Recovered daemon state', quotaBuckets: [] }
+      ]);
+    useShellStore.setState({
+      bridge: {
+        onboardingSnapshot: vi.fn().mockResolvedValue(initial),
+        providerCatalog
+      } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+
+    render(<OnboardingSurface />);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent ?? '').toMatch(/provider catalog could not be read/i);
+    expect(screen.getByRole('button', { name: 'Retry provider catalog' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Open provider settings' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry provider catalog' }));
+    expect(await screen.findByText('Recovered daemon state')).toBeTruthy();
   });
 
   it('does not dispatch provider credential mutations from fixture mode', async () => {

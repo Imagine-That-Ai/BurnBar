@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Banner } from '../components/Banner.js';
 import { ONBOARDING_STEPS } from '../onboardingSteps.js';
 import {
@@ -46,18 +46,32 @@ function providerRouteStatus(
     : 'Provider route is not verified by the daemon. Fix provider authentication, then retry verification.';
 }
 
+type ProviderCatalogLoadResult = {
+  requestID: number;
+  catalog: ProviderCatalog | null;
+  stale: boolean;
+};
+
 function ProviderSetup({
   catalog,
   onStore,
   onVerify,
+  onRetry,
+  onOpenSettings,
   disabled,
-  status
+  status,
+  loading,
+  error
 }: {
   catalog: ProviderCatalog;
   onStore: (providerID: string, label: string, apiKey: string) => Promise<void>;
   onVerify: (providerID: string) => Promise<void>;
+  onRetry: () => void;
+  onOpenSettings: () => void;
   disabled: boolean;
   status: string | null;
+  loading: boolean;
+  error: string | null;
 }) {
   const [providerID, setProviderID] = useState(catalog[0]?.id ?? '');
   const [label, setLabel] = useState('Primary');
@@ -67,14 +81,73 @@ function ProviderSetup({
   const selectedFailover = selected?.failover;
 
   useEffect(() => {
-    if (!catalog.some((entry) => entry.id === providerID)) setProviderID(catalog[0]?.id ?? '');
+    // Keep the last selected ID during a failed refresh so the user can retry
+    // that exact daemon route without leaving onboarding.
+    if (catalog.length > 0 && !catalog.some((entry) => entry.id === providerID)) setProviderID(catalog[0]?.id ?? '');
   }, [catalog, providerID]);
 
   if (catalog.length === 0) {
     return (
       <section className="onboarding-provider-setup" aria-labelledby="onboarding-provider-title">
         <h4 id="onboarding-provider-title">Provider connection</h4>
-        <p className="muted">The daemon returned no provider catalog. Open Settings → Providers after setup to configure a native provider.</p>
+        {loading ? (
+          <>
+            <p className="onboarding-provider-status muted" role="status">Reading the daemon provider catalog…</p>
+            <div className="onboarding-provider-actions">
+              <button type="button" className="onboarding-btn-ghost" disabled={disabled} onClick={onRetry}>
+                Retry provider catalog
+              </button>
+              <button type="button" className="onboarding-btn-ghost" disabled={disabled} onClick={onOpenSettings}>
+                Open provider settings
+              </button>
+            </div>
+          </>
+        ) : error ? (
+          <>
+            <p className="onboarding-provider-status" role="alert">{error}</p>
+            <div className="onboarding-provider-actions">
+              <button type="button" className="onboarding-btn-ghost" disabled={disabled} onClick={onRetry}>
+                Retry provider catalog
+              </button>
+              <button
+                type="button"
+                className="onboarding-btn-ghost"
+                disabled={disabled || !providerID}
+                onClick={() => {
+                  if (providerID) void onVerify(providerID);
+                }}
+              >
+                Verify provider route
+              </button>
+              <button type="button" className="onboarding-btn-ghost" disabled={disabled} onClick={onOpenSettings}>
+                Open provider settings
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="muted">The daemon returned no provider catalog. Connect a provider from native settings, then retry this check.</p>
+            <div className="onboarding-provider-actions">
+              <button type="button" className="onboarding-btn-ghost" disabled={disabled} onClick={onRetry}>
+                Retry provider catalog
+              </button>
+              <button
+                type="button"
+                className="onboarding-btn-ghost"
+                disabled={disabled || !providerID}
+                onClick={() => {
+                  if (providerID) void onVerify(providerID);
+                }}
+              >
+                Verify provider route
+              </button>
+              <button type="button" className="onboarding-btn-ghost" disabled={disabled} onClick={onOpenSettings}>
+                Open provider settings
+              </button>
+            </div>
+          </>
+        )}
+        {status ? <p className="onboarding-provider-status" role="status">{status}</p> : null}
       </section>
     );
   }
@@ -100,6 +173,8 @@ function ProviderSetup({
           ? 'The daemon verified a provider route.'
           : 'The daemon has not verified a provider route yet; store a credential, then retry verification.')}
       </p>
+      {loading ? <p className="onboarding-provider-status muted" role="status">Refreshing daemon-verified provider state…</p> : null}
+      {error ? <p className="onboarding-provider-status" role="alert">{error}</p> : null}
       <label>
         Credential label
         <input value={label} onChange={(event) => setLabel(event.currentTarget.value)} disabled={disabled} autoComplete="off" />
@@ -152,7 +227,10 @@ export function OnboardingSurface() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [providerCatalog, setProviderCatalog] = useState<ProviderCatalog | null>(null);
+  const [providerCatalogLoading, setProviderCatalogLoading] = useState(false);
+  const [providerCatalogError, setProviderCatalogError] = useState<string | null>(null);
   const [providerStatus, setProviderStatus] = useState<string | null>(null);
+  const providerCatalogRequestID = useRef(0);
   const [privacyChoices, setPrivacyChoices] = useState<LinuxOnboardingPrivacyChoices>(() =>
     snapshot.privacyChoices ?? { telemetryEnabled: false, cloudSyncEnabled: false }
   );
@@ -160,6 +238,45 @@ export function OnboardingSurface() {
   const fixtureMode = useShellStore((state) => state.fixtureMode);
   const bridgeReady = useShellStore((state) => state.bridgeReady);
   const setRoute = useShellStore((state) => state.setRoute);
+
+  /**
+   * Provider catalog responses are daemon evidence, not UI decoration. A
+   * route change, retry, or credential mutation can make an earlier request
+   * obsolete; only the newest response may update the catalog or status.
+   */
+  const loadProviderCatalog = useCallback(async (): Promise<ProviderCatalogLoadResult> => {
+    const requestID = ++providerCatalogRequestID.current;
+    setProviderCatalogLoading(true);
+    setProviderCatalogError(null);
+    if (!bridge) {
+      if (requestID === providerCatalogRequestID.current) {
+        setProviderCatalogLoading(false);
+        setProviderCatalogError('The packaged daemon is unavailable. Start it, then retry the provider catalog check.');
+        setProviderCatalog((current) => current ?? []);
+      }
+      return { requestID, catalog: null, stale: requestID !== providerCatalogRequestID.current };
+    }
+    try {
+      const catalog = await bridge.providerCatalog();
+      const stale = requestID !== providerCatalogRequestID.current;
+      if (!stale) {
+        setProviderCatalog(catalog);
+        setProviderCatalogLoading(false);
+        if (catalog.length === 0) {
+          setProviderCatalogError('The daemon returned no providers. Connect one in provider settings, then retry this check.');
+        }
+      }
+      return { requestID, catalog: stale ? null : catalog, stale };
+    } catch {
+      const stale = requestID !== providerCatalogRequestID.current;
+      if (!stale) {
+        setProviderCatalog((current) => current ?? []);
+        setProviderCatalogLoading(false);
+        setProviderCatalogError('The daemon provider catalog could not be read. Repair provider authentication or open provider settings, then retry.');
+      }
+      return { requestID, catalog: null, stale };
+    }
+  }, [bridge]);
 
   useEffect(() => {
     let cancelled = false;
@@ -197,24 +314,21 @@ export function OnboardingSurface() {
   }, [bridge, authorityAttempt]);
 
   useEffect(() => {
-    let cancelled = false;
     if (!bridge || snapshot.currentStepID !== 'provider_paths') {
+      providerCatalogRequestID.current += 1;
       setProviderCatalog(null);
+      setProviderCatalogLoading(false);
+      setProviderCatalogError(null);
+      setProviderStatus(null);
       return () => {
-        cancelled = true;
+        providerCatalogRequestID.current += 1;
       };
     }
-    void bridge.providerCatalog()
-      .then((catalog) => {
-        if (!cancelled) setProviderCatalog(catalog);
-      })
-      .catch(() => {
-        if (!cancelled) setProviderCatalog([]);
-      });
+    void loadProviderCatalog();
     return () => {
-      cancelled = true;
+      providerCatalogRequestID.current += 1;
     };
-  }, [bridge, snapshot.currentStepID]);
+  }, [bridge, loadProviderCatalog, snapshot.currentStepID]);
 
   const commit = (next: LinuxOnboardingSnapshot) => {
     // Decode action responses before mutating local state. This prevents a
@@ -277,14 +391,14 @@ export function OnboardingSurface() {
         setProviderStatus('The daemon accepted the request but did not report a credential slot. Provider route remains unverified.');
         return;
       }
-      try {
-        const refreshedCatalog = await bridge.providerCatalog();
-        setProviderCatalog(refreshedCatalog);
+      const refreshed = await loadProviderCatalog();
+      if (refreshed.stale) return;
+      if (refreshed.catalog) {
         setProviderStatus(providerRouteStatus(
-          refreshedCatalog.find((provider) => provider.id === providerID),
+          refreshed.catalog.find((provider) => provider.id === providerID),
           true
         ));
-      } catch {
+      } else {
         setProviderStatus('Credential stored, but provider route verification is unavailable. No route is marked ready; retry provider verification.');
       }
     } catch (storeError) {
@@ -306,14 +420,16 @@ export function OnboardingSurface() {
     setBusy(true);
     setProviderStatus('Checking provider route with the daemon…');
     try {
-      const refreshedCatalog = await bridge.providerCatalog();
-      setProviderCatalog(refreshedCatalog);
-      setProviderStatus(providerRouteStatus(
-        refreshedCatalog.find((provider) => provider.id === providerID),
-        false
-      ));
-    } catch {
-      setProviderStatus('Provider route verification is unavailable. No provider route is marked ready; retry after repairing provider authentication.');
+      const refreshed = await loadProviderCatalog();
+      if (refreshed.stale) return;
+      if (refreshed.catalog) {
+        setProviderStatus(providerRouteStatus(
+          refreshed.catalog.find((provider) => provider.id === providerID),
+          false
+        ));
+      } else {
+        setProviderStatus('Provider route verification is unavailable. No provider route is marked ready; retry after repairing provider authentication.');
+      }
     } finally {
       setBusy(false);
     }
@@ -466,13 +582,17 @@ export function OnboardingSurface() {
               </label>
             </fieldset>
           ) : null}
-          {step.id === 'provider_paths' && providerCatalog ? (
+          {step.id === 'provider_paths' ? (
             <ProviderSetup
-              catalog={providerCatalog}
+              catalog={providerCatalog ?? []}
               onStore={storeProviderCredential}
               onVerify={verifyProviderRoute}
+              onRetry={() => void loadProviderCatalog()}
+              onOpenSettings={() => setRoute('settings')}
               disabled={busy}
               status={providerStatus}
+              loading={providerCatalogLoading}
+              error={providerCatalogError}
             />
           ) : null}
         </div>

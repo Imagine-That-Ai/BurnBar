@@ -341,6 +341,12 @@
   overflow-wrap: anywhere;
 }
 
+.onboarding-provider-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
 .onboarding-wizard .banner,
 .onboarding-wizard .glass-alert {
   margin: 0.15rem 0 0;
