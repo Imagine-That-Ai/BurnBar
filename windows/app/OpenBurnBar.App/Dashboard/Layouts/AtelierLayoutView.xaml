@@ -56,7 +56,7 @@
                         Spacing="10"
                         MaxWidth="640">
                 <Border Background="{ThemeResource AuroraGlassSelectionFillBrush}" CornerRadius="999" Padding="10,5" HorizontalAlignment="Left">
-                    <TextBlock Text="WebGL kernel"
+                    <TextBlock Text="Live kernel"
                                FontSize="11"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource OBBAccentBrush}" />
