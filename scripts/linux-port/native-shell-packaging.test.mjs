@@ -30,6 +30,14 @@ test('Tauri release packaging enables the embedded frontend protocol', () => {
   assert.equal(config.build?.beforeBuildCommand, 'npm run build');
 });
 
+test('Tauri codegen watches every frontend asset for in-place edits', () => {
+  const build = read('apps/linux-desktop/src-tauri/build.rs');
+  assert.match(build, /emit_frontend_asset_dependencies\(\)/u);
+  assert.match(build, /manifest_dir\.join\("\.\.\/dist"\)/u);
+  assert.match(build, /println!\("cargo:rerun-if-changed=\{\}"/u);
+  assert.match(build, /fs::read_dir\(path\)/u);
+});
+
 test('Arch package installs the same autostart entry with a pinned source slot', () => {
   const pkgbuild = read('packaging/linux/aur/PKGBUILD.in');
   assert.match(
