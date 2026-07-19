@@ -6,9 +6,11 @@
  * exposes the cheap static fields (`id`, `label`, `substrate`) synchronously so
  * the host can size the canvas and pick the GL/2D context immediately; the heavy
  * factory module is imported on the first `init()`/`frame()` call. While the
- * module is loading, `frame()`/`renderStatic()` no-op — the host keeps the
- * incoming slot at `opacity:0` during the 700ms crossfade, so a blank frame or
- * two is invisible, and a warm dynamic import resolves in tens of milliseconds.
+ * module is loading, shader-backed `frame()`/`renderStatic()` calls no-op;
+ * lazy 2D proxies paint their palette base immediately so WebKitGTK never
+ * shows a transparent backdrop during chunk resolution. The host keeps the
+ * incoming slot at `opacity:0` during the 700ms crossfade, and a warm dynamic
+ * import resolves in tens of milliseconds.
  *
  * Net effect on the bundle: each kernel's GLSL + helpers move from the eager
  * app-shell chunk into an on-demand chunk, paid for only when the visitor
