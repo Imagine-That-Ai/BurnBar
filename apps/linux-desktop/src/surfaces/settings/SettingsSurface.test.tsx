@@ -147,6 +147,19 @@ describe('SettingsSurface', () => {
     expect(screen.getByText('Look & Feel')).toBeTruthy();
     expect(screen.getByText('Account & Sync')).toBeTruthy();
   });
+
+  it('selects the first matching settings destination and reports empty searches', async () => {
+    useShellStore.setState({ fixtureMode: true });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+
+    const search = screen.getByRole('searchbox', { name: 'Search settings' });
+    fireEvent.change(search, { target: { value: 'model proxy' } });
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Model Proxy' })).toBeTruthy());
+
+    fireEvent.change(search, { target: { value: 'no-such-setting' } });
+    expect(screen.getByText(/No settings match/)).toBeTruthy();
+  });
   it('writes fixture privacy choices and exposes honest lifecycle capability states', async () => {
     useShellStore.setState({ fixtureMode: true });
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });

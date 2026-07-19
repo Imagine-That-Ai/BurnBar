@@ -12,6 +12,7 @@ import { SettingsSidebar } from './SettingsSidebar.js';
 import {
   SETTINGS_TAB_STORAGE_KEY,
   readStoredSettingsTab,
+  settingsTabsMatchingQuery,
   type SettingsTabId
 } from './settingsTabs.js';
 
@@ -56,6 +57,16 @@ export function SettingsSurface() {
     }
   }, []);
 
+  const onQueryChange = useCallback((value: string) => {
+    setQuery(value);
+    const normalizedQuery = value.trim();
+    if (!normalizedQuery) return;
+
+    const matches = settingsTabsMatchingQuery(normalizedQuery);
+    if (matches.length === 0 || matches.some((tab) => tab.id === activeTab)) return;
+    onSelectTab(matches[0]!.id);
+  }, [activeTab, onSelectTab]);
+
   const onRefreshConfig = useCallback(() => {
     if (refreshBusy) return;
     setRefreshBusy(true);
@@ -80,7 +91,7 @@ export function SettingsSurface() {
         <SettingsSidebar
           activeTab={activeTab}
           query={query}
-          onQueryChange={setQuery}
+          onQueryChange={onQueryChange}
           onSelectTab={onSelectTab}
         />
         <SettingsDetailPane

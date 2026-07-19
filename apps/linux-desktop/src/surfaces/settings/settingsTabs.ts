@@ -194,6 +194,20 @@ export const SETTINGS_SECTIONS: { id: SettingsSectionId; title: string; tabIds: 
   { id: 'extras', title: 'More', tabIds: ['text-expansion', 'media', 'pets'] }
 ];
 
+/**
+ * Return settings destinations that match the user-facing search contract.
+ * Keep this shared by the sidebar and selection logic so a filtered result
+ * never points at a different tab set than the detail pane.
+ */
+export function settingsTabsMatchingQuery(query: string): SettingsTabMeta[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return SETTINGS_TABS;
+  return SETTINGS_TABS.filter((tab) => {
+    const haystack = `${tab.title} ${tab.subtitle} ${tab.detailTitle}`.toLowerCase();
+    return haystack.includes(normalizedQuery);
+  });
+}
+
 export function isSettingsTabId(value: string): value is SettingsTabId {
   return SETTINGS_TABS.some((t) => t.id === value);
 }

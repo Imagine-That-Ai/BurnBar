@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   SETTINGS_SECTIONS,
   SETTINGS_TABS,
-  settingsTabMeta
+  settingsTabMeta,
+  settingsTabsMatchingQuery
 } from './settingsTabs.js';
 
 describe('Linux settings inventory', () => {
@@ -21,5 +22,14 @@ describe('Linux settings inventory', () => {
     expect(settingsTabMeta('pets').section).toBe('extras');
     const sectionIDs = SETTINGS_SECTIONS.flatMap((section) => section.tabIds);
     expect(new Set(sectionIDs).size).toBe(SETTINGS_TABS.length - 1);
+  });
+
+  it('uses the same searchable fields for filtered navigation and detail selection', () => {
+    expect(settingsTabsMatchingQuery('  MODEL PROXY ')).toEqual([
+      settingsTabMeta('model-proxy')
+    ]);
+    expect(settingsTabsMatchingQuery('Secret Service').map((tab) => tab.id)).toEqual(['daemon']);
+    expect(settingsTabsMatchingQuery('')).toHaveLength(SETTINGS_TABS.length);
+    expect(settingsTabsMatchingQuery('does-not-exist')).toEqual([]);
   });
 });

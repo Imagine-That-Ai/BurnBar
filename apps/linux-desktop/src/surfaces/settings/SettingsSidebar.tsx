@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import {
   SETTINGS_SECTIONS,
-  SETTINGS_TABS,
+  settingsTabsMatchingQuery,
   settingsTabMeta,
   type SettingsTabId
 } from './settingsTabs.js';
@@ -20,15 +20,10 @@ export function SettingsSidebar({
 }) {
   const normalizedQuery = query.trim().toLowerCase();
 
-  const visibleTabIds = useMemo(() => {
-    if (!normalizedQuery) return new Set(SETTINGS_TABS.map((t) => t.id));
-    const hits = new Set<SettingsTabId>();
-    for (const tab of SETTINGS_TABS) {
-      const hay = `${tab.title} ${tab.subtitle} ${tab.detailTitle}`.toLowerCase();
-      if (hay.includes(normalizedQuery)) hits.add(tab.id);
-    }
-    return hits;
-  }, [normalizedQuery]);
+  const visibleTabIds = useMemo(
+    () => new Set(settingsTabsMatchingQuery(normalizedQuery).map((tab) => tab.id)),
+    [normalizedQuery]
+  );
 
   const home = settingsTabMeta('home');
   const showHome = visibleTabIds.has('home');
@@ -60,6 +55,11 @@ export function SettingsSidebar({
       </div>
 
       <nav className="settings-sidebar-nav">
+        {normalizedQuery && visibleTabIds.size === 0 ? (
+          <p className="muted settings-search-empty" role="status">
+            No settings match “{query.trim()}”.
+          </p>
+        ) : null}
         {showHome ? (
           <div className="settings-sidebar-block">
             <SettingsDrillRow
