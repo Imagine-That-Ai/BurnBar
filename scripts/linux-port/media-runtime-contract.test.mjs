@@ -10,6 +10,10 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 test('release builds ship the GStreamer Mercury viewer contract', () => {
   const releaseBuilder = read('scripts/linux-port/build-linux-release.mjs');
   assert.match(releaseBuilder, /tauri:build.*--no-bundle.*--features.*media-gst/s);
+  assert.match(releaseBuilder, /crates\/openburnbar-media\/Cargo\.toml/);
+  assert.match(releaseBuilder, /OPENBURNBAR_MEDIA_CAPTURE_LIBRARY_DIR/);
+  assert.match(releaseBuilder, /OPENBURNBAR_MEDIA_CAPTURE_RELEASE/);
+  assert.match(releaseBuilder, /libopenburnbar_media\.so/);
 
   const dockerfile = read('tools/linux-toolchain/Dockerfile');
   for (const packageName of [

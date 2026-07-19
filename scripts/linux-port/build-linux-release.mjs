@@ -71,6 +71,10 @@ const irohManifest = path.join(repoRoot, 'crates/openburnbar-iroh/Cargo.toml');
 const irohTargetDirectory = path.join(repoRoot, 'crates/openburnbar-iroh/target-linux-release');
 const irohNativeLibraryDirectory = path.join(irohTargetDirectory, 'release');
 const irohNativeLibrary = path.join(irohNativeLibraryDirectory, 'libopenburnbar_iroh.so');
+const mediaManifest = path.join(repoRoot, 'crates/openburnbar-media/Cargo.toml');
+const mediaTargetDirectory = path.join(repoRoot, 'crates/openburnbar-media/target-linux-release');
+const mediaNativeLibraryDirectory = path.join(mediaTargetDirectory, 'release');
+const mediaNativeLibrary = path.join(mediaNativeLibraryDirectory, 'libopenburnbar_media.so');
 if (phase === 'finalize') {
   fs.rmSync(artifactsDir, { recursive: true, force: true });
   fs.rmSync(installedManifestsDir, { recursive: true, force: true });
@@ -88,6 +92,12 @@ Object.assign(packageBuildEnv, {
   OPENBURNBAR_LINUX_CLI_BIN: cliBinary,
   CARGO_BUILD_JOBS: cargoBuildJobs,
   OPENBURNBAR_LINUX_IROH_LIBRARY_DIR: irohNativeLibraryDirectory,
+  // The daemon's Mercury capture ABI is a separate Rust crate from the iroh
+  // file-transfer runtime. Build and link it in the same release graph so a
+  // signed package cannot advertise the GStreamer viewer while shipping a
+  // daemon that reports media capture as unavailable.
+  OPENBURNBAR_MEDIA_CAPTURE_LIBRARY_DIR: mediaNativeLibraryDirectory,
+  OPENBURNBAR_MEDIA_CAPTURE_RELEASE: '1',
   // linuxdeploy (Tauri's AppImage bundler) is itself an AppImage and needs FUSE
   // to self-mount; container builds (local toolchain + CI docker) have no FUSE,
   // so tell it to self-extract instead. Harmless outside containers.
@@ -140,6 +150,19 @@ if (phase === 'prepare' && !args.has('--skip-daemon')) {
   ], { env: { ...packageBuildEnv, CARGO_BUILD_JOBS: irohCargoBuildJobs } }));
 }
 if (phase === 'prepare' && !args.has('--skip-daemon') && daemonSteps.every((step) => step.exitCode === 0)) {
+  daemonSteps.push(runStep('cargo', [
+    'build',
+    '--manifest-path',
+    mediaManifest,
+    '--target-dir',
+    mediaTargetDirectory,
+    '--locked',
+    '--release',
+    '--jobs',
+    cargoBuildJobs
+  ], { env: packageBuildEnv }));
+}
+if (phase === 'prepare' && !args.has('--skip-daemon') && daemonSteps.every((step) => step.exitCode === 0)) {
   // Swift 6.1 Linux libswiftObservation.so references swift::threading::fatal which
   // is missing from the shared libswiftCore.so (present only in the static archive).
   // --allow-shlib-undefined lets the link complete; runtime uses matching 6.1 libs.
@@ -190,6 +213,7 @@ for (const step of daemonSteps) {
 
 const daemonBuildPassed = daemonSteps.every((step) => step.exitCode === 0);
 const irohNativeReady = fs.existsSync(irohNativeLibrary);
+const mediaNativeReady = fs.existsSync(mediaNativeLibrary);
 const daemonReady = daemonBuildPassed && fs.existsSync(daemonBinary);
 const cliReady = daemonBuildPassed && fs.existsSync(cliBinary);
 if (!daemonReady) {
@@ -219,6 +243,15 @@ if (!irohNativeReady) {
     log: 'logs/daemon-build.log'
   });
 }
+if (!mediaNativeReady) {
+  blockers.push({
+    kind: 'missing-media-native-artifact',
+    message: args.has('--skip-daemon')
+      ? `Required Linux Mercury media runtime is missing at ${relative(mediaNativeLibrary)} (stage it when using --skip-daemon).`
+      : 'Required Linux Mercury media runtime was not produced before the Swift daemon build.',
+    log: 'logs/daemon-build.log'
+  });
+}
 
 const buildSteps = [];
 // Prepare owns cleanup. Finalize retains the independently made Arch artifact
@@ -226,7 +259,7 @@ const buildSteps = [];
 if (phase === 'prepare') {
   fs.rmSync(path.join(appDir, 'src-tauri/target/release/bundle'), { recursive: true, force: true });
 }
-if (daemonReady && cliReady && irohNativeReady) {
+if (daemonReady && cliReady && irohNativeReady && mediaNativeReady) {
   // Never let an artifact from an earlier architecture/version satisfy this shard.
   const prepareCommands = [
     ['npm', ['ci', '--no-audit', '--no-fund'], { cwd: appDir, env: packageBuildEnv }],

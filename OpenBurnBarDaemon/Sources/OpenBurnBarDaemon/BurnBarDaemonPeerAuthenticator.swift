@@ -484,6 +484,11 @@ public struct BurnBarDaemonPeerAuthenticator: Sendable {
         guard status == 0, length == socklen_t(MemoryLayout<BurnBarLinuxPeerSocketCredentials>.size) else {
             throw BurnBarDaemonPeerAuthenticationFailure.auditTokenUnavailable
         }
+        // `/proc/<pid>/exe` is a kernel magic link, not a user-controlled
+        // filesystem symlink. O_NOFOLLOW would reject the link with ELOOP on
+        // Linux before we can bind the credential to the executable. The
+        // descriptor is still hashed and fstat'ed below, while the PID and
+        // executable path come from SO_PEERCRED and the kernel proc link.
         let executableFD = open("/proc/\(credential.pid)/exe", O_RDONLY | O_CLOEXEC)
         guard executableFD >= 0 else {
             throw BurnBarDaemonPeerAuthenticationFailure.auditTokenUnavailable

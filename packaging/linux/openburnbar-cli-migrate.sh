@@ -17,6 +17,26 @@ prefix=""
 if [[ "$root" != "/" ]]; then
   prefix="$root"
 fi
+
+# Register the package-owned user service before any CLI-shadow migration early
+# return. Maintainer scripts run as root, so `--global enable` is the only
+# deterministic way to make the unit available to each user's systemd manager;
+# a non-systemd/minimal installation remains valid and can start the launcher
+# explicitly. Never make package installation fail solely because systemd is
+# unavailable or policy-managed by the host.
+enable_daemon_service() {
+  [[ "$root" == "/" ]] || return 0
+  [[ -f /usr/lib/systemd/user/openburnbar-daemon.service ]] || return 0
+  command -v systemctl >/dev/null 2>&1 || return 0
+  if systemctl --global enable openburnbar-daemon.service >/dev/null 2>&1; then
+    printf 'openburnbar-cli-migrate: enabled user daemon service\n'
+  else
+    printf 'openburnbar-cli-migrate: unable to enable user daemon service; leaving package installed\n' >&2
+  fi
+}
+
+enable_daemon_service
+
 canonical="${prefix}/usr/bin/openburnbar-cli"
 legacy="${prefix}/usr/local/bin/openburnbar-cli"
 

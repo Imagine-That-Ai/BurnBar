@@ -9,6 +9,32 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const helper = path.join(repoRoot, 'packaging/linux/openburnbar-cli-migrate.sh');
 
+test('package post-install registers the user daemon service before migration exits', () => {
+  const source = fs.readFileSync(helper, 'utf8');
+  const enableCall = source.indexOf('systemctl --global enable openburnbar-daemon.service');
+  const canonicalGuard = source.indexOf('if [[ ! -f "$canonical" || ! -x "$canonical" ]]');
+  assert.ok(enableCall >= 0, 'maintainer script must enable the package-owned user service');
+  assert.ok(canonicalGuard > enableCall, 'service registration must not be skipped by CLI migration early returns');
+  assert.match(source, /command -v systemctl/u);
+  assert.match(source, /leaving package installed/u);
+});
+
+test('systemd service keeps /proc peer authentication visible to external clients', () => {
+  const service = fs.readFileSync(
+    path.join(repoRoot, 'packaging/linux/openburnbar-daemon.service'),
+    'utf8'
+  );
+  const aurService = fs.readFileSync(
+    path.join(repoRoot, 'packaging/linux/aur/openburnbar-daemon.service'),
+    'utf8'
+  );
+  assert.equal(aurService, service, 'AUR service must mirror the canonical unit');
+  assert.doesNotMatch(service, /^PrivateTmp=/mu);
+  assert.doesNotMatch(service, /^Protect(Home|System|Proc)=/mu);
+  assert.doesNotMatch(service, /^Read(?:Only|Write|WriteOnly)Paths=/mu);
+  assert.match(service, /SO_PEERCRED plus \/proc\/<pid>\/exe/u);
+});
+
 function makeRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-cli-migration-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
