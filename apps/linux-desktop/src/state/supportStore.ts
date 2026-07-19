@@ -29,6 +29,12 @@ const FIXTURE_PREVIEW: DiagnosticsExportPreview = {
   ]
 };
 
+// Native version/feed checks can overlap when the shell reconnects while a
+// user presses "Check again". Keep only the newest response authoritative so
+// an older request cannot replace fresh package guidance with stale metadata.
+let versionRequestSequence = 0;
+let updateRequestSequence = 0;
+
 function fixtureVersionInfo(): AppVersionInfo {
   return {
     shellVersion: '0.1.0-fixture',
@@ -118,6 +124,11 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
     });
   },
   async loadVersion() {
+    const requestID = ++versionRequestSequence;
+    // A new version probe supersedes any feed probe started by the previous
+    // bridge snapshot. Otherwise an old response can leave updateLoading
+    // stuck or publish status for a shell/daemon pair that is no longer live.
+    ++updateRequestSequence;
     const { fixtureMode, bridge } = useShellStore.getState();
     if (fixtureMode) {
       set({
@@ -134,16 +145,20 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
       set({
         versionInfo: null,
         versionLoading: false,
-        versionError: 'Packaged shell required for live version facts.'
+        versionError: 'Packaged shell required for live version facts.',
+        updateLoading: false,
+        updateError: null
       });
       return;
     }
-    set({ versionLoading: true, versionError: null });
+    set({ versionLoading: true, versionError: null, updateLoading: false, updateError: null });
     try {
       const versionInfo = await bridge.appVersionInfo();
+      if (requestID !== versionRequestSequence) return;
       set({ versionInfo, versionLoading: false, versionError: null });
       await useSupportStore.getState().checkUpdate();
     } catch (e) {
+      if (requestID !== versionRequestSequence) return;
       set({
         versionInfo: null,
         versionLoading: false,
@@ -152,6 +167,7 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
     }
   },
   async checkUpdate() {
+    const requestID = ++updateRequestSequence;
     const { fixtureMode, bridge } = useShellStore.getState();
     if (fixtureMode) {
       set({ updateStatus: fixtureUpdateStatus(), updateLoading: false, updateError: null });
@@ -168,8 +184,10 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
     set({ updateLoading: true, updateError: null });
     try {
       const updateStatus = await bridge.updateStatus();
+      if (requestID !== updateRequestSequence) return;
       set({ updateStatus, updateLoading: false, updateError: null });
     } catch (e) {
+      if (requestID !== updateRequestSequence) return;
       set({
         updateStatus: null,
         updateLoading: false,

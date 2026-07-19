@@ -6,7 +6,7 @@ import { clearPerfSamples, recordPerfSample } from '../../perfMarks.js';
 import { useMediaStore } from '../../state/mediaStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useSupportStore } from '../../state/supportStore.js';
-import { isSafeDiagnosticsPath, type LinuxShellBridge } from '../../tauriBridge.js';
+import { isSafeDiagnosticsPath, type AppVersionInfo, type LinuxShellBridge } from '../../tauriBridge.js';
 import { UpdatesSurface } from '../updates/UpdatesSurface.js';
 import { KERNEL_RESOLUTION_EVENT } from '../../components/KernelBackdrop.js';
 import { SupportSurface } from './SupportSurface.js';
@@ -219,6 +219,59 @@ describe('P09 updates and support', () => {
       'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb'
     );
     expect(screen.getByText('apt/dpkg')).toBeTruthy();
+  });
+
+  it('keeps the newest signed update response when checks overlap', async () => {
+    let resolveFirst: ((status: { state: 'current'; currentVersion: string; latestVersion: string }) => void) | undefined;
+    const firstResponse = new Promise<{ state: 'current'; currentVersion: string; latestVersion: string }>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const updateStatus = vi.fn()
+      .mockImplementationOnce(() => firstResponse)
+      .mockResolvedValueOnce({ state: 'current', currentVersion: '1.1.0', latestVersion: '1.1.0' });
+    const bridge = mockBridge({ updateStatus });
+    useShellStore.setState({ bridge, fixtureMode: false });
+
+    const firstCheck = useSupportStore.getState().checkUpdate();
+    await act(async () => { await Promise.resolve(); });
+    const secondCheck = useSupportStore.getState().checkUpdate();
+    await act(async () => { await secondCheck; });
+
+    expect(useSupportStore.getState().updateStatus).toMatchObject({ currentVersion: '1.1.0' });
+    resolveFirst?.({ state: 'current', currentVersion: '1.0.0', latestVersion: '1.0.0' });
+    await act(async () => { await firstCheck; });
+    expect(useSupportStore.getState().updateStatus).toMatchObject({ currentVersion: '1.1.0' });
+    expect(useSupportStore.getState().updateLoading).toBe(false);
+  });
+
+  it('keeps the newest version facts when bridge refreshes overlap', async () => {
+    let resolveFirst: ((info: AppVersionInfo) => void) | undefined;
+    const firstResponse = new Promise<AppVersionInfo>((resolve) => { resolveFirst = resolve; });
+    const appVersionInfo = vi.fn()
+      .mockImplementationOnce(() => firstResponse)
+      .mockResolvedValueOnce({
+        shellVersion: '2.0.0',
+        daemonVersion: '2.0.0',
+        packageChannel: 'deb',
+        updateCheck: 'unavailable-in-shell'
+      });
+    const bridge = mockBridge({ appVersionInfo });
+    useShellStore.setState({ bridge, fixtureMode: false });
+
+    const firstLoad = useSupportStore.getState().loadVersion();
+    await act(async () => { await Promise.resolve(); });
+    const secondLoad = useSupportStore.getState().loadVersion();
+    await act(async () => { await secondLoad; });
+
+    expect(useSupportStore.getState().versionInfo?.shellVersion).toBe('2.0.0');
+    resolveFirst?.({
+      shellVersion: '1.0.0',
+      daemonVersion: '1.0.0',
+      packageChannel: 'deb',
+      updateCheck: 'unavailable-in-shell'
+    });
+    await act(async () => { await firstLoad; });
+    expect(useSupportStore.getState().versionInfo?.shellVersion).toBe('2.0.0');
   });
 
   it('renders package-native install and rollback actions without executing them', async () => {
