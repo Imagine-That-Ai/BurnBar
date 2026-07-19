@@ -110,8 +110,10 @@ describe('P09 updates and support', () => {
   it('accepts native diagnostics paths but rejects traversal and control input', () => {
     expect(isSafeDiagnosticsPath('/tmp/openburnbar-diagnostics-fixture.json')).toBe(true);
     expect(isSafeDiagnosticsPath('/home/user/diagnostics-1720512345.json')).toBe(true);
+    expect(isSafeDiagnosticsPath('/home/user/support-report.json')).toBe(true);
     expect(isSafeDiagnosticsPath('/tmp/../../secrets.json')).toBe(false);
     expect(isSafeDiagnosticsPath('/tmp/diagnostics-\n.json')).toBe(false);
+    expect(isSafeDiagnosticsPath('/tmp/.diagnostics.json')).toBe(false);
   });
 
   it('shows offline notice on updates without bridge or fixture', async () => {
@@ -515,11 +517,11 @@ describe('P09 updates and support', () => {
     expect(screen.getByText('Native export metadata')).toBeTruthy();
   });
 
-  it('describes the packaged export destination without promising an unavailable save dialog', () => {
+  it('describes the packaged export destination and native save dialog', () => {
     useShellStore.setState({ bridge: mockBridge(), fixtureMode: false });
     render(<SupportSurface />);
-    expect(screen.getByText(/app support directory/)).toBeTruthy();
-    expect(screen.queryByText(/save dialog/i)).toBeNull();
+    expect(screen.getByText(/native save dialog/i)).toBeTruthy();
+    expect(screen.getByText(/Native save destination/)).toBeTruthy();
   });
 
   it('mounts Mercury media below diagnostics without treating staged media as performance proof', async () => {

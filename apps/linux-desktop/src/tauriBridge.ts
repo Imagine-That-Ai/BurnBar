@@ -3526,7 +3526,7 @@ export function isSafeDiagnosticsPath(path: string): boolean {
   const interiorSegments = segments.slice(1, -1);
   if (interiorSegments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')) return false;
   const filename = segments.at(-1) ?? '';
-  return /^(?:diagnostics-[A-Za-z0-9._-]+|openburnbar-diagnostics-[A-Za-z0-9._-]+)\.json$/.test(filename);
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json$/.test(filename);
 }
 
 export function isSafeDiagnosticsPreview(preview: DiagnosticsExportPreview): boolean {

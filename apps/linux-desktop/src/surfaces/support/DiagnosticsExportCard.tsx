@@ -92,7 +92,7 @@ export function DiagnosticsExportCard() {
       <h3 id="p09-diagnostics-heading">Diagnostics export</h3>
       <p className="muted">
         {previewSource === 'packaged'
-          ? 'Writes a redacted JSON bundle to the app support directory. Review what is included before sharing.'
+          ? 'Opens a native save dialog for a redacted JSON bundle. Review what is included before sharing.'
           : previewSource === 'fixture'
             ? 'Shows redacted fixture metadata for host smoke tests. No native file is created.'
             : 'Run the packaged Linux shell to create a native redacted diagnostics bundle.'}
@@ -108,7 +108,7 @@ export function DiagnosticsExportCard() {
           {previewSource === 'fixture'
             ? 'Synthetic metadata for host smoke tests; no file is written.'
             : previewSource === 'packaged'
-              ? 'Native support-directory export with owner-only permissions.'
+              ? 'Native save destination with owner-only file permissions.'
               : 'No native export is available in browser preview.'}
         </span>
       </div>

@@ -8,7 +8,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
@@ -19,6 +19,7 @@ use tauri::ipc::Channel;
 use tauri::menu::{MenuBuilder, MenuItem, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent, Wry};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 use tauri_plugin_global_shortcut::{GlobalShortcut, Shortcut, ShortcutEvent};
 use tauri_plugin_shell::ShellExt;
@@ -4422,15 +4423,122 @@ fn write_private_diagnostics_json(dir: &Path, stamp: u64, json: &[u8]) -> Result
     result
 }
 
-// Writes a JSON bundle to the private support dir. Redaction is structural:
-// this command only persists shell/health/package/runtime/renderer metadata —
-// it never reads provider payloads, tokens, socket auth material, socket paths,
-// or raw daemon errors. A unique temporary file plus atomic rename prevents a
-// crash from leaving a partial bundle that support could accidentally share.
+const DIAGNOSTICS_DESTINATION_MAX_BYTES: usize = 4096;
+
+fn validate_diagnostics_destination(path: &Path) -> Result<&Path, String> {
+    let path_text = path
+        .to_str()
+        .ok_or_else(|| "Diagnostics destination must be valid UTF-8.".to_string())?;
+    if !path.is_absolute()
+        || path_text.len() > DIAGNOSTICS_DESTINATION_MAX_BYTES
+        || path_text.chars().any(char::is_control)
+        || path
+            .components()
+            .any(|component| matches!(component, Component::CurDir | Component::ParentDir))
+    {
+        return Err("Diagnostics destination path is unsafe.".to_string());
+    }
+    let filename = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "Diagnostics destination must name a JSON file.".to_string())?;
+    let stem = filename.strip_suffix(".json").unwrap_or_default();
+    if stem.is_empty()
+        || filename.len() > 128
+        || !stem
+            .as_bytes()
+            .first()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        || !stem
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        return Err("Diagnostics destination must use a safe .json filename.".to_string());
+    }
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .ok_or_else(|| "Diagnostics destination has no parent directory.".to_string())?;
+    let parent_metadata = fs::symlink_metadata(parent)
+        .map_err(|_| "Diagnostics destination directory is unavailable.".to_string())?;
+    if parent_metadata.file_type().is_symlink() || !parent_metadata.is_dir() {
+        return Err("Diagnostics destination directory must be a real directory.".to_string());
+    }
+    if let Ok(metadata) = fs::symlink_metadata(path) {
+        if metadata.file_type().is_symlink() || metadata.is_dir() {
+            return Err("Diagnostics destination must be a regular file.".to_string());
+        }
+    }
+    Ok(parent)
+}
+
+/// Writes a user-selected JSON bundle with the same owner-only, atomic file
+/// contract as the private support-directory export. The destination comes
+/// from the native save dialog, but is still validated at the Rust boundary.
+fn write_diagnostics_json_at(path: &Path, json: &[u8]) -> Result<PathBuf, String> {
+    let parent = validate_diagnostics_destination(path)?;
+    let filename = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "Diagnostics destination must name a JSON file.".to_string())?;
+    let partial = parent.join(format!(
+        ".{filename}.{}.partial",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&partial)
+            .map_err(|e| e.to_string())?;
+        file.write_all(json).map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+        fs::set_permissions(&partial, fs::Permissions::from_mode(0o600))
+            .map_err(|e| e.to_string())?;
+        drop(file);
+        // `rename` replaces an existing regular file atomically, while never
+        // following a symlink at the destination.
+        fs::rename(&partial, path).map_err(|e| e.to_string())?;
+        Ok(path.to_path_buf())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&partial);
+    }
+    result
+}
+
+// Writes a JSON bundle to a user-selected native destination. Redaction is
+// structural: this command only persists shell/health/package/runtime/renderer
+// metadata — it never reads provider payloads, tokens, socket auth material,
+// socket paths, or raw daemon errors. A private temporary file plus atomic
+// rename prevents a crash from leaving a partial bundle that support could
+// accidentally share.
 #[tauri::command]
-fn export_diagnostics() -> Result<serde_json::Value, String> {
-    let dir = linux_support_dir();
-    ensure_private_diagnostics_dir(&dir)?;
+async fn export_diagnostics(app: AppHandle) -> Result<serde_json::Value, String> {
+    let suggested_dir = linux_support_dir();
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut dialog = app
+        .dialog()
+        .file()
+        .set_title("Save redacted diagnostics")
+        .set_file_name(format!("openburnbar-diagnostics-{stamp}.json"))
+        .add_filter("OpenBurnBar diagnostics", &["json"])
+        .set_can_create_directories(false);
+    if suggested_dir.is_dir() {
+        dialog = dialog.set_directory(suggested_dir);
+    }
+    let destination = dialog
+        .blocking_save_file()
+        .ok_or_else(|| "Diagnostics export cancelled.".to_string())?
+        .into_path()
+        .map_err(|_| "Native diagnostics export returned an invalid path.".to_string())?;
+    validate_diagnostics_destination(&destination)?;
+
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -4441,7 +4549,7 @@ fn export_diagnostics() -> Result<serde_json::Value, String> {
     let bundle = diagnostics_bundle(stamp, &health, &package, &runtime);
     let json = serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?;
     let preview = diagnostics_preview(json.len());
-    let path = write_private_diagnostics_json(&dir, stamp, json.as_bytes())?;
+    let path = write_diagnostics_json_at(&destination, json.as_bytes())?;
     Ok(serde_json::json!({
         "path": path.display().to_string(),
         "preview": preview
@@ -6939,6 +7047,7 @@ pub fn run() {
     init_tracing();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             daemon_health,
@@ -7478,6 +7587,53 @@ mod tests {
             .file_name()
             .to_string_lossy()
             .ends_with(".partial")));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn diagnostics_export_supports_user_selected_owner_only_destination() {
+        let root = std::env::temp_dir().join(format!(
+            "openburnbar-diagnostics-destination-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let destination = root.join("support-report.json");
+
+        let path = write_diagnostics_json_at(&destination, br#"{"ok":true}"#).unwrap();
+        assert_eq!(path, destination);
+        assert_eq!(fs::read(&path).unwrap(), br#"{"ok":true}"#);
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert!(fs::read_dir(&root).unwrap().all(|entry| !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".partial")));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn diagnostics_destination_rejects_traversal_symlinks_and_invalid_names() {
+        let root = std::env::temp_dir().join(format!(
+            "openburnbar-diagnostics-destination-invalid-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let target = root.join("target.json");
+        fs::write(&target, br#"{"secret":true}"#).unwrap();
+        let link = root.join("linked.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(validate_diagnostics_destination(&root.join("report.json")).is_ok());
+        assert!(validate_diagnostics_destination(&root.join("../report.json")).is_err());
+        assert!(validate_diagnostics_destination(&root.join("report.txt")).is_err());
+        assert!(validate_diagnostics_destination(&root.join(".report.json")).is_err());
+        assert!(validate_diagnostics_destination(&link).is_err());
+        assert!(write_diagnostics_json_at(&link, br#"{"ok":false}"#).is_err());
 
         let _ = fs::remove_dir_all(root);
     }
