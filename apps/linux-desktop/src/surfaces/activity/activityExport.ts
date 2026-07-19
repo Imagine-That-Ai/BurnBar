@@ -16,6 +16,8 @@ export type ActivityExportSession = {
   title: string;
   sourceID?: string;
   providerSessionID?: string;
+  /** Stable daemon run identity retained for source resolution after export. */
+  runID?: string;
   projectName?: string;
   bodyMD?: string;
 };
@@ -49,6 +51,27 @@ export type ActivityHistoryExportResult =
       message: string;
     };
 
+export type ActivityExportParseResult =
+  | { kind: 'valid'; document: ActivityExportDocument }
+  | { kind: 'invalid'; message: string };
+
+export type ActivityExportResumeResult =
+  | {
+      kind: 'requested';
+      session: ActivityExportSession;
+      result: SessionReplayResult;
+    }
+  | {
+      kind: 'unavailable';
+      code:
+        | 'invalid_export'
+        | 'session_not_found'
+        | 'source_identity_unavailable'
+        | 'bridge_unavailable'
+        | 'daemon_error';
+      message: string;
+    };
+
 function finiteNumber(value: number): number {
   return Number.isFinite(value) ? value : 0;
 }
@@ -74,6 +97,7 @@ function exportSession(session: SessionEntry): ActivityExportSession {
   };
   if (session.sourceID) exported.sourceID = text(session.sourceID);
   if (session.providerSessionID) exported.providerSessionID = text(session.providerSessionID);
+  if (session.runID) exported.runID = text(session.runID);
   if (session.projectName) exported.projectName = text(session.projectName);
   return exported;
 }
@@ -147,15 +171,23 @@ export async function buildDaemonActivityHistoryExport(
   }
 
   const sessions: ActivityExportSession[] = [];
+  const sourceIDs = new Set<string>();
   let bodyBytes = 0;
   for (const session of listed.sessions) {
-    const sourceID = session.sourceID;
+    const sourceID = session.sourceID?.trim() || null;
     if (!sourceID) {
       return unavailable(
         'source_identity_unavailable',
         'Full activity history export is unavailable for a row without a verified conversation identity.'
       );
     }
+    if (sourceIDs.has(sourceID)) {
+      return unavailable(
+        'source_identity_unavailable',
+        'Full activity history export is unavailable because the daemon returned duplicate conversation identities.'
+      );
+    }
+    sourceIDs.add(sourceID);
 
     let replay: SessionReplayResult;
     try {
@@ -189,6 +221,7 @@ export async function buildDaemonActivityHistoryExport(
 
     sessions.push({
       ...exportSession(session),
+      sourceID,
       bodyMD: replay.briefingMD
     });
   }
@@ -206,6 +239,218 @@ export async function buildDaemonActivityHistoryExport(
       historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT
     }
   };
+}
+
+const ACTIVITY_EXPORT_ID_MAX_CHARS = 512;
+const ACTIVITY_EXPORT_TEXT_MAX_CHARS = 4_096;
+const ACTIVITY_EXPORT_JSON_MAX_BYTES = ACTIVITY_HISTORY_EXPORT_MAX_BYTES + 1_048_576;
+
+function boundedExportText(value: unknown, maxChars = ACTIVITY_EXPORT_TEXT_MAX_CHARS): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.normalize('NFKC');
+  if (!normalized || normalized.length > maxChars) return null;
+  if ([...normalized].some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 0x20 || code === 0x7f;
+  })) return null;
+  return normalized;
+}
+
+function boundedExportOptionalText(value: unknown, maxChars = ACTIVITY_EXPORT_TEXT_MAX_CHARS): string | undefined {
+  if (value === undefined) return undefined;
+  return boundedExportText(value, maxChars) ?? undefined;
+}
+
+/**
+ * Validate a JSON history export before it is allowed to select a resume
+ * source. Markdown exports intentionally cannot be resumed: they are a
+ * presentation format and may have lost machine identity or been edited.
+ */
+export function parseActivityHistoryExport(serialized: string): ActivityExportParseResult {
+  if (typeof serialized !== 'string' || utf8Bytes(serialized) > ACTIVITY_EXPORT_JSON_MAX_BYTES) {
+    return { kind: 'invalid', message: 'Activity history export exceeds the bounded import size.' };
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(serialized) as unknown;
+  } catch {
+    return { kind: 'invalid', message: 'Activity history import is not valid JSON.' };
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { kind: 'invalid', message: 'Activity history import must contain one JSON object.' };
+  }
+  const candidate = raw as Record<string, unknown>;
+  if (candidate.version !== 1 || candidate.scope !== 'daemon-session-history' || candidate.historyComplete !== true) {
+    return {
+      kind: 'invalid',
+      message: 'Only complete daemon-session-history exports can be used for resume.'
+    };
+  }
+  if (candidate.source !== 'live daemon session index') {
+    return { kind: 'invalid', message: 'Activity history import has an untrusted source declaration.' };
+  }
+  const generatedAt = boundedExportText(candidate.generatedAt);
+  const loadedCount =
+    typeof candidate.loadedCount === 'number' && Number.isSafeInteger(candidate.loadedCount)
+      ? candidate.loadedCount
+      : null;
+  const historyLimit =
+    typeof candidate.historyLimit === 'number' && Number.isSafeInteger(candidate.historyLimit)
+      ? candidate.historyLimit
+      : null;
+  const rawSessions = candidate.sessions;
+  if (
+    !generatedAt ||
+    loadedCount === null ||
+    loadedCount < 0 ||
+    loadedCount > ACTIVITY_HISTORY_EXPORT_LIMIT ||
+    historyLimit === null ||
+    historyLimit < 1 ||
+    historyLimit > ACTIVITY_HISTORY_EXPORT_LIMIT ||
+    !Array.isArray(rawSessions) ||
+    rawSessions.length !== loadedCount
+  ) {
+    return { kind: 'invalid', message: 'Activity history import has invalid bounded metadata.' };
+  }
+
+  const sessions: ActivityExportSession[] = [];
+  const sourceIDs = new Set<string>();
+  let bodyBytes = 0;
+  for (const rawSession of rawSessions) {
+    if (!rawSession || typeof rawSession !== 'object' || Array.isArray(rawSession)) {
+      return { kind: 'invalid', message: 'Activity history import contains a malformed session row.' };
+    }
+    const row = rawSession as Record<string, unknown>;
+    const id = boundedExportText(row.id, ACTIVITY_EXPORT_ID_MAX_CHARS);
+    const provider = boundedExportText(row.provider);
+    const model = boundedExportText(row.model);
+    const startedAt = boundedExportText(row.startedAt);
+    const title = boundedExportText(row.title);
+    const sourceID = boundedExportText(row.sourceID, ACTIVITY_EXPORT_ID_MAX_CHARS);
+    const providerSessionID = boundedExportOptionalText(row.providerSessionID, ACTIVITY_EXPORT_ID_MAX_CHARS);
+    const runID = boundedExportOptionalText(row.runID, ACTIVITY_EXPORT_ID_MAX_CHARS);
+    const projectName = boundedExportOptionalText(row.projectName);
+    const bodyMD = boundedExportText(row.bodyMD, ACTIVITY_HISTORY_EXPORT_MAX_BYTES);
+    const tokens = typeof row.tokens === 'number' && Number.isFinite(row.tokens) ? row.tokens : null;
+    const costUsd = typeof row.costUsd === 'number' && Number.isFinite(row.costUsd) ? row.costUsd : null;
+    if (
+      !id ||
+      !provider ||
+      !model ||
+      !startedAt ||
+      !title ||
+      !sourceID ||
+      !bodyMD ||
+      tokens === null ||
+      costUsd === null
+    ) {
+      return { kind: 'invalid', message: 'Activity history import contains an incomplete session row.' };
+    }
+    if (sourceIDs.has(sourceID)) {
+      return {
+        kind: 'invalid',
+        message: 'Activity history import contains duplicate source identities and cannot be resumed safely.'
+      };
+    }
+    sourceIDs.add(sourceID);
+    bodyBytes += utf8Bytes(bodyMD);
+    if (bodyBytes > ACTIVITY_HISTORY_EXPORT_MAX_BYTES) {
+      return { kind: 'invalid', message: 'Activity history import exceeds the bounded transcript size.' };
+    }
+    sessions.push({
+      id,
+      provider,
+      model,
+      startedAt,
+      tokens,
+      costUsd,
+      title,
+      sourceID,
+      ...(providerSessionID ? { providerSessionID } : {}),
+      ...(runID ? { runID } : {}),
+      ...(projectName ? { projectName } : {}),
+      bodyMD
+    });
+  }
+
+  return {
+    kind: 'valid',
+    document: {
+      version: 1,
+      scope: 'daemon-session-history',
+      source: 'live daemon session index',
+      generatedAt,
+      loadedCount,
+      sessions,
+      historyComplete: true,
+      historyLimit
+    }
+  };
+}
+
+/**
+ * Resume only the exact source identity selected from a validated export.
+ * The transcript body is never sent back as an executable prompt; the daemon
+ * remains the authority for current source existence and resume policy.
+ */
+export async function resumeActivityHistoryExportSession(
+  document: ActivityExportDocument,
+  sessionID: string,
+  bridge: Pick<LinuxShellBridge, 'sessionResume'>
+): Promise<ActivityExportResumeResult> {
+  if (
+    document.version !== 1 ||
+    document.scope !== 'daemon-session-history' ||
+    document.historyComplete !== true ||
+    !Array.isArray(document.sessions)
+  ) {
+    return {
+      kind: 'unavailable',
+      code: 'invalid_export',
+      message: 'Only a complete daemon-session-history export can be resumed.'
+    };
+  }
+  const sourceID = sessionID.trim();
+  const matches = document.sessions.filter((session) => session.sourceID?.trim() === sourceID);
+  if (matches.length === 0) {
+    return {
+      kind: 'unavailable',
+      code: 'session_not_found',
+      message: 'The selected session is not present in this export.'
+    };
+  }
+  if (matches.length !== 1 || !sourceID) {
+    return {
+      kind: 'unavailable',
+      code: 'source_identity_unavailable',
+      message: 'The selected export row does not have one verified source identity.'
+    };
+  }
+  if (typeof bridge.sessionResume !== 'function') {
+    return {
+      kind: 'unavailable',
+      code: 'bridge_unavailable',
+      message: 'Resume from export requires the live daemon bridge.'
+    };
+  }
+  try {
+    const result = await bridge.sessionResume(sourceID);
+    if (result.kind === 'error' || result.errorCode) {
+      return {
+        kind: 'unavailable',
+        code: 'daemon_error',
+        message: result.errorRecovery ?? 'The daemon rejected resume for the selected exported session.'
+      };
+    }
+    return { kind: 'requested', session: matches[0], result };
+  } catch (error) {
+    return {
+      kind: 'unavailable',
+      code: 'daemon_error',
+      message: error instanceof Error ? error.message : 'The daemon could not resume the selected exported session.'
+    };
+  }
 }
 
 function sanitizePart(value: string, maxLength: number): string {

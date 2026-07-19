@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
@@ -11,8 +11,11 @@ import {
   buildDaemonActivityHistoryExport,
   buildActivityExportDocument,
   downloadActivityExport,
+  parseActivityHistoryExport,
+  resumeActivityHistoryExportSession,
   sanitizeActivityExportFilename,
   serializeActivityExport,
+  type ActivityExportDocument,
   type ActivityExportFormat
 } from './activityExport.js';
 import './activity.css';
@@ -25,6 +28,25 @@ function ActivitySkeleton() {
       ))}
     </ul>
   );
+}
+
+async function readActivityHistoryFile(file: File): Promise<string> {
+  if (typeof file.text === 'function') return file.text();
+  if (typeof FileReader === 'undefined') {
+    throw new Error('Activity history import is unavailable in this shell.');
+  }
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error('Activity history file could not be read.'));
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('Activity history file did not contain text.'));
+      } else {
+        resolve(reader.result);
+      }
+    };
+    reader.readAsText(file);
+  });
 }
 
 export function ActivitySurface() {
@@ -44,6 +66,11 @@ export function ActivitySurface() {
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [historyExportLoading, setHistoryExportLoading] = useState(false);
   const [historyExportStatus, setHistoryExportStatus] = useState<string | null>(null);
+  const [importedHistory, setImportedHistory] = useState<ActivityExportDocument | null>(null);
+  const [importedHistorySessionID, setImportedHistorySessionID] = useState('');
+  const [historyImportLoading, setHistoryImportLoading] = useState(false);
+  const [historyImportStatus, setHistoryImportStatus] = useState<string | null>(null);
+  const historyImportInputRef = useRef<HTMLInputElement>(null);
 
   const offline = !fixtureMode && !bridge;
   const provenance = fixtureMode ? 'fixture transcript' : 'live daemon session index';
@@ -112,6 +139,122 @@ export function ActivitySurface() {
       setHistoryExportLoading(false);
     }
   };
+
+  const importActivityHistory = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setHistoryImportStatus(null);
+    setImportedHistory(null);
+    setImportedHistorySessionID('');
+    setHistoryImportLoading(true);
+    try {
+      const parsed = parseActivityHistoryExport(await readActivityHistoryFile(file));
+      if (parsed.kind === 'invalid') {
+        setHistoryImportStatus(`History import unavailable: ${parsed.message}`);
+        return;
+      }
+      const firstSourceID = parsed.document.sessions[0]?.sourceID?.trim() ?? '';
+      setImportedHistory(parsed.document);
+      setImportedHistorySessionID(firstSourceID);
+      setHistoryImportStatus(
+        `Imported ${parsed.document.loadedCount} resumable session${parsed.document.loadedCount === 1 ? '' : 's'} from ${file.name}.`
+      );
+    } catch (error) {
+      setHistoryImportStatus(error instanceof Error ? error.message : 'History import failed.');
+    } finally {
+      setHistoryImportLoading(false);
+    }
+  };
+
+  const resumeImportedHistory = async () => {
+    if (!importedHistory || !importedHistorySessionID) {
+      setHistoryImportStatus('Choose a session from a complete JSON history export first.');
+      return;
+    }
+    if (fixtureMode || !bridge) {
+      setHistoryImportStatus('Resume from export requires the live daemon and indexed session store.');
+      return;
+    }
+    setHistoryImportLoading(true);
+    setHistoryImportStatus(null);
+    try {
+      const result = await resumeActivityHistoryExportSession(importedHistory, importedHistorySessionID, bridge);
+      if (result.kind === 'unavailable') {
+        setHistoryImportStatus(`Resume from export unavailable: ${result.message}`);
+      } else if (result.result.pid) {
+        setHistoryImportStatus(`Resume requested for ${result.session.title} (process ${result.result.pid}).`);
+      } else if (result.result.kind === 'native') {
+        setHistoryImportStatus(`Native resume requested for ${result.session.title}.`);
+      } else {
+        setHistoryImportStatus(`Resume handoff requested for ${result.session.title}.`);
+      }
+    } catch (error) {
+      setHistoryImportStatus(error instanceof Error ? error.message : 'Resume from export failed.');
+    } finally {
+      setHistoryImportLoading(false);
+    }
+  };
+
+  const historyImportPanel = (
+    <section className="activity-history-import" aria-label="Resume from activity export">
+      <div className="activity-history-import-actions">
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => historyImportInputRef.current?.click()}
+          disabled={historyImportLoading}
+          title="Import a complete JSON activity history export"
+        >
+          {historyImportLoading ? 'Reading history...' : 'Import history export'}
+        </button>
+        <input
+          ref={historyImportInputRef}
+          type="file"
+          accept="application/json,.json"
+          onChange={(event) => void importActivityHistory(event)}
+          hidden
+          aria-label="Choose activity history JSON export"
+        />
+        {importedHistory ? (
+          <>
+            <label>
+              <span className="sr-only">Imported activity session</span>
+              <select
+                aria-label="Imported activity session"
+                value={importedHistorySessionID}
+                onChange={(event) => setImportedHistorySessionID(event.target.value)}
+                disabled={historyImportLoading}
+              >
+                {importedHistory.sessions.map((session) => (
+                  <option key={session.sourceID} value={session.sourceID}>
+                    {session.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => void resumeImportedHistory()}
+              disabled={historyImportLoading || !importedHistorySessionID}
+              title="Ask the daemon to resume the selected exported source identity"
+            >
+              Resume selected
+            </button>
+          </>
+        ) : null}
+      </div>
+      <p className="activity-export-scope">
+        Resume import accepts only complete JSON history exports; Markdown and loaded-only exports cannot identify a daemon source safely.
+      </p>
+      {historyImportStatus ? (
+        <p className="activity-export-status" role="status" aria-live="polite">
+          {historyImportStatus}
+        </p>
+      ) : null}
+    </section>
+  );
 
   let body: ReactNode;
   if (offline) {
@@ -268,6 +411,7 @@ export function ActivitySurface() {
         {loading ? 'Loading sessions' : `${sessions.length} session${sessions.length === 1 ? '' : 's'} shown`}
       </p>
       {body}
+      {historyImportPanel}
     </div>
   );
 }

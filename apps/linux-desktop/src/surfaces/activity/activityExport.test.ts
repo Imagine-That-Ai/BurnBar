@@ -6,6 +6,8 @@ import {
   buildDaemonActivityHistoryExport,
   buildActivityExportDocument,
   downloadActivityExport,
+  parseActivityHistoryExport,
+  resumeActivityHistoryExportSession,
   sanitizeActivityExportFilename,
   serializeActivityExport
 } from './activityExport.js';
@@ -99,6 +101,7 @@ describe('activity export', () => {
             ...sessions[0]!,
             sourceID: 'Codex:session-1',
             providerSessionID: 'session-1',
+            runID: 'run-1',
             projectName: 'BurnBar'
           }
         ],
@@ -120,6 +123,7 @@ describe('activity export', () => {
     expect(result.document.sessions[0]).toMatchObject({
       sourceID: 'Codex:session-1',
       providerSessionID: 'session-1',
+      runID: 'run-1',
       bodyMD: '# Codex:session-1\n\nUntrusted persisted body'
     });
     expect(replay).toHaveBeenCalledWith('Codex:session-1');
@@ -128,6 +132,75 @@ describe('activity export', () => {
     expect(markdown).toContain('bounded export was read from the daemon');
     expect(markdown).toContain('Persisted body (untrusted)');
     expect(markdown).toContain('Untrusted persisted body');
+  });
+
+  it('round-trips a complete JSON history export with resume identities', async () => {
+    const sourceID = 'Codex:session-round-trip';
+    const built = await buildDaemonActivityHistoryExport({
+      sessionList: async () => ({
+        sessions: [{ ...sessions[0]!, sourceID, providerSessionID: 'session-round-trip', runID: 'run-round-trip' }],
+        nextCursor: null,
+        complete: true
+      }),
+      sessionReplay: async () => ({ kind: 'native', briefingMD: 'stored body', briefingTruncated: false })
+    }, '2026-07-13T14:00:00Z');
+    expect(built.kind).toBe('available');
+    if (built.kind !== 'available') return;
+
+    const parsed = parseActivityHistoryExport(serializeActivityExport(built.document, 'json'));
+    expect(parsed.kind).toBe('valid');
+    if (parsed.kind !== 'valid') return;
+    expect(parsed.document.sessions[0]).toMatchObject({ sourceID, providerSessionID: 'session-round-trip', runID: 'run-round-trip' });
+
+    const resume = vi.fn(async (sessionID: string) => ({ kind: 'spawned', pid: 7, briefingTruncated: false, note: sessionID }));
+    const result = await resumeActivityHistoryExportSession(parsed.document, sourceID, { sessionResume: resume });
+    expect(result.kind).toBe('requested');
+    expect(resume).toHaveBeenCalledWith(sourceID);
+  });
+
+  it('rejects edited, duplicate, or presentation-only exports before daemon resume', async () => {
+    const complete = {
+      version: 1,
+      scope: 'daemon-session-history',
+      source: 'live daemon session index',
+      generatedAt: '2026-07-13T14:00:00Z',
+      loadedCount: 2,
+      historyComplete: true,
+      historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT,
+      sessions: [
+        { ...sessions[0]!, sourceID: 'Codex:same', bodyMD: 'body' },
+        { ...sessions[1]!, sourceID: 'Codex:same', bodyMD: 'body' }
+      ]
+    };
+    const duplicate = parseActivityHistoryExport(JSON.stringify(complete));
+    expect(duplicate).toMatchObject({ kind: 'invalid', message: expect.stringMatching(/duplicate source/i) });
+
+    const loadedOnly = parseActivityHistoryExport(JSON.stringify({
+      ...complete,
+      loadedCount: 1,
+      scope: 'loaded-session-index',
+      historyComplete: undefined,
+      sessions: [{ ...sessions[0]!, sourceID: 'Codex:one', bodyMD: 'body' }]
+    }));
+    expect(loadedOnly).toMatchObject({ kind: 'invalid', message: expect.stringMatching(/complete daemon-session-history/i) });
+
+    const resume = vi.fn();
+    const missing = await resumeActivityHistoryExportSession(
+      {
+        version: 1,
+        scope: 'daemon-session-history',
+        source: 'live daemon session index',
+        generatedAt: '2026-07-13T14:00:00Z',
+        loadedCount: 0,
+        sessions: [],
+        historyComplete: true,
+        historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT
+      },
+      'Codex:missing',
+      { sessionResume: resume }
+    );
+    expect(missing).toMatchObject({ kind: 'unavailable', code: 'session_not_found' });
+    expect(resume).not.toHaveBeenCalled();
   });
 
   it('returns a typed unavailable result for paged history instead of exporting a partial page', async () => {

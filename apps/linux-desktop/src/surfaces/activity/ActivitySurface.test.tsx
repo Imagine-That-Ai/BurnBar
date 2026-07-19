@@ -455,6 +455,48 @@ describe('ActivitySurface', () => {
     expect(resume).not.toHaveBeenCalled();
   });
 
+  it('imports a complete JSON history export and resumes the selected source identity', async () => {
+    const sourceID = 'Codex:exported-session';
+    const resume = vi.fn(async (sessionID: string): Promise<SessionReplayResult> => ({
+      kind: 'spawned',
+      briefingTruncated: false,
+      pid: 99,
+      note: sessionID
+    }));
+    useShellStore.setState({ bridge: mockBridge({ sessionList: async () => ({ sessions: [], nextCursor: null }), sessionResume: resume }) });
+    render(<ActivitySurface />);
+    await act(async () => {
+      await useActivityStore.getState().load();
+    });
+
+    const exported = {
+      version: 1,
+      scope: 'daemon-session-history',
+      source: 'live daemon session index',
+      generatedAt: '2026-07-13T14:00:00Z',
+      loadedCount: 1,
+      historyComplete: true,
+      historyLimit: 500,
+      sessions: [{
+        ...fixtureSessionList().sessions[0]!,
+        sourceID,
+        providerSessionID: 'exported-session',
+        runID: 'run-exported',
+        bodyMD: 'persisted body'
+      }]
+    };
+    const input = screen.getByLabelText('Choose activity history JSON export') as HTMLInputElement;
+    const file = new File([JSON.stringify(exported)], 'activity-history.json', { type: 'application/json' });
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(await screen.findByRole('combobox', { name: 'Imported activity session' })).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toMatch(/Imported 1 resumable session/i);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume selected' }));
+    await screen.findByText(/process 99/i);
+    expect(resume).toHaveBeenCalledWith(sourceID);
+    expect(screen.getByRole('status').textContent).toMatch(/process 99/i);
+  });
+
   it('states that fixture rows have no persisted body or resume authority', async () => {
     useShellStore.setState({ fixtureMode: true });
     render(<ActivitySurface />);
