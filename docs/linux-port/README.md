@@ -5,10 +5,15 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- The latest parity hardening reaches `1bddc6d22a` (including the WebKit
-  startup fallback from `6321897d4e`). The VM now has a freshly rebuilt and
-  installed arm64 package with the real `media-gst` shell viewer enabled; its
-  non-certifying receipt is
+- The latest parity hardening reaches `5e0fc0e82` (including the WebKit
+  startup fallback from `6321897d4e`). The running Ubuntu 24.04.4 GNOME/X11
+  UTM guest now has an exact-head arm64 package rebuilt from that commit and
+  installed; its non-certifying receipt is
+  [`evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/).
+  The receipt records daemon/desktop health, GStreamer, Secret Service, IBus,
+  autostart packaging, and the current source-test gates. The package is
+  unsigned and does not certify the seven-environment or cross-device matrix.
+  The preceding media-gst shell receipt remains historical at
   [`evidence/mission-002-reanchor/vm-e2e/current-82b0fcf11e-media-gst-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-82b0fcf11e-media-gst-arm64/).
   The preceding media-gst receipt remains a historical baseline at
   [`evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-media-gst-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-media-gst-arm64/), and the earlier non-GStreamer UI receipt remains available at
@@ -27,12 +32,14 @@ Current parity status as of 2026-07-19:
   (`511c8a1049`), body-click `open` routing for notification servers without
   action buttons (`1397313284`), GStreamer decoder retry without requiring a
   socket reconnect, and Secret Service/KWallet health-before-write onboarding
-  checks (`82b0fcf11e`). Focused verification is 28/28 pet UI tests, 4/4 native
+  checks (`82b0fcf11e`). Focused verification is 28/28 Insights, 4/4 autostart Rust,
+  39/39 bridge/renderer, 32/32 settings/accessibility, 28/28 pet UI, 4/4 native
   notification Rust tests, 5/5 media Rust tests in both feature modes on the
   VM, and 6/6 Linux onboarding tests on Ubuntu. The installed arm64 package
-  carries the settings action; focused settings verification is **34/34** and
-  the non-certifying receipt is
-  [`evidence/mission-002-reanchor/vm-e2e/current-992ef5c580-settings-index-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-992ef5c580-settings-index-arm64/).
+  carries the settings action; focused settings verification is **34/34**. The
+  earlier `992ef5c580` install remains historical and the current exact-head
+  install is recorded in
+  [`evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/).
 - The physical-device runner now accepts either the CoreDevice identifier from
   `devicectl` or the hardware UDID required by Xcode, with deterministic
   missing/ambiguous-device failures (`5cff4281ec`).
@@ -55,7 +62,7 @@ Current parity status as of 2026-07-19:
   rows and 0/7 environment receipts. The Nightly pass is engineering evidence,
   not a promotion claim; production, lifecycle, installed integration, and
   registered product evidence remain open.
-- The candidate branch now has **83 desktop test files / 770 tests** passing,
+- The candidate branch now has **83 desktop test files / 785 tests** passing,
   plus current-checkout P-39 corpus binding, daemon-authoritative activity
   export resume, forced-colors metric fallbacks, and a focusable-hidden-node
   accessibility fix. The latest source slices also add the persisted Calendar

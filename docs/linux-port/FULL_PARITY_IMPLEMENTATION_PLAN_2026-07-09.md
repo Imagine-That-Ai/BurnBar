@@ -29,17 +29,21 @@ proof and refuses paged or partial data. Focused Activity/bridge coverage is
 the preceding installed baseline in the UTM guest; its non-certifying receipt is
 `evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/health.json`.
 
-The current source hardening reaches `1bddc6d22a`; the current installed live
-integration slice is still `992ef5c580` (with the WebKit startup fallback from
-`6321897d4e`). Its release graph builds
+The current source hardening and installed candidate reach `5e0fc0e82` (with
+the WebKit startup fallback from `6321897d4e`). The exact arm64 DEB was rebuilt
+from that commit and installed in the running Ubuntu guest; its non-certifying
+receipt is
+`evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/live-installed-receipt.json`.
+Its release graph builds
 the daemon-owned `crates/openburnbar-media` library before Swift linking, so a
 signed release cannot silently ship the shell's GStreamer viewer without the
 capture backend. The DEB post-install hook registers the package-owned user
 service, Linux peer authentication reads and hashes the kernel
 `/proc/<pid>/exe` link without `O_NOFOLLOW`, and the daemon binds explicitly to
-the packaged FTS5-capable `libsqlcipher.so.0`. The exact arm64 DEB is installed
-in the Ubuntu 24.04 GNOME/X11 guest with service `enabled/active`, authenticated
-desktop health, and live media/file capability probes. Receipt:
+the packaged FTS5-capable `libsqlcipher.so.0`. The package is installed in the
+Ubuntu 24.04 GNOME/X11 guest with service `enabled/active`, authenticated
+desktop health, and live media/file capability probes. The earlier daemon/media
+receipt remains at
 `evidence/mission-002-reanchor/vm-e2e/current-a570c9b087/live-receipt.json`.
 This closes the package/service/media-backend/database-bootstrap source slice;
 iPad enrollment, two-device media, and signed certification remain dependencies
@@ -49,12 +53,9 @@ passes **1/1**; `fdbc7d718b` separately gates receive-only media transport in
 the Linux UI while preserving daemon RPC calls (focused media UI/state **33/33**);
 this is transport/backend proof, not a two-device receipt.
 
-The VM follow-up rebuilt and installed the current `992ef5c580` settings/media
+The previous VM follow-up rebuilt and installed the `992ef5c580` settings/media
 UI/state files around the existing daemon runtime with the real `media-gst`
-shell viewer feature enabled. The arm64 DEB is installed, the desktop remains
-running after a daemon restart, bare CLI health passes, the shell links the
-GStreamer app/base/core/video libraries, and the focused media UI lane passes
-**33/33** on Ubuntu. Receipt:
+shell viewer feature enabled. That receipt is historical:
 `evidence/mission-002-reanchor/vm-e2e/current-992ef5c580-settings-index-arm64/live-installed-receipt.json`.
 The preceding media-gst receipt remains as a historical baseline under
 `current-fdbc7d718b-media-gst-arm64/`, and the earlier non-GStreamer receipt
@@ -72,12 +73,13 @@ adds the daemon-backed **Index project** action to General Settings Indexing &
 Search; focused settings proof is **34/34** and the latest installed arm64
 receipt is `evidence/mission-002-reanchor/vm-e2e/current-992ef5c580-settings-index-arm64/`.
 
-The next source slice adds a verified, capped Insights comparison workspace
+The current source slice adds a verified, capped Insights comparison workspace
 (`c31c17aa6e`, `ee679e2ed0`, `eb6a5975d4`) and a secure user-level XDG
 **Launch at login** preference (`f6d3843937`, hardened in `1bddc6d22a`). Focused comparison coverage is
 **28/28**; autostart Rust coverage is **4/4**, renderer/bridge coverage is
-**38/38**, and the Settings/accessibility slice is **32/32**. These changes
-still require an exact-head package rebuild and installed receipt.
+**39/39**, and the Settings/accessibility slice is **32/32**. The exact-head
+package is now installed; live checks and limitations are recorded in
+`evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/`.
 
 The installed Linux CLI parity fix is now on `d58b6a958f`: the Swift CLI
 resolves the canonical XDG daemon token file when no token environment override

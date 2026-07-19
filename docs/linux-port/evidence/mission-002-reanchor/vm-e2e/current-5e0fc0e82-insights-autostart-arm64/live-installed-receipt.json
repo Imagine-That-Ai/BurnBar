@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-19T13:15:39Z",
+  "environment": {
+    "vm": "OpenBurnBar Linux",
+    "ip": "192.168.64.5",
+    "os": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11"
+  },
+  "source": {
+    "commit": "5e0fc0e82",
+    "scope": "Exact candidate source for Insights Compare and Linux-native Launch at login, including the unavailable-source autostart guard."
+  },
+  "candidate": {
+    "package": "open-burn-bar",
+    "packageVersion": "0.1.1",
+    "packageArchitecture": "arm64",
+    "packagePath": "/home/burnbar/BurnBar/apps/linux-desktop/src-tauri/target/release/bundle/deb/OpenBurnBar_0.1.1_arm64.deb",
+    "packageSha256": "3317af79436958ca1ccb61e0a69e70003fe4ac6d84aa8dbfb72d3c9e90fa1499",
+    "packageBytes": 151394826,
+    "packageStatus": "install ok installed"
+  },
+  "installed": {
+    "/usr/bin/openburnbar-linux-desktop": {
+      "sha256": "6178bd34e77b4cadfded402bad176c51ba22fba66290cbf84f9fc57b2290d9bd",
+      "bytes": 27566240,
+      "mode": "0755",
+      "uid": 0
+    },
+    "/usr/bin/openburnbar-daemon": {
+      "sha256": "fb0f87ccc0638f84c2ba9f2a34ca97f8cec707534a5473f19bf6f317291c480c",
+      "bytes": 154846512,
+      "mode": "0755",
+      "uid": 0
+    },
+    "/usr/bin/openburnbar-cli": {
+      "sha256": "db0d6931ca8644a91f78ee3dccac27364bab5a373e63917a53915cf836e180e5",
+      "mode": "0755",
+      "uid": 0
+    }
+  },
+  "service": {
+    "unit": "openburnbar-daemon.service",
+    "enabled": true,
+    "active": true,
+    "desktopPid": 93364,
+    "desktopProcessCount": 1,
+    "daemonHealth": "Daemon 1.0.29 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true",
+    "cliHealth": "pass",
+    "desktopLog": "/tmp/openburnbar-linux-desktop-parity.log",
+    "desktopLogFatalOrStub": false,
+    "desktopLogNote": "Only the non-fatal WebGL GBM fallback was present."
+  },
+  "verification": {
+    "frontendSuite": "83 files / 785 tests passed",
+    "typescript": "pass",
+    "productionBundleVerifier": "pass",
+    "tauriRustLibrarySuite": "125/125 passed",
+    "tauriFormatCheck": "pass",
+    "focusedInsightsTests": "28/28 passed",
+    "focusedAutostartRustTests": "4/4 passed",
+    "focusedSettingsBridgeTests": "39/39 passed",
+    "focusedSettingsAccessibilityTests": "32/32 passed",
+    "gstreamerLibraries": [
+      "libgstreamer-1.0.so.0",
+      "libgstbase-1.0.so.0",
+      "libgstapp-1.0.so.0",
+      "libgstvideo-1.0.so.0"
+    ],
+    "gstreamerProbes": {
+      "vp9dec": "available",
+      "ximagesink": "available"
+    },
+    "secretServiceRoundTrip": "pass",
+    "secretSentinelCleanup": "pass",
+    "gnomeKeyringDaemon": "active",
+    "ibusDaemon": "active",
+    "autostartTemplate": {
+      "path": "/etc/xdg/autostart/openburnbar.desktop",
+      "sha256": "e438b15af948bc448594e206f7291c44fa4ecb3f977db7f704cee28a6b963c50",
+      "mode": "0644",
+      "owner": "root:root",
+      "enabled": true
+    },
+    "windowDiscovery": "xwininfo found one OpenBurnBar window (1280x782) and one tray window",
+    "atspiCapture": "blocked: guest capture-atspi-tree.py cannot import pyatspi",
+    "visualCapture": "not certifying: headless UTM framebuffer screenshot was black"
+  },
+  "certifying": false,
+  "nonCertifyingReasons": [
+    "The DEB is an unsigned local candidate, not a signed release artifact with immutable provenance.",
+    "The strict parity ledger remains 0/40 product rows and 0/7 environment receipts.",
+    "AT-SPI route/action capture is unavailable in this guest because the pyatspi module is not installed.",
+    "No physical iPad/Linux enrollment, approval execution, two-device Mercury, or Browser Computer Use flow was executed in this receipt.",
+    "KDE/Wayland/wlroots, locked-keyring recovery, IME behavior, performance, update/rollback, and production receipts remain open."
+  ]
+}
