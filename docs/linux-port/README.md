@@ -5,6 +5,17 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
+- **Current source head:** `804ced4523`. The branch now passes 87 frontend files
+  / 811 tests, TypeScript, production bundle verification, Tauri Rust 125/125,
+  and package-payload 13/13. `1130524331` recovers a visible 2D backdrop after
+  backgrounded WebGL context loss and retries the requested kernel on resume;
+  `db8a52f2f2` makes kernel selection keyboard-complete with focus restoration;
+  `2a19ac301a` adds the Support performance empty state. The ARM VM also passed
+  the supported Swift-less staged-payload `pretauri:build`/`tauri:build` path via
+  `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is still an
+  older unsigned, non-certifying candidate, and the strict ledger remains
+  **0/40 product rows and 0/7 environment receipts**.
+
 - **Latest live VM candidate:** a local ARM64 DEB built from the current parity
   branch is now installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its
   non-certifying receipt is

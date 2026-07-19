@@ -18,6 +18,20 @@ known platform divergences.
 
 Linux is not at full macOS parity.
 
+### Current source wave — 2026-07-19 UTC
+
+Integration head `804ced4523` passes 87 frontend files / 811 tests, TypeScript,
+production bundle verification, Tauri Rust 125/125, and package-payload 13/13.
+The wave adds three bounded parity fixes: immediate visible Canvas2D recovery
+and requested-kernel retry after WebGL context loss (`1130524331`), keyboard-
+complete kernel selection with focus restoration (`db8a52f2f2`), and a truthful
+Support performance empty state (`2a19ac301a`). `804ced4523` also provides a
+read-only staged-payload validation path so a Swift-less ARM host can use the
+normal `pretauri:build`/`tauri:build` flow without probing for a local Swift
+toolchain. The UTM guest passed that path, but its installed package remains an
+older unsigned/non-certifying candidate. These changes improve the engineering
+baseline; they do not close the strict 0/40 product and 0/7 environment gates.
+
 ### Latest installed checkpoint — 2026-07-19 UTC
 
 The live Ubuntu guest now has a locally built ARM64 DEB from the current
