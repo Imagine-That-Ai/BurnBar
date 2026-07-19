@@ -672,6 +672,21 @@ actor LinuxIrohControllerRuntime {
             scheduleTerminalInvalidation(reason: "credentials_changed", statusReason: .credentialsChanged)
             throw RuntimeError.credentialsUnavailable
         }
+        // Re-check the pinned authority for every inbound controller frame.
+        // A stream can outlive a phone-key revocation or authority health
+        // failure; relying only on route refresh would leave an already-open
+        // stream able to deliver a stale approval/panic/grant.  Tear down the
+        // whole runtime before dispatching any privileged frame.
+        guard await authorityReadiness(route.sourceDeviceID, route.authorityPeerNodeID) else {
+            scheduleTerminalInvalidation(
+                reason: "authority_unavailable",
+                statusReason: .routeUnavailable
+            )
+            throw RuntimeError.routeUnavailable
+        }
+        guard lifecycle == .running(epoch: epoch), self.route == route else {
+            throw RuntimeError.routeUnavailable
+        }
         let reply: MercuryLinuxMediaReplySender = { outbound in try await gate.send(outbound) }
         switch frame.type {
         case .controlAgentGrantRequest:

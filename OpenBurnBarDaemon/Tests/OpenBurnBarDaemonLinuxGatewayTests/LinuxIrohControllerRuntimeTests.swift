@@ -145,6 +145,10 @@ private actor TestLinuxIrohRevocations {
     func contains(sessionID: String, reason: String) -> Bool {
         entries.contains { $0.0.contains(sessionID) && $0.1 == reason }
     }
+
+    func containsSession(_ sessionID: String) -> Bool {
+        entries.contains { $0.0.contains(sessionID) }
+    }
 }
 
 private actor TestLinuxIrohPanicIngress {
@@ -204,6 +208,22 @@ private actor TestLinuxIrohRouteEndGate {
     func release() {
         continuation?.resume()
         continuation = nil
+    }
+}
+
+private actor TestLinuxIrohAuthorityGate {
+    private var allowed: Bool
+
+    init(allowed: Bool) {
+        self.allowed = allowed
+    }
+
+    func setAllowed(_ allowed: Bool) {
+        self.allowed = allowed
+    }
+
+    func isAllowed() -> Bool {
+        allowed
     }
 }
 
@@ -631,6 +651,125 @@ final class LinuxIrohControllerRuntimeTests: XCTestCase {
         XCTAssertEqual(counts.0, 1)
         XCTAssertEqual(counts.1, 3)
         XCTAssertEqual(counts.2, [connectionID])
+    }
+
+    func testInboundFrameAfterAuthorityRevocationStopsRuntimeBeforeDispatch() async throws {
+        let uid = "user-authority-revoked"
+        let deviceID = "linux-authority-revoked"
+        let connectionID = "linux-host-" + String(PlatformCrypto.sha256Hex(Data(deviceID.utf8)).prefix(32))
+        let transportNodeID = String(repeating: "d", count: 64)
+        let authorityID = "authority-revoked"
+        let route = LinuxIrohControllerRoute(
+            uid: uid,
+            connectionID: connectionID,
+            sourceDeviceID: "phone-revoked",
+            transportNodeID: transportNodeID,
+            authorityPeerNodeID: authorityID,
+            generation: 1,
+            registeredAt: Date(),
+            expiresAt: Date().addingTimeInterval(600),
+            accountGeneration: 1
+        )
+        let directory = TestLinuxIrohDirectory(route: route)
+        let transport = TestLinuxIrohTransport(identity: IrohEndpointIdentity(
+            nodeId: String(repeating: "e", count: 64),
+            rawPublicKey: Data(repeating: 0xEE, count: 32)
+        ))
+        let authorityGate = TestLinuxIrohAuthorityGate(allowed: true)
+        let panicIngress = TestLinuxIrohPanicIngress()
+        let revocations = TestLinuxIrohRevocations()
+        let runtime = LinuxIrohControllerRuntime(
+            transport: transport,
+            directory: directory,
+            identityStore: TestLinuxIrohIdentityProvider(identity: LinuxIrohHostIdentity(
+                endpointSecret: IrohSecretKeyMaterial(raw: Data(repeating: 0x44, count: 32)),
+                pairingKeypair: IrohPairingKeypair(signingKey: PlatformCrypto.ed25519PrivateKey())
+            )),
+            credentialProvider: {
+                LinuxIrohControllerCredentialContext(
+                    uid: uid,
+                    sessionGeneration: 1,
+                    idToken: "id-token",
+                    appCheckToken: "app-check",
+                    deviceID: deviceID
+                )
+            },
+            authorityReadiness: { _, _ in await authorityGate.isAllowed() },
+            refreshIntervalNanoseconds: 60_000_000_000,
+            acceptTimeout: 0.1
+        )
+        await runtime.installHandlers(
+            grant: { _, _ in },
+            approval: { _, _, _, _ in },
+            panic: { sessionIDs, _, _, _ in await panicIngress.record(sessionIDs) },
+            revokeSessions: { sessionIDs, reason in
+                await revocations.append(sessionIDs: sessionIDs, reason: reason)
+            },
+            media: { _, _, _ in }
+        )
+
+        try await runtime.start()
+        let classify = HermesRealtimeRelayFrame(
+            type: .mediaClassify,
+            uid: uid,
+            connectionId: connectionID,
+            media: HermesRealtimeRelayMediaPayload(streamClass: "media.control")
+        )
+        let stream = TestLinuxIrohStream(
+            remotePeerNodeId: transportNodeID,
+            inbound: [classify]
+        )
+        await transport.enqueue(stream)
+        try await eventually { await runtime.isReady() }
+
+        let metadata = ComputerUseSessionGrantBroker.AcquisitionMetadata(
+            uid: uid,
+            connectionID: connectionID,
+            transportPeerNodeID: transportNodeID,
+            authorityPeerNodeID: authorityID,
+            sourceDeviceID: "phone-revoked",
+            runtimeID: .hermes,
+            threadID: "thread-revoked",
+            preset: .desktop,
+            capabilities: [.desktopBrowser, .desktopScreenshot],
+            routeGeneration: route.generation,
+            routeExpiresAt: route.expiresAt,
+            accountGeneration: route.accountGeneration
+        )
+        try await runtime.bindSession("session-revoked", metadata: metadata)
+
+        await authorityGate.setAllowed(false)
+        let panicIntent = HermesRealtimeRelayInputIntent(
+            kind: .panic,
+            clientIntentId: "panic-after-revocation",
+            authority: HermesRealtimeRelayAuthorityEnvelope(
+                peerNodeId: authorityID,
+                counter: 1,
+                timestamp: Date(),
+                intentHashBlake3: "signed-panic",
+                signatureEd25519: "signature"
+            )
+        )
+        await stream.enqueue(HermesRealtimeRelayFrame(
+            type: .controlInputIntent,
+            uid: uid,
+            connectionId: connectionID,
+            control: HermesRealtimeRelayControlPayload(
+                streamClass: "control.input",
+                sessionId: "session-revoked",
+                inputIntent: panicIntent
+            )
+        ))
+
+        try await eventually(timeout: 5) { (await runtime.status()).phase == .stopped }
+        let status = await runtime.status()
+        let panicWasNotDispatched = await panicIngress.containsExactly([])
+        let streamClosed = await stream.isClosed()
+        let sessionRevoked = await revocations.containsSession("session-revoked")
+        XCTAssertEqual(status.reason, .routeUnavailable)
+        XCTAssertTrue(panicWasNotDispatched)
+        XCTAssertTrue(streamClosed)
+        XCTAssertTrue(sessionRevoked)
     }
 
     func testAmbiguousHostRecordPublicationIsCompensatedBeforeStateClears() async throws {
