@@ -345,9 +345,50 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
+    /// Keep the Linux gateway's browser-facing loopback contract aligned with
+    /// the Network.framework implementation on macOS. Only local origins are
+    /// reflected; arbitrary origins never receive an allow-origin header.
+    private func corsHeaders(for request: LinuxHTTPRequest) -> [String: String] {
+        guard let origin = request.headers["origin"], isAllowedCORSOrigin(origin) else {
+            return [:]
+        }
+        return [
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key",
+            "Vary": "Origin"
+        ]
+    }
+
+    private func isAllowedCORSOrigin(_ value: String) -> Bool {
+        guard let components = URLComponents(string: value),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = components.host?.lowercased() else {
+            return false
+        }
+        return host == "localhost" || host == "127.0.0.1" || host == "::1"
+    }
+
+    private func addingCORSHeaders(
+        to response: LinuxGatewayResponse,
+        headers: [String: String]
+    ) -> LinuxGatewayResponse {
+        guard !headers.isEmpty else { return response }
+        switch response {
+        case .buffered(let data):
+            return .buffered(insertingHeaders(headers, into: data))
+        case .streamed:
+            // Streaming responses add the headers before writing the first
+            // upstream chunk in `relayStream`.
+            return .streamed
+        }
+    }
+
     private func handleRequest(_ request: LinuxHTTPRequest, fileDescriptor: Int32) async -> LinuxGatewayResponse {
+        let cors = corsHeaders(for: request)
         if request.method == "OPTIONS" {
-            return .buffered(httpResponse(status: 204, headers: [:], body: Data()))
+            return .buffered(httpResponse(status: 204, headers: cors, body: Data()))
         }
 
         if let requiredToken = configuration.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
@@ -374,9 +415,10 @@ public actor BurnBarHTTPGatewayServer {
             }
         }
 
+        let response: LinuxGatewayResponse
         switch (request.method, request.path) {
         case ("GET", "/health"), ("GET", "/v1/health"):
-            return .buffered(httpResponse(
+            response = .buffered(httpResponse(
                 status: 200,
                 headers: ["Content-Type": "application/json"],
                 body: #"{"ok":true,"gateway":"openburnbar","platform":"linux"}"#
@@ -384,30 +426,32 @@ public actor BurnBarHTTPGatewayServer {
         case ("GET", "/metrics"):
             let snapshot = BurnBarGatewayMetricsSnapshot.live(gatewayEnabled: configuration.isEnabled)
             let body = (try? String(data: JSONEncoder().encode(snapshot), encoding: .utf8)) ?? #"{"gatewayEnabled":true}"#
-            return .buffered(httpResponse(status: 200, headers: ["Content-Type": "application/json"], body: body))
+            response = .buffered(httpResponse(status: 200, headers: ["Content-Type": "application/json"], body: body))
         case ("GET", "/v1/models"):
-            return .buffered(await linuxModelsListResponse(catalog: false))
+            response = .buffered(await linuxModelsListResponse(catalog: false))
         case ("GET", "/v1/models/catalog"):
-            return .buffered(await linuxModelsListResponse(catalog: true))
+            response = .buffered(await linuxModelsListResponse(catalog: true))
         case ("POST", "/v1/chat/completions"):
-            return await handleModelEndpoint(.chatCompletions, request: request, fileDescriptor: fileDescriptor)
+            response = await handleModelEndpoint(.chatCompletions, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors)
         case ("POST", "/v1/responses"):
-            return await handleModelEndpoint(.responses, request: request, fileDescriptor: fileDescriptor)
+            response = await handleModelEndpoint(.responses, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors)
         case ("POST", "/v1/messages"):
-            return await handleModelEndpoint(.anthropicMessages, request: request, fileDescriptor: fileDescriptor)
+            response = await handleModelEndpoint(.anthropicMessages, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors)
         default:
-            return .buffered(httpResponse(
+            response = .buffered(httpResponse(
                 status: 404,
                 headers: ["Content-Type": "application/json"],
                 body: #"{"error":{"message":"not found"}}"#
             ))
         }
+        return addingCORSHeaders(to: response, headers: cors)
     }
 
     private func handleModelEndpoint(
         _ endpoint: LinuxGatewayEndpoint,
         request: LinuxHTTPRequest,
-        fileDescriptor: Int32
+        fileDescriptor: Int32,
+        corsHeaders: [String: String]
     ) async -> LinuxGatewayResponse {
         let startedAt = Date()
         guard !request.body.isEmpty else {
@@ -467,7 +511,8 @@ public actor BurnBarHTTPGatewayServer {
                                     route: route,
                                     accountingRequestID: accountingRequestID,
                                     streamCommit: streamCommit,
-                                    fileDescriptor: fileDescriptor
+                                    fileDescriptor: fileDescriptor,
+                                    corsHeaders: corsHeaders
                                 )
                                 await recordQuotaSignalIfAvailable(
                                     headers: proxyStream.headers,
@@ -1062,13 +1107,17 @@ public actor BurnBarHTTPGatewayServer {
         route: BurnBarProviderRoute,
         accountingRequestID: String,
         streamCommit: LinuxGatewayStreamCommit,
-        fileDescriptor: Int32
+        fileDescriptor: Int32,
+        corsHeaders: [String: String]
     ) async throws -> BurnBarProviderProxyUsage? {
-        let headers = [
+        var headers = [
             "Content-Type": proxyStream.contentType,
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no"
         ]
+        for (key, value) in corsHeaders {
+            headers[key] = value
+        }
         streamCommit.responseStarted = true
         try writeAll(httpResponseHead(status: proxyStream.statusCode, headers: headers), to: fileDescriptor)
 
@@ -1618,6 +1667,21 @@ private func httpResponse(status: Int, headers: [String: String], body: String) 
 
 private func httpResponse(status: Int, headers: [String: String], body: Data) -> Data {
     httpResponseHead(status: status, headers: headers, contentLength: body.count) + body
+}
+
+private func insertingHeaders(_ headers: [String: String], into response: Data) -> Data {
+    guard !headers.isEmpty,
+          let separator = response.range(of: Data("\r\n\r\n".utf8)) else {
+        return response
+    }
+    let additions = headers.keys.sorted().compactMap { key in
+        headers[key].map { "\(key): \($0)\r\n" }
+    }.joined()
+    var result = Data(response[..<separator.lowerBound])
+    result.append(contentsOf: additions.utf8)
+    result.append(Data("\r\n\r\n".utf8))
+    result.append(response[separator.upperBound...])
+    return result
 }
 
 private func httpResponseHead(status: Int, headers: [String: String], contentLength: Int? = nil) -> Data {

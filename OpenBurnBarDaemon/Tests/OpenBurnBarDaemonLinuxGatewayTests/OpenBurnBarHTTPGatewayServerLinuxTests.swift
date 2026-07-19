@@ -20,11 +20,14 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         let response = try await LinuxHTTPClient.post(
             port: harness.port,
             path: "/v1/chat/completions",
-            body: body
+            body: body,
+            headers: ["Origin": "http://localhost:3000"]
         )
 
         XCTAssertEqual(response.statusCode, 200)
         XCTAssertEqual(response.headers["content-type"], "text/event-stream")
+        XCTAssertEqual(response.headers["access-control-allow-origin"], "http://localhost:3000")
+        XCTAssertEqual(response.headers["vary"], "Origin")
         XCTAssertTrue(response.body.contains("data: {\"id\":\"chatcmpl-linux\""))
         XCTAssertTrue(response.body.contains("data: [DONE]"))
 
@@ -316,6 +319,44 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         )
         XCTAssertEqual(incomplete.statusCode, 400, incomplete.rawText)
         XCTAssertTrue(incomplete.body.contains("incomplete_request"), incomplete.body)
+    }
+
+    func testGatewayCORSAllowsLoopbackOriginsOnlyAndHandlesPreflight() async throws {
+        let harness = try LinuxGatewayHarness()
+        addTeardownBlock { await harness.stop() }
+        try await harness.start()
+
+        let allowed = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: http://localhost:3000\r\nConnection: close\r\n\r\n"
+        )
+        XCTAssertEqual(allowed.statusCode, 200, allowed.rawText)
+        XCTAssertEqual(allowed.headers["access-control-allow-origin"], "http://localhost:3000")
+        XCTAssertEqual(allowed.headers["access-control-allow-methods"], "GET, POST, OPTIONS")
+        XCTAssertEqual(allowed.headers["access-control-allow-headers"], "Authorization, Content-Type, x-api-key")
+        XCTAssertEqual(allowed.headers["vary"], "Origin")
+
+        let ipv6Origin = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: http://[::1]:3000\r\nConnection: close\r\n\r\n"
+        )
+        XCTAssertEqual(ipv6Origin.statusCode, 200, ipv6Origin.rawText)
+        XCTAssertEqual(ipv6Origin.headers["access-control-allow-origin"], "http://[::1]:3000")
+
+        let blocked = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: https://evil.example.com\r\nConnection: close\r\n\r\n"
+        )
+        XCTAssertEqual(blocked.statusCode, 200, blocked.rawText)
+        XCTAssertNil(blocked.headers["access-control-allow-origin"])
+
+        let preflight = try await LinuxHTTPClient.raw(
+            port: harness.port,
+            request: "OPTIONS /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: http://127.0.0.1:5173\r\nAccess-Control-Request-Method: POST\r\nConnection: close\r\n\r\n"
+        )
+        XCTAssertEqual(preflight.statusCode, 204, preflight.rawText)
+        XCTAssertEqual(preflight.headers["access-control-allow-origin"], "http://127.0.0.1:5173")
+        XCTAssertEqual(preflight.headers["access-control-allow-methods"], "GET, POST, OPTIONS")
     }
 
     func testBindsIPv6LoopbackWhenAvailable() async throws {
@@ -735,16 +776,22 @@ private enum LinuxHTTPClient {
         let rawText: String
     }
 
-    static func post(host: String = "127.0.0.1", port: Int, path: String, body: String) async throws -> Response {
+    static func post(
+        host: String = "127.0.0.1",
+        port: Int,
+        path: String,
+        body: String,
+        headers: [String: String] = [:]
+    ) async throws -> Response {
         try await request(
             method: "POST",
             host: host,
             port: port,
             path: path,
-            headers: [
+            headers: headers.merging([
                 "Content-Type": "application/json",
                 "Content-Length": "\(body.utf8.count)"
-            ],
+            ]) { _, requestHeader in requestHeader },
             body: body
         )
     }
