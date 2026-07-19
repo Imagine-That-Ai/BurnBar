@@ -214,6 +214,57 @@ final class BurnBarLinuxOnboardingServiceTests: XCTestCase {
         }
     }
 
+    func testStateSymlinkAndSupportDirectorySymlinkFailClosed() async throws {
+        let fileManager = FileManager.default
+
+        let realDirectory = makeStateURL().deletingLastPathComponent()
+        let directoryLink = realDirectory
+            .deletingLastPathComponent()
+            .appendingPathComponent("openburnbar-onboarding-directory-link-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? fileManager.removeItem(at: directoryLink)
+            try? fileManager.removeItem(at: realDirectory)
+        }
+        try fileManager.createDirectory(at: realDirectory, withIntermediateDirectories: true)
+        try fileManager.createSymbolicLink(at: directoryLink, withDestinationURL: realDirectory)
+
+        let directoryLinkedService = makeService(
+            stateURL: directoryLink.appendingPathComponent("linux-onboarding-state.json")
+        )
+        do {
+            _ = try await directoryLinkedService.snapshot()
+            XCTFail("A support-directory symlink must fail closed.")
+        } catch let error as BurnBarLinuxOnboardingError {
+            XCTAssertEqual(
+                error,
+                .invalidPersistedState("onboarding state directory must not be a symbolic link")
+            )
+        }
+
+        let stateURL = makeStateURL()
+        let stateDirectory = stateURL.deletingLastPathComponent()
+        let targetURL = fileManager.temporaryDirectory
+            .appendingPathComponent("openburnbar-onboarding-state-target-\(UUID().uuidString).json")
+        defer {
+            try? fileManager.removeItem(at: stateDirectory)
+            try? fileManager.removeItem(at: targetURL)
+        }
+        try fileManager.createDirectory(at: stateDirectory, withIntermediateDirectories: true)
+        try Data("not-authoritative-state".utf8).write(to: targetURL, options: [.atomic])
+        try fileManager.createSymbolicLink(at: stateURL, withDestinationURL: targetURL)
+
+        let stateLinkedService = makeService(stateURL: stateURL)
+        do {
+            _ = try await stateLinkedService.snapshot()
+            XCTFail("A state-file symlink must fail closed.")
+        } catch let error as BurnBarLinuxOnboardingError {
+            XCTAssertEqual(
+                error,
+                .invalidPersistedState("onboarding state file must not be a symbolic link")
+            )
+        }
+    }
+
     func testProviderDataProbeRequiresCatalogAndReportsFirstDataReadback() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-provider-data-\(UUID().uuidString)", isDirectory: true)

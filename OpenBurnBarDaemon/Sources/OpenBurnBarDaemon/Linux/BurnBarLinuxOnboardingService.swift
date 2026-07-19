@@ -295,6 +295,7 @@ public actor BurnBarLinuxOnboardingService {
     }
 
     private func loadSnapshot() throws -> BurnBarLinuxOnboardingSnapshot {
+        try rejectSymbolicStatePathComponents()
         guard fileManager.fileExists(atPath: stateURL.path) else {
             return initialSnapshot(revision: 0)
         }
@@ -408,6 +409,7 @@ public actor BurnBarLinuxOnboardingService {
     }
 
     private func persist(_ snapshot: BurnBarLinuxOnboardingSnapshot) throws {
+        try rejectSymbolicStatePathComponents()
         let stateDirectoryURL = stateURL.deletingLastPathComponent()
         try fileManager.createDirectory(
             at: stateDirectoryURL,
@@ -422,6 +424,36 @@ public actor BurnBarLinuxOnboardingService {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(snapshot).write(to: stateURL, options: [.atomic])
         try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: stateURL.path)
+    }
+
+    /// Onboarding state is daemon-owned and must stay below the configured
+    /// support directory.  Reject both existing symlinks and dangling links
+    /// before reads or atomic replacement so a user-controlled path cannot
+    /// redirect state outside the private 0700/0600 boundary.
+    private func rejectSymbolicStatePathComponents() throws {
+        let components: [(URL, String)] = [
+            (stateURL.deletingLastPathComponent(), "state directory"),
+            (stateURL, "state file")
+        ]
+
+        for (url, label) in components {
+            if let attributes = try? fileManager.attributesOfItem(atPath: url.path),
+               let fileType = attributes[.type] as? FileAttributeType,
+               fileType == .typeSymbolicLink {
+                throw BurnBarLinuxOnboardingError.invalidPersistedState(
+                    "onboarding \(label) must not be a symbolic link"
+                )
+            }
+
+            // `attributesOfItem` may not report a dangling link as existing.
+            // FileManager's destination lookup is link-specific and catches
+            // that case without resolving the destination for any operation.
+            if (try? fileManager.destinationOfSymbolicLink(atPath: url.path)) != nil {
+                throw BurnBarLinuxOnboardingError.invalidPersistedState(
+                    "onboarding \(label) must not be a symbolic link"
+                )
+            }
+        }
     }
 
     private func timestamp() -> String {
