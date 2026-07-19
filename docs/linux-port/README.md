@@ -6,7 +6,7 @@ implemented as reviewable infrastructure, not a public availability claim.
 Current parity status as of 2026-07-19:
 
 - The current source hardening reaches `f9d3b429e5`; the clean parity-ledger
-  validation is bound to source checkpoint `a92cea995c`. The Release and
+  validation is bound to current checkpoint `5a631eeb96`. The Release and
   Nightly receipts below are historical engineering evidence for an older
   checkpoint, not a claim that the current docs head has a promoted artifact.
 - The physical-device runner now accepts either the CoreDevice identifier from
