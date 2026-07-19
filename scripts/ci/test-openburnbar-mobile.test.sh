@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 runner="$repo_root/scripts/test-openburnbar-mobile.sh"
-explicit_destination="platform=iOS Simulator,id=00000000-0000-0000-0000-000000000042"
+explicit_destination="platform=iOS Simulator,id=<IOS_DEVICE_ID>"
 sentinel_name="OpenBurnBar Explicit Destination Regression Sentinel"
 
 output="$({
