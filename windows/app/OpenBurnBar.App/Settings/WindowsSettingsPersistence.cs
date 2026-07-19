@@ -10,6 +10,8 @@ using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
 using OpenBurnBar.App.Settings.ViewModels;
 using OpenBurnBar.App.TextExpansion;
 using OpenBurnBar.CloudSync.Crypto;
+using OpenBurnBar.CloudSync.AppCheck.Net;
+using OpenBurnBar.CloudSync.AppCheck.Windows;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace OpenBurnBar.App.Settings.Winui;
@@ -105,6 +107,7 @@ internal static class WindowsSettingsComposition
     private static readonly WindowsSettingsPersistence Persistence = new();
     private static readonly Lazy<DesktopOAuthCredentialsProvider?> OAuth = new(
         () => CloudAuthProductionComposition.TryCreateOAuthCredentialsProvider());
+    private static readonly Lazy<HttpClientAppCheckMintTransport> AppCheckTransport = new(() => new());
 
     public static WindowsSettingsPersistence SharedPersistence => Persistence;
 
@@ -138,6 +141,57 @@ internal static class WindowsSettingsComposition
 
     public static void SaveProjectCodeRootSettings(ProjectCodeRootSettingsSnapshot settings) =>
         new WindowsProjectCodeRootStore(Persistence).Save(settings);
+
+    public static bool TryConfigureProductionCloudSync()
+    {
+        DesktopOAuthCredentialsProvider? oauth = OAuth.Value;
+        FirebaseOAuthSession? session = oauth?.CurrentSession;
+        if (oauth is null || session is null || !oauth.IsSignedIn)
+        {
+            return false;
+        }
+
+        string? configuredAppId = Environment.GetEnvironmentVariable(CloudAuthProductionComposition.AppCheckAppIdEnv);
+        if (string.IsNullOrWhiteSpace(configuredAppId))
+        {
+            return false;
+        }
+
+        ConfigureProductionCloudSync(oauth, session);
+        return true;
+    }
+
+    public static void ConfigureCloudSync()
+    {
+        if (!TryConfigureProductionCloudSync())
+        {
+            WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+        }
+    }
+
+    private static void ConfigureProductionCloudSync(
+        DesktopOAuthCredentialsProvider oauth,
+        FirebaseOAuthSession session)
+    {
+        string appCheckAppId = CloudAuthProductionComposition.RequireAppCheckAppId();
+        AppConfiguration config = AppConfiguration.Current;
+        byte[] vaultKey = string.IsNullOrWhiteSpace(config.EffectiveVaultKeyB64())
+            ? CloudVaultCrypto.GenerateVaultKey()
+            : Convert.FromBase64String(config.EffectiveVaultKeyB64()!);
+        config.UpdateAndSave(model =>
+        {
+            model.FirebaseUid = session.Uid;
+            model.VaultKeyB64 = Convert.ToBase64String(vaultKey);
+        });
+        WinAppCloudSyncHost.ConfigureWithOAuth(
+            oauth,
+            config.EffectiveFirebaseProjectId(),
+            session.Uid,
+            vaultKey,
+            new TpmAttestationProducer(),
+            AppCheckTransport.Value,
+            appCheckAppId);
+    }
 
     public static object? Create(SettingsTab tab) => tab switch
     {
@@ -476,16 +530,7 @@ internal static class WindowsSettingsComposition
             try
             {
                 FirebaseOAuthSession session = oauth.SignInAsync().GetAwaiter().GetResult();
-                AppConfiguration config = AppConfiguration.Current;
-                byte[] vaultKey = string.IsNullOrWhiteSpace(config.EffectiveVaultKeyB64())
-                    ? CloudVaultCrypto.GenerateVaultKey()
-                    : Convert.FromBase64String(config.EffectiveVaultKeyB64()!);
-                config.UpdateAndSave(model =>
-                {
-                    model.FirebaseUid = session.Uid;
-                    model.VaultKeyB64 = Convert.ToBase64String(vaultKey);
-                });
-                WinAppCloudSyncHost.ConfigureWithOAuth(oauth, config.EffectiveFirebaseProjectId(), session.Uid, vaultKey);
+                ConfigureProductionCloudSync(oauth, session);
                 return AccountActionResult.Ok;
             }
             catch (Exception ex)
