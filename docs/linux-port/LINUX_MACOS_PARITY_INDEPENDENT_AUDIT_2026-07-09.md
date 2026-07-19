@@ -100,7 +100,8 @@ absent state (Tauri Rust **118/118**), and `f9d3b429e5`, which adds persisted
 Dashboard Defaults plus truthful daemon-backed Indexing & Search posture and
 an explicit unavailable Session Summaries state (focused settings **45/45**,
 new controls **3/3**). The full desktop-suite rerun after these two slices is
-green at **83 files / 758 tests**. The current focused approval receipt is **44/44**, 0 failures,
+green at **83 files / 758 tests**. The current focused approval receipt is
+**44/44**, 0 failures,
 xcodebuild exit 0; it remains non-certifying mobile coverage.
 
 ## Execution Status — 2026-07-18

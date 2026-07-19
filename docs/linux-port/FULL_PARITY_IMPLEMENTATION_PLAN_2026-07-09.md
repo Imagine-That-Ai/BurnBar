@@ -79,7 +79,8 @@ state (Tauri Rust **118/118**), and `f9d3b429e5`, which adds persisted Dashboard
 Defaults plus truthful daemon-backed Indexing & Search posture and an explicit
 unavailable Session Summaries state (focused settings **45/45**, new controls
 **3/3**). The full desktop suite is green at **83 files / 758 tests**, with
-TypeScript and production bundle verification passing. A current-checkout focused physical-iPad approval receipt also passed
+TypeScript and production bundle verification passing. A current-checkout
+focused physical-iPad approval receipt also passed
 **44/44**, xcodebuild exit 0; see
 `evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19.json`.
 These source and device results remain non-certifying until the exact Linux
