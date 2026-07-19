@@ -32,14 +32,30 @@ function isTerminal(state: LinuxOnboardingSnapshot['steps'][number]['state']): b
   return state === 'verified' || state === 'acknowledged' || state === 'skipped';
 }
 
+function providerRouteStatus(
+  provider: ProviderCatalog[number] | undefined,
+  credentialStored: boolean
+): string {
+  if (provider?.health === 'healthy' && provider.failover?.eligible === true) {
+    return credentialStored
+      ? 'Credential stored and provider route verified by the daemon.'
+      : 'Provider route verified by the daemon.';
+  }
+  return credentialStored
+    ? 'Credential stored, but the daemon has not verified a healthy provider route. Retry provider verification before relying on this provider.'
+    : 'Provider route is not verified by the daemon. Fix provider authentication, then retry verification.';
+}
+
 function ProviderSetup({
   catalog,
   onStore,
+  onVerify,
   disabled,
   status
 }: {
   catalog: ProviderCatalog;
   onStore: (providerID: string, label: string, apiKey: string) => Promise<void>;
+  onVerify: (providerID: string) => Promise<void>;
   disabled: boolean;
   status: string | null;
 }) {
@@ -112,6 +128,16 @@ function ProviderSetup({
         }}
       >
         Store credential securely
+      </button>
+      <button
+        type="button"
+        className="onboarding-btn-ghost"
+        disabled={disabled || !selected}
+        onClick={() => {
+          if (selected) void onVerify(selected.id);
+        }}
+      >
+        Verify provider route
       </button>
       {status ? <p className="onboarding-provider-status" role="status">{status}</p> : null}
     </section>
@@ -247,9 +273,47 @@ export function OnboardingSurface() {
         isEnabled: true
       });
       const stored = next.providers?.find((provider) => provider.providerID === providerID)?.credentialSlots.length ?? 0;
-      setProviderStatus(stored > 0 ? 'Credential stored by the daemon. Verify and continue to complete setup.' : 'Daemon accepted the credential; verify its provider status in Settings.');
+      if (stored === 0) {
+        setProviderStatus('The daemon accepted the request but did not report a credential slot. Provider route remains unverified.');
+        return;
+      }
+      try {
+        const refreshedCatalog = await bridge.providerCatalog();
+        setProviderCatalog(refreshedCatalog);
+        setProviderStatus(providerRouteStatus(
+          refreshedCatalog.find((provider) => provider.id === providerID),
+          true
+        ));
+      } catch {
+        setProviderStatus('Credential stored, but provider route verification is unavailable. No route is marked ready; retry provider verification.');
+      }
     } catch (storeError) {
       setProviderStatus(storeError instanceof Error ? storeError.message : 'Credential storage failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verifyProviderRoute = async (providerID: string) => {
+    if (fixtureMode) {
+      setProviderStatus('Provider route verification is unavailable in fixture mode. Start the packaged shell to use the daemon.');
+      return;
+    }
+    if (!bridge) {
+      setProviderStatus('Provider route verification requires the packaged daemon.');
+      return;
+    }
+    setBusy(true);
+    setProviderStatus('Checking provider route with the daemon…');
+    try {
+      const refreshedCatalog = await bridge.providerCatalog();
+      setProviderCatalog(refreshedCatalog);
+      setProviderStatus(providerRouteStatus(
+        refreshedCatalog.find((provider) => provider.id === providerID),
+        false
+      ));
+    } catch {
+      setProviderStatus('Provider route verification is unavailable. No provider route is marked ready; retry after repairing provider authentication.');
     } finally {
       setBusy(false);
     }
@@ -406,6 +470,7 @@ export function OnboardingSurface() {
             <ProviderSetup
               catalog={providerCatalog}
               onStore={storeProviderCredential}
+              onVerify={verifyProviderRoute}
               disabled={busy}
               status={providerStatus}
             />

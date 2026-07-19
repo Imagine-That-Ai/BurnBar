@@ -266,9 +266,20 @@ describe('App shell', () => {
       )
     };
     const onboardingSnapshot = vi.fn().mockResolvedValue(initial);
-    const providerCatalog = vi.fn().mockResolvedValue([
-      { id: 'codex', label: 'Codex', accountLabel: 'No connected account', quotaBuckets: [] }
-    ]);
+    const providerCatalog = vi.fn()
+      .mockResolvedValueOnce([
+        { id: 'codex', label: 'Codex', accountLabel: 'No connected account', quotaBuckets: [] }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'codex',
+          label: 'Codex',
+          accountLabel: 'Primary',
+          quotaBuckets: [],
+          health: 'healthy',
+          failover: { mode: 'providerFamilyFailover', eligible: true, detail: 'verified' }
+        }
+      ]);
     const providerCredentialSlotUpsert = vi.fn().mockResolvedValue({
       providers: [{ providerID: 'codex', credentialSlots: [{ slotID: 'primary' }] }]
     });
@@ -289,8 +300,54 @@ describe('App shell', () => {
       apiKey: 'sk-test-secret',
       isEnabled: true
     })));
-    expect(await screen.findByText(/Credential stored by the daemon/i)).toBeTruthy();
+    expect(await screen.findByText(/Credential stored and provider route verified by the daemon/i)).toBeTruthy();
+    expect(providerCatalog).toHaveBeenCalledTimes(2);
     expect(localStorage.getItem('openburnbar.linux.onboarding.cache.v2') ?? '').not.toContain('sk-test-secret');
+  });
+
+  it('keeps provider auth unverified when route refresh fails, then recovers on retry', async () => {
+    const initial = {
+      ...defaultLinuxOnboardingSnapshot(),
+      currentStepID: 'provider_paths' as const,
+      privacyChoices: { telemetryEnabled: false, cloudSyncEnabled: false },
+      steps: defaultLinuxOnboardingSnapshot().steps.map((step) =>
+        step.id === 'provider_paths' ? { ...step, state: 'pending' as const } : { ...step, state: 'verified' as const }
+      )
+    };
+    const onboardingSnapshot = vi.fn().mockResolvedValue(initial);
+    const providerCatalog = vi.fn()
+      .mockResolvedValueOnce([
+        { id: 'codex', label: 'Codex', accountLabel: 'No connected account', quotaBuckets: [] }
+      ])
+      .mockRejectedValueOnce(new Error('provider health unavailable'))
+      .mockResolvedValueOnce([
+        {
+          id: 'codex',
+          label: 'Codex',
+          accountLabel: 'Primary',
+          quotaBuckets: [],
+          health: 'healthy',
+          failover: { mode: 'providerFamilyFailover', eligible: true, detail: 'verified' }
+        }
+      ]);
+    const providerCredentialSlotUpsert = vi.fn().mockResolvedValue({
+      providers: [{ providerID: 'codex', credentialSlots: [{ slotID: 'primary' }] }]
+    });
+    useShellStore.setState({
+      bridge: { onboardingSnapshot, providerCatalog, providerCredentialSlotUpsert } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+
+    render(<OnboardingSurface />);
+    expect(await screen.findByRole('heading', { name: 'Connect a provider' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-test-secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Store credential securely' }));
+
+    expect(await screen.findByText(/provider route verification is unavailable/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Verify provider route' }));
+    expect(await screen.findByText(/Provider route verified by the daemon/i)).toBeTruthy();
+    expect(providerCatalog).toHaveBeenCalledTimes(3);
   });
 
   it('does not dispatch provider credential mutations from fixture mode', async () => {
