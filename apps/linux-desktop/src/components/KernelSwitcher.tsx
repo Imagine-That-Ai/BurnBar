@@ -1,7 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { KERNEL_META } from '@openburnbar/gl-engine/engine/registry';
-import type { KernelId } from '@openburnbar/gl-engine/engine/types';
+import type { KernelId, KernelResolution } from '@openburnbar/gl-engine/engine/types';
 import { readPersistedKernelId, writePersistedKernelId } from '../state/kernelPrefs.js';
+import { KERNEL_RESOLUTION_EVENT } from './KernelBackdrop.js';
 import './KernelSwitcher.css';
 
 type Props = {
@@ -16,6 +17,7 @@ type Props = {
  */
 export function KernelSwitcher({ kernelId, onKernelChange, className }: Props) {
   const [open, setOpen] = useState(false);
+  const [resolution, setResolution] = useState<KernelResolution | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const listId = useId();
 
@@ -23,6 +25,45 @@ export function KernelSwitcher({ kernelId, onKernelChange, className }: Props) {
     () => KERNEL_META.find((k) => k.id === kernelId)?.label ?? kernelId,
     [kernelId]
   );
+  const fallbackForRequestedKernel =
+    resolution?.requestedId === kernelId && resolution.fallback ? resolution : null;
+  const fallbackLabel = fallbackForRequestedKernel
+    ? fallbackForRequestedKernel.reason === 'webgl2-unavailable'
+      ? '2D fallback (WebGL2 unavailable)'
+      : `fallback (${fallbackForRequestedKernel.reason})`
+    : null;
+
+  useEffect(() => {
+    const backdrop = document.querySelector<HTMLElement>('[data-kernel-requested]');
+    if (
+      backdrop?.dataset.kernelRequested === kernelId &&
+      backdrop.dataset.kernelFallback === '1'
+    ) {
+      // The backdrop mounts before the chrome, so the initial event can happen
+      // before this listener is attached. Rehydrate the deterministic receipt
+      // from the host data attributes in that case.
+      setResolution({
+        requestedId: kernelId,
+        resolvedId: (backdrop.dataset.kernelResolved as KernelId) || kernelId,
+        requestedSubstrate: 'webgl2',
+        resolvedSubstrate: '2d',
+        reason: (backdrop.dataset.kernelResolution as KernelResolution['reason']) ||
+          'context-unavailable',
+        fallback: true,
+        glSupported: backdrop.dataset.glSupported === '1'
+      });
+    } else {
+      setResolution(null);
+    }
+
+    const onResolution = (event: Event) => {
+      const status = (event as CustomEvent<KernelResolution>).detail;
+      if (!status || status.requestedId !== kernelId) return;
+      setResolution(status);
+    };
+    window.addEventListener(KERNEL_RESOLUTION_EVENT, onResolution);
+    return () => window.removeEventListener(KERNEL_RESOLUTION_EVENT, onResolution);
+  }, [kernelId]);
 
   useEffect(() => {
     if (!open) return;
@@ -55,9 +96,12 @@ export function KernelSwitcher({ kernelId, onKernelChange, className }: Props) {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
+        title={fallbackLabel ? `${activeLabel}: ${fallbackLabel}` : activeLabel}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="kernel-switcher-trigger-label">{activeLabel}</span>
+        <span className="kernel-switcher-trigger-label">
+          {fallbackLabel ? `${activeLabel} - ${fallbackLabel}` : activeLabel}
+        </span>
         <span className="kernel-switcher-chevron" aria-hidden="true">
           ▾
         </span>
@@ -73,6 +117,11 @@ export function KernelSwitcher({ kernelId, onKernelChange, className }: Props) {
                 type="button"
                 role="option"
                 aria-selected={selected}
+                aria-label={
+                  selected && fallbackLabel
+                    ? `${kernel.label}, ${fallbackLabel}`
+                    : kernel.label
+                }
                 className={`kernel-switcher-item${selected ? ' kernel-switcher-item--selected' : ''}`}
                 onClick={() => select(kernel.id)}
               >

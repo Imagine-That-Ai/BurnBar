@@ -20,12 +20,17 @@ import { detectGlCapabilities, type GlCapabilities } from "./gl/glCapabilities";
 import { resolvePalette } from "./palette";
 import type { SwarmEmberKernelOptions } from "./kernels/swarmEmberKernel";
 import { createSwarmEmberKernel } from "./kernels/swarmEmberKernel";
-import { DEFAULT_KERNEL_ID, getKernelDescriptor } from "./registry";
+import {
+  DEFAULT_KERNEL_ID,
+  getKernelDescriptor,
+  resolveKernelResolution,
+} from "./registry";
 import type {
   Kernel,
   KernelFrameContext,
   KernelId,
   KernelPalette,
+  KernelResolution,
   KernelSubstrate,
   ThemeName,
 } from "./types";
@@ -53,6 +58,8 @@ export interface BackdropEngineOptions {
   swarmEmberOptions?: SwarmEmberKernelOptions;
   /** Notified with the kernel actually shown (may differ on GL fallback). */
   onResolve?: (id: KernelId) => void;
+  /** Notified with the requested-vs-resolved capability receipt. */
+  onStatus?: (status: KernelResolution) => void;
 }
 
 function detectWebgl2(): { supported: boolean; caps: GlCapabilities } {
@@ -79,6 +86,7 @@ export class BackdropEngine {
   private palette: KernelPalette;
   private swarmEmberOptions?: SwarmEmberKernelOptions;
   private onResolve?: (id: KernelId) => void;
+  private onStatus?: (status: KernelResolution) => void;
 
   private width = 0;
   private height = 0;
@@ -117,6 +125,7 @@ export class BackdropEngine {
     this.palette = opts.palette ?? resolvePalette(opts.theme);
     this.swarmEmberOptions = opts.swarmEmberOptions;
     this.onResolve = opts.onResolve;
+    this.onStatus = opts.onStatus;
     this.activeId = opts.initialKernel ?? DEFAULT_KERNEL_ID;
 
     this.reducedMotion =
@@ -135,8 +144,15 @@ export class BackdropEngine {
   // ── Public API ─────────────────────────────────────────────
 
   setKernel(id: KernelId): void {
-    const resolved = this.resolveId(id);
-    if (resolved === this.activeId && this.slots.some((s) => s.id === resolved && !s.outgoing)) {
+    const requested = this.resolveKernel(id);
+    if (
+      requested.resolvedId === this.activeId &&
+      this.slots.some((s) => s.id === requested.resolvedId && !s.outgoing)
+    ) {
+      // A different WebGL2 request can resolve to the already-mounted 2D
+      // default. Still publish the request so the UI does not claim that the
+      // requested shader is running when it is actually using the fallback.
+      this.publishResolution(requested);
       return;
     }
     // Finalize any still-fading slots, then retire the current ones.
@@ -147,9 +163,9 @@ export class BackdropEngine {
       slot.disposeTimer = window.setTimeout(() => this.disposeSlot(slot), FADE_MS + 80);
     }
 
-    const slot = this.createSlot(resolved);
+    const slot = this.createSlot(requested.resolvedId);
     this.activeId = slot.id;
-    this.onResolve?.(slot.id);
+    this.publishResolution(this.withSlotResolution(requested, slot));
     this.harvestObstacles(true); // a freshly-switched kernel gets current geometry
 
     // Fade the newcomer in on the next frame (lets the transition apply).
@@ -239,31 +255,52 @@ export class BackdropEngine {
 
   // ── Slot lifecycle ─────────────────────────────────────────
 
-  private resolveId(id: KernelId): KernelId {
+  private resolveKernel(id: KernelId): KernelResolution {
+    const base = resolveKernelResolution(id, this.glCaps, this.glSupported);
     const desc = getKernelDescriptor(id);
-    if (desc.substrate === "webgl2" && !this.glSupported) return DEFAULT_KERNEL_ID;
-    // Capability gate (D1): a float-target kernel on a no-float-RT machine
-    // resolves to its fallback BEFORE instantiation — never a black canvas.
-    if (desc.requiresFloatTex && !this.glCaps.colorBufferFloat) {
-      return desc.fallbackId ?? DEFAULT_KERNEL_ID;
-    }
     // WebGPU premium tier degrades to its WebGL fallback when navigator.gpu is
     // absent (older OS/browser) — same "never black" contract.
     if (
+      base.reason === "native" &&
       (desc.requiresWebGPU || desc.substrate === "webgpu") &&
       typeof navigator !== "undefined" &&
       !("gpu" in navigator)
     ) {
-      return desc.fallbackId ?? DEFAULT_KERNEL_ID;
+      const fallbackId = desc.fallbackId ?? DEFAULT_KERNEL_ID;
+      const fallback = getKernelDescriptor(fallbackId);
+      return {
+        ...base,
+        resolvedId: fallbackId,
+        resolvedSubstrate: fallback.substrate,
+        reason: "webgpu-unavailable",
+        fallback: fallbackId !== id,
+      };
     }
-    return desc.id;
+    return base;
+  }
+
+  private withSlotResolution(requested: KernelResolution, slot: Slot): KernelResolution {
+    if (slot.id === requested.resolvedId) return requested;
+    return {
+      ...requested,
+      resolvedId: slot.id,
+      resolvedSubstrate: slot.substrate,
+      reason: "context-unavailable",
+      fallback: slot.id !== requested.requestedId,
+    };
+  }
+
+  private publishResolution(status: KernelResolution): void {
+    this.onStatus?.(status);
+    this.onResolve?.(status.resolvedId);
   }
 
   private mountInitial(): void {
-    const slot = this.createSlot(this.resolveId(this.activeId));
+    const requested = this.resolveKernel(this.activeId);
+    const slot = this.createSlot(requested.resolvedId);
     this.activeId = slot.id;
     slot.canvas.style.opacity = "1";
-    this.onResolve?.(slot.id);
+    this.publishResolution(this.withSlotResolution(requested, slot));
     if (this.reducedMotion) slot.kernel.renderStatic?.();
   }
 

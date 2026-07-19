@@ -16,7 +16,13 @@ import type { GlCapabilities } from "./gl/glCapabilities";
 // Eager: the default kernel — first paint depends on it.
 import { createConstellationKernel } from "./kernels/constellationKernel";
 import { lazyKernel } from "./lazyKernel";
-import type { KernelDescriptor, KernelId, KernelSubstrate } from "./types";
+import type {
+  KernelDescriptor,
+  KernelId,
+  KernelResolution,
+  KernelResolutionReason,
+  KernelSubstrate,
+} from "./types";
 
 export const KERNELS: KernelDescriptor[] = [
   {
@@ -354,10 +360,41 @@ export function resolveRenderableKernelId(
   glSupported: boolean,
   lookup: (id: KernelId) => KernelDescriptor = getKernelDescriptor
 ): KernelId {
-  const desc = lookup(id);
-  if (desc.substrate === "webgl2" && !glSupported) return DEFAULT_KERNEL_ID;
-  if (desc.requiresFloatTex && !caps.colorBufferFloat) {
-    return desc.fallbackId ?? DEFAULT_KERNEL_ID;
+  return resolveKernelResolution(id, caps, glSupported, lookup).resolvedId;
+}
+
+/**
+ * Return the complete, stable explanation for a host kernel choice.
+ *
+ * Keep this pure so desktop, browser, and test hosts can expose the same
+ * receipt without constructing a canvas or importing a kernel implementation.
+ */
+export function resolveKernelResolution(
+  id: KernelId,
+  caps: GlCapabilities,
+  glSupported: boolean,
+  lookup: (id: KernelId) => KernelDescriptor = getKernelDescriptor
+): KernelResolution {
+  const requested = lookup(id);
+  let resolvedId = id;
+  let reason: KernelResolutionReason = "native";
+
+  if (requested.substrate === "webgl2" && !glSupported) {
+    resolvedId = DEFAULT_KERNEL_ID;
+    reason = "webgl2-unavailable";
+  } else if (requested.requiresFloatTex && !caps.colorBufferFloat) {
+    resolvedId = requested.fallbackId ?? DEFAULT_KERNEL_ID;
+    reason = "float-target-unavailable";
   }
-  return id;
+
+  const resolved = lookup(resolvedId);
+  return {
+    requestedId: id,
+    resolvedId,
+    requestedSubstrate: requested.substrate,
+    resolvedSubstrate: resolved.substrate,
+    reason,
+    fallback: resolvedId !== id,
+    glSupported,
+  };
 }
