@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | Current source hardening reaches `e6bf98601b`; the clean parity-ledger validation is bound to current checkpoint `e6bf98601b`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
+| Remediation evidence | Current source hardening reaches `45ba462953`; the clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -22,8 +22,11 @@ iPad. The receipt is
 The earlier 9-case theme receipt remains useful supplemental coverage. These
 are non-certifying focused mobile results; neither proves installed Linux
 enrollment, fingerprint confirmation, approve/revoke, or cross-device Computer
-Use behavior. The current live UTM query reports the Linux guest as stopped, so
-no VM evidence was claimed or modified in this check.
+Use behavior. The live UTM Ubuntu 24.04 GNOME/X11 aarch64 guest is now running at
+`192.168.64.5` and is reachable over the documented SSH key. Its mutable
+baseline daemon service currently exits 127 because it bypasses the
+package-owned Swift runtime launcher; no installed product receipt is claimed
+until that launch path is repaired and re-run.
 
 Two additional source-only parity hardening slices are now on the candidate
 branch. `6f57349c66` keeps Linux settings search selection synchronized with
@@ -87,7 +90,7 @@ gating (default Tauri Rust **118/118** after the membership contract slice).
 `8131b51aec` adds a portal-backed native
 diagnostics save destination with a second Rust path-validation boundary and
 owner-only atomic output (diagnostics **6/6**, support UI **24/24**). The
-current desktop regression run is **83 files / 758 tests**, with TypeScript and
+current desktop regression run is **83 files / 767 tests**, with TypeScript and
 the production bundle verifier passing. A prior bounded current-checkout
 `MobileThemeTests` receipt passed **9/9**, 0 failures, and xcodebuild exit 0;
 the newer focused approval receipt is recorded below. Both remain
@@ -100,7 +103,7 @@ absent state (Tauri Rust **118/118**), and `f9d3b429e5`, which adds persisted
 Dashboard Defaults plus truthful daemon-backed Indexing & Search posture and
 an explicit unavailable Session Summaries state (focused settings **45/45**,
 new controls **3/3**). The full desktop-suite rerun after these two slices is
-green at **83 files / 758 tests**. The current focused approval receipt is
+green at **83 files / 767 tests**. The current focused approval receipt is
 **44/44**, 0 failures,
 xcodebuild exit 0; it remains non-certifying mobile coverage.
 
@@ -113,7 +116,12 @@ make Activity full-history export and resume require an explicit daemon
 cannot claim completeness and therefore stays typed-unavailable until that
 proof exists (focused Activity history/export/resume coverage **30/30**).
 These source-only fixes improve fail-closed behavior but do not change the
-strict **0/40** product or **0/7** environment certification state.
+strict **0/40** product or **0/7** environment certification state. The latest
+full Linux desktop run is **83 files / 767 tests**; TypeScript, production
+bundle verification, and Tauri Rust **118/118** also pass. The physical iPad
+receipt remains **44/44** and non-certifying. The Linux guest is available for
+the next installed-candidate run, but its daemon launch path must be repaired
+before live receipts can be collected.
 
 ## Execution Status — 2026-07-18
 

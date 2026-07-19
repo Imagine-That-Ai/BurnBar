@@ -5,8 +5,8 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- The current source hardening reaches `e6bf98601b`; the clean parity-ledger
-  validation is bound to current checkpoint `e6bf98601b`. The Release and
+- The current source hardening reaches `45ba462953`; the clean parity-ledger
+  validation is bound to checkpoint `073c2aba45`. The Release and
   Nightly receipts below are historical engineering evidence for an older
   checkpoint, not a claim that the current docs head has a promoted artifact.
 - The physical-device runner now accepts either the CoreDevice identifier from
@@ -31,7 +31,7 @@ Current parity status as of 2026-07-19:
   rows and 0/7 environment receipts. The Nightly pass is engineering evidence,
   not a promotion claim; production, lifecycle, installed integration, and
   registered product evidence remain open.
-- The candidate branch now has **83 desktop test files / 758 tests** passing,
+- The candidate branch now has **83 desktop test files / 767 tests** passing,
   plus current-checkout P-39 corpus binding, daemon-authoritative activity
   export resume, forced-colors metric fallbacks, and a focusable-hidden-node
   accessibility fix. The latest source slices also add the persisted Calendar
@@ -45,7 +45,7 @@ Current parity status as of 2026-07-19:
   truthfully (Tauri Rust **118/118**). `f9d3b429e5` adds persisted Dashboard
   Defaults and truthful Indexing & Search posture, with Session Summaries
   explicitly unavailable until a Linux RPC exists (focused settings **45/45**,
-  new controls **3/3**). The full desktop suite is green at **83 files / 758
+  new controls **3/3**). The full desktop suite is green at **83 files / 767
   tests**, with TypeScript and production bundle verification passing.
 - `b0d27caffa` hardens persisted Insights workspace state by rejecting malformed,
   future-version, or unsafe records and restoring safe defaults (focused
@@ -60,8 +60,9 @@ Current parity status as of 2026-07-19:
   tests with xcodebuild exit 0 (see
   [`evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19.json`](evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19.json)).
   This does not prove installed Linux enrollment, approval/revoke, or
-  cross-device Computer Use. `utmctl` currently reports the OpenBurnBar Linux
-  VM stopped; no VM was modified during the recheck. The full release-mobile
+  cross-device Computer Use. The OpenBurnBar Linux UTM guest is now running
+  and reachable, but its mutable baseline daemon service still exits 127 until
+  the package-owned Swift runtime launcher is restored. The full release-mobile
   approval suite remains unverified.
   The product-parity workflow is not present on `main`, and GitHub currently
   has zero self-hosted runners for its required Linux environment labels.

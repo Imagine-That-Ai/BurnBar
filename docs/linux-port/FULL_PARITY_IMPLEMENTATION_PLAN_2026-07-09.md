@@ -67,7 +67,7 @@ Tauri Rust **115/115**). `2a80e30921` recovers the Mercury decoder in place
 after transient frame failures, and `8131b51aec` adds a portal-backed native
 diagnostics save destination with a Rust path-validation boundary and private
 atomic output (diagnostics **6/6**, support UI **24/24**). The integrated
-desktop suite is now **83 files / 758 tests**, Tauri Rust is **118/118**, and
+desktop suite is now **83 files / 767 tests**, Tauri Rust is **118/118**, and
 TypeScript plus production bundle verification pass. A current-checkout focused
 physical-iPad approval run also passed **44/44** with xcodebuild exit 0; it
 remains non-certifying mobile coverage and does not prove Linux enrollment or
@@ -78,7 +78,7 @@ names and maps older-daemon unknown methods to a deterministic capability-absent
 state (Tauri Rust **118/118**), and `f9d3b429e5`, which adds persisted Dashboard
 Defaults plus truthful daemon-backed Indexing & Search posture and an explicit
 unavailable Session Summaries state (focused settings **45/45**, new controls
-**3/3**). The full desktop suite is green at **83 files / 758 tests**, with
+**3/3**). The full desktop suite is green at **83 files / 767 tests**, with
 TypeScript and production bundle verification passing. A current-checkout
 focused physical-iPad approval receipt also passed
 **44/44**, xcodebuild exit 0; see
@@ -94,6 +94,14 @@ Activity export and resume with an explicit `historyComplete === true` daemon
 marker; the bounded recent-usage session bridge cannot satisfy that contract,
 so the implementation remains a fail-closed scaffold until a complete-history
 bridge is available (focused Activity history/export/resume tests **30/30**).
+
+The latest local recheck keeps the strict ledger at **0/40 product** and **0/7
+environment**: Linux desktop **83 files / 767 tests**, TypeScript, production
+bundle verification, and Tauri Rust **118/118** pass, while the physical iPad
+focused receipt remains **44/44** and non-certifying. The Ubuntu 24.04 GNOME/X11
+aarch64 UTM guest is now running and reachable at `192.168.64.5`; its mutable
+baseline daemon service still exits 127 until the package-owned Swift runtime
+launcher is restored. Installed-candidate receipts remain the next gate.
 
 ### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 
