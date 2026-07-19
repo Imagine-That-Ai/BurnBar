@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | Current parity hardening reaches `ac42d02e4b`; the clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
+| Remediation evidence | Current parity hardening reaches `a570c9b087` (including the WebKit startup fallback in `6321897d4e`); the clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -24,25 +24,31 @@ are non-certifying focused mobile results; neither proves installed Linux
 enrollment, fingerprint confirmation, approve/revoke, or cross-device Computer
 Use behavior. The live UTM Ubuntu 24.04 GNOME/X11 aarch64 guest is now running at
 `192.168.64.5` and is reachable over the documented SSH key. The exact-head
-`ac42d02e4b` arm64 package is installed; its daemon is enabled and healthy
-through the package-owned user service, the installed desktop peer is running
-from `/usr/bin`, and the bare CLI resolves the canonical token file. The daemon
-now links the Linux Mercury capture crate: the live capability RPC reports
-`available=true`, `codecsKnown=true`, VP9/AV1/Opus support, and the file offer
-capability is available. The package migration hook and executable-peer
-authentication are covered by focused tests. This is a live runtime receipt,
-not strict certification: the installed manifest is unsigned, H.264 is not
-available on this guest, and two-device transfer/call/screen-share plus the
+`a570c9b087` arm64 package is installed; its daemon is enabled and healthy
+through the package-owned user service (`MainPID=49010`), the installed desktop
+peer is running from `/usr/bin`, and the bare CLI resolves the canonical token
+file. The daemon links the Linux Mercury capture crate and the packaged FTS5
+SQLCipher runtime: live RPCs report `available=true`, `codecsKnown=true`,
+VP9/AV1/Opus support, an active daemon-to-shell media socket, and available
+file-offer capability. The package migration hook, executable-peer
+authentication, SQLCipher binding, and WebKit safe-mode selection are covered by
+focused tests/source checks. This is a live runtime receipt, not strict
+certification: the installed manifest is unsigned, H.264 is not available on
+this guest, and two-device transfer/call/screen-share plus the
 product/environment receipt matrix remain open. The exact receipt is
-`evidence/mission-002-reanchor/vm-e2e/current-ac42d02e4b/live-receipt.json`.
+`evidence/mission-002-reanchor/vm-e2e/current-a570c9b087/live-receipt.json`.
 
-`ac42d02e4b` also fixes two release/runtime gaps found in the live VM: the
-release graph now builds and stages `libopenburnbar_media.so`, and the package
-post-install hook registers the user daemon service. Linux peer auth hashes
-the kernel `/proc/<pid>/exe` link without `O_NOFOLLOW`, which is incompatible
-with that kernel magic link; the actual Linux-target test passes 1/1 on Ubuntu.
-The full `MercuryLinuxMediaTests` class also passes **21/21** against the linked
-GStreamer backend on the same guest.
+`a570c9b087` carries the live release/runtime fixes found in the VM: the release
+graph builds and stages `libopenburnbar_media.so`, the package post-install hook
+registers the user daemon service, and the daemon binds explicitly to the
+packaged FTS5-capable `libsqlcipher.so.0` instead of Ubuntu's incompatible
+`.so.1`. Linux peer auth hashes the kernel `/proc/<pid>/exe` link without
+`O_NOFOLLOW`, which is incompatible with that kernel magic link; the actual
+Linux-target test passes 1/1 on Ubuntu. `6321897d4e` adds deterministic WebKit
+safe-mode environment selection when no DRM render node exists. The full
+`MercuryLinuxMediaTests` class passes **21/21**, the project/code-memory
+bootstrap slice passes **3/3**, and the installed package health/media probes
+pass on the same guest.
 
 Two additional source-only parity hardening slices are now on the candidate
 branch. `6f57349c66` keeps Linux settings search selection synchronized with
@@ -649,11 +655,12 @@ percentage. The active remediation stack now contains these reviewable slices:
   no-GStreamer stub state; the no-GStreamer contract and Tauri tests pass
   (**98/98** combined). `2a80e30921` restarts the decoder in place after a
   transient decode error and preserves the live socket session when recovery
-  succeeds. `ac42d02e4b` makes the release graph build and stage the daemon's
+  succeeds. `a570c9b087` makes the release graph build and stage the daemon's
   `openburnbar-media` Rust crate alongside the shell's `--features media-gst`
-  build. The installed VM capability probe now reports `available=true`,
-  `codecsKnown=true`, VP9/AV1/Opus support, and file-transfer capability. The
-  two-device file/call/screen-share, PipeWire portal, H.264, and lifecycle
+  build and binds the packaged FTS5 SQLCipher runtime. The installed VM
+  capability probe now reports `available=true`, `codecsKnown=true`, VP9/AV1/Opus
+  support, an active daemon-to-shell media socket, and file-transfer capability.
+  The two-device file/call/screen-share, PipeWire portal, H.264, and lifecycle
   receipts remain open.
 - **Chat attachment boundary:** `702f59146e` adds extension-derived MIME
   canonicalization and a preflight that rejects unsupported PDF uploads before
@@ -1272,14 +1279,15 @@ routes produced nonblack installed-app screenshots. This closes the observed
 deleted-binary/duplicate-daemon baseline for that package session, but not the
 x86_64, prior-version, suspend/resume, or compositor matrix.
 
-**Current live update (2026-07-19, source `ac42d02e4b`):** the exact arm64 DEB
+**Current live update (2026-07-19, source `a570c9b087`):** the exact arm64 DEB
 is installed in the Ubuntu 24.04 GNOME/X11 guest with the package-owned user
-service enabled and active (`MainPID=32496`, health `ok=true`). The packaged
-desktop is running from `/usr/bin` and the Linux peer-auth test passes against
-the kernel `/proc/<pid>/exe` link. This closes the previously observed service
-registration and Linux peer-lookup failures for this candidate, but it does not
-close signed provenance, x86_64, upgrade/rollback, suspend/resume, compositor,
-or full visual certification.
+service enabled and active (`MainPID=49010`, health `ok=true`). The packaged
+desktop is running from `/usr/bin`; post-restart journal inspection found no new
+peer rejections, and the daemon resolves the packaged FTS5 SQLCipher library.
+This closes the previously observed service registration, Linux peer-lookup, and
+database-bootstrap failures for this candidate, but it does not close signed
+provenance, x86_64, upgrade/rollback, suspend/resume, compositor, or full visual
+certification.
 
 - **Difference:** macOS owns its daemon lifecycle, startup recovery, and app
   executable. One inspected mutable UTM guest had a running deleted executable,
@@ -2342,7 +2350,7 @@ truth-sync, not the first time behavior is documented.
 | LNX-CU-CREDENTIALS-001 | LNX-AUTH-001, LNX-SEC-001, LNX-IPC-001, LNX-NATIVE-001 | **Implemented in source:** daemon-owned PKCE loopback sign-in, secure refresh-token custody, Firebase ID refresh, per-install Ed25519 App Check enrollment/challenge/mint, account generation, phase-safe sign-out/account-switch teardown, scoped old-account revoke, cancellable HTTP, redacted RPC/Tauri account state, explicit pending-approval reason mapping, permanent-rejection termination, and quota-safe capped polling. **Operational remainder:** deploy the Functions policy/callables, then exercise the exact release configuration | Source acceptance passed the 2026-07-12 full Linux-native aggregate for lifecycle/polling regression cases plus token-redaction checks. Delivery acceptance requires a signed installed candidate to complete sign-in, approval, refresh, expiry, rejection, sign-out, and account switch against deployed production services without token material in renderer, local RPC, logs, or diagnostics |
 | LNX-CU-BROWSER-001 | LNX-CU-CREDENTIALS-001, LNX-CAP-001, LNX-IPC-001, LNX-SESS-001, LNX-NATIVE-001, LNX-EVT-001 | **Implemented in source:** exact waiting-run picker; signed run/call/generation intent; controller-route v2 bootstrap/renewal/revocation; iOS/Android renewal; canonical generated Swift/Kotlin relay-challenge schema; macOS lifecycle policy; Linux directory, identity, endpoint, publisher, broker, metadata/readiness, approval/panic/media/teardown; durable replay; polkit owner gate; checkpoint/restart handling; root-owned packaged runtime; daemon credential authority; signed AppImage peer manifest; redacted account UI; and physical-iPad Linux App Check list/approve/revoke source. **Remaining:** current physical-iPad test execution, production provisioning, signed-candidate installation, and physical-iPad/browser/restart certification | Release build completes navigate/type/click/screenshot with the physical iPad as real paired authority; exact App Check device ID and fingerprint are confirmed before approval; unsigned/forged/replayed/stale/wrong-session/wrong-request responses and swapped transport/authority identities fail; credential expiry/account switch/App Check rejection and route absence/replacement terminate the exact route; deny/panic/timeout/cancel/journal failure revoke only the exact generation; restart never redispatches an in-flight action, requires fresh session authority, and retains replay high-water marks; audit/tamper proof passes |
 | LNX-CU-SYSTEM-001 | LNX-CU-BROWSER-001, LNX-CAP-001, LNX-NATIVE-001 | Portal/PipeWire/AT-SPI/libei plus constrained X11/uinput adapters | `ea82fe5140` adds the bounded fixed-command portal probe; `4423a0934d` adds the consent-backed, session-scoped RemoteDesktop Notify executor and teardown wiring. X11/AT-SPI selection remains authoritative when the portal is not ready. | Run the exact signed candidate through GNOME/KDE/wlroots compositor safety, approval, panic, revocation, restart, and accessibility matrices; unsupported modes stay hidden |
-| LNX-MEDIA-001 | LNX-CAP-001, LNX-IPC-001, LNX-SEC-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-EVT-001 | Mercury transport, secure pairing, files, calls, share, codecs, consent, notification/lifecycle | `56af093923` adds a truthful shell-local GStreamer viewer capability contract (VP9 decoder, native sink, PipeWire factories), explicit no-feature degradation, release feature wiring, and package/runtime dependency declarations. `2a80e30921` restarts the existing decoder in place after transient frame failures and re-arms keyframe gating without dropping the live socket when recovery succeeds. `ac42d02e4b` builds/stages the daemon-owned `openburnbar-media` crate; the live Ubuntu receipt reports capture available with known VP9/AV1/Opus codecs and file-transfer capability. | Run the exact signed candidate through a real two-device iPad/Linux file, call, and screen-share matrix on supported desktops; prove PipeWire portal consent, codec/sink negotiation (including explicit H.264 fallback), lifecycle, restart, teardown, and cross-device receipts |
+| LNX-MEDIA-001 | LNX-CAP-001, LNX-IPC-001, LNX-SEC-001, LNX-AUTH-001, LNX-NATIVE-001, LNX-EVT-001 | Mercury transport, secure pairing, files, calls, share, codecs, consent, notification/lifecycle | `56af093923` adds a truthful shell-local GStreamer viewer capability contract (VP9 decoder, native sink, PipeWire factories), explicit no-feature degradation, release feature wiring, and package/runtime dependency declarations. `2a80e30921` restarts the existing decoder in place after transient frame failures and re-arms keyframe gating without dropping the live socket when recovery succeeds. `a570c9b087` builds/stages the daemon-owned `openburnbar-media` crate, binds the packaged FTS5 SQLCipher runtime, and records the WebKit safe-mode fallback; the live Ubuntu receipt reports capture available with known VP9/AV1/Opus codecs, an active daemon-to-shell media socket, and file-transfer capability. | Run the exact signed candidate through a real two-device iPad/Linux file, call, and screen-share matrix on supported desktops; prove PipeWire portal consent, codec/sink negotiation (including explicit H.264 fallback), lifecycle, restart, teardown, and cross-device receipts |
 | LNX-IOT-001 | LNX-IPC-001 | Typed SmartHub discovery/action APIs | Real device and hostile-input tests green |
 | LNX-TEXT-001 | LNX-SEC-001, LNX-EVT-001 | **Implemented in source:** app Composer integration and encrypted persistence/safe consent are complete; `6c76df084f` adds bounded IBus/Fcitx reachability, `274f67fba0` adds an explicitly opted-in signed registration gate, and `9598c0b9e8` adds daemon lifecycle status/start/stop RPCs with owner/path/permission/session checks, without keyboard/clipboard/surrounding-text capture. Live engine execution, secure-field hooks, sync, and conflict resolution remain required | Secure-field and desktop/input-method matrix green with a registered engine; unsupported or uninspectable contexts stay disabled |
 | LNX-PET-001 | LNX-CAP-001, LNX-NATIVE-001 | Real glTF renderer, companion window, capability fallback | X11 child/summon source contract is present; visual, focus, compositor, GPU, shortcut, and reduced-motion tests green |

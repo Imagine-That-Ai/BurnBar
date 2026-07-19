@@ -29,19 +29,22 @@ proof and refuses paged or partial data. Focused Activity/bridge coverage is
 the preceding installed baseline in the UTM guest; its non-certifying receipt is
 `evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/health.json`.
 
-The current live integration slice is `ac42d02e4b`. Its release graph builds
+The current live integration slice is `a570c9b087` (with the WebKit startup
+fallback from `6321897d4e`). Its release graph builds
 the daemon-owned `crates/openburnbar-media` library before Swift linking, so a
 signed release cannot silently ship the shell's GStreamer viewer without the
 capture backend. The DEB post-install hook registers the package-owned user
-service, and Linux peer authentication reads and hashes the kernel
-`/proc/<pid>/exe` link without `O_NOFOLLOW`. The exact arm64 DEB is installed in
-the Ubuntu 24.04 GNOME/X11 guest with service `enabled/active`, authenticated
+service, Linux peer authentication reads and hashes the kernel
+`/proc/<pid>/exe` link without `O_NOFOLLOW`, and the daemon binds explicitly to
+the packaged FTS5-capable `libsqlcipher.so.0`. The exact arm64 DEB is installed
+in the Ubuntu 24.04 GNOME/X11 guest with service `enabled/active`, authenticated
 desktop health, and live media/file capability probes. Receipt:
-`evidence/mission-002-reanchor/vm-e2e/current-ac42d02e4b/live-receipt.json`.
-This closes the package/service/media-backend source slice; iPad enrollment,
-two-device media, and signed certification remain dependencies for parity. The
-VM's full `MercuryLinuxMediaTests` class passes **21/21** with the linked
-GStreamer backend; this is transport/backend proof, not a two-device receipt.
+`evidence/mission-002-reanchor/vm-e2e/current-a570c9b087/live-receipt.json`.
+This closes the package/service/media-backend/database-bootstrap source slice;
+iPad enrollment, two-device media, and signed certification remain dependencies
+for parity. The VM's full `MercuryLinuxMediaTests` class passes **21/21**, the
+project/code-memory bootstrap slice passes **3/3**, and the Linux peer test
+passes **1/1**; this is transport/backend proof, not a two-device receipt.
 
 The installed Linux CLI parity fix is now on `d58b6a958f`: the Swift CLI
 resolves the canonical XDG daemon token file when no token environment override
@@ -624,12 +627,13 @@ rollback proof, and physical-iPad flow are exercised.
 > source milestones, not installed parity. The immediate blocking order is:
 > dedicated Desktop OAuth client -> public release variables -> Functions
 > deployment -> physical-iPad test execution -> exact signed candidate ->
-> install the candidate with the daemon/media runtime and verify service/peer
-> health -> physical-iPad/Linux enrollment and two-device media/Browser
-> Computer Use proof -> full desktop/compositor and update/rollback
-> certification. The service/media slice is implemented and live in
-> `ac42d02e4b`; its remaining dependency is cross-device and signed-candidate
-> evidence, not VM startup. The independent audit is the current status source:
+> install the candidate with the daemon/media/SQLCipher runtime and verify
+> service/peer health -> physical-iPad/Linux enrollment and two-device
+> media/Browser Computer Use proof -> full desktop/compositor and
+> update/rollback certification. The service/media/database slice is
+> implemented and live in `a570c9b087`; its remaining dependency is
+> cross-device and signed-candidate evidence, not VM startup. The independent
+> audit is the current status source:
 > `LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`.
 
 ### Integration verification checkpoint - 2026-07-13
@@ -1762,9 +1766,11 @@ The original foundation sequence is substantially implemented. From the
 
 5. **Signed candidate PR/run**
    - Build the exact deb/rpm/AppImage candidate, bind source/SBOM/VEX/provenance,
-     build/stage the daemon-owned `openburnbar-media` runtime, sign the final
-     AppImage peer manifest, and pass strict release validation. The release
-     graph must fail closed if the media native artifact is absent.
+     build/stage the daemon-owned `openburnbar-media` runtime, bind the packaged
+     FTS5-capable SQLCipher runtime, include the compositor-safe WebKit startup
+     policy, sign the final AppImage peer manifest, and pass strict release
+     validation. The release graph must fail closed if the media native
+     artifact or SQLCipher runtime is absent.
 
 6. **Installed Linux plus physical-iPad certification**
    - Prove PKCE sign-in, enrollment, fingerprint confirmation, approval, refresh,
