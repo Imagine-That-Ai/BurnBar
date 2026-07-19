@@ -630,7 +630,10 @@ describe('ChatSurface', () => {
     await waitFor(() => expect(screen.getByText('Thread resumed from the daemon.')).toBeTruthy());
     fireEvent.click(screen.getByRole('menuitem', { name: 'Pop out chat' }));
     await waitFor(() => expect(open).toHaveBeenCalledOnce());
-    expect(screen.getByText('Chat opened in a separate window.')).toBeTruthy();
+    // `window.open` is synchronous, but the status toast is set after the
+    // async pop-out boundary resolves. Wait for the state update instead of
+    // coupling this assertion to a particular microtask scheduling order.
+    await waitFor(() => expect(screen.getByText('Chat opened in a separate window.')).toBeTruthy());
   });
 
   it('renders persisted system messages with an accessible system label', async () => {
