@@ -8,7 +8,8 @@ import type {
   LinuxShellBridge,
   LinuxPrivacyRetentionRule,
   NotificationConfig,
-  ProviderSettings
+  ProviderSettings,
+  MercuryMediaStatus
 } from '../../tauriBridge.js';
 import { ACCOUNT_CLOUD_DATA_DELETION_CONFIRMATION } from '../../tauriBridge.js';
 import type { DaemonStatusCopy } from '../../daemonStatusCopy.js';
@@ -1462,17 +1463,173 @@ function DevicesAndSyncDetail({
   );
 }
 
+type MediaSettingsProbe = {
+  state: 'loading' | 'available' | 'degraded' | 'unavailable';
+  detail: string;
+  pairedDevices: number;
+};
+
+function mediaViewerDetail(status: NonNullable<MercuryMediaStatus['viewerCapability']>): string {
+  const reason = (() => {
+    switch (status.status) {
+      case 'available':
+        return 'Native Mercury viewer is ready.';
+      case 'built_without_gstreamer':
+        return 'This Linux build was compiled without the GStreamer viewer feature.';
+      case 'gstreamer_backend_unavailable':
+        return 'The GStreamer runtime is unavailable to the packaged shell.';
+      case 'gstreamer_vp9_decoder_missing':
+        return 'The GStreamer runtime is missing a VP9 decoder.';
+      case 'gstreamer_video_sink_missing':
+        return 'The GStreamer runtime is missing a native video sink.';
+      case 'unknown':
+        return status.reason ?? 'The packaged shell cannot verify a native Mercury viewer.';
+    }
+  })();
+  return status.installHint ? `${reason} ${status.installHint}` : reason;
+}
+
+function mediaProbeFromStatus(status: MercuryMediaStatus): MediaSettingsProbe {
+  const viewer = status.viewerCapability;
+  if (!status.capabilityAvailable) {
+    return {
+      state: 'unavailable',
+      detail: status.reason ?? 'Mercury transport capability is unavailable on this Linux peer.',
+      pairedDevices: status.pairedDevices.length
+    };
+  }
+  if (viewer && !viewer.available) {
+    return {
+      state: 'degraded',
+      detail: mediaViewerDetail(viewer),
+      pairedDevices: status.pairedDevices.length
+    };
+  }
+  return {
+    state: 'available',
+    detail: viewer ? mediaViewerDetail(viewer) : 'Mercury daemon transport is available; viewer details were not reported.',
+    pairedDevices: status.pairedDevices.length
+  };
+}
+
 function MediaDetail() {
+  const bridge = useShellStore((state) => state.bridge);
+  const fixtureMode = useShellStore((state) => state.fixtureMode);
+  const [probe, setProbe] = useState<MediaSettingsProbe>({
+    state: 'loading',
+    detail: 'Checking Mercury media capability…',
+    pairedDevices: 0
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    setProbe({
+      state: 'loading',
+      detail: 'Checking Mercury media capability…',
+      pairedDevices: 0
+    });
+    if (fixtureMode) {
+      setProbe({
+        state: 'unavailable',
+        detail: 'Fixture mode: media capability-absent (matches live Linux honesty).',
+        pairedDevices: 0
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (!bridge?.mediaStatus) {
+      setProbe({
+        state: 'unavailable',
+        detail: 'Packaged shell did not expose the Mercury media status probe.',
+        pairedDevices: 0
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    void bridge.mediaStatus()
+      .then((status) => {
+        if (!cancelled) setProbe(mediaProbeFromStatus(status));
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) {
+          setProbe({
+            state: 'unavailable',
+            detail: reason instanceof Error ? reason.message : 'Mercury media status request failed.',
+            pairedDevices: 0
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, fixtureMode]);
+
+  const reload = () => {
+    // Re-run the effect through the existing bridge identity without adding a
+    // second media RPC wrapper to the settings surface.
+    setProbe((current) => ({ ...current, state: 'loading', detail: 'Checking Mercury media capability…' }));
+    if (fixtureMode) {
+      setProbe({
+        state: 'unavailable',
+        detail: 'Fixture mode: media capability-absent (matches live Linux honesty).',
+        pairedDevices: 0
+      });
+      return;
+    }
+    if (!bridge?.mediaStatus) {
+      setProbe({
+        state: 'unavailable',
+        detail: 'Packaged shell did not expose the Mercury media status probe.',
+        pairedDevices: 0
+      });
+      return;
+    }
+    void bridge.mediaStatus()
+      .then((status) => setProbe(mediaProbeFromStatus(status)))
+      .catch((reason: unknown) => {
+        setProbe({
+          state: 'unavailable',
+          detail: reason instanceof Error ? reason.message : 'Mercury media status request failed.',
+          pairedDevices: 0
+        });
+      });
+  };
+
+  const label = probe.state === 'loading'
+    ? 'Checking…'
+    : probe.state === 'available'
+      ? 'Available'
+      : probe.state === 'degraded'
+        ? 'Degraded'
+        : 'Unavailable';
+  const tone = probe.state === 'available' ? 'ok' : 'warn';
+
   return (
     <SettingGroup title="Media & Sharing" sectionHeader hideTitle>
       <p className="muted settings-tab-lede">
-        Mercury media is gated outside the settings RPC surface for this lane. File transfer, screen share, and calls need the media packet/runtime lane before Linux Settings can expose mutation controls.
+        Mercury media uses the daemon media transport and the native viewer capability. File transfer, screen share, and calls remain in the dedicated surface.
       </p>
       <SettingRow
         iconGlyph="▣"
-        label="Media engine gate"
-        description="No daemon settings RPC exists here; this pane intentionally does not invent packet controls."
-        control={<span className="muted">Blocked by media runtime lane</span>}
+        label="Media capability"
+        description={`${probe.pairedDevices} paired device${probe.pairedDevices === 1 ? '' : 's'} reported by the daemon.`}
+        control={
+          <span className="settings-verification-value">
+            <span className={`status-pill ${tone}`} role="status" aria-label={label}>{label}</span>
+            <button type="button" className="ghost" onClick={reload} disabled={probe.state === 'loading'} aria-busy={probe.state === 'loading'}>
+              {probe.state === 'loading' ? 'Checking…' : 'Recheck'}
+            </button>
+          </span>
+        }
+        readOnlyNote={probe.detail}
+      />
+      <SettingRow
+        iconGlyph="↗"
+        label="Media controls"
+        description="Open Mercury to pair devices, accept calls, transfer files, or view a screen share."
+        control={<a className="system-danger-link settings-drill-link" href="#/media">Open Media</a>}
       />
     </SettingGroup>
   );

@@ -660,7 +660,35 @@ describe('SettingsSurface', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Devices & Sync/i }));
     expect(screen.getByText(/daemon exposes no Linux mutation contract/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^Media & Sharing/i }));
-    expect(screen.getByText(/No daemon settings RPC exists here/i)).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Unavailable' })).toBeTruthy();
+    expect(screen.getByText(/Fixture mode: media capability-absent/i)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open Media' }).getAttribute('href')).toBe('#/media');
+    fireEvent.click(screen.getByRole('button', { name: 'Recheck' }));
+    expect(screen.getByRole('status', { name: 'Unavailable' })).toBeTruthy();
+  });
+
+  it('shows live Mercury capability and supports a bounded settings recheck', async () => {
+    const mediaStatus = vi.fn(async () => ({
+      capabilityAvailable: true,
+      pairedDevices: [{ id: 'ipad', name: 'iPad', platform: 'ios' as const, isOnline: true, lastSeenAt: new Date().toISOString(), capabilities: ['screen-share'] }],
+      viewerCapability: {
+        available: true,
+        renderer: 'media-gst' as const,
+        featureEnabled: true,
+        canDecodeVp9: true,
+        hasVideoSink: true,
+        status: 'available' as const
+      }
+    }));
+    useShellStore.setState({ bridge: bridge({ mediaStatus }), fixtureMode: false });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^Media & Sharing/i }));
+
+    expect(await screen.findByRole('status', { name: 'Available' })).toBeTruthy();
+    expect(screen.getByText(/1 paired device reported/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Recheck' }));
+    await waitFor(() => expect(mediaStatus).toHaveBeenCalledTimes(2));
   });
 
   it('surfaces daemon-owned account posture while keeping unsupported device mutations explicit', async () => {
