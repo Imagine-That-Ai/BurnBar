@@ -63,6 +63,14 @@ function bridgeWithSession(overrides: Partial<LinuxShellBridge>): LinuxShellBrid
   } as LinuxShellBridge;
 }
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function fileTransfer(overrides: Partial<MercuryFileTransfer> = {}): MercuryFileTransfer {
   const now = '2026-07-06T10:00:00.000Z';
   return {
@@ -268,6 +276,59 @@ describe('mediaStore live call state machine', () => {
     await useMediaStore.getState().load();
     expect(useMediaStore.getState().loadState).toBe('capability-absent');
     expect(useMediaStore.getState().callState.phase).toBe('capability-absent');
+  });
+
+  it('does not resurrect an in-flight response after reset invalidates the load', async () => {
+    const pending = deferred<MercuryMediaStatus>();
+    useShellStore.setState({
+      bridge: bridgeWithSession({ mediaStatus: vi.fn().mockReturnValue(pending.promise) })
+    });
+    useMediaStore.setState({
+      callState: { phase: 'streaming', kind: 'call', source: 'live' },
+      fileTransfers: [fileTransfer()]
+    });
+
+    const load = useMediaStore.getState().load();
+    expect(useMediaStore.getState()).toMatchObject({
+      loadState: 'loading',
+      callState: { phase: 'idle' },
+      fileTransfers: []
+    });
+
+    useMediaStore.getState().reset();
+    pending.resolve({ capabilityAvailable: true, pairedDevices: [] } as MercuryMediaStatus);
+    await load;
+
+    expect(useMediaStore.getState()).toMatchObject({
+      status: null,
+      loadState: 'idle',
+      callState: { phase: 'idle' },
+      fileTransfers: []
+    });
+  });
+
+  it('keeps the newest bridge load when an older response resolves later', async () => {
+    const oldStatus = deferred<MercuryMediaStatus>();
+    const oldBridge = bridgeWithSession({ mediaStatus: vi.fn().mockReturnValue(oldStatus.promise) });
+    const newBridge = bridgeWithSession({
+      mediaStatus: vi.fn().mockResolvedValue({
+        capabilityAvailable: true,
+        pairedDevices: [{ id: 'new-peer', name: 'New peer', platform: 'linux', isOnline: true }]
+      })
+    });
+    useShellStore.setState({ bridge: oldBridge });
+    const oldLoad = useMediaStore.getState().load();
+    useShellStore.setState({ bridge: newBridge });
+    const newLoad = useMediaStore.getState().load();
+
+    await newLoad;
+    oldStatus.resolve({
+      capabilityAvailable: true,
+      pairedDevices: [{ id: 'old-peer', name: 'Old peer', platform: 'ios', isOnline: true }]
+    } as MercuryMediaStatus);
+    await oldLoad;
+
+    expect(useMediaStore.getState().status?.pairedDevices[0]?.id).toBe('new-peer');
   });
 
   it('ingests event-shaped incoming calls without daemon polling', () => {

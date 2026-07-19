@@ -87,6 +87,7 @@ const IDLE_MEDIA_CONTROL: MercuryMediaControlSnapshot = {
 let mediaPollInterval: ReturnType<typeof setInterval> | null = null;
 let eventListenersStarted = false;
 let eventUnlisteners: Array<() => void> = [];
+let mediaLoadGeneration = 0;
 
 export function normalizeMercuryStage(state: string): MercuryStage {
   const lower = state.toLowerCase();
@@ -302,7 +303,10 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
   fileBusyTransferID: null,
 
   async load() {
+    const requestGeneration = ++mediaLoadGeneration;
+    const isCurrentRequest = () => requestGeneration === mediaLoadGeneration;
     const { fixtureMode, bridge } = useShellStore.getState();
+    get().stopLiveSessionObservers();
     if (fixtureMode) {
       // Rich fixture is opt-in for UX demos; default is capability-absent (live parity).
       const rich = (() => {
@@ -360,13 +364,21 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
       return;
     }
     set({
+      status: null,
       loadState: 'loading',
       mediaControlState: 'idle',
       mediaControlReason: null,
       mediaRpcControlState: 'idle',
       mediaRpcControlReason: null,
       error: null,
-      callError: null
+      callError: null,
+      callState: IDLE_CALL,
+      stageEvents: [],
+      fileTransfers: [],
+      fileCapabilityAvailable: null,
+      fileDownloadDirectory: null,
+      fileError: null,
+      fileBusyTransferID: null
     });
     try {
       const status = await bridge.mediaStatus();
@@ -377,6 +389,7 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
       } catch (e) {
         fileError = e instanceof Error ? e.message : 'File transfer offer list failed';
       }
+      if (!isCurrentRequest()) return;
       const fileTransfers = fileList?.transfers ?? [];
       const fileCapabilityAvailable = fileList?.capabilityAvailable ?? null;
       const hasFileRows = fileCapabilityAvailable === true && fileTransfers.length > 0;
@@ -400,6 +413,7 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
           };
         }
       }
+      if (!isCurrentRequest()) return;
       set({
         status,
         loadState,
@@ -419,9 +433,13 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
       });
       if (status.capabilityAvailable || fileCapabilityAvailable === true) {
         try {
-          get().ingestSessionState(await bridge.mediaSessionState(), 'live');
+          const sessionState = await bridge.mediaSessionState();
+          if (!isCurrentRequest()) return;
+          get().ingestSessionState(sessionState, 'live');
+          if (!isCurrentRequest()) return;
           get().startLiveSessionObservers();
         } catch (e) {
+          if (!isCurrentRequest()) return;
           const reason = e instanceof Error ? e.message : 'Media session state request failed';
           set({
             callError: reason,
@@ -435,6 +453,7 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
         set({ callState: { phase: 'capability-absent', kind: 'call', source: 'absent' } });
       }
     } catch (e) {
+      if (!isCurrentRequest()) return;
       const reason = e instanceof Error ? e.message : 'Media status request failed';
       set({
         status: null,
@@ -770,12 +789,17 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
   startLiveSessionObservers() {
     const { bridge, fixtureMode } = useShellStore.getState();
     if (fixtureMode || !bridge) return;
+    const observerGeneration = mediaLoadGeneration;
     if (mediaPollInterval === null) {
       mediaPollInterval = setInterval(() => {
         void bridge
           .mediaSessionState()
-          .then((state) => get().ingestSessionState(state, 'live'))
+          .then((state) => {
+            if (observerGeneration !== mediaLoadGeneration) return;
+            get().ingestSessionState(state, 'live');
+          })
           .catch((e) => {
+            if (observerGeneration !== mediaLoadGeneration) return;
             const reason = e instanceof Error ? e.message : 'Media session poll failed';
             set({
               callError: reason,
@@ -787,8 +811,14 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
           });
         void bridge
           .mediaFileOfferList()
-          .then((response) => get().ingestFileOfferList(response))
-          .catch((e) => set({ fileError: e instanceof Error ? e.message : 'File transfer poll failed' }));
+          .then((response) => {
+            if (observerGeneration !== mediaLoadGeneration) return;
+            get().ingestFileOfferList(response);
+          })
+          .catch((e) => {
+            if (observerGeneration !== mediaLoadGeneration) return;
+            set({ fileError: e instanceof Error ? e.message : 'File transfer poll failed' });
+          });
       }, 500);
     }
     if (!eventListenersStarted && typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
@@ -796,14 +826,24 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
       void import('@tauri-apps/api/event')
         .then(async ({ listen }) => {
           const incoming = await listen('media-incoming-call', (event) => {
+            if (observerGeneration !== mediaLoadGeneration) return;
             get().ingestSessionState(sessionFromEventPayload(event.payload), 'event');
           });
           const changed = await listen('media-call-state-changed', (event) => {
+            if (observerGeneration !== mediaLoadGeneration) return;
             get().ingestSessionState(sessionFromEventPayload(event.payload), 'event');
           });
+          if (observerGeneration !== mediaLoadGeneration) {
+            incoming();
+            changed();
+            return;
+          }
           eventUnlisteners = [incoming, changed];
         })
-        .catch((e) => set({ callError: e instanceof Error ? e.message : 'Media event listener failed' }));
+        .catch((e) => {
+          if (observerGeneration !== mediaLoadGeneration) return;
+          set({ callError: e instanceof Error ? e.message : 'Media event listener failed' });
+        });
     }
   },
 
@@ -818,6 +858,7 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
   },
 
   reset() {
+    mediaLoadGeneration += 1;
     get().stopLiveSessionObservers();
     set({
       status: null,
