@@ -343,6 +343,10 @@ describe('SettingsSurface', () => {
       passphrase: 'correct horse battery'
     }));
     expect(await screen.findByText('Encrypted local privacy export written.')).toBeTruthy();
+    expect(screen.getByText('/tmp/privacy-export.obb')).toBeTruthy();
+    expect(screen.getByText(/192 bytes · format v1/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy export path' })).toBeTruthy();
+    expect(screen.getByText(/Keep the passphrase separate from this owner-only bundle/)).toBeTruthy();
     expect((passphrase as HTMLInputElement).value).toBe('');
   });
 
