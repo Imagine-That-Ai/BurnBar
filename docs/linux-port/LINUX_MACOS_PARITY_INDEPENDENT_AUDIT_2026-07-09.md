@@ -72,6 +72,19 @@ fixture now derives its mutation count from the real 24-test workflow suite,
 closing stale-count failures without weakening the validator. These are still
 source/contract improvements, not installed receipts.
 
+Two additional source slices are now pushed on the candidate branch. `3004da3b72`
+adds the macOS-matching Calendar notification default hold-duration control
+(15/30/45/60/90 minutes), gated until Calendar is enabled and persisted through
+the existing daemon config RPC (focused SettingsSurface **30/30**, TypeScript
+passed). `bdd57173e9` hardens support diagnostics export: socket paths and raw
+daemon errors are redacted, renderer/capability facts are included, support
+directories and atomic bundles have private permissions, and symlinked support
+directories fail closed (focused support UI **24/24**, Tauri Rust **115/115**).
+The physical iPad preflight at the current checkout passed and selected the
+paired device, but the bounded release-mobile build was stopped after it
+exceeded the named worktree's 10 GiB safety ceiling; no XCTest method ran and
+no mobile pass is claimed.
+
 ## Execution Status — 2026-07-18
 
 The audit remains the source of truth for the parity claim. The current Linux

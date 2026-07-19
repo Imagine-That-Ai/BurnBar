@@ -37,14 +37,19 @@ Current parity status as of 2026-07-19:
 - The candidate branch now has **82 desktop test files / 753 tests** passing,
   plus current-checkout P-39 corpus binding, daemon-authoritative activity
   export resume, forced-colors metric fallbacks, and a focusable-hidden-node
-  accessibility fix. These source results do not promote the ledger.
+  accessibility fix. The latest source slices also add a persisted Calendar
+  notification hold-duration selector (`3004da3b72`) and redacted,
+  symlink-safe atomic diagnostics exports (`bdd57173e9`). These source results
+  do not promote the ledger.
 - Fresh local recheck: the wired iPad is paired, booted, has Developer Mode
   enabled, and the focused physical XCTest receipt passed 44/44 tests at
   `e0d295e92a` (see
   [`evidence/parity-audit-2026-07-10/ipad-approval-focused-2026-07-19.json`](evidence/parity-audit-2026-07-10/ipad-approval-focused-2026-07-19.json)).
   This does not prove installed Linux enrollment, approval/revoke, or
   cross-device Computer Use. `utmctl` currently reports the OpenBurnBar Linux
-  VM stopped; no VM was modified during the recheck.
+  VM stopped; no VM was modified during the recheck. A current-head bounded
+  release-mobile build was stopped before XCTest execution after its scratch
+  worktree exceeded the 10 GiB hygiene limit; no new mobile pass is claimed.
   The product-parity workflow is not present on `main`, and GitHub currently
   has zero self-hosted runners for its required Linux environment labels.
 - For the detailed audit and implementation plan, see

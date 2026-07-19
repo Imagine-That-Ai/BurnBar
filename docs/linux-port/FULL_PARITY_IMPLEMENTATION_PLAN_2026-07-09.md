@@ -59,6 +59,14 @@ also derives its mutation summary from the live 24-test workflow suite instead
 of a stale hard-coded count. These checks strengthen source and evidence
 contracts only; installed, production, and cross-device receipts remain open.
 
+The next source slices are also complete: `3004da3b72` adds a persisted,
+Calendar-enabled default hold-duration selector matching the macOS notification
+settings (focused SettingsSurface **30/30**), and `bdd57173e9` makes diagnostics
+exports redacted, private, atomic, and symlink-safe (support UI **24/24** and
+Tauri Rust **115/115**). Current physical-iPad preflight passed, but the
+release-mobile build was stopped at the 10 GiB named-worktree safety ceiling
+before XCTest execution; this is not a device or app pass.
+
 ### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 
 The authoritative ledger is **0/40 product requirements** and **0/7 environment
