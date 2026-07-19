@@ -8,6 +8,8 @@
 #   SIGNAL_FFI_RUST_TOOLCHAIN=1.94.0 ./scripts/build-signal-ffi-xcframework.sh
 #   SIGNAL_FFI_BUILD_ROOT=/absolute/scratch/ffi-build ./scripts/build-signal-ffi-xcframework.sh
 #   SIGNAL_FFI_CARGO_TARGET_ROOT=/absolute/scratch/ffi-target ./scripts/build-signal-ffi-xcframework.sh
+#   SIGNAL_FFI_PRUNE_CARGO_TARGETS=1 SIGNAL_FFI_CARGO_TARGET_ROOT=/absolute/scratch/ffi-target ./scripts/build-signal-ffi-xcframework.sh
+#   OPENBURNBAR_MOBILE_PRUNE_SIGNAL_FFI_CARGO_TARGETS=1 ...
 #
 # Output:
 #   Vendor/OpenBurnBarSignalFfiIOS.xcframework/
@@ -90,6 +92,31 @@ PY
 
 BUILD_DIR="$(validate_absolute_root SIGNAL_FFI_BUILD_ROOT "${BUILD_DIR}")"
 CARGO_TARGET_DIR="$(validate_absolute_root SIGNAL_FFI_CARGO_TARGET_ROOT "${CARGO_TARGET_DIR}")"
+
+if [[ "${SIGNAL_FFI_PRUNE_CARGO_TARGETS+x}" != "x" &&
+      "${OPENBURNBAR_MOBILE_PRUNE_SIGNAL_FFI_CARGO_TARGETS+x}" == "x" ]]; then
+  SIGNAL_FFI_PRUNE_CARGO_TARGETS="${OPENBURNBAR_MOBILE_PRUNE_SIGNAL_FFI_CARGO_TARGETS}"
+else
+  SIGNAL_FFI_PRUNE_CARGO_TARGETS="${SIGNAL_FFI_PRUNE_CARGO_TARGETS:-0}"
+fi
+case "${SIGNAL_FFI_PRUNE_CARGO_TARGETS}" in
+  0 | 1) ;;
+  *)
+    echo "[signal-ffi-xcframework] FATAL: invalid SIGNAL_FFI_PRUNE_CARGO_TARGETS=${SIGNAL_FFI_PRUNE_CARGO_TARGETS}; expected 0 or 1" >&2
+    exit 64
+    ;;
+esac
+if [[ "${SIGNAL_FFI_PRUNE_CARGO_TARGETS}" == "1" &&
+      "${SIGNAL_FFI_CARGO_TARGET_ROOT+x}" != "x" &&
+      "${OPENBURNBAR_SIGNAL_FFI_CARGO_TARGET_ROOT+x}" != "x" ]]; then
+  echo "[signal-ffi-xcframework] FATAL: SIGNAL_FFI_PRUNE_CARGO_TARGETS=1 requires an explicit Cargo target root" >&2
+  exit 64
+fi
+
+# The pruning mode is intentionally opt-in and only accepts an explicit target
+# root. Physical-device callers can therefore prove that generated Cargo
+# intermediates stay in their owned scratch directory before enabling removal.
+source "${ROOT_DIR}/scripts/lib/signal-ffi-cargo-cleanup.sh"
 ARCHS_DIR="${BUILD_DIR}/archs"
 HEADERS_DIR="${BUILD_DIR}/Headers"
 EXPORTS_FILE="${BUILD_DIR}/signal_ffi.exports"
@@ -125,6 +152,17 @@ if [[ -n "${SIGNAL_FFI_BUILD_TARGETS:-}" ]]; then
   TARGETS=(${SIGNAL_FFI_BUILD_TARGETS})
 else
   TARGETS=("${DEFAULT_TARGETS[@]}")
+fi
+if [[ "${SIGNAL_FFI_PRUNE_CARGO_TARGETS}" == "1" ]]; then
+  for target in "${TARGETS[@]}"; do
+    case "${target}" in
+      aarch64-apple-darwin | x86_64-apple-darwin | aarch64-apple-ios | aarch64-apple-ios-sim | x86_64-apple-ios) ;;
+      *)
+        echo "[signal-ffi-xcframework] FATAL: pruning mode does not support unknown target ${target}" >&2
+        exit 64
+        ;;
+    esac
+  done
 fi
 
 write_build_metadata() {
@@ -473,22 +511,96 @@ stage_dynamic_target() {
   cp "${HEADERS_DIR}/"* "${out_dir}/Headers/"
 }
 
+stage_built_target_for_pruned_build() {
+  local target="$1"
+  case "${target}" in
+    aarch64-apple-darwin) stage_dynamic_target "${target}" macos-arm64 ;;
+    x86_64-apple-darwin) stage_dynamic_target "${target}" macos-x86_64 ;;
+    aarch64-apple-ios) stage_static_target "${target}" ios-arm64 ;;
+    aarch64-apple-ios-sim) stage_static_target "${target}" ios-arm64-simulator ;;
+    x86_64-apple-ios) stage_static_target "${target}" ios-x86_64-simulator ;;
+    *)
+      echo "[signal-ffi-xcframework] FATAL: cannot stage unknown target ${target} in pruning mode" >&2
+      return 64
+      ;;
+  esac
+}
+
+validate_staged_target_for_pruned_build() {
+  local target="$1"
+  local platform_id
+  local library_name
+  case "${target}" in
+    aarch64-apple-darwin) platform_id=macos-arm64; library_name=libsignal_ffi.dylib ;;
+    x86_64-apple-darwin) platform_id=macos-x86_64; library_name=libsignal_ffi.dylib ;;
+    aarch64-apple-ios) platform_id=ios-arm64; library_name=libsignal_ffi.a ;;
+    aarch64-apple-ios-sim) platform_id=ios-arm64-simulator; library_name=libsignal_ffi.a ;;
+    x86_64-apple-ios) platform_id=ios-x86_64-simulator; library_name=libsignal_ffi.a ;;
+    *)
+      echo "[signal-ffi-xcframework] FATAL: cannot validate unknown target ${target} in pruning mode" >&2
+      return 64
+      ;;
+  esac
+  local staged_dir="${ARCHS_DIR}/${platform_id}"
+  [[ -s "${staged_dir}/${library_name}" ]] || {
+    echo "[signal-ffi-xcframework] FATAL: staged Signal FFI slice is missing ${library_name} for ${target}" >&2
+    return 64
+  }
+  [[ -f "${staged_dir}/Headers/OpenBurnBarSignalFfi.h" ]] || {
+    echo "[signal-ffi-xcframework] FATAL: staged Signal FFI headers are missing for ${target}" >&2
+    return 64
+  }
+}
+
+prepare_pruned_staging_dirs() {
+  mkdir -p "${VENDOR_DIR}"
+  rm -rf "${ARCHS_DIR}" "${LEGACY_XCFRAMEWORK}" "${IOS_XCFRAMEWORK}" "${MACOS_XCFRAMEWORK}"
+  mkdir -p "${ARCHS_DIR}"
+  stage_headers
+}
+
 stage_exports
 
 write_rustc_wrapper
 
+pruned_staging_ready=0
 if [[ "${SIGNAL_FFI_SKIP_BUILD:-0}" != "1" ]]; then
-  for target in "${TARGETS[@]}"; do
-    build_target "${target}"
-  done
+  if [[ "${SIGNAL_FFI_PRUNE_CARGO_TARGETS}" == "1" ]]; then
+    # Stage each slice before deleting its target-specific Cargo directory.
+    # This keeps the final packaging path identical while bounding peak disk
+    # usage for physical-device builds that compile several architectures.
+    prepare_pruned_staging_dirs
+    pruned_staging_ready=1
+    for target in "${TARGETS[@]}"; do
+      build_target "${target}"
+      stage_built_target_for_pruned_build "${target}"
+      validate_staged_target_for_pruned_build "${target}"
+      if ! signal_ffi_prune_cargo_target_dir "${CARGO_TARGET_DIR}" "${target}"; then
+        echo "[signal-ffi-xcframework] FATAL: failed to prune Cargo output for ${target}" >&2
+        exit 64
+      fi
+    done
+    # Host proc-macro output is shared at target/{debug,release}. It is no
+    # longer needed once every requested slice has been staged.
+    if ! signal_ffi_prune_cargo_target_dir "${CARGO_TARGET_DIR}" "${PROFILE_DIR}"; then
+      echo "[signal-ffi-xcframework] FATAL: failed to prune shared Cargo output ${PROFILE_DIR}" >&2
+      exit 64
+    fi
+  else
+    for target in "${TARGETS[@]}"; do
+      build_target "${target}"
+    done
+  fi
 else
   log "skipping cargo builds; packaging existing target outputs"
 fi
 
-mkdir -p "${VENDOR_DIR}"
-rm -rf "${ARCHS_DIR}" "${LEGACY_XCFRAMEWORK}" "${IOS_XCFRAMEWORK}" "${MACOS_XCFRAMEWORK}"
-mkdir -p "${ARCHS_DIR}"
-stage_headers
+if [[ "${pruned_staging_ready}" != "1" ]]; then
+  mkdir -p "${VENDOR_DIR}"
+  rm -rf "${ARCHS_DIR}" "${LEGACY_XCFRAMEWORK}" "${IOS_XCFRAMEWORK}" "${MACOS_XCFRAMEWORK}"
+  mkdir -p "${ARCHS_DIR}"
+  stage_headers
+fi
 
 ios_xcframework_args=()
 macos_xcframework_args=()
