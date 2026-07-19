@@ -566,6 +566,128 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         )
     }
 
+    func test_resolvedWandPolicyUsesInjectedLiveCatalogsAndFetchesEachRuntimeOnce() async throws {
+        let provider = WandCatalogProviderStub(
+            results: [
+                .codex: .success(Self.catalogResponse(
+                    runtime: .codex,
+                    modelID: "gpt-5.5",
+                    providerID: "openai",
+                    source: .codexModelCatalog
+                )),
+                .claude: .success(Self.catalogResponse(
+                    runtime: .claude,
+                    modelID: "claude-opus-4-8",
+                    providerID: "anthropic",
+                    source: .claudeModelCatalog
+                ))
+            ]
+        )
+
+        let resolvedPolicy = try await CLIAgentMissionDispatcher.resolvedWandPolicy(
+            WandPolicy(selector: .highestCapability, routedModels: [:]),
+            runtimeTokens: ["codex", "codex", "claude"],
+            catalogProvider: provider
+        )
+        let policy = try XCTUnwrap(resolvedPolicy)
+
+        XCTAssertEqual(policy.routedModelID(for: .codex), "gpt-5.5")
+        XCTAssertEqual(policy.routedModelID(for: .claude), "claude-opus-4-8")
+        XCTAssertEqual(provider.requests.filter { $0 == .codex }.count, 1)
+        XCTAssertEqual(provider.requests.filter { $0 == .claude }.count, 1)
+    }
+
+    func test_resolvedWandPolicyReportsTheFailingRuntimeAndRootCause() async throws {
+        let provider = WandCatalogProviderStub(
+            results: [
+                .codex: .success(Self.catalogResponse(
+                    runtime: .codex,
+                    modelID: "gpt-5.5",
+                    providerID: "openai",
+                    source: .codexModelCatalog
+                )),
+                .claude: .failure(WandCatalogProviderStub.StubError.catalogOffline)
+            ]
+        )
+
+        do {
+            _ = try await CLIAgentMissionDispatcher.resolvedWandPolicy(
+                WandPolicy(selector: .pareto, routedModels: [:]),
+                runtimeTokens: ["codex", "claude", "claude"],
+                catalogProvider: provider
+            )
+            XCTFail("Expected wand catalog resolution to fail closed")
+        } catch let error as CLIAgentMissionDispatcher.DispatchError {
+            guard case let .wandRoutingUnavailable(message) = error else {
+                XCTFail("Expected wandRoutingUnavailable, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("Claude: relay catalog offline"))
+            XCTAssertTrue(message.contains("No agents were dispatched"))
+            XCTAssertFalse(message.localizedCaseInsensitiveContains("Junie"))
+            XCTAssertEqual(provider.requests.filter { $0 == .claude }.count, 1)
+        }
+    }
+
+    private static func catalogResponse(
+        runtime: AssistantRuntimeID,
+        modelID: String,
+        providerID: String,
+        source: CLIRuntimeModelSource
+    ) -> CLIRuntimeModelCatalogResponse {
+        CLIRuntimeModelCatalogResponse(
+            runtime: runtime.rawValue,
+            generatedAtEpochMillis: 1,
+            options: [
+                CLIRuntimeModelOption(
+                    modelID: modelID,
+                    displayName: modelID,
+                    providerID: providerID,
+                    providerName: providerID,
+                    tier: "flagship",
+                    source: source
+                )
+            ]
+        )
+    }
+
+    private final class WandCatalogProviderStub: CLIRuntimeCatalogProviding {
+        enum StubError: LocalizedError {
+            case catalogOffline
+            case missingFixture
+
+            var errorDescription: String? {
+                switch self {
+                case .catalogOffline: "relay catalog offline"
+                case .missingFixture: "missing catalog fixture"
+                }
+            }
+        }
+
+        enum StubResult {
+            case success(CLIRuntimeModelCatalogResponse)
+            case failure(StubError)
+        }
+
+        let results: [AssistantRuntimeID: StubResult]
+        private(set) var requests: [AssistantRuntimeID] = []
+
+        init(results: [AssistantRuntimeID: StubResult]) {
+            self.results = results
+        }
+
+        func fetchCLIRuntimeModelCatalog(
+            runtime: AssistantRuntimeID
+        ) async throws -> CLIRuntimeModelCatalogResponse {
+            requests.append(runtime)
+            guard let result = results[runtime] else { throw StubError.missingFixture }
+            switch result {
+            case let .success(response): return response
+            case let .failure(error): throw error
+            }
+        }
+    }
+
     private static func childSnapshot(
         id: String,
         title: String,

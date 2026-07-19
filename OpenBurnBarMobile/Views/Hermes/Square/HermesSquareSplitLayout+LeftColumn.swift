@@ -207,6 +207,7 @@ struct HermesSquareLeftColumn: View {
         .sheet(isPresented: $isShowingFanOut) {
             FanOutComposerSheet(
                 registry: registry,
+                catalogProvider: hermesService,
                 onDispatched: { result in
                     activeGroupObserver.start(groupID: result.groupID)
                 }

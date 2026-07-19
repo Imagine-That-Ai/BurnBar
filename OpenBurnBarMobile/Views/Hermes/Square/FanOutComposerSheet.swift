@@ -22,6 +22,7 @@ struct FanOutComposerSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let registry: AgentIdentityRegistry
+    let catalogProvider: any CLIRuntimeCatalogProviding
     let onDispatched: (CLIAgentMissionDispatcher.FanOutDispatchResult) -> Void
 
     // MARK: - State
@@ -687,7 +688,8 @@ struct FanOutComposerSheet: View {
                 fileEditsAllowed: fileEditsAllowed,
                 parallelismLimit: dispatchParallelismLimit,
                 mergeStrategy: mergeStrategy,
-                wandPolicy: wandSelector.map { WandPolicy(selector: $0, routedModels: [:]) }
+                wandPolicy: wandSelector.map { WandPolicy(selector: $0, routedModels: [:]) },
+                catalogProvider: catalogProvider
             )
             Haptics.success()
             onDispatched(result)

@@ -65,7 +65,7 @@ final class AgentsComposeSmokeUITests: SmokeUITestCase {
             "Set OPENBURNBAR_LIVE_WAND_E2E=1 for the physical-device sales proof."
         )
         #if targetEnvironment(simulator)
-        throw XCTSkip("The live Pareto sales proof requires a physical iPhone.")
+        throw XCTSkip("The live Pareto sales proof requires a physical iOS device.")
         #endif
 
         guard let missionTitle = environment["OPENBURNBAR_LIVE_WAND_MISSION_TITLE"],
@@ -81,12 +81,13 @@ final class AgentsComposeSmokeUITests: SmokeUITestCase {
 
         completeOnboardingIfNeeded(in: app)
         selectAuroraTab("hermes", in: app)
+
+        let compose = app.buttons["Compose"].firstMatch
         XCTAssertTrue(
-            screenMarker("agents", in: app).waitForExistence(timeout: 30),
+            compose.waitForExistence(timeout: 30),
             "Hermes Square did not render from the real signed-in device state.\n\(app.debugDescription)"
         )
 
-        let compose = app.buttons["Compose"].firstMatch
         XCTAssertTrue(
             scrollToHittable(compose, in: app),
             "The Wand Compose action was not reachable.\n\(app.debugDescription)"
@@ -108,6 +109,17 @@ final class AgentsComposeSmokeUITests: SmokeUITestCase {
         XCTAssertTrue(prompt.waitForExistence(timeout: 10))
         prompt.tap()
         prompt.typeText(missionPrompt)
+
+        let hideKeyboard = app.keyboards.buttons["Hide keyboard"].firstMatch
+        if hideKeyboard.waitForExistence(timeout: 5) {
+            hideKeyboard.tap()
+            XCTAssertTrue(
+                waitFor(hideKeyboard, predicateFormat: "exists == false", timeout: 10),
+                "The iPad keyboard still covered the Wand agent grid.\n\(app.debugDescription)"
+            )
+        }
+
+        configureLiveParetoAgents(in: app)
 
         let pareto = app.buttons["Pareto wand: Best value per quota"].firstMatch
         XCTAssertTrue(
@@ -147,6 +159,68 @@ final class AgentsComposeSmokeUITests: SmokeUITestCase {
         dispatchedScreenshot.name = "pareto-wand-dispatched"
         dispatchedScreenshot.lifetime = .keepAlways
         add(dispatchedScreenshot)
+    }
+
+    private func configureLiveParetoAgents(in app: XCUIApplication) {
+        let desiredAgents = Set(["Codex", "Claude"])
+        let agentNames = [
+            "Hermes", "Pi", "Codex", "Claude", "OpenClaw", "OpenClaude", "OMP",
+            "Droid", "Forge", "Antigravity", "Grok Build", "Cursor Agent", "Junie"
+        ]
+
+        // First clear every non-target runtime so a stale/default selection can
+        // never consume the plan cap or silently send this proof to Junie.
+        for name in agentNames where !desiredAgents.contains(name) {
+            setWandAgent(name, selected: false, in: app)
+        }
+
+        // Return to the top of the sheet, then select the two installed CLIs.
+        for _ in 0..<14 {
+            app.swipeDown()
+        }
+        for name in ["Codex", "Claude"] {
+            setWandAgent(name, selected: true, in: app)
+        }
+
+        for name in agentNames {
+            let agent = wandAgent(named: name, in: app)
+            let expectedSelection = desiredAgents.contains(name)
+            XCTAssertEqual(
+                agent.isSelected,
+                expectedSelection,
+                "Expected only Codex and Claude to be selected; \(name) had the wrong state.\n\(app.debugDescription)"
+            )
+        }
+
+        let selectionScreenshot = XCTAttachment(screenshot: app.screenshot())
+        selectionScreenshot.name = "pareto-codex-claude-only"
+        selectionScreenshot.lifetime = .keepAlways
+        add(selectionScreenshot)
+    }
+
+    private func setWandAgent(
+        _ name: String,
+        selected: Bool,
+        in app: XCUIApplication
+    ) {
+        let agent = wandAgent(named: name, in: app)
+        XCTAssertTrue(
+            scrollToHittable(agent, in: app),
+            "The \(name) Wand agent was not reachable.\n\(app.debugDescription)"
+        )
+        if agent.isSelected != selected {
+            agent.tap()
+        }
+        XCTAssertTrue(
+            waitFor(agent, predicateFormat: "isSelected == \(selected)", timeout: 10),
+            "The \(name) Wand agent did not become \(selected ? "selected" : "deselected").\n\(app.debugDescription)"
+        )
+    }
+
+    private func wandAgent(named name: String, in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", name)
+        ).firstMatch
     }
 
     private func completeOnboardingIfNeeded(in app: XCUIApplication) {

@@ -434,6 +434,7 @@ struct HermesSquareRoot: View {
     private var fanOutSheet: some View {
         FanOutComposerSheet(
             registry: registry,
+            catalogProvider: hermesService,
             onDispatched: { result in
                 activeGroupObserver.start(groupID: result.groupID)
             }

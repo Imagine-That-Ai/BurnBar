@@ -40,7 +40,8 @@ extension CLIAgentMissionDispatcher {
         deliveryMode: SkillRunDeliveryMode = .actionOnly,
         parentHermesThreadID: String? = nil,
         presentationMode: CLIAgentChatPresentationMode = .nativeChat,
-        wandPolicy: WandPolicy? = nil
+        wandPolicy: WandPolicy? = nil,
+        catalogProvider: (any CLIRuntimeCatalogProviding)? = nil
     ) async throws -> FanOutDispatchResult {
         guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
         guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
@@ -53,7 +54,8 @@ extension CLIAgentMissionDispatcher {
             ?? "Wand cast"
         let resolvedWandPolicy = try await Self.resolvedWandPolicy(
             wandPolicy,
-            runtimeTokens: runtimeTokens
+            runtimeTokens: runtimeTokens,
+            catalogProvider: catalogProvider ?? HermesService.shared
         )
 
         // Build child mission IDs up front so the group doc can list them.
@@ -403,9 +405,10 @@ extension CLIAgentMissionDispatcher {
         return min(boundedChildCount, max(1, requested ?? boundedChildCount))
     }
 
-    private static func resolvedWandPolicy(
+    static func resolvedWandPolicy(
         _ policy: WandPolicy?,
-        runtimeTokens: [String]
+        runtimeTokens: [String],
+        catalogProvider: any CLIRuntimeCatalogProviding
     ) async throws -> WandPolicy? {
         guard let policy else { return nil }
         let runtimes = runtimeTokens.compactMap(runtimeID(forRequestedRuntime:))
@@ -414,12 +417,15 @@ extension CLIAgentMissionDispatcher {
         }
 
         var catalogs: [AssistantRuntimeID: [CLIRuntimeModelOption]] = [:]
+        var catalogFailures: [AssistantRuntimeID: String] = [:]
+        var attemptedRuntimes: Set<AssistantRuntimeID> = []
         for runtime in runtimes {
-            guard catalogs[runtime] == nil else { continue }
+            guard attemptedRuntimes.insert(runtime).inserted else { continue }
             do {
-                let response = try await HermesService.shared.fetchCLIRuntimeModelCatalog(runtime: runtime)
+                let response = try await catalogProvider.fetchCLIRuntimeModelCatalog(runtime: runtime)
                 catalogs[runtime] = response.options
             } catch {
+                catalogFailures[runtime] = wandCatalogFailureSummary(error)
                 cliMissionSignalLogger.warning("wand catalog fetch failed runtime=\(runtime.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
             }
         }
@@ -432,12 +438,24 @@ extension CLIAgentMissionDispatcher {
         let missingRuntimes = Set(runtimes.filter { routed.routedModelID(for: $0) == nil })
             .sorted { $0.rawValue < $1.rawValue }
         guard missingRuntimes.isEmpty else {
-            let names = missingRuntimes.map(\.displayName).joined(separator: ", ")
+            let details = missingRuntimes.map { runtime in
+                let reason = catalogFailures[runtime] ?? "no compatible model was advertised"
+                return "\(runtime.displayName): \(reason)"
+            }.joined(separator: "; ")
             throw DispatchError.wandRoutingUnavailable(
-                "The Wand could not route every selected agent (missing: \(names)). Refresh the Mac model catalog, choose agents with available catalogs, or switch to Manual."
+                "The Wand could not load a usable live model for every selected agent. \(details). No agents were dispatched. Keep OpenBurnBar open on the paired Mac, confirm both devices use the same account, then retry or switch to Manual."
             )
         }
         return routed
+    }
+
+    private static func wandCatalogFailureSummary(_ error: Error) -> String {
+        let flattened = error.localizedDescription
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !flattened.isEmpty else { return "the Mac model catalog request failed" }
+        guard flattened.count > 240 else { return flattened }
+        return String(flattened.prefix(240)) + "..."
     }
 
     private static func runtimeID(forRequestedRuntime runtimeToken: String) -> AssistantRuntimeID? {
