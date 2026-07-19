@@ -9,6 +9,8 @@
     <Button x:Name="Trigger"
             Style="{StaticResource LiquidGlassInteractiveStyle}"
             theme:LiquidGlass.Interactive="True"
+            AutomationProperties.AutomationId="Shell.KernelSwitcher"
+            AutomationProperties.Name="Backdrop kernel"
             ToolTipService.ToolTip="Backdrop kernel">
         <StackPanel Orientation="Horizontal" Spacing="6">
             <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="12" Glyph="&#xE790;"

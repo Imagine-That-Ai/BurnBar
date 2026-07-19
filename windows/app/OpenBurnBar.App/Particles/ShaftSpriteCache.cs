@@ -61,6 +61,16 @@ public sealed class ShaftSpriteCache
         return bmp;
     }
 
+    public void Clear()
+    {
+        foreach (CanvasBitmap bitmap in _cache.Values)
+        {
+            bitmap.Dispose();
+        }
+
+        _cache.Clear();
+    }
+
     private static byte Clamp255(double v)
     {
         double s = v * 255.0;

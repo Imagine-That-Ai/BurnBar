@@ -45,7 +45,7 @@ internal sealed class SemanticProbeRunner
             IntPtr hwnd = await WaitForMainWindowAsync(process, cancellationToken).ConfigureAwait(false);
             ShowWindow(hwnd, 9);
             SetForegroundWindow(hwnd);
-            await Task.Delay(650, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(3_000, cancellationToken).ConfigureAwait(false);
 
             string screenshotPath = Path.Combine(_outputDirectory, "semantic", "main-window.png");
             WindowBitmapCapture.Capture(hwnd, screenshotPath);
