@@ -44,7 +44,11 @@
     "captureASha256": "2f504f46b52aeeb1647051018f752a13fe95e2b323f4321b9ef6168a635f29d1",
     "captureBSha256": "f847ad57d7e536d8f4ee3b3f596942a02c37098af9e92c95957571d7c12ceafc",
     "animated": true,
-    "backgroundRecovery": "Current exact implementation package remained visibly rendered while the VM app was backgrounded in the desktop session"
+    "backgroundRecovery": {
+      "mode": "window-minimize-restore",
+      "captureSha256": "8554d6d906a652780a1e2706421cfb8632aa33b7e1c60025b4aeb5c7af513336",
+      "rendered": true
+    }
   },
   "onboarding": {
     "daemonVerifyAction": "passed",
