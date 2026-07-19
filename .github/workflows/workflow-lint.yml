@@ -74,6 +74,8 @@ on:
       - "scripts/ops/run-firestore-restore-drill.test.sh"
       - "scripts/ops/verify-firestore-app-check-enforcement.sh"
       - "scripts/ops/verify-firestore-app-check-enforcement.test.sh"
+      - "scripts/test-openburnbar-mobile.sh"
+      - "scripts/ci/test-openburnbar-mobile.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
@@ -154,6 +156,8 @@ on:
       - "scripts/ops/run-firestore-restore-drill.test.sh"
       - "scripts/ops/verify-firestore-app-check-enforcement.sh"
       - "scripts/ops/verify-firestore-app-check-enforcement.test.sh"
+      - "scripts/test-openburnbar-mobile.sh"
+      - "scripts/ci/test-openburnbar-mobile.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
@@ -202,6 +206,9 @@ jobs:
 
       - name: Self-test Apple DeviceCheck production gate
         run: bash scripts/ops/verify-firestore-app-check-enforcement.test.sh
+
+      - name: Self-test mobile test destination selection
+        run: bash scripts/ci/test-openburnbar-mobile.test.sh
 
       - name: Self-test duplicate-code report verifier
         run: node scripts/ci/verify-jscpd-report.test.mjs

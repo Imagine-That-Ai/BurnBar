@@ -274,7 +274,7 @@ if [[ "$ios_destination" == *"Simulator"* ]]; then
     uses_ios_simulator=1
 fi
 
-if [[ "$uses_ios_simulator" -eq 1 ]]; then
+if [[ "$uses_ios_simulator" -eq 1 && -z "${OPENBURNBAR_IOS_DESTINATION:-}" ]]; then
     resolve_simulator_udid
     ios_destination="$simulator_destination"
 fi
