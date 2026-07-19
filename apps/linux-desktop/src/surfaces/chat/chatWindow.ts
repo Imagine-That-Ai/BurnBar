@@ -7,6 +7,11 @@
  */
 export const CHAT_POPOUT_LABEL = 'openburnbar-chat-popout';
 
+// Opening can be triggered by both a toolbar click and a native notification
+// in the same event turn. Keep one in-flight creation so those callers share a
+// single secondary window instead of racing two WebviewWindow constructors.
+let openingChatPopout: Promise<boolean> | null = null;
+
 export function isChatPopoutWindow(): boolean {
   if (typeof window === 'undefined') return false;
   if (new URLSearchParams(window.location.search).get('window') !== 'chat-popout') return false;
@@ -23,8 +28,33 @@ function chatPopoutURL(): string {
   return url.toString();
 }
 
-/** Open or focus one chat pop-out, preserving the single-window invariant. */
-export async function openChatPopoutWindow(): Promise<boolean> {
+async function waitForChatPopoutWindow(child: {
+  once: (
+    event: string,
+    callback: (event: { payload?: unknown }) => void
+  ) => Promise<() => void>;
+}): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (timeout !== undefined) globalThis.clearTimeout(timeout);
+      callback();
+    };
+    void child.once('tauri://created', () => finish(resolve));
+    void child.once('tauri://error', (event) =>
+      finish(() => reject(new Error(String(event.payload ?? 'chat pop-out failed'))))
+    );
+    timeout = globalThis.setTimeout(
+      () => finish(() => reject(new Error('Timed out waiting for the chat pop-out window.'))),
+      5000
+    );
+  });
+}
+
+async function openChatPopoutWindowImpl(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
   if (!('__TAURI_INTERNALS__' in window)) {
@@ -55,27 +85,33 @@ export async function openChatPopoutWindow(): Promise<boolean> {
       resizable: true,
       center: true
     });
-    await new Promise<void>((resolve, reject) => {
-      let settled = false;
-      void child.once('tauri://created', () => {
-        settled = true;
-        resolve();
-      });
-      void child.once('tauri://error', (event) => {
-        settled = true;
-        reject(new Error(String(event.payload ?? 'chat pop-out failed')));
-      });
-      // A successful constructor normally emits immediately; do not leave a
-      // renderer promise hanging forever if a host omits lifecycle events.
-      globalThis.setTimeout(() => {
-        if (!settled) reject(new Error('Timed out waiting for the chat pop-out window.'));
-      }, 5000);
-    });
+    await waitForChatPopoutWindow(child);
+    // Tauri defaults are host-dependent. Explicitly restore visibility and
+    // focus so a notification/toolbar action never leaves the new child
+    // behind the main shell on Linux window managers.
+    await child.show();
+    await child.setFocus();
     return true;
   } catch (error) {
     console.warn('linux_chat_popout_unavailable', error);
     return false;
   }
+}
+
+/** Open or focus one chat pop-out, preserving the single-window invariant. */
+export function openChatPopoutWindow(): Promise<boolean> {
+  if (openingChatPopout) return openingChatPopout;
+  const opening = openChatPopoutWindowImpl();
+  openingChatPopout = opening;
+  void opening.then(
+    () => {
+      if (openingChatPopout === opening) openingChatPopout = null;
+    },
+    () => {
+      if (openingChatPopout === opening) openingChatPopout = null;
+    }
+  );
+  return opening;
 }
 
 /** Close only the current pop-out window; the main shell is never closed. */
