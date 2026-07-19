@@ -82,7 +82,7 @@ function parseJsonFile(file, label) {
   return value;
 }
 
-function resolveSingleInput(root, role, targetHead, version, candidateRunId, candidateArtifactDigest) {
+function resolveSingleInput(repository, root, role, targetHead, version, candidateRunId, candidateArtifactDigest) {
   const filename = P39_PLATFORM_INPUT_FILENAMES[role];
   const candidates = walkRegularFiles(root).filter((file) => path.basename(file) === filename);
   if (candidates.length === 0) {
@@ -104,7 +104,7 @@ function resolveSingleInput(root, role, targetHead, version, candidateRunId, can
     candidateRunId,
     candidateArtifactDigest
   });
-  validateP39ProducerArtifact(artifact);
+  validateP39ProducerArtifact(artifact, { repoRoot: repository });
   return file;
 }
 
@@ -133,10 +133,10 @@ export function resolveP39PlatformEvidence({
   }
   const version = aggregate.version;
   const macos = resolveSingleInput(
-    root, 'macos', targetHead, version, candidateRunId, candidateArtifactDigest
+    repository, root, 'macos', targetHead, version, candidateRunId, candidateArtifactDigest
   );
   const linux = resolveSingleInput(
-    root, 'linux', targetHead, version, candidateRunId, candidateArtifactDigest
+    repository, root, 'linux', targetHead, version, candidateRunId, candidateArtifactDigest
   );
   return {
     id: P39_ARTIFACT_ID,
