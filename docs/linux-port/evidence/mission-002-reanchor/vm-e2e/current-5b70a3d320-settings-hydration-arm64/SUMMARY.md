@@ -19,6 +19,13 @@ coverage 45/45, Tauri Rust 125/125, TypeScript, formatting, and production
 bundle verification. The connected physical iPad focused navigation suite also
 passed with xcodebuild exit 0.
 
+The live-kernel probe is recorded in
+[`live-kernel-check.json`](live-kernel-check.json): two X11 screenshots two
+seconds apart changed 406,879 pixels, proving the Canvas2D fallback is
+animating. The VM's virgl path exposes OpenGL ES 3.0 and WebKit reports a GBM
+context fallback, so WebGL2-only kernels are not certified on this guest and
+may resolve to the default 2D kernel.
+
 This receipt does not certify parity. The strict product ledger remains 0/40
 and the environment ledger remains 0/7 until signed provenance, production
 deployment, enrollment/approval, two-device Mercury and Browser Computer Use,
