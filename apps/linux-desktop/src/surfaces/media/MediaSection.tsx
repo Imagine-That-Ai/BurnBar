@@ -56,7 +56,7 @@ export function MediaSection() {
   } else if (loadState === 'capability-absent') {
     body = (
       viewerUnavailable ? (
-        <MercuryViewerCapabilityNotice capability={viewerCapability!} />
+        <MercuryViewerCapabilityNotice capability={viewerCapability!} onRetry={load} />
       ) : (
         <div className="p12-absent-state" role="status">
           <span className="p12-absent-kicker">Capability absent</span>
@@ -77,7 +77,7 @@ export function MediaSection() {
   } else if (loadState === 'empty') {
     body = (
       <>
-        {viewerUnavailable ? <MercuryViewerCapabilityNotice capability={viewerCapability!} /> : null}
+        {viewerUnavailable ? <MercuryViewerCapabilityNotice capability={viewerCapability!} onRetry={load} /> : null}
         <p className="muted">No paired devices — pair from the mobile app.</p>
         <MercuryFileTransferPanel
           transfers={fileTransfers}
@@ -96,7 +96,7 @@ export function MediaSection() {
   } else {
     body = (
       <>
-        {viewerUnavailable ? <MercuryViewerCapabilityNotice capability={viewerCapability!} /> : null}
+        {viewerUnavailable ? <MercuryViewerCapabilityNotice capability={viewerCapability!} onRetry={load} /> : null}
         {status?.capabilityAvailable && mediaControlState === 'degraded' ? (
           <MercuryReceiveOnlyNotice reason={mediaControlReason} />
         ) : null}
@@ -157,7 +157,13 @@ export function MediaSection() {
   );
 }
 
-function MercuryViewerCapabilityNotice({ capability }: { capability: MercuryViewerCapability }) {
+function MercuryViewerCapabilityNotice({
+  capability,
+  onRetry
+}: {
+  capability: MercuryViewerCapability;
+  onRetry: () => Promise<void>;
+}) {
   return (
     <div className="p12-absent-state p12-viewer-absent" role="status">
       <span className="p12-absent-kicker">Viewer unavailable</span>
@@ -165,6 +171,9 @@ function MercuryViewerCapabilityNotice({ capability }: { capability: MercuryView
       <p>{viewerCapabilityReason(capability)}</p>
       {capability.installHint ? <p className="p12-viewer-install-hint">{capability.installHint}</p> : null}
       <small>File transfer remains available when the daemon advertises it.</small>
+      <button type="button" onClick={() => void onRetry()}>
+        Check again
+      </button>
     </div>
   );
 }

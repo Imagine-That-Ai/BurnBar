@@ -260,23 +260,26 @@ describe('P12 Mercury media section', () => {
   });
 
   it('hides dead call controls when the shell viewer lacks a decoder while preserving file transfer', async () => {
+    const status: MercuryMediaStatus = {
+      capabilityAvailable: true,
+      pairedDevices: [],
+      viewerCapability: {
+        available: false,
+        renderer: 'media-gst',
+        featureEnabled: true,
+        canDecodeVp9: false,
+        hasVideoSink: true,
+        status: 'gstreamer_vp9_decoder_missing',
+        reason: 'gstreamer_vp9_decoder_missing',
+        installHint: 'Install a VP9 decoder plugin, then restart OpenBurnBar.'
+      }
+    };
+    const mediaStatus = vi.fn().mockResolvedValue(status);
     useShellStore.setState({
       bridge: bridgeWithMedia(
-        Promise.resolve({
-          capabilityAvailable: true,
-          pairedDevices: [],
-          viewerCapability: {
-            available: false,
-            renderer: 'media-gst',
-            featureEnabled: true,
-            canDecodeVp9: false,
-            hasVideoSink: true,
-            status: 'gstreamer_vp9_decoder_missing',
-            reason: 'gstreamer_vp9_decoder_missing',
-            installHint: 'Install a VP9 decoder plugin, then restart OpenBurnBar.'
-          }
-        }),
+        Promise.resolve(status),
         {
+          mediaStatus,
           mediaSessionState: vi.fn().mockResolvedValue({
             phase: 'ringing',
             requestId: 'incoming-1',
@@ -303,6 +306,15 @@ describe('P12 Mercury media section', () => {
     expect(screen.queryByRole('button', { name: 'Decline' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'End' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Send file' })).toBeTruthy();
+
+    const callsBeforeRetry = mediaStatus.mock.calls.length;
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mediaStatus.mock.calls.length).toBeGreaterThan(callsBeforeRetry);
+    expect(screen.getByRole('button', { name: 'Check again' })).toBeTruthy();
   });
 
   it('renders incoming file offer actions and completed path rows', async () => {
