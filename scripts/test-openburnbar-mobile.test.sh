@@ -74,6 +74,11 @@ if [[ "${1:-}" == "xcdevice" && "${2:-}" == "list" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "devicectl" && "${2:-}" == "list" && "${3:-}" == "devices" ]]; then
+  cat "${FAKE_COREDEVICE_JSON:?FAKE_COREDEVICE_JSON is required for devicectl tests}"
+  exit 0
+fi
+
 if [[ "${1:-}" == "simctl" && "${2:-}" == "list" ]]; then
   printf '%s\n' '{"devices":{}}'
   exit 0
@@ -170,6 +175,119 @@ if grep -qi "physical iOS device is locked" "$simulator_output"; then
   fail "simulator path incorrectly ran the physical-device lock guard"
 fi
 [[ ! -e "$tmp_root/simulator-preclean.marker" ]] || fail "preflight-only simulator path ran stale-process cleanup"
+
+coredevice_id="407C0B12-010B-5970-8E85-D0E43DA8F457"
+hardware_udid="00008132-001158191E9A401C"
+uuid_shaped_hardware_udid="00000000-0000-0000-0000-000000000001"
+coredevice_json="$tmp_root/coredevice.json"
+cat >"$coredevice_json" <<JSON
+devicectl table output is intentionally ignored by the JSON parser
+{
+  "result": {
+    "devices": [
+      {
+        "identifier": "$coredevice_id",
+        "deviceProperties": {"name": "Alberto's iPad"},
+        "hardwareProperties": {
+          "platform": "iOS",
+          "reality": "physical",
+          "udid": "$hardware_udid"
+        }
+      },
+      {
+        "identifier": "F0000000-0000-0000-0000-000000000001",
+        "deviceProperties": {"name": "UUID-shaped iPad"},
+        "hardwareProperties": {
+          "platform": "iOS",
+          "reality": "physical",
+          "udid": "$uuid_shaped_hardware_udid"
+        }
+      }
+    ]
+  }
+}
+JSON
+
+coredevice_output="$tmp_root/coredevice.out"
+if ! PATH="$fake_bin:$PATH" \
+  FAKE_COREDEVICE_JSON="$coredevice_json" \
+  OPENBURNBAR_IOS_DESTINATION="$coredevice_id" \
+  OPENBURNBAR_MOBILE_DRY_RUN=1 \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$coredevice_output" 2>&1; then
+  fail "CoreDevice identifier unexpectedly failed destination resolution"
+fi
+grep -q "platform=iOS,id=$hardware_udid" "$coredevice_output" ||
+  fail "raw CoreDevice identifier did not resolve to the hardware UDID"
+
+coredevice_destination_output="$tmp_root/coredevice-destination.out"
+if ! PATH="$fake_bin:$PATH" \
+  FAKE_COREDEVICE_JSON="$coredevice_json" \
+  OPENBURNBAR_IOS_DESTINATION="platform=iOS,id=$coredevice_id" \
+  OPENBURNBAR_MOBILE_DRY_RUN=1 \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$coredevice_destination_output" 2>&1; then
+  fail "platform=iOS CoreDevice destination unexpectedly failed resolution"
+fi
+grep -q "platform=iOS,id=$hardware_udid" "$coredevice_destination_output" ||
+  fail "platform=iOS CoreDevice destination did not resolve to the hardware UDID"
+
+hardware_uuid_output="$tmp_root/hardware-uuid.out"
+if ! PATH="$fake_bin:$PATH" \
+  FAKE_COREDEVICE_JSON="$coredevice_json" \
+  OPENBURNBAR_IOS_DESTINATION="$uuid_shaped_hardware_udid" \
+  OPENBURNBAR_MOBILE_DRY_RUN=1 \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$hardware_uuid_output" 2>&1; then
+  fail "UUID-shaped hardware UDID unexpectedly failed destination resolution"
+fi
+grep -q "platform=iOS,id=$uuid_shaped_hardware_udid" "$hardware_uuid_output" ||
+  fail "UUID-shaped hardware UDID was not preserved"
+
+missing_coredevice_json="$tmp_root/missing-coredevice.json"
+printf '%s\n' '{"result":{"devices":[]}}' >"$missing_coredevice_json"
+missing_coredevice_output="$tmp_root/missing-coredevice.out"
+if PATH="$fake_bin:$PATH" \
+  FAKE_COREDEVICE_JSON="$missing_coredevice_json" \
+  OPENBURNBAR_IOS_DESTINATION="$coredevice_id" \
+  OPENBURNBAR_MOBILE_DRY_RUN=1 \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$missing_coredevice_output" 2>&1; then
+  fail "missing CoreDevice mapping unexpectedly passed closed-world resolution"
+fi
+grep -qi "no matching physical iOS hardware UDID" "$missing_coredevice_output" ||
+  fail "missing CoreDevice mapping did not fail closed with an actionable error"
+
+ambiguous_coredevice_json="$tmp_root/ambiguous-coredevice.json"
+cat >"$ambiguous_coredevice_json" <<JSON
+{
+  "result": {
+    "devices": [
+      {
+        "identifier": "$coredevice_id",
+        "deviceProperties": {"name": "First iPad"},
+        "hardwareProperties": {"platform": "iOS", "reality": "physical", "udid": "$hardware_udid"}
+      },
+      {
+        "identifier": "$coredevice_id",
+        "deviceProperties": {"name": "Second iPad"},
+        "hardwareProperties": {"platform": "iOS", "reality": "physical", "udid": "00008132-001158191E9A402D"}
+      }
+    ]
+  }
+}
+JSON
+ambiguous_coredevice_output="$tmp_root/ambiguous-coredevice.out"
+if PATH="$fake_bin:$PATH" \
+  FAKE_COREDEVICE_JSON="$ambiguous_coredevice_json" \
+  OPENBURNBAR_IOS_DESTINATION="$coredevice_id" \
+  OPENBURNBAR_MOBILE_DRY_RUN=1 \
+  OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
+  "$repo_root/scripts/test-openburnbar-mobile.sh" >"$ambiguous_coredevice_output" 2>&1; then
+  fail "ambiguous CoreDevice mapping unexpectedly passed closed-world resolution"
+fi
+grep -qi "matched multiple physical iOS devices" "$ambiguous_coredevice_output" ||
+  fail "ambiguous CoreDevice mapping did not fail closed"
 
 echo "test-openburnbar-mobile root boundary and physical-device preflight tests passed"
 

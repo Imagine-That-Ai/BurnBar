@@ -267,16 +267,60 @@ print_test_filters() {
 
 normalize_ios_destination() {
     local raw="$1"
+    local component identifier mapped normalized
+    local -a destination_components
 
     if [[ -z "$raw" ]]; then
         return 1
     fi
-    if [[ "$raw" == platform=* || "$raw" == generic/* ]]; then
+
+    # CoreDevice exposes a 36-character identifier, while xcodebuild requires
+    # the hardware UDID. Resolve only physical iOS destinations; simulator and
+    # generic destinations retain their existing behavior.
+    resolve_ios_identifier() {
+        local candidate="$1"
+        if [[ -z "$candidate" ]]; then
+            echo "ERROR: iOS destination id cannot be empty." >&2
+            return 64
+        fi
+        if [[ "$candidate" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]; then
+            resolve_coredevice_identifier "$candidate"
+            return $?
+        fi
+        printf '%s\n' "$candidate"
+    }
+
+    if [[ "$raw" == generic/* ]]; then
         echo "$raw"
         return 0
     fi
+    if [[ "$raw" == platform=iOS || "$raw" == platform=iOS,* ]]; then
+        IFS=',' read -r -a destination_components <<< "$raw"
+        normalized=""
+        for component in "${destination_components[@]}"; do
+            if [[ "$component" == id=* ]]; then
+                identifier="${component#id=}"
+                mapped="$(resolve_ios_identifier "$identifier")" || return $?
+                component="id=$mapped"
+            fi
+            if [[ -n "$normalized" ]]; then
+                normalized+=",$component"
+            else
+                normalized="$component"
+            fi
+        done
+        printf '%s\n' "$normalized"
+        return 0
+    fi
     if [[ "$raw" == id=* ]]; then
-        echo "platform=iOS,$raw"
+        identifier="${raw#id=}"
+        mapped="$(resolve_ios_identifier "$identifier")" || return $?
+        echo "platform=iOS,id=$mapped"
+        return 0
+    fi
+    if [[ "$raw" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]; then
+        mapped="$(resolve_ios_identifier "$raw")" || return $?
+        echo "platform=iOS,id=$mapped"
         return 0
     fi
     if [[ "$raw" =~ ^[0-9A-Fa-f-]{25,40}$ ]]; then
@@ -289,6 +333,103 @@ normalize_ios_destination() {
     fi
 
     echo "$raw"
+}
+
+resolve_coredevice_identifier() {
+    local coredevice_identifier="$1"
+    local devicectl_output
+
+    # devicectl's documented machine-readable interface writes JSON to a
+    # caller-provided path. /dev/stdout keeps this lookup ephemeral and avoids
+    # leaving device metadata or temporary files behind.
+    devicectl_output="$(xcrun devicectl list devices --json-output /dev/stdout 2>/dev/null || true)"
+    COREDEVICE_IDENTIFIER="$coredevice_identifier" DEVICETCL_OUTPUT="$devicectl_output" python3 - <<'PY'
+import json
+import os
+import re
+import sys
+
+identifier = os.environ.get("COREDEVICE_IDENTIFIER", "").casefold()
+raw = os.environ.get("DEVICETCL_OUTPUT", "")
+start = raw.find("{")
+if start < 0:
+    print(
+        f"ERROR: CoreDevice identifier {identifier} could not be resolved; "
+        "xcrun devicectl returned no JSON device inventory.",
+        file=sys.stderr,
+    )
+    raise SystemExit(64)
+
+try:
+    payload, _ = json.JSONDecoder().raw_decode(raw[start:])
+except json.JSONDecodeError:
+    print(
+        f"ERROR: CoreDevice identifier {identifier} could not be resolved; "
+        "xcrun devicectl returned invalid JSON.",
+        file=sys.stderr,
+    )
+    raise SystemExit(64)
+
+devices = payload.get("result", {}).get("devices", [])
+hardware_matches = []
+matches = []
+for device in devices if isinstance(devices, list) else []:
+    if not isinstance(device, dict):
+        continue
+    hardware = device.get("hardwareProperties")
+    if not isinstance(hardware, dict):
+        continue
+    if str(hardware.get("platform", "")).casefold() != "ios":
+        continue
+    if str(hardware.get("reality", "")).casefold() != "physical":
+        continue
+    udid = hardware.get("udid")
+    if not isinstance(udid, str) or not re.fullmatch(r"[0-9A-Fa-f-]{25,40}", udid):
+        continue
+    name = str(device.get("deviceProperties", {}).get("name") or "iOS device")
+    if udid.casefold() == identifier:
+        hardware_matches.append((udid, name))
+        continue
+    if str(device.get("identifier", "")).casefold() != identifier:
+        continue
+    matches.append((udid, name))
+
+if len(hardware_matches) == 1:
+    # A hardware UDID can be UUID-shaped too. Preserve it when CoreDevice's
+    # inventory identifies it as hardware rather than treating it as a
+    # CoreDevice identifier.
+    print(hardware_matches[0][0])
+    raise SystemExit(0)
+
+if len(hardware_matches) > 1:
+    print(
+        f"ERROR: iOS hardware UDID {identifier} matched multiple devices; "
+        "refusing an ambiguous destination.",
+        file=sys.stderr,
+    )
+    raise SystemExit(64)
+
+if len(matches) == 1:
+    print(matches[0][0])
+    raise SystemExit(0)
+
+if not matches:
+    print(
+        f"ERROR: CoreDevice identifier {identifier} has no matching physical iOS hardware UDID. "
+        "Confirm the device appears in `xcrun devicectl list devices` and is paired.",
+        file=sys.stderr,
+    )
+    raise SystemExit(64)
+
+print(
+    f"ERROR: CoreDevice identifier {identifier} matched multiple physical iOS devices; "
+    "refusing an ambiguous destination.",
+    file=sys.stderr,
+)
+for udid, name in matches:
+    print(f"  {name}: {udid}", file=sys.stderr)
+raise SystemExit(64)
+PY
 }
 
 discover_physical_ios_destination() {
@@ -369,7 +510,10 @@ resolve_ios_destination() {
     local resolved=""
 
     if [[ -n "${OPENBURNBAR_IOS_DESTINATION:-}" ]]; then
-        resolved="$(normalize_ios_destination "$OPENBURNBAR_IOS_DESTINATION")"
+        if ! resolved="$(normalize_ios_destination "$OPENBURNBAR_IOS_DESTINATION")"; then
+            echo "ERROR: OPENBURNBAR_IOS_DESTINATION could not be resolved to a valid iOS destination." >&2
+            return 64
+        fi
         echo ">>> Using OPENBURNBAR_IOS_DESTINATION: $resolved" >&2
         echo "$resolved"
         return 0
