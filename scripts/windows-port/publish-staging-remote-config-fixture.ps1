@@ -64,7 +64,8 @@ $payloadHash = [Convert]::ToHexString(
     [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($payload))
 ).ToLowerInvariant()
 
-$activeProject = (& $gcloud.Source config get-value project 2>$null | Select-Object -First 1).Trim()
+$activeProject = [string](& $gcloud.Source config get-value project 2>$null | Select-Object -First 1)
+$activeProject = $activeProject.Trim()
 if ($activeProject -cne $ProjectId) {
     throw "The active gcloud project is '$activeProject', not '$ProjectId'."
 }
@@ -77,20 +78,30 @@ try {
     }
 
     $uri = "https://firebaseremoteconfig.googleapis.com/v1/projects/$ProjectId/remoteConfig"
-    $current = Invoke-WebRequest -Method Get -Uri $uri -Headers @{
-        Authorization = "Bearer $token"
-        'x-goog-user-project' = $ProjectId
+    try {
+        $current = Invoke-WebRequest -Method Get -Uri $uri -Headers @{
+            Authorization = "Bearer $token"
+            'x-goog-user-project' = $ProjectId
+        }
+    }
+    catch {
+        throw 'The staging Remote Config read failed. No mutation was attempted; inspect operator access without logging credentials.'
     }
     $etag = [string]$current.Headers.ETag
     if ([string]::IsNullOrWhiteSpace($etag)) {
         throw 'The current staging Remote Config response did not include an ETag.'
     }
 
-    $published = Invoke-WebRequest -Method Put -Uri $uri -Headers @{
-        Authorization = "Bearer $token"
-        'x-goog-user-project' = $ProjectId
-        'If-Match' = $etag
-    } -ContentType 'application/json; charset=utf-8' -Body $payload
+    try {
+        $published = Invoke-WebRequest -Method Put -Uri $uri -Headers @{
+            Authorization = "Bearer $token"
+            'x-goog-user-project' = $ProjectId
+            'If-Match' = $etag
+        } -ContentType 'application/json; charset=utf-8' -Body $payload
+    }
+    catch {
+        throw 'The staging Remote Config publish failed. Verify and restore Baseline without logging credentials.'
+    }
 
     function ConvertTo-CanonicalValue([object] $Value) {
         if ($null -eq $Value) { return $null }

@@ -175,6 +175,8 @@ assert.match(remoteConfigPublisher, /config get-value project/);
 assert.match(remoteConfigPublisher, /'If-Match' = \$etag/);
 assert.match(remoteConfigPublisher, /parameters do not match the selected fixture/);
 assert.match(remoteConfigPublisher, /restoreRequired = \(\$Fixture -ne 'Baseline'\)/);
+assert.match(remoteConfigPublisher, /read failed\. No mutation was attempted/);
+assert.match(remoteConfigPublisher, /publish failed\. Verify and restore Baseline/);
 assert.doesNotMatch(remoteConfigPublisher, /Write-(Host|Output).*\$token/i);
 assert.match(supplementalGenerator, /ParameterSetName = 'Initialize'/);
 assert.match(supplementalGenerator, /status = 'NOT_RUN'/);
