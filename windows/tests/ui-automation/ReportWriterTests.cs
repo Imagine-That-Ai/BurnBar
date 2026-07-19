@@ -179,6 +179,40 @@ public sealed class ReportWriterTests : IDisposable
         Assert.Equal(HarnessVerdict.Fail, summary.Verdict);
     }
 
+    [Fact]
+    public void SummaryVerdict_PassesWhenSemanticUiaPassesAndExternalCaptureIsUnavailable()
+    {
+        UiHarnessRunSummary original = CreateSummary(HarnessVerdict.Pass, null);
+        SemanticProbeEvidence semantic = original.SemanticProbe! with
+        {
+            ExternalCaptureVerdict = HarnessVerdict.Skipped,
+            ExternalCaptureMessage = "Composition capture unavailable in scheduled task.",
+        };
+        UiHarnessRunSummary summary = original with { SemanticProbe = semantic };
+
+        Assert.Equal(HarnessVerdict.Pass, summary.Verdict);
+    }
+
+    [Fact]
+    public void HtmlReportWriter_ReportsExternalCaptureSeparatelyFromSemanticVerdict()
+    {
+        UiHarnessRunSummary original = CreateSummary(HarnessVerdict.Pass, null);
+        SemanticProbeEvidence semantic = original.SemanticProbe! with
+        {
+            ExternalCaptureVerdict = HarnessVerdict.Skipped,
+            ExternalCaptureMessage = "Composition capture unavailable in scheduled task.",
+        };
+        UiHarnessRunSummary summary = original with { SemanticProbe = semantic };
+        string path = Path.Combine(_dir, "index.html");
+
+        HtmlReportWriter.Write(path, summary, new ArtifactRedactor());
+
+        string html = File.ReadAllText(path);
+        Assert.Contains("External capture", html);
+        Assert.Contains("Skipped", html);
+        Assert.Contains("Composition capture unavailable in scheduled task.", html);
+    }
+
     private static UiHarnessRunSummary CreateSummary(
         HarnessVerdict routeVerdict,
         string? message,

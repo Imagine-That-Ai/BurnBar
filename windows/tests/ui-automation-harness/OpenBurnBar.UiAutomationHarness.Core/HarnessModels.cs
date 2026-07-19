@@ -86,7 +86,12 @@ public sealed record SemanticProbeEvidence(
     bool IsSecureDesktop,
     bool IsCredentialPrompt,
     string? ScreenshotPath,
-    string? Message);
+    string? Message)
+{
+    public HarnessVerdict ExternalCaptureVerdict { get; init; } = HarnessVerdict.Skipped;
+
+    public string? ExternalCaptureMessage { get; init; }
+}
 
 public sealed record InputRouteEvidence(
     string ActionKind,
