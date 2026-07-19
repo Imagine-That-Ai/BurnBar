@@ -457,13 +457,20 @@ describe('ActivitySurface', () => {
 
   it('imports a complete JSON history export and resumes the selected source identity', async () => {
     const sourceID = 'Codex:exported-session';
+    const indexedSession = {
+      ...fixtureSessionList().sessions[0]!,
+      sourceID,
+      providerSessionID: 'exported-session',
+      runID: 'run-exported'
+    };
     const resume = vi.fn(async (sessionID: string): Promise<SessionReplayResult> => ({
       kind: 'spawned',
       briefingTruncated: false,
       pid: 99,
       note: sessionID
     }));
-    useShellStore.setState({ bridge: mockBridge({ sessionList: async () => ({ sessions: [], nextCursor: null }), sessionResume: resume }) });
+    const sessionList = vi.fn(async () => ({ sessions: [indexedSession], nextCursor: null, complete: true }));
+    useShellStore.setState({ bridge: mockBridge({ sessionList, sessionResume: resume }) });
     render(<ActivitySurface />);
     await act(async () => {
       await useActivityStore.getState().load();
@@ -493,6 +500,7 @@ describe('ActivitySurface', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Resume selected' }));
     await screen.findByText(/process 99/i);
+    expect(sessionList.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(resume).toHaveBeenCalledWith(sourceID);
     expect(screen.getByRole('status').textContent).toMatch(/process 99/i);
   });

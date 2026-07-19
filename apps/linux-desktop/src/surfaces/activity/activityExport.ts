@@ -67,6 +67,7 @@ export type ActivityExportResumeResult =
         | 'invalid_export'
         | 'session_not_found'
         | 'source_identity_unavailable'
+        | 'source_resolution_unavailable'
         | 'bridge_unavailable'
         | 'daemon_error';
       message: string;
@@ -412,7 +413,7 @@ export function parseActivityHistoryExport(serialized: string): ActivityExportPa
 export async function resumeActivityHistoryExportSession(
   document: ActivityExportDocument,
   sessionID: string,
-  bridge: Pick<LinuxShellBridge, 'sessionResume'>
+  bridge: Pick<LinuxShellBridge, 'sessionList' | 'sessionResume'>
 ): Promise<ActivityExportResumeResult> {
   if (
     document.version !== 1 ||
@@ -442,11 +443,68 @@ export async function resumeActivityHistoryExportSession(
       message: 'The selected export row does not have one verified source identity.'
     };
   }
-  if (typeof bridge.sessionResume !== 'function') {
+  if (typeof bridge.sessionList !== 'function' || typeof bridge.sessionResume !== 'function') {
     return {
       kind: 'unavailable',
       code: 'bridge_unavailable',
-      message: 'Resume from export requires the live daemon bridge.'
+      message: 'Resume from export requires the live daemon session index and resume bridge.'
+    };
+  }
+
+  // An export is a portable snapshot, not authority that a source still exists.
+  // Re-resolve the selected identity through a complete daemon list immediately
+  // before spawning anything. This prevents a stale export from resuming an
+  // ambiguous/reassigned usage row after deletion, provider migration, or DB
+  // replacement. The daemon remains authoritative for the final run.resume.
+  let current: Awaited<ReturnType<LinuxShellBridge['sessionList']>>;
+  try {
+    current = await bridge.sessionList();
+  } catch {
+    return {
+      kind: 'unavailable',
+      code: 'source_resolution_unavailable',
+      message: 'Resume from export is unavailable because the daemon source index could not be read.'
+    };
+  }
+  if (current.nextCursor !== null || current.complete !== true) {
+    return {
+      kind: 'unavailable',
+      code: 'source_resolution_unavailable',
+      message: 'Resume from export is unavailable because the daemon source index is paged or incomplete.'
+    };
+  }
+  const currentMatches = current.sessions.filter((session) => session.sourceID?.trim() === sourceID);
+  if (currentMatches.length === 0) {
+    return {
+      kind: 'unavailable',
+      code: 'session_not_found',
+      message: 'The selected exported source is no longer present in the daemon index.'
+    };
+  }
+  if (currentMatches.length !== 1) {
+    return {
+      kind: 'unavailable',
+      code: 'source_identity_unavailable',
+      message: 'The daemon returned more than one row for the selected source identity.'
+    };
+  }
+
+  const exported = matches[0];
+  const currentSession = currentMatches[0];
+  const identityFields: Array<keyof Pick<
+    ActivityExportSession,
+    'provider' | 'providerSessionID' | 'runID' | 'projectName'
+  >> = ['provider', 'providerSessionID', 'runID', 'projectName'];
+  const identityMatches = identityFields.every((field) => {
+    const expected = exported[field]?.trim();
+    if (!expected) return true;
+    return currentSession[field]?.trim() === expected;
+  });
+  if (!identityMatches) {
+    return {
+      kind: 'unavailable',
+      code: 'source_identity_unavailable',
+      message: 'The daemon source identity no longer matches the exported provider/session/project binding.'
     };
   }
   try {
@@ -458,7 +516,7 @@ export async function resumeActivityHistoryExportSession(
         message: result.errorRecovery ?? 'The daemon rejected resume for the selected exported session.'
       };
     }
-    return { kind: 'requested', session: matches[0], result };
+    return { kind: 'requested', session: exported, result };
   } catch (error) {
     return {
       kind: 'unavailable',

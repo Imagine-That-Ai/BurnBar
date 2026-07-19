@@ -9,7 +9,8 @@ import {
   parseActivityHistoryExport,
   resumeActivityHistoryExportSession,
   sanitizeActivityExportFilename,
-  serializeActivityExport
+  serializeActivityExport,
+  type ActivityExportDocument
 } from './activityExport.js';
 
 const sessions: SessionEntry[] = [
@@ -158,9 +159,95 @@ describe('activity export', () => {
     expect(parsed.document.sessions[0]?.bodyMD).toContain('\n\nA second paragraph.');
 
     const resume = vi.fn(async (sessionID: string) => ({ kind: 'spawned', pid: 7, briefingTruncated: false, note: sessionID }));
-    const result = await resumeActivityHistoryExportSession(parsed.document, sourceID, { sessionResume: resume });
+    const sourceIndex = vi.fn(async () => ({
+      sessions: [{ ...sessions[0]!, sourceID, providerSessionID: 'session-round-trip', runID: 'run-round-trip' }],
+      nextCursor: null,
+      complete: true
+    }));
+    const result = await resumeActivityHistoryExportSession(parsed.document, sourceID, {
+      sessionList: sourceIndex,
+      sessionResume: resume
+    });
     expect(result.kind).toBe('requested');
+    expect(sourceIndex).toHaveBeenCalledOnce();
     expect(resume).toHaveBeenCalledWith(sourceID);
+  });
+
+  it('re-resolves the exported source and refuses stale identity before resume', async () => {
+    const sourceID = 'Codex:stale-source';
+    const document: ActivityExportDocument = {
+      version: 1,
+      scope: 'daemon-session-history',
+      source: 'live daemon session index',
+      generatedAt: '2026-07-13T14:00:00Z',
+      loadedCount: 1,
+      historyComplete: true,
+      historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT,
+      sessions: [{
+        ...sessions[0]!,
+        sourceID,
+        providerSessionID: 'old-provider-session',
+        runID: 'old-run',
+        projectName: 'BurnBar',
+        bodyMD: 'persisted body'
+      }]
+    };
+    const resume = vi.fn();
+    const result = await resumeActivityHistoryExportSession(document, sourceID, {
+      sessionList: async () => ({
+        sessions: [{
+          ...sessions[0]!,
+          sourceID,
+          providerSessionID: 'new-provider-session',
+          runID: 'new-run',
+          projectName: 'BurnBar'
+        }],
+        nextCursor: null,
+        complete: true
+      }),
+      sessionResume: resume
+    });
+
+    expect(result).toMatchObject({
+      kind: 'unavailable',
+      code: 'source_identity_unavailable',
+      message: expect.stringMatching(/provider\/session\/project binding/i)
+    });
+    expect(resume).not.toHaveBeenCalled();
+  });
+
+  it('does not resume when the daemon source index is incomplete or unavailable', async () => {
+    const sourceID = 'Codex:indexed-source';
+    const document: ActivityExportDocument = {
+      version: 1,
+      scope: 'daemon-session-history',
+      source: 'live daemon session index',
+      generatedAt: '2026-07-13T14:00:00Z',
+      loadedCount: 1,
+      historyComplete: true,
+      historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT,
+      sessions: [{ ...sessions[0]!, sourceID, bodyMD: 'persisted body' }]
+    };
+    const resume = vi.fn();
+    const paged = await resumeActivityHistoryExportSession(document, sourceID, {
+      sessionList: async () => ({
+        sessions: [{ ...sessions[0]!, sourceID }],
+        nextCursor: 'older-page',
+        complete: false
+      }),
+      sessionResume: resume
+    });
+    expect(paged).toMatchObject({ kind: 'unavailable', code: 'source_resolution_unavailable' });
+    expect(resume).not.toHaveBeenCalled();
+
+    const failed = await resumeActivityHistoryExportSession(document, sourceID, {
+      sessionList: async () => {
+        throw new Error('daemon down');
+      },
+      sessionResume: resume
+    });
+    expect(failed).toMatchObject({ kind: 'unavailable', code: 'source_resolution_unavailable' });
+    expect(resume).not.toHaveBeenCalled();
   });
 
   it('rejects edited, duplicate, or presentation-only exports before daemon resume', async () => {
@@ -202,7 +289,10 @@ describe('activity export', () => {
         historyLimit: ACTIVITY_HISTORY_EXPORT_LIMIT
       },
       'Codex:missing',
-      { sessionResume: resume }
+      {
+        sessionList: async () => ({ sessions: [], nextCursor: null, complete: true }),
+        sessionResume: resume
+      }
     );
     expect(missing).toMatchObject({ kind: 'unavailable', code: 'session_not_found' });
     expect(resume).not.toHaveBeenCalled();
