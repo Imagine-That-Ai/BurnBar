@@ -1,10 +1,12 @@
 {
-  "generatedAt": "2026-07-19T06:19:27.130Z",
-  "targetHead": "5a631eeb9654a1c390c6f823272ccd35d9a95b86",
+  "generatedAt": "2026-07-19T06:34:23.770Z",
+  "targetHead": "1fa764384f5abe883312e732cb19d77b196bfeda",
   "allowBlocked": true,
   "git": {
-    "commit": "5a631eeb9654a1c390c6f823272ccd35d9a95b86",
-    "dirtyEntries": []
+    "commit": "1fa764384f5abe883312e732cb19d77b196bfeda",
+    "dirtyEntries": [
+      " M docs/linux-port/evidence/mission-002-reanchor/parity-ledger-validation.json"
+    ]
   },
   "semantics": {
     "kind": "product-parity",
