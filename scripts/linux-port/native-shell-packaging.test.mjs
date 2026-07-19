@@ -20,6 +20,16 @@ test('DEB and RPM bundles install the canonical XDG autostart entry', () => {
   }
 });
 
+test('Tauri release packaging enables the embedded frontend protocol', () => {
+  const cargo = read('apps/linux-desktop/src-tauri/Cargo.toml');
+  assert.match(cargo, /^default = \["custom-protocol"\]$/mu);
+  assert.match(cargo, /^custom-protocol = \["tauri\/custom-protocol"\]$/mu);
+
+  const config = JSON.parse(read('apps/linux-desktop/src-tauri/tauri.conf.json'));
+  assert.equal(config.build?.frontendDist, '../dist');
+  assert.equal(config.build?.beforeBuildCommand, 'npm run build');
+});
+
 test('Arch package installs the same autostart entry with a pinned source slot', () => {
   const pkgbuild = read('packaging/linux/aur/PKGBUILD.in');
   assert.match(

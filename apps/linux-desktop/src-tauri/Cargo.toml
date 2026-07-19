@@ -6,7 +6,8 @@ authors = ["OpenBurnBar"]
 edition = "2021"
 
 [features]
-default = []
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
 media-gst = ["dep:openburnbar-media"]
 
 [lib]
