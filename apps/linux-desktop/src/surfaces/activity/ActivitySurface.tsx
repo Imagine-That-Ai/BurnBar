@@ -359,7 +359,7 @@ export function ActivitySurface() {
                   ? 'Full history export requires a live daemon with persisted session replay'
                   : fixtureMode || !bridge?.sessionReplay
                     ? 'Full history export is unavailable in fixture or older shells'
-                  : 'Export a bounded, daemon-authoritative history with persisted bodies'
+                  : 'Export only when the daemon provides an explicit complete-history proof and persisted bodies'
               }
             >
               {historyExportLoading ? 'Preparing history...' : 'Export full history'}
@@ -372,7 +372,7 @@ export function ActivitySurface() {
           </div>
         </div>
         <p className="activity-export-scope">
-          Loaded export includes {sessions.length} currently loaded row{sessions.length === 1 ? '' : 's'}; full history re-reads a bounded daemon snapshot and fails closed when any source or body is unavailable.
+          Loaded export includes {sessions.length} currently loaded row{sessions.length === 1 ? '' : 's'}; full history requires an explicit daemon completeness proof, then re-reads a bounded snapshot and fails closed when any source or body is unavailable.
         </p>
         <div className="activity-groups">
           {dayGroups.map((group) => (
