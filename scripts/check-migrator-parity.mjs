@@ -63,6 +63,7 @@ export const SURFACES = {
   windows: {
     label: "Windows port (OpenBurnBar.Storage)",
     provisioning: "windows/storage/OpenBurnBar.Storage/WindowsSqlCipherProvisioning.cs",
+    schema: "windows/storage/OpenBurnBar.Storage/WindowsSqlCipherProvisioning.Schema.cs",
     metadata: "windows/storage/OpenBurnBar.Storage/WindowsSqlCipherProvisioning.Metadata.cs",
   },
   linux: {
@@ -602,6 +603,7 @@ export function extractWindows(repoRoot, surface) {
     join(repoRoot, surface.provisioning),
     "utf8",
   );
+  const schemaText = readFileSync(join(repoRoot, surface.schema), "utf8");
   const metadataText = readFileSync(join(repoRoot, surface.metadata), "utf8");
 
   const endpointMatch = provisioningText.match(
@@ -629,7 +631,7 @@ export function extractWindows(repoRoot, surface) {
   );
 
   const schemaEntries = parseCSharpStringArray(
-    provisioningText,
+    schemaText,
     "SchemaStatements",
   );
   const state = emptySchemaState();
