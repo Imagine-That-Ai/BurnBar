@@ -117,6 +117,7 @@ function ProviderCard({
 /** Provider/model deep-dive surface backed only by daemon catalog/config data. */
 export function ProviderModelWorkspace({ providers }: { providers: ProviderCatalog }) {
   const loading = useProvidersStore((state) => state.loading);
+  const catalogError = useProvidersStore((state) => state.error);
   const mutationBusy = useProvidersStore((state) => state.mutationBusy);
   const mutationError = useProvidersStore((state) => state.mutationError);
   const addCustomModel = useProvidersStore((state) => state.addCustomModel);
@@ -140,6 +141,14 @@ export function ProviderModelWorkspace({ providers }: { providers: ProviderCatal
           </button>
         </div>
       </header>
+      {catalogError ? (
+        <div className="provider-model-degraded" role="status" aria-live="polite">
+          <span>Live provider catalog is unavailable. Showing the last available catalog.</span>
+          <button type="button" className="ghost" onClick={() => void load()} disabled={loading} aria-busy={loading}>
+            {loading ? 'Retrying…' : 'Retry catalog'}
+          </button>
+        </div>
+      ) : null}
       <form
         className="provider-custom-model-form"
         onSubmit={(event) => {

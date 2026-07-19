@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureProviderCatalog } from '../../daemonFixture.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useProvidersStore } from '../../state/providersStore.js';
@@ -143,5 +143,27 @@ describe('ProvidersSurface (quota workspace)', () => {
     });
     const { container } = render(<ProvidersSurface />);
     expect(container.querySelector('.quota-skeleton[aria-busy="true"]')).not.toBeNull();
+  });
+
+  it('keeps the last provider workspace visible while a catalog refresh recovers', async () => {
+    const retry = vi.fn().mockResolvedValue(undefined);
+    useShellStore.setState({ fixtureMode: true });
+    useProvidersStore.setState({
+      catalog: [fixtureProviderCatalog()[0]!],
+      loading: false,
+      error: null,
+      load: retry
+    });
+    render(<ProvidersSurface />);
+    expect(await screen.findByRole('heading', { name: 'Providers & models' })).toBeTruthy();
+    retry.mockClear();
+
+    act(() => {
+      useProvidersStore.setState({ catalog: null, error: 'catalog temporarily unavailable', loading: false });
+    });
+
+    expect(screen.getByText('Live provider catalog is unavailable. Showing the last available catalog.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry catalog' }));
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 });

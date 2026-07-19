@@ -48,6 +48,19 @@
   padding: 0.65rem 0;
 }
 
+.provider-model-degraded {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--color-warning, #d9a441) 40%, transparent);
+  border-radius: 6px;
+  color: var(--color-warning, #d9a441);
+  font-size: 0.8rem;
+}
+
 .provider-custom-model-form {
   align-items: flex-end;
   flex-wrap: wrap;
@@ -183,5 +196,6 @@
   .provider-custom-model-form { align-items: stretch; }
   .provider-custom-model-form label,
   .provider-custom-model-form button { width: 100%; }
+  .provider-model-degraded { align-items: stretch; flex-direction: column; }
   .provider-model-meta { grid-template-columns: 1fr; }
 }
