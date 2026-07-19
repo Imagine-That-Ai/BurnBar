@@ -5,12 +5,13 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- The current parity hardening reaches `fdbc7d718b` (with the WebKit startup
-  fallback from `6321897d4e`). The VM now has a rebuilt arm64 package with the
-  real `media-gst` shell viewer feature enabled; its non-certifying receipt is
-  [`evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-media-gst-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-media-gst-arm64/).
-  The earlier non-GStreamer UI receipt remains available as a historical
-  baseline at
+- The latest parity hardening reaches `82b0fcf11e` (including the WebKit
+  startup fallback from `6321897d4e`). The VM now has a freshly rebuilt and
+  installed arm64 package with the real `media-gst` shell viewer enabled; its
+  non-certifying receipt is
+  [`evidence/mission-002-reanchor/vm-e2e/current-82b0fcf11e-media-gst-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-82b0fcf11e-media-gst-arm64/).
+  The preceding media-gst receipt remains a historical baseline at
+  [`evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-media-gst-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-media-gst-arm64/), and the earlier non-GStreamer UI receipt remains available at
   [`evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-ui-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-ui-arm64/).
   The daemon/media capability receipt remains bound to the `a570c9b087`
   runtime package; the clean parity-ledger

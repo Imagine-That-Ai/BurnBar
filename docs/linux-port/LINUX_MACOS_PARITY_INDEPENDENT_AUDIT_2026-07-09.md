@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | Current parity hardening reaches `fdbc7d718b` (with the WebKit startup fallback in `6321897d4e`). The VM now has an arm64 package rebuilt with the real `media-gst` shell viewer feature; its non-certifying receipt is `evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-media-gst-arm64/live-ui-media-gst-receipt.json`. The earlier non-GStreamer UI receipt remains historical at `current-fdbc7d718b-ui-arm64/live-ui-receipt.json`. The daemon/media capability receipt remains bound to the `a570c9b087` runtime package. The clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
+| Remediation evidence | Latest parity hardening reaches `82b0fcf11e` (with the WebKit startup fallback in `6321897d4e`). The VM now has a freshly rebuilt arm64 package with the real `media-gst` shell viewer feature installed; its non-certifying receipt is `evidence/mission-002-reanchor/vm-e2e/current-82b0fcf11e-media-gst-arm64/live-installed-receipt.json`. The preceding media-gst and non-GStreamer UI receipts remain historical under `current-fdbc7d718b-media-gst-arm64/` and `current-fdbc7d718b-ui-arm64/`. The daemon/media capability receipt remains bound to the `a570c9b087` runtime package. The clean parity-ledger validation is bound to checkpoint `073c2aba45`. Release `29664085758` and Nightly `29660228199` remain historical engineering evidence. Full certification remains intentionally blocked because current-head product evidence and live integration receipts are still missing. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -55,7 +55,7 @@ and disables stale file-offer actions; the focused media UI/state lane passes
 **33/33** plus TypeScript. The current `media-gst` shell feature is installed
 in the UTM guest and links the GStreamer app/base/core/video libraries; the
 bounded UI/runtime receipt is
-`evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-media-gst-arm64/live-ui-media-gst-receipt.json`.
+`evidence/mission-002-reanchor/vm-e2e/current-82b0fcf11e-media-gst-arm64/live-installed-receipt.json`.
 The subsequent source slices add single-flight native pet summons
 (`511c8a1049`), body-click notification routing (`1397313284`), decoder retry
 without socket reconnect, and health-before-write Secret Service/KWallet
