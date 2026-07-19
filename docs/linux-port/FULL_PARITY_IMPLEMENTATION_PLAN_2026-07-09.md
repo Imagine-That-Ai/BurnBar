@@ -599,13 +599,17 @@ explicit approve or revoke mutation.
 
 Full parity remains **NO-GO** until all of these gates are met in order:
 
-Live recheck on 2026-07-18: the wired paired iPad is booted with Developer
-Mode enabled and passes physical-device readiness when addressed by its
-hardware UDID. The focused XCTest build is still paused because the worktree is
-over the 10 GiB hygiene ceiling. The UTM Linux guest is currently started but
-has not been modified. The product-parity workflow is not yet on `main`, and
-GitHub has no registered self-hosted runners for the seven required Linux
-environment labels.
+Live recheck on 2026-07-19: the wired paired iPad is booted with Developer
+Mode enabled, resolves from its CoreDevice identifier to the hardware UDID, and
+passes the focused physical-device XCTest run: **44 tests, 0 failures**. The
+source-safe Firestore graph (`grpc-ios` plus `BoringSSL-SwiftPM`) and arm64-only
+Signal FFI build were used. The non-certifying receipt is
+`evidence/parity-audit-2026-07-10/ipad-approval-focused-2026-07-19.json`.
+This closes focused iPad test execution, but not installed Linux enrollment,
+approval/revoke, or cross-device Computer Use proof. The UTM Linux guest is
+currently started but has not been modified. The product-parity workflow is not
+yet on `main`, and GitHub has no registered self-hosted runners for the seven
+required Linux environment labels.
 
 The mobile runner correction in `5cff4281ec` accepts both CoreDevice and
 hardware-UDID forms, fails closed for missing or ambiguous mappings, and is
@@ -619,10 +623,12 @@ but does not count as physical approval execution.
    2026-07-14. Release validation must continue to fail closed when any value is
    absent or malformed.
 3. Deploy the Linux App Check callables, policy, and Firestore rules.
-4. Run the focused approval tests on the connected physical iPad. Generic iOS
-   build-for-testing and current-branch launch/liveness/console smoke have
-   passed, but they do not satisfy physical-device approval execution. The
-   visible iPhone and simulator targets remain invalid substitutes.
+4. Keep the focused approval XCTest receipt green on the connected physical
+   iPad. The 2026-07-19 run passed 44/44 selected tests, including device-store
+   authority and sealed-approval decoding. This is still only focused mobile
+   coverage: installed Linux enrollment, fingerprint confirmation,
+   approve/revoke, and cross-device action proof remain required. The visible
+   iPhone and simulator targets remain invalid substitutes.
 5. Build and sign the exact deb/rpm/AppImage candidate, including the final-byte
    AppImage peer manifest. Candidate `0.1.1` is now built and signed by Release
    `29646670068`; compatible previous-package lifecycle proof and public
