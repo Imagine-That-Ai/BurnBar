@@ -140,6 +140,52 @@ describe('insights evidence and workspace persistence', () => {
     expect(insightsWorkspaceStorageKey(accountScope)).not.toContain('alberto@example.test');
     expect(readInsightsWorkspace('account:other', ['usage-trend', 'provider-mix']).selectedWidgetID).toBe('usage-trend');
   });
+
+  it.each([
+    ['invalid JSON', '{not-json'],
+    ['future schema version', JSON.stringify({ version: 2, selectedWidgetID: 'provider-mix', layout: 'compact' })],
+    ['missing schema version', JSON.stringify({ selectedWidgetID: 'provider-mix', layout: 'compact' })],
+    ['unknown layout', JSON.stringify({ version: 1, selectedWidgetID: 'provider-mix', layout: 'dense' })],
+    ['unknown widget', JSON.stringify({ version: 1, selectedWidgetID: 'deleted-widget', layout: 'compact' })],
+    ['non-object payload', JSON.stringify(['provider-mix', 'compact'])]
+  ])('fails closed to defaults for malformed persisted state (%s)', (_label, raw) => {
+    const accountScope = 'account:malformed-state';
+    localStorage.setItem(insightsWorkspaceStorageKey(accountScope), raw);
+    expect(readInsightsWorkspace(accountScope, ['usage-trend', 'provider-mix'])).toEqual({
+      version: 1,
+      selectedWidgetID: 'usage-trend',
+      layout: 'balanced'
+    });
+  });
+
+  it('does not persist malformed snapshots and tolerates storage failures', () => {
+    const accountScope = 'account:storage-failure';
+    writeInsightsWorkspace(
+      accountScope,
+      { version: 2, selectedWidgetID: 'provider-mix', layout: 'compact' } as unknown as Parameters<typeof writeInsightsWorkspace>[1]
+    );
+    expect(localStorage.getItem(insightsWorkspaceStorageKey(accountScope))).toBeNull();
+
+    const throwingRead = { getItem: () => { throw new Error('storage unavailable'); } };
+    expect(readInsightsWorkspace(accountScope, ['usage-trend'], throwingRead)).toEqual({
+      version: 1,
+      selectedWidgetID: 'usage-trend',
+      layout: 'balanced'
+    });
+
+    const throwingWrite = { setItem: () => { throw new Error('quota exceeded'); } };
+    expect(() => writeInsightsWorkspace(
+      accountScope,
+      { version: 1, selectedWidgetID: 'usage-trend', layout: 'compact' },
+      throwingWrite
+    )).not.toThrow();
+  });
+
+  it('does not derive an account scope from non-string identity fields', () => {
+    expect(accountScopeForInsights({ identityLabel: 42 as unknown as string })).toBe('local');
+    expect(accountScopeForInsights({ installationDeviceID: {} as unknown as string })).toBe('local');
+    expect(insightsWorkspaceStorageKey(null)).toBe(insightsWorkspaceStorageKey('local'));
+  });
 });
 
 describe('InsightsSurface', () => {
