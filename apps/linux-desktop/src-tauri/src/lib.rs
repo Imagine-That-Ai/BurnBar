@@ -4340,12 +4340,16 @@ fn diagnostics_bundle(
         "shellVersion": env!("CARGO_PKG_VERSION"),
         "daemonHealth": {
             "ok": health.ok,
-            "daemonVersion": health.daemon_version,
-            "protocolVersion": health.protocol_version,
-            "socketPath": health.socket_path,
+            "daemonVersion": safe_diagnostic_version(health.daemon_version.as_deref()),
+            "protocolVersion": health.protocol_version.filter(|version| *version <= 1_000_000),
         },
         "package": package,
         "runtime": runtime,
+        "renderer": {
+            "shell": "tauri",
+            "webview": "webkitgtk",
+            "capabilities": ["support.diagnostics.export", "support.diagnostics.preview"],
+        },
         "included": DIAGNOSTICS_INCLUDED,
         "excluded": DIAGNOSTICS_EXCLUDED,
     })
@@ -4361,40 +4365,83 @@ fn diagnostics_preview(byte_count: usize) -> serde_json::Value {
     })
 }
 
-// Writes a JSON bundle to the support dir. Redaction is structural: this
-// command only persists shell/health/package/runtime metadata — it never reads
-// provider payloads, tokens, or socket auth material. File mode is 0600.
+fn safe_diagnostic_version(value: Option<&str>) -> Option<String> {
+    let value = value?.trim();
+    if value.is_empty()
+        || value.len() > 64
+        || !value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-' | '+')
+        })
+    {
+        return None;
+    }
+    Some(value.to_string())
+}
+
+fn ensure_private_diagnostics_dir(dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let metadata = fs::symlink_metadata(dir).map_err(|e| e.to_string())?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err("Diagnostics support directory must be a real directory.".to_string());
+    }
+    fs::set_permissions(dir, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
+    let mode = fs::symlink_metadata(dir)
+        .map_err(|e| e.to_string())?
+        .permissions()
+        .mode();
+    if mode & 0o077 != 0 {
+        return Err("Diagnostics support directory is not owner-only.".to_string());
+    }
+    Ok(())
+}
+
+fn write_private_diagnostics_json(dir: &Path, stamp: u64, json: &[u8]) -> Result<PathBuf, String> {
+    let id = uuid::Uuid::new_v4().simple().to_string();
+    let filename = format!("diagnostics-{stamp}-{id}.json");
+    let path = dir.join(&filename);
+    let partial = dir.join(format!(".{filename}.partial"));
+    let result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&partial)
+            .map_err(|e| e.to_string())?;
+        file.write_all(json).map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+        fs::set_permissions(&partial, fs::Permissions::from_mode(0o600))
+            .map_err(|e| e.to_string())?;
+        drop(file);
+        fs::rename(&partial, &path).map_err(|e| e.to_string())?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+        Ok(path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&partial);
+    }
+    result
+}
+
+// Writes a JSON bundle to the private support dir. Redaction is structural:
+// this command only persists shell/health/package/runtime/renderer metadata —
+// it never reads provider payloads, tokens, socket auth material, socket paths,
+// or raw daemon errors. A unique temporary file plus atomic rename prevents a
+// crash from leaving a partial bundle that support could accidentally share.
 #[tauri::command]
 fn export_diagnostics() -> Result<serde_json::Value, String> {
-    use std::io::Write;
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-
     let dir = linux_support_dir();
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    // Ensure support dir is owner-only when possible.
-    let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
+    ensure_private_diagnostics_dir(&dir)?;
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let path = dir.join(format!("diagnostics-{stamp}.json"));
     let health = probe_daemon_health();
     let package = detect_linux_package_facts();
     let runtime = linux_runtime_facts();
     let bundle = diagnostics_bundle(stamp, &health, &package, &runtime);
     let json = serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?;
     let preview = diagnostics_preview(json.len());
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&path)
-        .map_err(|e| e.to_string())?;
-    file.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
-    // Re-apply the owner-only mode even when a timestamp collision reopens an
-    // existing file; `OpenOptionsExt::mode` only affects newly-created files.
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    let path = write_private_diagnostics_json(&dir, stamp, json.as_bytes())?;
     Ok(serde_json::json!({
         "path": path.display().to_string(),
         "preview": preview
@@ -5634,10 +5681,11 @@ struct LinuxRuntimeFacts {
     display_server: Option<String>,
 }
 
-const DIAGNOSTICS_INCLUDED: [&str; 4] = [
+const DIAGNOSTICS_INCLUDED: [&str; 5] = [
     "shell version",
-    "daemon health (ok, version, protocol, socket path)",
+    "daemon health (ok, version, protocol)",
     "package channel and runtime facts",
+    "renderer and capability facts",
     "export schema and file permissions",
 ];
 
@@ -7375,8 +7423,12 @@ mod tests {
         let encoded = serde_json::to_string(&bundle).unwrap();
         assert!(!encoded.contains("packageChannel"));
         assert!(!encoded.contains("socket auth token should never be serialized"));
+        assert!(!encoded.contains("socketPath"));
+        assert!(!encoded.contains("/run/user/1000"));
         assert!(encoded.contains("provider API keys and credentials"));
         assert!(encoded.contains("runtime"));
+        assert!(encoded.contains("renderer"));
+        assert!(encoded.contains("support.diagnostics.export"));
 
         let preview = diagnostics_preview(encoded.len());
         assert_eq!(preview["schemaVersion"], 1);
@@ -7384,6 +7436,66 @@ mod tests {
         assert_eq!(preview["byteCount"], encoded.len());
         assert!(preview["included"].as_array().unwrap().len() >= 4);
         assert!(preview["excluded"].as_array().unwrap().len() >= 4);
+    }
+
+    #[test]
+    fn diagnostics_versions_are_allowlisted_before_export() {
+        assert_eq!(
+            safe_diagnostic_version(Some("1.2.3")),
+            Some("1.2.3".to_string())
+        );
+        assert_eq!(
+            safe_diagnostic_version(Some("v1.2.3+linux")),
+            Some("v1.2.3+linux".to_string())
+        );
+        assert_eq!(safe_diagnostic_version(Some("/tmp/secret")), None);
+        assert_eq!(safe_diagnostic_version(Some("1.2.3\nsecret")), None);
+        assert_eq!(safe_diagnostic_version(Some(&"x".repeat(65))), None);
+    }
+
+    #[test]
+    fn diagnostics_export_uses_unique_private_atomic_files() {
+        let root =
+            std::env::temp_dir().join(format!("openburnbar-diagnostics-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        ensure_private_diagnostics_dir(&root).unwrap();
+
+        let first = write_private_diagnostics_json(&root, 42, br#"{"ok":true}"#).unwrap();
+        let second = write_private_diagnostics_json(&root, 42, br#"{"ok":false}"#).unwrap();
+        assert_ne!(first, second);
+        assert_eq!(fs::read(&first).unwrap(), br#"{"ok":true}"#);
+        assert_eq!(fs::read(&second).unwrap(), br#"{"ok":false}"#);
+        assert_eq!(
+            fs::metadata(&first).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            fs::metadata(&second).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert!(fs::read_dir(&root).unwrap().all(|entry| !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".partial")));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn diagnostics_export_rejects_symlinked_support_directory() {
+        let root = std::env::temp_dir().join(format!(
+            "openburnbar-diagnostics-link-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let real = root.join("real");
+        let link = root.join("link");
+        fs::create_dir_all(&real).unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let error = ensure_private_diagnostics_dir(&link).unwrap_err();
+        assert!(error.contains("real directory"));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

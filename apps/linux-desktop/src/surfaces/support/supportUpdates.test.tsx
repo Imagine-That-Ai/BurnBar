@@ -515,6 +515,13 @@ describe('P09 updates and support', () => {
     expect(screen.getByText('Native export metadata')).toBeTruthy();
   });
 
+  it('describes the packaged export destination without promising an unavailable save dialog', () => {
+    useShellStore.setState({ bridge: mockBridge(), fixtureMode: false });
+    render(<SupportSurface />);
+    expect(screen.getByText(/app support directory/)).toBeTruthy();
+    expect(screen.queryByText(/save dialog/i)).toBeNull();
+  });
+
   it('mounts Mercury media below diagnostics without treating staged media as performance proof', async () => {
     recordPerfSample('route.navigation', 8.5, 'packaged-ui-route-after-paint:support');
     const bridge = mockBridge();
