@@ -1496,6 +1496,14 @@ jobs:
           --artifact "python-mcp-native=$RUNNER_TEMP/attestation-python-mcp-native/artifact,$RUNNER_TEMP/attestation-python-mcp-native/observed-identity.json"
           --output "$RUNNER_TEMP/python-mcp-cloudvault-contracts.json"
 
+      - name: Upload Python MCP native attestation input
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-attestation-python-mcp-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/attestation-python-mcp-native
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload Python MCP proof fragment
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
@@ -1555,6 +1563,14 @@ jobs:
           --suite "python-hermes-contracts=$RUNNER_TEMP/python-hermes-contracts.log"
           --artifact "python-hermes-native=$RUNNER_TEMP/attestation-python-hermes-native/artifact,$RUNNER_TEMP/attestation-python-hermes-native/observed-identity.json"
           --output "$RUNNER_TEMP/python-hermes-contracts.json"
+
+      - name: Upload Hermes Python native attestation input
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-attestation-python-hermes-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/attestation-python-hermes-native
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload Hermes Python proof fragment
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
