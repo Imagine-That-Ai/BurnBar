@@ -310,6 +310,25 @@ test("protected signer has no user-supplied evidence surface and revalidates tru
   assert.match(signer, /^  id-token: write$/mu);
   assert.match(
     signer,
+    /GH_TOKEN: \$\{\{ secrets\.DOMAIN_CORE_GOVERNANCE_READ_TOKEN \}\}/u,
+  );
+  assert.match(
+    signer,
+    /DOMAIN_CORE_GOVERNANCE_READ_TOKEN is required with repository Administration: read/u,
+  );
+  assert.doesNotMatch(
+    workflowJob(signer, "protected-domain-core-signer").slice(
+      workflowJob(signer, "protected-domain-core-signer").indexOf(
+        "Require live protected default-branch controls",
+      ),
+      workflowJob(signer, "protected-domain-core-signer").indexOf(
+        "Validate candidate and locate exact successful push run",
+      ),
+    ),
+    /GH_TOKEN: \$\{\{ github\.token \}\}/u,
+  );
+  assert.match(
+    signer,
     /actions\/workflows\/domain-core\.yml\/runs\?event=push/u,
   );
   assert.match(signer, /git merge-base --is-ancestor/u);
