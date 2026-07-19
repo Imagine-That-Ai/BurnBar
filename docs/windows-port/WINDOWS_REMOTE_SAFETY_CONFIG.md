@@ -24,6 +24,13 @@ safety keys must therefore be published as fleet-wide default values. A future
 conditional rollout needs a server-side, testable evaluation contract before it
 may replace this global posture.
 
+Targeted staging deploys replace the compiled all-functions entrypoint before
+WIF authentication with an allowlisted module graph from
+`functions/staging-deploy-targets.json`. This keeps unrelated `defineSecret`
+parameters out of a scoped certification deploy while preserving Firebase's
+exact `functions:<name>` target filter. The preparer fails closed on an unknown
+target, missing compiled module, duplicate selector, or path traversal.
+
 ## Client behavior
 
 `WindowsRuntimeSafetyConfigMonitor` fetches immediately and every 60 seconds.

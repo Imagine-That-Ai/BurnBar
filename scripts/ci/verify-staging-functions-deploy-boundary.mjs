@@ -52,6 +52,12 @@ requireText(
   "validated function_targets must select the requested deployment scope",
 );
 requireText(
+  `node scripts/ci/prepare-scoped-functions-deploy.mjs \\
+            --targets "$FUNCTION_TARGETS" \\
+            --functions-dir functions`,
+  "scoped targets must replace the all-functions module graph before authentication",
+);
+requireText(
   '--only "$deploy_scope"',
   "Firebase deploy scope must remain a single quoted argument",
 );
@@ -59,16 +65,42 @@ reject(
   /\}\s*>\s*"\$ENV_FILE"/u,
   "staging config must never be read from and redirected directly onto the same file",
 );
-reject(/\beval\b/u, "staging deployment must not evaluate function_targets as shell code");
+reject(
+  /\beval\b/u,
+  "staging deployment must not evaluate function_targets as shell code",
+);
 reject(
   /^\s{10,}[^\n]*\$\{\{\s*github\.event\.inputs\.function_targets\s*\}\}/mu,
   "function_targets must not be interpolated directly into a run script",
 );
 
-const authIndex = source.indexOf("Authenticate to Google Cloud (staging WIF/OIDC only)");
-const deployIndex = source.indexOf("Deploy Cloud Functions (staging)");
-if (authIndex === -1 || deployIndex === -1 || authIndex > deployIndex) {
-  failures.push("WIF/OIDC authentication must precede the credentialed Functions deploy");
+const functionsJobIndex = source.indexOf("  functions-staging:");
+const scopeIndex = source.indexOf(
+  "prepare-scoped-functions-deploy.mjs",
+  functionsJobIndex,
+);
+const authIndex = source.indexOf(
+  "Authenticate to Google Cloud (staging WIF/OIDC only)",
+  functionsJobIndex,
+);
+const deployIndex = source.indexOf(
+  "Deploy Cloud Functions (staging)",
+  functionsJobIndex,
+);
+if (
+  functionsJobIndex === -1 ||
+  authIndex === -1 ||
+  deployIndex === -1 ||
+  authIndex > deployIndex
+) {
+  failures.push(
+    "WIF/OIDC authentication must precede the credentialed Functions deploy",
+  );
+}
+if (scopeIndex === -1 || scopeIndex > authIndex) {
+  failures.push(
+    "the scoped Functions entrypoint must be prepared before WIF/OIDC credentials exist",
+  );
 }
 
 if (failures.length > 0) {
@@ -77,4 +109,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("PASS: staging Functions deploy preserves config and validates scoped targets.");
+console.log(
+  "PASS: staging Functions deploy preserves config and isolates scoped targets before auth.",
+);
