@@ -1,0 +1,30 @@
+OpenBurnBar focused physical-iPad approval XCTest receipt (v2)
+Captured: 2026-07-19T20:14:04Z
+Source checkout at test-process start: eace4cc2001319d9c9a6a1cd9a997d4f3c801c53
+Source checkout after the run: e6c32ec2b2f7cdf4684a38b89f681920ee1386be
+Note: HEAD advanced during the run; the receipt is anchored to the SHA observed before xcodebuild started.
+Device: Alberto's iPad (iPadOS, paired USB)
+CoreDevice identifier: 407C0B12-010B-5970-8E85-D0E43DA8F457
+Xcode hardware UDID: 00008132-001158191E9A401C
+Xcode: Xcode-27.0.0-Beta
+Configuration: Debug; Xcode provisioning/device-registration updates allowed by the wrapper
+Signal FFI targets: aarch64-apple-ios (existing debug XCFramework artifacts reused)
+Firestore graph: grpc-ios@1.69.0 + BoringSSL-SwiftPM@0.32.1
+
+Selectors:
+- OpenBurnBarMobileTests/AgentLiveStagePresenterTests (22)
+- OpenBurnBarMobileTests/AgentLiveStageWiringTests (6)
+- OpenBurnBarMobileTests/DevicesStoreTests (13)
+- OpenBurnBarMobileTests/HermesGatewayApprovalDetailIndexTests (3)
+- OpenBurnBarMobileTests/testAgentWatchOverlayCoordinatorClassifiesApprovalStreamAndResponds
+- OpenBurnBarMobileTests/testGatewaySealedApprovalDetailDecodesActionIdAndKind
+- OpenBurnBarMobileTests/testSealedApprovalDecisionCarriesKindAndActionAtRootOfSealedPayload
+
+Result: **TEST SUCCEEDED**; 44 tests, 0 failures, 0 unexpected failures.
+XCTest session duration: 109.041 seconds; wrapper attempt duration: 424 seconds; xcodebuild exit code: 0.
+
+Post-test infrastructure note: Xcode's optional devicectl diagnostics step requested macOS sudo and stopped waiting for credentials after the tests had passed. The diagnostics child was terminated, then xcodebuild finalized successfully. This did not change the XCTest result.
+
+Scope: non-certifying focused mobile coverage only. Installed Linux enrollment,
+fingerprint confirmation, approve/revoke, sign-out, and cross-device Computer Use remain open.
+Telemetry: .tmp/ipad-live-current-20260719/artifacts/test-openburnbar-mobile-attempts.jsonl
