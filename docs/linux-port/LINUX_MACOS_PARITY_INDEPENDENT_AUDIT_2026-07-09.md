@@ -46,7 +46,18 @@ history importer preserves normal multi-line Markdown bodies. These changes
 remain non-certifying until installed Linux and live production receipts exist.
 `d1cb5e517d` also aligns the Linux settings section order with the macOS oracle:
 System contains Daemon, Updates, and Data & Privacy, while More contains Text
-Expansion, Media & Sharing, Computer Use, and Pets.
+Expansion, Media & Sharing, Computer Use, and Pets. `a5e74fed57` bounds
+SmartHub device-status helper execution with the existing timeout, output cap,
+concurrent drain, and process-group termination contract (six focused Rust
+tests passed). `0ecdf097a3` adds bounded, deduplicated Insights evidence
+citations with accessible selection and opaque-ID chat handoff (the full
+desktop suite covers 18 Insights tests). `f35f5392e7` allows a validated
+Computer Use portal session close during panic-kill teardown while continuing
+to block creation and input; source parsing/build passed, but macOS XCTest
+runtime remains blocked by the unavailable SQLCipher framework. The current
+Linux desktop regression run at this head passed **82 files / 751 tests**;
+TypeScript and the production bundle verifier also passed. None of these
+source-only changes creates installed Linux or live cross-device receipts.
 
 ## Execution Status — 2026-07-18
 

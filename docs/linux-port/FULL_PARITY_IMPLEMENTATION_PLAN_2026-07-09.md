@@ -31,7 +31,7 @@ cannot execute them because the package runner lacks `SQLCipher.framework`.
 Neither slice changes the strict **0/40 product** or **0/7 environment**
 certification state; installed Linux and live cross-device receipts remain the
 next gate. The complete Linux desktop regression run at this head passed **82
-files / 749 tests**, with TypeScript and the production bundle verifier green.
+files / 751 tests**, with TypeScript and the production bundle verifier green.
 The same candidate also carries `c095761b07` (first-party release-path checks
 for signed feed URLs, 19 Rust tests), `50a0684e75` (fail-closed onboarding
 symlink protection), and `a5522bfc54` (bounded JSON history import/resume with
@@ -39,7 +39,16 @@ duplicate identity checks and 27 focused activity tests). These source slices
 improve the implementation baseline but do not create installed Linux,
 production, or cross-device certification receipts.
 `d1cb5e517d` also corrects the Linux settings section taxonomy to match macOS
-exactly; focused settings-catalog coverage passes 4/4.
+exactly; focused settings-catalog coverage passes 4/4. `a5e74fed57` bounds
+SmartHub status-helper execution through the existing timeout/output/process-
+group contract (six focused Rust tests pass). `0ecdf097a3` adds bounded,
+deduplicated Insights evidence citations and an accessible opaque-ID chat
+handoff; its 18 focused UI tests are included in the 751-test desktop run.
+`f35f5392e7` permits validated Computer Use portal session close during
+panic-kill teardown while keeping creation and input blocked; source parse/build
+pass, but macOS XCTest runtime is unavailable without SQLCipher. These slices
+improve source parity only; installed Linux, live production, and cross-device
+receipts remain required for certification.
 
 ### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 
