@@ -67,7 +67,10 @@ internal static class Program
         string localRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "OpenBurnBar");
-        var killFlag = new FileKillSwitchFlag(Path.Combine(localRoot, "privileged-input-kill.flag"));
+        var localPanicFlag = new FileKillSwitchFlag(Path.Combine(localRoot, "privileged-input-kill.flag"));
+        var remoteSafetyFlag = new RemoteSafetyLeaseKillSwitchFlag(
+            Path.Combine(localRoot, "privileged-input-remote-safety.flag"));
+        var killFlag = new LayeredKillSwitchFlag(localPanicFlag, remoteSafetyFlag);
         var executor = new PrivilegedInputExecutionService(
             new UiaInspector(),
             new SendInputInputSynthesizer(() => killFlag.IsActive),
@@ -96,6 +99,10 @@ internal static class Program
             if (command.Kind == PrivilegedInputCommandKind.Health)
             {
                 response = await WatchdogHealthAsync(watchdog, cancellationToken).ConfigureAwait(false);
+                if (response.Ok && killFlag.IsActive)
+                {
+                    response = new PrivilegedInputResponse(false, "kill_switch");
+                }
             }
             else if (command.Kind == PrivilegedInputCommandKind.Dispatch)
             {

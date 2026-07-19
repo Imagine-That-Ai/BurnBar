@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Windows fleet safety parity
+
+- **Added fail-closed Remote Config polling for Windows Computer Use and
+  Mercury media**: an Auth plus TPM App Check-protected callable relays the
+  reviewed fleet booleans, while the desktop client validates a short server
+  lease every 60 seconds. The privileged input broker now checks an independent
+  expiring remote interlock on every dispatch, and remote recovery cannot clear
+  a manual or watchdog panic latch.
+
 ### Fixed - Windows physical x64 usage-scan memory
 
 - **Isolated native Swift parsing from the long-lived WinUI process**: usage

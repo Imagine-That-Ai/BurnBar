@@ -102,6 +102,56 @@ public sealed class InMemoryComputerUseBrowserSettingsStore : IComputerUseBrowse
     public string BrowserCheckUrl { get; set; } = "https://example.com";
 }
 
+/// <summary>Live fleet safety inputs supplied by Remote Config composition.</summary>
+public interface IComputerUseFleetSafetySource
+{
+    bool IsResolved { get; }
+    bool KillSwitchActive { get; }
+    bool WatchEnabled { get; }
+    bool BrowserEnabled { get; }
+    bool SystemEnabled { get; }
+    bool PhoneControlEnabled { get; }
+    bool TrustModesEnabled { get; }
+}
+
+/// <summary>Injectable safety source. Defaults are intentionally fail closed.</summary>
+public sealed class DelegatingComputerUseFleetSafetySource : IComputerUseFleetSafetySource
+{
+    private readonly Func<bool> _isResolved;
+    private readonly Func<bool> _killSwitchActive;
+    private readonly Func<bool> _watchEnabled;
+    private readonly Func<bool> _browserEnabled;
+    private readonly Func<bool> _systemEnabled;
+    private readonly Func<bool> _phoneControlEnabled;
+    private readonly Func<bool> _trustModesEnabled;
+
+    public DelegatingComputerUseFleetSafetySource(
+        Func<bool>? isResolved = null,
+        Func<bool>? killSwitchActive = null,
+        Func<bool>? watchEnabled = null,
+        Func<bool>? browserEnabled = null,
+        Func<bool>? systemEnabled = null,
+        Func<bool>? phoneControlEnabled = null,
+        Func<bool>? trustModesEnabled = null)
+    {
+        _isResolved = isResolved ?? (() => false);
+        _killSwitchActive = killSwitchActive ?? (() => true);
+        _watchEnabled = watchEnabled ?? (() => false);
+        _browserEnabled = browserEnabled ?? (() => false);
+        _systemEnabled = systemEnabled ?? (() => false);
+        _phoneControlEnabled = phoneControlEnabled ?? (() => false);
+        _trustModesEnabled = trustModesEnabled ?? (() => false);
+    }
+
+    public bool IsResolved => _isResolved();
+    public bool KillSwitchActive => _killSwitchActive();
+    public bool WatchEnabled => _watchEnabled();
+    public bool BrowserEnabled => _browserEnabled();
+    public bool SystemEnabled => _systemEnabled();
+    public bool PhoneControlEnabled => _phoneControlEnabled();
+    public bool TrustModesEnabled => _trustModesEnabled();
+}
+
 /// <summary>Backs the Computer Use tab (readiness, policy trust-mode, and the audit-chain console).</summary>
 public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
 {
@@ -110,12 +160,14 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
     private readonly IComputerUsePermissionsStore _permissions;
     private readonly IComputerUseBrowserSettingsStore _browserSettings;
     private readonly IComputerUseBrowserService _browser;
+    private readonly IComputerUseFleetSafetySource _fleetSafety;
     private readonly Func<DateTimeOffset> _now;
 
     private ComputerUseSettingsSection _section = ComputerUseSettingsSection.Setup;
     private bool _accessibilityTrusted;
     private ComputerUseTrustMode _liveTrustMode = ComputerUseTrustMode.Manual;
     private bool _isSessionActive;
+    private ComputerUseMode _selectedMode = ComputerUseMode.Browser;
     private DateTimeOffset? _sessionStartedAt;
 
     private string _auditSessionId = string.Empty;
@@ -133,6 +185,7 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
         IComputerUsePermissionsStore? permissions = null,
         IComputerUseBrowserSettingsStore? browserSettings = null,
         IComputerUseBrowserService? browser = null,
+        IComputerUseFleetSafetySource? fleetSafety = null,
         Func<DateTimeOffset>? now = null)
     {
         _accessibility = accessibility ?? new StaticAccessibilityProbe(false);
@@ -140,6 +193,7 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
         _permissions = permissions ?? new InMemoryComputerUsePermissionsStore();
         _browserSettings = browserSettings ?? new InMemoryComputerUseBrowserSettingsStore();
         _browser = browser ?? DisabledComputerUseBrowserService.Instance;
+        _fleetSafety = fleetSafety ?? new DelegatingComputerUseFleetSafetySource();
         _browserCheckUrl = _browserSettings.BrowserCheckUrl;
         _now = now ?? (() => DateTimeOffset.UtcNow);
         RefreshReadiness();
@@ -156,11 +210,33 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
     public bool AccessibilityTrusted
     {
         get => _accessibilityTrusted;
-        private set { if (Set(ref _accessibilityTrusted, value)) { OnPropertyChanged(nameof(IsReady)); } }
+        private set
+        {
+            if (Set(ref _accessibilityTrusted, value))
+            {
+                OnPropertyChanged(nameof(IsReady));
+                OnPropertyChanged(nameof(CanStartSession));
+            }
+        }
     }
 
     /// <summary>Whether the tab considers Computer Use ready to run on this machine.</summary>
-    public bool IsReady => _accessibilityTrusted;
+    public bool IsReady => _accessibilityTrusted && IsSelectedModeFleetEnabled;
+
+    public bool RuntimeSafetyResolved => _fleetSafety.IsResolved;
+
+    public bool FleetKillSwitchActive => !_fleetSafety.IsResolved || _fleetSafety.KillSwitchActive;
+
+    public bool IsSelectedModeFleetEnabled =>
+        _fleetSafety.IsResolved
+        && !_fleetSafety.KillSwitchActive
+        && (SelectedMode switch
+        {
+            ComputerUseMode.AgentWatch => _fleetSafety.WatchEnabled,
+            ComputerUseMode.Browser => _fleetSafety.BrowserEnabled,
+            ComputerUseMode.System => _fleetSafety.SystemEnabled,
+            _ => false,
+        });
 
     /// <summary>Whether the permissions onboarding has been completed at least once.</summary>
     public bool PermissionsOnboardingCompleted => _permissions.OnboardingCompleted;
@@ -205,14 +281,21 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
     }
 
     public bool CanRunBrowserCheck =>
-        _browser.IsAvailable && !IsBrowserCheckRunning && IsSafeBrowserCheckUrl(BrowserCheckUrl);
+        _fleetSafety.IsResolved
+        && !_fleetSafety.KillSwitchActive
+        && _fleetSafety.BrowserEnabled
+        && _browser.IsAvailable
+        && !IsBrowserCheckRunning
+        && IsSafeBrowserCheckUrl(BrowserCheckUrl);
 
     public async Task RunBrowserCheck()
     {
         if (!CanRunBrowserCheck)
         {
             BrowserCheckStatus = _browser.IsAvailable
-                ? "Enter a public HTTP or HTTPS URL."
+                ? !_fleetSafety.IsResolved || _fleetSafety.KillSwitchActive || !_fleetSafety.BrowserEnabled
+                    ? "Browser Computer Use is disabled by fleet safety policy."
+                    : "Enter a public HTTP or HTTPS URL."
                 : _browser.RuntimeStatus;
             return;
         }
@@ -248,7 +331,14 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
     public ComputerUseTrustMode LiveTrustMode
     {
         get => _liveTrustMode;
-        set => Set(ref _liveTrustMode, value);
+        set
+        {
+            if (value != ComputerUseTrustMode.Manual && !_fleetSafety.TrustModesEnabled)
+            {
+                throw new InvalidOperationException("Fleet safety policy has not enabled elevated trust modes.");
+            }
+            Set(ref _liveTrustMode, value);
+        }
     }
 
     /// <summary>The available approval granularities.</summary>
@@ -258,6 +348,20 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
     /// <summary>The available run modes (Agent Watch / Browser / System).</summary>
     public IReadOnlyList<ComputerUseMode> ModeChoices { get; } = Enum.GetValues<ComputerUseMode>();
 
+    public ComputerUseMode SelectedMode
+    {
+        get => _selectedMode;
+        set
+        {
+            if (Set(ref _selectedMode, value))
+            {
+                OnPropertyChanged(nameof(IsSelectedModeFleetEnabled));
+                OnPropertyChanged(nameof(IsReady));
+                OnPropertyChanged(nameof(CanStartSession));
+            }
+        }
+    }
+
     /// <summary>The built-in protected targets the policy always denies (core deny registry).</summary>
     public IReadOnlyList<ScopeRule> BuiltInDenyRules => DenyRegistry.BuiltInRules;
 
@@ -265,11 +369,20 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
     public bool IsSessionActive
     {
         get => _isSessionActive;
-        private set { if (Set(ref _isSessionActive, value)) { OnPropertyChanged(nameof(SessionStartedAt)); } }
+        private set
+        {
+            if (Set(ref _isSessionActive, value))
+            {
+                OnPropertyChanged(nameof(SessionStartedAt));
+                OnPropertyChanged(nameof(CanStartSession));
+            }
+        }
     }
 
     /// <summary>When the active session started (null when idle).</summary>
     public DateTimeOffset? SessionStartedAt => _sessionStartedAt;
+
+    public bool CanStartSession => IsReady && !IsSessionActive;
 
     /// <summary>Start a Computer Use session (records the start time from the injected clock).</summary>
     public void StartSession()
@@ -277,6 +390,10 @@ public sealed class ComputerUseSettingsViewModel : ObservableSettingsViewModel
         if (_isSessionActive)
         {
             return;
+        }
+        if (!IsReady)
+        {
+            throw new InvalidOperationException("Computer Use is blocked by permissions or fleet safety policy.");
         }
 
         _sessionStartedAt = _now();

@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,9 +16,21 @@ import { spawnSync } from "node:child_process";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(scriptDir, "..", "..");
 const gate = join(scriptDir, "verify-staging-functions-deploy-boundary.mjs");
-const realWorkflow = join(repoRoot, ".github", "workflows", "deploy-staging.yml");
-const fixtureRoot = mkdtempSync(join(tmpdir(), "openburnbar-staging-boundary-"));
-const fixtureWorkflow = join(fixtureRoot, ".github", "workflows", "deploy-staging.yml");
+const realWorkflow = join(
+  repoRoot,
+  ".github",
+  "workflows",
+  "deploy-staging.yml",
+);
+const fixtureRoot = mkdtempSync(
+  join(tmpdir(), "openburnbar-staging-boundary-"),
+);
+const fixtureWorkflow = join(
+  fixtureRoot,
+  ".github",
+  "workflows",
+  "deploy-staging.yml",
+);
 
 mkdirSync(dirname(fixtureWorkflow), { recursive: true });
 cpSync(realWorkflow, fixtureWorkflow);
@@ -27,7 +46,9 @@ function runGate() {
 function expectPass(label) {
   const result = runGate();
   if (result.status !== 0) {
-    throw new Error(`${label}: expected PASS\n${result.stdout}${result.stderr}`);
+    throw new Error(
+      `${label}: expected PASS\n${result.stdout}${result.stderr}`,
+    );
   }
 }
 
@@ -60,6 +81,27 @@ try {
       'deploy_scope="${{ github.event.inputs.function_targets }}"',
     ),
   );
+  expectFailure("missing scoped entrypoint", (source) =>
+    source.replace(
+      `          node scripts/ci/prepare-scoped-functions-deploy.mjs \\
+            --targets "$FUNCTION_TARGETS" \\
+            --functions-dir functions
+`,
+      "",
+    ),
+  );
+  expectFailure("scoping after auth", (source) => {
+    const command = `          node scripts/ci/prepare-scoped-functions-deploy.mjs \\
+            --targets "$FUNCTION_TARGETS" \\
+            --functions-dir functions
+`;
+    return source
+      .replace(command, "")
+      .replace(
+        "      - name: Deploy Cloud Functions (staging)\n",
+        `${command}      - name: Deploy Cloud Functions (staging)\n`,
+      );
+  });
   console.log("PASS: staging Functions deploy boundary self-test.");
 } finally {
   rmSync(fixtureRoot, { recursive: true, force: true });

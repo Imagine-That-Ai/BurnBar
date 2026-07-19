@@ -8,6 +8,19 @@ namespace OpenBurnBar.App.Settings.ViewModels.Tests;
 public sealed class MercuryMediaSettingsViewModelTests
 {
     [Fact]
+    public void FleetAwareSourceTracksLiveKillSwitch()
+    {
+        bool killed = true;
+        var source = new FleetAwareMercuryMediaCapabilitySource(
+            () => killed,
+            new StaticMercuryMediaCapabilitySource(captureRuntimeSupported: true));
+        Assert.True(source.KillSwitchActive);
+
+        killed = false;
+        Assert.False(source.KillSwitchActive);
+    }
+
+    [Fact]
     public void DefaultSourceFailsClosedWithoutEntitlement()
     {
         var vm = new MercuryMediaSettingsViewModel(

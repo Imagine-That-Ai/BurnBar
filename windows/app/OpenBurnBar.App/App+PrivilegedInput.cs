@@ -104,7 +104,10 @@ public partial class App
         try
         {
             PrivilegedInputResponse response = await client.HealthAsync(500).ConfigureAwait(false);
-            return response.Ok;
+            // A kill-switch denial proves the authenticated broker is alive;
+            // it is deliberately not ready to dispatch until the user clears
+            // the local panic and a fresh remote lease is present.
+            return response.Ok || string.Equals(response.Detail, "kill_switch", StringComparison.Ordinal);
         }
         catch (Exception error) when (error is IOException or InvalidOperationException
             or OperationCanceledException or TimeoutException)
