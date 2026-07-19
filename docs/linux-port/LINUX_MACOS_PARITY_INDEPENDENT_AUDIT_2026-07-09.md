@@ -6,8 +6,8 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh; `465431d0fc` hardens startup forwarding; and `7ac2e021c9` makes Browser Computer Use capability checks fail closed. Focused payload coverage is green and Rust is 126/126. |
-| Latest VM proof | The exact `e7613adf8d` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-current-e7613adf8d-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e7613adf8d-postinstall-2026-07-19.json). Daemon/CLI health is green and a clean unlocked GNOME launch renders the first-run setup surface and Fluid Aurora 2D fallback. Two captures two seconds apart differ in 894,899 pixels. |
+| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh; `465431d0fc` hardens startup forwarding; `7ac2e021c9` makes Browser Computer Use capability checks fail closed; `c0a725447d` adds a trusted embedded autostart fallback; and `447abb0564` fences stale Mercury capability responses. Focused payload coverage is green and Rust is 127/127. |
+| Latest VM proof | The exact `447abb0564` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-current-447abb0564-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-447abb0564-postinstall-2026-07-19.json). Daemon/CLI health is green and a clean unlocked GNOME launch renders the first-run setup surface and Fluid Aurora 2D fallback. Two captures two seconds apart differ in 932,271 pixels. |
 | Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
@@ -15,8 +15,8 @@
 ## Current Source Checkpoint — 2026-07-19
 
 The current integration branch includes source changes through
-`7ac2e021c9` and `465431d0fc`, with the prior exact-head VM receipt bound to
-  `e4f3109ca8`, while the latest exact-head install is `e7613adf8d`. This is a source and build
+`447abb0564` and `c0a725447d`, with the latest exact-head install bound to
+`447abb0564`. This is a source and build
 checkpoint, not a promotion claim:
 
 - `1130524331` immediately reveals a visible 2D backdrop when a WebGL context
@@ -43,14 +43,18 @@ checkpoint, not a promotion claim:
   while the primary Unix listener is still starting, and `7ac2e021c9` disables
   native Browser Computer Use unless the runtime capability manifest explicitly
   reports it available; missing or rejected capability probes now leave the
-  action controls disabled.
-- Source gates pass: 89 frontend files / 842 tests, TypeScript, production
-  bundle verification, Tauri Rust 126/126, package-payload contract checks
+  action controls disabled. `c0a725447d` falls back to the trusted embedded
+  autostart desktop entry when the system-wide entry is absent, while preserving
+  permission/read failures. `447abb0564` fences delayed Mercury capability
+  responses by probe generation across bridge replacement, unmount, and manual
+  recheck.
+- Source gates pass: 89 frontend files / 843 tests, TypeScript, production
+  bundle verification, Tauri Rust 127/127, package-payload contract checks
   (2 pass, 2 historical skips), and product validators 12/12.
 - The ARM64 VM validated the supported Swift-less staged-payload path with
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`; the exact implementation package
   is installed and captured separately in
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-e7613adf8d-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e7613adf8d-postinstall-2026-07-19.json);
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-447abb0564-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-447abb0564-postinstall-2026-07-19.json);
   it remains unsigned and non-certifying. The initial blank/locked-era process
   was superseded by the clean unlocked exact-head launch recorded in the new
   receipt.
@@ -61,6 +65,12 @@ the hosted architecture/compositor matrix, production cloud configuration,
 physical-iPad enrollment and cross-device Computer Use, two-device Mercury
 flows, live SmartHub/IME/keyring/assistive-tech proofs, and same-commit
 macOS/Linux differential evidence.
+
+PR #1691 currently has one external CI blocker: the trusted Domain Core
+deletion guard reports that the candidate has no legacy-deletion ledger to
+anchor validation. The candidate branch predates the current Domain Core
+source roots and cannot be made green with a fabricated Linux-only ledger; a
+clean mainline/release-head integration is required before merge.
 
 The focused physical-iPad approval run at the current checkout passed **44/44
 tests** with xcodebuild exit 0. Its exact receipt is
