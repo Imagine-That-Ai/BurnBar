@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh. Focused payload coverage is green and Rust is 125/125. |
+| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh; `465431d0fc` hardens startup forwarding; and `7ac2e021c9` makes Browser Computer Use capability checks fail closed. Focused payload coverage is green and Rust is 126/126. |
 | Latest VM proof | The exact `e4f3109ca8` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e4f3109ca8-postinstall-2026-07-19.json). Daemon/CLI health is green and a clean unlocked GNOME launch renders the first-run setup surface and Fluid Aurora 2D fallback. Two captures two seconds apart differ in 971,972 pixels. |
 | Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
@@ -14,8 +14,9 @@
 
 ## Current Source Checkpoint — 2026-07-19
 
-The current integration head is `e4f3109ca8` (docs receipt), with source
-changes through `c6bf8f2881` and `e6c32ec2b2`. This is a source and build
+The current integration branch includes source changes through
+`7ac2e021c9` and `465431d0fc`, with the prior exact-head VM receipt bound to
+`e4f3109ca8`. This is a source and build
 checkpoint, not a promotion claim:
 
 - `1130524331` immediately reveals a visible 2D backdrop when a WebGL context
@@ -38,9 +39,13 @@ checkpoint, not a promotion claim:
   restarts, and `872074af3a` cancels typed SmartHub work when the shell bridge
   disappears. `e6c32ec2b2` repairs stale custom-model provider selection after
   a catalog refresh. `c6bf8f2881` stabilizes the asynchronous chat pop-out
-  status test.
-- Source gates pass: 89 frontend files / 840 tests, TypeScript, production
-  bundle verification, Tauri Rust 125/125, package-payload contract checks
+  status test. `465431d0fc` extends owner-checked single-instance forwarding
+  while the primary Unix listener is still starting, and `7ac2e021c9` disables
+  native Browser Computer Use unless the runtime capability manifest explicitly
+  reports it available; missing or rejected capability probes now leave the
+  action controls disabled.
+- Source gates pass: 89 frontend files / 842 tests, TypeScript, production
+  bundle verification, Tauri Rust 126/126, package-payload contract checks
   (2 pass, 2 historical skips), and product validators 12/12.
 - The ARM64 VM validated the supported Swift-less staged-payload path with
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`; the exact implementation package
