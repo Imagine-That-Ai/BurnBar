@@ -7,7 +7,12 @@ import { useIntegrationsStore } from '../../state/integrationsStore.js';
 import { useSettingsWiringStore } from '../../state/settingsWiringStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
-import type { LinuxPrivacyRetentionApplyResult, LinuxPrivacyRetentionStatus, LinuxShellBridge } from '../../tauriBridge.js';
+import type {
+  LinuxPrivacyRetentionApplyResult,
+  LinuxPrivacyRetentionStatus,
+  LinuxShellBridge,
+  MercuryMediaStatus
+} from '../../tauriBridge.js';
 import { SETTINGS_CONFIG_REQUEST_TIMEOUT_MS, SETTINGS_CONFIG_TIMEOUT_MESSAGE, SettingsSurface } from './SettingsSurface.js';
 import { SETTINGS_TAB_STORAGE_KEY } from './settingsTabs.js';
 
@@ -717,6 +722,53 @@ describe('SettingsSurface', () => {
     expect(screen.getByText(/1 paired device reported/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Recheck' }));
     await waitFor(() => expect(mediaStatus).toHaveBeenCalledTimes(2));
+  });
+
+  it('does not let a stale Media capability response overwrite a newer probe', async () => {
+    let resolveFirst: ((status: MercuryMediaStatus) => void) | undefined;
+    let resolveSecond: ((status: MercuryMediaStatus) => void) | undefined;
+    const firstMediaStatus = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }));
+    const secondMediaStatus = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+    useShellStore.setState({ bridge: bridge({ mediaStatus: firstMediaStatus }), fixtureMode: false });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^Media & Sharing/i }));
+    await waitFor(() => expect(firstMediaStatus).toHaveBeenCalledTimes(1));
+
+    // A daemon reconnect/bridge replacement starts a newer probe while the
+    // previous request is still in flight.
+    act(() => useShellStore.setState({ bridge: bridge({ mediaStatus: secondMediaStatus }) }));
+    await waitFor(() => expect(secondMediaStatus).toHaveBeenCalledTimes(1));
+
+    resolveSecond?.({
+      capabilityAvailable: true,
+      pairedDevices: [
+        { id: 'ipad-1', name: 'iPad', platform: 'ios', isOnline: true, lastSeenAt: new Date().toISOString(), capabilities: [] },
+        { id: 'ipad-2', name: 'iPad backup', platform: 'ios', isOnline: true, lastSeenAt: new Date().toISOString(), capabilities: [] }
+      ],
+      viewerCapability: {
+        available: true,
+        renderer: 'media-gst',
+        featureEnabled: true,
+        canDecodeVp9: true,
+        hasVideoSink: true,
+        status: 'available'
+      }
+    });
+    expect(await screen.findByText(/2 paired devices reported/i)).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Available' })).toBeTruthy();
+
+    resolveFirst?.({
+      capabilityAvailable: false,
+      pairedDevices: [],
+      reason: 'stale capability response'
+    });
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/2 paired devices reported/i)).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Available' })).toBeTruthy();
+    expect(screen.queryByText(/stale capability response/i)).toBeNull();
   });
 
   it('surfaces daemon-owned account posture while keeping unsupported device mutations explicit', async () => {

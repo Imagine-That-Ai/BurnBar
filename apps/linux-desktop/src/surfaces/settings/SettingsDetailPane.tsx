@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AccountStatus,
   ConfigSnapshot,
@@ -1536,14 +1536,15 @@ function mediaProbeFromStatus(status: MercuryMediaStatus): MediaSettingsProbe {
 function MediaDetail() {
   const bridge = useShellStore((state) => state.bridge);
   const fixtureMode = useShellStore((state) => state.fixtureMode);
+  const probeRequestID = useRef(0);
   const [probe, setProbe] = useState<MediaSettingsProbe>({
     state: 'loading',
     detail: 'Checking Mercury media capability…',
     pairedDevices: 0
   });
 
-  useEffect(() => {
-    let cancelled = false;
+  const runProbe = useCallback(() => {
+    const requestID = ++probeRequestID.current;
     setProbe({
       state: 'loading',
       detail: 'Checking Mercury media capability…',
@@ -1555,9 +1556,7 @@ function MediaDetail() {
         detail: 'Fixture mode: media capability-absent (matches live Linux honesty).',
         pairedDevices: 0
       });
-      return () => {
-        cancelled = true;
-      };
+      return;
     }
     if (!bridge?.mediaStatus) {
       setProbe({
@@ -1565,16 +1564,14 @@ function MediaDetail() {
         detail: 'Packaged shell did not expose the Mercury media status probe.',
         pairedDevices: 0
       });
-      return () => {
-        cancelled = true;
-      };
+      return;
     }
     void bridge.mediaStatus()
       .then((status) => {
-        if (!cancelled) setProbe(mediaProbeFromStatus(status));
+        if (requestID === probeRequestID.current) setProbe(mediaProbeFromStatus(status));
       })
       .catch((reason: unknown) => {
-        if (!cancelled) {
+        if (requestID === probeRequestID.current) {
           setProbe({
             state: 'unavailable',
             detail: reason instanceof Error ? reason.message : 'Mercury media status request failed.',
@@ -1582,41 +1579,19 @@ function MediaDetail() {
           });
         }
       });
-    return () => {
-      cancelled = true;
-    };
   }, [bridge, fixtureMode]);
 
-  const reload = () => {
-    // Re-run the effect through the existing bridge identity without adding a
-    // second media RPC wrapper to the settings surface.
-    setProbe((current) => ({ ...current, state: 'loading', detail: 'Checking Mercury media capability…' }));
-    if (fixtureMode) {
-      setProbe({
-        state: 'unavailable',
-        detail: 'Fixture mode: media capability-absent (matches live Linux honesty).',
-        pairedDevices: 0
-      });
-      return;
-    }
-    if (!bridge?.mediaStatus) {
-      setProbe({
-        state: 'unavailable',
-        detail: 'Packaged shell did not expose the Mercury media status probe.',
-        pairedDevices: 0
-      });
-      return;
-    }
-    void bridge.mediaStatus()
-      .then((status) => setProbe(mediaProbeFromStatus(status)))
-      .catch((reason: unknown) => {
-        setProbe({
-          state: 'unavailable',
-          detail: reason instanceof Error ? reason.message : 'Mercury media status request failed.',
-          pairedDevices: 0
-        });
-      });
-  };
+  useEffect(() => {
+    runProbe();
+    return () => {
+      // Invalidate an in-flight response when the bridge/session changes or
+      // this detail pane unmounts. A stale probe must never replace a newer
+      // capability result.
+      probeRequestID.current += 1;
+    };
+  }, [runProbe]);
+
+  const reload = runProbe;
 
   const label = probe.state === 'loading'
     ? 'Checking…'
