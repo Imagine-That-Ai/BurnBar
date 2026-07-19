@@ -14,7 +14,9 @@ export const archPkgbuildCommonSources = Object.freeze([
   ['PLAYWRIGHT_BRIDGE', 'OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js'],
   ['BROWSER_RUNTIME_PROBE', 'packaging/linux/openburnbar-browser-runtime-probe'],
   ['BROWSER_RUNTIME_REQUIREMENTS', 'packaging/linux/browser-runtime-requirements.json'],
-  ['RELEASE_PUBLIC_KEY', 'packaging/linux/openburnbar-linux-ed25519.pub.pem']
+  ['RELEASE_PUBLIC_KEY', 'packaging/linux/openburnbar-linux-ed25519.pub.pem'],
+  ['CLI_MIGRATION', 'packaging/linux/openburnbar-cli-migrate.sh'],
+  ['CLI_MIGRATION_HOOK', 'packaging/linux/aur/openburnbar-cli-migrate.hook']
 ]);
 
 export const archPkgbuildArchitectures = Object.freeze(['x86_64', 'aarch64']);

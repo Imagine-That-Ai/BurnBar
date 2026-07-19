@@ -57,6 +57,14 @@ test('AUR recipe pins every Browser Computer Use package input to the release ta
   assert.ok(sums.includes('REPLACE_WITH_PLAYWRIGHT_BRIDGE_SHA256'));
   assert.ok(sums.includes('REPLACE_WITH_BROWSER_RUNTIME_PROBE_SHA256'));
   assert.ok(sums.includes('REPLACE_WITH_BROWSER_RUNTIME_REQUIREMENTS_SHA256'));
+  assert.ok(sources.includes(
+    'openburnbar-cli-migrate::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-vREPLACE_WITH_RELEASE_VERSION/packaging/linux/openburnbar-cli-migrate.sh'
+  ));
+  assert.ok(sources.includes(
+    'openburnbar-cli-migrate.hook::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-vREPLACE_WITH_RELEASE_VERSION/packaging/linux/aur/openburnbar-cli-migrate.hook'
+  ));
+  assert.ok(sums.includes('REPLACE_WITH_CLI_MIGRATION_SHA256'));
+  assert.ok(sums.includes('REPLACE_WITH_CLI_MIGRATION_HOOK_SHA256'));
 });
 
 test('AUR package staging installs canonical Browser Computer Use resources with fixed modes', () => {
@@ -123,6 +131,14 @@ test('AUR package staging installs canonical Browser Computer Use resources with
     path.join(repoRoot, 'packaging/linux/openburnbar-linux-ed25519.pub.pem'),
     path.join(srcdir, 'release-ed25519.pub.pem')
   );
+  fs.copyFileSync(
+    path.join(repoRoot, 'packaging/linux/openburnbar-cli-migrate.sh'),
+    path.join(srcdir, 'openburnbar-cli-migrate')
+  );
+  fs.copyFileSync(
+    path.join(repoRoot, 'packaging/linux/aur/openburnbar-cli-migrate.hook'),
+    path.join(srcdir, 'openburnbar-cli-migrate.hook')
+  );
 
   try {
     const result = spawnSync('bash', ['-c', [
@@ -152,6 +168,8 @@ test('AUR package staging installs canonical Browser Computer Use resources with
       ,['openburnbar-linux-desktop', ['usr/bin/openburnbar-linux-desktop', 0o755]]
       ,['openburnbar-autostart.desktop', ['etc/xdg/autostart/openburnbar.desktop', 0o644]]
       ,['openburnbar-icon.png', ['usr/share/icons/hicolor/256x256/apps/dev.openburnbar.OpenBurnBar.png', 0o644]]
+      ,['openburnbar-cli-migrate', ['usr/libexec/openburnbar-cli-migrate', 0o755]]
+      ,['openburnbar-cli-migrate.hook', ['usr/share/libalpm/hooks/openburnbar-cli-migrate.hook', 0o644]]
     ]);
     for (const [alias, [relativePath, mode]] of installed) {
       const output = path.join(pkgdir, relativePath);

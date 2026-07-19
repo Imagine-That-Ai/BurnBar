@@ -208,7 +208,9 @@ function sourceInputs({ version, architecture, manifestBytes, signatureBytes }) 
     ['PLAYWRIGHT_BRIDGE', 'openburnbar-playwright-bridge.js'],
     ['BROWSER_RUNTIME_PROBE', 'openburnbar-browser-runtime-probe'],
     ['BROWSER_RUNTIME_REQUIREMENTS', 'browser-runtime-requirements.json'],
-    ['RELEASE_PUBLIC_KEY', 'release-ed25519.pub.pem']
+    ['RELEASE_PUBLIC_KEY', 'release-ed25519.pub.pem'],
+    ['CLI_MIGRATION', 'openburnbar-cli-migrate'],
+    ['CLI_MIGRATION_HOOK', 'openburnbar-cli-migrate.hook']
   ]);
   return new Map([
     [`APPIMAGE_${suffix}`, [`OpenBurnBar_${version}_${appImageArchitecture}.AppImage`, appImage]],

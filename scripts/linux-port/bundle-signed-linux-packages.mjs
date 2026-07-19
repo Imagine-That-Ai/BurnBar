@@ -151,6 +151,8 @@ function bundleRpmFromDeb(debArtifact) {
       '%files',
       '%defattr(-,root,root,-)',
       ...entries,
+      '%post',
+      '/usr/libexec/openburnbar-cli-migrate',
       ''
     ].join('\n'));
 

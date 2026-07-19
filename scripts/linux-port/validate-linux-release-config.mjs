@@ -82,6 +82,7 @@ const packageSources = {
   '/usr/share/openburnbar/attestation/installed-manifest.json': 'target/openburnbar-package-payload/attestation/installed-manifest.json',
   '/usr/share/openburnbar/attestation/installed-manifest.json.sig': 'target/openburnbar-package-payload/attestation/installed-manifest.json.sig',
   '/usr/share/openburnbar/attestation/release-ed25519.pub.pem': 'target/openburnbar-package-payload/attestation/release-ed25519.pub.pem',
+  '/usr/libexec/openburnbar-cli-migrate': '../../../packaging/linux/openburnbar-cli-migrate.sh',
   '/etc/xdg/autostart/openburnbar.desktop': '../../../packaging/linux/autostart/openburnbar.desktop'
 };
 for (const packageType of ['deb', 'rpm']) {
@@ -90,6 +91,9 @@ for (const packageType of ['deb', 'rpm']) {
     if (files[destination] !== source) {
       failures.push(`${packageType} must package ${source} at ${destination}`);
     }
+  }
+  if (tauri.bundle?.linux?.[packageType]?.postInstallScript !== '../../../packaging/linux/openburnbar-cli-migrate.sh') {
+    failures.push(`${packageType} must run the canonical CLI migration post-install script`);
   }
 }
 const appImageFiles = tauri.bundle?.linux?.appimage?.files ?? {};

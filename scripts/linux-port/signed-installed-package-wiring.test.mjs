@@ -35,11 +35,13 @@ test('deb, rpm, and Arch package exact installed attestation subjects', () => {
     '/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources': 'target/openburnbar-package-payload/OpenBurnBarCore_OpenBurnBarCore.resources',
     '/usr/share/openburnbar/attestation/installed-manifest.json': 'target/openburnbar-package-payload/attestation/installed-manifest.json',
     '/usr/share/openburnbar/attestation/installed-manifest.json.sig': 'target/openburnbar-package-payload/attestation/installed-manifest.json.sig',
-    '/usr/share/openburnbar/attestation/release-ed25519.pub.pem': 'target/openburnbar-package-payload/attestation/release-ed25519.pub.pem'
+    '/usr/share/openburnbar/attestation/release-ed25519.pub.pem': 'target/openburnbar-package-payload/attestation/release-ed25519.pub.pem',
+    '/usr/libexec/openburnbar-cli-migrate': '../../../packaging/linux/openburnbar-cli-migrate.sh'
   };
   for (const format of ['deb', 'rpm']) {
     const files = config.bundle.linux[format].files;
     for (const [destination, source] of Object.entries(expected)) assert.equal(files[destination], source);
+    assert.equal(config.bundle.linux[format].postInstallScript, '../../../packaging/linux/openburnbar-cli-migrate.sh');
   }
   const pkgbuild = read('packaging/linux/aur/PKGBUILD.in');
   for (const destination of Object.keys(expected)) {
@@ -118,6 +120,7 @@ test('RPM release packaging is rebuilt from the validated DEB filesystem', () =>
   );
   assert.match(source, /run\('rpmbuild'/u);
   assert.match(source, /Requires: libsecret/u);
+  assert.match(source, /%post[\s\S]*\/usr\/libexec\/openburnbar-cli-migrate/u);
   assert.match(source, /Tauri's RPM bundler can emit an archive/u);
   assert.doesNotMatch(source, /bundleFormat\('rpm'\)/u);
 });

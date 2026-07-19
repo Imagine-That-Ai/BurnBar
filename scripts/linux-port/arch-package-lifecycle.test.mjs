@@ -41,7 +41,8 @@ const checksumSlots = [
   'DESKTOP', 'SAFE_MODE_DESKTOP', 'AUTOSTART_DESKTOP', 'SERVICE', 'LAUNCH',
   'DESKTOP_LAUNCHER', 'ICON',
   'COMPUTER_USE_POLKIT_POLICY', 'PLAYWRIGHT_BRIDGE', 'BROWSER_RUNTIME_PROBE',
-  'BROWSER_RUNTIME_REQUIREMENTS', 'RELEASE_PUBLIC_KEY'
+  'BROWSER_RUNTIME_REQUIREMENTS', 'RELEASE_PUBLIC_KEY', 'CLI_MIGRATION',
+  'CLI_MIGRATION_HOOK'
 ];
 
 test('Arch package selection removes only the known debug companion', (t) => {
@@ -408,7 +409,7 @@ test('release assembly renders a two-architecture PKGBUILD from published assets
     status: 'operator-required',
     note: 'Release assets are consumable directly; publishing to the AUR requires a separate operator action.'
   });
-  assert.equal(metadata.sources.length, 20);
+  assert.equal(metadata.sources.length, 22);
 });
 
 function record(installedPath, value, mode) {

@@ -22,6 +22,8 @@ source=(
   "openburnbar-browser-runtime-probe::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/openburnbar-browser-runtime-probe"
   "browser-runtime-requirements.json::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/browser-runtime-requirements.json"
   "release-ed25519.pub.pem::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/openburnbar-linux-ed25519.pub.pem"
+  "openburnbar-cli-migrate::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/openburnbar-cli-migrate.sh"
+  "openburnbar-cli-migrate.hook::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar-cli-migrate.hook"
 )
 sha256sums=(
   "REPLACE_WITH_DESKTOP_SHA256"
@@ -36,6 +38,8 @@ sha256sums=(
   "REPLACE_WITH_BROWSER_RUNTIME_PROBE_SHA256"
   "REPLACE_WITH_BROWSER_RUNTIME_REQUIREMENTS_SHA256"
   "REPLACE_WITH_RELEASE_PUBLIC_KEY_SHA256"
+  "REPLACE_WITH_CLI_MIGRATION_SHA256"
+  "REPLACE_WITH_CLI_MIGRATION_HOOK_SHA256"
 )
 
 source_x86_64=(
@@ -175,6 +179,8 @@ package() {
   cp -a "${srcdir}/squashfs-root/usr/lib/openburnbar/native" "${pkgdir}/usr/lib/openburnbar/"
   cp -a "${srcdir}/squashfs-root/usr/lib/openburnbar/swift" "${pkgdir}/usr/lib/openburnbar/"
   install -Dm755 "${srcdir}/openburnbar-daemon-launch" "${pkgdir}/usr/libexec/openburnbar-daemon-launch"
+  install -Dm755 "${srcdir}/openburnbar-cli-migrate" "${pkgdir}/usr/libexec/openburnbar-cli-migrate"
+  install -Dm644 "${srcdir}/openburnbar-cli-migrate.hook" "${pkgdir}/usr/share/libalpm/hooks/openburnbar-cli-migrate.hook"
   install -Dm644 "${srcdir}/openburnbar.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop"
   install -Dm644 "${srcdir}/openburnbar-safe-mode.desktop" "${pkgdir}/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop"
   install -Dm644 "${srcdir}/openburnbar-autostart.desktop" "${pkgdir}/etc/xdg/autostart/openburnbar.desktop"

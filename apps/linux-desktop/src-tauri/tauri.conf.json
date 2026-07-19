@@ -46,6 +46,7 @@
           "/usr/share/openburnbar/attestation/installed-manifest.json": "target/openburnbar-package-payload/attestation/installed-manifest.json",
           "/usr/share/openburnbar/attestation/installed-manifest.json.sig": "target/openburnbar-package-payload/attestation/installed-manifest.json.sig",
           "/usr/share/openburnbar/attestation/release-ed25519.pub.pem": "target/openburnbar-package-payload/attestation/release-ed25519.pub.pem",
+          "/usr/libexec/openburnbar-cli-migrate": "../../../packaging/linux/openburnbar-cli-migrate.sh",
           "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
           "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
@@ -53,7 +54,8 @@
           "/etc/xdg/autostart/openburnbar.desktop": "../../../packaging/linux/autostart/openburnbar.desktop",
           "/usr/share/doc/openburnbar/daemon.env.example": "../../../packaging/linux/daemon.env.example",
           "/usr/share/doc/openburnbar/systemd/custom-xdg.conf.example": "../../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
-        }
+        },
+        "postInstallScript": "../../../packaging/linux/openburnbar-cli-migrate.sh"
       },
       "rpm": {
         "depends": [
@@ -73,6 +75,7 @@
           "/usr/share/openburnbar/attestation/installed-manifest.json": "target/openburnbar-package-payload/attestation/installed-manifest.json",
           "/usr/share/openburnbar/attestation/installed-manifest.json.sig": "target/openburnbar-package-payload/attestation/installed-manifest.json.sig",
           "/usr/share/openburnbar/attestation/release-ed25519.pub.pem": "target/openburnbar-package-payload/attestation/release-ed25519.pub.pem",
+          "/usr/libexec/openburnbar-cli-migrate": "../../../packaging/linux/openburnbar-cli-migrate.sh",
           "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
           "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
@@ -80,7 +83,8 @@
           "/etc/xdg/autostart/openburnbar.desktop": "../../../packaging/linux/autostart/openburnbar.desktop",
           "/usr/share/doc/openburnbar/daemon.env.example": "../../../packaging/linux/daemon.env.example",
           "/usr/share/doc/openburnbar/systemd/custom-xdg.conf.example": "../../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
-        }
+        },
+        "postInstallScript": "../../../packaging/linux/openburnbar-cli-migrate.sh"
       },
       "appimage": {
         "files": {
