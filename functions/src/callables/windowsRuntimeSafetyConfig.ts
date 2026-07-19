@@ -23,7 +23,7 @@ const PARAMS = {
   mediaKillSwitch: "media_kill_switch",
 } as const;
 
-export type WindowsRuntimeSafetyConfig = {
+type WindowsRuntimeSafetyConfig = {
   schemaVersion: typeof SCHEMA_VERSION;
   fetchedAtEpochMillis: number;
   maxAgeSeconds: number;
@@ -39,7 +39,11 @@ export type WindowsRuntimeSafetyConfig = {
   mediaKillSwitch: boolean;
 };
 
-function secureBoolean(template: RemoteConfigTemplate, parameter: string, secureDefault: boolean): boolean {
+type RuntimeSafetyTemplate = {
+  parameters?: Record<string, { defaultValue?: unknown }>;
+};
+
+function secureBoolean(template: RuntimeSafetyTemplate, parameter: string, secureDefault: boolean): boolean {
   const raw = remoteConfigStringValue(template.parameters?.[parameter]?.defaultValue);
   if (raw === "true") return true;
   if (raw === "false") return false;
@@ -47,7 +51,7 @@ function secureBoolean(template: RemoteConfigTemplate, parameter: string, secure
 }
 
 export function decodeWindowsRuntimeSafetyConfig(
-  template: RemoteConfigTemplate,
+  template: RuntimeSafetyTemplate,
   nowEpochMillis: number,
 ): WindowsRuntimeSafetyConfig {
   return {

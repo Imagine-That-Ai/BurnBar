@@ -24,6 +24,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using OpenBurnBar.ComputerUse.Core.Gate;
@@ -185,7 +186,7 @@ public sealed class LayeredKillSwitchFlag : IKillSwitchFlag
             {
                 return _primary.IsActive || _interlocks.Any(static flag => flag.IsActive);
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            catch (Exception)
             {
                 return true;
             }
@@ -226,13 +227,17 @@ public sealed class RemoteSafetyLeaseKillSwitchFlag : IKillSwitchFlag
                 if (!File.Exists(_path)) return true;
                 string value = File.ReadAllText(_path).Trim();
                 if (!value.StartsWith(AllowPrefix, StringComparison.Ordinal)
-                    || !long.TryParse(value.AsSpan(AllowPrefix.Length), out long expiresAtMillis))
+                    || !long.TryParse(
+                        value.AsSpan(AllowPrefix.Length),
+                        NumberStyles.None,
+                        CultureInfo.InvariantCulture,
+                        out long expiresAtMillis))
                 {
                     return true;
                 }
                 return _timeProvider.GetUtcNow().ToUnixTimeMilliseconds() >= expiresAtMillis;
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            catch (Exception)
             {
                 return true;
             }
@@ -251,7 +256,7 @@ public sealed class RemoteSafetyLeaseKillSwitchFlag : IKillSwitchFlag
         {
             throw new ArgumentOutOfRangeException(nameof(expiresAt), "Remote safety leases must expire within five minutes.");
         }
-        Write(AllowPrefix + expiresAt.ToUnixTimeMilliseconds());
+        Write(AllowPrefix + expiresAt.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
     }
 
     private void Write(string value)

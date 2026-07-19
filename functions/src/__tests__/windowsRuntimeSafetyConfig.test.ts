@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { RemoteConfigTemplate } from "firebase-admin/remote-config";
 
 import {
   decodeWindowsRuntimeSafetyConfig,
@@ -7,11 +6,10 @@ import {
   readWindowsRuntimeSafetyConfig,
 } from "../callables/windowsRuntimeSafetyConfig.js";
 
-function template(values: Record<string, string>): RemoteConfigTemplate {
+function template(values: Record<string, string>): Parameters<typeof decodeWindowsRuntimeSafetyConfig>[0] {
   return {
     parameters: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, { defaultValue: { value } }])),
-    conditions: [],
-  } as unknown as RemoteConfigTemplate;
+  };
 }
 
 describe("Windows runtime safety config", () => {

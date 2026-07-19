@@ -26,6 +26,14 @@ public sealed class KillSwitchTests
     }
 
     [Fact]
+    public void LayeredFlag_UnexpectedInterlockFailureFailsClosed()
+    {
+        var layered = new LayeredKillSwitchFlag(new InMemoryKillSwitchFlag(), new ThrowingKillSwitchFlag());
+
+        Assert.True(layered.IsActive);
+    }
+
+    [Fact]
     public void FileFlag_TryActivateIfInactivePreservesExistingPanic()
     {
         string root = Path.Combine(Path.GetTempPath(), "openburnbar-kill-" + Guid.NewGuid().ToString("N"));
@@ -91,6 +99,15 @@ public sealed class KillSwitchTests
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    private sealed class ThrowingKillSwitchFlag : IKillSwitchFlag
+    {
+        public bool IsActive => throw new InvalidOperationException("interlock read failed");
+
+        public void Activate(string? reason = null) => throw new NotSupportedException();
+
+        public void Clear() => throw new NotSupportedException();
     }
 
     private static (KillSwitchStateMachine machine, InMemoryKillSwitchFlag flag, List<ComputerUsePanicSource> halts)

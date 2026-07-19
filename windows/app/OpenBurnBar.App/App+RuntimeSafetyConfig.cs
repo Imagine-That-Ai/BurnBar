@@ -151,7 +151,14 @@ public partial class App
         catch (Exception error)
         {
             AppDiagnostics.LogException("runtime-safety.exit-interlock", error);
-            ActivateDurableKillFlag("app_exit_remote_safety_failure");
+            try
+            {
+                ActivateDurableKillFlag("app_exit_remote_safety_failure");
+            }
+            catch (Exception durableError)
+            {
+                AppDiagnostics.LogException("runtime-safety.exit-interlock-durable", durableError);
+            }
         }
 
         WindowsRuntimeSafetyConfigMonitor? monitor = _runtimeSafetyMonitor;
