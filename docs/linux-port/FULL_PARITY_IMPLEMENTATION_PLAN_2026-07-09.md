@@ -29,11 +29,11 @@ proof and refuses paged or partial data. Focused Activity/bridge coverage is
 the preceding installed baseline in the UTM guest; its non-certifying receipt is
 `evidence/mission-002-reanchor/vm-e2e/current-c94e7b6113/health.json`.
 
-The current source hardening and installed candidate reach `5e0fc0e82` (with
+The current source hardening and installed candidate reach `b590d5a77d` (with
 the WebKit startup fallback from `6321897d4e`). The exact arm64 DEB was rebuilt
 from that commit and installed in the running Ubuntu guest; its non-certifying
 receipt is
-`evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/live-installed-receipt.json`.
+`evidence/mission-002-reanchor/vm-e2e/current-b590d5a77-media-settings-onboarding-arm64/live-installed-receipt.json`.
 Its release graph builds
 the daemon-owned `crates/openburnbar-media` library before Swift linking, so a
 signed release cannot silently ship the shell's GStreamer viewer without the
@@ -79,10 +79,13 @@ The current source slice adds a verified, capped Insights comparison workspace
 **28/28**; autostart Rust coverage is **4/4**, renderer/bridge coverage is
 **39/39**, and the Settings/accessibility slice is **32/32**. The exact-head
 package is now installed; live checks and limitations are recorded in
-`evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/`.
+`evidence/mission-002-reanchor/vm-e2e/current-b590d5a77-media-settings-onboarding-arm64/`.
 `2e609b4061` also hardens Mercury viewer lifecycle teardown by releasing the
 viewer lock before stopping GStreamer; the focused media lifecycle tests pass
-6/6 with `media-gst` and 5/5 without it.
+6/6 with `media-gst` and 5/5 without it. `d581da37b7` exposes daemon-backed
+Mercury capability state in Media & Sharing settings, and `47cbf2e2f0` makes
+onboarding fail closed if an ephemeral Secret Service/KWallet probe cannot be
+cleaned up; the focused onboarding suite passes 8/8 on Ubuntu.
 
 The installed Linux CLI parity fix is now on `d58b6a958f`: the Swift CLI
 resolves the canonical XDG daemon token file when no token environment override

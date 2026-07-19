@@ -5,14 +5,16 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- The latest parity hardening reaches `5e0fc0e82` (including the WebKit
+- The latest parity hardening and installed candidate reach `b590d5a77d` (including the WebKit
   startup fallback from `6321897d4e`). The running Ubuntu 24.04.4 GNOME/X11
   UTM guest now has an exact-head arm64 package rebuilt from that commit and
   installed; its non-certifying receipt is
-  [`evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/).
+  [`evidence/mission-002-reanchor/vm-e2e/current-b590d5a77-media-settings-onboarding-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-b590d5a77-media-settings-onboarding-arm64/).
   The receipt records daemon/desktop health, GStreamer, Secret Service, IBus,
   autostart packaging, and the current source-test gates. The package is
   unsigned and does not certify the seven-environment or cross-device matrix.
+  The earlier `5e0fc0e82` receipt remains a historical exact-head baseline at
+  [`evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/).
   The preceding media-gst shell receipt remains historical at
   [`evidence/mission-002-reanchor/vm-e2e/current-82b0fcf11e-media-gst-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-82b0fcf11e-media-gst-arm64/).
   The preceding media-gst receipt remains a historical baseline at
@@ -44,6 +46,10 @@ Current parity status as of 2026-07-19:
   decoder under the viewer lock and stopping GStreamer outside the lock. The
   VM media tests pass **6/6** with `media-gst` and **5/5** without it; this is a
   source/runtime reliability improvement, not cross-device media proof.
+- `d581da37b7` exposes daemon-backed Mercury capability state in Media & Sharing
+  settings, and `47cbf2e2f0` makes onboarding fail closed if an ephemeral
+  Secret Service/KWallet probe cannot be cleaned up. The current VM receipt
+  includes those slices; onboarding focused coverage is **8/8**.
 - The physical-device runner now accepts either the CoreDevice identifier from
   `devicectl` or the hardware UDID required by Xcode, with deterministic
   missing/ambiguous-device failures (`5cff4281ec`).
@@ -66,7 +72,7 @@ Current parity status as of 2026-07-19:
   rows and 0/7 environment receipts. The Nightly pass is engineering evidence,
   not a promotion claim; production, lifecycle, installed integration, and
   registered product evidence remain open.
-- The candidate branch now has **83 desktop test files / 785 tests** passing,
+- The candidate branch now has **83 desktop test files / 787 tests** passing,
   plus current-checkout P-39 corpus binding, daemon-authoritative activity
   export resume, forced-colors metric fallbacks, and a focusable-hidden-node
   accessibility fix. The latest source slices also add the persisted Calendar
