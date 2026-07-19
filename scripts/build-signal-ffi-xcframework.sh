@@ -79,7 +79,10 @@ validate_absolute_root() {
   # prevents a caller-provided scratch path from silently redirecting build
   # intermediates outside the path they asked us to own.
   local canonical
-  canonical="$(python3 - "${path}" <<'PY'
+  # These snippets use only the standard library.  Skip user/site hooks so a
+  # concurrent Rust build cannot be interrupted by an unrelated editable
+  # Python package on the developer machine.
+  canonical="$(python3 -S - "${path}" <<'PY'
 import os
 import sys
 
@@ -323,7 +326,7 @@ fi
 safe_crate_name="${crate_name//-/_}"
 shopt -s nullglob
 for dylib in "${out_dir}/lib${safe_crate_name}"*.dylib; do
-  python3 "${repair_tool}" "${dylib}"
+  python3 -S "${repair_tool}" "${dylib}"
 done
 EOF
   chmod +x "${RUSTC_WRAPPER_SCRIPT}"
@@ -426,7 +429,7 @@ stage_exports() {
 
 repair_macho_linkedit_alignment() {
   local dylib="$1"
-  python3 - "${dylib}" <<'PY'
+  python3 -S - "${dylib}" <<'PY'
 import struct
 import sys
 
