@@ -50,7 +50,7 @@ pass, but macOS XCTest runtime is unavailable without SQLCipher. These slices
 improve source parity only; installed Linux, live production, and cross-device
 receipts remain required for certification.
 The subsequent source wave adds `e186d83314` (daemon source re-resolution before
-activity export resume), `fba5d8bcc8` (current-checkout P-39 corpus and digest
+activity export resume, now gated by the explicit `historyComplete` marker), `fba5d8bcc8` (current-checkout P-39 corpus and digest
 binding with 29 focused tests), `3d992ce624` (forced-colors metric fallback),
 and `c721ec18f8` (removal of a focusable hidden shell sentinel). The desktop
 suite is now **82 files / 753 tests**. Segmented Linux evidence-contract suites
@@ -85,6 +85,15 @@ focused physical-iPad approval receipt also passed
 `evidence/parity-audit-2026-07-10/ipad-approval-focused-current-2026-07-19.json`.
 These source and device results remain non-certifying until the exact Linux
 candidate is installed, enrolled, and exercised end to end.
+
+The latest source hardening adds `b0d27caffa`, which validates persisted
+Insights workspace snapshots as an all-or-nothing versioned record and falls
+back safely on malformed, future-version, or unsafe values (focused Insights
+persistence/renderer tests **26/26**). `fec153e40b` and `e6bf98601b` harden
+Activity export and resume with an explicit `historyComplete === true` daemon
+marker; the bounded recent-usage session bridge cannot satisfy that contract,
+so the implementation remains a fail-closed scaffold until a complete-history
+bridge is available (focused Activity history/export/resume tests **30/30**).
 
 ### Historical continuation checkpoint — 2026-07-17 (superseded by the exact-head verification below)
 
@@ -496,8 +505,11 @@ The integration branch now includes the next bounded source slices:
 - `d191a1be5f`: typed database recovery status/actions, candidate-key and
   integrity proof, explicit missing-database/device-transfer guidance, and
   fail-closed Tauri controls.
-- `c1f6e69514`: bounded Activity full-history export using verified daemon
-  usage/replay identities and typed unavailable state for incomplete proof.
+- `c1f6e69514`, `fec153e40b`, and `e6bf98601b`: bounded Activity full-history
+  export using verified daemon usage/replay identities, with typed unavailable
+  state unless the daemon supplies explicit `historyComplete === true` proof;
+  resume carries the same guard so the bounded recent-usage bridge cannot be
+  presented as a complete history.
 - `e0451afa5e`: strict provider catalog/config mapping, model provenance and
   failover posture, provider workspace, and config-derived backend gates.
 - `fcf4667682` and `e4827a4090`: serialized text-expansion mutations with

@@ -5,8 +5,8 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- The current source hardening reaches `f9d3b429e5`; the clean parity-ledger
-  validation is bound to current checkpoint `5a631eeb96`. The Release and
+- The current source hardening reaches `e6bf98601b`; the clean parity-ledger
+  validation is bound to current checkpoint `e6bf98601b`. The Release and
   Nightly receipts below are historical engineering evidence for an older
   checkpoint, not a claim that the current docs head has a promoted artifact.
 - The physical-device runner now accepts either the CoreDevice identifier from
@@ -47,6 +47,14 @@ Current parity status as of 2026-07-19:
   explicitly unavailable until a Linux RPC exists (focused settings **45/45**,
   new controls **3/3**). The full desktop suite is green at **83 files / 758
   tests**, with TypeScript and production bundle verification passing.
+- `b0d27caffa` hardens persisted Insights workspace state by rejecting malformed,
+  future-version, or unsafe records and restoring safe defaults (focused
+  Insights persistence/renderer tests **26/26**). `fec153e40b` plus
+  `e6bf98601b` require explicit daemon `historyComplete === true` proof before
+  Activity full-history export or resume; the bounded recent-usage bridge stays
+  unavailable instead of claiming complete history (focused Activity
+  history/export/resume tests **30/30**). These source results do not promote
+  the strict ledger.
 - Fresh local recheck: the wired iPad is paired, booted, has Developer Mode
   enabled, and a current-checkout focused approval receipt passed **44/44**
   tests with xcodebuild exit 0 (see
