@@ -631,6 +631,27 @@ describe('P09 updates and support', () => {
     expect(container.querySelector('.diagnostic-detail')).toBeNull();
   });
 
+  it('offers a bounded daemon reconnect action when support health is degraded', async () => {
+    const refreshHealth = vi.fn().mockImplementation(() => new Promise<void>(() => undefined));
+    useShellStore.setState({
+      bridge: mockBridge(),
+      bridgeReady: true,
+      health: { ok: false, protocolVersion: 1 },
+      healthError: 'connection refused',
+      healthBusy: false,
+      refreshHealth
+    });
+    render(<SupportSurface />);
+
+    const reconnect = screen.getByRole('button', { name: 'Reconnect' }) as HTMLButtonElement;
+    expect(reconnect.disabled).toBe(false);
+    fireEvent.click(reconnect);
+    expect(refreshHealth).toHaveBeenCalledTimes(1);
+
+    act(() => useShellStore.setState({ healthBusy: true }));
+    expect(screen.getByRole('button', { name: 'Reconnecting…' })).toHaveProperty('disabled', true);
+  });
+
   it('redacts arbitrary native preview labels while preserving privacy metadata facts', async () => {
     const bridge = mockBridge({
       exportDiagnostics: vi.fn().mockResolvedValue({

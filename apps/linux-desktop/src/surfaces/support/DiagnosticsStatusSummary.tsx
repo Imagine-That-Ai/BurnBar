@@ -22,6 +22,8 @@ export function DiagnosticsStatusSummary() {
   const bridge = useShellStore((state) => state.bridge);
   const bridgeReady = useShellStore((state) => state.bridgeReady);
   const fixtureMode = useShellStore((state) => state.fixtureMode);
+  const healthBusy = useShellStore((state) => state.healthBusy);
+  const refreshHealth = useShellStore((state) => state.refreshHealth);
   const subscriptionState = useShellStore((state) => state.subscriptionState);
   const status = useDaemonStatusCopy();
 
@@ -66,6 +68,7 @@ export function DiagnosticsStatusSummary() {
       : bridge
         ? 'The packaged shell is present, but the local daemon did not report healthy. Check the daemon service and retry.'
         : 'This browser preview cannot probe the packaged daemon. Install and launch the Linux app for live facts.';
+  const canReconnect = !fixtureMode && Boolean(bridge) && !health?.ok;
 
   return (
     <section
@@ -91,6 +94,20 @@ export function DiagnosticsStatusSummary() {
           </div>
         ))}
       </dl>
+      {canReconnect ? (
+        <div className="p09-diagnostic-summary__actions">
+          <p className="muted">Retry the local daemon health probe after starting or unlocking the daemon.</p>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => void refreshHealth()}
+            disabled={healthBusy}
+            aria-busy={healthBusy}
+          >
+            {healthBusy ? 'Reconnecting…' : 'Reconnect'}
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }
