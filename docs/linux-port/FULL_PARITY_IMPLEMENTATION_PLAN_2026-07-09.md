@@ -30,14 +30,15 @@ actionable controls, no `Loading Settings` node, a reachable startup checkbox,
 and a working Media & Sharing route:
 `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/`.
 
-Final source gates are **84 frontend files / 797 tests**, focused Settings and
-route coverage **45/45**, Tauri Rust **125/125**, TypeScript, formatting, and
-production-bundle verification. The connected physical iPad focused navigation
-suite passed with xcodebuild exit 0. This is an implementation and live-QA
+Final source gates are **87 frontend files / 806 tests**, focused Settings and
+route coverage **45/45**, accessibility coverage **10/10**, Tauri Rust
+**125/125**, TypeScript, formatting, and production-bundle verification. The
+connected physical iPad focused navigation suite passed with xcodebuild exit 0.
+This is an implementation and live-QA
 milestone only; the strict product/environment promotion boundary remains
 **0/40 product rows and 0/7 environment receipts**.
 
-The current source checkpoint is `a01a60824b`; the kernel capability slice at
+The current source checkpoint is `7bcf432bf4`; the kernel capability slice at
 `50d40b9acb` adds a typed backdrop kernel
 resolution receipt and surfaces requested-versus-resolved kernel state in the
 Linux switcher. The live Ubuntu WebKitGTK probe reports `webgl2=false` and
@@ -56,7 +57,11 @@ during init and again on the first frame. Follow-up commits `907187f767` and
 `0ae08b3baf` retries cleanly when a loader throws before returning its Promise.
 `1f5a158e3d` enables Tauri's release custom protocol and `a01a60824b` makes the
 Cargo build script watch every file below `dist`, preventing stale embedded
-frontend assets after an in-place Vite output change. A fresh current-head
+frontend assets after an in-place Vite output change. `fdd3ff61ad` adds
+command-palette/listbox semantics, focus containment, and stable names for
+icon-only toolbar actions; `7bcf432bf4` revalidates pinned Computer Use
+authority before every inbound controller frame and tears down a stale runtime
+before dispatch. A fresh current-head
 release build was visually verified in the unlocked UTM guest: the shell and
 Canvas2D Aurora fallback rendered, with the explicit `WebGL2 unavailable`
 status. The direct tree launch does not start the packaged daemon, so its setup
@@ -64,9 +69,12 @@ card reports daemon authority unavailable; current-head package installation
 and signed release certification remain release-runner dependencies.
 
 The connected physical iPad was rechecked against this checkout with the
-bounded approval/navigation selectors: **44/44 passed, 0 failures, xcodebuild
-exit 0**. The receipt remains non-certifying and does not substitute for
-installed Linux enrollment or cross-device approval proof.
+bounded approval/navigation selectors: the existing approval-focused receipt
+records **44/44 passed, 0 failures, xcodebuild exit 0**, and the current-head
+navigation slice records **21/21 passed, 0 failures, xcodebuild exit 0** in
+`evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json`.
+These receipts remain non-certifying and do not substitute for installed Linux
+enrollment or cross-device approval proof.
 
 ### Current source hardening — 2026-07-19 UTC
 

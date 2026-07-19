@@ -475,7 +475,6 @@ public actor BurnBarLinuxOnboardingService {
         #endif
     }
 
-    #if os(Linux)
     /// Runs the ephemeral production probe against an injected custodian so
     /// the same health-before-mutation contract is testable without touching
     /// a user's keyring. Production callers use the zero-argument overload.
@@ -533,7 +532,6 @@ public actor BurnBarLinuxOnboardingService {
             ?? "no writable approved Secret Service or KWallet backend is available"
         throw BurnBarLinuxOnboardingError.secretStoreUnavailable(detail)
     }
-    #endif
 
     public nonisolated static func verifyWritableDirectory(
         _ directoryURL: URL,

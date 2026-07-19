@@ -6,13 +6,13 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | The installed non-certifying arm64 DEB remains source `5b70a3d320` in the Ubuntu 24.04.4 GNOME/X11 UTM guest; its receipt is `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/live-installed-receipt.json`. Current source is `a01a60824b`; the kernel capability implementation is `50d40b9acb` with focused paint regression tests at `a561c5ea3e`, `1dc1328818`, and `0ae08b3baf`, and the focused physical-iPad receipt is bound to the exact pre-documentation source `c9c679f43b`. A live WebKitGTK probe against the Ubuntu guest reported `webgl2=false`, `webgl1=true`; the current-head release visibly resolves Aurora to the Canvas2D fallback with an explicit `WebGL2 unavailable` label. The installed baseline's two root-window captures two seconds apart changed only 256 bytes, exposing a real first-paint/lazy-kernel regression; `1dc1328818` eagerly constructs the Linux `swarmEmber` default so the candidate paints before dynamic import resolution, while `907187f767`/`0ae08b3baf` keep lazy 2D fallbacks opaque and retryable when a chunk rejects or throws synchronously. `1f5a158e3d` enables Tauri's release custom protocol and `a01a60824b` makes Cargo watch every frontend asset so release binaries cannot reuse stale embedded `dist` files. A fresh current-head `npx tauri build --no-bundle --no-sign` render was visually verified in the unlocked VM; the direct tree run correctly shows the daemon-unavailable setup card because it does not launch the packaged daemon. Daemon/CLI health is green on the installed candidate, and the connected iPad approval/navigation slice passed 44/44 with xcodebuild exit 0. Signed provenance, current-head package installation, cross-device proof, and the strict product/environment receipts remain open. |
+| Remediation evidence | The installed non-certifying arm64 DEB remains source `5b70a3d320` in the Ubuntu 24.04.4 GNOME/X11 UTM guest; its receipt is `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/live-installed-receipt.json`. Current source is `7bcf432bf4`; the kernel capability implementation is `50d40b9acb` with focused paint regression tests at `a561c5ea3e`, `1dc1328818`, and `0ae08b3baf`, and the focused physical-iPad receipts are bound to `c9c679f43b` plus the current-head navigation receipt `evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json`. A live WebKitGTK probe against the Ubuntu guest reported `webgl2=false`, `webgl1=true`; the current-head release visibly resolves Aurora to the Canvas2D fallback with an explicit `WebGL2 unavailable` label. The installed baseline's two root-window captures two seconds apart changed only 256 bytes, exposing a real first-paint/lazy-kernel regression; `1dc1328818` eagerly constructs the Linux `swarmEmber` default so the candidate paints before dynamic import resolution, while `907187f767`/`0ae08b3baf` keep lazy 2D fallbacks opaque and retryable when a chunk rejects or throws synchronously. `1f5a158e3d` enables Tauri's release custom protocol and `a01a60824b` makes Cargo watch every frontend asset so release binaries cannot reuse stale embedded `dist` files. `fdd3ff61ad` adds command-palette and icon-control accessibility semantics, and `7bcf432bf4` revalidates pinned Computer Use authority on every inbound frame before dispatch. A fresh current-head `npx tauri build --no-bundle --no-sign` render was visually verified in the unlocked VM; the direct tree run correctly shows the daemon-unavailable setup card because it does not launch the packaged daemon. Daemon/CLI health is green on the installed candidate, and the current-head physical iPad navigation slice passed 21/21 with xcodebuild exit 0. Signed provenance, current-head package installation, cross-device proof, and the strict product/environment receipts remain open. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
 ## Current Live Checkpoint — 2026-07-19
 
-The current source checkpoint is `a01a60824b`. The kernel capability slice at
+The current source checkpoint is `7bcf432bf4`. The kernel capability slice at
 `50d40b9acb` adds a typed kernel
 resolution receipt from the shared backdrop engine and exposes the requested
 kernel, resolved kernel, substrate, and fallback reason through DOM attributes
@@ -38,9 +38,12 @@ package receipt below remains the prior `5b70a3d320` candidate until an arm64
 Linux release runner rebuilds and installs this source.
 
 The connected physical iPad was rechecked against the current checkout using
-the bounded approval/navigation selectors: **44 tests passed, 0 failed,
-xcodebuild exit 0**. This is focused mobile coverage only; it does not prove
-Linux enrollment, cross-device approval, or the full mobile suite.
+the bounded approval/navigation selectors: the existing approval-focused
+receipt has **44 tests passed, 0 failed, xcodebuild exit 0**, and the current
+head navigation slice adds **21 tests passed, 0 failed, xcodebuild exit 0**.
+These are focused mobile coverage only; they do not prove Linux enrollment,
+cross-device approval, or the full mobile suite. The current-head navigation
+receipt is `evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json`.
 
 The latest installed candidate is `5b70a3d320`. The Settings live failure found in the
 VM was a route-boundary bug, not a daemon failure: packaged `SurfaceRouter`
@@ -52,10 +55,11 @@ now reports 105 AT-SPI nodes and 50 actionable controls, no `Loading Settings`
 node, a reachable `Launch OpenBurnBar at login` checkbox, and a working Media &
 Sharing route. The daemon loaded 21 providers from the live config store.
 
-Source verification is green at **84 frontend files / 797 tests**, focused
-Settings/route coverage **45/45**, Tauri Rust **125/125**, TypeScript,
-formatting, and production-bundle verification. The connected physical iPad
-focused navigation suite passed with xcodebuild exit 0. This closes one real
+Source verification is green at **87 frontend files / 806 tests**, focused
+Settings/route coverage **45/45**, accessibility coverage **10/10**, Tauri Rust
+**125/125**, TypeScript, formatting, and production-bundle verification. The
+connected physical iPad focused navigation suite passed with xcodebuild exit 0.
+This closes one real
 installed Linux reliability gap, but it does not change certification: the
 strict ledger remains **0/40 product requirements ready** and **0/7 environment
 receipts complete**. The exact live receipt is
