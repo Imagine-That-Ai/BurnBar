@@ -10,7 +10,7 @@ Current parity status as of 2026-07-19:
   [`evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/).
   Daemon/CLI health is green, the desktop is running from `/usr/bin`, and the
   physical iPad focused navigation suite passed on the connected device. The
-  current source head is `de906876a4`; its focused iPad navigation receipt is
+  current code head is `7bcf432bf4`; its focused iPad navigation receipt is
   [`evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json`](evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json).
   The Settings route now mounts and hydrates deterministically: AT-SPI reports
   105 nodes and 50 actionable controls with no `Loading Settings` node; the
