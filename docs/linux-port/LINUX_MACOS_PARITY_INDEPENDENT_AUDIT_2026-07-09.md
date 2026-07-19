@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh; `465431d0fc` hardens startup forwarding; `7ac2e021c9` makes Browser Computer Use capability checks fail closed; `c0a725447d` adds a trusted embedded autostart fallback; `447abb0564` fences stale Mercury capability responses; `9e868e60a7` refreshes tray state periodically; `3e7ede75e3` bounds expired browser authorization polling; `ebab7da744` fences stale concurrent update/version checks; and `534d7aae65` completes overflow-menu keyboard/focus behavior. Focused payload coverage is green and Rust is 128/128. |
+| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh; `465431d0fc` hardens startup forwarding; `7ac2e021c9` makes Browser Computer Use capability checks fail closed; `c0a725447d` adds a trusted embedded autostart fallback; `447abb0564` fences stale Mercury capability responses; `9e868e60a7` refreshes tray state periodically; `3e7ede75e3` bounds expired browser authorization polling; `ebab7da744` fences stale concurrent update/version checks; `534d7aae65` completes overflow-menu keyboard/focus behavior; `519f0456a7` adds a packaged-shell reconnect action for degraded daemon health; and `811d84172a` queues native notification actions until renderer bootstrap completes. Source-only checks are green at 851/851 frontend tests and 129/129 Rust tests; the two latest fixes still need packaging. |
 | Latest VM proof | The exact `534d7aae65` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-current-534d7aae65-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-534d7aae65-postinstall-2026-07-19.json). Daemon/CLI health is green and a clean unlocked GNOME launch renders the first-run setup surface and Fluid Aurora 2D fallback. Two captures two seconds apart differ in 453,846 pixels. |
 | Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
@@ -15,9 +15,10 @@
 ## Current Source Checkpoint — 2026-07-19
 
 The current integration branch includes source changes through
-`534d7aae65`, and the latest installed exact-head package is bound to the
-same commit. This is a source and build
-checkpoint, not a promotion claim:
+`811d84172a`; the latest installed package is still bound to the earlier
+source checkpoint `534d7aae65` because the two newest source fixes have not yet
+been packaged in the UTM guest. This is a source and build checkpoint, not a
+promotion claim:
 
 - `1130524331` immediately reveals a visible 2D backdrop when a WebGL context
   is lost while the window is backgrounded, then retries the requested kernel
@@ -59,8 +60,15 @@ checkpoint, not a promotion claim:
 - `534d7aae65` makes the overflow menu keyboard-complete with Arrow/Home/End,
   Enter/Space, Escape, and trigger-focus restoration; its focused regression
   tests pass 2/2.
-- Source gates pass: 90 frontend files / 849 tests, TypeScript, production
-  bundle verification, Tauri Rust 128/128, package-payload contract checks
+- `519f0456a7` adds a packaged-shell-only Support **Reconnect** action when
+  daemon health is missing or degraded, with bounded busy/disabled state and
+  retry guidance; focused Support coverage is 32/32.
+- `811d84172a` bounds native notification action retention until renderer
+  bootstrap, adds the `initial_notification_actions` drain command, and keeps
+  cold-start Reply/open intent and composer focus; focused Rust, bridge, and
+  App coverage is 1/1, 33/33, and 26/26.
+- Source gates pass: 90 frontend files / 851 tests, TypeScript, production
+  bundle verification, Tauri Rust 129/129, package-payload contract checks
   (2 pass, 2 historical skips), and product validators 12/12.
 - The ARM64 VM validated the supported Swift-less staged-payload path with
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`; the exact implementation package
@@ -887,8 +895,8 @@ percentage. The active remediation stack now contains these reviewable slices:
 | Slice | Current state | Scope and limit |
 |---|---|---|
 | P26 tray/deep links | PR #1649, merge-clean | Native tray routes, refresh/reconnect actions, and validated deep-link routing; does not certify every desktop host. |
-| P27 notifications | PR #1651 + `07153ac3d5`, merge-clean | Bounded native `notify-send` adapter with typed failures plus typed freedesktop `open`/`reply` actions; Reply preserves intent, opens chat, and focuses the composer without pretending to provide macOS inline notification text input. Actionable host receipts and lifecycle proof remain open. |
-| P35 diagnostics | PR #1653, checks in progress | Metadata-only diagnostics preview/export, redaction and `0600` enforcement; installed support workflow remains open. |
+| P27 notifications | PR #1651 + `07153ac3d5`, merge-clean + `811d84172a` | Bounded native `notify-send` adapter with typed failures plus typed freedesktop `open`/`reply` actions; Reply preserves intent, opens chat, and focuses the composer without pretending to provide macOS inline notification text input. Native actions are retained until renderer bootstrap and drained once. Actionable host receipts and lifecycle proof remain open. |
+| P35 diagnostics | PR #1653, checks in progress + `519f0456a7` | Metadata-only diagnostics preview/export, redaction and `0600` enforcement, plus a packaged-shell-only bounded Reconnect action for degraded daemon health; installed support workflow remains open. |
 | P23 provider/model workspace | PR #1655 + integration `e0451afa5e` + provider mutation lane | Canonical daemon catalog/config mapping, strict model provenance, health and failover state, provider/model workspace, config-derived chat backend availability gates, and daemon-backed custom-model add/remove with fixture-safe local behavior; credential custody, live routing, and installed lifecycle remain separate. |
 | P16 account/enrollment posture | PR #1658 updated + integration `01784940c5` | Daemon-owned account status, sign-out, rejected-identity recovery, and context-aware generation/bridge fences now decode transitional phases fail-closed; stale responses cannot overwrite a newer identity or busy state. Device ID/fingerprint copy actions and trusted-iPad guidance are present. Trusted-device list/approve/revoke remains a native mobile/Firebase boundary, and cloud backup remains unavailable. |
 | P12 quota account switching | PR #1659, stacked on P23 + `be375903f0` | Redacted credential-slot selection through canonical config get/update now includes a preferred provider account selector, explicit daemon auto-routing reset, fixture coverage, and fail-closed read-only behavior when `config.update` is unavailable; does not provide cloud account or trusted-device management. |
@@ -1358,7 +1366,7 @@ required gates and were not made green by the Ed25519 result.
 | P-24 | Settings | 16 searchable tabs with deep links and writable state | 16-tab searchable inventory and deep routes are wired. General Settings Indexing & Search exposes a fixture-safe daemon-backed **Index project** action through `databaseIndexProject` (`992ef5c580`) plus a secure Linux-native **Launch at login** preference with owner-checked XDG persistence and unavailable-source fail-closed behavior (`5e0fc0e82`), typed live Media & Sharing capability status (`d581da37b7`), and fail-closed Secret Service probe cleanup (`47cbf2e2f0`). The exact-head package is installed in the non-certifying VM receipt `current-b590d5a77-media-settings-onboarding-arm64`; deeper per-tab backend writes and signed/live proof remain open | Partial | Medium |
 | P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed freshness, exact package-channel/architecture selection, shell/daemon compatibility, fail-closed mutation guidance, and run `29646670068` package construction/install checks passed; update/rollback/data-preservation remains blocked without a compatible previous same-architecture package, and valid public feed/promoted history remain open | Partial | High |
 | P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Native tray now exposes dashboard/chat/usage/updates/settings routes, daemon health, recent usage, signed-update state, refresh/reconnect, and quit actions; `dcca8b74b4` packages the canonical XDG autostart entry and honors tray-first `--background` startup; compositor/DE persistence and installed receipts remain open | Partial | High |
-| P-27 | Notifications/deep links | Actionable notifications, OAuth return, global commands, login start | Native startup/deep-link handoff, background tray launch, XDG autostart package installation, desktop MIME registration, strict membership/OAuth URL validation, owner-checked per-user single-instance forwarding, normalized freedesktop `open`/`reply` actions, explicit route aliases, and cold-start precedence are implemented in [PR #1679](https://github.com/Imagine-That-Ai/BurnBar/pull/1679), [PR #1686](https://github.com/Imagine-That-Ai/BurnBar/pull/1686), `5f74018422`, `07153ac3d5`, and `dcca8b74b4`; Reply preserves intent, opens chat, and focuses the composer rather than providing inline notification text input. Global shortcut and installed host integration remain open | Partial | High |
+| P-27 | Notifications/deep links | Actionable notifications, OAuth return, global commands, login start | Native startup/deep-link handoff, background tray launch, XDG autostart package installation, desktop MIME registration, strict membership/OAuth URL validation, owner-checked per-user single-instance forwarding, normalized freedesktop `open`/`reply` actions, explicit route aliases, and cold-start precedence are implemented in [PR #1679](https://github.com/Imagine-That-Ai/BurnBar/pull/1679), [PR #1686](https://github.com/Imagine-That-Ai/BurnBar/pull/1686), `5f74018422`, `07153ac3d5`, and `dcca8b74b4`; `811d84172a` adds a bounded native queue and one-shot renderer bootstrap drain so early Reply/open actions are not lost. Reply preserves intent, opens chat, and focuses the composer rather than providing inline notification text input. Global shortcut and installed host integration remain open | Partial | High |
 | P-28 | SmartHub | Discovery, status, allowlisted device actions | Runtime requires a trusted root-owned packaged CLI and otherwise fails closed. Typed operation allowlists, request/output bounds, concurrent drain, bounded Avahi timeout, cancellation, and degraded renderer states are integrated; real device/Avahi outcomes remain unproven | Partial | High |
 | P-29 | Text expansion | Global, secure-field-aware expansion, persistence, sync, previews | Daemon-owned AES-GCM persistence with native Secret Service/KWallet custody, owner-only sealed files, consent, in-app Composer expansion, no renderer localStorage/global capture, and fail-closed corruption/missing-key handling are integrated. Renderer consent/import/snippet/edit/delete controls now fail closed until live daemon storage hydration succeeds (`1ddc8bc33a`). The daemon exposes a bounded IBus/Fcitx reachability and secure-field policy probe (`6c76df084f`) and `d2dbbe8df8` adds a trigger-only signed-engine request/response path with strict bounds, secure-field denial before write, and cancellation/kill-switch teardown. Linux keyring/IME runtime receipts, sync/conflict handling, and installed secure-field proof remain open | Partial | High |
 | P-30 | Pet companion | Animated ambient overlay, click-through, summon, selection, interactions | Typed runtime-manifest probe, contained draggable fallback, accessible summon/focus/status, and selection/clear controls are honest. `3b652f9b9e` adds bounded pointer/mouse drag and Arrow/Home keyboard repositioning with focus metadata and announcements for the Wayland-safe contained substitute. `5c3caab2e` adds a fixed-marker X11-only `Ctrl+Alt+Super+P` native summon route and `2b85f1431` exposes `aria-keyshortcuts`; native overlay/click-through and installed compositor proof remain open | Partial | High |
@@ -1366,7 +1374,7 @@ required gates and were not made green by the Ed25519 result.
 | P-32 | Performance | Startup/recovery/frame/cadence budgets and mature profiling | Nightly `29646670763` passed matched 30-minute macOS/Linux correctness/resource soak and packaged X11 thresholds: `route.navigation` p95 `95.6 ms` across 33 samples versus the `120 ms` budget, app start p95 `333.9 ms`, IPC health p95 `111.65 ms`, and tray-open p95 `123.55 ms`; comparable hardware, suspend/keyring recovery, and broader matrix profiling remain open | Near parity | High |
 | P-33 | Reliability | Backoff, supervisor, recovery, subscriptions, migrations, long-idle stability | Daemon-owned bounded start/resume/stop subscriptions, monotonic restart recovery, offline-aware single-flight cadence, cancellation, coalesced route refresh, and soak contracts exist; native push and installed suspend/portal/keyring/matrix certification remain | Partial | High |
 | P-34 | Security hardening | Native URL/secret/process boundaries | Generic renderer shell permission and token exposure removed; production fixtures disabled; full installed adversarial matrix remains | Near parity | Critical |
-| P-35 | Diagnostics/support | Native export, privacy choices, accurate runtime/package facts | Metadata-only redacted export, native portal save destination, path revalidation, private atomic output, and support preview are wired (`bdd57173e9`, `8131b51aec`); installed support workflow receipt remains open | Partial | Medium |
+| P-35 | Diagnostics/support | Native export, privacy choices, accurate runtime/package facts | Metadata-only redacted export, native portal save destination, path revalidation, private atomic output, and support preview are wired (`bdd57173e9`, `8131b51aec`); `519f0456a7` adds a packaged-shell-only Reconnect action for missing/degraded daemon health with a bounded busy state and retry guidance. Installed support workflow receipt remains open | Partial | Medium |
 | P-36 | Visual/interaction polish | Consistent components, responsive density, animations, native affordances | Nonblack installed route captures now exist; raw diagnostics, interaction polish, and multi-environment regressions remain | Partial | Medium |
 | P-37 | Linux matrix | N/A; macOS supported versions are exercised | Environment-bound fail-closed harness binds installed/accessibility evidence to exact environment, architecture, session, and desktop identity (`b012a53a6c`); Nightly `29646670763` passed the runnable Ubuntu GNOME/X11 packaged session while recording Arch/wlroots, GNOME Wayland portal, and Fedora/KDE as explicit blocked rows; current-head promotion and architecture/keyring/portal rows remain open | Partial | Critical |
 | P-38 | CI/release automation | Test, sign, package, and promotion jobs fail closed | Strict gates, mutation tests, native architecture shards, sessions, and signed aggregate closure are implemented; Release `29646670068` and Nightly `29646670763` passed their current-head gates, including the root-owned evidence wrapper fix; lifecycle, production, and product/environment promotion remain open | Partial | Critical |
@@ -2026,8 +2034,9 @@ the intended `0700`/`0600` ownership boundary (`50a0684e75`).
   has a validated startup/deep-link handoff, background tray launch, XDG
   autostart, desktop MIME registration, freedesktop action routing, and
   per-binding shortcut health in [PR #1679](https://github.com/Imagine-That-Ai/BurnBar/pull/1679),
-  `5f74018422`, and `a5571694bb`; it still lacks complete installed host
-  lifecycle and cross-desktop receipts.
+  `5f74018422`, and `a5571694bb`. `811d84172a` also retains native notification
+  actions until the renderer is ready, preventing cold-start Reply/open loss;
+  complete installed host lifecycle and cross-desktop receipts remain open.
 - **Why it matters:** repeated daily workflows, alerts, recovery, auth, and panic
   controls feel incomplete or cannot work outside the main window.
 - **Recommended solution:** finish StatusNotifier/AppIndicator host behavior,
@@ -2036,10 +2045,12 @@ the intended `0700`/`0600` ownership boundary (`50a0684e75`).
   compositors as available.
 - **Priority:** **High**.
 - **Implementation notes:** support GNOME's icon-only limitations; use shared
-  live view models and freshness semantics; never depend on the tray as the sole
-  panic path; handle multi-monitor placement and tray host loss.
+  live view models and freshness semantics; keep the native action queue bounded
+  and drain it exactly once before normal event delivery; never depend on the
+  tray as the sole panic path; handle multi-monitor placement and tray host loss.
 - **QA verification:** icon-only and rich hosts, stale/offline/reconnect state,
-  keyboard/screen-reader navigation, notification actions/relaunch, OAuth return,
+  keyboard/screen-reader navigation, notification actions emitted before and
+  after renderer bootstrap (including Reply composer focus), OAuth return,
   global panic latency, login start, multi-monitor, and tray crash/recovery.
 
 ### GAP-015 - Implement honest update UX
@@ -2270,22 +2281,27 @@ fixture, and production-bundle boundaries.
 - **Difference:** macOS provides mature native windows, consistent controls,
   recovery states, and polished data density. Linux has a strong token base but
   retains inline styles, Unicode/emoji control glyphs, raw JSON panels, inaccurate
-  save-dialog copy, disabled text controls, and no trustworthy current visual
-  regression set.
+  save-dialog copy, and no trustworthy current visual regression set. A concrete
+  recovery gap is now closed: `519f0456a7` adds a packaged-shell-only Reconnect
+  action to degraded Support diagnostics instead of leaving users with retry
+  text only.
 - **Why it matters:** the product reads as an engineering console in several
   routes and support bundles may not contain the facts needed to recover users.
 - **Recommended solution:** use shared components and iconography, complete
-  loading/empty/error/recovery states, add native save dialogs and privacy tiers,
-  and capture packaged visual regressions at supported sizes and renderers.
+  loading/empty/error/recovery states, keep Reconnect bounded and unavailable in
+  fixture/browser preview, add native save dialogs and privacy tiers, and capture
+  packaged visual regressions at supported sizes and renderers.
 - **Priority:** **Medium**.
 - **Implementation notes:** diagnostics should include redacted daemon/package/
   renderer/capability/version facts with 0600 permissions; users preview content
   and choose destination; remove raw JSON from normal flows; keep compact-density
   and responsive behavior aligned with macOS outcomes, not SwiftUI pixels.
 - **QA verification:** desktop/compact/200% scale screenshots, no clipping or
-  overlap, consistent hover/focus/disabled/error states, dark/high-contrast,
-  save/cancel/permission behavior, corrupted daemon/package mismatch bundles,
-  and token/path/session-content redaction.
+  overlap, consistent hover/focus/disabled/error states, Support degraded health
+  showing Reconnect only in the packaged shell, one refresh call per activation,
+  disabled `Reconnecting...` busy state, dark/high-contrast, save/cancel/
+  permission behavior, corrupted daemon/package mismatch bundles, and
+  token/path/session-content redaction.
 
 ### GAP-023 - Make CI and release automation fail closed
 

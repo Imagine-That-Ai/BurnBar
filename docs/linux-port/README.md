@@ -6,8 +6,8 @@ implemented as reviewable infrastructure, not a public availability claim.
 Current parity status as of 2026-07-19:
 
 - **Current source head:** the integration branch now includes source changes
-  through `534d7aae65`. It passes 90 frontend files /
-  849 tests, TypeScript, production bundle verification, Tauri Rust 128/128,
+  through `811d84172a`. It passes 90 frontend files /
+  851 tests, TypeScript, production bundle verification, Tauri Rust 129/129,
   package-payload contract checks (2 pass, 2 historical skips), and product
   validators 12/12. `1130524331` recovers a visible 2D backdrop after
   backgrounded WebGL context loss and retries the requested kernel on resume;
@@ -37,7 +37,10 @@ Current parity status as of 2026-07-19:
   actionable to keyboard and screen-reader users. `ebab7da744` fences stale
   concurrent version/feed responses so older update metadata cannot overwrite
   newer shell facts. `534d7aae65` completes overflow-menu keyboard navigation
-  and restores trigger focus after menu actions.
+  and restores trigger focus after menu actions. `519f0456a7` adds a
+  packaged-shell-only Support Reconnect action for degraded daemon health;
+  `811d84172a` queues native notification actions until renderer bootstrap and
+  drains them once so cold-start Reply/open intent is preserved.
   The ARM VM also passed
   the supported Swift-less staged-payload `pretauri:build`/`tauri:build` path via
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is unsigned
@@ -71,10 +74,10 @@ Current parity status as of 2026-07-19:
   105 nodes and 50 actionable controls with no `Loading Settings` node; the
   General startup checkbox and Media & Sharing route are reachable.
   The package is unsigned and this receipt is non-certifying.
-- Current source gates are **90 frontend files / 849 tests**, focused provider
+- Current source gates are **90 frontend files / 851 tests**, focused provider
   recovery **11/11**, daemon subscription lifecycle **8/8**, SmartHub **9/9**,
-  Settings/route **51/51**, Support **29/29**, media **38/38**, Tauri Rust
-  **128/128**, TypeScript, formatting, and production-bundle verification. The strict ledger remains
+  Settings/route **51/51**, Support **32/32**, media **38/38**, Tauri Rust
+  **129/129**, TypeScript, formatting, and production-bundle verification. The strict ledger remains
   **0/40 product rows and 0/7 environment receipts**; this is a certification
   gate, not a source-progress percentage.
 - PR #1691's only current CI failure is the trusted Domain Core deletion guard:
