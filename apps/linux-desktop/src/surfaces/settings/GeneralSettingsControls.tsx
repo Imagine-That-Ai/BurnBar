@@ -88,9 +88,9 @@ function indexingSummary(
 }
 
 /**
- * Read-only indexing posture for General Settings. Index mutations remain in
- * the Database surface, where the existing daemon RPCs and project scope are
- * explicit. This row never claims an on/off setting that Linux cannot save.
+ * Daemon-backed indexing posture for General Settings. The summary stays
+ * compact, while the bounded project-index action uses the same typed store
+ * contract as the Database surface and keeps project scope daemon-owned.
  */
 export function IndexingSummaryControl({ onOpenDatabase }: { onOpenDatabase: () => void }) {
   const fixtureMode = useShellStore((state) => state.fixtureMode);
@@ -98,8 +98,11 @@ export function IndexingSummaryControl({ onOpenDatabase }: { onOpenDatabase: () 
   const workspace = useDatabaseStore((state) => state.workspace);
   const loading = useDatabaseStore((state) => state.loading);
   const error = useDatabaseStore((state) => state.error);
+  const indexAction = useDatabaseStore((state) => state.indexAction);
   const loadWorkspace = useDatabaseStore((state) => state.loadWorkspace);
+  const indexProject = useDatabaseStore((state) => state.indexProject);
   const supported = fixtureMode || typeof bridge?.databaseWorkspaceStatus === 'function';
+  const indexingSupported = fixtureMode || typeof bridge?.databaseIndexProject === 'function';
 
   useEffect(() => {
     if (supported) void loadWorkspace();
@@ -119,6 +122,12 @@ export function IndexingSummaryControl({ onOpenDatabase }: { onOpenDatabase: () 
 
   const posture = indexingSummary(workspace);
   const detail = error && !workspace ? error : posture.detail;
+  const indexResult = indexAction.result;
+  const indexStatus = indexAction.error
+    ? indexAction.error
+    : indexResult
+      ? `Indexed ${indexResult.indexedFiles.toLocaleString()} files for ${indexResult.projectID}.`
+      : detail;
 
   return (
     <SettingRow
@@ -135,10 +144,21 @@ export function IndexingSummaryControl({ onOpenDatabase }: { onOpenDatabase: () 
           >
             {loading && !workspace ? 'Loading…' : posture.status}
           </span>
+          {indexingSupported ? (
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => void indexProject(workspace?.projectRoot)}
+              disabled={indexAction.pending || loading || !workspace?.projectRoot}
+              aria-busy={indexAction.pending}
+            >
+              {indexAction.pending ? 'Indexing…' : 'Index project'}
+            </button>
+          ) : null}
           <button type="button" className="ghost" onClick={onOpenDatabase}>Open Database</button>
         </span>
       }
-      readOnlyNote={detail}
+      readOnlyNote={indexStatus}
     />
   );
 }

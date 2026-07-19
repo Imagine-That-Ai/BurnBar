@@ -10,7 +10,12 @@ import { DashboardDefaultsControls, IndexingSummaryControl } from './GeneralSett
 function reset() {
   localStorage.clear();
   useShellStore.setState({ bridge: null, fixtureMode: false });
-  useDatabaseStore.setState({ workspace: null, loading: false, error: null });
+  useDatabaseStore.setState({
+    workspace: null,
+    loading: false,
+    error: null,
+    indexAction: { pending: false, error: null, result: null }
+  });
 }
 
 afterEach(() => {
@@ -52,12 +57,17 @@ describe('IndexingSummaryControl', () => {
     const onOpenDatabase = vi.fn();
     const databaseWorkspaceStatus = vi.fn(async () => ({
       ...(await bridgeStubDefaults.databaseWorkspaceStatus()),
+      projectRoot: '/home/alberto/BurnBar',
       artifactCount: 17,
       productionReady: true,
       semanticAvailable: true
     }));
+    const databaseIndexProject = vi.fn(async () => ({
+      ...(await bridgeStubDefaults.databaseIndexProject()),
+      indexedFiles: 17
+    }));
     useShellStore.setState({
-      bridge: { ...bridgeStubDefaults, databaseWorkspaceStatus } as unknown as LinuxShellBridge,
+      bridge: { ...bridgeStubDefaults, databaseWorkspaceStatus, databaseIndexProject } as unknown as LinuxShellBridge,
       fixtureMode: false
     });
     render(<IndexingSummaryControl onOpenDatabase={onOpenDatabase} />);
@@ -65,7 +75,19 @@ describe('IndexingSummaryControl', () => {
     await waitFor(() => expect(databaseWorkspaceStatus).toHaveBeenCalledOnce());
     expect(await screen.findByRole('status', { name: 'Ready' })).toBeTruthy();
     expect(screen.getByText(/17 records · semantic search/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Index project' }));
+    await waitFor(() => expect(databaseIndexProject).toHaveBeenCalledWith('/home/alberto/BurnBar'));
+    expect(await screen.findByText(/Indexed 17 files for test-project/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open Database' }));
     expect(onOpenDatabase).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the index action usable in fixture mode', async () => {
+    useShellStore.setState({ bridge: null, fixtureMode: true });
+    render(<IndexingSummaryControl onOpenDatabase={vi.fn()} />);
+
+    expect(await screen.findByRole('status', { name: 'Ready' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Index project' }));
+    expect(await screen.findByText(/Indexed 42 files for fixture-project/i)).toBeTruthy();
   });
 });
