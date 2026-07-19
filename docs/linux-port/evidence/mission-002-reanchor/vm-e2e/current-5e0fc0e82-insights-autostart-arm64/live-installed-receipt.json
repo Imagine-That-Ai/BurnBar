@@ -44,13 +44,14 @@
     "unit": "openburnbar-daemon.service",
     "enabled": true,
     "active": true,
-    "desktopPid": 93364,
+    "desktopPid": 96710,
+    "backgroundDesktopPidBeforeAccessibilityRun": 93364,
     "desktopProcessCount": 1,
     "daemonHealth": "Daemon 1.0.29 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true",
     "cliHealth": "pass",
-    "desktopLog": "/tmp/openburnbar-linux-desktop-parity.log",
+    "desktopLog": "/tmp/openburnbar-linux-desktop-foreground.log",
     "desktopLogFatalOrStub": false,
-    "desktopLogNote": "Only the non-fatal WebGL GBM fallback was present."
+    "desktopLogNote": "Only the non-fatal WebGL GBM fallback was present in both background and foreground launches."
   },
   "verification": {
     "frontendSuite": "83 files / 785 tests passed",
@@ -62,6 +63,11 @@
     "focusedAutostartRustTests": "4/4 passed",
     "focusedSettingsBridgeTests": "39/39 passed",
     "focusedSettingsAccessibilityTests": "32/32 passed",
+    "mediaDecoderLifecycleTests": {
+      "mediaGst": "6/6 passed",
+      "featureOff": "5/5 passed",
+      "change": "Decoder detaches under the viewer lock and GStreamer teardown runs outside the lock."
+    },
     "gstreamerLibraries": [
       "libgstreamer-1.0.so.0",
       "libgstbase-1.0.so.0",
@@ -84,14 +90,32 @@
       "enabled": true
     },
     "windowDiscovery": "xwininfo found one OpenBurnBar window (1280x782) and one tray window",
-    "atspiCapture": "blocked: guest capture-atspi-tree.py cannot import pyatspi",
+    "atspiCapture": {
+      "summary": "pass",
+      "nodeCount": 34,
+      "namedNodeCount": 23,
+      "actionableNodeCount": 15,
+      "focusableNodeCount": 18,
+      "readinessAttempts": 1,
+      "pythonDependency": "python3-pyatspi installed in the VM",
+      "initialBackgroundLimitation": "The background-only launch exposed one application node; a foreground launch exposed the meaningful tree."
+    },
+    "atspiSettingsActivation": {
+      "activation": "pass",
+      "routeSummary": "pass",
+      "expectedName": "Settings",
+      "nodeCount": 34,
+      "namedNodeCount": 23,
+      "actionableNodeCount": 15,
+      "routeState": "The Settings heading was exposed, but the bounded capture still showed Loading Settings; Launch at login controls were not directly activated."
+    },
     "visualCapture": "not certifying: headless UTM framebuffer screenshot was black"
   },
   "certifying": false,
   "nonCertifyingReasons": [
     "The DEB is an unsigned local candidate, not a signed release artifact with immutable provenance.",
     "The strict parity ledger remains 0/40 product rows and 0/7 environment receipts.",
-    "AT-SPI route/action capture is unavailable in this guest because the pyatspi module is not installed.",
+    "The foreground AT-SPI tree passes, but the background-only autostart tree initially exposed only one application node; the route/control workflow needs a dedicated packaged foreground/desktop-session capture.",
     "No physical iPad/Linux enrollment, approval execution, two-device Mercury, or Browser Computer Use flow was executed in this receipt.",
     "KDE/Wayland/wlroots, locked-keyring recovery, IME behavior, performance, update/rollback, and production receipts remain open."
   ]

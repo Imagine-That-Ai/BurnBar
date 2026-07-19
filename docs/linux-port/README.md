@@ -40,6 +40,10 @@ Current parity status as of 2026-07-19:
   earlier `992ef5c580` install remains historical and the current exact-head
   install is recorded in
   [`evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/).
+- `2e609b4061` hardens Mercury viewer lifecycle teardown by detaching the
+  decoder under the viewer lock and stopping GStreamer outside the lock. The
+  VM media tests pass **6/6** with `media-gst` and **5/5** without it; this is a
+  source/runtime reliability improvement, not cross-device media proof.
 - The physical-device runner now accepts either the CoreDevice identifier from
   `devicectl` or the hardware UDID required by Xcode, with deterministic
   missing/ambiguous-device failures (`5cff4281ec`).

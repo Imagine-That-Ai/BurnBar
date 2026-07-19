@@ -186,6 +186,9 @@ and covered for unavailable source state in `5e0fc0e82`). Focused verification
 is 28/28 Insights, 4/4 autostart Rust, 39/39 renderer/bridge, and 32/32
 Settings/accessibility tests. The exact-head package is installed; live checks
 and limitations are recorded in the receipt above.
+`2e609b4061` additionally moves Mercury GStreamer decoder teardown outside the
+viewer lock; the focused lifecycle tests pass 6/6 with `media-gst` and 5/5
+without it.
 
 ## Execution Status — 2026-07-18
 

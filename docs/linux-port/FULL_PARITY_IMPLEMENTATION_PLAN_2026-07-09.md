@@ -80,6 +80,9 @@ The current source slice adds a verified, capped Insights comparison workspace
 **39/39**, and the Settings/accessibility slice is **32/32**. The exact-head
 package is now installed; live checks and limitations are recorded in
 `evidence/mission-002-reanchor/vm-e2e/current-5e0fc0e82-insights-autostart-arm64/`.
+`2e609b4061` also hardens Mercury viewer lifecycle teardown by releasing the
+viewer lock before stopping GStreamer; the focused media lifecycle tests pass
+6/6 with `media-gst` and 5/5 without it.
 
 The installed Linux CLI parity fix is now on `d58b6a958f`: the Swift CLI
 resolves the canonical XDG daemon token file when no token environment override
