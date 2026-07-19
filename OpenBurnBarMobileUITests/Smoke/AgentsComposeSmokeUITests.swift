@@ -47,6 +47,15 @@ final class AgentsComposeSmokeUITests: SmokeUITestCase {
         )
     }
 
+    func testLiveParetoHarnessForcesProductionAppCheck() {
+        let app = liveParetoApplication()
+
+        XCTAssertEqual(
+            app.launchEnvironment["OPENBURNBAR_APP_CHECK_PROVIDER"],
+            "appattest"
+        )
+    }
+
     /// Opt-in production-surface proof. This intentionally uses the signed-in
     /// device state and real Firestore instead of the seeded smoke fixture.
     func testLiveParetoDispatchFromPhysicalDevice() throws {
@@ -67,7 +76,7 @@ final class AgentsComposeSmokeUITests: SmokeUITestCase {
             return
         }
 
-        let app = XCUIApplication()
+        let app = liveParetoApplication()
         app.launch()
 
         selectAuroraTab("hermes", in: app)
@@ -137,5 +146,11 @@ final class AgentsComposeSmokeUITests: SmokeUITestCase {
         dispatchedScreenshot.name = "pareto-wand-dispatched"
         dispatchedScreenshot.lifetime = .keepAlways
         add(dispatchedScreenshot)
+    }
+
+    private func liveParetoApplication() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["OPENBURNBAR_APP_CHECK_PROVIDER"] = "appattest"
+        return app
     }
 }
