@@ -107,7 +107,8 @@ describe('activity export', () => {
           }
         ],
         nextCursor: null,
-        complete: true
+        complete: true,
+        historyComplete: true
       }),
       sessionReplay: replay
     }, '2026-07-13T14:00:00Z');
@@ -141,7 +142,8 @@ describe('activity export', () => {
       sessionList: async () => ({
         sessions: [{ ...sessions[0]!, sourceID, providerSessionID: 'session-round-trip', runID: 'run-round-trip' }],
         nextCursor: null,
-        complete: true
+        complete: true,
+        historyComplete: true
       }),
       sessionReplay: async () => ({
         kind: 'native',
@@ -162,7 +164,8 @@ describe('activity export', () => {
     const sourceIndex = vi.fn(async () => ({
       sessions: [{ ...sessions[0]!, sourceID, providerSessionID: 'session-round-trip', runID: 'run-round-trip' }],
       nextCursor: null,
-      complete: true
+      complete: true,
+      historyComplete: true
     }));
     const result = await resumeActivityHistoryExportSession(parsed.document, sourceID, {
       sessionList: sourceIndex,
@@ -203,7 +206,8 @@ describe('activity export', () => {
           projectName: 'BurnBar'
         }],
         nextCursor: null,
-        complete: true
+        complete: true,
+        historyComplete: true
       }),
       sessionResume: resume
     });
@@ -290,7 +294,7 @@ describe('activity export', () => {
       },
       'Codex:missing',
       {
-        sessionList: async () => ({ sessions: [], nextCursor: null, complete: true }),
+        sessionList: async () => ({ sessions: [], nextCursor: null, complete: true, historyComplete: true }),
         sessionResume: resume
       }
     );
@@ -317,10 +321,29 @@ describe('activity export', () => {
     expect(replay).not.toHaveBeenCalled();
   });
 
+  it('does not let the bounded recent-usage bridge claim complete history', async () => {
+    const replay = vi.fn();
+    const result = await buildDaemonActivityHistoryExport({
+      // The current Linux bridge maps daemon.usage.recent to `complete: true`
+      // when fewer than 500 rows are returned, but that RPC has no cursor or
+      // completeness field. Without the explicit marker, export must fail
+      // closed instead of manufacturing a full-history claim.
+      sessionList: async () => ({ sessions, nextCursor: null, complete: true }),
+      sessionReplay: replay
+    });
+
+    expect(result).toMatchObject({
+      kind: 'unavailable',
+      code: 'history_not_complete',
+      message: expect.stringMatching(/explicit complete-history proof|recent-usage bridge/i)
+    });
+    expect(replay).not.toHaveBeenCalled();
+  });
+
   it('fails closed when any listed row lacks a verified source identity', async () => {
     const replay = vi.fn();
     const result = await buildDaemonActivityHistoryExport({
-      sessionList: async () => ({ sessions, nextCursor: null, complete: true }),
+      sessionList: async () => ({ sessions, nextCursor: null, complete: true, historyComplete: true }),
       sessionReplay: replay
     });
 
@@ -333,7 +356,8 @@ describe('activity export', () => {
       sessionList: async () => ({
         sessions: [{ ...sessions[0]!, sourceID: 'Codex:session-1' }],
         nextCursor: null,
-        complete: true
+        complete: true,
+        historyComplete: true
       }),
       sessionReplay: async () => ({ kind: 'native', briefingMD: 'body', briefingTruncated: true })
     });
@@ -343,7 +367,8 @@ describe('activity export', () => {
       sessionList: async () => ({
         sessions: [{ ...sessions[0]!, sourceID: 'Codex:session-1' }],
         nextCursor: null,
-        complete: true
+        complete: true,
+        historyComplete: true
       }),
       sessionReplay: async () => ({
         kind: 'native',

@@ -469,7 +469,12 @@ describe('ActivitySurface', () => {
       pid: 99,
       note: sessionID
     }));
-    const sessionList = vi.fn(async () => ({ sessions: [indexedSession], nextCursor: null, complete: true }));
+    const sessionList = vi.fn(async () => ({
+      sessions: [indexedSession],
+      nextCursor: null,
+      complete: true,
+      historyComplete: true
+    }));
     useShellStore.setState({ bridge: mockBridge({ sessionList, sessionResume: resume }) });
     render(<ActivitySurface />);
     await act(async () => {

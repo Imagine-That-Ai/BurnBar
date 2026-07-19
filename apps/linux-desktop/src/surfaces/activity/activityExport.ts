@@ -43,6 +43,17 @@ export type ActivityHistoryExportUnavailableCode =
   | 'history_size_exceeded'
   | 'daemon_error';
 
+/**
+ * `sessionList` is also used by the bounded `daemon.usage.recent` surface.
+ * That surface has no cursor or completeness contract, so a nullable cursor
+ * and a mapper-provided `complete` boolean are not sufficient proof of full
+ * history. A future daemon-owned history bridge must carry this explicit
+ * marker through the bridge before this path can claim completeness.
+ */
+type CompleteActivityHistoryList = Awaited<ReturnType<LinuxShellBridge['sessionList']>> & {
+  historyComplete?: boolean;
+};
+
 export type ActivityHistoryExportResult =
   | { kind: 'available'; document: ActivityExportDocument }
   | {
@@ -162,6 +173,12 @@ export async function buildDaemonActivityHistoryExport(
     return unavailable(
       'history_not_complete',
       'Full activity history export is unavailable because the daemon returned a paged or incomplete history.'
+    );
+  }
+  if ((listed as CompleteActivityHistoryList).historyComplete !== true) {
+    return unavailable(
+      'history_not_complete',
+      'Full activity history export is unavailable because the daemon did not provide an explicit complete-history proof; the current recent-usage bridge is bounded.'
     );
   }
   if (listed.sessions.length > ACTIVITY_HISTORY_EXPORT_LIMIT) {
@@ -471,6 +488,13 @@ export async function resumeActivityHistoryExportSession(
       kind: 'unavailable',
       code: 'source_resolution_unavailable',
       message: 'Resume from export is unavailable because the daemon source index is paged or incomplete.'
+    };
+  }
+  if ((current as CompleteActivityHistoryList).historyComplete !== true) {
+    return {
+      kind: 'unavailable',
+      code: 'source_resolution_unavailable',
+      message: 'Resume from export is unavailable because the daemon did not provide an explicit complete-history proof for source resolution.'
     };
   }
   const currentMatches = current.sessions.filter((session) => session.sourceID?.trim() === sourceID);
