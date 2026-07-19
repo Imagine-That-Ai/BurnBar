@@ -658,6 +658,22 @@ def test_macos_release_does_not_require_unsupported_app_attest_entitlement():
         assert key not in release_surface
 
 
+def test_signal_ffi_builder_clears_provenance_from_generated_rustc_wrapper():
+    builder = (ROOT / "scripts/build-signal-ffi-xcframework.sh").read_text(encoding="utf-8")
+    wrapper_function = builder.split("write_rustc_wrapper() {", 1)[1].split(
+        "\n}\n\nensure_rust_target()", 1
+    )[0]
+
+    chmod = 'chmod +x "${RUSTC_WRAPPER_SCRIPT}"'
+    clear_provenance = (
+        '/usr/bin/xattr -d com.apple.provenance "${RUSTC_WRAPPER_SCRIPT}" '
+        "2>/dev/null || true"
+    )
+    assert chmod in wrapper_function
+    assert clear_provenance in wrapper_function
+    assert wrapper_function.index(chmod) < wrapper_function.index(clear_provenance)
+
+
 def test_local_app_signing_uses_same_privileged_peer_policy_as_release():
     script = (ROOT / "scripts/sign-openburnbar-local.sh").read_text(encoding="utf-8")
 
