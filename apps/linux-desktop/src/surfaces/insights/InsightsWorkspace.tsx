@@ -362,8 +362,12 @@ export function InsightsWorkspace({
   }
 
   function toggleCompareMode(): void {
+    if (isComparing) {
+      setIsComparing(false);
+      return;
+    }
     if (compareOptions.length === 0) return;
-    setIsComparing((current) => !current);
+    setIsComparing(true);
   }
 
   function submitFollowUp(event: FormEvent<HTMLFormElement>) {
@@ -468,8 +472,8 @@ export function InsightsWorkspace({
               className="secondary"
               aria-pressed={isComparing}
               aria-label={isComparing ? 'Exit compare' : 'Compare insights'}
-              title={compareOptions.length === 0 ? 'No verified entries are available for comparison' : undefined}
-              disabled={compareOptions.length === 0}
+              title={!isComparing && compareOptions.length === 0 ? 'No verified entries are available for comparison' : undefined}
+              disabled={!isComparing && compareOptions.length === 0}
               onClick={toggleCompareMode}
             >
               Compare
