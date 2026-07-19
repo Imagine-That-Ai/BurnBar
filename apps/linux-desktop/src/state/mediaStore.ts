@@ -443,8 +443,6 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
           const reason = e instanceof Error ? e.message : 'Media session state request failed';
           set({
             callError: reason,
-            mediaControlState: 'error',
-            mediaControlReason: reason,
             mediaRpcControlState: 'error',
             mediaRpcControlReason: reason
           });
@@ -469,6 +467,8 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
   },
 
   async acceptCall(requestId) {
+    const requestGeneration = mediaLoadGeneration;
+    const isCurrentRequest = () => requestGeneration === mediaLoadGeneration;
     const { fixtureMode, bridge } = useShellStore.getState();
     const id = requestId ?? get().callState.requestId;
     if (!id) return;
@@ -493,14 +493,19 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
     }
     if (!bridge) return;
     try {
-      get().ingestSessionState(await bridge.mediaAcceptCall(id), 'live');
+      const state = await bridge.mediaAcceptCall(id);
+      if (!isCurrentRequest()) return;
+      get().ingestSessionState(state, 'live');
       set({ callError: null });
     } catch (e) {
+      if (!isCurrentRequest()) return;
       set({ callError: e instanceof Error ? e.message : 'Accept call failed' });
     }
   },
 
   async declineCall(requestId) {
+    const requestGeneration = mediaLoadGeneration;
+    const isCurrentRequest = () => requestGeneration === mediaLoadGeneration;
     const { fixtureMode, bridge } = useShellStore.getState();
     const id = requestId ?? get().callState.requestId;
     if (!id) return;
@@ -525,14 +530,19 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
     }
     if (!bridge) return;
     try {
-      get().ingestSessionState(await bridge.mediaDeclineCall(id), 'live');
+      const state = await bridge.mediaDeclineCall(id);
+      if (!isCurrentRequest()) return;
+      get().ingestSessionState(state, 'live');
       set({ callError: null });
     } catch (e) {
+      if (!isCurrentRequest()) return;
       set({ callError: e instanceof Error ? e.message : 'Decline call failed' });
     }
   },
 
   async endCall() {
+    const requestGeneration = mediaLoadGeneration;
+    const isCurrentRequest = () => requestGeneration === mediaLoadGeneration;
     const { fixtureMode, bridge } = useShellStore.getState();
     if (fixtureMode) {
       set({
@@ -552,9 +562,12 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
     }
     if (!bridge) return;
     try {
-      get().ingestSessionState(await bridge.mediaEndCall(), 'live');
+      const state = await bridge.mediaEndCall();
+      if (!isCurrentRequest()) return;
+      get().ingestSessionState(state, 'live');
       set({ callError: null });
     } catch (e) {
+      if (!isCurrentRequest()) return;
       set({ callError: e instanceof Error ? e.message : 'End call failed' });
     }
   },
@@ -576,14 +589,20 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
       set({ fileTransfers: [], fileCapabilityAvailable: null, fileDownloadDirectory: null, fileError: null });
       return;
     }
+    const requestGeneration = mediaLoadGeneration;
     try {
-      get().ingestFileOfferList(await bridge.mediaFileOfferList());
+      const response = await bridge.mediaFileOfferList();
+      if (requestGeneration !== mediaLoadGeneration) return;
+      get().ingestFileOfferList(response);
     } catch (e) {
+      if (requestGeneration !== mediaLoadGeneration) return;
       set({ fileError: e instanceof Error ? e.message : 'File transfer offer list failed' });
     }
   },
 
   async acceptFileTransfer(transferID, manifestID) {
+    const requestGeneration = mediaLoadGeneration;
+    const isCurrentRequest = () => requestGeneration === mediaLoadGeneration;
     const { fixtureMode, bridge } = useShellStore.getState();
     const transfer = get().fileTransfers.find((candidate) => matchesTransfer(candidate, transferID, manifestID));
     if (fixtureMode) {
@@ -599,6 +618,7 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
       };
       set({ fileTransfers: upsertTransfer(get().fileTransfers, downloading), fileError: null });
       await Promise.resolve();
+      if (!isCurrentRequest()) return;
       const completedAt = new Date().toISOString();
       const completed: MercuryFileTransfer = {
         ...downloading,
@@ -620,18 +640,22 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
     set({ fileBusyTransferID: busyID, fileError: null });
     try {
       const response = await bridge.mediaFileAccept({ transferID, manifestID });
+      if (!isCurrentRequest()) return;
       get().ingestFileAction(response);
       if (response.accepted) {
         await get().refreshFileTransfers();
       }
     } catch (e) {
+      if (!isCurrentRequest()) return;
       set({ fileError: e instanceof Error ? e.message : 'Accept file transfer failed' });
     } finally {
-      set({ fileBusyTransferID: null });
+      if (isCurrentRequest()) set({ fileBusyTransferID: null });
     }
   },
 
   async declineFileTransfer(transferID, manifestID) {
+    const requestGeneration = mediaLoadGeneration;
+    const isCurrentRequest = () => requestGeneration === mediaLoadGeneration;
     const { fixtureMode, bridge } = useShellStore.getState();
     const transfer = get().fileTransfers.find((candidate) => matchesTransfer(candidate, transferID, manifestID));
     if (fixtureMode) {
@@ -657,16 +681,21 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
     const busyID = transferID ?? manifestID ?? transfer?.transferID ?? null;
     set({ fileBusyTransferID: busyID, fileError: null });
     try {
-      get().ingestFileAction(await bridge.mediaFileDecline({ transferID, manifestID, reason: 'declined-from-linux-shell' }));
+      const response = await bridge.mediaFileDecline({ transferID, manifestID, reason: 'declined-from-linux-shell' });
+      if (!isCurrentRequest()) return;
+      get().ingestFileAction(response);
       await get().refreshFileTransfers();
     } catch (e) {
+      if (!isCurrentRequest()) return;
       set({ fileError: e instanceof Error ? e.message : 'Decline file transfer failed' });
     } finally {
-      set({ fileBusyTransferID: null });
+      if (isCurrentRequest()) set({ fileBusyTransferID: null });
     }
   },
 
   async sendFileTransfer(path, peerID) {
+    const requestGeneration = mediaLoadGeneration;
+    const isCurrentRequest = () => requestGeneration === mediaLoadGeneration;
     const trimmedPath = path.trim();
     if (!trimmedPath) {
       set({ fileError: 'Choose a file path to send.' });
@@ -698,6 +727,7 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
       };
       set({ fileTransfers: upsertTransfer(get().fileTransfers, sending), fileError: null });
       await Promise.resolve();
+      if (!isCurrentRequest()) return;
       const completedAt = new Date().toISOString();
       set({
         fileTransfers: upsertTransfer(get().fileTransfers, {
@@ -719,14 +749,16 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
     set({ fileBusyTransferID: 'send', fileError: null });
     try {
       const response = await bridge.mediaFileSend({ path: trimmedPath, peerID });
+      if (!isCurrentRequest()) return;
       get().ingestFileAction(response);
       if (response.accepted) {
         await get().refreshFileTransfers();
       }
     } catch (e) {
+      if (!isCurrentRequest()) return;
       set({ fileError: e instanceof Error ? e.message : 'Send file transfer failed' });
     } finally {
-      set({ fileBusyTransferID: null });
+      if (isCurrentRequest()) set({ fileBusyTransferID: null });
     }
   },
 
@@ -770,9 +802,14 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
 
   ingestSessionState(state, source = 'live') {
     const next = callStateFromSession(state, source);
+    const rpcAvailable = state.capabilityAvailable && state.phase !== 'capability-absent';
     set({
       callState: next,
       callError: null,
+      mediaRpcControlState: rpcAvailable ? 'available' : 'degraded',
+      mediaRpcControlReason: rpcAvailable
+        ? null
+        : get().status?.reason ?? 'Mercury daemon RPC capability is unavailable on this session.',
       loadState:
         state.phase === 'capability-absent' && ['idle', 'loading'].includes(get().loadState)
           ? 'capability-absent'
@@ -803,8 +840,6 @@ export const useMediaStore = create<MediaStoreState>()((set, get) => ({
             const reason = e instanceof Error ? e.message : 'Media session poll failed';
             set({
               callError: reason,
-              mediaControlState: 'error',
-              mediaControlReason: reason,
               mediaRpcControlState: 'error',
               mediaRpcControlReason: reason
             });

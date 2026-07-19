@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bridgeStubDefaults } from '../testing/bridgeStubs.js';
-import type { LinuxShellBridge, MercuryFileTransfer, MercuryMediaSessionState, MercuryMediaStatus } from '../tauriBridge.js';
+import type {
+  LinuxShellBridge,
+  MercuryFileTransfer,
+  MercuryFileTransferActionResponse,
+  MercuryMediaSessionState,
+  MercuryMediaStatus
+} from '../tauriBridge.js';
 import {
   mergeStageEvent,
   normalizeCallPhase,
@@ -230,6 +236,64 @@ describe('mediaStore live call state machine', () => {
     expect(useMediaStore.getState().callState.phase).toBe('streaming');
   });
 
+  it('recovers call controls after a transient session poll failure', async () => {
+    vi.useFakeTimers();
+    try {
+      const session: MercuryMediaSessionState = {
+        phase: 'idle',
+        kind: 'call',
+        capabilityAvailable: true
+      };
+      const mediaSessionState = vi
+        .fn()
+        .mockResolvedValueOnce(session)
+        .mockRejectedValueOnce(new Error('daemon restarting'))
+        .mockResolvedValue(session);
+      useShellStore.setState({
+        bridge: bridgeWithSession({ mediaSessionState })
+      });
+
+      await useMediaStore.getState().load();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(useMediaStore.getState()).toMatchObject({
+        mediaRpcControlState: 'error',
+        callError: 'daemon restarting'
+      });
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(useMediaStore.getState()).toMatchObject({
+        mediaRpcControlState: 'available',
+        mediaRpcControlReason: null,
+        callError: null,
+        callState: { phase: 'idle' }
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ignores an in-flight call action after reset invalidates the session', async () => {
+    const pending = deferred<MercuryMediaSessionState>();
+    const mediaAcceptCall = vi.fn().mockReturnValue(pending.promise);
+    useShellStore.setState({ bridge: bridgeWithSession({ mediaAcceptCall }) });
+    useMediaStore.setState({
+      mediaRpcControlState: 'available',
+      callState: { phase: 'ringing', requestId: 'req-stale', kind: 'call', source: 'live' }
+    });
+
+    const action = useMediaStore.getState().acceptCall();
+    expect(mediaAcceptCall).toHaveBeenCalledWith('req-stale');
+    useMediaStore.getState().reset();
+    pending.resolve({ phase: 'streaming', requestId: 'req-stale', kind: 'call', capabilityAvailable: true });
+    await action;
+
+    expect(useMediaStore.getState()).toMatchObject({
+      callState: { phase: 'idle' },
+      callError: null,
+      mediaRpcControlState: 'idle'
+    });
+  });
+
   it('declines a ringing fixture call into cooldown', async () => {
     useShellStore.setState({ fixtureMode: true, bridge: null });
     await useMediaStore.getState().load();
@@ -455,5 +519,27 @@ describe('mediaStore file transfer state machine', () => {
 
     expect(mediaFileSend).toHaveBeenCalledWith({ path: '/tmp/missing.pdf', peerID: undefined });
     expect(useMediaStore.getState().fileError).toBe('Local file is unavailable.');
+  });
+
+  it('ignores an in-flight file action after reset invalidates the session', async () => {
+    const pending = deferred<MercuryFileTransferActionResponse>();
+    const mediaFileAccept = vi.fn().mockReturnValue(pending.promise);
+    useShellStore.setState({ bridge: bridgeWithSession({ mediaFileAccept }) });
+    useMediaStore.setState({
+      fileCapabilityAvailable: true,
+      fileTransfers: [fileTransfer()]
+    });
+
+    const action = useMediaStore.getState().acceptFileTransfer('transfer-1', 'manifest-1');
+    expect(useMediaStore.getState().fileBusyTransferID).toBe('transfer-1');
+    useMediaStore.getState().reset();
+    pending.resolve({ accepted: true, transfer: fileTransfer({ phase: 'completed' }) });
+    await action;
+
+    expect(useMediaStore.getState()).toMatchObject({
+      fileTransfers: [],
+      fileBusyTransferID: null,
+      fileError: null
+    });
   });
 });
