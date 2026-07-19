@@ -37,7 +37,7 @@ suite passed with xcodebuild exit 0. This is an implementation and live-QA
 milestone only; the strict product/environment promotion boundary remains
 **0/40 product rows and 0/7 environment receipts**.
 
-The current source checkpoint is `1dc1328818`; the kernel capability slice at
+The current source checkpoint is `a01a60824b`; the kernel capability slice at
 `50d40b9acb` adds a typed backdrop kernel
 resolution receipt and surfaces requested-versus-resolved kernel state in the
 Linux switcher. The live Ubuntu WebKitGTK probe reports `webgl2=false` and
@@ -51,9 +51,17 @@ Linux default `swarmEmber`: two root-window captures two seconds apart changed
 only 256 bytes, so the background was effectively static while its lazy factory
 resolved. `1dc1328818` makes the Linux 2D default eager while retaining lazy
 loading for shader kernels, and its focused test proves that `fillRect` occurs
-during init and again on the first frame. This is source-fixed but not yet
-installed in the UTM guest; current-head package rebuild/install remains a
-release-runner dependency.
+during init and again on the first frame. Follow-up commits `907187f767` and
+`5b2a647051` keep all lazy 2D fallbacks opaque during chunk resolution, while
+`0ae08b3baf` retries cleanly when a loader throws before returning its Promise.
+`1f5a158e3d` enables Tauri's release custom protocol and `a01a60824b` makes the
+Cargo build script watch every file below `dist`, preventing stale embedded
+frontend assets after an in-place Vite output change. A fresh current-head
+release build was visually verified in the unlocked UTM guest: the shell and
+Canvas2D Aurora fallback rendered, with the explicit `WebGL2 unavailable`
+status. The direct tree launch does not start the packaged daemon, so its setup
+card reports daemon authority unavailable; current-head package installation
+and signed release certification remain release-runner dependencies.
 
 The connected physical iPad was rechecked against this checkout with the
 bounded approval/navigation selectors: **44/44 passed, 0 failures, xcodebuild

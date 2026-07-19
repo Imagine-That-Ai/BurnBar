@@ -6,13 +6,13 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | The installed non-certifying arm64 DEB remains source `5b70a3d320` in the Ubuntu 24.04.4 GNOME/X11 UTM guest; its receipt is `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/live-installed-receipt.json`. Current source is `1dc1328818`; the kernel capability implementation is `50d40b9acb` with focused paint regression tests at `a561c5ea3e` and `1dc1328818`, and the focused physical-iPad receipt is bound to the exact pre-documentation source `c9c679f43b`. A live WebKitGTK probe against the installed build reported `webgl2=false`, `webgl1=true`; the current source resolves Aurora to animated Canvas2D with an explicit `WebGL2 unavailable` label. The installed baseline's two root-window captures two seconds apart changed only 256 bytes, exposing a real first-paint/lazy-kernel regression; `1dc1328818` eagerly constructs the Linux `swarmEmber` default so the candidate paints before dynamic import resolution. Daemon/CLI health is green on the installed candidate, and the connected iPad approval/navigation slice passed 44/44 with xcodebuild exit 0. Signed provenance, current-head package installation, cross-device proof, and the strict product/environment receipts remain open. |
+| Remediation evidence | The installed non-certifying arm64 DEB remains source `5b70a3d320` in the Ubuntu 24.04.4 GNOME/X11 UTM guest; its receipt is `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/live-installed-receipt.json`. Current source is `a01a60824b`; the kernel capability implementation is `50d40b9acb` with focused paint regression tests at `a561c5ea3e`, `1dc1328818`, and `0ae08b3baf`, and the focused physical-iPad receipt is bound to the exact pre-documentation source `c9c679f43b`. A live WebKitGTK probe against the Ubuntu guest reported `webgl2=false`, `webgl1=true`; the current-head release visibly resolves Aurora to the Canvas2D fallback with an explicit `WebGL2 unavailable` label. The installed baseline's two root-window captures two seconds apart changed only 256 bytes, exposing a real first-paint/lazy-kernel regression; `1dc1328818` eagerly constructs the Linux `swarmEmber` default so the candidate paints before dynamic import resolution, while `907187f767`/`0ae08b3baf` keep lazy 2D fallbacks opaque and retryable when a chunk rejects or throws synchronously. `1f5a158e3d` enables Tauri's release custom protocol and `a01a60824b` makes Cargo watch every frontend asset so release binaries cannot reuse stale embedded `dist` files. A fresh current-head `npx tauri build --no-bundle --no-sign` render was visually verified in the unlocked VM; the direct tree run correctly shows the daemon-unavailable setup card because it does not launch the packaged daemon. Daemon/CLI health is green on the installed candidate, and the connected iPad approval/navigation slice passed 44/44 with xcodebuild exit 0. Signed provenance, current-head package installation, cross-device proof, and the strict product/environment receipts remain open. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
 ## Current Live Checkpoint — 2026-07-19
 
-The current source checkpoint is `1dc1328818`. The kernel capability slice at
+The current source checkpoint is `a01a60824b`. The kernel capability slice at
 `50d40b9acb` adds a typed kernel
 resolution receipt from the shared backdrop engine and exposes the requested
 kernel, resolved kernel, substrate, and fallback reason through DOM attributes
@@ -25,10 +25,17 @@ exposed a separate first-paint issue for the Linux default: two root-window
 captures two seconds apart changed only 256 bytes, so `swarmEmber` was visibly
 static while its lazy factory resolved. Commit `1dc1328818` makes that 2D
 default eager and adds a regression test that observes `fillRect` during init
-and the first frame. The current source fallback remains animated when the
-Canvas2D path is exercised; the installed package receipt below remains the
-prior `5b70a3d320` candidate until an arm64 Linux release runner rebuilds the
-new source.
+and the first frame. Follow-up commits `907187f767` and `0ae08b3baf` make every
+lazy 2D proxy paint an opaque palette-backed base immediately and retry after
+either asynchronous rejection or a synchronous loader throw. The current source fallback remains animated when the
+Canvas2D path is exercised. A fresh current-head release build was launched in
+the unlocked UTM guest after restoring the real Vite `dist`; the screenshot
+showed the rendered shell, setup card, and the `Aurora - 2D fallback (WebGL2
+unavailable)` status. The direct tree launch intentionally has no packaged
+daemon, so its setup card reports daemon authority unavailable; that is a
+separate packaging/runtime check from backdrop rendering. The installed
+package receipt below remains the prior `5b70a3d320` candidate until an arm64
+Linux release runner rebuilds and installs this source.
 
 The connected physical iPad was rechecked against the current checkout using
 the bounded approval/navigation selectors: **44 tests passed, 0 failed,
