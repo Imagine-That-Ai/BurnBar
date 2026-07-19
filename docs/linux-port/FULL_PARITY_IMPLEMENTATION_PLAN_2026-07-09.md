@@ -60,6 +60,14 @@ The earlier non-GStreamer receipt remains as a historical baseline under
 `current-fdbc7d718b-ui-arm64/`. Both are non-certifying because they are not
 signed exact-head candidates and do not prove cross-device media.
 
+The follow-up hardening is now also source-integrated: `511c8a1049` makes
+concurrent native pet summons single-flight; `1397313284` routes notification
+body clicks to `open` even when the server has no action capability; and
+`82b0fcf11e` retries a missing GStreamer decoder on the next keyframe and runs
+Secret Service/KWallet health checks before onboarding writes. Focused proof is
+28/28 pet UI tests, 4/4 notification Rust tests, 5/5 media Rust tests in both
+feature modes on the VM, and 6/6 Linux onboarding tests on Ubuntu.
+
 The installed Linux CLI parity fix is now on `d58b6a958f`: the Swift CLI
 resolves the canonical XDG daemon token file when no token environment override
 is supplied, matching the Tauri bridge and daemon launcher. Focused tests cover

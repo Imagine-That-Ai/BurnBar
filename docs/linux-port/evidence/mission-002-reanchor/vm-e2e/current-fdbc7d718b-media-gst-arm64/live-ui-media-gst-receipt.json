@@ -58,7 +58,8 @@
     "linuxMercuryMediaTests": "21/21 passed with OPENBURNBAR_LINUX_IROH_LIBRARY_DIR and packaged SQLCipher",
     "projectCodeMemoryBootstrapTests": "3/3 passed with packaged FTS5-capable SQLCipher",
     "linuxPeerCredentialTest": "1/1 passed on Ubuntu VM",
-    "tauriMediaGstRustTests": "4/4 passed",
+    "tauriMediaGstRustTests": "5/5 passed",
+    "gstreamerVp9PipelineSmoke": "gst-launch-1.0 videotestsrc num-buffers=1 ! vp9enc ! vp9dec ! fakesink exited 0",
     "bareCLIHealth": "pass",
     "webkitRuntime": "desktop stayed up; WebGL GBM fallback was non-fatal",
     "gstreamerLinkedLibraries": [

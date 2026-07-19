@@ -56,6 +56,13 @@ and disables stale file-offer actions; the focused media UI/state lane passes
 in the UTM guest and links the GStreamer app/base/core/video libraries; the
 bounded UI/runtime receipt is
 `evidence/mission-002-reanchor/vm-e2e/current-fdbc7d718b-media-gst-arm64/live-ui-media-gst-receipt.json`.
+The subsequent source slices add single-flight native pet summons
+(`511c8a1049`), body-click notification routing (`1397313284`), decoder retry
+without socket reconnect, and health-before-write Secret Service/KWallet
+onboarding checks (`82b0fcf11e`). They pass 28/28 pet UI tests, 4/4 native
+notification Rust tests, 5/5 media Rust tests in both VM feature modes, and
+6/6 Linux onboarding tests on Ubuntu. These are engineering improvements, not
+cross-device or signed-candidate certification.
 
 Two additional source-only parity hardening slices are now on the candidate
 branch. `6f57349c66` keeps Linux settings search selection synchronized with

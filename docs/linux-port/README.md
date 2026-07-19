@@ -17,6 +17,13 @@ Current parity status as of 2026-07-19:
   validation is bound to checkpoint `073c2aba45`. The Release and
   Nightly receipts below are historical engineering evidence for an older
   checkpoint, not a claim that the current docs head has a promoted artifact.
+- The latest source hardening adds single-flight native pet-window launch
+  (`511c8a1049`), body-click `open` routing for notification servers without
+  action buttons (`1397313284`), GStreamer decoder retry without requiring a
+  socket reconnect, and Secret Service/KWallet health-before-write onboarding
+  checks (`82b0fcf11e`). Focused verification is 28/28 pet UI tests, 4/4 native
+  notification Rust tests, 5/5 media Rust tests in both feature modes on the
+  VM, and 6/6 Linux onboarding tests on Ubuntu.
 - The physical-device runner now accepts either the CoreDevice identifier from
   `devicectl` or the hardware UDID required by Xcode, with deterministic
   missing/ambiguous-device failures (`5cff4281ec`).
