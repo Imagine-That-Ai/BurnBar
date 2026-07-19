@@ -2,6 +2,17 @@
 
 Generated from a 6-subagent parallel reconnaissance of `AgentLens/`, `apps/linux-desktop/`, `OpenBurnBarCore/`, `OpenBurnBarDaemon/`, design tokens, packaging, and release infrastructure.
 
+**Live status correction (2026-07-19):** the active implementation branch is
+`b4cd3e8b8b`, with 90 frontend test files / 851 passing tests and 129/129 Rust
+tests. The exact-head ARM64 package is installed and rendering in the unlocked
+Ubuntu GNOME/X11 UTM guest; see the current non-certifying receipt in
+`evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json`.
+The strict certification score remains 0/40 product rows and 0/7 environment
+receipts because unsigned local packaging, production configuration,
+cross-device flows, and the broader compositor/keyring/macOS differential
+matrix are still open. Do not convert the certification score into a source
+completion percentage.
+
 ---
 
 ## 1. Current state snapshot
@@ -93,7 +104,8 @@ the native library. No live daemon or installed-product receipt is promoted
 until the launcher state is repaired and rechecked.
 
 The honest status is therefore **0/40 product** and **0/7 environment** certified.
-A non-certifying engineering maturity estimate is approximately **68%**. The
+Do not report an approximate maturity percentage as a completion score; the
+source/test checkpoint and the certification ledger are separate measures. The
 remaining order is: clear the fresh X11 route budget, produce a signed candidate
 from that verified head, deploy and verify production App Check/OAuth callables,
 execute approval on the physical iPad, close the remaining Linux desktop,

@@ -14,44 +14,52 @@ This is not a marketing checklist. It is a build plan with ownership,
 dependencies, acceptance contracts, proof commands, loophole controls, and
 known platform divergences.
 
+> **Live status (2026-07-19):** The implementation branch is
+> `b4cd3e8b8b` and passes **90 frontend files / 851 tests**, TypeScript,
+> production-bundle verification, and **129/129 Rust tests**. An exact-head
+> ARM64 DEB is installed and visibly rendering in the unlocked Ubuntu
+> GNOME/X11 UTM guest; the non-certifying receipt is
+> [`evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json).
+> The strict certification ledger is still **0/40 product rows and 0/7
+> environment receipts** because the package is unsigned and production,
+> cross-device, keyring, compositor, and same-commit macOS differential proof
+> are not complete. These are separate numbers: source progress is real, but
+> it is not release certification.
+
 ## Executive Verdict
 
 Linux is not at full macOS parity.
 
 ### Current source wave — 2026-07-19 UTC
 
-Integration head `804ced4523` passes 87 frontend files / 811 tests, TypeScript,
-production bundle verification, Tauri Rust 125/125, and package-payload 13/13.
-The wave adds three bounded parity fixes: immediate visible Canvas2D recovery
-and requested-kernel retry after WebGL context loss (`1130524331`), keyboard-
-complete kernel selection with focus restoration (`db8a52f2f2`), and a truthful
-Support performance empty state (`2a19ac301a`). `804ced4523` also provides a
-read-only staged-payload validation path so a Swift-less ARM host can use the
-normal `pretauri:build`/`tauri:build` flow without probing for a local Swift
-toolchain. The UTM guest passed that path, but its installed package remains an
-older unsigned/non-certifying candidate. The implementation package has since
-been rebuilt and installed from the synced `804ced4523` source wave; the
-non-certifying receipt is
-`evidence/parity-audit-2026-07-10/linux-arm64-exact-implementation-2026-07-19.json`.
-These changes improve the engineering baseline; they do not close the strict
-0/40 product and 0/7 environment gates.
+Integration head `b4cd3e8b8b` passes 90 frontend files / 851 tests, TypeScript,
+production bundle verification, Tauri Rust 129/129, and package-payload
+contract checks. The current wave includes immediate Canvas2D recovery after
+WebGL context loss, keyboard-complete kernel selection, truthful Support
+performance empty state, stale-update/provider/subscription guards, periodic
+tray refresh, packaged-shell Reconnect, keyboard-complete overflow actions,
+cold-start notification-action retention, and the ARM64-only AppHandle fix
+found by the real Linux build. The UTM guest passed the read-only staged-payload
+path and the exact current-head package is installed and smoke-verified. These
+changes improve the engineering baseline; they do not close the strict 0/40
+product and 0/7 environment gates.
 
 ### Latest installed checkpoint — 2026-07-19 UTC
 
-The live Ubuntu guest now has a locally built ARM64 DEB from the current
-parity branch installed at `/usr/bin`. The non-certifying receipt is
-`evidence/parity-audit-2026-07-10/linux-arm64-current-head-2026-07-19.json`.
-It proves daemon health, onboarding advancement, and an animated Canvas2D
-fallback with the explicit `WebGL2 unavailable` label. This guest reports
-`webgl2=false`, so it does not certify WebGL2-only kernels or the broader
-seven-environment matrix. The prior `5b70a3d320` package remains the historical
-Settings-hydration baseline below.
+The live Ubuntu guest has the exact current-head ARM64 DEB from the parity
+branch installed at `/usr/bin`. The non-certifying receipt is
+`evidence/parity-audit-2026-07-10/linux-arm64-current-b4cd3e8b8b-postinstall-2026-07-19.json`.
+It proves daemon health, an unlocked active-window launch, and an animated
+Canvas2D fallback with the explicit `WebGL2 unavailable` label. This guest
+reports `webgl2=false`, so it does not certify WebGL2-only kernels or the
+broader seven-environment matrix. The older `5b70a3d320` package remains the
+historical Settings-hydration baseline below.
 
 Packaging hardening `59d49c7d59` also makes an explicit staged
 `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, allowing a Swift-less Linux build
 host to package an already-provisioned runtime. Focused package-payload
-coverage is **11/11**. The installed receipt above predates this packaging-only
-change and is intentionally non-certifying.
+coverage is green, and the installed receipt above is intentionally
+non-certifying because the local package is unsigned.
 
 The Ubuntu GNOME/X11 UTM guest now runs source candidate `5b70a3d320` from an
 exact rebuilt arm64 DEB. The Settings loading defect found during live QA was
