@@ -6,13 +6,26 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | Latest live candidate is source `5b70a3d320`, installed as an unsigned arm64 DEB in the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its non-certifying receipt is `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/live-installed-receipt.json`. Daemon/CLI health is green; Settings now mounts and hydrates deterministically, with 105 AT-SPI nodes, 50 actionable controls, and no `Loading Settings` node. General startup and Media & Sharing routes are reachable. The physical iPad focused navigation suite passed on the connected device. Signed provenance, cross-device proof, and the strict product/environment receipts remain open. The earlier `b590d5a77d`, `5e0fc0e82`, and settings/media receipts are historical. |
+| Remediation evidence | The installed non-certifying arm64 DEB remains source `5b70a3d320` in the Ubuntu 24.04.4 GNOME/X11 UTM guest; its receipt is `evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/live-installed-receipt.json`. Current source is `50d40b9acb`, which adds an explicit requested-vs-resolved backdrop capability receipt. A live WebKitGTK probe against that build reported `webgl2=false`, `webgl1=true`; selecting Aurora surfaced `Aurora · 2D fallback (WebGL2 unavailable)` while the Canvas2D fallback continued animating. Daemon/CLI health is green on the installed candidate, and the physical iPad focused navigation suite passed on the connected device. Signed provenance, cross-device proof, and the strict product/environment receipts remain open. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
 ## Current Live Checkpoint — 2026-07-19
 
-The latest candidate is `5b70a3d320`. The Settings live failure found in the
+The current source checkpoint is `50d40b9acb`. It adds a typed kernel
+resolution receipt from the shared backdrop engine and exposes the requested
+kernel, resolved kernel, substrate, and fallback reason through DOM attributes
+and the Linux switcher. The UTM guest's WebKitGTK context probe is
+`webgl2=false`, `webgl1=true`; the live dev-surface check selected Aurora and
+observed `resolved=constellation`, `reason=webgl2-unavailable`,
+`fallback=1`, `substrate=2d`, and the visible switcher label
+`Aurora · 2D fallback (WebGL2 unavailable)`. Two screenshots two seconds apart
+changed 406,879 pixels, so this is a documented renderer capability fallback,
+not a blank or frozen background. The installed package receipt below remains
+the prior `5b70a3d320` candidate until an arm64 Linux release runner rebuilds
+the new source.
+
+The latest installed candidate is `5b70a3d320`. The Settings live failure found in the
 VM was a route-boundary bug, not a daemon failure: packaged `SurfaceRouter`
 deferred the entire Settings surface behind an idle queue, so no
 `daemon.config.get` request could start. `2f75f3269e` mounts Settings
@@ -22,7 +35,7 @@ now reports 105 AT-SPI nodes and 50 actionable controls, no `Loading Settings`
 node, a reachable `Launch OpenBurnBar at login` checkbox, and a working Media &
 Sharing route. The daemon loaded 21 providers from the live config store.
 
-Source verification is green at **83 frontend files / 793 tests**, focused
+Source verification is green at **84 frontend files / 796 tests**, focused
 Settings/route coverage **45/45**, Tauri Rust **125/125**, TypeScript,
 formatting, and production-bundle verification. The connected physical iPad
 focused navigation suite passed with xcodebuild exit 0. This closes one real
