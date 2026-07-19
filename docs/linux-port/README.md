@@ -6,7 +6,7 @@ implemented as reviewable infrastructure, not a public availability claim.
 Current parity status as of 2026-07-19:
 
 - **Current source head:** the integration branch now includes source changes
-  through `811d84172a`. It passes 90 frontend files /
+  through `66b280162f`. It passes 90 frontend files /
   851 tests, TypeScript, production bundle verification, Tauri Rust 129/129,
   package-payload contract checks (2 pass, 2 historical skips), and product
   validators 12/12. `1130524331` recovers a visible 2D backdrop after
@@ -40,7 +40,9 @@ Current parity status as of 2026-07-19:
   and restores trigger focus after menu actions. `519f0456a7` adds a
   packaged-shell-only Support Reconnect action for degraded daemon health;
   `811d84172a` queues native notification actions until renderer bootstrap and
-  drains them once so cold-start Reply/open intent is preserved.
+  drains them once so cold-start Reply/open intent is preserved. `66b280162f`
+  fixes the Linux-only Tauri handle ownership compile failure found by the ARM64
+  package build.
   The ARM VM also passed
   the supported Swift-less staged-payload `pretauri:build`/`tauri:build` path via
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`. The installed VM DEB is unsigned

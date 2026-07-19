@@ -6,7 +6,7 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh; `465431d0fc` hardens startup forwarding; `7ac2e021c9` makes Browser Computer Use capability checks fail closed; `c0a725447d` adds a trusted embedded autostart fallback; `447abb0564` fences stale Mercury capability responses; `9e868e60a7` refreshes tray state periodically; `3e7ede75e3` bounds expired browser authorization polling; `ebab7da744` fences stale concurrent update/version checks; `534d7aae65` completes overflow-menu keyboard/focus behavior; `519f0456a7` adds a packaged-shell reconnect action for degraded daemon health; and `811d84172a` queues native notification actions until renderer bootstrap completes. Source-only checks are green at 851/851 frontend tests and 129/129 Rust tests; the two latest fixes still need packaging. |
+| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets are added, removed, or renamed; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh; `465431d0fc` hardens startup forwarding; `7ac2e021c9` makes Browser Computer Use capability checks fail closed; `c0a725447d` adds a trusted embedded autostart fallback; `447abb0564` fences stale Mercury capability responses; `9e868e60a7` refreshes tray state periodically; `3e7ede75e3` bounds expired browser authorization polling; `ebab7da744` fences stale concurrent update/version checks; `534d7aae65` completes overflow-menu keyboard/focus behavior; `519f0456a7` adds a packaged-shell reconnect action for degraded daemon health; `811d84172a` queues native notification actions until renderer bootstrap completes; and `66b280162f` fixes the Linux-only AppHandle ownership path caught by the ARM64 build. Source-only checks are green at 851/851 frontend tests and 129/129 Rust tests; the current-head package build is now being retried. |
 | Latest VM proof | The exact `534d7aae65` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-current-534d7aae65-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-534d7aae65-postinstall-2026-07-19.json). Daemon/CLI health is green and a clean unlocked GNOME launch renders the first-run setup surface and Fluid Aurora 2D fallback. Two captures two seconds apart differ in 453,846 pixels. |
 | Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
@@ -15,7 +15,7 @@
 ## Current Source Checkpoint — 2026-07-19
 
 The current integration branch includes source changes through
-`811d84172a`; the latest installed package is still bound to the earlier
+`66b280162f`; the latest installed package is still bound to the earlier
 source checkpoint `534d7aae65` because the two newest source fixes have not yet
 been packaged in the UTM guest. This is a source and build checkpoint, not a
 promotion claim:
@@ -67,6 +67,9 @@ promotion claim:
   bootstrap, adds the `initial_notification_actions` drain command, and keeps
   cold-start Reply/open intent and composer focus; focused Rust, bridge, and
   App coverage is 1/1, 33/33, and 26/26.
+- `66b280162f` clones the Tauri `AppHandle` before the Linux
+  `run_on_main_thread` notification callback, closing the ARM64-only compile
+  failure found during the first current-head package attempt.
 - Source gates pass: 90 frontend files / 851 tests, TypeScript, production
   bundle verification, Tauri Rust 129/129, package-payload contract checks
   (2 pass, 2 historical skips), and product validators 12/12.
