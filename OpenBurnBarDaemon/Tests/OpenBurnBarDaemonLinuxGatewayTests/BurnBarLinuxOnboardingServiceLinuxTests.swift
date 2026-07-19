@@ -141,6 +141,38 @@ final class BurnBarLinuxOnboardingServiceLinuxTests: XCTestCase {
         XCTAssertEqual(backend.storeCount, 0)
     }
 
+    func testLinuxSecretStoreProbeRequiresReadbackAndCleansProbeOnMismatch() throws {
+        let backend = ProbeRecordingSecretBackend(readbackMatches: false)
+        let custodian = LinuxSecretCustodian(backends: [backend])
+
+        XCTAssertThrowsError(
+            try BurnBarLinuxOnboardingService.verifyProductionSecretStore(using: custodian)
+        ) { error in
+            guard case let BurnBarLinuxOnboardingError.secretStoreUnavailable(detail) = error else {
+                return XCTFail("Expected onboarding to remain blocked, got \(error)")
+            }
+            XCTAssertTrue(detail.contains("round-trip"))
+        }
+        XCTAssertEqual(backend.events, ["health", "store", "read", "delete"])
+        XCTAssertFalse(backend.hasStoredSecret)
+    }
+
+    func testLinuxSecretStoreProbeFailsClosedWhenCleanupCannotBeConfirmed() throws {
+        let backend = ProbeRecordingSecretBackend(readbackMatches: true, failDelete: true)
+        let custodian = LinuxSecretCustodian(backends: [backend])
+
+        XCTAssertThrowsError(
+            try BurnBarLinuxOnboardingService.verifyProductionSecretStore(using: custodian)
+        ) { error in
+            guard case let BurnBarLinuxOnboardingError.secretStoreUnavailable(detail) = error else {
+                return XCTFail("Expected onboarding to remain blocked, got \(error)")
+            }
+            XCTAssertTrue(detail.contains("could not delete"))
+        }
+        XCTAssertEqual(backend.events, ["health", "store", "read", "delete", "delete"])
+        XCTAssertTrue(backend.hasStoredSecret)
+    }
+
     private func makeService(stateURL: URL) -> BurnBarLinuxOnboardingService {
         BurnBarLinuxOnboardingService(
             stateURL: stateURL,
@@ -225,5 +257,86 @@ private final class HealthGatedSecretBackend: LinuxSecretStoreBackend, @unchecke
         healthCheckCount += 1
         lock.unlock()
         throw LinuxSecretStoreError.backendUnavailable("Secret Service is locked")
+    }
+}
+
+private final class ProbeRecordingSecretBackend: LinuxSecretStoreBackend, @unchecked Sendable {
+    let backendName = "test-secret-service"
+    let trustLevel = LinuxSecretTrustLevel.secretService
+    let supportsMutations = true
+
+    private let readbackMatches: Bool
+    private let failDelete: Bool
+    private let lock = NSLock()
+    private(set) var events: [String] = []
+    private(set) var storedSecret: String?
+    private(set) var hasStoredSecret = false
+
+    init(readbackMatches: Bool, failDelete: Bool = false) {
+        self.readbackMatches = readbackMatches
+        self.failDelete = failDelete
+        self.storedSecret = nil
+    }
+
+    func readSecret(
+        id: String,
+        secretClass: LinuxHighValueSecretClass
+    ) throws -> LinuxSecretRecord? {
+        lock.lock()
+        events.append("read")
+        let storedSecret = self.storedSecret
+        lock.unlock()
+        guard let storedSecret else { return nil }
+        let secret = readbackMatches ? storedSecret : "wrong-value"
+        return LinuxSecretRecord(
+            secret: secret,
+            metadata: LinuxSecretMetadata(
+                id: id,
+                secretClass: secretClass,
+                trustLevel: trustLevel,
+                backend: backendName,
+                createdAtMillis: 0,
+                note: "test"
+            )
+        )
+    }
+
+    func storeSecret(
+        _ secret: String,
+        id: String,
+        secretClass: LinuxHighValueSecretClass
+    ) throws -> LinuxSecretMetadata {
+        lock.lock()
+        events.append("store")
+        storedSecret = secret
+        hasStoredSecret = true
+        lock.unlock()
+        return LinuxSecretMetadata(
+            id: id,
+            secretClass: secretClass,
+            trustLevel: trustLevel,
+            backend: backendName,
+            createdAtMillis: 0,
+            note: "test"
+        )
+    }
+
+    func deleteSecret(id: String, secretClass: LinuxHighValueSecretClass) throws {
+        lock.lock()
+        events.append("delete")
+        if failDelete == false {
+            storedSecret = nil
+            hasStoredSecret = false
+        }
+        lock.unlock()
+        if failDelete {
+            throw LinuxSecretStoreError.backendUnavailable("native delete failed")
+        }
+    }
+
+    func healthCheck() throws {
+        lock.lock()
+        events.append("health")
+        lock.unlock()
     }
 }

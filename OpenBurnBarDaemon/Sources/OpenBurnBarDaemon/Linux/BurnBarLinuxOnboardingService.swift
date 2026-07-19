@@ -487,6 +487,7 @@ public actor BurnBarLinuxOnboardingService {
         var lastError: Error?
         for backend in custodian.backends
             where backend.supportsMutations && backend.trustLevel.approvedForHighValueSecrets {
+            var probeStored = false
             do {
                 // Secret Service and KWallet can expose an executable command
                 // while their session/keyring is locked. Health must succeed
@@ -498,9 +499,7 @@ public actor BurnBarLinuxOnboardingService {
                     id: probeID,
                     secretClass: .providerCredential
                 )
-                defer {
-                    try? backend.deleteSecret(id: probeID, secretClass: .providerCredential)
-                }
+                probeStored = true
                 let readback = try backend.readSecret(id: probeID, secretClass: .providerCredential)
                 guard readback?.secret == probeValue else {
                     throw LinuxSecretStoreError.commandFailed(
@@ -510,8 +509,23 @@ public actor BurnBarLinuxOnboardingService {
                     )
                 }
                 try backend.deleteSecret(id: probeID, secretClass: .providerCredential)
+                probeStored = false
                 return "\(backend.backendName) passed an ephemeral write/read/delete verification."
             } catch {
+                if probeStored {
+                    do {
+                        // A successful write must never be allowed to escape
+                        // onboarding when cleanup cannot be confirmed. Retry
+                        // once after a readback/delete failure, then fail
+                        // closed instead of falling through to another backend
+                        // with an orphaned probe secret.
+                        try backend.deleteSecret(id: probeID, secretClass: .providerCredential)
+                    } catch {
+                        throw BurnBarLinuxOnboardingError.secretStoreUnavailable(
+                            "\(backend.backendName) could not delete its ephemeral verification value; onboarding remains blocked."
+                        )
+                    }
+                }
                 lastError = error
             }
         }
