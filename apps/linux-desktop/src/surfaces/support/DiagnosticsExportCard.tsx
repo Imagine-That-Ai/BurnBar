@@ -1,4 +1,5 @@
 import { Banner } from '../../components/Banner.js';
+import { useEffect, useRef } from 'react';
 import { useShellStore } from '../../state/shellStore.js';
 import { useSupportStore } from '../../state/supportStore.js';
 
@@ -71,8 +72,17 @@ export function DiagnosticsExportCard() {
   const copyError = useSupportStore((s) => s.copyError);
   const exportDiagnostics = useSupportStore((s) => s.exportDiagnostics);
   const copyDiagnosticsPath = useSupportStore((s) => s.copyDiagnosticsPath);
+  const resetExport = useSupportStore((s) => s.resetExport);
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const bridge = useShellStore((s) => s.bridge);
+  const exportContext = useRef<{ bridge: typeof bridge; fixtureMode: boolean } | null>(null);
+  useEffect(() => {
+    const previous = exportContext.current;
+    if (previous && (previous.bridge !== bridge || previous.fixtureMode !== fixtureMode)) {
+      resetExport();
+    }
+    exportContext.current = { bridge, fixtureMode };
+  }, [bridge, fixtureMode, resetExport]);
   const included = safeManifest(exportPreview?.included ?? INCLUDED, false);
   const excluded = safeManifest(exportPreview?.excluded ?? EXCLUDED, true);
   const fixtureExport = exportPath === FIXTURE_EXPORT_PATH;

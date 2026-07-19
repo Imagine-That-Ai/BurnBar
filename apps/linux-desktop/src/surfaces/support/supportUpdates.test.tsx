@@ -422,6 +422,52 @@ describe('P09 updates and support', () => {
     expect(bridge.exportDiagnostics).toHaveBeenCalled();
   });
 
+  it('ignores a late diagnostics export from a replaced shell bridge', async () => {
+    let resolveExport: ((result: { path: string }) => void) | undefined;
+    const firstBridge = mockBridge({
+      exportDiagnostics: vi.fn().mockImplementation(
+        () => new Promise<{ path: string }>((resolve) => { resolveExport = resolve; })
+      )
+    });
+    useShellStore.setState({ bridge: firstBridge, fixtureMode: false });
+    render(<SupportSurface />);
+    const pendingExport = useSupportStore.getState().exportDiagnostics();
+    await act(async () => { await Promise.resolve(); });
+
+    const replacementBridge = mockBridge({
+      exportDiagnostics: vi.fn().mockResolvedValue({ path: '/home/user/new-shell-diagnostics.json' })
+    });
+    act(() => useShellStore.setState({ bridge: replacementBridge }));
+    resolveExport?.({ path: '/home/user/old-shell-diagnostics.json' });
+    await act(async () => { await pendingExport; });
+
+    expect(useSupportStore.getState().exportPath).toBeNull();
+    expect(screen.queryByText('/home/user/old-shell-diagnostics.json')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Export redacted diagnostics' })).toBeTruthy();
+  });
+
+  it('keeps the newest diagnostics export when calls overlap', async () => {
+    let resolveFirst: ((result: { path: string }) => void) | undefined;
+    const bridge = mockBridge({
+      exportDiagnostics: vi.fn()
+        .mockImplementationOnce(
+          () => new Promise<{ path: string }>((resolve) => { resolveFirst = resolve; })
+        )
+        .mockResolvedValueOnce({ path: '/home/user/newest-diagnostics.json' })
+    });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(<SupportSurface />);
+    const firstExport = useSupportStore.getState().exportDiagnostics();
+    await act(async () => { await Promise.resolve(); });
+    const secondExport = useSupportStore.getState().exportDiagnostics();
+    await act(async () => { await secondExport; });
+
+    expect(useSupportStore.getState().exportPath).toBe('/home/user/newest-diagnostics.json');
+    resolveFirst?.({ path: '/home/user/oldest-diagnostics.json' });
+    await act(async () => { await firstExport; });
+    expect(useSupportStore.getState().exportPath).toBe('/home/user/newest-diagnostics.json');
+  });
+
   it('copies only the validated native export path', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });

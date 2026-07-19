@@ -34,6 +34,7 @@ const FIXTURE_PREVIEW: DiagnosticsExportPreview = {
 // an older request cannot replace fresh package guidance with stale metadata.
 let versionRequestSequence = 0;
 let updateRequestSequence = 0;
+let exportRequestSequence = 0;
 
 function fixtureVersionInfo(): AppVersionInfo {
   return {
@@ -114,6 +115,9 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
   copyState: 'idle',
   copyError: null,
   resetExport() {
+    // Invalidate an in-flight native dialog/export before clearing its UI
+    // state. A late response must not repopulate a path from an old shell.
+    ++exportRequestSequence;
     set({
       exportState: 'idle',
       exportPath: null,
@@ -196,8 +200,16 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
     }
   },
   async exportDiagnostics() {
+    const requestID = ++exportRequestSequence;
     const { fixtureMode, bridge } = useShellStore.getState();
+    const isCurrentRequest = () => {
+      const currentShell = useShellStore.getState();
+      return requestID === exportRequestSequence
+        && currentShell.fixtureMode === fixtureMode
+        && currentShell.bridge === bridge;
+    };
     if (!fixtureMode && !bridge) {
+      if (!isCurrentRequest()) return;
       set({
         exportState: 'failed',
         exportPath: null,
@@ -217,6 +229,7 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
     try {
       if (fixtureMode) {
         const path = '/tmp/openburnbar-diagnostics-fixture.json';
+        if (!isCurrentRequest()) return;
         set({
           exportState: 'success',
           exportPath: path,
@@ -228,6 +241,7 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
         return;
       }
       const result = await bridge!.exportDiagnostics();
+      if (!isCurrentRequest()) return;
       if (!isSafeDiagnosticsPath(result.path)) {
         throw new Error('Native diagnostics export returned an unsafe path.');
       }
@@ -243,6 +257,7 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
         copyError: null
       });
     } catch (e) {
+      if (!isCurrentRequest()) return;
       set({
         exportState: 'failed',
         exportPath: null,
