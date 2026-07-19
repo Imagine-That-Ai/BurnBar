@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import type { UsageInsights, UsageInsightsQualitativeCitation } from '../../tauriBridge.js';
+import type { MixEntry, UsageInsights, UsageInsightsQualitativeCitation } from '../../tauriBridge.js';
 import { MixBar } from './MixBar.js';
 import { StatCallout } from './StatCallout.js';
 import { TrendChart } from './TrendChart.js';
@@ -26,6 +26,19 @@ type InsightWidget = {
   sourceState: 'verified' | 'unavailable';
   sourceDetail: string;
   kind: 'trend' | 'stat' | 'provider' | 'model';
+};
+
+type InsightCompareScope = {
+  id: string;
+  label: string;
+  detail: string;
+  kind: 'provider' | 'model' | 'widget';
+  source: string;
+  sourceID: string;
+  sourceState: 'verified' | 'unavailable';
+  sourceDetail: string;
+  entry?: MixEntry;
+  widget?: InsightWidget;
 };
 
 type InsightsWorkspaceProps = {
@@ -121,6 +134,154 @@ function widgetsFor(data: UsageInsights, sourceLabel: string): InsightWidget[] {
   ];
 }
 
+function validMixEntry(entry: MixEntry): boolean {
+  return (
+    typeof entry.id === 'string' &&
+    entry.id.trim().length > 0 &&
+    typeof entry.label === 'string' &&
+    entry.label.trim().length > 0 &&
+    Number.isFinite(entry.pct) &&
+    entry.pct >= 0 &&
+    entry.pct <= 100
+  );
+}
+
+function compareScopesFor(
+  data: UsageInsights,
+  widgets: readonly InsightWidget[],
+  evidence: ReturnType<typeof resolveInsightsEvidence>
+): InsightCompareScope[] {
+  // A compare column is a claim about the same response as the canvas. Do not
+  // let malformed or missing authority metadata turn a renderer projection
+  // into something that looks like live evidence.
+  if (evidence.state !== 'verified') return [];
+
+  const scopes: InsightCompareScope[] = [];
+  for (const entry of data.providerMix.filter(validMixEntry)) {
+    scopes.push({
+      id: `provider:${entry.id}`,
+      label: entry.label,
+      detail: `${entry.pct}% of recorded provider activity.`,
+      kind: 'provider',
+      source: evidence.label,
+      sourceID: evidence.sourceID,
+      sourceState: evidence.state,
+      sourceDetail: evidence.detail,
+      entry
+    });
+  }
+  for (const entry of data.modelMix.filter(validMixEntry)) {
+    scopes.push({
+      id: `model:${entry.id}`,
+      label: entry.label,
+      detail: `${entry.pct}% of recorded model activity.`,
+      kind: 'model',
+      source: evidence.label,
+      sourceID: evidence.sourceID,
+      sourceState: evidence.state,
+      sourceDetail: evidence.detail,
+      entry
+    });
+  }
+  for (const widget of widgets) {
+    if (widget.sourceState !== 'verified') continue;
+    scopes.push({
+      id: `widget:${widget.id}`,
+      label: widget.title,
+      detail: widget.summary,
+      kind: 'widget',
+      source: widget.source,
+      sourceID: widget.sourceID,
+      sourceState: widget.sourceState,
+      sourceDetail: widget.sourceDetail,
+      widget
+    });
+  }
+  return scopes;
+}
+
+function compareScopeKindLabel(scope: InsightCompareScope): string {
+  if (scope.kind === 'widget') return 'Widget';
+  return scope.kind === 'provider' ? 'Provider scope' : 'Model scope';
+}
+
+function compareScopeControlLabel(scope: InsightCompareScope): string {
+  return `${compareScopeKindLabel(scope)}: ${scope.label}`;
+}
+
+function InsightCompareColumn({
+  scope,
+  data,
+  onRemove
+}: {
+  scope: InsightCompareScope;
+  data: UsageInsights;
+  onRemove: () => void;
+}) {
+  const titleID = `insights-compare-title-${scope.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+  const entry = scope.entry;
+  const widget = scope.widget;
+
+  return (
+    <article className="insights-compare-column" aria-labelledby={titleID}>
+      <header className="insights-compare-column-heading">
+        <div>
+          <span className="insights-eyebrow">{compareScopeKindLabel(scope)}</span>
+          <h3 id={titleID}>{scope.label}</h3>
+        </div>
+        <button
+          type="button"
+          className="insights-compare-remove"
+          onClick={onRemove}
+          aria-label={`Remove ${scope.label} from compare`}
+          title={`Remove ${scope.label} from compare`}
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      </header>
+      <p className="insights-compare-summary">{scope.detail}</p>
+      {entry ? (
+        <div className="insights-compare-share" role="group" aria-label={`${scope.label} recorded share`}>
+          <div className="insights-compare-share-value">
+            <span>Recorded share</span>
+            <strong>{entry.pct}%</strong>
+          </div>
+          <div
+            className="insights-compare-share-track"
+            role="img"
+            aria-label={`${entry.label}: ${entry.pct}% of recorded ${scope.kind} activity`}
+          >
+            <span style={{ width: `${entry.pct}%` }} />
+          </div>
+        </div>
+      ) : widget?.kind === 'trend' ? (
+        <TrendChart weekly={data.weekly} />
+      ) : widget?.kind === 'stat' ? (
+        <StatCallout cacheHitRatePct={data.cacheHitRatePct} caption="Cache hit rate" />
+      ) : widget?.kind === 'provider' ? (
+        <MixBar
+          title="Provider mix"
+          entries={data.providerMix}
+          ariaLabel={`Provider mix: ${data.providerMix.map((item) => `${item.label} ${item.pct}%`).join(', ')}`}
+        />
+      ) : widget?.kind === 'model' ? (
+        <MixBar
+          title="Model mix"
+          entries={data.modelMix}
+          ariaLabel={`Model mix: ${data.modelMix.map((item) => `${item.label} ${item.pct}%`).join(', ')}`}
+        />
+      ) : (
+        <p className="muted">No comparable metric is available.</p>
+      )}
+      <footer className="insights-compare-provenance">
+        <span>Provenance: {scope.source}</span>
+        <span>{scope.sourceDetail}</span>
+        <code data-testid="insights-compare-source-id">{scope.sourceID}</code>
+      </footer>
+    </article>
+  );
+}
+
 export function InsightsWorkspace({
   data,
   sourceLabel,
@@ -138,10 +299,23 @@ export function InsightsWorkspace({
   const initializedScopeRef = useRef<string | null>(null);
   const [composerValue, setComposerValue] = useState('');
   const [showAudit, setShowAudit] = useState(false);
+  const [isComparing, setIsComparing] = useState(false);
+  const [selectedCompareIDs, setSelectedCompareIDs] = useState<string[]>([]);
   const selectedID = workspace.selectedWidgetID;
   const layout = workspace.layout;
   const selected = widgets.find((widget) => widget.id === selectedID) ?? widgets[0];
   const qualitative = resolveQualitativeCapability(data);
+  const compareOptions = useMemo(
+    () => compareScopesFor(data, widgets, evidence),
+    [data, evidence, widgets]
+  );
+  const compareOptionFingerprint = compareOptions.map((scope) => scope.id).join('|');
+  const selectedCompareScopes = useMemo(() => {
+    const byID = new Map(compareOptions.map((scope) => [scope.id, scope]));
+    return selectedCompareIDs
+      .map((scopeID) => byID.get(scopeID))
+      .filter((scope): scope is InsightCompareScope => Boolean(scope));
+  }, [compareOptions, selectedCompareIDs]);
 
   useEffect(() => {
     setWorkspace(readInsightsWorkspace(accountScope, widgetIDs));
@@ -157,6 +331,18 @@ export function InsightsWorkspace({
     writeInsightsWorkspace(accountScope, workspace);
   }, [accountScope, workspace]);
 
+  useEffect(() => {
+    // A refreshed response may remove a provider/model. Never leave a stale
+    // selection rendered as if it were still backed by the current source.
+    const available = new Set(compareOptions.map((scope) => scope.id));
+    setSelectedCompareIDs((current) => {
+      const next = current.filter((scopeID) => available.has(scopeID)).slice(0, 3);
+      return next.length === current.length && next.every((scopeID, index) => scopeID === current[index])
+        ? current
+        : next;
+    });
+  }, [compareOptionFingerprint]);
+
   function selectWidget(widgetID: string): void {
     if (!widgetIDs.includes(widgetID)) return;
     setWorkspace((current) => ({ ...current, selectedWidgetID: widgetID }));
@@ -164,6 +350,20 @@ export function InsightsWorkspace({
 
   function setLayout(nextLayout: InsightsCanvasLayout): void {
     setWorkspace((current) => ({ ...current, layout: nextLayout }));
+  }
+
+  function toggleCompareScope(scopeID: string): void {
+    if (!compareOptions.some((scope) => scope.id === scopeID)) return;
+    setSelectedCompareIDs((current) => {
+      if (current.includes(scopeID)) return current.filter((id) => id !== scopeID);
+      if (current.length >= 3) return current;
+      return [...current, scopeID];
+    });
+  }
+
+  function toggleCompareMode(): void {
+    if (compareOptions.length === 0) return;
+    setIsComparing((current) => !current);
   }
 
   function submitFollowUp(event: FormEvent<HTMLFormElement>) {
@@ -179,23 +379,62 @@ export function InsightsWorkspace({
       <aside className="insights-canvas-library" aria-label="Insight canvases">
         <div className="insights-workspace-heading">
           <span className="insights-eyebrow">Canvases</span>
-          <strong>Usage observatory</strong>
+          <strong>{isComparing ? 'Compare scopes' : 'Usage observatory'}</strong>
         </div>
-        <p className="insights-library-copy">Select a panel to inspect its recorded evidence and follow up in chat.</p>
-        <nav aria-label="Insight canvas list">
-          {widgets.map((widget) => (
-            <button
-              type="button"
-              key={widget.id}
-              className={widget.id === selected?.id ? 'insights-canvas-item is-selected' : 'insights-canvas-item'}
-              aria-pressed={widget.id === selected?.id}
-              onClick={() => selectWidget(widget.id)}
-            >
-              <span>{widget.title}</span>
-              <small>{widget.kind}</small>
-            </button>
-          ))}
-        </nav>
+        <p className="insights-library-copy">
+          {isComparing
+            ? 'Select up to three verified providers, models, or widgets for side-by-side review.'
+            : 'Select a panel to inspect its recorded evidence and follow up in chat.'}
+        </p>
+        {isComparing ? (
+          <section className="insights-compare-picker" aria-label="Compare scope picker">
+            {compareOptions.length > 0 ? (
+              <div role="group" aria-label="Compare up to three scopes">
+                {compareOptions.map((scope) => {
+                  const selectedForCompare = selectedCompareIDs.includes(scope.id);
+                  return (
+                    <button
+                      type="button"
+                      key={scope.id}
+                      className={selectedForCompare ? 'insights-canvas-item is-selected' : 'insights-canvas-item'}
+                      aria-pressed={selectedForCompare}
+                      aria-label={compareScopeControlLabel(scope)}
+                      disabled={!selectedForCompare && selectedCompareIDs.length >= 3}
+                      onClick={() => toggleCompareScope(scope.id)}
+                    >
+                      <span>{scope.label}</span>
+                      <small>{compareScopeKindLabel(scope)}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="insights-compare-empty" role="status">
+                No verified provider, model, or widget entries are available for comparison.
+              </p>
+            )}
+            {compareOptions.length > 0 ? (
+              <p className="insights-compare-limit" aria-live="polite">
+                {selectedCompareScopes.length} of 3 selected
+              </p>
+            ) : null}
+          </section>
+        ) : (
+          <nav aria-label="Insight canvas list">
+            {widgets.map((widget) => (
+              <button
+                type="button"
+                key={widget.id}
+                className={widget.id === selected?.id ? 'insights-canvas-item is-selected' : 'insights-canvas-item'}
+                aria-pressed={widget.id === selected?.id}
+                onClick={() => selectWidget(widget.id)}
+              >
+                <span>{widget.title}</span>
+                <small>{widget.kind}</small>
+              </button>
+            ))}
+          </nav>
+        )}
       </aside>
 
       <section className="insights-workspace-main" aria-labelledby="insights-workspace-title">
@@ -224,6 +463,17 @@ export function InsightsWorkspace({
                 Compact
               </button>
             </div>
+            <button
+              type="button"
+              className="secondary"
+              aria-pressed={isComparing}
+              aria-label={isComparing ? 'Exit compare' : 'Compare insights'}
+              title={compareOptions.length === 0 ? 'No verified entries are available for comparison' : undefined}
+              disabled={compareOptions.length === 0}
+              onClick={toggleCompareMode}
+            >
+              Compare
+            </button>
             <button type="button" className="secondary" onClick={() => setShowAudit(true)} aria-haspopup="dialog">
               Audit
             </button>
@@ -233,11 +483,42 @@ export function InsightsWorkspace({
           </div>
         </header>
 
-        <section
-          className={`insights-canvas-grid${layout === 'compact' ? ' insights-canvas-grid--compact' : ''}`}
-          aria-label="Insight widgets"
-          data-layout={layout}
-        >
+        {isComparing ? (
+          <section className="insights-compare-view" aria-label="Insights comparison">
+            <div className="insights-compare-view-heading">
+              <div>
+                <span className="insights-eyebrow">Compare</span>
+                <h3>Side-by-side comparison</h3>
+                <p>Select up to three scopes from the canvas library.</p>
+              </div>
+              <span className="insights-compare-count" aria-live="polite">
+                {selectedCompareScopes.length} / 3
+              </span>
+            </div>
+            {selectedCompareScopes.length > 0 ? (
+              <div className="insights-compare-grid">
+                {selectedCompareScopes.map((scope) => (
+                  <InsightCompareColumn
+                    key={scope.id}
+                    scope={scope}
+                    data={data}
+                    onRemove={() => toggleCompareScope(scope.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="insights-compare-empty insights-compare-empty--main" role="status">
+                <strong>Pick up to three scopes to compare</strong>
+                <span>Choose a provider, model, or widget from the canvas library.</span>
+              </div>
+            )}
+          </section>
+        ) : (
+          <section
+            className={`insights-canvas-grid${layout === 'compact' ? ' insights-canvas-grid--compact' : ''}`}
+            aria-label="Insight widgets"
+            data-layout={layout}
+          >
           <article className="insights-widget insights-widget--wide">
             <div className="insights-widget-heading">
               <div>
@@ -294,7 +575,8 @@ export function InsightsWorkspace({
               ariaLabel={`Model mix: ${data.modelMix.map((entry) => `${entry.label} ${entry.pct}%`).join(', ')}`}
             />
           </article>
-        </section>
+          </section>
+        )}
 
         <form className="insights-composer" onSubmit={submitFollowUp}>
           <label htmlFor="insights-follow-up">Ask about this data</label>

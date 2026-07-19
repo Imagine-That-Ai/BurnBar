@@ -385,6 +385,49 @@ body.reduced-motion .insights-skeleton-chart {
   text-transform: uppercase;
 }
 
+.insights-compare-picker {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.insights-compare-picker > div {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 440px;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+.insights-compare-limit {
+  margin: 0;
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+}
+
+.insights-compare-empty {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  color: var(--color-text-mute);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.insights-compare-empty--main {
+  min-height: 240px;
+  place-content: center;
+  padding: var(--space-5);
+  border: 1px dashed var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.insights-compare-empty--main strong {
+  color: var(--color-text-bright);
+  font-size: 0.9rem;
+}
+
 .insights-workspace-toolbar,
 .insights-widget-heading {
   display: flex;
@@ -450,6 +493,149 @@ body.reduced-motion .insights-skeleton-chart {
 
 .insights-canvas-grid--compact .insights-trend-svg {
   height: 148px;
+}
+
+.insights-compare-view {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+}
+
+.insights-compare-view-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.insights-compare-view-heading h3 {
+  margin: 0.2rem 0 0;
+  color: var(--color-text-bright);
+  font-size: 0.92rem;
+}
+
+.insights-compare-view-heading p {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-dim);
+  font-size: 0.74rem;
+}
+
+.insights-compare-count {
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.insights-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--space-3);
+}
+
+.insights-compare-column {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-glass-bg-elevated) 30%, transparent);
+}
+
+.insights-compare-column-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.insights-compare-column-heading h3 {
+  margin: 0.2rem 0 0;
+  color: var(--color-text-bright);
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.insights-compare-remove {
+  display: inline-grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--color-text-dim);
+  background: transparent;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.insights-compare-remove:hover,
+.insights-compare-remove:focus-visible {
+  border-color: var(--color-brass-core);
+  color: var(--color-text-bright);
+  background: color-mix(in srgb, var(--color-brass-core) 12%, transparent);
+}
+
+.insights-compare-summary {
+  margin: 0;
+  color: var(--color-text-mute);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.insights-compare-share {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.insights-compare-share-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-text-dim);
+  font-size: 0.72rem;
+}
+
+.insights-compare-share-value strong {
+  color: var(--color-text-bright);
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.insights-compare-share-track {
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-text-dim) 18%, transparent);
+}
+
+.insights-compare-share-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-brass-core);
+}
+
+.insights-compare-provenance {
+  display: grid;
+  gap: 0.2rem;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-glass-line);
+  color: var(--color-text-dim);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.insights-compare-provenance code {
+  overflow-wrap: anywhere;
+  color: var(--color-text-mute);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
 }
 
 .insights-widget-heading h3 {
@@ -681,6 +867,10 @@ body.reduced-motion .insights-skeleton-chart {
   }
 
   .insights-canvas-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .insights-compare-grid {
     grid-template-columns: 1fr;
   }
 

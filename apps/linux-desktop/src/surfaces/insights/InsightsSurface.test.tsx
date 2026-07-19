@@ -279,6 +279,70 @@ describe('InsightsSurface', () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
+  it('supports macOS-style compare mode with three bounded scopes and provenance', () => {
+    render(
+      <InsightsWorkspace
+        data={fixtureUsageInsights()}
+        sourceLabel="fixture transcript"
+        onRefresh={vi.fn()}
+        onFollowUp={vi.fn()}
+      />
+    );
+
+    const compare = screen.getByRole('button', { name: /compare insights/i });
+    expect(compare.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(compare);
+
+    expect(screen.getByRole('region', { name: /insights comparison/i })).toBeTruthy();
+    const picker = screen.getByRole('group', { name: /compare up to three scopes/i });
+    const provider = within(picker).getByRole('button', { name: 'Provider scope: Claude Code' });
+    const model = within(picker).getByRole('button', { name: 'Model scope: Claude 4.5 Sonnet' });
+    const widget = within(picker).getByRole('button', { name: 'Widget: Usage trend' });
+
+    fireEvent.click(provider);
+    fireEvent.click(model);
+    fireEvent.click(widget);
+    expect(screen.getByText('3 / 3')).toBeTruthy();
+    expect(provider.getAttribute('aria-pressed')).toBe('true');
+    expect(model.getAttribute('aria-pressed')).toBe('true');
+    expect(widget.getAttribute('aria-pressed')).toBe('true');
+    expect(within(picker).getByRole('button', { name: 'Provider scope: OpenAI' }).hasAttribute('disabled')).toBe(true);
+
+    const sourceIDs = screen.getAllByTestId('insights-compare-source-id');
+    expect(sourceIDs).toHaveLength(3);
+    expect(sourceIDs.every((node) => node.textContent === 'fixture.usage.insights')).toBe(true);
+    expect(screen.getByRole('button', { name: /remove Claude Code from compare/i })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /remove Claude Code from compare/i }));
+    expect(screen.getAllByTestId('insights-compare-source-id')).toHaveLength(2);
+    expect(within(picker).getByRole('button', { name: 'Provider scope: OpenAI' }).hasAttribute('disabled')).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: /exit compare/i }));
+    expect(screen.queryByRole('region', { name: /insights comparison/i })).toBeNull();
+    expect(screen.getByRole('region', { name: /insight widgets/i })).toBeTruthy();
+  });
+
+  it('fails closed when the usage source is not verified', () => {
+    const malformed = {
+      ...fixtureUsageInsights(),
+      source: { id: 'forged.source' }
+    } as unknown as UsageInsights;
+    render(
+      <InsightsWorkspace
+        data={malformed}
+        sourceLabel="live daemon usage insights"
+        onRefresh={vi.fn()}
+        onFollowUp={vi.fn()}
+      />
+    );
+
+    const compare = screen.getByRole('button', { name: /compare insights/i });
+    expect(compare.hasAttribute('disabled')).toBe(true);
+    expect(compare.getAttribute('title')).toBe('No verified entries are available for comparison');
+    fireEvent.click(compare);
+    expect(screen.queryByRole('region', { name: /insights comparison/i })).toBeNull();
+  });
+
   it('renders daemon citations for qualitative findings and hands opaque evidence to chat', () => {
     const followUp = vi.fn();
     const data: UsageInsights = {
