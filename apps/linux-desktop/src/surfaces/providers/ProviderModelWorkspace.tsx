@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { CustomModel, ProviderCatalog, ProviderCatalogEntry, ProviderCatalogModel, ProviderHealthState } from '../../tauriBridge.js';
 import { useProvidersStore } from '../../state/providersStore.js';
 import './provider-model-workspace.css';
@@ -124,6 +124,14 @@ export function ProviderModelWorkspace({ providers }: { providers: ProviderCatal
   const removeCustomModel = useProvidersStore((state) => state.removeCustomModel);
   const load = useProvidersStore((state) => state.load);
   const [selectedProviderID, setSelectedProviderID] = useState(providers[0]?.id ?? '');
+  useEffect(() => {
+    // Catalog refreshes can remove or reorder providers. Never leave the
+    // mutation form pointing at a provider ID that is no longer present.
+    setSelectedProviderID((current) => {
+      if (providers.some((provider) => provider.id === current)) return current;
+      return providers[0]?.id ?? '';
+    });
+  }, [providers]);
   const modelCount = providers.reduce((count, provider) => count + (provider.models?.length ?? 0), 0);
   const catalogUnavailable = providers.some((provider) => provider.catalogAvailable === false);
   return (

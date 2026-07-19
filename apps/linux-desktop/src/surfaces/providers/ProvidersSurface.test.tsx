@@ -5,6 +5,7 @@ import { fixtureProviderCatalog } from '../../daemonFixture.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useProvidersStore } from '../../state/providersStore.js';
 import { ProvidersSurface } from '../ProvidersSurface.js';
+import { ProviderModelWorkspace } from './ProviderModelWorkspace.js';
 
 const defaultProvidersLoad = useProvidersStore.getState().load;
 
@@ -165,5 +166,17 @@ describe('ProvidersSurface (quota workspace)', () => {
     expect(screen.getByText('Live provider catalog is unavailable. Showing the last available catalog.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry catalog' }));
     expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('repairs custom-model provider selection when a refresh removes the selected provider', async () => {
+    const providers = fixtureProviderCatalog().slice(0, 2);
+    const { rerender } = render(<ProviderModelWorkspace providers={providers} />);
+    const selector = screen.getByRole('combobox', { name: 'Custom model provider' }) as HTMLSelectElement;
+
+    fireEvent.change(selector, { target: { value: providers[1]!.id } });
+    expect(selector.value).toBe(providers[1]!.id);
+
+    rerender(<ProviderModelWorkspace providers={[providers[0]!]} />);
+    await waitFor(() => expect(selector.value).toBe(providers[0]!.id));
   });
 });
