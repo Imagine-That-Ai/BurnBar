@@ -471,7 +471,7 @@ export function InsightsWorkspace({
               type="button"
               className="secondary"
               aria-pressed={isComparing}
-              aria-label={isComparing ? 'Exit compare' : 'Compare insights'}
+              aria-label={isComparing ? 'Exit compare' : 'Compare'}
               title={!isComparing && compareOptions.length === 0 ? 'No verified entries are available for comparison' : undefined}
               disabled={!isComparing && compareOptions.length === 0}
               onClick={toggleCompareMode}

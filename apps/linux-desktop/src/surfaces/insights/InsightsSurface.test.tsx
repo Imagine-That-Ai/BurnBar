@@ -289,7 +289,7 @@ describe('InsightsSurface', () => {
       />
     );
 
-    const compare = screen.getByRole('button', { name: /compare insights/i });
+    const compare = screen.getByRole('button', { name: /^compare$/i });
     expect(compare.hasAttribute('disabled')).toBe(false);
     fireEvent.click(compare);
 
@@ -336,7 +336,7 @@ describe('InsightsSurface', () => {
       />
     );
 
-    const compare = screen.getByRole('button', { name: /compare insights/i });
+    const compare = screen.getByRole('button', { name: /^compare$/i });
     expect(compare.hasAttribute('disabled')).toBe(true);
     expect(compare.getAttribute('title')).toBe('No verified entries are available for comparison');
     fireEvent.click(compare);
