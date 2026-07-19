@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
     existing: null,
     created: null
   };
+  let constructorCalls = 0;
   class MockPetWindow {
     static getByLabel = vi.fn(async () => windows.existing);
     readonly label: string;
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => {
     readonly close = vi.fn(async () => {});
 
     constructor(label: string, options: Record<string, unknown>) {
+      constructorCalls += 1;
       this.label = label;
       this.options = options;
       windows.created = this;
@@ -27,7 +29,15 @@ const mocks = vi.hoisted(() => {
       return () => {};
     }
   }
-  return { invoke, windows, MockPetWindow };
+  return {
+    invoke,
+    windows,
+    MockPetWindow,
+    getConstructorCalls: () => constructorCalls,
+    resetConstructorCalls: () => {
+      constructorCalls = 0;
+    }
+  };
 });
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => mocks.invoke(...args)
@@ -54,6 +64,7 @@ describe('pet companion native window contract', () => {
     mocks.invoke.mockReset();
     mocks.windows.existing = null;
     mocks.windows.created = null;
+    mocks.resetConstructorCalls();
     (window as unknown as { __TAURI_INTERNALS__: object }).__TAURI_INTERNALS__ = {};
     mocks.invoke.mockResolvedValue(X11_STATUS);
   });
@@ -88,6 +99,14 @@ describe('pet companion native window contract', () => {
     expect(mocks.windows.created?.show).toHaveBeenCalledTimes(1);
     expect(mocks.windows.created?.setFocus).toHaveBeenCalledTimes(1);
     expect(mocks.windows.created?.setIgnoreCursorEvents).toHaveBeenCalledWith(false);
+  });
+
+  it('single-flights concurrent summon requests into one native child', async () => {
+    const { openPetCompanionWindow } = await import('./petCompanionWindow.js');
+    const [first, second] = await Promise.all([openPetCompanionWindow(), openPetCompanionWindow()]);
+    expect(first).toEqual(second);
+    expect(mocks.getConstructorCalls()).toBe(1);
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
   });
 
   it('refuses Wayland and unknown sessions before creating a window', async () => {

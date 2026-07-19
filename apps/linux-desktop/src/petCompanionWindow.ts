@@ -48,6 +48,11 @@ function petCompanionURL(): string {
   return url.toString();
 }
 
+// The native shortcut and the route button can fire in the same event turn.
+// Keep one in-flight creation so both callers converge on the same child
+// window instead of racing two WebviewWindow constructors with one label.
+let openingCompanion: Promise<PetCompanionWindowState> | null = null;
+
 async function nativeStatus(): Promise<PetCompanionStatus> {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
     return BROWSER_STATUS;
@@ -85,7 +90,7 @@ async function waitForWindow(child: WebviewWindow): Promise<void> {
 }
 
 /** Open/focus the constrained X11 companion window, never on Wayland. */
-export async function openPetCompanionWindow(): Promise<PetCompanionWindowState> {
+async function openPetCompanionWindowImpl(): Promise<PetCompanionWindowState> {
   let status: PetCompanionStatus;
   try {
     status = await nativeStatus();
@@ -140,6 +145,26 @@ export async function openPetCompanionWindow(): Promise<PetCompanionWindowState>
       error instanceof Error ? `Native companion window failed: ${error.message}` : 'Native companion window failed.'
     );
   }
+}
+
+/**
+ * Open/focus the companion with single-flight semantics. Native shortcut and
+ * renderer actions can arrive together; returning the same promise prevents
+ * duplicate windows and keeps both callers' state in sync.
+ */
+export function openPetCompanionWindow(): Promise<PetCompanionWindowState> {
+  if (openingCompanion) return openingCompanion;
+  const opening = openPetCompanionWindowImpl();
+  openingCompanion = opening;
+  void opening.then(
+    () => {
+      if (openingCompanion === opening) openingCompanion = null;
+    },
+    () => {
+      if (openingCompanion === opening) openingCompanion = null;
+    }
+  );
+  return opening;
 }
 
 /** Toggle pointer pass-through only for an already-open native child. */
