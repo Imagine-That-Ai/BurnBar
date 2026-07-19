@@ -1036,26 +1036,44 @@ def select_models_for_wand(
     selected: list[dict[str, Any]] = []
     probe_failures: list[dict[str, Any]] = []
     used_providers: set[str] = set()
+    attempted_args: set[str] = set()
     probes_used = 0
+    probe_limit = max(1, max_probes)
     runner = probe_runner or smoke_probe
 
     def eligible(candidate: dict[str, Any], enforce_diversity: bool) -> bool:
-        if str(candidate.get("arg")) in {str(item.get("arg")) for item in selected}:
+        candidate_arg = str(candidate.get("arg"))
+        if candidate_arg in attempted_args or candidate_arg in {str(item.get("arg")) for item in selected}:
             return False
         provider = str(candidate.get("provider") or candidate.get("backend") or "")
         return not enforce_diversity or provider not in used_providers
 
     passes = [True, False] if require_provider_diversity else [False]
     for enforce_diversity in passes:
-        for candidate in ordered:
+        pass_candidates = ordered
+        if not enforce_diversity and used_providers:
+            # Once diversity must relax, use the remaining bounded probes on
+            # siblings of a provider that already proved it can land a commit.
+            pass_candidates = sorted(
+                ordered,
+                key=lambda candidate: (
+                    0 if str(candidate.get("provider") or candidate.get("backend") or "") in used_providers else 1
+                ),
+            )
+        for candidate in pass_candidates:
             if len(selected) >= count:
+                break
+            remaining_probes = probe_limit - probes_used
+            remaining_slots = count - len(selected)
+            if prove_headless and enforce_diversity and used_providers and remaining_probes <= remaining_slots:
                 break
             if not eligible(candidate, enforce_diversity):
                 continue
             if prove_headless:
-                if probes_used >= max(1, max_probes):
+                if probes_used >= probe_limit:
                     break
                 probes_used += 1
+                attempted_args.add(str(candidate["arg"]))
                 probe = runner(str(candidate["arg"]), str(wand.get("autonomy") or "medium"), probe_ttl)
                 if not probe.get("landsCommit"):
                     probe_failures.append({"arg": candidate.get("arg"), "probe": probe})

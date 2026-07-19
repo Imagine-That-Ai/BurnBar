@@ -452,6 +452,110 @@ def test_multi_selector_preserves_provider_diversity_with_proof(monkeypatch, tmp
     assert probed == ["openai-a", "zai-a"]
 
 
+def test_multi_selector_relaxes_diversity_before_exhausting_probe_budget(monkeypatch, tmp_path: Path) -> None:
+    store = tmp_path / "wands.v1.json"
+    store.write_text(
+        json.dumps(
+            {
+                "wands": [
+                    {
+                        "id": "pareto",
+                        "name": "Pareto Wand",
+                        "selector": "pareto",
+                        "constraints": {"minCapabilityRank": 10},
+                        "autonomy": "medium",
+                        "allowBackends": ["builtin", "direct"],
+                        "isDefault": True,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ministry,
+        "list_launchable",
+        lambda include_quota=True: {
+            "candidates": [
+                {
+                    "arg": "openai-failed",
+                    "model": "gpt-5.4-mini",
+                    "provider": "openai",
+                    "backend": "builtin",
+                    "capabilityClassRank": 10,
+                    "price": 0.7,
+                    "costUnknown": False,
+                    "quota": {"state": "unknown"},
+                },
+                {
+                    "arg": "zai-failed",
+                    "model": "glm-5.2",
+                    "provider": "zai",
+                    "backend": "direct",
+                    "capabilityClassRank": 20,
+                    "price": 0.0,
+                    "costUnknown": True,
+                    "quota": {"state": "unknown"},
+                },
+                {
+                    "arg": "opencode-a",
+                    "provider": "opencode",
+                    "backend": "direct",
+                    "capabilityClassRank": 80,
+                    "price": 0.6,
+                    "costUnknown": False,
+                    "quota": {"state": "unknown"},
+                },
+                {
+                    "arg": "generic-failed",
+                    "provider": "generic",
+                    "backend": "direct",
+                    "capabilityClassRank": 80,
+                    "price": 0.0,
+                    "costUnknown": True,
+                    "quota": {"state": "unknown"},
+                },
+                {
+                    "arg": "opencode-b",
+                    "provider": "opencode",
+                    "backend": "direct",
+                    "capabilityClassRank": 70,
+                    "price": 0.8,
+                    "costUnknown": False,
+                    "quota": {"state": "unknown"},
+                },
+            ]
+        },
+    )
+    probed: list[str] = []
+
+    def probe(arg: str, autonomy: str, ttl: int) -> dict:
+        probed.append(arg)
+        return {
+            "landsCommit": arg.startswith("opencode-"),
+            "arg": arg,
+            "autonomy": autonomy,
+            "ttl": ttl,
+        }
+
+    monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "2")
+    selected = ministry.select_models_for_wand(
+        store,
+        wand_id="pareto",
+        count=2,
+        require_provider_diversity=True,
+        prove_headless=True,
+        max_probes=4,
+        probe_runner=probe,
+    )
+
+    assert selected["proofStatus"] == "proven_headless"
+    assert selected["selectedCount"] == 2
+    assert selected["providerCount"] == 1
+    assert [item["arg"] for item in selected["selected"]] == ["opencode-a", "opencode-b"]
+    assert probed == ["openai-failed", "zai-failed", "opencode-a", "opencode-b"]
+
+
 def test_env_cap_clamps_select_models_for_wand_end_to_end(monkeypatch, tmp_path: Path) -> None:
     """OPENBURNBAR_WAND_PARALLEL_MAX (the tier cap the app passes) clamps fan-out
     width through the real selector, not just the helper in isolation."""
