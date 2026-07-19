@@ -60,8 +60,14 @@ jobs:
 
       - name: Require live protected default-branch controls
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/ci/verify-domain-core-default-branch-controls.mjs
+          GH_TOKEN: ${{ secrets.DOMAIN_CORE_GOVERNANCE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::DOMAIN_CORE_GOVERNANCE_READ_TOKEN is required with repository Administration: read."
+            exit 1
+          fi
+          node scripts/ci/verify-domain-core-default-branch-controls.mjs
 
       - name: Validate candidate and locate exact successful push run
         id: source
