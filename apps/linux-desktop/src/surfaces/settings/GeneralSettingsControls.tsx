@@ -134,6 +134,7 @@ export function LaunchAtLoginControl() {
     : busy
       ? 'Saving…'
       : 'Loading…';
+  const unavailable = status?.source === 'unavailable';
 
   return (
     <SettingRow
@@ -145,8 +146,8 @@ export function LaunchAtLoginControl() {
           <input
             type="checkbox"
             checked={status?.enabled ?? false}
-            disabled={busy || !status}
-            aria-busy={busy || !status}
+            disabled={busy || !status || unavailable}
+            aria-busy={busy || !status || unavailable}
             aria-label="Launch OpenBurnBar at login"
             onChange={(event) => void toggle(event.currentTarget.checked)}
           />
