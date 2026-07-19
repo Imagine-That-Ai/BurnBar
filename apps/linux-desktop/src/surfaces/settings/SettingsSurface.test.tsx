@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureConfigSnapshot } from '../../daemonFixture.js';
@@ -8,7 +8,8 @@ import { useSettingsWiringStore } from '../../state/settingsWiringStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
 import type { LinuxPrivacyRetentionApplyResult, LinuxPrivacyRetentionStatus, LinuxShellBridge } from '../../tauriBridge.js';
-import { SettingsSurface } from './SettingsSurface.js';
+import { SETTINGS_CONFIG_REQUEST_TIMEOUT_MS, SETTINGS_CONFIG_TIMEOUT_MESSAGE, SettingsSurface } from './SettingsSurface.js';
+import { SETTINGS_TAB_STORAGE_KEY } from './settingsTabs.js';
 
 function resetStores(): void {
   localStorage.clear();
@@ -120,7 +121,10 @@ function bridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge {
 
 describe('SettingsSurface', () => {
   beforeEach(resetStores);
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
 
   it('keeps evidence-pinned failure-state ids from SystemStatusSection', () => {
     const { container } = render(<SettingsSurface />);
@@ -390,6 +394,26 @@ describe('SettingsSurface', () => {
     useSystemStore.setState({ loading: true, config: null, error: null });
     const { container } = render(<SettingsSurface />);
     expect(container.querySelector('.settings-split--loading')).toBeTruthy();
+  });
+
+  it('fails closed when the settings config request hangs', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(useSystemStore.getState(), 'loadConfig').mockImplementation(() => new Promise<void>(() => {}));
+    useShellStore.setState({ bridge: {} as never, fixtureMode: false });
+    useSystemStore.setState({ loading: true, config: null, error: null });
+    localStorage.setItem(SETTINGS_TAB_STORAGE_KEY, 'general');
+    const { container } = render(<SettingsSurface />);
+    expect(container.querySelector('.settings-split--loading')).toBeTruthy();
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SETTINGS_CONFIG_REQUEST_TIMEOUT_MS);
+    });
+
+    expect(useSystemStore.getState().error).toBe(SETTINGS_CONFIG_TIMEOUT_MESSAGE);
+    expect(screen.getByText(SETTINGS_CONFIG_TIMEOUT_MESSAGE)).toBeTruthy();
+    expect(container.querySelector('.settings-split--loading')).toBeNull();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy();
   });
 
   it('shows offline notice on daemon detail without bridge', () => {

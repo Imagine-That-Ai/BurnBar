@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useShellStore } from './shellStore.js';
 
 type IdleDeadlineLike = {
@@ -77,43 +77,66 @@ export function useLaneLoad(load: () => Promise<void>): void {
   const dataRevision = useShellStore((s) => s.dataRevision);
   const loadRef = useRef(load);
   const stateRef = useRef({ running: false, queued: false, mounted: true });
+  const pendingScheduleRef = useRef<(() => void) | null>(null);
+  const revisionRef = useRef(dataRevision);
   loadRef.current = load;
 
   useEffect(() => {
     stateRef.current.mounted = true;
     return () => {
       stateRef.current.mounted = false;
+      pendingScheduleRef.current?.();
+      pendingScheduleRef.current = null;
     };
   }, []);
 
-  useEffect(() => {
-    const run = async (): Promise<void> => {
-      if (stateRef.current.running) {
-        stateRef.current.queued = true;
-        return;
-      }
-      stateRef.current.running = true;
-      try {
-        do {
-          stateRef.current.queued = false;
-          try {
-            await loadRef.current();
-          } catch {
-            // Lane stores own their error state; the next daemon event retries.
-          }
-        } while (stateRef.current.queued && stateRef.current.mounted);
-      } finally {
-        stateRef.current.running = false;
-      }
-    };
+  const run = useCallback(async (): Promise<void> => {
+    if (stateRef.current.running) {
+      stateRef.current.queued = true;
+      return;
+    }
+    stateRef.current.running = true;
+    try {
+      do {
+        stateRef.current.queued = false;
+        try {
+          await loadRef.current();
+        } catch {
+          // Lane stores own their error state; the next daemon event retries.
+        }
+      } while (stateRef.current.queued && stateRef.current.mounted);
+    } finally {
+      stateRef.current.running = false;
+    }
+  }, []);
 
+  const requestLoad = useCallback((): void => {
+    if (!stateRef.current.mounted) return;
+    if (stateRef.current.running) {
+      stateRef.current.queued = true;
+      return;
+    }
     if (!shouldDeferPackagedLoad()) {
       void run();
       return;
     }
-
-    return schedulePackagedLoad(() => {
+    // Keep the first packaged load alive while subscription events arrive.
+    // The callback reads loadRef at execution time, so it observes the latest
+    // bridge and data without restarting the animation-frame/idle queue.
+    if (pendingScheduleRef.current) return;
+    pendingScheduleRef.current = schedulePackagedLoad(() => {
+      pendingScheduleRef.current = null;
       void run();
     });
-  }, [load, bridgeReady, dataRevision]);
+  }, [run]);
+
+  useEffect(() => {
+    requestLoad();
+  }, [bridgeReady, requestLoad]);
+
+  useEffect(() => {
+    if (revisionRef.current === dataRevision) return;
+    revisionRef.current = dataRevision;
+    requestLoad();
+  }, [dataRevision, requestLoad]);
 }

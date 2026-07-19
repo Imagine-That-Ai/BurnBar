@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
@@ -15,6 +15,10 @@ import {
   settingsTabsMatchingQuery,
   type SettingsTabId
 } from './settingsTabs.js';
+
+export const SETTINGS_CONFIG_REQUEST_TIMEOUT_MS = 8_000;
+export const SETTINGS_CONFIG_TIMEOUT_MESSAGE =
+  'Settings config did not respond in time. Check the local daemon and retry.';
 
 function SettingsSkeleton() {
   return (
@@ -47,6 +51,23 @@ export function SettingsSurface() {
   const [refreshBusy, setRefreshBusy] = useState(false);
 
   useLaneLoad(loadConfig);
+
+  useEffect(() => {
+    if (fixtureMode || config || !loading) return;
+    const timeout = window.setTimeout(() => {
+      useSystemStore.setState((state) => {
+        // A late daemon response may have completed normally while the timer
+        // was queued. Never overwrite a valid snapshot or a newer error.
+        if (state.config || !state.loading) return state;
+        return {
+          ...state,
+          loading: false,
+          error: SETTINGS_CONFIG_TIMEOUT_MESSAGE
+        };
+      });
+    }, SETTINGS_CONFIG_REQUEST_TIMEOUT_MS);
+    return () => window.clearTimeout(timeout);
+  }, [config, fixtureMode, loading]);
 
   const onSelectTab = useCallback((tab: SettingsTabId) => {
     setActiveTab(tab);

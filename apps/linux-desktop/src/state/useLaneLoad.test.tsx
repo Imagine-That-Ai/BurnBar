@@ -103,6 +103,7 @@ describe('useLaneLoad', () => {
     const originalTauri = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
     const frames: FrameRequestCallback[] = [];
     let idleCallback: ((deadline: { didTimeout: boolean; timeRemaining(): number }) => void) | undefined;
+    const cancelAnimationFrame = vi.fn();
 
     Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} });
     Object.defineProperty(window, 'requestAnimationFrame', {
@@ -116,7 +117,7 @@ describe('useLaneLoad', () => {
     Object.defineProperty(window, 'cancelAnimationFrame', {
       configurable: true,
       writable: true,
-      value: vi.fn()
+      value: cancelAnimationFrame
     });
     Object.defineProperty(window, 'requestIdleCallback', {
       configurable: true,
@@ -138,11 +139,27 @@ describe('useLaneLoad', () => {
       expect(spy).not.toHaveBeenCalled();
       expect(frames).toHaveLength(1);
 
+      // Subscription events can arrive before the deferred first load. They
+      // must not cancel the only pending hydration attempt.
+      act(() => {
+        useShellStore.setState({ dataRevision: 1 });
+        useShellStore.setState({ dataRevision: 2 });
+      });
+      expect(frames).toHaveLength(1);
+      expect(cancelAnimationFrame).not.toHaveBeenCalled();
+
       await act(async () => {
         frames.shift()?.(16);
       });
       expect(spy).not.toHaveBeenCalled();
       expect(frames).toHaveLength(1);
+
+      act(() => {
+        useShellStore.setState({ dataRevision: 3 });
+        useShellStore.setState({ dataRevision: 4 });
+      });
+      expect(frames).toHaveLength(1);
+      expect(cancelAnimationFrame).not.toHaveBeenCalled();
 
       await act(async () => {
         frames.shift()?.(32);
