@@ -20,6 +20,15 @@ Linux is not at full macOS parity.
 
 ### Latest installed checkpoint — 2026-07-19 UTC
 
+The live Ubuntu guest now has a locally built ARM64 DEB from the current
+parity branch installed at `/usr/bin`. The non-certifying receipt is
+`evidence/parity-audit-2026-07-10/linux-arm64-current-head-2026-07-19.json`.
+It proves daemon health, onboarding advancement, and an animated Canvas2D
+fallback with the explicit `WebGL2 unavailable` label. This guest reports
+`webgl2=false`, so it does not certify WebGL2-only kernels or the broader
+seven-environment matrix. The prior `5b70a3d320` package remains the historical
+Settings-hydration baseline below.
+
 The Ubuntu GNOME/X11 UTM guest now runs source candidate `5b70a3d320` from an
 exact rebuilt arm64 DEB. The Settings loading defect found during live QA was
 caused by the packaged route shell deferring the entire Settings surface before
@@ -66,8 +75,9 @@ WebGL2 context disappears during a switch. A fresh current-head
 release build was visually verified in the unlocked UTM guest: the shell and
 Canvas2D Aurora fallback rendered, with the explicit `WebGL2 unavailable`
 status. The direct tree launch does not start the packaged daemon, so its setup
-card reports daemon authority unavailable; current-head package installation
-and signed release certification remain release-runner dependencies.
+card reports daemon authority unavailable. A local current-head ARM64 package
+is now installed and daemon-backed; signed/public release certification and
+the required hosted architecture matrix remain release-runner dependencies.
 
 The connected physical iPad was rechecked against this checkout with the
 bounded approval/navigation selectors: the existing approval-focused receipt

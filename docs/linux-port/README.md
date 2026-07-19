@@ -5,12 +5,19 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-19:
 
-- **Latest live candidate:** source `5b70a3d320` remains installed in the Ubuntu
-  24.04.4 GNOME/X11 UTM guest. The exact arm64 DEB is recorded in
+- **Latest live VM candidate:** a local ARM64 DEB built from the current parity
+  branch is now installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. Its
+  non-certifying receipt is
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-head-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-head-2026-07-19.json).
+  Daemon/CLI health is green, the desktop is running from `/usr/bin`, the
+  onboarding daemon verification advances to step 2, and two captures prove
+  that the Canvas2D fallback is live. The guest reports `webgl2=false` and
+  `webgl1=true`, so WebGL2-only requests are labeled `2D fallback (WebGL2
+  unavailable)` instead of appearing blank. This package is unsigned and is
+  not a public release. The previous exact `5b70a3d320` package remains the
+  historical installed baseline in
   [`evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/`](evidence/mission-002-reanchor/vm-e2e/current-5b70a3d320-settings-hydration-arm64/).
-  Daemon/CLI health is green, the desktop is running from `/usr/bin`, and the
-  physical iPad focused navigation suite passed on the connected device. The
-  current code head is `1b80f2ca08`; its focused iPad navigation receipt is
+  The current code head is `4ca71a859d`; its focused iPad navigation receipt is
   [`evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json`](evidence/parity-audit-2026-07-10/ipad-navigation-focused-current-2026-07-19.json).
   The Settings route now mounts and hydrates deterministically: AT-SPI reports
   105 nodes and 50 actionable controls with no `Loading Settings` node; the
