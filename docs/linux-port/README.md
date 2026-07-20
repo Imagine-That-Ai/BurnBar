@@ -14,14 +14,13 @@ Current source verification supersedes the older receipt chronology below:
   877 tests**, TypeScript, production-bundle
   verification, and **129/129** Tauri Rust tests on the host. Ubuntu ARM64
   reran the media-enabled Tauri gate at **130/130**.
-- **Latest ARM64 shell run:** the prior source head `90c5bd34ca` was synced into
-  the live Ubuntu 24.04.4 GNOME/X11 UTM guest, built with `media-gst`, installed,
-  and launched. Its non-certifying receipt is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json).
+- **Latest ARM64 shell run:** source head `fc0af729e1` was synced into the live
+  Ubuntu 24.04.4 GNOME/X11 UTM guest, built with `media-gst`, installed, and
+  launched. Its non-certifying receipt is
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-fc0af729e1-ui-staged-daemon-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-fc0af729e1-ui-staged-daemon-2026-07-20.json).
   AT-SPI reports 44 nodes, 27 named nodes, and 18 actionable controls; the
-  window and authenticated daemon are present. The newer `fc0af729e1` source
-  wave is tested and pushed but has not yet been rebuilt into the VM package;
-  the staged daemon/CLI also do not certify an exact-head product row.
+  window and authenticated daemon are present. The staged daemon/CLI and
+  unsigned manifest do not certify an exact-head product row.
 - **Strict certification:** remains **0/40 product rows and 0/7 environment
   receipts**. That is a release-proof gate, not a source-progress percentage.
 

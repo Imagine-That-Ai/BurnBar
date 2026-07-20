@@ -20,11 +20,11 @@ known platform divergences.
 > including the
 > focused mission, shell, and IPv6 adapter regressions, along with
 > TypeScript,
-> production-bundle verification. The prior source head `90c5bd34ca` has an
-> ARM64 DEB installed and its shell is live in the unlocked Ubuntu GNOME/X11
-> UTM guest; the
+> production-bundle verification. The current source head has an ARM64 DEB
+> installed and its shell is live in the unlocked Ubuntu GNOME/X11 UTM guest;
+> the
 > non-certifying staged-daemon receipt is
-> [`evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json).
+> [`evidence/parity-audit-2026-07-10/linux-arm64-current-fc0af729e1-ui-staged-daemon-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-fc0af729e1-ui-staged-daemon-2026-07-20.json).
 > The strict certification ledger is still **0/40 product rows and 0/7
 > environment receipts** because the package is unsigned and production,
 > cross-device, keyring, compositor, and same-commit macOS differential proof
@@ -59,18 +59,18 @@ Appearance radios keyboard-complete, fences stale Computer Use authority and
   history and exact session associations, encrypted recovery-bundle controls,
   route-level code splitting with synchronous Support error wiring, chat resume
   transcript preservation, a daemon memory audit timeline, and account identity
-  fencing with truthful trusted-device posture. The UTM guest receipt is from
-  the preceding `90c5bd34ca` source package and is not a claim about this newer
-  UI wave. These changes improve the engineering baseline;
+  fencing with truthful trusted-device posture. The current UTM receipt is
+  intentionally non-certifying because the daemon/CLI are staged and the
+  manifest is unsigned. These changes improve the engineering baseline;
   they do not close the strict 0/40
 product and 0/7 environment gates.
 
 ### Latest installed checkpoint — 2026-07-20 UTC
 
-The live Ubuntu guest has the prior-source `90c5bd34ca` ARM64 DEB with
+The live Ubuntu guest has the current-source `fc0af729e1` ARM64 DEB with
 native GStreamer media linkage and the verified staged daemon and CLI payloads
 from the prior clean receipt installed at `/usr/bin`. The non-certifying receipt
-is `evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json`.
+is `evidence/parity-audit-2026-07-10/linux-arm64-current-fc0af729e1-ui-staged-daemon-2026-07-20.json`.
 It proves daemon health, an unlocked active-window launch, AT-SPI readiness,
 and the explicit `WebGL2 unavailable` fallback label. This guest reports
 `webgl2=false`, so it does not certify WebGL2-only kernels or the broader
