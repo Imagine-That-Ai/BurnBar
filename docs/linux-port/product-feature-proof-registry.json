@@ -53,6 +53,26 @@
       ]
     },
     {
+      "requirementId": "P-09",
+      "artifacts": [
+        {
+          "role": "feature.navigation-shell-installed",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
+      "requirementId": "P-10",
+      "artifacts": [
+        {
+          "role": "feature.dashboard-layouts-installed",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
       "requirementId": "P-31",
       "artifacts": [
         {
@@ -281,6 +301,52 @@
         "workflowPath": ".github/workflows/linux-product-parity.yml",
         "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
         "testName": "P-08 materializer selects the installed Mercury media proof"
+      }
+    },
+    {
+      "requirementId": "P-09",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-09.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p09-navigation-shell-proof.test.mjs",
+        "mutationTestName": "P-09 collector accepts exact signed installed route, deep-link, and window evidence"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p09-navigation-shell-proof.mjs",
+        "entrypoint": "captureP09NavigationShellProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p09-navigation-shell-proof.test.mjs",
+        "testName": "P-09 rejects stale collection and changed source bytes"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-09 materializer selects the installed navigation shell proof"
+      }
+    },
+    {
+      "requirementId": "P-10",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-10.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p10-dashboard-layout-proof.test.mjs",
+        "mutationTestName": "P-10 collector accepts six installed layouts at desktop and compact widths"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p10-dashboard-layout-proof.mjs",
+        "entrypoint": "captureP10DashboardLayoutProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p10-dashboard-layout-proof.test.mjs",
+        "testName": "P-10 rejects Xvfb, stale collection, and changed session bytes"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-10 materializer selects the installed dashboard layout proof"
       }
     },
     {

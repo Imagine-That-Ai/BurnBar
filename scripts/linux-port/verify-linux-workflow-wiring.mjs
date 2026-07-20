@@ -220,6 +220,62 @@ export function verifyLinuxWorkflowWiring(input) {
     }
   };
 
+  const requireInstalledUiCaptureContract = (body, requirementId, config) => {
+    const blockFor = (stepName) => {
+      const start = body.indexOf(`- name: ${stepName}`);
+      const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
+      return start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
+    };
+    const installStep = 'Install P-09 and P-10 signed candidate package';
+    const captureStep = config.step;
+    const install = blockFor(installStep);
+    const capture = blockFor(captureStep);
+    if (!install) failures.push(`product parity evidence workflow is missing executable step: ${installStep}`);
+    if (!capture) failures.push(`product parity evidence workflow is missing executable step: ${captureStep}`);
+    const activeLines = (block) => block.split('\n').map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'));
+    const required = [
+      [installStep, install, [
+        "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10'",
+        'set -euo pipefail',
+        'sudo apt-get install -y --reinstall "$package"',
+        'sudo dnf install -y "$package"',
+        'sudo pacman -U --noconfirm "$package"',
+        'sha256sum /usr/share/openburnbar/attestation/installed-manifest.json',
+        'sha256sum /usr/share/openburnbar/attestation/installed-manifest.json.sig'
+      ]],
+      [captureStep, capture, [
+        `if: inputs.requirement == '${requirementId}'`,
+        'set -euo pipefail',
+        `node ${config.runner}`,
+        `node ${config.materializer}`,
+        `node ${config.capture}`,
+        '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+        '--candidate-run-id "$CANDIDATE_RUN_ID"',
+        '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+      ]]
+    ];
+    for (const [step, block, lines] of required) {
+      const active = activeLines(block);
+      for (const line of lines) {
+        if (!active.includes(line) && !active.includes(`${line} \\`)) {
+          failures.push(`product parity evidence workflow ${step} is missing: ${line}`);
+        }
+      }
+      for (const forbidden of ['continue-on-error: true', 'set +e', '|| true', '; true']) {
+        if (active.some((line) => line.includes(forbidden))) {
+          failures.push(`product parity evidence workflow ${step} permits failure: ${forbidden}`);
+        }
+      }
+    }
+    const runnerIndex = capture.indexOf(`node ${config.runner}`);
+    const materializerIndex = capture.indexOf(`node ${config.materializer}`);
+    const captureIndex = capture.indexOf(`node ${config.capture}`);
+    if (!(runnerIndex >= 0 && runnerIndex < materializerIndex && materializerIndex < captureIndex)) {
+      failures.push(`product parity evidence workflow ${captureStep} must run native probe, materializer, then capture in order`);
+    }
+  };
+
   const requireP39CaptureContract = (body) => {
     const blockFor = (stepName) => {
       const start = body.indexOf(`- name: ${stepName}`);
@@ -508,6 +564,8 @@ export function verifyLinuxWorkflowWiring(input) {
     'product-feature-proof-closure.test.mjs',
     'p07-computer-use-proof.test.mjs',
     'p08-mercury-media-proof.test.mjs',
+    'p09-navigation-shell-proof.test.mjs',
+    'p10-dashboard-layout-proof.test.mjs',
     'p38-release-automation-proof.test.mjs',
     'p31-accessibility-proof.test.mjs',
     'p34-credential-security-proof.test.mjs',
@@ -538,6 +596,16 @@ export function verifyLinuxWorkflowWiring(input) {
     'capture-p08-mercury-media-proof.mjs',
     'Capture P-08 installed Mercury media proof',
     "if: inputs.requirement == 'P-08'",
+    'run-p09-native-navigation-probes.mjs',
+    'materialize-p09-navigation-shell-session.mjs',
+    'capture-p09-navigation-shell-proof.mjs',
+    'Capture P-09 installed navigation shell proof',
+    "if: inputs.requirement == 'P-09'",
+    'run-p10-native-dashboard-probes.mjs',
+    'materialize-p10-dashboard-layout-session.mjs',
+    'capture-p10-dashboard-layout-proof.mjs',
+    'Capture P-10 installed dashboard layout proof',
+    "if: inputs.requirement == 'P-10'",
     'capture-parity-certification-preflight.mjs',
     'capture-p34-credential-security-proof.mjs',
     'run-p40-privacy-rpc-session.mjs',
@@ -574,6 +642,18 @@ export function verifyLinuxWorkflowWiring(input) {
   ]) requireText(input.productParityWorkflow, marker, 'product parity evidence workflow');
   requireP38CaptureContract(input.productParityWorkflow);
   requireP08CaptureContract(input.productParityWorkflow);
+  requireInstalledUiCaptureContract(input.productParityWorkflow, 'P-09', {
+    step: 'Capture P-09 installed navigation shell proof',
+    runner: 'scripts/linux-port/run-p09-native-navigation-probes.mjs',
+    materializer: 'scripts/linux-port/materialize-p09-navigation-shell-session.mjs',
+    capture: 'scripts/linux-port/capture-p09-navigation-shell-proof.mjs'
+  });
+  requireInstalledUiCaptureContract(input.productParityWorkflow, 'P-10', {
+    step: 'Capture P-10 installed dashboard layout proof',
+    runner: 'scripts/linux-port/run-p10-native-dashboard-probes.mjs',
+    materializer: 'scripts/linux-port/materialize-p10-dashboard-layout-session.mjs',
+    capture: 'scripts/linux-port/capture-p10-dashboard-layout-proof.mjs'
+  });
   requireP39CaptureContract(input.productParityWorkflow);
   for (const marker of [
     'p39-macos-producer',
@@ -594,6 +674,9 @@ export function verifyLinuxWorkflowWiring(input) {
     'Preserve non-promotable P-02 diagnostic evidence',
     'Install P-08 signed candidate package',
     'Capture P-08 installed Mercury media proof',
+    'Install P-09 and P-10 signed candidate package',
+    'Capture P-09 installed navigation shell proof',
+    'Capture P-10 installed dashboard layout proof',
     'Capture P-31 installed accessibility matrix evidence',
     'Capture P-34 credential security proof',
     'Capture P-39 Linux candidate-bound platform evidence',

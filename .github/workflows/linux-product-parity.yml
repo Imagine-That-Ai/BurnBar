@@ -461,6 +461,173 @@ jobs:
             --candidate-run-id "$CANDIDATE_RUN_ID" \
             --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
 
+      - name: Install P-09 and P-10 signed candidate package
+        id: p09_p10_install
+        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          case "$ENVIRONMENT_ID" in
+            ubuntu-*)
+              expected_arch="$(case "$ENVIRONMENT_ID" in *-aarch64) echo arm64 ;; *) echo amd64 ;; esac)"
+              package=""
+              while IFS= read -r candidate; do
+                test "$(dpkg-deb -f "$candidate" Package)" = open-burn-bar || continue
+                test "$(dpkg-deb -f "$candidate" Architecture)" = "$expected_arch" || continue
+                package="$candidate"; break
+              done < <(find "$input_root" -type f -name '*.deb' -print | sort)
+              test -n "$package"
+              version="$(dpkg-deb -f "$package" Version)"
+              sudo apt-get install -y --reinstall "$package"
+              ;;
+            fedora-*)
+              expected_arch="$(case "$ENVIRONMENT_ID" in *-aarch64) echo aarch64 ;; *) echo x86_64 ;; esac)"
+              package=""
+              while IFS= read -r candidate; do
+                test "$(rpm -qp --qf '%{NAME}' "$candidate")" = open-burn-bar || continue
+                test "$(rpm -qp --qf '%{ARCH}' "$candidate")" = "$expected_arch" || continue
+                package="$candidate"; break
+              done < <(find "$input_root" -type f -name '*.rpm' -print | sort)
+              test -n "$package"
+              version="$(rpm -qp --qf '%{VERSION}' "$package")"
+              sudo dnf install -y "$package"
+              ;;
+            arch-*)
+              package="$(find "$input_root" -type f -name '*.pkg.tar.zst' -print | sort | head -1)"
+              test -n "$package"
+              package_info="$(bsdtar -xOf "$package" .PKGINFO)"
+              test "$(awk -F ' = ' '$1 == "pkgname" { print $2 }' <<<"$package_info")" = open-burn-bar
+              test "$(awk -F ' = ' '$1 == "arch" { print $2 }' <<<"$package_info")" = x86_64
+              version="$(awk -F ' = ' '$1 == "pkgver" { print $2 }' <<<"$package_info")"
+              sudo pacman -U --noconfirm "$package"
+              ;;
+            *) echo "unsupported installed UI environment: $ENVIRONMENT_ID" >&2; exit 1 ;;
+          esac
+          {
+            printf 'package_version=%s\n' "$version"
+            sha256sum /usr/share/openburnbar/attestation/installed-manifest.json \
+              | awk '{print "manifest_sha256=" $1}'
+            sha256sum /usr/share/openburnbar/attestation/installed-manifest.json.sig \
+              | awk '{print "manifest_signature_sha256=" $1}'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Capture P-09 installed navigation shell proof
+        if: inputs.requirement == 'P-09'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+          PACKAGE_VERSION: ${{ steps.p09_p10_install.outputs.package_version }}
+          MANIFEST_SHA256: ${{ steps.p09_p10_install.outputs.manifest_sha256 }}
+          MANIFEST_SIGNATURE_SHA256: ${{ steps.p09_p10_install.outputs.manifest_signature_sha256 }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          evidence_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p09.XXXXXX")"
+          trap 'rm -rf "$evidence_root"' EXIT
+          case "$ENVIRONMENT_ID" in
+            *-gnome-*) compositor=Mutter ;;
+            *-kde-*) compositor=KWin ;;
+            *-sway-*) compositor=Sway ;;
+            *) echo "unsupported P-09 compositor environment: $ENVIRONMENT_ID" >&2; exit 1 ;;
+          esac
+          node scripts/linux-port/run-p09-native-navigation-probes.mjs \
+            --output-dir "$evidence_root" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --package-version "$PACKAGE_VERSION" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256" \
+            --compositor "$compositor"
+          node scripts/linux-port/materialize-p09-navigation-shell-session.mjs \
+            --output-root "$input_root" \
+            --shell-evidence-dir "$evidence_root" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --package-version "$PACKAGE_VERSION" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256" \
+            --compositor "$compositor"
+          node scripts/linux-port/capture-p09-navigation-shell-proof.mjs \
+            --input-root "$input_root" \
+            --session-report "$input_root/p09-installed-navigation-shell-session.json" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --package-version "$PACKAGE_VERSION" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"
+
+      - name: Capture P-10 installed dashboard layout proof
+        if: inputs.requirement == 'P-10'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+          PACKAGE_VERSION: ${{ steps.p09_p10_install.outputs.package_version }}
+          MANIFEST_SHA256: ${{ steps.p09_p10_install.outputs.manifest_sha256 }}
+          MANIFEST_SIGNATURE_SHA256: ${{ steps.p09_p10_install.outputs.manifest_signature_sha256 }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          evidence_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p10.XXXXXX")"
+          trap 'rm -rf "$evidence_root"' EXIT
+          case "$ENVIRONMENT_ID" in
+            *-gnome-*) compositor=Mutter ;;
+            *-kde-*) compositor=KWin ;;
+            *-sway-*) compositor=Sway ;;
+            *) echo "unsupported P-10 compositor environment: $ENVIRONMENT_ID" >&2; exit 1 ;;
+          esac
+          render_backend=webkitgtk-installed-dashboard
+          node scripts/linux-port/run-p10-native-dashboard-probes.mjs \
+            --output-dir "$evidence_root" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --package-version "$PACKAGE_VERSION" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256" \
+            --compositor "$compositor" \
+            --render-backend "$render_backend"
+          node scripts/linux-port/materialize-p10-dashboard-layout-session.mjs \
+            --output-root "$input_root" \
+            --raw-evidence-dir "$evidence_root" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --package-version "$PACKAGE_VERSION" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256" \
+            --compositor "$compositor" \
+            --render-backend "$render_backend"
+          node scripts/linux-port/capture-p10-dashboard-layout-proof.mjs \
+            --input-root "$input_root" \
+            --session-report "$input_root/p10-installed-dashboard-layout-session.json" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --package-version "$PACKAGE_VERSION" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"
+
       - name: Capture P-31 installed accessibility matrix evidence
         id: p31_capture
         if: inputs.requirement == 'P-31'

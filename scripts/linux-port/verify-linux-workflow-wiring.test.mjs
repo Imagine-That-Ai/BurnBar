@@ -32,6 +32,8 @@ function valid() {
       'product-feature-proof-closure.test.mjs',
       'p07-computer-use-proof.test.mjs',
       'p08-mercury-media-proof.test.mjs',
+      'p09-navigation-shell-proof.test.mjs',
+      'p10-dashboard-layout-proof.test.mjs',
       'p38-release-automation-proof.test.mjs',
       'p31-accessibility-proof.test.mjs',
       'p34-credential-security-proof.test.mjs',
@@ -148,6 +150,41 @@ function valid() {
         '            --session-report "$input_root/p08-installed-mercury-media-session.json"',
         '            --candidate-run-id "$CANDIDATE_RUN_ID"',
         '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+      ].join('\n'),
+      [
+        '      - name: Install P-09 and P-10 signed candidate package',
+        "        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          sudo apt-get install -y --reinstall "$package"',
+        '          sudo dnf install -y "$package"',
+        '          sudo pacman -U --noconfirm "$package"',
+        '          sha256sum /usr/share/openburnbar/attestation/installed-manifest.json',
+        '          sha256sum /usr/share/openburnbar/attestation/installed-manifest.json.sig'
+      ].join('\n'),
+      [
+        '      - name: Capture P-09 installed navigation shell proof',
+        "        if: inputs.requirement == 'P-09'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          node scripts/linux-port/run-p09-native-navigation-probes.mjs',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+        '            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+        '          node scripts/linux-port/materialize-p09-navigation-shell-session.mjs',
+        '          node scripts/linux-port/capture-p09-navigation-shell-proof.mjs'
+      ].join('\n'),
+      [
+        '      - name: Capture P-10 installed dashboard layout proof',
+        "        if: inputs.requirement == 'P-10'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          node scripts/linux-port/run-p10-native-dashboard-probes.mjs',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+        '            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+        '          node scripts/linux-port/materialize-p10-dashboard-layout-session.mjs',
+        '          node scripts/linux-port/capture-p10-dashboard-layout-proof.mjs'
       ].join('\n'),
       'Capture P-31 installed accessibility matrix evidence',
       'Capture P-34 credential security proof',
@@ -490,6 +527,52 @@ test('P-08 installed media workflow cannot omit package trust or paired live evi
   }
 });
 
+test('P-09 and P-10 installed UI workflows require native runners before materialization and fail closed', () => {
+  for (const [requirementId, stepName, runner, materializer, capture] of [
+    [
+      'P-09', 'Capture P-09 installed navigation shell proof',
+      'scripts/linux-port/run-p09-native-navigation-probes.mjs',
+      'scripts/linux-port/materialize-p09-navigation-shell-session.mjs',
+      'scripts/linux-port/capture-p09-navigation-shell-proof.mjs'
+    ],
+    [
+      'P-10', 'Capture P-10 installed dashboard layout proof',
+      'scripts/linux-port/run-p10-native-dashboard-probes.mjs',
+      'scripts/linux-port/materialize-p10-dashboard-layout-session.mjs',
+      'scripts/linux-port/capture-p10-dashboard-layout-proof.mjs'
+    ]
+  ]) {
+    for (const marker of [
+      'Install P-09 and P-10 signed candidate package', stepName, runner, materializer, capture,
+      '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"'
+    ]) {
+      const input = valid();
+      input.productParityWorkflow = input.productParityWorkflow.replaceAll(marker, `removed-${requirementId}-marker`);
+      const result = verifyLinuxWorkflowWiring(input);
+      assert.equal(result.passed, false, `${requirementId}: ${marker}`);
+      assert.ok(result.failures.some((failure) => failure.includes(requirementId)), `${requirementId}: ${marker}`);
+    }
+
+    const runnerFailure = valid();
+    runnerFailure.productParityWorkflow = runnerFailure.productParityWorkflow.replace(
+      `node ${runner}`,
+      `node ${runner} || true`
+    );
+    let result = verifyLinuxWorkflowWiring(runnerFailure);
+    assert.equal(result.passed, false, `${requirementId} runner failure swallowing`);
+    assert.ok(result.failures.some((failure) => failure.includes(requirementId)));
+
+    const reordered = valid();
+    reordered.productParityWorkflow = reordered.productParityWorkflow
+      .replace(`node ${runner}`, 'node __TEMP_NATIVE_RUNNER__')
+      .replace(`node ${materializer}`, `node ${runner}`)
+      .replace('node __TEMP_NATIVE_RUNNER__', `node ${materializer}`);
+    result = verifyLinuxWorkflowWiring(reordered);
+    assert.equal(result.passed, false, `${requirementId} runner/materializer order`);
+    assert.ok(result.failures.some((failure) => failure.includes(requirementId)));
+  }
+});
+
 test('P-39 differential workflow cannot be removed or weakened', () => {
   for (const marker of [
     'resolve-p39-platform-evidence.mjs',
@@ -568,6 +651,8 @@ test('product evidence dependency install and mutation suites are mandatory in t
     'product-feature-proof-closure.test.mjs',
     'p07-computer-use-proof.test.mjs',
     'p08-mercury-media-proof.test.mjs',
+    'p09-navigation-shell-proof.test.mjs',
+    'p10-dashboard-layout-proof.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs'
   ]) {
