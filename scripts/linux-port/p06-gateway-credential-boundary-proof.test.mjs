@@ -78,8 +78,17 @@ function stageSources(root) {
 function stageOwnershipSourceFixtures() {
   if (process.env.OPENBURNBAR_PARITY_PREFLIGHT_OWNERSHIP_TEST !== '1') return () => {};
   const markers = p06SourceContractMarkers();
+  const originals = new Map(P06_SOURCE_CONTRACTS.map((sourcePath) => [
+    sourcePath,
+    fs.existsSync(sourcePath) ? fs.readFileSync(sourcePath) : null
+  ]));
   for (const sourcePath of P06_SOURCE_CONTRACTS) write(sourcePath, `${markers[sourcePath].join('\n')}\n`);
-  return () => { for (const sourcePath of P06_SOURCE_CONTRACTS) fs.rmSync(sourcePath, { force: true }); };
+  return () => {
+    for (const [sourcePath, bytes] of originals) {
+      if (bytes === null) fs.rmSync(sourcePath, { force: true });
+      else write(sourcePath, bytes);
+    }
+  };
 }
 
 function capture() {
