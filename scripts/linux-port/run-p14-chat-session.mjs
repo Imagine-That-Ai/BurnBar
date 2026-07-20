@@ -276,6 +276,18 @@ export async function runP14ChatSession(options, dependencies = {}) {
   const search = assertRPC(await rpc('daemon.chat.thread.list', { query: searchMarker, limit: 40 }), 'P-14 search');
   assert(search.threads.length === 1 && search.threads[0].id === threadID, 'P-14 search did not isolate the target thread');
   const beforeNative = assertRPC(await rpc('daemon.chat.thread.get', { threadID, maxMessages: 500 }), 'P-14 pre-native readback');
+  let olderPageMessageIDs = [];
+  if (beforeNative.hasMoreBefore === true && beforeNative.messages.length > 0) {
+    const oldestLoaded = beforeNative.messages[0];
+    const olderPage = assertRPC(await rpc('daemon.chat.thread.get', {
+      threadID,
+      maxMessages: 500,
+      beforeTimestamp: oldestLoaded.timestamp,
+      beforeMessageID: oldestLoaded.id
+    }), 'P-14 citation target page');
+    olderPageMessageIDs = olderPage.messages.map((message) => message.id);
+    assert(olderPageMessageIDs.includes(messageID), 'P-14 citation target was not present on the older page');
+  }
 
   const cliText = dependencies.cliTextRunner ?? ((args) => defaultCLIText(options, args));
   const approvalRecords = dependencies.nativeProbe ? [] : await createApprovalRecords(cliText);
@@ -290,7 +302,7 @@ export async function runP14ChatSession(options, dependencies = {}) {
       attachmentByteSize: attachment.stat.size, attachmentFileName: path.basename(attachment.absolute),
       attachmentMimeType: attachmentMimeType(attachment.absolute),
       daemonMessageIDs: beforeNative.messages.map((message) => message.id), approvalRecords, citation,
-      olderPageMessageIDs: beforeNative.messages.slice(0, Math.max(0, beforeNative.messages.length - 500)).map((message) => message.id),
+      olderPageMessageIDs,
       effectiveModel: gateway?.effectiveModel, upstreamObservation: gateway?.observation });
   } finally {
     if (gateway?.close) await gateway.close();
@@ -314,13 +326,19 @@ export async function runP14ChatSession(options, dependencies = {}) {
   writeJson(path.join(output, 'daemon-chat-transcript.json'), {
     producer: 'openburnbar-p14-installed-daemon-probe-v1',
     events: [
-      event('append-first', { threadID, messageID, inserted: true }, 1),
-      event('append-duplicate', { threadID, messageID, inserted: false }, 2),
-      event('pagination', { cursorStable: true, hasMoreBefore: true, messagesUnique: true, ordered: true,
+      event('append-first', { threadID, messageID, inserted: first.inserted }, 1),
+      event('append-duplicate', { threadID, messageID, inserted: duplicate.inserted }, 2),
+      event('pagination', { cursorStable: Boolean(before.timestamp && before.id), hasMoreBefore: newest.hasMoreBefore,
+        messagesUnique: new Set(pageIDs).size === pageIDs.length, ordered: ordered(older.messages) && ordered(newest.messages),
         cursor: { timestamp: before.timestamp, messageID: before.id }, pageIDs }, 3),
-      event('search', { matchedOnlyTarget: true, queryApplied: true, query: searchMarker }, 4),
-      event('post-restart', { encryptedDatabase: true, messageOrdering: true, messagesDurable: true,
-        metadataDurable: true, threadID, messageCount: afterRestart.messages.length }, Math.max(5, end - start))
+      event('search', { matchedOnlyTarget: search.threads.length === 1 && search.threads[0].id === threadID,
+        queryApplied: search.threads.every((thread) => thread.id === threadID), query: searchMarker }, 4),
+      event('post-restart', {
+        encryptedDatabase: fs.readFileSync(database.absolute).subarray(0, 16).toString('ascii') !== 'SQLite format 3\0',
+        messageOrdering: ordered(afterRestart.messages), messagesDurable: afterRestart.messages.length >= 5,
+        metadataDurable: afterSearch.threads.length === 1 && afterSearch.threads[0].id === threadID,
+        threadID, messageCount: afterRestart.messages.length
+      }, Math.max(5, end - start))
     ]
   });
   writeJson(path.join(output, 'desktop-chat-transcript.json'), native.desktopTranscript);

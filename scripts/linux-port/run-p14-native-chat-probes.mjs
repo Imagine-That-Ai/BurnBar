@@ -181,6 +181,7 @@ export async function runP14NativeChatProbes(options, dependencies = {}) {
       for (const state of ['approved', 'rejected', 'cancelled']) assert(contains(tree, new RegExp(state, 'iu')), `${state} approval is absent`);
       return tree;
     });
+    const approvalNames = names(approvals);
     const approvalResponses = options.approvalRecords.map((record) => {
       const detail = cliText(options, ['run', 'get', record.runID]);
       const phase = cliField(detail, 'phase');
@@ -188,8 +189,11 @@ export async function runP14NativeChatProbes(options, dependencies = {}) {
         `P-14 ${record.decision} approval remained pending after the UI response`);
       assert(record.decision === 'approve' ? phase === 'completed' : phase === 'cancelled',
         `P-14 ${record.decision} approval reached unexpected daemon phase ${phase ?? 'missing'}`);
+      const expectedStatus = record.decision === 'approve' ? 'approved' : record.decision === 'reject' ? 'rejected' : 'cancelled';
+      const uiStatus = approvalNames.find((name) => name.toLowerCase().includes(expectedStatus))?.match(/approved|rejected|cancelled/iu)?.[0]?.toLowerCase();
+      assert(uiStatus === expectedStatus, `P-14 ${record.decision} terminal status was not observed in the installed UI`);
       return { approvalID: record.approvalID, daemonApprovalID: record.approvalID, invokedDecision: record.decision,
-        postResponsePhase: phase, uiStatus: record.decision === 'approve' ? 'approved' : record.decision === 'reject' ? 'rejected' : 'cancelled' };
+        postResponsePhase: phase, uiStatus };
     });
 
     const exportStart = Date.now();
@@ -203,14 +207,20 @@ export async function runP14NativeChatProbes(options, dependencies = {}) {
 
     run('systemctl', ['--user', 'stop', 'openburnbar-daemon.service']);
     daemonStopped = true;
-    await waitFor('daemon disconnect', () => { const health = healthResult(options); assert(health.status !== 0, 'daemon health still succeeds'); return true; });
+    const disconnectedHealthResult = await waitFor('daemon disconnect', () => {
+      const health = healthResult(options); assert(health.status !== 0, 'daemon health still succeeds'); return health;
+    });
     const disconnected = await waitFor('chat disconnect status', () => {
       const tree = snapshot(options.outputDir, 'daemon-disconnected');
       assert(contains(tree, /offline|unavailable|disconnected/iu), 'installed chat did not expose daemon disconnect'); return tree;
     });
     run('systemctl', ['--user', 'start', 'openburnbar-daemon.service']);
     daemonStopped = false;
-    await waitFor('daemon reconnect', () => { const health = healthResult(options); assert(health.status === 0 && /ok=true/iu.test(health.stdout), 'daemon health is not restored'); return true; }, 30_000);
+    const reconnectedHealthResult = await waitFor('daemon reconnect', () => {
+      const health = healthResult(options);
+      assert(health.status === 0 && /ok=true/iu.test(health.stdout), 'daemon health is not restored');
+      return health;
+    }, 30_000);
     activate(options.outputDir, 'options-reconnect', 'Chat options');
     activate(options.outputDir, 'reconnect', 'Reconnect gateway');
     const reconnected = await waitFor('chat reconnect status', () => {
@@ -221,9 +231,9 @@ export async function runP14NativeChatProbes(options, dependencies = {}) {
     const reconnectObservation = {
       beforeMessageIDs: beforeReconnectMessageIDs,
       afterMessageIDs: afterReconnect.messages.map((message) => message.id),
-      disconnectedHealth: false,
+      disconnectedHealth: disconnectedHealthResult.status === 0,
       disconnectedStatus: names(disconnected).find((name) => /offline|unavailable|disconnected/iu.test(name)),
-      reconnectedHealth: true,
+      reconnectedHealth: reconnectedHealthResult.status === 0 && /ok=true/iu.test(reconnectedHealthResult.stdout),
       reconnectedStatus: names(reconnected).find((name) => /live daemon chat history|connected|resumed/iu.test(name)),
       threadID: options.threadID
     };
@@ -310,7 +320,9 @@ export async function runP14NativeChatProbes(options, dependencies = {}) {
       ]
     };
     return { desktopTranscript, exportJson, exportMarkdown,
-      windowEvents: { producer: 'openburnbar-p14-installed-window-probe-v1', singlePopout: true, mainWindowSurvived: true,
+      windowEvents: { producer: 'openburnbar-p14-installed-window-probe-v1',
+        singlePopout: popouts.length === 2 && secondWindowIDs.length === 2,
+        mainWindowSurvived: afterCloseWindowIDs.length === 1 && afterCloseWindowIDs[0] === primary,
         primaryWindowID: primary, popoutWindowID: popout } };
   } finally {
     if (daemonStopped) {
