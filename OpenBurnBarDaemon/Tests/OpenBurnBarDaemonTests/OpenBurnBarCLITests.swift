@@ -315,6 +315,19 @@ final class BurnBarCLITests: XCTestCase {
         let runner = BurnBarCLIRunner(client: FakeCLIClient())
         XCTAssertThrowsError(try runner.runPrivacyRPC(input: Data(#"{"method":"daemon.health","params":{}}"#.utf8)))
     }
+
+    func testChatQueryCommandsEmitStableJSON() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let threads = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(try runner.run(arguments: ["chat", "threads", "--query", "release", "--limit", "7"]).utf8)) as? [String: Any])
+        XCTAssertEqual((threads["threads"] as? [[String: Any]])?.first?["id"] as? String, "thread-fixture")
+
+        let page = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(try runner.run(arguments: ["chat", "thread", "thread-fixture", "--max-messages", "1"]).utf8)) as? [String: Any])
+        XCTAssertEqual((page["messages"] as? [[String: Any]])?.first?["threadID"] as? String, "thread-fixture")
+        XCTAssertEqual(page["hasMoreBefore"] as? Bool, true)
+
+        XCTAssertThrowsError(try runner.run(arguments: ["chat", "threads", "--limit", "zero"]))
+        XCTAssertThrowsError(try runner.run(arguments: ["chat", "thread", "thread-fixture", "--before-message-id", "message-fixture"]))
+    }
 }
 
 struct FakeCLIClient: BurnBarCLIClient {
@@ -665,6 +678,29 @@ struct FakeCLIClient: BurnBarCLIClient {
             disconnectDetected: true,
             recoveredAfterRestart: true,
             terminalStateDelivered: true
+        )
+    }
+
+    func chatThreadList(_ request: BurnBarChatThreadListRequest) throws -> BurnBarChatThreadListResponse {
+        BurnBarChatThreadListResponse(threads: [
+            BurnBarChatThreadSummary(
+                id: "thread-fixture", title: request.query ?? "Fixture", preview: "Durable chat", messageCount: 2,
+                createdAt: "2026-07-20T00:00:00Z", updatedAt: "2026-07-20T00:01:00Z", backendID: "openai"
+            )
+        ])
+    }
+
+    func chatThreadGet(_ request: BurnBarChatThreadGetRequest) throws -> BurnBarChatThreadGetResponse {
+        BurnBarChatThreadGetResponse(
+            thread: BurnBarChatThreadSummary(
+                id: request.threadID, title: "Fixture", preview: "Durable chat", messageCount: 2,
+                createdAt: "2026-07-20T00:00:00Z", updatedAt: "2026-07-20T00:01:00Z", backendID: "openai"
+            ),
+            messages: [BurnBarChatMessage(
+                id: "message-fixture", threadID: request.threadID, role: .user, content: "Hello",
+                timestamp: "2026-07-20T00:00:00Z", backendID: "openai"
+            )],
+            hasMoreBefore: true
         )
     }
 

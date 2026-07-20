@@ -32,6 +32,8 @@ public protocol BurnBarCLIClient: Sendable {
     func panicHalt(_ request: ComputerUsePanicHaltRequest) throws -> ComputerUsePanicHaltResponse
     func startSubscription(_ request: BurnBarSubscriptionStartRequest) throws -> BurnBarSubscriptionResponse
     func resumeSubscription(_ request: BurnBarSubscriptionResumeRequest) throws -> BurnBarSubscriptionResponse
+    func chatThreadList(_ request: BurnBarChatThreadListRequest) throws -> BurnBarChatThreadListResponse
+    func chatThreadGet(_ request: BurnBarChatThreadGetRequest) throws -> BurnBarChatThreadGetResponse
     func runResume(
         sessionID: String,
         targetHarness: String?,
@@ -385,6 +387,14 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
                 params: request
             )
         )
+    }
+
+    public func chatThreadList(_ request: BurnBarChatThreadListRequest) throws -> BurnBarChatThreadListResponse {
+        try requestResult(BurnBarRPCRequestEnvelopeWithParams(method: .chatThreadList, authToken: authToken, params: request))
+    }
+
+    public func chatThreadGet(_ request: BurnBarChatThreadGetRequest) throws -> BurnBarChatThreadGetResponse {
+        try requestResult(BurnBarRPCRequestEnvelopeWithParams(method: .chatThreadGet, authToken: authToken, params: request))
     }
 
     public func runResume(

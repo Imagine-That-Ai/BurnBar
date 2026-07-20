@@ -53,6 +53,8 @@ public struct BurnBarCLIRunner {
             return try runDiagnosticsCommand(Array(effectiveArguments.dropFirst()))
         case "subscribe":
             return try runSubscribeCommand(Array(effectiveArguments.dropFirst()))
+        case "chat":
+            return try runChatQueryCommand(Array(effectiveArguments.dropFirst()))
         case "subscription-resume":
             return try runSubscriptionResumeCommand(Array(effectiveArguments.dropFirst()))
         case "controller", "status":
@@ -409,6 +411,38 @@ public struct BurnBarCLIRunner {
             clientID: "openburnbar-cli"
         ))
         return Self.formatSubscriptionResponse(response)
+    }
+
+    private func runChatQueryCommand(_ arguments: [String]) throws -> String {
+        guard let operation = arguments.first else {
+            throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli chat <threads|thread> [options]")
+        }
+        switch operation {
+        case "threads":
+            let limit = try positiveIntegerOption("--limit", in: arguments, defaultValue: 40)
+            let response = try client.chatThreadList(BurnBarChatThreadListRequest(
+                query: optionValue("--query", in: arguments), limit: limit
+            ))
+            return try Self.jsonString(response)
+        case "thread":
+            guard arguments.count >= 2, !arguments[1].hasPrefix("--") else {
+                throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli chat thread <threadID> [--max-messages N] [--before-timestamp ISO8601 --before-message-id ID]")
+            }
+            let beforeTimestamp = optionValue("--before-timestamp", in: arguments)
+            let beforeMessageID = optionValue("--before-message-id", in: arguments)
+            guard (beforeTimestamp == nil) == (beforeMessageID == nil) else {
+                throw BurnBarCLIError.missingArgument("--before-timestamp and --before-message-id must be supplied together")
+            }
+            let response = try client.chatThreadGet(BurnBarChatThreadGetRequest(
+                threadID: arguments[1],
+                maxMessages: try positiveIntegerOption("--max-messages", in: arguments, defaultValue: 200),
+                beforeTimestamp: beforeTimestamp,
+                beforeMessageID: beforeMessageID
+            ))
+            return try Self.jsonString(response)
+        default:
+            throw BurnBarCLIError.invalidCommand("chat \(operation)")
+        }
     }
 
     private func runSubscriptionResumeCommand(_ arguments: [String]) throws -> String {
@@ -835,6 +869,8 @@ public struct BurnBarCLIRunner {
       diagnostics --output <directory>
       subscribe <health|run> [runID]
       subscription-resume <subscriptionID> --topic <topic> --after-seq <seq>
+      chat threads [--query text] [--limit N]
+      chat thread <threadID> [--max-messages N] [--before-timestamp ISO8601 --before-message-id ID]
       controller [projectSlug]
       questions [projectSlug]
       followups [projectSlug]
@@ -882,6 +918,7 @@ public struct BurnBarCLIRunner {
         "diagnostics",
         "subscribe",
         "subscription-resume",
+        "chat",
         "controller",
         "status",
         "questions",
@@ -1466,6 +1503,14 @@ public struct BurnBarCLIRunner {
             return nil
         }
         return arguments[index + 1]
+    }
+
+    private func positiveIntegerOption(_ name: String, in arguments: [String], defaultValue: Int) throws -> Int {
+        guard let rawValue = optionValue(name, in: arguments) else { return defaultValue }
+        guard let value = Int(rawValue), value > 0 else {
+            throw BurnBarCLIError.missingArgument("\(name) must be a positive integer")
+        }
+        return value
     }
 
     private func boolOption(_ name: String, in arguments: [String]) -> Bool? {
