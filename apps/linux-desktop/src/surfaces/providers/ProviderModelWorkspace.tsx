@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { providerRouteHash, providerSelectionFromHash } from '../../routes.js';
 import type { CustomModel, ProviderCatalog, ProviderCatalogEntry, ProviderCatalogModel, ProviderHealthState } from '../../tauriBridge.js';
 import { useProvidersStore } from '../../state/providersStore.js';
 import { useShellStore } from '../../state/shellStore.js';
@@ -22,15 +23,25 @@ function ModelRow({
   providerID,
   model,
   disabled,
-  onRemoveCustomModel
+  onRemoveCustomModel,
+  deepLinked,
+  rowRef
 }: {
   providerID: string;
   model: ProviderCatalogModel;
   disabled: boolean;
   onRemoveCustomModel: (providerID: string, modelID: string) => void;
+  deepLinked: boolean;
+  rowRef: (node: HTMLLIElement | null) => void;
 }) {
   return (
-    <li className="provider-model-row" data-model={model.id}>
+    <li
+      className="provider-model-row"
+      data-model={model.id}
+      data-deep-linked={deepLinked || undefined}
+      tabIndex={-1}
+      ref={rowRef}
+    >
       <div className="provider-model-row-heading">
         <div>
           <strong>{model.label}</strong>
@@ -69,13 +80,17 @@ function ProviderCard({
   mutationBusy,
   onRemoveCustomModel,
   onPreferredCredentialSlot,
-  routingWritable
+  routingWritable,
+  deepLinkedModelID,
+  modelRowRef
 }: {
   provider: ProviderCatalogEntry;
   mutationBusy: string | null;
   onRemoveCustomModel: (providerID: string, modelID: string) => void;
   onPreferredCredentialSlot: (providerID: string, slotID: string) => void;
   routingWritable: boolean;
+  deepLinkedModelID: string | null;
+  modelRowRef: (modelID: string, node: HTMLLIElement | null) => void;
 }) {
   const models = provider.models ?? [];
   const health = provider.health ?? 'unknown';
@@ -145,6 +160,8 @@ function ProviderCard({
               model={model}
               disabled={mutationBusy != null}
               onRemoveCustomModel={onRemoveCustomModel}
+              deepLinked={model.id === deepLinkedModelID}
+              rowRef={(node) => modelRowRef(model.id, node)}
             />
           ))}
         </ul>
@@ -171,7 +188,22 @@ export function ProviderModelWorkspace({ providers }: { providers: ProviderCatal
   const load = useProvidersStore((state) => state.load);
   const fixtureMode = useShellStore((state) => state.fixtureMode);
   const bridge = useShellStore((state) => state.bridge);
-  const [selectedProviderID, setSelectedProviderID] = useState(providers[0]?.id ?? '');
+  const initialSelection = providerSelectionFromHash(location.hash);
+  const [selectedProviderID, setSelectedProviderID] = useState(
+    initialSelection?.providerID ?? providers[0]?.id ?? ''
+  );
+  const [deepLinkedModelID, setDeepLinkedModelID] = useState(initialSelection?.modelID ?? null);
+  const modelRows = useRef(new Map<string, HTMLLIElement>());
+  useEffect(() => {
+    const syncSelectionFromHash = () => {
+      const selection = providerSelectionFromHash(location.hash);
+      if (!selection) return;
+      setSelectedProviderID(selection.providerID);
+      setDeepLinkedModelID(selection.modelID);
+    };
+    window.addEventListener('hashchange', syncSelectionFromHash);
+    return () => window.removeEventListener('hashchange', syncSelectionFromHash);
+  }, []);
   useEffect(() => {
     // Catalog refreshes can remove or reorder providers. Never leave the
     // mutation form pointing at a provider ID that is no longer present.
@@ -180,6 +212,13 @@ export function ProviderModelWorkspace({ providers }: { providers: ProviderCatal
       return providers[0]?.id ?? '';
     });
   }, [providers]);
+  useEffect(() => {
+    if (!deepLinkedModelID) return;
+    const row = modelRows.current.get(deepLinkedModelID);
+    if (!row) return;
+    row.scrollIntoView({ block: 'nearest' });
+    row.focus({ preventScroll: true });
+  }, [deepLinkedModelID, selectedProviderID, providers]);
   const modelCount = providers.reduce((count, provider) => count + (provider.models?.length ?? 0), 0);
   const catalogUnavailable = providers.some((provider) => provider.catalogAvailable === false);
   const routingWritable = fixtureMode || typeof bridge?.configUpdate === 'function';
@@ -198,7 +237,12 @@ export function ProviderModelWorkspace({ providers }: { providers: ProviderCatal
             <span>Provider detail</span>
             <select
               value={selectedProvider?.id ?? ''}
-              onChange={(event) => setSelectedProviderID(event.currentTarget.value)}
+              onChange={(event) => {
+                const providerID = event.currentTarget.value;
+                setSelectedProviderID(providerID);
+                setDeepLinkedModelID(null);
+                location.hash = providerRouteHash(providerID);
+              }}
               disabled={providers.length === 0}
               aria-label="Provider detail"
             >
@@ -276,6 +320,11 @@ export function ProviderModelWorkspace({ providers }: { providers: ProviderCatal
               onRemoveCustomModel={(providerID, modelID) => void removeCustomModel(providerID, modelID)}
               onPreferredCredentialSlot={(providerID, slotID) => void setPreferredCredentialSlot(providerID, slotID)}
               routingWritable={routingWritable}
+              deepLinkedModelID={deepLinkedModelID}
+              modelRowRef={(modelID, node) => {
+                if (node) modelRows.current.set(modelID, node);
+                else modelRows.current.delete(modelID);
+              }}
             />
           ) : null}
         </div>

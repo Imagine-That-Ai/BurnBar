@@ -51,14 +51,45 @@ export const ROUTES: RouteMeta[] = [
   { id: 'text-expansion', label: 'Text expansion', group: 'system', description: 'In-app snippet expansion (v1); system-wide Wayland deferred.', requiredCapability: 'text-expansion.in-app' }
 ];
 
-export function routeFromHash(hash: string): ShellRoute {
+export type ProviderRouteSelection = {
+  providerID: string;
+  modelID: string | null;
+};
+
+const ROUTE_DETAIL_MAX_LENGTH = 256;
+
+function decodedHashPath(hash: string): string {
   let source = hash;
   try {
     if (hash.includes('://')) source = new URL(hash).hash;
   } catch {
     source = hash;
   }
-  const raw = source.replace(/^#\/?/, '').trim() || 'overview';
+  return source.replace(/^#\/?/, '').trim();
+}
+
+export function routeFromHash(hash: string): ShellRoute {
+  const raw = decodedHashPath(hash).split('?', 1)[0] || 'overview';
   const found = ROUTES.find((r) => r.id === raw);
   return found?.id ?? 'overview';
+}
+
+/** Read the bounded provider/model detail encoded in a reload-safe shell hash. */
+export function providerSelectionFromHash(hash: string): ProviderRouteSelection | null {
+  const decoded = decodedHashPath(hash);
+  const queryIndex = decoded.indexOf('?');
+  if (queryIndex < 0 || decoded.slice(0, queryIndex) !== 'providers') return null;
+  const params = new URLSearchParams(decoded.slice(queryIndex + 1));
+  const providerID = params.get('provider')?.trim() ?? '';
+  const modelID = params.get('model')?.trim() || null;
+  if (!providerID || providerID.length > ROUTE_DETAIL_MAX_LENGTH) return null;
+  if (modelID && modelID.length > ROUTE_DETAIL_MAX_LENGTH) return null;
+  return { providerID, modelID };
+}
+
+/** Serialize provider/model detail without allowing it to escape the hash route. */
+export function providerRouteHash(providerID: string, modelID?: string | null): string {
+  const params = new URLSearchParams({ provider: providerID });
+  if (modelID) params.set('model', modelID);
+  return `#/providers?${params.toString()}`;
 }

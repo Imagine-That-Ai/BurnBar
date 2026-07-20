@@ -12,6 +12,7 @@ const defaultProvidersLoad = useProvidersStore.getState().load;
 
 function resetStores(): void {
   localStorage.clear();
+  window.history.replaceState(null, '', '/#/providers');
   useShellStore.setState({
     route: 'providers',
     health: null,
@@ -223,6 +224,37 @@ describe('ProvidersSurface (quota workspace)', () => {
       expect(container.querySelector(`[data-model="${secondProvider.id}-model"]`)).not.toBeNull();
       expect(customModelProvider.value).toBe(secondProvider.id);
     });
+  });
+
+  it('restores provider and model detail from a deep link and browser history', async () => {
+    const providers: ProviderCatalog = fixtureProviderCatalog().slice(0, 2).map((provider) => ({
+      ...provider,
+      models: [{
+        id: `${provider.id}/model`,
+        label: `${provider.label} model`,
+        aliases: [],
+        capabilities: [],
+        enabled: true,
+        health: 'healthy',
+        provenance: 'daemon-catalog'
+      }]
+    }));
+    const target = providers[1]!;
+    window.history.replaceState(null, '', `/#/providers?provider=${encodeURIComponent(target.id)}&model=${encodeURIComponent(`${target.id}/model`)}`);
+    Element.prototype.scrollIntoView = vi.fn();
+    render(<ProviderModelWorkspace providers={providers} />);
+
+    const selector = screen.getByRole('combobox', { name: 'Provider detail' }) as HTMLSelectElement;
+    await waitFor(() => expect(selector.value).toBe(target.id));
+    const model = document.querySelector(`[data-model="${target.id}/model"]`);
+    expect(model?.getAttribute('data-deep-linked')).toBe('true');
+    expect(document.activeElement).toBe(model);
+
+    const first = providers[0]!;
+    window.history.replaceState(null, '', `/#/providers?provider=${encodeURIComponent(first.id)}`);
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await waitFor(() => expect(selector.value).toBe(first.id));
+    expect(document.querySelector('[data-deep-linked="true"]')).toBeNull();
   });
 
   it('does not label an enabled but unavailable model as route ready', () => {
