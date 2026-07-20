@@ -8,6 +8,7 @@ import {
   formatTokens,
   sessionDurationLabel
 } from './sessionFormat.js';
+import { resolveActivitySessionSource } from './activityExport.js';
 
 export function SessionDetail({ session, detailId }: { session: SessionEntry; detailId: string }) {
   const glyph = PROVIDER_GLYPHS.find((g) => g.id === session.provider);
@@ -16,24 +17,35 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
   const [body, setBody] = useState<string | null>(null);
   const [bodyLoading, setBodyLoading] = useState(false);
   const [bodyError, setBodyError] = useState<string | null>(null);
+  const [sourceResolving, setSourceResolving] = useState(false);
+  const [resolvedSourceID, setResolvedSourceID] = useState<string | null>(null);
   const [resumeLoading, setResumeLoading] = useState(false);
   const [resumeStatus, setResumeStatus] = useState<string | null>(null);
   // Usage-row IDs are not durable conversation identities. Never pass the
   // display/fallback ID to replay or resume: the daemon may interpret it as a
   // different provider session or reject it ambiguously.
-  const replayID = session.sourceID?.trim() || null;
-  const sourceIdentityUnavailable = !replayID && !fixtureMode;
+  const listedSourceID = session.sourceID?.trim() || null;
+  const sourceNeedsResolution = listedSourceID !== null && session.sourceIDVerified === false;
+  const replayID = resolvedSourceID ?? (sourceNeedsResolution ? null : listedSourceID);
+  const sourceCandidateAvailable = Boolean(listedSourceID || session.providerSessionID?.trim() || session.runID?.trim());
+  const sourceIdentityUnavailable = !sourceCandidateAvailable && !fixtureMode;
   const bodyActionTitle = replayID
     ? 'Load the persisted session body'
+    : sourceCandidateAvailable
+      ? 'Resolve the persisted source against complete indexed history'
     : fixtureMode
       ? 'Unavailable until the live daemon and indexed database are connected'
       : 'Unavailable without a verified daemon source identity';
   const resumeActionTitle = replayID
     ? 'Resume the persisted session'
+    : sourceCandidateAvailable
+      ? 'Resolve the persisted source against complete indexed history'
     : fixtureMode
       ? 'Unavailable until the live daemon and indexed database are connected'
       : 'Unavailable without a verified daemon source identity';
-  const bodyActionLabel = bodyLoading
+  const bodyActionLabel = sourceResolving
+    ? 'Resolving source...'
+    : bodyLoading
     ? 'Loading body...'
     : bodyError
       ? 'Retry session body'
@@ -51,6 +63,20 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
     return result.errorRecovery ?? 'The daemon could not load this persisted session.';
   };
 
+  const resolveSourceID = async (): Promise<string> => {
+    if (replayID) return replayID;
+    if (!bridge) throw new Error('Session source resolution requires the live daemon and indexed session store.');
+    setSourceResolving(true);
+    try {
+      const result = await resolveActivitySessionSource(session, bridge);
+      if (result.kind === 'unavailable') throw new Error(result.message);
+      setResolvedSourceID(result.sourceID);
+      return result.sourceID;
+    } finally {
+      setSourceResolving(false);
+    }
+  };
+
   const loadBody = async () => {
     setBodyError(null);
     setResumeStatus(null);
@@ -58,7 +84,7 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
       setBodyError('Session body is unavailable until the live daemon and indexed database are connected.');
       return;
     }
-    if (!replayID) {
+    if (!sourceCandidateAvailable) {
       setBodyError('Session body is unavailable because this daemon row has no verified source identity.');
       return;
     }
@@ -68,7 +94,8 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
     }
     setBodyLoading(true);
     try {
-      const result = await bridge.sessionReplay(replayID);
+      const sourceID = await resolveSourceID();
+      const result = await bridge.sessionReplay(sourceID);
       if (result.kind === 'error' || result.errorCode) {
         setBodyError(renderReplayError(result));
       } else if (!result.briefingMD) {
@@ -90,7 +117,7 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
       setResumeStatus('Resume is unavailable until the live daemon and indexed database are connected.');
       return;
     }
-    if (!replayID) {
+    if (!sourceCandidateAvailable) {
       setResumeStatus('Resume is unavailable because this daemon row has no verified source identity.');
       return;
     }
@@ -100,7 +127,8 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
     }
     setResumeLoading(true);
     try {
-      const result = await bridge.sessionResume(replayID);
+      const sourceID = await resolveSourceID();
+      const result = await bridge.sessionResume(sourceID);
       if (result.kind === 'error' || result.errorCode) {
         setResumeStatus(renderReplayError(result));
       } else if (result.pid) {
@@ -150,7 +178,10 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
         </div>
         <div className="fact">
           <dt>Source identity</dt>
-          <dd className="mono">{session.sourceID ?? 'Unavailable from daemon row'}</dd>
+          <dd className="mono">
+            {session.sourceID ?? 'Unavailable from daemon row'}
+            {sourceNeedsResolution ? ' (unverified fallback)' : ''}
+          </dd>
         </div>
         {session.projectName ? (
           <div className="fact">
@@ -164,7 +195,7 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
           type="button"
           className="ghost"
           onClick={() => void loadBody()}
-          disabled={bodyLoading || sourceIdentityUnavailable}
+          disabled={bodyLoading || sourceResolving || sourceIdentityUnavailable}
           title={bodyActionTitle}
         >
           {bodyActionLabel}
@@ -173,7 +204,7 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
           type="button"
           className="ghost"
           onClick={() => void resume()}
-          disabled={resumeLoading || sourceIdentityUnavailable}
+          disabled={resumeLoading || sourceResolving || sourceIdentityUnavailable}
           title={resumeActionTitle}
         >
           {resumeLoading ? 'Resuming...' : 'Resume session'}
@@ -182,6 +213,11 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
       {sourceIdentityUnavailable ? (
         <p className="activity-session-status" role="status">
           Body and resume are unavailable because this row has no verified daemon source identity.
+        </p>
+      ) : null}
+      {!fixtureMode && sourceCandidateAvailable && sourceNeedsResolution && !resolvedSourceID ? (
+        <p className="activity-session-status" role="status">
+          This usage row has a display-only identity; the daemon must verify it against complete indexed history before replay or resume.
         </p>
       ) : null}
       <p className="activity-session-trust muted">

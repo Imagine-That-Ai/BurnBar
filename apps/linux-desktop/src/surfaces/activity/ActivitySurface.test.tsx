@@ -3,7 +3,12 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureSessionList } from '../../daemonFixture.js';
 import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
-import type { LinuxShellBridge, SessionListResult, SessionReplayResult } from '../../tauriBridge.js';
+import type {
+  LinuxShellBridge,
+  SessionHistoryResult,
+  SessionListResult,
+  SessionReplayResult
+} from '../../tauriBridge.js';
 import { ACTIVITY_PAGE_SIZE, useActivityStore } from '../../state/activityStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { availableRuntimeCapabilities } from '../../testing/bridgeStubs.js';
@@ -32,6 +37,7 @@ function resetShell(): void {
 
 function mockBridge(handlers: {
   sessionList?: () => Promise<SessionListResult>;
+  sessionHistory?: () => Promise<SessionHistoryResult>;
   sessionSearch?: (query: string) => Promise<SessionListResult>;
   sessionReplay?: (sessionID: string) => Promise<SessionReplayResult>;
   sessionResume?: (sessionID: string) => Promise<SessionReplayResult>;
@@ -53,6 +59,7 @@ function mockBridge(handlers: {
     }),
     providerCatalog: async () => [],
     sessionList: handlers.sessionList ?? emptyList,
+    sessionHistory: handlers.sessionHistory,
     sessionSearch: handlers.sessionSearch ?? emptyList,
     sessionReplay: handlers.sessionReplay,
     sessionResume: handlers.sessionResume,
@@ -493,6 +500,101 @@ describe('ActivitySurface', () => {
     });
     expect(screen.getByRole('button', { name: 'Reload session body' })).toBeTruthy();
     expect(replay).toHaveBeenCalledTimes(3);
+  });
+
+  it('resolves an unverified usage identity against complete indexed history before replay and resume', async () => {
+    const fallbackSession = {
+      ...fixtureSessionList().sessions[0]!,
+      sourceID: 'Anthropic:session-plain',
+      sourceIDVerified: false,
+      providerSessionID: 'session-plain'
+    };
+    const authoritativeSession = {
+      ...fallbackSession,
+      sourceID: 'Anthropic:canonical-session',
+      sourceIDVerified: true,
+      bodyMD: '# Indexed body'
+    };
+    const sessionHistory = vi.fn(async (): Promise<SessionHistoryResult> => ({
+      sessions: [authoritativeSession],
+      nextCursor: null,
+      complete: true,
+      historyComplete: true,
+      historyLimit: 500,
+      totalCount: 1
+    }));
+    const replay = vi.fn(async (sessionID: string): Promise<SessionReplayResult> => ({
+      kind: 'native',
+      briefingMD: `# ${sessionID}`,
+      briefingTruncated: false
+    }));
+    const resume = vi.fn(async (sessionID: string): Promise<SessionReplayResult> => ({
+      kind: 'spawned',
+      briefingTruncated: false,
+      pid: 84,
+      note: sessionID
+    }));
+    useShellStore.setState({
+      bridge: mockBridge({
+        sessionList: async () => ({ sessions: [fallbackSession], nextCursor: null }),
+        sessionHistory,
+        sessionReplay: replay,
+        sessionResume: resume
+      })
+    });
+    render(<ActivitySurface />);
+    await act(async () => {
+      await useActivityStore.getState().load();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: /show details/i })[0]!);
+    expect(screen.getByText(/display-only identity/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Load session body' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(sessionHistory).toHaveBeenCalledTimes(1);
+    expect(replay).toHaveBeenCalledWith('Anthropic:canonical-session');
+    expect(screen.getByLabelText('Persisted session body').textContent).toContain('canonical-session');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resume session' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(resume).toHaveBeenCalledWith('Anthropic:canonical-session');
+    expect(screen.getByRole('status').textContent).toContain('process 84');
+  });
+
+  it('does not replay an unverified usage identity when complete history is unavailable', async () => {
+    const fallbackSession = {
+      ...fixtureSessionList().sessions[0]!,
+      sourceID: 'Anthropic:session-plain',
+      sourceIDVerified: false,
+      providerSessionID: 'session-plain'
+    };
+    const replay = vi.fn(async (_sessionID: string): Promise<SessionReplayResult> => ({
+      kind: 'native',
+      briefingMD: 'Must not be requested',
+      briefingTruncated: false
+    }));
+    useShellStore.setState({
+      bridge: mockBridge({
+        sessionList: async () => ({ sessions: [fallbackSession], nextCursor: null }),
+        sessionReplay: replay
+      })
+    });
+    render(<ActivitySurface />);
+    await act(async () => {
+      await useActivityStore.getState().load();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: /show details/i })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Load session body' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('alert').textContent).toMatch(/complete indexed-history bridge/i);
+    expect(replay).not.toHaveBeenCalled();
   });
 
   it('fails closed for rows without a verified source identity', async () => {

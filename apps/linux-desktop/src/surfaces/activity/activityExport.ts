@@ -54,6 +54,114 @@ type CompleteActivityHistoryList = Awaited<ReturnType<LinuxShellBridge['sessionL
   historyComplete?: boolean;
 };
 
+export type ActivitySessionSourceResolutionResult =
+  | {
+      kind: 'resolved';
+      sourceID: string;
+      session: SessionEntry;
+    }
+  | {
+      kind: 'unavailable';
+      code:
+        | 'bridge_unavailable'
+        | 'daemon_error'
+        | 'source_resolution_unavailable'
+        | 'session_not_found'
+        | 'source_identity_unavailable';
+      message: string;
+    };
+
+/**
+ * Resolve a usage-row fallback against the daemon's complete indexed history.
+ *
+ * `SessionEntry.sourceID` is allowed to be a display-safe provider/session
+ * fallback for older usage RPCs, but that value is not enough authority for
+ * `run.resume`. Match stable provider-session/run identity only; never use the
+ * fallback source itself as the lookup key.
+ */
+export async function resolveActivitySessionSource(
+  session: SessionEntry,
+  bridge: Pick<LinuxShellBridge, 'sessionHistory'>
+): Promise<ActivitySessionSourceResolutionResult> {
+  const directSourceID = session.sourceID?.trim();
+  if (directSourceID && session.sourceIDVerified !== false) {
+    return { kind: 'resolved', sourceID: directSourceID, session };
+  }
+  if (typeof bridge.sessionHistory !== 'function') {
+    return {
+      kind: 'unavailable',
+      code: 'bridge_unavailable',
+      message: 'Session source resolution requires a complete indexed-history bridge.'
+    };
+  }
+
+  let history: Awaited<ReturnType<NonNullable<LinuxShellBridge['sessionHistory']>>>;
+  try {
+    history = await bridge.sessionHistory();
+  } catch {
+    return {
+      kind: 'unavailable',
+      code: 'daemon_error',
+      message: 'The daemon could not provide the indexed history needed to resolve this session.'
+    };
+  }
+  if (
+    history.nextCursor !== null ||
+    history.complete !== true ||
+    history.historyComplete !== true ||
+    history.sessions.length !== history.totalCount
+  ) {
+    return {
+      kind: 'unavailable',
+      code: 'source_resolution_unavailable',
+      message: 'Session source resolution is unavailable because the daemon history is paged or incomplete.'
+    };
+  }
+
+  const providerSessionID = session.providerSessionID?.trim() || null;
+  const runID = session.runID?.trim() || null;
+  if (!providerSessionID && !runID) {
+    return {
+      kind: 'unavailable',
+      code: 'source_identity_unavailable',
+      message: 'This activity row has no stable provider-session or run identity to resolve safely.'
+    };
+  }
+  const provider = session.provider.trim().toLowerCase();
+  const projectName = session.projectName?.trim() || null;
+  const matches = history.sessions.filter((candidate) => {
+    if (provider && candidate.provider.trim().toLowerCase() !== provider) return false;
+    if (projectName && candidate.projectName?.trim() !== projectName) return false;
+    if (providerSessionID && candidate.providerSessionID?.trim() !== providerSessionID) return false;
+    if (runID && candidate.runID?.trim() !== runID) return false;
+    return true;
+  });
+  if (matches.length === 0) {
+    return {
+      kind: 'unavailable',
+      code: 'session_not_found',
+      message: 'The activity row no longer maps to a persisted daemon conversation.'
+    };
+  }
+  if (matches.length !== 1) {
+    return {
+      kind: 'unavailable',
+      code: 'source_identity_unavailable',
+      message: 'The daemon returned more than one persisted conversation for this activity row.'
+    };
+  }
+  const resolved = matches[0];
+  const sourceID = resolved.sourceID?.trim();
+  if (!sourceID || resolved.sourceIDVerified === false) {
+    return {
+      kind: 'unavailable',
+      code: 'source_identity_unavailable',
+      message: 'The daemon history row did not provide one verified conversation identity.'
+    };
+  }
+  return { kind: 'resolved', sourceID, session: resolved };
+}
+
 export type ActivityHistoryExportResult =
   | { kind: 'available'; document: ActivityExportDocument }
   | {
@@ -191,7 +299,7 @@ export async function buildDaemonActivityHistoryExport(
     let bodyBytes = 0;
     for (const session of history.sessions) {
       const sourceID = session.sourceID?.trim() || null;
-      if (!sourceID) {
+      if (!sourceID || session.sourceIDVerified === false) {
         return unavailable(
           'source_identity_unavailable',
           'Full activity history export is unavailable for a row without a verified conversation identity.'
@@ -287,7 +395,7 @@ export async function buildDaemonActivityHistoryExport(
   let bodyBytes = 0;
   for (const session of listed.sessions) {
     const sourceID = session.sourceID?.trim() || null;
-    if (!sourceID) {
+    if (!sourceID || session.sourceIDVerified === false) {
       return unavailable(
         'source_identity_unavailable',
         'Full activity history export is unavailable for a row without a verified conversation identity.'
@@ -604,6 +712,13 @@ export async function resumeActivityHistoryExportSession(
       kind: 'unavailable',
       code: 'source_identity_unavailable',
       message: 'The daemon returned more than one row for the selected source identity.'
+    };
+  }
+  if (currentMatches[0]?.sourceIDVerified === false) {
+    return {
+      kind: 'unavailable',
+      code: 'source_identity_unavailable',
+      message: 'The daemon source index returned an unverified fallback identity for the selected export row.'
     };
   }
 

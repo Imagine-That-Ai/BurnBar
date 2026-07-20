@@ -105,6 +105,12 @@ export type SessionEntry = {
    * id that is not safe to pass to `run.resume`.
    */
   sourceID?: string;
+  /**
+   * Whether `sourceID` came from a daemon-provided canonical identity. A
+   * normalized provider/session fallback remains useful for display/search,
+   * but must be resolved against complete indexed history before replay/resume.
+   */
+  sourceIDVerified?: boolean;
   providerSessionID?: string;
   runID?: string;
   projectName?: string;
@@ -2264,10 +2270,13 @@ function stableProviderPrefix(provider: string): string | undefined {
   return known[normalized];
 }
 
-type ResolvedSessionIdentity = Pick<SessionEntry, 'sourceID' | 'providerSessionID' | 'runID' | 'projectName'>;
+type ResolvedSessionIdentity = Pick<
+  SessionEntry,
+  'sourceID' | 'sourceIDVerified' | 'providerSessionID' | 'runID' | 'projectName'
+>;
 
 function resolveSessionIdentity(raw: RawJsonValue, provider: string): ResolvedSessionIdentity {
-  const sourceID = safeSessionIdentity(
+  const explicitSourceID = safeSessionIdentity(
     pick(raw, 'sourceID', 'sourceId', 'source_id', 'conversationID', 'conversationId', 'conversation_id')
   );
   const rawID = safeSessionIdentity(pick(raw, 'id'));
@@ -2277,9 +2286,16 @@ function resolveSessionIdentity(raw: RawJsonValue, provider: string): ResolvedSe
     : stableProviderPrefix(provider) && providerSessionID
       ? `${stableProviderPrefix(provider)}:${providerSessionID}`
       : undefined;
-  const resolvedSourceID = sourceID ?? (rawID?.includes(':') ? rawID : normalizedProviderSessionID);
+  const resolvedSourceID = explicitSourceID ?? (rawID?.includes(':') ? rawID : normalizedProviderSessionID);
+  // A provider-prefixed fallback is a useful display identity, but it is not
+  // proof that the indexed conversation exists. Only daemon-supplied IDs (or
+  // already canonical provider-prefixed IDs) can be replayed directly.
+  const sourceIDVerified = resolvedSourceID
+    ? Boolean(explicitSourceID || rawID?.includes(':') || providerSessionID?.includes(':'))
+    : undefined;
   return {
     sourceID: resolvedSourceID,
+    sourceIDVerified,
     providerSessionID,
     runID: safeSessionIdentity(pick(raw, 'runID', 'runId', 'run_id')),
     projectName: safeSessionIdentity(pick(raw, 'projectName', 'project', 'workspaceName', 'workspace'))
@@ -2394,6 +2410,8 @@ function mapSessionHistory(raw: RawJsonValue): SessionHistoryResult {
       `activity history session ${index} bodyMD`,
       SESSION_BRIEFING_MAX_BYTES
     );
+    const runID = safeSessionIdentity(pick(row, 'runID', 'runId', 'run_id'));
+    const projectName = safeSessionIdentity(pick(row, 'projectName', 'project', 'workspaceName', 'workspace'));
     return {
       id: requireBoundedString(pick(row, 'id'), `activity history session ${index} id`, 512),
       provider,
@@ -2416,8 +2434,8 @@ function mapSessionHistory(raw: RawJsonValue): SessionHistoryResult {
       ),
       sourceID,
       providerSessionID,
-      runID: safeSessionIdentity(pick(row, 'runID', 'runId', 'run_id')),
-      projectName: safeSessionIdentity(pick(row, 'projectName', 'project', 'workspaceName', 'workspace')),
+      ...(runID ? { runID } : {}),
+      ...(projectName ? { projectName } : {}),
       bodyMD
     };
   });
