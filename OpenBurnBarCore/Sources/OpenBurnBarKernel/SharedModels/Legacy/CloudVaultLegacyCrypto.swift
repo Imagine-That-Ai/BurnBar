@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarPlatformSupport
 
 enum CloudVaultLegacyCrypto {
     static func aadV1(uid: String, collection: String, docID: String, field: String) -> String {

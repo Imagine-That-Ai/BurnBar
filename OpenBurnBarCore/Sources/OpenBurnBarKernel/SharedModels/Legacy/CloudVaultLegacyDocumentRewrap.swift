@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarPlatformSupport
 
 enum CloudVaultLegacyDocumentRewrap {
     static func rewrapCloudVaultDocumentLegacy(
