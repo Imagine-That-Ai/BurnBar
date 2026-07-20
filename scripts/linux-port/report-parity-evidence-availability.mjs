@@ -11,6 +11,7 @@ import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { readStableRegularFile } from './lib/stable-file.mjs';
 import { fileURLToPath } from 'node:url';
 import { repoRoot } from './lib/linux-release-common.mjs';
 
@@ -64,13 +65,17 @@ function isInside(root, candidate) {
 }
 
 function readInput(root, suppliedPath, label) {
-  const absolute = path.resolve(root, suppliedPath);
-  if (!isInside(root, absolute)) throw new Error(`${label} must be inside the repository: ${suppliedPath}`);
-  const stat = fs.lstatSync(absolute);
-  if (!stat.isFile() || stat.isSymbolicLink()) {
-    throw new Error(`${label} must be a regular non-symlink file: ${suppliedPath}`);
+  const canonicalRoot = fs.realpathSync(root);
+  const absolute = path.resolve(canonicalRoot, suppliedPath);
+  if (!isInside(canonicalRoot, absolute)) throw new Error(`${label} must be inside the repository: ${suppliedPath}`);
+  let current = canonicalRoot;
+  for (const component of path.relative(canonicalRoot, absolute).split(path.sep).filter(Boolean)) {
+    current = path.join(current, component);
+    if (fs.lstatSync(current).isSymbolicLink()) {
+      throw new Error(`${label} must not traverse a symlink: ${suppliedPath}`);
+    }
   }
-  const bytes = fs.readFileSync(absolute);
+  const bytes = readStableRegularFile(absolute, label).bytes;
   let value;
   try {
     value = JSON.parse(bytes.toString('utf8'));
@@ -78,7 +83,7 @@ function readInput(root, suppliedPath, label) {
     throw new Error(`${label} is not valid JSON: ${error.message}`);
   }
   return {
-    path: path.relative(root, absolute).split(path.sep).join('/'),
+    path: path.relative(canonicalRoot, absolute).split(path.sep).join('/'),
     sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
     value
   };

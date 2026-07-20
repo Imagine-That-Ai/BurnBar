@@ -56,9 +56,12 @@ test('Linux toolchain does not reintroduce Noble Node 18 packages', () => {
 });
 
 test('Linux toolchain normalizes Ubuntu package mirrors to HTTPS', () => {
-  assert.match(toolchain, /http:\/\/ports\.ubuntu\.com.*https:\/\/ports\.ubuntu\.com/isu);
-  assert.match(toolchain, /http:\/\/archive\.ubuntu\.com.*https:\/\/archive\.ubuntu\.com/isu);
-  assert.match(toolchain, /http:\/\/security\.ubuntu\.com.*https:\/\/security\.ubuntu\.com/isu);
+  for (const host of ['ports.ubuntu.com', 'archive.ubuntu.com', 'security.ubuntu.com']) {
+    assert.ok(
+      toolchain.includes(`-e 's|http://${host}|https://${host}|g'`),
+      `${host} mirror rewrite must replace the exact HTTP origin with HTTPS`
+    );
+  }
 });
 
 test('toolchain smoke reports the runtime actually used by release builds', () => {

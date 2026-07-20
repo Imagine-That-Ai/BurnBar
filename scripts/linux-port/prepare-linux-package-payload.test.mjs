@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { readStableUtf8File } from './lib/stable-file.mjs';
 import {
   buildLinuxCloudAuthConfig,
   resolveIrohNativeLibrary,
@@ -342,9 +343,12 @@ test('payload staging dereferences SQLCipher SONAME links', () => {
     assert.equal(fs.lstatSync(staged).isFile(), true);
     assert.equal(fs.lstatSync(staged).isSymbolicLink(), false);
     assert.ok(fs.existsSync(staged));
-    assert.equal(fs.readFileSync(staged, 'utf8'), 'sqlcipher');
+    assert.equal(readStableUtf8File(staged, `staged ${entry}`), 'sqlcipher');
   }
-  assert.equal(fs.readFileSync(path.join(report.nativeRuntime, 'libsqlcipher.so.0.8.6'), 'utf8'), 'sqlcipher');
+  assert.equal(
+    readStableUtf8File(path.join(report.nativeRuntime, 'libsqlcipher.so.0.8.6'), 'staged SQLCipher target'),
+    'sqlcipher'
+  );
   fs.rmSync(root, { recursive: true, force: true });
 });
 

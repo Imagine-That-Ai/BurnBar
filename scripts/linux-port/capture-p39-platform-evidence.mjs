@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { readStableRegularFile } from './lib/stable-file.mjs';
 import { fileURLToPath } from 'node:url';
 import { normalizeArtifact } from './run-platform-differential.mjs';
 import {
@@ -150,7 +151,7 @@ function assertRepositoryCorpus(document, repoRoot) {
   if (!stat || !stat.isFile() || stat.isSymbolicLink()) {
     throw new Error('P-39 producer corpus source must be a regular non-symlink file');
   }
-  const bytes = fs.readFileSync(lexical);
+  const bytes = readStableRegularFile(lexical, 'P-39 producer corpus source').bytes;
   if (sha256(bytes) !== document.payload.corpus.baselineSha256) {
     throw new Error('P-39 producer corpus digest does not match the current checkout');
   }
@@ -264,8 +265,7 @@ export function captureP39PlatformEvidence({
   if (resolveHead(repository) !== targetHead) throw new Error('P-39 producer checkout is not the requested target HEAD');
   const version = readCandidateVersion(path.resolve(candidateClosure), targetHead);
   const goldenPath = path.resolve(repository, DEFAULT_GOLDEN_PATH);
-  if (!fs.statSync(goldenPath).isFile()) throw new Error('P-39 parser golden source is missing');
-  const baselineBytes = fs.readFileSync(goldenPath);
+  const baselineBytes = readStableRegularFile(goldenPath, 'P-39 parser golden source').bytes;
   const baselineSha256 = sha256(baselineBytes);
   const run = runProducer({ repoRoot: repository, goldenPath });
   if (!Buffer.isBuffer(run.generatedBytes)

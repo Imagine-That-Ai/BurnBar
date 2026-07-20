@@ -9,6 +9,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { verifyGitHubArtifactProvenance } from './github-artifact-provenance.mjs';
+import { readStableRegularFile } from './stable-file.mjs';
 
 const REQUIRED_ROW_FIELDS = [
   'id',
@@ -535,13 +536,20 @@ function validateAttestation(attestation, row, policy, options, failPromotion, f
       failStructural(`validator receipt has invalid sha256: ${receiptRef.path}`, row);
       continue;
     }
-    if (sha256(resolved.path) !== receiptRef.sha256) {
+    let receiptBytes;
+    try {
+      receiptBytes = readStableRegularFile(resolved.path, `validator receipt ${receiptRef.path}`).bytes;
+    } catch {
+      failPromotion(`validator receipt could not be read safely: ${receiptRef.path}`, row);
+      continue;
+    }
+    if (crypto.createHash('sha256').update(receiptBytes).digest('hex') !== receiptRef.sha256) {
       failPromotion(`validator receipt hash mismatch: ${receiptRef.path}`, row);
       continue;
     }
     let receipt;
     try {
-      receipt = JSON.parse(fs.readFileSync(resolved.path, 'utf8'));
+      receipt = JSON.parse(receiptBytes.toString('utf8'));
     } catch {
       failPromotion(`validator receipt is not valid JSON: ${receiptRef.path}`, row);
       continue;

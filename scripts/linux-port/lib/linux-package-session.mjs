@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { readStableRegularFile } from './stable-file.mjs';
 
 export const requiredLifecycleSteps = [
   'guiLaunch',
@@ -95,9 +96,7 @@ function readBoundFile(root, record, label) {
     const metadata = fs.lstatSync(current);
     if (metadata.isSymbolicLink()) throw new Error(`${label} traverses a symlink`);
   }
-  const metadata = fs.lstatSync(absolute);
-  if (!metadata.isFile()) throw new Error(`${label} is not a regular file`);
-  const bytes = fs.readFileSync(absolute);
+  const { bytes } = readStableRegularFile(absolute, label);
   const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
   if (bytes.length !== record.size || sha256 !== record.sha256) {
     throw new Error(`${label} bytes do not match the sealed provenance record`);
