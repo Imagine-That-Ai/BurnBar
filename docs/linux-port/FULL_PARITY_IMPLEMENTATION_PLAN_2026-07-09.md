@@ -15,16 +15,14 @@ dependencies, acceptance contracts, proof commands, loophole controls, and
 known platform divergences.
 
 > **Live status (2026-07-20):** The implementation branch is
-> `fc0af729e1` and passes **91 frontend files / 877 tests**, **129/129 host
-> Tauri Rust tests**, plus **130/130 media-enabled Rust tests on Ubuntu ARM64**,
-> including the
-> focused mission, shell, and IPv6 adapter regressions, along with
-> TypeScript,
-> production-bundle verification. The current source head has an ARM64 DEB
-> installed and its shell is live in the unlocked Ubuntu GNOME/X11 UTM guest;
-> the
-> non-certifying staged-daemon receipt is
-> [`evidence/parity-audit-2026-07-10/linux-arm64-current-fc0af729e1-ui-staged-daemon-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-fc0af729e1-ui-staged-daemon-2026-07-20.json).
+> `b93e656645` and passes **93 frontend files / 890 tests**, focused Linux
+> subscription tests **3/3**, TypeScript, production-bundle verification, and
+> fresh package runtime probes. The current ARM64 DEB is installed in the
+> unlocked Ubuntu GNOME/X11 UTM guest; its shell, daemon, CLI, and iroh hashes
+> match the synchronized source build. Overview, Quota, Activity, and Settings
+> pass AT-SPI, and the final visible capture reports `Connected to local peer`.
+> The non-certifying exact-native receipt is
+> [`evidence/parity-audit-2026-07-10/linux-arm64-current-b93e656645-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-b93e656645-exact-native-2026-07-20.json).
 > The strict certification ledger is still **0/40 product rows and 0/7
 > environment receipts** because the package is unsigned and production,
 > cross-device, keyring, compositor, and same-commit macOS differential proof
@@ -35,44 +33,29 @@ known platform divergences.
 
 Linux is not at full macOS parity.
 
-### Current source wave — 2026-07-20 UTC
+### Current exact-native wave — 2026-07-20 UTC
 
-Integration head `fc0af729e1` passes 91 frontend files / 877 tests, including
-focused mission, shell, and IPv6 adapter regressions, TypeScript,
-production bundle verification, Tauri Rust 129/129 on the host and 130/130
-with `media-gst` on Ubuntu ARM64, and package-payload contract checks. The
-current wave includes immediate Canvas2D recovery after
-WebGL context loss, keyboard-complete kernel selection, truthful Support
-performance empty state, stale-update/provider/subscription guards, periodic
-tray refresh, packaged-shell Reconnect, keyboard-complete overflow actions,
-cold-start notification-action retention, the ARM64-only AppHandle fix
-found by the real Linux build, stale diagnostics exports fenced
-across bridge replacement and overlapping requests, plus the latest mission,
-shell, and IPv6 endpoint fixes. The latest wave additionally makes custom
-Appearance radios keyboard-complete, fences stale Computer Use authority and
-  approval polling, preserves Activity's last good snapshot across transient
-  refresh failures, fails closed from a broken X11 pet child, retains stale
-  signed-update facts while blocking package mutation, and forces the native
-  GStreamer Mercury viewer feature in package builds. `af31748ece` also makes
-  the SmartHub bounded-output guard and oversized-output test fixture stable.
-  The current wave adds provider catalog/path provenance, daemon-backed project
-  history and exact session associations, encrypted recovery-bundle controls,
-  route-level code splitting with synchronous Support error wiring, chat resume
-  transcript preservation, a daemon memory audit timeline, and account identity
-  fencing with truthful trusted-device posture. The current UTM receipt is
-  intentionally non-certifying because the daemon/CLI are staged and the
-  manifest is unsigned. These changes improve the engineering baseline;
-  they do not close the strict 0/40
-product and 0/7 environment gates.
+Integration head `b93e656645` passes 93 frontend files / 890 tests, focused
+Linux subscription coverage 3/3, TypeScript, production bundle verification,
+and fresh package startup/linkage probes. `594dc668ab` preserves the last good
+Activity replay body through failure and retry; `6b707d24b8` preserves the last
+non-empty Quota catalog with explicit stale/error/retry truth; `9250e90092`
+requires canonical daemon readback before privacy writes report success; and
+`b93e656645` omits absent optional subscription `run_id` values instead of
+emitting bridge-invalid empty strings. Live installed QA verified that the
+global refresh banner recovered from degraded to connected after the daemon
+fix. These changes improve the engineering baseline; they do not close the
+strict 0/40 product and 0/7 environment gates.
 
 ### Latest installed checkpoint — 2026-07-20 UTC
 
-The live Ubuntu guest has the current-source `fc0af729e1` ARM64 DEB with
-native GStreamer media linkage and the verified staged daemon and CLI payloads
-from the prior clean receipt installed at `/usr/bin`. The non-certifying receipt
-is `evidence/parity-audit-2026-07-10/linux-arm64-current-fc0af729e1-ui-staged-daemon-2026-07-20.json`.
-It proves daemon health, an unlocked active-window launch, AT-SPI readiness,
-and the explicit `WebGL2 unavailable` fallback label. This guest reports
+The live Ubuntu guest has the current-source `b93e656645` ARM64 DEB with fresh
+GStreamer-linked daemon, CLI, iroh, and shell payloads installed at `/usr/bin`.
+The non-certifying receipt is
+`evidence/parity-audit-2026-07-10/linux-arm64-current-b93e656645-exact-native-2026-07-20.json`.
+It proves installed/source hash equality, daemon health, an unlocked visible
+launch, four route-level AT-SPI passes, connected subscription refresh, and the
+explicit `WebGL2 unavailable` fallback label. This guest reports
 `webgl2=false`, so it does not certify WebGL2-only kernels or the broader
 seven-environment matrix. The older `5b70a3d320` package remains the historical
 Settings-hydration baseline below.
