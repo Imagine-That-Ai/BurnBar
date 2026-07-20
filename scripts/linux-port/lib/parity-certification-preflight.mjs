@@ -45,9 +45,17 @@ const MODULE_DEPENDENCY_ROOT = path.resolve(
 );
 const ISOLATED_TARGET_PATHS = Object.freeze([
   '.github/workflows',
+  'Makefile',
   'OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js',
+  'OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/LinuxSecretStorage.swift',
+  'OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/LinuxSecretStorageTests.swift',
+  'apps/linux-desktop/package.json',
+  'apps/linux-desktop/src',
+  'apps/linux-desktop/src-tauri/capabilities/default.json',
   'apps/linux-desktop/src-tauri/icons/icon.png',
   'apps/linux-desktop/src-tauri/src',
+  'apps/linux-desktop/src-tauri/tauri.conf.json',
+  'docs/linux-port/cloud-security-runbook.md',
   'docs/linux-port/product-feature-proof-registry.json',
   'docs/linux-port/product-parity-evidence-policies.json',
   'docs/linux-port/product-parity-requirements.json',
