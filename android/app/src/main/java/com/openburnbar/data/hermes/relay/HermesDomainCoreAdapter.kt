@@ -70,6 +70,9 @@ internal object HermesDomainCoreAdapter {
     internal var comparisonOverride: ((HermesShadowComparison) -> Unit)? = null
 
     @Volatile
+    internal var modeOverride: HermesDomainCoreMode? = null
+
+    @Volatile
     internal var abiVersionOverride: (() -> UInt)? = null
 
     @Volatile
@@ -91,7 +94,7 @@ internal object HermesDomainCoreAdapter {
     }
 
     fun seal(plaintext: ByteArray, key: ByteArray, aad: ByteArray, legacy: () -> String): String {
-        val mode = HermesDomainCoreMode.resolve()
+        val mode = resolvedMode()
         if (mode == HermesDomainCoreMode.LEGACY) return legacy()
         if (mode == HermesDomainCoreMode.SHADOW) {
             val legacyStarted = System.nanoTime()
@@ -147,7 +150,7 @@ internal object HermesDomainCoreAdapter {
     }
 
     fun sealCombined(plaintext: ByteArray, key: ByteArray, aad: ByteArray, legacy: () -> ByteArray): ByteArray {
-        val mode = HermesDomainCoreMode.resolve()
+        val mode = resolvedMode()
         if (mode == HermesDomainCoreMode.LEGACY) return legacy()
         if (mode == HermesDomainCoreMode.SHADOW) {
             val legacyStarted = System.nanoTime()
@@ -184,7 +187,7 @@ internal object HermesDomainCoreAdapter {
         selectValue(operation, legacy, rust, ByteArray::contentEquals)
 
     private fun <T> selectValue(operation: String, legacy: () -> T, rust: () -> T, equivalent: (T, T) -> Boolean): T {
-        val mode = HermesDomainCoreMode.resolve()
+        val mode = resolvedMode()
         if (mode == HermesDomainCoreMode.LEGACY) return legacy()
         if (mode == HermesDomainCoreMode.SHADOW) {
             val legacyStarted = System.nanoTime()
@@ -232,8 +235,11 @@ internal object HermesDomainCoreAdapter {
         return length.toUInt()
     }
 
+    private fun resolvedMode(): HermesDomainCoreMode = modeOverride ?: HermesDomainCoreMode.resolve()
+
     internal fun resetTestOverrides() {
         comparisonOverride = null
+        modeOverride = null
         abiVersionOverride = null
         coreVersionOverride = null
     }
