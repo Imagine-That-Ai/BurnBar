@@ -111,6 +111,7 @@ jobs:
           scripts/linux-port/p09-navigation-shell-proof.test.mjs
           scripts/linux-port/p10-dashboard-layout-proof.test.mjs
           scripts/linux-port/p11-usage-ingestion-proof.test.mjs
+          scripts/linux-port/p12-quota-proof.test.mjs
           scripts/linux-port/p38-release-automation-proof.test.mjs
           scripts/linux-port/p31-accessibility-proof.test.mjs
           scripts/linux-port/p34-credential-security-proof.test.mjs

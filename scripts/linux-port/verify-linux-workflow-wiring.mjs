@@ -226,7 +226,7 @@ export function verifyLinuxWorkflowWiring(input) {
       const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
       return start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
     };
-    const installStep = 'Install P-09 through P-11 signed candidate package';
+    const installStep = 'Install P-09 through P-12 signed candidate package';
     const captureStep = config.step;
     const install = blockFor(installStep);
     const capture = blockFor(captureStep);
@@ -236,7 +236,7 @@ export function verifyLinuxWorkflowWiring(input) {
       .filter((line) => line && !line.startsWith('#'));
     const required = [
       [installStep, install, [
-        "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11'",
+        "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12'",
         'set -euo pipefail',
         'sudo apt-get install -y --reinstall "$package"',
         'sudo dnf install -y "$package"',
@@ -568,6 +568,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'p09-navigation-shell-proof.test.mjs',
     'p10-dashboard-layout-proof.test.mjs',
     'p11-usage-ingestion-proof.test.mjs',
+    'p12-quota-proof.test.mjs',
     'p38-release-automation-proof.test.mjs',
     'p31-accessibility-proof.test.mjs',
     'p34-credential-security-proof.test.mjs',
@@ -613,6 +614,11 @@ export function verifyLinuxWorkflowWiring(input) {
     'capture-p11-usage-ingestion-proof.mjs',
     'Capture P-11 installed usage ingestion proof',
     "if: inputs.requirement == 'P-11'",
+    'run-p12-native-quota-probes.mjs',
+    'materialize-p12-quota-session.mjs',
+    'capture-p12-quota-proof.mjs',
+    'Capture P-12 installed quota proof',
+    "if: inputs.requirement == 'P-12'",
     'capture-parity-certification-preflight.mjs',
     'capture-p34-credential-security-proof.mjs',
     'run-p40-privacy-rpc-session.mjs',
@@ -679,6 +685,37 @@ export function verifyLinuxWorkflowWiring(input) {
       '--token-file "$token_file"'
     ]
   });
+  requireInstalledUiCaptureContract(input.productParityWorkflow, 'P-12', {
+    step: 'Capture P-12 installed quota proof',
+    runner: 'scripts/linux-port/run-p12-native-quota-probes.mjs',
+    materializer: 'scripts/linux-port/materialize-p12-quota-session.mjs',
+    capture: 'scripts/linux-port/capture-p12-quota-proof.mjs',
+    requiredLines: [
+      'gateway_token_file="$support_root/gateway-auth-token"',
+      'systemctl --user show-environment >"$original_environment"',
+      'if systemctl --user is-active --quiet openburnbar-daemon.service; then service_was_active=1; else service_was_active=0; fi',
+      'restore_manager_environment() {',
+      'systemctl --user unset-environment "${managed_variables[@]}"',
+      'if [[ "$service_was_active" == 1 ]]; then',
+      'systemctl --user stop openburnbar-daemon.service || status=1',
+      'test -x /usr/bin/openburnbar-linux-desktop',
+      'test -x /usr/bin/openburnbar-daemon',
+      "if pgrep -f '^/usr/bin/openburnbar-linux-desktop([[:space:]]|$)' >/dev/null; then",
+      'openssl rand -hex 32 >"$gateway_token_file"',
+      'chmod 600 "$gateway_token_file"',
+      'gateway_token="$(<"$gateway_token_file")"',
+      '(( gateway_port >= 1024 && gateway_port <= 65535 ))',
+      'export OPENBURNBAR_DAEMON_SUPPORT_DIR="$support_root"',
+      'export OPENBURNBAR_DAEMON_SOCKET_PATH="$socket_path"',
+      'OPENBURNBAR_GATEWAY_ENABLED=1 \\',
+      'OPENBURNBAR_GATEWAY_HOST=127.0.0.1 \\',
+      '"OPENBURNBAR_GATEWAY_PORT=$gateway_port" \\',
+      '"OPENBURNBAR_GATEWAY_AUTH_TOKEN=$gateway_token"',
+      'systemctl --user restart openburnbar-daemon.service',
+      '--support-dir "$support_root"',
+      '--gateway-token-file "$gateway_token_file"'
+    ]
+  });
   requireP39CaptureContract(input.productParityWorkflow);
   for (const marker of [
     'p39-macos-producer',
@@ -699,10 +736,11 @@ export function verifyLinuxWorkflowWiring(input) {
     'Preserve non-promotable P-02 diagnostic evidence',
     'Install P-08 signed candidate package',
     'Capture P-08 installed Mercury media proof',
-    'Install P-09 through P-11 signed candidate package',
+    'Install P-09 through P-12 signed candidate package',
     'Capture P-09 installed navigation shell proof',
     'Capture P-10 installed dashboard layout proof',
     'Capture P-11 installed usage ingestion proof',
+    'Capture P-12 installed quota proof',
     'Capture P-31 installed accessibility matrix evidence',
     'Capture P-34 credential security proof',
     'Capture P-39 Linux candidate-bound platform evidence',

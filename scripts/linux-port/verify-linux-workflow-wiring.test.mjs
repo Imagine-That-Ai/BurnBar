@@ -35,6 +35,7 @@ function valid() {
       'p09-navigation-shell-proof.test.mjs',
       'p10-dashboard-layout-proof.test.mjs',
       'p11-usage-ingestion-proof.test.mjs',
+      'p12-quota-proof.test.mjs',
       'p38-release-automation-proof.test.mjs',
       'p31-accessibility-proof.test.mjs',
       'p34-credential-security-proof.test.mjs',
@@ -153,8 +154,8 @@ function valid() {
         '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
       ].join('\n'),
       [
-        '      - name: Install P-09 through P-11 signed candidate package',
-        "        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11'",
+        '      - name: Install P-09 through P-12 signed candidate package',
+        "        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12'",
         '        run: |',
         '          set -euo pipefail',
         '          sudo apt-get install -y --reinstall "$package"',
@@ -208,6 +209,41 @@ function valid() {
         '            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
         '          node scripts/linux-port/materialize-p11-usage-ingestion-session.mjs',
         '          node scripts/linux-port/capture-p11-usage-ingestion-proof.mjs'
+      ].join('\n'),
+      [
+        '      - name: Capture P-12 installed quota proof',
+        "        if: inputs.requirement == 'P-12'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          gateway_token_file="$support_root/gateway-auth-token"',
+        '          if systemctl --user is-active --quiet openburnbar-daemon.service; then service_was_active=1; else service_was_active=0; fi',
+        '          systemctl --user show-environment >"$original_environment"',
+        '          restore_manager_environment() {',
+        '            systemctl --user unset-environment "${managed_variables[@]}"',
+        '            if [[ "$service_was_active" == 1 ]]; then',
+        '              systemctl --user stop openburnbar-daemon.service || status=1',
+        '          test -x /usr/bin/openburnbar-linux-desktop',
+        '          test -x /usr/bin/openburnbar-daemon',
+        "          if pgrep -f '^/usr/bin/openburnbar-linux-desktop([[:space:]]|$)' >/dev/null; then",
+        '          openssl rand -hex 32 >"$gateway_token_file"',
+        '          chmod 600 "$gateway_token_file"',
+        '          gateway_token="$(<"$gateway_token_file")"',
+        '          (( gateway_port >= 1024 && gateway_port <= 65535 ))',
+        '          export OPENBURNBAR_DAEMON_SUPPORT_DIR="$support_root"',
+        '          export OPENBURNBAR_DAEMON_SOCKET_PATH="$socket_path"',
+        '          OPENBURNBAR_GATEWAY_ENABLED=1 \\',
+        '          OPENBURNBAR_GATEWAY_HOST=127.0.0.1 \\',
+        '          "OPENBURNBAR_GATEWAY_PORT=$gateway_port" \\',
+        '          "OPENBURNBAR_GATEWAY_AUTH_TOKEN=$gateway_token"',
+        '          systemctl --user restart openburnbar-daemon.service',
+        '          node scripts/linux-port/run-p12-native-quota-probes.mjs',
+        '            --support-dir "$support_root"',
+        '            --gateway-token-file "$gateway_token_file"',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+        '            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+        '          node scripts/linux-port/materialize-p12-quota-session.mjs',
+        '          node scripts/linux-port/capture-p12-quota-proof.mjs'
       ].join('\n'),
       'Capture P-31 installed accessibility matrix evidence',
       'Capture P-34 credential security proof',
@@ -550,7 +586,7 @@ test('P-08 installed media workflow cannot omit package trust or paired live evi
   }
 });
 
-test('P-09 through P-11 installed workflows require native runners before materialization and fail closed', () => {
+test('P-09 through P-12 installed workflows require native runners before materialization and fail closed', () => {
   for (const [requirementId, stepName, runner, materializer, capture] of [
     [
       'P-09', 'Capture P-09 installed navigation shell proof',
@@ -569,10 +605,16 @@ test('P-09 through P-11 installed workflows require native runners before materi
       'scripts/linux-port/run-p11-usage-ingestion-session.mjs',
       'scripts/linux-port/materialize-p11-usage-ingestion-session.mjs',
       'scripts/linux-port/capture-p11-usage-ingestion-proof.mjs'
+    ],
+    [
+      'P-12', 'Capture P-12 installed quota proof',
+      'scripts/linux-port/run-p12-native-quota-probes.mjs',
+      'scripts/linux-port/materialize-p12-quota-session.mjs',
+      'scripts/linux-port/capture-p12-quota-proof.mjs'
     ]
   ]) {
     for (const marker of [
-      'Install P-09 through P-11 signed candidate package', stepName, runner, materializer, capture,
+      'Install P-09 through P-12 signed candidate package', stepName, runner, materializer, capture,
       '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"'
     ]) {
       const input = valid();
@@ -599,6 +641,30 @@ test('P-09 through P-11 installed workflows require native runners before materi
     result = verifyLinuxWorkflowWiring(reordered);
     assert.equal(result.passed, false, `${requirementId} runner/materializer order`);
     assert.ok(result.failures.some((failure) => failure.includes(requirementId)));
+  }
+});
+
+test('P-12 installed quota workflow preserves isolated gateway and daemon state fail closed', () => {
+  for (const marker of [
+    'systemctl --user show-environment >"$original_environment"',
+    'systemctl --user unset-environment "${managed_variables[@]}"',
+    'if [[ "$service_was_active" == 1 ]]; then',
+    'openssl rand -hex 32 >"$gateway_token_file"',
+    'gateway_token="$(<"$gateway_token_file")"',
+    '(( gateway_port >= 1024 && gateway_port <= 65535 ))',
+    'export OPENBURNBAR_DAEMON_SUPPORT_DIR="$support_root"',
+    'export OPENBURNBAR_DAEMON_SOCKET_PATH="$socket_path"',
+    'OPENBURNBAR_GATEWAY_ENABLED=1 \\',
+    'OPENBURNBAR_GATEWAY_HOST=127.0.0.1 \\',
+    '"OPENBURNBAR_GATEWAY_PORT=$gateway_port" \\',
+    '"OPENBURNBAR_GATEWAY_AUTH_TOKEN=$gateway_token"',
+    '--gateway-token-file "$gateway_token_file"'
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replaceAll(marker, 'removed-p12-state-marker');
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(result.failures.some((failure) => failure.includes('P-12')), marker);
   }
 });
 
@@ -683,6 +749,7 @@ test('product evidence dependency install and mutation suites are mandatory in t
     'p09-navigation-shell-proof.test.mjs',
     'p10-dashboard-layout-proof.test.mjs',
     'p11-usage-ingestion-proof.test.mjs',
+    'p12-quota-proof.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs'
   ]) {
