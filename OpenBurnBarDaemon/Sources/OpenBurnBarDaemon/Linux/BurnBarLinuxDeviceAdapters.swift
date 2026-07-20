@@ -40,7 +40,13 @@ public enum BurnBarLinuxDeviceAdapters {
         var txt: [String: String]
 
         var baseURL: String {
-            "http://\(address):\(port)"
+            // URI authorities require brackets around IPv6 literals. Avahi
+            // emits raw addresses, so leaving the colon-separated host
+            // unbracketed makes every IPv6 control probe parse incorrectly.
+            let host = address.contains(":") && address.hasPrefix("[") == false
+                ? "[\(address)]"
+                : address
+            return "http://\(host):\(port)"
         }
     }
 
@@ -814,6 +820,10 @@ public enum BurnBarLinuxDeviceAdapters {
             homeAssistantConfigured: homeAssistantConfigured,
             smartHubStatusProvider: smartHubStatusProvider
         )
+    }
+
+    static func testingServiceEndpointURL(address: String, port: Int) -> String {
+        ServiceEndpoint(name: "test", hostName: "test.local.", address: address, port: port, txt: [:]).baseURL
     }
     #endif
 

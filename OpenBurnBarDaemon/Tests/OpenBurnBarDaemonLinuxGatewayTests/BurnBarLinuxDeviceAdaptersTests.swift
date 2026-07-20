@@ -78,6 +78,21 @@ final class BurnBarLinuxDeviceAdaptersTests: XCTestCase {
         XCTAssertEqual(smartHub?.blocker, "Start Linux SmartHub bridge and rerun CLI status for live control proof.")
     }
 
+    func testDiscoveredEndpointURLBracketsIPv6Literal() {
+        XCTAssertEqual(
+            BurnBarLinuxDeviceAdapters.testingServiceEndpointURL(address: "192.0.2.10", port: 8787),
+            "http://192.0.2.10:8787"
+        )
+        XCTAssertEqual(
+            BurnBarLinuxDeviceAdapters.testingServiceEndpointURL(address: "fe80::1234", port: 8787),
+            "http://[fe80::1234]:8787"
+        )
+        XCTAssertEqual(
+            BurnBarLinuxDeviceAdapters.testingServiceEndpointURL(address: "[fe80::1234]", port: 8787),
+            "http://[fe80::1234]:8787"
+        )
+    }
+
     private func makeExecutable(_ contents: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-avahi-test-(UUID().uuidString)")
