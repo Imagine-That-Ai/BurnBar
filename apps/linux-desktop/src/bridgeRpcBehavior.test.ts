@@ -238,6 +238,46 @@ describe('VAL-RPC-002 bridge behavior', () => {
     expect(invoke).toHaveBeenNthCalledWith(2, 'project_reassign', { sourceProjectSlug: 'apollo', targetProjectSlug: 'orion' });
   });
 
+  it('maps project history from the daemon controller summary without leaking other projects', async () => {
+    invoke.mockResolvedValueOnce({
+      summary: {
+        recentEvents: [
+          {
+            id: 'event-orion',
+            projectSlug: 'orion',
+            eventType: 'project_upserted',
+            summary: 'Orion registered',
+            recordedAt: '2026-07-14T12:00:00Z',
+            sequence: 3,
+            isReplay: false
+          },
+          {
+            id: 'event-apollo',
+            projectSlug: 'apollo',
+            eventType: 'project_reassigned',
+            summary: 'References moved',
+            detail: 'apollo -> orion',
+            recordedAt: '2026-07-14T11:00:00Z',
+            sequence: 2,
+            isReplay: true
+          }
+        ]
+      }
+    });
+    const b = await bridge();
+    await expect(b.projectHistory?.('apollo')).resolves.toEqual([{
+      id: 'event-apollo',
+      projectSlug: 'apollo',
+      eventType: 'project_reassigned',
+      summary: 'References moved',
+      detail: 'apollo -> orion',
+      recordedAt: '2026-07-14T11:00:00Z',
+      sequence: 2,
+      isReplay: true
+    }]);
+    expect(invoke).toHaveBeenCalledWith('project_history', { projectSlug: 'apollo' });
+  });
+
   it('maps the daemon-owned privacy inventory and two-phase deletion contract', async () => {
     invoke
       .mockResolvedValueOnce({

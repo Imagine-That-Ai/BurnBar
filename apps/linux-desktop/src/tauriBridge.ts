@@ -480,6 +480,18 @@ export type ProjectReassignResult = {
   updatedReferenceCount: number;
 };
 
+/** Recent daemon-controller events scoped to one canonical project slug. */
+export type ProjectHistoryEvent = {
+  id: string;
+  projectSlug: string;
+  eventType: string;
+  summary: string;
+  detail?: string;
+  recordedAt: string;
+  sequence: number;
+  isReplay: boolean;
+};
+
 /**
  * Compatibility envelope for existing mission filters. Live controller rows
  * carry the canonical record; path is intentionally empty because the
@@ -1554,6 +1566,8 @@ export interface LinuxShellBridge {
   projectUpsert?(project: ProjectUpsertInput): Promise<ProjectRecord | null>;
   projectDelete?(projectSlug: string): Promise<ProjectDeleteResult>;
   projectReassign?(sourceProjectSlug: string, targetProjectSlug: string): Promise<ProjectReassignResult>;
+  /** Optional on older packaged shells; backed by daemon.controller.summary. */
+  projectHistory?(projectSlug: string): Promise<ProjectHistoryEvent[]>;
   memoryBoundaries(): Promise<MemoryBoundary[]>;
   memoryReviewInbox(): Promise<MemoryReviewInbox>;
   memoryReviewDecision(id: string, decision: Exclude<MemoryReviewStatus, 'pending' | 'forgotten'>): Promise<void>;
@@ -3128,6 +3142,34 @@ function mapProjectReassignResult(raw: RawJsonValue): ProjectReassignResult {
     targetProjectSlug,
     updatedReferenceCount: num(pick(response, 'updatedReferenceCount', 'updated_reference_count'))
   };
+}
+
+function mapProjectHistory(raw: RawJsonValue, projectSlug: string): ProjectHistoryEvent[] {
+  const response = unwrapProjectResponse(raw);
+  const summary = pick(response, 'summary') ?? response;
+  const events = arr(pick(summary, 'recentEvents', 'recent_events'));
+  return events
+    .map((event): ProjectHistoryEvent | null => {
+      const id = str(pick(event, 'id', 'eventID', 'eventId'));
+      const eventProjectSlug = str(pick(event, 'projectSlug', 'project_slug'), projectSlug);
+      const eventType = str(pick(event, 'eventType', 'event_type'));
+      const summaryText = str(pick(event, 'summary'));
+      const recordedAt = str(pick(event, 'recordedAt', 'recorded_at'));
+      if (!id || !eventProjectSlug || !eventType || !summaryText || !recordedAt) return null;
+      if (eventProjectSlug !== projectSlug) return null;
+      return {
+        id,
+        projectSlug: eventProjectSlug,
+        eventType,
+        summary: summaryText,
+        detail: str(pick(event, 'detail')) || undefined,
+        recordedAt,
+        sequence: num(pick(event, 'sequence')),
+        isReplay: Boolean(pick(event, 'isReplay', 'is_replay'))
+      };
+    })
+    .filter((event): event is ProjectHistoryEvent => event !== null)
+    .sort((lhs, rhs) => rhs.sequence - lhs.sequence);
 }
 
 function mapProjectList(raw: RawJsonValue): ProjectEntry[] {
@@ -5297,6 +5339,11 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     projectReassign: async (sourceProjectSlug, targetProjectSlug) => {
       const raw = await invoke<RawJsonValue>('project_reassign', { sourceProjectSlug, targetProjectSlug });
       return mapProjectReassignResult(raw);
+    },
+    // P19 — daemon.controller.summary recent events scoped to one project.
+    projectHistory: async (projectSlug) => {
+      const raw = await invoke<RawJsonValue>('project_history', { projectSlug });
+      return mapProjectHistory(raw, projectSlug);
     },
     // P07 — daemon.memory.analytics
     memoryBoundaries: async () => {

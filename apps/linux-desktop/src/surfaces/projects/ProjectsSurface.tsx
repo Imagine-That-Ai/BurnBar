@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
@@ -7,6 +7,7 @@ import { useSystemStore } from '../../state/systemStore.js';
 import type {
   ProjectCadence,
   ProjectEntry,
+  ProjectHistoryEvent,
   ProjectRecord,
   ProjectUpsertInput
 } from '../../tauriBridge.js';
@@ -35,6 +36,14 @@ function metadataNumber(record: ProjectRecord | undefined, ...keys: string[]): n
   return undefined;
 }
 
+function metadataText(record: ProjectRecord | undefined, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record?.metadata[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
 function projectStats(record: ProjectRecord | undefined): ProjectCardStats {
   return {
     // These values are emitted by the daemon's controller activity ingestion;
@@ -47,6 +56,12 @@ function projectStats(record: ProjectRecord | undefined): ProjectCardStats {
 
 function projectStatusLabel(record: ProjectRecord | undefined): string {
   return record?.status?.replaceAll('_', ' ') ?? 'controller';
+}
+
+function projectHistoryLabel(eventType: string): string {
+  return eventType
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function projectDraft(record: ProjectRecord | null, entry?: ProjectEntry): ProjectUpsertInput {
@@ -227,6 +242,9 @@ function ProjectDetail({
   canReassign,
   lifecycleBusy,
   lifecycleError,
+  history,
+  historyLoading,
+  historyError,
   onDelete,
   onReassign
 }: {
@@ -239,10 +257,14 @@ function ProjectDetail({
   canReassign: boolean;
   lifecycleBusy: boolean;
   lifecycleError: string | null;
+  history: ProjectHistoryEvent[] | null;
+  historyLoading: boolean;
+  historyError: string | null;
   onDelete: () => void;
   onReassign: (targetProjectSlug: string) => void;
 }) {
   const stats = projectStats(record);
+  const latestSessionID = metadataText(record, 'latest_conversation_session_id');
   const [targetProjectSlug, setTargetProjectSlug] = useState('');
 
   const confirmDelete = () => {
@@ -286,10 +308,40 @@ function ProjectDetail({
         <div><dt>Follow-ups</dt><dd>{record.openFollowupCount}</dd></div>
         <div><dt>Active missions</dt><dd>{record.activeMissionCount}</dd></div>
         <div><dt>Sessions (7d)</dt><dd>{stats.sessionCount || 'No indexed association'}</dd></div>
+        <div><dt>Latest session</dt><dd className="mono">{latestSessionID ?? 'No exact session recorded'}</dd></div>
       </dl>
       <p className="muted project-association-note">
         Session associations come from the daemon controller registry. Linux does not infer them from titles or filesystem names.
       </p>
+      <section className="project-history" aria-labelledby="project-history-title">
+        <div className="project-history-heading">
+          <div>
+            <p className="eyebrow">Daemon event stream</p>
+            <h3 id="project-history-title">Project history</h3>
+          </div>
+          <span className="muted">Recent events only</span>
+        </div>
+        {historyLoading ? <p className="muted" role="status">Loading project history...</p> : null}
+        {historyError ? <p className="project-inline-error" role="status">{historyError}</p> : null}
+        {!historyLoading && !historyError && history && history.length === 0 ? (
+          <p className="muted">No controller events have been recorded for this project.</p>
+        ) : null}
+        {!historyLoading && !historyError && history && history.length > 0 ? (
+          <ol className="project-history-list">
+            {history.map((event) => (
+              <li key={event.id} className="project-history-item">
+                <div className="project-history-item-heading">
+                  <strong>{projectHistoryLabel(event.eventType)}</strong>
+                  <time dateTime={event.recordedAt}>{event.recordedAt}</time>
+                </div>
+                <span>{event.summary}</span>
+                {event.detail ? <small>{event.detail}</small> : null}
+                {event.isReplay ? <small className="muted">Recovered from daemon journal replay</small> : null}
+              </li>
+            ))}
+          </ol>
+        ) : null}
+      </section>
       {record.aliases.length > 0 ? (
         <div className="project-detail-aliases">
           <strong>Aliases</strong>
@@ -387,6 +439,10 @@ export function ProjectsSurface() {
   const [saving, setSaving] = useState(false);
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
+  const [history, setHistory] = useState<ProjectHistoryEvent[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const historyRequestRef = useRef(0);
 
   useLaneLoad(loadProjects);
 
@@ -400,12 +456,32 @@ export function ProjectsSurface() {
 
   const openProject = async (entry: ProjectEntry) => {
     const slug = entry.projectSlug ?? entry.id;
+    const requestID = historyRequestRef.current + 1;
+    historyRequestRef.current = requestID;
     setSelectedSlug(slug);
     setDetailError(null);
     setLifecycleError(null);
+    setHistory(null);
+    setHistoryError(null);
     setEditing(false);
+    if (!bridge?.projectHistory) {
+      setHistoryError('Project history is unavailable from this packaged daemon.');
+    }
     if (entry.record && !bridge?.projectGet) {
       setDetail(entry.record);
+      if (bridge?.projectHistory) {
+        setHistoryLoading(true);
+        try {
+          const result = await bridge.projectHistory(slug);
+          if (historyRequestRef.current === requestID) setHistory(result);
+        } catch (cause) {
+          if (historyRequestRef.current === requestID) {
+            setHistoryError(cause instanceof Error ? cause.message : 'Project history is unavailable');
+          }
+        } finally {
+          if (historyRequestRef.current === requestID) setHistoryLoading(false);
+        }
+      }
       return;
     }
     if (!bridge?.projectGet) {
@@ -418,6 +494,19 @@ export function ProjectsSurface() {
       const result = await bridge.projectGet(slug);
       setDetail(result);
       if (!result) setDetailError('The daemon did not return this project. Refresh and try again.');
+      if (result && bridge.projectHistory) {
+        setHistoryLoading(true);
+        try {
+          const projectHistory = await bridge.projectHistory(slug);
+          if (historyRequestRef.current === requestID) setHistory(projectHistory);
+        } catch (cause) {
+          if (historyRequestRef.current === requestID) {
+            setHistoryError(cause instanceof Error ? cause.message : 'Project history is unavailable');
+          }
+        } finally {
+          if (historyRequestRef.current === requestID) setHistoryLoading(false);
+        }
+      }
     } catch (cause) {
       setDetail(null);
       setDetailError(cause instanceof Error ? cause.message : 'Project detail request failed');
@@ -562,6 +651,9 @@ export function ProjectsSurface() {
           canReassign={canReassign}
           lifecycleBusy={lifecycleBusy}
           lifecycleError={lifecycleError}
+          history={history}
+          historyLoading={historyLoading}
+          historyError={historyError}
           onDelete={() => void deleteProject()}
           onReassign={(targetProjectSlug) => void reassignProject(targetProjectSlug)}
         />

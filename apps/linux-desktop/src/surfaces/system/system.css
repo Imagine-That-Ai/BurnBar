@@ -717,6 +717,68 @@ body.reduced-motion .system-skeleton-line {
   margin: 0;
 }
 
+.project-history {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-glass-line);
+}
+
+.project-history-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.project-history-heading h3 {
+  margin: 0;
+  color: var(--color-text-bright);
+  font-size: 1rem;
+}
+
+.project-history-heading .eyebrow {
+  margin: 0 0 var(--space-1);
+}
+
+.project-history-list {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 24rem;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.project-history-item {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-glass-bg) 60%, transparent);
+  color: var(--color-text-base);
+}
+
+.project-history-item-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.project-history-item-heading strong {
+  color: var(--color-text-bright);
+}
+
+.project-history-item-heading time,
+.project-history-item small {
+  color: var(--color-text-mute);
+  font-size: 0.75rem;
+}
+
 .project-lifecycle-actions {
   display: flex;
   flex-wrap: wrap;

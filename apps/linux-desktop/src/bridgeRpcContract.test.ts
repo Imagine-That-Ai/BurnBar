@@ -247,6 +247,10 @@ describe('VAL-RPC bridge contract', () => {
     expect(tsBridge).toContain('projectUpsert');
     expect(tsBridge).toContain('projectDelete');
     expect(tsBridge).toContain('projectReassign');
+    expect(rustBridge).toContain('daemon.controller.summary');
+    expect(rustBridge).toContain('fn project_history');
+    expect(tsBridge).toContain("invoke<RawJsonValue>('project_history'");
+    expect(tsBridge).toContain('projectHistory');
   });
 
   it('wires Activity persisted body and resume actions through the existing run.resume contract', () => {

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../../state/shellStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
-import type { LinuxShellBridge, ProjectRecord } from '../../tauriBridge.js';
+import type { LinuxShellBridge, ProjectHistoryEvent, ProjectRecord } from '../../tauriBridge.js';
 import { ProjectsSurface } from './ProjectsSurface.js';
 
 const project: ProjectRecord = {
@@ -105,6 +105,67 @@ describe('ProjectsSurface', () => {
     expect(screen.getByText(/daemon controller registry/i)).toBeTruthy();
     expect(screen.getByText(/4/)).toBeTruthy();
     expect(loadProjects).toHaveBeenCalled();
+  });
+
+  it('loads daemon project history and surfaces the exact latest session association', async () => {
+    const projectWithSession: ProjectRecord = {
+      ...project,
+      metadata: {
+        ...project.metadata,
+        latest_conversation_session_id: 'Codex:session-apollo'
+      }
+    };
+    const history: ProjectHistoryEvent[] = [{
+      id: 'event-2',
+      projectSlug: 'apollo',
+      eventType: 'project_upserted',
+      summary: 'Apollo registered',
+      detail: 'Controller registry entry persisted.',
+      recordedAt: '2026-07-14T12:00:00Z',
+      sequence: 2,
+      isReplay: false
+    }];
+    const projectGet = vi.fn().mockResolvedValue(projectWithSession);
+    const projectHistory = vi.fn().mockResolvedValue(history);
+    vi.spyOn(useSystemStore.getState(), 'loadProjects').mockImplementation(async () => {});
+    useShellStore.setState({
+      bridge: { projectGet, projectHistory } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+    useSystemStore.setState({
+      projects: [{ id: project.id, name: project.displayName, path: '', scope: 'controller', projectSlug: project.projectSlug, record: project }],
+      loading: false,
+      error: null
+    });
+
+    render(<ProjectsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /open details/i }));
+    await vi.waitFor(() => expect(screen.getByRole('heading', { name: 'Project history' })).toBeTruthy());
+    expect(projectHistory).toHaveBeenCalledWith('apollo');
+    expect(screen.getByText('Codex:session-apollo')).toBeTruthy();
+    expect(screen.getByText('Apollo registered')).toBeTruthy();
+    expect(screen.getByText('Project Upserted')).toBeTruthy();
+  });
+
+  it('states when project history is unavailable from an older packaged daemon', async () => {
+    const projectGet = vi.fn().mockResolvedValue(project);
+    vi.spyOn(useSystemStore.getState(), 'loadProjects').mockImplementation(async () => {});
+    useShellStore.setState({
+      bridge: { projectGet } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+    useSystemStore.setState({
+      projects: [{ id: project.id, name: project.displayName, path: '', scope: 'controller', projectSlug: project.projectSlug, record: project }],
+      loading: false,
+      error: null
+    });
+
+    render(<ProjectsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /open details/i }));
+    await vi.waitFor(() => expect(screen.getByRole('heading', { name: 'Project history' })).toBeTruthy());
+    expect(screen.getByRole('status').textContent).toContain('unavailable');
   });
 
   it('registers a project only through the canonical upsert bridge', async () => {

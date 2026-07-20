@@ -4273,6 +4273,22 @@ fn project_reassign(
     )
 }
 
+/// Returns the daemon-owned recent controller events for one canonical project.
+/// The summary RPC is the existing authoritative history surface; this wrapper
+/// only scopes it and deliberately omits the larger projection-status payload.
+#[tauri::command]
+fn project_history(project_slug: String) -> Result<serde_json::Value, String> {
+    let project_slug = validate_project_slug(&project_slug, "projectSlug")?;
+    call_daemon_method(
+        "daemon.controller.summary",
+        Some(serde_json::json!({
+            "projectSlug": project_slug,
+            "includeRecentEvents": true,
+            "includeProjectionStatus": false
+        })),
+    )
+}
+
 // ───────────────── P07: memory boundaries ─────────────────
 // Wire: daemon.memory.analytics (BurnBarRPCMethod.memoryAnalytics)
 #[tauri::command]
@@ -7740,6 +7756,7 @@ pub fn run() {
             project_upsert,
             project_delete,
             project_reassign,
+            project_history,
             memory_boundaries,
             memory_review_inbox,
             memory_forget,
