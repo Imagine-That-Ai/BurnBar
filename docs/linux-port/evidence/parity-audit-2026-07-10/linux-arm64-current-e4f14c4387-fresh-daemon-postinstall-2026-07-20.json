@@ -1,0 +1,105 @@
+{
+  "schema": "openburnbar.parity.linux-installed-runtime-receipt.v1",
+  "capturedAt": "2026-07-20T00:20:47Z",
+  "certificationScope": "non-certifying exact current-source ARM64 package and live VM smoke receipt with clean fresh daemon and CLI payloads",
+  "sourceCommit": "e4f14c438762abe027b89d9ffad5e50ab7bbd6e2",
+  "sourceDescription": "Current Linux parity integration head containing the loopback CORS fix, mission stale-snapshot retention, and SmartHub duplicate-probe fix; the daemon and CLI were cleanly rebuilt from this source before packaging.",
+  "environment": {
+    "guest": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11",
+    "display": ":0",
+    "vmAddress": "192.168.64.5",
+    "session": "Unlocked GNOME session 1; active-window capture used the session X authority and D-Bus bus",
+    "renderNode": "/dev/dri/renderD128",
+    "webgl2": false,
+    "webgl1": true,
+    "webkitNote": "WebKitGTK WebGL2 is unavailable in this UTM guest; the shell visibly selects its Canvas2D fallback and labels the limitation."
+  },
+  "sourceBuild": {
+    "cleanBuild": true,
+    "cleanCommand": "swift package clean",
+    "daemonBuild": "swift build -c release --product OpenBurnBarDaemon -Xlinker --allow-shlib-undefined",
+    "cliBuild": "swift build -c release --product OpenBurnBarCLI -Xlinker --allow-shlib-undefined",
+    "stagedPayloadReuse": false,
+    "freshDaemonAndCLI": true,
+    "explicitPayloadInputs": true,
+    "frontendAsset": "/assets/index-D3uVFvW_.js"
+  },
+  "package": {
+    "name": "open-burn-bar",
+    "version": "0.1.1",
+    "architecture": "arm64",
+    "archiveBytes": 132681856,
+    "archiveSha256": "510b28f036320659873b19dd234f275061645caf1002ac8da3e3503f44f6c261",
+    "desktopSha256": "a93f45810523bc8d05c935c0b5ae9bca1c68abcfeb03d7bca5f89361d4e675e1",
+    "daemonSha256": "39f9bbd6580b4efdbcd9f52be2796b9c659e2f6838eaace96cd5c5b16cc89fac",
+    "cliSha256": "c743973b01dad581e5bdb23cc947b4754c00b26ff24fda1029479e200e235d89",
+    "embeddedFrontendAsset": "/assets/index-D3uVFvW_.js",
+    "stalePreviousFrontendAssetAbsent": true,
+    "signed": false,
+    "publicFeed": false
+  },
+  "runtime": {
+    "daemonService": "active",
+    "daemonHealth": {
+      "ok": true,
+      "protocolVersion": 1,
+      "daemonVersion": "1.0.29",
+      "socketPath": "/run/user/1000/openburnbar/daemon.sock"
+    },
+    "installedDesktopPid": 68710,
+    "desktopWindow": {
+      "exists": true,
+      "title": "OpenBurnBar",
+      "renderedSurface": "first-run-setup-secret-service-visible-after-unlocked-active-window-capture"
+    },
+    "launchEnvironment": {
+      "display": ":0",
+      "xauthority": "/run/user/1000/gdm/Xauthority",
+      "dbusSessionBus": "unix:path=/run/user/1000/bus",
+      "webkitSafeMode": "auto"
+    }
+  },
+  "backdrop": {
+    "requestedKernel": "fluid-aurora",
+    "resolvedSubstrate": "2d",
+    "resolutionLabel": "Fluid Aurora - 2D fallback (WebGL2 unavailable)",
+    "captureIntervalSeconds": 2,
+    "captureASha256": "b2f0b649941329d31110741fa82d74385eadf6573a6ffb4d10aed0200e80e70c",
+    "captureBSha256": "48a07d68041712f0dc157867afe3a0f8237ae3356ac1848110ea28043eb6a3c4",
+    "capturePaths": [
+      ".tmp/arm64-build-20260720-e4-fresh-daemon/window-a.png",
+      ".tmp/arm64-build-20260720-e4-fresh-daemon/window-b.png"
+    ],
+    "captureDimensions": "1280x782",
+    "pixelsChangedBetweenCaptures": 432226,
+    "visible": true,
+    "animated": true,
+    "blackFrame": false,
+    "captureNote": "The VM session was unlocked before launch verification. scrot -u captured the active OpenBurnBar window; the installed daemon and CLI hashes match the clean fresh Swift build and explicit package payload inputs.",
+    "backgroundRecovery": {
+      "verified": false,
+      "reason": "Minimize/restore was not part of this bounded capture."
+    }
+  },
+  "onboarding": {
+    "daemonVerifyAction": "not-captured-current-run",
+    "advancedToStep": null,
+    "visibleRoute": "Overview",
+    "visibleCard": "Secret Service / SQLCipher",
+    "visibleStep": "2 of 8"
+  },
+  "limitations": [
+    "The package is locally built and unsigned; it is not release provenance evidence.",
+    "The clean unlocked launch proves the exact ARM64 package renders on Ubuntu GNOME/X11, but does not certify every route, onboarding interaction, accessibility matrix, or full visual parity.",
+    "This guest does not certify WebGL2-only kernels, KDE/Wayland/wlroots, x86_64, or cross-device workflows.",
+    "The focused Linux gateway test target compiled on the guest but its executable link was blocked by the VM Swift 6.1 toolchain's missing swift::threading::fatal symbol; host execution remains blocked by the existing SQLCipher.framework rpath issue.",
+    "The strict ledger remains 0/40 product requirements and 0/7 environment receipts."
+  ],
+  "strictLedger": {
+    "productRequirementsReady": "0/40",
+    "environmentReceiptsComplete": "0/7",
+    "productParityClaim": false
+  }
+}

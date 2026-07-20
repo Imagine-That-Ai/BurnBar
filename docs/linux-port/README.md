@@ -3,10 +3,10 @@
 This directory tracks the Linux desktop peer release work. The Linux lane is
 implemented as reviewable infrastructure, not a public availability claim.
 
-Current parity status as of 2026-07-19:
+Current parity status as of 2026-07-20:
 
 - **Current source head:** the integration branch now includes source changes
-  through `7c5b68d750`. It passes 90 frontend files /
+  through `e4f14c4387`. It passes 90 frontend files /
   853 tests, TypeScript, production bundle verification, Tauri Rust 129/129,
   package-payload contract checks (2 pass, 2 historical skips), and product
   validators 12/12. `1130524331` recovers a visible 2D backdrop after
@@ -52,23 +52,23 @@ Current parity status as of 2026-07-19:
   The ARM VM passed the supported Swift-less staged-payload
   `pretauri:build`/`tauri:build` path via
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`, and then a separate package was
-  built with fresh Swift daemon and CLI payloads from `7c5b68d750`. The
+  built with fresh Swift daemon and CLI payloads from `e4f14c4387`. The
   installed VM DEB is unsigned and non-certifying. The latest exact
   implementation receipt includes the post-unlock visible/animated
   packaged-shell capture and fresh daemon/CLI hashes in
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-7c5b68d750-fresh-daemon-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-7c5b68d750-fresh-daemon-postinstall-2026-07-19.json).
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-e4f14c4387-fresh-daemon-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e4f14c4387-fresh-daemon-postinstall-2026-07-20.json).
   The preceding `b4cd3e8b8b`, `534d7aae65`, `872074af3a`, and `ded781e94d` receipts remain historical
   visible-shell evidence.
   The strict ledger remains **0/40 product rows and 0/7 environment receipts**.
 
-- **Latest live VM candidate:** the exact `7c5b68d750` ARM64 DEB with freshly
+- **Latest live VM candidate:** the exact `e4f14c4387` ARM64 DEB with freshly
   built daemon and CLI payloads is installed in the Ubuntu 24.04.4 GNOME/X11
   UTM guest. Its non-certifying receipt is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-7c5b68d750-fresh-daemon-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-7c5b68d750-fresh-daemon-postinstall-2026-07-19.json).
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-e4f14c4387-fresh-daemon-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e4f14c4387-fresh-daemon-postinstall-2026-07-20.json).
   Daemon/CLI health is green and the desktop window exists at `/usr/bin`. A
   clean launch in the unlocked GNOME session rendered the first-run
   Secret Service / SQLCipher setup card and Fluid Aurora 2D fallback. Two
-  captures two seconds apart differ in 607,953 pixels. The guest reports
+  captures two seconds apart differ in 432,226 pixels. The guest reports
   `webgl2=false` and `webgl1=true`; the visible switcher labels the fallback
   `2D fallback (WebGL2 unavailable)`. A stale autostart/locked-era blank
   process was discarded as launch-context evidence, not a package failure. The

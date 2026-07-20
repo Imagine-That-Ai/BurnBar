@@ -14,13 +14,13 @@ This is not a marketing checklist. It is a build plan with ownership,
 dependencies, acceptance contracts, proof commands, loophole controls, and
 known platform divergences.
 
-> **Live status (2026-07-19):** The implementation branch is
-> `7c5b68d750` and passes **90 frontend files / 853 tests**, TypeScript,
+> **Live status (2026-07-20):** The implementation branch is
+> `e4f14c4387` and passes **90 frontend files / 853 tests**, TypeScript,
 > production-bundle verification, and **129/129 Rust tests**. An exact-head
 > ARM64 DEB is installed and visibly rendering in the unlocked Ubuntu
 > GNOME/X11 UTM guest; the non-certifying receipt with fresh daemon/CLI
 > payload hashes is
-> [`evidence/parity-audit-2026-07-10/linux-arm64-current-7c5b68d750-fresh-daemon-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-7c5b68d750-fresh-daemon-postinstall-2026-07-19.json).
+> [`evidence/parity-audit-2026-07-10/linux-arm64-current-e4f14c4387-fresh-daemon-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-e4f14c4387-fresh-daemon-postinstall-2026-07-20.json).
 > The strict certification ledger is still **0/40 product rows and 0/7
 > environment receipts** because the package is unsigned and production,
 > cross-device, keyring, compositor, and same-commit macOS differential proof
@@ -33,7 +33,7 @@ Linux is not at full macOS parity.
 
 ### Current source wave — 2026-07-19 UTC
 
-Integration head `7c5b68d750` passes 90 frontend files / 853 tests, TypeScript,
+Integration head `e4f14c4387` passes 90 frontend files / 853 tests, TypeScript,
 production bundle verification, Tauri Rust 129/129, and package-payload
 contract checks. The current wave includes immediate Canvas2D recovery after
 WebGL context loss, keyboard-complete kernel selection, truthful Support
@@ -47,12 +47,12 @@ daemon and CLI payloads from the current head. These
 changes improve the engineering baseline; they do not close the strict 0/40
 product and 0/7 environment gates.
 
-### Latest installed checkpoint — 2026-07-19 UTC
+### Latest installed checkpoint — 2026-07-20 UTC
 
 The live Ubuntu guest has the exact current-head ARM64 DEB with fresh daemon
 and CLI payloads from the parity branch installed at `/usr/bin`. The
 non-certifying receipt is
-`evidence/parity-audit-2026-07-10/linux-arm64-current-7c5b68d750-fresh-daemon-postinstall-2026-07-19.json`.
+`evidence/parity-audit-2026-07-10/linux-arm64-current-e4f14c4387-fresh-daemon-postinstall-2026-07-20.json`.
 It proves daemon health, an unlocked active-window launch, and an animated
 Canvas2D fallback with the explicit `WebGL2 unavailable` label. This guest
 reports `webgl2=false`, so it does not certify WebGL2-only kernels or the
