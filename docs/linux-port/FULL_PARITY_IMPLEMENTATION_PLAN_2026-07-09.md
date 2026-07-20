@@ -14,15 +14,15 @@ This is not a marketing checklist. It is a build plan with ownership,
 dependencies, acceptance contracts, proof commands, loophole controls, and
 known platform divergences.
 
-> **Live status (2026-07-20):** The implementation branch is
-> `b93e656645` and passes **93 frontend files / 890 tests**, focused Linux
-> subscription tests **3/3**, TypeScript, production-bundle verification, and
-> fresh package runtime probes. The current ARM64 DEB is installed in the
-> unlocked Ubuntu GNOME/X11 UTM guest; its shell, daemon, CLI, and iroh hashes
-> match the synchronized source build. Overview, Quota, Activity, and Settings
-> pass AT-SPI, and the final visible capture reports `Connected to local peer`.
+> **Live status (2026-07-20):** The packaged product-source checkpoint is
+> `bfd0eefea9` and passes **93 frontend files / 906 tests**, Tauri Rust
+> **129/129**, TypeScript, production-bundle verification, and fresh package
+> runtime probes. The current ARM64 DEB is installed in the unlocked Ubuntu
+> GNOME/X11 UTM guest; its packaged shell, daemon, CLI, and iroh hashes match
+> the extracted/installed payloads. A native second-instance provider deep link
+> selected Codex and passed AT-SPI at 189/108/91/33 nodes/named/actionable/focusable.
 > The non-certifying exact-native receipt is
-> [`evidence/parity-audit-2026-07-10/linux-arm64-current-b93e656645-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-b93e656645-exact-native-2026-07-20.json).
+> [`evidence/parity-audit-2026-07-10/linux-arm64-current-bfd0eefea9-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-bfd0eefea9-exact-native-2026-07-20.json).
 > The strict certification ledger is still **0/40 product rows and 0/7
 > environment receipts** because the package is unsigned and production,
 > cross-device, keyring, compositor, and same-commit macOS differential proof
@@ -35,24 +35,20 @@ Linux is not at full macOS parity.
 
 ### Current exact-native wave — 2026-07-20 UTC
 
-Integration head `b93e656645` passes 93 frontend files / 890 tests, focused
-Linux subscription coverage 3/3, TypeScript, production bundle verification,
-and fresh package startup/linkage probes. `594dc668ab` preserves the last good
-Activity replay body through failure and retry; `6b707d24b8` preserves the last
-non-empty Quota catalog with explicit stale/error/retry truth; `9250e90092`
-requires canonical daemon readback before privacy writes report success; and
-`b93e656645` omits absent optional subscription `run_id` values instead of
-emitting bridge-invalid empty strings. Live installed QA verified that the
-global refresh banner recovered from degraded to connected after the daemon
-fix. These changes improve the engineering baseline; they do not close the
-strict 0/40 product and 0/7 environment gates.
+Integration head `bfd0eefea9` passes 93 frontend files / 906 tests, Tauri Rust
+129/129, TypeScript, production bundle verification, and fresh package startup/
+linkage probes. This wave adds typed provider/model deep links with native
+single-instance proof, canonical daemon failover-policy mutation and readback,
+verified Activity source resolution, native cloud-auth onboarding states, and
+dark WebKitGTK native controls. These changes improve daily-use parity; they do
+not close the strict 0/40 product and 0/7 environment gates.
 
 ### Latest installed checkpoint — 2026-07-20 UTC
 
-The live Ubuntu guest has the current-source `b93e656645` ARM64 DEB with fresh
+The live Ubuntu guest has the current-source `bfd0eefea9` ARM64 DEB with fresh
 GStreamer-linked daemon, CLI, iroh, and shell payloads installed at `/usr/bin`.
 The non-certifying receipt is
-`evidence/parity-audit-2026-07-10/linux-arm64-current-b93e656645-exact-native-2026-07-20.json`.
+`evidence/parity-audit-2026-07-10/linux-arm64-current-bfd0eefea9-exact-native-2026-07-20.json`.
 It proves installed/source hash equality, daemon health, an unlocked visible
 launch, four route-level AT-SPI passes, connected subscription refresh, and the
 explicit `WebGL2 unavailable` fallback label. This guest reports
@@ -827,11 +823,11 @@ commits remain separately inspectable in the branch history:
 | Order | Slice | Dependencies | Acceptance criteria | Remaining boundary |
 |---|---|---|---|---|
 | 1 | Chat model/options, attachment transport, citations, and approvals | Existing encrypted thread RPCs, gateway model catalog, Composer/ChatSurface stores, daemon private data root | Selected model and thinking level survive the active composer lifecycle and reach the gateway as the exact model ID; daemon-owned attachment refs enforce 10 MiB/file/send caps, 80 MiB registry, 0700/0600 storage, single-use UUIDs, allowlisted text/Markdown/CSV/JSON/PDF policy, text-only gateway payloads, explicit PDF unsupported behavior, bounded citation source handling, daemon-issued approve/reject/cancel IDs, reconnect/visibility handling, functional options, and browser/Tauri pop-out boundaries; no renderer secret, raw path, or fake upload path | Image/binary provider handling, unloaded-history export/resume, attachment re-upload after daemon restart, and remaining backend catalog still require real daemon/provider contracts |
-| 2 | Activity body replay and resume | Existing indexed activity search/detail RPCs, canonical `run.resume`, bounded transcript decoder | Body replay is daemon-backed, size-bounded, untrusted-rendered, and honest on missing/offline/error; native resume carries the persisted briefing without launching a process; providers without validated native resume use the same-harness handoff; plaintext legacy SQLite remains readable under SQLCipher builds; Swift 4/4 and frontend/Rust contracts pass | Full-history export, source resolution, resume-from-export, and installed provider/runtime proof remain open |
+| 2 | Activity body replay and resume | Existing indexed activity search/detail RPCs, canonical `run.resume`, bounded transcript decoder | Body replay is daemon-backed and size-bounded. `b74bc6d068` distinguishes verified source IDs from display fallbacks and resolves fallbacks only through complete, unique provider/session/run/project history before replay or resume | Populated installed replay/resolution and provider-runtime proof remain open |
 | 3 | Encrypted project database snapshot/restore | Project-code SQLite store, SQLCipher codec/key custody, watcher lifecycle, canonical RPC generator | Snapshot rejects traversal/symlinks/unsafe ownership, active-db overwrite, and >512 MiB; checkpoints WAL, writes owner-only temporary files, hashes content, atomically installs; restore validates integrity, stops/reopens watchers, and rolls back on failure; bridge/Rust contract suites pass | This is same-key encrypted snapshot recovery only. Key-loss/device-transfer recovery and installed proof remain open |
 | 4 | macOS-compatible database recovery bundle | Existing SQLCipher key custody, Swift Crypto, daemon RPC/canon, Database surface | v1 bundle uses exact salt16/PBKDF2-HMAC-SHA256 100k/AES-GCM combined format; parser bounds bundle/version/iterations/key length; export/import uses owner-only 0600 atomic files, candidate-key verification, and native Secret Service/KWallet custody hooks; passphrases never enter renderer persistence; source/build tests pass | Live Linux keyring round-trip, key-loss/device transfer, recovery UX for missing stores, and installed proof remain open |
 | 5 | Native notification actions and shortcut status | Tauri shell, freedesktop notify-rust capability probe, tray event bridge, existing shortcut registry | Typed notification IDs/actions/routes are bounded and validated; unsupported hosts report degraded state; action opens only allowlisted routes; independent per-binding shortcut status is visible and additive to existing chords; Rust/TS tests pass | Live GNOME/KDE/wlroots D-Bus receipts, desktop persistence, and accessibility/manual proof remain open |
-| 6 | Activity replay/resume hardening | Existing indexed activity RPCs, canonical run.resume, bounded transcript decoder | Body replay is daemon-backed, size-bounded, untrusted-rendered, and honest on missing/offline/error; native resume carries persisted briefing without launching a process; provider-safe fallback and plaintext legacy SQLite readability are tested | Full-history export, source resolution, resume-from-export, and installed provider/runtime proof remain open |
+| 6 | Activity replay/resume hardening | Existing indexed activity RPCs, canonical run.resume, bounded transcript decoder | Retry retains useful body state; complete-history export and resume-from-export require verified current identities; missing, ambiguous, paged, or incomplete source resolution fails closed | Populated installed replay/retry/export/resolution and provider-runtime proof remain open |
 | 7 | Chat citations and tool approvals | Existing chat thread/gateway contracts, approval.respond, citation source identity | Bounded citation metadata is normalized with thread/message validation and source-unavailable fail-closed behavior; daemon-issued approval IDs route approve/reject/cancel with single-flight terminal state; focused chat tests pass | Unloaded-history export/resume, pop-out, remaining backends, and installed reconnect/offline evidence remain open |
 | 8 | SmartHub command safety | Existing typed CLI bridge and capability probe | Allowlisted discovery/status/test/cast/device/parity operations validate request IDs and bounded JSON, drain output concurrently, time out at 8 seconds, support cancellation, and expose degraded renderer state; focused TS/Rust tests pass | Real devices, Avahi/DBus, auth, offline/reconnect, and desktop matrix remain open |
 | 9 | Daemon-owned text expansion | Existing text expansion surface/Composer, daemon RPC canon, native secret custodian | AES-GCM sealed snapshot with native Secret Service/KWallet key custody, owner-only permissions, consent RPC, in-app-only expansion, no renderer localStorage/global capture, and corruption/missing-key fail-closed tests | Linux keyring runtime, IBus/Fcitx external integration, secure-field exclusions, sync/conflict policy, and Wayland/X11 evidence remain open |

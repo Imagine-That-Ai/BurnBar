@@ -240,7 +240,7 @@
 <tbody>
 <tr>
 <td>Date</td>
-<td>Baseline audit: 2026-07-09; remediation evidence through 2026-07-14 UTC</td>
+<td>Baseline audit: 2026-07-09; remediation evidence through 2026-07-20 UTC</td>
 </tr>
 <tr>
 <td>Gold standard</td>
@@ -255,12 +255,21 @@
 <td><code>windows/liquid-glass-kernel-reskin</code> at <code>18836ae40a</code></td>
 </tr>
 <tr>
-<td>Remediation evidence</td>
-<td><code>codex/linux-parity-integration-final</code> at <code>95cd65c235</code>; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, the follow-on source slices, and the Node 22 release-toolchain pin are linked below. RPM release packaging now derives from the validated DEB filesystem with <code>rpmbuild</code> after candidate <code>29342758329</code> exposed a Tauri RPM extraction failure.</td>
+<td>Current source and VM proof</td>
+<td><code>codex/linux-parity-integration-final</code> at <code>bfd0eefea9</code>; 906/906 frontend tests, 129/129 Tauri Rust tests, TypeScript, production-bundle verification, and fresh ARM64 payload staging pass. The exact package is installed in Ubuntu GNOME/X11; a native <code>openburnbar://providers?provider=codex</code> second launch selected Codex and passed AT-SPI at 189/108/91/33 nodes/named/actionable/focusable. The receipt is <a href="evidence/parity-audit-2026-07-10/linux-arm64-current-bfd0eefea9-exact-native-2026-07-20.json">linux-arm64-current-bfd0eefea9-exact-native-2026-07-20.json</a>.</td>
 </tr>
 </tbody>
 </table>
 <p><strong>Verdict:</strong> <strong>NO-GO for a full-parity claim or stable Linux promotion</strong></p>
+<h2>Current implementation delta — 2026-07-20</h2>
+<ul>
+<li><strong>Navigation:</strong> typed provider/model hash destinations now survive reload and history, pass strict native parsing, and forward through the owner-checked single-instance channel. The exact installed package proved a Codex destination through AT-SPI.</li>
+<li><strong>Quota:</strong> Linux now reads and mutates the daemon-owned failover policy with exact canonical readback and rollback, using only the macOS wire values <code>provider_family_failover</code> and <code>same_model_failover</code>.</li>
+<li><strong>Activity:</strong> display fallbacks are explicitly unverified and may resolve only through complete, unique daemon history before replay, resume, export, or resume-from-export.</li>
+<li><strong>Onboarding:</strong> the native cloud-auth state machine covers start, browser authorization, device approval, cancel, denial, expiry, retry, active verification, and unavailable states without faking production readiness.</li>
+<li><strong>Polish:</strong> WebKitGTK native form controls now use the dark shell color scheme; the post-fix screenshot is <a href="evidence/parity-audit-2026-07-10/linux-arm64-current-bfd0eefea9-provider-deep-link.png">linux-arm64-current-bfd0eefea9-provider-deep-link.png</a>.</li>
+<li><strong>Certification:</strong> strict status remains 0/40 product and 0/7 environment receipts because signing, production cloud configuration, the wider desktop/architecture matrix, and current cross-device iPad workflows remain open.</li>
+</ul>
 <h2>Latest verification delta — 2026-07-14</h2>
 <ul>
 <li><strong>Source:</strong> parity implementation is integrated on <code>95cd65c235</code>; focused gates previously passed at 287 Swift, 95 Tauri Rust, and 693 frontend tests, and the current release/evidence contract slice passes 34/34 tests (receipt: <code>evidence/parity-audit-2026-07-10/linux-source-tests-2026-07-14.json</code>). The release toolchain pins Node <code>22.23.1</code> with per-architecture SHA-256 verification. These are engineering signals, not product attestations.</li>
@@ -842,7 +851,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-09</td>
 <td>Navigation and shell</td>
 <td>Dashboard, insights, deep provider/model routes, multi-window flows</td>
-<td>All 19 installed routes activate through AT-SPI; deep links and native multi-window behavior remain thinner</td>
+<td>All 19 installed routes activate through AT-SPI. Typed provider/model destinations now survive reload/history, pass strict native validation, and forward through the single-instance channel; the exact ARM64 package proved a live Codex destination. Secondary-window breadth remains thinner.</td>
 <td>Near parity</td>
 <td>Medium</td>
 </tr>
@@ -866,7 +875,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-12</td>
 <td>Quota</td>
 <td>Provider quotas, histories, account switching, alerts</td>
-<td>Strong read surface; account profiles, drain targets, and switching lag</td>
+<td>Strong read surface with credential-slot switching and daemon-owned failover policy read/mutation. Canonical readback and rollback are enforced; populated switching/drain, thresholds, and switching-lag telemetry remain open.</td>
 <td>Partial</td>
 <td>Medium</td>
 </tr>
@@ -874,7 +883,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-13</td>
 <td>Onboarding</td>
 <td>Provider connection, scan, permissions, chat engine, recovery, completion gates</td>
-<td>Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, and strict native/WebView RPC decoding are implemented; provider connection/scan, auth, portal, tray, update, and first-data readback remain incomplete</td>
+<td>Daemon-owned state, required-step gates, restart recovery, Secret Service/XDG/privacy readback, catalog credentials, and first-data verification are implemented. Native cloud auth now covers start, polling, device approval, cancel, denial, expiry, retry, active verification, and unavailable states; production OAuth, portal, tray, and update completion remain open.</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
@@ -906,8 +915,8 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-17</td>
 <td>Activity/session logs</td>
 <td>Indexed transcript, search, body, replay, resume, export, source resolution</td>
-<td>Recent usage is wrapped as session metadata; no real body/resume/export</td>
-<td>Substitute</td>
+<td>Daemon search/detail/replay/resume and allowlisted export are wired. Display fallbacks are unverified and resolve only through complete, uniquely matched history before replay/resume/export; populated installed proof remains open.</td>
+<td>Partial</td>
 <td>High</td>
 </tr>
 <tr>
