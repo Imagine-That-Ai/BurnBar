@@ -6,6 +6,24 @@ import OSLog
 
 @MainActor
 final class CLIAgentMissionRequestListener {
+    struct ProcessingIdentity: Hashable {
+        let documentID: String
+        let status: String
+        let approvalStatus: String
+
+        init(documentID: String, data: [String: Any]) {
+            self.documentID = documentID
+            status = Self.normalized(data["status"], fallback: "pending")
+            approvalStatus = Self.normalized(data["approvalStatus"], fallback: "none")
+        }
+
+        private static func normalized(_ value: Any?, fallback: String) -> String {
+            guard let value = value as? String else { return fallback }
+            let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return normalized.isEmpty ? fallback : normalized
+        }
+    }
+
 
     let accountManager: AccountManaging
     let settingsManager: SettingsManager
@@ -15,7 +33,9 @@ final class CLIAgentMissionRequestListener {
     var listener: ListenerRegistration?
     var listenerUID: String?
     var attachTask: Task<Void, Never>?
-    private let processingQueue = SerialAsyncWorkQueue<QueryDocumentSnapshot, String> { $0.documentID }
+    private let processingQueue = SerialAsyncWorkQueue<QueryDocumentSnapshot, ProcessingIdentity> {
+        ProcessingIdentity(documentID: $0.documentID, data: $0.data())
+    }
     private var isStarted = false
     var lastAttachState: String?
     var missionEventSequences: [String: Int] = [:]
@@ -87,12 +107,26 @@ final class CLIAgentMissionRequestListener {
                     }
                     return
                 }
-                guard let docs = snapshot?.documents, !docs.isEmpty else { return }
+                let docs = snapshot?.documentChanges.compactMap { change -> QueryDocumentSnapshot? in
+                    switch change.type {
+                    case .added, .modified: change.document
+                    case .removed: nil
+                    }
+                } ?? []
+                guard !docs.isEmpty else { return }
                 Task { @MainActor [weak self] in
-                    self?.logger.info("mission listener received \(docs.count, privacy: .public) pending docs")
+                    self?.logger.info("mission listener received \(docs.count, privacy: .public) changed docs")
                     self?.processDocs(docs)
                 }
             }
+    }
+
+    static func isParkedPendingApproval(_ data: [String: Any]) -> Bool {
+        let identity = ProcessingIdentity(documentID: "", data: data)
+        guard identity.status == "waiting_for_approval",
+              identity.approvalStatus == "pending" else { return false }
+        guard let requestID = data["approvalRequestId"] as? String else { return false }
+        return !requestID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func processDocs(_ docs: [QueryDocumentSnapshot]) {

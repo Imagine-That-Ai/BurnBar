@@ -262,33 +262,24 @@ final class MobileTextExpansionStore {
         let trusted = try await userRef.collection("escrow_devices")
             .whereField("trustState", isEqualTo: EscrowDeviceTrustState.trusted.rawValue)
             .getDocuments()
-        for document in trusted.documents {
-            let target = try await MobileCloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
-                uid: uid,
+        let targets = try await MobileCloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevices(
+            uid: uid,
+            userRef: userRef,
+            deviceDocuments: trusted.documents,
+            localIdentity: signalIdentity
+        )
+        guard targets.contains(where: { $0.deviceId == deviceId }) else {
+            throw MobileCloudVaultTrustChainVerificationError.invalidTrustedDevice(deviceId: deviceId)
+        }
+        for target in targets {
+            try await MobileCloudVaultKeyWrapperPublisher.publishIfNeeded(
                 userRef: userRef,
-                deviceDocument: document,
-                localIdentity: signalIdentity
+                uid: uid,
+                vaultKey: vaultKey,
+                vaultKeyID: vaultKeyID,
+                sourceDeviceID: deviceId,
+                target: target
             )
-            let wrapped = try CloudVaultCrypto.wrapVaultKey(
-                vaultKey,
-                recipientPublicKey: target.escrowPublicKeyData
-            )
-            try await userRef.collection("cloud_vault_key_wrappers")
-                .document("\(target.deviceId)_\(target.keyVersion)")
-                .setData([
-                    "uid": uid,
-                    "vaultKeyID": vaultKeyID,
-                    "targetDeviceId": target.deviceId,
-                    "sourceDeviceId": deviceId,
-                    "publicKeyFingerprint": target.escrowPublicKeyFingerprint,
-                    "keyVersion": target.keyVersion,
-                    "wrappedVaultKey": wrapped.base64EncodedString(),
-                    "algorithm": "ECIES-P256-AESGCM",
-                    "status": "active",
-                    "createdAt": FieldValue.serverTimestamp(),
-                    "updatedAt": FieldValue.serverTimestamp(),
-                    "schemaVersion": 2
-                ], merge: true)
         }
     }
 

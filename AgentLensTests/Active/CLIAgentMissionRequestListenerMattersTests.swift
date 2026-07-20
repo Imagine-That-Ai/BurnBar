@@ -18,6 +18,43 @@ import OpenBurnBarCore
 /// Kept outside any `@MainActor` suite: `CLIAgentMissionPersonaScopeResolution` is
 /// a pure value type, so the checks need no app-host MainActor queue.
 final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
+    @MainActor
+    func testApprovalTransitionGetsNewQueueIdentityAndUnparksMission() {
+        let pending: [String: Any] = [
+            "status": "waiting_for_approval",
+            "approvalStatus": "pending",
+            "approvalRequestId": "approval-1"
+        ]
+        let approved: [String: Any] = [
+            "status": "waiting_for_approval",
+            "approvalStatus": "approved",
+            "approvalRequestId": "approval-1"
+        ]
+
+        let pendingIdentity = CLIAgentMissionRequestListener.ProcessingIdentity(
+            documentID: "mission-1",
+            data: pending
+        )
+        let approvedIdentity = CLIAgentMissionRequestListener.ProcessingIdentity(
+            documentID: "mission-1",
+            data: approved
+        )
+
+        XCTAssertNotEqual(pendingIdentity, approvedIdentity)
+        XCTAssertTrue(CLIAgentMissionRequestListener.isParkedPendingApproval(pending))
+        XCTAssertFalse(CLIAgentMissionRequestListener.isParkedPendingApproval(approved))
+    }
+
+    @MainActor
+    func testMalformedPendingApprovalIsNotSilentlyParked() {
+        XCTAssertFalse(
+            CLIAgentMissionRequestListener.isParkedPendingApproval([
+                "status": "waiting_for_approval",
+                "approvalStatus": "pending"
+            ])
+        )
+    }
+
 
     // MARK: - Wand routing authority
 

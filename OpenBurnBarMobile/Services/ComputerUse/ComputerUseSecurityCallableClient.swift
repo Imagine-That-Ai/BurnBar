@@ -194,6 +194,60 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    static func repairTrustedSignalIdentity(
+        uid: String,
+        deviceId: String,
+        identity: OpenBurnBarSignalIdentityKeypair
+    ) async throws {
+        let user = try requireSignedInUser()
+        guard user.uid == uid else {
+            throw ClientError.invalidResponse("Signal identity repair user mismatch.")
+        }
+        try await bindAppCheckAttestation()
+
+        let challengeResult = try await functions
+            .httpsCallable("issueTrustedSignalIdentityRepairChallenge")
+            .call(["deviceId": deviceId])
+        guard let challenge = challengeResult.data as? [String: Any],
+              challenge["ok"] as? Bool == true,
+              let challengeId = challenge["challengeId"] as? String,
+              challengeId.isEmpty == false,
+              let ciphertextBase64 = challenge["challengeCiphertextBase64"] as? String,
+              let ciphertext = Data(base64Encoded: ciphertextBase64),
+              (challenge["schemaVersion"] as? NSNumber)?.intValue == MobileTrustedSignalIdentityRepairContract.challengeVersion else {
+            throw ClientError.invalidResponse("Signal identity repair challenge was invalid.")
+        }
+
+        let escrowKeypair = try iOSDeviceKeypair()
+        guard escrowKeypair.keyVersion == identity.keyVersion else {
+            throw ClientError.invalidResponse("Signal identity and escrow key versions do not match.")
+        }
+        let plaintext = try escrowKeypair.decrypt(
+            ciphertext,
+            authenticating: MobileTrustedSignalIdentityRepairContract.challengeAAD(
+                uid: uid,
+                deviceId: deviceId,
+                challengeId: challengeId
+            )
+        )
+        let nonce = try await issueHighRiskActionNonce()
+        let repairResult = try await functions.httpsCallable("repairTrustedSignalIdentity").call([
+            "deviceId": deviceId,
+            "challengeId": challengeId,
+            "challengePlaintextBase64": plaintext.base64EncodedString(),
+            "identityKeyId": identity.identityKeyId,
+            "publicKeyData": identity.publicKeyBase64,
+            "publicKeyFingerprint": identity.publicKeyFingerprint,
+            "keyVersion": identity.keyVersion,
+            "nonce": nonce
+        ])
+        guard let response = repairResult.data as? [String: Any],
+              response["ok"] as? Bool == true,
+              response["reapprovalRequired"] as? Bool == true else {
+            throw ClientError.invalidResponse("Signal identity repair failed.")
+        }
+    }
+
     private static func buildTrustChainProof(
         uid: String,
         targetDeviceId: String,

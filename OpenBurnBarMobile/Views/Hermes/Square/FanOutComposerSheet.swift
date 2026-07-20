@@ -147,14 +147,14 @@ struct FanOutComposerSheet: View {
                 .animation(.easeInOut(duration: 0.6), value: wandSelector)
             }
             .scrollBounceBehavior(.basedOnSize)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                castActionBar
+            }
             .navigationTitle("The Wand")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    castButton
                 }
             }
             .sheet(item: $unlockFeature) { feature in
@@ -176,11 +176,13 @@ struct FanOutComposerSheet: View {
 
     // MARK: - Cast Button
 
-    private var castButton: some View {
-        Group {
+    private var castActionBar: some View {
+        let runtimeTokens = Self.canonicalRuntimeTokens(selectedRuntimes)
+        return HStack {
             if dispatching {
                 ProgressView()
-                    .controlSize(.small)
+                    .controlSize(.regular)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             } else {
                 Button {
                     Haptics.medium()
@@ -192,10 +194,20 @@ struct FanOutComposerSheet: View {
                         Text(wandSelector != nil ? "Cast" : "Dispatch")
                             .fontWeight(.bold)
                     }
+                    .frame(maxWidth: .infinity, minHeight: 44)
                 }
+                .buttonStyle(.borderedProminent)
                 .disabled(!canDispatch)
                 .tint(canDispatch ? activeWandColor : nil)
+                .accessibilityIdentifier("wand.cast")
+                .accessibilityValue(runtimeTokens.joined(separator: ","))
             }
+        }
+        .padding(.horizontal, MobileTheme.Spacing.lg)
+        .padding(.vertical, MobileTheme.Spacing.sm)
+        .background(.bar)
+        .overlay(alignment: .top) {
+            Divider()
         }
     }
 
@@ -335,6 +347,7 @@ struct FanOutComposerSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(identity.displayName)\(isSelected ? ", selected" : "")")
+        .accessibilityIdentifier("wand.agent.\(runtime.rawValue)")
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : [.isButton])
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
     }
@@ -655,6 +668,7 @@ struct FanOutComposerSheet: View {
                 .fill(DesignSystemColors.warning.opacity(0.08))
         )
         .transition(.move(edge: .bottom).combined(with: .opacity))
+        .accessibilityIdentifier("wand.dispatch.error")
     }
 
     // MARK: - Logic
@@ -670,7 +684,7 @@ struct FanOutComposerSheet: View {
         errorMessage = nil
         defer { dispatching = false }
         do {
-            let runtimes = Array(selectedRuntimes)
+            let runtimes = Self.canonicalRuntimeTokens(selectedRuntimes)
             guard runtimes.count <= maxParallel else {
                 unlockFeature = wandUnlockFeature(forParallel: runtimes.count)
                 return
@@ -700,6 +714,10 @@ struct FanOutComposerSheet: View {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    static func canonicalRuntimeTokens(_ runtimes: Set<String>) -> [String] {
+        runtimes.sorted()
     }
 
     private func clampSelectionToCurrentCap() {

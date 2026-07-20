@@ -9,6 +9,7 @@ openburnbar_app_test_hang_substrings=(
     "test runner hung before establishing connection"
     "Test runner never began executing tests"
     "Test session timed out"
+    "Timed out while enabling automation mode"
     "Failed to launch test runner"
     "failed to launch"
     "Lost connection to the test runner"

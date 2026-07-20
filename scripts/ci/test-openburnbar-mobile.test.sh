@@ -26,3 +26,17 @@ if grep -Fq "platform=iOS Simulator,name=$sentinel_name" <<<"$output"; then
 fi
 
 echo "PASS: explicit mobile test destinations survive simulator fallback resolution."
+
+source "$repo_root/scripts/lib/openburnbar-app-test-classifier.sh"
+fixture="$(mktemp)"
+trap 'rm -f "$fixture"' EXIT
+printf '%s\n' \
+  'The test runner failed to initialize for UI testing. (Underlying Error: Timed out while enabling automation mode.)' \
+  > "$fixture"
+
+if ! is_known_hang "$fixture"; then
+  echo "FAIL: physical-device UI automation setup timeout was not retryable" >&2
+  exit 1
+fi
+
+echo "PASS: physical-device UI automation setup timeouts are retried."

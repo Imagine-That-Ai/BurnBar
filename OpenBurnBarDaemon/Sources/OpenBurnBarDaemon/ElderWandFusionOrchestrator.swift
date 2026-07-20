@@ -100,6 +100,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         let boundedPanel = Array(panelModels.prefix(ElderWandPreset.analysisPanelRange.upperBound))
         let judgeModel = plugin.model?.trimmingCharacters(in: .whitespacesAndNewlines)
         let maxToolCalls = Self.clampToolCalls(plugin.maxToolCalls)
+        let maxTokens = Self.extractMaxTokens(from: bodyData)
 
         // Extract the originating conversation so panel models answer the real
         // prompt. `messagesJSON` (the serialized `messages` array) is `Sendable`
@@ -125,6 +126,7 @@ struct ElderWandFusionOrchestrator: Sendable {
             models: boundedPanel,
             originatingMessagesJSON: originatingMessagesJSON,
             maxToolCalls: maxToolCalls,
+            maxTokens: maxTokens,
             loop: loop,
             parentRequestID: parentRequestID
         )
@@ -142,6 +144,7 @@ struct ElderWandFusionOrchestrator: Sendable {
             originatingPrompt: originatingPrompt,
             panelAnswers: panelAnswers,
             maxToolCalls: maxToolCalls,
+            maxTokens: maxTokens,
             loop: loop,
             parentRequestID: parentRequestID
         )
@@ -158,6 +161,7 @@ struct ElderWandFusionOrchestrator: Sendable {
             originatingMessagesJSON: originatingMessagesJSON,
             verdict: judged.verdict,
             wantsStream: wantsStream,
+            maxTokens: maxTokens,
             parentRequestID: parentRequestID,
             priorLineItems: priorLineItems
         )
@@ -177,6 +181,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         models: [String],
         originatingMessagesJSON: Data,
         maxToolCalls: Int,
+        maxTokens: Int?,
         loop: ElderWandToolLoop,
         parentRequestID: String
     ) async -> [PanelAnswer] {
@@ -188,6 +193,7 @@ struct ElderWandFusionOrchestrator: Sendable {
                         index: index,
                         originatingMessagesJSON: originatingMessagesJSON,
                         maxToolCalls: maxToolCalls,
+                        maxTokens: maxTokens,
                         loop: loop,
                         parentRequestID: parentRequestID
                     )
@@ -212,6 +218,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         index: Int,
         originatingMessagesJSON: Data,
         maxToolCalls: Int,
+        maxTokens: Int?,
         loop: ElderWandToolLoop,
         parentRequestID: String
     ) async -> PanelAnswer? {
@@ -232,6 +239,7 @@ struct ElderWandFusionOrchestrator: Sendable {
                     systemPrompt: Self.panelSystemPrompt,
                     userMessagesJSON: originatingMessagesJSON,
                     maxToolCalls: maxToolCalls,
+                    maxTokens: maxTokens,
                     chat: { body in try await self.bufferedCompletion(body, route) }
                 )
             }
@@ -272,6 +280,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         originatingPrompt: String,
         panelAnswers: [PanelAnswer],
         maxToolCalls: Int,
+        maxTokens: Int?,
         loop: ElderWandToolLoop,
         parentRequestID: String
     ) async -> (verdict: String, spend: FusionSubCallSpend?) {
@@ -306,6 +315,7 @@ struct ElderWandFusionOrchestrator: Sendable {
                 systemPrompt: Self.judgeSystemPrompt,
                 userMessagesJSON: judgeMessagesJSON,
                 maxToolCalls: maxToolCalls,
+                maxTokens: maxTokens,
                 chat: { body in try await self.bufferedCompletion(body, route) }
             )
             let signature = Self.signature(parentRequestID, "judge", judgeSlug, 0)
@@ -345,6 +355,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         originatingMessagesJSON: Data,
         verdict: String,
         wantsStream: Bool,
+        maxTokens: Int?,
         parentRequestID: String,
         priorLineItems: [FusionSubCallSpend]
     ) async -> ElderWandFusionResult {
@@ -387,7 +398,8 @@ struct ElderWandFusionOrchestrator: Sendable {
             let body = Self.encodeChatBody(
                 model: route.wireModelSlug,
                 messages: synthesisMessages,
-                stream: true
+                stream: true,
+                maxTokens: maxTokens
             )
             return .streaming(.init(
                 route: route,
@@ -402,7 +414,8 @@ struct ElderWandFusionOrchestrator: Sendable {
         let body = Self.encodeChatBody(
             model: route.wireModelSlug,
             messages: synthesisMessages,
-            stream: false
+            stream: false,
+            maxTokens: maxTokens
         )
         do {
             let response = try await bufferedCompletion(body, route)
@@ -441,6 +454,28 @@ struct ElderWandFusionOrchestrator: Sendable {
     static func clampToolCalls(_ raw: Int?) -> Int {
         let value = raw ?? ElderWandPreset.defaultMaxToolCalls
         return min(max(value, ElderWandPreset.maxToolCallsRange.lowerBound), ElderWandPreset.maxToolCallsRange.upperBound)
+    }
+
+    private static func extractMaxTokens(from bodyData: Data) -> Int? {
+        guard let object = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] else {
+            return nil
+        }
+        for key in ["max_tokens", "max_completion_tokens", "max_output_tokens"] {
+            guard let rawValue = object[key],
+                  !(rawValue is Bool),
+                  let number = rawValue as? NSNumber else {
+                continue
+            }
+            let value = number.doubleValue
+            guard value.isFinite,
+                  value.rounded(.towardZero) == value,
+                  value >= 1,
+                  value <= Double(Int.max) else {
+                continue
+            }
+            return Int(value)
+        }
+        return nil
     }
 
     private static func cancelledResult() -> ElderWandFusionResult {
@@ -497,13 +532,17 @@ struct ElderWandFusionOrchestrator: Sendable {
     static func encodeChatBody(
         model: String,
         messages: [[String: Any]],
-        stream: Bool
+        stream: Bool,
+        maxTokens: Int?
     ) -> Data {
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
             "stream": stream,
             "messages": messages
         ]
+        if let maxTokens {
+            body["max_tokens"] = maxTokens
+        }
         return (try? JSONSerialization.data(withJSONObject: body, options: [])) ?? Data("{}".utf8)
     }
 

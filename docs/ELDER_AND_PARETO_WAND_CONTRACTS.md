@@ -77,6 +77,9 @@ not repeat its provider call, latency, or spend. `max_tool_calls` is clamped to
 3. The top-level request model performs synthesis. Buffered calls return its
    upstream body and status; streaming calls return an SSE relay plan. No inner
    request contains `plugins`, which prevents recursive fusion.
+   `max_tokens` (and the accepted compatibility aliases) is preserved across
+   panel, judge, and synthesis calls so the final answer honors the caller's
+   output limit and hidden stages cannot silently expand to a provider default.
 4. Cancellation is terminal. A canceled pipeline returns the gateway's 499
    result and does not proceed from panel to judge or synthesis or record a
    canceled provider turn as an ordinary provider failure.
@@ -87,6 +90,12 @@ when one batch exceeds the remaining budget; over-budget calls are explicitly
 skipped. Search unavailability and hosted-search quota rejection degrade to a
 tool result rather than aborting fusion. Provider/network errors remain visible
 through route logs and typed gateway errors.
+
+Claude Code OAuth routes keep the canonical Claude Code guard in its own first
+system block and preserve caller instructions in later system blocks. Parallel
+OpenAI-style tool results are coalesced into one Anthropic user turn immediately
+after the assistant's tool-use turn. Buffered and streaming Anthropic requests
+allow up to five minutes for long model replies.
 
 Each executed panel, judge, and synthesis subcall has a distinct idempotency key
 and shared `parentRequestID`. Token usage and cost are aggregated without
@@ -138,6 +147,16 @@ model ID, which preserves the Mac Wand workflow and backward compatibility with
 older unrouted groups. It must not replace a mobile Pareto or Manual route with
 the Mac's default wand.
 
+After approval, non-chat Claude and Codex Wand missions launch their CLIs
+directly with the sealed prompt, model, working directory, and bounded capability
+grant. Their structured streams are reduced to the final assistant reply before
+the result is persisted. They must not pass through the interactive chat-history
+prompt wrapper: that wrapper correctly labels conversation history as untrusted,
+but applying it to the whole approved mission causes the CLI to refuse the
+mission. Requests whose source is `ios-chat` or whose `missionKind` is `chat`
+continue through the ordinary native-chat path and retain that untrusted-content
+boundary.
+
 The Ministry store is sanitized without mutating caller-owned dictionaries. It
 has exactly one default, falls back to the built-in Headmaster/Pareto seed for a
 missing, corrupt, or unreadable file, and reports why. Saves use a unique
@@ -145,6 +164,19 @@ same-directory temporary file, file fsync, atomic replace, best-effort directory
 fsync, and cleanup. Concurrent writers cannot collide on one fixed temp path;
 the last complete atomic replace wins. Validation ignores only the volatile
 `updatedAt` field when deciding whether a saved store needs rewriting.
+
+### Signed Mac relay boundary
+
+Physical-device fan-out depends on the signed Mac daemon listening to the same
+user's Firestore mission queue. The app and daemon open one SQLCipher database,
+so the bare daemon helper is signed with the app's exact designated requirement
+(identifier `com.openburnbar.app`, Developer ID team, hardened runtime). It does
+not carry the app's restricted Keychain access-group entitlement: macOS rejects
+that entitlement on this unbundled helper before `main()`. Matching the ordinary
+database-key item's designated-requirement ACL lets the daemon retrieve the
+existing key without weakening access. Xcode signing, website-release
+re-signing, the SQLCipher policy gate, and the public-download artifact check
+preserve and enforce this contract.
 
 ## Interaction invariants
 
@@ -171,6 +203,8 @@ the last complete atomic replace wins. Validation ignores only the volatile
 | Pareto ranking and capability classification | `OpenBurnBarCoreTests/WandModelRouterTests` |
 | Mobile all-or-nothing routing and parallelism boundary | `OpenBurnBarMobileTests/CLIAgentMissionDispatcherSealTests` |
 | Dispatch-to-claim route authority | `OpenBurnBarTests/CLIAgentMissionRequestListenerMattersTests` |
+| Approved Claude/Codex mission launch and structured final-reply extraction | `OpenBurnBarTests/CLIAgentSessionMirrorTests` |
+| Signed relay access to the shared SQLCipher key | `OpenBurnBarDaemonTests/BurnBarDaemonDatabaseCipherTests`, `verify-sqlcipher-codec.sh`, and the public macOS artifact gate |
 | Ministry ranking, caps, proof fallback, persistence, concurrency, malformed/error paths | `tools/openburnbar-mcp/tests/test_ministry.py` |
 | Cloud mission-group width and parallelism enforcement | `functions/scripts/test-firestore-rules.mjs` |
 

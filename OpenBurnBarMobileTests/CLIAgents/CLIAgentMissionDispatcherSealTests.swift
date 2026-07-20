@@ -12,6 +12,79 @@ import OpenBurnBarSignalCore
 @MainActor
 final class CLIAgentMissionDispatcherSealTests: XCTestCase {
 
+    func test_wandSelectionCanonicalizesExactRuntimeSetWithoutFallback() {
+        XCTAssertEqual(
+            FanOutComposerSheet.canonicalRuntimeTokens(["codex", "claude"]),
+            ["claude", "codex"]
+        )
+        XCTAssertFalse(
+            FanOutComposerSheet.canonicalRuntimeTokens(["codex", "claude"]).contains("junie")
+        )
+    }
+
+    func test_directFirestoreMissionPayloadOmitsServerOnlySignalEnvelope() {
+        let sealedPayload: [String: Any] = [
+            "ciphertext": "path-bound-ciphertext",
+            "vaultKeyID": "vault-key"
+        ]
+        let source: [String: Any] = [
+            "id": "wand-child-1",
+            "contentSealed": true,
+            "sealedPayload": sealedPayload,
+            "signalEnvelope": ["mode": "at-rest"]
+        ]
+
+        let direct = CLIAgentMissionCloudSealer.payloadForDirectFirestoreWrite(source)
+
+        XCTAssertNil(direct["signalEnvelope"])
+        XCTAssertNotNil(direct["sealedPayload"])
+        XCTAssertEqual(direct["id"] as? String, "wand-child-1")
+        XCTAssertNotNil(source["signalEnvelope"], "Sanitizing the Firestore write must not mutate its caller's value.")
+    }
+
+    func test_missionConsoleHostOpensSealedApprovalMissionFromListListenerPayload() throws {
+        let uid = "mission-console-user"
+        let documentID = "wand-child-approval"
+        let key = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        var document = try CLIAgentMissionRequestPayloadFactory.buildSealed(
+            id: documentID,
+            title: "Pareto Claude child",
+            prompt: "Return the requested sales-ready marker.",
+            missionKind: "parallel",
+            requestedRuntime: "claude",
+            targetProject: "BurnBar",
+            depth: "standard",
+            approvalMode: "existing_policy",
+            commandsAllowed: false,
+            fileEditsAllowed: false,
+            uid: uid,
+            vaultKey: key,
+            vaultKeyID: vaultKeyID
+        )
+        document["status"] = "waiting_for_approval"
+        document["approvalRequestId"] = "approval-wand-child"
+        document["approvalStatus"] = "pending"
+
+        XCTAssertNil(
+            CLIAgentMissionSnapshot(documentID: documentID, data: document),
+            "The production list payload is sealed, so plaintext-only decoding must fail."
+        )
+
+        let host = MobileMissionConsoleHost()
+        host.absorbMissionDocuments(
+            [(documentID: documentID, data: document)],
+            uid: uid,
+            resolvedKey: MobileCloudVaultResolvedKey(keyData: key, vaultKeyID: vaultKeyID)
+        )
+
+        XCTAssertEqual(host.snapshot.activeTiles.map(\.id), [documentID])
+        XCTAssertEqual(host.snapshot.activeTiles.first?.phase, .awaitingApproval)
+        XCTAssertEqual(host.snapshot.approvalAsks.map(\.missionID), [documentID])
+        XCTAssertEqual(host.snapshot.approvalAsks.first?.runtimeID, "claude")
+        XCTAssertNil(host.inlineError)
+    }
+
     // MARK: - cancelMission
 
     func test_cancelMissionUpdate_sealsSummary_writesNoPlaintextLiveSummary() throws {
@@ -629,6 +702,20 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         }
     }
 
+    func test_resolvedWandPolicyFetchesDistinctRuntimeCatalogsConcurrently() async throws {
+        let provider = ConcurrentWandCatalogProviderStub()
+
+        let resolvedPolicy = try await CLIAgentMissionDispatcher.resolvedWandPolicy(
+            WandPolicy(selector: .pareto, routedModels: [:]),
+            runtimeTokens: ["claude", "codex", "claude"],
+            catalogProvider: provider
+        )
+
+        XCTAssertEqual(provider.requests.count, 2)
+        XCTAssertEqual(resolvedPolicy?.routedModelID(for: .claude), "claude-opus-4-8")
+        XCTAssertEqual(resolvedPolicy?.routedModelID(for: .codex), "gpt-5.5")
+    }
+
     private static func catalogResponse(
         runtime: AssistantRuntimeID,
         modelID: String,
@@ -684,6 +771,44 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
             switch result {
             case let .success(response): return response
             case let .failure(error): throw error
+            }
+        }
+    }
+
+    private final class ConcurrentWandCatalogProviderStub: CLIRuntimeCatalogProviding {
+        enum StubError: LocalizedError {
+            case fetchedSerially
+
+            var errorDescription: String? { "catalogs were fetched serially" }
+        }
+
+        private(set) var requests: [AssistantRuntimeID] = []
+
+        func fetchCLIRuntimeModelCatalog(
+            runtime: AssistantRuntimeID
+        ) async throws -> CLIRuntimeModelCatalogResponse {
+            requests.append(runtime)
+            for _ in 0..<100 where requests.count < 2 {
+                await Task.yield()
+            }
+            guard requests.count == 2 else { throw StubError.fetchedSerially }
+            switch runtime {
+            case .claude:
+                return CLIAgentMissionDispatcherSealTests.catalogResponse(
+                    runtime: .claude,
+                    modelID: "claude-opus-4-8",
+                    providerID: "anthropic",
+                    source: .claudeModelCatalog
+                )
+            case .codex:
+                return CLIAgentMissionDispatcherSealTests.catalogResponse(
+                    runtime: .codex,
+                    modelID: "gpt-5.5",
+                    providerID: "openai",
+                    source: .codexModelCatalog
+                )
+            default:
+                throw StubError.fetchedSerially
             }
         }
     }

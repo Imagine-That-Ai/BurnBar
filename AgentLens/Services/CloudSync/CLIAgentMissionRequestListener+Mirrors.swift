@@ -78,11 +78,82 @@ final class DirectCLIStreamMirror: Sendable {
               let type = object["type"] as? String
         else { return nil }
 
+        if let event = parseCodex(object: object, type: type) {
+            return event
+        }
         if let event = parseOpenClaude(object: object, type: type) {
             return event
         }
         if let event = parsePi(object: object, type: type) {
             return event
+        }
+        return nil
+    }
+
+    func parseCodex(object: [String: Any], type: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
+        if type == "thread.started" || type == "turn.started" {
+            return .toolResult(
+                type == "thread.started" ? "Codex session initialized." : "Codex turn started.",
+                title: "LLM call started"
+            )
+        }
+
+        if type == "item.started" || type == "item.completed" || type == "item.finished" {
+            guard let item = object["item"] as? [String: Any],
+                  let itemType = item["type"] as? String
+            else { return nil }
+
+            if itemType == "agent_message",
+               let fullText = (item["text"] as? String)?.nilIfEmpty {
+                let delta = state.withLock { state -> String? in
+                    let previous = state.latestAssistantMessage
+                    state.latestAssistantMessage = fullText
+                    guard fullText.hasPrefix(previous) else { return fullText }
+                    return String(fullText.dropFirst(previous.count)).nilIfEmpty
+                }
+                return delta.map { .assistant($0) }
+            }
+
+            if itemType == "command_execution" {
+                let command = (item["command"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if type == "item.started" {
+                    return .toolCall(
+                        command.map { String($0.prefix(180)) } ?? "Codex command started.",
+                        title: "Bash",
+                        toolName: "Bash"
+                    )
+                }
+                let output = ((item["output"] as? String)
+                    ?? (item["stdout"] as? String)
+                    ?? (item["stderr"] as? String)
+                    ?? (item["result"] as? String))?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .nilIfEmpty
+                return .toolResult(
+                    output.map { String($0.prefix(400)) }
+                        ?? command.map { "Completed: \(String($0.prefix(180)))" }
+                        ?? "Codex command completed.",
+                    title: "Bash",
+                    toolName: "Bash"
+                )
+            }
+
+            if itemType == "error",
+               let message = (item["message"] as? String)?.nilIfEmpty {
+                return .toolResult(message, title: "Codex error", isError: true)
+            }
+        }
+
+        if type == "turn.completed",
+           let usage = object["usage"] as? [String: Any] {
+            return .toolResult(formatUsage(usage), title: "LLM usage")
+        }
+
+        if type == "error" {
+            let message = (object["message"] as? String)
+                ?? (object["error"] as? String)
+                ?? "Codex reported an error."
+            return .toolResult(message, title: "Codex error", isError: true)
         }
         return nil
     }

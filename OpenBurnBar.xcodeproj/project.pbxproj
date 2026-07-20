@@ -283,6 +283,7 @@
 		1B45FF476B3A86A94FC56F25 /* OpenBurnBarAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = A84FE484FDBCD2EC343D4E60 /* OpenBurnBarAnalytics */; };
 		1B534254C7B70ED98620E0ED /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAF90FB3308E3260CAF4EC5D /* SessionDetailView.swift */; };
 		1B5ABB62257BDFF9053199A1 /* ElderWandPresetSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576E202F49CE4A3AB189A931 /* ElderWandPresetSection.swift */; };
+		1B703A65AFC0B2AC546C5CB8 /* MobileCloudVaultTrustedDeviceSetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4497E8516F1EE84B8829EF4C /* MobileCloudVaultTrustedDeviceSetTests.swift */; };
 		1BB4EE9A938D080532C6A268 /* VelocityForecastCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E971E25CDC4484B4BC1A0A9A /* VelocityForecastCard.swift */; };
 		1BBC9FE4110A43134EB4AD9D /* MediaAttachmentManifestStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C884A7C634BB34D379CF8084 /* MediaAttachmentManifestStoreTests.swift */; };
 		1BF8DFEEEEF59C0EDFC41726 /* RetrievalQueryTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40584EF1755646F1C23999C1 /* RetrievalQueryTypes.swift */; };
@@ -3107,6 +3108,7 @@
 		4427595B21D3677B81286C7E /* PhoneControlReceiverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneControlReceiverTests.swift; sourceTree = "<group>"; };
 		442923045612953B9607D563 /* pc-claude-multi-turn.jsonl */ = {isa = PBXFileReference; path = "pc-claude-multi-turn.jsonl"; sourceTree = "<group>"; };
 		447AF23C2987363EF3AC4B4B /* ElderWandSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElderWandSettings.swift; sourceTree = "<group>"; };
+		4497E8516F1EE84B8829EF4C /* MobileCloudVaultTrustedDeviceSetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileCloudVaultTrustedDeviceSetTests.swift; sourceTree = "<group>"; };
 		44AEADABE4E27B5487984DD2 /* MercuryPersonalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryPersonalizationTests.swift; sourceTree = "<group>"; };
 		44C0AD0CE2F28F0025752B15 /* OpenBurnBarPlannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarPlannerService.swift; sourceTree = "<group>"; };
 		44E4F7E63B20FE1828DE7795 /* ParserOutputContractGoldenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserOutputContractGoldenTests.swift; sourceTree = "<group>"; };
@@ -7847,6 +7849,7 @@
 				59F967230757BA40E03113C0 /* MercuryTransferThumbnailCacheTests.swift */,
 				58C3C040094F4AD3B12BEC36 /* MobileChatHistoryStoreTests.swift */,
 				2DEF207ADA7CF8724EA2B687 /* MobileCloudVaultRotationPickupTests.swift */,
+				4497E8516F1EE84B8829EF4C /* MobileCloudVaultTrustedDeviceSetTests.swift */,
 				D7B8F449D120631E7E8D34C6 /* MobileProviderWizardCopyTests.swift */,
 				C3A5BE3183B942FB86928784 /* MobileProviderWizardModelTests.swift */,
 				0405ED68EC726B7F2E5B9E47 /* MobileSentryScrubberTests.swift */,
@@ -10200,6 +10203,7 @@
 				44E844DD848650B1E3B63F2D /* MobileBackdropKernelTests.swift in Sources */,
 				36ADDFF1FFCA56D116B320BA /* MobileChatHistoryStoreTests.swift in Sources */,
 				66A5FAF74387359CD283EF1F /* MobileCloudVaultRotationPickupTests.swift in Sources */,
+				1B703A65AFC0B2AC546C5CB8 /* MobileCloudVaultTrustedDeviceSetTests.swift in Sources */,
 				13F27C6DD93E36EE168860DF /* MobileInsightsStoreTests.swift in Sources */,
 				76E7E3B9650B7236003235A5 /* MobileProviderWizardCopyTests.swift in Sources */,
 				76CAA2FB9672D498FAFFFE1A /* MobileProviderWizardModelTests.swift in Sources */,
@@ -12420,7 +12424,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.daemon --options runtime,library";
+				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.app --options runtime,library";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -12646,7 +12650,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.daemon --options runtime,library";
+				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.app --options runtime,library";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

@@ -56,6 +56,121 @@ enum MobileSignalIdentityPublicKeyPublishError: LocalizedError {
     }
 }
 
+enum MobileCloudVaultKeyWrapperPublishError: LocalizedError {
+    case immutableWrapperConflict(wrapperID: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .immutableWrapperConflict(let wrapperID):
+            return "Cloud vault key wrapper conflict for \(wrapperID)."
+        }
+    }
+}
+
+enum MobileCloudVaultKeyWrapperPublisher {
+    static func publishIfNeeded(
+        userRef: DocumentReference,
+        uid: String,
+        vaultKey: Data,
+        vaultKeyID: String,
+        sourceDeviceID: String,
+        target: MobileCloudVaultVerifiedTrustedDevice
+    ) async throws {
+        let wrapperID = "\(vaultKeyID)_\(target.deviceId)_\(target.keyVersion)"
+        let documentRef = userRef.collection("cloud_vault_key_wrappers").document(wrapperID)
+        let existing = try await documentRef.getDocument().data()
+        guard try requiresCreate(
+            existing: existing,
+            wrapperID: wrapperID,
+            uid: uid,
+            vaultKeyID: vaultKeyID,
+            target: target
+        ) else {
+            return
+        }
+
+        let wrapped = try CloudVaultCrypto.wrapVaultKey(
+            vaultKey,
+            recipientPublicKey: target.escrowPublicKeyData
+        )
+        do {
+            try await documentRef.setData([
+                "uid": uid,
+                "vaultKeyID": vaultKeyID,
+                "targetDeviceId": target.deviceId,
+                "sourceDeviceId": sourceDeviceID,
+                "publicKeyFingerprint": target.escrowPublicKeyFingerprint,
+                "keyVersion": target.keyVersion,
+                "wrappedVaultKey": wrapped.base64EncodedString(),
+                "algorithm": "ECIES-P256-AESGCM",
+                "status": "active",
+                "createdAt": FieldValue.serverTimestamp(),
+                "updatedAt": FieldValue.serverTimestamp(),
+                "schemaVersion": 2
+            ], merge: false)
+        } catch {
+            // Another trusted writer may win the deterministic-ID create race.
+            // Accept only the exact immutable recipient binding we intended.
+            if let raced = try? await documentRef.getDocument().data(),
+               (try? requiresCreate(
+                   existing: raced,
+                   wrapperID: wrapperID,
+                   uid: uid,
+                   vaultKeyID: vaultKeyID,
+                   target: target
+               )) == false {
+                return
+            }
+            throw error
+        }
+    }
+
+    static func requiresCreate(
+        existing: [String: Any]?,
+        wrapperID: String,
+        uid: String,
+        vaultKeyID: String,
+        target: MobileCloudVaultVerifiedTrustedDevice
+    ) throws -> Bool {
+        guard let existing else { return true }
+        guard existing["uid"] as? String == uid,
+              existing["vaultKeyID"] as? String == vaultKeyID,
+              existing["targetDeviceId"] as? String == target.deviceId,
+              (existing["sourceDeviceId"] as? String)?.isEmpty == false,
+              existing["publicKeyFingerprint"] as? String == target.escrowPublicKeyFingerprint,
+              existing["keyVersion"] as? Int == target.keyVersion,
+              existing["algorithm"] as? String == "ECIES-P256-AESGCM",
+              existing["status"] as? String == "active",
+              let schemaVersion = existing["schemaVersion"] as? Int,
+              [2, 3].contains(schemaVersion),
+              let wrappedBase64 = existing["wrappedVaultKey"] as? String,
+              let wrapped = Data(base64Encoded: wrappedBase64),
+              !wrapped.isEmpty else {
+            throw MobileCloudVaultKeyWrapperPublishError.immutableWrapperConflict(wrapperID: wrapperID)
+        }
+        return false
+    }
+}
+
+enum MobileTrustedSignalIdentityRepairContract {
+    static let challengeVersion = 1
+    static let challengeDomain = "OpenBurnBar-SignalIdentityRepairChallenge-v1"
+    static let repairAlgorithm = "escrow-possession-challenge-v1"
+
+    static func challengeAAD(uid: String, deviceId: String, challengeId: String) -> Data {
+        let segments = [
+            "uid", uid,
+            "deviceId", deviceId,
+            "challengeId", challengeId
+        ]
+        var canonical = "\(challengeDomain)\n"
+        for segment in segments {
+            canonical += "\(Data(segment.utf8).count):\(segment)\n"
+        }
+        return Data(canonical.utf8)
+    }
+}
+
 enum MobileEscrowPublicKeyPublisher {
     static func publishIfNeeded(
         userRef: DocumentReference,
@@ -133,6 +248,28 @@ enum MobileSignalIdentityPublicKeyPublisher {
                     keyVersion: identity.keyVersion
                 )
             }
+            let escrowDevice = try await userRef.collection("escrow_devices")
+                .document(deviceId)
+                .getDocument()
+            if requiresTrustedIdentityReapproval(deviceData: escrowDevice.data(), identity: identity) {
+                try await ComputerUseSecurityCallableClient.repairTrustedSignalIdentity(
+                    uid: userRef.documentID,
+                    deviceId: deviceId,
+                    identity: identity
+                )
+            }
+            return
+        }
+
+        let escrowDevice = try await userRef.collection("escrow_devices")
+            .document(deviceId)
+            .getDocument()
+        if escrowDevice.data()?["trustState"] as? String == EscrowDeviceTrustState.trusted.rawValue {
+            try await ComputerUseSecurityCallableClient.repairTrustedSignalIdentity(
+                uid: userRef.documentID,
+                deviceId: deviceId,
+                identity: identity
+            )
             return
         }
 
@@ -164,6 +301,28 @@ enum MobileSignalIdentityPublicKeyPublisher {
             return false
         }
         return true
+    }
+
+    static func requiresTrustedIdentityReapproval(
+        deviceData: [String: Any]?,
+        identity: OpenBurnBarSignalIdentityKeypair
+    ) -> Bool {
+        guard let deviceData,
+              deviceData["trustState"] as? String == EscrowDeviceTrustState.trusted.rawValue,
+              deviceData["signalIdentityRepairAlgorithm"] as? String == MobileTrustedSignalIdentityRepairContract.repairAlgorithm else {
+            return false
+        }
+        if deviceData["signalIdentityReapprovalRequired"] as? Bool == true {
+            return true
+        }
+        return deviceData["trustChainVersion"] as? Int != CloudVaultDeviceTrustChain.version ||
+            deviceData["trustChainAlgorithm"] as? String != CloudVaultDeviceTrustChain.algorithm ||
+            deviceData["targetSignalIdentityKeyId"] as? String != identity.identityKeyId ||
+            deviceData["targetSignalIdentityPublicKeyFingerprint"] as? String != identity.publicKeyFingerprint ||
+            (deviceData["approvedByDeviceId"] as? String)?.isEmpty != false ||
+            (deviceData["approvedBySignalIdentityKeyId"] as? String)?.isEmpty != false ||
+            (deviceData["approvedBySignalIdentityPublicKeyFingerprint"] as? String)?.isEmpty != false ||
+            (deviceData["trustChainSignature"] as? String)?.isEmpty != false
     }
 }
 
@@ -392,33 +551,24 @@ enum MobileCloudVaultKeyAccess {
         let trusted = try await userRef.collection("escrow_devices")
             .whereField("trustState", isEqualTo: EscrowDeviceTrustState.trusted.rawValue)
             .getDocuments()
-        for document in trusted.documents {
-            let target = try await MobileCloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
-                uid: uid,
+        let targets = try await MobileCloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevices(
+            uid: uid,
+            userRef: userRef,
+            deviceDocuments: trusted.documents,
+            localIdentity: signalIdentity
+        )
+        guard targets.contains(where: { $0.deviceId == deviceId }) else {
+            throw MobileCloudVaultTrustChainVerificationError.invalidTrustedDevice(deviceId: deviceId)
+        }
+        for target in targets {
+            try await MobileCloudVaultKeyWrapperPublisher.publishIfNeeded(
                 userRef: userRef,
-                deviceDocument: document,
-                localIdentity: signalIdentity
+                uid: uid,
+                vaultKey: vaultKey,
+                vaultKeyID: vaultKeyID,
+                sourceDeviceID: deviceId,
+                target: target
             )
-            let wrapped = try CloudVaultCrypto.wrapVaultKey(
-                vaultKey,
-                recipientPublicKey: target.escrowPublicKeyData
-            )
-            try await userRef.collection("cloud_vault_key_wrappers")
-                .document("\(vaultKeyID)_\(target.deviceId)_\(target.keyVersion)")
-                .setData([
-                    "uid": uid,
-                    "vaultKeyID": vaultKeyID,
-                    "targetDeviceId": target.deviceId,
-                    "sourceDeviceId": deviceId,
-                    "publicKeyFingerprint": target.escrowPublicKeyFingerprint,
-                    "keyVersion": target.keyVersion,
-                    "wrappedVaultKey": wrapped.base64EncodedString(),
-                    "algorithm": "ECIES-P256-AESGCM",
-                    "status": "active",
-                    "createdAt": FieldValue.serverTimestamp(),
-                    "updatedAt": FieldValue.serverTimestamp(),
-                    "schemaVersion": 2
-                ], merge: true)
         }
     }
 }

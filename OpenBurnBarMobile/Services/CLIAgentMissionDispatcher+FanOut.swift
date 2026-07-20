@@ -169,26 +169,14 @@ extension CLIAgentMissionDispatcher {
             if let envelope = personaScopeByRuntime[runtimeToken] {
                 payload["personaID"] = envelope.personaID
             }
-            // BEST-EFFORT at-rest Signal seal; legacy sealedPayload is the FLOOR. On any
-            // failure log and write legacy-only rather than abort the fan-out child.
-            do {
-                if let signalEnvelope = try await CLIAgentMissionCloudSealer.signalEnvelopeIfEnabled(
-                    from: payload,
-                    uid: uid,
-                    firestore: db,
-                    collection: "cli_agent_mission_requests",
-                    docId: missionID,
-                    resolvedKey: resolvedKey
-                ) {
-                    payload["signalEnvelope"] = signalEnvelope
-                }
-            } catch {
-                cliMissionSignalLogger.error("Signal at-rest seal failed; writing CLI mission child legacy-only: \(String(describing: error), privacy: .public)")
-            }
             let requestRef = db
                 .collection("users").document(uid)
                 .collection("cli_agent_mission_requests").document(missionID)
-            batch.setData(payload, forDocument: requestRef, merge: false)
+            batch.setData(
+                CLIAgentMissionCloudSealer.payloadForDirectFirestoreWrite(payload),
+                forDocument: requestRef,
+                merge: false
+            )
             batch.setData(
                 try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
                     sourceSkillID: sourceSkillID,
@@ -416,17 +404,29 @@ extension CLIAgentMissionDispatcher {
             throw DispatchError.wandRoutingUnavailable("No selected runtime can be routed by The Wand.")
         }
 
+        var attemptedRuntimes: Set<AssistantRuntimeID> = []
+        let uniqueRuntimes = runtimes.filter { attemptedRuntimes.insert($0).inserted }
+        let catalogTasks = uniqueRuntimes.map { runtime in
+            Task { @MainActor () -> (AssistantRuntimeID, [CLIRuntimeModelOption]?, String?) in
+                do {
+                    let response = try await catalogProvider.fetchCLIRuntimeModelCatalog(runtime: runtime)
+                    return (runtime, response.options, nil as String?)
+                } catch {
+                    cliMissionSignalLogger.warning("wand catalog fetch failed runtime=\(runtime.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                    return (runtime, nil, wandCatalogFailureSummary(error))
+                }
+            }
+        }
+        defer { catalogTasks.forEach { $0.cancel() } }
+
         var catalogs: [AssistantRuntimeID: [CLIRuntimeModelOption]] = [:]
         var catalogFailures: [AssistantRuntimeID: String] = [:]
-        var attemptedRuntimes: Set<AssistantRuntimeID> = []
-        for runtime in runtimes {
-            guard attemptedRuntimes.insert(runtime).inserted else { continue }
-            do {
-                let response = try await catalogProvider.fetchCLIRuntimeModelCatalog(runtime: runtime)
-                catalogs[runtime] = response.options
-            } catch {
-                catalogFailures[runtime] = wandCatalogFailureSummary(error)
-                cliMissionSignalLogger.warning("wand catalog fetch failed runtime=\(runtime.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+        for task in catalogTasks {
+            let (runtime, options, failure) = await task.value
+            if let options {
+                catalogs[runtime] = options
+            } else if let failure {
+                catalogFailures[runtime] = failure
             }
         }
 

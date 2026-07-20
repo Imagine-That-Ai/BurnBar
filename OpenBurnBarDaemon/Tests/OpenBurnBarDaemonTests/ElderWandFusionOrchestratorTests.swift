@@ -131,6 +131,39 @@ final class ElderWandFusionOrchestratorTests: XCTestCase {
         XCTAssertEqual(synthesisCount, 1)
     }
 
+    func testFusionPreservesCallerMaxTokensAcrossEveryStage() async throws {
+        let recorder = SubCallRecorder()
+        let bodies = DataBodyRecorder()
+        let orchestrator = makeStubOrchestrator(
+            recorder: recorder,
+            completion: { body in
+                await bodies.append(body)
+                return Self.echoCompletion(body: body)
+            }
+        )
+        let request = Data(
+            #"{"model":"origin","max_tokens":700,"messages":[{"role":"user","content":"hello"}]}"#.utf8
+        )
+
+        let result = await orchestrator.run(
+            bodyData: request,
+            plugin: try Self.plugin(panel: ["p1", "p2"], judge: "judge"),
+            originatingModel: "origin",
+            wantsStream: false
+        )
+
+        guard case .buffered = result else {
+            XCTFail("Expected buffered synthesis result, got \(result)")
+            return
+        }
+        let recordedBodies = await bodies.all()
+        XCTAssertEqual(recordedBodies.count, 4)
+        for body in recordedBodies {
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual((object["max_tokens"] as? NSNumber)?.intValue, 700)
+        }
+    }
+
     func testPanelCallsSharingCredentialAreSerialized() async throws {
         let recorder = SubCallRecorder()
         let probe = PanelConcurrencyProbe(panelModels: ["p1", "p2"])
@@ -504,6 +537,7 @@ private actor DataBodyRecorder {
     private var bodies: [Data] = []
     func append(_ body: Data) { bodies.append(body) }
     func last() -> Data? { bodies.last }
+    func all() -> [Data] { bodies }
 }
 
 private actor CancellationProbe {

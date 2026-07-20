@@ -184,7 +184,30 @@ enum CLIAgentMissionRuntimePlanner {
     ) -> CLIAgentMissionDirectLaunchPlan? {
         let hostPrompt = Self.prompt(title: title, prompt: prompt, backend: backend, data: data)
         let requestedModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let source = (data["source"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let missionKind = (data["missionKind"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let isInteractiveChat = source == "ios-chat" || missionKind == "chat"
         switch backend.rawValue {
+        case ChatBackendID.codex.rawValue where !isInteractiveChat:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "codex",
+                arguments: CLIArgumentBuilder.codexArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    capabilityGrant: capabilityGrant(for: backend, data: data)
+                ),
+                extraEnvironment: [:]
+            )
+        case ChatBackendID.claude.rawValue where !isInteractiveChat:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "claude",
+                arguments: CLIArgumentBuilder.claudeArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    capabilityGrant: capabilityGrant(for: backend, data: data)
+                ),
+                extraEnvironment: [:]
+            )
         case ChatBackendID.piAgent.rawValue:
             let modelCommand = """
             model_args=()

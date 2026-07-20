@@ -4057,10 +4057,79 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         XCTAssertEqual(response.statusCode, 200)
         let upstreamRequest = try XCTUnwrap(GatewayUpstreamURLProtocol.recordedRequests().first)
-        XCTAssertTrue(
-            upstreamRequest.body.contains(#""system":"You are Claude Code, Anthropic's official CLI for Claude.\n\nSpeak in haiku.""#),
-            "Claude Code guard must be prepended to the caller's system text, not replace it. Body was: \(upstreamRequest.body)"
+        let upstreamBody = try XCTUnwrap(upstreamRequest.body.data(using: .utf8))
+        let upstreamObject = try XCTUnwrap(JSONSerialization.jsonObject(with: upstreamBody) as? [String: Any])
+        let systemBlocks = try XCTUnwrap(upstreamObject["system"] as? [[String: Any]])
+        XCTAssertEqual(systemBlocks.count, 2)
+        XCTAssertEqual(systemBlocks[0]["type"] as? String, "text")
+        XCTAssertEqual(systemBlocks[0]["text"] as? String, BurnBarAnthropicProviderExecutor.claudeCodeSystemGuard)
+        XCTAssertEqual(systemBlocks[1]["type"] as? String, "text")
+        XCTAssertEqual(systemBlocks[1]["text"] as? String, "Speak in haiku.")
+    }
+
+    func testGatewayCoalescesParallelToolResultsForAnthropicOAuthRoute() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_parallel_tools",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-sonnet-4-6",
+              "content": [{"type": "text", "text": "done"}],
+              "stop_reason": "end_turn",
+              "usage": {"input_tokens": 10, "output_tokens": 1, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
+            }
+            """
         )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/anthropic/v1",
+                preferredModelIDs: ["claude-sonnet-4-6-family"],
+                preferredCredentialSlotID: "oauth"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: "oauth",
+            label: "Claude Max",
+            apiKey: "sk-ant-oat01-test-token"
+        )
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(
+                #"{"model":"claude-sonnet-4-6","messages":[{"role":"system","content":"Answer after the tools."},{"role":"user","content":"Check all three."},{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"check","arguments":"{\"value\":1}"}},{"id":"call_2","type":"function","function":{"name":"check","arguments":"{\"value\":2}"}},{"id":"call_3","type":"function","function":{"name":"check","arguments":"{\"value\":3}"}}]},{"role":"tool","tool_call_id":"call_1","content":"one"},{"role":"tool","tool_call_id":"call_2","content":"two"},{"role":"tool","tool_call_id":"call_3","content":"three"}]}"#.utf8
+            )
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        let upstreamRequest = try XCTUnwrap(GatewayUpstreamURLProtocol.recordedRequests().first)
+        XCTAssertEqual(
+            upstreamRequest.timeoutInterval,
+            BurnBarAnthropicProviderExecutor.upstreamRequestTimeout
+        )
+        let upstreamBody = try XCTUnwrap(upstreamRequest.body.data(using: .utf8))
+        let upstreamObject = try XCTUnwrap(JSONSerialization.jsonObject(with: upstreamBody) as? [String: Any])
+        let messages = try XCTUnwrap(upstreamObject["messages"] as? [[String: Any]])
+        XCTAssertEqual(messages.map { $0["role"] as? String }, ["user", "assistant", "user"])
+        let resultBlocks = try XCTUnwrap(messages.last?["content"] as? [[String: Any]])
+        XCTAssertEqual(resultBlocks.map { $0["type"] as? String }, ["tool_result", "tool_result", "tool_result"])
+        XCTAssertEqual(resultBlocks.map { $0["tool_use_id"] as? String }, ["call_1", "call_2", "call_3"])
     }
 
     /// When Opus is requested and only the OAuth route exists, a 429 must

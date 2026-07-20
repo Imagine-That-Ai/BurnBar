@@ -68,6 +68,7 @@ struct ElderWandToolLoop: Sendable {
         systemPrompt: String?,
         userMessagesJSON: Data,
         maxToolCalls: Int,
+        maxTokens: Int? = nil,
         chat: ElderWandChatTurn
     ) async throws -> ElderWandToolLoopResult {
         var messages: [[String: Any]] = []
@@ -102,6 +103,9 @@ struct ElderWandToolLoop: Sendable {
                 "stream": false,
                 "messages": messages
             ]
+            if let maxTokens {
+                body["max_tokens"] = maxTokens
+            }
             if totalToolCalls < budget, !toolSchemas.isEmpty {
                 body["tools"] = toolSchemas
                 body["tool_choice"] = "auto"
@@ -159,12 +163,15 @@ struct ElderWandToolLoop: Sendable {
         // Iteration ceiling hit without a tool-free turn: do one final
         // tool-less completion so we always return real model text.
         try Task.checkCancellation()
-        let finalBody: [String: Any] = [
+        var finalBody: [String: Any] = [
             "model": model,
             "stream": false,
             "messages": messages,
             "tool_choice": "none"
         ]
+        if let maxTokens {
+            finalBody["max_tokens"] = maxTokens
+        }
         let finalData = (try? JSONSerialization.data(withJSONObject: finalBody, options: [])) ?? Data("{}".utf8)
         let finalResponse = try await chat(finalData)
         accumulated.add(finalResponse.usage)

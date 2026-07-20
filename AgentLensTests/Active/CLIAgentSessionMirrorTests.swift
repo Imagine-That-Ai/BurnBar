@@ -1201,16 +1201,60 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         ))
         XCTAssertNil(CLIAgentMissionRuntimePlanner.directLaunchPlan(
             title: "Codex native chat",
-            prompt: "Codex should route through visible terminal for CLI mode.",
+            prompt: "Continue the interactive mobile chat.",
             backend: CLIAgentMissionBackend(chatBackend: .codex),
-            data: [:]
+            data: ["source": "ios-chat", "missionKind": "chat"]
         ))
         XCTAssertNil(CLIAgentMissionRuntimePlanner.directLaunchPlan(
             title: "Claude native chat",
-            prompt: "Claude should route through visible terminal for CLI mode.",
+            prompt: "Continue the interactive mobile chat.",
             backend: CLIAgentMissionBackend(chatBackend: .claude),
-            data: [:]
+            data: ["source": "ios-chat", "missionKind": "chat"]
         ))
+    }
+
+    func test_missionRuntimePlanner_routesApprovedWandClaudeAndCodexMissionsDirectly() throws {
+        let expectedReply = "PARETO_READY_REGRESSION"
+        let data: [String: Any] = [
+            "source": "ios-insights",
+            "missionKind": "diligence",
+            "approvalMode": "existing_policy",
+            "commandsAllowed": false,
+            "fileEditsAllowed": false
+        ]
+
+        let codexPlan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Pareto regression · codex",
+            prompt: "Reply with exactly \(expectedReply).",
+            backend: CLIAgentMissionBackend(chatBackend: .codex),
+            data: data
+        ))
+        XCTAssertEqual(codexPlan.executableName, "codex")
+        XCTAssertTrue(codexPlan.arguments.contains("--json"))
+        XCTAssertTrue(codexPlan.arguments.contains("read-only"))
+        XCTAssertTrue(codexPlan.arguments.joined(separator: "\n").contains(expectedReply))
+        XCTAssertFalse(codexPlan.arguments.joined(separator: "\n").contains("<UNTRUSTED_CONTENT"))
+
+        let claudePlan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Pareto regression · claude",
+            prompt: "Reply with exactly \(expectedReply).",
+            backend: CLIAgentMissionBackend(chatBackend: .claude),
+            data: data
+        ))
+        XCTAssertEqual(claudePlan.executableName, "claude")
+        XCTAssertTrue(claudePlan.arguments.contains("stream-json"))
+        XCTAssertTrue(claudePlan.arguments.joined(separator: "\n").contains(expectedReply))
+        XCTAssertFalse(claudePlan.arguments.joined(separator: "\n").contains("<UNTRUSTED_CONTENT"))
+    }
+
+    func test_directCLIStreamMirror_extractsFinalCodexReplyFromRealJSONLShape() throws {
+        let mirror = DirectCLIStreamMirror()
+        let expectedReply = "PARETO_READY_REGRESSION"
+        let event = try XCTUnwrap(mirror.parseJSONLine(#"{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"PARETO_READY_REGRESSION"}}"#))
+
+        XCTAssertEqual(event.kind, "llm_response")
+        XCTAssertEqual(event.message, expectedReply)
+        XCTAssertEqual(mirror.finalOutputSnapshot(fallback: "raw-json-fallback"), expectedReply)
     }
 }
 

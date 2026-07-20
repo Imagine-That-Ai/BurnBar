@@ -12,6 +12,7 @@ struct GatewayUpstreamRequest: Hashable {
     let userAgent: String?
     let xApp: String?
     let directBrowserAccess: String?
+    let timeoutInterval: TimeInterval
 }
 
 final class GatewayUpstreamURLProtocol: URLProtocol {
@@ -121,7 +122,8 @@ final class GatewayUpstreamURLProtocol: URLProtocol {
                     anthropicBillingHeader: request.value(forHTTPHeaderField: "x-anthropic-billing-header"),
                     userAgent: request.value(forHTTPHeaderField: "User-Agent"),
                     xApp: request.value(forHTTPHeaderField: "x-app"),
-                    directBrowserAccess: request.value(forHTTPHeaderField: "anthropic-dangerous-direct-browser-access")
+                    directBrowserAccess: request.value(forHTTPHeaderField: "anthropic-dangerous-direct-browser-access"),
+                    timeoutInterval: request.timeoutInterval
                 )
             )
         }

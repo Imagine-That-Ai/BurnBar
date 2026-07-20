@@ -137,6 +137,146 @@ final class HermesRelayAuthenticatedRequestOpenerTests: XCTestCase {
         )
     }
 
+    func testAcceptsUniqueOutOfOrderCountersInsideReplayWindowAndStillRejectsReplays() async throws {
+        let recipient = HermesRelayCrypto.generatePrivateKey()
+        let sender = HermesRelayCrypto.generatePrivateKey()
+        let opener = makeOpener(pinnedSenderPublicKey: sender.publicKeyBase64)
+        let later = try makePayload(
+            recipient: recipient,
+            sender: sender,
+            requestID: "request-73",
+            counter: 73
+        )
+        let earlier = try makePayload(
+            recipient: recipient,
+            sender: sender,
+            requestID: "request-72",
+            counter: 72
+        )
+
+        _ = try await opener.open(
+            payload: later,
+            uid: "uid-1",
+            connectionID: "connection-1",
+            requestID: "request-73",
+            operation: .cliAgentChat,
+            recipientPrivateKey: recipient
+        )
+        _ = try await opener.open(
+            payload: earlier,
+            uid: "uid-1",
+            connectionID: "connection-1",
+            requestID: "request-72",
+            operation: .cliAgentChat,
+            recipientPrivateKey: recipient
+        )
+
+        try await assertRelayRejects(
+            opener: opener,
+            payload: later,
+            recipient: recipient,
+            requestID: "request-73",
+            reason: .senderReplay
+        )
+        let reusedCounter = try makePayload(
+            recipient: recipient,
+            sender: sender,
+            requestID: "request-72-reused",
+            counter: 72
+        )
+        try await assertRelayRejects(
+            opener: opener,
+            payload: reusedCounter,
+            recipient: recipient,
+            requestID: "request-72-reused",
+            reason: .senderReplay
+        )
+    }
+
+    func testRejectsUnseenCounterOutsideReplayWindow() async throws {
+        let recipient = HermesRelayCrypto.generatePrivateKey()
+        let sender = HermesRelayCrypto.generatePrivateKey()
+        let opener = makeOpener(pinnedSenderPublicKey: sender.publicKeyBase64)
+        let newest = try makePayload(
+            recipient: recipient,
+            sender: sender,
+            requestID: "request-100",
+            counter: 100
+        )
+        _ = try await opener.open(
+            payload: newest,
+            uid: "uid-1",
+            connectionID: "connection-1",
+            requestID: "request-100",
+            operation: .cliAgentChat,
+            recipientPrivateKey: recipient
+        )
+
+        let tooOld = try makePayload(
+            recipient: recipient,
+            sender: sender,
+            requestID: "request-36",
+            counter: 36
+        )
+        try await assertRelayRejects(
+            opener: opener,
+            payload: tooOld,
+            recipient: recipient,
+            requestID: "request-36",
+            reason: .senderReplay
+        )
+    }
+
+    func testLegacyPersistedHighWaterMarkMigratesWithoutReopeningOldCounters() async throws {
+        let persistenceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hermes-relay-replay-legacy-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: persistenceURL) }
+
+        let legacySender = HermesRelayAuthenticatedSender(
+            publicKeyBase64: "sender-public-key",
+            deviceID: "phone-1",
+            peerNodeID: "node-1",
+            counter: 73,
+            keyID: "relay-sender-key-1"
+        )
+        let legacyState = LegacyReplayPersistentState(
+            senders: [
+                replayScopeKey(sender: legacySender): LegacyReplaySenderState(
+                    maxCounter: 73,
+                    requestIDs: ["legacy-request": Date(timeIntervalSinceReferenceDate: 1)]
+                )
+            ]
+        )
+        try JSONEncoder().encode(legacyState).write(to: persistenceURL, options: [.atomic])
+
+        let cache = HermesRelayReplayCache(
+            persistenceURL: persistenceURL,
+            now: { Date(timeIntervalSinceReferenceDate: 100) }
+        )
+        try await assertReplayCacheRejects(cache: cache, sender: legacySender, requestID: "reused-73")
+        var olderSender = legacySender
+        olderSender.counter = 72
+        try await assertReplayCacheRejects(cache: cache, sender: olderSender, requestID: "reused-72")
+
+        var counter75 = legacySender
+        counter75.counter = 75
+        try await cache.recordFresh(
+            uid: "uid-1",
+            connectionID: "connection-1",
+            requestID: "request-75",
+            sender: counter75
+        )
+        var counter74 = legacySender
+        counter74.counter = 74
+        try await cache.recordFresh(
+            uid: "uid-1",
+            connectionID: "connection-1",
+            requestID: "request-74",
+            sender: counter74
+        )
+        try await assertReplayCacheRejects(cache: cache, sender: counter74, requestID: "reused-74")
+    }
+
     func testRejectsUnverifiedSignalIdentity() async throws {
         let recipient = HermesRelayCrypto.generatePrivateKey()
         let sender = HermesRelayCrypto.generatePrivateKey()
@@ -251,6 +391,41 @@ final class HermesRelayAuthenticatedRequestOpenerTests: XCTestCase {
             XCTAssertEqual(actual, reason, file: file, line: line)
         }
     }
+
+    private func assertReplayCacheRejects(
+        cache: HermesRelayReplayCache,
+        sender: HermesRelayAuthenticatedSender,
+        requestID: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        do {
+            try await cache.recordFresh(
+                uid: "uid-1",
+                connectionID: "connection-1",
+                requestID: requestID,
+                sender: sender
+            )
+            XCTFail("Expected persisted replay state to reject the counter.", file: file, line: line)
+        } catch HermesRelayAuthenticatedRequestError.rejected(let reason) {
+            XCTAssertEqual(reason, .senderReplay, file: file, line: line)
+        }
+    }
+
+    private func replayScopeKey(sender: HermesRelayAuthenticatedSender) -> String {
+        ["uid-1", "connection-1", sender.deviceID, sender.peerNodeID, sender.keyID]
+            .map { Data($0.utf8).base64EncodedString() }
+            .joined(separator: ".")
+    }
+}
+
+private struct LegacyReplaySenderState: Codable {
+    var maxCounter: Int64
+    var requestIDs: [String: Date]
+}
+
+private struct LegacyReplayPersistentState: Codable {
+    var senders: [String: LegacyReplaySenderState]
 }
 
 private struct StaticRelaySenderTrustResolver: HermesRelaySenderTrustResolving {

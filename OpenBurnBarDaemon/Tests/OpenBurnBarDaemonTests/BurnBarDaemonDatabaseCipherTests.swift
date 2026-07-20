@@ -13,6 +13,31 @@ final class BurnBarDaemonDatabaseCipherTests: XCTestCase {
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     private static let testEncryptionKey = "daemon-test-" + String(repeating: "a", count: 32)
 
+    func test_releaseDaemonSigningSharesAppDesignatedRequirementWithoutRestrictedEntitlements() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let project = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("project.yml"),
+            encoding: .utf8
+        )
+        let targetStart = try XCTUnwrap(project.range(of: "  OpenBurnBarDaemonExecutable:\n"))
+        let remaining = project[targetStart.upperBound...]
+        let targetEnd = try XCTUnwrap(remaining.range(of: "\n  OpenBurnBarPrivilegedInputExecution:"))
+        let target = String(remaining[..<targetEnd.lowerBound])
+
+        XCTAssertTrue(
+            target.contains("OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.app --options runtime,library"),
+            "The daemon must share the app designated requirement so the ordinary Keychain ACL admits both."
+        )
+        XCTAssertFalse(
+            target.contains("CODE_SIGN_ENTITLEMENTS"),
+            "A restricted entitlement on the bare daemon is invalid and causes a pre-main SIGKILL."
+        )
+    }
+
     // MARK: - Plaintext vs Encrypted File Detection (no key required)
 
     func test_plaintextDetection_onFreshSQLiteFile() throws {

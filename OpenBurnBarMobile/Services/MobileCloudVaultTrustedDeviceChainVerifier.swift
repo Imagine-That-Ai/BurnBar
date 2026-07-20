@@ -3,8 +3,9 @@ import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
+import OSLog
 
-struct MobileCloudVaultVerifiedTrustedDevice {
+struct MobileCloudVaultVerifiedTrustedDevice: Sendable {
     let deviceId: String
     let keyVersion: Int
     let escrowPublicKeyFingerprint: String
@@ -38,16 +39,127 @@ enum MobileCloudVaultTrustChainVerificationError: LocalizedError {
 }
 
 enum MobileCloudVaultTrustedDeviceChainVerifier {
+    @MainActor
+    private static let verificationCache = MobileCloudVaultTrustedDeviceVerificationCache()
+    private static let logger = Logger(
+        subsystem: "com.openburnbar.app",
+        category: "cloud-vault-trust"
+    )
+
+    static func boundDeviceID(documentID: String, data: [String: Any]) throws -> String {
+        let normalizedDocumentID = documentID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedDocumentID.isEmpty else {
+            throw MobileCloudVaultTrustChainVerificationError.invalidTrustedDevice(deviceId: documentID)
+        }
+
+        if let storedDeviceID = data["deviceId"] as? String {
+            guard storedDeviceID.trimmingCharacters(in: .whitespacesAndNewlines) == normalizedDocumentID else {
+                throw MobileCloudVaultTrustChainVerificationError.invalidTrustedDevice(deviceId: documentID)
+            }
+        }
+        return normalizedDocumentID
+    }
+
+    @MainActor
+    static func retainingCryptographicallyValidDevices<Source>(
+        _ sources: [Source],
+        verify: @MainActor (Source) async throws -> MobileCloudVaultVerifiedTrustedDevice,
+        onRejected: @MainActor (Source, MobileCloudVaultTrustChainVerificationError) -> Void = { _, _ in }
+    ) async throws -> [MobileCloudVaultVerifiedTrustedDevice] {
+        var verified: [MobileCloudVaultVerifiedTrustedDevice] = []
+        verified.reserveCapacity(sources.count)
+        for source in sources {
+            do {
+                verified.append(try await verify(source))
+            } catch let error as MobileCloudVaultTrustChainVerificationError {
+                onRejected(source, error)
+            } catch {
+                throw error
+            }
+        }
+        return verified
+    }
+
+    @MainActor
+    static func verifiedTrustedDevices(
+        uid: String,
+        userRef: DocumentReference,
+        deviceDocuments: [QueryDocumentSnapshot],
+        localIdentity: OpenBurnBarSignalIdentityKeypair
+    ) async throws -> [MobileCloudVaultVerifiedTrustedDevice] {
+        let cacheKey = MobileCloudVaultTrustedDeviceVerificationCache.Key(
+            uid: uid,
+            localIdentityKeyID: localIdentity.identityKeyId,
+            localIdentityFingerprint: localIdentity.publicKeyFingerprint,
+            trustSnapshotDigest: trustSnapshotDigest(deviceDocuments)
+        )
+        return try await verificationCache.value(for: cacheKey) {
+            try await retainingCryptographicallyValidDevices(
+                deviceDocuments,
+                verify: { document in
+                    try await verifiedTrustedDevice(
+                        uid: uid,
+                        userRef: userRef,
+                        deviceDocument: document,
+                        localIdentity: localIdentity
+                    )
+                },
+                onRejected: { document, error in
+                    logger.error(
+                        "Ignoring unverified legacy trusted-device record id=\(document.documentID, privacy: .private(mask: .hash)) error=\(error.localizedDescription, privacy: .public)"
+                    )
+                }
+            )
+        }
+    }
+
+    private static func trustSnapshotDigest(_ documents: [QueryDocumentSnapshot]) -> String {
+        let fields = [
+            "deviceId",
+            "trustState",
+            "keyVersion",
+            "publicKeyFingerprint",
+            "trustChainVersion",
+            "trustChainAlgorithm",
+            "targetSignalIdentityKeyId",
+            "targetSignalIdentityPublicKeyFingerprint",
+            "approvedByDeviceId",
+            "approvedBySignalIdentityKeyId",
+            "approvedBySignalIdentityPublicKeyFingerprint",
+            "trustChainSignature"
+        ]
+        let canonical = documents
+            .sorted { $0.documentID < $1.documentID }
+            .map { document in
+                let data = document.data()
+                let values = fields.map { field -> String in
+                    if let value = data[field] as? String { return value }
+                    if let value = data[field] as? Int { return String(value) }
+                    if let value = data[field] as? NSNumber { return value.stringValue }
+                    return ""
+                }
+                return ([document.documentID] + values)
+                    .map { "\(Data($0.utf8).count):\($0)" }
+                    .joined(separator: "|")
+            }
+            .joined(separator: "\n")
+        return Data(SHA256.hash(data: Data(canonical.utf8))).base64EncodedString()
+    }
+
     static func verifiedTrustedDevice(
         uid: String,
         userRef: DocumentReference,
         deviceDocument: QueryDocumentSnapshot,
         localIdentity: OpenBurnBarSignalIdentityKeypair
     ) async throws -> MobileCloudVaultVerifiedTrustedDevice {
-        try await verifiedTrustedDevice(
+        let deviceID = try boundDeviceID(
+            documentID: deviceDocument.documentID,
+            data: deviceDocument.data()
+        )
+        return try await verifiedTrustedDevice(
             uid: uid,
             userRef: userRef,
-            deviceId: (deviceDocument.data()["deviceId"] as? String) ?? deviceDocument.documentID,
+            deviceId: deviceID,
             localIdentity: localIdentity,
             visited: []
         )
@@ -188,5 +300,59 @@ enum MobileCloudVaultTrustedDeviceChainVerifier {
             throw MobileCloudVaultTrustChainVerificationError.invalidTrustChain(deviceId: deviceId)
         }
         return verified
+    }
+}
+
+@MainActor
+final class MobileCloudVaultTrustedDeviceVerificationCache {
+    struct Key: Hashable, Sendable {
+        let uid: String
+        let localIdentityKeyID: String
+        let localIdentityFingerprint: String
+        let trustSnapshotDigest: String
+    }
+
+    private struct Entry {
+        let devices: [MobileCloudVaultVerifiedTrustedDevice]
+        let expiresAt: Date
+    }
+
+    private let ttl: TimeInterval
+    private var completed: [Key: Entry] = [:]
+    private var inFlight: [Key: Task<[MobileCloudVaultVerifiedTrustedDevice], Error>] = [:]
+
+    init(ttl: TimeInterval = 60) {
+        self.ttl = ttl
+    }
+
+    func value(
+        for key: Key,
+        now: Date = Date(),
+        loader: @escaping @MainActor () async throws -> [MobileCloudVaultVerifiedTrustedDevice]
+    ) async throws -> [MobileCloudVaultVerifiedTrustedDevice] {
+        completed = completed.filter { $0.value.expiresAt > now }
+        if let entry = completed[key] {
+            return entry.devices
+        }
+        if let task = inFlight[key] {
+            return try await task.value
+        }
+
+        let task = Task { @MainActor in
+            try await loader()
+        }
+        inFlight[key] = task
+        do {
+            let devices = try await task.value
+            inFlight[key] = nil
+            completed[key] = Entry(
+                devices: devices,
+                expiresAt: Date().addingTimeInterval(ttl)
+            )
+            return devices
+        } catch {
+            inFlight[key] = nil
+            throw error
+        }
     }
 }

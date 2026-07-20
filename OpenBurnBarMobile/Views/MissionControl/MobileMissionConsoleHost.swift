@@ -28,6 +28,8 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
     private let firestoreProvider: () -> Firestore
     private var authHandle: AuthStateDidChangeListenerHandle?
     private var listRegistration: ListenerRegistration?
+    private var listSetupTask: Task<Void, Never>?
+    private var listListenerGeneration = 0
     private var observations: [String: CLIAgentMissionObservation] = [:]
     private var observedMissions: [String: CLIAgentMissionSnapshot] = [:]
     private var observedOrder: [String] = []   // most-recent first
@@ -52,6 +54,9 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
     /// scoped to a transient surface. The root host lives for the app's
     /// lifetime so this is normally unused.
     func stop() {
+        listListenerGeneration &+= 1
+        listSetupTask?.cancel()
+        listSetupTask = nil
         listRegistration?.remove()
         listRegistration = nil
         observations.values.forEach { $0.cancel() }
@@ -180,6 +185,10 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
     // MARK: Firestore list
 
     private func restartListListener(uid: String?) {
+        listListenerGeneration &+= 1
+        let generation = listListenerGeneration
+        listSetupTask?.cancel()
+        listSetupTask = nil
         listRegistration?.remove()
         listRegistration = nil
         observations.values.forEach { $0.cancel() }
@@ -191,23 +200,88 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
             rebuildSnapshot()
             return
         }
-        listRegistration = firestoreProvider()
+
+        let firestore = firestoreProvider()
+        listSetupTask = Task { [weak self] in
+            guard let self else { return }
+            let resolvedKey: MobileCloudVaultResolvedKey?
+            do {
+                resolvedKey = try await MobileCloudVaultKeyAccess.keyForReading(
+                    uid: uid,
+                    firestore: firestore
+                )
+            } catch {
+                resolvedKey = nil
+                inlineError = error.localizedDescription
+            }
+
+            guard !Task.isCancelled, generation == listListenerGeneration else { return }
+            installListListener(
+                uid: uid,
+                firestore: firestore,
+                resolvedKey: resolvedKey,
+                generation: generation
+            )
+            listSetupTask = nil
+        }
+    }
+
+    private func installListListener(
+        uid: String,
+        firestore: Firestore,
+        resolvedKey: MobileCloudVaultResolvedKey?,
+        generation: Int
+    ) {
+        listRegistration = firestore
             .collection("users").document(uid)
             .collection("cli_agent_mission_requests")
             .order(by: "createdAt", descending: true)
             .limit(to: 12)
             .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor in
+                    guard let self, generation == self.listListenerGeneration else { return }
                     if let error {
-                        self?.inlineError = error.localizedDescription
+                        self.inlineError = error.localizedDescription
                         return
                     }
-                    let missions = snapshot?.documents.compactMap {
-                        CLIAgentMissionSnapshot(documentID: $0.documentID, data: $0.data())
+                    let documents = snapshot?.documents.map {
+                        (documentID: $0.documentID, data: $0.data())
                     } ?? []
-                    self?.absorb(missions)
+                    self.absorbMissionDocuments(
+                        documents,
+                        uid: uid,
+                        resolvedKey: resolvedKey
+                    )
                 }
             }
+    }
+
+    /// Decodes the same sealed list payload used by the Firestore listener.
+    /// Internal visibility keeps the privacy boundary regression-testable.
+    func absorbMissionDocuments(
+        _ documents: [(documentID: String, data: [String: Any])],
+        uid: String,
+        resolvedKey: MobileCloudVaultResolvedKey?
+    ) {
+        let missions = documents.compactMap { document in
+            CLIAgentMissionSnapshot(
+                documentID: document.documentID,
+                data: document.data,
+                vaultKey: resolvedKey?.keyData,
+                signalIdentity: resolvedKey?.signalIdentity,
+                uid: uid
+            )
+        }
+
+        let unreadableCount = documents.count - missions.count
+        if unreadableCount > 0 {
+            inlineError = resolvedKey == nil
+                ? "This device can't open encrypted mission history yet. Approve it from a trusted device, then retry."
+                : "\(unreadableCount) mission\(unreadableCount == 1 ? "" : "s") couldn't be opened."
+        } else {
+            inlineError = nil
+        }
+        absorb(missions)
     }
 
     private func absorb(_ missions: [CLIAgentMissionSnapshot]) {
