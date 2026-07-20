@@ -142,6 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
         installStatusItem()
         installPopoverPrewarming()
+        guard OpenBurnBarRuntime.shouldStartBackgroundApplicationServices else { return }
 #if !DISTRIBUTION_MAS
         DirectDownloadUpdateChecker.shared.startAutomaticChecks()
 #endif
