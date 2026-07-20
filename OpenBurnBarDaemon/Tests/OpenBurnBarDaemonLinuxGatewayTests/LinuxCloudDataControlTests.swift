@@ -153,7 +153,8 @@ final class LinuxCloudDataControlTests: XCTestCase {
             XCTFail("expired token must fail closed")
         } catch let error as LinuxCloudAuthHTTPError {
             guard case let .rejected(stage, status, reason) = error else {
-                return XCTFail("unexpected error: \(error)")
+                XCTFail("unexpected error: \(error)")
+                return
             }
             XCTAssertEqual(stage, "data_export")
             XCTAssertEqual(status, 401)

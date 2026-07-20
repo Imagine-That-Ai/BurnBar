@@ -80,7 +80,7 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
                 .portalConsentRequired("remote_desktop_portal_requires_user_consent")
             )
         }
-        XCTAssertFalse(recorder.lastArguments?.contains(secret) == true)
+        XCTAssertNotEqual(recorder.lastArguments?.contains(secret), true)
         let encoded = try JSONEncoder().encode(adapter.waylandPortalCapability())
         XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains(secret))
     }
@@ -497,7 +497,7 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
             .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/select',)"),
             .init(exitCode: 0, stdout: "signal member=Response\n   uint32 0\n"),
             .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/start',)"),
-            .init(exitCode: 0, stdout: "signal member=Response\n   uint32 0\n   details=\(secret)"),
+            .init(exitCode: 0, stdout: "signal member=Response\n   uint32 0\n   details=\(secret)")
         ])
         let adapter = makeWaylandPortalAdapter(script: script, sessionTimeoutMillis: 222)
 
@@ -536,7 +536,7 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
         let secret = "private-window-title"
         let script = PortalCommandScript(results: [
             .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/create',)"),
-            .init(exitCode: 0, stdout: "signal member=Response\n   uint32 1\n   detail=\(secret)"),
+            .init(exitCode: 0, stdout: "signal member=Response\n   uint32 1\n   detail=\(secret)")
         ])
         let adapter = makeWaylandPortalAdapter(script: script)
 
@@ -553,7 +553,7 @@ final class LinuxComputerUseInputAdapterTests: XCTestCase {
     func testRemoteDesktopSessionTimeoutDoesNotClaimConsent() async throws {
         let script = PortalCommandScript(results: [
             .init(exitCode: 0, stdout: "(objectpath '/org/freedesktop/portal/desktop/request/create',)"),
-            .init(exitCode: 124),
+            .init(exitCode: 124)
         ])
         let adapter = makeWaylandPortalAdapter(script: script, sessionTimeoutMillis: 333)
 

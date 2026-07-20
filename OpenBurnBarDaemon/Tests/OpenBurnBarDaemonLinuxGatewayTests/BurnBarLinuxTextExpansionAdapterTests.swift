@@ -239,7 +239,13 @@ final class BurnBarLinuxTextExpansionAdapterTests: XCTestCase {
     }
 
     func testExternalEngineRuntimeHandshakeStatusAndStop() async throws {
-        let script = try makeRuntimeScript(handshake: "{\"protocol\":\"openburnbar.text-expansion\",\"protocolVersion\":1,\"engineID\":\"openburnbar.test.engine\",\"noGlobalCapture\":true,\"readsClipboard\":false,\"readsSurroundingText\":false,\"secureFieldPolicy\":\"deny-unless-inspectable-and-explicitly-nonsecure\"}")
+        let handshake = [
+            "{\"protocol\":\"openburnbar.text-expansion\",\"protocolVersion\":1,",
+            "\"engineID\":\"openburnbar.test.engine\",\"noGlobalCapture\":true,",
+            "\"readsClipboard\":false,\"readsSurroundingText\":false,",
+            "\"secureFieldPolicy\":\"deny-unless-inspectable-and-explicitly-nonsecure\"}"
+        ].joined()
+        let script = try makeRuntimeScript(handshake: handshake)
         defer { try? FileManager.default.removeItem(at: script.deletingLastPathComponent()) }
 
         let manifest = makeManifest(

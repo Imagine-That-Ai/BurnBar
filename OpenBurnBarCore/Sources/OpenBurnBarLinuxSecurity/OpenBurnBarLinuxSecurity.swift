@@ -920,7 +920,12 @@ public struct LinuxTelemetryRedactor: Sendable {
         // JSON payload such as {"apiKey":"…"} could leak through unchanged.
         let replacements: [(pattern: String, template: String)] = [
             (
-                #"(?i)([\"']?(?:token|refresh[_-]?token|access[_-]?token|id[_-]?token|auth[_-]?token|cookie|authorization|api[_-]?key|api[_-]?secret|client[_-]?secret|secret(?:[_-]?key)?|private[_-]?key|password|passcode|passphrase|credential|session[_-]?id|prompt|message|body|content|snippet|vault|mnemonic|recovery|address|phone|uid|user[_-]?id)[\"']?\s*[:=]\s*)(?:\"(?:\\.|[^\"\\\r\n])*\"|'(?:\\.|[^'\\\r\n])*'|[^\s,;}\]]+)"#,
+                [
+                    #"(?i)([\"']?(?:token|refresh[_-]?token|access[_-]?token|id[_-]?token|auth[_-]?token|cookie|authorization|"#,
+                    #"api[_-]?key|api[_-]?secret|client[_-]?secret|secret(?:[_-]?key)?|private[_-]?key|password|passcode|"#,
+                    #"passphrase|credential|session[_-]?id|prompt|message|body|content|snippet|vault|mnemonic|recovery|"#,
+                    #"address|phone|uid|user[_-]?id)[\"']?\s*[:=]\s*)(?:\"(?:\\.|[^\"\\\r\n])*\"|'(?:\\.|[^'\\\r\n])*'|[^\s,;}\]]+)"#
+                ].joined(),
                 "$1[REDACTED]"
             ),
             (#"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}"#, "Bearer [REDACTED]"),

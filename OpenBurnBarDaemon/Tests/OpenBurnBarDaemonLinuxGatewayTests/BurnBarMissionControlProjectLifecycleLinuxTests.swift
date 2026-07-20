@@ -67,7 +67,8 @@ final class BurnBarMissionControlProjectLifecycleLinuxTests: XCTestCase {
             XCTFail("a deleted stable project ID must not be silently reused")
         } catch let error as BurnBarMissionControlError {
             guard case .projectDeleted("stable-apollo") = error else {
-                return XCTFail("unexpected stable-ID tombstone error: \(error)")
+                XCTFail("unexpected stable-ID tombstone error: \(error)")
+                return
             }
         }
 
@@ -84,7 +85,8 @@ final class BurnBarMissionControlProjectLifecycleLinuxTests: XCTestCase {
             XCTFail("a deleted project alias must not be silently reused")
         } catch let error as BurnBarMissionControlError {
             guard case .projectDeleted("legacy-apollo") = error else {
-                return XCTFail("unexpected alias tombstone error: \(error)")
+                XCTFail("unexpected alias tombstone error: \(error)")
+                return
             }
         }
     }

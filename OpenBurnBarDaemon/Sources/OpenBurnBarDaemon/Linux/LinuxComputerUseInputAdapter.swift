@@ -1133,10 +1133,8 @@ public struct LinuxComputerUseInputAdapter: Sendable {
             return nil
         }
         let responseOutput = output[responseRange.upperBound...]
-        for code: UInt32 in 0...2 {
-            if responseOutput.contains("uint32 \(code)") {
-                return code
-            }
+        for code: UInt32 in 0...2 where responseOutput.contains("uint32 \(code)") {
+            return code
         }
         return nil
     }

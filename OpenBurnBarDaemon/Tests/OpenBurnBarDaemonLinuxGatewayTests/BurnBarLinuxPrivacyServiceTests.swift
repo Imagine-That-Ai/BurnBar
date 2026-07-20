@@ -221,8 +221,8 @@ final class BurnBarLinuxPrivacyServiceTests: XCTestCase {
         let service = BurnBarLinuxPrivacyService(supportDirectory: directory)
         let initial = try await service.retentionStatus(now: now)
         XCTAssertEqual(initial.policyState, .defaults)
-        XCTAssertTrue(initial.stores.first(where: { $0.store == .proxyRouteLog })?.wouldPurge == true)
-        XCTAssertTrue(initial.stores.first(where: { $0.store == .textExpansionStore })?.wouldPurge == true)
+        XCTAssertEqual(initial.stores.first(where: { $0.store == .proxyRouteLog })?.wouldPurge, true)
+        XCTAssertEqual(initial.stores.first(where: { $0.store == .textExpansionStore })?.wouldPurge, true)
 
         let response = try await service.applyRetention(
             BurnBarLinuxPrivacyRetentionApplyRequest(

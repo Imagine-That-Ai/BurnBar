@@ -57,11 +57,11 @@ public enum BurnBarLinuxDeviceAdapters {
         var error: String?
     }
 
+    // AUDIT(@unchecked Sendable): every mutable field is guarded by `lock`.
+    // sendable-allowlist: internal-lock-snapshot-store
     /// `DispatchQueue` reads the pipe while the child is running. Without a
     /// concurrent reader, a noisy Avahi process can fill the POSIX pipe and
     /// make `waitUntilExit()` hang forever before the timeout is reached.
-    // AUDIT(@unchecked Sendable): every mutable field is guarded by `lock`.
-    // sendable-allowlist: internal-lock-snapshot-store
     private final class AvahiOutputBox: @unchecked Sendable {
         private let lock = NSLock()
         private var value = Data()

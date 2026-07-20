@@ -443,7 +443,7 @@ public actor BurnBarLinuxPrivacyService {
                     }
                     kept = try trimRouteEntries(kept, maxBytes: rule.maxBytes)
                     let rewritten = try encodedRouteEntries(kept)
-                    if rewritten.count == 0 {
+                    if rewritten.isEmpty {
                         guard unlink(path.path) == 0 else { throw ServiceError.retentionApplyFailed }
                     } else {
                         let current = try Data(contentsOf: path)

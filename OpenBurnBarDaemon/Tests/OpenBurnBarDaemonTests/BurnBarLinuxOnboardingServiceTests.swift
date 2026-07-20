@@ -306,10 +306,11 @@ final class BurnBarLinuxOnboardingServiceTests: XCTestCase {
             blocked.steps.first(where: { $0.id == .providerPaths })?.state,
             .blocked
         )
-        XCTAssertTrue(
+        XCTAssertEqual(
             blocked.steps.first(where: { $0.id == .providerPaths })?.detail?.contains(
                 "bundled provider catalog is empty"
-            ) == true
+            ),
+            true
         )
         XCTAssertFalse(blocked.completed)
 
@@ -329,7 +330,7 @@ final class BurnBarLinuxOnboardingServiceTests: XCTestCase {
             verified.steps.first(where: { $0.id == .providerPaths })
         )
         XCTAssertEqual(providerStep.state, .verified)
-        XCTAssertTrue(providerStep.detail?.contains("provider definitions") == true)
+        XCTAssertEqual(providerStep.detail?.contains("provider definitions"), true)
         XCTAssertEqual(verified.currentStepID, .cloudIdentity)
     }
 

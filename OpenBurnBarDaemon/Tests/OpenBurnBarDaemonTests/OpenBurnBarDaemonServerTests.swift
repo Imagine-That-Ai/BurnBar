@@ -6,7 +6,6 @@ import Foundation
 import SQLite3
 import XCTest
 
-
 final class BurnBarDaemonServerTests: XCTestCase {
     func testDaemonBootsRespondsToHealthAndCleansUpSocketOnShutdown() async throws {
         let socketPath = makeSocketPath(name: "health")
@@ -1215,7 +1214,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
         )
         XCTAssertEqual(invalidResponse.id, "usage-record-invalid")
         XCTAssertEqual(invalidResponse.error?.code, BurnBarRPCErrorCode.invalidParams)
-        XCTAssertTrue(invalidResponse.error?.message.contains("inputTokens must be nonnegative") == true)
+        XCTAssertEqual(invalidResponse.error?.message.contains("inputTokens must be nonnegative"), true)
         let recordsAfterInvalidRequest = try await usageRecorder.records()
         XCTAssertEqual(recordsAfterInvalidRequest.count, 1)
 
@@ -1333,11 +1332,11 @@ final class BurnBarDaemonServerTests: XCTestCase {
         )
 
         XCTAssertNil(response.error)
-        XCTAssertTrue(response.result?.historyComplete == true)
+        XCTAssertEqual(response.result?.historyComplete, true)
         XCTAssertNil(response.result?.nextCursor)
         XCTAssertEqual(response.result?.totalCount, 1)
         XCTAssertEqual(response.result?.sessions.first?.sourceID, "Codex:rpc-history")
-        XCTAssertTrue(response.result?.sessions.first?.bodyMD.contains("Persisted summary") == true)
+        XCTAssertEqual(response.result?.sessions.first?.bodyMD.contains("Persisted summary"), true)
     }
 
     private func makeSocketPath(name: String) -> String {
