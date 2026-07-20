@@ -44,6 +44,7 @@ const EXPECTED_JOB_NAMES = [
   "windows-native-win-x64",
   "windows-native-win-arm64",
   "candidate-bundle",
+  "Domain Core PR Gate",
 ];
 
 function digest(value) {
@@ -184,7 +185,7 @@ function verify(value = bundle(), run = githubRun(), jobs = jobsResponse()) {
 }
 
 test("protected verifier independently accepts only an exact successful main push proof", () => {
-  assert.equal(EXPECTED_JOB_NAMES.length, 16);
+  assert.equal(EXPECTED_JOB_NAMES.length, 17);
   const result = verify();
   assert.equal(result.schemaVersion, 2);
   assert.equal(result.promotionAuthorized, false);

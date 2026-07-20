@@ -26,57 +26,63 @@ internal static class WindowBitmapCapture
             Math.Max(480, initialRect.Bottom - initialRect.Top),
             Math.Max(480, GetSystemMetrics(1) - 60));
         SetWindowPos(hwnd, new IntPtr(-1), 20, 20, visibleWidth, visibleHeight, SetWindowPosShowWindow);
-        System.Threading.Thread.Sleep(250);
-        if (!GetWindowRect(hwnd, out Rect rect))
+        try
         {
-            throw new InvalidOperationException("GetWindowRect failed for the OpenBurnBar window.");
-        }
-
-        int width = Math.Max(1, rect.Right - rect.Left);
-        int height = Math.Max(1, rect.Bottom - rect.Top);
-        using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        bool printWindowSucceeded;
-        using (Graphics graphics = Graphics.FromImage(bitmap))
-        {
-            IntPtr hdc = graphics.GetHdc();
-            try
+            System.Threading.Thread.Sleep(250);
+            if (!GetWindowRect(hwnd, out Rect rect))
             {
-                printWindowSucceeded = PrintWindow(hwnd, hdc, flags: 2);
+                throw new InvalidOperationException("GetWindowRect failed for the OpenBurnBar window.");
             }
-            finally
+
+            int width = Math.Max(1, rect.Right - rect.Left);
+            int height = Math.Max(1, rect.Bottom - rect.Top);
+            using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            bool printWindowSucceeded;
+            using (Graphics graphics = Graphics.FromImage(bitmap))
             {
-                if (hdc != IntPtr.Zero)
+                IntPtr hdc = graphics.GetHdc();
+                try
                 {
-                    graphics.ReleaseHdc(hdc);
+                    printWindowSucceeded = PrintWindow(hwnd, hdc, flags: 2);
+                }
+                finally
+                {
+                    if (hdc != IntPtr.Zero)
+                    {
+                        graphics.ReleaseHdc(hdc);
+                    }
                 }
             }
-        }
 
-        // Composition-backed WinUI surfaces can report PrintWindow success while
-        // returning an empty bitmap. Reject that evidence and capture the actual
-        // interactive desktop instead.
-        if (!printWindowSucceeded || IsNearUniform(bitmap) || !HasLowerBodyDetail(bitmap))
+            // Composition-backed WinUI surfaces can report PrintWindow success while
+            // returning an empty bitmap. Reject that evidence and capture the actual
+            // interactive desktop instead.
+            if (!printWindowSucceeded || IsNearUniform(bitmap) || !HasLowerBodyDetail(bitmap))
+            {
+                using Graphics graphics = Graphics.FromImage(bitmap);
+                graphics.CopyFromScreen(
+                    rect.Left,
+                    rect.Top,
+                    0,
+                    0,
+                    new Size(width, height),
+                    CopyPixelOperation.SourceCopy);
+            }
+
+            if (IsNearUniform(bitmap) || !HasLowerBodyDetail(bitmap))
+            {
+                _ = DwmGetWindowAttribute(hwnd, 14, out int cloaked, sizeof(int));
+                throw new InvalidOperationException(
+                    $"OpenBurnBar window capture remained blank or omitted the routed body after the interactive desktop fallback. " +
+                    $"rect={rect.Left},{rect.Top},{rect.Right},{rect.Bottom} visible={IsWindowVisible(hwnd)} cloaked={cloaked}");
+            }
+
+            bitmap.Save(pngPath, ImageFormat.Png);
+        }
+        finally
         {
-            using Graphics graphics = Graphics.FromImage(bitmap);
-            graphics.CopyFromScreen(
-                rect.Left,
-                rect.Top,
-                0,
-                0,
-                new Size(width, height),
-                CopyPixelOperation.SourceCopy);
+            SetWindowPos(hwnd, new IntPtr(-2), 0, 0, 0, 0, SetWindowPosNoMove | SetWindowPosNoSize);
         }
-
-        if (IsNearUniform(bitmap) || !HasLowerBodyDetail(bitmap))
-        {
-            _ = DwmGetWindowAttribute(hwnd, 14, out int cloaked, sizeof(int));
-            throw new InvalidOperationException(
-                $"OpenBurnBar window capture remained blank or omitted the routed body after the interactive desktop fallback. " +
-                $"rect={rect.Left},{rect.Top},{rect.Right},{rect.Bottom} visible={IsWindowVisible(hwnd)} cloaked={cloaked}");
-        }
-
-        bitmap.Save(pngPath, ImageFormat.Png);
-        SetWindowPos(hwnd, new IntPtr(-2), 0, 0, 0, 0, SetWindowPosNoMove | SetWindowPosNoSize);
     }
 
     private static bool IsNearUniform(Bitmap bitmap)
