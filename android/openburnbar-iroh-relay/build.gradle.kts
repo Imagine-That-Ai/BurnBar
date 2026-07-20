@@ -69,7 +69,7 @@ dependencies {
     testImplementation("org.json:json:20240303")
     // Ed25519 signer for tests only — production code is verify-only.
     testImplementation("net.i2p.crypto:eddsa:0.3.0")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }
 
 // Lint the Android Kotlin sources with ktlint. AGP 9 built-in Kotlin leaves
