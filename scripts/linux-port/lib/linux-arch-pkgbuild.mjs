@@ -262,13 +262,20 @@ export function copyRecordedFile(repoRoot, record, destination) {
   const existingTarget = fs.lstatSync(target, { throwIfNoEntry: false });
   if (existingTarget?.isSymbolicLink()) throw new Error('Arch release destination is a symlink');
   const snapshot = readRecordedSource(repoRoot, record);
-  fs.rmSync(target, { force: true });
-  const descriptor = fs.openSync(target, 'wx', 0o644);
+  const temporary = `${target}.tmp-${process.pid}-${crypto.randomUUID()}`;
+  const descriptor = fs.openSync(temporary, 'wx', 0o644);
+  let renamed = false;
   try {
-    fs.writeFileSync(descriptor, snapshot.bytes);
-    fs.fsyncSync(descriptor);
+    try {
+      fs.writeFileSync(descriptor, snapshot.bytes);
+      fs.fsyncSync(descriptor);
+    } finally {
+      fs.closeSync(descriptor);
+    }
+    fs.renameSync(temporary, target);
+    renamed = true;
   } finally {
-    fs.closeSync(descriptor);
+    if (!renamed) fs.rmSync(temporary, { force: true });
   }
   return fileRecord(target, targetRelative.split(path.sep).join('/'));
 }

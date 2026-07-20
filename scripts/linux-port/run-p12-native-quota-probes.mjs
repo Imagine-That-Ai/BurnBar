@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
+import { readStableRegularFile } from './lib/stable-file.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { verifyInstalledCandidate } from './run-p08-mercury-media-session.mjs';
@@ -39,10 +40,10 @@ function ownerOnlyEmptyDirectory(directory, label) {
 }
 
 function ownerOnlyToken(file, label) {
-  const stat = fs.lstatSync(file);
-  assert(stat.isFile() && !stat.isSymbolicLink() && stat.uid === process.getuid?.() && (stat.mode & 0o077) === 0,
+  const { bytes, stat } = readStableRegularFile(file, label);
+  assert(stat.uid === process.getuid?.() && (stat.mode & 0o077) === 0,
     `${label} must be an owner-only regular file`);
-  const token = fs.readFileSync(file, 'utf8').trim();
+  const token = bytes.toString('utf8').trim();
   assert(token.length >= 32 && !/[\r\n]/u.test(token), `${label} is invalid`);
   return token;
 }

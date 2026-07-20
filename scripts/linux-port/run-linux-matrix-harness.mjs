@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
+import { readStableRegularFile } from './lib/stable-file.mjs';
 import {
   gitInfo,
   readJson,
@@ -139,7 +140,8 @@ function addEvidenceCheck(id, environmentName) {
       addCheck(id, false, `evidence file must be a regular non-symlink file: ${absolute}`);
       return null;
     }
-    const evidence = readJson(absolute);
+    const evidenceBytes = readStableRegularFile(realEvidence, `${id} evidence`).bytes;
+    const evidence = JSON.parse(evidenceBytes.toString('utf8'));
     const validation = validateEnvironmentEvidenceInput(expected, evidence, git.commit);
     const detail = validation.passed
       ? path.relative(repoRoot, absolute)
@@ -147,7 +149,7 @@ function addEvidenceCheck(id, environmentName) {
     addCheck(id, validation.passed, detail);
     return {
       path: relative.split(path.sep).join('/'),
-      sha256: crypto.createHash('sha256').update(fs.readFileSync(realEvidence)).digest('hex'),
+      sha256: crypto.createHash('sha256').update(evidenceBytes).digest('hex'),
       passed: validation.passed,
       commit: validation.commit
     };

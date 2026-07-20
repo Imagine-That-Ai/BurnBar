@@ -2,6 +2,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { readStableRegularFile } from './lib/stable-file.mjs';
 import { readJson, releaseEvidenceDir, repoRoot, runStep, writeJson } from './lib/linux-release-common.mjs';
 import { findAppImageFilesystemOffset } from './lib/appimage-filesystem.mjs';
 import {
@@ -80,9 +81,8 @@ function readShardSubject(record, label) {
     current = path.join(current, component);
     if (fs.lstatSync(current).isSymbolicLink()) throw new Error(`${label} traverses a symlink`);
   }
-  const stat = fs.lstatSync(absolute);
-  if (!stat.isFile() || stat.size !== record.size) throw new Error(`${label} is not the recorded regular file`);
-  const bytes = fs.readFileSync(absolute);
+  const { bytes, stat } = readStableRegularFile(absolute, label);
+  if (stat.size !== record.size) throw new Error(`${label} is not the recorded regular file`);
   const digest = crypto.createHash('sha256').update(bytes).digest('hex');
   if (digest !== record.sha256) throw new Error(`${label} SHA-256 does not match the architecture closure`);
   return bytes;

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { readStableRegularFile } from './stable-file.mjs';
 
 export const INSTALLED_MANIFEST_PATH = '/usr/share/openburnbar/attestation/installed-manifest.json';
 export const INSTALLED_MANIFEST_SIGNATURE_PATH = `${INSTALLED_MANIFEST_PATH}.sig`;
@@ -178,18 +179,23 @@ function collectTree(root, current, records, excluded, metadataProvider) {
       continue;
     }
     if (!stat.isFile()) throw new Error(`package owns an unsupported file type: ${installedPath}`);
-    if (((stat.mode & 0o7777) & 0o022) !== 0) {
+    const snapshot = readStableRegularFile(full, `installed package file ${installedPath}`);
+    const fileOwner = ownership(snapshot.stat, installedPath, metadataProvider);
+    if (fileOwner.uid !== 0 || fileOwner.gid !== 0) {
+      throw new Error(`installed package path is not root-owned: ${installedPath}`);
+    }
+    if (((snapshot.stat.mode & 0o7777) & 0o022) !== 0) {
       throw new Error(`installed package file is group/world writable: ${installedPath}`);
     }
-    const bytes = fs.readFileSync(full);
+    const bytes = snapshot.bytes;
     records.push({
       path: installedPath,
       type: 'file',
       sha256: sha256Bytes(bytes),
       size: bytes.length,
-      mode: normalizedMode(stat),
-      uid: owner.uid,
-      gid: owner.gid
+      mode: normalizedMode(snapshot.stat),
+      uid: fileOwner.uid,
+      gid: fileOwner.gid
     });
   }
 }

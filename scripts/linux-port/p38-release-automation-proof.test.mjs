@@ -62,9 +62,20 @@ test('P-38 workflow capture is mandatory and fail closed', () => {
     assert.equal(result.document.workflowVerification.passed, true);
     assert.equal(result.document.mutationSuite.passed, true);
     assert.equal(result.document.sources.length, P38_WORKFLOW_SOURCE_PATHS.length);
-    assert.equal(fs.existsSync(result.output), true);
-
-    fs.writeFileSync(result.output, '{"status":"stale-passed"}\n');
+    const descriptor = fs.openSync(
+      result.output,
+      fs.constants.O_RDWR | (fs.constants.O_NOFOLLOW ?? 0)
+    );
+    try {
+      assert.equal(fs.fstatSync(descriptor).isFile(), true);
+      assert.equal(JSON.parse(fs.readFileSync(descriptor, 'utf8')).status, 'passed');
+      fs.ftruncateSync(descriptor, 0);
+      const staleBytes = Buffer.from('{"status":"stale-passed"}\n');
+      fs.writeSync(descriptor, staleBytes, 0, staleBytes.length, 0);
+      fs.fsyncSync(descriptor);
+    } finally {
+      fs.closeSync(descriptor);
+    }
     assert.throws(
       () => capture(subject, {
         runMutationSuite: () => ({ status: 1, stdout: '# tests 18\n# pass 17\n# fail 1\n', stderr: '' })
