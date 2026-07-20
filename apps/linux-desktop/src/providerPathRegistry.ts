@@ -457,7 +457,56 @@ export function resolveProviderLogicalPath(
 }
 
 export function providerPathById(providerId: string): ProviderPathRow | undefined {
-  return LINUX_PROVIDER_PATH_REGISTRY.find((row) => row.providerId === providerId);
+  const normalized = providerId.trim().toLowerCase().replace(/[\s._-]+/g, '');
+  if (!normalized) return undefined;
+
+  // The daemon catalog uses vendor IDs while the usage/path oracle uses
+  // AgentProvider route IDs. Keep the same aliases as
+  // AgentProvider.fromCatalogProviderID so a catalog row can always resolve
+  // to its canonical path and ingestion coverage without guessing from a logo.
+  const aliases: Record<string, string> = {
+    anthropic: 'claude',
+    claude: 'claude',
+    claudecode: 'claude',
+    google: 'gemini',
+    gemini: 'gemini',
+    geminicli: 'gemini',
+    factory: 'droid',
+    factorydroid: 'droid',
+    droid: 'droid',
+    openai: 'openai',
+    openburnbar: 'openburnbar',
+    deepseek: 'deepseek',
+    opencode: 'opencode',
+    opencodego: 'opencode',
+    moonshot: 'kimi',
+    kimi: 'kimi',
+    zai: 'zai',
+    minimax: 'minimax',
+    pi: 'pi',
+    piagent: 'pi',
+    antigravitycli: 'antigravity',
+    ollama: 'ollama',
+    openclaw: 'openclaw',
+    openclaude: 'openclaude',
+    ohmypi: 'omp',
+    forge: 'forge',
+    forgedev: 'forge',
+    kilocode: 'kilocode',
+    roocode: 'roocode',
+    xai: 'grok',
+    grok: 'grok',
+    mimo: 'mimo',
+    xiaomimimo: 'mimo',
+    cursoragent: 'cursor-agent',
+    jetbrainsjunie: 'junie'
+  };
+  const canonicalID = aliases[normalized] ?? normalized;
+  return LINUX_PROVIDER_PATH_REGISTRY.find((row) => {
+    const rowTokens = [row.providerId, row.parserSourceId, row.displayLabel]
+      .map((value) => value.toLowerCase().replace(/[\s._-]+/g, ''));
+    return row.providerId === canonicalID || rowTokens.includes(canonicalID);
+  });
 }
 
 /** Display list used by settings / onboarding. */

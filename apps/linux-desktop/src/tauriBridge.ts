@@ -35,6 +35,14 @@ export type ProviderCatalogEntry = {
   label: string;
   accountLabel: string;
   quotaBuckets: QuotaBucket[];
+  /** Canonical quota provenance from the daemon/macOS quota oracle. */
+  quotaSourceKind?: 'provider' | 'officialAPI' | 'localCLI' | 'localSession' | 'manualEstimate' | 'unavailable';
+  quotaSource?: string;
+  quotaConfidence?: 'high' | 'medium' | 'low' | 'stale';
+  /** Optional account presentation metadata shared by quota/provider surfaces. */
+  accountStorage?: 'cloud' | 'local' | 'keychain' | 'unknown';
+  accountStatus?: 'connected' | 'stale' | 'error';
+  planTierBadge?: string;
   /** Redacted credential-slot metadata used to explain account routing. */
   credentialSlots?: ProviderCredentialSlot[];
   /** Daemon preference; quota pressure may still drain to another eligible slot. */
@@ -1919,6 +1927,51 @@ function normalizeProviderHealth(raw: string): ProviderHealthState {
   return 'unknown';
 }
 
+function normalizeQuotaSourceKind(raw: RawJsonValue): ProviderCatalogEntry['quotaSourceKind'] {
+  switch (str(raw).trim().toLowerCase()) {
+    case 'provider':
+      return 'provider';
+    case 'officialapi':
+    case 'official-api':
+    case 'api':
+      return 'officialAPI';
+    case 'localcli':
+    case 'local-cli':
+      return 'localCLI';
+    case 'localsession':
+    case 'local-session':
+    case 'locallog':
+    case 'local-log':
+      return 'localSession';
+    case 'manualestimate':
+    case 'manual-estimate':
+    case 'estimated':
+      return 'manualEstimate';
+    case 'unavailable':
+      return 'unavailable';
+    default:
+      return undefined;
+  }
+}
+
+function normalizeQuotaConfidence(raw: RawJsonValue): ProviderCatalogEntry['quotaConfidence'] {
+  switch (str(raw).trim().toLowerCase()) {
+    case 'high':
+    case 'exact':
+      return 'high';
+    case 'medium':
+    case 'estimated':
+      return 'medium';
+    case 'low':
+      return 'low';
+    case 'stale':
+    case 'unavailable':
+      return 'stale';
+    default:
+      return undefined;
+  }
+}
+
 function providerHealth(
   provider: RawJsonValue | undefined,
   catalogProvider: RawJsonValue | undefined
@@ -2091,6 +2144,19 @@ export function mapProviderCatalog(raw: RawJsonValue): ProviderCatalog {
       || credentialSlots[0]?.label
       || (provider ? 'Not configured' : 'Catalog only');
     const capabilities = arr(pick(catalogProvider, 'capabilities', 'features')).map((value) => str(value).trim()).filter(Boolean).slice(0, 32);
+    const quotaMetadata = provider ?? catalogProvider;
+    const quotaSourceKind = normalizeQuotaSourceKind(
+      pick(quotaMetadata, 'quotaSourceKind', 'quota_source_kind', 'sourceKind', 'source_kind')
+    );
+    const quotaSource = str(pick(quotaMetadata, 'quotaSource', 'quota_source', 'sourceLabel', 'source_label')).trim() || undefined;
+    const quotaConfidence = normalizeQuotaConfidence(
+      pick(quotaMetadata, 'quotaConfidence', 'quota_confidence', 'confidence')
+    );
+    const accountStorage = str(pick(quotaMetadata, 'accountStorage', 'account_storage', 'storageScope', 'storage_scope')).trim().toLowerCase();
+    const normalizedAccountStorage = ['cloud', 'local', 'keychain', 'unknown'].includes(accountStorage)
+      ? accountStorage as ProviderCatalogEntry['accountStorage']
+      : undefined;
+    const planTierBadge = str(pick(quotaMetadata, 'planTierBadge', 'plan_tier_badge', 'planTier', 'plan_tier')).trim() || undefined;
     const provenance: ProviderCatalogProvenance = catalogProvider && provider
       ? 'daemon-catalog+daemon-config'
       : catalogProvider
@@ -2103,6 +2169,11 @@ export function mapProviderCatalog(raw: RawJsonValue): ProviderCatalog {
       label,
       accountLabel,
       quotaBuckets: mapQuotaBuckets(provider ?? catalogProvider),
+      ...(quotaSourceKind ? { quotaSourceKind } : {}),
+      ...(quotaSource ? { quotaSource } : {}),
+      ...(quotaConfidence ? { quotaConfidence } : {}),
+      ...(normalizedAccountStorage ? { accountStorage: normalizedAccountStorage } : {}),
+      ...(planTierBadge ? { planTierBadge } : {}),
       credentialSlots,
       preferredCredentialSlotID,
       models,

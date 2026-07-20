@@ -10,6 +10,10 @@ describe('mapProviderCatalog', () => {
           providers: [{
             providerID: 'openai',
             isEnabled: true,
+            quotaSourceKind: 'officialAPI',
+            quotaConfidence: 'exact',
+            accountStorage: 'cloud',
+            planTier: 'TEAM',
             preferredModelIDs: ['gpt-5.5'],
             credentialSlots: [{ slotID: 'team', label: 'Team', isEnabled: true, status: 'ready' }]
           }]
@@ -34,6 +38,12 @@ describe('mapProviderCatalog', () => {
       provenance: 'daemon-catalog+daemon-config',
       catalogAvailable: true,
       failover: { mode: 'exactModelOnly', eligible: true }
+    });
+    expect(mapped[0]).toMatchObject({
+      quotaSourceKind: 'officialAPI',
+      quotaConfidence: 'high',
+      accountStorage: 'cloud',
+      planTierBadge: 'TEAM'
     });
     expect(mapped[0]?.credentialSlots).toEqual([
       expect.objectContaining({ slotID: 'team', label: 'Team', status: 'ready' })
@@ -132,5 +142,33 @@ describe('mapProviderCatalog', () => {
     expect(mapped[0]?.credentialSlots?.map((slot) => slot.slotID)).toEqual(['team', 'backup']);
     expect(JSON.stringify(mapped)).not.toContain('sk-team');
     expect(JSON.stringify(mapped)).not.toContain('sk-backup');
+  });
+
+  it('preserves daemon quota provenance aliases without trusting unknown values', () => {
+    const mapped = mapProviderCatalog({
+      snapshot: {
+        providers: [
+          {
+            providerID: 'claude-code',
+            quotaSourceKind: 'local-session',
+            quotaConfidence: 'estimated',
+            quotaSource: 'ParserRegistry'
+          },
+          {
+            providerID: 'openai',
+            quotaSourceKind: 'made-up-source',
+            quotaConfidence: 'made-up-confidence'
+          }
+        ]
+      }
+    });
+
+    expect(mapped.find((provider) => provider.id === 'claude-code')).toMatchObject({
+      quotaSourceKind: 'localSession',
+      quotaConfidence: 'medium',
+      quotaSource: 'ParserRegistry'
+    });
+    expect(mapped.find((provider) => provider.id === 'openai')).not.toHaveProperty('quotaSourceKind');
+    expect(mapped.find((provider) => provider.id === 'openai')).not.toHaveProperty('quotaConfidence');
   });
 });

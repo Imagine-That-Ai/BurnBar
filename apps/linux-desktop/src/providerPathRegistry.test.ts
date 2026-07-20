@@ -81,6 +81,16 @@ describe('providerPathRegistry', () => {
     expect(providerPathById('warp')?.filePattern).toBe('warp_network*.log');
   });
 
+  it('resolves macOS catalog aliases to the canonical Linux path row', () => {
+    expect(providerPathById('anthropic')?.providerId).toBe('claude');
+    expect(providerPathById('claude-code')?.providerId).toBe('claude');
+    expect(providerPathById('google')?.providerId).toBe('gemini');
+    expect(providerPathById('factory-droid')?.providerId).toBe('droid');
+    expect(providerPathById('x.ai')?.providerId).toBe('grok');
+    expect(providerPathById('JetBrains Junie')?.providerId).toBe('junie');
+    expect(providerPathById('unknown-vendor')).toBeUndefined();
+  });
+
   it('resolves display and parser paths identically under default and custom XDG', () => {
     const home = '/home/alice';
     for (const row of LINUX_PROVIDER_PATH_REGISTRY) {

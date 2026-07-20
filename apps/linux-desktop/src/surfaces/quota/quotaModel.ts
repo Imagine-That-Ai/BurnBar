@@ -1,5 +1,6 @@
 import type { ProviderCatalog, ProviderCatalogEntry, ProviderCredentialSlot, QuotaBucket } from '../../tauriBridge.js';
 import { PROVIDER_GLYPHS } from '../../providerGlyphs.js';
+import { providerPathById } from '../../providerPathRegistry.js';
 import { remainingPct } from '../providers/providerQuotaMetrics.js';
 import { computeIdealPace, type IdealPace } from './quotaPace.js';
 
@@ -206,7 +207,26 @@ function resolveSource(entry: CatalogExt): { kind: QuotaSourceKind; label: strin
   if (entry.quotaBuckets.length === 0) {
     return { kind: 'unavailable', label: 'Unavailable', confidence: 'low' };
   }
-  return { kind: 'officialAPI', label: 'Official API', confidence: entry.quotaConfidence ?? 'high' };
+
+  // The macOS oracle treats provider/path coverage as a source contract. Do
+  // not infer "Official API" merely because a daemon row contains buckets:
+  // local parsers can expose quota-shaped buckets too, and an untyped API
+  // claim would make Linux look healthier than its evidence warrants.
+  const registryRow = providerPathById(entry.id);
+  if (registryRow?.coverage === 'local-parser') {
+    const kind: QuotaSourceKind = registryRow.providerId === 'codex' ? 'localCLI' : 'localSession';
+    return { kind, label: sourceLabelForKind(kind), confidence: entry.quotaConfidence ?? 'medium' };
+  }
+  if (registryRow?.coverage === 'api-backed') {
+    return { kind: 'officialAPI', label: 'Official API', confidence: entry.quotaConfidence ?? 'high' };
+  }
+  if (registryRow?.coverage === 'unavailable') {
+    return { kind: 'provider', label: 'Provider', confidence: entry.quotaConfidence ?? 'low' };
+  }
+
+  // Unknown catalog IDs remain visible, but their source is explicitly
+  // unverified until the daemon supplies source metadata.
+  return { kind: 'provider', label: 'Provider', confidence: entry.quotaConfidence ?? 'low' };
 }
 export function sourceLabelForKind(kind: QuotaSourceKind): string {
   switch (kind) {
