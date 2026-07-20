@@ -190,21 +190,24 @@ public actor BurnBarSubscriptionService {
         reason: String,
         timestamp: Date
     ) -> BurnBarSubscriptionResponse {
+        var snapshot = [
+            "topic": record.topic,
+            "client_id": record.clientID ?? "unknown",
+            "daemon_version": daemonVersion,
+            "daemon_session_id": daemonSessionID,
+            "generated_at": ISO8601DateFormatter().string(from: timestamp),
+            "transport": "af_unix_burnbarrpc_pull",
+            "cursor_semantics": "monotonic_seq",
+            "backpressure": "coalesce_latest_per_topic",
+            "event_reason": reason
+        ]
+        if let runID = record.runID {
+            snapshot["run_id"] = runID
+        }
         let event = BurnBarSubscriptionEvent(
             seq: record.seq,
             kind: "\(record.topic).\(firstSnapshot ? "snapshot" : "tick")",
-            snapshot: [
-                "topic": record.topic,
-                "run_id": record.runID ?? "",
-                "client_id": record.clientID ?? "unknown",
-                "daemon_version": daemonVersion,
-                "daemon_session_id": daemonSessionID,
-                "generated_at": ISO8601DateFormatter().string(from: timestamp),
-                "transport": "af_unix_burnbarrpc_pull",
-                "cursor_semantics": "monotonic_seq",
-                "backpressure": "coalesce_latest_per_topic",
-                "event_reason": reason
-            ],
+            snapshot: snapshot,
             terminal: false
         )
         return BurnBarSubscriptionResponse(
