@@ -11,6 +11,8 @@ import { OnboardingSurface } from './OnboardingSurface.js';
 import { OverviewSurface } from './OverviewSurface.js';
 import { PetSurface } from './PetSurface.js';
 import { SettingsSurface } from './SettingsSurface.js';
+import { SupportSurface } from './SupportSurface.js';
+import { UpdatesSurface } from './UpdatesSurface.js';
 import { SurfaceErrorBoundary } from './SurfaceErrorBoundary.js';
 import './capability-boundary.css';
 import './system/system.css';
@@ -31,8 +33,6 @@ const ComputerUseSurface = lazy(() => import('./computerUse/ComputerUseSurface.j
 const MercurySurface = lazy(() => import('./media/MercurySurface.js').then(({ MercurySurface }) => ({ default: MercurySurface })));
 const SmartHubSurface = lazy(() => import('./smarthub/SmartHubSurface.js').then(({ SmartHubSurface }) => ({ default: SmartHubSurface })));
 const AccountSurface = lazy(() => import('./AccountSurface.js').then(({ AccountSurface }) => ({ default: AccountSurface })));
-const UpdatesSurface = lazy(() => import('./UpdatesSurface.js').then(({ UpdatesSurface }) => ({ default: UpdatesSurface })));
-const SupportSurface = lazy(() => import('./SupportSurface.js').then(({ SupportSurface }) => ({ default: SupportSurface })));
 const TextExpansionSurface = lazy(() => import('./TextExpansionSurface.js').then(({ TextExpansionSurface }) => ({ default: TextExpansionSurface })));
 
 type IdleDeadlineLike = {
