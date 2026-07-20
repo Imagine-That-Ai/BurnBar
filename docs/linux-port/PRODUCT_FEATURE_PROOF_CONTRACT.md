@@ -78,8 +78,8 @@ The P-02 validator independently repeats that isolated execution instead of trus
 claims in the feature proof, then recomputes and validates the inventory. It can pass only when
 every one of the 40 rows has executable, mutation-sensitive ownership. A role, policy, empty test,
 reused test, workflow comment, untracked helper, or hand-authored passed JSON cannot satisfy a
-lane. Ten rows are registered and all ten pass target-commit semantic ownership execution; the
-other 30 rows remain unregistered. Ownership readiness is not product certification: a ready row
+lane. Eleven rows are registered and all eleven pass target-commit semantic ownership execution;
+the other 29 rows remain unregistered. Ownership readiness is not product certification: a ready row
 still requires passed receipts from all seven support environments before it contributes to the
 strict 40/40 claim.
 
@@ -105,3 +105,17 @@ and rejects stale sources, a partial signing matrix, missing architecture sessio
 or update/rollback records that do not name a distinct older version and the exact candidate.
 Capture and materialization delete stale outputs first, so a forced workflow or mutation failure
 cannot leave a reusable passed receipt.
+
+## P-39 cross-platform differential certification
+
+P-39 is release-materialized from a same-commit macOS/Linux parser pair. The product workflow runs
+the committed parser corpus independently on macOS and Linux, resolves exactly one artifact from
+each platform for the selected candidate, and captures a differential proof that ignores only the
+declared nondeterministic timestamp. Its validator rechecks candidate binding, source hashes,
+normalization, and the empty unapproved-difference set. Certification ownership names the actual
+differential capture step and the release-closure materializer; isolated semantic mutation tests
+fail when any of those exported entrypoints is replaced.
+
+P-07 is not registered yet. Its validator and evidence-runner tests are substantive, but the
+candidate workflow does not yet produce and register `feature.computer-use` from a live installed
+session. Registering only the validator would overstate capture and materializer ownership.

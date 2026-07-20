@@ -9,6 +9,7 @@ import { finalizeProductFeatureProofClosure } from './lib/product-feature-proof.
 import { finalizeLinuxPromotionClosure } from './finalize-linux-promotion-closure.mjs';
 import { prepareProductRequirementInput } from './prepare-product-requirement-input.mjs';
 import { captureP39Differential } from './capture-p39-differential.mjs';
+import { P39_PROOF_ROLE } from './lib/p39-differential-proof.mjs';
 import { validateProductRequirement as validateP01 } from './product-validators/P-01.mjs';
 import { validateProductRequirement as validateP03 } from './product-validators/P-03.mjs';
 import { validateProductRequirement as validateP04 } from './product-validators/P-04.mjs';
@@ -543,6 +544,24 @@ test('P-38 materializer selects release automation evidence', (t) => {
   ]) {
     assert.ok(result.closure.proofs.some((proof) => proof.role === role), `P-38 must materialize ${role}`);
   }
+});
+
+test('P-39 materializer selects the same-commit differential proof', (t) => {
+  const fixture = createReleaseFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  finalizeProductProofClosure({ repoRoot: fixture.root, outputDir: fixture.output, targetHead: HEAD });
+  const inputRoot = stageAggregate(fixture, 'P-39');
+  stageP39DifferentialProof(fixture, inputRoot);
+  const result = prepareProductRequirementInput({
+    requirementId: 'P-39', environmentId: ENVIRONMENT, inputRoot, targetHead: HEAD,
+    candidateRunId: CANDIDATE_RUN_ID, candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+    repoRoot: fixture.root
+  });
+  const selected = result.closure.proofs.filter((proof) =>
+    proof.role === P39_PROOF_ROLE
+  );
+  assert.equal(selected.length, 1);
+  assert.equal(fs.existsSync(path.join(fixture.root, selected[0].path)), true);
 });
 
 test('registered environment feature proofs are candidate-bound and materialized without implying pass', (t) => {

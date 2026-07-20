@@ -492,20 +492,22 @@ function validatorContext(subject, captureResult) {
   };
 }
 
-test('ownership-ready fixture blocks exactly the 30 unregistered requirement lanes', async (t) => {
+test('ownership-ready fixture blocks exactly the 29 unregistered requirement lanes', async (t) => {
   const subject = createRepository({ complete: false });
   t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
   const captured = capture(subject, {
     testExecutions: collectCertificationTestExecutions(subject.root, subject.head)
   });
   assert.equal(captured.document.status, 'blocked');
-  assert.equal(captured.document.summary.validatorCount, 10);
-  assert.equal(captured.document.summary.captureCount, 10);
-  assert.equal(captured.document.summary.materializerCount, 10);
-  assert.equal(captured.document.summary.readyCount, 10);
+  assert.equal(captured.document.summary.validatorCount, 11);
+  assert.equal(captured.document.summary.captureCount, 11);
+  assert.equal(captured.document.summary.materializerCount, 11);
+  assert.equal(captured.document.summary.readyCount, 11);
   assert.deepEqual(
     captured.document.requirements.filter((row) => !row.ready).map((row) => row.requirementId),
-    REQUIREMENT_IDS.filter((id) => !['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-31', 'P-34', 'P-37', 'P-38', 'P-40'].includes(id))
+    REQUIREMENT_IDS.filter((id) => ![
+      'P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40'
+    ].includes(id))
   );
   await assert.rejects(
     () => validateProductRequirement(validatorContext(subject, captured)),

@@ -121,6 +121,26 @@ const CANONICAL_WORKFLOW_OWNERSHIP = Object.freeze({
       '  2>&1 | tee "$capture_log"'
     ].join('\n')
   },
+  'scripts/linux-port/capture-p39-differential.mjs': {
+    workflow: '.github/workflows/linux-product-parity.yml',
+    job: 'validate',
+    step: 'Capture P-39 same-commit macOS/Linux differential proof',
+    condition: "inputs.requirement == 'P-39'",
+    run: [
+      'set -euo pipefail',
+      'input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"',
+      'node scripts/linux-port/capture-p39-differential.mjs \\',
+      '  --input-root "$input_root" \\',
+      '  --macos "$MACOS_INPUT" \\',
+      '  --linux "$LINUX_INPUT" \\',
+      '  --environment "$ENVIRONMENT_ID" \\',
+      '  --target-head "$TARGET_HEAD" \\',
+      '  --version "$VERSION" \\',
+      '  --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+      '  --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \\',
+      "  --ignore '$.payload.generatedAt'"
+    ].join('\n')
+  },
   'scripts/linux-port/finalize-product-feature-proof-closure.mjs': {
     workflow: '.github/workflows/linux-product-parity.yml',
     job: 'validate',
@@ -852,7 +872,9 @@ export function buildParityCertificationPreflight({
         component: 'capture',
         testExecutions,
         expectedProducerPath: releaseRoles.length > 0
-          ? 'scripts/linux-port/finalize-product-proof-closure.mjs'
+          ? requirementId === 'P-39'
+            ? 'scripts/linux-port/capture-p39-differential.mjs'
+            : 'scripts/linux-port/finalize-product-proof-closure.mjs'
           : requirementId === 'P-02'
             ? 'scripts/linux-port/capture-parity-certification-preflight.mjs'
             : ownership.capture?.producerPath

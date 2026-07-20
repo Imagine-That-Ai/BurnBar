@@ -397,11 +397,11 @@ feature subjects are byte-validated and required in the validator result.
 Requirement-specific validators exist for P-01 release
 integrity, P-02 parity-certification preflight, P-03 installed runtime, P-04
 architecture reach, P-05 installed credential custody, P-31 accessibility, P-34 credential security, P-37 Linux
-matrix coverage, P-38 release automation, and P-40 data and privacy. P-02 captures a
+matrix coverage, P-38 release automation, P-39 same-commit cross-platform differential proof, and P-40 data and privacy. P-02 captures a
 candidate-bound inventory of all 40 requirements, policies, support
 environments, substantive validator modules, registered capture roles, and
 materializer ownership. It remains blocked while any lane is incomplete; today
-30 substantive lanes are absent. The other 30 modules remain intentionally absent until their
+29 substantive lanes are absent. The other 29 modules remain intentionally absent until their
 installed-product acceptance packets land. Source availability is not a parity
 claim: every row remains blocked until all seven signed live receipts exist.
 
