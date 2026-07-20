@@ -12,6 +12,7 @@ export type ProvidersState = {
   load(): Promise<void>;
   /** Clear the catalog and invalidate any in-flight response. */
   invalidate(error?: string | null): void;
+  setPreferredCredentialSlot(providerID: string, slotID: string): Promise<void>;
   addCustomModel(providerID: string, customModel: CustomModel): Promise<void>;
   removeCustomModel(providerID: string, modelID: string): Promise<void>;
 };
@@ -57,6 +58,67 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   invalidate(error = null) {
     catalogLoadGeneration += 1;
     set({ catalog: null, loading: false, error });
+  },
+  async setPreferredCredentialSlot(providerID, slotID) {
+    const normalizedProviderID = providerID.trim();
+    const normalizedSlotID = slotID.trim();
+    if (!normalizedProviderID) {
+      set({ mutationError: 'Provider ID is required.' });
+      return;
+    }
+
+    const mutationKey = `provider.preferred_account:${normalizedProviderID}`;
+    set({ mutationBusy: mutationKey, mutationError: null });
+    try {
+      const { fixtureMode, bridge } = useShellStore.getState();
+      const advertisedProvider = get().catalog?.find((provider) => provider.id === normalizedProviderID);
+      const advertisedSlots = advertisedProvider?.credentialSlots ?? [];
+      if (normalizedSlotID && advertisedSlots.length > 0 && !advertisedSlots.some((slot) => slot.slotID === normalizedSlotID)) {
+        throw new Error('That credential slot is not available for this provider. Refresh the catalog and try again.');
+      }
+
+      if (fixtureMode) {
+        const catalog = get().catalog ?? fixtureProviderCatalog();
+        const provider = catalog.find((entry) => entry.id === normalizedProviderID);
+        if (!provider) throw new Error('Provider is not present in the fixture catalog.');
+        if (normalizedSlotID && !(provider.credentialSlots ?? []).some((slot) => slot.slotID === normalizedSlotID)) {
+          throw new Error('That credential slot is not available for this provider.');
+        }
+        set({
+          catalog: catalog.map((entry) =>
+            entry.id === normalizedProviderID
+              ? { ...entry, preferredCredentialSlotID: normalizedSlotID || undefined }
+              : entry
+          ),
+          mutationBusy: null,
+          mutationError: null
+        });
+        return;
+      }
+
+      if (!bridge) throw new Error('Packaged shell required to change provider routing.');
+      if (typeof bridge.configUpdate !== 'function') {
+        throw new Error('Provider routing is read-only because the config mutation RPC is unavailable.');
+      }
+      const snapshot = await bridge.configSnapshot();
+      const currentProvider = snapshot.providers?.find((provider) => provider.providerID === normalizedProviderID);
+      if (!currentProvider) throw new Error('Provider is not present in the daemon config snapshot.');
+      if (normalizedSlotID && !currentProvider.credentialSlots.some((slot) => slot.slotID === normalizedSlotID)) {
+        throw new Error('That credential slot is not present in the daemon config snapshot.');
+      }
+      const providers = (snapshot.providers ?? []).map((provider) => {
+        if (provider.providerID !== normalizedProviderID) return provider;
+        const next = { ...provider };
+        if (normalizedSlotID) next.preferredCredentialSlotID = normalizedSlotID;
+        else delete next.preferredCredentialSlotID;
+        return next;
+      });
+      await bridge.configUpdate({ ...snapshot, providers });
+      await get().load();
+      set({ mutationBusy: null, mutationError: null });
+    } catch (error) {
+      set({ mutationBusy: null, mutationError: errorMessage(error, 'Provider routing update failed.') });
+    }
   },
   async load() {
     const requestGeneration = ++catalogLoadGeneration;

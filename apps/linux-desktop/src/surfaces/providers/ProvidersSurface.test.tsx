@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureProviderCatalog } from '../../daemonFixture.js';
+import type { ProviderCatalog } from '../../tauriBridge.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useProvidersStore } from '../../state/providersStore.js';
 import { ProvidersSurface } from '../ProvidersSurface.js';
@@ -178,5 +179,31 @@ describe('ProvidersSurface (quota workspace)', () => {
 
     rerender(<ProviderModelWorkspace providers={[providers[0]!]} />);
     await waitFor(() => expect(selector.value).toBe(providers[0]!.id));
+  });
+
+  it('does not label an enabled but unavailable model as route ready', () => {
+    const provider: ProviderCatalog[number] = {
+      ...fixtureProviderCatalog()[0]!,
+      catalogAvailable: true,
+      catalogError: undefined,
+      credentialSlots: [{ slotID: 'team', label: 'Team', isEnabled: true, status: 'ready' }],
+      models: [{
+        id: 'claude-unavailable',
+        label: 'Claude unavailable',
+        aliases: [],
+        capabilities: [],
+        enabled: true,
+        health: 'unavailable',
+        provenance: 'daemon-catalog',
+        detail: 'Provider health check failed.'
+      }]
+    };
+    useShellStore.setState({ fixtureMode: true });
+    useProvidersStore.setState({ catalog: [provider], loading: false, error: null, mutationBusy: null, mutationError: null });
+    render(<ProviderModelWorkspace providers={[provider]} />);
+
+    expect(screen.getAllByText('Unavailable').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('Route ready')).toBeNull();
+    expect(screen.getByRole('combobox', { name: /Anthropic preferred account/i })).toBeTruthy();
   });
 });

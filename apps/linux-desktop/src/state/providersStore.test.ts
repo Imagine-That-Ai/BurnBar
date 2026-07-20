@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureProviderCatalog } from '../daemonFixture.js';
-import type { ConfigSnapshot } from '../tauriBridge.js';
+import type { ConfigSnapshot, ProviderCatalog } from '../tauriBridge.js';
 import { useProvidersStore } from './providersStore.js';
 import { useShellStore } from './shellStore.js';
 
@@ -66,6 +66,74 @@ describe('providersStore custom model lifecycle', () => {
     expect(providerCatalog).toHaveBeenCalledOnce();
     expect(useProvidersStore.getState().loading).toBe(false);
     expect(useProvidersStore.getState().mutationError).toBeNull();
+  });
+
+  it('changes the preferred credential slot through the existing config contract', async () => {
+    const config: ConfigSnapshot = {
+      paths: { supportDir: '', socketPath: '', configDir: '', providerLogPaths: [] },
+      secretServiceStatus: 'ready',
+      telemetryEnabled: false,
+      privacyOptIn: false,
+      providers: [{
+        providerID: 'anthropic',
+        isEnabled: true,
+        baseURL: '',
+        preferredModelIDs: [],
+        disabledAdvertisedModelIDs: [],
+        credentialSlots: [
+          { slotID: 'team', label: 'Team', isEnabled: true, status: 'ready' },
+          { slotID: 'backup', label: 'Backup', isEnabled: true, status: 'ready' }
+        ],
+        modelVariants: [],
+        modelAliases: [],
+        modelDisplayOverrides: [],
+        customModels: []
+      }]
+    };
+    const refreshedCatalog: ProviderCatalog = [{
+      ...fixtureProviderCatalog()[0]!,
+      credentialSlots: config.providers![0]!.credentialSlots,
+      preferredCredentialSlotID: 'backup'
+    }];
+    const configSnapshot = vi.fn(async () => config);
+    const configUpdate = vi.fn(async (next: ConfigSnapshot) => next);
+    const providerCatalog = vi.fn(async () => refreshedCatalog);
+    useShellStore.setState({
+      fixtureMode: false,
+      bridge: { configSnapshot, configUpdate, providerCatalog } as never
+    });
+    useProvidersStore.setState({
+      catalog: [{ ...refreshedCatalog[0]!, preferredCredentialSlotID: 'team' }]
+    });
+
+    await useProvidersStore.getState().setPreferredCredentialSlot('anthropic', 'backup');
+
+    expect(configSnapshot).toHaveBeenCalledOnce();
+    expect(configUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      providers: [expect.objectContaining({ preferredCredentialSlotID: 'backup' })]
+    }));
+    expect(providerCatalog).toHaveBeenCalledOnce();
+    expect(useProvidersStore.getState().catalog?.[0]?.preferredCredentialSlotID).toBe('backup');
+    expect(useProvidersStore.getState().mutationError).toBeNull();
+  });
+
+  it('fails closed when preferred-account routing is read-only', async () => {
+    useShellStore.setState({
+      fixtureMode: false,
+      bridge: { configSnapshot: vi.fn(async () => fixtureProviderCatalog()) } as never
+    });
+    useProvidersStore.setState({
+      catalog: [{
+        ...fixtureProviderCatalog()[0]!,
+        credentialSlots: [{ slotID: 'team', label: 'Team', isEnabled: true, status: 'ready' }]
+      }]
+    });
+
+    await useProvidersStore.getState().setPreferredCredentialSlot('anthropic', 'team');
+
+    expect(useProvidersStore.getState().mutationError).toBe(
+      'Provider routing is read-only because the config mutation RPC is unavailable.'
+    );
   });
 
   it('fails closed when a packaged shell does not expose the mutation RPC', async () => {

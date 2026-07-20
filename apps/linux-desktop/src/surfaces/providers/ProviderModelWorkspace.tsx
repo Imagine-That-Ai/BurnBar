@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CustomModel, ProviderCatalog, ProviderCatalogEntry, ProviderCatalogModel, ProviderHealthState } from '../../tauriBridge.js';
 import { useProvidersStore } from '../../state/providersStore.js';
+import { useShellStore } from '../../state/shellStore.js';
 import './provider-model-workspace.css';
 
 const HEALTH_LABEL: Record<ProviderHealthState, string> = {
@@ -9,6 +10,13 @@ const HEALTH_LABEL: Record<ProviderHealthState, string> = {
   unavailable: 'Unavailable',
   unknown: 'Status unavailable'
 };
+
+function modelRouteLabel(model: ProviderCatalogModel): string {
+  if (model.health === 'unavailable') return 'Unavailable';
+  if (model.health === 'degraded') return 'Degraded';
+  if (model.health === 'unknown') return 'Status unavailable';
+  return model.enabled ? 'Route ready' : 'Disabled';
+}
 
 function ModelRow({
   providerID,
@@ -29,8 +37,8 @@ function ModelRow({
           <code>{model.id}</code>
         </div>
         <div className="provider-model-row-actions">
-          <span className="provider-model-status" data-state={model.health}>
-            {model.enabled ? 'Route ready' : HEALTH_LABEL[model.health]}
+          <span className="provider-model-status" data-state={model.enabled ? model.health : 'disabled'}>
+            {modelRouteLabel(model)}
           </span>
           {model.provenance === 'custom-model' ? (
             <button
@@ -59,15 +67,23 @@ function ModelRow({
 function ProviderCard({
   provider,
   mutationBusy,
-  onRemoveCustomModel
+  onRemoveCustomModel,
+  onPreferredCredentialSlot,
+  routingWritable
 }: {
   provider: ProviderCatalogEntry;
   mutationBusy: string | null;
   onRemoveCustomModel: (providerID: string, modelID: string) => void;
+  onPreferredCredentialSlot: (providerID: string, slotID: string) => void;
+  routingWritable: boolean;
 }) {
   const models = provider.models ?? [];
   const health = provider.health ?? 'unknown';
   const failover = provider.failover;
+  const credentialSlots = provider.credentialSlots ?? [];
+  const preferredSlotID = provider.preferredCredentialSlotID ?? '';
+  const preferredSlotExists = credentialSlots.some((slot) => slot.slotID === preferredSlotID);
+  const routingBusy = mutationBusy?.startsWith(`provider.preferred_account:${provider.id}`) ?? false;
   return (
     <article className="provider-model-card" data-provider={provider.id}>
       <header className="provider-model-card-header">
@@ -78,6 +94,35 @@ function ProviderCard({
         </div>
         <span className="provider-model-health" data-state={health}>{HEALTH_LABEL[health]}</span>
       </header>
+      {credentialSlots.length > 0 ? (
+        <label className="provider-routing-control">
+          <span>Routing account</span>
+          <select
+            value={preferredSlotID}
+            disabled={mutationBusy != null || !routingWritable}
+            aria-label={`${provider.label} preferred account`}
+            aria-busy={routingBusy}
+            onChange={(event) => onPreferredCredentialSlot(provider.id, event.currentTarget.value)}
+          >
+            <option value="">Auto (daemon routing)</option>
+            {preferredSlotID && !preferredSlotExists ? (
+              <option value={preferredSlotID} disabled>
+                Current slot unavailable ({preferredSlotID})
+              </option>
+            ) : null}
+            {credentialSlots.map((slot) => (
+              <option key={slot.slotID} value={slot.slotID}>
+                {slot.label} · {slot.status}
+              </option>
+            ))}
+          </select>
+          {!routingWritable ? <small>Read-only until daemon config mutation is available.</small> : null}
+        </label>
+      ) : (
+        <p className="provider-routing-unavailable" role="status">
+          No credential slots were advertised; account routing is unavailable for this provider.
+        </p>
+      )}
       <dl className="provider-model-meta">
         <div><dt>Provider ID</dt><dd><code>{provider.id}</code></dd></div>
         <div><dt>Failover</dt><dd>{failover?.eligible ? 'Eligible' : 'Unavailable'}</dd></div>
@@ -122,7 +167,10 @@ export function ProviderModelWorkspace({ providers }: { providers: ProviderCatal
   const mutationError = useProvidersStore((state) => state.mutationError);
   const addCustomModel = useProvidersStore((state) => state.addCustomModel);
   const removeCustomModel = useProvidersStore((state) => state.removeCustomModel);
+  const setPreferredCredentialSlot = useProvidersStore((state) => state.setPreferredCredentialSlot);
   const load = useProvidersStore((state) => state.load);
+  const fixtureMode = useShellStore((state) => state.fixtureMode);
+  const bridge = useShellStore((state) => state.bridge);
   const [selectedProviderID, setSelectedProviderID] = useState(providers[0]?.id ?? '');
   useEffect(() => {
     // Catalog refreshes can remove or reorder providers. Never leave the
@@ -134,6 +182,7 @@ export function ProviderModelWorkspace({ providers }: { providers: ProviderCatal
   }, [providers]);
   const modelCount = providers.reduce((count, provider) => count + (provider.models?.length ?? 0), 0);
   const catalogUnavailable = providers.some((provider) => provider.catalogAvailable === false);
+  const routingWritable = fixtureMode || typeof bridge?.configUpdate === 'function';
   return (
     <section className="provider-model-workspace" aria-labelledby="provider-model-workspace-heading">
       <header className="provider-model-workspace-header">
@@ -211,6 +260,8 @@ export function ProviderModelWorkspace({ providers }: { providers: ProviderCatal
               provider={provider}
               mutationBusy={mutationBusy}
               onRemoveCustomModel={(providerID, modelID) => void removeCustomModel(providerID, modelID)}
+              onPreferredCredentialSlot={(providerID, slotID) => void setPreferredCredentialSlot(providerID, slotID)}
+              routingWritable={routingWritable}
             />
           ))}
         </div>
