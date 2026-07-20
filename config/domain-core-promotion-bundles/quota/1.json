@@ -1,0 +1,978 @@
+{
+  "schemaVersion": 1,
+  "bundleKind": "unsigned-domain-core-candidate",
+  "status": "eligible_for_attestation",
+  "proofComplete": true,
+  "eligibleForAttestation": true,
+  "promotionAuthorized": false,
+  "trust": {
+    "authority": "none",
+    "attestationRequired": true,
+    "requiredSigner": "protected-domain-core-signer",
+    "verificationSteps": [
+      "query-github-api",
+      "download-exact-run-artifacts",
+      "revalidate-with-trusted-main",
+      "sign-protected-attestation"
+    ]
+  },
+  "generatedAt": "2026-07-20T08:03:20.150Z",
+  "candidate": {
+    "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+    "coreVersion": "0.1.0",
+    "abiVersion": 3,
+    "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+  },
+  "policySha256": "18bae617c383e861091f0f2b8132009808d120226017e20b71fab6db0a06d995",
+  "workflow": {
+    "repository": "Imagine-That-Ai/BurnBar",
+    "workflowPath": ".github/workflows/domain-core.yml",
+    "workflowName": "Shared Rust domain core",
+    "runId": 29723888779,
+    "runAttempt": 1,
+    "event": "push",
+    "ref": "refs/heads/main",
+    "headSha": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+    "jobs": [
+      {
+        "id": "promotion-contracts",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": "rust-and-csharp",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": "windows-native",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": "linux-arm64-native",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": "wasm",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": "functions-pricing",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": "android",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": "apple",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": "apple-native-smoke",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": "swift-consumer-contracts",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": "console-consumer-contracts",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": "python-mcp-cloudvault-contracts",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": "python-hermes-contracts",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "id": "rollback-drill",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "suites": [
+    {
+      "id": "android-native-load",
+      "jobId": "android",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "2284defba54a623d1884ea2aba705c057bab8d9618aba6896d5eb4b3ca6f8de9",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "android-consumer-contracts",
+      "jobId": "android",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "025ad27f958ee9d0c3fc04e0a0a8ad341a5d1d3ed25c1479aca81563021cae59",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "swift-native-load",
+      "jobId": "apple-native-smoke",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "d1d82e110e4344adbe391d5246ada49e7339d60b7f4cd73445c1f0b5fbcf190b",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "swift-artifact-provenance",
+      "jobId": "apple",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "8bf8c125ab2eb36e0105f6447d8b9f75ffbb5288f89d6fe1722ebd3607d2ec40",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "console-consumer-contracts",
+      "jobId": "console-consumer-contracts",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "26eb389719338f4c2e92850ef1dbf5384ab3118e7b533180f810bb659468cfe3",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "functions-pricing-contracts",
+      "jobId": "functions-pricing",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "8f84b71d4702d22f62fadad9bef2feb47d352128ba2de3d8d59471e9e0a46fc4",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "linux-arm64-native",
+      "jobId": "linux-arm64-native",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "590cf0b35922632eae742759f74b2f2785aac9648724fb029836b90a3015ec7a",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "promotion-contracts",
+      "jobId": "promotion-contracts",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "fb880c795c0c12639ab2cb10e436e5726b572bde691b8a2ea62f1515cca923bc",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "python-hermes-contracts",
+      "jobId": "python-hermes-contracts",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "7ddf902669c1b5b839000cc52807693cf8527cefdbf90c09106c0005990aa0fd",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "python-mcp-cloudvault-contracts",
+      "jobId": "python-mcp-cloudvault-contracts",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "32bbfc789aad59e89454fe84baaa2113fa78b4fe734ee1553dc8edeceddd4935",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "rollback-drill",
+      "jobId": "rollback-drill",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "936913cad26f61e66d5c68a1437e1edd25e4fd519913d10ab464752a04af5151",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "rust-workspace",
+      "jobId": "rust-and-csharp",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "05f9ba8db06bbe822a992fdd137317b6bd8be8b2aa4d8cd387dc170224c2f103",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "rust-fuzz-smoke",
+      "jobId": "rust-and-csharp",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "ab5ff844ec05a866ccdea52f537c30672d8adc273f9e6a39e948fb174f277596",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "rust-performance-smoke",
+      "jobId": "rust-and-csharp",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "c5928445edd50250fc0d045c833fd9ecd955c7309996f169c8bae176fe8ac92b",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "csharp-quota-native",
+      "jobId": "rust-and-csharp",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "6788fd7fb690409daa36e4c15c4ba73b00dff2cebff508a5e8c7292c2f03e96c",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "csharp-cloudvault-native",
+      "jobId": "rust-and-csharp",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "b35726be88e5e626761364a291b6c41daee19e9cc0f620da5f2bdfde349501b1",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "swift-consumer-contracts",
+      "jobId": "swift-consumer-contracts",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "wasm-browser-kat",
+      "jobId": "wasm",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "dd80d84b2effcd5bb6952684406215114a85e8e07c09ef4d45e0d325d3e4d7fb",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "wasm-node-kat",
+      "jobId": "wasm",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "54902699a4a372e764161448d1a44eb0507dcc4bb49361be01915d84e2a9602d",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "remote-mcp-cloudvault-contracts",
+      "jobId": "wasm",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "1ba80bfc2cc2efc8c322018367b244762956da16f224b7b22103360e15d28ffc",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "windows-native-arm64",
+      "jobId": "windows-native",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "f8f9a6a8c1fef5e5234e1877bdb5a2392d20cc146fefbb2de88ee46a7727a3bc",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    },
+    {
+      "id": "windows-native-x64",
+      "jobId": "windows-native",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "212a0997ef48f99a95253231d2783774e1308477d1e1daac239cfb9a1419df1a",
+      "candidate": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      }
+    }
+  ],
+  "coverage": [
+    {
+      "domain": "quota",
+      "slice": "claude",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "quota",
+      "slice": "claude",
+      "consumer": "windows",
+      "suiteId": "csharp-quota-native",
+      "reportSha256": "6788fd7fb690409daa36e4c15c4ba73b00dff2cebff508a5e8c7292c2f03e96c"
+    },
+    {
+      "domain": "quota",
+      "slice": "codex",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "quota",
+      "slice": "codex",
+      "consumer": "windows",
+      "suiteId": "csharp-quota-native",
+      "reportSha256": "6788fd7fb690409daa36e4c15c4ba73b00dff2cebff508a5e8c7292c2f03e96c"
+    },
+    {
+      "domain": "quota",
+      "slice": "cursor",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "quota",
+      "slice": "cursor",
+      "consumer": "windows",
+      "suiteId": "csharp-quota-native",
+      "reportSha256": "6788fd7fb690409daa36e4c15c4ba73b00dff2cebff508a5e8c7292c2f03e96c"
+    },
+    {
+      "domain": "quota",
+      "slice": "anthropic",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "quota",
+      "slice": "anthropic",
+      "consumer": "windows",
+      "suiteId": "csharp-quota-native",
+      "reportSha256": "6788fd7fb690409daa36e4c15c4ba73b00dff2cebff508a5e8c7292c2f03e96c"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "foundation",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "foundation",
+      "consumer": "android",
+      "suiteId": "android-consumer-contracts",
+      "reportSha256": "025ad27f958ee9d0c3fc04e0a0a8ad341a5d1d3ed25c1479aca81563021cae59"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "foundation",
+      "consumer": "windows",
+      "suiteId": "csharp-cloudvault-native",
+      "reportSha256": "b35726be88e5e626761364a291b6c41daee19e9cc0f620da5f2bdfde349501b1"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "foundation",
+      "consumer": "console",
+      "suiteId": "console-consumer-contracts",
+      "reportSha256": "26eb389719338f4c2e92850ef1dbf5384ab3118e7b533180f810bb659468cfe3"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "foundation",
+      "consumer": "remote-mcp",
+      "suiteId": "remote-mcp-cloudvault-contracts",
+      "reportSha256": "1ba80bfc2cc2efc8c322018367b244762956da16f224b7b22103360e15d28ffc"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "foundation",
+      "consumer": "local-mcp",
+      "suiteId": "python-mcp-cloudvault-contracts",
+      "reportSha256": "32bbfc789aad59e89454fe84baaa2113fa78b4fe734ee1553dc8edeceddd4935"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "aes",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "aes",
+      "consumer": "android",
+      "suiteId": "android-consumer-contracts",
+      "reportSha256": "025ad27f958ee9d0c3fc04e0a0a8ad341a5d1d3ed25c1479aca81563021cae59"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "aes",
+      "consumer": "windows",
+      "suiteId": "csharp-cloudvault-native",
+      "reportSha256": "b35726be88e5e626761364a291b6c41daee19e9cc0f620da5f2bdfde349501b1"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "aes",
+      "consumer": "console",
+      "suiteId": "console-consumer-contracts",
+      "reportSha256": "26eb389719338f4c2e92850ef1dbf5384ab3118e7b533180f810bb659468cfe3"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "aes",
+      "consumer": "remote-mcp",
+      "suiteId": "remote-mcp-cloudvault-contracts",
+      "reportSha256": "1ba80bfc2cc2efc8c322018367b244762956da16f224b7b22103360e15d28ffc"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "aes",
+      "consumer": "local-mcp",
+      "suiteId": "python-mcp-cloudvault-contracts",
+      "reportSha256": "32bbfc789aad59e89454fe84baaa2113fa78b4fe734ee1553dc8edeceddd4935"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "recovery",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "recovery",
+      "consumer": "android",
+      "suiteId": "android-consumer-contracts",
+      "reportSha256": "025ad27f958ee9d0c3fc04e0a0a8ad341a5d1d3ed25c1479aca81563021cae59"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "recovery",
+      "consumer": "windows",
+      "suiteId": "csharp-cloudvault-native",
+      "reportSha256": "b35726be88e5e626761364a291b6c41daee19e9cc0f620da5f2bdfde349501b1"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "escrow",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "escrow",
+      "consumer": "android",
+      "suiteId": "android-consumer-contracts",
+      "reportSha256": "025ad27f958ee9d0c3fc04e0a0a8ad341a5d1d3ed25c1479aca81563021cae59"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "escrow",
+      "consumer": "windows",
+      "suiteId": "csharp-cloudvault-native",
+      "reportSha256": "b35726be88e5e626761364a291b6c41daee19e9cc0f620da5f2bdfde349501b1"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "escrow",
+      "consumer": "console",
+      "suiteId": "console-consumer-contracts",
+      "reportSha256": "26eb389719338f4c2e92850ef1dbf5384ab3118e7b533180f810bb659468cfe3"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "document-rewrap",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "document-rewrap",
+      "consumer": "android",
+      "suiteId": "android-consumer-contracts",
+      "reportSha256": "025ad27f958ee9d0c3fc04e0a0a8ad341a5d1d3ed25c1479aca81563021cae59"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "search",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "search",
+      "consumer": "android",
+      "suiteId": "android-consumer-contracts",
+      "reportSha256": "025ad27f958ee9d0c3fc04e0a0a8ad341a5d1d3ed25c1479aca81563021cae59"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "opaque-identifiers",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "opaque-identifiers",
+      "consumer": "android",
+      "suiteId": "android-consumer-contracts",
+      "reportSha256": "025ad27f958ee9d0c3fc04e0a0a8ad341a5d1d3ed25c1479aca81563021cae59"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "search",
+      "consumer": "remote-mcp",
+      "suiteId": "remote-mcp-cloudvault-contracts",
+      "reportSha256": "1ba80bfc2cc2efc8c322018367b244762956da16f224b7b22103360e15d28ffc"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "opaque-identifiers",
+      "consumer": "remote-mcp",
+      "suiteId": "remote-mcp-cloudvault-contracts",
+      "reportSha256": "1ba80bfc2cc2efc8c322018367b244762956da16f224b7b22103360e15d28ffc"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "search",
+      "consumer": "local-mcp",
+      "suiteId": "python-mcp-cloudvault-contracts",
+      "reportSha256": "32bbfc789aad59e89454fe84baaa2113fa78b4fe734ee1553dc8edeceddd4935"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "opaque-identifiers",
+      "consumer": "local-mcp",
+      "suiteId": "python-mcp-cloudvault-contracts",
+      "reportSha256": "32bbfc789aad59e89454fe84baaa2113fa78b4fe734ee1553dc8edeceddd4935"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "pensieve-vectors",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "pensieve-vectors",
+      "consumer": "windows",
+      "suiteId": "csharp-cloudvault-native",
+      "reportSha256": "b35726be88e5e626761364a291b6c41daee19e9cc0f620da5f2bdfde349501b1"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "pensieve-vectors",
+      "consumer": "console",
+      "suiteId": "console-consumer-contracts",
+      "reportSha256": "26eb389719338f4c2e92850ef1dbf5384ab3118e7b533180f810bb659468cfe3"
+    },
+    {
+      "domain": "cloudvault",
+      "slice": "pensieve-vectors",
+      "consumer": "remote-mcp",
+      "suiteId": "remote-mcp-cloudvault-contracts",
+      "reportSha256": "1ba80bfc2cc2efc8c322018367b244762956da16f224b7b22103360e15d28ffc"
+    },
+    {
+      "domain": "hermes",
+      "slice": "aad",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "hermes",
+      "slice": "aad",
+      "consumer": "android",
+      "suiteId": "android-consumer-contracts",
+      "reportSha256": "025ad27f958ee9d0c3fc04e0a0a8ad341a5d1d3ed25c1479aca81563021cae59"
+    },
+    {
+      "domain": "hermes",
+      "slice": "payload-keywrap",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "hermes",
+      "slice": "payload-keywrap",
+      "consumer": "android",
+      "suiteId": "android-consumer-contracts",
+      "reportSha256": "025ad27f958ee9d0c3fc04e0a0a8ad341a5d1d3ed25c1479aca81563021cae59"
+    },
+    {
+      "domain": "hermes",
+      "slice": "hpke-info",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "hermes",
+      "slice": "hpke-info",
+      "consumer": "android",
+      "suiteId": "android-consumer-contracts",
+      "reportSha256": "025ad27f958ee9d0c3fc04e0a0a8ad341a5d1d3ed25c1479aca81563021cae59"
+    },
+    {
+      "domain": "hermes",
+      "slice": "ratchet",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "hermes",
+      "slice": "ratchet",
+      "consumer": "android",
+      "suiteId": "android-consumer-contracts",
+      "reportSha256": "025ad27f958ee9d0c3fc04e0a0a8ad341a5d1d3ed25c1479aca81563021cae59"
+    },
+    {
+      "domain": "hermes",
+      "slice": "ratchet",
+      "consumer": "hermes-python",
+      "suiteId": "python-hermes-contracts",
+      "reportSha256": "7ddf902669c1b5b839000cc52807693cf8527cefdbf90c09106c0005990aa0fd"
+    },
+    {
+      "domain": "pricing",
+      "slice": "token-cost",
+      "consumer": "apple",
+      "suiteId": "swift-consumer-contracts",
+      "reportSha256": "a4f7f1e0c2d3b022d4175b778b369f80de5eabec7cf4a963fc05c9a74b22d313"
+    },
+    {
+      "domain": "pricing",
+      "slice": "token-cost",
+      "consumer": "functions",
+      "suiteId": "functions-pricing-contracts",
+      "reportSha256": "8f84b71d4702d22f62fadad9bef2feb47d352128ba2de3d8d59471e9e0a46fc4"
+    },
+    {
+      "domain": "pricing",
+      "slice": "legacy-kimi",
+      "consumer": "functions",
+      "suiteId": "functions-pricing-contracts",
+      "reportSha256": "8f84b71d4702d22f62fadad9bef2feb47d352128ba2de3d8d59471e9e0a46fc4"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "kotlin-aar",
+      "consumer": "kotlin",
+      "jobId": "android",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "artifactSha256": "9f204af63988230041db9897449e5925fe24b8d991a444cb26f4c62c7718cbf4",
+      "identityReportSha256": "2284defba54a623d1884ea2aba705c057bab8d9618aba6896d5eb4b3ca6f8de9",
+      "loadedIdentity": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      },
+      "loadSuiteIds": [
+        "android-native-load"
+      ]
+    },
+    {
+      "id": "swift-xcframework",
+      "consumer": "swift",
+      "jobId": "apple-native-smoke",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "artifactSha256": "005b3344de3351094a6f9224d9ad721fb294f9f3d43e2393c699efff06ad9079",
+      "identityReportSha256": "cfc017eb15821d8e2bd8a24cc97ab4bbd74ada03571d90cda4ae3e8938a95fe6",
+      "loadedIdentity": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      },
+      "loadSuiteIds": [
+        "swift-native-load"
+      ]
+    },
+    {
+      "id": "linux-arm64-native-binary",
+      "consumer": "csharp",
+      "jobId": "linux-arm64-native",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "artifactSha256": "e41d2c0bc2f64a14b74f8f2b27c446f73cb22bf6e581566f082c621c72bfc518",
+      "identityReportSha256": "1e6824c3d4064da080a0b3f9be96b22f78f711e1d4642a8dc4540818ecab42ef",
+      "loadedIdentity": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      },
+      "loadSuiteIds": [
+        "linux-arm64-native"
+      ]
+    },
+    {
+      "id": "python-hermes-native",
+      "consumer": "python",
+      "jobId": "python-hermes-contracts",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "artifactSha256": "e7f7fa29b5e5f63da51ccf9225ca7d494fdb3d5db93cbf8c6283c69316bf7649",
+      "identityReportSha256": "b4a8256384f5b782c504acb73a97c30e3dff8e2bcea8634b4b16f186dbd69788",
+      "loadedIdentity": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      },
+      "loadSuiteIds": [
+        "python-hermes-contracts"
+      ]
+    },
+    {
+      "id": "python-mcp-native",
+      "consumer": "python",
+      "jobId": "python-mcp-cloudvault-contracts",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "artifactSha256": "0fac8276ad575146e20d0a674f153fd00f60e62e94f314c9c29045c6ad027c61",
+      "identityReportSha256": "b4a8256384f5b782c504acb73a97c30e3dff8e2bcea8634b4b16f186dbd69788",
+      "loadedIdentity": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      },
+      "loadSuiteIds": [
+        "python-mcp-cloudvault-contracts"
+      ]
+    },
+    {
+      "id": "csharp-native",
+      "consumer": "csharp",
+      "jobId": "rust-and-csharp",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "artifactSha256": "55a8f9ce16b845297bd34f6d16dff0a5d65ad45e9be6d13f14941b479ee39104",
+      "identityReportSha256": "5efb73ced7b1d06f7fed7d096dc0cbe30c7295b6b3719a572b7268e57fffc099",
+      "loadedIdentity": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      },
+      "loadSuiteIds": [
+        "csharp-quota-native",
+        "csharp-cloudvault-native"
+      ]
+    },
+    {
+      "id": "browser-wasm",
+      "consumer": "browser-wasm",
+      "jobId": "wasm",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "artifactSha256": "abc18d5606c5753cb84bc79d94cec3e540667e5a0dfd26d11637f6e19aa13645",
+      "identityReportSha256": "064d6344ec74d1bf30650797aa2e0e454234c2d530f5a22cbcf47edd55af210b",
+      "loadedIdentity": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      },
+      "loadSuiteIds": [
+        "wasm-browser-kat",
+        "console-consumer-contracts"
+      ]
+    },
+    {
+      "id": "node-wasm",
+      "consumer": "node-wasm",
+      "jobId": "wasm",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "artifactSha256": "0c136652d78c0e9d18f66eaf5802a7f83581b0c744c4d8368e646f5959b61d6b",
+      "identityReportSha256": "064d6344ec74d1bf30650797aa2e0e454234c2d530f5a22cbcf47edd55af210b",
+      "loadedIdentity": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      },
+      "loadSuiteIds": [
+        "wasm-node-kat",
+        "functions-pricing-contracts",
+        "remote-mcp-cloudvault-contracts"
+      ]
+    },
+    {
+      "id": "windows-native-arm64-binary",
+      "consumer": "csharp",
+      "jobId": "windows-native",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "artifactSha256": "ab6ddd19bebcf5734a53c0fe91938d3f6fbd3b261d3c7eea586b57328e1166a4",
+      "identityReportSha256": "1ef1e11f5aa1e051d7287f1d0b108a1fead35ff351da86c25d5f65d722fcae2c",
+      "loadedIdentity": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      },
+      "loadSuiteIds": [
+        "windows-native-arm64"
+      ]
+    },
+    {
+      "id": "windows-native-x64-binary",
+      "consumer": "csharp",
+      "jobId": "windows-native",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "artifactSha256": "59d70cd80645a9bf94f7cc652ed85b7db5bd02430218b51cdcc66f2846f02e63",
+      "identityReportSha256": "de744b7262fbbc11411cb2956ca484344d27fba143a1dfe5c31534ce37039f12",
+      "loadedIdentity": {
+        "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+        "coreVersion": "0.1.0",
+        "abiVersion": 3,
+        "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+      },
+      "loadSuiteIds": [
+        "windows-native-x64"
+      ]
+    }
+  ],
+  "benchmarks": [
+    {
+      "id": "complete-payload-ffi",
+      "jobId": "rust-and-csharp",
+      "runId": 29723888779,
+      "runAttempt": 1,
+      "reportSha256": "46cfd6fc42edf288bc1b8654352ade7941e7b3652bae5cc457a2536b551ef152",
+      "baselineNanos": 10616082,
+      "candidateNanos": 11031932,
+      "pairedRegressionBasisPoints": 392
+    }
+  ],
+  "rollback": {
+    "jobId": "rollback-drill",
+    "suiteId": "rollback-drill",
+    "runId": 29723888779,
+    "runAttempt": 1,
+    "reportSha256": "936913cad26f61e66d5c68a1437e1edd25e4fd519913d10ab464752a04af5151",
+    "fromCandidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+    "restoredArtifactSha256": "e0194f5a6f9d410284be660a47a808f00e855da6f1935f06baf654749ea9f3c1",
+    "restoredMode": "legacy"
+  }
+}

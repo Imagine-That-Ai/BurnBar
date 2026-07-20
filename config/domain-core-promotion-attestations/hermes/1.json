@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 2,
+  "authorityScope": "hermes",
+  "authorityGeneration": 1,
+  "candidate": {
+    "candidateCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+    "coreVersion": "0.1.0",
+    "abiVersion": 3,
+    "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+  },
+  "unsignedBundle": {
+    "path": "config/domain-core-promotion-bundles/hermes/1.json",
+    "sha256": "bc070def5a2240af76dfc78c497a08b7cbbf83944199148586b68685b43470c1",
+    "sourceRunId": 29723888779,
+    "sourceRunAttempt": 1
+  },
+  "provenance": {
+    "path": "config/domain-core-promotion-provenance/hermes/1.json",
+    "sha256": "b0d0159a484a614eee8dbc608b4dd694bcc22d6ce102eaeee3fcb5cee4cf28ed",
+    "signerWorkflow": ".github/workflows/domain-core-promotion-proof.yml",
+    "signerRunId": 29726731927,
+    "signerRunAttempt": 2,
+    "trustedMainCommit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+    "policySha256": "4e5b800a20c5e3a3176430eb2b8baa75443a57a167966793024b59e67f3e82c8",
+    "evaluatorSha256": "609ad9b3ee25d4b660c221d80d7e68b6562830904484f7b8e684a4d83f8b8dec"
+  },
+  "status": "attested",
+  "generatedAt": "2026-07-20T08:11:37Z",
+  "evidenceUri": "https://github.com/Imagine-That-Ai/BurnBar/attestations/36113327"
+}

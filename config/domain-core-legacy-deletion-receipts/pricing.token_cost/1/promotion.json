@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "rowId": "pricing.token_cost",
+  "authorityGeneration": 1,
+  "transition": "promotion",
+  "status": "active",
+  "evidence": [
+    "https://github.com/Imagine-That-Ai/BurnBar/attestations/36113327"
+  ],
+  "approvedBy": "@Ajnunezg",
+  "approvedAt": "2026-07-20T08:15:11Z",
+  "commit": "62f5c838e5176c92a59a418d5e2ed430e9a83993",
+  "promotionAttestation": {
+    "path": "config/domain-core-promotion-attestations/pricing/1.json",
+    "sha256": "a64cde7efed1bafb19c491b9c4315a455c31faa3edac5414d284b2fef64d3be6",
+    "supersedes": null
+  }
+}
