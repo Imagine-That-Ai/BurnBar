@@ -293,6 +293,39 @@ describe('exact-thread chat store', () => {
     ]);
   });
 
+  it('keeps the last good transcript visible when a live resume fails, then replaces it on retry', async () => {
+    const get = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('daemon connection lost'))
+      .mockResolvedValueOnce({
+        thread: thread('A'),
+        messages: [persisted('A-resumed', 'A', 'assistant', 'Durable after reconnect')],
+        hasMoreBefore: false
+      });
+    useShellStore.setState({ bridge: bridgeWith({ chatThreadGet: get }), fixtureMode: false });
+    useChatStore.setState({
+      threads: [thread('A')],
+      selectedThreadId: 'A',
+      messages: [{ id: 'A-visible', role: 'assistant', text: 'Still useful while offline', threadID: 'A' }],
+      streamPhase: 'done'
+    });
+
+    await expect(useChatStore.getState().resumeThread()).resolves.toBe(false);
+    expect(useChatStore.getState().messages).toEqual([
+      expect.objectContaining({ id: 'A-visible', text: 'Still useful while offline' })
+    ]);
+    expect(useChatStore.getState().messagesLoading).toBe(false);
+    expect(useChatStore.getState().historyError).toBe('daemon connection lost');
+    expect(useChatStore.getState().selectedThreadId).toBe('A');
+
+    await expect(useChatStore.getState().resumeThread()).resolves.toBe(true);
+    expect(useChatStore.getState().messages).toEqual([
+      expect.objectContaining({ id: 'A-resumed', text: 'Durable after reconnect', threadID: 'A' })
+    ]);
+    expect(useChatStore.getState().historyError).toBeNull();
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
   it('normalizes known thread provenance before selecting a gateway model', async () => {
     const anthropic = { ...thread('B'), backendID: 'anthropic' };
     const unknown = { ...thread('C'), backendID: 'untrusted-raw-model-id' };

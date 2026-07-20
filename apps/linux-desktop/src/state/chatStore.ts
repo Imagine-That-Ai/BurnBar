@@ -756,9 +756,65 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   async resumeThread() {
     const target = get().selectedThreadId ?? readActiveThreadID();
     if (!target) return false;
-    await get().selectThread(target);
-    const state = get();
-    return state.selectedThreadId === target && state.messagesLoading === false && state.streamPhase !== 'error';
+    const { fixtureMode, bridge } = useShellStore.getState();
+
+    // Fixture transcripts are renderer-owned. Keep the existing path so the
+    // fixture continues to synthesize its deterministic conversation, while a
+    // live resume below can be transactional around the daemon request.
+    if (fixtureMode || !bridge) {
+      await get().selectThread(target);
+      const state = get();
+      return state.selectedThreadId === target && state.messagesLoading === false && state.streamPhase !== 'error';
+    }
+    if (get().streaming || get().streamPhase === 'composing') return false;
+
+    const current = get();
+    const knownThread = current.threads.find((thread) => thread.id === target) ?? null;
+    const selectedBackend = backendFromThread(knownThread, current.backend);
+
+    // Keep the last good transcript visible while the daemon is restarting or
+    // reconnecting. A validated page replaces it atomically; a failed resume
+    // reports the error without turning a recoverable chat into a blank pane.
+    set({
+      selectedThreadId: target,
+      messagesLoading: true,
+      loadingOlderMessages: false,
+      loadingAllMessages: false,
+      historyError: null,
+      backend: selectedBackend,
+      ...defaultSelectionForBackend(current.config, selectedBackend),
+      streamPhase: 'idle',
+      streamError: null
+    });
+
+    try {
+      const result = await bridge.chatThreadGet(target, 500);
+      validateChatPage(target, result);
+      const resolvedBackend = backendFromThread(result.thread ?? null, selectedBackend);
+      if (get().selectedThreadId !== target) return false;
+      persistActiveThreadID(target);
+      set({
+        messages: result.messages.map(messageFromPersisted),
+        messagesLoading: false,
+        hasMoreMessages: result.hasMoreBefore,
+        historyError: null,
+        backend: resolvedBackend,
+        ...defaultSelectionForBackend(get().config, resolvedBackend)
+      });
+      return true;
+    } catch (error) {
+      if (get().selectedThreadId === target) {
+        set({
+          messagesLoading: false,
+          loadingOlderMessages: false,
+          loadingAllMessages: false,
+          historyError: error instanceof Error ? error.message : 'Unable to resume this thread.',
+          streamPhase: 'error',
+          streamError: null
+        });
+      }
+      return false;
+    }
   },
 
   async loadOlderMessages() {
