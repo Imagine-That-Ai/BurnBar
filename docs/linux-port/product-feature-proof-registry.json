@@ -73,6 +73,16 @@
       ]
     },
     {
+      "requirementId": "P-11",
+      "artifacts": [
+        {
+          "role": "feature.usage-ingestion-installed",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
       "requirementId": "P-31",
       "artifacts": [
         {
@@ -347,6 +357,29 @@
         "workflowPath": ".github/workflows/linux-product-parity.yml",
         "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
         "testName": "P-10 materializer selects the installed dashboard layout proof"
+      }
+    },
+    {
+      "requirementId": "P-11",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-11.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p11-usage-ingestion-proof.test.mjs",
+        "mutationTestName": "P-11 validator rejects semantic proof mutation"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p11-usage-ingestion-proof.mjs",
+        "entrypoint": "captureP11UsageIngestionProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p11-usage-ingestion-proof.test.mjs",
+        "testName": "P-11 validates installed daemon ingestion, idempotency, provenance, restart, and refresh continuity"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-11 materializer selects the installed usage ingestion proof"
       }
     },
     {

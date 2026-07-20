@@ -9,6 +9,7 @@ import { P06_PROOF_ROLE } from './lib/p06-gateway-credential-boundary-proof.mjs'
 import { P08_PROOF_ROLE } from './lib/p08-mercury-media-proof.mjs';
 import { P09_PROOF_ROLE } from './lib/p09-navigation-shell-proof.mjs';
 import { P10_PROOF_ROLE } from './lib/p10-dashboard-layout-proof.mjs';
+import { P11_PROOF_ROLE } from './lib/p11-usage-ingestion-proof.mjs';
 import {
   MAX_FEATURE_PROOF_ARTIFACT_BYTES,
   MAX_FEATURE_PROOF_CONTRACT_BYTES,
@@ -304,6 +305,16 @@ test('P-10 materializer selects the installed dashboard layout proof', (t) => {
   assert.equal(result.registered, true);
   assert.equal(result.closure.requirementId, 'P-10');
   assert.deepEqual(result.closure.proofs.map((proof) => proof.role), [P10_PROOF_ROLE]);
+  const proof = result.closure.proofs[0];
+  assert.equal(proof.sha256, sha256(path.join(subject.root, proof.path)));
+});
+
+test('P-11 materializer selects the installed usage ingestion proof', (t) => {
+  const { subject, result } = materializeSingleFeatureProof('P-11', P11_PROOF_ROLE);
+  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  assert.equal(result.registered, true);
+  assert.equal(result.closure.requirementId, 'P-11');
+  assert.deepEqual(result.closure.proofs.map((proof) => proof.role), [P11_PROOF_ROLE]);
   const proof = result.closure.proofs[0];
   assert.equal(proof.sha256, sha256(path.join(subject.root, proof.path)));
 });

@@ -34,6 +34,7 @@ function valid() {
       'p08-mercury-media-proof.test.mjs',
       'p09-navigation-shell-proof.test.mjs',
       'p10-dashboard-layout-proof.test.mjs',
+      'p11-usage-ingestion-proof.test.mjs',
       'p38-release-automation-proof.test.mjs',
       'p31-accessibility-proof.test.mjs',
       'p34-credential-security-proof.test.mjs',
@@ -152,8 +153,8 @@ function valid() {
         '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
       ].join('\n'),
       [
-        '      - name: Install P-09 and P-10 signed candidate package',
-        "        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10'",
+        '      - name: Install P-09 through P-11 signed candidate package',
+        "        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11'",
         '        run: |',
         '          set -euo pipefail',
         '          sudo apt-get install -y --reinstall "$package"',
@@ -185,6 +186,28 @@ function valid() {
         '            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
         '          node scripts/linux-port/materialize-p10-dashboard-layout-session.mjs',
         '          node scripts/linux-port/capture-p10-dashboard-layout-proof.mjs'
+      ].join('\n'),
+      [
+        '      - name: Capture P-11 installed usage ingestion proof',
+        "        if: inputs.requirement == 'P-11'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          support_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p11-support.XXXXXX")"',
+        '          chmod 700 "$evidence_root" "$support_root"',
+        '          systemctl --user set-environment \\',
+        '          systemctl --user restart openburnbar-daemon.service',
+        '          test -S "$socket_path"',
+        '          test -s "$token_file"',
+        '          test ! -e "$support_root/usage-events.jsonl"',
+        '          node scripts/linux-port/run-p11-usage-ingestion-session.mjs',
+        '            --ledger-path "$support_root/usage-events.jsonl"',
+        '            --socket-path "$socket_path"',
+        '            --token-file "$token_file"',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+        '            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+        '          node scripts/linux-port/materialize-p11-usage-ingestion-session.mjs',
+        '          node scripts/linux-port/capture-p11-usage-ingestion-proof.mjs'
       ].join('\n'),
       'Capture P-31 installed accessibility matrix evidence',
       'Capture P-34 credential security proof',
@@ -527,7 +550,7 @@ test('P-08 installed media workflow cannot omit package trust or paired live evi
   }
 });
 
-test('P-09 and P-10 installed UI workflows require native runners before materialization and fail closed', () => {
+test('P-09 through P-11 installed workflows require native runners before materialization and fail closed', () => {
   for (const [requirementId, stepName, runner, materializer, capture] of [
     [
       'P-09', 'Capture P-09 installed navigation shell proof',
@@ -540,10 +563,16 @@ test('P-09 and P-10 installed UI workflows require native runners before materia
       'scripts/linux-port/run-p10-native-dashboard-probes.mjs',
       'scripts/linux-port/materialize-p10-dashboard-layout-session.mjs',
       'scripts/linux-port/capture-p10-dashboard-layout-proof.mjs'
+    ],
+    [
+      'P-11', 'Capture P-11 installed usage ingestion proof',
+      'scripts/linux-port/run-p11-usage-ingestion-session.mjs',
+      'scripts/linux-port/materialize-p11-usage-ingestion-session.mjs',
+      'scripts/linux-port/capture-p11-usage-ingestion-proof.mjs'
     ]
   ]) {
     for (const marker of [
-      'Install P-09 and P-10 signed candidate package', stepName, runner, materializer, capture,
+      'Install P-09 through P-11 signed candidate package', stepName, runner, materializer, capture,
       '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"'
     ]) {
       const input = valid();
@@ -653,6 +682,7 @@ test('product evidence dependency install and mutation suites are mandatory in t
     'p08-mercury-media-proof.test.mjs',
     'p09-navigation-shell-proof.test.mjs',
     'p10-dashboard-layout-proof.test.mjs',
+    'p11-usage-ingestion-proof.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs'
   ]) {

@@ -226,7 +226,7 @@ export function verifyLinuxWorkflowWiring(input) {
       const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
       return start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
     };
-    const installStep = 'Install P-09 and P-10 signed candidate package';
+    const installStep = 'Install P-09 through P-11 signed candidate package';
     const captureStep = config.step;
     const install = blockFor(installStep);
     const capture = blockFor(captureStep);
@@ -236,7 +236,7 @@ export function verifyLinuxWorkflowWiring(input) {
       .filter((line) => line && !line.startsWith('#'));
     const required = [
       [installStep, install, [
-        "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10'",
+        "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11'",
         'set -euo pipefail',
         'sudo apt-get install -y --reinstall "$package"',
         'sudo dnf install -y "$package"',
@@ -252,7 +252,8 @@ export function verifyLinuxWorkflowWiring(input) {
         `node ${config.capture}`,
         '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
         '--candidate-run-id "$CANDIDATE_RUN_ID"',
-        '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+        '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+        ...(config.requiredLines ?? [])
       ]]
     ];
     for (const [step, block, lines] of required) {
@@ -566,6 +567,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'p08-mercury-media-proof.test.mjs',
     'p09-navigation-shell-proof.test.mjs',
     'p10-dashboard-layout-proof.test.mjs',
+    'p11-usage-ingestion-proof.test.mjs',
     'p38-release-automation-proof.test.mjs',
     'p31-accessibility-proof.test.mjs',
     'p34-credential-security-proof.test.mjs',
@@ -606,6 +608,11 @@ export function verifyLinuxWorkflowWiring(input) {
     'capture-p10-dashboard-layout-proof.mjs',
     'Capture P-10 installed dashboard layout proof',
     "if: inputs.requirement == 'P-10'",
+    'run-p11-usage-ingestion-session.mjs',
+    'materialize-p11-usage-ingestion-session.mjs',
+    'capture-p11-usage-ingestion-proof.mjs',
+    'Capture P-11 installed usage ingestion proof',
+    "if: inputs.requirement == 'P-11'",
     'capture-parity-certification-preflight.mjs',
     'capture-p34-credential-security-proof.mjs',
     'run-p40-privacy-rpc-session.mjs',
@@ -654,6 +661,24 @@ export function verifyLinuxWorkflowWiring(input) {
     materializer: 'scripts/linux-port/materialize-p10-dashboard-layout-session.mjs',
     capture: 'scripts/linux-port/capture-p10-dashboard-layout-proof.mjs'
   });
+  requireInstalledUiCaptureContract(input.productParityWorkflow, 'P-11', {
+    step: 'Capture P-11 installed usage ingestion proof',
+    runner: 'scripts/linux-port/run-p11-usage-ingestion-session.mjs',
+    materializer: 'scripts/linux-port/materialize-p11-usage-ingestion-session.mjs',
+    capture: 'scripts/linux-port/capture-p11-usage-ingestion-proof.mjs',
+    requiredLines: [
+      'support_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p11-support.XXXXXX")"',
+      'chmod 700 "$evidence_root" "$support_root"',
+      'systemctl --user set-environment \\',
+      'systemctl --user restart openburnbar-daemon.service',
+      'test -S "$socket_path"',
+      'test -s "$token_file"',
+      'test ! -e "$support_root/usage-events.jsonl"',
+      '--ledger-path "$support_root/usage-events.jsonl"',
+      '--socket-path "$socket_path"',
+      '--token-file "$token_file"'
+    ]
+  });
   requireP39CaptureContract(input.productParityWorkflow);
   for (const marker of [
     'p39-macos-producer',
@@ -674,9 +699,10 @@ export function verifyLinuxWorkflowWiring(input) {
     'Preserve non-promotable P-02 diagnostic evidence',
     'Install P-08 signed candidate package',
     'Capture P-08 installed Mercury media proof',
-    'Install P-09 and P-10 signed candidate package',
+    'Install P-09 through P-11 signed candidate package',
     'Capture P-09 installed navigation shell proof',
     'Capture P-10 installed dashboard layout proof',
+    'Capture P-11 installed usage ingestion proof',
     'Capture P-31 installed accessibility matrix evidence',
     'Capture P-34 credential security proof',
     'Capture P-39 Linux candidate-bound platform evidence',

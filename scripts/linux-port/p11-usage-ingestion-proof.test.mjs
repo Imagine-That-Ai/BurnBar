@@ -242,6 +242,23 @@ test('P-11 rejects replay, duplicate, provenance, malformed, restart, and subscr
   }
 });
 
+test('P-11 validator rejects semantic proof mutation', async () => {
+  const value = fixture();
+  try {
+    const captured = captureP11UsageIngestionProof({
+      inputRoot: value.inputRoot, sessionReport: value.sessionReport, ...binding(value), resolveHead: () => HEAD,
+      now: () => new Date(Date.parse(value.endedAt) + 1_000)
+    });
+    const proof = JSON.parse(fs.readFileSync(captured.output, 'utf8'));
+    proof.claim.providerID = 'forged-provider';
+    json(captured.output, proof);
+    await assert.rejects(
+      () => validateProductRequirement(context(value, captured.output)),
+      /claim does not match/u
+    );
+  } finally { fs.rmSync(value.root, { recursive: true, force: true }); }
+});
+
 function mutateJson(value, artifact, mutate) {
   const file = path.join(value.root, artifact.path);
   const payload = JSON.parse(fs.readFileSync(file, 'utf8'));
