@@ -16,6 +16,7 @@ fn usage_summary() -> Result<serde_json::Value, String> {
 fn compose_provider_catalog_response(
     config: serde_json::Value,
     catalog: Result<serde_json::Value, String>,
+    quota: Result<serde_json::Value, String>,
 ) -> serde_json::Value {
     let mut response = serde_json::Map::new();
     response.insert("config".to_string(), config);
@@ -35,6 +36,16 @@ fn compose_provider_catalog_response(
             response.insert("catalogError".to_string(), serde_json::Value::String(error));
         }
     }
+    match quota {
+        Ok(quota) => {
+            response.insert("quota".to_string(), quota);
+            response.insert("quotaAvailable".to_string(), serde_json::Value::Bool(true));
+        }
+        Err(error) => {
+            response.insert("quotaAvailable".to_string(), serde_json::Value::Bool(false));
+            response.insert("quotaError".to_string(), serde_json::Value::String(error));
+        }
+    }
     serde_json::Value::Object(response)
 }
 
@@ -42,7 +53,11 @@ fn compose_provider_catalog_response(
 fn provider_catalog() -> Result<serde_json::Value, String> {
     let config = call_daemon_method("daemon.config.get", None)?;
     let catalog = call_daemon_method("daemon.catalog", None);
-    Ok(compose_provider_catalog_response(config, catalog))
+    let quota = call_daemon_method(
+        "daemon.quota.signals.recent",
+        Some(serde_json::json!({"limit": 200})),
+    );
+    Ok(compose_provider_catalog_response(config, catalog, quota))
 }
 
 // ───────────────── P03: session list ─────────────────

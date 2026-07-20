@@ -47,6 +47,7 @@ import type {
   DaemonSubscriptionResponse,
   DaemonSubscriptionStopResponse
 } from './tauriBridgeTypes.js';
+import { providerPathById } from './providerPathRegistry.js';
 import {
   CHAT_ATTACHMENT_MAX_BYTES
 } from './tauriBridgeTypes.js';
@@ -342,17 +343,36 @@ export function failoverState(snapshot: RawJsonValue, provider: RawJsonValue | u
 
 export function mapQuotaBuckets(raw: RawJsonValue): QuotaBucket[] {
   return arr(pick(raw, 'quotaBuckets', 'quota', 'buckets')).flatMap((bucket): QuotaBucket[] => {
-    const id = normalizedCatalogID(pick(bucket, 'id', 'bucketId'), MODEL_ID_PATTERN);
+    const id = normalizedCatalogID(pick(bucket, 'id', 'bucketId', 'key', 'name'), MODEL_ID_PATTERN);
     const label = str(pick(bucket, 'label', 'name')).trim();
     if (!id && !label) return [];
     const stableID = id ?? label.toLowerCase().replace(/[^a-z0-9._:/-]+/g, '-').replace(/^-+|-+$/g, '');
     if (!stableID) return [];
+    const directUsed = num(pick(bucket, 'usedPct', 'usedPercentage', 'usedPercent', 'pct'), Number.NaN);
+    const usedValue = num(pick(bucket, 'usedValue', 'used'), Number.NaN);
+    const limitValue = num(pick(bucket, 'limitValue', 'limit'), Number.NaN);
+    const remainingValue = num(pick(bucket, 'remainingValue', 'remaining'), Number.NaN);
+    const usedPct = Number.isFinite(directUsed)
+      ? directUsed
+      : Number.isFinite(usedValue) && Number.isFinite(limitValue) && limitValue > 0
+        ? usedValue / limitValue * 100
+        : Number.isFinite(remainingValue) && Number.isFinite(limitValue) && limitValue > 0
+          ? (1 - remainingValue / limitValue) * 100
+          : Number.NaN;
+    if (!Number.isFinite(usedPct)) return [];
+    const reset = str(pick(bucket, 'resetsAt', 'resetAt')).trim();
+    const explicitState = str(pick(bucket, 'state', 'status')).trim();
+    const state = explicitState
+      ? normalizeQuotaState(explicitState)
+      : Number.isFinite(remainingValue)
+        ? remainingValue <= 0 ? 'exhausted' : 'ok'
+        : 'unknown';
     return [{
       id: stableID,
       label: label || stableID,
-      usedPct: Math.min(100, Math.max(0, num(pick(bucket, 'usedPct', 'usedPercentage', 'pct')))),
-      resetsAt: str(pick(bucket, 'resetsAt', 'resetAt')).trim() || undefined,
-      state: normalizeQuotaState(str(pick(bucket, 'state', 'status')))
+      usedPct: Math.min(100, Math.max(0, usedPct)),
+      resetsAt: reset && Number.isFinite(Date.parse(reset)) ? reset : undefined,
+      state
     }];
   });
 }
@@ -367,6 +387,12 @@ export function mapProviderCatalog(raw: RawJsonValue): ProviderCatalog {
   const configuredProviders = arr(pick(snapshot, 'providers', 'providerAccounts'));
   const catalogAvailable = pick(raw, 'catalogAvailable') === true || catalogProviders.length > 0;
   const catalogError = str(pick(raw, 'catalogError')).trim() || undefined;
+  const quotaResponse = pick(raw, 'quota');
+  const quotaSnapshots = arr(pick(quotaResponse, 'snapshots'));
+  const providerIdentifier = (value: RawJsonValue): RawJsonValue => {
+    const candidate = pick(value, 'providerID', 'providerId', 'provider', 'provider_id');
+    return typeof candidate === 'object' && candidate !== null ? pick(candidate, 'rawValue') : candidate;
+  };
   const providerIDs = new Map<string, string>();
   const addProviderID = (value: RawJsonValue) => {
     const id = normalizedCatalogID(value, PROVIDER_ID_PATTERN);
@@ -375,6 +401,7 @@ export function mapProviderCatalog(raw: RawJsonValue): ProviderCatalog {
   configuredProviders.forEach((provider) => addProviderID(pick(provider, 'id', 'providerId', 'providerID', 'provider_id')));
   catalogProviders.forEach((provider) => addProviderID(pick(provider, 'id', 'providerId', 'providerID', 'provider_id')));
   arr(pick(snapshot, 'credentialSlots', 'providerCredentialSlots')).forEach((slot) => addProviderID(pick(slot, 'providerId', 'providerID', 'provider_id')));
+  quotaSnapshots.forEach((quotaSnapshot) => addProviderID(providerIdentifier(quotaSnapshot)));
 
   return [...providerIDs.values()].map((providerID): ProviderCatalogEntry => {
     const normalizedID = providerID.toLowerCase();
@@ -439,11 +466,17 @@ export function mapProviderCatalog(raw: RawJsonValue): ProviderCatalog {
       || credentialSlots[0]?.label
       || (provider ? 'Not configured' : 'Catalog only');
     const capabilities = arr(pick(catalogProvider, 'capabilities', 'features')).map((value) => str(value).trim()).filter(Boolean).slice(0, 32);
-    const quotaMetadata = provider ?? catalogProvider;
+    const canonicalPath = providerPathById(providerID);
+    const quotaSnapshot = quotaSnapshots.find((candidate) => {
+      const candidateID = str(providerIdentifier(candidate)).trim();
+      return candidateID.toLowerCase() === providerID.toLowerCase()
+        || providerPathById(candidateID)?.providerId === canonicalPath?.providerId;
+    });
+    const quotaMetadata = quotaSnapshot ?? provider ?? catalogProvider;
     const quotaSourceKind = normalizeQuotaSourceKind(
       pick(quotaMetadata, 'quotaSourceKind', 'quota_source_kind', 'sourceKind', 'source_kind')
     );
-    const quotaSource = str(pick(quotaMetadata, 'quotaSource', 'quota_source', 'sourceLabel', 'source_label')).trim() || undefined;
+    const quotaSource = str(pick(quotaMetadata, 'quotaSource', 'quota_source', 'sourceLabel', 'source_label', 'source')).trim() || undefined;
     const quotaConfidence = normalizeQuotaConfidence(
       pick(quotaMetadata, 'quotaConfidence', 'quota_confidence', 'confidence')
     );
@@ -452,6 +485,9 @@ export function mapProviderCatalog(raw: RawJsonValue): ProviderCatalog {
       ? accountStorage as ProviderCatalogEntry['accountStorage']
       : undefined;
     const planTierBadge = str(pick(quotaMetadata, 'planTierBadge', 'plan_tier_badge', 'planTier', 'plan_tier')).trim() || undefined;
+    const quotaSourceID = str(pick(quotaSnapshot, 'sourceId', 'sourceID')).trim() || undefined;
+    const quotaFetchedAt = str(pick(quotaSnapshot, 'fetchedAt')).trim() || undefined;
+    const quotaUpdatedAt = str(pick(quotaSnapshot, 'updatedAt')).trim() || undefined;
     const provenance: ProviderCatalogProvenance = catalogProvider && provider
       ? 'daemon-catalog+daemon-config'
       : catalogProvider
@@ -463,10 +499,15 @@ export function mapProviderCatalog(raw: RawJsonValue): ProviderCatalog {
       id: providerID,
       label,
       accountLabel,
-      quotaBuckets: mapQuotaBuckets(provider ?? catalogProvider),
+      quotaBuckets: mapQuotaBuckets(quotaSnapshot ?? provider ?? catalogProvider),
       ...(quotaSourceKind ? { quotaSourceKind } : {}),
       ...(quotaSource ? { quotaSource } : {}),
       ...(quotaConfidence ? { quotaConfidence } : {}),
+      ...(quotaSourceID ? { quotaSourceID } : {}),
+      ...(quotaFetchedAt ? { quotaFetchedAt } : {}),
+      ...(quotaUpdatedAt ? { quotaUpdatedAt } : {}),
+      ...(quotaConfidence ? { quotaStale: quotaConfidence === 'stale' } : {}),
+      ...(canonicalPath ? { canonicalProviderID: canonicalPath.providerId, providerAliases: [...canonicalPath.aliases] } : {}),
       ...(normalizedAccountStorage ? { accountStorage: normalizedAccountStorage } : {}),
       ...(planTierBadge ? { planTierBadge } : {}),
       credentialSlots,

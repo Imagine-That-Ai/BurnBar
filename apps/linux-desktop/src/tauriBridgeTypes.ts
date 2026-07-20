@@ -30,6 +30,12 @@ export type ProviderCatalogEntry = {
   quotaSourceKind?: 'provider' | 'officialAPI' | 'localCLI' | 'localSession' | 'manualEstimate' | 'unavailable';
   quotaSource?: string;
   quotaConfidence?: 'high' | 'medium' | 'low' | 'stale';
+  quotaSourceID?: string;
+  quotaFetchedAt?: string;
+  quotaUpdatedAt?: string;
+  quotaStale?: boolean;
+  canonicalProviderID?: string;
+  providerAliases?: string[];
   /** Optional account presentation metadata shared by quota/provider surfaces. */
   accountStorage?: 'cloud' | 'local' | 'keychain' | 'unknown';
   accountStatus?: 'connected' | 'stale' | 'error';

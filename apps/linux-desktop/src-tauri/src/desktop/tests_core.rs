@@ -205,6 +205,7 @@
             Ok(serde_json::json!({
                 "catalog": {"providers": [{"id": "openai", "models": [{"id": "gpt-5.5"}]}]}
             })),
+            Ok(serde_json::json!({"snapshots": [{"providerID": "openai", "buckets": []}]})),
         );
 
         assert_eq!(response["catalogAvailable"], serde_json::Value::Bool(true));
@@ -217,6 +218,8 @@
             "gpt-5.5"
         );
         assert!(response.get("catalogError").is_none());
+        assert_eq!(response["quotaAvailable"], serde_json::Value::Bool(true));
+        assert_eq!(response["quota"]["snapshots"][0]["providerID"], "openai");
     }
 
     #[test]
@@ -224,6 +227,7 @@
         let response = compose_provider_catalog_response(
             serde_json::json!({"snapshot": {"providers": [{"providerID": "openai"}]}}),
             Err("daemon.catalog unavailable".to_string()),
+            Err("daemon quota unavailable".to_string()),
         );
 
         assert_eq!(response["catalogAvailable"], serde_json::Value::Bool(false));
@@ -233,6 +237,8 @@
             "openai"
         );
         assert!(response.get("catalog").is_none());
+        assert_eq!(response["quotaAvailable"], serde_json::Value::Bool(false));
+        assert_eq!(response["quotaError"], "daemon quota unavailable");
     }
 
     #[test]

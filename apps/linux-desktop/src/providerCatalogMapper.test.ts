@@ -171,4 +171,50 @@ describe('mapProviderCatalog', () => {
     expect(mapped.find((provider) => provider.id === 'openai')).not.toHaveProperty('quotaSourceKind');
     expect(mapped.find((provider) => provider.id === 'openai')).not.toHaveProperty('quotaConfidence');
   });
+
+  it('maps real daemon quota snapshots with canonical identity and stale provenance', () => {
+    const mapped = mapProviderCatalog({
+      config: { snapshot: { routerMode: 'same_model_failover', providers: [{ providerID: 'anthropic', isEnabled: true, credentialSlots: [] }] } },
+      catalog: { providers: [{ id: 'anthropic', models: [] }] },
+      quota: { snapshots: [{
+        providerID: 'anthropic', sourceKind: 'provider', sourceId: 'daemon.quota.signals:signal-1',
+        source: 'Provider response headers', confidence: 'stale', fetchedAt: '2026-07-20T10:00:00Z',
+        updatedAt: '2026-07-20T10:00:00Z', buckets: [{ key: 'traffic-rate-limit', label: 'Provider rate limit',
+          usedValue: 30, limitValue: 100, remainingValue: 70, resetsAt: '2026-07-20T11:00:00Z' }]
+      }] }
+    });
+
+    expect(mapped[0]).toMatchObject({
+      canonicalProviderID: 'claude', providerAliases: ['anthropic', 'claude-code'], quotaStale: true,
+      quotaSourceKind: 'provider', quotaSourceID: 'daemon.quota.signals:signal-1',
+      quotaSource: 'Provider response headers', quotaConfidence: 'stale',
+      quotaBuckets: [{ id: 'traffic-rate-limit', usedPct: 30, resetsAt: '2026-07-20T11:00:00Z', state: 'ok' }],
+      failover: { mode: 'same_model_failover', eligible: false }
+    });
+  });
+
+  it('keeps a quota-only provider row and derives exhaustion from the exact Swift bucket shape', () => {
+    const mapped = mapProviderCatalog({ quota: { snapshots: [{
+      id: 'linux-header-openai-provider', provider: 'openai', providerID: { rawValue: 'openai' },
+      sourceKind: 'provider', sourceId: 'daemon.quota.signals:signal-2', fetchedAt: '2026-07-20T10:00:00Z',
+      source: 'Provider response headers', confidence: 'high', buckets: [{ key: 'traffic-rate-limit',
+        label: 'Provider rate limit', windowKind: 'custom', usedValue: 100, limitValue: 100,
+        remainingValue: 0, usedPercent: 100, resetsAt: null, unit: 'requests', isEstimated: false,
+        name: 'traffic-rate-limit', used: 100, limit: 100, remaining: 0, window: 'custom', meta: {} }],
+      schemaVersion: 2, updatedAt: '2026-07-20T10:00:00Z'
+    }] } });
+    expect(mapped).toHaveLength(1);
+    expect(mapped[0]).toMatchObject({ id: 'openai', quotaBuckets: [{ id: 'traffic-rate-limit', usedPct: 100, state: 'exhausted' }] });
+  });
+
+  it('drops unknown quota values instead of fabricating zero-percent buckets', () => {
+    const mapped = mapProviderCatalog({
+      snapshot: { providers: [{ providerID: 'openai', isEnabled: true }] },
+      quota: { snapshots: [{ providerID: 'openai', sourceKind: 'future-source', confidence: 'future-confidence',
+        buckets: [{ key: 'unknown', label: 'Unknown' }] }] }
+    });
+    expect(mapped[0]?.quotaBuckets).toEqual([]);
+    expect(mapped[0]).not.toHaveProperty('quotaSourceKind');
+    expect(mapped[0]).not.toHaveProperty('quotaConfidence');
+  });
 });

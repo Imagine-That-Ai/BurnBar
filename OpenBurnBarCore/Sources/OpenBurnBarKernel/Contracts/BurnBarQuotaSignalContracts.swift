@@ -87,9 +87,13 @@ public struct BurnBarQuotaSignalsRecentRequest: Codable, Hashable, Sendable {
 
 public struct BurnBarQuotaSignalsRecentResponse: Codable, Hashable, Sendable {
     public let signals: [BurnBarQuotaSignalRecord]
+    /// Provider quota snapshots derived from the same persisted traffic-header
+    /// records. Optional for wire compatibility with pre-quota-catalog peers.
+    public let snapshots: [ProviderQuotaSnapshot]?
 
-    public init(signals: [BurnBarQuotaSignalRecord]) {
+    public init(signals: [BurnBarQuotaSignalRecord], snapshots: [ProviderQuotaSnapshot]? = nil) {
         self.signals = signals
+        self.snapshots = snapshots
     }
 }
 
