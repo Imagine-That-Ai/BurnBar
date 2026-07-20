@@ -1211,6 +1211,18 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
             backend: CLIAgentMissionBackend(chatBackend: .claude),
             data: ["source": "ios-chat", "missionKind": "chat"]
         ))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Codex Android native chat",
+            prompt: "Continue the interactive mobile chat.",
+            backend: CLIAgentMissionBackend(chatBackend: .codex),
+            data: ["source": "android-chat"]
+        ))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Claude Android native chat",
+            prompt: "Continue the interactive mobile chat.",
+            backend: CLIAgentMissionBackend(chatBackend: .claude),
+            data: ["source": "android-chat"]
+        ))
     }
 
     func test_missionRuntimePlanner_routesApprovedWandClaudeAndCodexMissionsDirectly() throws {

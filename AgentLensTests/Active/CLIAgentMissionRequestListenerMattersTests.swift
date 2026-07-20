@@ -31,11 +31,11 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
             "approvalRequestId": "approval-1"
         ]
 
-        let pendingIdentity = CLIAgentMissionRequestListener.ProcessingIdentity(
+        let pendingIdentity = CLIAgentMissionRequestListener.processingIdentity(
             documentID: "mission-1",
             data: pending
         )
-        let approvedIdentity = CLIAgentMissionRequestListener.ProcessingIdentity(
+        let approvedIdentity = CLIAgentMissionRequestListener.processingIdentity(
             documentID: "mission-1",
             data: approved
         )

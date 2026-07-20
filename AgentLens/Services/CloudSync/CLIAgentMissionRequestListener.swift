@@ -1,30 +1,9 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OSLog
-
 @MainActor
 final class CLIAgentMissionRequestListener {
-    struct ProcessingIdentity: Hashable {
-        let documentID: String
-        let status: String
-        let approvalStatus: String
-
-        init(documentID: String, data: [String: Any]) {
-            self.documentID = documentID
-            status = Self.normalized(data["status"], fallback: "pending")
-            approvalStatus = Self.normalized(data["approvalStatus"], fallback: "none")
-        }
-
-        private static func normalized(_ value: Any?, fallback: String) -> String {
-            guard let value = value as? String else { return fallback }
-            let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            return normalized.isEmpty ? fallback : normalized
-        }
-    }
-
-
     let accountManager: AccountManaging
     let settingsManager: SettingsManager
     let chatController: ChatSessionController
@@ -33,13 +12,10 @@ final class CLIAgentMissionRequestListener {
     var listener: ListenerRegistration?
     var listenerUID: String?
     var attachTask: Task<Void, Never>?
-    private let processingQueue = SerialAsyncWorkQueue<QueryDocumentSnapshot, ProcessingIdentity> {
-        ProcessingIdentity(documentID: $0.documentID, data: $0.data())
-    }
+    private let processingQueue = SerialAsyncWorkQueue<QueryDocumentSnapshot, String> { CLIAgentMissionRequestListener.processingIdentity(documentID: $0.documentID, data: $0.data()) }
     private var isStarted = false
     var lastAttachState: String?
     var missionEventSequences: [String: Int] = [:]
-
     init(
         accountManager: AccountManaging,
         settingsManager: SettingsManager,
@@ -51,7 +27,6 @@ final class CLIAgentMissionRequestListener {
         self.chatController = chatController
         self.deviceTrustChecker = deviceTrustChecker
     }
-
     func start() {
         logger.info("mission listener start requested")
         isStarted = true
@@ -66,7 +41,6 @@ final class CLIAgentMissionRequestListener {
         }
         attachIfPossible()
     }
-
     func stop() {
         logger.info("mission listener stopped")
         isStarted = false
@@ -78,7 +52,6 @@ final class CLIAgentMissionRequestListener {
         processingQueue.stop()
         missionEventSequences.removeAll()
     }
-
     func attachIfPossible() {
         guard isStarted else { return }
         guard accountManager.isFirebaseAvailable, let uid = accountManager.currentUID else {
@@ -107,12 +80,7 @@ final class CLIAgentMissionRequestListener {
                     }
                     return
                 }
-                let docs = snapshot?.documentChanges.compactMap { change -> QueryDocumentSnapshot? in
-                    switch change.type {
-                    case .added, .modified: change.document
-                    case .removed: nil
-                    }
-                } ?? []
+                let docs = snapshot?.documentChanges.compactMap { $0.type == .removed ? nil : $0.document } ?? []
                 guard !docs.isEmpty else { return }
                 Task { @MainActor [weak self] in
                     self?.logger.info("mission listener received \(docs.count, privacy: .public) changed docs")
@@ -120,15 +88,13 @@ final class CLIAgentMissionRequestListener {
                 }
             }
     }
-
+    static func processingIdentity(documentID: String, data: [String: Any]) -> String { "\(documentID)\u{0}\(data["status"] as? String ?? "pending")\u{0}\(data["approvalStatus"] as? String ?? "none")" }
     static func isParkedPendingApproval(_ data: [String: Any]) -> Bool {
-        let identity = ProcessingIdentity(documentID: "", data: data)
-        guard identity.status == "waiting_for_approval",
-              identity.approvalStatus == "pending" else { return false }
-        guard let requestID = data["approvalRequestId"] as? String else { return false }
-        return !requestID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let status = (data["status"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let approval = (data["approvalStatus"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let requestID = (data["approvalRequestId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return status == "waiting_for_approval" && approval == "pending" && requestID?.isEmpty == false
     }
-
     func processDocs(_ docs: [QueryDocumentSnapshot]) {
         guard isStarted else { return }
         processingQueue.enqueue(docs)

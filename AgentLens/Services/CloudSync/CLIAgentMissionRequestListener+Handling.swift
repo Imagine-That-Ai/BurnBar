@@ -198,7 +198,6 @@ extension CLIAgentMissionRequestListener {
             return nil
         }
     }
-
     /// Builds the typed authorization input from the listener's post-decryption data.
     /// Kept as a pure helper so the security-sensitive field mapping is
     /// directly testable without requiring a live Firestore listener.
@@ -220,14 +219,12 @@ extension CLIAgentMissionRequestListener {
             fanOutCount: fanOutCount
         )
     }
-
     func handle(document: QueryDocumentSnapshot) async {
         let rawData = document.data()
         if Self.isParkedPendingApproval(rawData) {
             logger.debug("mission id=\(document.documentID, privacy: .public) remains parked for mobile approval")
             return
         }
-
         let cancellationTracker = MissionCancellationTracker()
         let logger = self.logger
         let docID = document.documentID

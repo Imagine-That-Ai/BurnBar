@@ -1592,6 +1592,7 @@
 		AE6C06071E70EDCA402B07C5 /* ContextPackServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10712FB049B12184DA02BFC9 /* ContextPackServiceTests.swift */; };
 		AEB878914CC0EB0C09270AC0 /* MemoryExtractionAPIKeyResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C675C94FA15BF47F3EF06B99 /* MemoryExtractionAPIKeyResolver.swift */; };
 		AED7CD9BD3CF65CD7B4E6D6B /* BurnBarProviderExecutorError.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA88C9FD50FFF1AAD5DD5BD4 /* BurnBarProviderExecutorError.swift */; };
+		AED7D7B6F85B3A1A361A81BA /* AgentHarnessImportJobListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8139ABCB1BB4F2485DBD2E11 /* AgentHarnessImportJobListener.swift */; };
 		AEDD73FF0896DCE1190F5AD3 /* AuthRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C714CC045D405C1DC97F89B /* AuthRepository.swift */; };
 		AF11565CA641D8A8178DD4A3 /* OpenBurnBarCore in Frameworks */ = {isa = PBXBuildFile; productRef = D50FA0156C54A2586E141ECE /* OpenBurnBarCore */; };
 		AF17D4B955F4EA89B2249C4E /* MercuryAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333F6D87EB7C6A54A0569204 /* MercuryAvatarView.swift */; };
@@ -3656,6 +3657,7 @@
 		81176A37FF16F5DDF286C191 /* AgentWatchScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWatchScreen.swift; sourceTree = "<group>"; };
 		8123AB4340559E1A85665402 /* ElderWandChipCloud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElderWandChipCloud.swift; sourceTree = "<group>"; };
 		812CA479C8EB01651ED732B6 /* InsightBriefSnapshotAsyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightBriefSnapshotAsyncTests.swift; sourceTree = "<group>"; };
+		8139ABCB1BB4F2485DBD2E11 /* AgentHarnessImportJobListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHarnessImportJobListener.swift; sourceTree = "<group>"; };
 		813A8E2944D37BD31629BC6C /* FriendlyModelName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FriendlyModelName.swift; sourceTree = "<group>"; };
 		8153AFF98397490A84D1943E /* ChatBackendSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatBackendSettings.swift; sourceTree = "<group>"; };
 		815F979EF1E5F678A92FBA6B /* DashboardLiveCostCurveCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardLiveCostCurveCacheTests.swift; sourceTree = "<group>"; };
@@ -5225,6 +5227,7 @@
 		0D31461C29457F6236DD9095 /* CloudSync */ = {
 			isa = PBXGroup;
 			children = (
+				8139ABCB1BB4F2485DBD2E11 /* AgentHarnessImportJobListener.swift */,
 				CF7909BD7FB94FE82E0FD9D4 /* ChatThreadSyncService.swift */,
 				77D65983AE8DEBADC4F886BD /* CLIAgentMissionEventFactory.swift */,
 				1ED988E3963A73C98340A9A5 /* CLIAgentMissionRequestListener.swift */,
@@ -11334,6 +11337,7 @@
 				4574AB9611C7D0E06622FF9D /* AgentCapabilityGrantStore.swift in Sources */,
 				4637F4F18AEFDA662A5C21F9 /* AgentContextTargetReceiver.swift in Sources */,
 				A40D271479C002DC72EA4F7D /* AgentFocusFollowController.swift in Sources */,
+				AED7D7B6F85B3A1A361A81BA /* AgentHarnessImportJobListener.swift in Sources */,
 				06E0A7DBA1C4ED8362720156 /* AgentLensApp+Bootstrap.swift in Sources */,
 				783FFE7FB20B2B8E6BD9A766 /* AgentLensApp+LiveServices.swift in Sources */,
 				F67AC3B36FA30F336B13548B /* AgentLensApp+MemoryServices.swift in Sources */,
