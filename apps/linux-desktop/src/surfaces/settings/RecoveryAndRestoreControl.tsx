@@ -126,7 +126,8 @@ export function RecoveryAndRestoreControl({
         <div className="settings-recovery-controls" aria-label="Encrypted recovery bundle controls">
           <p className="muted settings-tab-lede">
             Keep an encrypted recovery bundle separate from this machine. The daemon performs PBKDF2/AES-GCM and
-            native key-store writes; passphrases never enter renderer state or storage.
+            native key-store writes; passphrases stay in ephemeral form state, are cleared after a successful
+            operation, and are never persisted or returned in receipts.
           </p>
           {exportAvailable ? (
             <div className="settings-recovery-action">
