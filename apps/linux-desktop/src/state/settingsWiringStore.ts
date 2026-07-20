@@ -177,6 +177,28 @@ function mutateProvider(
   };
 }
 
+function mergeConfigSnapshot(current: ConfigSnapshot, next: ConfigSnapshot): ConfigSnapshot {
+  return {
+    ...current,
+    ...next,
+    // Older daemon peers can omit the path envelope from mutation/readback
+    // responses. Keep the last verified paths rather than replacing them with
+    // empty renderer values.
+    paths: next.paths?.supportDir ? next.paths : current.paths,
+    secretServiceStatus: next.secretServiceStatus || current.secretServiceStatus,
+    providers: next.providers ?? current.providers
+  };
+}
+
+function assertPrivacyReadback(snapshot: ConfigSnapshot, patch: PrivacySettingsPatch): void {
+  for (const key of Object.keys(patch) as (keyof PrivacySettingsPatch)[]) {
+    const expected = patch[key];
+    if (expected !== undefined && snapshot[key] !== expected) {
+      throw new Error(`Daemon did not confirm ${key} after save.`);
+    }
+  }
+}
+
 export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) => ({
   routeLog: [],
   notificationConfig: null,
@@ -323,18 +345,17 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
         throw new Error('Packaged shell required to save privacy choices.');
       }
       const requested = { ...current, ...patch };
-      const next = fixtureMode ? requested : await bridge!.configUpdate!(requested);
-      // Config responses may omit the path envelope because the canonical
-      // daemon contract returns provider configuration plus consent fields.
-      // Preserve the already-loaded daemon facts until the next explicit
-      // config refresh rather than replacing them with empty renderer values.
-      const committed: ConfigSnapshot = {
-        ...current,
-        ...next,
-        paths: next.paths?.supportDir ? next.paths : current.paths,
-        secretServiceStatus: next.secretServiceStatus || current.secretServiceStatus,
-        providers: next.providers ?? current.providers
-      };
+      let committed: ConfigSnapshot;
+      if (fixtureMode) {
+        committed = requested;
+      } else {
+        // A successful mutation response is not proof that the daemon
+        // persisted the choice. Read the canonical snapshot after the write
+        // and fail closed when it does not confirm the requested fields.
+        await bridge!.configUpdate!(requested);
+        committed = mergeConfigSnapshot(current, await bridge!.configSnapshot());
+      }
+      assertPrivacyReadback(committed, patch);
       useSystemStore.setState({ config: committed, loading: false, error: null });
       set({
         busy: null,

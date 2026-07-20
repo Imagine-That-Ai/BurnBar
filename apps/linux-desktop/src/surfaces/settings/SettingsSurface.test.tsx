@@ -605,21 +605,45 @@ describe('SettingsSurface', () => {
 
   it('sends only the consent change while preserving daemon config fields', async () => {
     const config = fixtureConfigSnapshot();
-    const configUpdate = vi.fn(async (snapshot) => ({
-      ...snapshot,
-      paths: config.paths,
-      secretServiceStatus: config.secretServiceStatus
-    }));
-    useShellStore.setState({ bridge: bridge({ configUpdate }), fixtureMode: false });
+    let committed = config;
+    const configUpdate = vi.fn(async (snapshot) => {
+      committed = {
+        ...snapshot,
+        paths: config.paths,
+        secretServiceStatus: config.secretServiceStatus
+      };
+      return committed;
+    });
+    const configSnapshot = vi.fn(async () => committed);
+    useShellStore.setState({ bridge: bridge({ configUpdate, configSnapshot }), fixtureMode: false });
     useSystemStore.setState({ config, loading: false, error: null });
     await useSettingsWiringStore.getState().updatePrivacySettings({ privacyOptIn: true });
     expect(configUpdate).toHaveBeenCalledTimes(1);
+    expect(configSnapshot).toHaveBeenCalledTimes(1);
     const payload = configUpdate.mock.calls[0][0];
     expect(payload.privacyOptIn).toBe(true);
     expect(payload.telemetryEnabled).toBe(config.telemetryEnabled);
     expect(payload.providers).toEqual(config.providers);
     expect(useSystemStore.getState().config?.privacyOptIn).toBe(true);
     expect(useSettingsWiringStore.getState().privacyMutation.status).toBe('success');
+  });
+
+  it('does not claim privacy choices were saved when daemon readback disagrees', async () => {
+    const config = fixtureConfigSnapshot();
+    const configUpdate = vi.fn(async (snapshot) => snapshot);
+    const configSnapshot = vi.fn(async () => config);
+    useShellStore.setState({ bridge: bridge({ configUpdate, configSnapshot }), fixtureMode: false });
+    useSystemStore.setState({ config, loading: false, error: null });
+
+    await useSettingsWiringStore.getState().updatePrivacySettings({ privacyOptIn: true });
+
+    expect(configUpdate).toHaveBeenCalledOnce();
+    expect(configSnapshot).toHaveBeenCalledOnce();
+    expect(useSystemStore.getState().config?.privacyOptIn).toBe(false);
+    expect(useSettingsWiringStore.getState().privacyMutation).toEqual({
+      status: 'error',
+      message: 'Daemon did not confirm privacyOptIn after save.'
+    });
   });
 
   it('wires Agents credential and model mutation RPCs without rendering secrets', async () => {
