@@ -1,5 +1,7 @@
 import Foundation
+#if !os(Linux)
 import Observation
+#endif
 
 // MARK: - Hermes Square Feature Flags
 //
@@ -18,7 +20,9 @@ import Observation
 // removed by the type checker rather than lingering as strings.
 
 @MainActor
+#if !os(Linux)
 @Observable
+#endif
 public final class HermesSquareFeatureFlags {
 
     // MARK: Singleton
