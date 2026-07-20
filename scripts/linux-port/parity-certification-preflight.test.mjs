@@ -573,7 +573,7 @@ test('P-02 capture emits a blocked candidate-bound diagnostic inventory', (t) =>
   assert.equal(captured.document.candidate.runId, RUN_ID);
   assert.equal(captured.document.candidate.artifactDigest, DIGEST);
   assert.equal(captured.document.status, 'blocked');
-  assert.equal(captured.document.summary.readyCount, 10);
+  assert.equal(captured.document.summary.readyCount, 11);
   assert.equal(fs.existsSync(captured.output), true);
 });
 
