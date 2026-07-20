@@ -251,8 +251,10 @@ public actor BurnBarLinuxPrivacyService {
         }
         let token = UUID().uuidString
         let expiresAt = now.addingTimeInterval(previewLifetime)
-        let fingerprints = stores.reduce(into: [StoreID: FileFingerprint?]()) { result, store in
-            result[store] = fingerprint(at: descriptors[store]!)
+        var fingerprints: [StoreID: FileFingerprint?] = [:]
+        for store in stores {
+            guard let path = descriptors[store] else { throw ServiceError.unsafeLocation }
+            fingerprints.updateValue(fingerprint(at: path), forKey: store)
         }
         pending[token] = PendingPreview(
             stores: stores,
@@ -302,7 +304,9 @@ public actor BurnBarLinuxPrivacyService {
                 throw ServiceError.unsafeLocation
             }
             guard let before = fingerprint(at: path) else { continue }
-            guard before == preview.fingerprints[store]!, isSafeStoreFile(path) else {
+            guard let expectedFingerprint = preview.fingerprints[store],
+                  before == expectedFingerprint,
+                  isSafeStoreFile(path) else {
                 throw ServiceError.stalePreview
             }
         }
@@ -312,14 +316,19 @@ public actor BurnBarLinuxPrivacyService {
         var bytesRemoved: Int64 = 0
         do {
             for store in stores {
-                let path = preview.paths[store]!
+                guard let path = preview.paths[store] else {
+                    throw ServiceError.unsafeLocation
+                }
                 guard let current = fingerprint(at: path) else {
                     alreadyAbsent.append(store)
                     continue
                 }
+                guard let expectedFingerprint = preview.fingerprints[store] else {
+                    throw ServiceError.stalePreview
+                }
                 // Re-check immediately before removal. A replacement is never
                 // followed, and only the fixed allowlisted filename is removed.
-                guard current == preview.fingerprints[store]!, isSafeStoreFile(path) else {
+                guard current == expectedFingerprint, isSafeStoreFile(path) else {
                     throw ServiceError.stalePreview
                 }
                 // POSIX unlink removes only the directory entry. Unlike
@@ -362,8 +371,11 @@ public actor BurnBarLinuxPrivacyService {
             return blockedRetentionStatus(now: now)
         }
 
-        let stores = StoreID.allCases.map { store in
-            retentionStoreStatus(store: store, rule: loaded.rules.first { $0.store == store }!, now: now)
+        let stores = try StoreID.allCases.map { store in
+            guard let rule = loaded.rules.first(where: { $0.store == store }) else {
+                throw ServiceError.retentionInvalidPolicy
+            }
+            return retentionStoreStatus(store: store, rule: rule, now: now)
         }
         return BurnBarLinuxPrivacyRetentionStatusResponse(
             policyState: loaded.state,
@@ -398,7 +410,10 @@ public actor BurnBarLinuxPrivacyService {
             if fileManager.fileExists(atPath: path.path) && fingerprint == nil {
                 throw ServiceError.unsafeFile
             }
-            return (store, path, fingerprint, rules.first { $0.store == store }!)
+            guard let rule = rules.first(where: { $0.store == store }) else {
+                throw ServiceError.retentionInvalidPolicy
+            }
+            return (store, path, fingerprint, rule)
         }
 
         // Parse all structured stores before persisting the new policy or
@@ -478,7 +493,7 @@ public actor BurnBarLinuxPrivacyService {
         var exportedStores: [ExportStore] = []
         var payloadByteCount = 0
         for store in stores {
-            let path = descriptors[store]!
+            guard let path = descriptors[store] else { throw ServiceError.unsafeLocation }
             let entry = inventoryEntry(for: store)
             guard entry.state != .blocked else { throw ServiceError.unsafeFile }
             guard let before = fingerprint(at: path) else {
@@ -617,14 +632,14 @@ public actor BurnBarLinuxPrivacyService {
 
     private func blockedRetentionStatus(now: Date) -> BurnBarLinuxPrivacyRetentionStatusResponse {
         let rules = Self.defaultRetentionRules
-        let stores = StoreID.allCases.map { store in
+        let stores = rules.map { rule in
             BurnBarLinuxPrivacyRetentionStoreStatus(
-                store: store,
+                store: rule.store,
                 state: .blocked,
                 bytes: 0,
                 ageSeconds: nil,
-                maxAgeSeconds: rules.first { $0.store == store }!.maxAgeSeconds,
-                maxBytes: rules.first { $0.store == store }!.maxBytes,
+                maxAgeSeconds: rule.maxAgeSeconds,
+                maxBytes: rule.maxBytes,
                 wouldPurge: false,
                 reason: "policy_unavailable"
             )

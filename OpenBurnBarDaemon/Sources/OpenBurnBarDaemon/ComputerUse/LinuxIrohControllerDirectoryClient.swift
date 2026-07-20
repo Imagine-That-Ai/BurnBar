@@ -45,7 +45,7 @@ enum LinuxIrohControllerDirectoryError: Error, Equatable, Sendable {
 typealias LinuxIrohCallableTransport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 struct LinuxIrohControllerDirectoryClient: LinuxIrohControllerDirectoryServing,
     LinuxIrohControllerCredentialScopedRevoking {
-    static let defaultBaseURL = URL(string: "https://us-central1-burnbar.cloudfunctions.net")!
+    static let defaultBaseURL = requiredURL("https://us-central1-burnbar.cloudfunctions.net")
     static let maximumRequestBytes = 32 * 1_024
     static let maximumResponseBytes = 64 * 1_024
 
@@ -53,6 +53,13 @@ struct LinuxIrohControllerDirectoryClient: LinuxIrohControllerDirectoryServing,
     private let credentials: LinuxIrohControllerCredentialProvider
     private let transport: LinuxIrohCallableTransport
     private let now: @Sendable () -> Date
+
+    private static func requiredURL(_ value: String) -> URL {
+        guard let url = URL(string: value) else {
+            preconditionFailure("Invalid built-in controller directory URL")
+        }
+        return url
+    }
 
     init(
         baseURL: URL = defaultBaseURL,

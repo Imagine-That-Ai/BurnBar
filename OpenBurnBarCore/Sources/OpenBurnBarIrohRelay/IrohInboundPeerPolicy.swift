@@ -14,8 +14,7 @@ public enum IrohNodeIdNormalization {
         let normalized = canonical(raw)
         if normalized.count == 64,
            normalized.utf8.allSatisfy({ byte in
-               (byte >= Character("0").asciiValue! && byte <= Character("9").asciiValue!)
-                   || (byte >= Character("a").asciiValue! && byte <= Character("f").asciiValue!)
+               (byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102)
            }) {
             return normalized
         }

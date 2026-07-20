@@ -979,8 +979,8 @@ public actor BurnBarHTTPGatewayServer {
 
         let (providerHint, modelID) = splitProviderQualifiedModelID(trimmed)
         let candidates = configurations.filter { configuration in
-            providerHint == nil
-                || configuration.provider.id.caseInsensitiveCompare(providerHint!) == .orderedSame
+            guard let providerHint else { return true }
+            return configuration.provider.id.caseInsensitiveCompare(providerHint) == .orderedSame
         }
         for configuration in candidates {
             if let variant = configuration.settings.modelVariants.first(where: {

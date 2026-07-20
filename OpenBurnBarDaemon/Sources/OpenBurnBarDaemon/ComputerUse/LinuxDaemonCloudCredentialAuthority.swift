@@ -6,6 +6,12 @@ import OpenBurnBarLinuxSecurity
 import Glibc
 
 public struct LinuxCloudAuthConfiguration: Sendable, Equatable {
+    public static let defaultAuthorizationEndpoint = requiredURL("https://accounts.google.com/o/oauth2/v2/auth")
+    public static let defaultGoogleTokenEndpoint = requiredURL("https://oauth2.googleapis.com/token")
+    public static let defaultFirebaseSignInEndpoint = requiredURL("https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp")
+    public static let defaultFirebaseRefreshEndpoint = requiredURL("https://securetoken.googleapis.com/v1/token")
+    public static let defaultFunctionsBaseURL = requiredURL("https://us-central1-burnbar.cloudfunctions.net")
+
     public let googleOAuthClientID: String
     public let googleOAuthClientSecret: String?
     public let firebaseAPIKey: String
@@ -22,11 +28,11 @@ public struct LinuxCloudAuthConfiguration: Sendable, Equatable {
         googleOAuthClientSecret: String? = nil,
         firebaseAPIKey: String,
         linuxAppCheckAppID: String,
-        authorizationEndpoint: URL = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!,
-        googleTokenEndpoint: URL = URL(string: "https://oauth2.googleapis.com/token")!,
-        firebaseSignInEndpoint: URL = URL(string: "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp")!,
-        firebaseRefreshEndpoint: URL = URL(string: "https://securetoken.googleapis.com/v1/token")!,
-        functionsBaseURL: URL = URL(string: "https://us-central1-burnbar.cloudfunctions.net")!,
+        authorizationEndpoint: URL = LinuxCloudAuthConfiguration.defaultAuthorizationEndpoint,
+        googleTokenEndpoint: URL = LinuxCloudAuthConfiguration.defaultGoogleTokenEndpoint,
+        firebaseSignInEndpoint: URL = LinuxCloudAuthConfiguration.defaultFirebaseSignInEndpoint,
+        firebaseRefreshEndpoint: URL = LinuxCloudAuthConfiguration.defaultFirebaseRefreshEndpoint,
+        functionsBaseURL: URL = LinuxCloudAuthConfiguration.defaultFunctionsBaseURL,
         authorizationTimeout: TimeInterval = 180
     ) {
         self.googleOAuthClientID = googleOAuthClientID
@@ -39,6 +45,13 @@ public struct LinuxCloudAuthConfiguration: Sendable, Equatable {
         self.firebaseRefreshEndpoint = firebaseRefreshEndpoint
         self.functionsBaseURL = functionsBaseURL
         self.authorizationTimeout = authorizationTimeout
+    }
+
+    private static func requiredURL(_ value: String) -> URL {
+        guard let url = URL(string: value) else {
+            preconditionFailure("Invalid built-in cloud authentication URL")
+        }
+        return url
     }
 
     public static func production(environment: [String: String] = ProcessInfo.processInfo.environment) -> Self? {
@@ -408,9 +421,9 @@ public actor LinuxDaemonCloudCredentialAuthority {
         hostname: String = ProcessInfo.processInfo.hostName,
         trustedDeviceAuthorizer: (any LinuxCloudTrustedDeviceActionAuthorizing)? = nil
     ) {
-        var continuation: AsyncStream<LinuxCloudAuthSessionEvent>.Continuation!
-        sessionEvents = AsyncStream { continuation = $0 }
-        eventContinuation = continuation
+        let stream = AsyncStream<LinuxCloudAuthSessionEvent>.makeStream()
+        sessionEvents = stream.stream
+        eventContinuation = stream.continuation
         self.configuration = configuration
         let authTokenStore = LinuxAuthTokenStore(custodian: custodian)
         tokenStore = authTokenStore

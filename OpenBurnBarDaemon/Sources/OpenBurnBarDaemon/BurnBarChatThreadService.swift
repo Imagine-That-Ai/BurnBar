@@ -386,8 +386,8 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
         let firstUserMessage = optionalText(statement, column: 5)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let lastMessageContent = optionalText(statement, column: 6)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let backendID = optionalText(statement, column: 7)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let titleSource = firstUserMessage?.isEmpty == false ? firstUserMessage! : "Burn Bar Chat"
-        let previewSource = lastMessageContent?.isEmpty == false ? lastMessageContent! : titleSource
+        let titleSource = firstUserMessage.flatMap { $0.isEmpty ? nil : $0 } ?? "Burn Bar Chat"
+        let previewSource = lastMessageContent.flatMap { $0.isEmpty ? nil : $0 } ?? titleSource
         return BurnBarChatThreadSummary(
             id: id,
             title: Self.compactSnippet(titleSource, limit: 84),

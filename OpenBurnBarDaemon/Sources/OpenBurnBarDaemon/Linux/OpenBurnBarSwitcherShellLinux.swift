@@ -435,7 +435,11 @@ private final class LinuxPTYCLIProcess: @unchecked Sendable {
             executablePath.withCString { executablePath in
                 argv.withUnsafeMutableBufferPointer { argvBuffer in
                     envp.withUnsafeMutableBufferPointer { envpBuffer in
-                        _ = execve(executablePath, argvBuffer.baseAddress!, envpBuffer.baseAddress!)
+                        guard let argvAddress = argvBuffer.baseAddress,
+                              let envpAddress = envpBuffer.baseAddress else {
+                            _exit(126)
+                        }
+                        _ = execve(executablePath, argvAddress, envpAddress)
                     }
                 }
             }
