@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import { fixtureProviderCatalog } from '../daemonFixture.js';
-import type { CustomModel, ProviderCatalog, ProviderCatalogModel } from '../tauriBridge.js';
+import type { ConfigSnapshot, CustomModel, ProviderCatalog, ProviderCatalogModel } from '../tauriBridge.js';
 import { useShellStore } from './shellStore.js';
+
+/** Router policies accepted by the daemon config mutation contract. */
+export type ProviderRouterMode = 'providerFamilyFailover' | 'exactModelOnly' | 'cheapest';
 
 export type ProvidersState = {
   catalog: ProviderCatalog | null;
@@ -9,9 +12,14 @@ export type ProvidersState = {
   error: string | null;
   mutationBusy: string | null;
   mutationError: string | null;
+  /** Last daemon-confirmed router policy; unknown values remain visible as-is. */
+  routerMode: string | null;
+  routerModeError: string | null;
   load(): Promise<void>;
+  loadRouterMode(): Promise<void>;
   /** Clear the catalog and invalidate any in-flight response. */
   invalidate(error?: string | null): void;
+  setRouterMode(mode: ProviderRouterMode): Promise<void>;
   setPreferredCredentialSlot(providerID: string, slotID: string): Promise<void>;
   addCustomModel(providerID: string, customModel: CustomModel): Promise<void>;
   removeCustomModel(providerID: string, modelID: string): Promise<void>;
@@ -48,6 +56,11 @@ function updateFixtureCatalog(
 }
 
 let catalogLoadGeneration = 0;
+let routerModeLoadGeneration = 0;
+
+function routerModeErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
 
 export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   catalog: null,
@@ -55,9 +68,73 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   error: null,
   mutationBusy: null,
   mutationError: null,
+  routerMode: null,
+  routerModeError: null,
   invalidate(error = null) {
     catalogLoadGeneration += 1;
     set({ catalog: null, loading: false, error });
+  },
+  async loadRouterMode() {
+    const requestGeneration = ++routerModeLoadGeneration;
+    const { fixtureMode, bridge } = useShellStore.getState();
+    if (fixtureMode) {
+      if (requestGeneration !== routerModeLoadGeneration) return;
+      set({ routerMode: 'providerFamilyFailover', routerModeError: null });
+      return;
+    }
+    if (!bridge) {
+      if (requestGeneration !== routerModeLoadGeneration) return;
+      set({
+        routerModeError: 'Packaged shell required to read the daemon failover policy.'
+      });
+      return;
+    }
+    if (typeof bridge.configSnapshot !== 'function') {
+      if (requestGeneration !== routerModeLoadGeneration) return;
+      set({ routerModeError: 'Provider failover policy is unavailable because the config read RPC is missing.' });
+      return;
+    }
+    try {
+      const snapshot = await bridge.configSnapshot();
+      if (requestGeneration !== routerModeLoadGeneration) return;
+      const routerMode = snapshot.routerMode?.trim() || null;
+      set({ routerMode, routerModeError: null });
+    } catch (error) {
+      if (requestGeneration !== routerModeLoadGeneration) return;
+      set({ routerModeError: routerModeErrorMessage(error, 'Daemon failover policy read failed.') });
+    }
+  },
+  async setRouterMode(mode) {
+    const mutationKey = 'provider.router_mode';
+    const previousMode = get().routerMode;
+    set({ mutationBusy: mutationKey, mutationError: null, routerModeError: null });
+    try {
+      const { fixtureMode, bridge } = useShellStore.getState();
+      if (fixtureMode) {
+        set({ routerMode: mode, mutationBusy: null, mutationError: null });
+        return;
+      }
+      if (!bridge) throw new Error('Packaged shell required to change the daemon failover policy.');
+      if (typeof bridge.configUpdate !== 'function') {
+        throw new Error('Provider failover policy is read-only because the config mutation RPC is unavailable.');
+      }
+      if (typeof bridge.configSnapshot !== 'function') {
+        throw new Error('Provider failover policy is read-only because the config read RPC is unavailable.');
+      }
+      const snapshot = await bridge.configSnapshot();
+      const next: ConfigSnapshot = { ...snapshot, routerMode: mode };
+      const readback = await bridge.configUpdate(next);
+      if (readback.routerMode !== mode) {
+        throw new Error(`Daemon did not confirm failover policy '${mode}'.`);
+      }
+      set({ routerMode: readback.routerMode, mutationBusy: null, mutationError: null, routerModeError: null });
+    } catch (error) {
+      set({
+        routerMode: previousMode,
+        mutationBusy: null,
+        mutationError: errorMessage(error, 'Provider failover policy update failed.')
+      });
+    }
   },
   async setPreferredCredentialSlot(providerID, slotID) {
     const normalizedProviderID = providerID.trim();

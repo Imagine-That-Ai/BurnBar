@@ -4,7 +4,7 @@ import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { QuotaCard, QuotaListRow } from '../../components/QuotaCard.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
-import { useProvidersStore } from '../../state/providersStore.js';
+import { useProvidersStore, type ProviderRouterMode } from '../../state/providersStore.js';
 import type { ProviderCatalog } from '../../tauriBridge.js';
 import { QuotaFilterRail } from './QuotaFilterRail.js';
 import { QuotaResetAtlas } from './QuotaResetAtlas.js';
@@ -23,6 +23,28 @@ import {
 } from './quotaModel.js';
 import './quota.css';
 
+const ROUTER_MODE_OPTIONS: ReadonlyArray<{ value: ProviderRouterMode; label: string; detail: string }> = [
+  {
+    value: 'providerFamilyFailover',
+    label: 'Provider family failover',
+    detail: 'Keep fallback inside the selected provider family.'
+  },
+  {
+    value: 'exactModelOnly',
+    label: 'Exact model only',
+    detail: 'Only use routes that prove the same canonical model.'
+  },
+  {
+    value: 'cheapest',
+    label: 'Cheapest eligible',
+    detail: 'Prefer the lowest-cost route that remains eligible.'
+  }
+];
+
+function routerModeLabel(mode: string | null): string {
+  return ROUTER_MODE_OPTIONS.find((option) => option.value === mode)?.label ?? mode ?? 'Unavailable';
+}
+
 export function QuotaWorkspaceSurface() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const setRoute = useShellStore((s) => s.setRoute);
@@ -32,6 +54,11 @@ export function QuotaWorkspaceSurface() {
   const loading = useProvidersStore((s) => s.loading);
   const error = useProvidersStore((s) => s.error);
   const load = useProvidersStore((s) => s.load);
+  const loadRouterMode = useProvidersStore((s) => s.loadRouterMode);
+  const routerMode = useProvidersStore((s) => s.routerMode);
+  const routerModeError = useProvidersStore((s) => s.routerModeError);
+  const mutationBusy = useProvidersStore((s) => s.mutationBusy);
+  const setRouterMode = useProvidersStore((s) => s.setRouterMode);
 
   const [prefs, setPrefs] = useState(loadQuotaPrefs);
   const [focusProviderId, setFocusProviderId] = useState<string | null>(null);
@@ -45,6 +72,7 @@ export function QuotaWorkspaceSurface() {
   }, [catalog]);
 
   useLaneLoad(load);
+  useLaneLoad(loadRouterMode);
 
   const workspaceCatalog = catalog === null ? lastCatalog : catalog.length > 0 ? catalog : null;
   const allEntries = useMemo(
@@ -123,6 +151,47 @@ export function QuotaWorkspaceSurface() {
           </button>
         </Banner>
       ) : null}
+
+      <section className="quota-routing-cockpit" aria-labelledby="quota-routing-heading">
+        <div className="quota-routing-copy">
+          <p className="quota-hero-eyebrow mono">ROUTING COCKPIT</p>
+          <h2 id="quota-routing-heading">Failover policy</h2>
+          <p className="muted">
+            This daemon-owned policy decides how traffic responds when a quota window is exhausted or a route degrades.
+          </p>
+        </div>
+        <label className="quota-routing-select">
+          <span>Policy</span>
+          <select
+            aria-label="Failover policy"
+            value={ROUTER_MODE_OPTIONS.some((option) => option.value === routerMode) ? routerMode ?? '' : ''}
+            disabled={mutationBusy === 'provider.router_mode' || (!fixtureMode && typeof bridge?.configUpdate !== 'function')}
+            aria-busy={mutationBusy === 'provider.router_mode'}
+            onChange={(event) => void setRouterMode(event.currentTarget.value as ProviderRouterMode)}
+          >
+            {!ROUTER_MODE_OPTIONS.some((option) => option.value === routerMode) ? (
+              <option value="" disabled>
+                {routerMode ? `Unknown daemon mode (${routerMode})` : routerModeError ? 'Unavailable' : 'Loading…'}
+              </option>
+            ) : null}
+            {ROUTER_MODE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="quota-routing-status" role="status" aria-live="polite">
+          {routerModeError
+            ? `Last known policy: ${routerModeLabel(routerMode)}. ${routerModeError}`
+            : routerMode
+              ? `${routerModeLabel(routerMode)} · ${ROUTER_MODE_OPTIONS.find((option) => option.value === routerMode)?.detail ?? 'Daemon returned an unrecognized policy.'}`
+              : 'Waiting for a daemon-confirmed failover policy.'}
+        </p>
+        {!fixtureMode && typeof bridge?.configUpdate !== 'function' ? (
+          <p className="quota-routing-capability muted">Read-only until the packaged daemon exposes config mutation.</p>
+        ) : null}
+      </section>
 
       {loading && !workspaceCatalog ? (
         <div className="quota-skeleton" aria-busy="true" aria-label="Loading subscription vault">

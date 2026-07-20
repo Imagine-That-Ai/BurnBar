@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fixtureProviderCatalog } from '../../daemonFixture.js';
+import { fixtureConfigSnapshot, fixtureProviderCatalog } from '../../daemonFixture.js';
 import { useProvidersStore } from '../../state/providersStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { QuotaWorkspaceSurface } from './QuotaWorkspaceSurface.js';
@@ -25,7 +25,11 @@ function resetStores(): void {
     catalog: null,
     loading: false,
     error: null,
-    load: defaultProvidersLoad
+    load: defaultProvidersLoad,
+    routerMode: null,
+    routerModeError: null,
+    mutationBusy: null,
+    mutationError: null
   });
 }
 
@@ -86,5 +90,30 @@ describe('QuotaWorkspaceSurface', () => {
     expect(screen.getByText('No providers linked — connect from the daemon settings.')).toBeTruthy();
     expect(screen.queryByText(/last available quota snapshot/i)).toBeNull();
     expect(container.querySelector('.quota-card')).toBeNull();
+  });
+
+  it('changes failover policy through config mutation and keeps the canonical readback', async () => {
+    const provider = fixtureProviderCatalog()[0]!;
+    const snapshot = { ...fixtureConfigSnapshot(), routerMode: 'providerFamilyFailover' };
+    const configSnapshot = vi.fn(async () => snapshot);
+    const configUpdate = vi.fn(async (next: typeof snapshot) => ({ ...next, routerMode: 'exactModelOnly' }));
+    useShellStore.setState({ fixtureMode: false, bridge: { configSnapshot, configUpdate } as never });
+    useProvidersStore.setState({
+      catalog: [provider],
+      loading: false,
+      error: null,
+      routerMode: 'providerFamilyFailover',
+      load: vi.fn().mockResolvedValue(undefined)
+    });
+
+    render(<QuotaWorkspaceSurface />);
+    const policy = await screen.findByRole('combobox', { name: 'Failover policy' });
+    await waitFor(() => expect((policy as HTMLSelectElement).value).toBe('providerFamilyFailover'));
+
+    fireEvent.change(policy, { target: { value: 'exactModelOnly' } });
+
+    await waitFor(() => expect(configUpdate).toHaveBeenCalledWith(expect.objectContaining({ routerMode: 'exactModelOnly' })));
+    expect((policy as HTMLSelectElement).value).toBe('exactModelOnly');
+    expect(policy.closest('.quota-routing-cockpit')?.textContent).toContain('Exact model only');
   });
 });
