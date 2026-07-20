@@ -7,8 +7,8 @@ import OpenBurnBarDomainCoreFFI
 private func rawDomainCoreABIVersion(_ status: UnsafeMutableRawPointer) -> UInt32
 #endif
 
-enum DomainCoreNativeProbe {
-    static func abiVersion() -> UInt32? {
+public enum DomainCoreNativeProbe {
+    public static func abiVersion() -> UInt32? {
         #if canImport(OpenBurnBarDomainCoreFFI)
         // RustCallStatus is 32 bytes/alignment 8 on every supported Apple target.
         // Calling the raw C export avoids generated UniFFI checksum initialization,

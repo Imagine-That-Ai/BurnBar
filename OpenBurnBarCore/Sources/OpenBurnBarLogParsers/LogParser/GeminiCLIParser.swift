@@ -19,6 +19,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fm)
         let basePath = logDirectoryOverride ?? ("~/.gemini/tmp" as NSString).expandingTildeInPath
 
         guard fm.fileExists(atPath: basePath) else {
@@ -29,8 +30,8 @@ public final class GeminiCLIParser: LogParser, Sendable {
         var conversations: [ConversationRecord] = []
 
         let baseURL = URL(fileURLWithPath: basePath)
-        let projectDirs = (try? fm.contentsOfDirectory(at: baseURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter { // try?-ok(dir read, empty fallback)
-            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true // try?-ok(nil-safe filter)
+        let projectDirs = (try? fm.contentsOfDirectory(at: baseURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter {
+            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         } ?? []
 
         for projectDir in projectDirs {
@@ -39,18 +40,14 @@ public final class GeminiCLIParser: LogParser, Sendable {
 
             guard fm.fileExists(atPath: chatsDir.path) else { continue }
 
-            let chatFiles = (try? fm.contentsOfDirectory(at: chatsDir, includingPropertiesForKeys: nil))?.filter { // try?-ok(dir read, empty fallback)
+            let chatFiles = (try? fm.contentsOfDirectory(at: chatsDir, includingPropertiesForKeys: nil))?.filter {
                 let name = $0.lastPathComponent
                 return name.hasPrefix("session-") && ($0.pathExtension == "json" || $0.pathExtension == "jsonl")
             } ?? []
 
             for chatFile in chatFiles {
+                guard try gate.shouldRead(chatFile) else { continue }
                 let sessionId = chatFile.deletingPathExtension().lastPathComponent
-                if let minimumFileModificationDate = options.minimumFileModificationDate,
-                   let signature = FileSignature(for: chatFile),
-                   Date(timeIntervalSince1970: signature.modifiedAt) < minimumFileModificationDate {
-                    continue
-                }
 
                 let pair: (usage: TokenUsage?, conversation: ConversationRecord?)?
                 if chatFile.pathExtension == "jsonl" {

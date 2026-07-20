@@ -184,6 +184,21 @@
       "source": "functions/src/callables/stripe.ts"
     },
     {
+      "collectionGroup": "windows_app_check_challenges",
+      "path": "windows_app_check_challenges/{challengeId}",
+      "category": "security-ephemeral",
+      "growth": "One document per authenticated Windows TPM App Check challenge, including consumed replay receipts.",
+      "mechanism": "firestore-ttl-field",
+      "ttlField": "expiresAt",
+      "retentionSeconds": 120,
+      "retention": "2 minutes (CHALLENGE_TTL_MS)",
+      "indexDeclared": true,
+      "status": "active",
+      "operatorAction": "Verify live via scripts/ci/verify-firestore-ttl-state.mjs after staging and production rules deployment.",
+      "rationale": "Single-use attestation challenges must remain long enough to reject replay, then expire promptly.",
+      "source": "functions/src/callables/windowsAppCheck.ts"
+    },
+    {
       "collectionGroup": "credential_transfers",
       "path": "credential_transfers/{transferId}",
       "category": "security-ephemeral",

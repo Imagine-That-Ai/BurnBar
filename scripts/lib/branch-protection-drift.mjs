@@ -31,9 +31,9 @@ export const BRANCH_PROTECTION_SOURCE_OF_TRUTH = join(
 /**
  * The canonical, comparable subset of fields drift is checked on. Documentation
  * metadata keys (prefixed with "_") and the segregated
- * `_pending_required_status_checks` placeholders are intentionally EXCLUDED — no
- * workflow emits the pending checks yet, so they must never be required live
- * (a required-but-never-reported context leaves every PR pending forever).
+ * `_pending_required_status_checks` placeholders are intentionally EXCLUDED.
+ * A pending context is not guaranteed to report on every PR: it may be path-scoped
+ * or not emitted yet. Requiring it globally would leave some PRs pending forever.
  */
 export function canonicalizeDesired(desired) {
   const reviews = desired.required_pull_request_reviews || null;

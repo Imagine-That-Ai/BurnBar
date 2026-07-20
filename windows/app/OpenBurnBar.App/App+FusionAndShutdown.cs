@@ -502,6 +502,7 @@ public partial class App
         }
 
         _computerUseSafetyMonitor.Dispose();
+        await StopWindowsRuntimeSafetyConfigAsync();
 
         if (_hotkeyRegistered)
         {

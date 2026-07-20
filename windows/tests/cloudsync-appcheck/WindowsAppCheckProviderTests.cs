@@ -60,6 +60,64 @@ public sealed class WindowsAppCheckProviderTests
     }
 
     [Fact]
+    public async Task Challenge_required_producer_attests_server_nonce_before_mint()
+    {
+        const long now = 1_900_000_000_000;
+        var producer = new ChallengeRequiredAttestationProducer();
+        var clock = new MutableClock(now);
+        var transport = new FakeMintTransport(request =>
+        {
+            if (request.Url.EndsWith(AppCheckChallengeEndpoint.FunctionName, StringComparison.Ordinal))
+            {
+                clock.Advance(1_000);
+                return new AppCheckMintHttpResponse(
+                    200,
+                    "{\"result\":{\"ok\":true,\"challengeId\":\"challenge-0123456789abcdef\",\"nonce\":\"server-nonce-0123456789abcdef\",\"expiresAtMs\":1900000120000}}");
+            }
+            return new AppCheckMintHttpResponse(
+                200,
+                TestConstants.SuccessBody("jwt-tpm", 30 * Minute, TestConstants.PlaceholderAppId));
+        });
+        using var provider = new WindowsAppCheckProvider(
+            producer,
+            new AppCheckMintClient(Endpoint, transport),
+            new StubIdTokenSource(TestConstants.SampleIdToken),
+            new AppCheckProviderOptions { AppId = TestConstants.PlaceholderAppId },
+            clock,
+            new AppCheckChallengeClient(
+                AppCheckChallengeEndpoint.ForProject("proj"),
+                transport));
+
+        var token = await provider.GetTokenAsync();
+
+        Assert.Equal("jwt-tpm", token.Token);
+        Assert.Equal(2, transport.CallCount);
+        Assert.Equal("challenge-0123456789abcdef", producer.LastChallenge?.ChallengeId);
+        Assert.Equal("server-nonce-0123456789abcdef", producer.LastChallenge?.Nonce);
+        Assert.Equal(now + 1_000, producer.LastNowMillis);
+    }
+
+    [Fact]
+    public async Task Challenge_required_producer_without_challenge_client_fails_before_attestation_or_mint()
+    {
+        var clock = new MutableClock(1_900_000_000_000);
+        var transport = FakeMintTransport.Success("never", 30 * Minute, TestConstants.PlaceholderAppId);
+        var producer = new ChallengeRequiredAttestationProducer();
+        using var provider = new WindowsAppCheckProvider(
+            producer,
+            new AppCheckMintClient(Endpoint, transport),
+            new StubIdTokenSource(TestConstants.SampleIdToken),
+            new AppCheckProviderOptions { AppId = TestConstants.PlaceholderAppId },
+            clock);
+
+        var error = await Assert.ThrowsAsync<AppCheckMintException>(() => provider.GetTokenAsync());
+
+        Assert.Equal(AppCheckMintFailure.AttestationUnavailable, error.Failure);
+        Assert.Null(producer.LastChallenge);
+        Assert.Equal(0, transport.CallCount);
+    }
+
+    [Fact]
     public async Task Caches_the_token_no_second_mint_within_ttl()
     {
         var clock = new MutableClock(0);

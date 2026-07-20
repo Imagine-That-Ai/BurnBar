@@ -42,6 +42,11 @@
       "maxLines": 46250,
       "planned": true
     },
+    "OpenBurnBarParserSupport": {
+      "maxFiles": 5,
+      "maxLines": 1000,
+      "planned": true
+    },
     "OpenBurnBarSQLiteReader": {
       "maxFiles": 3,
       "maxLines": 450,
@@ -49,7 +54,7 @@
     },
     "OpenBurnBarLogParsers": {
       "maxFiles": 35,
-      "maxLines": 11700,
+      "maxLines": 11800,
       "planned": true
     },
     "OpenBurnBarQuota": {

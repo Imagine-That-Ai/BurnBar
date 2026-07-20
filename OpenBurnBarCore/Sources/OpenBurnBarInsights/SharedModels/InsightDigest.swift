@@ -121,7 +121,9 @@ public struct InsightDigest: Codable, Hashable, Sendable {
         public var totalTokens: Int
         public var sessionCount: Int
         public var topModels: [String]            // up to 3
-        public var topInferredTaskTitles: [String]  // up to 5
+        /// Compatibility field; export-compatible builders and hosted egress always encode `[]`.
+        /// Raw inferred task titles remain on device and contribute only to closed taxonomy signals.
+        public var topInferredTaskTitles: [String]
         public var topKeyTools: [String]            // up to 5
         public init(id: String, displayName: String, costUSD: Double, totalTokens: Int,
                     sessionCount: Int, topModels: [String], topInferredTaskTitles: [String],
@@ -142,7 +144,9 @@ public struct InsightDigest: Codable, Hashable, Sendable {
         public var sessionCount: Int
         public var avgCostPerSession: Double
         public var cacheHitRate: Double
-        public var topInferredTaskTitles: [String]  // up to 5
+        /// Compatibility field; export-compatible builders and hosted egress always encode `[]`.
+        /// Raw inferred task titles remain on device and contribute only to closed taxonomy signals.
+        public var topInferredTaskTitles: [String]
         public var topProjects: [String]            // up to 3 (anonymized IDs)
         public init(id: String, providerID: String, costUSD: Double, totalTokens: Int,
                     sessionCount: Int, avgCostPerSession: Double, cacheHitRate: Double,
@@ -240,10 +244,13 @@ public struct InsightDigest: Codable, Hashable, Sendable {
 
     public struct ActionDigest: Codable, Hashable, Sendable, Identifiable {
         public var id: String
-        public var kind: String           // operating_action_history.actionKind
-        public var projectID: String?     // anonymized
+        /// Closed category: `approval`, `rollback`, `deployment`, `data_control`,
+        /// `computer_use`, `model`, `tool`, `workflow`, or `other` — never the raw action type.
+        public var kind: String
+        public var projectID: String?     // per-digest opaque ordinal
         public var occurredAt: Date
-        public var summary: String        // already short / sanitized
+        /// Fixed label derived from `kind`; never an operator- or user-authored source summary.
+        public var summary: String
         public init(id: String, kind: String, projectID: String?,
                     occurredAt: Date, summary: String) {
             self.id = id; self.kind = kind; self.projectID = projectID

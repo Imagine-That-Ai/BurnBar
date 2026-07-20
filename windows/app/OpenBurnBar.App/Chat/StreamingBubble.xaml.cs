@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
+using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Presentation.Chat;
 using OpenBurnBar.App.Theme;
 using OpenBurnBar.Pretext;
@@ -46,8 +47,11 @@ public sealed partial class StreamingBubble : UserControl
         ChatPretextEngineHost.CurrentChanged += OnSharedEngineChanged;
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e) =>
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        _measureVersion++;
         ChatPretextEngineHost.CurrentChanged -= OnSharedEngineChanged;
+    }
 
     private void OnSharedEngineChanged(PretextEngine? engine)
     {
@@ -104,7 +108,8 @@ public sealed partial class StreamingBubble : UserControl
         BuildFallback(runs);
 
         var width = ActualWidth;
-        if (_engine is null || width <= FallbackWidthFloor)
+        PretextEngine? engine = _engine;
+        if (engine is null || width <= FallbackWidthFloor)
         {
             // No engine (or collapsed width): show the inline fallback only.
             LinesPanel.Children.Clear();
@@ -112,10 +117,14 @@ public sealed partial class StreamingBubble : UserControl
             return;
         }
 
-        _ = MeasureAsync(runs, width, ++_measureVersion);
+        _ = MeasureAsync(engine, runs, width, ++_measureVersion);
     }
 
-    private async Task MeasureAsync(IReadOnlyList<HermesRichRun> runs, double width, int version)
+    private async Task MeasureAsync(
+        PretextEngine engine,
+        IReadOnlyList<HermesRichRun> runs,
+        double width,
+        int version)
     {
         var items = new List<PretextRichInlineItem>(runs.Count);
         foreach (var run in runs)
@@ -129,18 +138,38 @@ public sealed partial class StreamingBubble : UserControl
             });
         }
 
-        PretextRichHandle handle;
+        PretextRichHandle? handle = null;
         IReadOnlyList<PretextRichLine> lines;
         try
         {
-            handle = await _engine!.PrepareRichInlineAsync(items).ConfigureAwait(true);
-            lines = await _engine!.LayoutRichInlineAsync(handle, width).ConfigureAwait(true);
-            await _engine!.ReleaseAsync(handle).ConfigureAwait(true);
+            handle = await engine.PrepareRichInlineAsync(items).ConfigureAwait(true);
+            lines = await engine.LayoutRichInlineAsync(handle.Value, width).ConfigureAwait(true);
         }
         catch (PretextException)
         {
             // Engine unavailable / bridge error: keep the inline fallback.
             return;
+        }
+        catch (Exception ex)
+        {
+            // The host can be torn down between a streaming refresh and dispatch.
+            // Observe every fire-and-forget measurement fault and retain fallback UI.
+            AppDiagnostics.LogException("chat.pretext.measure", ex);
+            return;
+        }
+        finally
+        {
+            if (handle is { } prepared)
+            {
+                try
+                {
+                    await engine.ReleaseAsync(prepared).ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    AppDiagnostics.LogException("chat.pretext.release", ex);
+                }
+            }
         }
 
         if (version != _measureVersion)

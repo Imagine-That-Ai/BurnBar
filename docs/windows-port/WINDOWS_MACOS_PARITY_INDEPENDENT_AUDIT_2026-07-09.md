@@ -3,7 +3,35 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** F1 source/product implementation and applicable WPD-0006 F2 substitutions are complete, but exact signed candidate `windows-v1.0.37` is a physical Intel x64 **NO-GO** because native backdrop surfaces cover the Providers/dashboard XAML and compact/accessibility defects remain; source fix PR #1854 and a newly signed candidate are required before certification can resume
+**Status:** F1 source/product implementation and applicable WPD-0006 F2 substitutions are complete. Exact signed candidate `windows-v1.0.38` is stable on physical Intel x64, but remains a validator-clean **NO-GO** until its supplemental accessibility, performance, staging, paired-device safety, and private Store/update receipts are complete; physical ARM64 remains an explicit beta limitation
+
+## Physical Intel x64 v1.0.38 Retry - 2026-07-19
+
+Protected tag `windows-v1.0.38` resolves to commit
+`48837746490b6468efa4dc06a476f305d496039c`; release workflow
+[29676266545](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29676266545)
+produced the exact x64 direct MSIX with SHA-256
+`fd14adb0870473f907c10f342eb3ee300cebf39c500848505a5887ad89602e69`.
+The Imagine That AI LLC Authenticode signature and RFC 3161 timestamp passed.
+
+The native HP Intel/AMD64 retry is stable: clean source and harness checkouts,
+20/20 cold launches, 20/20 warm relaunches, uninstall/reinstall plus a second
+20/20 launch hold, 300 idle samples, and a 30-minute/1,800-sample soak passed
+with zero crash, hang, or unresponsive sample. All 26 routed screenshots and
+route-root UI Automation anchors passed, including high contrast, reduced
+transparency, 100 percent DPI, and the permanent `640x720` scenario. Staging
+authentication/project access and environment enable/restore also passed.
+
+The content-addressed evidence ZIP has SHA-256
+`bf10318474556b1ea3f69b05831fa09dfc4f8b36ac9470fb113092ec4f7ed876`.
+Its ZIP integrity, all 436 internal checksums, and the seven-receipt evidence
+validator passed. The bundle verdict remains **NO-GO** because supplemental
+receipts are incomplete: manual Narrator/keyboard/150/200 percent and mixed-DPI
+proof; canonical surface latency, frame pacing, and sleep/wake; authorized
+staging OAuth/App Check/TPM/CloudVault drills; paired-device media/Computer Use
+safety; and private Store/update lifecycle. Physical ARM64 remains an explicit
+beta limitation. The durable record is under
+[`evidence/windows-v1.0.38-release/`](evidence/windows-v1.0.38-release/README.md).
 
 ## Physical Intel x64 UI/Accessibility Finding - 2026-07-18
 
@@ -892,10 +920,10 @@ project symbols, the sealed Pensieve watcher, the full Elder Wand fusion
 pipeline, standalone companion CLI, guarded Switcher, indexed search, and the
 connector/tooling plane. It does not close signed-host or physical evidence.
 The x64/ARM64 build, signing/provenance, hosted x64 registration, ARM64 UTM
-foundation, and corrected signed-runtime gates are proven. The corrected x64
-and ARM64 packages each passed clean-install and reinstall 20-second responsive
-launch holds with zero crash events. The evidence does not yet close every row
-in the QA checklist.
+foundation, and corrected signed-runtime gates are proven. The exact v1.0.38
+x64 package also passed repeated physical cold/warm/reinstall launch holds and
+a 30-minute soak. The evidence does not yet close every row in the QA
+checklist.
 
 Accordingly, the accurate current claim is: **F1 source/product parity is
 ledger-green; applicable F2 source composition is complete; the exact-head

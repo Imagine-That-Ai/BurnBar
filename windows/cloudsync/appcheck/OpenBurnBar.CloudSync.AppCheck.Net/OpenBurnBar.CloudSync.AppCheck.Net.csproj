@@ -12,8 +12,8 @@
     through this real transport (mirrors the Home Assistant .Net transport + live
     HttpListener test already proven in windows/tests/integrations).
 
-    Targets net8.0 and net10.0 so both the net8.0 WinUI composition and the
-    net10.0 test/application consumers can use the same transport implementation.
+    Targets net8.0 and net10.0 so both the shipping WinUI app and portable test
+    consumers use the same implementation over the net8.0 portable core.
   -->
   <PropertyGroup>
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>

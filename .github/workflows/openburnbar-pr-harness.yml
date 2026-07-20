@@ -706,7 +706,7 @@ jobs:
           failed=$(echo "$results" | python3 -c "
           import json, sys
           data = json.load(sys.stdin)
-          failed = [k for k, v in data.items() if v.get('result') not in ('success', 'skipped')]
+          failed = [k for k, v in data.items() if v.get('result') != 'success']
           print('\n'.join(failed))
           ")
           if [[ -n "$failed" ]]; then

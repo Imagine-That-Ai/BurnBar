@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.SessionLogs;
@@ -28,7 +30,8 @@ public sealed partial class AppShell : UserControl
         ("memory", "Memory"),
     };
 
-    private readonly System.Collections.Generic.List<Button> _tabButtons = new();
+    private readonly List<Button> _tabButtons = new();
+    private readonly List<TextBlock> _tabLabels = new();
     private string? _currentKey;
     private ThemeService? _theme;
     private bool _appearanceBound;
@@ -39,6 +42,7 @@ public sealed partial class AppShell : UserControl
         BuildTopTabs();
         BuildOverflowMenu();
         NavigateFrame(NavCatalog.Default);
+        ApplyResponsiveLayout(ShellResponsiveLayout.ForWidth(ActualWidth));
     }
 
     /// <summary>Raised when the user asks for the Command Palette (header button or Ctrl+K).</summary>
@@ -81,6 +85,7 @@ public sealed partial class AppShell : UserControl
         TopTabsHost.ColumnDefinitions.Clear();
         TopTabsHost.Children.Clear();
         _tabButtons.Clear();
+        _tabLabels.Clear();
 
         for (int i = 0; i < TopTabs.Length; i++)
         {
@@ -88,6 +93,12 @@ public sealed partial class AppShell : UserControl
             TopTabsHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
             var destination = NavCatalog.Find(key);
+            var tabLabel = new TextBlock
+            {
+                Text = label,
+                FontSize = 12,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            };
             var button = new Button
             {
                 Tag = key,
@@ -106,18 +117,39 @@ public sealed partial class AppShell : UserControl
                             Glyph = destination?.Glyph ?? "\uE80F",
                             FontSize = 12,
                         },
-                        new TextBlock { Text = label, FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold },
+                        tabLabel,
                     },
                 },
             };
+            AutomationProperties.SetAutomationId(button, $"Shell.Tab.{key}");
+            AutomationProperties.SetName(button, label);
             ToolTipService.SetToolTip(button, destination is null ? label : $"{label} — {destination.Subtitle}");
             button.Click += (_, _) => Navigate(key);
             Grid.SetColumn(button, i);
             TopTabsHost.Children.Add(button);
             _tabButtons.Add(button);
+            _tabLabels.Add(tabLabel);
         }
 
         ApplyTabSelection(NavCatalog.Default.Key);
+    }
+
+    private void OnShellSizeChanged(object sender, SizeChangedEventArgs e) =>
+        ApplyResponsiveLayout(ShellResponsiveLayout.ForWidth(e.NewSize.Width));
+
+    private void ApplyResponsiveLayout(ShellResponsiveLayout layout)
+    {
+        BrandWordmark.Visibility = layout.ShowBrandWordmark ? Visibility.Visible : Visibility.Collapsed;
+        PaletteLabel.Visibility = layout.ShowPaletteLabel ? Visibility.Visible : Visibility.Collapsed;
+        PaletteShortcut.Visibility = layout.ShowPaletteShortcut ? Visibility.Visible : Visibility.Collapsed;
+        PaletteButton.MinWidth = layout.ShowPaletteLabel ? 220 : 38;
+        PaletteButton.MaxWidth = layout.ShowPaletteLabel ? 400 : 38;
+        PaletteButton.Width = layout.ShowPaletteLabel ? double.NaN : 38;
+
+        foreach (TextBlock label in _tabLabels)
+        {
+            label.Visibility = layout.ShowTabLabels ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     private void ApplyTabSelection(string activeKey)

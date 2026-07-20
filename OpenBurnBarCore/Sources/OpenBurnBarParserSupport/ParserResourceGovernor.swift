@@ -5,24 +5,6 @@ import Darwin
 #endif
 
 // MARK: - Parser Resource Governance
-//
-// Usage-refresh parsers scan user-controlled log corpora that can be
-// arbitrarily large (a machine running many agent lanes accumulates tens of
-// gigabytes of JSONL under ~/.codex and ~/.claude). A single ungoverned pass
-// over such a corpus is what took the whole machine down on 2026-07-16:
-// 25.4GB of process footprint and 80+ minutes of CPU inside one refresh tick.
-//
-// The governor gives every parse pass two independent bounds:
-//
-//  * a **byte budget** — how many bytes of *new file content* one pass may
-//    read. Files beyond the budget are deferred to the next tick (parsers
-//    fall back to their cached/estimated values), so a cold cache converges
-//    over several ticks instead of one unbounded pass;
-//  * a **memory ceiling** — a hard cap on process physical footprint.
-//    Crossing it aborts the pass with `ParserResourceExceeded.memoryCeiling`,
-//    which callers surface as parser health. This is defense in depth: even
-//    if a future parser regresses, it cannot take the machine into swap
-//    death again.
 
 /// Limits for one governed parse pass. `nil` fields are unenforced.
 public struct ParserResourceLimits: Sendable {
@@ -64,16 +46,15 @@ public enum ParserResourceExceeded: Error, CustomStringConvertible, Equatable {
 /// all parsers in the pass share it, so the budget bounds the *pass*, not each
 /// parser).
 public final class ParserResourceGovernor: Sendable {
-    private struct State: Sendable {
-        var consumedBytes: Int64 = 0
-        var deferredFileCount = 0
-        var softLimitReported = false
-        var checkpointCounter: UInt64 = 0
-    }
-
     private let limits: ParserResourceLimits
     private let footprintProvider: @Sendable () -> Int64
     private let onSoftLimit: (@Sendable (Int64) -> Void)?
+    private struct State: Sendable {
+        var consumedBytes: Int64 = 0
+        var deferredFileCount: Int = 0
+        var softLimitReported = false
+        var checkpointCounter: UInt64 = 0
+    }
     private let state = Locked(State())
 
     /// - Parameters:
@@ -89,6 +70,13 @@ public final class ParserResourceGovernor: Sendable {
         self.limits = limits
         self.footprintProvider = footprintProvider
         self.onSoftLimit = onSoftLimit
+    }
+
+    /// True when this governor accounts work without imposing any resource cap.
+    var isUnlimited: Bool {
+        limits.fileByteBudget == nil
+            && limits.memoryCeilingBytes == nil
+            && limits.memorySoftLimitBytes == nil
     }
 
     /// Whether a file of `estimatedBytes` of new content may be read in this
@@ -115,6 +103,14 @@ public final class ParserResourceGovernor: Sendable {
         }
     }
 
+    /// Records a file that a bounded adapter cannot safely inspect. This keeps
+    /// the caller's checkpoint watermark frozen without charging unread bytes.
+    public func recordDeferredFile() {
+        state.withLock { state in
+            state.deferredFileCount += 1
+        }
+    }
+
     /// Memory-ceiling check. Call between files and every few thousand lines
     /// inside per-line loops. Throws when the hard ceiling is crossed.
     public func checkpoint() throws {
@@ -132,9 +128,7 @@ public final class ParserResourceGovernor: Sendable {
 
         if let soft = limits.memorySoftLimitBytes, footprint > soft {
             let shouldReport = state.withLock { state in
-                if state.softLimitReported {
-                    return false
-                }
+                guard !state.softLimitReported else { return false }
                 state.softLimitReported = true
                 return true
             }
@@ -147,12 +141,12 @@ public final class ParserResourceGovernor: Sendable {
 
     /// Bytes of new file content admitted so far in this pass.
     public var consumedBytes: Int64 {
-        state.read().consumedBytes
+        state.withLock { $0.consumedBytes }
     }
 
     /// Files deferred to a later pass because the budget was exhausted.
     public var deferredFileCount: Int {
-        state.read().deferredFileCount
+        state.withLock { $0.deferredFileCount }
     }
 
     /// Current process physical footprint (the same number Activity Monitor

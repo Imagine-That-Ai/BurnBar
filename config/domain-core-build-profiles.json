@@ -38,6 +38,20 @@
         "pricing": "legacy"
       }
     },
+    "public-production-rollback": {
+      "artifactAuthority": "signed",
+      "distribution": "public",
+      "rolloutChannel": null,
+      "evidenceEnabled": false,
+      "modes": {
+        "quota": "legacy",
+        "cloudVault": "legacy",
+        "cloudVaultRewrap": "legacy",
+        "cloudVaultSearch": "legacy",
+        "hermes": "legacy",
+        "pricing": "legacy"
+      }
+    },
     "internal": {
       "artifactAuthority": "signed",
       "distribution": "internal",

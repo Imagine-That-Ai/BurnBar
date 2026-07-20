@@ -14,20 +14,13 @@ namespace OpenBurnBar.CloudSync.AppCheck.Windows;
 /// The REAL Windows TPM attestation producer: it creates a TPM-backed key inside
 /// the Microsoft Platform Crypto Provider and attests it with CNG
 /// <c>NCryptCreateClaim(NCRYPT_CLAIM_PLATFORM)</c>, binding a single-use nonce, to
-/// prove the client is a genuine, unmodified app on genuine hardware.
+/// prove possession of a hardware-backed installation key.
 /// </summary>
 /// <remarks>
-/// STATUS — R14 / AC-013 / DEV-HOST DEFERRED. This adapter Roslyn-compiles on the
-/// macOS authoring host (<c>EnableWindowsTargeting</c>) and is the seam the WinUI
-/// app wires in place of <see cref="MockAttestationProducer"/>, but it RUNS only on
-/// a Windows host with a TPM: the CNG P/Invokes here need a real Platform Crypto
-/// Provider. The end-to-end TPM verify also needs AC-013's server-side TPM verifier
-/// (the server today registers ONLY the mock verifier; its production registry has
-/// a reserved <c>verifiers.set("tpm", ...)</c> slot). Until AC-013 lands the server
-/// verifier + finalizes the claim wire encoding, the <see cref="WindowsAttestationClaim.Mac"/>
-/// field carries a PROVISIONAL base64 of the raw platform-claim blob. THIS DOES NOT
-/// WEAKEN THE GATE: the server only mints when an accepting verifier proves the
-/// claim; a provisional/unverifiable claim mints nothing.
+/// This adapter cross-compiles on the macOS authoring host but runs only on a
+/// Windows host with a TPM. It binds the server challenge, exports the public
+/// half of the non-exportable TPM-backed subject key, and sends both to the
+/// Windows-hosted <c>NCryptVerifyClaim</c> service through the mint backend.
 ///
 /// Fail-closed: any failure to reach the TPM / produce a claim throws
 /// <see cref="AppCheckMintException"/> with <see cref="AppCheckMintFailure.AttestationUnavailable"/>
@@ -37,27 +30,29 @@ namespace OpenBurnBar.CloudSync.AppCheck.Windows;
 public sealed class TpmAttestationProducer : IAttestationProducer
 {
     /// <summary>The persisted TPM attestation key name (stable per install).</summary>
-    public const string DefaultKeyName = "OpenBurnBar.AppCheck.PlatformAttestationKey.v1";
+    public const string DefaultKeyName = "OpenBurnBar.AppCheck.PlatformAttestationKey.v2";
 
     /// <summary>The attestation kind AC-013's server verifier will answer to.</summary>
     public const string TpmKind = "tpm";
 
     private readonly string _keyName;
-    private readonly INonceSource _nonceSource;
 
-    public TpmAttestationProducer(string? keyName = null, INonceSource? nonceSource = null)
+    public TpmAttestationProducer(string? keyName = null)
     {
         _keyName = string.IsNullOrWhiteSpace(keyName) ? DefaultKeyName : keyName!;
-        _nonceSource = nonceSource ?? new RandomNonceSource();
     }
 
     /// <inheritdoc />
     public string Kind => TpmKind;
 
     /// <inheritdoc />
+    public bool RequiresServerChallenge => true;
+
+    /// <inheritdoc />
     public ValueTask<WindowsAttestationClaim> ProduceAsync(
         string appId,
         long nowMillis,
+        AttestationChallenge? challenge = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(appId))
@@ -66,6 +61,16 @@ public sealed class TpmAttestationProducer : IAttestationProducer
         }
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (challenge is null || string.IsNullOrWhiteSpace(challenge.ChallengeId) || string.IsNullOrWhiteSpace(challenge.Nonce))
+        {
+            throw AppCheckMintException.AttestationUnavailable(
+                "TPM attestation requires a server-issued one-time challenge.");
+        }
+        if (challenge.ExpiresAtMs <= nowMillis)
+        {
+            throw AppCheckMintException.AttestationUnavailable("The App Check attestation challenge expired.");
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             // Fail closed on the wrong platform rather than fabricate a claim.
@@ -73,8 +78,8 @@ public sealed class TpmAttestationProducer : IAttestationProducer
                 "TPM attestation requires a Windows host with a Platform Crypto Provider.");
         }
 
-        var nonce = _nonceSource.NextNonce();
-        var claimBlob = CreatePlatformClaim(nonce, cancellationToken);
+        var nonce = challenge.Nonce;
+        var (claimBlob, subjectPublicKey) = CreatePlatformClaim(nonce, cancellationToken);
         var mac = Convert.ToBase64String(claimBlob);
 
         var claim = new WindowsAttestationClaim
@@ -83,7 +88,9 @@ public sealed class TpmAttestationProducer : IAttestationProducer
             AppId = appId,
             Nonce = nonce,
             IssuedAtMs = nowMillis,
-            Mac = mac, // PROVISIONAL: raw platform-claim blob, base64. Finalized by AC-013.
+            Mac = mac, // Base64 raw CNG platform-claim blob; verified only on the Windows service.
+            ChallengeId = challenge.ChallengeId,
+            SubjectPublicKey = Convert.ToBase64String(subjectPublicKey),
         };
         return new ValueTask<WindowsAttestationClaim>(claim);
     }
@@ -93,11 +100,14 @@ public sealed class TpmAttestationProducer : IAttestationProducer
     /// Every native handle is released in reverse order; any CNG failure fails
     /// closed as <see cref="AppCheckMintFailure.AttestationUnavailable"/>.
     /// </summary>
-    private byte[] CreatePlatformClaim(string nonce, CancellationToken cancellationToken)
+    private (byte[] ClaimBlob, byte[] SubjectPublicKey) CreatePlatformClaim(
+        string nonce,
+        CancellationToken cancellationToken)
     {
         var provider = IntPtr.Zero;
         var subjectKey = IntPtr.Zero;
         var nonceBufferPtr = IntPtr.Zero;
+        var pcrMaskBufferPtr = IntPtr.Zero;
         var bufferDescPtr = IntPtr.Zero;
 
         try
@@ -107,25 +117,35 @@ public sealed class TpmAttestationProducer : IAttestationProducer
 
             subjectKey = OpenOrCreateAttestationKey(provider);
 
-            // Bind the nonce as the key-attestation nonce so the resulting claim is
+            // Bind the nonce as the platform-claim nonce so the resulting claim is
             // fresh and single-use (defeats replay of a captured claim).
             var nonceBytes = System.Text.Encoding.UTF8.GetBytes(nonce);
             nonceBufferPtr = Marshal.AllocHGlobal(nonceBytes.Length);
             Marshal.Copy(nonceBytes, 0, nonceBufferPtr, nonceBytes.Length);
+            pcrMaskBufferPtr = Marshal.AllocHGlobal(sizeof(int));
+            Marshal.WriteInt32(pcrMaskBufferPtr, NCryptNative.TPM_PLATFORM_CLAIM_ALL_PCRS);
 
+            var pcrMaskBuffer = new NCryptNative.NCryptBuffer
+            {
+                cbBuffer = sizeof(int),
+                BufferType = NCryptNative.NCRYPTBUFFER_TPM_PLATFORM_CLAIM_PCR_MASK,
+                pvBuffer = pcrMaskBufferPtr,
+            };
             var nonceBuffer = new NCryptNative.NCryptBuffer
             {
                 cbBuffer = nonceBytes.Length,
-                BufferType = NCryptNative.NCRYPTBUFFER_CLAIM_KEYATTESTATION_NONCE,
+                BufferType = NCryptNative.NCRYPTBUFFER_TPM_PLATFORM_CLAIM_NONCE,
                 pvBuffer = nonceBufferPtr,
             };
-            bufferDescPtr = Marshal.AllocHGlobal(Marshal.SizeOf<NCryptNative.NCryptBuffer>());
-            Marshal.StructureToPtr(nonceBuffer, bufferDescPtr, false);
+            int nativeBufferSize = Marshal.SizeOf<NCryptNative.NCryptBuffer>();
+            bufferDescPtr = Marshal.AllocHGlobal(nativeBufferSize * 2);
+            Marshal.StructureToPtr(pcrMaskBuffer, bufferDescPtr, false);
+            Marshal.StructureToPtr(nonceBuffer, IntPtr.Add(bufferDescPtr, nativeBufferSize), false);
 
             var desc = new NCryptNative.NCryptBufferDesc
             {
                 ulVersion = NCryptNative.NCRYPTBUFFER_VERSION,
-                cBuffers = 1,
+                cBuffers = 2,
                 pBuffers = bufferDescPtr,
             };
 
@@ -158,7 +178,31 @@ public sealed class TpmAttestationProducer : IAttestationProducer
                 out _,
                 0), "NCryptCreateClaim(fill)");
 
-            return claimBlob;
+            Check(NCryptNative.NCryptExportKey(
+                subjectKey,
+                IntPtr.Zero,
+                NCryptNative.BCRYPT_ECCPUBLIC_BLOB,
+                IntPtr.Zero,
+                null,
+                0,
+                out var publicKeySize,
+                0), "NCryptExportKey(size)");
+            if (publicKeySize <= 0)
+            {
+                throw AppCheckMintException.AttestationUnavailable("TPM returned an empty public key size.");
+            }
+            var subjectPublicKey = new byte[publicKeySize];
+            Check(NCryptNative.NCryptExportKey(
+                subjectKey,
+                IntPtr.Zero,
+                NCryptNative.BCRYPT_ECCPUBLIC_BLOB,
+                IntPtr.Zero,
+                subjectPublicKey,
+                subjectPublicKey.Length,
+                out _,
+                0), "NCryptExportKey(fill)");
+
+            return (claimBlob, subjectPublicKey);
         }
         catch (AppCheckMintException)
         {
@@ -171,6 +215,7 @@ public sealed class TpmAttestationProducer : IAttestationProducer
         finally
         {
             if (bufferDescPtr != IntPtr.Zero) Marshal.FreeHGlobal(bufferDescPtr);
+            if (pcrMaskBufferPtr != IntPtr.Zero) Marshal.FreeHGlobal(pcrMaskBufferPtr);
             if (nonceBufferPtr != IntPtr.Zero) Marshal.FreeHGlobal(nonceBufferPtr);
             if (subjectKey != IntPtr.Zero) NCryptNative.NCryptFreeObject(subjectKey);
             if (provider != IntPtr.Zero) NCryptNative.NCryptFreeObject(provider);
@@ -193,8 +238,30 @@ public sealed class TpmAttestationProducer : IAttestationProducer
             _keyName,
             0,
             0), "NCryptCreatePersistedKey");
-        Check(NCryptNative.NCryptFinalizeKey(key, 0), "NCryptFinalizeKey");
-        return key;
+        try
+        {
+            // NCRYPT_CLAIM_PLATFORM is signed by an AIK. A normal TPM signing
+            // key is not sufficient and fails with TPM_E_PCP_KEY_NOT_AIK.
+            int usagePolicy = NCryptNative.NCRYPT_PCP_IDENTITY_KEY;
+            Check(NCryptNative.NCryptSetProperty(
+                key,
+                NCryptNative.NCRYPT_PCP_KEY_USAGE_POLICY_PROPERTY,
+                ref usagePolicy,
+                sizeof(int),
+                0), "NCryptSetProperty(PCP_KEY_USAGE_POLICY)");
+            Check(NCryptNative.NCryptFinalizeKey(key, 0), "NCryptFinalizeKey");
+            return key;
+        }
+        catch
+        {
+            // DeleteKey frees the handle on success. If deletion itself fails,
+            // still release the native handle before propagating the root error.
+            if (NCryptNative.NCryptDeleteKey(key, 0) != NCryptNative.ERROR_SUCCESS)
+            {
+                NCryptNative.NCryptFreeObject(key);
+            }
+            throw;
+        }
     }
 
     private static void Check(int status, string api)

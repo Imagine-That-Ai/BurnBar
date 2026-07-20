@@ -6,9 +6,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
-using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Interop;
+using OpenBurnBar.App.Settings.Winui;
 using OpenBurnBar.App.Theme;
 using Windows.Storage.Pickers;
 using Windows.Storage;
@@ -105,7 +105,7 @@ public sealed partial class ProvidersStepPage : Page
             }
         });
 
-        WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+        WindowsSettingsComposition.ConfigureCloudSync();
         DbStatusText.Text = AppConfiguration.Current.HasSqlCipherCredentials
             ? "Saved — real SQLCipher stores will load on next surface open."
             : "Saved path; add passphrase and an existing file to enable SQLCipher.";

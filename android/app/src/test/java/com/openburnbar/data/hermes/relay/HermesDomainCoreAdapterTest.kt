@@ -28,6 +28,7 @@ class HermesDomainCoreAdapterTest {
         mockkStatic(Log::class)
         every { Log.w(any(), any<String>()) } returns 0
         System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
+        val mode = HermesDomainCoreMode.resolve()
         val expected = String(charArrayOf('l', 'e', 'g', 'a', 'c', 'y'))
         val comparisons = mutableListOf<HermesShadowComparison>()
         HermesDomainCoreAdapter.comparisonOverride = comparisons::add
@@ -36,21 +37,29 @@ class HermesDomainCoreAdapterTest {
 
         val actual = HermesDomainCoreAdapter.safetyCode(byteArrayOf(0x01), byteArrayOf(0x02)) { expected }
 
-        assertTrue(expected === actual)
-        assertEquals(
-            HermesShadowComparison(
-                slice = "payload-keywrap",
-                operation = "safety_code",
-                coreVersion = "0.0.0-native-unavailable",
-                outcome = "mismatch",
-                mismatchCategory = "native_unavailable",
-                legacyMicros = comparisons.single().legacyMicros,
-                rustMicros = 0,
-            ),
-            comparisons.single(),
-        )
-        verify(exactly = 1) {
-            Log.w("OpenBurnBarDomainCore", "domain_core.hermes.safety_code native_unavailable")
+        if (mode == HermesDomainCoreMode.SHADOW) {
+            assertTrue(expected === actual)
+            assertEquals(
+                HermesShadowComparison(
+                    slice = "payload-keywrap",
+                    operation = "safety_code",
+                    coreVersion = "0.0.0-native-unavailable",
+                    outcome = "mismatch",
+                    mismatchCategory = "native_unavailable",
+                    legacyMicros = comparisons.single().legacyMicros,
+                    rustMicros = 0,
+                    observedAt = comparisons.single().observedAt,
+                ),
+                comparisons.single(),
+            )
+            verify(exactly = 1) {
+                Log.w("OpenBurnBarDomainCore", "domain_core.hermes.safety_code native_unavailable")
+            }
+        } else {
+            assertEquals(HermesDomainCoreMode.LEGACY, mode)
+            assertSame(expected, actual)
+            assertTrue(comparisons.isEmpty())
+            verify(exactly = 0) { Log.w(any(), any<String>()) }
         }
     }
 
@@ -59,6 +68,7 @@ class HermesDomainCoreAdapterTest {
         mockkStatic(Log::class)
         every { Log.w(any(), any<String>()) } returns 0
         System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
+        val mode = HermesDomainCoreMode.resolve()
         val expected = byteArrayOf(0x00, 0x7f, 0xff.toByte())
         val comparisons = mutableListOf<HermesShadowComparison>()
         HermesDomainCoreAdapter.comparisonOverride = comparisons::add
@@ -67,15 +77,22 @@ class HermesDomainCoreAdapterTest {
 
         val actual = HermesDomainCoreAdapter.open("sensitive ciphertext", byteArrayOf(0x01), byteArrayOf(0x02)) { expected }
 
-        assertArrayEquals(expected, actual)
-        assertEquals("payload-keywrap", comparisons.single().slice)
-        assertEquals("open", comparisons.single().operation)
-        assertEquals("0.0.0-abi-mismatch", comparisons.single().coreVersion)
-        assertEquals("mismatch", comparisons.single().outcome)
-        assertEquals("native_error", comparisons.single().mismatchCategory)
-        assertEquals(0, comparisons.single().rustMicros)
-        verify(exactly = 1) {
-            Log.w("OpenBurnBarDomainCore", "domain_core.hermes.open abi_mismatch")
+        if (mode == HermesDomainCoreMode.SHADOW) {
+            assertArrayEquals(expected, actual)
+            assertEquals("payload-keywrap", comparisons.single().slice)
+            assertEquals("open", comparisons.single().operation)
+            assertEquals("0.0.0-abi-mismatch", comparisons.single().coreVersion)
+            assertEquals("mismatch", comparisons.single().outcome)
+            assertEquals("native_error", comparisons.single().mismatchCategory)
+            assertEquals(0, comparisons.single().rustMicros)
+            verify(exactly = 1) {
+                Log.w("OpenBurnBarDomainCore", "domain_core.hermes.open abi_mismatch")
+            }
+        } else {
+            assertEquals(HermesDomainCoreMode.LEGACY, mode)
+            assertSame(expected, actual)
+            assertTrue(comparisons.isEmpty())
+            verify(exactly = 0) { Log.w(any(), any<String>()) }
         }
     }
 
@@ -133,15 +150,23 @@ class HermesDomainCoreAdapterTest {
         mockkStatic(Log::class)
         every { Log.w(any(), any<String>()) } returns 0
         System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
+        val mode = HermesDomainCoreMode.resolve()
         val expected = "OpenBurnBar-HermesRelay-HPKE-v3|aad".toByteArray()
         val comparisons = mutableListOf<HermesShadowComparison>()
         HermesDomainCoreAdapter.comparisonOverride = comparisons::add
 
         val actual = HermesDomainCoreAdapter.hpkeV3Info("aad".toByteArray()) { expected }
 
-        assertArrayEquals(expected, actual)
-        assertEquals("hpke_v3_info", comparisons.single().operation)
-        assertEquals("hpke-info", comparisons.single().slice)
+        if (mode == HermesDomainCoreMode.SHADOW) {
+            assertArrayEquals(expected, actual)
+            assertEquals("hpke_v3_info", comparisons.single().operation)
+            assertEquals("hpke-info", comparisons.single().slice)
+        } else {
+            assertEquals(HermesDomainCoreMode.LEGACY, mode)
+            assertSame(expected, actual)
+            assertTrue(comparisons.isEmpty())
+            verify(exactly = 0) { Log.w(any(), any<String>()) }
+        }
     }
 
     @Test
@@ -185,6 +210,7 @@ class HermesDomainCoreAdapterTest {
         mockkStatic(Log::class)
         every { Log.w(any(), any<String>()) } returns 0
         System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
+        val mode = HermesDomainCoreMode.resolve()
         val legacyCiphertext = String(charArrayOf('n', 'o', 't', '-', 'b', 'a', 's', 'e', '6', '4'))
         val legacyCombined = byteArrayOf(0x01, 0x02)
         val comparisons = mutableListOf<HermesShadowComparison>()
@@ -195,14 +221,22 @@ class HermesDomainCoreAdapterTest {
         val sealed = HermesDomainCoreAdapter.seal(ByteArray(1), ByteArray(32), ByteArray(0)) { legacyCiphertext }
         val combined = HermesDomainCoreAdapter.sealCombined(ByteArray(1), ByteArray(32), ByteArray(0)) { legacyCombined }
 
-        assertSame(legacyCiphertext, sealed)
-        assertSame(legacyCombined, combined)
-        assertEquals(listOf("mismatch", "mismatch"), comparisons.map { it.outcome })
-        assertTrue(comparisons.all { it.mismatchCategory == "native_error" })
-        assertEquals(listOf("payload-keywrap", "ratchet"), comparisons.map { it.slice })
-        comparisons.forEach { comparison ->
-            assertTrue(comparison.legacyMicros in 0..600_000_000)
-            assertTrue(comparison.rustMicros in 0..600_000_000)
+        if (mode == HermesDomainCoreMode.SHADOW) {
+            assertSame(legacyCiphertext, sealed)
+            assertSame(legacyCombined, combined)
+            assertEquals(listOf("mismatch", "mismatch"), comparisons.map { it.outcome })
+            assertTrue(comparisons.all { it.mismatchCategory == "native_error" })
+            assertEquals(listOf("payload-keywrap", "ratchet"), comparisons.map { it.slice })
+            comparisons.forEach { comparison ->
+                assertTrue(comparison.legacyMicros in 0..600_000_000)
+                assertTrue(comparison.rustMicros in 0..600_000_000)
+            }
+        } else {
+            assertEquals(HermesDomainCoreMode.LEGACY, mode)
+            assertSame(legacyCiphertext, sealed)
+            assertSame(legacyCombined, combined)
+            assertTrue(comparisons.isEmpty())
+            verify(exactly = 0) { Log.w(any(), any<String>()) }
         }
     }
 
@@ -218,30 +252,57 @@ class HermesDomainCoreAdapterTest {
         val legacyBytes = byteArrayOf(0x10, 0x20)
 
         System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
+        val shadowMode = HermesDomainCoreMode.resolve()
         val shadowString = HermesDomainCoreAdapter.seal(ByteArray(1), ByteArray(32), ByteArray(0)) { legacyString }
         val shadowBytes = HermesDomainCoreAdapter.sealCombined(ByteArray(1), ByteArray(32), ByteArray(0)) { legacyBytes }
 
-        assertSame(legacyString, shadowString)
-        assertSame(legacyBytes, shadowBytes)
-        assertEquals(listOf("seal", "ratchet_seal"), comparisons.map { it.operation })
-        assertTrue(comparisons.all { it.coreVersion == "0.0.0-abi-mismatch" })
-        assertTrue(comparisons.all { it.mismatchCategory == "native_error" && it.rustMicros == 0L })
+        if (shadowMode == HermesDomainCoreMode.SHADOW) {
+            assertSame(legacyString, shadowString)
+            assertSame(legacyBytes, shadowBytes)
+            assertEquals(listOf("seal", "ratchet_seal"), comparisons.map { it.operation })
+            assertTrue(comparisons.all { it.coreVersion == "0.0.0-abi-mismatch" })
+            assertTrue(comparisons.all { it.mismatchCategory == "native_error" && it.rustMicros == 0L })
+        } else {
+            assertEquals(HermesDomainCoreMode.LEGACY, shadowMode)
+            assertSame(legacyString, shadowString)
+            assertSame(legacyBytes, shadowBytes)
+            assertTrue(comparisons.isEmpty())
+            verify(exactly = 0) { Log.w(any(), any<String>()) }
+        }
 
         System.setProperty("openburnbar.domain_core.hermes.mode", "rust")
+        val rustMode = HermesDomainCoreMode.resolve()
         var legacyCalls = 0
-        assertThrows(IllegalStateException::class.java) {
-            HermesDomainCoreAdapter.seal(ByteArray(1), ByteArray(32), ByteArray(0)) {
+        if (rustMode == HermesDomainCoreMode.RUST) {
+            assertThrows(IllegalStateException::class.java) {
+                HermesDomainCoreAdapter.seal(ByteArray(1), ByteArray(32), ByteArray(0)) {
+                    legacyCalls += 1
+                    legacyString
+                }
+            }
+            assertThrows(IllegalStateException::class.java) {
+                HermesDomainCoreAdapter.sealCombined(ByteArray(1), ByteArray(32), ByteArray(0)) {
+                    legacyCalls += 1
+                    legacyBytes
+                }
+            }
+            assertEquals(0, legacyCalls)
+        } else {
+            assertEquals(HermesDomainCoreMode.LEGACY, rustMode)
+            val legacySealed = HermesDomainCoreAdapter.seal(ByteArray(1), ByteArray(32), ByteArray(0)) {
                 legacyCalls += 1
                 legacyString
             }
-        }
-        assertThrows(IllegalStateException::class.java) {
-            HermesDomainCoreAdapter.sealCombined(ByteArray(1), ByteArray(32), ByteArray(0)) {
+            val legacyCombined = HermesDomainCoreAdapter.sealCombined(ByteArray(1), ByteArray(32), ByteArray(0)) {
                 legacyCalls += 1
                 legacyBytes
             }
+            assertSame(legacyString, legacySealed)
+            assertSame(legacyBytes, legacyCombined)
+            assertEquals(2, legacyCalls)
+            assertTrue(comparisons.isEmpty())
+            verify(exactly = 0) { Log.w(any(), any<String>()) }
         }
-        assertEquals(0, legacyCalls)
     }
 
     @Test

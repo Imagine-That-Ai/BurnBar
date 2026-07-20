@@ -15,9 +15,10 @@ import OpenBurnBarKernel
 ///  * usage-only passes skip conversation accumulation entirely (previously
 ///    the full conversation text was built and thrown away every tick) and
 ///    pre-filter lines by the quoted `"usage"` key before JSON decoding;
-///  * every decoded line runs inside `autoreleasepool` — the
+///  * every decoded line runs inside `parserAutoReleasePool` — on Darwin the
 ///    `JSONSerialization` graphs are autoreleased and parse loops run inside
-///    dispatch blocks that never drain;
+///    dispatch blocks that never drain; on Linux/Windows the closure runs
+///    inline (no autorelease pool to drain);
 ///  * `LogParseOptions.resourceGovernor` bounds bytes read per pass and
 ///    aborts on the process memory ceiling;
 ///  * conversation bodies are never written to the on-disk parser cache
@@ -29,6 +30,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
     private let cacheURL: URL
     private let cacheStore: ParserDiskCacheStore<ClaudeCodeCacheEntry>
     private let projectsDirectoryOverride: URL?
+    private let openFileForReading: @Sendable (URL) -> FileHandle?
 
     /// Files at or above this size keep incremental scan state in the cache;
     /// smaller files re-parse fully (cheap) without carrying state.
@@ -38,14 +40,29 @@ public final class ClaudeCodeParser: LogParser, Sendable {
     /// How many bytes of file head the rewrite-detection digest covers.
     static let headDigestSpan = 4096
 
-    public init(
+    public convenience init(
         fileManager: FileManager = .default,
         appPaths: OpenBurnBarAppPaths = .live(),
         projectsDirectoryOverride: URL? = nil
     ) {
+        self.init(
+            fileManager: fileManager,
+            appPaths: appPaths,
+            projectsDirectoryOverride: projectsDirectoryOverride,
+            openFileForReading: { try? FileHandle(forReadingFrom: $0) }
+        )
+    }
+
+    init(
+        fileManager: FileManager,
+        appPaths: OpenBurnBarAppPaths,
+        projectsDirectoryOverride: URL?,
+        openFileForReading: @escaping @Sendable (URL) -> FileHandle?
+    ) {
         self.fileManager = fileManager
         self.appPaths = appPaths
         self.projectsDirectoryOverride = projectsDirectoryOverride
+        self.openFileForReading = openFileForReading
         self.cacheURL = appPaths.claudeCodeParserCacheURL
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
@@ -181,21 +198,37 @@ public final class ClaudeCodeParser: LogParser, Sendable {
     ) throws {
         let cacheKey = cachePath(for: file)
         activePaths.insert(cacheKey)
+        options.metrics?.recordCandidate()
+        options.metrics?.recordMetadataStat()
+
         // Signature captured BEFORE scanning: if a live writer grows the file
         // mid-scan, the next pass sees a size mismatch and resumes from the
         // persisted offset instead of trusting a stale-complete entry.
         let signature = FileSignature(for: file, using: fileManager)
+        let discoveredFile = ParserDiscoveredFile.capture(
+            for: file,
+            attributes: try? fileManager.attributesOfItem(atPath: file.path)
+        )
+        let isNewlyDiscovered = options.fileDiscoveryTracker?.record(discoveredFile) ?? false
         let cached = parseCache.fileEntries[cacheKey]
         let governor = options.resourceGovernor
 
         try governor?.checkpoint()
 
-        // Historical defer: files below the indexing boundary are never
-        // content-read; cached usage rows still surface.
-        if shouldDeferHistoricalFile(
-            signature: signature,
-            minimumFileModificationDate: options.minimumFileModificationDate
-        ) {
+        if options.minimumFileModificationDate != nil, signature == nil {
+            governor?.recordDeferredFile()
+            options.metrics?.recordDeferred(.metadataUnavailable)
+            if let usage = cached?.usage { usages.append(usage) }
+            return
+        }
+
+        // Historical files below the indexing boundary are never content-read;
+        // cached usage rows still surface.
+        if !isNewlyDiscovered,
+           shouldDeferHistoricalFile(
+               signature: signature,
+               minimumFileModificationDate: options.minimumFileModificationDate
+           ) {
             if let signature, let cached, cached.signature == signature,
                let usage = cached.usage {
                 usages.append(usage)
@@ -203,20 +236,13 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             return
         }
 
-        let isUnchanged = signature != nil && cached?.signature == signature
-
-        // Unchanged + usage-only: pure cache hit, no content read.
-        // (Unchanged + bodies still re-reads: conversation text is
-        // privacy-transient and never cached.)
-        if isUnchanged, !includeConversation {
-            if let usage = cached?.usage {
-                usages.append(usage)
-            }
+        let isUnchanged = !isNewlyDiscovered && signature != nil && cached?.signature == signature
+        if isUnchanged, !includeConversation || options.fileDiscoveryTracker != nil {
+            if let usage = cached?.usage { usages.append(usage) }
             return
         }
 
         let fileSize = signature?.sizeBytes ?? 0
-        // Bodies read the whole file; usage-only resumes from the state offset.
         let resumableState = (!includeConversation && fileSize >= Self.incrementalScanThresholdBytes)
             ? cached?.scanState
             : nil
@@ -225,14 +251,12 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             : max(fileSize - min(resumableState?.byteOffset ?? 0, fileSize), 0)
 
         guard governor?.admitFile(estimatedBytes: estimatedNewBytes) ?? true else {
-            // Byte budget exhausted: keep last known values this tick; the
-            // unchanged cache entry retries next pass, and the caller's
-            // indexing watermark stays frozen while deferrals exist.
-            if let usage = cached?.usage {
-                usages.append(usage)
-            }
+            options.metrics?.recordDeferred(.byteBudget)
+            if let usage = cached?.usage { usages.append(usage) }
             return
         }
+        options.fileDiscoveryTracker?.recordAdmitted(discoveredFile)
+        options.metrics?.recordContentRead(bytes: estimatedNewBytes)
 
         guard let outcome = try scanClaudeSession(
             file: file,
@@ -242,17 +266,14 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             previousState: resumableState,
             governor: governor
         ) else {
-            // Unreadable file: drop any stale entry.
-            if cached != nil {
-                parseCache.fileEntries.removeValue(forKey: cacheKey)
-                cacheMutated = true
-            }
+            governor?.recordDeferredFile()
+            options.fileDiscoveryTracker?.recordDeferred(discoveredFile)
+            options.metrics?.recordDeferred(.contentReadFailed)
+            if let usage = cached?.usage { usages.append(usage) }
             return
         }
 
-        if let usage = outcome.usage {
-            usages.append(usage)
-        }
+        if let usage = outcome.usage { usages.append(usage) }
         if includeConversation, let conversation = outcome.conversation {
             conversations.append(conversation)
         }
@@ -314,7 +335,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         previousState: ClaudeTokenScanState?,
         governor: ParserResourceGovernor?
     ) throws -> SessionScanOutcome? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { // try?-ok(unreadable file skip)
+        guard let handle = openFileForReading(file) else {
             return nil
         }
         defer { try? handle.close() } // try?-ok(handle teardown)
@@ -365,7 +386,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             }
 
             if line.isTerminated {
-                withParserAutoreleasePool {
+                parserAutoReleasePool {
                     Self.reduceLine(line.text, tokenAccumulator: &accumulator, conversation: conversationAccumulator)
                 }
                 persistedOffset = line.endOffset
@@ -374,7 +395,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
                 // counted toward returned totals, never toward persisted
                 // state — the next scan re-reads it once complete.
                 var tail = accumulator
-                withParserAutoreleasePool {
+                parserAutoReleasePool {
                     Self.reduceLine(line.text, tokenAccumulator: &tail, conversation: conversationAccumulator)
                 }
                 tailAccumulator = tail

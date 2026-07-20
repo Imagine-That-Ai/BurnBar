@@ -17,7 +17,7 @@ final class BackfillSchedulerTests: XCTestCase {
         let provider: AgentProvider
         let usage: TokenUsage
 
-        func parse() async throws -> ParseResult {
+        func parse(options _: LogParseOptions) async throws -> ParseResult {
             ParseResult(usages: [usage], conversations: [])
         }
     }
@@ -25,7 +25,7 @@ final class BackfillSchedulerTests: XCTestCase {
     private struct EmptyDeterministicParser: LogParser {
         let provider: AgentProvider
 
-        func parse() async throws -> ParseResult {
+        func parse(options _: LogParseOptions) async throws -> ParseResult {
             ParseResult(usages: [], conversations: [])
         }
     }

@@ -4,9 +4,11 @@
 `burnbar-staging` GCP/Firebase project is billing-enabled and now has Firestore,
 Firebase Storage, Firebase Authentication, and a Windows staging Web app. The
 least-privilege deploy service account, repository-scoped GitHub OIDC provider,
-and protected `staging` GitHub Environment remain in place. Rules deployment,
-Desktop OAuth, real Windows TPM App Check verification, CloudVault, and staging
-Functions are still fail-closed. Nothing here touches production (`burnbar`).
+and protected `staging` GitHub Environment remain in place. Rules, indexes,
+Storage rules, Desktop OAuth, and the isolated Windows TPM verifier are live.
+The scoped App Check Functions deployment, CloudVault exercise, and complete
+Windows client protocol remain fail-closed until their evidence passes. Nothing
+here touches production (`burnbar`).
 
 ## Live provisioning snapshot - 2026-07-18
 
@@ -15,7 +17,7 @@ Read-only inspection produced this fail-closed state:
 | Surface | Status |
 | --- | --- |
 | GCP project `burnbar-staging` | Active; Firebase APIs are attached |
-| Deploy service account | `burnbar-staging-deployer` exists with all nine documented project roles |
+| Deploy service account | `burnbar-staging-deployer` exists with all nine documented project roles; secret metadata access is granted only per deployed staging secret |
 | GitHub OIDC | `github-pool/github-provider` is active and repository-scoped |
 | GitHub Environment | `staging` requires review and permits deployments from `main` only |
 | Billing | Enabled through the approved company billing account |
@@ -26,16 +28,16 @@ Read-only inspection produced this fail-closed state:
 | Deploy APIs | All APIs required by `deploy-staging.yml` are enabled |
 | GitHub staging secrets | WIF provider, deploy service account, and Windows Firebase Web API key are set in the protected `staging` environment |
 | GitHub staging variables | Windows App Check app id and `STAGING_ENABLED=true` are set in the protected `staging` environment; the project id override remains a repository variable |
-| Rules deployment | Protected dry run `29655721165` passed: rules emulator tests and deploy-config checks succeeded; authentication and deployment were skipped by `dry_run=true` as designed |
-| Windows Desktop OAuth | Pending creation of a staging-only Desktop OAuth client in Google Auth Platform |
-| Windows App Check | Client TPM/CNG producer exists; the Functions backend still lacks the real TPM verifier and therefore cannot pass live physical attestation |
-| Functions runtime config | Template only; no reviewed `functions/.env.burnbar-staging` |
+| Rules deployment | Protected live run `29670689658` passed rules emulator tests, deployed Firestore/indexes/Storage rules, passed drift checks, and verified every declared TTL policy |
+| Windows Desktop OAuth | Staging-only Desktop client active in Google Auth Platform External/Testing; the approved test user is configured |
+| Windows App Check | TPM/CNG client and Functions mint path exist; the isolated Azure `NCryptVerifyClaim` service is live and fail-closed; end-to-end hardware mint remains pending |
+| Functions runtime config | Reviewed `functions/.env.burnbar-staging` contains public staging identifiers and fail-closed empty provider mappings; secrets remain in Secret Manager |
 
 Do not recreate the project, service account, OIDC pool/provider, GitHub
-Environment, Firebase resources, or environment secrets. Resume with a
-reviewed real rules deployment to staging. Keep Functions deployment disabled
-until `functions/.env.burnbar-staging` is reviewed and every provider secret
-points to a non-production or sandbox account.
+Environment, Firebase resources, or environment secrets. Deploy only explicit
+Functions targets until each target's Secret Manager dependencies point to a
+non-production or sandbox account. An empty `function_targets` input still means
+"all Functions" and therefore requires the complete staging secret inventory.
 
 ## Why this exists
 
@@ -278,8 +280,24 @@ git add functions/.env.burnbar-staging && git commit  # reviewed PR, like prod
 ```
 
 Also set the staging functions' real secrets in the **staging** project's Secret
-Manager (Stripe TEST secret key, APNs key, etc.) exactly as you did for prod —
-they are never stored in the committed `.env`.
+Manager (Stripe TEST secret key, APNs key, etc.) exactly as you did for prod;
+they are never stored in the committed `.env`. Grant the deploy service account
+secret metadata access and the Gen 2 runtime service account payload access only
+for the exact secret each selected Function declares. For example:
+
+```bash
+PROJECT_NUMBER="$(gcloud projects describe burnbar-staging --format='value(projectNumber)')"
+
+gcloud secrets add-iam-policy-binding WINDOWS_TPM_VERIFIER_TOKEN \
+  --project=burnbar-staging \
+  --member='serviceAccount:burnbar-staging-deployer@burnbar-staging.iam.gserviceaccount.com' \
+  --role='roles/secretmanager.viewer'
+
+gcloud secrets add-iam-policy-binding WINDOWS_TPM_VERIFIER_TOKEN \
+  --project=burnbar-staging \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role='roles/secretmanager.secretAccessor'
+```
 
 ### 7. First deploy (rules/indexes/storage), then functions
 
@@ -290,9 +308,16 @@ gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar -f dry_run=tru
 # Real rules/indexes/storage deploy to staging:
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar -f dry_run=false
 
-# Include functions once functions/.env.burnbar-staging exists:
+# Deploy only the reviewed Windows App Check bootstrap targets. The selector is
+# validated as a comma-separated functions:<exportName> allowlist before auth.
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
-  -f dry_run=false -f deploy_functions=true
+  -f dry_run=false \
+  -f deploy_functions=true \
+  -f function_targets='functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken'
+
+# Deliberately deploy every Function only after every staging secret exists:
+gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
+  -f dry_run=false -f deploy_functions=true -f function_targets=''
 ```
 
 Approve the `staging` environment when prompted. Confirm the run's summary shows
