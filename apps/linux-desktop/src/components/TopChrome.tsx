@@ -65,7 +65,7 @@ export function TopChrome({ onOpenCommandPalette, kernelId, onKernelChange }: To
           className="ghost deck-capsule-trigger deck-capsule-trigger--icon deck-toolbar-icon"
           title="Import sessions"
           aria-label="Import sessions"
-          onClick={() => setRoute('support')}
+          onClick={() => setRoute('activity')}
         >
           <span aria-hidden="true">↓</span>
         </button>
