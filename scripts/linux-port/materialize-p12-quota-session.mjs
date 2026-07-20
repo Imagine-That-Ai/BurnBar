@@ -10,6 +10,9 @@ import { verifyInstalledCandidate } from './run-p08-mercury-media-session.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const RAW_FILES = Object.freeze([
   'quota-catalog-initial.json', 'quota-catalog-retry.json', 'quota-catalog-restart.json',
+  'quota-catalog-stale.json',
+  'quota-rpc-transcript.json',
+  'quota-gateway-transcript.json',
   'quota-interactions.json', 'quota-live-atspi.json', 'quota-live.png',
   'quota-stale-atspi.json', 'quota-stale.png'
 ]);
@@ -50,7 +53,9 @@ export function materializeP12QuotaSession(options, {
     package: { architecture: expected.architecture, format: expected.format, installed: true, manifest, signature, source: 'verified-live-installed-candidate', version: options.packageVersion },
     desktop: { compositor: options.compositor, desktop: expected.desktop, displayServer: expected.session, liveSession: true },
     capture: { startedAt: new Date(Math.min(...times)).toISOString(), endedAt: new Date(Math.max(...times)).toISOString(), fixtureMode: false, method: 'installed-live-product-session' },
-    catalogs: { initial: copied['quota-catalog-initial.json'], retry: copied['quota-catalog-retry.json'], restart: copied['quota-catalog-restart.json'] },
+    catalogs: { initial: copied['quota-catalog-initial.json'], stale: copied['quota-catalog-stale.json'], retry: copied['quota-catalog-retry.json'], restart: copied['quota-catalog-restart.json'] },
+    gatewayTranscript: copied['quota-gateway-transcript.json'],
+    quotaRpcTranscript: copied['quota-rpc-transcript.json'],
     interactionEvents: copied['quota-interactions.json'],
     ui: { liveAtspi: copied['quota-live-atspi.json'], liveScreenshot: copied['quota-live.png'], staleAtspi: copied['quota-stale-atspi.json'], staleScreenshot: copied['quota-stale.png'] }
   };

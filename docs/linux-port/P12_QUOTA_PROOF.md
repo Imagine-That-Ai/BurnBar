@@ -10,8 +10,14 @@ The proof requires:
 - provider quota buckets with bounded percentages, reset windows, and states;
 - provider IDs, parser source IDs, and aliases matching
   `contracts/provider-ingestion-catalog.json`;
-- explicit live/stale provenance and visible retained data after a daemon
-  refresh failure, followed by a successful retry;
+- four independently hashed catalog states: initial live data, stale retained
+  data after refresh failure, a successful fresh retry that may update values,
+  and a post-restart readback matching the retry;
+- a raw authenticated AF_UNIX `daemon.quota.signals.recent` transcript whose
+  source IDs and bucket values are hash-bound to every live catalog snapshot;
+- initial and retry requests through the installed loopback HTTP gateway to a
+  bounded local upstream, with distinct quota headers bound to persisted daemon
+  signal IDs rather than a hand-authored signal file;
 - daemon failover mode read, mutation, readback, rollback, and rollback
   readback;
 - application restart with a new PID and byte-identical quota persistence;
@@ -25,6 +31,9 @@ writes the report. `capture-p12-quota-proof.mjs` then reopens that report and
 emits the only artifact registered under role
 `p-12-installed-quota-proof`. The product validator replays the entire
 validation; booleans in a producer report are never accepted as proof.
+
+Every transition event carries the corresponding catalog SHA-256, and the four
+read events also match the catalog capture timestamp exactly.
 
 The validator deliberately fails on stale captures, changed bytes, reused
 screenshots, forged signatures, fixture desktops, canonical-provider drift,
