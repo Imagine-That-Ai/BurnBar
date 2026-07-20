@@ -26,6 +26,7 @@ const remoteConfigPublisher = readFileSync(
   join(root, "publish-staging-remote-config-fixture.ps1"),
   "utf8",
 );
+const remoteConfigHttp = readFileSync(join(root, "remote-config-http.psm1"), "utf8");
 const remoteConfigFixtureCatalog = JSON.parse(
   readFileSync(join(root, "remote-config-certification-fixtures.json"), "utf8"),
 );
@@ -172,14 +173,23 @@ assert.match(remoteConfigPublisher, /ValidateSet\('burnbar-staging'\)/);
 assert.match(remoteConfigPublisher, /hard-bound to burnbar-staging and refuses every other project/);
 assert.doesNotMatch(remoteConfigPublisher, /\[string\] \$CatalogPath/);
 assert.match(remoteConfigPublisher, /config get-value project/);
-assert.equal(
-  remoteConfigPublisher.match(/'Accept-Encoding' = 'gzip'/g)?.length,
-  2,
-  "Remote Config GET and PUT must request gzip so Firebase returns an ETag",
-);
-assert.match(remoteConfigPublisher, /\$current\.Headers\['ETag'\]/);
-assert.match(remoteConfigPublisher, /'If-Match' = \$etag/);
-assert.doesNotMatch(remoteConfigPublisher, /'If-Match' = '\*'/);
+assert.match(remoteConfigPublisher, /Join-Path \$PSScriptRoot 'remote-config-http\.psm1'/);
+assert.match(remoteConfigPublisher, /Import-Module -Name \$httpModulePath/);
+assert.match(remoteConfigPublisher, /New-RemoteConfigHttpClient/);
+assert.match(remoteConfigHttp, /System\.Net\.Http\.HttpClient/);
+assert.match(remoteConfigHttp, /System\.Net\.DecompressionMethods]::GZip/);
+assert.match(remoteConfigHttp, /ResponseHeadersRead/);
+assert.match(remoteConfigHttp, /TryAddWithoutValidation\('Accept-Encoding', 'gzip'\)/);
+assert.match(remoteConfigHttp, /TryAddWithoutValidation\('x-goog-user-project'/);
+assert.match(remoteConfigHttp, /Response\.Headers\.ETag/);
+assert.match(remoteConfigHttp, /Response\.Headers\.NonValidated/);
+assert.match(remoteConfigHttp, /Get-RemoteConfigETag \$response/);
+assert.match(remoteConfigHttp, /TryAddWithoutValidation\('If-Match', \$IfMatch\)/);
+assert.match(remoteConfigPublisher, /-IfMatch \$etag/);
+assert.doesNotMatch(remoteConfigPublisher, /Invoke-WebRequest/);
+assert.doesNotMatch(remoteConfigHttp, /Invoke-WebRequest/);
+assert.doesNotMatch(remoteConfigHttp, /'If-Match' = '\*'/);
+assert.doesNotMatch(remoteConfigHttp, /TryAddWithoutValidation\('If-Match', '\*'/);
 assert.match(remoteConfigPublisher, /parameters do not match the selected fixture/);
 assert.match(remoteConfigPublisher, /restoreRequired = \(\$Fixture -ne 'Baseline'\)/);
 assert.match(remoteConfigPublisher, /read failed\. No mutation was attempted/);
@@ -302,6 +312,12 @@ assert.match(script, /\$HarnessRoot = Resolve-FullPath \(Join-Path \$PSScriptRoo
 assert.match(script, /Join-Path \$HarnessRoot 'scripts\\windows-port\\run-ui-automation\.ps1'/);
 assert.match(script, /Join-Path \$HarnessRoot 'scripts\\windows-port\\validate-release-certification-evidence\.mjs'/);
 assert.match(script, /--expected-harness-commit \$script:SourceIdentity\.harness\.commitSha/);
+assert.match(script, /operator-evidence\\validator-final\.log/);
+assert.ok(
+  script.match(/--write-sums/g)?.length >= 2,
+  "the runner must regenerate SHA256SUMS after recording validator-final.log",
+);
+assert.match(script, /Final evidence bundle validation failed/);
 // The artifact manifest must bind the signed artifact to its source commit.
 assert.match(script, /'sourceCommit',/);
 assert.match(script, /Artifact manifest sourceCommit must be a full 40-character Git SHA/);

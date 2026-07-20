@@ -160,6 +160,7 @@ jobs:
             "scripts/windows-port/new-physical-hardware-attestation.ps1",
             "scripts/windows-port/new-release-certification-supplemental-receipt.ps1",
             "scripts/windows-port/publish-staging-remote-config-fixture.ps1",
+            "scripts/windows-port/remote-config-http.psm1",
             "scripts/windows-port/run-physical-release-certification.ps1"
           )
           foreach ($script in $scripts) {
@@ -174,6 +175,31 @@ jobs:
               throw "Physical certification PowerShell has parse errors: $script"
             }
             Write-Host "PowerShell parse OK: $script"
+          }
+
+      - name: Test Remote Config unquoted ETag handling
+        run: |
+          Import-Module "./scripts/windows-port/remote-config-http.psm1" -Force
+          $response = [System.Net.Http.HttpResponseMessage]::new(
+            [System.Net.HttpStatusCode]::OK
+          )
+          try {
+            if (-not $response.Headers.TryAddWithoutValidation(
+              "ETag",
+              "etag-1079930549647-1")) {
+              throw "Unable to construct the Firebase ETag regression fixture."
+            }
+            if ($null -ne $response.Headers.ETag) {
+              throw "Regression fixture unexpectedly parsed as an RFC-compliant typed ETag."
+            }
+            $actual = Get-RemoteConfigETag $response
+            if ($actual -cne "etag-1079930549647-1") {
+              throw "Unquoted Firebase ETag was not preserved: '$actual'."
+            }
+            Write-Host "Remote Config unquoted ETag parser PASS."
+          }
+          finally {
+            $response.Dispose()
           }
 
       - name: Smoke supplemental certification templates
