@@ -6,23 +6,25 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Current source proof | Source verification extends through `0378a03b3a`, including the P-08 installed Mercury proof implementation at `dadb756940`; the latest exact-native checkpoint remains `22fd7dfad9`. The last broad gates pass at 94 frontend files / 910 tests, Tauri Rust at 133/133, and 642 Linux-port Node cases / 637 passed / 5 environment skips / 0 failures; the new P-08 proof slice passes 5/5. TypeScript, ESLint, production-bundle verification, Cargo formatting, the Swift file-size budget, and the core target-membership budget also pass. Thirteen product requirements have registered producers and validators. The isolated collector at `bf8c4c572c` authenticated all thirteen owners with 39/39 executions passing; the other 27 requirements remain unregistered. P-08 is implemented but is not yet one of those registered owners. The physical-iPad selected suite at `ea82cb4a58` executed six tests with one expected skip and zero failures. None of these source results replace installed proof. The exact DEB build/install and installed hash proof remain bound to `22fd7dfad9`: [`evidence/parity-audit-2026-07-10/linux-arm64-current-22fd7dfad9-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-22fd7dfad9-exact-native-2026-07-20.json). |
+| Current source proof | Source verification extends through the P-09/P-10 ownership integration at `574c767da5` and the exact-native receipt commit at `3a9e2f67a5`. The broad gates pass at 94 frontend files / 911 tests, Tauri Rust 133/133, and 683 Linux-port Node cases / 678 passed / 5 environment skips / 0 failures. TypeScript, ESLint, production-bundle verification, Cargo formatting, the Swift file-size budget, the core target-membership budget, focused P-08 verification, and the P-09/P-10 focused and workflow suites also pass. Sixteen product requirements now have registered producers, materializers, and validators. The authoritative collector at `574c767da5` authenticated all sixteen owners with 48/48 executions passing; 24 requirements remain unregistered. The physical-iPad selected suite at `dd34c005fb` executed six tests with one expected local-configuration skip and zero failures. Source proof, installed proof, device proof, and strict promotion remain separate counters. |
 | Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets rotate; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh; `465431d0fc` hardens startup forwarding; `7ac2e021c9` makes Browser Computer Use capability checks fail closed; `c0a725447d` adds a trusted embedded autostart fallback; `447abb0564` fences stale Mercury capability responses; `9e868e60a7` refreshes tray state periodically; `3e7ede75e3` bounds expired browser authorization polling; `ebab7da744` fences stale concurrent version/feed responses; `534d7aae65` completes overflow-menu keyboard/focus behavior; `519f0456a7` adds a packaged-shell reconnect action for degraded daemon health; `811d84172a` queues native notification actions until renderer bootstrap completes; `66b280162f` fixes the Linux-only AppHandle ownership path caught by the ARM64 build; `b2c8579835` fences stale/overlapping diagnostics exports across bridge replacement; `90fac18c86` scopes the test-only notification queue helper so release builds stay warning-clean for that path; `7c5b68d750` matches macOS loopback-only CORS/preflight behavior for buffered and streamed gateway responses; `106b15855b` retains the last good mission snapshot during transient refresh failure; `e4f14c4387` avoids duplicate SmartHub health/control probes; `9f1bd7ca8c` wires Mission Inspect logs; `5e1a2dd962` routes Import sessions to Activity; `2ad3b2752d` brackets IPv6 device endpoints; `10c26c9a5d` makes Appearance radios keyboard-navigable; `2b64049552` fences stale Computer Use authority/approval responses; `3258104c1a` retains Activity snapshots across refresh failures; `f9bf08c600` fails closed from a broken X11 pet child; `e114bca710` retains stale signed-update facts while blocking package mutation; `36514bee98`/`72afa18f7e` force and validate native GStreamer Mercury packaging; `af31748ece` stabilizes the SmartHub bounded-output guard/test fixture; `41a9381e9e` exposes recovery-bundle controls in Data & Privacy; `7cdeb0ab85` adds daemon-backed project history; `1eae2dcc7e` preserves quota provenance and canonical provider aliases; `c0853c29af` splits heavy routes into lazy chunks; and `90c5bd34ca` keeps Support error wiring synchronous. Source-only checks are green at 873/873 frontend tests, 129/129 host Tauri Rust tests, and 130/130 media-enabled Rust tests on Ubuntu ARM64; the current shell receipt is non-certifying because the daemon/CLI remain staged. |
-| Latest VM proof | The `22fd7dfad9` ARM64 DEB is 152,116,006 bytes with SHA-256 `72fb15222374ee5231aa53b498aba984e4b281e5c93fa359c4a4f53c29886522`. Build and install pass in Ubuntu GNOME/X11; both Kernel and Pretext resource bundles are present; package-versus-installed desktop, daemon, CLI, iroh, and resource hashes match; the daemon is active; CLI health is OK; and a native provider deep link selected Codex with AT-SPI at 189 nodes / 108 named / 91 actionable / 33 focusable. Receipt: [`evidence/parity-audit-2026-07-10/linux-arm64-current-22fd7dfad9-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-22fd7dfad9-exact-native-2026-07-20.json). Screenshot: [`evidence/parity-audit-2026-07-10/linux-arm64-current-22fd7dfad9-provider-deep-link.png`](evidence/parity-audit-2026-07-10/linux-arm64-current-22fd7dfad9-provider-deep-link.png). The receipt remains non-certifying because the manifest is the unsigned `{}` placeholder and the broader release matrix is open. |
+| Latest VM proof | The exact `5571e65f85` Ubuntu 24.04 GNOME/X11 ARM64 DEB is 152,137,340 bytes with SHA-256 `5c3218d60fc188df6102c683628e9b0dcae77d80167b724dcad4fdb8df01483`. The clean guest build preserves all 12,456 tracked source blobs; all 163 regular package files match their installed bytes; desktop, daemon, CLI, iroh, linkage, daemon service, and CLI health checks pass; and no stale `/usr/local` product process is present. Live QA exposed and fixed a startup race where `main.tsx` and `App.tsx` could drain the same initial deep link. After `5571e65f85`, three of three true cold starts with `openburnbar://providers?provider=codex` selected Codex and passed AT-SPI at 189 nodes / 108 named / 91 actionable with zero failures. Receipt: [`evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-exact-native-2026-07-20.json). Screenshot: [`evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-provider-deep-link.png`](evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-provider-deep-link.png). The receipt remains explicitly non-certifying because the installed manifest is the unsigned `{}` placeholder, production cloud identifiers are absent, and the remaining environment/device matrix is open. |
 | Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
-The last broad source gate is **94 frontend files / 910 tests**,
-Tauri Rust **133/133**, and **642 Linux-port Node cases / 637 passed / 5
-environment skips / 0 failures**, plus TypeScript, ESLint, production-bundle,
-Cargo-formatting, Swift file-size, and core target-membership checks. Current
-source extends through `0378a03b3a`; P-08's focused proof tests pass **5/5**,
-and the physical-iPad selected suite at `ea82cb4a58` executed **6 tests, 1
-expected skip, 0 failures**. The exact
-installed ARM64 proof remains the `22fd7dfad9` DEB: its desktop, daemon, CLI,
-iroh runtime, and resource hashes match; daemon health, native deep-link,
-screenshot, and AT-SPI checks pass. The newer source has not yet replaced that
-installed checkpoint. The unsigned `{}` manifest, unconfigured production
-cloud auth, and incomplete environment/device matrix remain non-certifying.
+The last broad source gate is **94 frontend files / 911 tests**, Tauri Rust
+**133/133**, and **683 Linux-port Node cases / 678 passed / 5 environment
+skips / 0 failures**, plus TypeScript, ESLint, production-bundle,
+Cargo-formatting, Swift file-size, and core target-membership checks. The
+authoritative proof collector at `574c767da5` passes **48/48** executions for
+**16/40 registered requirement owners**. The physical-iPad selected suite at
+`dd34c005fb` executed **6 tests, 1 expected skip, 0 failures**.
+
+The exact installed ARM64 proof is now the `5571e65f85` DEB: **12,456/12,456**
+tracked source blobs and **163/163** installed package files match, daemon and
+linkage checks pass, and three of three cold-start provider deep links pass
+with a clean screenshot and AT-SPI result. The unsigned `{}` manifest,
+unconfigured production cloud auth, incomplete Wayland/package-format
+collectors, and incomplete environment/device matrix remain non-certifying.
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
 
@@ -34,15 +36,14 @@ is an engineering-completeness view, estimated at roughly **80%**, not a release
 certificate.
 
 The fail-closed proof system has registered candidate-bound ownership for
-thirteen requirements (`P-01`, `P-02`, `P-03`, `P-04`, `P-05`, `P-06`, `P-07`,
-`P-31`, `P-34`, `P-37`, `P-38`, `P-39`, and `P-40`). At registration commit
-`bf8c4c572c`, an isolated collector rebuilt their exact source inputs and passed
-all **39/39** producer, materializer, and validator executions. This is
-**13/40 ownership-ready**, or **32.5% of the full requirement set**; the other
-27 requirements still need registered proof ownership. P-08's installed
-Mercury producer, candidate binding, event-chain validation, capture, semantic
-validator, and focused tests landed at `dadb756940`, but its registry,
-materializer, and workflow ownership have not landed, so P-08 is not counted.
+sixteen requirements (`P-01` through `P-10`, `P-31`, `P-34`, and `P-37`
+through `P-40`). At registration commit `574c767da5`, the authoritative
+collector rebuilt their exact source inputs and passed all **48/48** producer,
+materializer, and validator executions. This is **16/40 ownership-ready**, or
+**40% of the full requirement set**; the other 24 requirements still need
+registered proof ownership. P-09 and P-10 additionally pass **12/12** focused
+proof tests, **6/6** native-runner tests, and **68/68** combined ownership and
+workflow tests.
 
 Strict promotion remains **0/40 product requirements** and **0/7 environment
 receipts**. A row becomes strictly ready only after its signed candidate proof
