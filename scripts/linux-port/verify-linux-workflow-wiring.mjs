@@ -226,7 +226,7 @@ export function verifyLinuxWorkflowWiring(input) {
       const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
       return start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
     };
-    const installStep = 'Install P-09 through P-12 and P-17 signed candidate package';
+    const installStep = 'Install P-09 through P-14 and P-17 signed candidate package';
     const captureStep = config.step;
     const install = blockFor(installStep);
     const capture = blockFor(captureStep);
@@ -236,7 +236,7 @@ export function verifyLinuxWorkflowWiring(input) {
       .filter((line) => line && !line.startsWith('#'));
     const required = [
       [installStep, install, [
-        "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-17'",
+        "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-14' || inputs.requirement == 'P-17'",
         'set -euo pipefail',
         'sudo apt-get install -y --reinstall "$package"',
         'sudo dnf install -y "$package"',
@@ -621,6 +621,11 @@ export function verifyLinuxWorkflowWiring(input) {
     'capture-p12-quota-proof.mjs',
     'Capture P-12 installed quota proof',
     "if: inputs.requirement == 'P-12'",
+    'run-p14-chat-session.mjs',
+    'materialize-p14-chat-session.mjs',
+    'capture-p14-chat-proof.mjs',
+    'Capture P-14 installed chat proof',
+    "if: inputs.requirement == 'P-14'",
     'run-p17-native-activity-probes.mjs',
     'materialize-p17-activity-session.mjs',
     'capture-p17-activity-proof.mjs',
@@ -723,6 +728,33 @@ export function verifyLinuxWorkflowWiring(input) {
       '--gateway-token-file "$gateway_token_file"'
     ]
   });
+  requireInstalledUiCaptureContract(input.productParityWorkflow, 'P-14', {
+    step: 'Capture P-14 installed chat proof',
+    runner: 'scripts/linux-port/run-p14-chat-session.mjs',
+    materializer: 'scripts/linux-port/materialize-p14-chat-session.mjs',
+    capture: 'scripts/linux-port/capture-p14-chat-proof.mjs',
+    requiredLines: [
+      'evidence_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-evidence.XXXXXX")"',
+      'support_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-support.XXXXXX")"',
+      'home_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-home.XXXXXX")"',
+      'download_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-downloads.XXXXXX")"',
+      'systemctl --user show-environment >"$original_environment"',
+      'restore_manager_environment() {',
+      'systemctl --user unset-environment "${managed_variables[@]}"',
+      'if [[ "$service_was_active" == 1 ]]; then',
+      'rm -rf "$evidence_root" "$support_root" "$home_root" "$download_root" || status=1',
+      'printf \'XDG_DOWNLOAD_DIR="%s"\\n\' "$download_root" >"$home_root/.config/user-dirs.dirs"',
+      'export HOME="$home_root"',
+      'export XDG_CONFIG_HOME="$home_root/.config"',
+      'test -S "$socket_path"',
+      'test -s "$token_file"',
+      'test -s "$database_path"',
+      '--database-path "$database_path"',
+      '--attachment "$attachment_path"',
+      '--download-dir "$download_root"',
+      '--thread-id "$thread_id"'
+    ]
+  });
   requireInstalledUiCaptureContract(input.productParityWorkflow, 'P-17', {
     step: 'Capture P-17 installed Activity proof',
     runner: 'scripts/linux-port/run-p17-native-activity-probes.mjs',
@@ -768,11 +800,12 @@ export function verifyLinuxWorkflowWiring(input) {
     'Preserve non-promotable P-02 diagnostic evidence',
     'Install P-08 signed candidate package',
     'Capture P-08 installed Mercury media proof',
-    'Install P-09 through P-12 and P-17 signed candidate package',
+    'Install P-09 through P-14 and P-17 signed candidate package',
     'Capture P-09 installed navigation shell proof',
     'Capture P-10 installed dashboard layout proof',
     'Capture P-11 installed usage ingestion proof',
     'Capture P-12 installed quota proof',
+    'Capture P-14 installed chat proof',
     'Capture P-17 installed Activity proof',
     'Capture P-31 installed accessibility matrix evidence',
     'Capture P-34 credential security proof',

@@ -156,8 +156,8 @@ function valid() {
         '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
       ].join('\n'),
       [
-        '      - name: Install P-09 through P-12 and P-17 signed candidate package',
-        "        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-17'",
+        '      - name: Install P-09 through P-14 and P-17 signed candidate package',
+        "        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-14' || inputs.requirement == 'P-17'",
         '        run: |',
         '          set -euo pipefail',
         '          sudo apt-get install -y --reinstall "$package"',
@@ -246,6 +246,38 @@ function valid() {
         '            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
         '          node scripts/linux-port/materialize-p12-quota-session.mjs',
         '          node scripts/linux-port/capture-p12-quota-proof.mjs'
+      ].join('\n'),
+      [
+        '      - name: Capture P-14 installed chat proof',
+        "        if: inputs.requirement == 'P-14'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          evidence_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-evidence.XXXXXX")"',
+        '          support_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-support.XXXXXX")"',
+        '          home_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-home.XXXXXX")"',
+        '          download_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-downloads.XXXXXX")"',
+        '          systemctl --user show-environment >"$original_environment"',
+        '          restore_manager_environment() {',
+        '            systemctl --user unset-environment "${managed_variables[@]}"',
+        '          }',
+        '          if [[ "$service_was_active" == 1 ]]; then',
+        '          rm -rf "$evidence_root" "$support_root" "$home_root" "$download_root" || status=1',
+        '          printf \'XDG_DOWNLOAD_DIR="%s"\\n\' "$download_root" >"$home_root/.config/user-dirs.dirs"',
+        '          export HOME="$home_root"',
+        '          export XDG_CONFIG_HOME="$home_root/.config"',
+        '          test -S "$socket_path"',
+        '          test -s "$token_file"',
+        '          test -s "$database_path"',
+        '          node scripts/linux-port/run-p14-chat-session.mjs',
+        '            --database-path "$database_path"',
+        '            --attachment "$attachment_path"',
+        '            --download-dir "$download_root"',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+        '            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+        '          node scripts/linux-port/materialize-p14-chat-session.mjs',
+        '            --thread-id "$thread_id"',
+        '          node scripts/linux-port/capture-p14-chat-proof.mjs'
       ].join('\n'),
       [
         '      - name: Capture P-17 installed Activity proof',
@@ -644,6 +676,12 @@ test('registered installed UI workflows require native runners before materializ
       'scripts/linux-port/capture-p12-quota-proof.mjs'
     ],
     [
+      'P-14', 'Capture P-14 installed chat proof',
+      'scripts/linux-port/run-p14-chat-session.mjs',
+      'scripts/linux-port/materialize-p14-chat-session.mjs',
+      'scripts/linux-port/capture-p14-chat-proof.mjs'
+    ],
+    [
       'P-17', 'Capture P-17 installed Activity proof',
       'scripts/linux-port/run-p17-native-activity-probes.mjs',
       'scripts/linux-port/materialize-p17-activity-session.mjs',
@@ -651,7 +689,7 @@ test('registered installed UI workflows require native runners before materializ
     ]
   ]) {
     for (const marker of [
-      'Install P-09 through P-12 and P-17 signed candidate package', stepName, runner, materializer, capture,
+      'Install P-09 through P-14 and P-17 signed candidate package', stepName, runner, materializer, capture,
       '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"'
     ]) {
       const input = valid();
@@ -702,6 +740,30 @@ test('P-12 installed quota workflow preserves isolated gateway and daemon state 
     const result = verifyLinuxWorkflowWiring(input);
     assert.equal(result.passed, false, marker);
     assert.ok(result.failures.some((failure) => failure.includes('P-12')), marker);
+  }
+});
+
+test('P-14 installed chat workflow preserves isolated daemon, home, and download state fail closed', () => {
+  for (const marker of [
+    'evidence_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-evidence.XXXXXX")"',
+    'support_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-support.XXXXXX")"',
+    'home_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-home.XXXXXX")"',
+    'download_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-downloads.XXXXXX")"',
+    'systemctl --user show-environment >"$original_environment"',
+    'systemctl --user unset-environment "${managed_variables[@]}"',
+    'rm -rf "$evidence_root" "$support_root" "$home_root" "$download_root" || status=1',
+    'export HOME="$home_root"',
+    'export XDG_CONFIG_HOME="$home_root/.config"',
+    '--database-path "$database_path"',
+    '--attachment "$attachment_path"',
+    '--download-dir "$download_root"',
+    '--thread-id "$thread_id"'
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replaceAll(marker, 'removed-p14-state-marker');
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(result.failures.some((failure) => failure.includes('P-14')), marker);
   }
 });
 

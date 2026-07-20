@@ -93,6 +93,16 @@
       ]
     },
     {
+      "requirementId": "P-14",
+      "artifacts": [
+        {
+          "role": "feature.chat-installed",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
       "requirementId": "P-17",
       "artifacts": [
         {
@@ -423,6 +433,29 @@
         "workflowPath": ".github/workflows/linux-product-parity.yml",
         "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
         "testName": "P-12 materializer selects the installed quota proof"
+      }
+    },
+    {
+      "requirementId": "P-14",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-14.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p14-chat-proof.test.mjs",
+        "mutationTestName": "P-14 independently rejects semantic mutations, changed bytes, source drift, and forged signatures"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p14-chat-proof.mjs",
+        "entrypoint": "captureP14ChatProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p14-chat-proof.test.mjs",
+        "testName": "P-14 runner, materializer, capture, and product validator close one signed installed chat session"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-14 materializer selects the installed chat proof"
       }
     },
     {

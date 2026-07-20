@@ -463,9 +463,9 @@ jobs:
             --candidate-run-id "$CANDIDATE_RUN_ID" \
             --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
 
-      - name: Install P-09 through P-12 and P-17 signed candidate package
+      - name: Install P-09 through P-14 and P-17 signed candidate package
         id: p09_p10_p11_p12_install
-        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-17'
+        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-14' || inputs.requirement == 'P-17'
         shell: bash
         env:
           REQUIREMENT_ID: ${{ inputs.requirement }}
@@ -821,6 +821,130 @@ jobs:
           node scripts/linux-port/capture-p12-quota-proof.mjs \
             --input-root "$input_root" \
             --session-report "$input_root/p12-installed-quota-session.json" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --package-version "$PACKAGE_VERSION" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"
+
+      - name: Capture P-14 installed chat proof
+        if: inputs.requirement == 'P-14'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+          PACKAGE_VERSION: ${{ steps.p09_p10_p11_p12_install.outputs.package_version }}
+          MANIFEST_SHA256: ${{ steps.p09_p10_p11_p12_install.outputs.manifest_sha256 }}
+          MANIFEST_SIGNATURE_SHA256: ${{ steps.p09_p10_p11_p12_install.outputs.manifest_signature_sha256 }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          evidence_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-evidence.XXXXXX")"
+          support_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-support.XXXXXX")"
+          home_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-home.XXXXXX")"
+          download_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p14-downloads.XXXXXX")"
+          socket_path="$support_root/openburnbar-daemon.sock"
+          token_file="$support_root/daemon-socket-auth-token"
+          database_path="$support_root/openburnbar.sqlite"
+          attachment_path="$support_root/p14-attachment.txt"
+          original_environment="$support_root/original-systemd-environment"
+          managed_variables=(OPENBURNBAR_DAEMON_SUPPORT_DIR OPENBURNBAR_DAEMON_SOCKET_PATH)
+          if systemctl --user is-active --quiet openburnbar-daemon.service; then service_was_active=1; else service_was_active=0; fi
+          systemctl --user show-environment >"$original_environment"
+          chmod 600 "$original_environment"
+          restore_manager_environment() {
+            systemctl --user unset-environment "${managed_variables[@]}"
+            while IFS= read -r entry; do
+              for variable in "${managed_variables[@]}"; do
+                if [[ "$entry" == "$variable="* ]]; then systemctl --user set-environment "$entry"; fi
+              done
+            done <"$original_environment"
+          }
+          cleanup() {
+            status=$?
+            restore_manager_environment || status=1
+            if [[ "$service_was_active" == 1 ]]; then
+              systemctl --user restart openburnbar-daemon.service || status=1
+            else
+              systemctl --user stop openburnbar-daemon.service || status=1
+            fi
+            rm -rf "$evidence_root" "$support_root" "$home_root" "$download_root" || status=1
+            exit "$status"
+          }
+          trap cleanup EXIT
+          chmod 700 "$evidence_root" "$support_root" "$home_root" "$download_root"
+          test -x /usr/bin/openburnbar-cli
+          test -x /usr/bin/openburnbar-linux-desktop
+          test -x /usr/libexec/openburnbar-daemon-launch
+          if pgrep -f '^/usr/bin/openburnbar-linux-desktop([[:space:]]|$)' >/dev/null; then
+            echo "P-14 requires no pre-existing installed desktop process" >&2
+            exit 1
+          fi
+          case "$ENVIRONMENT_ID" in
+            *-gnome-x11-*) compositor=Mutter ;;
+            *) echo "P-14 native chooser and window proof requires GNOME X11: $ENVIRONMENT_ID" >&2; exit 1 ;;
+          esac
+          umask 077
+          printf '%s\n' 'P-14 installed attachment payload' >"$attachment_path"
+          mkdir -p "$home_root/.config"
+          printf 'XDG_DOWNLOAD_DIR="%s"\n' "$download_root" >"$home_root/.config/user-dirs.dirs"
+          export HOME="$home_root"
+          export XDG_CONFIG_HOME="$home_root/.config"
+          export XDG_DATA_HOME="$home_root/.local/share"
+          export OPENBURNBAR_DAEMON_SUPPORT_DIR="$support_root"
+          export OPENBURNBAR_DAEMON_SOCKET_PATH="$socket_path"
+          systemctl --user set-environment \
+            "OPENBURNBAR_DAEMON_SUPPORT_DIR=$support_root" \
+            "OPENBURNBAR_DAEMON_SOCKET_PATH=$socket_path"
+          systemctl --user restart openburnbar-daemon.service
+          for _ in $(seq 1 100); do
+            if [[ -S "$socket_path" && -s "$token_file" && -s "$database_path" ]]; then break; fi
+            sleep 0.1
+          done
+          test -S "$socket_path"
+          test -s "$token_file"
+          test -s "$database_path"
+          node scripts/linux-port/run-p14-chat-session.mjs \
+            --raw-output-dir "$evidence_root" \
+            --database-path "$database_path" \
+            --support-dir "$support_root" \
+            --attachment "$attachment_path" \
+            --socket-path "$socket_path" \
+            --token-file "$token_file" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --package-version "$PACKAGE_VERSION" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256" \
+            --compositor "$compositor" \
+            --backend Codex \
+            --model gpt-4.1 \
+            --thinking High \
+            --download-dir "$download_root"
+          thread_id="$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).events[0].data.threadID' "$evidence_root/daemon-chat-transcript.json")"
+          [[ "$thread_id" =~ ^p14-thread-[a-f0-9-]{36}$ ]]
+          node scripts/linux-port/materialize-p14-chat-session.mjs \
+            --output-root "$input_root" \
+            --raw-evidence-dir "$evidence_root" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --package-version "$PACKAGE_VERSION" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256" \
+            --compositor "$compositor" \
+            --thread-id "$thread_id"
+          node scripts/linux-port/capture-p14-chat-proof.mjs \
+            --input-root "$input_root" \
+            --session-report "$input_root/p14-installed-chat-session.json" \
             --environment "$ENVIRONMENT_ID" \
             --target-head "$TARGET_HEAD" \
             --candidate-run-id "$CANDIDATE_RUN_ID" \
