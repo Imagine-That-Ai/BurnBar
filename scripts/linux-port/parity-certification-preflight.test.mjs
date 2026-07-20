@@ -128,10 +128,10 @@ function policies(requirements) {
 function registry(complete) {
   const featureRequirements = complete
     ? ['P-02', 'P-05', 'P-06', 'P-31', 'P-34', 'P-40']
-    : ['P-02', 'P-05', 'P-40'];
+    : ['P-02', 'P-05', 'P-31', 'P-34', 'P-40'];
   const certificationIds = complete
     ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-31', 'P-34', 'P-37', 'P-38', 'P-40']
-    : ['P-02', 'P-05', 'P-40'];
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-31', 'P-34', 'P-37', 'P-38', 'P-40'];
   return {
     schemaVersion: 1,
     id: 'openburnbar-linux-product-feature-proof-registry-v1',
@@ -204,7 +204,7 @@ function createRepository({ complete = true } = {}) {
   ]) write(root, schema, fs.readFileSync(path.join(SOURCE_ROOT, schema)));
   const validatorIds = complete
     ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-31', 'P-34', 'P-37', 'P-38', 'P-40']
-    : ['P-02', 'P-05', 'P-40'];
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-31', 'P-34', 'P-37', 'P-38', 'P-40'];
   for (const requirementId of validatorIds) {
     write(root, `scripts/linux-port/product-validators/${requirementId}.mjs`,
       `export async function validateProductRequirement(context) {\n`
@@ -492,20 +492,20 @@ function validatorContext(subject, captureResult) {
   };
 }
 
-test('ownership-ready fixture blocks exactly the 37 incomplete requirement lanes', async (t) => {
+test('ownership-ready fixture blocks exactly the 30 unregistered requirement lanes', async (t) => {
   const subject = createRepository({ complete: false });
   t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
   const captured = capture(subject, {
     testExecutions: collectCertificationTestExecutions(subject.root, subject.head)
   });
   assert.equal(captured.document.status, 'blocked');
-  assert.equal(captured.document.summary.validatorCount, 3);
-  assert.equal(captured.document.summary.captureCount, 3);
-  assert.equal(captured.document.summary.materializerCount, 3);
-  assert.equal(captured.document.summary.readyCount, 3);
+  assert.equal(captured.document.summary.validatorCount, 10);
+  assert.equal(captured.document.summary.captureCount, 10);
+  assert.equal(captured.document.summary.materializerCount, 10);
+  assert.equal(captured.document.summary.readyCount, 10);
   assert.deepEqual(
     captured.document.requirements.filter((row) => !row.ready).map((row) => row.requirementId),
-    REQUIREMENT_IDS.filter((id) => !['P-02', 'P-05', 'P-40'].includes(id))
+    REQUIREMENT_IDS.filter((id) => !['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-31', 'P-34', 'P-37', 'P-38', 'P-40'].includes(id))
   );
   await assert.rejects(
     () => validateProductRequirement(validatorContext(subject, captured)),
@@ -563,7 +563,7 @@ test('P-02 capture emits a blocked candidate-bound diagnostic inventory', (t) =>
   assert.equal(captured.document.candidate.runId, RUN_ID);
   assert.equal(captured.document.candidate.artifactDigest, DIGEST);
   assert.equal(captured.document.status, 'blocked');
-  assert.equal(captured.document.summary.readyCount, 3);
+  assert.equal(captured.document.summary.readyCount, 10);
   assert.equal(fs.existsSync(captured.output), true);
 });
 
