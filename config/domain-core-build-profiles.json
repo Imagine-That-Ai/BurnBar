@@ -30,12 +30,12 @@
       "rolloutChannel": null,
       "evidenceEnabled": false,
       "modes": {
-        "quota": "legacy",
-        "cloudVault": "legacy",
-        "cloudVaultRewrap": "legacy",
-        "cloudVaultSearch": "legacy",
-        "hermes": "legacy",
-        "pricing": "legacy"
+        "quota": "rust",
+        "cloudVault": "rust",
+        "cloudVaultRewrap": "rust",
+        "cloudVaultSearch": "rust",
+        "hermes": "rust",
+        "pricing": "rust"
       }
     },
     "public-production-rollback": {

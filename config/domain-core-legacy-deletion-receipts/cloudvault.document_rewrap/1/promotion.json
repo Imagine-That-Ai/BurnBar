@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "rowId": "cloudvault.document_rewrap",
+  "authorityGeneration": 1,
+  "transition": "promotion",
+  "status": "active",
+  "evidence": [
+    "https://github.com/Imagine-That-Ai/BurnBar/attestations/36184342"
+  ],
+  "approvedBy": "@Ajnunezg",
+  "approvedAt": "2026-07-20T15:42:13Z",
+  "commit": "cf56fccbcd9c275241d78e8fcef71d283e389786",
+  "promotionAttestation": {
+    "path": "config/domain-core-promotion-attestations/cloudvault-rewrap/1.json",
+    "sha256": "9118b07bd41d9faa2ee4d755f63515d6ecceb56d7d5c3ae322dd0a20c4da3ab4",
+    "supersedes": null
+  }
+}

@@ -28,7 +28,7 @@
     "android/settings.gradle.kts": ["b499ea82e56d478a","5b31cd4d9cdac187","74d9f86954fbbeed","64e846506d40a45a"],
     "apps/console/package-lock.json": ["916a4ca962c43b9e","64b9a6c3f2a46111","06643d9bc20608f9","567a6f5ba65cf652"],
     "apps/console/package.json": ["61dcbeeba86f3ff4","b2a9c1b1020c22d0","2368278ea429e6b3","d6016049b172cbe4"],
-    "config/domain-core-build-profiles.json": ["6de1031373a3a9a1","aa5844e9f5ae3117","688f8d1371467d4d","08890752d95860e9"],
+    "config/domain-core-build-profiles.json": ["1765deed16211cb3","39c760b5aa005f9f","f985d280f92074df","40d728b5d9e9db01"],
     "config/domain-core-deployment-receipt.schema.json": ["ee37f63d7b19be98","8dbfc655278abc4b","7ca540c48cab3d8d","b72cea7b48a86329"],
     "config/domain-core-deterministic-candidate-bundle.schema.json": ["3e88823cc8d5de40","75431190dc400a5b","652d95103caec849","4e7f7614e3232ce1"],
     "config/domain-core-functions-relevant-targets.json": ["a929dd4baf33142c","517f824960c5e849","d0f6c69d742ca3b3","9b220ce6a15df877"],

@@ -21,202 +21,721 @@
   "rows": [
     {
       "id": "quota.claude_statusline",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/quota.claude_statusline/1/promotion.json"
+      },
       "targets": [
-        { "kind": "path", "role": "legacy_implementation", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/Legacy/ClaudeQuotaLegacy.swift" },
-        { "kind": "path", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs", "symbol": "ParseLegacy" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs", "symbol": "ParseWindows" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs", "symbol": "ParseWindowMap" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs", "symbol": "BuildBuckets" }
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "swift-quota",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/Legacy/ClaudeQuotaLegacy.swift"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs",
+          "symbol": "ParseLegacy"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs",
+          "symbol": "ParseWindows"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs",
+          "symbol": "ParseWindowMap"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaParser.cs",
+          "symbol": "BuildBuckets"
+        }
       ]
     },
     {
       "id": "quota.codex_usage",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/quota.codex_usage/1/promotion.json"
+      },
       "targets": [
-        { "kind": "path", "role": "legacy_implementation", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/Legacy/CodexQuotaLegacy.swift" },
-        { "kind": "path", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs", "symbol": "ParseLegacy" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs", "symbol": "RateLimitBuckets" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs", "symbol": "Bucket" }
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "swift-quota",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/Legacy/CodexQuotaLegacy.swift"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs",
+          "symbol": "ParseLegacy"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs",
+          "symbol": "RateLimitBuckets"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CodexUsageQuotaParser.cs",
+          "symbol": "Bucket"
+        }
       ]
     },
     {
       "id": "quota.cursor_usage",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/quota.cursor_usage/1/promotion.json"
+      },
       "targets": [
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/CursorQuotaAdapter.swift", "symbol": "buildExactSnapshot" },
-        { "kind": "path", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CursorUsageQuotaParser.cs" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CursorUsageQuotaParser.cs", "symbol": "ParseLegacy" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CursorUsageQuotaParser.cs", "symbol": "PercentBucket" }
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "swift-quota",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/CursorQuotaAdapter.swift",
+          "symbol": "buildExactSnapshot"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CursorUsageQuotaParser.cs"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CursorUsageQuotaParser.cs",
+          "symbol": "ParseLegacy"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/CursorUsageQuotaParser.cs",
+          "symbol": "PercentBucket"
+        }
       ]
     },
     {
       "id": "quota.anthropic_headers",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/quota.anthropic_headers/1/promotion.json"
+      },
       "targets": [
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/ClaudeQuotaAdapter.swift", "symbol": "legacyHeaderProbeSnapshot" },
-        { "kind": "path", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs", "symbol": "ParseHeaders" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs", "symbol": "BuildSnapshot" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs", "symbol": "AddStandardBucket" }
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "swift-quota",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/ClaudeQuotaAdapter.swift",
+          "symbol": "legacyHeaderProbeSnapshot"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs",
+          "symbol": "ParseHeaders"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs",
+          "symbol": "BuildSnapshot"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-quota",
+          "path": "windows/app/OpenBurnBar.App.Presentation/Quota/AnthropicRateLimitHeaderParser.cs",
+          "symbol": "AddStandardBucket"
+        }
       ]
     },
     {
       "id": "cloudvault.portable_primitives",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/cloudvault.portable_primitives/1/promotion.json"
+      },
       "targets": [
-        { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacyCrypto.swift" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultDomainCoreAdapter.swift", "symbol": "CloudVaultDomainCoreMigrationMode" },
-        { "kind": "path", "role": "legacy_implementation", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacyCrypto.kt" },
-        { "kind": "mode_literal", "role": "rollback_control", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDomainCore.kt", "literal": "CLOUDVAULT_DOMAIN_CORE_MODE" },
-        { "kind": "mode_literal", "role": "rollback_control", "root": "android-build", "path": "android/app/build.gradle.kts", "literal": "CLOUDVAULT_DOMAIN_CORE_MODE" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultAadContext.cs", "symbol": "LegacyV1" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultAadContext.cs", "symbol": "LegacyV2" },
-        { "kind": "path", "role": "legacy_implementation", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/Legacy/CloudVaultLegacyCrypto.cs" },
-        { "kind": "path", "role": "legacy_implementation", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/Legacy/AesGcmBox.cs" },
-        { "kind": "mode_literal", "role": "rollback_control", "root": "windows-cloudvault", "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/DomainCoreCloudVaultBridge.cs", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacyBytesToBase64" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacyBase64ToBytes" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacySha256Hex" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacyCloudVaultAADContext" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacyKeyedHmacHex" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/escrow.ts", "symbol": "legacySplitEscrowWire" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/domainCoreCloudVault.ts", "symbol": "configuredMode" },
-        { "kind": "path", "role": "legacy_implementation", "root": "android-square", "path": "android/app/src/main/java/com/openburnbar/data/square/AgentSubscriptionTopicDocumentIDLegacy.kt" },
-        { "kind": "path", "role": "legacy_implementation", "root": "swift-vector", "path": "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/Legacy/PensieveVectorLegacy.swift" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-vector", "path": "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/SharedModels/PensieveVectorCloak.swift", "symbol": "legacyNormalize" },
-        { "kind": "path", "role": "legacy_implementation", "root": "windows-cloudsync", "path": "windows/app/OpenBurnBar.App.CloudSync/Legacy/PensieveVectorLegacy.cs" },
-        { "kind": "path", "role": "legacy_implementation", "root": "console-cloudvault", "path": "apps/console/lib/legacy/pensieveVectorLegacy.ts" },
-        { "kind": "path", "role": "legacy_implementation", "root": "local-mcp", "path": "tools/openburnbar-mcp/cloudvault_primitives_legacy.py" },
-        { "kind": "path", "role": "legacy_implementation", "root": "remote-mcp", "path": "tools/openburnbar-mcp-remote/src/legacy/cloudVaultPrimitivesLegacy.ts" },
-        { "kind": "path", "role": "legacy_implementation", "root": "remote-mcp", "path": "tools/openburnbar-mcp-remote/src/legacy/pensieveVectorLegacy.ts" },
-        { "kind": "mode_literal", "role": "rollback_control", "root": "remote-mcp", "path": "tools/openburnbar-mcp-remote/src/domainCoreOpaqueIdentifiers.ts", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE" }
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "swift-cloudvault",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacyCrypto.swift"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "swift-cloudvault",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultDomainCoreAdapter.swift",
+          "symbol": "CloudVaultDomainCoreMigrationMode"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "android-cloudvault",
+          "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacyCrypto.kt"
+        },
+        {
+          "kind": "mode_literal",
+          "role": "rollback_control",
+          "root": "android-cloudvault",
+          "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDomainCore.kt",
+          "literal": "CLOUDVAULT_DOMAIN_CORE_MODE"
+        },
+        {
+          "kind": "mode_literal",
+          "role": "rollback_control",
+          "root": "android-build",
+          "path": "android/app/build.gradle.kts",
+          "literal": "CLOUDVAULT_DOMAIN_CORE_MODE"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-cloudvault",
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultAadContext.cs",
+          "symbol": "LegacyV1"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "windows-cloudvault",
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/CloudVaultAadContext.cs",
+          "symbol": "LegacyV2"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "windows-cloudvault",
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/Legacy/CloudVaultLegacyCrypto.cs"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "windows-cloudvault",
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/Legacy/AesGcmBox.cs"
+        },
+        {
+          "kind": "mode_literal",
+          "role": "rollback_control",
+          "root": "windows-cloudvault",
+          "path": "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/DomainCoreCloudVaultBridge.cs",
+          "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "console-cloudvault",
+          "path": "apps/console/lib/escrow.ts",
+          "symbol": "legacyBytesToBase64"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "console-cloudvault",
+          "path": "apps/console/lib/escrow.ts",
+          "symbol": "legacyBase64ToBytes"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "console-cloudvault",
+          "path": "apps/console/lib/escrow.ts",
+          "symbol": "legacySha256Hex"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "console-cloudvault",
+          "path": "apps/console/lib/escrow.ts",
+          "symbol": "legacyCloudVaultAADContext"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "console-cloudvault",
+          "path": "apps/console/lib/escrow.ts",
+          "symbol": "legacyKeyedHmacHex"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "console-cloudvault",
+          "path": "apps/console/lib/escrow.ts",
+          "symbol": "legacySplitEscrowWire"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "console-cloudvault",
+          "path": "apps/console/lib/domainCoreCloudVault.ts",
+          "symbol": "configuredMode"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "android-square",
+          "path": "android/app/src/main/java/com/openburnbar/data/square/AgentSubscriptionTopicDocumentIDLegacy.kt"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "swift-vector",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/Legacy/PensieveVectorLegacy.swift"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "swift-vector",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/SharedModels/PensieveVectorCloak.swift",
+          "symbol": "legacyNormalize"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "windows-cloudsync",
+          "path": "windows/app/OpenBurnBar.App.CloudSync/Legacy/PensieveVectorLegacy.cs"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "console-cloudvault",
+          "path": "apps/console/lib/legacy/pensieveVectorLegacy.ts"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "local-mcp",
+          "path": "tools/openburnbar-mcp/cloudvault_primitives_legacy.py"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "remote-mcp",
+          "path": "tools/openburnbar-mcp-remote/src/legacy/cloudVaultPrimitivesLegacy.ts"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "remote-mcp",
+          "path": "tools/openburnbar-mcp-remote/src/legacy/pensieveVectorLegacy.ts"
+        },
+        {
+          "kind": "mode_literal",
+          "role": "rollback_control",
+          "root": "remote-mcp",
+          "path": "tools/openburnbar-mcp-remote/src/domainCoreOpaqueIdentifiers.ts",
+          "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE"
+        }
       ]
     },
     {
       "id": "cloudvault.document_rewrap",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/cloudvault.document_rewrap/1/promotion.json"
+      },
       "targets": [
-        { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacyDocumentRewrap.swift" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultDocumentRewrapDomainCoreAdapter.swift", "symbol": "makeLegacyNoncePlan" },
-        { "kind": "mode_literal", "role": "rollback_control", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultDocumentRewrapDomainCoreAdapter.swift", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE" },
-        { "kind": "path", "role": "legacy_implementation", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacyDocumentRewrap.kt" },
-        { "kind": "mode_literal", "role": "rollback_control", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDocumentRewrapDomainCore.kt", "literal": "CLOUDVAULT_REWRAP_DOMAIN_CORE_MODE" },
-        { "kind": "mode_literal", "role": "rollback_control", "root": "android-build", "path": "android/app/build.gradle.kts", "literal": "CLOUDVAULT_REWRAP_DOMAIN_CORE_MODE" }
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "swift-cloudvault",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacyDocumentRewrap.swift"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "swift-cloudvault",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultDocumentRewrapDomainCoreAdapter.swift",
+          "symbol": "makeLegacyNoncePlan"
+        },
+        {
+          "kind": "mode_literal",
+          "role": "rollback_control",
+          "root": "swift-cloudvault",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultDocumentRewrapDomainCoreAdapter.swift",
+          "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "android-cloudvault",
+          "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacyDocumentRewrap.kt"
+        },
+        {
+          "kind": "mode_literal",
+          "role": "rollback_control",
+          "root": "android-cloudvault",
+          "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultDocumentRewrapDomainCore.kt",
+          "literal": "CLOUDVAULT_REWRAP_DOMAIN_CORE_MODE"
+        },
+        {
+          "kind": "mode_literal",
+          "role": "rollback_control",
+          "root": "android-build",
+          "path": "android/app/build.gradle.kts",
+          "literal": "CLOUDVAULT_REWRAP_DOMAIN_CORE_MODE"
+        }
       ]
     },
     {
       "id": "cloudvault.search",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/cloudvault.search/1/promotion.json"
+      },
       "targets": [
-        { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacySearch.swift" },
-        { "kind": "mode_literal", "role": "rollback_control", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultSearchDomainCoreAdapter.swift", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE" },
-        { "kind": "path", "role": "legacy_implementation", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacySearch.kt" },
-        { "kind": "mode_literal", "role": "rollback_control", "root": "android-cloudvault", "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultSearchDomainCore.kt", "literal": "CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE" },
-        { "kind": "mode_literal", "role": "rollback_control", "root": "android-build", "path": "android/app/build.gradle.kts", "literal": "CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE" },
-        { "kind": "path", "role": "legacy_implementation", "root": "local-mcp", "path": "tools/openburnbar-mcp/cloudvault_search_legacy.py" },
-        { "kind": "path", "role": "legacy_implementation", "root": "remote-mcp", "path": "tools/openburnbar-mcp-remote/src/legacy/cloudVaultSearchLegacy.ts" }
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "swift-cloudvault",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacySearch.swift"
+        },
+        {
+          "kind": "mode_literal",
+          "role": "rollback_control",
+          "root": "swift-cloudvault",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultSearchDomainCoreAdapter.swift",
+          "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "android-cloudvault",
+          "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacySearch.kt"
+        },
+        {
+          "kind": "mode_literal",
+          "role": "rollback_control",
+          "root": "android-cloudvault",
+          "path": "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultSearchDomainCore.kt",
+          "literal": "CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE"
+        },
+        {
+          "kind": "mode_literal",
+          "role": "rollback_control",
+          "root": "android-build",
+          "path": "android/app/build.gradle.kts",
+          "literal": "CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "local-mcp",
+          "path": "tools/openburnbar-mcp/cloudvault_search_legacy.py"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "remote-mcp",
+          "path": "tools/openburnbar-mcp-remote/src/legacy/cloudVaultSearchLegacy.ts"
+        }
       ]
     },
     {
       "id": "hermes.relay_crypto",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/hermes.relay_crypto/1/promotion.json"
+      },
       "targets": [
-        { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRelayLegacyCrypto.swift" },
-        { "kind": "path", "role": "legacy_implementation", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRelayLegacyCrypto.kt" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRelayCryptoHkdf.kt", "symbol": "hkdfExtractLegacy" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRelayCryptoHkdf.kt", "symbol": "hkdfExpandLegacy" }
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "swift-cloudvault",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRelayLegacyCrypto.swift"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "android-hermes",
+          "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRelayLegacyCrypto.kt"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "android-hermes",
+          "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRelayCryptoHkdf.kt",
+          "symbol": "hkdfExtractLegacy"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "android-hermes",
+          "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRelayCryptoHkdf.kt",
+          "symbol": "hkdfExpandLegacy"
+        }
       ]
     },
     {
       "id": "hermes.ratchet_transforms",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/hermes.ratchet_transforms/1/promotion.json"
+      },
       "targets": [
-        { "kind": "path", "role": "legacy_implementation", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRatchetLegacyCrypto.swift" },
-        { "kind": "path", "role": "legacy_implementation", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRatchetLegacyCrypto.kt" },
-        { "kind": "path", "role": "legacy_implementation", "root": "hermes-plugin", "path": "tools/hermes-platform-burnbar/legacy/hermes_ratchet_legacy.py" },
-        { "kind": "mode_literal", "role": "rollback_control", "root": "hermes-plugin", "path": "tools/hermes-platform-burnbar/domain_core_hermes.py", "literal": "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE" }
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "swift-cloudvault",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRatchetLegacyCrypto.swift"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "android-hermes",
+          "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesRatchetLegacyCrypto.kt"
+        },
+        {
+          "kind": "path",
+          "role": "legacy_implementation",
+          "root": "hermes-plugin",
+          "path": "tools/hermes-platform-burnbar/legacy/hermes_ratchet_legacy.py"
+        },
+        {
+          "kind": "mode_literal",
+          "role": "rollback_control",
+          "root": "hermes-plugin",
+          "path": "tools/hermes-platform-burnbar/domain_core_hermes.py",
+          "literal": "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE"
+        }
       ]
     },
     {
       "id": "pricing.token_cost",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/pricing.token_cost/1/promotion.json"
+      },
       "targets": [
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-pricing", "path": "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/ModelPricing.swift", "symbol": "cost" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "swift-pricing", "path": "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/DomainCorePricingAdapter.swift", "symbol": "DomainCorePricingMigrationMode" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "functions-pricing", "path": "functions/src/pricing.ts", "symbol": "legacyTokenCost" }
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "swift-pricing",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/ModelPricing.swift",
+          "symbol": "cost"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "swift-pricing",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/DomainCorePricingAdapter.swift",
+          "symbol": "DomainCorePricingMigrationMode"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "functions-pricing",
+          "path": "functions/src/pricing.ts",
+          "symbol": "legacyTokenCost"
+        }
       ]
     },
     {
       "id": "pricing.kimi_historical",
-      "state": "rollout",
-      "authorityGeneration": 0,
-      "receipts": {},
+      "state": "promotion_approved",
+      "authorityGeneration": 1,
+      "receipts": {
+        "promotion": "config/domain-core-legacy-deletion-receipts/pricing.kimi_historical/1/promotion.json"
+      },
       "targets": [
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "functions-pricing", "path": "functions/src/pricing.ts", "symbol": "priceLegacyKimiEvent" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "functions-pricing", "path": "functions/src/pricing.ts", "symbol": "LEGACY_KIMI_WIRE_PRICING" },
-        { "kind": "source_symbol", "role": "legacy_implementation", "root": "functions-pricing", "path": "functions/src/pricing.ts", "symbol": "LEGACY_KIMI_WIRE_MODEL" }
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "functions-pricing",
+          "path": "functions/src/pricing.ts",
+          "symbol": "priceLegacyKimiEvent"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "functions-pricing",
+          "path": "functions/src/pricing.ts",
+          "symbol": "LEGACY_KIMI_WIRE_PRICING"
+        },
+        {
+          "kind": "source_symbol",
+          "role": "legacy_implementation",
+          "root": "functions-pricing",
+          "path": "functions/src/pricing.ts",
+          "symbol": "LEGACY_KIMI_WIRE_MODEL"
+        }
       ]
     }
   ],
   "sharedTargets": [
     {
-      "rowIds": ["quota.claude_statusline", "quota.codex_usage", "quota.cursor_usage", "quota.anthropic_headers"],
-      "target": { "kind": "source_symbol", "role": "rollback_control", "root": "swift-quota", "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/ClaudeQuotaDomainCoreAdapter.swift", "symbol": "DomainCoreQuotaMigrationMode" }
+      "rowIds": [
+        "quota.claude_statusline",
+        "quota.codex_usage",
+        "quota.cursor_usage",
+        "quota.anthropic_headers"
+      ],
+      "target": {
+        "kind": "source_symbol",
+        "role": "rollback_control",
+        "root": "swift-quota",
+        "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/ClaudeQuotaDomainCoreAdapter.swift",
+        "symbol": "DomainCoreQuotaMigrationMode"
+      }
     },
     {
-      "rowIds": ["quota.claude_statusline", "quota.codex_usage", "quota.cursor_usage", "quota.anthropic_headers"],
-      "target": { "kind": "mode_literal", "role": "rollback_control", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaDomainCore.cs", "literal": "OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE" }
+      "rowIds": [
+        "quota.claude_statusline",
+        "quota.codex_usage",
+        "quota.cursor_usage",
+        "quota.anthropic_headers"
+      ],
+      "target": {
+        "kind": "mode_literal",
+        "role": "rollback_control",
+        "root": "windows-quota",
+        "path": "windows/app/OpenBurnBar.App.Presentation/Quota/ClaudeStatuslineQuotaDomainCore.cs",
+        "literal": "OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE"
+      }
     },
     {
-      "rowIds": ["quota.claude_statusline", "quota.codex_usage", "quota.cursor_usage", "quota.anthropic_headers"],
-      "target": { "kind": "mode_literal", "role": "rollback_control", "root": "windows-quota", "path": "windows/app/OpenBurnBar.App.Presentation/Quota/DomainCoreQuotaBridge.cs", "literal": "OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE" }
+      "rowIds": [
+        "quota.claude_statusline",
+        "quota.codex_usage",
+        "quota.cursor_usage",
+        "quota.anthropic_headers"
+      ],
+      "target": {
+        "kind": "mode_literal",
+        "role": "rollback_control",
+        "root": "windows-quota",
+        "path": "windows/app/OpenBurnBar.App.Presentation/Quota/DomainCoreQuotaBridge.cs",
+        "literal": "OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE"
+      }
     },
     {
-      "rowIds": ["hermes.relay_crypto", "hermes.ratchet_transforms"],
-      "target": { "kind": "source_symbol", "role": "rollback_control", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesDomainCoreAdapter.swift", "symbol": "HermesDomainCoreMode" }
+      "rowIds": [
+        "hermes.relay_crypto",
+        "hermes.ratchet_transforms"
+      ],
+      "target": {
+        "kind": "source_symbol",
+        "role": "rollback_control",
+        "root": "swift-cloudvault",
+        "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesDomainCoreAdapter.swift",
+        "symbol": "HermesDomainCoreMode"
+      }
     },
     {
-      "rowIds": ["hermes.relay_crypto", "hermes.ratchet_transforms"],
-      "target": { "kind": "source_symbol", "role": "rollback_control", "root": "swift-cloudvault", "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRatchetCrypto.swift", "symbol": "domainCoreMode" }
+      "rowIds": [
+        "hermes.relay_crypto",
+        "hermes.ratchet_transforms"
+      ],
+      "target": {
+        "kind": "source_symbol",
+        "role": "rollback_control",
+        "root": "swift-cloudvault",
+        "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRatchetCrypto.swift",
+        "symbol": "domainCoreMode"
+      }
     },
     {
-      "rowIds": ["hermes.relay_crypto", "hermes.ratchet_transforms"],
-      "target": { "kind": "mode_literal", "role": "rollback_control", "root": "android-hermes", "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesDomainCoreAdapter.kt", "literal": "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE" }
+      "rowIds": [
+        "hermes.relay_crypto",
+        "hermes.ratchet_transforms"
+      ],
+      "target": {
+        "kind": "mode_literal",
+        "role": "rollback_control",
+        "root": "android-hermes",
+        "path": "android/app/src/main/java/com/openburnbar/data/hermes/relay/HermesDomainCoreAdapter.kt",
+        "literal": "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE"
+      }
     },
     {
-      "rowIds": ["cloudvault.portable_primitives", "cloudvault.search"],
-      "target": { "kind": "mode_literal", "role": "rollback_control", "root": "local-mcp", "path": "tools/openburnbar-mcp/domain_core_cloudvault.py", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE" }
+      "rowIds": [
+        "cloudvault.portable_primitives",
+        "cloudvault.search"
+      ],
+      "target": {
+        "kind": "mode_literal",
+        "role": "rollback_control",
+        "root": "local-mcp",
+        "path": "tools/openburnbar-mcp/domain_core_cloudvault.py",
+        "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE"
+      }
     },
     {
-      "rowIds": ["cloudvault.portable_primitives", "cloudvault.search"],
-      "target": { "kind": "mode_literal", "role": "rollback_control", "root": "remote-mcp", "path": "tools/openburnbar-mcp-remote/src/domainCoreCloudVault.ts", "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE" }
+      "rowIds": [
+        "cloudvault.portable_primitives",
+        "cloudvault.search"
+      ],
+      "target": {
+        "kind": "mode_literal",
+        "role": "rollback_control",
+        "root": "remote-mcp",
+        "path": "tools/openburnbar-mcp-remote/src/domainCoreCloudVault.ts",
+        "literal": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE"
+      }
     },
     {
-      "rowIds": ["pricing.token_cost", "pricing.kimi_historical"],
-      "target": { "kind": "source_symbol", "role": "rollback_control", "root": "functions-pricing", "path": "functions/src/domainCorePricing.ts", "symbol": "resolveDomainCorePricingMode" }
+      "rowIds": [
+        "pricing.token_cost",
+        "pricing.kimi_historical"
+      ],
+      "target": {
+        "kind": "source_symbol",
+        "role": "rollback_control",
+        "root": "functions-pricing",
+        "path": "functions/src/domainCorePricing.ts",
+        "symbol": "resolveDomainCorePricingMode"
+      }
     }
   ]
 }

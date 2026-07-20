@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "rowId": "hermes.relay_crypto",
+  "authorityGeneration": 1,
+  "transition": "promotion",
+  "status": "active",
+  "evidence": [
+    "https://github.com/Imagine-That-Ai/BurnBar/attestations/36184342"
+  ],
+  "approvedBy": "@Ajnunezg",
+  "approvedAt": "2026-07-20T15:42:13Z",
+  "commit": "cf56fccbcd9c275241d78e8fcef71d283e389786",
+  "promotionAttestation": {
+    "path": "config/domain-core-promotion-attestations/hermes/1.json",
+    "sha256": "ffedc46af879778a87fdc368437a3012246111f6f7b1fc4ff7e4106b6019f0cd",
+    "supersedes": null
+  }
+}
