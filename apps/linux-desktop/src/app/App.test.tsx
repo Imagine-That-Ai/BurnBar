@@ -420,7 +420,7 @@ describe('App shell', () => {
           accountLabel: 'Primary',
           quotaBuckets: [],
           health: 'healthy',
-          failover: { mode: 'providerFamilyFailover', eligible: true, detail: 'verified' }
+          failover: { mode: 'provider_family_failover', eligible: true, detail: 'verified' }
         }
       ]);
     const providerCredentialSlotUpsert = vi.fn().mockResolvedValue({
@@ -470,7 +470,7 @@ describe('App shell', () => {
           accountLabel: 'Primary',
           quotaBuckets: [],
           health: 'healthy',
-          failover: { mode: 'providerFamilyFailover', eligible: true, detail: 'verified' }
+          failover: { mode: 'provider_family_failover', eligible: true, detail: 'verified' }
         }
       ]);
     const providerCredentialSlotUpsert = vi.fn().mockResolvedValue({

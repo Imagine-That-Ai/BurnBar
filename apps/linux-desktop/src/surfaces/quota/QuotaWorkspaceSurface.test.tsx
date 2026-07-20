@@ -94,26 +94,26 @@ describe('QuotaWorkspaceSurface', () => {
 
   it('changes failover policy through config mutation and keeps the canonical readback', async () => {
     const provider = fixtureProviderCatalog()[0]!;
-    const snapshot = { ...fixtureConfigSnapshot(), routerMode: 'providerFamilyFailover' };
+    const snapshot = { ...fixtureConfigSnapshot(), routerMode: 'provider_family_failover' };
     const configSnapshot = vi.fn(async () => snapshot);
-    const configUpdate = vi.fn(async (next: typeof snapshot) => ({ ...next, routerMode: 'exactModelOnly' }));
+    const configUpdate = vi.fn(async (next: typeof snapshot) => ({ ...next, routerMode: 'same_model_failover' }));
     useShellStore.setState({ fixtureMode: false, bridge: { configSnapshot, configUpdate } as never });
     useProvidersStore.setState({
       catalog: [provider],
       loading: false,
       error: null,
-      routerMode: 'providerFamilyFailover',
+      routerMode: 'provider_family_failover',
       load: vi.fn().mockResolvedValue(undefined)
     });
 
     render(<QuotaWorkspaceSurface />);
     const policy = await screen.findByRole('combobox', { name: 'Failover policy' });
-    await waitFor(() => expect((policy as HTMLSelectElement).value).toBe('providerFamilyFailover'));
+    await waitFor(() => expect((policy as HTMLSelectElement).value).toBe('provider_family_failover'));
 
-    fireEvent.change(policy, { target: { value: 'exactModelOnly' } });
+    fireEvent.change(policy, { target: { value: 'same_model_failover' } });
 
-    await waitFor(() => expect(configUpdate).toHaveBeenCalledWith(expect.objectContaining({ routerMode: 'exactModelOnly' })));
-    expect((policy as HTMLSelectElement).value).toBe('exactModelOnly');
-    expect(policy.closest('.quota-routing-cockpit')?.textContent).toContain('Exact model only');
+    await waitFor(() => expect(configUpdate).toHaveBeenCalledWith(expect.objectContaining({ routerMode: 'same_model_failover' })));
+    expect((policy as HTMLSelectElement).value).toBe('same_model_failover');
+    expect(policy.closest('.quota-routing-cockpit')?.textContent).toContain('Exact model failover');
   });
 });

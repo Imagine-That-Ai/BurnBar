@@ -25,19 +25,14 @@ import './quota.css';
 
 const ROUTER_MODE_OPTIONS: ReadonlyArray<{ value: ProviderRouterMode; label: string; detail: string }> = [
   {
-    value: 'providerFamilyFailover',
-    label: 'Provider family failover',
+    value: 'provider_family_failover',
+    label: 'Stay inside one provider',
     detail: 'Keep fallback inside the selected provider family.'
   },
   {
-    value: 'exactModelOnly',
-    label: 'Exact model only',
+    value: 'same_model_failover',
+    label: 'Exact model failover',
     detail: 'Only use routes that prove the same canonical model.'
-  },
-  {
-    value: 'cheapest',
-    label: 'Cheapest eligible',
-    detail: 'Prefer the lowest-cost route that remains eligible.'
   }
 ];
 

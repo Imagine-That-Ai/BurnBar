@@ -869,10 +869,9 @@ function AgentsDetail({ config, fixtureMode }: { config: ConfigSnapshot; fixture
           label="Router mode"
           description="Matches macOS model proxy routing strategy at daemon config scope."
           control={
-            <select value={config.routerMode ?? 'providerFamilyFailover'} disabled={disabled} onChange={(e) => setRouterMode(e.currentTarget.value)}>
-              <option value="providerFamilyFailover">Provider family failover</option>
-              <option value="exactModelOnly">Exact model only</option>
-              <option value="cheapest">Cheapest eligible</option>
+            <select value={config.routerMode ?? 'provider_family_failover'} disabled={disabled} onChange={(e) => setRouterMode(e.currentTarget.value)}>
+              <option value="provider_family_failover">Stay inside one provider</option>
+              <option value="same_model_failover">Exact model failover</option>
             </select>
           }
         />

@@ -2042,7 +2042,7 @@ function mapCatalogModel(
 }
 
 function failoverState(snapshot: RawJsonValue, provider: RawJsonValue | undefined, health: ProviderHealthState): ProviderFailoverState {
-  const mode = str(pick(snapshot, 'routerMode'), 'providerFamilyFailover').trim() || 'providerFamilyFailover';
+  const mode = str(pick(snapshot, 'routerMode'), 'provider_family_failover').trim() || 'provider_family_failover';
   const enabled = provider !== undefined && Boolean(pick(provider, 'isEnabled', 'enabled'));
   if (!enabled) return { mode, eligible: false, detail: 'Provider is disabled or not configured in the daemon.' };
   if (health === 'healthy') return { mode, eligible: true, detail: 'Verified credential route is eligible for provider-family failover.' };
@@ -3059,7 +3059,7 @@ function mapConfigSnapshot(raw: RawJsonValue): ConfigSnapshot {
     privacyOptIn: Boolean(pick(snap, 'privacyOptIn', 'privacy_opt_in')),
     cloudSyncEnabled: Boolean(pick(snap, 'cloudSyncEnabled', 'cloud_sync_enabled')),
     providers: arr(pick(snap, 'providers')).map(mapProviderSettings),
-    routerMode: str(pick(snap, 'routerMode'), 'providerFamilyFailover')
+    routerMode: str(pick(snap, 'routerMode'), 'provider_family_failover')
   };
 }
 

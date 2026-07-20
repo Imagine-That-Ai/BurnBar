@@ -4,7 +4,7 @@ import type { ConfigSnapshot, CustomModel, ProviderCatalog, ProviderCatalogModel
 import { useShellStore } from './shellStore.js';
 
 /** Router policies accepted by the daemon config mutation contract. */
-export type ProviderRouterMode = 'providerFamilyFailover' | 'exactModelOnly' | 'cheapest';
+export type ProviderRouterMode = 'provider_family_failover' | 'same_model_failover';
 
 export type ProvidersState = {
   catalog: ProviderCatalog | null;
@@ -79,7 +79,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
     const { fixtureMode, bridge } = useShellStore.getState();
     if (fixtureMode) {
       if (requestGeneration !== routerModeLoadGeneration) return;
-      set({ routerMode: 'providerFamilyFailover', routerModeError: null });
+      set({ routerMode: 'provider_family_failover', routerModeError: null });
       return;
     }
     if (!bridge) {

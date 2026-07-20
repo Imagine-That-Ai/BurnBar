@@ -147,26 +147,26 @@ describe('providersStore custom model lifecycle', () => {
   });
 
   it('writes the router policy and stores the daemon-confirmed readback', async () => {
-    const snapshot: ConfigSnapshot = { ...fixtureConfigSnapshot(), routerMode: 'providerFamilyFailover' };
+    const snapshot: ConfigSnapshot = { ...fixtureConfigSnapshot(), routerMode: 'provider_family_failover' };
     const configSnapshot = vi.fn(async () => snapshot);
-    const configUpdate = vi.fn(async (next: ConfigSnapshot) => ({ ...next, routerMode: 'exactModelOnly' }));
+    const configUpdate = vi.fn(async (next: ConfigSnapshot) => ({ ...next, routerMode: 'same_model_failover' }));
     useShellStore.setState({
       fixtureMode: false,
       bridge: { configSnapshot, configUpdate } as never
     });
-    useProvidersStore.setState({ routerMode: 'providerFamilyFailover' });
+    useProvidersStore.setState({ routerMode: 'provider_family_failover' });
 
-    await useProvidersStore.getState().setRouterMode('exactModelOnly');
+    await useProvidersStore.getState().setRouterMode('same_model_failover');
 
     expect(configSnapshot).toHaveBeenCalledOnce();
-    expect(configUpdate).toHaveBeenCalledWith(expect.objectContaining({ routerMode: 'exactModelOnly' }));
-    expect(useProvidersStore.getState().routerMode).toBe('exactModelOnly');
+    expect(configUpdate).toHaveBeenCalledWith(expect.objectContaining({ routerMode: 'same_model_failover' }));
+    expect(useProvidersStore.getState().routerMode).toBe('same_model_failover');
     expect(useProvidersStore.getState().mutationError).toBeNull();
   });
 
   it('rolls back the router policy when the daemon readback disagrees', async () => {
-    const snapshot: ConfigSnapshot = { ...fixtureConfigSnapshot(), routerMode: 'providerFamilyFailover' };
-    const configUpdate = vi.fn(async (next: ConfigSnapshot) => ({ ...next, routerMode: 'providerFamilyFailover' }));
+    const snapshot: ConfigSnapshot = { ...fixtureConfigSnapshot(), routerMode: 'provider_family_failover' };
+    const configUpdate = vi.fn(async (next: ConfigSnapshot) => ({ ...next, routerMode: 'provider_family_failover' }));
     useShellStore.setState({
       fixtureMode: false,
       bridge: {
@@ -174,12 +174,12 @@ describe('providersStore custom model lifecycle', () => {
         configUpdate
       } as never
     });
-    useProvidersStore.setState({ routerMode: 'providerFamilyFailover' });
+    useProvidersStore.setState({ routerMode: 'provider_family_failover' });
 
-    await useProvidersStore.getState().setRouterMode('exactModelOnly');
+    await useProvidersStore.getState().setRouterMode('same_model_failover');
 
-    expect(useProvidersStore.getState().routerMode).toBe('providerFamilyFailover');
-    expect(useProvidersStore.getState().mutationError).toBe("Daemon did not confirm failover policy 'exactModelOnly'.");
+    expect(useProvidersStore.getState().routerMode).toBe('provider_family_failover');
+    expect(useProvidersStore.getState().mutationError).toBe("Daemon did not confirm failover policy 'same_model_failover'.");
     expect(configUpdate).toHaveBeenCalledOnce();
   });
 
@@ -188,24 +188,24 @@ describe('providersStore custom model lifecycle', () => {
       fixtureMode: false,
       bridge: { configSnapshot: vi.fn(async () => fixtureConfigSnapshot()) } as never
     });
-    useProvidersStore.setState({ routerMode: 'providerFamilyFailover' });
+    useProvidersStore.setState({ routerMode: 'provider_family_failover' });
 
-    await useProvidersStore.getState().setRouterMode('cheapest');
+    await useProvidersStore.getState().setRouterMode('same_model_failover');
 
-    expect(useProvidersStore.getState().routerMode).toBe('providerFamilyFailover');
+    expect(useProvidersStore.getState().routerMode).toBe('provider_family_failover');
     expect(useProvidersStore.getState().mutationError).toBe(
       'Provider failover policy is read-only because the config mutation RPC is unavailable.'
     );
   });
 
   it('restores the persisted router policy from a fresh daemon config read', async () => {
-    const configSnapshot = vi.fn(async () => ({ ...fixtureConfigSnapshot(), routerMode: 'cheapest' }));
+    const configSnapshot = vi.fn(async () => ({ ...fixtureConfigSnapshot(), routerMode: 'same_model_failover' }));
     useShellStore.setState({ fixtureMode: false, bridge: { configSnapshot } as never });
 
     await useProvidersStore.getState().loadRouterMode();
 
     expect(configSnapshot).toHaveBeenCalledOnce();
-    expect(useProvidersStore.getState().routerMode).toBe('cheapest');
+    expect(useProvidersStore.getState().routerMode).toBe('same_model_failover');
     expect(useProvidersStore.getState().routerModeError).toBeNull();
   });
 
@@ -214,11 +214,11 @@ describe('providersStore custom model lifecycle', () => {
       fixtureMode: false,
       bridge: { configSnapshot: vi.fn(async () => { throw new Error('daemon restarting'); }) } as never
     });
-    useProvidersStore.setState({ routerMode: 'exactModelOnly' });
+    useProvidersStore.setState({ routerMode: 'same_model_failover' });
 
     await useProvidersStore.getState().loadRouterMode();
 
-    expect(useProvidersStore.getState().routerMode).toBe('exactModelOnly');
+    expect(useProvidersStore.getState().routerMode).toBe('same_model_failover');
     expect(useProvidersStore.getState().routerModeError).toBe('daemon restarting');
   });
 

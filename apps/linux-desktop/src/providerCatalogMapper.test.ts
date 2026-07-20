@@ -6,7 +6,7 @@ describe('mapProviderCatalog', () => {
     const mapped = mapProviderCatalog({
       config: {
         snapshot: {
-          routerMode: 'exactModelOnly',
+          routerMode: 'same_model_failover',
           providers: [{
             providerID: 'openai',
             isEnabled: true,
@@ -37,7 +37,7 @@ describe('mapProviderCatalog', () => {
       health: 'healthy',
       provenance: 'daemon-catalog+daemon-config',
       catalogAvailable: true,
-      failover: { mode: 'exactModelOnly', eligible: true }
+      failover: { mode: 'same_model_failover', eligible: true }
     });
     expect(mapped[0]).toMatchObject({
       quotaSourceKind: 'officialAPI',
@@ -60,7 +60,7 @@ describe('mapProviderCatalog', () => {
     const mapped = mapProviderCatalog({
       config: {
         snapshot: {
-          routerMode: 'providerFamilyFailover',
+          routerMode: 'provider_family_failover',
           providers: [{
             providerID: 'anthropic',
             isEnabled: true,

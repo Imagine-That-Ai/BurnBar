@@ -644,7 +644,7 @@ export function fixtureConfigSnapshot(): ConfigSnapshot {
     secretServiceStatus: 'locked',
     telemetryEnabled: false,
     privacyOptIn: false,
-    routerMode: 'providerFamilyFailover',
+    routerMode: 'provider_family_failover',
     providers: [
       {
         providerID: 'anthropic',
