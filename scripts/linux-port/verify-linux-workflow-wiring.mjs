@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readLinuxDesktopRustSource } from './lib/linux-desktop-rust-source.mjs';
 import { repoRoot } from './lib/linux-release-common.mjs';
 
 export const LINUX_WORKFLOW_WIRING_SOURCE_PATHS = Object.freeze({
@@ -12,7 +13,6 @@ export const LINUX_WORKFLOW_WIRING_SOURCE_PATHS = Object.freeze({
   release: '.github/workflows/linux-release.yml',
   makefile: 'Makefile',
   nativeTests: 'scripts/linux-port/run-linux-native-tests.sh',
-  rustBridge: 'apps/linux-desktop/src-tauri/src/lib.rs',
   updateFeed: 'apps/linux-desktop/src-tauri/src/update_feed.rs',
   capability: 'apps/linux-desktop/src-tauri/capabilities/default.json',
   tauriConfig: 'apps/linux-desktop/src-tauri/tauri.conf.json',
@@ -31,6 +31,11 @@ export const LINUX_WORKFLOW_WIRING_COMPOSITE_SOURCE_PATHS = Object.freeze({
   ],
   rendererBridge: [
     'apps/linux-desktop/src/tauriBridge.ts',
+    'apps/linux-desktop/src/tauriBridgeCoreDecoders.ts',
+    'apps/linux-desktop/src/tauriBridgePlatformDecoders.ts',
+    'apps/linux-desktop/src/tauriBridgeRaw.ts',
+    'apps/linux-desktop/src/tauriBridgeSystemDecoders.ts',
+    'apps/linux-desktop/src/tauriBridgeTypes.ts',
     'apps/linux-desktop/src/runtimeCapabilities.ts',
     'apps/linux-desktop/src/state/chatStore.ts',
     'apps/linux-desktop/src/chat/gatewayClient.ts'
@@ -45,6 +50,7 @@ export function loadLinuxWorkflowWiringInput(root = repoRoot) {
   for (const [key, paths] of Object.entries(LINUX_WORKFLOW_WIRING_COMPOSITE_SOURCE_PATHS)) {
     input[key] = paths.map(read).join('\n');
   }
+  input.rustBridge = readLinuxDesktopRustSource(root);
   return input;
 }
 

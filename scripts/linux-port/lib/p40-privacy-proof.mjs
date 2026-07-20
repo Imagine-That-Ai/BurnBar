@@ -39,11 +39,13 @@ export const P40_SOURCE_CONTRACTS = Object.freeze([
   'OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/BurnBarLinuxPrivacyService.swift',
   'OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCPrivacy.swift',
   'OpenBurnBarDaemon/Tests/OpenBurnBarDaemonLinuxGatewayTests/BurnBarLinuxPrivacyServiceTests.swift',
-  'apps/linux-desktop/src-tauri/src/lib.rs',
+  'apps/linux-desktop/src-tauri/src/desktop/daemon_data_commands.rs',
   'apps/linux-desktop/src/bridgeRpcBehavior.test.ts',
   'apps/linux-desktop/src/state/settingsWiringStore.ts',
   'apps/linux-desktop/src/surfaces/settings/SettingsDetailPane.tsx',
-  'apps/linux-desktop/src/tauriBridge.ts'
+  'apps/linux-desktop/src/tauriBridge.ts',
+  'apps/linux-desktop/src/tauriBridgePlatformDecoders.ts',
+  'apps/linux-desktop/src/tauriBridgeTypes.ts'
 ]);
 
 const SOURCE_MARKERS = Object.freeze({
@@ -61,7 +63,7 @@ const SOURCE_MARKERS = Object.freeze({
     'testEncryptedExportIsBoundedOwnerOnlyAndContainsNoPlaintextOnDisk',
     'testRetentionStatusAndApplyTrimOnlyOutOfPolicyData'
   ],
-  'apps/linux-desktop/src-tauri/src/lib.rs': [
+  'apps/linux-desktop/src-tauri/src/desktop/daemon_data_commands.rs': [
     'linux_privacy_inventory', 'linux_privacy_retention_apply', 'daemon.privacy.retention.status'
   ],
   'apps/linux-desktop/src/bridgeRpcBehavior.test.ts': [
@@ -74,6 +76,12 @@ const SOURCE_MARKERS = Object.freeze({
     'PrivacyDeletionControl', 'PrivacyExportControl', 'PrivacyRetentionControl'
   ],
   'apps/linux-desktop/src/tauriBridge.ts': [
+    'linuxPrivacyDeletionPreview', 'linuxPrivacyExport', 'linuxPrivacyRetentionApply'
+  ],
+  'apps/linux-desktop/src/tauriBridgePlatformDecoders.ts': [
+    'mapLinuxPrivacyDeletionPreview', 'mapLinuxPrivacyExport', 'mapLinuxPrivacyRetentionApply'
+  ],
+  'apps/linux-desktop/src/tauriBridgeTypes.ts': [
     'LinuxPrivacyDeletionPreview', 'LinuxPrivacyExportResult', 'LinuxPrivacyRetentionApplyResult'
   ]
 });

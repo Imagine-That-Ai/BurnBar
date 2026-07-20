@@ -8,6 +8,10 @@ import {
   loadLinuxWorkflowWiringInput,
   verifyLinuxWorkflowWiring
 } from '../verify-linux-workflow-wiring.mjs';
+import {
+  LINUX_DESKTOP_RUST_SOURCE_READER_PATH,
+  linuxDesktopRustSourcePaths
+} from './linux-desktop-rust-source.mjs';
 import { readRegularSnapshot } from './product-proof-closure.mjs';
 
 export const P38_WORKFLOW_PROOF_FILENAME = 'p38-release-automation-verification.json';
@@ -20,13 +24,15 @@ const CANDIDATE_DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const RUN_ID = /^[1-9][0-9]*$/u;
 const ENVIRONMENT = /^(ubuntu-24\.04-gnome-(?:x11|wayland)-(?:x86_64|aarch64)|fedora-kde-wayland-(?:x86_64|aarch64)|arch-sway-wayland-x86_64)$/u;
 
-export const P38_WORKFLOW_SOURCE_PATHS = Object.freeze([
+export const P38_WORKFLOW_SOURCE_PATHS = Object.freeze([...new Set([
   ...Object.values(LINUX_WORKFLOW_WIRING_SOURCE_PATHS),
   ...Object.values(LINUX_WORKFLOW_WIRING_COMPOSITE_SOURCE_PATHS).flat(),
+  ...linuxDesktopRustSourcePaths(),
   'scripts/linux-port/verify-linux-workflow-wiring.mjs',
+  LINUX_DESKTOP_RUST_SOURCE_READER_PATH,
   'scripts/linux-port/lib/linux-release-common.mjs',
   P38_MUTATION_TEST_PATH
-].sort());
+])].sort());
 
 function exactKeys(value, expected, label) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {

@@ -4,8 +4,27 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const rustBridge = fs.readFileSync(path.join(here, '../src-tauri/src/lib.rs'), 'utf8');
-const tsBridge = fs.readFileSync(path.join(here, 'tauriBridge.ts'), 'utf8');
+const rustSourceRoot = path.join(here, '../src-tauri/src');
+
+function rustSourcePaths(directory: string): string[] {
+  return fs.readdirSync(directory, { withFileTypes: true })
+    .sort((left, right) => Buffer.compare(Buffer.from(left.name), Buffer.from(right.name)))
+    .flatMap((entry) => {
+      const absolute = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) throw new Error(`Rust source must not be a symlink: ${absolute}`);
+      if (entry.isDirectory()) return rustSourcePaths(absolute);
+      return entry.isFile() && entry.name.endsWith('.rs') ? [absolute] : [];
+    });
+}
+
+const rustBridge = rustSourcePaths(rustSourceRoot)
+  .map((sourcePath) => `// source: ${path.relative(rustSourceRoot, sourcePath)}\n${fs.readFileSync(sourcePath, 'utf8')}`)
+  .join('\n');
+const tsBridge = fs.readdirSync(here, { withFileTypes: true })
+  .filter((entry) => entry.isFile() && /^tauriBridge(?:[A-Z][A-Za-z0-9]*)?\.ts$/u.test(entry.name))
+  .sort((left, right) => Buffer.compare(Buffer.from(left.name), Buffer.from(right.name)))
+  .map((entry) => `// source: ${entry.name}\n${fs.readFileSync(path.join(here, entry.name), 'utf8')}`)
+  .join('\n');
 const canonicalRpc = fs.readFileSync(
   path.join(here, '../../../OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCIPCCanon.generated.swift'),
   'utf8'
@@ -47,7 +66,7 @@ describe('VAL-RPC bridge contract', () => {
     for (const needle of FORBIDDEN_RAW) {
       expect(
         calls.some((c) => c.startsWith(needle) || c.includes(needle)),
-        `lib.rs must not call_daemon_method ${needle}`
+        `Rust desktop source must not call_daemon_method ${needle}`
       ).toBe(false);
     }
     const tsLive = stripComments(tsBridge);

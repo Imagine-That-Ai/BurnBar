@@ -29,7 +29,7 @@ export const P34_CASE_IDS = Object.freeze([
 const SOURCE_CONTRACTS = Object.freeze([
   'packaging/linux/release-manifest.json',
   'docs/linux-port/cloud-security-runbook.md',
-  'apps/linux-desktop/src-tauri/src/lib.rs',
+  'apps/linux-desktop/src-tauri/src/desktop/daemon_runtime.rs',
   'OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/LinuxSecretStorage.swift',
   'OpenBurnBarCore/Tests/OpenBurnBarComputerUseCoreTests/LinuxSecretStorageTests.swift',
   'scripts/linux-port/credential-storage-contract.test.mjs'
@@ -48,7 +48,7 @@ const REQUIRED_SOURCE_MARKERS = Object.freeze({
     'CREDENTIALS_DIRECTORY',
     'log only trust metadata, backend names, and redacted labels'
   ],
-  'apps/linux-desktop/src-tauri/src/lib.rs': [
+  'apps/linux-desktop/src-tauri/src/desktop/daemon_runtime.rs': [
     'trusted_root_owned_executable',
     '"/usr/bin/secret-tool"',
     '"/usr/bin/kwallet-query"'

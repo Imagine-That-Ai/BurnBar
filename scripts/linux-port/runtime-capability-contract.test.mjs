@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { readLinuxDesktopRustSource } from './lib/linux-desktop-rust-source.mjs';
 import { repoRoot } from './lib/linux-release-common.mjs';
 
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
@@ -9,7 +10,7 @@ const catalog = JSON.parse(read('packaging/linux/runtime-capability-catalog.json
 const schema = JSON.parse(read('schemas/linux-runtime-capability-manifest.schema.json'));
 const routesSource = read('apps/linux-desktop/src/routes.ts');
 const runtimeSource = read('apps/linux-desktop/src/runtimeCapabilities.ts');
-const rustSource = read('apps/linux-desktop/src-tauri/src/lib.rs');
+const rustSource = readLinuxDesktopRustSource(repoRoot);
 const bridgeSource = read('apps/linux-desktop/src/tauriBridge.ts');
 const surfaceSource = read('apps/linux-desktop/src/surfaces/SurfaceRouter.tsx');
 
@@ -99,7 +100,8 @@ test('manifest schema and both runtime boundaries remain fail closed', () => {
   assert.ok(schema.required.includes('capabilities'));
 
   for (const marker of [
-    'include_str!("../../../../packaging/linux/runtime-capability-catalog.json")',
+    'include_str!(',
+    'packaging/linux/runtime-capability-catalog.json',
     'fn runtime_capabilities()',
     'runtime_capability_unknown_evaluator',
     'runtime_capability_schema_unsupported'
