@@ -161,6 +161,7 @@ jobs:
             "scripts/windows-port/new-release-certification-supplemental-receipt.ps1",
             "scripts/windows-port/publish-staging-remote-config-fixture.ps1",
             "scripts/windows-port/remote-config-http.psm1",
+            "scripts/windows-port/run-ui-automation.ps1",
             "scripts/windows-port/run-physical-release-certification.ps1"
           )
           foreach ($script in $scripts) {

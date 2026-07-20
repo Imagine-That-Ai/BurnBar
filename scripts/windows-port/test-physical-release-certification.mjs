@@ -8,6 +8,7 @@ import { describeLocalCertificationHost } from "./local-certification-host.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const script = readFileSync(join(root, "run-physical-release-certification.ps1"), "utf8");
+const uiAutomationRunner = readFileSync(join(root, "run-ui-automation.ps1"), "utf8");
 const attestationGenerator = readFileSync(join(root, "new-physical-hardware-attestation.ps1"), "utf8");
 const supplementalGenerator = readFileSync(
   join(root, "new-release-certification-supplemental-receipt.ps1"),
@@ -310,6 +311,13 @@ assert.match(script, /\$script:RepoRelativeOutputDir/);
 assert.match(script, /:\(exclude\)/);
 assert.match(script, /\$HarnessRoot = Resolve-FullPath \(Join-Path \$PSScriptRoot '\.\.\\\.\.'\)/);
 assert.match(script, /Join-Path \$HarnessRoot 'scripts\\windows-port\\run-ui-automation\.ps1'/);
+assert.match(script, /'-HarnessRoot', \$HarnessRoot/);
+assert.match(uiAutomationRunner, /\[string\]\$HarnessRoot = ""/);
+assert.match(
+  uiAutomationRunner,
+  /\$harnessProject = Join-Path \$HarnessRoot "windows\\tests\\ui-automation-harness/,
+);
+assert.match(uiAutomationRunner, /\$appProject = Join-Path \$RepoRoot "windows\\app/);
 assert.match(script, /Join-Path \$HarnessRoot 'scripts\\windows-port\\validate-release-certification-evidence\.mjs'/);
 assert.match(script, /--expected-harness-commit \$script:SourceIdentity\.harness\.commitSha/);
 assert.match(script, /operator-evidence\\validator-final\.log/);

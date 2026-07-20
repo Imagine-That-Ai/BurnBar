@@ -471,7 +471,7 @@ if ($SkipUiAutomation) {
     $blockerMissing = 'The operator supplied -SkipUiAutomation.'
     $blockerRecovery = 'Run the accessibility profile in the signed-in Windows desktop session.'
 } else {
-    $uiStep = Invoke-LoggedProcess 'ui-automation-accessibility' (Join-Path $HarnessRoot 'scripts\windows-port\run-ui-automation.ps1') @('-RepoRoot', $RepoRoot, '-Platform', $Platform, '-CertificationProfile', 'all', '-OutputDirectory', (Join-Path $OutputDir 'ui-automation'))
+    $uiStep = Invoke-LoggedProcess 'ui-automation-accessibility' (Join-Path $HarnessRoot 'scripts\windows-port\run-ui-automation.ps1') @('-RepoRoot', $RepoRoot, '-HarnessRoot', $HarnessRoot, '-Platform', $Platform, '-CertificationProfile', 'all', '-OutputDirectory', (Join-Path $OutputDir 'ui-automation'))
     $steps.Add($uiStep)
     $uiEvidence = @([ordered]@{ path = $uiStep.log; sha256 = $uiStep.logSha256 })
     if ($uiStep.exitCode -eq 0) {
