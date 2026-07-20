@@ -18,6 +18,8 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 body.reduced-motion * { animation: none !important; transition: none !important; }
 
 :root {
+  /* Keep WebKitGTK native form controls aligned with the dark shell palette. */
+  color-scheme: dark;
   --radius-sm: 8px;
   --radius-md: 14px;
   --radius-lg: 20px;

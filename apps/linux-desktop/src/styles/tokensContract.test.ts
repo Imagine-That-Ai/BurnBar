@@ -63,4 +63,8 @@ describe('VAL-TOKENS design token contract', () => {
     expect(appCss).toContain('animation: none');
     expect(appCss).toContain('transition: none');
   });
+
+  it('declares a dark native-control color scheme for WebKitGTK', () => {
+    expect(appCss).toMatch(/:root\s*\{[^}]*color-scheme:\s*dark;/s);
+  });
 });
