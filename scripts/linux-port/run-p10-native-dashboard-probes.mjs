@@ -246,7 +246,6 @@ export async function runP10NativeDashboardProbes(options, dependencies = {}) {
 
     requiredRun(runner, 'systemctl', ['--user', 'stop', 'openburnbar-daemon.service'], {}, 'stop daemon for offline/error states');
     daemonStopped = true;
-    activate(runner, outputDir, 'Reconnect', 'state-offline-reconnect');
     identity = await captureState(runner, outputDir, 'offline', layout, () => {
       const time = stamp(clock); clock = time.milliseconds;
       return atspiIdentity(expected, options.manifestSha256, pid, windowId, time.capturedAt);
