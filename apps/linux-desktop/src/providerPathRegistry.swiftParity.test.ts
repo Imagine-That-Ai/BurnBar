@@ -1,34 +1,34 @@
 import { describe, expect, it } from 'vitest';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import providerManifest from '../../../contracts/provider-ingestion-catalog.json';
 import { LINUX_PROVIDER_PATH_REGISTRY } from './providerPathRegistry.js';
 
-/**
- * VAL-PARSER-001/002 ratchet.
- *
- * The Linux catalog is intentionally checked against the committed Swift
- * sources rather than a second hand-maintained list. This catches both sides
- * of drift: a new AgentProvider case without a Linux row and a stale Linux
- * row whose discovery path, pattern, or parser registration was removed.
- */
+/** VAL-PARSER-001/002: one manifest drives Linux display and Swift discovery. */
 const here = path.dirname(fileURLToPath(import.meta.url));
-const coreRoot = path.resolve(here, '../../../OpenBurnBarCore/Sources');
-const swiftDiscoveryPath = path.join(
-  coreRoot,
-  'OpenBurnBarLogParsers/AgentProviderLogDiscovery.swift'
+const repoRoot = path.resolve(here, '../../..');
+const swiftDiscovery = fs.readFileSync(
+  path.join(repoRoot, 'OpenBurnBarCore/Sources/OpenBurnBarLogParsers/AgentProviderLogDiscovery.swift'),
+  'utf8'
 );
-const swiftProviderPath = path.join(
-  coreRoot,
-  'OpenBurnBarKernel/SharedModels/AgentProvider.swift'
+const generatedSwift = fs.readFileSync(
+  path.join(
+    repoRoot,
+    'OpenBurnBarCore/Sources/OpenBurnBarParserSupport/AgentProviderIngestionCatalog.generated.swift'
+  ),
+  'utf8'
 );
-const parserRegistryPath = path.resolve(
-  here,
-  '../../../AgentLens/Services/UsageAggregation/ParserRegistry.swift'
+const swiftProvider = fs.readFileSync(
+  path.join(repoRoot, 'OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AgentProvider.swift'),
+  'utf8'
 );
-const swiftDiscovery = fs.readFileSync(swiftDiscoveryPath, 'utf8');
-const swiftProvider = fs.readFileSync(swiftProviderPath, 'utf8');
-const parserRegistry = fs.readFileSync(parserRegistryPath, 'utf8');
+const parserRegistry = fs.readFileSync(
+  path.join(repoRoot, 'AgentLens/Services/UsageAggregation/ParserRegistry.swift'),
+  'utf8'
+);
 
 function canonicalProviderCases(source: string): string[] {
   return Array.from(source.matchAll(/^    case ([A-Za-z0-9]+)\s*=/gm), (match) => match[1]!);
@@ -38,71 +38,104 @@ function parserRegistrations(source: string): string[] {
   return Array.from(source.matchAll(/parsers\[\.([A-Za-z0-9]+)\]\s*=/g), (match) => match[1]!);
 }
 
-function functionSection(source: string, functionName: string): string {
-  const start = source.indexOf(`func ${functionName}`);
-  if (start < 0) throw new Error(`Missing Swift function ${functionName}`);
-  const next = source.indexOf('\n    public static func ', start + 5);
-  return source.slice(start, next < 0 ? source.length : next);
+function quotaProviderCases(source: string): string[] {
+  const start = source.indexOf('public static let quotaSignalProviders');
+  const end = source.indexOf('\n    ]', start);
+  if (start < 0 || end < 0) throw new Error('Missing AgentProvider.quotaSignalProviders');
+  return Array.from(source.slice(start, end).matchAll(/\.([A-Za-z0-9]+)/g), (match) => match[1]!);
 }
 
-function caseSection(source: string, providerCase: string): string {
-  const escapedCase = providerCase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // Swift groups cases that share one path/pattern (for example
-  // `case .factory, .claudeCode, ...`). Capture the whole case line so the
-  // returned section includes the shared return value.
-  const match = source.match(new RegExp(`^[ \\t]*case [^\\n]*\\.${escapedCase}(?=,|:)`, 'm'));
-  const start = match?.index ?? -1;
-  if (start < 0) throw new Error(`Missing Swift discovery case .${providerCase}`);
-  const next = source.indexOf('\n        case .', start + 6);
-  return source.slice(start, next < 0 ? source.length : next);
+function deterministicUUID(identityKey: string): string {
+  const namespace = Buffer.from('8cb8098c794d5d3fa060395f6b5ba5d8', 'hex');
+  const digest = crypto.createHash('sha1').update(Buffer.concat([namespace, Buffer.from(identityKey)])).digest();
+  const bytes = Buffer.from(digest.subarray(0, 16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-const canonicalCases = canonicalProviderCases(swiftProvider);
-const registeredParsers = parserRegistrations(parserRegistry);
-const logicalPathSection = functionSection(swiftDiscovery, 'logicalLogDirectory');
-const filePatternSection = functionSection(swiftDiscovery, 'filePattern');
+function accountPartition(rawValue: string | null): string {
+  const trimmed = rawValue?.trim() ?? '';
+  if (!trimmed) return '';
+  if (/^acct_sha256_[0-9a-fA-F]{24}$/.test(trimmed)) return trimmed;
+  return `acct_sha256_${crypto.createHash('sha256').update(trimmed).digest('hex').slice(0, 24)}`;
+}
 
-describe('provider path and usage catalog ↔ canonical Swift sources', () => {
-  it('reads the real canonical sources', () => {
-    expect(swiftDiscovery).toContain('enum AgentProviderLogDiscovery');
-    expect(swiftProvider).toContain('public enum AgentProvider:');
-    expect(parserRegistry).toContain('enum ParserRegistry');
+describe('provider ingestion manifest parity', () => {
+  it('keeps the checked-in Swift contract generated from the authoritative manifest', () => {
+    expect(() =>
+      execFileSync('node', ['scripts/generate-provider-ingestion-catalog.mjs', '--check'], {
+        cwd: repoRoot,
+        stdio: 'pipe'
+      })
+    ).not.toThrow();
+    expect(swiftDiscovery).toContain('AgentProviderIngestionCatalog.entry(for: provider)');
+    expect(swiftDiscovery).not.toContain('switch provider');
   });
 
   it('contains every canonical AgentProvider case exactly once', () => {
-    const sourceCases = [...new Set(canonicalCases)].sort();
-    const catalogCases = LINUX_PROVIDER_PATH_REGISTRY.map((row) => row.parserSourceId).sort();
+    const canonicalCases = canonicalProviderCases(swiftProvider);
+    const manifestCases = providerManifest.providers.map((provider) => provider.agentProviderCase);
     expect(canonicalCases).toHaveLength(33);
     expect(new Set(canonicalCases).size).toBe(canonicalCases.length);
-    expect(catalogCases).toEqual(sourceCases);
-    expect(new Set(LINUX_PROVIDER_PATH_REGISTRY.map((row) => row.providerId)).size).toBe(33);
+    expect([...manifestCases].sort()).toEqual([...canonicalCases].sort());
+    expect(new Set(providerManifest.providers.map((provider) => provider.providerId)).size).toBe(33);
   });
 
-  it('matches every Linux logical path and file pattern in AgentProviderLogDiscovery', () => {
-    for (const row of LINUX_PROVIDER_PATH_REGISTRY) {
-      const pathCase = caseSection(logicalPathSection, row.parserSourceId);
-      const patternCase = caseSection(filePatternSection, row.parserSourceId);
-      expect(pathCase, `Linux discovery path for .${row.parserSourceId}`).toContain(row.logicalPath);
-      expect(patternCase, `filePattern(for: .${row.parserSourceId})`).toContain(`"${row.filePattern}"`);
+  it('generates both platform paths, patterns, and coverage for every provider', () => {
+    for (const provider of providerManifest.providers) {
+      expect(generatedSwift).toContain(`provider: .${provider.agentProviderCase}`);
+      expect(generatedSwift).toContain(JSON.stringify(provider.paths.linux));
+      expect(generatedSwift).toContain(JSON.stringify(provider.paths.macos));
+      expect(generatedSwift).toContain(JSON.stringify(provider.filePattern));
+      expect(LINUX_PROVIDER_PATH_REGISTRY.find((row) => row.providerId === provider.providerId)).toMatchObject({
+        parserSourceId: provider.agentProviderCase,
+        logicalPath: provider.paths.linux,
+        filePattern: provider.filePattern,
+        coverage: provider.ingestion
+      });
     }
   });
 
-  it('matches the 27 registered local parsers and exposes the six missing sources', () => {
-    const parserCases = [...new Set(registeredParsers)].sort();
-    const localCatalogCases = LINUX_PROVIDER_PATH_REGISTRY
-      .filter((row) => row.coverage === 'local-parser')
-      .map((row) => row.parserSourceId)
+  it('matches ParserRegistry and AgentProvider quota declarations exactly', () => {
+    const registered = [...new Set(parserRegistrations(parserRegistry))].sort();
+    const local = providerManifest.providers
+      .filter((provider) => provider.ingestion === 'local-parser')
+      .map((provider) => provider.agentProviderCase)
       .sort();
-    const nonParserCases = LINUX_PROVIDER_PATH_REGISTRY
-      .filter((row) => row.coverage !== 'local-parser')
-      .map((row) => row.parserSourceId)
+    const quota = providerManifest.providers
+      .filter((provider) => provider.quotaSignal)
+      .map((provider) => provider.agentProviderCase)
       .sort();
+    expect(registered).toEqual(local);
+    expect([...new Set(quotaProviderCases(swiftProvider))].sort()).toEqual(quota);
+  });
 
-    expect(registeredParsers).toHaveLength(27);
-    expect(parserCases).toEqual(localCatalogCases);
-    expect(nonParserCases).toEqual(['deepSeek', 'mimo', 'omp', 'openAI', 'openBurnBar', 'openClaude']);
-    for (const row of LINUX_PROVIDER_PATH_REGISTRY.filter((candidate) => candidate.coverage !== 'local-parser')) {
-      expect(row.coverageNote).toMatch(/No local parser|No ParserRegistry entry/);
+  it('pins shared identity, timestamp, dedup, token, cost, and quota vectors', () => {
+    const providers = new Map(providerManifest.providers.map((provider) => [provider.agentProviderCase, provider]));
+    for (const vector of providerManifest.goldenUsageVectors) {
+      const identityKey = [
+        vector.providerRawValue,
+        vector.sessionId,
+        vector.model,
+        vector.sourceDeviceId?.trim() ?? '',
+        accountPartition(vector.providerAccountId)
+      ].join('\u001f');
+      const billed = [
+        vector.inputTokens,
+        vector.outputTokens,
+        vector.cacheCreationTokens,
+        vector.cacheReadTokens,
+        vector.reasoningTokens
+      ].reduce((total, value) => total + Math.max(0, value), 0);
+      expect(identityKey).toBe(vector.expected.identityKey);
+      expect(deterministicUUID(identityKey)).toBe(vector.expected.deterministicId);
+      expect(billed).toBe(vector.expected.billedTotalTokens);
+      expect(vector.costUSD).toBe(vector.expected.costUSD);
+      expect(new Date(vector.startTime).toISOString()).toBe(vector.startTime);
+      expect(new Date(vector.endTime).toISOString()).toBe(vector.endTime);
+      expect(providers.get(vector.providerCase)?.quotaSignal).toBe(vector.expected.quotaSignal);
     }
   });
 });

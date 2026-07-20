@@ -1,20 +1,15 @@
+import providerIngestionManifest from '../../../contracts/provider-ingestion-catalog.json';
+
 /**
  * Checked Linux provider/path/usage catalog.
  *
- * The rows below mirror the canonical OpenBurnBarCore
- * `AgentProviderLogDiscovery` table. `coverage` describes the macOS
- * ingestion source that is actually registered today; it is deliberately
- * not inferred from a provider logo or a route in the Linux shell.
+ * Rows come directly from `contracts/provider-ingestion-catalog.json`, the
+ * same source used to generate Swift discovery. `coverage` describes the
+ * ingestion source that is actually registered today; it is deliberately not
+ * inferred from a provider logo or a route in the Linux shell.
  *
- * Keep this catalog in sync with:
- * - OpenBurnBarCore/.../SharedModels/AgentProviderLogDiscovery.swift
- * - OpenBurnBarKernel/.../SharedModels/AgentProvider.swift
- * - AgentLens/Services/UsageAggregation/ParserRegistry.swift
- *
- * `providerPathRegistry.swiftParity.test.ts` fails when any canonical
- * provider, path, pattern, or parser registration drifts. The catalog is
- * checked in so packaged Linux builds can expose coverage without reading
- * source files at runtime.
+ * `providerPathRegistry.swiftParity.test.ts` fails when the generated Swift,
+ * AgentProvider cases, quota declarations, or parser registrations drift.
  */
 
 export type ProviderIngestionCoverage = 'local-parser' | 'api-backed' | 'unavailable';
@@ -26,6 +21,8 @@ export type ProviderPathRow = {
   parserSourceId: string;
   /** User-facing label. */
   displayLabel: string;
+  /** Canonical vendor and historical aliases from the shared manifest. */
+  aliases: readonly string[];
   /** Logical path (tilde form) used in docs and settings. */
   logicalPath: string;
   /** Glob / file pattern the canonical discovery table advertises. */
@@ -48,371 +45,42 @@ export type ProviderPathRow = {
  * `api-backed` or `unavailable` state; they must not be presented as parsed
  * local usage until a real source is wired.
  */
-export const LINUX_PROVIDER_PATH_REGISTRY: readonly ProviderPathRow[] = [
-  {
-    providerId: 'droid',
-    parserSourceId: 'factory',
-    displayLabel: 'Droid / Factory',
-    logicalPath: '~/.factory/sessions',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'claude',
-    parserSourceId: 'claudeCode',
-    displayLabel: 'Claude Code',
-    logicalPath: '~/.claude/projects',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'copilot',
-    parserSourceId: 'copilot',
-    displayLabel: 'Copilot',
-    logicalPath: '~/.copilot/session-state',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'aider',
-    parserSourceId: 'aider',
-    displayLabel: 'Aider',
-    logicalPath: '~/.aider',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'cursor',
-    parserSourceId: 'cursor',
-    displayLabel: 'Cursor',
-    logicalPath: '~/.cursor/ai-tracking',
-    filePattern: '*.db',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'openai',
-    parserSourceId: 'openAI',
-    displayLabel: 'OpenAI',
-    logicalPath: '~/.codex',
-    filePattern: 'openai-no-local-logs',
-    coverage: 'api-backed',
-    coverageNote: 'No local parser; usage is supplied by the official API path.',
-    xdgBehavior: 'no-local-logs',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'openburnbar',
-    parserSourceId: 'openBurnBar',
-    displayLabel: 'OpenBurnBar',
-    logicalPath: '~/.codex',
-    filePattern: 'openburnbar-no-local-logs',
-    coverage: 'api-backed',
-    coverageNote: 'No local parser; usage is recorded by the native app/ledger path.',
-    xdgBehavior: 'no-local-logs',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'deepseek',
-    parserSourceId: 'deepSeek',
-    displayLabel: 'DeepSeek',
-    logicalPath: '~/.codex',
-    filePattern: 'deepseek-no-local-logs',
-    coverage: 'api-backed',
-    coverageNote: 'No local parser; quota and usage require the provider API path.',
-    xdgBehavior: 'no-local-logs',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'codex',
-    parserSourceId: 'codex',
-    displayLabel: 'Codex',
-    logicalPath: '~/.codex/sessions',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'opencode',
-    parserSourceId: 'openCode',
-    displayLabel: 'OpenCode',
-    logicalPath: '~/.local/share/opencode',
-    filePattern: 'opencode.db',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'xdg-data',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'zai',
-    parserSourceId: 'zai',
-    displayLabel: 'Z.ai',
-    logicalPath: '~/.factory/sessions',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local model-filter parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'minimax',
-    parserSourceId: 'minimax',
-    displayLabel: 'MiniMax',
-    logicalPath: '~/.factory/sessions',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local model-filter parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'kimi',
-    parserSourceId: 'kimi',
-    displayLabel: 'Kimi',
-    logicalPath: '~/.kimi/sessions',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'cline',
-    parserSourceId: 'cline',
-    displayLabel: 'Cline',
-    logicalPath: '~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks',
-    filePattern: '*.json',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'xdg-config-code',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'kilocode',
-    parserSourceId: 'kiloCode',
-    displayLabel: 'Kilo Code',
-    logicalPath: '~/.config/Code/User/globalStorage/kilocode.kilo-code/tasks',
-    filePattern: '*.json',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'xdg-config-code',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'roocode',
-    parserSourceId: 'rooCode',
-    displayLabel: 'Roo Code',
-    logicalPath: '~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks',
-    filePattern: '*.json',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'xdg-config-code',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'forge',
-    parserSourceId: 'forgeDev',
-    displayLabel: 'Forge',
-    logicalPath: '~/.forge/sessions',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'augment',
-    parserSourceId: 'augment',
-    displayLabel: 'Augment',
-    logicalPath: '~/.config/Code/User/globalStorage/augment.vscode-augment',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Parser is registered, but macOS marks this source unsupported.',
-    xdgBehavior: 'xdg-config-code',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'hermes',
-    parserSourceId: 'hermes',
-    displayLabel: 'Hermes',
-    logicalPath: '~/.hermes/sessions',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'pi',
-    parserSourceId: 'piAgent',
-    displayLabel: 'Pi Agent',
-    logicalPath: '~/.pi/sessions',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'gemini',
-    parserSourceId: 'geminiCLI',
-    displayLabel: 'Gemini CLI',
-    logicalPath: '~/.gemini/tmp',
-    filePattern: '*.json',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'antigravity',
-    parserSourceId: 'antigravity',
-    displayLabel: 'Antigravity',
-    logicalPath: '~/.gemini/antigravity-cli',
-    filePattern: 'history.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'goose',
-    parserSourceId: 'goose',
-    displayLabel: 'Goose',
-    logicalPath: '~/.local/share/goose/sessions',
-    filePattern: 'sessions.db',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'xdg-data',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'openclaw',
-    parserSourceId: 'openClaw',
-    displayLabel: 'OpenClaw',
-    logicalPath: '~/.openclaw/sessions',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'openclaude',
-    parserSourceId: 'openClaude',
-    displayLabel: 'OpenClaude',
-    logicalPath: '~/.openclaude/sessions',
-    filePattern: '*.jsonl',
-    coverage: 'unavailable',
-    coverageNote: 'No ParserRegistry entry; local usage is unavailable.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'omp',
-    parserSourceId: 'omp',
-    displayLabel: 'OMP',
-    logicalPath: '~/.omp/agent/sessions',
-    filePattern: '*.jsonl',
-    coverage: 'unavailable',
-    coverageNote: 'No ParserRegistry entry; local usage is unavailable.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'ollama',
-    parserSourceId: 'ollama',
-    displayLabel: 'Ollama',
-    logicalPath: '~/.ollama/logs',
-    filePattern: 'server*.log',
-    coverage: 'local-parser',
-    coverageNote: 'Local model-filter parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'windsurf',
-    parserSourceId: 'windsurf',
-    displayLabel: 'Windsurf',
-    logicalPath: '~/.config/Windsurf - Next/User/globalStorage',
-    filePattern: 'state.vscdb',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'xdg-config-code',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'warp',
-    parserSourceId: 'warp',
-    displayLabel: 'Warp',
-    logicalPath: '~/.config/Warp',
-    filePattern: 'warp_network*.log',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'xdg-config-code',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'grok',
-    parserSourceId: 'xAI',
-    displayLabel: 'Grok / xAI',
-    logicalPath: '~/.grok/sessions',
-    filePattern: 'summary.json',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'mimo',
-    parserSourceId: 'mimo',
-    displayLabel: 'MiMo',
-    logicalPath: '~/.codex',
-    filePattern: 'mimo-no-local-logs',
-    coverage: 'api-backed',
-    coverageNote: 'No local parser; usage requires the MiMo API/token-plan path.',
-    xdgBehavior: 'no-local-logs',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'cursor-agent',
-    parserSourceId: 'cursorAgent',
-    displayLabel: 'Cursor Agent',
-    logicalPath: '~/.cursor-agent/sessions',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  },
-  {
-    providerId: 'junie',
-    parserSourceId: 'junie',
-    displayLabel: 'Junie',
-    logicalPath: '~/.junie/sessions',
-    filePattern: '*.jsonl',
-    coverage: 'local-parser',
-    coverageNote: 'Local parser registered in ParserRegistry.',
-    xdgBehavior: 'home-relative',
-    symlinkBehavior: 'identity-on-resolved-path'
-  }
-] as const;
+type ProviderIngestionManifest = {
+  schemaVersion: 1;
+  providers: Array<{
+    providerId: string;
+    agentProviderCase: string;
+    displayLabel: string;
+    aliases: string[];
+    paths: { linux: string; macos: string };
+    filePattern: string;
+    ingestion: ProviderIngestionCoverage;
+    coverageNote: string;
+    xdgBehavior: ProviderPathRow['xdgBehavior'];
+    symlinkBehavior: ProviderPathRow['symlinkBehavior'];
+    quotaSignal: boolean;
+  }>;
+};
+
+const manifest = providerIngestionManifest as ProviderIngestionManifest;
+if (manifest.schemaVersion !== 1) {
+  throw new Error('Unsupported provider ingestion catalog schema.');
+}
+
+export const LINUX_PROVIDER_PATH_REGISTRY: readonly ProviderPathRow[] = manifest.providers.map(
+  (provider) => ({
+    providerId: provider.providerId,
+    parserSourceId: provider.agentProviderCase,
+    displayLabel: provider.displayLabel,
+    aliases: provider.aliases,
+    logicalPath: provider.paths.linux,
+    filePattern: provider.filePattern,
+    coverage: provider.ingestion,
+    coverageNote: provider.coverageNote,
+    xdgBehavior: provider.xdgBehavior,
+    symlinkBehavior: provider.symlinkBehavior
+  })
+);
 
 export type ProviderCoverageCounts = {
   total: number;
@@ -464,48 +132,11 @@ export function providerPathById(providerId: string): ProviderPathRow | undefine
   // AgentProvider route IDs. Keep the same aliases as
   // AgentProvider.fromCatalogProviderID so a catalog row can always resolve
   // to its canonical path and ingestion coverage without guessing from a logo.
-  const aliases: Record<string, string> = {
-    anthropic: 'claude',
-    claude: 'claude',
-    claudecode: 'claude',
-    google: 'gemini',
-    gemini: 'gemini',
-    geminicli: 'gemini',
-    factory: 'droid',
-    factorydroid: 'droid',
-    droid: 'droid',
-    openai: 'openai',
-    openburnbar: 'openburnbar',
-    deepseek: 'deepseek',
-    opencode: 'opencode',
-    opencodego: 'opencode',
-    moonshot: 'kimi',
-    kimi: 'kimi',
-    zai: 'zai',
-    minimax: 'minimax',
-    pi: 'pi',
-    piagent: 'pi',
-    antigravitycli: 'antigravity',
-    ollama: 'ollama',
-    openclaw: 'openclaw',
-    openclaude: 'openclaude',
-    ohmypi: 'omp',
-    forge: 'forge',
-    forgedev: 'forge',
-    kilocode: 'kilocode',
-    roocode: 'roocode',
-    xai: 'grok',
-    grok: 'grok',
-    mimo: 'mimo',
-    xiaomimimo: 'mimo',
-    cursoragent: 'cursor-agent',
-    jetbrainsjunie: 'junie'
-  };
-  const canonicalID = aliases[normalized] ?? normalized;
+  const canonicalID = normalized;
   return LINUX_PROVIDER_PATH_REGISTRY.find((row) => {
-    const rowTokens = [row.providerId, row.parserSourceId, row.displayLabel]
+    const rowTokens = [row.providerId, row.parserSourceId, row.displayLabel, ...row.aliases]
       .map((value) => value.toLowerCase().replace(/[\s._-]+/g, ''));
-    return row.providerId === canonicalID || rowTokens.includes(canonicalID);
+    return rowTokens.includes(canonicalID);
   });
 }
 
