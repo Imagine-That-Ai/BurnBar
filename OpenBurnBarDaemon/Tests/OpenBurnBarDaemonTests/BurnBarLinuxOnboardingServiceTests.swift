@@ -72,6 +72,7 @@ final class BurnBarLinuxOnboardingServiceTests: XCTestCase {
         XCTAssertEqual(blockedStep.state, .blocked)
         XCTAssertEqual(blockedStep.attemptCount, 1)
         XCTAssertEqual(blockedStep.detail?.contains("wallet locked"), true)
+        XCTAssertEqual(blockedStep.repairAction, .unlockSecretStore)
         XCTAssertEqual(blocked.currentStepID, .secretStore)
 
         let recovered = makeService(stateURL: stateURL)
@@ -81,6 +82,65 @@ final class BurnBarLinuxOnboardingServiceTests: XCTestCase {
         XCTAssertEqual(verified.steps.first(where: { $0.id == .secretStore })?.state, .verified)
         XCTAssertEqual(verified.steps.first(where: { $0.id == .secretStore })?.attemptCount, 2)
         XCTAssertEqual(verified.currentStepID, .providerPaths)
+    }
+
+    func testOptionalProbeFailurePersistsRepairAndFreshServiceCanRecover() async throws {
+        let stateURL = makeStateURL()
+        let failing = BurnBarLinuxOnboardingService(
+            stateURL: stateURL,
+            now: { Date(timeIntervalSince1970: 1_700_000_000) },
+            daemonProbe: { "daemon verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerPathsProbe: { "paths and first data verified" },
+            portalInputProbe: {
+                throw BurnBarLinuxOnboardingError.probeUnavailable(
+                    step: .portalInput,
+                    detail: "user denied portal consent"
+                )
+            }
+        )
+
+        _ = try await verify(.daemon, using: failing)
+        _ = try await verify(.secretStore, using: failing)
+        _ = try await verify(.providerPaths, using: failing)
+        _ = try await acknowledge(.cloudIdentity, using: failing)
+        let blocked = try await verify(.portalInput, using: failing)
+
+        XCTAssertEqual(blocked.currentStepID, .portalInput)
+        XCTAssertEqual(blocked.steps.first(where: { $0.id == .portalInput })?.state, .blocked)
+        XCTAssertEqual(blocked.steps.first(where: { $0.id == .portalInput })?.repairAction, .grantPortal)
+
+        let recovered = BurnBarLinuxOnboardingService(
+            stateURL: stateURL,
+            now: { Date(timeIntervalSince1970: 1_700_000_001) },
+            daemonProbe: { "daemon verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerPathsProbe: { "paths and first data verified" },
+            portalInputProbe: { "portal consent read back" }
+        )
+        let resumed = try await recovered.snapshot()
+        XCTAssertEqual(resumed.steps.first(where: { $0.id == .portalInput })?.state, .blocked)
+        let verified = try await verify(.portalInput, using: recovered)
+        XCTAssertEqual(verified.steps.first(where: { $0.id == .portalInput })?.state, .verified)
+        XCTAssertEqual(verified.steps.first(where: { $0.id == .portalInput })?.attemptCount, 2)
+        XCTAssertNil(verified.steps.first(where: { $0.id == .portalInput })?.repairAction)
+    }
+
+    func testUnavailableOptionalProbeIsBlockedUntilExplicitlySkipped() async throws {
+        let service = makeService(stateURL: makeStateURL())
+        _ = try await verify(.daemon, using: service)
+        _ = try await verify(.secretStore, using: service)
+        _ = try await verify(.providerPaths, using: service)
+        _ = try await acknowledge(.cloudIdentity, using: service)
+        _ = try await acknowledge(.portalInput, using: service)
+        let blocked = try await verify(.tray, using: service)
+
+        XCTAssertEqual(blocked.steps.first(where: { $0.id == .tray })?.state, .blocked)
+        XCTAssertEqual(blocked.steps.first(where: { $0.id == .tray })?.repairAction, .enableTray)
+
+        let skipped = try await skip(.tray, using: service)
+        XCTAssertEqual(skipped.steps.first(where: { $0.id == .tray })?.state, .skipped)
+        XCTAssertNil(skipped.steps.first(where: { $0.id == .tray })?.repairAction)
     }
 
     func testFutureStepsCannotBeMutatedOrNavigatedBeforePrerequisites() async throws {
@@ -152,6 +212,125 @@ final class BurnBarLinuxOnboardingServiceTests: XCTestCase {
         } catch let error as BurnBarLinuxOnboardingError {
             XCTAssertEqual(error, .invalidPersistedState("completion invariant mismatch"))
         }
+    }
+
+    func testStateSymlinkAndSupportDirectorySymlinkFailClosed() async throws {
+        let fileManager = FileManager.default
+
+        let realDirectory = makeStateURL().deletingLastPathComponent()
+        let directoryLink = realDirectory
+            .deletingLastPathComponent()
+            .appendingPathComponent("openburnbar-onboarding-directory-link-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? fileManager.removeItem(at: directoryLink)
+            try? fileManager.removeItem(at: realDirectory)
+        }
+        try fileManager.createDirectory(at: realDirectory, withIntermediateDirectories: true)
+        try fileManager.createSymbolicLink(at: directoryLink, withDestinationURL: realDirectory)
+
+        let directoryLinkedService = makeService(
+            stateURL: directoryLink.appendingPathComponent("linux-onboarding-state.json")
+        )
+        do {
+            _ = try await directoryLinkedService.snapshot()
+            XCTFail("A support-directory symlink must fail closed.")
+        } catch let error as BurnBarLinuxOnboardingError {
+            XCTAssertEqual(
+                error,
+                .invalidPersistedState("onboarding state directory must not be a symbolic link")
+            )
+        }
+
+        let stateURL = makeStateURL()
+        let stateDirectory = stateURL.deletingLastPathComponent()
+        let targetURL = fileManager.temporaryDirectory
+            .appendingPathComponent("openburnbar-onboarding-state-target-\(UUID().uuidString).json")
+        defer {
+            try? fileManager.removeItem(at: stateDirectory)
+            try? fileManager.removeItem(at: targetURL)
+        }
+        try fileManager.createDirectory(at: stateDirectory, withIntermediateDirectories: true)
+        try Data("not-authoritative-state".utf8).write(to: targetURL, options: [.atomic])
+        try fileManager.createSymbolicLink(at: stateURL, withDestinationURL: targetURL)
+
+        let stateLinkedService = makeService(stateURL: stateURL)
+        do {
+            _ = try await stateLinkedService.snapshot()
+            XCTFail("A state-file symlink must fail closed.")
+        } catch let error as BurnBarLinuxOnboardingError {
+            XCTAssertEqual(
+                error,
+                .invalidPersistedState("onboarding state file must not be a symbolic link")
+            )
+        }
+    }
+
+    func testProviderDataProbeRequiresCatalogAndReportsFirstDataReadback() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-provider-data-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let detail = try BurnBarLinuxOnboardingService.verifyProviderData(
+            at: directory,
+            providerCount: 12
+        )
+        XCTAssertTrue(detail.contains("provider catalog loaded with 12 provider definitions"))
+
+        XCTAssertThrowsError(
+            try BurnBarLinuxOnboardingService.verifyProviderData(
+                at: directory,
+                providerCount: 0
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? BurnBarLinuxOnboardingError,
+                .providerPathsUnavailable("The bundled provider catalog is empty; first-run data cannot be loaded.")
+            )
+        }
+    }
+
+    func testDefaultProviderProbeBlocksEmptyCatalogAndAcceptsFirstData() async throws {
+        let emptyStateURL = makeStateURL()
+        let emptyCatalogService = BurnBarLinuxOnboardingService(
+            stateURL: emptyStateURL,
+            now: { Date(timeIntervalSince1970: 1_700_000_000) },
+            daemonProbe: { "daemon verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerCatalogCount: 0
+        )
+
+        _ = try await verify(.daemon, using: emptyCatalogService)
+        _ = try await verify(.secretStore, using: emptyCatalogService)
+        let blocked = try await verify(.providerPaths, using: emptyCatalogService)
+        XCTAssertEqual(
+            blocked.steps.first(where: { $0.id == .providerPaths })?.state,
+            .blocked
+        )
+        XCTAssertTrue(
+            blocked.steps.first(where: { $0.id == .providerPaths })?.detail?.contains(
+                "bundled provider catalog is empty"
+            ) == true
+        )
+        XCTAssertFalse(blocked.completed)
+
+        let populatedStateURL = makeStateURL()
+        let populatedCatalogService = BurnBarLinuxOnboardingService(
+            stateURL: populatedStateURL,
+            now: { Date(timeIntervalSince1970: 1_700_000_000) },
+            daemonProbe: { "daemon verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerCatalogCount: 1
+        )
+
+        _ = try await verify(.daemon, using: populatedCatalogService)
+        _ = try await verify(.secretStore, using: populatedCatalogService)
+        let verified = try await verify(.providerPaths, using: populatedCatalogService)
+        let providerStep = try XCTUnwrap(
+            verified.steps.first(where: { $0.id == .providerPaths })
+        )
+        XCTAssertEqual(providerStep.state, .verified)
+        XCTAssertTrue(providerStep.detail?.contains("provider definitions") == true)
+        XCTAssertEqual(verified.currentStepID, .cloudIdentity)
     }
 
     private func makeService(stateURL: URL) -> BurnBarLinuxOnboardingService {

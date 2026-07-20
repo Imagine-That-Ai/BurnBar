@@ -38,6 +38,16 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 metadata_name=".openburnbar-signal-ffi-build.env"
 targets="${SIGNAL_FFI_BUILD_TARGETS:-aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios}"
 printf '%s\n' "${SIGNAL_FFI_BUILD_PROFILE:-<unset>}" >> "$repo_root/build-invocations.log"
+printf 'build_root=%s\n' "${SIGNAL_FFI_BUILD_ROOT:-<unset>}" >> "$repo_root/build-invocations.log"
+printf 'cargo_target_root=%s\n' "${SIGNAL_FFI_CARGO_TARGET_ROOT:-<unset>}" >> "$repo_root/build-invocations.log"
+if [[ -n "${SIGNAL_FFI_BUILD_ROOT:-}" ]]; then
+  mkdir -p "$SIGNAL_FFI_BUILD_ROOT"
+  printf 'staging-root-ok\n' > "$SIGNAL_FFI_BUILD_ROOT/staging.txt"
+fi
+if [[ -n "${SIGNAL_FFI_CARGO_TARGET_ROOT:-}" ]]; then
+  mkdir -p "$SIGNAL_FFI_CARGO_TARGET_ROOT"
+  printf 'cargo-root-ok\n' > "$SIGNAL_FFI_CARGO_TARGET_ROOT/cargo.txt"
+fi
 for artifact in OpenBurnBarSignalFfiIOS.xcframework OpenBurnBarSignalFfiMac.xcframework; do
   mkdir -p "$repo_root/Vendor/$artifact"
   {
@@ -87,6 +97,14 @@ assert_no_invocation() {
     fail "expected no build invocation, got $(cat "$fixture/build-invocations.log")"
 }
 
+assert_invocation_root() {
+  local fixture="$1"
+  local key="$2"
+  local expected="$3"
+  grep -qx "${key}=${expected}" "$fixture/build-invocations.log" ||
+    fail "expected ${key}=${expected}, got $(cat "$fixture/build-invocations.log")"
+}
+
 fixture="$(make_fixture_repo release-rebuilds-debug)"
 write_artifact "$fixture" OpenBurnBarSignalFfiIOS.xcframework debug
 write_artifact "$fixture" OpenBurnBarSignalFfiMac.xcframework debug
@@ -116,6 +134,42 @@ if run_prepare "$fixture" env SIGNAL_FFI_BUILD_PROFILE=fast >"$invalid_profile_o
 fi
 grep -q "Invalid SIGNAL_FFI_BUILD_PROFILE=fast" "$invalid_profile_output" ||
   fail "invalid profile error message missing"
+assert_no_invocation "$fixture"
+
+fixture="$(make_fixture_repo isolated-roots)"
+isolated_root="$fixture/.tmp/mobile-scratch"
+ffi_build_root="$isolated_root/signal-ffi-build"
+ffi_target_root="$isolated_root/signal-ffi-target"
+ffi_build_root="$(python3 - "$ffi_build_root" <<'PY'
+import os
+import sys
+
+print(os.path.realpath(sys.argv[1]))
+PY
+)"
+ffi_target_root="$(python3 - "$ffi_target_root" <<'PY'
+import os
+import sys
+
+print(os.path.realpath(sys.argv[1]))
+PY
+)"
+run_prepare "$fixture" env \
+  SIGNAL_FFI_BUILD_ROOT="$ffi_build_root" \
+  SIGNAL_FFI_CARGO_TARGET_ROOT="$ffi_target_root"
+assert_invocation_profile "$fixture" debug
+assert_invocation_root "$fixture" build_root "$ffi_build_root"
+assert_invocation_root "$fixture" cargo_target_root "$ffi_target_root"
+[[ -f "$ffi_build_root/staging.txt" ]] || fail "isolated Signal FFI build root was not used"
+[[ -f "$ffi_target_root/cargo.txt" ]] || fail "isolated Signal FFI Cargo target root was not used"
+
+fixture="$(make_fixture_repo relative-root-rejected)"
+relative_root_output="$tmp_root/relative-root.out"
+if run_prepare "$fixture" env SIGNAL_FFI_BUILD_ROOT=relative/signal-ffi >"$relative_root_output" 2>&1; then
+  fail "relative SIGNAL_FFI_BUILD_ROOT unexpectedly succeeded"
+fi
+grep -q "SIGNAL_FFI_BUILD_ROOT must be an absolute path" "$relative_root_output" ||
+  fail "relative Signal FFI root error message missing"
 assert_no_invocation "$fixture"
 
 echo "prepare-signal-ffi-xcframework boundary tests passed"

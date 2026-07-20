@@ -11,6 +11,24 @@ pub struct MediaCapabilities {
     pub pipewiresrc: u8,
 }
 
+/// Capabilities required by the desktop shell's Mercury screen-share viewer.
+///
+/// This is intentionally separate from `MediaCapabilities`: the daemon's C
+/// ABI is consumed by Swift and must remain layout-compatible, while the
+/// viewer also needs to know whether a native video sink is registered.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MediaViewerCapabilities {
+    pub backend_available: bool,
+    pub vp9_decoder_available: bool,
+    pub video_sink_available: bool,
+}
+
+impl MediaViewerCapabilities {
+    pub const fn available(self) -> bool {
+        self.backend_available && self.vp9_decoder_available && self.video_sink_available
+    }
+}
+
 #[cfg(feature = "gstreamer")]
 pub fn probe() -> MediaCapabilities {
     if crate::gst_runtime::ensure().is_err() {
@@ -28,9 +46,40 @@ pub fn probe() -> MediaCapabilities {
     }
 }
 
+/// Probe the complete shell-side viewer prerequisite set without creating a
+/// pipeline or opening a window. A factory being present does not guarantee a
+/// frame can be rendered, but it gives the shell a truthful, side-effect-free
+/// status before it accepts a call or screen-share session.
+#[cfg(feature = "gstreamer")]
+pub fn viewer_probe() -> MediaViewerCapabilities {
+    if crate::gst_runtime::ensure().is_err() {
+        return MediaViewerCapabilities::default();
+    }
+    MediaViewerCapabilities {
+        backend_available: true,
+        vp9_decoder_available: has_factory("vp9dec") != 0,
+        video_sink_available: has_factory("autovideosink") != 0
+            && can_create_element("autovideosink"),
+    }
+}
+
+#[cfg(not(feature = "gstreamer"))]
+pub fn viewer_probe() -> MediaViewerCapabilities {
+    MediaViewerCapabilities::default()
+}
+
 #[cfg(feature = "gstreamer")]
 fn has_factory(name: &str) -> u8 {
     gst::ElementFactory::find(name).is_some() as u8
+}
+
+#[cfg(feature = "gstreamer")]
+fn can_create_element(name: &str) -> bool {
+    // Factory registration alone is not enough: a broken or partially
+    // installed plugin can still be listed while refusing instantiation.
+    // Parsing without changing state is side-effect free and does not open a
+    // native window, while exercising the same construction path as decode.
+    gst::parse::launch(name).is_ok()
 }
 
 #[cfg(not(feature = "gstreamer"))]

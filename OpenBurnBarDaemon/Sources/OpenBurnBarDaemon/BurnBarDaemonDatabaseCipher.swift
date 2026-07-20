@@ -397,7 +397,10 @@ enum BurnBarDaemonDatabaseCipher {
         return configuration
     }
 
-    private static func canOpenEncryptedDatabase(at path: String, key: String) -> Bool {
+    /// Verifies a candidate recovery key without mutating the database or the
+    /// daemon's configured secret store. Used by recovery-bundle import to
+    /// reject an authenticated-but-wrong key before replacing custody.
+    static func canOpenEncryptedDatabase(at path: String, key: String) -> Bool {
         var handle: OpaquePointer?
         guard sqlite3_open_v2(path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let handle else {
             if let handle { sqlite3_close(handle) }

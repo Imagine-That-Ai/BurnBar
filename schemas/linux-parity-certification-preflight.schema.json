@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.dev/schemas/linux-parity-certification-preflight.schema.json",
+  "title": "OpenBurnBar Linux parity certification preflight",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "targetHead", "sourceCommit", "status", "requirementId",
+    "environmentId", "proofPath", "candidate", "sources", "testExecutions", "environments",
+    "requirements", "summary", "blockers"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "targetHead": { "$ref": "#/$defs/head" },
+    "sourceCommit": { "$ref": "#/$defs/head" },
+    "status": { "enum": ["passed", "blocked"] },
+    "requirementId": { "const": "P-02" },
+    "environmentId": { "type": "string", "minLength": 1 },
+    "proofPath": { "type": "string", "pattern": "^docs/linux-port/evidence/product-parity-inputs/P-02/[^/]+/feature-artifacts/parity-certification-preflight\\.json$" },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "artifactDigest", "productProofClosureSha256"],
+      "properties": {
+        "runId": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+        "artifactDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "productProofClosureSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirementsManifest", "policyManifest", "featureRegistry"],
+      "properties": {
+        "requirementsManifest": { "$ref": "#/$defs/source" },
+        "policyManifest": { "$ref": "#/$defs/source" },
+        "featureRegistry": { "$ref": "#/$defs/source" }
+      }
+    },
+    "testExecutions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/testExecution" }
+    },
+    "environments": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": { "$ref": "#/$defs/environment" }
+    },
+    "requirements": {
+      "type": "array",
+      "minItems": 40,
+      "maxItems": 40,
+      "items": { "$ref": "#/$defs/requirement" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requirementCount", "policyCount", "environmentCount", "validatorCount",
+        "captureCount", "materializerCount", "readyCount", "blockerCount"
+      ],
+      "properties": {
+        "requirementCount": { "type": "integer", "minimum": 0 },
+        "policyCount": { "type": "integer", "minimum": 0 },
+        "environmentCount": { "type": "integer", "minimum": 0 },
+        "validatorCount": { "type": "integer", "minimum": 0 },
+        "captureCount": { "type": "integer", "minimum": 0 },
+        "materializerCount": { "type": "integer", "minimum": 0 },
+        "readyCount": { "type": "integer", "minimum": 0 },
+        "blockerCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/blocker" }
+    }
+  },
+  "$defs": {
+    "head": { "type": "string", "pattern": "^[a-f0-9]{40,64}$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["environmentId", "presentCount", "status"],
+      "properties": {
+        "environmentId": { "type": "string", "minLength": 1 },
+        "presentCount": { "type": "integer", "minimum": 0 },
+        "status": { "enum": ["ready", "missing", "duplicate"] }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "path", "sha256", "testPath", "testName", "testSha256"],
+      "properties": {
+        "status": { "enum": ["ready", "missing", "duplicate", "invalid", "fixture", "reused"] },
+        "path": { "type": ["string", "null"] },
+        "sha256": {
+          "oneOf": [
+            { "$ref": "#/$defs/sha256" },
+            { "type": "null" }
+          ]
+        },
+        "testPath": { "type": ["string", "null"] },
+        "testName": { "type": ["string", "null"] },
+        "testSha256": {
+          "oneOf": [
+            { "$ref": "#/$defs/sha256" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "presentCount", "requiredEnvironmentIds"],
+      "properties": {
+        "status": { "enum": ["ready", "missing", "duplicate", "invalid"] },
+        "presentCount": { "type": "integer", "minimum": 0 },
+        "requiredEnvironmentIds": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "kind", "roles", "producerPath", "workflowPath", "testPath", "testName"],
+      "properties": {
+        "status": { "enum": ["ready", "missing", "duplicate", "invalid", "reused"] },
+        "kind": { "enum": ["release", "feature", "none"] },
+        "roles": { "type": "array", "items": { "type": "string" } },
+        "producerPath": { "type": ["string", "null"] },
+        "workflowPath": { "type": ["string", "null"] },
+        "testPath": { "type": ["string", "null"] },
+        "testName": { "type": ["string", "null"] }
+      }
+    },
+    "materializer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "kind", "producerPath", "workflowPath", "testPath", "testName"],
+      "properties": {
+        "status": { "enum": ["ready", "unsupported"] },
+        "kind": { "enum": ["release", "feature", "none"] },
+        "producerPath": { "type": ["string", "null"] },
+        "workflowPath": { "type": ["string", "null"] },
+        "testPath": { "type": ["string", "null"] },
+        "testName": { "type": ["string", "null"] }
+      }
+    },
+    "testExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requirementId", "component", "sourcePath", "sourceEntrypoint", "sourceSha256",
+        "testPath", "testName", "testSha256", "status", "exitCode", "spawnSignal",
+        "spawnErrorCode", "outputSha256", "mutationDetected", "mutationExitCode",
+        "mutationSignal", "mutationSpawnErrorCode", "mutationOutputSha256"
+      ],
+      "properties": {
+        "requirementId": { "type": "string", "pattern": "^P-(0[1-9]|[1-3][0-9]|40)$" },
+        "component": { "enum": ["validator", "capture", "materializer"] },
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "sourceEntrypoint": { "type": "string", "pattern": "^[$A-Z_a-z][$A-Z_a-z0-9]*$" },
+        "sourceSha256": { "$ref": "#/$defs/sha256" },
+        "testPath": { "type": "string", "minLength": 1 },
+        "testName": { "type": "string", "minLength": 1 },
+        "testSha256": { "$ref": "#/$defs/sha256" },
+        "status": { "enum": ["passed", "failed"] },
+        "exitCode": { "type": ["integer", "null"], "minimum": 0 },
+        "spawnSignal": { "type": ["string", "null"], "minLength": 1 },
+        "spawnErrorCode": { "type": ["string", "null"], "minLength": 1 },
+        "outputSha256": { "$ref": "#/$defs/sha256" },
+        "mutationDetected": { "type": "boolean" },
+        "mutationExitCode": { "type": ["integer", "null"], "minimum": 0 },
+        "mutationSignal": { "type": ["string", "null"], "minLength": 1 },
+        "mutationSpawnErrorCode": { "type": ["string", "null"], "minLength": 1 },
+        "mutationOutputSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requirementId", "area", "presentCount", "policy", "validator", "capture",
+        "materializer", "ready", "blockers"
+      ],
+      "properties": {
+        "requirementId": { "type": "string", "pattern": "^P-(0[1-9]|[1-3][0-9]|40)$" },
+        "area": { "type": "string", "minLength": 1 },
+        "presentCount": { "type": "integer", "minimum": 0 },
+        "policy": { "$ref": "#/$defs/policy" },
+        "validator": { "$ref": "#/$defs/component" },
+        "capture": { "$ref": "#/$defs/capture" },
+        "materializer": { "$ref": "#/$defs/materializer" },
+        "ready": { "type": "boolean" },
+        "blockers": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "subject", "detail"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        "subject": { "type": "string", "minLength": 1 },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

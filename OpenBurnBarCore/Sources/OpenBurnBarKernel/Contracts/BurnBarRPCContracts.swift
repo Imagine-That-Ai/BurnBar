@@ -11,6 +11,12 @@ public enum BurnBarProtocolVersion {
 
 public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable {
     case authBootstrap = "auth.bootstrap"
+    case linuxAuthStatus = "daemon.auth.status"
+    case linuxAuthBegin = "daemon.auth.begin"
+    case linuxAuthCancel = "daemon.auth.cancel"
+    case linuxAuthRotateIdentity = "daemon.auth.rotate_identity"
+    case linuxAuthSignOut = "daemon.auth.sign_out"
+    case linuxAccountCloudDataDelete = "daemon.account.cloud_data.delete"
     case health = "daemon.health"
     case catalog = "daemon.catalog"
     case linuxOnboardingSnapshot = "daemon.onboarding.snapshot"
@@ -18,6 +24,20 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case linuxOnboardingReset = "daemon.onboarding.reset"
     case configGet = "daemon.config.get"
     case configUpdate = "daemon.config.update"
+    case textExpansionGet = "daemon.text_expansion.get"
+    case textExpansionUpsert = "daemon.text_expansion.upsert"
+    case textExpansionDelete = "daemon.text_expansion.delete"
+    case textExpansionConsentUpdate = "daemon.text_expansion.consent.update"
+    case linuxPrivacyInventory = "daemon.privacy.inventory"
+    case linuxPrivacyDeletionPreview = "daemon.privacy.deletion.preview"
+    case linuxPrivacyDeletionExecute = "daemon.privacy.deletion.execute"
+    case linuxPrivacyExport = "daemon.privacy.export"
+    case linuxPrivacyRetentionStatus = "daemon.privacy.retention.status"
+    case linuxPrivacyRetentionApply = "daemon.privacy.retention.apply"
+    case textExpansionEngineStatus = "daemon.text_expansion.engine.status"
+    case textExpansionEngineStart = "daemon.text_expansion.engine.start"
+    case textExpansionEngineStop = "daemon.text_expansion.engine.stop"
+    case textExpansionEngineExpand = "daemon.text_expansion.engine.expand"
     case providerCredentialSlotUpsert = "daemon.provider.credential_slot.upsert"
     case providerCredentialSlotRemove = "daemon.provider.credential_slot.remove"
     case providerModelVariantUpsert = "daemon.provider.model_variant.upsert"
@@ -30,6 +50,11 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case providerModelDisplayNameClear = "daemon.provider.model_display_name.clear"
     case usageRecord = "daemon.usage.record"
     case usageRecent = "daemon.usage.recent"
+    case usageHistory = "daemon.usage.history"
+    case usageInsights = "daemon.usage.insights"
+    case chatThreadList = "daemon.chat.thread.list"
+    case chatThreadGet = "daemon.chat.thread.get"
+    case chatMessageAppend = "daemon.chat.message.append"
     case proxyRouteLogRecent = "daemon.proxy.route_log.recent"
     case proxyRouteLogClear = "daemon.proxy.route_log.clear"
     case quotaSignalsRecent = "daemon.quota.signals.recent"
@@ -45,6 +70,9 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case browserToolingUpdate = "daemon.browser.tooling.update"
     case browserAction = "daemon.browser.action"
     case computerUseCapabilityStateUpdate = "daemon.computer_use.capability_state.update"
+    case computerUseSessionGrantReadiness = "daemon.computer_use.session_grant.readiness"
+    case computerUseSessionGrantAcquire = "daemon.computer_use.session_grant.acquire"
+    case computerUseSessionGrantStatus = "daemon.computer_use.session_grant.status"
     case computerUseSessionStart = "daemon.computer_use.session.start"
     case computerUseInvoke = "daemon.computer_use.invoke"
     case computerUseApprovalPending = "daemon.computer_use.approval.pending"
@@ -73,6 +101,8 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case controllerProjectsList = "daemon.controller.project.list"
     case controllerProjectGet = "daemon.controller.project.get"
     case controllerProjectUpsert = "daemon.controller.project.upsert"
+    case controllerProjectDelete = "daemon.controller.project.delete"
+    case controllerProjectReassign = "daemon.controller.project.reassign"
     case reviewRunRecord = "daemon.controller.review.record"
     case questionCreate = "daemon.question.create"
     case questionGet = "daemon.question.get"
@@ -86,6 +116,7 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case missionCreate = "daemon.mission.create"
     case missionsList = "daemon.mission.list"
     case missionGet = "daemon.mission.get"
+    case missionHealth = "daemon.mission.health"
     case missionApprove = "daemon.mission.approve"
     case missionCancel = "daemon.mission.cancel"
     case missionDispatchPacket = "daemon.mission.packet.dispatch"
@@ -122,6 +153,7 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case searchQuery = "daemon.search.query"
     case memoryRemember = "daemon.memory.remember"
     case memoryRecall = "daemon.memory.recall"
+    case memoryReviewStatus = "daemon.memory.review_status"
     case memoryForget = "daemon.memory.forget"
     case memoryAuditTrail = "daemon.memory.audit_trail"
     case memoryAnalytics = "daemon.memory.analytics"
@@ -136,6 +168,11 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case codeExplore = "daemon.code.explore"
     case codeWatchProject = "daemon.code.watch_project"
     case codeOpsDiagnostics = "daemon.code.ops_diagnostics"
+    case codeDatabaseSnapshot = "daemon.code.database_snapshot"
+    case codeDatabaseRestore = "daemon.code.database_restore"
+    case databaseRecoveryStatus = "daemon.database.recovery.status"
+    case databaseRecoveryBundleExport = "daemon.database.recovery_bundle.export"
+    case databaseRecoveryBundleImport = "daemon.database.recovery_bundle.import"
     case runResume = "run.resume"
 }
 
@@ -182,6 +219,134 @@ public struct BurnBarAuthBootstrapResponse: Codable, Hashable, Sendable {
     public init(sessionToken: String, issuedAt: Date = Date()) {
         self.sessionToken = sessionToken
         self.issuedAt = issuedAt
+    }
+}
+
+public enum BurnBarLinuxAuthState: String, Codable, Hashable, Sendable {
+    case signedOut = "signed_out"
+    case authorizing
+    case awaitingDeviceApproval = "awaiting_device_approval"
+    case active
+    case unavailable
+}
+
+public struct BurnBarLinuxAuthStatusResponse: Codable, Hashable, Sendable {
+    public let state: BurnBarLinuxAuthState
+    public let signedIn: Bool
+    public let identityLabel: String?
+    public let trustClass: String
+    public let syncState: String
+    public let authorizationOperationID: String?
+    public let authorizationExpiresAt: String?
+    public let deviceApprovalRequired: Bool
+    public let installationDeviceID: String?
+    public let installationSafetyFingerprint: String?
+    public let detail: String?
+
+    public init(
+        state: BurnBarLinuxAuthState,
+        signedIn: Bool,
+        identityLabel: String? = nil,
+        trustClass: String = "linux-lower-trust",
+        syncState: String = "local-only",
+        authorizationOperationID: String? = nil,
+        authorizationExpiresAt: String? = nil,
+        deviceApprovalRequired: Bool = false,
+        installationDeviceID: String? = nil,
+        installationSafetyFingerprint: String? = nil,
+        detail: String? = nil
+    ) {
+        self.state = state
+        self.signedIn = signedIn
+        self.identityLabel = identityLabel
+        self.trustClass = trustClass
+        self.syncState = syncState
+        self.authorizationOperationID = authorizationOperationID
+        self.authorizationExpiresAt = authorizationExpiresAt
+        self.deviceApprovalRequired = deviceApprovalRequired
+        self.installationDeviceID = installationDeviceID
+        self.installationSafetyFingerprint = installationSafetyFingerprint
+        self.detail = detail
+    }
+}
+
+public struct BurnBarLinuxAuthBeginResponse: Codable, Hashable, Sendable {
+    public let operationID: String
+    public let authorizationURL: String
+    public let expiresAt: String
+
+    public init(operationID: String, authorizationURL: String, expiresAt: String) {
+        self.operationID = operationID
+        self.authorizationURL = authorizationURL
+        self.expiresAt = expiresAt
+    }
+}
+
+public struct BurnBarLinuxAuthCancelRequest: Codable, Hashable, Sendable {
+    public let operationID: String
+
+    public init(operationID: String) {
+        self.operationID = operationID
+    }
+}
+
+public struct BurnBarLinuxAuthMutationResponse: Codable, Hashable, Sendable {
+    public let ok: Bool
+    public let status: BurnBarLinuxAuthStatusResponse
+
+    public init(ok: Bool, status: BurnBarLinuxAuthStatusResponse) {
+        self.ok = ok
+        self.status = status
+    }
+}
+
+/// Daemon-owned account erasure request. The renderer sends only the exact
+/// confirmation phrase; trusted-device proof and cloud credentials stay inside
+/// the Linux daemon authority.
+public struct BurnBarLinuxAccountCloudDataDeletionRequest: Codable, Hashable, Sendable {
+    public let confirmation: String
+
+    public init(confirmation: String) {
+        self.confirmation = confirmation
+    }
+}
+
+/// Redacted, bounded summary returned after the canonical cloud callable has
+/// completed. No UID, token, nonce, proof, or provider data crosses the RPC.
+public struct BurnBarLinuxAccountCloudDataDeletionResponse: Codable, Hashable, Sendable {
+    public let ok: Bool
+    public let cloudDataDeleted: Bool
+    public let retryRequired: Bool
+    public let deletedDocuments: Int
+    public let destroyedSecrets: Int
+    public let failedSecretDestroys: Int
+    public let deletedStoragePrefixes: Int
+    public let failedStorageDeletes: Int
+    public let deletedAuthUser: Bool
+    public let authUserAlreadyMissing: Bool
+
+    public init(
+        ok: Bool,
+        cloudDataDeleted: Bool,
+        retryRequired: Bool,
+        deletedDocuments: Int = 0,
+        destroyedSecrets: Int = 0,
+        failedSecretDestroys: Int = 0,
+        deletedStoragePrefixes: Int = 0,
+        failedStorageDeletes: Int = 0,
+        deletedAuthUser: Bool = false,
+        authUserAlreadyMissing: Bool = false
+    ) {
+        self.ok = ok
+        self.cloudDataDeleted = cloudDataDeleted
+        self.retryRequired = retryRequired
+        self.deletedDocuments = deletedDocuments
+        self.destroyedSecrets = destroyedSecrets
+        self.failedSecretDestroys = failedSecretDestroys
+        self.deletedStoragePrefixes = deletedStoragePrefixes
+        self.failedStorageDeletes = failedStorageDeletes
+        self.deletedAuthUser = deletedAuthUser
+        self.authUserAlreadyMissing = authUserAlreadyMissing
     }
 }
 

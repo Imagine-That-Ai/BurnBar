@@ -61,7 +61,7 @@ function WindowRow({
   );
 }
 
-export function QuotaCard({ entry, onManage }: { entry: SubscriptionEntry; onManage?: () => void }) {
+export function QuotaCard({ entry, onManage }: { entry: SubscriptionEntry; onManage: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const glyph = findProviderGlyph(entry.providerId);
   const accent = glyph.accent.startsWith('#') ? 'var(--color-brass-core)' : glyph.accent;
@@ -95,6 +95,10 @@ export function QuotaCard({ entry, onManage }: { entry: SubscriptionEntry; onMan
             )}
           </div>
           <p className="quota-card-account muted">{entry.accountLabel}</p>
+          <p className="quota-card-routing" data-routing={entry.routing.mode} role="status">
+            <strong>{entry.routing.mode === 'preferred' ? 'Preferred route' : entry.routing.mode === 'automatic' ? 'Auto route' : 'Route unavailable'}</strong>
+            <span>{entry.routing.detail}</span>
+          </p>
           <div className="quota-card-badges">
             <MicroBadge text={entry.sourceLabel} tone="source" data-confidence={entry.confidence} />
             {entry.storageScope === 'local' || entry.storageScope === 'keychain' ? (
@@ -155,7 +159,7 @@ export function QuotaCard({ entry, onManage }: { entry: SubscriptionEntry; onMan
   );
 }
 
-export function QuotaListRow({ entry }: { entry: SubscriptionEntry }) {
+export function QuotaListRow({ entry, onManage }: { entry: SubscriptionEntry; onManage: () => void }) {
   const glyph = findProviderGlyph(entry.providerId);
   const accent = glyph.accent.startsWith('#') ? 'var(--color-brass-core)' : glyph.accent;
   return (
@@ -170,6 +174,7 @@ export function QuotaListRow({ entry }: { entry: SubscriptionEntry }) {
         <WindowRow label="Long" bucket={entry.longBucket ?? entry.primaryBucket} />
       </div>
       <span className="quota-list-pct mono">{entry.remainingPercentRounded}%</span>
+      <button type="button" className="ghost quota-list-manage" onClick={onManage}>Manage →</button>
     </div>
   );
 }

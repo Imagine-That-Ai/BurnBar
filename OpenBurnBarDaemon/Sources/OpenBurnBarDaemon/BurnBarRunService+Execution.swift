@@ -63,17 +63,28 @@ extension BurnBarRunService {
         if run.intent.requiresWorkspaceToolExecution || run.intent.kind == .generic || run.intent.kind == .inspectWorkspace {
             try transition(&run, to: .executingTool)
 
-            if run.intent.kind != .generic && run.intent.kind != .inspectWorkspace && run.companionToolCompleted {
+            let completedDeterministicTool = run.companionToolCompleted
+                && run.intent.kind != .inspectWorkspace
+                && (run.intent.kind != .generic || run.intent.requestedToolsOrEmpty.count == 1)
+            if completedDeterministicTool {
                 try await completeRunAndRecordUsage(for: &run)
                 return
             }
 
             if let deterministicAction = try deterministicContextAction(for: run) {
-                try await dispatchCompanionToolCall(
-                    for: &run,
-                    toolKind: deterministicAction.tool,
-                    arguments: deterministicAction.arguments
-                )
+                if deterministicAction.tool.isBrowserComputerUse {
+                    try await dispatchBrowserToolCall(
+                        for: &run,
+                        toolKind: deterministicAction.tool,
+                        arguments: deterministicAction.arguments
+                    )
+                } else {
+                    try await dispatchCompanionToolCall(
+                        for: &run,
+                        toolKind: deterministicAction.tool,
+                        arguments: deterministicAction.arguments
+                    )
+                }
                 return
             }
 

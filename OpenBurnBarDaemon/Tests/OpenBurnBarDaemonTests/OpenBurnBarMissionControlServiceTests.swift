@@ -675,7 +675,9 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         var projection = BurnBarMissionControlProjectionFile.empty(
             now: Date(timeIntervalSince1970: 1_710_620_500)
         )
-        projection.lastSequence = 42
+        // A matching zero checkpoint proves that an otherwise unreadable old
+        // journal is not replayed when the persisted projection is current.
+        projection.lastSequence = 0
         projection.projects[persistedProject.projectSlug] = persistedProject
         try JSONEncoder().encode(projection).write(to: projectionFileURL, options: .atomic)
 
@@ -4684,6 +4686,290 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(refreshed.mission?.packets.first?.status, .completed)
         XCTAssertEqual(refreshed.mission?.results.count, 1)
         XCTAssertEqual(refreshed.mission?.results.first?.runID, runID)
+    }
+
+    func testProjectLifecycleDeleteAndReassignPreserveUnrelatedState() async throws {
+        let harness = try makeHarnessWithStore(name: "project-lifecycle")
+        for slug in ["apollo", "orion", "atlas"] {
+            _ = try await harness.service.controllerProjectUpsert(
+                BurnBarControllerProjectUpsertRequest(project: project(slug: slug))
+            )
+        }
+
+        _ = try await harness.service.questionCreate(
+            BurnBarQuestionCreateRequest(
+                question: BurnBarPendingQuestionSnapshot(
+                    id: BurnBarQuestionID(rawValue: "question-apollo"),
+                    projectSlug: "apollo",
+                    title: "Apollo question",
+                    prompt: "Choose a release window.",
+                    status: .pending,
+                    priority: .medium,
+                    askedAt: Date()
+                )
+            )
+        )
+        _ = try await harness.service.followupCreate(
+            BurnBarFollowupCreateRequest(
+                followup: BurnBarFollowupSnapshot(
+                    id: BurnBarFollowupID(rawValue: "followup-apollo"),
+                    projectSlug: "apollo",
+                    title: "Apollo followup",
+                    summary: "Follow up on the release window.",
+                    status: .open,
+                    kind: .controllerNudge,
+                    createdAt: Date()
+                )
+            )
+        )
+        _ = try await harness.service.missionCreate(
+            BurnBarMissionCreateRequest(
+                projectSlug: "apollo",
+                title: "Apollo mission",
+                summary: "Verify the release evidence.",
+                createdBy: "test",
+                recommendation: .review
+            )
+        )
+        _ = try await harness.store.recordReviewRun(
+            BurnBarReviewRunSnapshot(
+                id: "review-apollo",
+                projectSlug: "apollo",
+                cadence: .daily,
+                recordedAt: Date(),
+                summary: "Apollo review",
+                questionCount: 1,
+                followupCount: 1,
+                missionCount: 1
+            )
+        )
+
+        let reassigned = try await harness.service.controllerProjectReassign(
+            BurnBarControllerProjectReassignRequest(sourceProjectSlug: "apollo", targetProjectSlug: "orion")
+        )
+        XCTAssertEqual(reassigned.updatedReferenceCount, 5)
+        let reassignedQuestions = try await harness.service.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: "orion", statuses: BurnBarPendingQuestionStatus.allCases)
+        )
+        let reassignedFollowups = try await harness.service.followupsList(
+            BurnBarFollowupsListRequest(projectSlug: "orion", statuses: BurnBarFollowupStatus.allCases)
+        )
+        let reassignedMissions = try await harness.service.missionsList(
+            BurnBarMissionListRequest(projectSlug: "orion", statuses: BurnBarMissionStatus.allCases)
+        )
+        let reassignedProject = try await harness.service.controllerProject(
+            BurnBarControllerProjectGetRequest(projectSlug: "orion")
+        )
+        let projectsAfterReassign = try await harness.service.controllerProjects(
+            BurnBarControllerProjectsListRequest(includePaused: true)
+        )
+        XCTAssertFalse(reassignedQuestions.questions.isEmpty)
+        XCTAssertFalse(reassignedFollowups.followups.isEmpty)
+        XCTAssertEqual(
+            reassignedQuestions.questions.map(\.projectSlug),
+            Array(repeating: "orion", count: reassignedQuestions.questions.count)
+        )
+        XCTAssertEqual(
+            reassignedFollowups.followups.map(\.projectSlug),
+            Array(repeating: "orion", count: reassignedFollowups.followups.count)
+        )
+        XCTAssertEqual(
+            reassignedMissions.missions.map(\.projectSlug),
+            ["orion"]
+        )
+        XCTAssertNotNil(reassignedProject.project?.latestDailyReviewAt)
+        XCTAssertEqual(
+            projectsAfterReassign.projects.map(\.projectSlug).sorted(),
+            ["apollo", "atlas", "orion"]
+        )
+
+        let deleted = try await harness.service.controllerProjectDelete(
+            BurnBarControllerProjectDeleteRequest(projectSlug: "apollo")
+        )
+        XCTAssertTrue(deleted.deleted)
+        let deletedProject = try await harness.service.controllerProject(
+            BurnBarControllerProjectGetRequest(projectSlug: "apollo")
+        )
+        let survivingOrion = try await harness.service.controllerProject(
+            BurnBarControllerProjectGetRequest(projectSlug: "orion")
+        )
+        let survivingAtlas = try await harness.service.controllerProject(
+            BurnBarControllerProjectGetRequest(projectSlug: "atlas")
+        )
+        XCTAssertNil(deletedProject.project)
+        XCTAssertNotNil(survivingOrion.project)
+        XCTAssertNotNil(survivingAtlas.project)
+        do {
+            _ = try await harness.service.controllerProjectUpsert(
+                BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+            )
+            XCTFail("Deleted project slugs must not be silently reused")
+        } catch let error as BurnBarMissionControlError {
+            guard case .projectDeleted("apollo") = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+    }
+
+    func testProjectLifecycleRejectsMissingTargetsAndIdentityCollisionsBeforeMutation() async throws {
+        let harness = try makeHarness(name: "project-lifecycle-fail-closed")
+        for slug in ["apollo", "orion", "one"] {
+            var projectSnapshot = project(slug: slug)
+            if slug == "one" {
+                projectSnapshot = BurnBarReviewProjectSnapshot(
+                    id: projectSnapshot.id,
+                    projectSlug: projectSnapshot.projectSlug,
+                    displayName: projectSnapshot.displayName,
+                    summary: projectSnapshot.summary,
+                    status: projectSnapshot.status,
+                    preferredCadence: projectSnapshot.preferredCadence,
+                    aliases: ["shared-target"],
+                    automationMode: projectSnapshot.automationMode,
+                    reviewModelID: projectSnapshot.reviewModelID,
+                    scheduleHourLocal: projectSnapshot.scheduleHourLocal,
+                    scheduleWeekdayLocal: projectSnapshot.scheduleWeekdayLocal,
+                    freshness: projectSnapshot.freshness,
+                    pendingQuestionCount: 0,
+                    openFollowupCount: 0,
+                    activeMissionCount: 0,
+                    needsOperatorAttention: false
+                )
+            }
+            _ = try await harness.service.controllerProjectUpsert(
+                BurnBarControllerProjectUpsertRequest(project: projectSnapshot)
+            )
+        }
+
+        do {
+            _ = try await harness.service.controllerProjectReassign(
+                BurnBarControllerProjectReassignRequest(sourceProjectSlug: "apollo", targetProjectSlug: "missing")
+            )
+            XCTFail("Missing target must fail closed")
+        } catch let error as BurnBarMissionControlError {
+            guard case .projectNotFound("missing") = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+
+        var conflictingProject = project(slug: "two")
+        conflictingProject = BurnBarReviewProjectSnapshot(
+            id: conflictingProject.id,
+            projectSlug: conflictingProject.projectSlug,
+            displayName: conflictingProject.displayName,
+            summary: conflictingProject.summary,
+            status: conflictingProject.status,
+            preferredCadence: conflictingProject.preferredCadence,
+            aliases: ["shared-target"],
+            automationMode: conflictingProject.automationMode,
+            reviewModelID: conflictingProject.reviewModelID,
+            scheduleHourLocal: conflictingProject.scheduleHourLocal,
+            scheduleWeekdayLocal: conflictingProject.scheduleWeekdayLocal,
+            freshness: conflictingProject.freshness,
+            pendingQuestionCount: 0,
+            openFollowupCount: 0,
+            activeMissionCount: 0,
+            needsOperatorAttention: false
+        )
+        do {
+            _ = try await harness.service.controllerProjectUpsert(
+                BurnBarControllerProjectUpsertRequest(project: conflictingProject)
+            )
+            XCTFail("Duplicate aliases must fail closed")
+        } catch let error as BurnBarMissionControlError {
+            guard case .projectIdentityConflict("shared-target") = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+
+        let survivingProject = try await harness.service.controllerProject(
+            BurnBarControllerProjectGetRequest(projectSlug: "apollo")
+        )
+        XCTAssertNotNil(survivingProject.project)
+    }
+
+    func testProjectLifecycleMovesSimulatorAndNestedTakeoverReferences() async throws {
+        let harness = try makeHarnessWithStore(name: "project-lifecycle-nested-references")
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+
+        let simulator = try await harness.service.simulatorRun(
+            BurnBarSimulatorRunRequest(projectSlug: "apollo", scenarioName: "lifecycle", seed: 11)
+        )
+        let now = Date()
+        let takeover = BurnBarAutoTakeoverRecord(
+            id: "takeover-apollo",
+            projectSlug: "apollo",
+            status: .monitoring,
+            reason: "Nested lifecycle fixture",
+            createdAt: now,
+            updatedAt: now
+        )
+        let mission = BurnBarMissionSnapshot(
+            id: BurnBarMissionID(rawValue: "mission-apollo-nested"),
+            projectSlug: "apollo",
+            title: "Apollo nested fixture",
+            summary: "Ensures nested references move with the project.",
+            status: .draft,
+            recommendation: .review,
+            createdAt: now,
+            updatedAt: now,
+            approval: BurnBarMissionApprovalSnapshot(approved: false),
+            takeoverHistory: [takeover]
+        )
+        try await harness.store.injectMissionsForTieBreakTesting([mission])
+
+        let reassigned = try await harness.service.controllerProjectReassign(
+            BurnBarControllerProjectReassignRequest(sourceProjectSlug: "apollo", targetProjectSlug: "orion")
+        )
+        XCTAssertEqual(reassigned.updatedReferenceCount, 3)
+
+        let movedMissions = try await harness.store.missionsSnapshot()
+        let movedMission = movedMissions.first
+        XCTAssertEqual(movedMission?.projectSlug, "orion")
+        XCTAssertEqual(movedMission?.takeoverHistory?.first?.projectSlug, "orion")
+        let movedSimulators = try await harness.service.simulatorList(
+            BurnBarSimulatorListRequest(projectSlug: "orion")
+        )
+        XCTAssertEqual(movedSimulators.runs.map(\.id), [simulator.run.id])
+    }
+
+    func testProjectLifecycleCanReassignDurableReferencesAfterRegistryDeletion() async throws {
+        let harness = try makeHarness(name: "project-lifecycle-deleted-source")
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "orion"))
+        )
+        _ = try await harness.service.questionCreate(
+            BurnBarQuestionCreateRequest(
+                question: BurnBarPendingQuestionSnapshot(
+                    id: BurnBarQuestionID(rawValue: "question-deleted-apollo"),
+                    projectSlug: "apollo",
+                    title: "Deleted source question",
+                    prompt: "Move this durable reference.",
+                    status: .pending,
+                    priority: .low,
+                    askedAt: Date()
+                )
+            )
+        )
+        _ = try await harness.service.controllerProjectDelete(
+            BurnBarControllerProjectDeleteRequest(projectSlug: "apollo")
+        )
+
+        let reassigned = try await harness.service.controllerProjectReassign(
+            BurnBarControllerProjectReassignRequest(sourceProjectSlug: "apollo", targetProjectSlug: "orion")
+        )
+        XCTAssertEqual(reassigned.updatedReferenceCount, 2)
+        let questions = try await harness.service.questionsList(
+            BurnBarQuestionsListRequest(projectSlug: "orion", statuses: BurnBarPendingQuestionStatus.allCases)
+        )
+        XCTAssertEqual(questions.questions.map(\.projectSlug), ["orion"])
     }
 }
 

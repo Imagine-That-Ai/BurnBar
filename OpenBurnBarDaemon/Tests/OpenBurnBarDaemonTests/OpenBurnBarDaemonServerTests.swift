@@ -1,8 +1,11 @@
 import OpenBurnBarEngine
+import OpenBurnBarInsights
 @testable import OpenBurnBarDaemon
 import Darwin
 import Foundation
+import SQLite3
 import XCTest
+
 
 final class BurnBarDaemonServerTests: XCTestCase {
     func testDaemonBootsRespondsToHealthAndCleansUpSocketOnShutdown() async throws {
@@ -1190,6 +1193,32 @@ final class BurnBarDaemonServerTests: XCTestCase {
         )
         XCTAssertEqual(duplicateInsert.result?.inserted, false)
 
+        let invalidResponse: BurnBarRPCResponseEnvelope<BurnBarEmptyResult> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "usage-record-invalid",
+                method: .usageRecord,
+                authToken: "test-token",
+                params: BurnBarRecordUsageRequest(
+                    idempotencyKey: "hermes-invalid",
+                    event: BurnBarUsageEvent(
+                        providerID: "hermes",
+                        modelID: "minimax-m2.7-highspeed",
+                        inputTokens: -1,
+                        outputTokens: 0,
+                        cacheReadTokens: 0,
+                        cost: 0,
+                        recordedAt: Date()
+                    )
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(invalidResponse.id, "usage-record-invalid")
+        XCTAssertEqual(invalidResponse.error?.code, BurnBarRPCErrorCode.invalidParams)
+        XCTAssertTrue(invalidResponse.error?.message.contains("inputTokens must be nonnegative") == true)
+        let recordsAfterInvalidRequest = try await usageRecorder.records()
+        XCTAssertEqual(recordsAfterInvalidRequest.count, 1)
+
         let recentResponse: BurnBarRPCResponseEnvelope<BurnBarRecentUsageResponse> = try sendEnvelope(
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "usage-recent-after-record",
@@ -1205,7 +1234,110 @@ final class BurnBarDaemonServerTests: XCTestCase {
         XCTAssertEqual(recentResponse.result?.usage.first?.projectName, "Hermes (proxy)")
         XCTAssertEqual(recentResponse.result?.usage.first?.confidence, .exact)
 
+        let insightsResponse: BurnBarRPCResponseEnvelope<BurnBarUsageInsightsResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "usage-insights-after-record",
+                method: .usageInsights,
+                authToken: "test-token",
+                params: BurnBarUsageInsightsRequest(
+                    limit: 5,
+                    windowSeconds: 366 * 24 * 60 * 60,
+                    prompt: "Summarize the recorded usage."
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(insightsResponse.error)
+        XCTAssertEqual(insightsResponse.result?.usage.count, 1)
+        XCTAssertEqual(insightsResponse.result?.sourceID, "daemon.usage.ledger")
+        XCTAssertEqual(insightsResponse.result?.analysis.platform, .linux)
+
         await server.stop()
+    }
+
+    func testUsageHistoryRPCReturnsTheExplicitCompleteSnapshot() async throws {
+        let socketPath = makeSocketPath(name: "usage-history")
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-usage-history-(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let databaseURL = rootURL.appendingPathComponent("openburnbar.sqlite")
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(databaseURL.path, &database), SQLITE_OK)
+        guard let database else { throw XCTSkip("SQLite is unavailable") }
+        defer { sqlite3_close(database) }
+        let schema = """
+        CREATE TABLE conversations (
+            id TEXT PRIMARY KEY,
+            provider TEXT NOT NULL,
+            sessionId TEXT NOT NULL,
+            projectName TEXT NOT NULL,
+            startTime TEXT,
+            endTime TEXT,
+            keyFiles TEXT,
+            keyCommands TEXT,
+            keyTools TEXT,
+            inferredTaskTitle TEXT,
+            summaryTitle TEXT,
+            summaryModel TEXT,
+            summary TEXT,
+            lastAssistantMessage TEXT,
+            fullText TEXT,
+            indexedAt TEXT,
+            workingDirectory TEXT
+        );
+        INSERT INTO conversations (
+            id, provider, sessionId, projectName, startTime, endTime,
+            keyFiles, keyCommands, keyTools, inferredTaskTitle, summaryTitle,
+            summaryModel, summary, lastAssistantMessage, fullText, indexedAt,
+            workingDirectory
+        ) VALUES (
+            'Codex:rpc-history', 'Codex', 'rpc-history', 'BurnBar',
+            '2026-07-13 12:00:00.000', '2026-07-13 12:01:00.000',
+            '[]', '[]', '[]', 'History test', 'History test', 'gpt-5',
+            'Persisted summary', 'Continue the task.', 'User asked.\n\nAssistant answered.',
+            '2026-07-13 12:02:00.000', '/tmp/burnbar-history'
+        );
+        """
+        var sqliteError: UnsafeMutablePointer<CChar>?
+        XCTAssertEqual(sqlite3_exec(database, schema, nil, nil, &sqliteError), SQLITE_OK)
+        if let sqliteError { sqlite3_free(sqliteError) }
+
+        let usageRecorder = BurnBarUsageRecorder(
+            fileURL: rootURL.appendingPathComponent("usage-events.jsonl"),
+            logger: BurnBarDaemonLogger(category: "usage-history-tests")
+        )
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                indexDatabasePath: databaseURL.path,
+                startsMissionControlBackgroundLoops: false
+            ),
+            logger: BurnBarDaemonLogger(category: "usage-history-tests"),
+            usageRecorder: usageRecorder
+        )
+
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let response: BurnBarRPCResponseEnvelope<BurnBarActivityHistoryResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "usage-history-1",
+                method: .usageHistory,
+                authToken: "test-token",
+                params: BurnBarActivityHistoryRequest(limit: 500)
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertNil(response.error)
+        XCTAssertTrue(response.result?.historyComplete == true)
+        XCTAssertNil(response.result?.nextCursor)
+        XCTAssertEqual(response.result?.totalCount, 1)
+        XCTAssertEqual(response.result?.sessions.first?.sourceID, "Codex:rpc-history")
+        XCTAssertTrue(response.result?.sessions.first?.bodyMD.contains("Persisted summary") == true)
     }
 
     private func makeSocketPath(name: String) -> String {

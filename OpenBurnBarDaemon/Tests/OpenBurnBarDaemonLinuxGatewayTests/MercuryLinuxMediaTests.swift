@@ -79,6 +79,105 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertEqual(ended.session.phase, .cooldown)
     }
 
+    func testRouteEndTerminatesCapturePendingDecisionsAndExactRouteTransfers() async throws {
+        let captureAdapter = RecordingCaptureAdapter()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-route-end-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transferService = MediaFileTransferService(
+            backend: InMemoryIrohBlobBackend(fetchBodies: ["ticket-route": Data("route".utf8)]),
+            configuration: .init(
+                storeDirectoryURL: root.appendingPathComponent("BlobStore", isDirectory: true),
+                inboxDirectoryURL: root.appendingPathComponent("Inbox", isDirectory: true),
+                secretKeyProvider: { Data(repeating: 0x44, count: 32) }
+            )
+        )
+        let controller = MercuryLinuxMediaSessionController(
+            fileTransferService: transferService,
+            downloadDirectoryProvider: { root.appendingPathComponent("Downloads", isDirectory: true) },
+            captureAdapter: captureAdapter,
+            sealKeyOpener: StaticSealKeyOpener(key: PlatformSymmetricKey(size: .bits256))
+        )
+        let replies = RecordingMercuryReplies()
+        await controller.ingestMercuryFrame(
+            mirrorRequestFrame(),
+            remotePeerNodeID: "phone-node"
+        ) { frame in
+            await replies.append(frame)
+        }
+        let accepted = await controller.accept(
+            DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-route")
+        )
+        XCTAssertTrue(accepted.accepted)
+        await controller.ingestMercuryFrame(
+            fileAdvertiseFrame(ticket: "ticket-route"),
+            remotePeerNodeID: "phone-node"
+        ) { frame in
+            await replies.append(frame)
+        }
+
+        await controller.routeEnded(
+            uid: "uid-1",
+            connectionID: "conn-1",
+            remotePeerNodeID: "phone-node",
+            reason: "controller_route_revoked"
+        )
+
+        let snapshot = await controller.sessionSnapshot()
+        XCTAssertEqual(snapshot.phase, .cooldown)
+        XCTAssertGreaterThanOrEqual(captureAdapter.stopCount, 1)
+        let transfer = await controller.fileOfferList().transfers.first
+        XCTAssertEqual(transfer?.phase, .failed)
+        XCTAssertEqual(transfer?.errorCode, .noControlRoute)
+        let sendResult = await controller.sendFile(DaemonMediaFileSendRequest(path: "/missing"))
+        XCTAssertFalse(sendResult.accepted)
+    }
+
+    func testRouteEndPreservesNoControlRouteWhileOutboundPublishIsCancelled() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-route-end-publish-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let localFile = root.appendingPathComponent("send.txt", isDirectory: false)
+        try Data("route-owned publish".utf8).write(to: localFile)
+        let publishGate = SuspendedPublishGate()
+        let transferService = MediaFileTransferService(
+            backend: SuspendedPublishIrohBlobBackend(gate: publishGate),
+            configuration: .init(
+                storeDirectoryURL: root.appendingPathComponent("BlobStore", isDirectory: true),
+                inboxDirectoryURL: root.appendingPathComponent("Inbox", isDirectory: true),
+                secretKeyProvider: { Data(repeating: 0x45, count: 32) }
+            )
+        )
+        let controller = MercuryLinuxMediaSessionController(fileTransferService: transferService)
+        await controller.ingestMercuryFrame(
+            mirrorRequestFrame(),
+            remotePeerNodeID: "phone-node",
+            replySender: { _ in }
+        )
+
+        let send = await controller.sendFile(DaemonMediaFileSendRequest(path: localFile.path))
+        XCTAssertTrue(send.accepted)
+        let transferID = try XCTUnwrap(send.transfer?.transferID)
+        await publishGate.waitUntilStarted()
+
+        await controller.routeEnded(
+            uid: "uid-1",
+            connectionID: "conn-1",
+            remotePeerNodeID: "phone-node",
+            reason: "controller_route_revoked"
+        )
+        await publishGate.release()
+        await publishGate.waitUntilFinished()
+
+        let transfer = await controller.fileOfferList().transfers.first {
+            $0.transferID == transferID
+        }
+        XCTAssertEqual(transfer?.phase, .failed)
+        XCTAssertEqual(transfer?.errorCode, .noControlRoute)
+        XCTAssertEqual(transfer?.detail, "Controller route ended.")
+    }
+
     // Fail closed: with no established media seal key, a captured frame must
     // NOT egress as plaintext — the session drops to cooldown instead.
     func testCapturedFrameWithoutSealKeyFailsClosedAndDoesNotEgressPlaintext() async throws {
@@ -183,6 +282,94 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertEqual(decoded.presentationTimestampMillis, 777)
         XCTAssertEqual(decoded.payload, payload)
         await controller.stop()
+    }
+
+    func testInboundPlaintextFrameIsDroppedAfterSealNegotiation() async throws {
+        let channel = try MercuryLinuxMediaChannel(
+            socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
+            maxQueuedFrames: 4
+        )
+        let sealKey = PlatformSymmetricKey(size: .bits256)
+        let controller = MercuryLinuxMediaSessionController(
+            channel: channel,
+            captureAdapter: RecordingCaptureAdapter(),
+            sealKeyOpener: StaticSealKeyOpener(key: sealKey)
+        )
+        try await controller.start()
+        defer { channel.stop() }
+
+        await controller.ingestMercuryFrame(mirrorRequestFrame(), remotePeerNodeID: "phone-node")
+        let accept = await controller.accept(
+            DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-inbound-plaintext")
+        )
+        XCTAssertTrue(accept.accepted)
+
+        let plaintext = try MediaPacketCodec().encode(MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            gopID: 1,
+            frameIndex: 0,
+            presentationTimestampMillis: 1_000,
+            payload: Data([0x01, 0x02, 0x03])
+        ))
+        await controller.ingestMercuryFrame(inboundStreamFrame(encoded: plaintext))
+
+        let snapshot = await controller.sessionSnapshot()
+        XCTAssertEqual(snapshot.phase, .streaming)
+        XCTAssertEqual(snapshot.queuedFrameCount, 0)
+    }
+
+    func testInboundSealedFrameOpensAfterSealNegotiation() async throws {
+        let channel = try MercuryLinuxMediaChannel(
+            socketPath: "/tmp/obb-media-\(UUID().uuidString).sock",
+            maxQueuedFrames: 4
+        )
+        let sealKey = PlatformSymmetricKey(size: .bits256)
+        let controller = MercuryLinuxMediaSessionController(
+            channel: channel,
+            captureAdapter: RecordingCaptureAdapter(),
+            sealKeyOpener: StaticSealKeyOpener(key: sealKey)
+        )
+        try await controller.start()
+        defer { channel.stop() }
+
+        await controller.ingestMercuryFrame(mirrorRequestFrame(), remotePeerNodeID: "phone-node")
+        let accept = await controller.accept(
+            DaemonMediaCallAcceptRequest(requestID: "mirror-1", sessionID: "session-inbound-sealed")
+        )
+        XCTAssertTrue(accept.accepted)
+
+        let frame = MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            gopID: 2,
+            frameIndex: 7,
+            presentationTimestampMillis: 2_000,
+            payload: Data([0x0A, 0x0B, 0x0C])
+        )
+        let plaintext = try MediaPacketCodec().encode(frame)
+        let envelope = try MediaFrameAEAD().seal(
+            plaintext: plaintext,
+            key: sealKey,
+            streamClass: MediaStreamClass.screenVideo.rawValue,
+            kind: frame.kind.rawValue,
+            gopID: frame.gopID,
+            frameIndex: frame.frameIndex
+        )
+        await controller.ingestMercuryFrame(
+            inboundStreamFrame(
+                encoded: envelope,
+                sealedPosition: HermesRealtimeRelaySealedMediaFramePosition(
+                    kind: frame.kind.rawValue,
+                    gopId: frame.gopID,
+                    frameIndex: frame.frameIndex
+                )
+            )
+        )
+
+        let snapshot = await controller.sessionSnapshot()
+        XCTAssertEqual(snapshot.phase, .streaming)
+        XCTAssertEqual(snapshot.queuedFrameCount, 1)
     }
 
     func testAcceptWithoutSealKeyFailsClosedBeforeCaptureStarts() async throws {
@@ -698,6 +885,22 @@ final class MercuryLinuxMediaTests: XCTestCase {
         )
     }
 
+    private func inboundStreamFrame(
+        encoded: Data,
+        sealedPosition: HermesRealtimeRelaySealedMediaFramePosition? = nil
+    ) -> HermesRealtimeRelayFrame {
+        HermesRealtimeRelayFrame(
+            type: .mediaStreamFrame,
+            uid: "uid-1",
+            connectionId: "conn-1",
+            media: HermesRealtimeRelayMediaPayload(
+                streamClass: MediaStreamClass.screenVideo.rawValue,
+                encodedFrameBase64: encoded.base64EncodedString(),
+                sealedFramePosition: sealedPosition
+            )
+        )
+    }
+
     private func fileAdvertiseFrame(
         filename: String = "notes.txt",
         ticket: String = "ticket",
@@ -900,6 +1103,113 @@ private final class InMemoryIrohBlobBackend: IrohBlobBackend, @unchecked Sendabl
     }
 }
 
+private actor SuspendedPublishGate {
+    private var started = false
+    private var released = false
+    private var finished = false
+    private var startedWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+    private var finishedWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func suspendUntilReleased() async {
+        started = true
+        let waitingForStart = startedWaiters
+        startedWaiters.removeAll()
+        waitingForStart.forEach { $0.resume() }
+        if released { return }
+        await withCheckedContinuation { continuation in
+            releaseWaiters.append(continuation)
+        }
+    }
+
+    func waitUntilStarted() async {
+        if started { return }
+        await withCheckedContinuation { continuation in
+            startedWaiters.append(continuation)
+        }
+    }
+
+    func release() {
+        released = true
+        let waitingForRelease = releaseWaiters
+        releaseWaiters.removeAll()
+        waitingForRelease.forEach { $0.resume() }
+    }
+
+    func markFinished() {
+        finished = true
+        let waitingForFinish = finishedWaiters
+        finishedWaiters.removeAll()
+        waitingForFinish.forEach { $0.resume() }
+    }
+
+    func waitUntilFinished() async {
+        if finished { return }
+        await withCheckedContinuation { continuation in
+            finishedWaiters.append(continuation)
+        }
+    }
+}
+
+private final class SuspendedPublishIrohBlobBackend: IrohBlobBackend, @unchecked Sendable {
+    private let gate: SuspendedPublishGate
+    private var bootstrapped = false
+
+    init(gate: SuspendedPublishGate) {
+        self.gate = gate
+    }
+
+    func bootstrap(
+        secret: Data,
+        storeDirectoryPath: String,
+        relayURL: String?
+    ) async throws -> IrohEndpointIdentity {
+        _ = relayURL
+        XCTAssertEqual(secret.count, 32)
+        try FileManager.default.createDirectory(
+            atPath: storeDirectoryPath,
+            withIntermediateDirectories: true
+        )
+        bootstrapped = true
+        return IrohEndpointIdentity(
+            nodeId: "suspended-publish-node",
+            rawPublicKey: Data(repeating: 0xAC, count: 32)
+        )
+    }
+
+    func publishBlob(localPath: String) async throws -> String {
+        guard bootstrapped else { throw IrohBlobBackendError.notInitialized }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: localPath))
+        await gate.suspendUntilReleased()
+        do {
+            try Task.checkCancellation()
+            await gate.markFinished()
+            return "ticket-suspended-publish"
+        } catch {
+            await gate.markFinished()
+            throw error
+        }
+    }
+
+    func fetchBlob(ticketText: String, destination: String) async throws -> BlobTransferStats {
+        _ = ticketText
+        _ = destination
+        throw IrohBlobBackendError.fetchFailed("not implemented")
+    }
+
+    func identity() async throws -> IrohEndpointIdentity {
+        guard bootstrapped else { throw IrohBlobBackendError.notInitialized }
+        return IrohEndpointIdentity(
+            nodeId: "suspended-publish-node",
+            rawPublicKey: Data(repeating: 0xAC, count: 32)
+        )
+    }
+
+    func shutdown() async {
+        bootstrapped = false
+    }
+}
+
 private struct StaticSealKeyOpener: MercuryLinuxMediaSealKeyOpening {
     let key: PlatformSymmetricKey
 
@@ -927,6 +1237,7 @@ private struct FailingSealKeyOpener: MercuryLinuxMediaSealKeyOpening {
 private final class RecordingCaptureAdapter: MercuryLinuxCaptureAdapterProtocol, @unchecked Sendable {
     private struct State: Sendable {
         var startCount = 0
+        var stopCount = 0
         var bitrates: [UInt32] = []
         var onFrame: (@Sendable (MediaFrame) -> Void)?
         var onStopped: (@Sendable (String) -> Void)?
@@ -941,6 +1252,8 @@ private final class RecordingCaptureAdapter: MercuryLinuxCaptureAdapterProtocol,
     var bitrates: [UInt32] {
         state.withLock { $0.bitrates }
     }
+
+    var stopCount: Int { state.withLock { $0.stopCount } }
 
     func startOutboundCapture(
         targetBitrateBps: UInt32,
@@ -957,7 +1270,7 @@ private final class RecordingCaptureAdapter: MercuryLinuxCaptureAdapterProtocol,
         }
     }
 
-    func stopOutboundCapture() {}
+    func stopOutboundCapture() { state.withLock { $0.stopCount += 1 } }
 
     func setOutboundCaptureBitrate(_ targetBitrateBps: UInt32) throws {
         state.withLock { $0.bitrates.append(targetBitrateBps) }

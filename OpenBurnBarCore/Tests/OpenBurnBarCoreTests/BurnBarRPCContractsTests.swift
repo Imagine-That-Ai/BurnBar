@@ -14,6 +14,12 @@ final class BurnBarRPCContractsTests: XCTestCase {
     /// mismatch here must be treated as a protocol break, not a test update.
     private static let expectedWireNames: [BurnBarRPCMethod: String] = [
         .authBootstrap: "auth.bootstrap",
+        .linuxAuthStatus: "daemon.auth.status",
+        .linuxAuthBegin: "daemon.auth.begin",
+        .linuxAuthCancel: "daemon.auth.cancel",
+        .linuxAuthRotateIdentity: "daemon.auth.rotate_identity",
+        .linuxAuthSignOut: "daemon.auth.sign_out",
+        .linuxAccountCloudDataDelete: "daemon.account.cloud_data.delete",
         .health: "daemon.health",
         .catalog: "daemon.catalog",
         .linuxOnboardingSnapshot: "daemon.onboarding.snapshot",
@@ -21,6 +27,20 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .linuxOnboardingReset: "daemon.onboarding.reset",
         .configGet: "daemon.config.get",
         .configUpdate: "daemon.config.update",
+        .textExpansionGet: "daemon.text_expansion.get",
+        .textExpansionUpsert: "daemon.text_expansion.upsert",
+        .textExpansionDelete: "daemon.text_expansion.delete",
+        .textExpansionConsentUpdate: "daemon.text_expansion.consent.update",
+        .textExpansionEngineStatus: "daemon.text_expansion.engine.status",
+        .textExpansionEngineStart: "daemon.text_expansion.engine.start",
+        .textExpansionEngineStop: "daemon.text_expansion.engine.stop",
+        .textExpansionEngineExpand: "daemon.text_expansion.engine.expand",
+        .linuxPrivacyInventory: "daemon.privacy.inventory",
+        .linuxPrivacyDeletionPreview: "daemon.privacy.deletion.preview",
+        .linuxPrivacyDeletionExecute: "daemon.privacy.deletion.execute",
+        .linuxPrivacyExport: "daemon.privacy.export",
+        .linuxPrivacyRetentionStatus: "daemon.privacy.retention.status",
+        .linuxPrivacyRetentionApply: "daemon.privacy.retention.apply",
         .providerCredentialSlotUpsert: "daemon.provider.credential_slot.upsert",
         .providerCredentialSlotRemove: "daemon.provider.credential_slot.remove",
         .providerModelVariantUpsert: "daemon.provider.model_variant.upsert",
@@ -33,6 +53,11 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .providerModelDisplayNameClear: "daemon.provider.model_display_name.clear",
         .usageRecord: "daemon.usage.record",
         .usageRecent: "daemon.usage.recent",
+        .usageHistory: "daemon.usage.history",
+        .usageInsights: "daemon.usage.insights",
+        .chatThreadList: "daemon.chat.thread.list",
+        .chatThreadGet: "daemon.chat.thread.get",
+        .chatMessageAppend: "daemon.chat.message.append",
         .proxyRouteLogRecent: "daemon.proxy.route_log.recent",
         .proxyRouteLogClear: "daemon.proxy.route_log.clear",
         .quotaSignalsRecent: "daemon.quota.signals.recent",
@@ -44,6 +69,9 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .browserToolingUpdate: "daemon.browser.tooling.update",
         .browserAction: "daemon.browser.action",
         .computerUseCapabilityStateUpdate: "daemon.computer_use.capability_state.update",
+        .computerUseSessionGrantReadiness: "daemon.computer_use.session_grant.readiness",
+        .computerUseSessionGrantAcquire: "daemon.computer_use.session_grant.acquire",
+        .computerUseSessionGrantStatus: "daemon.computer_use.session_grant.status",
         .computerUseSessionStart: "daemon.computer_use.session.start",
         .computerUseInvoke: "daemon.computer_use.invoke",
         .computerUseApprovalPending: "daemon.computer_use.approval.pending",
@@ -56,6 +84,8 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .controllerProjectsList: "daemon.controller.project.list",
         .controllerProjectGet: "daemon.controller.project.get",
         .controllerProjectUpsert: "daemon.controller.project.upsert",
+        .controllerProjectDelete: "daemon.controller.project.delete",
+        .controllerProjectReassign: "daemon.controller.project.reassign",
         .reviewRunRecord: "daemon.controller.review.record",
         .questionCreate: "daemon.question.create",
         .questionGet: "daemon.question.get",
@@ -69,6 +99,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .missionCreate: "daemon.mission.create",
         .missionsList: "daemon.mission.list",
         .missionGet: "daemon.mission.get",
+        .missionHealth: "daemon.mission.health",
         .missionApprove: "daemon.mission.approve",
         .missionCancel: "daemon.mission.cancel",
         .missionDispatchPacket: "daemon.mission.packet.dispatch",
@@ -113,6 +144,11 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .codeIndexStatus: "daemon.code.index_status",
         .codeExplore: "daemon.code.explore",
         .codeOpsDiagnostics: "daemon.code.ops_diagnostics",
+        .codeDatabaseSnapshot: "daemon.code.database_snapshot",
+        .codeDatabaseRestore: "daemon.code.database_restore",
+        .databaseRecoveryStatus: "daemon.database.recovery.status",
+        .databaseRecoveryBundleExport: "daemon.database.recovery_bundle.export",
+        .databaseRecoveryBundleImport: "daemon.database.recovery_bundle.import",
         .runResume: "run.resume",
         .daemonMediaSessionState: "daemon.media.session.state",
         .daemonMediaCallAccept: "daemon.media.call.accept",
@@ -171,6 +207,30 @@ final class BurnBarRPCContractsTests: XCTestCase {
         XCTAssertThrowsError(try JSONDecoder().decode([BurnBarRPCMethod].self, from: unknown)) { error in
             XCTAssertTrue(error is DecodingError, "Expected DecodingError, got \(error)")
         }
+    }
+
+    func testLinuxAuthResponsesExposeOnlyRedactedState() throws {
+        let status = BurnBarLinuxAuthStatusResponse(
+            state: .awaitingDeviceApproval,
+            signedIn: false,
+            authorizationOperationID: "operation-1",
+            authorizationExpiresAt: "2026-07-11T22:00:00Z",
+            deviceApprovalRequired: true,
+            installationDeviceID: "linux_0123456789abcdef",
+            installationSafetyFingerprint: "0123 4567 89AB CDEF",
+            detail: "Approval required on a trusted device."
+        )
+        let encoded = try JSONEncoder().encode(status)
+        let json = try XCTUnwrap(String(data: encoded, encoding: .utf8))
+
+        XCTAssertTrue(json.contains("awaiting_device_approval"))
+        XCTAssertTrue(json.contains("linux_0123456789abcdef"))
+        XCTAssertTrue(json.contains("0123 4567 89AB CDEF"))
+        XCTAssertFalse(json.contains("refreshToken"))
+        XCTAssertFalse(json.contains("idToken"))
+        XCTAssertFalse(json.contains("appCheckToken"))
+        XCTAssertFalse(json.contains("publicKey"))
+        XCTAssertFalse(json.contains("sessionGeneration"))
     }
 
     func testControllerRuntimeSnapshotMethod_isAdditiveControllerNamespaceExtension() throws {

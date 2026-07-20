@@ -13,7 +13,9 @@ const TOUCHED = [
   "FUNCTIONS_EMULATOR",
   "FIRESTORE_EMULATOR_HOST",
   "FIREBASE_CONFIG",
+  "LINUX_APP_CHECK_APP_ID",
 ] as const;
+const VALID_LINUX_APP_CHECK_APP_ID = "1:246956661961:web:ab19bc3a6f6d4580480118";
 
 describe("L-3 App Check production fail-closed", () => {
   const saved: Record<string, string | undefined> = {};
@@ -24,6 +26,7 @@ describe("L-3 App Check production fail-closed", () => {
       saved[k] = process.env[k];
       delete process.env[k];
     }
+    process.env.LINUX_APP_CHECK_APP_ID = VALID_LINUX_APP_CHECK_APP_ID;
   });
   afterEach(() => {
     for (const k of TOUCHED) {
@@ -61,6 +64,20 @@ describe("L-3 App Check production fail-closed", () => {
     expect(() => getConfig()).not.toThrow();
     expect(getConfig().enforceAppCheck).toBe(true);
   });
+
+  it("REFUSES to start production when the Linux App Check app id is absent", async () => {
+    process.env.GCLOUD_PROJECT = "openburnbar-prod";
+    delete process.env.LINUX_APP_CHECK_APP_ID;
+    const { getConfig } = await import("../config.js");
+    expect(() => getConfig()).toThrow(/Linux App Check app id is missing or malformed/);
+  });
+
+  it("REFUSES to start production when the Linux App Check app id is not a real Web app id", async () => {
+    process.env.GCLOUD_PROJECT = "openburnbar-prod";
+    process.env.LINUX_APP_CHECK_APP_ID = "1:000000000000:linux:placeholder";
+    const { getConfig } = await import("../config.js");
+    expect(() => getConfig()).toThrow(/Linux App Check app id is missing or malformed/);
+  });
 });
 
 /**
@@ -85,6 +102,7 @@ const NONCE_TOUCHED = [
   "FUNCTIONS_EMULATOR",
   "FIRESTORE_EMULATOR_HOST",
   "FIREBASE_CONFIG",
+  "LINUX_APP_CHECK_APP_ID",
 ] as const;
 
 describe("F-RR04-002 requireHighRiskNonce production default", () => {
@@ -96,6 +114,7 @@ describe("F-RR04-002 requireHighRiskNonce production default", () => {
       saved[k] = process.env[k];
       delete process.env[k];
     }
+    process.env.LINUX_APP_CHECK_APP_ID = VALID_LINUX_APP_CHECK_APP_ID;
   });
   afterEach(() => {
     for (const k of NONCE_TOUCHED) {
@@ -192,6 +211,7 @@ describe("L-3 / F-RR04-002 empty-string env var bypass (toBool fix)", () => {
     "FUNCTIONS_EMULATOR",
     "FIRESTORE_EMULATOR_HOST",
     "FIREBASE_CONFIG",
+    "LINUX_APP_CHECK_APP_ID",
   ] as const;
   const saved: Record<string, string | undefined> = {};
 
@@ -201,6 +221,7 @@ describe("L-3 / F-RR04-002 empty-string env var bypass (toBool fix)", () => {
       saved[k] = process.env[k];
       delete process.env[k];
     }
+    process.env.LINUX_APP_CHECK_APP_ID = VALID_LINUX_APP_CHECK_APP_ID;
   });
   afterEach(() => {
     for (const k of KEYS) {

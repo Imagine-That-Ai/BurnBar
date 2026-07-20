@@ -106,10 +106,27 @@ function domainName(name) {
 }
 
 const explicitTypes = {
+  "daemon.account.cloud_data.delete": ["BurnBarLinuxAccountCloudDataDeletionRequest", "BurnBarLinuxAccountCloudDataDeletionResponse"],
+  "daemon.auth.status": ["BurnBarRPCRequestEnvelope", "BurnBarLinuxAuthStatusResponse"],
+  "daemon.auth.begin": ["BurnBarRPCRequestEnvelope", "BurnBarLinuxAuthBeginResponse"],
+  "daemon.auth.cancel": ["BurnBarLinuxAuthCancelRequest", "BurnBarLinuxAuthMutationResponse"],
+  "daemon.auth.rotate_identity": ["BurnBarRPCRequestEnvelope", "BurnBarLinuxAuthMutationResponse"],
+  "daemon.auth.sign_out": ["BurnBarRPCRequestEnvelope", "BurnBarLinuxAuthMutationResponse"],
   "daemon.health": ["BurnBarRPCRequestEnvelope", "BurnBarHealthResponse"],
   "daemon.catalog": ["BurnBarRPCRequestEnvelope", "BurnBarCatalogResponse"],
   "daemon.config.get": ["BurnBarConfigGetRequest", "BurnBarConfigResponse"],
   "daemon.config.update": ["BurnBarConfigUpdateRequest", "BurnBarConfigResponse"],
+  "daemon.text_expansion.get": ["BurnBarRPCRequestEnvelope", "BurnBarTextExpansionSnapshot"],
+  "daemon.text_expansion.upsert": ["BurnBarTextExpansionUpsertRequest", "BurnBarTextExpansionWireSnippet"],
+  "daemon.text_expansion.delete": ["BurnBarTextExpansionDeleteRequest", "BurnBarTextExpansionSnapshot"],
+  "daemon.text_expansion.consent.update": ["BurnBarTextExpansionConsentUpdateRequest", "BurnBarTextExpansionConsentResponse"],
+  "daemon.text_expansion.engine.expand": ["BurnBarTextExpansionEngineExpandRequest", "BurnBarTextExpansionEngineExpandResponse"],
+  "daemon.privacy.inventory": ["BurnBarRPCRequestEnvelope", "BurnBarLinuxPrivacyInventoryResponse"],
+  "daemon.privacy.deletion.preview": ["BurnBarLinuxPrivacyDeletionPreviewRequest", "BurnBarLinuxPrivacyDeletionPreviewResponse"],
+  "daemon.privacy.deletion.execute": ["BurnBarLinuxPrivacyDeletionExecuteRequest", "BurnBarLinuxPrivacyDeletionExecuteResponse"],
+  "daemon.privacy.export": ["BurnBarLinuxPrivacyExportRequest", "BurnBarLinuxPrivacyExportResponse"],
+  "daemon.privacy.retention.status": ["BurnBarLinuxPrivacyRetentionStatusRequest", "BurnBarLinuxPrivacyRetentionStatusResponse"],
+  "daemon.privacy.retention.apply": ["BurnBarLinuxPrivacyRetentionApplyRequest", "BurnBarLinuxPrivacyRetentionApplyResponse"],
   "daemon.media.session.state": ["BurnBarRPCRequestEnvelope", "DaemonMediaSessionStateResponse"],
   "daemon.media.call.accept": ["DaemonMediaCallAcceptRequest", "DaemonMediaCallActionResponse"],
   "daemon.media.call.decline": ["DaemonMediaCallDeclineRequest", "DaemonMediaCallActionResponse"],
@@ -122,6 +139,11 @@ const explicitTypes = {
   "daemon.media.file.send": ["DaemonMediaFileSendRequest", "DaemonMediaFileActionResponse"],
   "daemon.provider.credential_slot.upsert": ["BurnBarProviderCredentialSlotUpsertRequest", "BurnBarProviderCredentialSlotMutationResponse"],
   "daemon.provider.credential_slot.remove": ["BurnBarProviderCredentialSlotRemoveRequest", "BurnBarProviderCredentialSlotMutationResponse"],
+  "daemon.chat.thread.list": ["BurnBarChatThreadListRequest", "BurnBarChatThreadListResponse"],
+  "daemon.chat.thread.get": ["BurnBarChatThreadGetRequest", "BurnBarChatThreadGetResponse"],
+  "daemon.chat.message.append": ["BurnBarChatMessageAppendRequest", "BurnBarChatMessageAppendResponse"],
+  "daemon.usage.history": ["BurnBarActivityHistoryRequest", "BurnBarActivityHistoryResponse"],
+  "daemon.usage.insights": ["BurnBarUsageInsightsRequest", "BurnBarUsageInsightsResponse"],
   "client.attach": ["BurnBarClientAttachRequest", "BurnBarClientAttachResponse"],
   "client.claimControl": ["BurnBarClientClaimControlRequest", "BurnBarClientArbitrationSnapshot"],
   "client.detach": ["BurnBarClientDetachRequest", "BurnBarClientArbitrationSnapshot"],
@@ -137,7 +159,10 @@ const explicitTypes = {
   "approval.respond": ["BurnBarApprovalRespondRequest", "BurnBarRunDetailResponse"],
   "subscription.start": ["BurnBarSubscriptionStartRequest", "BurnBarSubscriptionResponse"],
   "subscription.resume": ["BurnBarSubscriptionResumeRequest", "BurnBarSubscriptionResponse"],
-  "subscription.stop": ["BurnBarSubscriptionStopRequest", "BurnBarSubscriptionStopResponse"]
+  "subscription.stop": ["BurnBarSubscriptionStopRequest", "BurnBarSubscriptionStopResponse"],
+  "daemon.database.recovery.status": ["BurnBarRPCRequestEnvelope", "BurnBarDatabaseRecoveryStatusResponse"],
+  "daemon.database.recovery_bundle.export": ["BurnBarDatabaseRecoveryBundleExportRequest", "BurnBarDatabaseRecoveryBundleExportResponse"],
+  "daemon.database.recovery_bundle.import": ["BurnBarDatabaseRecoveryBundleImportRequest", "BurnBarDatabaseRecoveryBundleImportResponse"]
 };
 
 function inferTypes(method) {

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "OpenBurnBar",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "dev.openburnbar.linux",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -28,33 +28,63 @@
     "icon": ["icons/icon.png"],
     "linux": {
       "deb": {
-        "depends": ["libsecret-tools"],
+        "depends": [
+          "libsecret-tools",
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-pipewire"
+        ],
         "recommends": ["gnome-keyring | libkf5wallet-bin | libkf6wallet-bin"],
         "files": {
           "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
+          "/usr/bin": "target/openburnbar-package-payload/resource-bundles",
+          "/usr/bin/openburnbar-cli": "target/openburnbar-package-payload/openburnbar-cli",
           "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
           "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
+          "/usr/lib/openburnbar/playwright": "target/openburnbar-package-payload/playwright",
+          "/usr/share/openburnbar/cloud-auth.json": "target/openburnbar-package-payload/cloud-auth.json",
+          "/usr/share/openburnbar/attestation/installed-manifest.json": "target/openburnbar-package-payload/attestation/installed-manifest.json",
+          "/usr/share/openburnbar/attestation/installed-manifest.json.sig": "target/openburnbar-package-payload/attestation/installed-manifest.json.sig",
+          "/usr/share/openburnbar/attestation/release-ed25519.pub.pem": "target/openburnbar-package-payload/attestation/release-ed25519.pub.pem",
+          "/usr/libexec/openburnbar-cli-migrate": "../../../packaging/linux/openburnbar-cli-migrate.sh",
           "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
           "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop": "../../../packaging/linux/openburnbar-safe-mode.desktop",
+          "/etc/xdg/autostart/openburnbar.desktop": "../../../packaging/linux/autostart/openburnbar.desktop",
           "/usr/share/doc/openburnbar/daemon.env.example": "../../../packaging/linux/daemon.env.example",
           "/usr/share/doc/openburnbar/systemd/custom-xdg.conf.example": "../../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
-        }
+        },
+        "postInstallScript": "../../../packaging/linux/openburnbar-cli-migrate.sh"
       },
       "rpm": {
-        "depends": ["libsecret"],
+        "depends": [
+          "libsecret",
+          "gstreamer1-plugins-base",
+          "gstreamer1-plugins-good",
+          "gstreamer1-plugin-pipewire"
+        ],
         "files": {
           "/usr/bin/openburnbar-daemon": "target/openburnbar-package-payload/openburnbar-daemon",
+          "/usr/bin": "target/openburnbar-package-payload/resource-bundles",
+          "/usr/bin/openburnbar-cli": "target/openburnbar-package-payload/openburnbar-cli",
           "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
           "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
+          "/usr/lib/openburnbar/playwright": "target/openburnbar-package-payload/playwright",
+          "/usr/share/openburnbar/cloud-auth.json": "target/openburnbar-package-payload/cloud-auth.json",
+          "/usr/share/openburnbar/attestation/installed-manifest.json": "target/openburnbar-package-payload/attestation/installed-manifest.json",
+          "/usr/share/openburnbar/attestation/installed-manifest.json.sig": "target/openburnbar-package-payload/attestation/installed-manifest.json.sig",
+          "/usr/share/openburnbar/attestation/release-ed25519.pub.pem": "target/openburnbar-package-payload/attestation/release-ed25519.pub.pem",
+          "/usr/libexec/openburnbar-cli-migrate": "../../../packaging/linux/openburnbar-cli-migrate.sh",
           "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
           "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop": "../../../packaging/linux/openburnbar.desktop",
           "/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop": "../../../packaging/linux/openburnbar-safe-mode.desktop",
+          "/etc/xdg/autostart/openburnbar.desktop": "../../../packaging/linux/autostart/openburnbar.desktop",
           "/usr/share/doc/openburnbar/daemon.env.example": "../../../packaging/linux/daemon.env.example",
           "/usr/share/doc/openburnbar/systemd/custom-xdg.conf.example": "../../../packaging/linux/systemd/openburnbar-daemon.service.d/custom-xdg.conf.example"
-        }
+        },
+        "postInstallScript": "../../../packaging/linux/openburnbar-cli-migrate.sh"
       },
       "appimage": {
         "files": {

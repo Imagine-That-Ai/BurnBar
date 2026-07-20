@@ -972,6 +972,17 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      - name: Verify parity-critical Linux callables deployed
+        env:
+          FIREBASE_PROJECT: burnbar
+        run: |
+          set -euo pipefail
+          list_json="$RUNNER_TEMP/production-functions.json"
+          "$FIREBASE_TOOLS_BIN" functions:list \
+            --project "$FIREBASE_PROJECT" \
+            --json > "$list_json"
+          node scripts/ci/verify-production-function-catalog.mjs --input "$list_json"
+
       - name: Deployment summary
         if: always()
         run: |

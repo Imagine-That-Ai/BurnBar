@@ -208,6 +208,7 @@ fun BurnBarNavHost(
                     isCloudMember = isCloudMember,
                     currentTier = currentTier,
                     priceForTier = { tier -> monthlyPriceForTier(proPrice, tier) },
+                    userUid = currentUser.uid,
                     userDisplayName = currentUser.displayName,
                     userPhotoUrl = currentUser.photoUrl,
                     chatState = chatState,

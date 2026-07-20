@@ -1,12 +1,51 @@
-import { useId, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
+import { readTextExpansionConsent } from '../../textExpansionConsent.js';
+import { expandInAppBuffer } from '../../textExpansionStore.js';
 import { composerPlaceholder, type ChatBackendId } from './chatTypes.js';
+import { CHAT_ATTACHMENT_METADATA_MIME_TYPES } from './chatAttachment.js';
+import { CHAT_COMPOSER_FOCUS_EVENT, isChatComposerFocusDetail } from './chatComposerEvents.js';
+
+export const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const CHAT_ATTACHMENT_ACCEPT = [
+  ...CHAT_ATTACHMENT_METADATA_MIME_TYPES,
+  '.txt',
+  '.md',
+  '.markdown',
+  '.csv',
+  '.json',
+  '.pdf',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp'
+] as const;
+const CHAT_ATTACHMENT_EXTENSIONS = new Set([
+  '.txt', '.md', '.markdown', '.csv', '.json', '.pdf', '.png', '.jpg', '.jpeg', '.webp'
+]);
+
+export type PendingChatAttachment = {
+  name: string;
+  size: number;
+  type: string;
+  lastModified: number;
+  /** Kept in memory only until the daemon accepts the upload. */
+  file: File;
+};
+
+export type ChatComposerSendResult = void | boolean | Promise<void | boolean>;
 
 type ComposerProps = {
   backend: ChatBackendId;
   disabled: boolean;
   disabledReason: string;
   streaming: boolean;
-  onSend: (text: string) => void;
+  /** True while a send is still composing (persist + gateway probe) before
+   * streaming starts. Blocks submits so an Enter in that window cannot clear
+   * the draft while the store's composing guard silently drops the text. */
+  busy: boolean;
+  /** Secure/password-like fields must never run text expansion. */
+  secureField?: boolean;
+  onSend: (text: string, attachment?: PendingChatAttachment) => ChatComposerSendResult;
   onStop: () => void;
 };
 
@@ -15,20 +54,91 @@ export function Composer({
   disabled,
   disabledReason,
   streaming,
+  busy,
+  secureField = false,
   onSend,
   onStop
 }: ComposerProps) {
   const areaId = useId();
+  const fileInputId = useId();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraft] = useState('');
+  const [pendingAttachment, setPendingAttachment] = useState<PendingChatAttachment | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const placeholder = composerPlaceholder(backend);
-  const sendDisabled = disabled || streaming || draft.trim().length === 0;
+  const sendDisabled =
+    disabled || streaming || busy || uploadingAttachment || draft.trim().length === 0;
 
-  const submit = (ev?: FormEvent) => {
+  useEffect(() => {
+    const onFocusRequest = (event: Event) => {
+      if (!isChatComposerFocusDetail((event as CustomEvent<unknown>).detail)) return;
+      if (disabled) return;
+      composerRef.current?.focus({ preventScroll: true });
+    };
+    window.addEventListener(CHAT_COMPOSER_FOCUS_EVENT, onFocusRequest);
+    return () => window.removeEventListener(CHAT_COMPOSER_FOCUS_EVENT, onFocusRequest);
+  }, [disabled]);
+
+  const inspectAttachment = (file: File): PendingChatAttachment | null => {
+    if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
+      setAttachmentError('Attachment exceeds the 10 MB limit.');
+      return null;
+    }
+    const type = file.type.trim().toLowerCase();
+    const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+    if (!CHAT_ATTACHMENT_METADATA_MIME_TYPES.includes(type as (typeof CHAT_ATTACHMENT_METADATA_MIME_TYPES)[number]) && !CHAT_ATTACHMENT_EXTENSIONS.has(extension)) {
+      setAttachmentError('Unsupported attachment type. Choose text, JSON, CSV, Markdown, PDF, PNG, JPEG, or WebP.');
+      return null;
+    }
+    setAttachmentError(null);
+    return {
+      name: file.name,
+      size: file.size,
+      type: type || 'application/octet-stream',
+      lastModified: file.lastModified,
+      file
+    };
+  };
+
+  const handleAttachmentChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+    setPendingAttachment(inspectAttachment(file));
+  };
+
+  const removeAttachment = () => {
+    setPendingAttachment(null);
+    setAttachmentError(null);
+  };
+
+  const handleDraftChange = (value: string) => {
+    if (!secureField && readTextExpansionConsent()?.inAppOnly) {
+      setDraft(expandInAppBuffer(value).output);
+      return;
+    }
+    setDraft(value);
+  };
+
+  const submit = async (ev?: FormEvent) => {
     ev?.preventDefault();
     const message = draft.trim();
-    if (!message || disabled || streaming) return;
-    setDraft('');
-    onSend(message);
+    if (!message || disabled || streaming || busy || uploadingAttachment) return;
+    const attachment = pendingAttachment;
+    setUploadingAttachment(Boolean(attachment));
+    setAttachmentError(null);
+    try {
+      const accepted = await onSend(message, attachment ?? undefined);
+      if (accepted === false) return;
+      setDraft('');
+      setPendingAttachment(null);
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : 'Attachment upload failed.');
+    } finally {
+      setUploadingAttachment(false);
+    }
   };
 
   return (
@@ -39,22 +149,34 @@ export function Composer({
             type="button"
             className="ghost chat-composer-attach"
             disabled={disabled}
-            title="Attach files (live dispatch)"
+            title="Attach a bounded document or image"
             aria-label="Attach files"
+            onClick={() => fileInputRef.current?.click()}
           >
             <span aria-hidden="true">+</span>
           </button>
+          <input
+            ref={fileInputRef}
+            id={fileInputId}
+            className="chat-composer-file-input"
+            type="file"
+            accept={CHAT_ATTACHMENT_ACCEPT.join(',')}
+            disabled={disabled}
+            aria-label="Attachment file"
+            onChange={handleAttachmentChange}
+          />
           <label className="sr-only" htmlFor={areaId}>
             Message composer
           </label>
           <textarea
+            ref={composerRef}
             id={areaId}
             className="chat-composer-field"
             disabled={disabled}
             placeholder={placeholder}
             rows={1}
             value={draft}
-            onChange={(ev) => setDraft(ev.currentTarget.value)}
+            onChange={(ev) => handleDraftChange(ev.currentTarget.value)}
             onKeyDown={(ev: KeyboardEvent<HTMLTextAreaElement>) => {
               if (ev.key === 'Enter' && !ev.shiftKey) {
                 ev.preventDefault();
@@ -80,7 +202,12 @@ export function Composer({
               aria-label="Send message"
               title={
                 sendDisabled
-                  ? disabledReason || 'Enter a message before sending'
+                  ? disabledReason ||
+                    (pendingAttachment
+                      ? 'Send the message with the staged attachment.'
+                      : busy
+                        ? 'Sending…'
+                        : 'Enter a message before sending')
                   : 'Send message'
               }
               onClick={() => submit()}
@@ -89,12 +216,42 @@ export function Composer({
             </button>
           </div>
         </div>
+        {pendingAttachment ? (
+          <div className="chat-pending-attachment" data-testid="pending-attachment">
+            <span className="chat-pending-attachment-meta">
+              <strong>{pendingAttachment.name}</strong>
+              <span>
+                {(pendingAttachment.size / 1024).toFixed(1)} KB · {pendingAttachment.type}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="ghost chat-pending-attachment-remove"
+              onClick={removeAttachment}
+              aria-label={`Remove attachment ${pendingAttachment.name}`}
+              title="Remove attachment"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
+        {attachmentError ? (
+          <p className="chat-composer-attachment-error" role="alert">
+            {attachmentError}
+          </p>
+        ) : null}
         <p className="chat-composer-hint muted">
-          {disabled && disabledReason
+          {pendingAttachment
+            ? uploadingAttachment
+              ? 'Uploading attachment through the local daemon…'
+              : 'Attachment is ready to send through the local daemon.'
+            : disabled && disabledReason
             ? disabledReason
             : streaming
               ? 'Streaming in progress — Stop cancels the active turn.'
-              : 'Shift+Enter newline'}
+              : busy
+                ? 'Sending…'
+                : 'Shift+Enter newline'}
         </p>
       </div>
     </form>

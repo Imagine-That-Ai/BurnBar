@@ -14,6 +14,7 @@ internal suspend fun BurnBarApplication.ensureMediaControlCoordinatorManaged(
         val existing = BurnBarApplication.mediaControlCoordinator
         val existingPhase = existing?.phase?.value
         if (
+            activeCoordinatorUid == uid &&
             MediaControlCoordinatorReusePolicy.shouldReuse(
                 activeConnectionID = activeCoordinatorConnection,
                 phase = existingPhase,
@@ -60,7 +61,11 @@ private suspend fun BurnBarApplication.rebuildMediaControlCoordinator(
     val dialer = MediaControlStreamCoordinator.StreamDialer { dialedUid, dialedConnection ->
         val dialTarget = activeCoordinatorTarget
             ?: fetchVerifiedPairingTarget(uid = dialedUid, connectionId = dialedConnection)
-        dialControlStream(dialTarget)
+        dialControlStream(
+            uid = dialedUid,
+            connectionId = dialedConnection,
+            target = dialTarget,
+        )
     }
     val coordinator = MediaControlStreamCoordinator(
         dialer = dialer,
@@ -70,6 +75,9 @@ private suspend fun BurnBarApplication.rebuildMediaControlCoordinator(
                 com.openburnbar.data.computeruse.PhoneControlSigningKeyStore(this@rebuildMediaControlCoordinator)
                     .peerNodeId()
             }.getOrNull()
+        },
+        sessionGrantChallengeHandler = { delivery ->
+            BurnBarApplication.sessionGrantChallengeReceiver?.ingest(delivery)
         },
         // F7: every mirror request negotiates the per-frame media seal —
         // default-off behind computer_use_media_frame_aead_enabled AND the
@@ -84,6 +92,7 @@ private suspend fun BurnBarApplication.rebuildMediaControlCoordinator(
         },
     )
     BurnBarApplication.mediaControlCoordinator = coordinator
+    activeCoordinatorUid = uid
     activeCoordinatorConnection = connectionId
     activeCoordinatorPublishedAtMillis = selection.publishedAtMillis
     activeCoordinatorTarget = target

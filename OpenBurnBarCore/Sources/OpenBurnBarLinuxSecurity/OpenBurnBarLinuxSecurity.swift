@@ -1,5 +1,8 @@
 import Crypto
 import Foundation
+#if os(Linux)
+import Glibc
+#endif
 
 public enum LinuxSecretTrustLevel: String, Codable, CaseIterable, Sendable {
     case secretService = "secret_service"
@@ -21,6 +24,9 @@ public enum LinuxSecretTrustLevel: String, Codable, CaseIterable, Sendable {
 
 public enum LinuxHighValueSecretClass: String, Codable, CaseIterable, Sendable {
     case databaseKey = "database_key"
+    /// AES-GCM key for daemon-owned text expansion persistence. The snippets
+    /// themselves never enter the renderer's durable storage.
+    case textExpansionKey = "text_expansion_key"
     case signalIdentityKey = "signal_identity_key"
     case cloudVaultKey = "cloud_vault_key"
     case refreshToken = "refresh_token"
@@ -179,7 +185,7 @@ public struct LinuxHeadlessSecretStoreBackend: LinuxSecretStoreBackend {
         trustLevel: LinuxSecretTrustLevel = .headlessPassphrase,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         credentialReader: @escaping @Sendable (String) throws -> String = { path in
-            try String(contentsOfFile: path, encoding: .utf8)
+            try LinuxHeadlessSecretStoreBackend.readSystemdCredential(path: path)
         },
         nowMillis: Int64 = 1_800_000_000_000,
         allowsEnvironmentSecrets: Bool = false
@@ -192,28 +198,186 @@ public struct LinuxHeadlessSecretStoreBackend: LinuxSecretStoreBackend {
     }
 
     public func readSecret(id: String, secretClass: LinuxHighValueSecretClass) throws -> LinuxSecretRecord? {
+        try Self.validateCredentialID(id)
         let envKey = "OPENBURNBAR_\(id.uppercased().replacingOccurrences(of: "-", with: "_"))"
         let value: String?
+        let source: LinuxHeadlessSecretSource
         if allowsEnvironmentSecrets, let env = environment[envKey]?.trimmedNonEmpty {
             value = env
+            source = .environment
         } else if let directory = environment["CREDENTIALS_DIRECTORY"]?.trimmedNonEmpty {
-            let path = URL(fileURLWithPath: directory).appendingPathComponent(id).path
-            value = try credentialReader(path).trimmingCharacters(in: .whitespacesAndNewlines).trimmedNonEmpty
+            guard Self.isAbsoluteCredentialDirectory(directory) else {
+                throw LinuxSecretStoreError.backendUnavailable("systemd credentials directory is invalid")
+            }
+            let path = URL(fileURLWithPath: directory, isDirectory: true)
+                .appendingPathComponent(id, isDirectory: false)
+                .path
+            do {
+                value = try credentialReader(path)
+            } catch LinuxHeadlessCredentialReadError.missing {
+                return nil
+            } catch {
+                // Do not expose credential paths or OS error details through
+                // daemon RPC/diagnostics. A caller can retry after repairing
+                // the systemd credential mount.
+                throw LinuxSecretStoreError.backendUnavailable(
+                    "systemd credential file is unavailable or not trusted"
+                )
+            }
+            source = .systemdCredential
         } else {
             value = nil
+            source = .none
         }
-        guard let secret = value else { return nil }
+        guard let rawSecret = value else { return nil }
+        guard let secret = try Self.normalizeCredentialValue(rawSecret) else { return nil }
+        let resolvedTrustLevel: LinuxSecretTrustLevel =
+            source == .systemdCredential && trustLevel == .headlessPassphrase
+                ? .systemdCredential
+                : trustLevel
         return LinuxSecretRecord(
             secret: secret,
             metadata: LinuxSecretMetadata(
                 id: id,
                 secretClass: secretClass,
-                trustLevel: trustLevel,
+                trustLevel: resolvedTrustLevel,
                 backend: backendName,
                 createdAtMillis: nowMillis,
-                note: "Headless secret resolved from process environment or systemd credentials."
+                note: source == .systemdCredential
+                    ? "Headless secret resolved from an owner-only systemd credential file."
+                    : "Headless secret resolved from an explicitly enabled process environment."
             )
         )
+    }
+
+    private enum LinuxHeadlessSecretSource {
+        case none
+        case environment
+        case systemdCredential
+    }
+
+    private enum LinuxHeadlessCredentialReadError: Error {
+        case missing
+        case rejected
+        case tooLarge
+        case invalidEncoding
+    }
+
+    private static func validateCredentialID(_ id: String) throws {
+        guard id.isEmpty == false,
+              id.utf8.count <= 512,
+              id != ".",
+              id != "..",
+              id.contains("/") == false,
+              id.contains("\\") == false,
+              id.contains("\0") == false,
+              id.contains("\n") == false,
+              id.contains("\r") == false,
+              id.unicodeScalars.allSatisfy({ scalar in
+                  scalar.value >= 0x21 && scalar.value <= 0x7E
+              }) else {
+            throw LinuxSecretStoreError.invalidSecretID(id)
+        }
+    }
+
+    private static func isAbsoluteCredentialDirectory(_ directory: String) -> Bool {
+        directory.hasPrefix("/")
+            && directory.utf8.count <= 4_096
+            && directory.contains("\0") == false
+            && directory.contains("\n") == false
+            && directory.contains("\r") == false
+    }
+
+    private static func normalizeCredentialValue(_ raw: String) throws -> String? {
+        guard raw.contains("\0") == false else {
+            throw LinuxSecretStoreError.invalidSecretValue(
+                "systemd credential contains a NUL byte"
+            )
+        }
+        guard raw.utf8.count <= 16_384 else {
+            throw LinuxSecretStoreError.secretTooLarge(raw.utf8.count)
+        }
+        var secret = raw
+        if secret.hasSuffix("\n") {
+            secret.removeLast()
+            if secret.hasSuffix("\r") {
+                secret.removeLast()
+            }
+        }
+        guard secret.contains("\n") == false, secret.contains("\r") == false else {
+            throw LinuxSecretStoreError.invalidSecretValue(
+                "systemd credential must be a single line"
+            )
+        }
+        return secret.isEmpty ? nil : secret
+    }
+
+    @usableFromInline
+    static func readSystemdCredential(path: String) throws -> String {
+#if os(Linux)
+        let url = URL(fileURLWithPath: path, isDirectory: false)
+        let directoryURL = url.deletingLastPathComponent()
+        var directoryMetadata = stat()
+        let directoryStatus = directoryURL.path.withCString {
+            Glibc.lstat($0, &directoryMetadata)
+        }
+        guard directoryStatus == 0 else {
+            if errno == ENOENT { throw LinuxHeadlessCredentialReadError.missing }
+            throw LinuxHeadlessCredentialReadError.rejected
+        }
+        guard directoryMetadata.st_mode & S_IFMT == S_IFDIR,
+              directoryMetadata.st_uid == geteuid() || directoryMetadata.st_uid == 0,
+              directoryMetadata.st_mode & 0o022 == 0 else {
+            throw LinuxHeadlessCredentialReadError.rejected
+        }
+
+        let descriptor = path.withCString {
+            Glibc.open($0, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+        }
+        guard descriptor >= 0 else {
+            if errno == ENOENT { throw LinuxHeadlessCredentialReadError.missing }
+            throw LinuxHeadlessCredentialReadError.rejected
+        }
+        defer { _ = Glibc.close(descriptor) }
+
+        var metadata = stat()
+        guard Glibc.fstat(descriptor, &metadata) == 0,
+              metadata.st_mode & S_IFMT == S_IFREG,
+              metadata.st_uid == geteuid() || metadata.st_uid == 0,
+              metadata.st_mode & 0o077 == 0,
+              metadata.st_size >= 0,
+              metadata.st_size <= 16_384 else {
+            throw LinuxHeadlessCredentialReadError.rejected
+        }
+
+        var bytes = Data()
+        bytes.reserveCapacity(Int(metadata.st_size))
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        defer { buffer.withUnsafeMutableBytes { $0.initializeMemory(as: UInt8.self, repeating: 0) } }
+        while true {
+            let count = buffer.withUnsafeMutableBytes { rawBuffer in
+                Glibc.read(descriptor, rawBuffer.baseAddress, rawBuffer.count)
+            }
+            guard count >= 0 else { throw LinuxHeadlessCredentialReadError.rejected }
+            if count == 0 { break }
+            bytes.append(contentsOf: buffer.prefix(Int(count)))
+            guard bytes.count <= 16_384 else {
+                throw LinuxHeadlessCredentialReadError.tooLarge
+            }
+        }
+        guard let value = String(data: bytes, encoding: .utf8) else {
+            throw LinuxHeadlessCredentialReadError.invalidEncoding
+        }
+        return value
+#else
+        do {
+            return try String(contentsOfFile: path, encoding: .utf8)
+        } catch CocoaError.fileNoSuchFile {
+            throw LinuxHeadlessCredentialReadError.missing
+        } catch {
+            throw LinuxHeadlessCredentialReadError.rejected
+        }
+#endif
     }
 }
 
@@ -497,6 +661,17 @@ public struct LinuxAuthTokenStore: Sendable {
         try custodian.requireHighValueSecret(id: "firebase-refresh-token", secretClass: .refreshToken).metadata
     }
 
+    /// Resolves the Firebase refresh token for an in-process authentication
+    /// exchange. Callers must keep the returned value out of persistence, IPC,
+    /// diagnostics, and logs; only ``restoreRefreshToken()`` is appropriate for
+    /// non-secret status surfaces.
+    public func requireRefreshTokenValue() throws -> String {
+        try custodian.requireHighValueSecret(
+            id: "firebase-refresh-token",
+            secretClass: .refreshToken
+        ).secret
+    }
+
     @discardableResult
     public func storeRefreshToken(_ token: String) throws -> LinuxSecretMetadata {
         try custodian.storeHighValueSecret(
@@ -740,17 +915,38 @@ public struct LinuxTelemetryRedactor: Sendable {
 
     public func redact(_ input: String) -> String {
         var output = input
-        let patterns = [
-            #"(?i)(sk-[a-z0-9_-]{12,}|sk-ant-[a-z0-9_-]{12,}|xox[baprs]-[a-z0-9-]{12,}|gh[pousr]_[a-z0-9_]{12,})"#,
-            #"(?i)(refresh[_-]?token|access[_-]?token|id[_-]?token|cookie|authorization|api[_-]?key|secret|private[_-]?key|prompt|message)\s*[:=]\s*[^\n,;]+"#,
-            #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#,
-            #"/(?:home|Users)/[A-Za-z0-9._ -]+/[^\s,;]+"#
+        // Keep the diagnostic label while replacing its value.  The previous
+        // key/value expression only matched unquoted shell-style fields, so a
+        // JSON payload such as {"apiKey":"…"} could leak through unchanged.
+        let replacements: [(pattern: String, template: String)] = [
+            (
+                #"(?i)([\"']?(?:token|refresh[_-]?token|access[_-]?token|id[_-]?token|auth[_-]?token|cookie|authorization|api[_-]?key|api[_-]?secret|client[_-]?secret|secret(?:[_-]?key)?|private[_-]?key|password|passcode|passphrase|credential|session[_-]?id|prompt|message|body|content|snippet|vault|mnemonic|recovery|address|phone|uid|user[_-]?id)[\"']?\s*[:=]\s*)(?:\"(?:\\.|[^\"\\\r\n])*\"|'(?:\\.|[^'\\\r\n])*'|[^\s,;}\]]+)"#,
+                "$1[REDACTED]"
+            ),
+            (#"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}"#, "Bearer [REDACTED]"),
+            (
+                #"(?i)\b(?:sk-ant-|sk-|xox[baprs]-|gh[pousr]_)[A-Za-z0-9_-]{12,}\b"#,
+                "[REDACTED]"
+            ),
+            (#"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#, "[REDACTED]"),
+            (
+                #"/(?:home|Users|root|tmp|var/tmp|run/user)/[^\s,;}\]]+"#,
+                "[REDACTED]"
+            )
         ]
-        for pattern in patterns {
-            output = output.replacingOccurrences(
-                of: pattern,
-                with: "[REDACTED]",
-                options: [.regularExpression, .caseInsensitive]
+        for replacement in replacements {
+            guard let expression = try? NSRegularExpression(
+                pattern: replacement.pattern,
+                options: [.caseInsensitive]
+            ) else {
+                continue
+            }
+            let range = NSRange(output.startIndex..<output.endIndex, in: output)
+            output = expression.stringByReplacingMatches(
+                in: output,
+                options: [],
+                range: range,
+                withTemplate: replacement.template
             )
         }
         return output
@@ -867,12 +1063,20 @@ public enum LinuxRedactionSurfaceEvidence {
             "release_evidence_log"
         ].map { surface in
             let redacted = redactor.redact("[\(surface)] \(seed)")
+            let sensitiveKeyPattern = #"(?i)(?:token|cookie|authorization|api[_-]?key|secret|password|passcode|credential|session[_-]?id|prompt|message|body|content|snippet|vault|mnemonic|recovery|address|phone|uid|user[_-]?id)\s*[:=]\s*(?!\[REDACTED\])\S+"#
+            let rawSensitiveKeyValue: Bool
+            if let expression = try? NSRegularExpression(pattern: sensitiveKeyPattern) {
+                let range = NSRange(redacted.startIndex..<redacted.endIndex, in: redacted)
+                rawSensitiveKeyValue = expression.firstMatch(in: redacted, range: range) != nil
+            } else {
+                rawSensitiveKeyValue = false
+            }
             return LinuxRedactionSurfaceProof(
                 surface: surface,
                 seededMarkerClasses: ["api_key", "refresh_token", "cookie", "private_prompt", "email", "local_path"],
                 redactedOutput: redacted,
                 rawMarkerFound: redacted.contains("sk-ant-")
-                    || redacted.contains("refreshToken=")
+                    || rawSensitiveKeyValue
                     || redacted.contains("sessionid")
                     || redacted.contains("private operator request")
                     || redacted.contains("@example.com")

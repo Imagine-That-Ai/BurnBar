@@ -1,15 +1,18 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureProviderCatalog } from '../../daemonFixture.js';
+import type { ProviderCatalog } from '../../tauriBridge.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useProvidersStore } from '../../state/providersStore.js';
 import { ProvidersSurface } from '../ProvidersSurface.js';
+import { ProviderModelWorkspace } from './ProviderModelWorkspace.js';
 
 const defaultProvidersLoad = useProvidersStore.getState().load;
 
 function resetStores(): void {
   localStorage.clear();
+  window.history.replaceState(null, '', '/#/providers');
   useShellStore.setState({
     route: 'providers',
     health: null,
@@ -89,6 +92,14 @@ describe('ProvidersSurface (quota workspace)', () => {
     await waitFor(() => expect(screen.queryByText(/Focused on/i)).toBeNull());
   });
 
+  it('opens provider settings from a quota card Manage action', async () => {
+    useShellStore.setState({ fixtureMode: true });
+    render(<ProvidersSurface />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Manage →' }).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Manage →' })[0]!);
+    expect(useShellStore.getState().route).toBe('settings');
+  });
+
   it('shows offline notice without bridge or fixture', async () => {
     const { container } = render(<ProvidersSurface />);
     await waitFor(() => {
@@ -135,5 +146,140 @@ describe('ProvidersSurface (quota workspace)', () => {
     });
     const { container } = render(<ProvidersSurface />);
     expect(container.querySelector('.quota-skeleton[aria-busy="true"]')).not.toBeNull();
+  });
+
+  it('keeps the last provider workspace visible while a catalog refresh recovers', async () => {
+    const retry = vi.fn().mockResolvedValue(undefined);
+    useShellStore.setState({ fixtureMode: true });
+    useProvidersStore.setState({
+      catalog: [fixtureProviderCatalog()[0]!],
+      loading: false,
+      error: null,
+      load: retry
+    });
+    render(<ProvidersSurface />);
+    expect(await screen.findByRole('heading', { name: 'Providers & models' })).toBeTruthy();
+    retry.mockClear();
+
+    act(() => {
+      useProvidersStore.setState({ catalog: null, error: 'catalog temporarily unavailable', loading: false });
+    });
+
+    expect(screen.getByText('Live provider catalog is unavailable. Showing the last available catalog.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry catalog' }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('repairs custom-model provider selection when a refresh removes the selected provider', async () => {
+    const providers = fixtureProviderCatalog().slice(0, 2);
+    const { rerender } = render(<ProviderModelWorkspace providers={providers} />);
+    const selector = screen.getByRole('combobox', { name: 'Custom model provider' }) as HTMLSelectElement;
+
+    fireEvent.change(selector, { target: { value: providers[1]!.id } });
+    expect(selector.value).toBe(providers[1]!.id);
+
+    rerender(<ProviderModelWorkspace providers={[providers[0]!]} />);
+    await waitFor(() => expect(selector.value).toBe(providers[0]!.id));
+  });
+
+  it('renders only the selected provider detail and switches model rows', async () => {
+    const providers: ProviderCatalog = fixtureProviderCatalog().slice(0, 2).map((provider) => ({
+      ...provider,
+      catalogAvailable: true,
+      catalogError: undefined,
+      models: [{
+        id: `${provider.id}-model`,
+        label: `${provider.label} model`,
+        aliases: [],
+        capabilities: [],
+        enabled: true,
+        health: 'healthy',
+        provenance: 'daemon-catalog',
+        detail: 'Verified model'
+      }]
+    }));
+    useShellStore.setState({ fixtureMode: true });
+    useProvidersStore.setState({ catalog: providers, loading: false, error: null, mutationBusy: null, mutationError: null });
+
+    const { container } = render(<ProviderModelWorkspace providers={providers} />);
+    const providerSelector = screen.getByRole('combobox', { name: 'Provider detail' }) as HTMLSelectElement;
+    const customModelProvider = screen.getByRole('combobox', { name: 'Custom model provider' }) as HTMLSelectElement;
+    const firstProvider = providers[0]!;
+    const secondProvider = providers[1]!;
+
+    expect(providerSelector.value).toBe(firstProvider.id);
+    expect(container.querySelector(`[data-provider="${firstProvider.id}"]`)).not.toBeNull();
+    expect(container.querySelector(`[data-provider="${secondProvider.id}"]`)).toBeNull();
+    expect(container.querySelector(`[data-model="${firstProvider.id}-model"]`)).not.toBeNull();
+    expect(container.querySelector(`[data-model="${secondProvider.id}-model"]`)).toBeNull();
+    expect(customModelProvider.value).toBe(firstProvider.id);
+    expect(screen.getByText('2 providers · 2 models')).toBeTruthy();
+
+    fireEvent.change(providerSelector, { target: { value: secondProvider.id } });
+    await waitFor(() => {
+      expect(providerSelector.value).toBe(secondProvider.id);
+      expect(container.querySelector(`[data-provider="${firstProvider.id}"]`)).toBeNull();
+      expect(container.querySelector(`[data-provider="${secondProvider.id}"]`)).not.toBeNull();
+      expect(container.querySelector(`[data-model="${firstProvider.id}-model"]`)).toBeNull();
+      expect(container.querySelector(`[data-model="${secondProvider.id}-model"]`)).not.toBeNull();
+      expect(customModelProvider.value).toBe(secondProvider.id);
+    });
+  });
+
+  it('restores provider and model detail from a deep link and browser history', async () => {
+    const providers: ProviderCatalog = fixtureProviderCatalog().slice(0, 2).map((provider) => ({
+      ...provider,
+      models: [{
+        id: `${provider.id}/model`,
+        label: `${provider.label} model`,
+        aliases: [],
+        capabilities: [],
+        enabled: true,
+        health: 'healthy',
+        provenance: 'daemon-catalog'
+      }]
+    }));
+    const target = providers[1]!;
+    window.history.replaceState(null, '', `/#/providers?provider=${encodeURIComponent(target.id)}&model=${encodeURIComponent(`${target.id}/model`)}`);
+    Element.prototype.scrollIntoView = vi.fn();
+    render(<ProviderModelWorkspace providers={providers} />);
+
+    const selector = screen.getByRole('combobox', { name: 'Provider detail' }) as HTMLSelectElement;
+    await waitFor(() => expect(selector.value).toBe(target.id));
+    const model = document.querySelector(`[data-model="${target.id}/model"]`);
+    expect(model?.getAttribute('data-deep-linked')).toBe('true');
+    expect(document.activeElement).toBe(model);
+
+    const first = providers[0]!;
+    window.history.replaceState(null, '', `/#/providers?provider=${encodeURIComponent(first.id)}`);
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await waitFor(() => expect(selector.value).toBe(first.id));
+    expect(document.querySelector('[data-deep-linked="true"]')).toBeNull();
+  });
+
+  it('does not label an enabled but unavailable model as route ready', () => {
+    const provider: ProviderCatalog[number] = {
+      ...fixtureProviderCatalog()[0]!,
+      catalogAvailable: true,
+      catalogError: undefined,
+      credentialSlots: [{ slotID: 'team', label: 'Team', isEnabled: true, status: 'ready' }],
+      models: [{
+        id: 'claude-unavailable',
+        label: 'Claude unavailable',
+        aliases: [],
+        capabilities: [],
+        enabled: true,
+        health: 'unavailable',
+        provenance: 'daemon-catalog',
+        detail: 'Provider health check failed.'
+      }]
+    };
+    useShellStore.setState({ fixtureMode: true });
+    useProvidersStore.setState({ catalog: [provider], loading: false, error: null, mutationBusy: null, mutationError: null });
+    render(<ProviderModelWorkspace providers={[provider]} />);
+
+    expect(screen.getAllByText('Unavailable').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('Route ready')).toBeNull();
+    expect(screen.getByRole('combobox', { name: /Anthropic preferred account/i })).toBeTruthy();
   });
 });

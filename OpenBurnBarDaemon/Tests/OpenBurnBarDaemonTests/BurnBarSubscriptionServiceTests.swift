@@ -22,6 +22,7 @@ final class BurnBarSubscriptionServiceTests: XCTestCase {
         XCTAssertFalse(started.terminalStateDelivered)
         XCTAssertEqual(started.events.first?.terminal, false)
         XCTAssertEqual(started.events.first?.snapshot["daemon_session_id"], "daemon-a")
+        XCTAssertNil(started.events.first?.snapshot["run_id"])
 
         let resumed = try await service.resume(
             BurnBarSubscriptionResumeRequest(
@@ -38,6 +39,20 @@ final class BurnBarSubscriptionServiceTests: XCTestCase {
         XCTAssertFalse(resumed.disconnectDetected)
         XCTAssertFalse(resumed.recoveredAfterRestart)
         XCTAssertEqual(resumed.events.first?.kind, "data.tick")
+    }
+
+    func testRunSubscriptionIncludesItsValidatedRunIdentifier() async throws {
+        let service = makeService()
+        let started = try await service.start(
+            BurnBarSubscriptionStartRequest(
+                topic: "run",
+                runID: "run-123",
+                requestedSubscriptionID: "desktop-run",
+                clientID: "linux-desktop"
+            )
+        )
+
+        XCTAssertEqual(started.events.first?.snapshot["run_id"], "run-123")
     }
 
     func testResumeRecoversCursorAfterDaemonRestart() async throws {

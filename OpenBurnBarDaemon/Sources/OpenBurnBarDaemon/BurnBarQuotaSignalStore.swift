@@ -45,6 +45,118 @@ public actor BurnBarQuotaSignalStore {
         )
     }
 
+    public static func providerSnapshots(
+        from signals: [BurnBarQuotaSignalRecord],
+        now: Date = Date(),
+        staleAfter: TimeInterval = 15 * 60
+    ) -> [ProviderQuotaSnapshot] {
+        var latest: [String: BurnBarQuotaSignalRecord] = [:]
+        for signal in signals {
+            let providerID = signal.providerID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !providerID.isEmpty, !quotaBuckets(from: signal).isEmpty else { continue }
+            let groupingKey = ProviderID(rawValue: providerID).rawValue
+            if latest[groupingKey].map({ $0.observedAt >= signal.observedAt }) == true { continue }
+            latest[groupingKey] = signal
+        }
+
+        return latest.values.map { signal in
+            let confidence: ProviderQuotaConfidence = now.timeIntervalSince(signal.observedAt) > staleAfter ? .stale : .high
+            let providerID = signal.providerID.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ProviderQuotaSnapshot(
+                id: "linux-header-\(providerID)-\(signal.accountID ?? "provider")",
+                provider: providerID,
+                providerID: ProviderID(rawValue: providerID),
+                accountID: signal.accountID,
+                accountLabel: signal.accountLabel,
+                sourceKind: .provider,
+                sourceId: "daemon.quota.signals:\(signal.id)",
+                fetchedAt: signal.observedAt,
+                source: "Provider response headers",
+                confidence: confidence,
+                statusMessage: confidence == .stale ? "Last provider quota signal is stale." : nil,
+                buckets: quotaBuckets(from: signal),
+                updatedAt: signal.observedAt
+            )
+        }
+        .sorted { $0.providerID.rawValue < $1.providerID.rawValue }
+    }
+
+    private static func quotaBuckets(from signal: BurnBarQuotaSignalRecord) -> [ProviderQuotaBucket] {
+        let families: [(token: String, label: String, unit: ProviderQuotaUnit)] = [
+            ("requests", "Request rate limit", .requests),
+            ("tokens", "Token rate limit", .tokens)
+        ]
+        var buckets: [ProviderQuotaBucket] = []
+        for family in families {
+            let limitHeader = signal.headers.first { header($0.name, contains: "limit", family: family.token) }
+            let remainingHeader = signal.headers.first { header($0.name, contains: "remaining", family: family.token) }
+            guard let limit = limitHeader.flatMap({ integerPrefix(from: $0.value) }),
+                  let remaining = remainingHeader.flatMap({ integerPrefix(from: $0.value) }),
+                  limit > 0, remaining >= 0, remaining <= limit else { continue }
+            let reset = signal.headers.first { header($0.name, contains: "reset", family: family.token) }
+                .flatMap { resetDate(from: $0.value, name: $0.name, observedAt: signal.observedAt) }
+            buckets.append(bucket(
+                key: "traffic-\(family.token)-rate-limit",
+                label: family.label,
+                unit: family.unit,
+                remaining: remaining,
+                limit: limit,
+                resetsAt: reset
+            ))
+        }
+        if !buckets.isEmpty { return buckets }
+        guard let remaining = signal.remaining, let limit = signal.limit,
+              limit > 0, remaining >= 0, remaining <= limit else { return [] }
+        return [bucket(
+            key: "traffic-unknown-rate-limit",
+            label: "Provider rate limit",
+            unit: .unknown,
+            remaining: remaining,
+            limit: limit,
+            resetsAt: signal.resetsAt
+        )]
+    }
+
+    private static func header(_ name: String, contains metric: String, family: String) -> Bool {
+        let components = name.lowercased().split(separator: "-").map(String.init)
+        return components.contains(metric) && components.contains(family)
+    }
+
+    private static func bucket(
+        key: String,
+        label: String,
+        unit: ProviderQuotaUnit,
+        remaining: Int,
+        limit: Int,
+        resetsAt: Date?
+    ) -> ProviderQuotaBucket {
+        let limitValue = Double(limit)
+        let remainingValue = Double(remaining)
+        let usedValue = limitValue - remainingValue
+        return ProviderQuotaBucket(
+            key: key,
+            label: label,
+            windowKind: .custom,
+            usedValue: usedValue,
+            limitValue: limitValue,
+            remainingValue: remainingValue,
+            usedPercent: min(100, max(0, usedValue / limitValue * 100)),
+            resetsAt: resetsAt,
+            unit: unit,
+            isEstimated: false
+        )
+    }
+
+    private static func resetDate(from raw: String, name: String, observedAt: Date) -> Date? {
+        if let date = iso8601Date(from: raw) { return date }
+        if let seconds = TimeInterval(raw) {
+            return seconds < 1_000_000_000
+                ? observedAt.addingTimeInterval(seconds)
+                : Date(timeIntervalSince1970: seconds)
+        }
+        return durationInterval(from: raw).map { observedAt.addingTimeInterval($0) }
+    }
+
     public func clear() throws {
         cachedSignals = []
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return }

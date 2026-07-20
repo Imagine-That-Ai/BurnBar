@@ -1,12 +1,13 @@
 [package]
 name = "openburnbar-linux-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "OpenBurnBar Linux desktop shell"
 authors = ["OpenBurnBar"]
 edition = "2021"
 
 [features]
-default = []
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
 media-gst = ["dep:openburnbar-media"]
 
 [lib]
@@ -18,6 +19,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-dialog = { version = "2.7.2", default-features = false, features = ["xdg-portal"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
@@ -27,8 +29,16 @@ libc = "0.2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 ed25519-dalek = { version = "2", features = ["pem", "pkcs8"] }
 sha2 = "0.10"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 tokio-util = "0.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-openburnbar-media = { path = "../crates/openburnbar-media", optional = true }
+# The daemon and shell must use the same native media implementation. The
+# nearby apps/linux-desktop/crates/openburnbar-media package is only a legacy
+# protocol fixture and intentionally contains no capture/decode backend.
+openburnbar-media = { path = "../../../crates/openburnbar-media", optional = true }
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+notify-rust = "4.18"

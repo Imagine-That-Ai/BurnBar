@@ -10,8 +10,27 @@ var swiftSettings: [SwiftSetting] = [
     .define("GRDBCIPHER"),
 ]
 var cSettings: [CSetting] = []
+let configuredSQLCipherDirectory = ProcessInfo.processInfo.environment["OPENBURNBAR_SQLCIPHER_LIB_DIR"]?
+    .trimmingCharacters(in: .whitespacesAndNewlines)
+let explicitSQLCipherLibrary: String? = configuredSQLCipherDirectory.flatMap { directory in
+    guard directory.isEmpty == false else { return nil }
+    let path = URL(fileURLWithPath: directory)
+        .appendingPathComponent("libsqlcipher.so.0")
+        .standardizedFileURL
+        .path
+    return FileManager.default.fileExists(atPath: path) ? path : nil
+}
 let useSystemSQLCipher = ProcessInfo.processInfo.environment["OPENBURNBAR_USE_SYSTEM_SQLCIPHER"] == "1"
     || ProcessInfo.processInfo.environment["OPENBURNBAR_SQLCIPHER_PREFIX"] != nil
+    || explicitSQLCipherLibrary != nil
+let sqlcipherLinkerSettings: [LinkerSetting] = explicitSQLCipherLibrary.map { library in
+    [
+        .unsafeFlags([library]),
+        .unsafeFlags([
+            "-Xlinker", "-rpath", "-Xlinker", configuredSQLCipherDirectory ?? ""
+        ])
+    ]
+}.flatMap { $0 } ?? []
 var dependencies: [PackageDescription.Package.Dependency] = useSystemSQLCipher ? [] : [
     .package(url: "https://github.com/sqlcipher/SQLCipher.swift.git", exact: "4.16.0"),
 ]
@@ -53,7 +72,10 @@ let package = Package(
     targets: [
         .systemLibrary(
             name: "CSQLite",
-            pkgConfig: "sqlcipher",
+            // An explicitly staged runtime is linked by the GRDB target below;
+            // omitting pkg-config prevents a distro libsqlcipher.so.1 from
+            // being added alongside the packaged FTS5-enabled .so.0.
+            pkgConfig: explicitSQLCipherLibrary == nil ? "sqlcipher" : nil,
             providers: [
                 .apt(["libsqlcipher-dev"]),
                 .brew(["sqlcipher"])
@@ -70,7 +92,8 @@ let package = Package(
             path: "GRDB",
             resources: [.copy("PrivacyInfo.xcprivacy")],
             cSettings: cSettings,
-            swiftSettings: swiftSettings)
+            swiftSettings: swiftSettings,
+            linkerSettings: sqlcipherLinkerSettings)
     ],
     swiftLanguageVersions: [.v5]
 )

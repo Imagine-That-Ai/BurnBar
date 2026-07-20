@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
@@ -12,8 +12,13 @@ import { SettingsSidebar } from './SettingsSidebar.js';
 import {
   SETTINGS_TAB_STORAGE_KEY,
   readStoredSettingsTab,
+  settingsTabsMatchingQuery,
   type SettingsTabId
 } from './settingsTabs.js';
+
+export const SETTINGS_CONFIG_REQUEST_TIMEOUT_MS = 8_000;
+export const SETTINGS_CONFIG_TIMEOUT_MESSAGE =
+  'Settings config did not respond in time. Check the local daemon and retry.';
 
 function SettingsSkeleton() {
   return (
@@ -45,7 +50,27 @@ export function SettingsSurface() {
   const [query, setQuery] = useState('');
   const [refreshBusy, setRefreshBusy] = useState(false);
 
-  useLaneLoad(loadConfig);
+  // Settings is the recovery surface when the daemon is slow or restarting.
+  // Start its first config request immediately; other lanes retain the
+  // packaged idle-paint budget through the default loader behavior.
+  useLaneLoad(loadConfig, { deferPackaged: false });
+
+  useEffect(() => {
+    if (fixtureMode || config || !loading) return;
+    const timeout = window.setTimeout(() => {
+      useSystemStore.setState((state) => {
+        // A late daemon response may have completed normally while the timer
+        // was queued. Never overwrite a valid snapshot or a newer error.
+        if (state.config || !state.loading) return state;
+        return {
+          ...state,
+          loading: false,
+          error: SETTINGS_CONFIG_TIMEOUT_MESSAGE
+        };
+      });
+    }, SETTINGS_CONFIG_REQUEST_TIMEOUT_MS);
+    return () => window.clearTimeout(timeout);
+  }, [config, fixtureMode, loading]);
 
   const onSelectTab = useCallback((tab: SettingsTabId) => {
     setActiveTab(tab);
@@ -56,6 +81,16 @@ export function SettingsSurface() {
     }
   }, []);
 
+  const onQueryChange = useCallback((value: string) => {
+    setQuery(value);
+    const normalizedQuery = value.trim();
+    if (!normalizedQuery) return;
+
+    const matches = settingsTabsMatchingQuery(normalizedQuery);
+    if (matches.length === 0 || matches.some((tab) => tab.id === activeTab)) return;
+    onSelectTab(matches[0]!.id);
+  }, [activeTab, onSelectTab]);
+
   const onRefreshConfig = useCallback(() => {
     if (refreshBusy) return;
     setRefreshBusy(true);
@@ -64,6 +99,10 @@ export function SettingsSurface() {
 
   const onDone = useCallback(() => {
     setRoute('overview');
+  }, [setRoute]);
+
+  const onOpenDatabase = useCallback(() => {
+    setRoute('database');
   }, [setRoute]);
 
   let body: ReactNode = null;
@@ -76,7 +115,7 @@ export function SettingsSurface() {
         <SettingsSidebar
           activeTab={activeTab}
           query={query}
-          onQueryChange={setQuery}
+          onQueryChange={onQueryChange}
           onSelectTab={onSelectTab}
         />
         <SettingsDetailPane
@@ -92,6 +131,7 @@ export function SettingsSurface() {
           refreshBusy={refreshBusy}
           onDone={onDone}
           onSelectTab={onSelectTab}
+          onOpenDatabase={onOpenDatabase}
         />
       </div>
     );

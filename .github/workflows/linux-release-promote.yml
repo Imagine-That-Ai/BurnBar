@@ -1,0 +1,228 @@
+name: Linux Release Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful first-attempt Linux Release Candidate run at this exact commit
+        required: true
+        type: string
+      allow_prerelease:
+        description: Mark the GitHub release as prerelease
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  actions: read
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: linux-release-promotion-${{ github.sha }}-${{ inputs.candidate_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Verify receipts and promote exact Linux candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: release
+    env:
+      OPENBURNBAR_LINUX_RELEASE_OUT: ${{ github.workspace }}/.promotion-candidate/.linux-release
+      OPENBURNBAR_LINUX_SHARDS_DIR: ${{ github.workspace }}/.promotion-candidate/.linux-shards
+      OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ github.workspace }}/docs/linux-port/evidence
+    steps:
+      - name: Check out the exact promotion source
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+
+      - name: Install Linux evidence contract dependencies
+        run: npm ci --prefix scripts/linux-port --ignore-scripts
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Resolve the immutable successful candidate artifact
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          TARGET_HEAD: ${{ github.sha }}
+        run: >-
+          node scripts/linux-port/resolve-product-evidence-run.mjs
+          --run-id "$CANDIDATE_RUN_ID"
+          --target-head "$TARGET_HEAD"
+
+      - name: Resolve the complete immutable receipt matrix
+        id: receipts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_HEAD: ${{ github.sha }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: >-
+          node scripts/linux-port/resolve-product-receipt-artifacts.mjs
+          --target-head "$TARGET_HEAD"
+          --candidate-run-id "$CANDIDATE_RUN_ID"
+
+      - name: Download all 280 exact receipt artifacts
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          artifact-ids: ${{ steps.receipts.outputs.artifact_ids }}
+          repository: Imagine-That-Ai/BurnBar
+          github-token: ${{ github.token }}
+          path: docs/linux-port/evidence
+          merge-multiple: true
+
+      - name: Generate current-HEAD product parity attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "${{ steps.receipts.outputs.artifact_count }}" = "280"
+          for number in $(seq -w 1 40); do
+            node scripts/linux-port/attest-product-requirement.mjs --requirement "P-${number}"
+          done
+
+      - name: Verify strict product parity at promotion HEAD
+        run: |
+          node scripts/linux-port/render-parity-ledger.mjs --check
+          node scripts/linux-port/validate-parity-ledger.mjs
+
+      # The attester above requires a clean source tree. Keep the unignored
+      # candidate scratch root absent until every clean-HEAD check completes.
+      - name: Download the exact candidate
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          artifact-ids: ${{ steps.candidate.outputs.artifact_id }}
+          repository: Imagine-That-Ai/BurnBar
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ github.workspace }}/.promotion-candidate
+
+      - name: Reverify immutable candidate signatures and provenance
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require(process.argv[1]).version' "$OPENBURNBAR_LINUX_RELEASE_OUT/package-closure.json")"
+          node scripts/linux-port/verify-linux-release.mjs \
+            --candidate \
+            --phase final \
+            --version "$version"
+
+      - name: Finalize candidate-bound promotion closure
+        env:
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.candidate.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+        run: |
+          node scripts/linux-port/finalize-linux-promotion-closure.mjs \
+            --candidate-root "$OPENBURNBAR_LINUX_RELEASE_OUT" \
+            --parity-report "docs/linux-port/evidence/mission-002-reanchor/parity-ledger-validation.json" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --target-head "$TARGET_HEAD"
+
+      - name: Attest the exact promotion closure
+        id: promotion-attest
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/promotion-closure.json
+          show-summary: false
+
+      - name: Preserve promotion Sigstore bundle
+        env:
+          BUNDLE_PATH: ${{ steps.promotion-attest.outputs.bundle-path }}
+        run: cp -- "$BUNDLE_PATH" "$OPENBURNBAR_LINUX_RELEASE_OUT/promotion-closure.json.sigstore.jsonl"
+
+      - name: Stage exact candidate as draft Linux GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ALLOW_PRERELEASE: ${{ inputs.allow_prerelease }}
+        run: |
+          set -euo pipefail
+          art="$OPENBURNBAR_LINUX_RELEASE_OUT"
+          version="$(node -p 'require(process.argv[1]).version' "$art/package-closure.json")"
+          tag="linux-v${version}"
+          release_commit="$(git rev-parse HEAD)"
+          git fetch --force origin "+refs/tags/${tag}:refs/tags/${tag}"
+          tag_commit="$(git rev-list -n 1 "refs/tags/${tag}^{commit}")"
+          if [[ "$tag_commit" != "$release_commit" ]]; then
+            echo "::error::Remote release tag drifted: expected ${release_commit}, resolved ${tag_commit}"
+            exit 1
+          fi
+          cp packaging/linux/openburnbar-linux-ed25519.pub.pem "$art/"
+          cp "$art/latest-linux.draft.json" "$art/latest-linux.json"
+          mapfile -t assets < <(find "$art/artifacts" "$art/sidecars" "$art/promotion" "$art" -maxdepth 3 -type f \
+            \( -name '*.AppImage' -o -name '*.pkg.tar.zst' -o -name '*.deb' -o -name '*.rpm' -o -name 'openburnbar-daemon-*' \
+               -o -name '*.ed25519.sig' -o -name '*.sigstore.json' -o -name '*.sigstore.jsonl' \
+               -o -name '*.spdx.json' -o -name '*.openvex.json' -o -name '*checksums*.txt' \
+               -o -name '*source-*.tar' -o -name '*provenance-predicate.json' \
+               -o -name 'PKGBUILD' -o -name 'arch-release-metadata.json' \
+               -o -name 'openburnbar-*.installed-manifest.json' -o -name 'openburnbar-*.installed-manifest.ed25519' \
+               -o -name 'product-proof-closure.json' -o -name 'product-proof-closure.json.ed25519.sig' -o -name 'promotion-closure.json' \
+               -o -name 'parity-ledger-validation.json' -o -name 'P-*.json' \
+               -o -name 'latest-linux.json' -o -name 'openburnbar-linux-ed25519.pub.pem' \) | sort -u)
+          prerelease_arg="--prerelease=${ALLOW_PRERELEASE}"
+          notes="OpenBurnBar Linux for aarch64 and x86_64. Promotion is bound to the successful candidate, 280 signed installed-environment receipts, strict parity validation, and the signed promotion closure."
+          if gh release view "$tag" --json isDraft --jq '.isDraft' >/tmp/linux-release-draft-state; then
+            test "$(cat /tmp/linux-release-draft-state)" = "true"
+            gh release upload "$tag" --clobber "${assets[@]}"
+            gh release edit "$tag" --draft=true --latest=false --title "OpenBurnBar Linux ${version}" --notes "$notes" "$prerelease_arg"
+          else
+            gh release create "$tag" "$prerelease_arg" \
+              --draft \
+              --verify-tag \
+              --target "$release_commit" \
+              --latest=false \
+              --title "OpenBurnBar Linux ${version}" \
+              --notes "$notes" \
+              "${assets[@]}"
+          fi
+
+      - name: Configure branded Linux update origin
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OPENBURNBAR_R2_BUCKET: ${{ vars.OPENBURNBAR_R2_BUCKET }}
+          OPENBURNBAR_R2_CUSTOM_DOMAIN: downloads.burnbar.ai
+          OPENBURNBAR_R2_ZONE_ID: ${{ secrets.OPENBURNBAR_R2_ZONE_ID }}
+        run: bash scripts/setup-macos-downloads-r2.sh
+
+      - name: Publish signed update feed to downloads origin
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OPENBURNBAR_R2_BUCKET: ${{ vars.OPENBURNBAR_R2_BUCKET }}
+          OPENBURNBAR_R2_PUBLIC_BASE_URL: https://downloads.burnbar.ai
+        run: bash scripts/upload-linux-downloads-r2.sh
+
+      - name: Verify live Linux update feed after publish
+        run: node scripts/linux-port/check-linux-update-feed.mjs --url https://downloads.burnbar.ai/latest-linux.json
+
+      - name: Publish verified Linux GitHub release
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require(process.argv[1]).version' "$OPENBURNBAR_LINUX_RELEASE_OUT/package-closure.json")"
+          gh release edit "linux-v${version}" --draft=false --latest=false
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Upload promotion closure
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: linux-release-promotion-${{ github.sha }}
+          path: |
+            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/promotion-closure.json
+            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/promotion-closure.json.sigstore.jsonl
+            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/promotion/
+          include-hidden-files: true
+          if-no-files-found: error

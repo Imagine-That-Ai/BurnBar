@@ -4,6 +4,15 @@ import Foundation
 /// Canonical mapping of socket RPC methods to daemon handler domains.
 /// Used by `BurnBarDaemonServer.responseData` routing and contract tests.
 enum BurnBarDaemonSocketRPCCoverage {
+    static let auth: Set<BurnBarRPCMethod> = [
+        .linuxAuthStatus,
+        .linuxAuthBegin,
+        .linuxAuthCancel,
+        .linuxAuthRotateIdentity,
+        .linuxAuthSignOut,
+        .linuxAccountCloudDataDelete
+    ]
+
     static let lifecycle: Set<BurnBarRPCMethod> = [
         .health,
         .catalog,
@@ -14,6 +23,20 @@ enum BurnBarDaemonSocketRPCCoverage {
     static let config: Set<BurnBarRPCMethod> = [
         .configGet,
         .configUpdate,
+        .textExpansionGet,
+        .textExpansionUpsert,
+        .textExpansionDelete,
+        .textExpansionConsentUpdate,
+        .textExpansionEngineStatus,
+        .textExpansionEngineStart,
+        .textExpansionEngineStop,
+        .textExpansionEngineExpand,
+        .linuxPrivacyInventory,
+        .linuxPrivacyDeletionPreview,
+        .linuxPrivacyDeletionExecute,
+        .linuxPrivacyExport,
+        .linuxPrivacyRetentionStatus,
+        .linuxPrivacyRetentionApply,
         .linuxOnboardingAction,
         .linuxOnboardingReset,
         .providerCredentialSlotUpsert,
@@ -30,7 +53,15 @@ enum BurnBarDaemonSocketRPCCoverage {
 
     static let usage: Set<BurnBarRPCMethod> = [
         .usageRecord,
-        .usageRecent
+        .usageRecent,
+        .usageHistory,
+        .usageInsights
+    ]
+
+    static let chat: Set<BurnBarRPCMethod> = [
+        .chatThreadList,
+        .chatThreadGet,
+        .chatMessageAppend
     ]
 
     static let observability: Set<BurnBarRPCMethod> = [
@@ -58,6 +89,9 @@ enum BurnBarDaemonSocketRPCCoverage {
 
     static let computerUse: Set<BurnBarRPCMethod> = [
         .computerUseCapabilityStateUpdate,
+        .computerUseSessionGrantReadiness,
+        .computerUseSessionGrantAcquire,
+        .computerUseSessionGrantStatus,
         .computerUseSessionStart,
         .computerUseInvoke,
         .computerUseApprovalPending,
@@ -86,6 +120,8 @@ enum BurnBarDaemonSocketRPCCoverage {
         .controllerProjectsList,
         .controllerProjectGet,
         .controllerProjectUpsert,
+        .controllerProjectDelete,
+        .controllerProjectReassign,
         .reviewRunRecord,
         .questionCreate,
         .questionGet,
@@ -99,6 +135,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         .missionCreate,
         .missionsList,
         .missionGet,
+        .missionHealth,
         .missionApprove,
         .missionCancel,
         .missionDispatchPacket,
@@ -143,6 +180,7 @@ enum BurnBarDaemonSocketRPCCoverage {
     static let memory: Set<BurnBarRPCMethod> = [
         .memoryRemember,
         .memoryRecall,
+        .memoryReviewStatus,
         .memoryForget,
         .memoryAuditTrail,
         .memoryAnalytics
@@ -159,13 +197,23 @@ enum BurnBarDaemonSocketRPCCoverage {
         .codeDiagnostics,
         .codeIndexStatus,
         .codeExplore,
-        .codeOpsDiagnostics
+        .codeOpsDiagnostics,
+        .codeDatabaseSnapshot,
+        .codeDatabaseRestore
+    ]
+
+    static let databaseRecovery: Set<BurnBarRPCMethod> = [
+        .databaseRecoveryStatus,
+        .databaseRecoveryBundleExport,
+        .databaseRecoveryBundleImport
     ]
 
     static var allHandled: Set<BurnBarRPCMethod> {
-        lifecycle
+        auth
+            .union(lifecycle)
             .union(config)
             .union(usage)
+            .union(chat)
             .union(observability)
             .union(membership)
             .union(tooling)
@@ -177,12 +225,15 @@ enum BurnBarDaemonSocketRPCCoverage {
             .union(search)
             .union(memory)
             .union(code)
+            .union(databaseRecovery)
     }
 
     static func domain(for method: BurnBarRPCMethod) -> String? {
+        if auth.contains(method) { return "auth" }
         if lifecycle.contains(method) { return "lifecycle" }
         if config.contains(method) { return "config" }
         if usage.contains(method) { return "usage" }
+        if chat.contains(method) { return "chat" }
         if observability.contains(method) { return "observability" }
         if membership.contains(method) { return "membership" }
         if tooling.contains(method) { return "tooling" }
@@ -194,6 +245,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         if search.contains(method) { return "search" }
         if memory.contains(method) { return "memory" }
         if code.contains(method) { return "code" }
+        if databaseRecovery.contains(method) { return "database_recovery" }
         return nil
     }
 }

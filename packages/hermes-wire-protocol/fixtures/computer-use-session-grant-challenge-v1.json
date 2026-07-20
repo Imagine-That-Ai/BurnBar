@@ -1,0 +1,37 @@
+{
+  "challengeVersion": 1,
+  "sessionIntentVersion": 2,
+  "canonicalSessionIntentJson": "{\"actionCap\":50,\"clientId\":\"linux-desktop\",\"desktopOwnerAuthorizationMethod\":\"linux_desktop_owner\",\"macHostNodeId\":\"linux-host-1\",\"mode\":\"browser\",\"phoneViewerNodeId\":\"phone-viewer-1\",\"runCallId\":\"call-7\",\"runGeneration\":4,\"runId\":\"run-42\",\"scopeRuleIds\":[\"deny-payments\",\"workspace-only\"],\"sessionTimeoutSeconds\":1800,\"trustMode\":\"manual\",\"version\":2}",
+  "sessionIntentId": "3d6398b75451a30ff531b969d3b73568d0baeb09ed9010b0d7aa134316aae6f5",
+  "challenge": {
+    "version": 1,
+    "challengeId": "challenge-00000001",
+    "nonce": "0123456789abcdef0123456789abcdef",
+    "issuedAt": 800000000,
+    "expiresAt": 800000300,
+    "sessionIntentId": "3d6398b75451a30ff531b969d3b73568d0baeb09ed9010b0d7aa134316aae6f5",
+    "runtime": "codex",
+    "threadId": "thread-linux-1",
+    "preset": "desktop",
+    "capabilities": [
+      "workspace_write",
+      "desktop_browser",
+      "desktop_file_export",
+      "accessibility_inspect",
+      "desktop_screenshot",
+      "workspace_read"
+    ],
+    "mode": "browser",
+    "trustMode": "manual",
+    "scopeRuleIds": ["workspace-only", "deny-payments"],
+    "phoneViewerNodeId": "phone-viewer-1",
+    "macHostNodeId": "linux-host-1",
+    "actionCap": 50,
+    "sessionTimeoutSeconds": 1800,
+    "clientId": "linux-desktop",
+    "runId": "run-42",
+    "runCallId": "call-7",
+    "runGeneration": 4,
+    "desktopOwnerAuthorizationMethod": "linux_desktop_owner"
+  }
+}

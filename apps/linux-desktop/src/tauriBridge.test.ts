@@ -2,9 +2,531 @@ import { describe, expect, it } from 'vitest';
 import { bridgeStubDefaults } from './testing/bridgeStubs';
 import {
   computeCacheHitRatePct,
+  decodeUsageInsights,
+  decodeChatAttachmentUpload,
+  decodeGatewayAttachmentCapability,
+  decodeChatMessageAppend,
+  decodeChatThreadGet,
+  decodeChatThreadList,
   decodeDaemonSubscriptionResponse,
-  decodeDaemonSubscriptionStopResponse
+  decodeDaemonSubscriptionStopResponse,
+  mapMissionDetail,
+  mapMissionList,
+  decodeLinuxUpdateStatus,
+  decodeNativeNotificationCapabilities,
+  decodeNativeNotificationResult,
+  decodeNativeNotificationActionEvent,
+  decodeNativeNotificationActionEvents,
+  decodeNativeShortcutStatus,
+  decodeLaunchAtLoginStatus,
+  decodePetCompanionStatus
 } from './tauriBridge';
+
+const ACCOUNT_UPDATED_AT = '2026-07-10T12:00:00Z';
+
+const CHAT_THREAD = {
+  id: 'thread-1',
+  title: 'Release check',
+  preview: 'Verify the Linux package',
+  messageCount: 2,
+  createdAt: ACCOUNT_UPDATED_AT,
+  updatedAt: ACCOUNT_UPDATED_AT,
+  lastMessageAt: ACCOUNT_UPDATED_AT,
+  backendID: 'codex'
+};
+
+const CHAT_MESSAGE = {
+  id: 'message-1',
+  threadID: 'thread-1',
+  role: 'user',
+  content: 'Verify the package.',
+  timestamp: ACCOUNT_UPDATED_AT,
+  backendID: 'codex'
+};
+
+describe('daemon-owned qualitative insights decoding', () => {
+  it('accepts the bounded local-rules result and preserves authority metadata', () => {
+    const result = decodeUsageInsights({
+      usage: [{
+        providerID: 'codex',
+        modelID: 'gpt-5',
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+        reasoningTokens: 0,
+        cost: 0.12,
+        recordedAt: ACCOUNT_UPDATED_AT,
+        sessionID: 'session-1'
+      }],
+      sourceID: 'daemon.usage.ledger',
+      sourceLabel: 'Linux daemon usage ledger · local rules',
+      analysis: {
+        requestID: 'request-1',
+        generatedAt: ACCOUNT_UPDATED_AT,
+        executiveSummary: 'Codex is the main spend driver.',
+        modelTag: { displayName: 'Linux local rules' },
+        findings: [{
+          id: 'finding-1',
+          title: 'Codex is the main spend driver',
+          whyItMatters: 'It accounts for the included spend.',
+          recommendedAction: 'Compare lower-cost routes.',
+          evidence: [{ id: 'citation-1', label: 'Codex session' }]
+        }],
+        citations: [{ id: 'citation-1', label: 'Codex session' }]
+      }
+    });
+    expect(result.source).toMatchObject({ id: 'daemon.usage.insights', kind: 'daemon-method' });
+    expect(result.qualitative).toMatchObject({
+      state: 'available',
+      method: 'daemon.usage.insights',
+      sourceID: 'daemon.usage.ledger'
+    });
+    expect(result.qualitative?.analysis?.findings[0]?.title).toBe('Codex is the main spend driver');
+  });
+});
+
+describe('Linux launch-at-login decoding', () => {
+  it('accepts the typed packaged and user override states', () => {
+    expect(decodeLaunchAtLoginStatus({
+      enabled: false,
+      userOverride: true,
+      source: 'user',
+      path: '/home/alberto/.config/autostart/openburnbar.desktop',
+      detail: 'User autostart override disables the packaged entry.'
+    })).toMatchObject({ enabled: false, userOverride: true, source: 'user' });
+  });
+
+  it('rejects unknown source values and malformed booleans', () => {
+    expect(() => decodeLaunchAtLoginStatus({
+      enabled: true,
+      userOverride: false,
+      source: 'shell',
+      path: '/home/alberto/.config/autostart/openburnbar.desktop'
+    })).toThrow(/source is unsupported/);
+    expect(() => decodeLaunchAtLoginStatus({
+      enabled: 'yes',
+      userOverride: false,
+      source: 'packaged',
+      path: '/home/alberto/.config/autostart/openburnbar.desktop'
+    })).toThrow(/enabled state/);
+  });
+});
+
+describe('exact-thread chat wire decoding', () => {
+  it('strictly decodes list, get, and idempotent append results', () => {
+    expect(decodeChatThreadList({ threads: [CHAT_THREAD] })).toEqual({ threads: [CHAT_THREAD] });
+    expect(decodeChatThreadGet({
+      thread: CHAT_THREAD,
+      messages: [CHAT_MESSAGE],
+      hasMoreBefore: false
+    })).toMatchObject({ thread: CHAT_THREAD, messages: [CHAT_MESSAGE], hasMoreBefore: false });
+    expect(decodeChatMessageAppend({ message: CHAT_MESSAGE, inserted: false })).toEqual({
+      message: CHAT_MESSAGE,
+      inserted: false
+    });
+  });
+
+  it('rejects malformed roles, cross-thread messages, oversized bodies, and result floods', () => {
+    expect(() => decodeChatThreadGet({
+      thread: CHAT_THREAD,
+      messages: [{ ...CHAT_MESSAGE, role: 'tool' }],
+      hasMoreBefore: false
+    })).toThrow('role');
+    expect(() => decodeChatThreadGet({
+      thread: CHAT_THREAD,
+      messages: [{ ...CHAT_MESSAGE, threadID: 'thread-2' }],
+      hasMoreBefore: false
+    })).toThrow('different thread');
+    expect(() => decodeChatThreadGet({
+      messages: [CHAT_MESSAGE],
+      hasMoreBefore: false
+    })).toThrow('thread is missing');
+    expect(() => decodeChatMessageAppend({
+      message: { ...CHAT_MESSAGE, content: 'x'.repeat(262_145) },
+      inserted: true
+    })).toThrow('262144');
+    expect(() => decodeChatThreadList({ threads: Array.from({ length: 101 }, () => CHAT_THREAD) }))
+      .toThrow('100');
+  });
+
+  it('renders a missing thread as an honest empty exact-thread result', () => {
+    expect(decodeChatThreadGet({ messages: [], hasMoreBefore: false })).toEqual({
+      thread: undefined,
+      messages: [],
+      hasMoreBefore: false
+    });
+  });
+});
+
+describe('chat attachment upload decoding', () => {
+  it('accepts bounded daemon-owned metadata without exposing a path', () => {
+    expect(decodeChatAttachmentUpload({
+      attachmentId: 'attachment-1',
+      fileName: 'notes.md',
+      mimeType: 'text/markdown',
+      byteSize: 12,
+      sha256: 'a'.repeat(64)
+    })).toEqual({
+      attachmentId: 'attachment-1',
+      fileName: 'notes.md',
+      mimeType: 'text/markdown',
+      byteSize: 12,
+      sha256: 'a'.repeat(64)
+    });
+  });
+
+  it('rejects unsupported types, oversized metadata, and path leakage', () => {
+    expect(() => decodeChatAttachmentUpload({
+      attachmentId: 'attachment-1',
+      fileName: 'notes.exe',
+      mimeType: 'application/x-msdownload',
+      byteSize: 12,
+      sha256: 'a'.repeat(64)
+    })).toThrow('unsupported');
+    expect(() => decodeChatAttachmentUpload({
+      attachmentId: 'attachment-1',
+      fileName: 'notes.md',
+      mimeType: 'text/markdown',
+      byteSize: 10 * 1024 * 1024 + 1,
+      sha256: 'a'.repeat(64)
+    })).toThrow('between');
+    expect(() => decodeChatAttachmentUpload({
+      attachmentId: 'attachment-1',
+      fileName: '/tmp/notes.md',
+      mimeType: 'text/markdown',
+      byteSize: 12,
+      sha256: 'a'.repeat(64),
+      path: '/home/alberto/secret'
+    })).toThrow('path');
+  });
+});
+
+describe('gateway attachment capability decoding', () => {
+  it('accepts a bounded native capability result', () => {
+    expect(decodeGatewayAttachmentCapability({
+      mimeType: 'image/png',
+      state: 'supported',
+      reason: 'catalog',
+      maxBytes: 5 * 1024 * 1024
+    })).toEqual({
+      mimeType: 'image/png',
+      state: 'supported',
+      reason: 'catalog',
+      maxBytes: 5 * 1024 * 1024
+    });
+  });
+
+  it('rejects malformed capability state and unsafe limits', () => {
+    expect(() => decodeGatewayAttachmentCapability({
+      mimeType: 'image/png',
+      state: 'maybe',
+      reason: 'catalog'
+    })).toThrow('state');
+    expect(() => decodeGatewayAttachmentCapability({
+      mimeType: 'image/png',
+      state: 'supported',
+      reason: 'catalog',
+      maxBytes: 10 * 1024 * 1024 + 1
+    })).toThrow('out of bounds');
+  });
+});
+
+describe('mission snapshot mapping', () => {
+  it('maps canonical packet, result, evidence, approval and takeover fields', () => {
+    const detail = mapMissionDetail({
+      mission: {
+        id: 'm-1',
+        projectSlug: 'burnbar',
+        title: 'Ship parity',
+        summary: 'Close the Linux mission gap.',
+        status: 'in_progress',
+        recommendation: 'review',
+        createdAt: '2026-07-13T10:00:00Z',
+        updatedAt: new Date().toISOString(),
+        approval: { approved: true, approvedAt: '2026-07-13T10:01:00Z', approvedBy: 'alberto', note: 'go' },
+        packets: [{
+          id: 'p-1', missionID: 'm-1', workerName: 'worker-a', objective: 'Implement UI', status: 'completed',
+          runID: 'run-1', dispatchedAt: '2026-07-13T10:02:00Z', completedAt: '2026-07-13T10:03:00Z', metadata: { source: 'daemon' }
+        }],
+        results: [{
+          id: 'r-1', missionID: 'm-1', packetID: 'p-1', runID: 'run-1', status: 'succeeded',
+          summary: 'UI landed', detail: 'Verified', burnDelta: 1.5, createdAt: '2026-07-13T10:04:00Z',
+          evidenceRefs: ['evidence/mission.json'], metadata: {}
+        }],
+        burnRecords: [{ id: 'b-1', label: 'Tokens', amount: 12, unit: 'tokens', recordedAt: '2026-07-13T10:04:00Z' }],
+        takeoverHistory: [{
+          id: 't-1', projectSlug: 'burnbar', missionID: 'm-1', status: 'completed', reason: 'recovered',
+          createdAt: '2026-07-13T10:05:00Z', updatedAt: '2026-07-13T10:06:00Z', metadata: {}
+        }],
+        metadata: { source: 'test' }
+      }
+    });
+    expect(detail).toMatchObject({
+      id: 'm-1', state: 'in_progress', laneCount: 1, recommendation: 'review', freshness: 'fresh',
+      approval: { approved: true, approvedBy: 'alberto' },
+      packets: [{ id: 'p-1', missionId: 'm-1', runId: 'run-1' }],
+      results: [{ id: 'r-1', evidenceRefs: ['evidence/mission.json'] }],
+      takeoverHistory: [{ id: 't-1', missionId: 'm-1' }]
+    });
+  });
+
+  it('derives pending approval only from canonical awaiting-approval snapshots', () => {
+    const list = mapMissionList({
+      missions: [{
+        id: 'm-awaiting', title: 'Needs review', summary: 'Ask for approval', status: 'awaiting_approval',
+        createdAt: '2026-07-13T09:00:00Z', updatedAt: '2026-07-13T09:00:00Z', approval: { approved: false }, packets: []
+      }, {
+        id: 'm-approved', title: 'Approved', status: 'approved', updatedAt: '2026-07-13T09:00:00Z',
+        approval: { approved: true }, packets: []
+      }]
+    });
+    expect(list.pendingApprovals).toEqual([expect.objectContaining({ missionId: 'm-awaiting', risk: 'standard' })]);
+  });
+
+  it('keeps empty and degraded snapshots honest', () => {
+    expect(mapMissionList({ missions: [] })).toEqual({ missions: [], pendingApprovals: [] });
+    const degraded = mapMissionDetail({ mission: { id: 'm-degraded', title: 'Unknown', status: 'failed', packets: [] } });
+    expect(degraded).toMatchObject({ id: 'm-degraded', freshness: 'unknown', packets: [], results: [], takeoverHistory: [] });
+  });
+});
+
+describe('native Linux update status decoding', () => {
+  it('decodes freshness, channel ownership, signature, and compatibility metadata', () => {
+    const decoded = decodeLinuxUpdateStatus({
+      state: 'available',
+      currentVersion: '1.0.0',
+      latestVersion: '1.1.0',
+      signatureState: 'verified',
+      feedFreshness: 'fresh',
+      feedAgeSeconds: 42,
+      checkedAtUnixSeconds: 1_750_000_000,
+      packageChannel: 'deb',
+      channelInfo: {
+        id: 'deb',
+        label: 'Debian package (.deb)',
+        owner: 'apt/dpkg',
+        installMode: 'package-manager-guided',
+        automaticInstall: false,
+        rollbackMode: 'apt-version-selection',
+        explanation: 'The distro package manager owns files.'
+      },
+      compatibility: {
+        state: 'aligned',
+        shellVersion: '1.0.0',
+        daemonVersion: '1.0.0'
+      }
+    });
+    expect(decoded).toMatchObject({
+      signatureState: 'verified',
+      feedFreshness: 'fresh',
+      feedAgeSeconds: 42,
+      packageChannel: 'deb',
+      channelInfo: { owner: 'apt/dpkg', installMode: 'package-manager-guided' },
+      compatibility: { state: 'aligned', daemonVersion: '1.0.0' }
+    });
+  });
+
+  it('rejects unsupported freshness, channel, signature, and compatibility states', () => {
+    expect(() => decodeLinuxUpdateStatus({
+      state: 'current', currentVersion: '1.0.0', feedFreshness: 'ancient'
+    })).toThrow('feed freshness');
+    expect(() => decodeLinuxUpdateStatus({
+      state: 'current', currentVersion: '1.0.0', signatureState: 'forged'
+    })).toThrow('signature state');
+    expect(() => decodeLinuxUpdateStatus({
+      state: 'current', currentVersion: '1.0.0', channelInfo: {
+        id: 'deb', label: 'Debian', owner: 'apt/dpkg', installMode: 'shell',
+        automaticInstall: false, rollbackMode: 'none', explanation: 'x'
+      }
+    })).toThrow('package channel metadata');
+    expect(() => decodeLinuxUpdateStatus({
+      state: 'current', currentVersion: '1.0.0', compatibility: {
+        state: 'mismatch', shellVersion: ''
+      }
+    })).toThrow('compatibility');
+  });
+
+  it('accepts package-native actions emitted by Rust, including rollback placeholder', () => {
+    const decoded = decodeLinuxUpdateStatus({
+      state: 'unavailable',
+      currentVersion: '0.1.0',
+      instructions: {
+        packageManager: 'apt',
+        install: {
+          id: 'install', label: 'Update with apt', instruction: 'Use apt.',
+          command: 'sudo apt-get install --only-upgrade open-burn-bar', available: true, requiresConfirmation: true
+        },
+        rollback: {
+          id: 'rollback', label: 'Roll back with apt', instruction: 'Choose a prior version.',
+          command: 'sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION', available: true, requiresConfirmation: true
+        },
+        restart: {
+          id: 'restart', label: 'Restart OpenBurnBar', instruction: 'Restart after replacement.',
+          command: 'systemctl --user restart openburnbar-daemon.service', available: true, requiresConfirmation: false
+        }
+      },
+      reason: 'feed unavailable'
+    });
+    expect(decoded.instructions?.rollback.command).toBe('sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION');
+  });
+
+  it('accepts Arch package metadata and pacman guidance', () => {
+    const decoded = decodeLinuxUpdateStatus({
+      state: 'available',
+      currentVersion: '1.0.0',
+      latestVersion: '1.1.0',
+      packageChannel: 'arch',
+      artifact: {
+        type: 'arch',
+        architecture: 'x86_64',
+        url: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/openburnbar-1.1.0-x86_64.pkg.tar.zst',
+        sha256: 'a'.repeat(64),
+        size: 100,
+        signatureUrl: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/openburnbar-1.1.0-x86_64.pkg.tar.zst.sig'
+      },
+      instructions: {
+        packageManager: 'pacman',
+        install: {
+          id: 'install', label: 'Update with pacman', instruction: 'Use pacman.',
+          available: false, requiresConfirmation: true
+        },
+        rollback: {
+          id: 'rollback', label: 'Roll back with pacman', instruction: 'Choose a prior version.',
+          available: false, requiresConfirmation: true
+        },
+        restart: {
+          id: 'restart', label: 'Restart OpenBurnBar', instruction: 'Restart after replacement.',
+          command: 'systemctl --user restart openburnbar-daemon.service', available: true, requiresConfirmation: false
+        }
+      },
+      channelInfo: {
+        id: 'arch',
+        label: 'Arch package (.pkg.tar.zst)',
+        owner: 'pacman',
+        installMode: 'package-manager-guided',
+        automaticInstall: false,
+        rollbackMode: 'pacman-cache',
+        explanation: 'The Arch package manager owns files and upgrades.'
+      }
+    });
+    expect(decoded).toMatchObject({
+      packageChannel: 'arch',
+      artifact: { type: 'arch', architecture: 'x86_64' },
+      instructions: { packageManager: 'pacman' },
+      channelInfo: { id: 'arch', owner: 'pacman' }
+    });
+  });
+
+  it('rejects unsafe or incomplete native package actions', () => {
+    expect(() => decodeLinuxUpdateStatus({
+      state: 'current',
+      currentVersion: '0.1.0',
+      instructions: {
+        packageManager: 'apt',
+        install: { id: 'install', label: 'Install', instruction: 'x', command: 'sudo apt; touch /tmp/pwned', available: true, requiresConfirmation: true }
+      }
+    })).toThrow('package action metadata');
+  });
+});
+
+describe('native Linux notification and shortcut decoding', () => {
+  it('keeps freedesktop capability and degraded action state explicit', () => {
+    expect(decodeNativeNotificationCapabilities({
+      available: true,
+      actions: false,
+      persistence: true,
+      body: true,
+      bodyMarkup: false,
+      serverCapabilities: ['body', 'persistence'],
+      degradedReason: 'native_notification_actions_unavailable'
+    })).toMatchObject({ available: true, actions: false, degradedReason: 'native_notification_actions_unavailable' });
+    expect(decodeNativeNotificationResult({
+      notificationId: 'linux-native-1',
+      delivered: true,
+      actionsAttached: false,
+      degradedReason: 'native_notification_actions_unavailable'
+    })).toMatchObject({ delivered: true, actionsAttached: false });
+  });
+
+  it('rejects unknown notification routes/actions and malformed shortcut status', () => {
+    expect(() => decodeNativeNotificationActionEvent({
+      notificationId: 'n-1', route: 'admin', action: 'open'
+    })).toThrow('unsupported');
+    expect(() => decodeNativeNotificationActionEvent({
+      notificationId: 'n-1', route: 'chat', action: 'dismiss'
+    })).toThrow('unsupported');
+    expect(decodeNativeNotificationActionEvent({
+      notificationId: 'n-1', route: 'chat', action: 'reply'
+    })).toMatchObject({ notificationId: 'n-1', route: 'chat', action: 'reply' });
+    expect(decodeNativeShortcutStatus({
+      available: false,
+      registered: false,
+      shortcuts: ['Ctrl+Alt+Super+O'],
+      degradedReason: 'native_shortcuts_not_initialized'
+    })).toMatchObject({ registered: false, degradedReason: 'native_shortcuts_not_initialized' });
+    expect(decodeNativeShortcutStatus({
+      available: true,
+      registered: false,
+      backend: 'x11',
+      shortcuts: ['Ctrl+Alt+Super+Period', 'Ctrl+Alt+Super+O'],
+      bindings: [
+        { id: 'computer-use-panic', shortcut: 'Ctrl+Alt+Super+Period', state: 'registered' },
+        { id: 'open-dashboard', shortcut: 'Ctrl+Alt+Super+O', state: 'degraded', degradedReason: 'conflict' }
+      ],
+      degradedReason: 'native_shortcuts_partial_registration'
+    })).toMatchObject({
+      backend: 'x11',
+      available: true,
+      registered: false,
+      bindings: [{ state: 'registered' }, { state: 'degraded', degradedReason: 'conflict' }]
+    });
+    expect(() => decodeNativeShortcutStatus({
+      available: false,
+      registered: false,
+      backend: 'mir',
+      shortcuts: []
+    })).toThrow('backend');
+    expect(() => decodeNativeShortcutStatus({
+      available: false,
+      registered: false,
+      shortcuts: [],
+      bindings: [{ id: 'open-dashboard', shortcut: 'Ctrl+Alt+Super+O', state: 'active' }]
+    })).toThrow('binding state');
+    expect(() => decodeNativeShortcutStatus({ available: true, registered: 'yes', shortcuts: [] }))
+      .toThrow('registration');
+  });
+
+  it('decodes the normalized second-instance notification envelope and rejects non-object payloads', () => {
+    expect(decodeNativeNotificationActionEvent({
+      notificationId: 'single-instance-chat',
+      route: 'chat',
+      action: 'open',
+      payload: { threadId: 'thread-42' }
+    })).toMatchObject({
+      notificationId: 'single-instance-chat',
+      route: 'chat',
+      action: 'open',
+      payload: { threadId: 'thread-42' }
+    });
+    expect(() => decodeNativeNotificationActionEvent({
+      notificationId: 'single-instance-chat',
+      route: 'chat',
+      action: 'open',
+      payload: 'thread-42'
+    })).toThrow('payload');
+  });
+
+  it('strictly decodes the cold-start notification action queue', () => {
+    expect(decodeNativeNotificationActionEvents([
+      { notificationId: 'n-1', route: 'chat', action: 'reply' }
+    ])).toEqual([{ notificationId: 'n-1', route: 'chat', action: 'reply' }]);
+    expect(() => decodeNativeNotificationActionEvents({})).toThrow('must be an array');
+    expect(() => decodeNativeNotificationActionEvents([
+      { notificationId: 'n-2', route: 'unknown', action: 'open' }
+    ])).toThrow('unsupported');
+  });
+});
 
 describe('computeCacheHitRatePct', () => {
   it('matches the macOS CacheEfficiency formula (prompt-side basis)', () => {
@@ -50,6 +572,38 @@ describe('bridgeStubDefaults media wiring', () => {
     await expect(bridgeStubDefaults.mediaDeclineCall('req')).resolves.toMatchObject({ phase: 'capability-absent' });
     await expect(bridgeStubDefaults.mediaEndCall()).resolves.toMatchObject({ phase: 'capability-absent' });
     await expect(bridgeStubDefaults.mediaCapabilityGet()).resolves.toMatchObject({ available: false });
+  });
+});
+
+describe('pet companion wire decoding', () => {
+  it('accepts the explicit X11 native-window contract', () => {
+    expect(decodePetCompanionStatus({
+      state: 'available',
+      compositor: 'GNOME/x11',
+      sessionType: 'x11',
+      desktop: 'GNOME',
+      overlaySupported: true,
+      clickThroughSupported: true,
+      windowContract: 'tauri-x11-companion-v1',
+      reason: 'ready',
+      source: 'tauri-x11-companion-window'
+    })).toMatchObject({
+      state: 'available',
+      overlaySupported: true,
+      clickThroughSupported: true,
+      windowContract: 'tauri-x11-companion-v1'
+    });
+  });
+
+  it('rejects malformed or unknown native-window states', () => {
+    expect(() => decodePetCompanionStatus({
+      state: 'maybe', compositor: 'x11', overlaySupported: false, clickThroughSupported: false,
+      windowContract: 'none', reason: 'bad', source: 'test'
+    })).toThrow(/state is unsupported/);
+    expect(() => decodePetCompanionStatus({
+      state: 'degraded', compositor: 'x11', overlaySupported: false, clickThroughSupported: false,
+      windowContract: 'none', reason: 'bad'
+    })).toThrow(/source/);
   });
 });
 

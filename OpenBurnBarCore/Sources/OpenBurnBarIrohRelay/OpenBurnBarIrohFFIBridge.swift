@@ -1,18 +1,14 @@
 // Bridge between the UniFFI-generated `OpenBurnBarIrohFFI` module and the
 // transport-level `IrohEndpointBackend` protocol.
 //
-// `OpenBurnBarIrohFFI` is the Swift package emitted by
-// `scripts/build-iroh-xcframework.sh` from `crates/openburnbar-iroh`. It is
-// not vendored into this repository — the xcframework binary lives in the
-// release artifacts published by `.github/workflows/iroh-xcframework.yml`,
-// and consumers add it through the OpenBurnBarMobile / AgentLens xcconfig.
+// `OpenBurnBarIrohFFI` is generated from `crates/openburnbar-iroh`. Apple
+// consumers link the release XCFramework; Linux release builds link the Rust
+// cdylib through the SwiftPM Clang shim and package it beside the daemon.
 //
 // This file is conditional on `canImport(OpenBurnBarIrohFFI)` so the
-// SwiftPM package still compiles before the xcframework has been published.
-// Once a consuming app links the framework, this bridge becomes available
-// and `OpenBurnBarIrohFFIBackendFactory.make()` returns a production
-// backend; otherwise it returns `nil` and callers must fall back to the
-// loopback transport or the WSS relay.
+// SwiftPM package still compiles for targets that intentionally omit native
+// iroh. Shipping Apple and Linux builds link the native module and fail their
+// release gates when the corresponding binary is absent.
 
 import Foundation
 
@@ -99,7 +95,9 @@ public final class OpenBurnBarIrohFFIBackend: IrohEndpointBackend, @unchecked Se
     /// Runs the Rust call on the FFI queue and surfaces UniFFI errors as
     /// `IrohBackendError`. We translate at the boundary so callers never
     /// import the FFI-generated error types.
-    private func withFFI<T>(_ block: @escaping () throws -> T) async throws -> T {
+    private func withFFI<T: Sendable>(
+        _ block: @escaping @Sendable () throws -> T
+    ) async throws -> T {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
             queue.async {
                 do {

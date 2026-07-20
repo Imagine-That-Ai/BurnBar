@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "capture": {
+    "mode": "installed-exact-native-shell-provider-deep-link-atspi",
+    "capturedAt": "2026-07-20T07:37:17Z",
+    "environment": "ubuntu-24.04-gnome-x11-aarch64",
+    "vmAddress": "192.168.64.5",
+    "window": {
+      "name": "OpenBurnBar",
+      "present": true,
+      "screenshot": "linux-arm64-current-0eb6efcc1a-provider-deep-link.png",
+      "screenshotSha256": "18d61f357bac955e44594ac6447eb71cca4b4f3738ffb43a1ba4692c92d1e97c",
+      "dimensions": "1792x851",
+      "visuallyInspected": true,
+      "nativeControlColorScheme": "dark"
+    }
+  },
+  "source": {
+    "head": "0eb6efcc1ab332926019de7041052303ac447202",
+    "packageCheckpoint": "0eb6efcc1a",
+    "nativeSourceChangedAfterBuild": false,
+    "commitsSincePriorNativeCheckpoint": [
+      "6bf0708eec merge(main): reconcile Linux parity integration",
+      "2b5f669e97 fix(linux): import crypto dependency for nonce overload",
+      "8a17df54d2 fix(linux): avoid Swift nonce overload ambiguity",
+      "6aaae20226 fix(linux): qualify crypto and gate widget container",
+      "0eb6efcc1a fix(linux): package decomposed Swift resources"
+    ]
+  },
+  "package": {
+    "format": "deb",
+    "architecture": "arm64",
+    "version": "0.1.1",
+    "sha256": "f5b89a4a6ebb41fefe7588ee9843291ca97027080a94a49bf3132a38ba6f436d",
+    "bytes": 152148488,
+    "buildCommand": "npm run tauri:build -- --bundles deb",
+    "freshPayloadStaging": true,
+    "mediaFeature": "media-gst",
+    "cloudAuthConfigured": false,
+    "swiftResourceBundles": [
+      "OpenBurnBarCore_OpenBurnBarKernel.resources",
+      "OpenBurnBarCore_OpenBurnBarPretext.resources"
+    ],
+    "swiftResourceBundlesPresentInPackage": true
+  },
+  "installed": {
+    "package": "open-burn-bar 0.1.1 arm64 installed",
+    "desktopSha256": "77dca81568d57c58213746ecf8e4caf270a07141732f1d0b0ff25556b729464b",
+    "daemonSha256": "e1146146c8f067778de3f5328d3b1827ab486ba5bd962b2cdd1faad913cf4053",
+    "cliSha256": "6d6b8e5dd2751d8cd0c556f24e711c75975729880e256942cc0a389d2a0e76f1",
+    "irohSha256": "a43a9d0ec0bdac655a0389fa1ae1db4974cf0d80b88fc37650c6de97a71cea58",
+    "extractedHashesMatchInstalled": true,
+    "kernelResourceBundleInstalled": true,
+    "pretextResourceBundleInstalled": true,
+    "daemonHealth": "Daemon 1.0.30 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true",
+    "daemonService": "active",
+    "desktopService": "active",
+    "manifestSha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+    "manifestContents": {},
+    "manifestSignatureSha256": "f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b"
+  },
+  "nativeDeepLinkProof": {
+    "input": "openburnbar://providers?provider=codex",
+    "transport": "owner-checked per-user single-instance forwarding",
+    "route": "providers",
+    "selectedProvider": "Codex",
+    "selectedProviderPresentInAtspi": true,
+    "nodeCount": 189,
+    "namedNodeCount": 108,
+    "actionableNodeCount": 91,
+    "focusableNodeCount": 32,
+    "expectedName": "Codex",
+    "pass": true
+  },
+  "verification": {
+    "frontendTests": "94 files / 910 passed",
+    "tauriRustTests": "133 passed",
+    "typescript": "passed",
+    "productionBundleVerifier": "passed",
+    "linuxDaemonProductionBuild": "passed",
+    "linuxCLIProductionBuild": "passed",
+    "packageInstall": "passed",
+    "packageRuntimeProbe": "passed",
+    "installedPayloadHashComparison": "passed",
+    "swiftResourceBundlePackaging": "Kernel and Pretext bundles present in package and installed payload",
+    "accessibility": "installed provider deep link AT-SPI minimums passed",
+    "visualInspection": "installed native shell rendered the provider-specific Quota workspace with the dark Linux control palette",
+    "webgl": "webgl2=false; visible 2D fallback label"
+  },
+  "strictParityLedger": {
+    "productRowsPassed": 0,
+    "productRowsTotal": 40,
+    "environmentReceiptsPassed": 0,
+    "environmentReceiptsTotal": 7
+  },
+  "limitations": [
+    "The installed package manifest is the unsigned placeholder {} and is not eligible for release promotion.",
+    "Production Linux OAuth, Firebase App Check, and cloud callable identifiers are not configured in this package.",
+    "The strict evidence ledger remains 0/40 product rows and 0/7 environment receipts; this native ARM64 receipt does not promote any row by itself.",
+    "This receipt covers only Ubuntu 24.04 GNOME on X11 ARM64 and does not prove other distributions, architectures, desktop environments, Wayland, or compositor behavior.",
+    "Physical iPad execution, cross-device Mercury and Computer Use proof, production callables, signed updater and rollback, keyring, IME, SmartHub, and pet integration receipts remain external blockers.",
+    "No physical iPad result is claimed by this receipt."
+  ],
+  "certifying": false
+}

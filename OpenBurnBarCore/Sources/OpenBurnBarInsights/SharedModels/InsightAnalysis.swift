@@ -756,6 +756,9 @@ public enum InsightAnalysisPlatform: String, Codable, Hashable, Sendable, CaseIt
     case iOS
     case iPadOS
     case android
+    /// Linux desktop uses the same privacy-bounded Core insight contract while
+    /// keeping provider credentials and raw activity inside the daemon.
+    case linux
 }
 
 public enum InsightConfidence: String, Codable, Hashable, Sendable, CaseIterable {

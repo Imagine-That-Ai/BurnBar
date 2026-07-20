@@ -46,6 +46,7 @@ const mainTarget = "OpenBurnBarCore";
 // dirs are not Swift-source targets and are skipped.
 const siblingTargets = [
   "OpenBurnBarDomainCoreRuntime",
+  "OpenBurnBarAssistantModels",
   "OpenBurnBarKernel",
   "OpenBurnBarParserSupport",
   "OpenBurnBarSQLiteReader",
@@ -124,6 +125,10 @@ const PLANNED_CEILINGS = {
   // ceiling covers profiles, candidate identity, evidence comparison, and the
   // generic shadow selector without allowing domain business logic to move in.
   OpenBurnBarDomainCoreRuntime: { maxFiles: 8, maxLines: 1000 },
+  // Assistant identity and interaction contracts stay in a Foundation-only
+  // leaf below Kernel. The ceiling leaves modest file/LOC headroom without
+  // allowing the extracted slice to become another monolith.
+  OpenBurnBarAssistantModels: { maxFiles: 15, maxLines: 2700 },
   OpenBurnBarKernel: { maxFiles: 185, maxLines: 46250 },
   OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1000 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
