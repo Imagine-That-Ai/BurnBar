@@ -144,6 +144,10 @@ test('P-12 native runner emits raw evidence accepted by the installed-session va
 test('P-12 native runner fails closed on unsafe state and false live transitions', async () => {
   for (const [name, settings, mutate, pattern] of [
     ['seeded', {}, (fixture) => write(path.join(fixture.supportDir, 'quota-signals.jsonl'), '{}\n'), /pre-seeded/u],
+    ['support symlink', {}, (fixture) => { const target = `${fixture.supportDir}-real`; fs.renameSync(fixture.supportDir, target); fs.symlinkSync(target, fixture.supportDir); }, /owner-only real directory/u],
+    ['support permissions', {}, (fixture) => fs.chmodSync(fixture.supportDir, 0o755), /owner-only real directory/u],
+    ['output symlink', {}, (fixture) => { const target = `${fixture.outputDir}-real`; fs.renameSync(fixture.outputDir, target); fs.symlinkSync(target, fixture.outputDir); }, /owner-only directory/u],
+    ['output permissions', {}, (fixture) => fs.chmodSync(fixture.outputDir, 0o755), /owner-only directory/u],
     ['false retry', { sameRetry: true }, () => {}, /headers did not change/u],
     ['restart drift', { restartDrift: true }, () => {}, /persist across restart/u],
     ['PID reuse', { samePid: true }, () => {}, /old PID/u],

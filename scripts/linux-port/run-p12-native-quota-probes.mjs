@@ -28,11 +28,12 @@ function writeJson(file, value) { writeExclusive(file, Buffer.from(`${JSON.strin
 function readJson(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
 
 function ownerOnlyEmptyDirectory(directory, label) {
-  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const resolved = fs.realpathSync(directory);
-  const stat = fs.lstatSync(resolved);
+  const supplied = path.resolve(directory);
+  fs.mkdirSync(supplied, { recursive: true, mode: 0o700 });
+  const stat = fs.lstatSync(supplied);
   assert(stat.isDirectory() && !stat.isSymbolicLink() && stat.uid === process.getuid?.() && (stat.mode & 0o077) === 0,
     `${label} must be an owner-only directory`);
+  const resolved = fs.realpathSync(supplied);
   assert(fs.readdirSync(resolved).length === 0, `${label} must be empty`);
   return resolved;
 }
@@ -348,9 +349,11 @@ export async function runP12NativeQuotaProbes(options, dependencies = {}) {
     'P-12 requires a live Linux desktop session and D-Bus');
   (dependencies.installedVerifier ?? verifyInstalledCandidate)(options);
   const output = ownerOnlyEmptyDirectory(options.outputDir, 'P-12 raw output');
-  const support = fs.realpathSync(options.supportDir);
-  const supportStat = fs.lstatSync(support);
-  assert(supportStat.isDirectory() && !supportStat.isSymbolicLink() && supportStat.uid === process.getuid?.(), 'P-12 support directory is invalid');
+  const suppliedSupport = path.resolve(options.supportDir);
+  const supportStat = fs.lstatSync(suppliedSupport);
+  assert(supportStat.isDirectory() && !supportStat.isSymbolicLink() && supportStat.uid === process.getuid?.()
+    && (supportStat.mode & 0o077) === 0, 'P-12 support directory must be an owner-only real directory');
+  const support = fs.realpathSync(suppliedSupport);
   assert(!fs.existsSync(path.join(support, 'quota-signals.jsonl')), 'P-12 requires an isolated support directory with no pre-seeded quota signals');
   const canonicalManifest = readJson(path.join(options.repoRoot ?? ROOT, 'contracts/provider-ingestion-catalog.json'));
   const canonical = new Map(canonicalManifest.providers.map((row) => [row.providerId, row]));
