@@ -292,6 +292,35 @@ describe('ActivitySurface', () => {
     expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy();
   });
 
+  it('keeps the last activity snapshot visible when a refresh fails', async () => {
+    let shouldFail = false;
+    const indexedSession = fixtureSessionList().sessions[0]!;
+    const sessionList = vi.fn(async () => {
+      if (shouldFail) throw new Error('daemon refresh failed');
+      return { sessions: [indexedSession], nextCursor: null };
+    });
+    useShellStore.setState({ bridge: mockBridge({ sessionList }) });
+    render(<ActivitySurface />);
+
+    await act(async () => {
+      await useActivityStore.getState().load();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText(indexedSession.title)).toBeTruthy();
+
+    shouldFail = true;
+    await act(async () => {
+      await useActivityStore.getState().load();
+    });
+
+    expect(screen.getByText(indexedSession.title)).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toMatch(/Showing the last activity snapshot/i);
+    expect(screen.getByText(/daemon refresh failed/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy();
+  });
+
   it('shows search-empty when query matches nothing', async () => {
     useShellStore.setState({ fixtureMode: true });
     render(<ActivitySurface />);

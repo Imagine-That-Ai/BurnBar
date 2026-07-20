@@ -1,9 +1,10 @@
-import { useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useActivityStore } from '../../state/activityStore.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
+import type { SessionEntry } from '../../tauriBridge.js';
 import { SearchBox } from './SearchBox.js';
 import { SessionRow, type ActivityMetricMode } from './SessionRow.js';
 import { groupSessionsByDay } from './sessionGroups.js';
@@ -71,16 +72,34 @@ export function ActivitySurface() {
   const [historyImportLoading, setHistoryImportLoading] = useState(false);
   const [historyImportStatus, setHistoryImportStatus] = useState<string | null>(null);
   const historyImportInputRef = useRef<HTMLInputElement>(null);
+  const lastSnapshotRef = useRef<{ query: string; sessions: SessionEntry[] } | null>(null);
 
   const offline = !fixtureMode && !bridge;
   const provenance = fixtureMode ? 'fixture transcript' : 'live daemon session index';
 
   useLaneLoad(load);
 
-  const visible = sessions.slice(0, visibleCount);
+  // Keep a query-scoped snapshot visible while a refresh is in flight or has
+  // failed. A failed search must not display rows from the previous query.
+  useEffect(() => {
+    if (!loading && !error) {
+      lastSnapshotRef.current = { query, sessions };
+    }
+  }, [error, loading, query, sessions]);
+
+  const snapshotMatchesQuery = lastSnapshotRef.current?.query === query;
+  const displayedSessions =
+    snapshotMatchesQuery && (loading || Boolean(error))
+      ? lastSnapshotRef.current?.sessions ?? sessions
+      : sessions;
+  const showingStaleSessions = Boolean(
+    error && snapshotMatchesQuery && displayedSessions.length > 0
+  );
+
+  const visible = displayedSessions.slice(0, visibleCount);
   const dayGroups = groupSessionsByDay(visible);
-  const hasMore = sessions.length > visibleCount;
-  const exportDisabled = sessions.length === 0;
+  const hasMore = displayedSessions.length > visibleCount;
+  const exportDisabled = displayedSessions.length === 0;
   // Keep the action available in fixture/older shells so the UI can surface a
   // typed unavailable reason instead of silently implying that history is
   // empty. Only an in-flight export disables the control.
@@ -90,7 +109,7 @@ export function ActivitySurface() {
     if (exportDisabled) return;
     try {
       const document = buildActivityExportDocument(
-        sessions,
+        displayedSessions,
         fixtureMode ? 'fixture transcript' : 'live daemon session index'
       );
       const filename = sanitizeActivityExportFilename('activity-export', exportFormat);
@@ -267,7 +286,7 @@ export function ActivitySurface() {
         fixtureMode={fixtureMode}
       />
     );
-  } else if (error) {
+  } else if (error && !showingStaleSessions) {
     body = (
       <>
         <Banner tone="degraded">
@@ -281,21 +300,21 @@ export function ActivitySurface() {
         <SearchBox />
       </>
     );
-  } else if (loading && sessions.length === 0) {
+  } else if (loading && displayedSessions.length === 0) {
     body = (
       <>
         <SearchBox />
         <ActivitySkeleton />
       </>
     );
-  } else if (sessions.length === 0 && query.trim()) {
+  } else if (displayedSessions.length === 0 && query.trim()) {
     body = (
       <>
         <SearchBox />
         <p className="activity-empty">No sessions match &lsquo;{query.trim()}&rsquo;.</p>
       </>
     );
-  } else if (sessions.length === 0) {
+  } else if (displayedSessions.length === 0) {
     body = (
       <>
         <SearchBox />
@@ -305,6 +324,16 @@ export function ActivitySurface() {
   } else {
     body = (
       <>
+        {showingStaleSessions ? (
+          <Banner tone="degraded">
+            <p>Showing the last activity snapshot. {error}</p>
+            <div className="actions">
+              <button type="button" className="primary" onClick={() => void load()}>
+                Retry
+              </button>
+            </div>
+          </Banner>
+        ) : null}
         <div className="activity-toolbar">
           <SearchBox />
           <div className="activity-metric-toggle" role="group" aria-label="Session list metric">
@@ -374,7 +403,7 @@ export function ActivitySurface() {
           </div>
         </div>
         <p className="activity-export-scope">
-          Loaded export includes {sessions.length} currently loaded row{sessions.length === 1 ? '' : 's'}; full history requires an explicit daemon completeness proof, then re-reads a bounded snapshot and fails closed when any source or body is unavailable.
+          Loaded export includes {displayedSessions.length} currently loaded row{displayedSessions.length === 1 ? '' : 's'}; full history requires an explicit daemon completeness proof, then re-reads a bounded snapshot and fails closed when any source or body is unavailable.
         </p>
         <div className="activity-groups">
           {dayGroups.map((group) => (
@@ -410,7 +439,7 @@ export function ActivitySurface() {
     <div className="activity-surface">
       <p className="muted activity-provenance">Source: {provenance}</p>
       <p className="sr-only" aria-live="polite">
-        {loading ? 'Loading sessions' : `${sessions.length} session${sessions.length === 1 ? '' : 's'} shown`}
+        {loading ? 'Loading sessions' : `${displayedSessions.length} session${displayedSessions.length === 1 ? '' : 's'} shown`}
       </p>
       {body}
       {historyImportPanel}
