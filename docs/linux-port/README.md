@@ -6,8 +6,8 @@ implemented as reviewable infrastructure, not a public availability claim.
 Current parity status as of 2026-07-20:
 
 - **Current source head:** the integration branch now includes source changes
-  through `3258104c1a` (with `2b64049552` and `10c26c9a5d`). It passes 91 frontend files /
-  861 tests, TypeScript, production bundle verification, Tauri Rust 129/129,
+  through `72afa18f7e` (with `e114bca710` and `f9bf08c600`). It passes 91 frontend files /
+  865 tests, TypeScript, production bundle verification, Tauri Rust 129/129,
   package-payload contract checks (2 pass, 2 historical skips), and product
   validators 12/12. `1130524331` recovers a visible 2D backdrop after
   backgrounded WebGL context loss and retries the requested kernel on resume;
@@ -59,6 +59,11 @@ Current parity status as of 2026-07-20:
   authority and approval-poll responses; and `3258104c1a` retains the last
   successful Activity snapshot during transient refresh failures while keeping
   visible-row exports usable.
+  `f9bf08c600` fails closed from an errored X11 pet child to the contained
+  keyboard/pointer-safe fallback; `e114bca710` retains stale signed-update
+  facts while disabling package mutation until a fresh check succeeds; and
+  `36514bee98`/`72afa18f7e` force and validate the native GStreamer Mercury
+  viewer feature for package builds.
   The ARM VM passed the supported Swift-less staged-payload
   `pretauri:build`/`tauri:build` path via
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`, and then a separate package was
@@ -66,17 +71,17 @@ Current parity status as of 2026-07-20:
   `2ad3b2752d` receipt. The installed VM DEB is unsigned and non-certifying.
   The latest exact-head receipt includes the package hash, installed process,
   daemon health, and visible focused-window capture in
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-3258104c1a-fresh-shell-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-3258104c1a-fresh-shell-postinstall-2026-07-20.json).
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-72afa18f7e-media-update-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-72afa18f7e-media-update-postinstall-2026-07-20.json).
   The preceding `b4cd3e8b8b`, `534d7aae65`, `872074af3a`, and `ded781e94d` receipts remain historical
   visible-shell evidence.
   The strict ledger remains **0/40 product rows and 0/7 environment receipts**.
   The latest exact-head package receipt now binds these fixes to the installed
   ARM64 VM smoke run below.
 
-- **Latest live VM candidate:** the exact `3258104c1a` ARM64 DEB with the
-  verified staged daemon and CLI payloads is installed in the Ubuntu 24.04.4 GNOME/X11
+- **Latest live VM candidate:** the exact `72afa18f7e` ARM64 DEB with native
+  GStreamer media linkage and the verified staged daemon/CLI payloads is installed in the Ubuntu 24.04.4 GNOME/X11
   UTM guest. Its non-certifying receipt is
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-3258104c1a-fresh-shell-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-3258104c1a-fresh-shell-postinstall-2026-07-20.json).
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-72afa18f7e-media-update-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-72afa18f7e-media-update-postinstall-2026-07-20.json).
   Daemon/CLI health is green and the desktop window exists at `/usr/bin`. A
   clean launch in the unlocked GNOME session rendered the first-run
   Secret Service / SQLCipher setup card and Fluid Aurora 2D fallback. The
@@ -85,7 +90,10 @@ Current parity status as of 2026-07-20:
   `webgl2=false` and `webgl1=true`; the visible switcher labels the fallback
   `2D fallback (WebGL2 unavailable)`. A stale autostart/locked-era blank
   process was discarded as launch-context evidence, not a package failure. The
-  earlier same-named `postinstall` receipt is retained as historical UI-only
+  installed desktop links `libgstreamer-1.0`, discovers `vp9dec`, and has
+  `autovideosink`, `waylandsink`, and `ximagesink` available. The package
+  remains unsigned and is not a public release. The earlier same-named
+  `postinstall` receipt is retained as historical UI-only
   staged-payload evidence and is not exact gateway-source proof.
   This package is unsigned and is not a public release. The previous exact
   `5b70a3d320` package remains the
@@ -100,7 +108,7 @@ Current parity status as of 2026-07-20:
   105 nodes and 50 actionable controls with no `Loading Settings` node; the
   General startup checkbox and Media & Sharing route are reachable.
   The package is unsigned and this receipt is non-certifying.
-- Current source gates are **91 frontend files / 861 tests**, focused provider
+- Current source gates are **91 frontend files / 865 tests**, focused provider
   recovery **11/11**, daemon subscription lifecycle **8/8**, SmartHub **9/9**,
   Settings/route **51/51**, Support **34/34**, media **38/38**, Tauri Rust
   **129/129**, TypeScript, formatting, and production-bundle verification. The strict ledger remains
