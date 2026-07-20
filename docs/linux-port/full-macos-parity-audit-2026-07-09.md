@@ -10,6 +10,39 @@ same safety, release, cloud, and operational guarantees?"
 
 Linux is not at full macOS parity.
 
+### Post-main integration status — 2026-07-20 UTC
+
+The current exact-native checkpoint is `0eb6efcc1a`. Verified source and build
+gates are **94 frontend files / 910 tests**, Tauri Rust **133/133**, TypeScript,
+the production-bundle verifier, workflow verifier Node tests **28/28**, Linux
+Swift verifier Python tests **18/18**, and fresh Ubuntu ARM64 production builds
+of `OpenBurnBarDaemon` and `OpenBurnBarCLI`.
+
+The current merge exposed and fixed two Linux-only compilation problems. Swift
+6.1 whole-module compilation could not reliably select the explicit-nonce
+`PlatformCrypto` overload, so the shared API now provides an unambiguous named
+entry point and the legacy crypto callers qualify it through the platform
+support module. The newly cross-platform Insights target also called Apple's
+app-group container API unconditionally; non-Apple builds now return an honest
+unavailable result instead.
+
+Exact-head package proof now passes. The 152,148,488-byte ARM64 DEB has SHA-256
+`f5b89a4a6ebb41fefe7588ee9843291ca97027080a94a49bf3132a38ba6f436d`.
+Both decomposed resource bundles are packaged and installed; package-versus-
+installed desktop, daemon, CLI, iroh, Kernel-resource, and Pretext-resource
+hashes match. The daemon is active, CLI health is OK, and a native Codex deep
+link passes AT-SPI at 189/108/91/32 nodes/named/actionable/focusable. See the
+[`exact-native receipt`](evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-exact-native-2026-07-20.json)
+and
+[`provider deep-link screenshot`](evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-provider-deep-link.png).
+
+The strict certification ledger remains **0/40 product rows and 0/7 environment
+receipts** because the package manifest is the unsigned `{}` placeholder.
+Production OAuth/App Check/callables, signed updater and rollback, real keyring,
+compositor/architecture coverage, SmartHub and pet hardware behavior,
+physical-iPad Computer Use/Mercury workflows, and a same-commit macOS
+differential remain external proof blockers.
+
 Linux now has a real Tauri/React desktop shell, a Swift daemon path, AF_UNIX RPC,
 provider gateway work, Linux package metadata, and a public signed aarch64
 prerelease. That is meaningful progress. It is still not a macOS-grade product
@@ -460,4 +493,3 @@ Recommended smallest coherent PRs:
   `linux-v0.1.0`.
 - `packaging/linux/flatpak/dev.openburnbar.OpenBurnBar.yml`: correctly says
   tail metadata only, but user docs do not surface that limitation clearly.
-

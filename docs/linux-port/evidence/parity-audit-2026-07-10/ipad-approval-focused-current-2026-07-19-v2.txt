@@ -4,8 +4,8 @@ Source checkout at test-process start: eace4cc2001319d9c9a6a1cd9a997d4f3c801c53
 Source checkout after the run: e6c32ec2b2f7cdf4684a38b89f681920ee1386be
 Note: HEAD advanced during the run; the receipt is anchored to the SHA observed before xcodebuild started.
 Device: Alberto's iPad (iPadOS, paired USB)
-CoreDevice identifier: 407C0B12-010B-5970-8E85-D0E43DA8F457
-Xcode hardware UDID: 00008132-001158191E9A401C
+CoreDevice identifier: <IOS_DEVICE_ID>
+Xcode hardware UDID: <IOS_USB_UDID>
 Xcode: Xcode-27.0.0-Beta
 Configuration: Debug; Xcode provisioning/device-registration updates allowed by the wrapper
 Signal FFI targets: aarch64-apple-ios (existing debug XCFramework artifacts reused)

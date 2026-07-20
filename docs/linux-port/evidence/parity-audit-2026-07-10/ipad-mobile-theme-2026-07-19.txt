@@ -2,8 +2,8 @@ OpenBurnBar focused physical-iPad XCTest receipt
 Captured: 2026-07-19T05:47:40Z
 Source commit: 2a80e309216e3566a4388eb61008603ea4d03b3e
 Device: Alberto's iPad (iPadOS, paired USB)
-CoreDevice identifier: 407C0B12-010B-5970-8E85-D0E43DA8F457
-Xcode hardware UDID: 00008132-001158191E9A401C
+CoreDevice identifier: <IOS_DEVICE_ID>
+Xcode hardware UDID: <IOS_USB_UDID>
 Xcode: Xcode-27.0.0-Beta
 Configuration: Debug; automatic provisioning disabled
 Signal FFI targets: aarch64-apple-ios

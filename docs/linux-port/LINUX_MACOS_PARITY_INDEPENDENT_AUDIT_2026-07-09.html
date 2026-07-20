@@ -256,11 +256,19 @@
 </tr>
 <tr>
 <td>Current source and VM proof</td>
-<td><code>codex/linux-parity-integration-final</code> at <code>bfd0eefea9</code>; 906/906 frontend tests, 129/129 Tauri Rust tests, TypeScript, production-bundle verification, and fresh ARM64 payload staging pass. The exact package is installed in Ubuntu GNOME/X11; a native <code>openburnbar://providers?provider=codex</code> second launch selected Codex and passed AT-SPI at 189/108/91/33 nodes/named/actionable/focusable. The receipt is <a href="evidence/parity-audit-2026-07-10/linux-arm64-current-bfd0eefea9-exact-native-2026-07-20.json">linux-arm64-current-bfd0eefea9-exact-native-2026-07-20.json</a>.</td>
+<td><code>codex/linux-parity-integration-final</code> at <code>0eb6efcc1a</code>; 94 frontend files / 910 tests, 133/133 Tauri Rust tests, 28/28 workflow verifier Node tests, 18/18 Linux Swift verifier Python tests, TypeScript, production-bundle verification, and fresh Ubuntu ARM64 daemon and CLI production builds pass. The exact 152,148,488-byte ARM64 DEB has SHA-256 <code>f5b89a4a6ebb41fefe7588ee9843291ca97027080a94a49bf3132a38ba6f436d</code>; build/install, installed hashes, services, CLI health, native deep link, screenshot, and AT-SPI proof pass. See the <a href="evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-exact-native-2026-07-20.json">exact-native receipt</a> and <a href="evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-provider-deep-link.png">provider deep-link screenshot</a>.</td>
 </tr>
 </tbody>
 </table>
 <p><strong>Verdict:</strong> <strong>NO-GO for a full-parity claim or stable Linux promotion</strong></p>
+<h2>Post-main exact-native checkpoint — 2026-07-20</h2>
+<ul>
+<li><strong>Integration:</strong> merge commit <code>6bf0708eec</code> reconciles current <code>main</code> with the Linux parity branch across the frontend, Swift package graph, Android startup, Functions, and CI workflows.</li>
+<li><strong>Verification:</strong> 94 frontend files / 910 tests, Tauri Rust 133/133, workflow verifier Node tests 28/28, Linux Swift verifier Python tests 18/18, TypeScript, the production-bundle verifier, and fresh Ubuntu ARM64 production builds of <code>OpenBurnBarDaemon</code> and <code>OpenBurnBarCLI</code> pass.</li>
+<li><strong>Linux compile fixes:</strong> <code>8a17df54d2</code> adds an unambiguous explicitly named AES-GCM nonce API for Swift 6.1 whole-module builds; <code>6aaae20226</code> fully qualifies that call and makes the shared Insights app-group container lookup Apple-only with an honest unavailable result on Linux.</li>
+<li><strong>Installed package proof:</strong> <code>0eb6efcc1a</code> completes resource discovery and packaging for both <code>OpenBurnBarCore_OpenBurnBarKernel.resources</code> and <code>OpenBurnBarCore_OpenBurnBarPretext.resources</code>. The 152,148,488-byte ARM64 DEB has SHA-256 <code>f5b89a4a6ebb41fefe7588ee9843291ca97027080a94a49bf3132a38ba6f436d</code>. Package-versus-installed desktop, daemon, CLI, iroh, and resource hashes match; the daemon is active; CLI health is OK; and the native Codex deep link passes AT-SPI at 189/108/91/32.</li>
+<li><strong>Certification:</strong> strict status remains 0/40 product rows and 0/7 environment receipts because the package manifest is the unsigned <code>{}</code> placeholder. Production OAuth/App Check/callables, signed updater/rollback, real keyring, the compositor and architecture matrix, SmartHub/pet hardware behavior, physical-iPad Computer Use/Mercury, and same-commit macOS differential proof remain open.</li>
+</ul>
 <h2>Current implementation delta — 2026-07-20</h2>
 <ul>
 <li><strong>Navigation:</strong> typed provider/model hash destinations now survive reload and history, pass strict native parsing, and forward through the owner-checked single-instance channel. The exact installed package proved a Codex destination through AT-SPI.</li>

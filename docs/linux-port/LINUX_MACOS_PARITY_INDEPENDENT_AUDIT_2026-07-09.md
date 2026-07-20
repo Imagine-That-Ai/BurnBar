@@ -6,20 +6,55 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Current source proof | `bfd0eefea9` is the current packaged product-source head. Frontend tests are 906/906, Tauri Rust tests are 129/129, TypeScript and the production-bundle verifier pass, and the Ubuntu ARM64 daemon, CLI, iroh runtime, and shell were rebuilt from an exact synchronized relevant tracked source set. The installed receipt remains non-certifying because its manifest is unsigned, production cloud auth is unconfigured, and the full matrix is open: [`evidence/parity-audit-2026-07-10/linux-arm64-current-bfd0eefea9-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-bfd0eefea9-exact-native-2026-07-20.json). |
+| Current source proof | The post-`main` exact-native checkpoint is `0eb6efcc1a`. Frontend tests pass at 94 files / 910 tests, Tauri Rust at 133/133, workflow verifier Node tests at 28/28, and Linux Swift verifier Python tests at 18/18; TypeScript, the production-bundle verifier, and fresh Ubuntu ARM64 production builds of the daemon and CLI also pass. The exact DEB build/install and installed hash proof pass: [`evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-exact-native-2026-07-20.json). |
 | Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets rotate; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh; `465431d0fc` hardens startup forwarding; `7ac2e021c9` makes Browser Computer Use capability checks fail closed; `c0a725447d` adds a trusted embedded autostart fallback; `447abb0564` fences stale Mercury capability responses; `9e868e60a7` refreshes tray state periodically; `3e7ede75e3` bounds expired browser authorization polling; `ebab7da744` fences stale concurrent version/feed responses; `534d7aae65` completes overflow-menu keyboard/focus behavior; `519f0456a7` adds a packaged-shell reconnect action for degraded daemon health; `811d84172a` queues native notification actions until renderer bootstrap completes; `66b280162f` fixes the Linux-only AppHandle ownership path caught by the ARM64 build; `b2c8579835` fences stale/overlapping diagnostics exports across bridge replacement; `90fac18c86` scopes the test-only notification queue helper so release builds stay warning-clean for that path; `7c5b68d750` matches macOS loopback-only CORS/preflight behavior for buffered and streamed gateway responses; `106b15855b` retains the last good mission snapshot during transient refresh failure; `e4f14c4387` avoids duplicate SmartHub health/control probes; `9f1bd7ca8c` wires Mission Inspect logs; `5e1a2dd962` routes Import sessions to Activity; `2ad3b2752d` brackets IPv6 device endpoints; `10c26c9a5d` makes Appearance radios keyboard-navigable; `2b64049552` fences stale Computer Use authority/approval responses; `3258104c1a` retains Activity snapshots across refresh failures; `f9bf08c600` fails closed from a broken X11 pet child; `e114bca710` retains stale signed-update facts while blocking package mutation; `36514bee98`/`72afa18f7e` force and validate native GStreamer Mercury packaging; `af31748ece` stabilizes the SmartHub bounded-output guard/test fixture; `41a9381e9e` exposes recovery-bundle controls in Data & Privacy; `7cdeb0ab85` adds daemon-backed project history; `1eae2dcc7e` preserves quota provenance and canonical provider aliases; `c0853c29af` splits heavy routes into lazy chunks; and `90c5bd34ca` keeps Support error wiring synchronous. Source-only checks are green at 873/873 frontend tests, 129/129 host Tauri Rust tests, and 130/130 media-enabled Rust tests on Ubuntu ARM64; the current shell receipt is non-certifying because the daemon/CLI remain staged. |
-| Latest VM proof | The current `bfd0eefea9` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. Fresh payload staging and package extraction prove exact installed daemon, CLI, iroh, and patched desktop-payload hashes. Daemon health is `ok=true`; a native second-instance provider deep link selected Codex and passed AT-SPI at 189 nodes / 108 named / 91 actionable / 33 focusable. The receipt is non-certifying because the manifest remains unsigned and the broader release matrix is open: [`evidence/parity-audit-2026-07-10/linux-arm64-current-bfd0eefea9-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-bfd0eefea9-exact-native-2026-07-20.json). |
+| Latest VM proof | The `0eb6efcc1a` ARM64 DEB is 152,148,488 bytes with SHA-256 `f5b89a4a6ebb41fefe7588ee9843291ca97027080a94a49bf3132a38ba6f436d`. Build and install pass in Ubuntu GNOME/X11; both Kernel and Pretext resource bundles are present; package-versus-installed desktop, daemon, CLI, iroh, and resource hashes match; the daemon is active; CLI health is OK; and a native provider deep link selected Codex with AT-SPI at 189 nodes / 108 named / 91 actionable / 32 focusable. Receipt: [`evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-exact-native-2026-07-20.json). Screenshot: [`evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-provider-deep-link.png`](evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-provider-deep-link.png). The receipt remains non-certifying because the manifest is the unsigned `{}` placeholder and the broader release matrix is open. |
 | Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
-The table's historical packaging row predates the latest exact-native wave. The
-authoritative current packaged product-source gate is `bfd0eefea9`: **93 frontend files / 906
-tests**, Tauri Rust **129/129**, TypeScript, production-bundle verification,
-fresh package runtime probes, and installed hash equality for the packaged
-shell payload, daemon, CLI, and iroh runtime. The unsigned placeholder manifest,
-unconfigured production cloud auth, and incomplete environment/device matrix
-remain non-certifying.
+The current source and installed ARM64 gate at `0eb6efcc1a` is **94 frontend files / 910 tests**,
+Tauri Rust **133/133**, workflow verifier Node tests **28/28**, Linux Swift
+verifier Python tests **18/18**, TypeScript, production-bundle verification, and
+fresh Ubuntu ARM64 daemon and CLI production builds. The exact DEB build and
+installation now pass, including matching installed hashes for the desktop,
+daemon, CLI, iroh runtime, and both decomposed resource bundles, plus active
+daemon, CLI-health, native deep-link, screenshot, and AT-SPI proof. The unsigned
+`{}` manifest, unconfigured production cloud auth, and incomplete
+environment/device matrix remain non-certifying.
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
+
+## Post-main exact-native checkpoint — 2026-07-20
+
+The branch now includes current `main` through merge commit `6bf0708eec` and
+preserves both the Linux parity work and newer shared application behavior. The
+merged source passes 94 frontend files / 910 tests, Tauri Rust 133/133, workflow
+verifier tests 28/28, Linux Swift verifier tests 18/18, TypeScript, the
+production-bundle verifier, and production Linux daemon and CLI builds.
+
+Two Linux compile regressions found by the clean guest build are repaired:
+
+- `8a17df54d2` introduces an unambiguous explicitly named AES-GCM nonce API for
+  Swift 6.1 whole-module builds; `6aaae20226` fully qualifies that platform
+  support call from the legacy crypto paths.
+- `6aaae20226` makes the app-group container lookup Apple-only and returns an
+  honest unavailable result on Linux, keeping the newly shared Insights target
+  usable by the daemon.
+
+`0eb6efcc1a` completes the exact-head native package cycle. The Linux payload
+path now discovers, stages, embeds, and validates the Kernel and Pretext SwiftPM
+resource bundles. The 152,148,488-byte ARM64 DEB has SHA-256
+`f5b89a4a6ebb41fefe7588ee9843291ca97027080a94a49bf3132a38ba6f436d`.
+Package-versus-installed hashes match for all native payloads and both resource
+bundles; the daemon is active, CLI health is OK, and the native Codex deep link
+passes AT-SPI at 189/108/91/32. The receipt and screenshot are linked in the
+audit table above.
+
+Strict promotion remains **0/40 product rows and 0/7 environment receipts**.
+The package manifest is still the unsigned `{}` placeholder. External blockers
+include production OAuth/App Check/callables, signed updater
+and rollback, real keyring custody, the remaining compositor and architecture
+matrix, real SmartHub and pet integration, physical-iPad Computer Use/Mercury
+proof, and a same-commit macOS differential.
 
 ## Current implementation and installed checkpoint — 2026-07-20
 
@@ -551,7 +586,7 @@ percentage. The active remediation stack now contains these reviewable slices:
 - **Physical iPad:** after the wired reconnection, `xcrun devicectl` sees
   Alberto's paired, booted iPad with Developer Mode enabled and a mounted
   developer image. The physical XCTest readiness preflight passes when the
-  hardware UDID (`00008132-001158191E9A401C`) is used. The bounded current-
+  hardware UDID (`<IOS_USB_UDID>`) is used. The bounded current-
   checkout `MobileThemeTests` run passed **9/9**, with xcodebuild exit 0; the
   non-certifying receipt is
   `evidence/parity-audit-2026-07-10/ipad-mobile-theme-2026-07-19.json`.
@@ -823,7 +858,7 @@ percentage. The active remediation stack now contains these reviewable slices:
   `firebase functions:list --project burnbar --json` check currently fails
   closed because all six callables are absent from production; no direct
   deploy was attempted outside the tag-bound workflow.
-- **Physical iPad:** Alberto's iPad (`00008132-001158191E9A401C`) was used for
+- **Physical iPad:** Alberto's iPad (`<IOS_USB_UDID>`) was used for
   a fourth focused approval attempt. Xcode reached dependency compilation but
   was stopped at **9.5 GiB** before XCTest execution to honor worktree disk
   hygiene; the cumulative receipt records four non-certifying attempts and

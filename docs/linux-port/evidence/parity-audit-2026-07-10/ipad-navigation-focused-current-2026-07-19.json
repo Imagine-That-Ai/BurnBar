@@ -6,7 +6,7 @@
   "sourceWorktree": "/private/tmp/burnbar-linux-parity-continuation",
   "device": {
     "name": "Alberto's iPad",
-    "xcodebuildIdentifier": "00008132-001158191E9A401C",
+    "xcodebuildIdentifier": "<IOS_USB_UDID>",
     "platform": "iPadOS",
     "connection": "physical-paired"
   },
@@ -25,7 +25,7 @@
     "appFailures": 0,
     "total": 21
   },
-  "command": "OPENBURNBAR_IOS_DESTINATION='platform=iOS,id=00008132-001158191E9A401C' OPENBURNBAR_MOBILE_TEST_FILTER='OpenBurnBarMobileTests/iPadNavigationUITests' OPENBURNBAR_MOBILE_TEST_ATTEMPTS=1 ./scripts/test-openburnbar-mobile.sh",
+  "command": "OPENBURNBAR_IOS_DESTINATION='platform=iOS,id=<IOS_USB_UDID>' OPENBURNBAR_MOBILE_TEST_FILTER='OpenBurnBarMobileTests/iPadNavigationUITests' OPENBURNBAR_MOBILE_TEST_ATTEMPTS=1 ./scripts/test-openburnbar-mobile.sh",
   "verifiedSurface": [
     "dashboard navigation history",
     "iPad settings tab identity",

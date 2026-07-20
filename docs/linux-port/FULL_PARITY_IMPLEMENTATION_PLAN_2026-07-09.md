@@ -14,17 +14,27 @@ This is not a marketing checklist. It is a build plan with ownership,
 dependencies, acceptance contracts, proof commands, loophole controls, and
 known platform divergences.
 
-> **Live status (2026-07-20):** The packaged product-source checkpoint is
-> `bfd0eefea9` and passes **93 frontend files / 906 tests**, Tauri Rust
-> **129/129**, TypeScript, production-bundle verification, and fresh package
-> runtime probes. The current ARM64 DEB is installed in the unlocked Ubuntu
-> GNOME/X11 UTM guest; its packaged shell, daemon, CLI, and iroh hashes match
-> the extracted/installed payloads. A native second-instance provider deep link
-> selected Codex and passed AT-SPI at 189/108/91/33 nodes/named/actionable/focusable.
-> The non-certifying exact-native receipt is
-> [`evidence/parity-audit-2026-07-10/linux-arm64-current-bfd0eefea9-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-bfd0eefea9-exact-native-2026-07-20.json).
+> **Live status (2026-07-20):** The post-`main` exact-native checkpoint is
+> `0eb6efcc1a`. It passes **94 frontend files / 910 tests**, Tauri Rust
+> **133/133**, TypeScript and production-bundle verification, the workflow
+> verifier's **28/28** Node tests, and the Linux Swift verifier's **18/18**
+> Python tests. The exact ARM64 DEB is 152,148,488 bytes with SHA-256
+> `f5b89a4a6ebb41fefe7588ee9843291ca97027080a94a49bf3132a38ba6f436d`.
+> Its build and installation pass in the Ubuntu GNOME/X11 guest, including both
+> `OpenBurnBarCore_OpenBurnBarKernel.resources` and
+> `OpenBurnBarCore_OpenBurnBarPretext.resources`.
+>
+> Package-versus-installed hashes match for the desktop, daemon, CLI, iroh
+> runtime, and both resource bundles. The daemon is active, CLI health is OK,
+> and a native provider deep link selected Codex with a passing AT-SPI tree at
+> 189/108/91/32 nodes/named/actionable/focusable. The exact receipt and visual
+> proof are
+> [`evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-exact-native-2026-07-20.json)
+> and
+> [`evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-provider-deep-link.png`](evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-provider-deep-link.png).
 > The strict certification ledger is still **0/40 product rows and 0/7
-> environment receipts** because the package is unsigned and production,
+> environment receipts** because the package manifest is the unsigned `{}`
+> placeholder and production,
 > cross-device, keyring, compositor, and same-commit macOS differential proof
 > are not complete. These are separate numbers: source progress is real, but
 > it is not release certification.
@@ -32,6 +42,29 @@ known platform divergences.
 ## Executive Verdict
 
 Linux is not at full macOS parity.
+
+### Post-main exact-native checkpoint — 2026-07-20 UTC
+
+`6bf0708eec` reconciles the Linux parity branch with current `main` across the
+frontend, Swift package graph, Android application startup, Functions, and CI
+workflows. The integrated source passes 94 frontend files / 910 tests, Tauri
+Rust 133/133, workflow verifier tests 28/28, Linux Swift verifier tests 18/18,
+TypeScript, production-bundle verification, and production Linux daemon and CLI
+builds. `8a17df54d2` avoids Swift 6.1 whole-module lookup ambiguity for explicit
+AES-GCM nonces, while `6aaae20226` fully qualifies that API and keeps the shared
+Insights widget-container code buildable off Apple platforms.
+
+`0eb6efcc1a` completes this exact-head package cycle. The payload path discovers,
+stages, embeds, and validates both decomposed SwiftPM resource bundles. The
+152,148,488-byte ARM64 DEB has SHA-256
+`f5b89a4a6ebb41fefe7588ee9843291ca97027080a94a49bf3132a38ba6f436d`;
+build/install passed, package and installed hashes match for the desktop,
+daemon, CLI, iroh runtime, Kernel resources, and Pretext resources, the daemon
+is active, CLI health is OK, and the native Codex deep link passes AT-SPI at
+189/108/91/32. The exact receipt and screenshot are linked in the live status
+above. This replaces `bfd0eefea9` as the latest installed checkpoint, but the
+unsigned `{}` manifest and external proof gaps mean it does not advance the
+strict certification ledger.
 
 ### Current exact-native wave — 2026-07-20 UTC
 
