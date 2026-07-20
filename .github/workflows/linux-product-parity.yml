@@ -418,11 +418,13 @@ jobs:
               ;;
             *) echo "unsupported P-08 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;
           esac
-          printf 'package_version=%s\n' "$version" >> "$GITHUB_OUTPUT"
-          sha256sum /usr/share/openburnbar/attestation/installed-manifest.json \
-            | awk '{print "manifest_sha256=" $1}' >> "$GITHUB_OUTPUT"
-          sha256sum /usr/share/openburnbar/attestation/installed-manifest.json.sig \
-            | awk '{print "manifest_signature_sha256=" $1}' >> "$GITHUB_OUTPUT"
+          {
+            printf 'package_version=%s\n' "$version"
+            sha256sum /usr/share/openburnbar/attestation/installed-manifest.json \
+              | awk '{print "manifest_sha256=" $1}'
+            sha256sum /usr/share/openburnbar/attestation/installed-manifest.json.sig \
+              | awk '{print "manifest_signature_sha256=" $1}'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Capture P-08 installed Mercury media proof
         if: inputs.requirement == 'P-08'
