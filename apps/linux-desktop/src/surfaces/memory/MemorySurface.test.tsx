@@ -45,6 +45,11 @@ describe('MemorySurface', () => {
     expect(screen.queryByText(/until the review inbox ships/i)).toBeNull();
     expect(container.querySelectorAll('.system-scope-chip').length).toBeGreaterThan(0);
     expect(screen.getByText(/live daemon memory boundaries|fixture transcript/i)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Audit trail' })).toBeTruthy();
+    const auditList = screen.getByRole('list', { name: 'Memory audit events' });
+    expect(auditList).toBeTruthy();
+    expect(within(auditList).getByText('Approved')).toBeTruthy();
+    expect(within(auditList).getByText(/by fixture/)).toBeTruthy();
   });
 
   it('shows empty inbox copy when fixture boundaries are empty', () => {
@@ -174,5 +179,32 @@ describe('MemorySurface', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('Project memory is not available');
     });
+  });
+
+  it('renders daemon audit events with honest unknown timestamps and bounded identifiers', async () => {
+    vi.spyOn(useSystemStore.getState(), 'loadMemory').mockImplementation(async () => {});
+    const longAuditID = `audit-${'event-'.repeat(24)}`;
+    const memoryReviewInbox = vi.fn().mockResolvedValue({
+      items: [],
+      auditEvents: [{
+        id: longAuditID,
+        action: 'unexpected-action',
+        actor: 'daemon-worker',
+        at: 'not-a-timestamp',
+        subjectId: 'mem-unknown'
+      }]
+    });
+    useShellStore.setState({
+      bridge: { memoryReviewInbox } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+    useSystemStore.setState({ memory: [], loading: false, error: null });
+    render(<MemorySurface />);
+
+    await waitFor(() => expect(screen.getByRole('list', { name: 'Memory audit events' })).toBeTruthy());
+    expect(screen.getByText('unexpected-action')).toBeTruthy();
+    expect(screen.getByText('Time unavailable')).toBeTruthy();
+    expect(screen.getByText(/Subject mem-unknown/)).toBeTruthy();
+    expect(screen.getByText(`Event ${longAuditID.slice(0, 117)}…`)).toBeTruthy();
   });
 });
