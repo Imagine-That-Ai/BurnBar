@@ -52,10 +52,19 @@ extension BurnBarDaemonServer {
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRecordUsageRequest>.self,
                 from: requestData
             )
-            let recordResult = try await usageRecorder.record(
-                typedRequest.params.event,
-                idempotencyKey: typedRequest.params.idempotencyKey
-            )
+            let recordResult: BurnBarUsageRecordResult
+            do {
+                recordResult = try await usageRecorder.record(
+                    typedRequest.params.event,
+                    idempotencyKey: typedRequest.params.idempotencyKey
+                )
+            } catch let error as BurnBarUsageValidationError {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.invalidParams,
+                    message: error.localizedDescription
+                )
+            }
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,

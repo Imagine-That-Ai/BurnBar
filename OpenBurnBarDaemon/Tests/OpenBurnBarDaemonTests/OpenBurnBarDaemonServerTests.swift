@@ -1193,6 +1193,32 @@ final class BurnBarDaemonServerTests: XCTestCase {
         )
         XCTAssertEqual(duplicateInsert.result?.inserted, false)
 
+        let invalidResponse: BurnBarRPCResponseEnvelope<BurnBarEmptyResult> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "usage-record-invalid",
+                method: .usageRecord,
+                authToken: "test-token",
+                params: BurnBarRecordUsageRequest(
+                    idempotencyKey: "hermes-invalid",
+                    event: BurnBarUsageEvent(
+                        providerID: "hermes",
+                        modelID: "minimax-m2.7-highspeed",
+                        inputTokens: -1,
+                        outputTokens: 0,
+                        cacheReadTokens: 0,
+                        cost: 0,
+                        recordedAt: Date()
+                    )
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(invalidResponse.id, "usage-record-invalid")
+        XCTAssertEqual(invalidResponse.error?.code, BurnBarRPCErrorCode.invalidParams)
+        XCTAssertTrue(invalidResponse.error?.message.contains("inputTokens must be nonnegative") == true)
+        let recordsAfterInvalidRequest = try await usageRecorder.records()
+        XCTAssertEqual(recordsAfterInvalidRequest.count, 1)
+
         let recentResponse: BurnBarRPCResponseEnvelope<BurnBarRecentUsageResponse> = try sendEnvelope(
             BurnBarRPCRequestEnvelopeWithParams(
                 id: "usage-recent-after-record",
