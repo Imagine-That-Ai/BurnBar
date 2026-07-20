@@ -92,9 +92,8 @@ public actor HermesRelayReplayCache {
     private struct SenderReplayState: Codable, Sendable, Equatable {
         var maxCounter: Int64
         var requestIDs: [String: Date]
-        /// Counters accepted by the current sliding replay window. Optional so
-        /// caches written by the former strict-high-water implementation still
-        /// decode and can be migrated without reopening old counters.
+        /// Counters accepted by the sliding replay window. Optional so legacy
+        /// strict-high-water caches decode without reopening old counters.
         var recentCounters: [String: Date]?
         /// Lowest counter that may ever be admitted for this sender. A legacy
         /// cache initializes this above its old high-water mark; a new cache

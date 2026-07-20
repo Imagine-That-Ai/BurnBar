@@ -44,10 +44,7 @@ def main() -> int:
 
     signer_fingerprint = fingerprint(signer)
     if any(hmac.compare_digest(signer, certificate) for certificate in certificates):
-        print(
-            "PASS: Embedded provisioning profile authorizes signer certificate "
-            f"SHA256={signer_fingerprint}."
-        )
+        print(f"PASS: Embedded provisioning profile authorizes signer certificate SHA256={signer_fingerprint}.")
         return 0
 
     allowed = ", ".join(fingerprint(certificate) for certificate in certificates)
