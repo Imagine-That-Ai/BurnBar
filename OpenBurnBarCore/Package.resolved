@@ -1,5 +1,5 @@
 {
-  "originHash" : "9c73d43754edfe24061adcd03ab50c66751ecfde306e2bfd794b0068466d864e",
+  "originHash" : "c3820d0c03b43412813d71c6acea8282ccdec6adaf14b263de6c6e744a54fedd",
   "pins" : [
     {
       "identity" : "sqlcipher.swift",
@@ -24,26 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-crypto.git",
       "state" : {
-        "revision" : "95ba0316a9b733e92bb6b071255ff46263bbe7dc",
-        "version" : "3.15.1"
-      }
-    },
-    {
-      "identity" : "swift-syntax",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/swiftlang/swift-syntax.git",
-      "state" : {
-        "revision" : "0687f71944021d616d34d922343dcef086855920",
-        "version" : "600.0.1"
-      }
-    },
-    {
-      "identity" : "swift-testing",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/swiftlang/swift-testing",
-      "state" : {
-        "revision" : "399f76dcd91e4c688ca2301fa24a8cc6d9927211",
-        "version" : "0.99.0"
+        "revision" : "47d3869a7291f085c1fb9fb1e6d3b97a793f45c6",
+        "version" : "4.5.1"
       }
     }
   ],
