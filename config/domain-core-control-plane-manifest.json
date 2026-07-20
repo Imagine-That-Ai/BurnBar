@@ -151,7 +151,7 @@
     "scripts/ci/verify-domain-core-functions-target-inventory.test.mjs": ["4457747e8b9dbb01","a40b7514e50905c6","0c89992431ec1b1a","a7374a9dfd2dcf8c"],
     "scripts/ci/verify-domain-core-ios-binary-identity.py": ["afafe13e33a5598d","49911e8adee21912","ad858d83520c7f08","a498d88a4fe0c967"],
     "scripts/ci/verify-domain-core-legacy-absence.py": ["da64af0878cd7ddf","bd6bc924ba5d1ff9","80adbc154013d0e1","b3e4e692358daa48"],
-    "scripts/ci/verify-domain-core-legacy-deletion.py": ["f8677260ca0b4731","e901f67191bac129","0d67e3da53ce3b04","76bb37c349a61312"],
+    "scripts/ci/verify-domain-core-legacy-deletion.py": ["8c8fd1bde1f87c11","f85b53d89e9766f0","2be27be099942948","38333379db02d56f"],
     "scripts/ci/verify-domain-core-native-event-commit.mjs": ["6d2f52e99e5a9634","4b0118ac894adac3","6cd5501b02cf5648","088f8104e401dcc7"],
     "scripts/ci/verify-domain-core-native-release-artifact.sh": ["edee181cf4477c35","77ee63aca988a52c","b04ab61b87018088","62b685cdf31e23fe"],
     "scripts/ci/verify-domain-core-native-release-workflows.test.mjs": ["bdff31cec9cda9ef","6db6615470d646ef","82362ef97c86a6ee","23ae3c7151635d63"],

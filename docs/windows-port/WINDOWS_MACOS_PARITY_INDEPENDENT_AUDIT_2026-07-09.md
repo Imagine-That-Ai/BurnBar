@@ -5,6 +5,12 @@
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
 **Status:** F1 source/product implementation and applicable WPD-0006 F2 substitutions are complete. Exact signed candidate `windows-v1.0.38` is stable on physical Intel x64, but remains a validator-clean **NO-GO** until its supplemental accessibility, performance, staging, paired-device safety, and private Store/update receipts are complete; physical ARM64 remains an explicit beta limitation
 
+**Day-two operations:** use
+[`WINDOWS_PORT_OPERATIONS_RUNBOOK.md`](WINDOWS_PORT_OPERATIONS_RUNBOOK.md) for
+the current release sequence, cost model, maintenance cadence, evidence gates,
+rollback steps, and agent handoff format. This audit preserves the detailed
+historical evidence; the runbook owns repeatable operations.
+
 ## Physical Intel x64 v1.0.38 Retry - 2026-07-19
 
 Protected tag `windows-v1.0.38` resolves to commit

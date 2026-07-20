@@ -5,6 +5,12 @@ Branch at scan: `windows/liquid-glass-kernel-reskin`
 Scope: Windows port parity with the shipping macOS OpenBurnBar product.
 Status: Consolidated plan after CMUX pane review, live ledger verification, code checks, and adversarial loophole loop.
 
+For ongoing releases and maintenance after implementation, use
+[`WINDOWS_PORT_OPERATIONS_RUNBOOK.md`](WINDOWS_PORT_OPERATIONS_RUNBOOK.md).
+It separates source parity from exact-candidate release certification and owns
+the recurring cost, staging, signing, physical-evidence, Store, and rollback
+procedures.
+
 ## 0. Source of Truth and Scope
 
 The status source of truth remains `docs/windows-port/WINDOWS_PARITY_LEDGER.yml`.
