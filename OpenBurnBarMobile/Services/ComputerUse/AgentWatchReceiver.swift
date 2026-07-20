@@ -185,14 +185,19 @@ public final class AgentWatchReceiver: ObservableObject {
             }
         case .controlSessionGrantChallenge:
             guard let challenge = frame.control?.sessionGrantChallenge else { return }
-            guard let phoneControlSender else { return }
-            sessionGrantChallengeReceiver.ingest(
-                challenge,
-                liveGrantDelivery: { request in
-                    _ = try await phoneControlSender.send(agentGrant: request)
-                    return true
-                }
-            )
+            if let phoneControlSender {
+                sessionGrantChallengeReceiver.ingest(
+                    challenge,
+                    liveGrantDelivery: { request in
+                        _ = try await phoneControlSender.send(agentGrant: request)
+                        return true
+                    }
+                )
+            } else {
+                // The shared receiver still fails closed without a live route.
+                // Injected receivers can supply their own delivery handler in tests.
+                sessionGrantChallengeReceiver.ingest(challenge)
+            }
         case .controlAgentGrantReceipt:
             guard let wireReceipt = frame.control?.agentGrantReceipt,
                   let receipt = try? AgentCapabilityGrantReceipt(wire: wireReceipt) else { return }

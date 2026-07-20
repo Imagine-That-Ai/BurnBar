@@ -3336,26 +3336,6 @@ final class HermesServiceTests: XCTestCase {
         )
     }
 
-    /// `HermesCompositeRelayTransport.recordFallback` reads `Auth.auth().currentUser`,
-    /// which requires a configured `FirebaseApp`. Prefer the live host's real plist;
-    /// fall back to a minimal offline app on a plist-less unit host (currentUser is
-    /// nil offline, so the audit hop is a guarded no-op).
-    private func ensureFirebaseConfiguredForFallbackAudit() {
-        guard FirebaseApp.app() == nil else { return }
-        if let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
-           let options = FirebaseOptions(contentsOfFile: path) {
-            FirebaseApp.configure(options: options)
-            return
-        }
-        let options = FirebaseOptions(
-            googleAppID: "1:1234567890:ios:openburnbarunittests",
-            gcmSenderID: "1234567890"
-        )
-        options.apiKey = "AIzaSyOpenBurnBarUnitTestHostKey"
-        options.projectID = "openburnbar-unit-tests"
-        FirebaseApp.configure(options: options)
-    }
-
     /// Regression for the iOS/Android selected-model integrity gap: a generic iroh
     /// failure on `/v1/chat/completions` must hard-fail, NOT silently reroute the
     /// user's selected model over Firestore (which Android already refuses).
@@ -3396,7 +3376,6 @@ final class HermesServiceTests: XCTestCase {
     /// The complement: a control-plane unary call still falls back to Firestore on an
     /// iroh failure (it does not bind a user-selected model), matching Android.
     func testUnaryControlPlaneStillFallsBackToFirestoreOnIrohFailure() async throws {
-        ensureFirebaseConfiguredForFallbackAudit()
         let iroh = FakeHermesRelayTransport()
         iroh.unaryError = HermesServiceError.relayUnavailable("iroh direct dial failed")
         let firestore = FakeHermesRelayTransport()
@@ -3404,7 +3383,8 @@ final class HermesServiceTests: XCTestCase {
             primary: iroh,
             secondary: firestore,
             fallback: firestore,
-            irohEnabled: { true }
+            irohEnabled: { true },
+            fallbackRecorder: { _, _, _ in }
         )
         let payload = makeRelayPayload(operation: .models, path: "/v1/models")
 
