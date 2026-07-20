@@ -448,6 +448,53 @@ describe('ActivitySurface', () => {
     expect(screen.getByRole('status').textContent).toContain('process 42');
   });
 
+  it('keeps the last good body visible and offers an explicit replay retry', async () => {
+    const indexedSession = { ...fixtureSessionList().sessions[0]!, sourceID: 'Codex:retry-session' };
+    let shouldFail = false;
+    const replay = vi.fn(async (_sessionID: string): Promise<SessionReplayResult> => {
+      if (shouldFail) throw new Error('daemon temporarily unavailable');
+      return {
+        kind: 'ported',
+        briefingMD: '# Persisted body\n\nLast known good transcript',
+        briefingTruncated: false
+      };
+    });
+    useShellStore.setState({
+      bridge: mockBridge({
+        sessionList: async () => ({ sessions: [indexedSession], nextCursor: null }),
+        sessionReplay: replay
+      })
+    });
+    render(<ActivitySurface />);
+    await act(async () => {
+      await useActivityStore.getState().load();
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: /show details/i })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Load session body' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText('Persisted session body').textContent).toContain('Last known good transcript');
+
+    shouldFail = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Reload session body' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('button', { name: 'Retry session body' })).toBeTruthy();
+    expect(screen.getByLabelText('Persisted session body').textContent).toContain('Last known good transcript');
+    expect(screen.getByRole('alert').textContent).toMatch(/last successful body/i);
+
+    shouldFail = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Retry session body' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('button', { name: 'Reload session body' })).toBeTruthy();
+    expect(replay).toHaveBeenCalledTimes(3);
+  });
+
   it('fails closed for rows without a verified source identity', async () => {
     const indexedSession = { ...fixtureSessionList().sessions[0]!, sourceID: undefined };
     const replay = vi.fn(async (_sessionID: string): Promise<SessionReplayResult> => ({

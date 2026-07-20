@@ -33,6 +33,13 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
     : fixtureMode
       ? 'Unavailable until the live daemon and indexed database are connected'
       : 'Unavailable without a verified daemon source identity';
+  const bodyActionLabel = bodyLoading
+    ? 'Loading body...'
+    : bodyError
+      ? 'Retry session body'
+      : body
+        ? 'Reload session body'
+        : 'Load session body';
 
   const renderReplayError = (result: SessionReplayResult): string => {
     if (result.errorCode === 'session_not_found') {
@@ -63,16 +70,13 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
     try {
       const result = await bridge.sessionReplay(replayID);
       if (result.kind === 'error' || result.errorCode) {
-        setBody(null);
         setBodyError(renderReplayError(result));
       } else if (!result.briefingMD) {
-        setBody(null);
         setBodyError('No persisted session body is available for this row.');
       } else {
         setBody(result.briefingMD);
       }
     } catch (error) {
-      setBody(null);
       setBodyError(error instanceof Error ? error.message : 'Session body request failed.');
     } finally {
       setBodyLoading(false);
@@ -163,7 +167,7 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
           disabled={bodyLoading || sourceIdentityUnavailable}
           title={bodyActionTitle}
         >
-          {bodyLoading ? 'Loading body...' : body ? 'Reload session body' : 'Load session body'}
+          {bodyActionLabel}
         </button>
         <button
           type="button"
@@ -185,7 +189,7 @@ export function SessionDetail({ session, detailId }: { session: SessionEntry; de
       </p>
       {bodyError ? (
         <p className="activity-session-error" role="alert">
-          {bodyError}
+          {body ? `Could not refresh the persisted body; showing the last successful body. ${bodyError}` : bodyError}
         </p>
       ) : null}
       {resumeStatus ? (
