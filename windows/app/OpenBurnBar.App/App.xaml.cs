@@ -300,7 +300,7 @@ public partial class App : Application
         if (route.OpensMainWindow)
         {
             ShowMainWindow();
-            _mainWindow?.Shell?.Navigate(route.RouteKey);
+            _mainWindow?.Navigate(route.RouteKey, route.Payload);
         }
     }
 
@@ -357,7 +357,7 @@ public partial class App : Application
 
             if (palette.ChosenDestinationKey is { } key)
             {
-                _mainWindow.Shell?.Navigate(key, palette.ChosenSessionId);
+                _mainWindow.Navigate(key, palette.ChosenSessionId);
             }
         }
         catch (Exception ex)

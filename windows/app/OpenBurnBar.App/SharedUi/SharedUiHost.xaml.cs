@@ -44,6 +44,7 @@ public sealed partial class SharedUiHost : UserControl
     private readonly Dictionary<string, CancellationTokenSource> _streams = new(StringComparer.Ordinal);
     private readonly object _streamsLock = new();
     private CoreWebView2? _core;
+    private string _pendingRoute = "overview";
     private bool _started;
     private bool _disposed;
 
@@ -109,7 +110,7 @@ public sealed partial class SharedUiHost : UserControl
             _core.WebMessageReceived += OnWebMessageReceived;
             _core.SetVirtualHostNameToFolderMapping(
                 VirtualHost, resourceDir, CoreWebView2HostResourceAccessKind.Allow);
-            _core.Navigate($"https://{VirtualHost}/index.html");
+            _core.Navigate($"https://{VirtualHost}/index.html#/{_pendingRoute}");
         }
         catch (Exception ex)
         {
@@ -175,6 +176,30 @@ public sealed partial class SharedUiHost : UserControl
         await _core.ExecuteScriptAsync(script);
     }
 
+    public void Navigate(string routeKey)
+    {
+        _pendingRoute = MapShellRoute(routeKey);
+        if (_core is not null && !_disposed)
+        {
+            _ = _core.ExecuteScriptAsync(
+                $"window.location.hash = {JsonSerializer.Serialize($"#/{_pendingRoute}")}");
+        }
+    }
+
+    private static string MapShellRoute(string routeKey) => routeKey switch
+    {
+        "dashboard" or "home" => "overview",
+        "dataControlCenter" => "database",
+        "missionControl" => "missions",
+        "quota" => "providers",
+        "sessionLogs" => "activity",
+        "elderWand" => "chat",
+        "overview" or "insights" or "database" or "providers" or "projects" or "missions"
+            or "activity" or "chat" or "memory" or "settings" or "updates" or "support"
+            or "onboarding" => routeKey,
+        _ => "overview",
+    };
+
     // MARK: - Command surface
 
     private Task<object?> DispatchAsync(string command, JsonElement args) => command switch
@@ -199,6 +224,9 @@ public sealed partial class SharedUiHost : UserControl
         "runtime_capabilities" => Task.FromResult<object?>(BuildCapabilityManifest()),
         "onboarding_snapshot" or "onboarding_reset" or "onboarding_action" =>
             Task.FromResult<object?>(BuildOnboardingSnapshot()),
+        "subscription_start" => Task.FromResult<object?>(BuildSubscriptionResponse(args, resume: false)),
+        "subscription_resume" => Task.FromResult<object?>(BuildSubscriptionResponse(args, resume: true)),
+        "subscription_stop" => Task.FromResult<object?>(BuildSubscriptionStopResponse(args)),
         "session_env" => Task.FromResult<object?>(new { sessionType = "local", desktop = "windows" }),
         "tray_degraded" => Task.FromResult<object?>(false),
         "open_dashboard" => Task.FromResult<object?>(true),
@@ -209,9 +237,10 @@ public sealed partial class SharedUiHost : UserControl
         "gateway_probe" => Task.FromResult<object?>(_gateway is not null),
         "gateway_chat_stream" => StartChatStreamAsync(args),
         "gateway_chat_cancel" => CancelChatStream(args),
-        "usage_summary" => Task.FromResult<object?>(BuildUsageSummary()),
+        "usage_summary" or "usage_insights" => Task.FromResult<object?>(BuildUsageEvents()),
         "provider_catalog" => Task.FromResult<object?>(BuildProviderCatalog()),
         "session_list" => Task.FromResult<object?>(BuildSessionList(args)),
+        "session_search" => Task.FromResult<object?>(BuildSessionList(args)),
         _ => throw new NotSupportedException($"not implemented on Windows: '{command}'"),
     };
 
@@ -259,7 +288,11 @@ public sealed partial class SharedUiHost : UserControl
 
     private static object BuildCapabilityManifest()
     {
-        var available = new HashSet<string>(StringComparer.Ordinal) { "usage.read", "sessions.read", "chat.gateway", "native.tray" };
+        var available = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "usage.read", "sessions.read", "chat.gateway", "native.tray",
+            "updates.check", "support.export", "onboarding.repair",
+        };
         (string Id, string Domain)[] catalog =
         {
             ("usage.read", "product"), ("database.read", "product"), ("providers.configure", "product"),
@@ -285,6 +318,7 @@ public sealed partial class SharedUiHost : UserControl
             source = "windows-shared-ui-host",
         }).ToArray();
 
+        string now = DateTimeOffset.UtcNow.ToString("o");
         return new
         {
             schemaVersion = 1,
@@ -318,50 +352,38 @@ public sealed partial class SharedUiHost : UserControl
             revision = 1,
             currentStepID = "privacy",
             steps,
-            completedAt = DateTimeOffset.UtcNow.ToString("o"),
+            privacyChoices = new { telemetryEnabled = false, cloudSyncEnabled = false },
+            completed = true,
+            updatedAt = now,
         };
     }
 
     // MARK: - Usage-backed surfaces
 
-    private object BuildUsageSummary()
+    private object BuildUsageEvents()
     {
         IReadOnlyList<UsageEngineRecord> usages = _usageRuntime?.State.Snapshot.Usages
             ?? Array.Empty<UsageEngineRecord>();
-        DateTime today = DateTimeOffset.Now.LocalDateTime.Date;
-
-        UsageEngineRecord[] todayRows = usages
-            .Where(u => DateTimeOffset.FromUnixTimeMilliseconds(u.StartUnixMilliseconds).LocalDateTime.Date == today)
-            .ToArray();
-
-        var sevenDay = new double[7];
-        for (int i = 0; i < 7; i++)
-        {
-            DateTime day = today.AddDays(-6 + i);
-            sevenDay[i] = usages
-                .Where(u => DateTimeOffset.FromUnixTimeMilliseconds(u.StartUnixMilliseconds).LocalDateTime.Date == day)
-                .Sum(u => u.CostNanoUsd) / 1e9;
-        }
-
-        var recentEvents = usages
+        var events = usages
             .OrderByDescending(u => u.StartUnixMilliseconds)
-            .Take(5)
             .Select(u => new
             {
                 id = u.Id,
-                title = $"{u.Provider} · {u.Model}",
-                detail = $"${u.CostNanoUsd / 1e9:F2} · {u.ProjectName}",
+                providerId = u.ProviderId,
+                provider = u.Provider,
+                modelId = u.Model,
+                model = u.Model,
+                tokens = u.TotalTokens,
+                totalTokens = u.TotalTokens,
+                inputTokens = u.InputTokens,
+                outputTokens = u.OutputTokens,
+                cacheCreationTokens = u.CacheCreationTokens,
+                cacheReadTokens = u.CacheReadTokens,
+                costUsd = u.CostUsd,
                 at = DateTimeOffset.FromUnixTimeMilliseconds(u.StartUnixMilliseconds).ToString("o"),
             })
             .ToArray();
-
-        return new
-        {
-            todayTokens = todayRows.Sum(u => u.TotalTokens),
-            todayCostUsd = todayRows.Sum(u => u.CostNanoUsd) / 1e9,
-            sevenDay,
-            recentEvents,
-        };
+        return new { usage = events };
     }
 
     private object BuildProviderCatalog()
@@ -389,7 +411,16 @@ public sealed partial class SharedUiHost : UserControl
         IReadOnlyList<UsageEngineRecord> usages = _usageRuntime?.State.Snapshot.Usages
             ?? Array.Empty<UsageEngineRecord>();
 
-        var sessions = usages
+        string query = GetStringFlexible(args, "query")?.Trim() ?? string.Empty;
+        IEnumerable<UsageEngineRecord> filtered = string.IsNullOrEmpty(query)
+            ? usages
+            : usages.Where(u =>
+                u.SessionId.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                u.ProjectName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                u.Provider.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                u.Model.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+        var sessions = filtered
             .GroupBy(u => u.SessionId)
             .Select(g =>
             {
@@ -412,11 +443,58 @@ public sealed partial class SharedUiHost : UserControl
         return new { sessions, nextCursor = (string?)null };
     }
 
+    private static object BuildSubscriptionResponse(JsonElement args, bool resume)
+    {
+        JsonElement request = args.ValueKind == JsonValueKind.Object &&
+            args.TryGetProperty("request", out JsonElement requestElement)
+                ? requestElement
+                : args;
+        string subscriptionId = GetStringFlexible(
+                request, "subscription_id", "subscriptionId", "requested_subscription_id", "requestedSubscriptionId")
+            ?? Guid.NewGuid().ToString("N");
+        string topic = GetStringFlexible(request, "topic") ?? "data";
+        long afterSequence = request.ValueKind == JsonValueKind.Object &&
+            request.TryGetProperty("after_seq", out JsonElement sequenceElement) &&
+            sequenceElement.TryGetInt64(out long sequence)
+                ? sequence
+                : 0;
+        long nextSequence = resume ? checked(afterSequence + 1) : 1;
+        return new
+        {
+            subscription_id = subscriptionId,
+            topic,
+            seq = nextSequence,
+            cursor = nextSequence.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            first_snapshot = !resume,
+            events = Array.Empty<object>(),
+            degraded_fallback = true,
+            degradation_reason = "Windows shared UI uses bounded polling over the in-process usage snapshot.",
+            backpressure = "coalesce_latest_per_topic",
+            disconnect_detected = false,
+            recovered_after_restart = false,
+            terminal_state_delivered = false,
+        };
+    }
+
+    private static object BuildSubscriptionStopResponse(JsonElement args)
+    {
+        JsonElement request = args.ValueKind == JsonValueKind.Object &&
+            args.TryGetProperty("request", out JsonElement requestElement)
+                ? requestElement
+                : args;
+        return new
+        {
+            subscription_id = GetStringFlexible(request, "subscription_id", "subscriptionId") ?? "windows-shared-ui",
+            stopped = true,
+            last_seq = 0,
+        };
+    }
+
     // MARK: - Gateway chat streaming (mirrors apps/linux-desktop/src-tauri gateway_chat_stream)
 
     private async Task<object?> StartChatStreamAsync(JsonElement args)
     {
-        if (_gateway is null || string.IsNullOrEmpty(_gatewayToken))
+        if (_gateway is null)
         {
             throw new NotSupportedException("chat gateway is not running on this host");
         }
@@ -442,7 +520,10 @@ public sealed partial class SharedUiHost : UserControl
                 + messages + "}";
 
             using var http = new HttpClient { BaseAddress = _gateway.BaseAddress, Timeout = Timeout.InfiniteTimeSpan };
-            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _gatewayToken);
+            if (!string.IsNullOrEmpty(_gatewayToken))
+            {
+                http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _gatewayToken);
+            }
             http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
 
             using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions")

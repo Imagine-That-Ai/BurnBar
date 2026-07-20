@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window
 {
     private readonly ThemeService _theme;
     private readonly AppShell? _xamlShell;
+    private readonly SharedUiHost? _sharedUiHost;
 
     public MainWindow(
         ThemeService theme,
@@ -49,7 +50,8 @@ public sealed partial class MainWindow : Window
         }
         else
         {
-            ContentHost.Children.Add(new SharedUiHost(theme, usageRuntime, gateway, gatewayToken));
+            _sharedUiHost = new SharedUiHost(theme, usageRuntime, gateway, gatewayToken);
+            ContentHost.Children.Add(_sharedUiHost);
         }
 
         // Glass window backdrop + blend scrim through the single Liquid Glass chokepoint.
@@ -63,6 +65,16 @@ public sealed partial class MainWindow : Window
 
     /// <summary>The native XAML app frame when OPENBURNBAR_XAML_SHELL=1; null under the shared UI.</summary>
     public AppShell? Shell => _xamlShell;
+
+    public void Navigate(string routeKey, string? sessionId = null)
+    {
+        if (_xamlShell is not null)
+        {
+            _xamlShell.Navigate(routeKey, sessionId);
+            return;
+        }
+        _sharedUiHost?.Navigate(routeKey);
+    }
 
     private void ApplyGlassChrome()
     {
