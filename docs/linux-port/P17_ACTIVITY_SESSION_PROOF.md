@@ -30,6 +30,11 @@ OpenBurnBar desktop process may already be running. The runner temporarily stops
 user `openburnbar-daemon.service`, restores it afterward, and uses isolated owner-only
 support, home, download, and evidence directories.
 
+After validating that the isolated home and download roots are empty and owner-only,
+the runner writes that exact download root to the isolated profile's
+`.config/user-dirs.dirs`. WebKit therefore hands native Activity exports to the same
+directory the proof monitors; the runner rejects paths that cannot be encoded safely.
+
 The installed candidate must include:
 
 - `/usr/bin/openburnbar-cli`

@@ -139,6 +139,10 @@ test('P-17 native runner emits a signed materializable installed Activity sessio
     const value = fixture(root); const identity = attestation(root);
     const result = await runP17NativeActivityProbes(options(value, identity), value.dependencies);
     assert.equal(result.sourceID, `Codex:${SESSION_ID}`);
+    assert.equal(
+      fs.readFileSync(path.join(value.homeDir, '.config/user-dirs.dirs'), 'utf8'),
+      `XDG_DOWNLOAD_DIR="${value.downloadDir}"\n`
+    );
     const transcript = JSON.parse(fs.readFileSync(path.join(result.output, 'activity-cli-transcript.json')));
     assert.deepEqual(transcript.rows.map((row) => row.status), [0, 0, 0, 1, 1, 0, 0, 0]);
     const outputRoot = path.join(root, 'docs/linux-port/evidence/product-parity-inputs/P-17', ENVIRONMENT);
@@ -155,6 +159,11 @@ test('P-17 native runner fails closed on unsafe state and false product behavior
     ['wrong platform', {}, (value) => { value.dependencies.platform = 'darwin'; }, /must execute on Linux/u],
     ['existing desktop', {}, (value) => { value.dependencies.desktopProcessIDs = () => [99]; }, /pre-existing installed desktop/u],
     ['support permissions', {}, (value) => fs.chmodSync(value.supportDir, 0o755), /owner-only real directory/u],
+    ['unsafe download path', {}, (value) => {
+      const unsafe = `${value.downloadDir}\ninjected`;
+      fs.renameSync(value.downloadDir, unsafe);
+      value.downloadDir = unsafe;
+    }, /cannot be encoded/u],
     ['PID reuse', { samePid: true }, () => {}, /reused the initial process/u],
     ['wrong source search', { badSearch: true }, () => {}, /exact source/u],
     ['missing source accepted', { falseMissing: true }, () => {}, /did not fail closed/u]

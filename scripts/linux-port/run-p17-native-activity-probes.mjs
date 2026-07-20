@@ -43,6 +43,20 @@ function ownerOnlyToken(file) {
   return value;
 }
 
+function configureXdgDownloads(homeDir, downloadDir) {
+  assert(!/[\0\r\n]/u.test(downloadDir), 'P-17 download directory cannot be encoded in XDG user-dirs');
+  const escaped = downloadDir
+    .replaceAll('\\', '\\\\')
+    .replaceAll('"', '\\"')
+    .replaceAll('$', '\\$')
+    .replaceAll('`', '\\`');
+  const configDirectory = path.join(homeDir, '.config');
+  fs.mkdirSync(configDirectory, { mode: 0o700 });
+  const configFile = path.join(configDirectory, 'user-dirs.dirs');
+  writeExclusive(configFile, Buffer.from(`XDG_DOWNLOAD_DIR="${escaped}"\n`));
+  return configFile;
+}
+
 function commandRunner() {
   return {
     run(command, args = [], options = {}) {
@@ -285,6 +299,7 @@ export async function runP17NativeActivityProbes(options, dependencies = {}) {
   options.supportDir = ownerOnlyDirectory(options.supportDir, 'P-17 support directory', { empty: false });
   options.homeDir = ownerOnlyDirectory(options.homeDir, 'P-17 isolated home', { empty: true });
   options.downloadDir = ownerOnlyDirectory(options.downloadDir, 'P-17 download directory', { empty: true });
+  configureXdgDownloads(options.homeDir, options.downloadDir);
   ownerOnlyToken(options.tokenFile);
   assert(path.dirname(fs.realpathSync(options.tokenFile)) === options.supportDir, 'P-17 daemon token must be inside the isolated support directory');
   assert(JSON.stringify(fs.readdirSync(options.supportDir).sort()) === JSON.stringify([path.basename(options.tokenFile)]),
