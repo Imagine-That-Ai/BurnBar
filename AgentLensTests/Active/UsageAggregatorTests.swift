@@ -125,11 +125,11 @@ final class UsageAggregatorTests: XCTestCase {
         struct UnexpectedSleepFailure: Error {}
 
         let aggregator = UsageAggregator(dataStore: try makeTestDataStore())
-        let watchdog = MemoryFootprintWatchdog(sleep: { _ in
+        let watchdog = MemoryFootprintWatchdog()
+
+        watchdog.start(aggregator: aggregator, sleep: {
             throw UnexpectedSleepFailure()
         })
-
-        watchdog.start(aggregator: aggregator)
         try await Task.sleep(for: .milliseconds(50))
         watchdog.stop()
 
