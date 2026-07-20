@@ -220,7 +220,7 @@ fn queue_notification_action_locked(queued: &mut Vec<serde_json::Value>, event: 
 /// its listener; otherwise retain a bounded copy for the bootstrap command.
 /// Emitting before the listener exists loses Reply intent (the route may still
 /// be forwarded, but the composer-focus action is gone).
-fn emit_notification_action(app: &AppHandle, event: serde_json::Value) {
+pub(crate) fn emit_notification_action(app: &AppHandle, event: serde_json::Value) {
     let queue = forwarded_notification_action_queue();
     let Ok(mut queued) = queue.lock() else {
         return;

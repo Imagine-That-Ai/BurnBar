@@ -397,7 +397,7 @@ pub fn native_notification_show(
             let notification_id = notification_id.clone();
             let app_for_emit = app_for_route.clone();
             let _ = app_for_route.run_on_main_thread(move || {
-                super::emit_notification_action(
+                crate::desktop::emit_notification_action(
                     &app_for_emit,
                     serde_json::json!({
                         "notificationId": notification_id,
