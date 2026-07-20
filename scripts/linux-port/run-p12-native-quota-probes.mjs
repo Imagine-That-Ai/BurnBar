@@ -42,7 +42,7 @@ function ownerOnlyToken(file, label) {
   assert(stat.isFile() && !stat.isSymbolicLink() && stat.uid === process.getuid?.() && (stat.mode & 0o077) === 0,
     `${label} must be an owner-only regular file`);
   const token = fs.readFileSync(file, 'utf8').trim();
-  assert(token.length >= 8 && !/[\r\n]/u.test(token), `${label} is invalid`);
+  assert(token.length >= 32 && !/[\r\n]/u.test(token), `${label} is invalid`);
   return token;
 }
 
@@ -162,7 +162,7 @@ function defaultUi(runner, output, options) {
 }
 
 function installedDesktopProcessIDs(runner) {
-  const result = runner.run('pgrep', ['-f', '^/usr/bin/openburnbar-linux-desktop(?:\\s|$)']);
+  const result = runner.run('pgrep', ['-f', '^/usr/bin/openburnbar-linux-desktop([[:space:]]|$)']);
   if (result.status === 1) return [];
   assert(result.status === 0, `P-12 desktop process preflight failed: ${result.stderr || result.stdout}`.trim());
   return result.stdout.trim().split(/\s+/u).filter(Boolean).map(Number).filter(Number.isSafeInteger);
@@ -194,52 +194,73 @@ async function createDefaultGatewayHarness(options, rpc, now) {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
-  const address = server.address();
-  assert(address && typeof address === 'object', 'P-12 mock upstream did not bind');
-  const originalResponse = await rpc('daemon.config.get');
-  assert(!originalResponse?.error && originalResponse?.result?.snapshot, 'P-12 could not read daemon configuration');
-  const original = structuredClone(originalResponse.result.snapshot);
-  const configured = structuredClone(original);
-  const provider = configured.providers?.find((row) => row.providerID === PROVIDER_ID);
-  assert(provider, 'P-12 canonical OpenAI provider configuration is missing');
-  for (const row of configured.providers) row.isEnabled = row.providerID === PROVIDER_ID;
-  provider.baseURL = `http://127.0.0.1:${address.port}/v1`;
-  provider.preferredModelIDs = [MODEL_ID];
-  let response = await rpc('daemon.config.update', { snapshot: configured });
-  assert(!response?.error, 'P-12 could not route the installed provider to the bounded upstream');
-  response = await rpc('daemon.provider.credential_slot.upsert', {
-    providerID: PROVIDER_ID, slotID: 'p12-local-upstream', label: 'P12 local upstream', apiKey: 'p12-local-proof-key', isEnabled: true
-  });
-  assert(!response?.error && response?.result?.slot?.slotID, 'P-12 could not create its isolated provider route');
-  const slotId = response.result.slot.slotID;
-  const withSlot = structuredClone(response.result.snapshot);
-  const withSlotProvider = withSlot.providers.find((row) => row.providerID === PROVIDER_ID);
-  withSlotProvider.preferredCredentialSlotID = slotId;
-  response = await rpc('daemon.config.update', { snapshot: withSlot });
-  assert(!response?.error, 'P-12 could not select its isolated provider route');
-  const gatewayToken = ownerOnlyToken(options.gatewayTokenFile, 'P-12 gateway token file');
-  return {
-    async exercise(nextPhase) {
-      phase = nextPhase;
-      const health = await rpc('daemon.health');
-      const result = health?.result;
-      assert(!health?.error && result?.gatewayEnabled === true && result.gatewayHost === '127.0.0.1'
-        && Number.isSafeInteger(result.gatewayPort), 'P-12 installed loopback gateway is unavailable');
-      const before = requests.length;
-      const gatewayResponse = await fetch(`http://127.0.0.1:${result.gatewayPort}/v1/chat/completions`, {
-        method: 'POST', headers: { authorization: `Bearer ${gatewayToken}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ model: MODEL_ID, stream: false, messages: [{ role: 'user', content: `P12 ${nextPhase}` }] })
-      });
-      await gatewayResponse.text();
-      assert(gatewayResponse.status === 200 && requests.length === before + 1, `P-12 ${nextPhase} gateway request failed`);
-      const upstream = requests.at(-1);
-      return { responseStatus: gatewayResponse.status, requestCount: 1, quotaHeaders: upstream.headers };
-    },
-    async close() {
-      try { await rpc('daemon.provider.credential_slot.remove', { providerID: PROVIDER_ID, slotID: slotId }); } catch { /* restore below is authoritative */ }
-      try { await rpc('daemon.config.update', { snapshot: original }); } finally { await new Promise((resolve) => server.close(resolve)); }
-    }
+  let original = null;
+  let slotId = null;
+  let closed = false;
+  const closeServer = async () => {
+    if (closed) return;
+    closed = true;
+    await new Promise((resolve) => server.close(resolve));
   };
+  const restore = async () => {
+    try {
+      if (slotId) {
+        try { await rpc('daemon.provider.credential_slot.remove', { providerID: PROVIDER_ID, slotID: slotId }); } catch { /* snapshot restore is authoritative */ }
+      }
+      if (original) {
+        const response = await rpc('daemon.config.update', { snapshot: original });
+        assert(!response?.error, 'P-12 could not restore the original provider configuration');
+      }
+    } finally { await closeServer(); }
+  };
+  try {
+    const address = server.address();
+    assert(address && typeof address === 'object', 'P-12 mock upstream did not bind');
+    const originalResponse = await rpc('daemon.config.get');
+    assert(!originalResponse?.error && originalResponse?.result?.snapshot, 'P-12 could not read daemon configuration');
+    original = structuredClone(originalResponse.result.snapshot);
+    const configured = structuredClone(original);
+    const provider = configured.providers?.find((row) => row.providerID === PROVIDER_ID);
+    assert(provider, 'P-12 canonical OpenAI provider configuration is missing');
+    for (const row of configured.providers) row.isEnabled = row.providerID === PROVIDER_ID;
+    provider.baseURL = `http://127.0.0.1:${address.port}/v1`;
+    provider.preferredModelIDs = [MODEL_ID];
+    let response = await rpc('daemon.config.update', { snapshot: configured });
+    assert(!response?.error, 'P-12 could not route the installed provider to the bounded upstream');
+    response = await rpc('daemon.provider.credential_slot.upsert', {
+      providerID: PROVIDER_ID, slotID: 'p12-local-upstream', label: 'P12 local upstream', apiKey: 'p12-local-proof-key', isEnabled: true
+    });
+    assert(!response?.error && response?.result?.slot?.slotID, 'P-12 could not create its isolated provider route');
+    slotId = response.result.slot.slotID;
+    const withSlot = structuredClone(response.result.snapshot);
+    const withSlotProvider = withSlot.providers.find((row) => row.providerID === PROVIDER_ID);
+    withSlotProvider.preferredCredentialSlotID = slotId;
+    response = await rpc('daemon.config.update', { snapshot: withSlot });
+    assert(!response?.error, 'P-12 could not select its isolated provider route');
+    const gatewayToken = ownerOnlyToken(options.gatewayTokenFile, 'P-12 gateway token file');
+    return {
+      async exercise(nextPhase) {
+        phase = nextPhase;
+        const health = await rpc('daemon.health');
+        const result = health?.result;
+        assert(!health?.error && result?.gatewayEnabled === true && result.gatewayHost === '127.0.0.1'
+          && Number.isSafeInteger(result.gatewayPort), 'P-12 installed loopback gateway is unavailable');
+        const before = requests.length;
+        const gatewayResponse = await fetch(`http://127.0.0.1:${result.gatewayPort}/v1/chat/completions`, {
+          method: 'POST', headers: { authorization: `Bearer ${gatewayToken}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ model: MODEL_ID, stream: false, messages: [{ role: 'user', content: `P12 ${nextPhase}` }] })
+        });
+        await gatewayResponse.text();
+        assert(gatewayResponse.status === 200 && requests.length === before + 1, `P-12 ${nextPhase} gateway request failed`);
+        const upstream = requests.at(-1);
+        return { responseStatus: gatewayResponse.status, requestCount: 1, quotaHeaders: upstream.headers };
+      },
+      close: restore
+    };
+  } catch (error) {
+    try { await restore(); } catch (cleanupError) { throw new AggregateError([error, cleanupError], 'P-12 gateway setup and cleanup both failed'); }
+    throw error;
+  }
 }
 
 function defaultDaemonController(runner, rpc) {

@@ -10,7 +10,7 @@ import {
 } from './installed-ui-proof.mjs';
 
 export const P12_REQUIREMENT_ID = 'P-12';
-export const P12_PROOF_ROLE = 'p-12-installed-quota-proof';
+export const P12_PROOF_ROLE = 'feature.quota-installed';
 export const P12_PROOF_FILENAME = 'p12-installed-quota-proof.json';
 export const P12_SESSION_FILENAME = 'p12-installed-quota-session.json';
 

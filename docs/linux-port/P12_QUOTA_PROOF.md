@@ -29,7 +29,7 @@ The proof requires:
 it, binds every file by SHA-256, and validates the complete session before it
 writes the report. `capture-p12-quota-proof.mjs` then reopens that report and
 emits the only artifact registered under role
-`p-12-installed-quota-proof`. The product validator replays the entire
+`feature.quota-installed`. The product validator replays the entire
 validation; booleans in a producer report are never accepted as proof.
 
 Every transition event carries the corresponding catalog SHA-256, and the four

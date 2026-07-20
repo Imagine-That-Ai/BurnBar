@@ -151,3 +151,13 @@ test('P-12 proof requires an exact hash-bound source descriptor', () => {
     assert.throws(() => validateP12Proof({ repoRoot: value.root, snapshot: { bytes, sha256: crypto.createHash('sha256').update(bytes).digest('hex') }, ...value.binding }), /proof source.*exactly/u);
   } finally { fs.rmSync(value.root, { recursive: true, force: true }); }
 });
+
+test('P-12 product collector rejects a semantically mutated emitted proof', async () => {
+  const value = fixture(); try {
+    const captured = captureP12QuotaProof({ repoRoot: value.root, inputRoot: value.input, sessionReport: value.result.output, ...value.binding }, { resolveHead: () => HEAD, now: () => new Date(Date.parse(value.ended) + 1000) });
+    const proof = JSON.parse(fs.readFileSync(captured.output));
+    proof.claim.bucketCount += 1;
+    fs.writeFileSync(captured.output, `${JSON.stringify(proof, null, 2)}\n`);
+    await assert.rejects(validateProductRequirement(requirementContext(value, captured.output)), /claim is not derived/u);
+  } finally { fs.rmSync(value.root, { recursive: true, force: true }); }
+});
