@@ -15,13 +15,14 @@ dependencies, acceptance contracts, proof commands, loophole controls, and
 known platform divergences.
 
 > **Live status (2026-07-20):** The implementation branch is
-> `90c5bd34ca` and passes **91 frontend files / 873 tests**, **129/129 host
+> `fc0af729e1` and passes **91 frontend files / 877 tests**, **129/129 host
 > Tauri Rust tests**, plus **130/130 media-enabled Rust tests on Ubuntu ARM64**,
 > including the
 > focused mission, shell, and IPv6 adapter regressions, along with
 > TypeScript,
-> production-bundle verification. A current-source ARM64 DEB is installed and
-> its shell is live in the unlocked Ubuntu GNOME/X11 UTM guest; the
+> production-bundle verification. The prior source head `90c5bd34ca` has an
+> ARM64 DEB installed and its shell is live in the unlocked Ubuntu GNOME/X11
+> UTM guest; the
 > non-certifying staged-daemon receipt is
 > [`evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json).
 > The strict certification ledger is still **0/40 product rows and 0/7
@@ -36,7 +37,7 @@ Linux is not at full macOS parity.
 
 ### Current source wave — 2026-07-20 UTC
 
-Integration head `90c5bd34ca` passes 91 frontend files / 873 tests, including
+Integration head `fc0af729e1` passes 91 frontend files / 877 tests, including
 focused mission, shell, and IPv6 adapter regressions, TypeScript,
 production bundle verification, Tauri Rust 129/129 on the host and 130/130
 with `media-gst` on Ubuntu ARM64, and package-payload contract checks. The
@@ -56,16 +57,17 @@ Appearance radios keyboard-complete, fences stale Computer Use authority and
   the SmartHub bounded-output guard and oversized-output test fixture stable.
   The current wave adds provider catalog/path provenance, daemon-backed project
   history and exact session associations, encrypted recovery-bundle controls,
-  and route-level code splitting with synchronous Support error wiring. The
-  UTM guest passed the read-only staged-payload path, then installed a shell
-  package rebuilt from the current source while reusing the previously verified
-  clean daemon and CLI payloads. These changes improve the engineering baseline;
+  route-level code splitting with synchronous Support error wiring, chat resume
+  transcript preservation, a daemon memory audit timeline, and account identity
+  fencing with truthful trusted-device posture. The UTM guest receipt is from
+  the preceding `90c5bd34ca` source package and is not a claim about this newer
+  UI wave. These changes improve the engineering baseline;
   they do not close the strict 0/40
 product and 0/7 environment gates.
 
 ### Latest installed checkpoint — 2026-07-20 UTC
 
-The live Ubuntu guest has the current-source `90c5bd34ca` ARM64 DEB with
+The live Ubuntu guest has the prior-source `90c5bd34ca` ARM64 DEB with
 native GStreamer media linkage and the verified staged daemon and CLI payloads
 from the prior clean receipt installed at `/usr/bin`. The non-certifying receipt
 is `evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json`.
