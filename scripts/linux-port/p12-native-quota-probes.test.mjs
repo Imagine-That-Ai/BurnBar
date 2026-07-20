@@ -51,7 +51,7 @@ function quotaResponse(signalId, used, fetchedAt) {
   } };
 }
 
-function harness(root, { samePid = false, sameRetry = false, restartDrift = false } = {}) {
+function harness(root, { samePid = false, sameRetry = false, restartDrift = false, stopFailure = false, gatewayFailure = false } = {}) {
   const outputDir = path.join(root, 'raw');
   const supportDir = path.join(root, 'support');
   fs.mkdirSync(outputDir, { recursive: true, mode: 0o700 });
@@ -69,13 +69,16 @@ function harness(root, { samePid = false, sameRetry = false, restartDrift = fals
     return { result: { ok: true } };
   };
   const gatewayHarness = {
-    async exercise(phase) { const used = phase === 'initial' ? 27 : retryUsed; return { responseStatus: 200, requestCount: 1, quotaHeaders: quotaHeaders(used) }; },
+    async exercise(phase) {
+      if (gatewayFailure) throw new Error('authenticated gateway unavailable');
+      const used = phase === 'initial' ? 27 : retryUsed; return { responseStatus: 200, requestCount: 1, quotaHeaders: quotaHeaders(used) };
+    },
     async close() {}
   };
   let launches = 0;
   const ui = {
     async launch() { launches += 1; return { pid: samePid ? 400 : 399 + launches, windowId: String(69 + launches) }; },
-    async route() {}, async refresh() {}, stop() {},
+    async route() {}, async refresh() {}, async stop() { if (stopFailure) throw new Error('installed app PID did not exit'); },
     capture(state, app, at) {
       write(path.join(outputDir, state === 'live' ? 'quota-live.png' : 'quota-stale.png'), png(state === 'live' ? 20 : 40));
       const names = state === 'live' ? ['Subscription vault', 'OpenAI', 'Request rate limit', 'Failover policy'] : ['last available quota snapshot', 'Retry quota catalog'];
@@ -85,7 +88,7 @@ function harness(root, { samePid = false, sameRetry = false, restartDrift = fals
     }
   };
   return { outputDir, supportDir, dependencies: { platform: 'linux', desktopSession: true, installedVerifier: () => ({}),
-    now: () => { clock += 1000; return clock; }, rpcClient, gatewayHarness, ui,
+    desktopProcessPids: () => [], now: () => { clock += 1000; return clock; }, rpcClient, gatewayHarness, ui,
     daemonController: { stop() {}, async start() {}, async restart() {} } } };
 }
 
@@ -138,12 +141,15 @@ test('P-12 native runner emits raw evidence accepted by the installed-session va
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test('P-12 native runner fails closed on seeded state, false retry, restart drift, and PID reuse', async () => {
+test('P-12 native runner fails closed on unsafe state and false live transitions', async () => {
   for (const [name, settings, mutate, pattern] of [
     ['seeded', {}, (fixture) => write(path.join(fixture.supportDir, 'quota-signals.jsonl'), '{}\n'), /pre-seeded/u],
     ['false retry', { sameRetry: true }, () => {}, /headers did not change/u],
     ['restart drift', { restartDrift: true }, () => {}, /persist across restart/u],
-    ['PID reuse', { samePid: true }, () => {}, /old PID/u]
+    ['PID reuse', { samePid: true }, () => {}, /old PID/u],
+    ['exit timeout', { stopFailure: true }, () => {}, /did not exit/u],
+    ['gateway disabled', { gatewayFailure: true }, () => {}, /gateway unavailable/u],
+    ['existing desktop', {}, (fixture) => { fixture.dependencies.desktopProcessPids = () => [777]; }, /pre-existing installed desktop/u]
   ]) {
     const root = createRoot(); try {
       const fixture = harness(root, settings); mutate(fixture);

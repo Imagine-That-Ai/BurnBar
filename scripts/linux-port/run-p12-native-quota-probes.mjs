@@ -106,6 +106,15 @@ async function waitForWindow(runner, pid) {
   throw new Error(`P-12 installed app window did not appear for PID ${pid}`);
 }
 
+async function waitForExit(runner, pid) {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    if (runner.run('kill', ['-0', String(pid)]).status !== 0) return;
+    await sleep(200);
+  }
+  throw new Error(`P-12 installed app PID ${pid} did not exit`);
+}
+
 function defaultUi(runner, output, options) {
   const activate = (name, role = null) => {
     const temporary = path.join(output, '.atspi-activation.json');
@@ -148,8 +157,15 @@ function defaultUi(runner, output, options) {
         windowId: String(app.windowId), manifestSha256: options.manifestSha256,
         state: state === 'live' ? 'live' : 'stale-retained', expectedNames, namedSamples: tree.namedSamples };
     },
-    stop(app) { app.process.kill(); }
+    async stop(app) { app.process.kill(); await waitForExit(runner, app.pid); }
   };
+}
+
+function installedDesktopProcessIDs(runner) {
+  const result = runner.run('pgrep', ['-f', '^/usr/bin/openburnbar-linux-desktop(?:\\s|$)']);
+  if (result.status === 1) return [];
+  assert(result.status === 0, `P-12 desktop process preflight failed: ${result.stderr || result.stdout}`.trim());
+  return result.stdout.trim().split(/\s+/u).filter(Boolean).map(Number).filter(Number.isSafeInteger);
 }
 
 function quotaHeaders(phase, now) {
@@ -318,6 +334,8 @@ export async function runP12NativeQuotaProbes(options, dependencies = {}) {
   const canonicalManifest = readJson(path.join(options.repoRoot ?? ROOT, 'contracts/provider-ingestion-catalog.json'));
   const canonical = new Map(canonicalManifest.providers.map((row) => [row.providerId, row]));
   const runner = dependencies.runner ?? commandRunner();
+  const desktopPids = (dependencies.desktopProcessPids ?? (() => installedDesktopProcessIDs(runner)))();
+  assert(Array.isArray(desktopPids) && desktopPids.length === 0, 'P-12 requires no pre-existing installed desktop process');
   if (!dependencies.ui) for (const tool of ['python3', 'xdotool', 'scrot']) {
     requiredRun(runner, 'sh', ['-c', 'command -v "$1" >/dev/null', 'p12-tool', tool], `required tool ${tool}`);
   }
@@ -384,7 +402,7 @@ export async function runP12NativeQuotaProbes(options, dependencies = {}) {
     await daemon.restart();
 
     const oldApp = app;
-    ui.stop(oldApp);
+    await ui.stop(oldApp);
     app = await ui.launch();
     assert(app.pid !== oldApp.pid, 'P-12 installed app restart reused the old PID');
     await ui.route();
@@ -423,7 +441,7 @@ export async function runP12NativeQuotaProbes(options, dependencies = {}) {
     writeJson(path.join(output, 'quota-interactions.json'), { producer: 'openburnbar-p12-native-quota-probe-v1', events });
     return { output, initialPid: oldApp.pid, restartedPid: app.pid, providerId: PROVIDER_ID, bucketCount: initial.selected.provider.buckets.length };
   } finally {
-    try { if (app) ui.stop(app); } catch { /* process already stopped */ }
+    try { if (app) await ui.stop(app); } catch { /* process already stopped */ }
     if (daemonStopped) {
       try { await daemon.start(); } catch { /* preserve the original failure */ }
     }

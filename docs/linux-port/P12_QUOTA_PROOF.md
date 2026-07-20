@@ -46,3 +46,26 @@ loopback upstream, and generates quota signals through normal provider traffic.
 It never creates or edits `quota-signals.jsonl`. The runner interrupts and
 restarts the user daemon, exercises retry and failover rollback, restarts the
 installed desktop, and writes the exact raw files consumed by the materializer.
+
+The live workflow must create a fresh owner-only gateway token, reserve a free
+loopback port, and restart the isolated user service with the gateway enabled:
+
+```bash
+umask 077
+openssl rand -hex 32 >"$P12_GATEWAY_TOKEN_FILE"
+P12_GATEWAY_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
+systemctl --user set-environment \
+  OPENBURNBAR_GATEWAY_ENABLED=1 \
+  OPENBURNBAR_GATEWAY_HOST=127.0.0.1 \
+  OPENBURNBAR_GATEWAY_PORT="$P12_GATEWAY_PORT" \
+  OPENBURNBAR_GATEWAY_AUTH_TOKEN="$(<"$P12_GATEWAY_TOKEN_FILE")"
+systemctl --user restart openburnbar-daemon.service
+```
+
+The workflow must use a cleanup trap to stop the isolated service and run
+`systemctl --user unset-environment` for all four gateway variables. The token
+file stays inside the P12 temporary directory and is removed by the same trap.
+The runner fails unless the token file is owner-only, the live health response
+reports an authenticated `127.0.0.1` gateway, and the token completes a real
+gateway request. It also refuses to start while another installed desktop
+process exists and waits for the first candidate process to exit before relaunch.
