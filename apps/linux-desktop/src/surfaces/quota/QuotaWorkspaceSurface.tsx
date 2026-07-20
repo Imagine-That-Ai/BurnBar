@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { QuotaCard, QuotaListRow } from '../../components/QuotaCard.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useProvidersStore } from '../../state/providersStore.js';
+import type { ProviderCatalog } from '../../tauriBridge.js';
 import { QuotaFilterRail } from './QuotaFilterRail.js';
 import { QuotaResetAtlas } from './QuotaResetAtlas.js';
 import { SubscriptionConstellationHero } from './SubscriptionConstellationHero.js';
@@ -34,11 +35,26 @@ export function QuotaWorkspaceSurface() {
 
   const [prefs, setPrefs] = useState(loadQuotaPrefs);
   const [focusProviderId, setFocusProviderId] = useState<string | null>(null);
+  const [lastCatalog, setLastCatalog] = useState<ProviderCatalog | null>(null);
+
+  useEffect(() => {
+    // A transient daemon refresh failure should not erase a usable quota
+    // snapshot. Explicitly empty catalogs still clear the retained view.
+    if (catalog === null) return;
+    setLastCatalog(catalog.length > 0 ? catalog : null);
+  }, [catalog]);
 
   useLaneLoad(load);
 
-  const allEntries = useMemo(() => (catalog ? buildSubscriptionEntries(catalog) : []), [catalog]);
-  const inactiveSlots = useMemo(() => (catalog ? buildInactiveSlots(catalog) : []), [catalog]);
+  const workspaceCatalog = catalog === null ? lastCatalog : catalog.length > 0 ? catalog : null;
+  const allEntries = useMemo(
+    () => (workspaceCatalog ? buildSubscriptionEntries(workspaceCatalog) : []),
+    [workspaceCatalog]
+  );
+  const inactiveSlots = useMemo(
+    () => (workspaceCatalog ? buildInactiveSlots(workspaceCatalog) : []),
+    [workspaceCatalog]
+  );
 
   const activeEntries = useMemo(() => {
     let rows = allEntries;
@@ -58,7 +74,12 @@ export function QuotaWorkspaceSurface() {
   const totalProviderCount = useMemo(() => new Set(allEntries.map((e) => e.providerId)).size, [allEntries]);
 
   const showOffline = !fixtureMode && !bridge && !loading && error != null;
-  const provenance = fixtureMode ? 'fixture transcript' : 'live daemon provider catalog';
+  const showingStaleCatalog = catalog === null && lastCatalog !== null;
+  const provenance = fixtureMode
+    ? 'fixture transcript'
+    : showingStaleCatalog
+      ? 'last available daemon provider catalog'
+      : 'live daemon provider catalog';
 
   function updatePrefs(patch: Partial<typeof prefs>) {
     setPrefs((prev) => {
@@ -77,11 +98,24 @@ export function QuotaWorkspaceSurface() {
       {showOffline ? (
         <OfflineNotice
           status={status}
-          summary="Subscription vault needs the packaged shell or fixture mode before quota cards can load."
+          summary={
+            showingStaleCatalog
+              ? 'Live quota catalog is unavailable; showing the last available snapshot until the packaged shell reconnects.'
+              : 'Subscription vault needs the packaged shell or fixture mode before quota cards can load.'
+          }
           fixtureMode={fixtureMode}
         />
       ) : null}
-      {error && !showOffline ? (
+      {showingStaleCatalog && !showOffline ? (
+        <Banner tone="degraded" role="status">
+          <p>Live quota catalog is unavailable. Showing the last available quota snapshot.</p>
+          {error ? <p className="muted">{error}</p> : null}
+          <button type="button" className="ghost" onClick={() => void load()}>
+            Retry quota catalog
+          </button>
+        </Banner>
+      ) : null}
+      {error && !showOffline && !showingStaleCatalog ? (
         <Banner tone="degraded" role="alert">
           <p>{error}</p>
           <button type="button" className="ghost" onClick={() => void load()}>
@@ -90,20 +124,20 @@ export function QuotaWorkspaceSurface() {
         </Banner>
       ) : null}
 
-      {loading && !catalog ? (
+      {loading && !workspaceCatalog ? (
         <div className="quota-skeleton" aria-busy="true" aria-label="Loading subscription vault">
           <div className="quota-skeleton-hero" />
           <div className="quota-skeleton-grid" />
         </div>
       ) : null}
 
-      {catalog && catalog.length === 0 ? (
+      {catalog !== null && catalog.length === 0 ? (
         <p className="quota-empty" role="status">
           No providers linked — connect from the daemon settings.
         </p>
       ) : null}
 
-      {catalog && catalog.length > 0 ? (
+      {workspaceCatalog && workspaceCatalog.length > 0 ? (
         <>
           <p className="quota-provenance muted">Data source: {provenance}</p>
           <SubscriptionConstellationHero
