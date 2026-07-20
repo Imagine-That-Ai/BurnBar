@@ -114,6 +114,8 @@ describe('AccountSurface', () => {
     expect(container.querySelector('input[type="password"]')).toBeNull();
     expect(container.querySelector('.account-hero-icon')).not.toBeNull();
     expect(screen.getByText(/Plan · Local/i)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /Trusted-device posture/i })).toBeTruthy();
+    expect(screen.getByText(/No cloud device session/i)).toBeTruthy();
     expect(container.querySelector('#account-identity-panel')).not.toBeNull();
   });
 
@@ -125,6 +127,8 @@ describe('AccountSurface', () => {
     expect(screen.getByText(/Last sync/i)).toBeTruthy();
     expect(screen.getByTestId('canonical-invariant')).toBeTruthy();
     expect(screen.getByText(/Plan · Cloud/i)).toBeTruthy();
+    expect(screen.getByText(/Account session active/i)).toBeTruthy();
+    expect(screen.getByText(/approval and revocation remain native companion-device actions/i)).toBeTruthy();
   });
 
   it('renders signed-in paused sync', () => {
@@ -317,6 +321,8 @@ describe('AccountSurface', () => {
     setAccount({ data: awaitingApproval });
     const { container } = render(<AccountSurface />);
     expect(screen.getByText(/trusted OpenBurnBar device/i)).toBeTruthy();
+    expect(screen.getByText(/Approval pending on a trusted device/i)).toBeTruthy();
+    expect(document.querySelector('[data-device-trust-state="pending"]')).not.toBeNull();
     expect(screen.getByText(awaitingApproval.installationDeviceID!)).toBeTruthy();
     expect(screen.getByText(awaitingApproval.installationSafetyFingerprint!)).toBeTruthy();
     // Device-approval is a daemon-owned enrollment phase, not a cancellable

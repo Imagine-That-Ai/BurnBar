@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { FailureStateList } from '../../components/FailureStateList.js';
@@ -86,6 +86,55 @@ function unavailableCopy(detail?: string): string {
   }
 }
 
+type DeviceTrustPosture = {
+  state: 'signed-out' | 'authorizing' | 'pending' | 'active' | 'rejected' | 'unavailable';
+  title: string;
+  detail: string;
+};
+
+function deviceTrustPosture(status: AccountStatus): DeviceTrustPosture {
+  if (status.detail === 'device_rejected') {
+    return {
+      state: 'rejected',
+      title: 'Installation rejected',
+      detail: 'This installation key was rejected by cloud device policy. Replace the key to request approval again.'
+    };
+  }
+  if (status.state === 'unavailable') {
+    return {
+      state: 'unavailable',
+      title: 'Device authorization unavailable',
+      detail: 'The daemon has not provided a current device-authorization result. Check again after restoring account access.'
+    };
+  }
+  if (status.state === 'awaiting-device-approval' || status.deviceApprovalRequired) {
+    return {
+      state: 'pending',
+      title: 'Approval pending on a trusted device',
+      detail: 'Check again refreshes daemon authority. Linux can request approval, but cannot approve or revoke trusted devices locally.'
+    };
+  }
+  if (status.state === 'authorizing') {
+    return {
+      state: 'authorizing',
+      title: 'Waiting for account authorization',
+      detail: 'Finish the browser sign-in first. Device approval status will appear after the daemon receives the account result.'
+    };
+  }
+  if (status.signedIn) {
+    return {
+      state: 'active',
+      title: 'Account session active',
+      detail: 'This shell has a current account session. Trusted-device approval and revocation remain native companion-device actions.'
+    };
+  }
+  return {
+    state: 'signed-out',
+    title: 'No cloud device session',
+    detail: 'Local-first work is available. Sign in through the browser to request account and trusted-device authorization.'
+  };
+}
+
 export function AccountSurface() {
   const load = useAccountStore((s) => s.load);
   const data = useAccountStore((s) => s.data);
@@ -99,6 +148,7 @@ export function AccountSurface() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const bridge = useShellStore((s) => s.bridge);
   const daemonStatus = useDaemonStatusCopy();
+  const shellContextRef = useRef({ fixtureMode, bridge });
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [confirmingIdentityRotation, setConfirmingIdentityRotation] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
@@ -107,6 +157,16 @@ export function AccountSurface() {
   const authorizationExpired = authorizationExpiresAt !== null && authorizationExpiresAt <= clockNow;
 
   useLaneLoad(load);
+
+  useEffect(() => {
+    const previous = shellContextRef.current;
+    if (previous.fixtureMode === fixtureMode && previous.bridge === bridge) return;
+    shellContextRef.current = { fixtureMode, bridge };
+    // Never let a previous daemon identity survive a shell replacement. The
+    // store fences late mutations; this refresh hydrates the new authority.
+    useAccountStore.getState().invalidateForShellContext();
+    void load();
+  }, [bridge, fixtureMode, load]);
 
   useEffect(() => {
     if (authorizationExpiresAt === null || authorizationExpired) return;
@@ -143,6 +203,7 @@ export function AccountSurface() {
         lastSyncAt: undefined
       }
     : statusForCard;
+  const trustPosture = displayStatus ? deviceTrustPosture(displayStatus) : null;
 
   const politeSummary = useMemo(() => {
     if (loading) return 'Loading account and sync status.';
@@ -267,6 +328,22 @@ export function AccountSurface() {
               </section>
             ) : null}
             <TrustBadge planTier={accountPlanTier(displayStatus)} />
+            {trustPosture ? (
+              <section
+                className={`account-device-trust-card account-device-trust-card--${trustPosture.state}`}
+                data-device-trust-state={trustPosture.state}
+                aria-labelledby="account-device-trust-title"
+              >
+                <div className="account-device-trust-heading">
+                  <span className="account-device-trust-mark" aria-hidden="true" />
+                  <div>
+                    <h3 id="account-device-trust-title">Trusted-device posture</h3>
+                    <p>{trustPosture.title}</p>
+                  </div>
+                </div>
+                <p className="account-device-trust-detail muted">{trustPosture.detail}</p>
+              </section>
+            ) : null}
             <SyncStateCard status={displayStatus} />
           </div>
         </SurfaceCard>

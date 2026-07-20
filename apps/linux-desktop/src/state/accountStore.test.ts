@@ -87,6 +87,45 @@ describe('accountStore daemon-owned auth actions', () => {
     expect(useAccountStore.getState().error).toMatch(/daemon refused sign-out/i);
   });
 
+  it('clears the last identity when the packaged shell is unavailable', async () => {
+    const active: AccountStatus = {
+      ...signedOut,
+      state: 'active',
+      signedIn: true,
+      identityLabel: 'stale@example.com',
+      syncState: 'active'
+    };
+    useAccountStore.setState({ data: active });
+
+    await useAccountStore.getState().load();
+
+    expect(useAccountStore.getState().data).toBeNull();
+    expect(useAccountStore.getState().error).toMatch(/packaged shell required/i);
+  });
+
+  it('fences an in-flight account mutation when the shell context changes', async () => {
+    const signOut = deferred<AccountStatus>();
+    const active: AccountStatus = {
+      ...signedOut,
+      state: 'active',
+      signedIn: true,
+      identityLabel: 'old@example.com',
+      syncState: 'active'
+    };
+    useShellStore.setState({ bridge: { accountSignOut: vi.fn(() => signOut.promise) } as never });
+    useAccountStore.setState({ data: active });
+
+    const request = useAccountStore.getState().signOut();
+    await Promise.resolve();
+    useAccountStore.getState().invalidateForShellContext();
+
+    expect(useAccountStore.getState().data).toBeNull();
+    expect(useAccountStore.getState().busyAction).toBeNull();
+    signOut.resolve(signedOut);
+    await request;
+    expect(useAccountStore.getState().data).toBeNull();
+  });
+
   it('rotates a rejected installation identity only through the daemon bridge', async () => {
     const awaitingApproval: AccountStatus = {
       ...signedOut,

@@ -111,6 +111,80 @@
   gap: var(--space-2);
 }
 
+.account-device-trust-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-glass-elevated);
+}
+
+.account-device-trust-card--active {
+  border-color: var(--color-tier-end-to-end);
+}
+
+.account-device-trust-card--pending,
+.account-device-trust-card--authorizing {
+  border-color: var(--color-brass-deep);
+}
+
+.account-device-trust-card--rejected,
+.account-device-trust-card--unavailable {
+  border-color: color-mix(in srgb, var(--color-danger, var(--color-ember-bright)) 62%, var(--color-glass-line));
+}
+
+.account-device-trust-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.account-device-trust-heading h3,
+.account-device-trust-heading p,
+.account-device-trust-detail {
+  margin: 0;
+}
+
+.account-device-trust-heading h3 {
+  color: var(--color-text-bright);
+  font-size: 0.92rem;
+}
+
+.account-device-trust-heading p {
+  margin-top: var(--space-1);
+  color: var(--color-text-bright);
+  font-weight: 650;
+}
+
+.account-device-trust-mark {
+  flex: 0 0 auto;
+  width: 0.62rem;
+  height: 0.62rem;
+  margin-top: 0.32rem;
+  border-radius: 50%;
+  background: var(--color-frost-line-bright, var(--color-text-mute));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-frost-line-bright, var(--color-text-mute)) 16%, transparent);
+}
+
+.account-device-trust-card--active .account-device-trust-mark {
+  background: var(--color-tier-end-to-end);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-tier-end-to-end) 18%, transparent);
+}
+
+.account-device-trust-card--pending .account-device-trust-mark,
+.account-device-trust-card--authorizing .account-device-trust-mark {
+  background: var(--color-brass-bright);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brass-bright) 18%, transparent);
+}
+
+.account-device-trust-card--rejected .account-device-trust-mark,
+.account-device-trust-card--unavailable .account-device-trust-mark {
+  background: var(--color-danger, var(--color-ember-bright));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger, var(--color-ember-bright)) 18%, transparent);
+}
+
 .account-trust-primary {
   display: flex;
   flex-wrap: wrap;

@@ -8,6 +8,8 @@ export type AccountState = {
   loading: boolean;
   busyAction: 'sign-in' | 'cancel' | 'rotate-identity' | 'sign-out' | null;
   error: string | null;
+  /** Drop renderer account authority when the packaged shell changes identity or disappears. */
+  invalidateForShellContext(): void;
   load(): Promise<void>;
   beginSignIn(): Promise<void>;
   cancelSignIn(): Promise<void>;
@@ -81,6 +83,14 @@ export const useAccountStore = create<AccountState>()((set, get) => {
     loading: false,
     busyAction: null,
     error: null,
+    invalidateForShellContext() {
+      // AccountStatus is daemon authority. A bridge replacement can leave a
+      // late response from the old daemon in flight, so fence it before the
+      // new shell is allowed to hydrate a fresh identity.
+      requestGeneration += 1;
+      activeMutationContext = null;
+      set({ data: null, loading: false, busyAction: null, error: null });
+    },
     async load() {
       if (get().busyAction !== null) return;
       const context = currentShellContext();
@@ -97,7 +107,7 @@ export const useAccountStore = create<AccountState>()((set, get) => {
         const bridge = context.bridge;
         if (!bridge || typeof bridge !== 'object') {
           if (generation === requestGeneration && sameShellContext(currentShellContext(), context)) {
-            set({ loading: false, error: 'Packaged shell required for live data.' });
+            set({ data: null, loading: false, error: 'Packaged shell required for live data.' });
           }
           return;
         }
