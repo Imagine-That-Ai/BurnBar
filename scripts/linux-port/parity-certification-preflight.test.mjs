@@ -130,8 +130,8 @@ function registry(complete) {
     ? ['P-02', 'P-05', 'P-06', 'P-31', 'P-34', 'P-40']
     : ['P-02', 'P-05', 'P-31', 'P-34', 'P-40'];
   const certificationIds = complete
-    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-31', 'P-34', 'P-37', 'P-38', 'P-40']
-    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-31', 'P-34', 'P-37', 'P-38', 'P-40'];
+    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40']
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40'];
   return {
     schemaVersion: 1,
     id: 'openburnbar-linux-product-feature-proof-registry-v1',
@@ -147,11 +147,15 @@ function registry(complete) {
       const testPath = `scripts/linux-port/ownership-tests/${requirementId}.test.mjs`;
       const captureProducerPath = RELEASE_ONLY.has(requirementId)
         ? 'scripts/linux-port/finalize-product-proof-closure.mjs'
+        : requirementId === 'P-39'
+          ? 'scripts/linux-port/capture-p39-differential.mjs'
         : requirementId === 'P-02'
           ? 'scripts/linux-port/capture-parity-certification-preflight.mjs'
           : `scripts/linux-port/capture-${requirementId.toLowerCase()}.mjs`;
       const materializerProducerPath = RELEASE_ONLY.has(requirementId)
         ? 'scripts/linux-port/prepare-product-requirement-input.mjs'
+        : requirementId === 'P-39'
+          ? 'scripts/linux-port/prepare-product-requirement-input.mjs'
         : ['P-02', 'P-05', 'P-31', 'P-34', 'P-40'].includes(requirementId)
           ? 'scripts/linux-port/finalize-product-feature-proof-closure.mjs'
           : `scripts/linux-port/materialize-${requirementId.toLowerCase()}.mjs`;
@@ -168,6 +172,8 @@ function registry(complete) {
           entrypoint: 'requirement',
           workflowPath: RELEASE_ONLY.has(requirementId)
             ? '.github/workflows/linux-release.yml'
+            : requirementId === 'P-39'
+              ? '.github/workflows/linux-product-parity.yml'
             : requirementId === 'P-02'
               ? '.github/workflows/linux-product-parity.yml'
               : `.github/workflows/${requirementId.toLowerCase()}-capture.yml`,
@@ -177,7 +183,7 @@ function registry(complete) {
         materializer: {
           producerPath: materializerProducerPath,
           entrypoint: 'requirement',
-          workflowPath: RELEASE_ONLY.has(requirementId) || ['P-02', 'P-05', 'P-31', 'P-34', 'P-40'].includes(requirementId)
+          workflowPath: RELEASE_ONLY.has(requirementId) || ['P-02', 'P-05', 'P-31', 'P-34', 'P-39', 'P-40'].includes(requirementId)
             ? '.github/workflows/linux-product-parity.yml'
             : `.github/workflows/${requirementId.toLowerCase()}-materialize.yml`,
           testPath,
@@ -203,8 +209,8 @@ function createRepository({ complete = true } = {}) {
     'schemas/linux-product-feature-proof-registry.schema.json'
   ]) write(root, schema, fs.readFileSync(path.join(SOURCE_ROOT, schema)));
   const validatorIds = complete
-    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-31', 'P-34', 'P-37', 'P-38', 'P-40']
-    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-31', 'P-34', 'P-37', 'P-38', 'P-40'];
+    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40']
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40'];
   for (const requirementId of validatorIds) {
     write(root, `scripts/linux-port/product-validators/${requirementId}.mjs`,
       `export async function validateProductRequirement(context) {\n`
@@ -498,6 +504,8 @@ test('ownership-ready fixture blocks exactly the 29 unregistered requirement lan
   const captured = capture(subject, {
     testExecutions: collectCertificationTestExecutions(subject.root, subject.head)
   });
+  const p39 = captured.document.requirements.find((row) => row.requirementId === 'P-39');
+  assert.equal(p39.ready, true, JSON.stringify(p39));
   assert.equal(captured.document.status, 'blocked');
   assert.equal(captured.document.summary.validatorCount, 11);
   assert.equal(captured.document.summary.captureCount, 11);
