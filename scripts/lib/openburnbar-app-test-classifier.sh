@@ -107,27 +107,6 @@ openburnbar_app_test_final_selected_summary_is_green() {
     ' "$log_path"
 }
 
-openburnbar_app_test_final_bundle_summary_is_green() {
-    local log_path="$1"
-
-    awk '
-        /Test Suite '\''[^'\'']+\.xctest'\'' passed/ {
-            waiting_for_summary = 1
-            green = 0
-            next
-        }
-        waiting_for_summary && /Executed [0-9]+ tests?/ {
-            if ($0 ~ /Executed [1-9][0-9]* tests?, with ([0-9]+ tests? skipped and )?0 failures/) {
-                green = 1
-            } else {
-                green = 0
-            }
-            waiting_for_summary = 0
-        }
-        END { exit green ? 0 : 1 }
-    ' "$log_path"
-}
-
 openburnbar_app_test_has_final_failing_tests_section() {
     local log_path="$1"
 
@@ -142,12 +121,6 @@ openburnbar_app_test_has_final_failing_tests_section() {
         in_failing && NF { found = 1 }
         END { exit found ? 0 : 1 }
     ' "$log_path"
-}
-
-openburnbar_app_test_has_runner_restart() {
-    local log_path="$1"
-
-    grep -Fq "Restarting after unexpected exit, crash, or test timeout" "$log_path"
 }
 
 openburnbar_app_test_has_xcode_test_failed_marker() {
@@ -237,10 +210,9 @@ is_xcode_false_negative_pass() {
     # success only when the final selected-suite summary is unambiguously green
     # and the final selected-suite execution itself has no concrete failures.
     #
-    # On macOS runners Xcode can also relaunch the test host after an unexpected
-    # exit, then leave a stale "Failing tests:" footer from the dead host even
-    # though the final selected-suite pass is clean. That is still an
-    # infrastructure false negative, but only when a runner restart is present.
+    # A final "Failing tests:" footer is authoritative even when Xcode restarted
+    # the test host and later printed a green summary. Treating that footer as
+    # stale can hide failures from an earlier host launch in the same test run.
     if openburnbar_app_test_has_execution_timeout_restart "$log_path"; then
         return 1
     fi
@@ -252,13 +224,7 @@ is_xcode_false_negative_pass() {
         return 1
     fi
 
-    if openburnbar_app_test_has_final_failing_tests_section "$log_path"; then
-        if openburnbar_app_test_has_runner_restart "$log_path"; then
-            return 0
-        fi
-        openburnbar_app_test_final_bundle_summary_is_green "$log_path" || return 1
-        return 0
-    fi
+    openburnbar_app_test_has_final_failing_tests_section "$log_path" && return 1
 
     return 0
 }

@@ -297,11 +297,11 @@ assert_false "concrete XCTest failure is not accepted as a false-negative pass" 
 assert_true "concrete XCTest failure remains terminal after false-negative guard" openburnbar_app_test_has_terminal_concrete_xctest_failure "$concrete_failure_log"
 assert_true "earlier Xcode retry failure is accepted only when final Selected tests summary is green" is_xcode_false_negative_pass "$recovered_retry_log"
 assert_false "final failing-tests section is not hidden by a stale green summary" is_xcode_false_negative_pass "$final_failing_tests_log"
-assert_true "final green bundle and Selected tests summaries override a stale failing-tests footer" is_xcode_false_negative_pass "$final_green_bundle_with_stale_footer_log"
-assert_true "final green bundle and Selected tests summaries override stale earlier failures plus stale failing footer" is_xcode_false_negative_pass "$xcode_exit65_final_green_after_stale_failures_log"
-assert_false "stale earlier failures plus final green summaries are not terminal concrete failure" openburnbar_app_test_has_terminal_concrete_xctest_failure "$xcode_exit65_final_green_after_stale_failures_log"
-assert_true "runner-restart stale failing footer is accepted when final Selected tests run is green" is_xcode_false_negative_pass "$restarted_final_green_with_stale_footer_log"
-assert_false "runner-restart stale failing footer is not terminal concrete failure when final run is green" openburnbar_app_test_has_terminal_concrete_xctest_failure "$restarted_final_green_with_stale_footer_log"
+assert_false "final failing-tests footer is not hidden by green bundle and Selected tests summaries" is_xcode_false_negative_pass "$final_green_bundle_with_stale_footer_log"
+assert_false "earlier failures plus final failing-tests footer are not hidden by green summaries" is_xcode_false_negative_pass "$xcode_exit65_final_green_after_stale_failures_log"
+assert_true "earlier failures plus final failing-tests footer remain terminal" openburnbar_app_test_has_terminal_concrete_xctest_failure "$xcode_exit65_final_green_after_stale_failures_log"
+assert_false "runner restart does not erase a final failing-tests footer" is_xcode_false_negative_pass "$restarted_final_green_with_stale_footer_log"
+assert_true "runner-restart failing-tests footer remains terminal" openburnbar_app_test_has_terminal_concrete_xctest_failure "$restarted_final_green_with_stale_footer_log"
 assert_false "runner-restart final-run assertion failure is not hidden" is_xcode_false_negative_pass "$restarted_final_run_failure_log"
 assert_true "runner-restart final-run assertion failure remains terminal concrete failure" openburnbar_app_test_has_terminal_concrete_xctest_failure "$restarted_final_run_failure_log"
 assert_true "runner crash without concrete XCTest failure is retryable" is_known_hang "$hang_log"
@@ -327,13 +327,14 @@ assert_true "Xcode SwiftPM package graph internal crash is retryable infrastruct
 assert_false "unknown failure is not a SwiftPM dependency transient" is_swiftpm_dependency_resolution_transient "$unknown_failure_log"
 
 media_isolated_filter="OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
+conversation_projection_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_conversationReuseCopyFailure_reembedsChunks_neverLeavingThemUnsearchable"
 projection_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_artifactReuseCopyFailure_reembedsChunks_neverLeavingThemUnsearchable"
 default_plan="$(
     env -u OPENBURNBAR_APP_TEST_FILTER -u OPENBURNBAR_APP_TEST_FILTERS \
         "$repo_root/scripts/test-openburnbar-app.sh" --print-xcodebuild-plan
 )"
-assert_equals "default app test plan preserves both sensitive tests in a fresh host" \
-    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_isolated_filter"$'\nmain-skip\t'"$projection_isolated_filter"$'\nfresh-host-only\t'"$media_isolated_filter"$'\nfresh-host-only\t'"$projection_isolated_filter" \
+assert_equals "default app test plan preserves all sensitive tests in a fresh host" \
+    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_isolated_filter"$'\nmain-skip\t'"$conversation_projection_isolated_filter"$'\nmain-skip\t'"$projection_isolated_filter"$'\nfresh-host-only\t'"$media_isolated_filter"$'\nfresh-host-only\t'"$conversation_projection_isolated_filter"$'\nfresh-host-only\t'"$projection_isolated_filter" \
     "$default_plan"
 
 custom_plan="$(

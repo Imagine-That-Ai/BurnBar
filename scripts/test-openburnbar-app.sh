@@ -194,12 +194,13 @@ done
 
 isolated_test_filters=(
     "OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
+    "OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_conversationReuseCopyFailure_reembedsChunks_neverLeavingThemUnsearchable"
     "OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_artifactReuseCopyFailure_reembedsChunks_neverLeavingThemUnsearchable"
 )
 main_skip_test_filters=()
 run_isolated_test_phase=0
 if ((${#test_filters[@]} == 1)) && [[ "${test_filters[0]}" == "OpenBurnBarTests" ]]; then
-    # Both methods pass together in a fresh host but are contaminated by
+    # These methods pass together in a fresh host but are contaminated by
     # process-global media/GRDB state after the 1,900-test monolithic run.
     # Keep them mandatory while giving them a clean XCTest process.
     main_skip_test_filters=("${isolated_test_filters[@]}")
