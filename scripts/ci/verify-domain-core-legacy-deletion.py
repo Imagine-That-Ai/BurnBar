@@ -212,6 +212,7 @@ ROW_RELEASE_CONSUMERS = {
 PROMOTION_POLICY_PATH = "config/domain-core-promotion-policy.json"
 PROMOTION_EVALUATOR_PATH = "scripts/lib/domain-core-deterministic-candidate-bundle.mjs"
 PROMOTION_SIGNER_WORKFLOW = ".github/workflows/domain-core-promotion-proof.yml"
+PROMOTION_SIGNER_JOB = "protected-domain-core-signer"
 SOURCE_WORKFLOW = ".github/workflows/domain-core.yml"
 RELEASE_SIGNER_WORKFLOWS = {
     "apple": ".github/workflows/release.yml",
@@ -2093,7 +2094,7 @@ def validate_unsigned_candidate_bundle(
     if value["schemaVersion"] != 1 or isinstance(value["schemaVersion"], bool):
         raise GateError(f"{label}: schemaVersion must be 1")
     if (
-        value["bundleKind"] != "unsigned-deterministic-candidate"
+        value["bundleKind"] != "unsigned-domain-core-candidate"
         or value["status"] != "eligible_for_attestation"
         or value["proofComplete"] is not True
         or value["eligibleForAttestation"] is not True
@@ -2115,7 +2116,7 @@ def validate_unsigned_candidate_bundle(
     if (
         trust["authority"] != "none"
         or trust["attestationRequired"] is not True
-        or trust["requiredSigner"] != PROMOTION_SIGNER_WORKFLOW
+        or trust["requiredSigner"] != PROMOTION_SIGNER_JOB
     ):
         raise GateError(f"{label}: unsigned bundle must disclaim authority and require the protected signer")
     workflow = require_object(value["workflow"], f"{label}.workflow")
