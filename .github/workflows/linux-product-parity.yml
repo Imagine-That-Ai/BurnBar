@@ -251,6 +251,127 @@ jobs:
           include-hidden-files: true
           retention-days: 30
 
+      - name: Install P-06 signed candidate package
+        id: p06_install
+        if: inputs.requirement == 'P-06'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          case "$ENVIRONMENT_ID" in
+            ubuntu-*)
+              expected_arch="$(case "$ENVIRONMENT_ID" in *-aarch64) echo arm64 ;; *) echo amd64 ;; esac)"
+              package=""
+              while IFS= read -r candidate; do
+                test "$(dpkg-deb -f "$candidate" Package)" = open-burn-bar || continue
+                test "$(dpkg-deb -f "$candidate" Architecture)" = "$expected_arch" || continue
+                package="$candidate"; break
+              done < <(find "$input_root" -type f -name '*.deb' -print | sort)
+              test -n "$package"
+              version="$(dpkg-deb -f "$package" Version)"
+              sudo apt-get install -y --reinstall "$package"
+              ;;
+            fedora-*)
+              expected_arch="$(case "$ENVIRONMENT_ID" in *-aarch64) echo aarch64 ;; *) echo x86_64 ;; esac)"
+              package=""
+              while IFS= read -r candidate; do
+                test "$(rpm -qp --qf '%{NAME}' "$candidate")" = open-burn-bar || continue
+                test "$(rpm -qp --qf '%{ARCH}' "$candidate")" = "$expected_arch" || continue
+                package="$candidate"; break
+              done < <(find "$input_root" -type f -name '*.rpm' -print | sort)
+              test -n "$package"
+              version="$(rpm -qp --qf '%{VERSION}' "$package")"
+              sudo dnf install -y "$package"
+              ;;
+            arch-*)
+              package="$(find "$input_root" -type f -name '*.pkg.tar.zst' -print | sort | head -1)"
+              test -n "$package"
+              package_info="$(bsdtar -xOf "$package" .PKGINFO)"
+              test "$(awk -F ' = ' '$1 == "pkgname" { print $2 }' <<<"$package_info")" = open-burn-bar
+              test "$(awk -F ' = ' '$1 == "arch" { print $2 }' <<<"$package_info")" = x86_64
+              version="$(awk -F ' = ' '$1 == "pkgver" { print $2 }' <<<"$package_info")"
+              sudo pacman -U --noconfirm "$package"
+              ;;
+            *) echo "unsupported P-06 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;
+          esac
+          printf 'package_version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          sha256sum /usr/share/openburnbar/attestation/installed-manifest.json \
+            | awk '{print "manifest_sha256=" $1}' >> "$GITHUB_OUTPUT"
+
+      - name: Capture P-06 installed gateway credential boundary proof
+        if: inputs.requirement == 'P-06'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+          PACKAGE_VERSION: ${{ steps.p06_install.outputs.package_version }}
+          MANIFEST_SHA256: ${{ steps.p06_install.outputs.manifest_sha256 }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          evidence_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p06.XXXXXX")"
+          desktop_pid=""
+          cleanup_p06() {
+            if test -n "$desktop_pid"; then kill "$desktop_pid" 2>/dev/null || true; fi
+            rm -rf "$evidence_root"
+          }
+          trap cleanup_p06 EXIT
+          systemctl --user restart openburnbar-daemon.service
+          /usr/bin/openburnbar-linux-desktop --background >"$evidence_root/desktop.log" 2>&1 &
+          desktop_pid=$!
+          token_file="${XDG_DATA_HOME:-$HOME/.local/share}/openburnbar/daemon-socket-auth-token"
+          for _ in $(seq 1 60); do
+            test -s "$token_file" && pgrep -f 'WebKit(Web|Network)Process' >/dev/null && break
+            sleep 0.5
+          done
+          test -s "$token_file"
+          node scripts/linux-port/run-p06-gateway-boundary-session.mjs \
+            --token-file "$token_file" \
+            --output-root "$evidence_root" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --package-version "$PACKAGE_VERSION" \
+            --manifest-sha256 "$MANIFEST_SHA256"
+          install -m 600 "$evidence_root/p06-gateway-boundary-session.json" \
+            "$input_root/p06-gateway-boundary-session.json"
+          node scripts/linux-port/capture-p06-gateway-boundary-proof.mjs \
+            --input-root "$input_root" \
+            --session-report "$input_root/p06-gateway-boundary-session.json" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
+
+      - name: Capture P-07 candidate-bound computer-use proof
+        if: inputs.requirement == 'P-07'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          session_report="$input_root/p07-live-session.json"
+          test -f "$session_report"
+          node scripts/linux-port/capture-p07-computer-use-proof.mjs \
+            --input-root "$input_root" \
+            --session-report "$session_report" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
+
       - name: Capture P-31 installed accessibility matrix evidence
         id: p31_capture
         if: inputs.requirement == 'P-31'

@@ -69,7 +69,7 @@ export function captureP07ComputerUseProof({
   }
   clearOutputs(root);
   if (resolveHead(repository) !== targetHead) throw new Error('P-07 capture checkout is not the requested target HEAD');
-  const sessionAbsolute = path.resolve(sessionReport);
+  const sessionAbsolute = fs.realpathSync(path.resolve(sessionReport));
   assertInside(root, sessionAbsolute, 'P-07 session report');
   const sessionRelative = path.relative(root, sessionAbsolute).split(path.sep).join('/');
   const sessionSnapshot = readRegularSnapshot(root, sessionRelative, 'P-07 candidate session report');

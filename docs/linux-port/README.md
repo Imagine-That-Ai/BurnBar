@@ -396,12 +396,14 @@ requirement, environment, and selected package, and registered materialized
 feature subjects are byte-validated and required in the validator result.
 Requirement-specific validators exist for P-01 release
 integrity, P-02 parity-certification preflight, P-03 installed runtime, P-04
-architecture reach, P-05 installed credential custody, P-31 accessibility, P-34 credential security, P-37 Linux
+architecture reach, P-05 installed credential custody, P-06 native gateway
+credential isolation, P-07 candidate-bound Computer Use, P-31 accessibility,
+P-34 credential security, P-37 Linux
 matrix coverage, P-38 release automation, P-39 same-commit cross-platform differential proof, and P-40 data and privacy. P-02 captures a
 candidate-bound inventory of all 40 requirements, policies, support
 environments, substantive validator modules, registered capture roles, and
 materializer ownership. It remains blocked while any lane is incomplete; today
-29 substantive lanes are absent. The other 29 modules remain intentionally absent until their
+27 substantive lanes are absent. The other 27 modules remain intentionally absent until their
 installed-product acceptance packets land. Source availability is not a parity
 claim: every row remains blocked until all seven signed live receipts exist.
 

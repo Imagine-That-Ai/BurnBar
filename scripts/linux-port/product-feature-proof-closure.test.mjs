@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { main as runFeatureProofMaterializer } from './finalize-product-feature-proof-closure.mjs';
+import { P06_PROOF_ROLE } from './lib/p06-gateway-credential-boundary-proof.mjs';
 import {
   MAX_FEATURE_PROOF_ARTIFACT_BYTES,
   MAX_FEATURE_PROOF_CONTRACT_BYTES,
@@ -178,6 +179,42 @@ function finalize(subject, overrides = {}) {
   });
 }
 
+function materializeSingleFeatureProof(requirementId, role) {
+  const subject = fixture({ registered: false });
+  const artifactPath = `feature-artifacts/${requirementId.toLowerCase()}-proof.json`;
+  writeJson(subject.registryFile, {
+    schemaVersion: 1,
+    id: 'openburnbar-linux-product-feature-proof-registry-v1',
+    requirements: [{
+      requirementId,
+      artifacts: [{ role, mediaType: 'application/json', maxBytes: 1048576 }]
+    }]
+  });
+  subject.aggregate.featureProofRegistry = record(subject.releaseRoot, subject.registryFile);
+  writeJson(subject.aggregateFile, subject.aggregate);
+  writeJson(path.join(subject.inputRoot, artifactPath), {
+    requirementId,
+    targetHead: HEAD,
+    candidate: { runId: RUN_ID, artifactDigest: DIGEST },
+    observed: true
+  });
+  writeJson(path.join(subject.inputRoot, 'feature-proof-registration.json'), {
+    schemaVersion: 1,
+    requirementId,
+    environmentId: ENVIRONMENT,
+    artifacts: [{ role, path: artifactPath }]
+  });
+  const result = runFeatureProofMaterializer([
+    '--requirement', requirementId,
+    '--environment', ENVIRONMENT,
+    '--input-root', subject.inputRoot,
+    '--target-head', HEAD,
+    '--candidate-run-id', RUN_ID,
+    '--candidate-artifact-digest', DIGEST
+  ], subject.root);
+  return { subject, result };
+}
+
 test('P-02 materializer CLI materializes the exact candidate registration', (t) => {
   const subject = fixture();
   t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
@@ -203,6 +240,34 @@ test('P-02 materializer CLI materializes the exact candidate registration', (t) 
     'feature.visual-capture'
   ]);
   assert.equal(fs.existsSync(result.output), true);
+});
+
+test('P-06 materializer selects the candidate-bound gateway boundary proof', (t) => {
+  const { subject, result } = materializeSingleFeatureProof(
+    'P-06',
+    P06_PROOF_ROLE
+  );
+  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  assert.equal(result.registered, true);
+  assert.equal(result.closure.requirementId, 'P-06');
+  assert.deepEqual(result.closure.proofs.map((proof) => proof.role), [P06_PROOF_ROLE]);
+});
+
+test('P-06 feature registry role matches the installed gateway boundary producer', () => {
+  const registry = JSON.parse(fs.readFileSync(
+    'docs/linux-port/product-feature-proof-registry.json',
+    'utf8'
+  ));
+  const contract = registry.requirements.find((entry) => entry.requirementId === 'P-06');
+  assert.deepEqual(contract.artifacts.map((artifact) => artifact.role), [P06_PROOF_ROLE]);
+});
+
+test('P-07 materializer selects the candidate-bound computer-use proof', (t) => {
+  const { subject, result } = materializeSingleFeatureProof('P-07', 'feature.computer-use');
+  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  assert.equal(result.registered, true);
+  assert.equal(result.closure.requirementId, 'P-07');
+  assert.deepEqual(result.closure.proofs.map((proof) => proof.role), ['feature.computer-use']);
 });
 
 test('feature closure binds the exact registry, candidate, product, environment, roles, and bytes', (t) => {

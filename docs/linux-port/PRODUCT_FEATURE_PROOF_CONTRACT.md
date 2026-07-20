@@ -78,8 +78,8 @@ The P-02 validator independently repeats that isolated execution instead of trus
 claims in the feature proof, then recomputes and validates the inventory. It can pass only when
 every one of the 40 rows has executable, mutation-sensitive ownership. A role, policy, empty test,
 reused test, workflow comment, untracked helper, or hand-authored passed JSON cannot satisfy a
-lane. Eleven rows are registered and all eleven pass target-commit semantic ownership execution;
-the other 29 rows remain unregistered. Ownership readiness is not product certification: a ready row
+lane. Thirteen rows are registered and all thirteen pass target-commit semantic ownership execution;
+the other 27 rows remain unregistered. Ownership readiness is not product certification: a ready row
 still requires passed receipts from all seven support environments before it contributes to the
 strict 40/40 claim.
 
@@ -116,6 +116,10 @@ normalization, and the empty unapproved-difference set. Certification ownership 
 differential capture step and the release-closure materializer; isolated semantic mutation tests
 fail when any of those exported entrypoints is replaced.
 
-P-07 is not registered yet. Its validator and evidence-runner tests are substantive, but the
-candidate workflow does not yet produce and register `feature.computer-use` from a live installed
-session. Registering only the validator would overstate capture and materializer ownership.
+P-06 and P-07 are registered feature lanes. P-06 installs the signed candidate, captures the live
+native gateway/renderer credential boundary, and registers
+`feature.gateway-credential-boundary-installed`. P-07 consumes an exact candidate-bound live session packet
+from the Linux desktop plus physical-mobile harness and registers `feature.computer-use`. Their
+capture, feature-closure materialization, and semantic validators are independently mutation-tested.
+This proves ownership only: neither row passes until its signed receipt exists in all seven support
+environments, and a fixture, simulator-only packet, or stale historical bundle is rejected.
