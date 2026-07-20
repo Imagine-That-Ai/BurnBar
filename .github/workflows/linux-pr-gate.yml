@@ -107,6 +107,7 @@ jobs:
           scripts/linux-port/product-proof-closure.test.mjs
           scripts/linux-port/product-feature-proof-closure.test.mjs
           scripts/linux-port/p07-computer-use-proof.test.mjs
+          scripts/linux-port/p08-mercury-media-proof.test.mjs
           scripts/linux-port/p38-release-automation-proof.test.mjs
           scripts/linux-port/p31-accessibility-proof.test.mjs
           scripts/linux-port/p34-credential-security-proof.test.mjs

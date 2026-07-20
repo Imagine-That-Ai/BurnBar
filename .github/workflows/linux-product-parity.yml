@@ -372,6 +372,95 @@ jobs:
             --candidate-run-id "$CANDIDATE_RUN_ID" \
             --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
 
+      - name: Install P-08 signed candidate package
+        id: p08_install
+        if: inputs.requirement == 'P-08'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          case "$ENVIRONMENT_ID" in
+            ubuntu-*)
+              expected_arch="$(case "$ENVIRONMENT_ID" in *-aarch64) echo arm64 ;; *) echo amd64 ;; esac)"
+              package=""
+              while IFS= read -r candidate; do
+                test "$(dpkg-deb -f "$candidate" Package)" = open-burn-bar || continue
+                test "$(dpkg-deb -f "$candidate" Architecture)" = "$expected_arch" || continue
+                package="$candidate"; break
+              done < <(find "$input_root" -type f -name '*.deb' -print | sort)
+              test -n "$package"
+              version="$(dpkg-deb -f "$package" Version)"
+              sudo apt-get install -y --reinstall "$package"
+              ;;
+            fedora-*)
+              expected_arch="$(case "$ENVIRONMENT_ID" in *-aarch64) echo aarch64 ;; *) echo x86_64 ;; esac)"
+              package=""
+              while IFS= read -r candidate; do
+                test "$(rpm -qp --qf '%{NAME}' "$candidate")" = open-burn-bar || continue
+                test "$(rpm -qp --qf '%{ARCH}' "$candidate")" = "$expected_arch" || continue
+                package="$candidate"; break
+              done < <(find "$input_root" -type f -name '*.rpm' -print | sort)
+              test -n "$package"
+              version="$(rpm -qp --qf '%{VERSION}' "$package")"
+              sudo dnf install -y "$package"
+              ;;
+            arch-*)
+              package="$(find "$input_root" -type f -name '*.pkg.tar.zst' -print | sort | head -1)"
+              test -n "$package"
+              package_info="$(bsdtar -xOf "$package" .PKGINFO)"
+              test "$(awk -F ' = ' '$1 == "pkgname" { print $2 }' <<<"$package_info")" = open-burn-bar
+              test "$(awk -F ' = ' '$1 == "arch" { print $2 }' <<<"$package_info")" = x86_64
+              version="$(awk -F ' = ' '$1 == "pkgver" { print $2 }' <<<"$package_info")"
+              sudo pacman -U --noconfirm "$package"
+              ;;
+            *) echo "unsupported P-08 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;
+          esac
+          printf 'package_version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          sha256sum /usr/share/openburnbar/attestation/installed-manifest.json \
+            | awk '{print "manifest_sha256=" $1}' >> "$GITHUB_OUTPUT"
+          sha256sum /usr/share/openburnbar/attestation/installed-manifest.json.sig \
+            | awk '{print "manifest_signature_sha256=" $1}' >> "$GITHUB_OUTPUT"
+
+      - name: Capture P-08 installed Mercury media proof
+        if: inputs.requirement == 'P-08'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+          PACKAGE_VERSION: ${{ steps.p08_install.outputs.package_version }}
+          MANIFEST_SHA256: ${{ steps.p08_install.outputs.manifest_sha256 }}
+          MANIFEST_SIGNATURE_SHA256: ${{ steps.p08_install.outputs.manifest_signature_sha256 }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          desktop_report="$input_root/p08-linux-desktop-observation.json"
+          device_report="$input_root/p08-physical-device-observation.json"
+          test -f "$desktop_report"
+          test -f "$device_report"
+          chmod 700 "$input_root"
+          node scripts/linux-port/run-p08-mercury-media-session.mjs \
+            --output-root "$input_root" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --package-version "$PACKAGE_VERSION" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"
+          node scripts/linux-port/capture-p08-mercury-media-proof.mjs \
+            --input-root "$input_root" \
+            --session-report "$input_root/p08-installed-mercury-media-session.json" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
+
       - name: Capture P-31 installed accessibility matrix evidence
         id: p31_capture
         if: inputs.requirement == 'P-31'

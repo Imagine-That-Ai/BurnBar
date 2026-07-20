@@ -31,6 +31,7 @@ function valid() {
       'product-proof-closure.test.mjs',
       'product-feature-proof-closure.test.mjs',
       'p07-computer-use-proof.test.mjs',
+      'p08-mercury-media-proof.test.mjs',
       'p38-release-automation-proof.test.mjs',
       'p31-accessibility-proof.test.mjs',
       'p34-credential-security-proof.test.mjs',
@@ -123,6 +124,31 @@ function valid() {
       ].join('\n'),
       'Capture parity certification preflight',
       'Preserve non-promotable P-02 diagnostic evidence',
+      [
+        '      - name: Install P-08 signed candidate package',
+        "        if: inputs.requirement == 'P-08'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          sudo apt-get install -y --reinstall "$package"',
+        '          sudo dnf install -y "$package"',
+        '          sudo pacman -U --noconfirm "$package"',
+        '          sha256sum /usr/share/openburnbar/attestation/installed-manifest.json',
+        '          sha256sum /usr/share/openburnbar/attestation/installed-manifest.json.sig'
+      ].join('\n'),
+      [
+        '      - name: Capture P-08 installed Mercury media proof',
+        "        if: inputs.requirement == 'P-08'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          test -f "$desktop_report"',
+        '          test -f "$device_report"',
+        '          node scripts/linux-port/run-p08-mercury-media-session.mjs',
+        '            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+        '          node scripts/linux-port/capture-p08-mercury-media-proof.mjs',
+        '            --session-report "$input_root/p08-installed-mercury-media-session.json"',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+      ].join('\n'),
       'Capture P-31 installed accessibility matrix evidence',
       'Capture P-34 credential security proof',
       [
@@ -430,6 +456,40 @@ test('P-38 workflow step cannot be removed or weakened', () => {
   }
 });
 
+test('P-08 installed media workflow cannot omit package trust or paired live evidence', () => {
+  for (const marker of [
+    'Install P-08 signed candidate package',
+    'Capture P-08 installed Mercury media proof',
+    'run-p08-mercury-media-session.mjs',
+    'capture-p08-mercury-media-proof.mjs',
+    '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+    'test -f "$desktop_report"',
+    'test -f "$device_report"'
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replaceAll(marker, 'removed-p08-marker');
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(result.failures.some((failure) => /P-08/u.test(failure)), marker);
+  }
+  for (const [stepName, mutation] of [
+    ['Install P-08 signed candidate package', ['set -euo pipefail', 'set +e']],
+    ['Capture P-08 installed Mercury media proof', ['set -euo pipefail', 'set +e']],
+    ['Capture P-08 installed Mercury media proof', ['test -f "$device_report"', 'true']]
+  ]) {
+    const input = valid();
+    const stepStart = input.productParityWorkflow.indexOf(`      - name: ${stepName}`);
+    assert.ok(stepStart >= 0, stepName);
+    const nextStep = input.productParityWorkflow.indexOf('\n      - name:', stepStart + 1);
+    const end = nextStep < 0 ? input.productParityWorkflow.length : nextStep;
+    const block = input.productParityWorkflow.slice(stepStart, end).replace(...mutation);
+    input.productParityWorkflow = `${input.productParityWorkflow.slice(0, stepStart)}${block}${input.productParityWorkflow.slice(end)}`;
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, `${stepName}: ${mutation[0]}`);
+    assert.ok(result.failures.some((failure) => /P-08/u.test(failure)));
+  }
+});
+
 test('P-39 differential workflow cannot be removed or weakened', () => {
   for (const marker of [
     'resolve-p39-platform-evidence.mjs',
@@ -507,6 +567,7 @@ test('product evidence dependency install and mutation suites are mandatory in t
     'smoke-linux-packages.test.mjs',
     'product-feature-proof-closure.test.mjs',
     'p07-computer-use-proof.test.mjs',
+    'p08-mercury-media-proof.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs'
   ]) {

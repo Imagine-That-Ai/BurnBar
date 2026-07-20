@@ -169,6 +169,57 @@ export function verifyLinuxWorkflowWiring(input) {
     }
   };
 
+  const requireP08CaptureContract = (body) => {
+    const blockFor = (stepName) => {
+      const start = body.indexOf(`- name: ${stepName}`);
+      const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
+      return start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
+    };
+    const installStep = 'Install P-08 signed candidate package';
+    const captureStep = 'Capture P-08 installed Mercury media proof';
+    const install = blockFor(installStep);
+    const capture = blockFor(captureStep);
+    if (!install) failures.push(`product parity evidence workflow is missing executable step: ${installStep}`);
+    if (!capture) failures.push(`product parity evidence workflow is missing executable step: ${captureStep}`);
+    const activeLines = (block) => block.split('\n').map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'));
+    for (const [step, block, lines] of [
+      [installStep, install, [
+        "if: inputs.requirement == 'P-08'",
+        'set -euo pipefail',
+        'sudo apt-get install -y --reinstall "$package"',
+        'sudo dnf install -y "$package"',
+        'sudo pacman -U --noconfirm "$package"',
+        'sha256sum /usr/share/openburnbar/attestation/installed-manifest.json',
+        'sha256sum /usr/share/openburnbar/attestation/installed-manifest.json.sig'
+      ]],
+      [captureStep, capture, [
+        "if: inputs.requirement == 'P-08'",
+        'set -euo pipefail',
+        'test -f "$desktop_report"',
+        'test -f "$device_report"',
+        'node scripts/linux-port/run-p08-mercury-media-session.mjs',
+        '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+        'node scripts/linux-port/capture-p08-mercury-media-proof.mjs',
+        '--session-report "$input_root/p08-installed-mercury-media-session.json"',
+        '--candidate-run-id "$CANDIDATE_RUN_ID"',
+        '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+      ]]
+    ]) {
+      const active = activeLines(block);
+      for (const line of lines) {
+        if (!active.includes(line) && !active.includes(`${line} \\`)) {
+          failures.push(`product parity evidence workflow ${step} is missing: ${line}`);
+        }
+      }
+      for (const forbidden of ['continue-on-error: true', 'set +e', '|| true', '; true']) {
+        if (active.some((line) => line.includes(forbidden))) {
+          failures.push(`product parity evidence workflow ${step} permits failure: ${forbidden}`);
+        }
+      }
+    }
+  };
+
   const requireP39CaptureContract = (body) => {
     const blockFor = (stepName) => {
       const start = body.indexOf(`- name: ${stepName}`);
@@ -456,6 +507,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'product-proof-closure.test.mjs',
     'product-feature-proof-closure.test.mjs',
     'p07-computer-use-proof.test.mjs',
+    'p08-mercury-media-proof.test.mjs',
     'p38-release-automation-proof.test.mjs',
     'p31-accessibility-proof.test.mjs',
     'p34-credential-security-proof.test.mjs',
@@ -482,6 +534,10 @@ export function verifyLinuxWorkflowWiring(input) {
     'capture-p38-release-automation.mjs',
     "if: inputs.requirement == 'P-38'",
     'Capture P-38 release automation verification',
+    'run-p08-mercury-media-session.mjs',
+    'capture-p08-mercury-media-proof.mjs',
+    'Capture P-08 installed Mercury media proof',
+    "if: inputs.requirement == 'P-08'",
     'capture-parity-certification-preflight.mjs',
     'capture-p34-credential-security-proof.mjs',
     'run-p40-privacy-rpc-session.mjs',
@@ -517,6 +573,7 @@ export function verifyLinuxWorkflowWiring(input) {
     'include-hidden-files: true'
   ]) requireText(input.productParityWorkflow, marker, 'product parity evidence workflow');
   requireP38CaptureContract(input.productParityWorkflow);
+  requireP08CaptureContract(input.productParityWorkflow);
   requireP39CaptureContract(input.productParityWorkflow);
   for (const marker of [
     'p39-macos-producer',
@@ -535,6 +592,8 @@ export function verifyLinuxWorkflowWiring(input) {
     'Capture P-38 release automation verification',
     'Capture parity certification preflight',
     'Preserve non-promotable P-02 diagnostic evidence',
+    'Install P-08 signed candidate package',
+    'Capture P-08 installed Mercury media proof',
     'Capture P-31 installed accessibility matrix evidence',
     'Capture P-34 credential security proof',
     'Capture P-39 Linux candidate-bound platform evidence',

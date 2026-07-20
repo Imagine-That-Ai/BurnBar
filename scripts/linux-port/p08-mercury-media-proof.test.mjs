@@ -309,3 +309,18 @@ test('P-08 proof rejects source-only substitution and mutated raw physical-devic
     }, { repoRoot: fixture.root }), /raw observation bytes changed/u);
   } finally { cleanup(fixture); }
 });
+
+test('P-08 validator rejects candidate substitution and physical-device evidence mutation', async () => {
+  const fixture = createFixture();
+  try {
+    const substituted = requirementContext(fixture);
+    substituted.releaseClosure.document.candidate.artifactDigest = `sha256:${'8'.repeat(64)}`;
+    await assert.rejects(() => validateProductRequirement(substituted), /selected release candidate/u);
+
+    fs.appendFileSync(fixture.deviceFile, '\n');
+    await assert.rejects(
+      () => validateProductRequirement(requirementContext(fixture)),
+      /raw observation bytes changed/u
+    );
+  } finally { cleanup(fixture); }
+});

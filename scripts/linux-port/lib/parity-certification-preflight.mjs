@@ -156,6 +156,37 @@ const CANONICAL_WORKFLOW_OWNERSHIP = Object.freeze({
       '  --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
     ].join('\n')
   },
+  'scripts/linux-port/capture-p08-mercury-media-proof.mjs': {
+    workflow: '.github/workflows/linux-product-parity.yml',
+    job: 'validate',
+    step: 'Capture P-08 installed Mercury media proof',
+    condition: "inputs.requirement == 'P-08'",
+    run: [
+      'set -euo pipefail',
+      'input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"',
+      'desktop_report="$input_root/p08-linux-desktop-observation.json"',
+      'device_report="$input_root/p08-physical-device-observation.json"',
+      'test -f "$desktop_report"',
+      'test -f "$device_report"',
+      'chmod 700 "$input_root"',
+      'node scripts/linux-port/run-p08-mercury-media-session.mjs \\',
+      '  --output-root "$input_root" \\',
+      '  --environment "$ENVIRONMENT_ID" \\',
+      '  --target-head "$TARGET_HEAD" \\',
+      '  --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+      '  --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \\',
+      '  --package-version "$PACKAGE_VERSION" \\',
+      '  --manifest-sha256 "$MANIFEST_SHA256" \\',
+      '  --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+      'node scripts/linux-port/capture-p08-mercury-media-proof.mjs \\',
+      '  --input-root "$input_root" \\',
+      '  --session-report "$input_root/p08-installed-mercury-media-session.json" \\',
+      '  --environment "$ENVIRONMENT_ID" \\',
+      '  --target-head "$TARGET_HEAD" \\',
+      '  --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+      '  --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+    ].join('\n')
+  },
   'scripts/linux-port/finalize-product-proof-closure.mjs': {
     workflow: '.github/workflows/linux-release.yml',
     job: 'assemble-release',
