@@ -67,6 +67,19 @@ import {
 } from './tauriBridgeRaw.js';
 import { mapCredentialSlot } from './tauriBridgeSystemDecoders.js';
 
+const FOUNDATION_REFERENCE_EPOCH_MS = Date.UTC(2001, 0, 1);
+const QUOTA_DATE_MIN_MS = Date.UTC(2000, 0, 1);
+const QUOTA_DATE_FUTURE_LIMIT_MS = 10 * 366 * 24 * 60 * 60 * 1000;
+
+export function decodeQuotaDate(value: RawJsonValue, now = Date.now()): string | undefined {
+  const milliseconds = typeof value === 'number'
+    ? Number.isFinite(value) ? FOUNDATION_REFERENCE_EPOCH_MS + value * 1000 : Number.NaN
+    : typeof value === 'string' && value.trim() ? Date.parse(value) : Number.NaN;
+  if (!Number.isFinite(milliseconds) || milliseconds < QUOTA_DATE_MIN_MS
+      || milliseconds > now + QUOTA_DATE_FUTURE_LIMIT_MS) return undefined;
+  return new Date(milliseconds).toISOString();
+}
+
 export function decodeDaemonSubscriptionResponse(raw: RawJsonValue): DaemonSubscriptionResponse {
   const source = requireObject(pick(raw, 'result') ?? raw, 'subscription response');
   const eventsRaw = source.events;
@@ -360,7 +373,7 @@ export function mapQuotaBuckets(raw: RawJsonValue): QuotaBucket[] {
           ? (1 - remainingValue / limitValue) * 100
           : Number.NaN;
     if (!Number.isFinite(usedPct)) return [];
-    const reset = str(pick(bucket, 'resetsAt', 'resetAt')).trim();
+    const reset = decodeQuotaDate(pick(bucket, 'resetsAt', 'resetAt'));
     const explicitState = str(pick(bucket, 'state', 'status')).trim();
     const state = explicitState
       ? normalizeQuotaState(explicitState)
@@ -371,7 +384,7 @@ export function mapQuotaBuckets(raw: RawJsonValue): QuotaBucket[] {
       id: stableID,
       label: label || stableID,
       usedPct: Math.min(100, Math.max(0, usedPct)),
-      resetsAt: reset && Number.isFinite(Date.parse(reset)) ? reset : undefined,
+      resetsAt: reset,
       state
     }];
   });
@@ -486,8 +499,8 @@ export function mapProviderCatalog(raw: RawJsonValue): ProviderCatalog {
       : undefined;
     const planTierBadge = str(pick(quotaMetadata, 'planTierBadge', 'plan_tier_badge', 'planTier', 'plan_tier')).trim() || undefined;
     const quotaSourceID = str(pick(quotaSnapshot, 'sourceId', 'sourceID')).trim() || undefined;
-    const quotaFetchedAt = str(pick(quotaSnapshot, 'fetchedAt')).trim() || undefined;
-    const quotaUpdatedAt = str(pick(quotaSnapshot, 'updatedAt')).trim() || undefined;
+    const quotaFetchedAt = decodeQuotaDate(pick(quotaSnapshot, 'fetchedAt'));
+    const quotaUpdatedAt = decodeQuotaDate(pick(quotaSnapshot, 'updatedAt'));
     const provenance: ProviderCatalogProvenance = catalogProvider && provider
       ? 'daemon-catalog+daemon-config'
       : catalogProvider

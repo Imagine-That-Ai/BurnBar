@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mapProviderCatalog } from './tauriBridge.js';
+import { decodeQuotaDate } from './tauriBridgeCoreDecoders.js';
 
 describe('mapProviderCatalog', () => {
   it('merges catalog/config state and exposes only verified route eligibility', () => {
@@ -173,14 +174,15 @@ describe('mapProviderCatalog', () => {
   });
 
   it('maps real daemon quota snapshots with canonical identity and stale provenance', () => {
+    const swift = (iso: string) => Date.parse(iso) / 1000 - 978_307_200;
     const mapped = mapProviderCatalog({
       config: { snapshot: { routerMode: 'same_model_failover', providers: [{ providerID: 'anthropic', isEnabled: true, credentialSlots: [] }] } },
       catalog: { providers: [{ id: 'anthropic', models: [] }] },
       quota: { snapshots: [{
         providerID: 'anthropic', sourceKind: 'provider', sourceId: 'daemon.quota.signals:signal-1',
-        source: 'Provider response headers', confidence: 'stale', fetchedAt: '2026-07-20T10:00:00Z',
-        updatedAt: '2026-07-20T10:00:00Z', buckets: [{ key: 'traffic-rate-limit', label: 'Provider rate limit',
-          usedValue: 30, limitValue: 100, remainingValue: 70, resetsAt: '2026-07-20T11:00:00Z' }]
+        source: 'Provider response headers', confidence: 'stale', fetchedAt: swift('2026-07-20T10:00:00Z'),
+        updatedAt: swift('2026-07-20T10:00:00Z'), buckets: [{ key: 'traffic-rate-limit', label: 'Provider rate limit',
+          usedValue: 30, limitValue: 100, remainingValue: 70, resetsAt: swift('2026-07-20T11:00:00Z') }]
       }] }
     });
 
@@ -188,9 +190,20 @@ describe('mapProviderCatalog', () => {
       canonicalProviderID: 'claude', providerAliases: ['anthropic', 'claude-code'], quotaStale: true,
       quotaSourceKind: 'provider', quotaSourceID: 'daemon.quota.signals:signal-1',
       quotaSource: 'Provider response headers', quotaConfidence: 'stale',
-      quotaBuckets: [{ id: 'traffic-rate-limit', usedPct: 30, resetsAt: '2026-07-20T11:00:00Z', state: 'ok' }],
+      quotaFetchedAt: '2026-07-20T10:00:00.000Z', quotaUpdatedAt: '2026-07-20T10:00:00.000Z',
+      quotaBuckets: [{ id: 'traffic-rate-limit', usedPct: 30, resetsAt: '2026-07-20T11:00:00.000Z', state: 'ok' }],
       failover: { mode: 'same_model_failover', eligible: false }
     });
+  });
+
+  it('decodes bounded Swift Foundation quota dates and rejects invalid epochs', () => {
+    const now = Date.parse('2026-07-20T12:00:00Z');
+    expect(decodeQuotaDate(Date.parse('2026-07-20T10:00:00Z') / 1000 - 978_307_200, now)).toBe('2026-07-20T10:00:00.000Z');
+    expect(decodeQuotaDate('2026-07-20T11:00:00Z', now)).toBe('2026-07-20T11:00:00.000Z');
+    expect(decodeQuotaDate(Number.POSITIVE_INFINITY, now)).toBeUndefined();
+    expect(decodeQuotaDate(-978_307_201, now)).toBeUndefined();
+    expect(decodeQuotaDate(now / 1000 - 978_307_200 + 60 * 60 * 24 * 366 * 20, now)).toBeUndefined();
+    expect(decodeQuotaDate('not-a-date', now)).toBeUndefined();
   });
 
   it('keeps a quota-only provider row and derives exhaustion from the exact Swift bucket shape', () => {
