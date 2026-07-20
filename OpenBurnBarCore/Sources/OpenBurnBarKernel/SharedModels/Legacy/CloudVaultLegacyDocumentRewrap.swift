@@ -139,7 +139,7 @@ enum CloudVaultLegacyDocumentRewrap {
         aadContext: CloudVaultAADContext,
         nonce: Data
     ) throws -> CloudVaultSealedText {
-        let sealed = try PlatformCrypto.sealAESGCMDetachedUsingNonce(
+        let sealed = try OpenBurnBarPlatformSupport.PlatformCrypto.sealAESGCMDetachedUsingNonce(
             plaintext: Data(text.utf8),
             keyData: keyData,
             nonce: nonce,
@@ -163,7 +163,7 @@ enum CloudVaultLegacyDocumentRewrap {
         aadContext: CloudVaultAADContext,
         nonce: Data
     ) throws -> CloudVaultBlobEnvelope {
-        let sealed = try PlatformCrypto.sealAESGCMDetachedUsingNonce(
+        let sealed = try OpenBurnBarPlatformSupport.PlatformCrypto.sealAESGCMDetachedUsingNonce(
             plaintext: data,
             keyData: keyData,
             nonce: nonce,
@@ -193,7 +193,7 @@ enum CloudVaultLegacyDocumentRewrap {
             sealedBoxBase64: "",
             aad: aadContext.stringValue
         )
-        let sealed = try PlatformCrypto.sealAESGCMDetachedUsingNonce(
+        let sealed = try OpenBurnBarPlatformSupport.PlatformCrypto.sealAESGCMDetachedUsingNonce(
             plaintext: data,
             keyData: keyData,
             nonce: nonce,

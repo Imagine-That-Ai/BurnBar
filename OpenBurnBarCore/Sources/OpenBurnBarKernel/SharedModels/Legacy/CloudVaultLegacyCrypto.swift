@@ -69,7 +69,7 @@ enum CloudVaultLegacyCrypto {
         nonce: Data
     ) throws -> CloudVaultDomainCoreAdapter.RecoveryWrappedVaultKey {
         let wrappingKey = try recoveryWrappingKey(from: recoveryKey)
-        let combined = try PlatformCrypto.sealAESGCMDetachedUsingNonce(
+        let combined = try OpenBurnBarPlatformSupport.PlatformCrypto.sealAESGCMDetachedUsingNonce(
             plaintext: vaultKey,
             keyData: PlatformCrypto.symmetricKeyData(wrappingKey),
             nonce: nonce,
@@ -124,7 +124,7 @@ enum CloudVaultLegacyCrypto {
         nonce: Data,
         authenticating aad: Data
     ) throws -> CloudVaultDomainCoreAdapter.AESGCMDetachedBox {
-        let sealed = try PlatformCrypto.sealAESGCMDetachedUsingNonce(
+        let sealed = try OpenBurnBarPlatformSupport.PlatformCrypto.sealAESGCMDetachedUsingNonce(
             plaintext: plaintext,
             keyData: keyData,
             nonce: nonce,
@@ -139,7 +139,7 @@ enum CloudVaultLegacyCrypto {
         nonce: Data,
         authenticating aad: Data
     ) throws -> Data {
-        try PlatformCrypto.sealAESGCMDetachedUsingNonce(
+        try OpenBurnBarPlatformSupport.PlatformCrypto.sealAESGCMDetachedUsingNonce(
             plaintext: plaintext,
             keyData: keyData,
             nonce: nonce,
