@@ -130,7 +130,8 @@ final class LinuxMediaContractTests: XCTestCase {
             sessionByteBudget: 1_000_000
         )
         guard case let .allowed(envelope) = check else {
-            return XCTFail("the platform-neutral test gate should allow the request")
+            XCTFail("the platform-neutral test gate should allow the request")
+            return
         }
         XCTAssertTrue(check.isAllowed)
         XCTAssertEqual(envelope.feature, .screenShare)

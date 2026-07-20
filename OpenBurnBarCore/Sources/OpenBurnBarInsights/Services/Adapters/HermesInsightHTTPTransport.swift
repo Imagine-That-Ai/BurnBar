@@ -75,8 +75,7 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
         // The Windows Foundation overlay also exposes the zero-argument
         // `unfolding` initializer. The buffering-policy label selects the
         // continuation-based initializer consistently on every toolchain.
-        AsyncThrowingStream<HermesInsightChunk, Error>(bufferingPolicy: .unbounded) {
-            (continuation: AsyncThrowingStream<HermesInsightChunk, Error>.Continuation) in
+        AsyncThrowingStream<HermesInsightChunk, Error>(bufferingPolicy: .unbounded) { (continuation: AsyncThrowingStream<HermesInsightChunk, Error>.Continuation) in
             let task = Task {
                 do {
                     let urlRequest = try makeURLRequest(for: request, streaming: true)

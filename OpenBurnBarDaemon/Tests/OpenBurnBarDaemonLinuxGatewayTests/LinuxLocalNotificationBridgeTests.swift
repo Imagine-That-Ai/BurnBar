@@ -48,7 +48,8 @@ final class LinuxLocalNotificationBridgeTests: XCTestCase {
             XCTFail("delivery must fail closed when notify-send is unavailable")
         } catch let error as LinuxLocalNotificationAdapter.AdapterError {
             guard case .unavailable(let path) = error else {
-                return XCTFail("expected unavailable error, got \(error)")
+                XCTFail("expected unavailable error, got \(error)")
+                return
             }
             XCTAssertEqual(path, LinuxLocalNotificationAdapter.notifySendPath)
             XCTAssertTrue(error.localizedDescription.contains("unavailable"))

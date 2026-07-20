@@ -380,6 +380,8 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
     }
 }
 
+// AUDIT(@unchecked Sendable): mutable process state is guarded by `state`'s lock;
+// launch configuration is immutable. sendable-allowlist: process-handle
 /// One non-interactive invocation attached to a Linux pseudo-terminal.
 ///
 /// `forkpty` creates the PTY pair, makes the child a session leader with the
@@ -387,8 +389,6 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
 /// negative PID can be used to terminate descendants.  The parent drains the
 /// master from a nonblocking polling loop so a chatty CLI cannot deadlock or
 /// grow memory without bound.
-// AUDIT(@unchecked Sendable): mutable process state is guarded by `state`'s lock;
-// launch configuration is immutable. sendable-allowlist: process-handle
 private final class LinuxPTYCLIProcess: @unchecked Sendable {
     /// C argument storage is prepared before `forkpty`.  The child then only
     /// performs `chdir`/`execve` using inherited pointers, avoiding Swift/heap
@@ -454,7 +454,7 @@ private final class LinuxPTYCLIProcess: @unchecked Sendable {
     }
 
     private struct State: Sendable {
-        var masterFD: Int32 = -1
+        var ptyFD: Int32 = -1
         var childPID: pid_t = -1
         var cancelled = false
         var started = false
@@ -486,8 +486,7 @@ private final class LinuxPTYCLIProcess: @unchecked Sendable {
         try Task.checkCancellation()
 
         return try await withTaskCancellationHandler(operation: {
-            try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<(status: Int32, output: String), Error>) in
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(status: Int32, output: String), Error>) in
                 start { result in
                     continuation.resume(with: result)
                 }
@@ -514,14 +513,14 @@ private final class LinuxPTYCLIProcess: @unchecked Sendable {
             environment: environment,
             workingDirectoryPath: workingDirectory?.path
         )
-        var masterFD: Int32 = -1
+        var ptyFD: Int32 = -1
         var window = winsize(
             ws_row: 40,
             ws_col: 120,
             ws_xpixel: 0,
             ws_ypixel: 0
         )
-        let childPID = forkpty(&masterFD, nil, nil, &window)
+        let childPID = forkpty(&ptyFD, nil, nil, &window)
         guard childPID >= 0 else {
             let spawnErrno = errno
             state.withLock { state in
@@ -538,7 +537,7 @@ private final class LinuxPTYCLIProcess: @unchecked Sendable {
         }
 
         let shouldCancel = state.withLock { state -> Bool in
-            state.masterFD = masterFD
+            state.ptyFD = ptyFD
             state.childPID = childPID
             return state.cancelled
         }
@@ -546,9 +545,9 @@ private final class LinuxPTYCLIProcess: @unchecked Sendable {
             terminateProcessGroup(childPID)
         }
 
-        let flags = fcntl(masterFD, F_GETFL, 0)
+        let flags = fcntl(ptyFD, F_GETFL, 0)
         if flags >= 0 {
-            _ = fcntl(masterFD, F_SETFL, flags | O_NONBLOCK)
+            _ = fcntl(ptyFD, F_SETFL, flags | O_NONBLOCK)
         }
 
         DispatchQueue.global(qos: .userInitiated).async { [self] in
@@ -562,8 +561,8 @@ private final class LinuxPTYCLIProcess: @unchecked Sendable {
     private func runLoop(
         completion: @escaping @Sendable (Result<(status: Int32, output: String), Error>) -> Void
     ) {
-        let (masterFD, childPID) = state.withLock { ($0.masterFD, $0.childPID) }
-        guard masterFD >= 0, childPID > 0 else {
+        let (ptyFD, childPID) = state.withLock { ($0.ptyFD, $0.childPID) }
+        guard ptyFD >= 0, childPID > 0 else {
             completion(.failure(BurnBarSwitcherShellError.terminalSpawnFailed("PTY session state was not initialized.")))
             return
         }
@@ -574,7 +573,7 @@ private final class LinuxPTYCLIProcess: @unchecked Sendable {
 
         while !childReaped {
             var descriptor = pollfd(
-                fd: masterFD,
+                fd: ptyFD,
                 events: Int16(truncatingIfNeeded: POLLIN | POLLHUP | POLLERR),
                 revents: 0
             )
@@ -583,7 +582,7 @@ private final class LinuxPTYCLIProcess: @unchecked Sendable {
                 break
             }
             if pollResult > 0 {
-                drain(masterFD: masterFD, into: &output)
+                drain(ptyFD: ptyFD, into: &output)
             }
 
             let result = waitpid(childPID, &waitStatus, WNOHANG)
@@ -600,10 +599,10 @@ private final class LinuxPTYCLIProcess: @unchecked Sendable {
         // process group created by forkpty is ours, so clean it before closing
         // the master and returning to the caller.
         terminateProcessGroup(childPID)
-        drain(masterFD: masterFD, into: &output)
-        close(masterFD)
+        drain(ptyFD: ptyFD, into: &output)
+        close(ptyFD)
         state.withLock { state in
-            state.masterFD = -1
+            state.ptyFD = -1
             state.childPID = -1
         }
 
@@ -622,11 +621,11 @@ private final class LinuxPTYCLIProcess: @unchecked Sendable {
         completion(.success((status: status, output: text)))
     }
 
-    private func drain(masterFD: Int32, into output: inout Data) {
+    private func drain(ptyFD: Int32, into output: inout Data) {
         var buffer = [UInt8](repeating: 0, count: 8 * 1024)
         while true {
             let bytesRead = buffer.withUnsafeMutableBytes { bytes in
-                read(masterFD, bytes.baseAddress, bytes.count)
+                read(ptyFD, bytes.baseAddress, bytes.count)
             }
             if bytesRead > 0 {
                 let room = max(0, Self.outputByteCap - output.count)

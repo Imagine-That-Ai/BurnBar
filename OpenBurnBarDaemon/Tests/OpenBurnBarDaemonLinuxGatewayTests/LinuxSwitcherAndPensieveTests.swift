@@ -65,7 +65,8 @@ final class LinuxSwitcherAndPensieveTests: XCTestCase {
             XCTFail("A non-zero CLI exit must report terminalExited")
         } catch let error as BurnBarSwitcherShellError {
             guard case .terminalExited(let status, let detail) = error else {
-                return XCTFail("Unexpected switcher error: \(error)")
+                XCTFail("Unexpected switcher error: \(error)")
+                return
             }
             XCTAssertEqual(status, 17)
             XCTAssertLessThanOrEqual(detail?.utf8.count ?? 0, 2_000)

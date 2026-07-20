@@ -267,7 +267,7 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         let record = try store.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
         XCTAssertEqual(record?.secret, "  systemd-secret  ")
         XCTAssertEqual(record?.metadata.trustLevel, .systemdCredential)
-        XCTAssertTrue(record?.metadata.note.contains("owner-only") == true)
+        XCTAssertEqual(record?.metadata.note.contains("owner-only"), true)
 
         for invalidID in ["../outside", "nested/name", "/absolute", "..", ".", "line\nbreak"] {
             XCTAssertThrowsError(

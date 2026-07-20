@@ -2,13 +2,13 @@ import Foundation
 import OpenBurnBarEngine
 import OpenBurnBarLinuxSecurity
 
+// AUDIT(@unchecked Sendable): persistence state is guarded by `lock`; the Linux
+// engine lifecycle is isolated in an actor. sendable-allowlist: internal-lock-snapshot-store
 /// Daemon-owned encrypted persistence for Linux in-app text expansion.
 ///
 /// The renderer receives typed snapshots over the authenticated daemon socket;
 /// it never owns a durable snippet file. The file envelope is AES-GCM sealed
 /// and its 256-bit key is held by an approved Linux native secret backend.
-// AUDIT(@unchecked Sendable): persistence state is guarded by `lock`; the Linux
-// engine lifecycle is isolated in an actor. sendable-allowlist: internal-lock-snapshot-store
 public final class BurnBarTextExpansionService: @unchecked Sendable {
     private struct Envelope: Codable {
         let schemaVersion: Int
