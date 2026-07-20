@@ -64,7 +64,7 @@ function socketExchange({ socketPath }, payload) {
   return new Promise((resolve, reject) => {
     const client = net.createConnection({ path: socketPath });
     let response = Buffer.alloc(0);
-    const timer = setTimeout(() => client.destroy(new Error(`P-11 RPC timeout: ${method}`)), 15_000);
+    const timer = setTimeout(() => client.destroy(new Error('P-11 RPC timeout')), 15_000);
     client.on('connect', () => client.end(payload.endsWith('\n') ? payload : `${payload}\n`));
     client.on('data', (chunk) => {
       response = Buffer.concat([response, chunk]);
