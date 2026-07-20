@@ -169,11 +169,14 @@ extension CLIAgentMissionDispatcher {
             if let envelope = personaScopeByRuntime[runtimeToken] {
                 payload["personaID"] = envelope.personaID
             }
+            // Direct Firestore writes carry only the path-bound CloudVault seal;
+            // Signal envelopes are reserved for the validating server path.
+            payload.removeValue(forKey: "signalEnvelope")
             let requestRef = db
                 .collection("users").document(uid)
                 .collection("cli_agent_mission_requests").document(missionID)
             batch.setData(
-                CLIAgentMissionCloudSealer.payloadForDirectFirestoreWrite(payload),
+                payload,
                 forDocument: requestRef,
                 merge: false
             )

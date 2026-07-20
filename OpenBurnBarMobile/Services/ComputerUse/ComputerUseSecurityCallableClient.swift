@@ -94,6 +94,18 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    private struct TrustedSignalIdentityRepairChallengeResponse: Decodable {
+        let ok: Bool
+        let challengeId: String
+        let challengeCiphertextBase64: String
+        let schemaVersion: Int
+    }
+
+    private struct TrustedSignalIdentityRepairResponse: Decodable {
+        let ok: Bool
+        let reapprovalRequired: Bool
+    }
+
     private static var functions: Functions {
         Functions.functions(region: "us-central1")
     }
@@ -108,6 +120,22 @@ enum ComputerUseSecurityCallableClient {
             throw ClientError.notAuthenticated
         }
         return user
+    }
+
+    private static func decodeCallableResponse<Value: Decodable>(
+        _ rawValue: Any,
+        as _: Value.Type,
+        invalidMessage: String
+    ) throws -> Value {
+        guard JSONSerialization.isValidJSONObject(rawValue) else {
+            throw ClientError.invalidResponse(invalidMessage)
+        }
+        do {
+            let data = try JSONSerialization.data(withJSONObject: rawValue)
+            return try JSONDecoder().decode(Value.self, from: data)
+        } catch {
+            throw ClientError.invalidResponse(invalidMessage)
+        }
     }
 
     static func bindAppCheckAttestation() async throws {
@@ -208,13 +236,15 @@ enum ComputerUseSecurityCallableClient {
         let challengeResult = try await functions
             .httpsCallable("issueTrustedSignalIdentityRepairChallenge")
             .call(["deviceId": deviceId])
-        guard let challenge = challengeResult.data as? [String: Any],
-              challenge["ok"] as? Bool == true,
-              let challengeId = challenge["challengeId"] as? String,
-              challengeId.isEmpty == false,
-              let ciphertextBase64 = challenge["challengeCiphertextBase64"] as? String,
-              let ciphertext = Data(base64Encoded: ciphertextBase64),
-              (challenge["schemaVersion"] as? NSNumber)?.intValue == MobileTrustedSignalIdentityRepairContract.challengeVersion else {
+        let challenge = try decodeCallableResponse(
+            challengeResult.data,
+            as: TrustedSignalIdentityRepairChallengeResponse.self,
+            invalidMessage: "Signal identity repair challenge was invalid."
+        )
+        guard challenge.ok,
+              challenge.challengeId.isEmpty == false,
+              let ciphertext = Data(base64Encoded: challenge.challengeCiphertextBase64),
+              challenge.schemaVersion == MobileTrustedSignalIdentityRepairContract.challengeVersion else {
             throw ClientError.invalidResponse("Signal identity repair challenge was invalid.")
         }
 
@@ -227,13 +257,13 @@ enum ComputerUseSecurityCallableClient {
             authenticating: MobileTrustedSignalIdentityRepairContract.challengeAAD(
                 uid: uid,
                 deviceId: deviceId,
-                challengeId: challengeId
+                challengeId: challenge.challengeId
             )
         )
         let nonce = try await issueHighRiskActionNonce()
         let repairResult = try await functions.httpsCallable("repairTrustedSignalIdentity").call([
             "deviceId": deviceId,
-            "challengeId": challengeId,
+            "challengeId": challenge.challengeId,
             "challengePlaintextBase64": plaintext.base64EncodedString(),
             "identityKeyId": identity.identityKeyId,
             "publicKeyData": identity.publicKeyBase64,
@@ -241,9 +271,12 @@ enum ComputerUseSecurityCallableClient {
             "keyVersion": identity.keyVersion,
             "nonce": nonce
         ])
-        guard let response = repairResult.data as? [String: Any],
-              response["ok"] as? Bool == true,
-              response["reapprovalRequired"] as? Bool == true else {
+        let response = try decodeCallableResponse(
+            repairResult.data,
+            as: TrustedSignalIdentityRepairResponse.self,
+            invalidMessage: "Signal identity repair failed."
+        )
+        guard response.ok, response.reapprovalRequired else {
             throw ClientError.invalidResponse("Signal identity repair failed.")
         }
     }

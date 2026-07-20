@@ -23,9 +23,9 @@ import { boundedInteger, requireBase64Like } from "./computerUseSecurityCodecs.j
 import { evaluateEscrowFingerprintBinding } from "./computerUseSecurityCrypto.js";
 import { boundedTrimmedString } from "./shared.js";
 
-export const SIGNAL_IDENTITY_REPAIR_CHALLENGE_VERSION = 1;
-export const SIGNAL_IDENTITY_REPAIR_CHALLENGE_DOMAIN = "OpenBurnBar-SignalIdentityRepairChallenge-v1";
-export const SIGNAL_IDENTITY_REPAIR_ALGORITHM = "escrow-possession-challenge-v1";
+const SIGNAL_IDENTITY_REPAIR_CHALLENGE_VERSION = 1;
+const SIGNAL_IDENTITY_REPAIR_CHALLENGE_DOMAIN = "OpenBurnBar-SignalIdentityRepairChallenge-v1";
+const SIGNAL_IDENTITY_REPAIR_ALGORITHM = "escrow-possession-challenge-v1";
 
 const ESCROW_WIRE_ALGORITHM = "ECIES-P256-AESGCM";
 const SIGNAL_IDENTITY_ALGORITHM = "signal-hpke-identity-seal-v1";
@@ -66,7 +66,7 @@ function canonicalSegments(domain: string, segments: string[]): Buffer {
   return Buffer.from(canonical, "utf8");
 }
 
-export function signalIdentityRepairChallengeAAD(uid: string, deviceId: string, challengeId: string): Buffer {
+function signalIdentityRepairChallengeAAD(uid: string, deviceId: string, challengeId: string): Buffer {
   return canonicalSegments(SIGNAL_IDENTITY_REPAIR_CHALLENGE_DOMAIN, [
     "uid",
     uid,
@@ -78,7 +78,7 @@ export function signalIdentityRepairChallengeAAD(uid: string, deviceId: string, 
 }
 
 /** Mirrors CloudVaultCrypto.sealEscrowPayload for the one-time challenge. */
-export function sealSignalIdentityRepairChallenge(plaintext: Buffer, recipientPublicKey: Buffer, aad: Buffer): Buffer {
+function sealSignalIdentityRepairChallenge(plaintext: Buffer, recipientPublicKey: Buffer, aad: Buffer): Buffer {
   if (recipientPublicKey.length !== P256_X963_BYTES || recipientPublicKey[0] !== 0x04) {
     throw new HttpsError("failed-precondition", "The trusted device escrow public key is invalid.");
   }

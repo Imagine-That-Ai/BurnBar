@@ -49,7 +49,7 @@ clang "$tmpdir/app.c" -o "$watchdog"
 sign_pair() {
   local daemon_identifier="$1"
   local entitlements="${2:-}"
-  local args=(--force --sign - --options runtime,library --identifier "$daemon_identifier")
+  local args=(--force --sign - --options "runtime,library" --identifier "$daemon_identifier")
   if [[ -n "$entitlements" ]]; then
     args+=(--entitlements "$entitlements")
   fi

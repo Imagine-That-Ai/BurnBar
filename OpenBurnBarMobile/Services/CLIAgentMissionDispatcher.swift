@@ -58,7 +58,7 @@ final class CLIAgentMissionDispatcher {
 
         let db = firestoreProvider()
         let resolvedKey = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid, firestore: db)
-        let payload = try CLIAgentMissionRequestPayloadFactory.buildSealed(
+        var payload = try CLIAgentMissionRequestPayloadFactory.buildSealed(
             id: id,
             title: trimmedTitle,
             prompt: trimmedPrompt,
@@ -82,12 +82,15 @@ final class CLIAgentMissionDispatcher {
             vaultKey: resolvedKey.keyData,
             vaultKeyID: resolvedKey.vaultKeyID
         )
+        // Firestore rules reserve Signal envelopes for a validating Admin/callable
+        // path. Direct clients always send the path-bound CloudVault seal only.
+        payload.removeValue(forKey: "signalEnvelope")
         let requestRef = db
             .collection("users").document(uid)
             .collection("cli_agent_mission_requests").document(id)
         let batch = db.batch()
         batch.setData(
-            CLIAgentMissionCloudSealer.payloadForDirectFirestoreWrite(payload),
+            payload,
             forDocument: requestRef,
             merge: false
         )

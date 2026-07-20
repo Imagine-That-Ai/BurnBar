@@ -46,13 +46,13 @@ enum MobileCloudVaultTrustedDeviceChainVerifier {
         category: "cloud-vault-trust"
     )
 
-    static func boundDeviceID(documentID: String, data: [String: Any]) throws -> String {
+    static func boundDeviceID(documentID: String, storedDeviceID: String?) throws -> String {
         let normalizedDocumentID = documentID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedDocumentID.isEmpty else {
             throw MobileCloudVaultTrustChainVerificationError.invalidTrustedDevice(deviceId: documentID)
         }
 
-        if let storedDeviceID = data["deviceId"] as? String {
+        if let storedDeviceID {
             guard storedDeviceID.trimmingCharacters(in: .whitespacesAndNewlines) == normalizedDocumentID else {
                 throw MobileCloudVaultTrustChainVerificationError.invalidTrustedDevice(deviceId: documentID)
             }
@@ -154,7 +154,7 @@ enum MobileCloudVaultTrustedDeviceChainVerifier {
     ) async throws -> MobileCloudVaultVerifiedTrustedDevice {
         let deviceID = try boundDeviceID(
             documentID: deviceDocument.documentID,
-            data: deviceDocument.data()
+            storedDeviceID: deviceDocument.data()["deviceId"] as? String
         )
         return try await verifiedTrustedDevice(
             uid: uid,

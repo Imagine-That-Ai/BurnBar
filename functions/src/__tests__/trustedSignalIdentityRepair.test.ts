@@ -1,7 +1,8 @@
 import { createDecipheriv, createECDH, createHash, hkdfSync, randomBytes } from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CallableRequest } from "firebase-functions/v2/https";
+
+import { callableRequest, callableRunner } from "./bola/callableBolaHarness.js";
 
 const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
   const store = new Map<string, Record<string, unknown>>();
@@ -95,21 +96,26 @@ vi.mock("../logging.js", async () => {
 import {
   issueTrustedSignalIdentityRepairChallenge,
   repairTrustedSignalIdentity,
-  signalIdentityRepairChallengeAAD,
 } from "../callables/signalIdentityRepair.js";
 
 const UID = "legacy-user";
 const DEVICE_ID = "legacy-ipad";
 const KEY_VERSION = 1;
+const CHALLENGE_DOMAIN = "OpenBurnBar-SignalIdentityRepairChallenge-v1";
+const runIssueChallenge = callableRunner(issueTrustedSignalIdentityRepairChallenge);
+const runRepairIdentity = callableRunner(repairTrustedSignalIdentity);
 
-function request<T>(uid: string, data: T): CallableRequest<T> {
-  return {
-    auth: { uid, token: {} },
-    app: { appId: "1:test:ios:app" },
-    data,
-    rawRequest: { headers: {} },
-    acceptsStreaming: false,
-  } as unknown as CallableRequest<T>;
+function challengeAAD(uid: string, deviceId: string, challengeId: string): Buffer {
+  const segments = ["uid", uid, "deviceId", deviceId, "challengeId", challengeId];
+  let canonical = `${CHALLENGE_DOMAIN}\n`;
+  for (const segment of segments) {
+    canonical += `${Buffer.byteLength(segment, "utf8")}:${segment}\n`;
+  }
+  return Buffer.from(canonical, "utf8");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function seedTrustedLegacyDevice(uid = UID, deviceId = DEVICE_ID) {
@@ -153,7 +159,7 @@ function decryptChallenge(
     hkdfSync("sha256", sharedSecret, Buffer.alloc(0), Buffer.from("OpenBurnBar-Escrow-v1", "utf8"), 32),
   );
   const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-  decipher.setAAD(signalIdentityRepairChallengeAAD(uid, deviceId, challengeId));
+  decipher.setAAD(challengeAAD(uid, deviceId, challengeId));
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 }
@@ -169,7 +175,22 @@ function signalIdentity() {
 }
 
 async function issueChallenge(keypair: ReturnType<typeof createECDH>) {
-  const issued = await issueTrustedSignalIdentityRepairChallenge.run(request(UID, { deviceId: DEVICE_ID }));
+  const raw = await runIssueChallenge(callableRequest(UID, { deviceId: DEVICE_ID }));
+  if (
+    !isRecord(raw) ||
+    raw.ok !== true ||
+    typeof raw.challengeId !== "string" ||
+    typeof raw.challengeCiphertextBase64 !== "string" ||
+    typeof raw.schemaVersion !== "number"
+  ) {
+    throw new Error("challenge callable returned an invalid test response");
+  }
+  const issued = {
+    ok: true,
+    challengeId: raw.challengeId,
+    challengeCiphertextBase64: raw.challengeCiphertextBase64,
+    schemaVersion: raw.schemaVersion,
+  };
   const plaintext = decryptChallenge(issued.challengeCiphertextBase64, keypair, UID, DEVICE_ID, issued.challengeId);
   return { issued, plaintext };
 }
@@ -184,8 +205,8 @@ describe("trusted legacy Signal identity repair", () => {
     const { issued, plaintext } = await issueChallenge(escrowKeypair);
     const identity = signalIdentity();
 
-    const result = await repairTrustedSignalIdentity.run(
-      request(UID, {
+    const result = await runRepairIdentity(
+      callableRequest(UID, {
         deviceId: DEVICE_ID,
         challengeId: issued.challengeId,
         challengePlaintextBase64: plaintext.toString("base64"),
@@ -231,8 +252,8 @@ describe("trusted legacy Signal identity repair", () => {
     const { issued, plaintext } = await issueChallenge(escrowKeypair);
     const identity = signalIdentity();
 
-    await repairTrustedSignalIdentity.run(
-      request(UID, {
+    await runRepairIdentity(
+      callableRequest(UID, {
         deviceId: DEVICE_ID,
         challengeId: issued.challengeId,
         challengePlaintextBase64: plaintext.toString("base64"),
@@ -262,8 +283,8 @@ describe("trusted legacy Signal identity repair", () => {
       nonce: "single-use-nonce",
     };
 
-    await repairTrustedSignalIdentity.run(request(UID, payload));
-    await expect(repairTrustedSignalIdentity.run(request(UID, payload))).rejects.toMatchObject({
+    await runRepairIdentity(callableRequest(UID, payload));
+    await expect(runRepairIdentity(callableRequest(UID, payload))).rejects.toMatchObject({
       code: "failed-precondition",
     });
   });
@@ -274,8 +295,8 @@ describe("trusted legacy Signal identity repair", () => {
     const identity = signalIdentity();
 
     await expect(
-      repairTrustedSignalIdentity.run(
-        request(UID, {
+      runRepairIdentity(
+        callableRequest(UID, {
           deviceId: DEVICE_ID,
           challengeId: issued.challengeId,
           challengePlaintextBase64: randomBytes(32).toString("base64"),
@@ -293,15 +314,15 @@ describe("trusted legacy Signal identity repair", () => {
       ...store.get(`users/${UID}/escrow_devices/${DEVICE_ID}`),
       trustState: "pending",
     });
-    await expect(
-      issueTrustedSignalIdentityRepairChallenge.run(request(UID, { deviceId: DEVICE_ID })),
-    ).rejects.toMatchObject({ code: "permission-denied" });
+    await expect(runIssueChallenge(callableRequest(UID, { deviceId: DEVICE_ID }))).rejects.toMatchObject({
+      code: "permission-denied",
+    });
 
     store.clear();
     seedTrustedLegacyDevice("victim", DEVICE_ID);
-    await expect(
-      issueTrustedSignalIdentityRepairChallenge.run(request("attacker", { deviceId: DEVICE_ID })),
-    ).rejects.toMatchObject({ code: "permission-denied" });
+    await expect(runIssueChallenge(callableRequest("attacker", { deviceId: DEVICE_ID }))).rejects.toMatchObject({
+      code: "permission-denied",
+    });
   });
 
   it("never overwrites a conflicting existing identity", async () => {
@@ -319,8 +340,8 @@ describe("trusted legacy Signal identity repair", () => {
     const before = { ...store.get(path) };
 
     await expect(
-      repairTrustedSignalIdentity.run(
-        request(UID, {
+      runRepairIdentity(
+        callableRequest(UID, {
           deviceId: DEVICE_ID,
           challengeId: issued.challengeId,
           challengePlaintextBase64: plaintext.toString("base64"),
@@ -341,8 +362,8 @@ describe("trusted legacy Signal identity repair", () => {
     });
 
     await expect(
-      repairTrustedSignalIdentity.run(
-        request(UID, {
+      runRepairIdentity(
+        callableRequest(UID, {
           deviceId: DEVICE_ID,
           challengeId: issued.challengeId,
           challengePlaintextBase64: plaintext.toString("base64"),

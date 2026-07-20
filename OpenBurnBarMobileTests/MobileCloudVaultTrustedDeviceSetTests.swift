@@ -38,7 +38,7 @@ final class MobileCloudVaultTrustedDeviceSetTests: XCTestCase {
         XCTAssertThrowsError(
             try MobileCloudVaultTrustedDeviceChainVerifier.boundDeviceID(
                 documentID: "legacy-document-id",
-                data: ["deviceId": "different-device-id"]
+                storedDeviceID: "different-device-id"
             )
         ) { error in
             guard case MobileCloudVaultTrustChainVerificationError.invalidTrustedDevice(let deviceID) = error else {
@@ -52,7 +52,7 @@ final class MobileCloudVaultTrustedDeviceSetTests: XCTestCase {
         XCTAssertEqual(
             try MobileCloudVaultTrustedDeviceChainVerifier.boundDeviceID(
                 documentID: "current-ipad",
-                data: ["deviceId": "current-ipad"]
+                storedDeviceID: "current-ipad"
             ),
             "current-ipad"
         )
@@ -60,18 +60,18 @@ final class MobileCloudVaultTrustedDeviceSetTests: XCTestCase {
 
     func testExistingWrapperFromAnotherTrustedSourceIsReused() throws {
         let target = Self.verifiedDevice("current-ipad")
-        let existing: [String: Any] = [
-            "uid": "user-1",
-            "vaultKeyID": "v1_0123456789abcdef0123456789abcdef",
-            "targetDeviceId": target.deviceId,
-            "sourceDeviceId": "approved-mac",
-            "publicKeyFingerprint": target.escrowPublicKeyFingerprint,
-            "keyVersion": target.keyVersion,
-            "wrappedVaultKey": Data("already-wrapped".utf8).base64EncodedString(),
-            "algorithm": "ECIES-P256-AESGCM",
-            "status": "active",
-            "schemaVersion": 2
-        ]
+        let existing = MobileCloudVaultKeyWrapperRecord(
+            uid: "user-1",
+            vaultKeyID: "v1_0123456789abcdef0123456789abcdef",
+            targetDeviceID: target.deviceId,
+            sourceDeviceID: "approved-mac",
+            publicKeyFingerprint: target.escrowPublicKeyFingerprint,
+            keyVersion: target.keyVersion,
+            wrappedVaultKey: Data("already-wrapped".utf8),
+            algorithm: "ECIES-P256-AESGCM",
+            status: "active",
+            schemaVersion: 2
+        )
 
         XCTAssertFalse(
             try MobileCloudVaultKeyWrapperPublisher.requiresCreate(
@@ -86,18 +86,18 @@ final class MobileCloudVaultTrustedDeviceSetTests: XCTestCase {
 
     func testConflictingExistingWrapperFailsClosed() throws {
         let target = Self.verifiedDevice("current-ipad")
-        let conflicting: [String: Any] = [
-            "uid": "user-1",
-            "vaultKeyID": "v1_0123456789abcdef0123456789abcdef",
-            "targetDeviceId": target.deviceId,
-            "sourceDeviceId": "approved-mac",
-            "publicKeyFingerprint": "different-key",
-            "keyVersion": target.keyVersion,
-            "wrappedVaultKey": Data("already-wrapped".utf8).base64EncodedString(),
-            "algorithm": "ECIES-P256-AESGCM",
-            "status": "active",
-            "schemaVersion": 2
-        ]
+        let conflicting = MobileCloudVaultKeyWrapperRecord(
+            uid: "user-1",
+            vaultKeyID: "v1_0123456789abcdef0123456789abcdef",
+            targetDeviceID: target.deviceId,
+            sourceDeviceID: "approved-mac",
+            publicKeyFingerprint: "different-key",
+            keyVersion: target.keyVersion,
+            wrappedVaultKey: Data("already-wrapped".utf8),
+            algorithm: "ECIES-P256-AESGCM",
+            status: "active",
+            schemaVersion: 2
+        )
 
         XCTAssertThrowsError(
             try MobileCloudVaultKeyWrapperPublisher.requiresCreate(

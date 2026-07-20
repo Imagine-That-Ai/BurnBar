@@ -67,6 +67,118 @@ enum MobileCloudVaultKeyWrapperPublishError: LocalizedError {
     }
 }
 
+struct MobileCloudVaultKeyWrapperRecord: Equatable {
+    let uid: String?
+    let vaultKeyID: String?
+    let targetDeviceID: String?
+    let sourceDeviceID: String?
+    let publicKeyFingerprint: String?
+    let keyVersion: Int?
+    let wrappedVaultKey: Data?
+    let algorithm: String?
+    let status: String?
+    let schemaVersion: Int?
+
+    init(
+        uid: String? = nil,
+        vaultKeyID: String? = nil,
+        targetDeviceID: String? = nil,
+        sourceDeviceID: String? = nil,
+        publicKeyFingerprint: String? = nil,
+        keyVersion: Int? = nil,
+        wrappedVaultKey: Data? = nil,
+        algorithm: String? = nil,
+        status: String? = nil,
+        schemaVersion: Int? = nil
+    ) {
+        self.uid = uid
+        self.vaultKeyID = vaultKeyID
+        self.targetDeviceID = targetDeviceID
+        self.sourceDeviceID = sourceDeviceID
+        self.publicKeyFingerprint = publicKeyFingerprint
+        self.keyVersion = keyVersion
+        self.wrappedVaultKey = wrappedVaultKey
+        self.algorithm = algorithm
+        self.status = status
+        self.schemaVersion = schemaVersion
+    }
+}
+
+private extension MobileCloudVaultKeyWrapperRecord {
+    init(snapshot: DocumentSnapshot) {
+        let data = snapshot.data()
+        uid = data?["uid"] as? String
+        vaultKeyID = data?["vaultKeyID"] as? String
+        targetDeviceID = data?["targetDeviceId"] as? String
+        sourceDeviceID = data?["sourceDeviceId"] as? String
+        publicKeyFingerprint = data?["publicKeyFingerprint"] as? String
+        keyVersion = data?["keyVersion"] as? Int
+        wrappedVaultKey = (data?["wrappedVaultKey"] as? String).flatMap { encoded in
+            Data(base64Encoded: encoded)
+        }
+        algorithm = data?["algorithm"] as? String
+        status = data?["status"] as? String
+        schemaVersion = data?["schemaVersion"] as? Int
+    }
+}
+
+struct MobileTrustedSignalIdentityRepairState: Equatable {
+    let trustState: String?
+    let repairAlgorithm: String?
+    let reapprovalRequired: Bool?
+    let trustChainVersion: Int?
+    let trustChainAlgorithm: String?
+    let targetIdentityKeyID: String?
+    let targetIdentityFingerprint: String?
+    let approvedByDeviceID: String?
+    let approvedByIdentityKeyID: String?
+    let approvedByIdentityFingerprint: String?
+    let trustChainSignature: String?
+
+    init(
+        trustState: String? = nil,
+        repairAlgorithm: String? = nil,
+        reapprovalRequired: Bool? = nil,
+        trustChainVersion: Int? = nil,
+        trustChainAlgorithm: String? = nil,
+        targetIdentityKeyID: String? = nil,
+        targetIdentityFingerprint: String? = nil,
+        approvedByDeviceID: String? = nil,
+        approvedByIdentityKeyID: String? = nil,
+        approvedByIdentityFingerprint: String? = nil,
+        trustChainSignature: String? = nil
+    ) {
+        self.trustState = trustState
+        self.repairAlgorithm = repairAlgorithm
+        self.reapprovalRequired = reapprovalRequired
+        self.trustChainVersion = trustChainVersion
+        self.trustChainAlgorithm = trustChainAlgorithm
+        self.targetIdentityKeyID = targetIdentityKeyID
+        self.targetIdentityFingerprint = targetIdentityFingerprint
+        self.approvedByDeviceID = approvedByDeviceID
+        self.approvedByIdentityKeyID = approvedByIdentityKeyID
+        self.approvedByIdentityFingerprint = approvedByIdentityFingerprint
+        self.trustChainSignature = trustChainSignature
+    }
+}
+
+private extension MobileTrustedSignalIdentityRepairState {
+    init(snapshot: DocumentSnapshot) {
+        let data = snapshot.data()
+        trustState = data?["trustState"] as? String
+        repairAlgorithm = data?["signalIdentityRepairAlgorithm"] as? String
+        reapprovalRequired = data?["signalIdentityReapprovalRequired"] as? Bool
+        trustChainVersion = data?["trustChainVersion"] as? Int
+        trustChainAlgorithm = data?["trustChainAlgorithm"] as? String
+        targetIdentityKeyID = data?["targetSignalIdentityKeyId"] as? String
+        targetIdentityFingerprint = data?["targetSignalIdentityPublicKeyFingerprint"] as? String
+        approvedByDeviceID = data?["approvedByDeviceId"] as? String
+        approvedByIdentityKeyID = data?["approvedBySignalIdentityKeyId"] as? String
+        approvedByIdentityFingerprint = data?["approvedBySignalIdentityPublicKeyFingerprint"] as? String
+        trustChainSignature = data?["trustChainSignature"] as? String
+    }
+}
+
 enum MobileCloudVaultKeyWrapperPublisher {
     static func publishIfNeeded(
         userRef: DocumentReference,
@@ -78,7 +190,10 @@ enum MobileCloudVaultKeyWrapperPublisher {
     ) async throws {
         let wrapperID = "\(vaultKeyID)_\(target.deviceId)_\(target.keyVersion)"
         let documentRef = userRef.collection("cloud_vault_key_wrappers").document(wrapperID)
-        let existing = try await documentRef.getDocument().data()
+        let existingSnapshot = try await documentRef.getDocument()
+        let existing = existingSnapshot.exists
+            ? MobileCloudVaultKeyWrapperRecord(snapshot: existingSnapshot)
+            : nil
         guard try requiresCreate(
             existing: existing,
             wrapperID: wrapperID,
@@ -111,9 +226,10 @@ enum MobileCloudVaultKeyWrapperPublisher {
         } catch {
             // Another trusted writer may win the deterministic-ID create race.
             // Accept only the exact immutable recipient binding we intended.
-            if let raced = try? await documentRef.getDocument().data(),
+            if let racedSnapshot = try? await documentRef.getDocument(),
+               racedSnapshot.exists,
                (try? requiresCreate(
-                   existing: raced,
+                   existing: MobileCloudVaultKeyWrapperRecord(snapshot: racedSnapshot),
                    wrapperID: wrapperID,
                    uid: uid,
                    vaultKeyID: vaultKeyID,
@@ -126,25 +242,24 @@ enum MobileCloudVaultKeyWrapperPublisher {
     }
 
     static func requiresCreate(
-        existing: [String: Any]?,
+        existing: MobileCloudVaultKeyWrapperRecord?,
         wrapperID: String,
         uid: String,
         vaultKeyID: String,
         target: MobileCloudVaultVerifiedTrustedDevice
     ) throws -> Bool {
         guard let existing else { return true }
-        guard existing["uid"] as? String == uid,
-              existing["vaultKeyID"] as? String == vaultKeyID,
-              existing["targetDeviceId"] as? String == target.deviceId,
-              (existing["sourceDeviceId"] as? String)?.isEmpty == false,
-              existing["publicKeyFingerprint"] as? String == target.escrowPublicKeyFingerprint,
-              existing["keyVersion"] as? Int == target.keyVersion,
-              existing["algorithm"] as? String == "ECIES-P256-AESGCM",
-              existing["status"] as? String == "active",
-              let schemaVersion = existing["schemaVersion"] as? Int,
+        guard existing.uid == uid,
+              existing.vaultKeyID == vaultKeyID,
+              existing.targetDeviceID == target.deviceId,
+              existing.sourceDeviceID?.isEmpty == false,
+              existing.publicKeyFingerprint == target.escrowPublicKeyFingerprint,
+              existing.keyVersion == target.keyVersion,
+              existing.algorithm == "ECIES-P256-AESGCM",
+              existing.status == "active",
+              let schemaVersion = existing.schemaVersion,
               [2, 3].contains(schemaVersion),
-              let wrappedBase64 = existing["wrappedVaultKey"] as? String,
-              let wrapped = Data(base64Encoded: wrappedBase64),
+              let wrapped = existing.wrappedVaultKey,
               !wrapped.isEmpty else {
             throw MobileCloudVaultKeyWrapperPublishError.immutableWrapperConflict(wrapperID: wrapperID)
         }
@@ -251,7 +366,10 @@ enum MobileSignalIdentityPublicKeyPublisher {
             let escrowDevice = try await userRef.collection("escrow_devices")
                 .document(deviceId)
                 .getDocument()
-            if requiresTrustedIdentityReapproval(deviceData: escrowDevice.data(), identity: identity) {
+            let repairState = escrowDevice.exists
+                ? MobileTrustedSignalIdentityRepairState(snapshot: escrowDevice)
+                : nil
+            if requiresTrustedIdentityReapproval(deviceState: repairState, identity: identity) {
                 try await ComputerUseSecurityCallableClient.repairTrustedSignalIdentity(
                     uid: userRef.documentID,
                     deviceId: deviceId,
@@ -264,7 +382,10 @@ enum MobileSignalIdentityPublicKeyPublisher {
         let escrowDevice = try await userRef.collection("escrow_devices")
             .document(deviceId)
             .getDocument()
-        if escrowDevice.data()?["trustState"] as? String == EscrowDeviceTrustState.trusted.rawValue {
+        let repairState = escrowDevice.exists
+            ? MobileTrustedSignalIdentityRepairState(snapshot: escrowDevice)
+            : nil
+        if repairState?.trustState == EscrowDeviceTrustState.trusted.rawValue {
             try await ComputerUseSecurityCallableClient.repairTrustedSignalIdentity(
                 uid: userRef.documentID,
                 deviceId: deviceId,
@@ -304,25 +425,25 @@ enum MobileSignalIdentityPublicKeyPublisher {
     }
 
     static func requiresTrustedIdentityReapproval(
-        deviceData: [String: Any]?,
+        deviceState: MobileTrustedSignalIdentityRepairState?,
         identity: OpenBurnBarSignalIdentityKeypair
     ) -> Bool {
-        guard let deviceData,
-              deviceData["trustState"] as? String == EscrowDeviceTrustState.trusted.rawValue,
-              deviceData["signalIdentityRepairAlgorithm"] as? String == MobileTrustedSignalIdentityRepairContract.repairAlgorithm else {
+        guard let deviceState,
+              deviceState.trustState == EscrowDeviceTrustState.trusted.rawValue,
+              deviceState.repairAlgorithm == MobileTrustedSignalIdentityRepairContract.repairAlgorithm else {
             return false
         }
-        if deviceData["signalIdentityReapprovalRequired"] as? Bool == true {
+        if deviceState.reapprovalRequired == true {
             return true
         }
-        return deviceData["trustChainVersion"] as? Int != CloudVaultDeviceTrustChain.version ||
-            deviceData["trustChainAlgorithm"] as? String != CloudVaultDeviceTrustChain.algorithm ||
-            deviceData["targetSignalIdentityKeyId"] as? String != identity.identityKeyId ||
-            deviceData["targetSignalIdentityPublicKeyFingerprint"] as? String != identity.publicKeyFingerprint ||
-            (deviceData["approvedByDeviceId"] as? String)?.isEmpty != false ||
-            (deviceData["approvedBySignalIdentityKeyId"] as? String)?.isEmpty != false ||
-            (deviceData["approvedBySignalIdentityPublicKeyFingerprint"] as? String)?.isEmpty != false ||
-            (deviceData["trustChainSignature"] as? String)?.isEmpty != false
+        return deviceState.trustChainVersion != CloudVaultDeviceTrustChain.version ||
+            deviceState.trustChainAlgorithm != CloudVaultDeviceTrustChain.algorithm ||
+            deviceState.targetIdentityKeyID != identity.identityKeyId ||
+            deviceState.targetIdentityFingerprint != identity.publicKeyFingerprint ||
+            deviceState.approvedByDeviceID?.isEmpty != false ||
+            deviceState.approvedByIdentityKeyID?.isEmpty != false ||
+            deviceState.approvedByIdentityFingerprint?.isEmpty != false ||
+            deviceState.trustChainSignature?.isEmpty != false
     }
 }
 

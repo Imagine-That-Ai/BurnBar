@@ -61,14 +61,6 @@ enum CLIAgentMissionCloudSealer {
     static let sealedSchemaVersion = 2
     static let sealedStateSchemaVersion = 1
 
-    static func payloadForDirectFirestoreWrite(_ payload: [String: Any]) -> [String: Any] {
-        var directPayload = payload
-        // Firestore rules intentionally reserve Signal envelopes for a validating
-        // Admin/callable path. The path-bound CloudVault seal remains mandatory.
-        directPayload.removeValue(forKey: "signalEnvelope")
-        return directPayload
-    }
-
     private static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

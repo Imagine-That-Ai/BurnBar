@@ -244,38 +244,35 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
                         self.inlineError = error.localizedDescription
                         return
                     }
-                    let documents = snapshot?.documents.map {
-                        (documentID: $0.documentID, data: $0.data())
-                    } ?? []
-                    self.absorbMissionDocuments(
-                        documents,
-                        uid: uid,
-                        resolvedKey: resolvedKey
+                    let documents = snapshot?.documents ?? []
+                    let missions = documents.compactMap { document in
+                        CLIAgentMissionSnapshot(
+                            documentID: document.documentID,
+                            data: document.data(),
+                            vaultKey: resolvedKey?.keyData,
+                            signalIdentity: resolvedKey?.signalIdentity,
+                            uid: uid
+                        )
+                    }
+                    self.absorbMissionSnapshots(
+                        missions,
+                        documentCount: documents.count,
+                        hasResolvedKey: resolvedKey != nil
                     )
                 }
             }
     }
 
-    /// Decodes the same sealed list payload used by the Firestore listener.
-    /// Internal visibility keeps the privacy boundary regression-testable.
-    func absorbMissionDocuments(
-        _ documents: [(documentID: String, data: [String: Any])],
-        uid: String,
-        resolvedKey: MobileCloudVaultResolvedKey?
+    /// Applies the typed decode result from the Firestore list listener.
+    /// Internal visibility keeps the encrypted-history regression testable.
+    func absorbMissionSnapshots(
+        _ missions: [CLIAgentMissionSnapshot],
+        documentCount: Int,
+        hasResolvedKey: Bool
     ) {
-        let missions = documents.compactMap { document in
-            CLIAgentMissionSnapshot(
-                documentID: document.documentID,
-                data: document.data,
-                vaultKey: resolvedKey?.keyData,
-                signalIdentity: resolvedKey?.signalIdentity,
-                uid: uid
-            )
-        }
-
-        let unreadableCount = documents.count - missions.count
+        let unreadableCount = documentCount - missions.count
         if unreadableCount > 0 {
-            inlineError = resolvedKey == nil
+            inlineError = hasResolvedKey == false
                 ? "This device can't open encrypted mission history yet. Approve it from a trusted device, then retry."
                 : "\(unreadableCount) mission\(unreadableCount == 1 ? "" : "s") couldn't be opened."
         } else {

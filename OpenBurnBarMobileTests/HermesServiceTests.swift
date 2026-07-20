@@ -62,16 +62,16 @@ final class HermesServiceTests: XCTestCase {
 
     func testRepairedTrustedSignalIdentityWithoutFreshChainRequiresReapproval() {
         let identity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "ipad-1")
-        let legacyRepair: [String: Any] = [
-            "trustState": EscrowDeviceTrustState.trusted.rawValue,
-            "signalIdentityRepairAlgorithm": MobileTrustedSignalIdentityRepairContract.repairAlgorithm,
-            "targetSignalIdentityKeyId": identity.identityKeyId,
-            "targetSignalIdentityPublicKeyFingerprint": identity.publicKeyFingerprint
-        ]
+        let legacyRepair = MobileTrustedSignalIdentityRepairState(
+            trustState: EscrowDeviceTrustState.trusted.rawValue,
+            repairAlgorithm: MobileTrustedSignalIdentityRepairContract.repairAlgorithm,
+            targetIdentityKeyID: identity.identityKeyId,
+            targetIdentityFingerprint: identity.publicKeyFingerprint
+        )
 
         XCTAssertTrue(
             MobileSignalIdentityPublicKeyPublisher.requiresTrustedIdentityReapproval(
-                deviceData: legacyRepair,
+                deviceState: legacyRepair,
                 identity: identity
             )
         )
@@ -79,22 +79,22 @@ final class HermesServiceTests: XCTestCase {
 
     func testRepairedTrustedSignalIdentityWithFreshChainDoesNotRequireReapproval() {
         let identity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "ipad-1")
-        let approvedRepair: [String: Any] = [
-            "trustState": EscrowDeviceTrustState.trusted.rawValue,
-            "signalIdentityRepairAlgorithm": MobileTrustedSignalIdentityRepairContract.repairAlgorithm,
-            "trustChainVersion": CloudVaultDeviceTrustChain.version,
-            "trustChainAlgorithm": CloudVaultDeviceTrustChain.algorithm,
-            "trustChainSignature": "signature",
-            "targetSignalIdentityKeyId": identity.identityKeyId,
-            "targetSignalIdentityPublicKeyFingerprint": identity.publicKeyFingerprint,
-            "approvedByDeviceId": "trusted-mac",
-            "approvedBySignalIdentityKeyId": "trusted-mac_1",
-            "approvedBySignalIdentityPublicKeyFingerprint": "fingerprint"
-        ]
+        let approvedRepair = MobileTrustedSignalIdentityRepairState(
+            trustState: EscrowDeviceTrustState.trusted.rawValue,
+            repairAlgorithm: MobileTrustedSignalIdentityRepairContract.repairAlgorithm,
+            trustChainVersion: CloudVaultDeviceTrustChain.version,
+            trustChainAlgorithm: CloudVaultDeviceTrustChain.algorithm,
+            targetIdentityKeyID: identity.identityKeyId,
+            targetIdentityFingerprint: identity.publicKeyFingerprint,
+            approvedByDeviceID: "trusted-mac",
+            approvedByIdentityKeyID: "trusted-mac_1",
+            approvedByIdentityFingerprint: "fingerprint",
+            trustChainSignature: "signature"
+        )
 
         XCTAssertFalse(
             MobileSignalIdentityPublicKeyPublisher.requiresTrustedIdentityReapproval(
-                deviceData: approvedRepair,
+                deviceState: approvedRepair,
                 identity: identity
             )
         )

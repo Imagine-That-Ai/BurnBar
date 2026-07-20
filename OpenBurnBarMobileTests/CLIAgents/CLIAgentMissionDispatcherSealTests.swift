@@ -22,24 +22,28 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         )
     }
 
-    func test_directFirestoreMissionPayloadOmitsServerOnlySignalEnvelope() {
-        let sealedPayload: [String: Any] = [
-            "ciphertext": "path-bound-ciphertext",
-            "vaultKeyID": "vault-key"
-        ]
-        let source: [String: Any] = [
-            "id": "wand-child-1",
-            "contentSealed": true,
-            "sealedPayload": sealedPayload,
-            "signalEnvelope": ["mode": "at-rest"]
-        ]
-
-        let direct = CLIAgentMissionCloudSealer.payloadForDirectFirestoreWrite(source)
+    func test_directFirestoreMissionFactoryNeverAddsServerOnlySignalEnvelope() throws {
+        let key = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        let direct = try CLIAgentMissionRequestPayloadFactory.buildSealed(
+            id: "wand-child-1",
+            title: "Pareto child",
+            prompt: "Return the marker.",
+            missionKind: "parallel",
+            requestedRuntime: "claude",
+            targetProject: "BurnBar",
+            depth: "standard",
+            approvalMode: "existing_policy",
+            commandsAllowed: false,
+            fileEditsAllowed: false,
+            uid: "user-1",
+            vaultKey: key,
+            vaultKeyID: vaultKeyID
+        )
 
         XCTAssertNil(direct["signalEnvelope"])
         XCTAssertNotNil(direct["sealedPayload"])
         XCTAssertEqual(direct["id"] as? String, "wand-child-1")
-        XCTAssertNotNil(source["signalEnvelope"], "Sanitizing the Firestore write must not mutate its caller's value.")
     }
 
     func test_missionConsoleHostOpensSealedApprovalMissionFromListListenerPayload() throws {
@@ -71,11 +75,19 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
             "The production list payload is sealed, so plaintext-only decoding must fail."
         )
 
+        let decoded = try XCTUnwrap(
+            CLIAgentMissionSnapshot(
+                documentID: documentID,
+                data: document,
+                vaultKey: key,
+                uid: uid
+            )
+        )
         let host = MobileMissionConsoleHost()
-        host.absorbMissionDocuments(
-            [(documentID: documentID, data: document)],
-            uid: uid,
-            resolvedKey: MobileCloudVaultResolvedKey(keyData: key, vaultKeyID: vaultKeyID)
+        host.absorbMissionSnapshots(
+            [decoded],
+            documentCount: 1,
+            hasResolvedKey: true
         )
 
         XCTAssertEqual(host.snapshot.activeTiles.map(\.id), [documentID])
