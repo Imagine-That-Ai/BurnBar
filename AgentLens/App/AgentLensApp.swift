@@ -91,12 +91,6 @@ enum OpenBurnBarRuntime {
     /// unrelated updater, wallpaper, or cloud-maintenance work. Keep the
     /// status item and dashboard alive, but suppress those background services
     /// for this dedicated harness launch only.
-    static var shouldStartBackgroundApplicationServices: Bool {
-        shouldStartBackgroundApplicationServices(
-            isPerformanceGateLaunch: isPerformanceGateLaunch
-        )
-    }
-
     static func shouldStartBackgroundApplicationServices(
         isPerformanceGateLaunch: Bool
     ) -> Bool {
