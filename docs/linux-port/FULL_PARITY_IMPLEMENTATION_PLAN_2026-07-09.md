@@ -15,14 +15,14 @@ dependencies, acceptance contracts, proof commands, loophole controls, and
 known platform divergences.
 
 > **Live status (2026-07-20):** The implementation branch is
-> `2ad3b2752d` and passes **90 frontend files / 856 tests**, including the
+> `3258104c1a` and passes **91 frontend files / 861 tests**, including the
 > focused mission, shell, and IPv6 adapter regressions, along with
 > TypeScript,
 > production-bundle verification, and **129/129 Rust tests**. An exact-head
 > ARM64 DEB is installed and visibly rendering in the unlocked Ubuntu
-> GNOME/X11 UTM guest; the non-certifying receipt with fresh daemon/CLI
-> payload hashes is
-> [`evidence/parity-audit-2026-07-10/linux-arm64-current-2ad3b2752d-fresh-daemon-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-2ad3b2752d-fresh-daemon-postinstall-2026-07-20.json).
+> GNOME/X11 UTM guest; the non-certifying exact-head receipt with the
+> verified staged daemon/CLI payload hashes is
+> [`evidence/parity-audit-2026-07-10/linux-arm64-current-3258104c1a-fresh-shell-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-3258104c1a-fresh-shell-postinstall-2026-07-20.json).
 > The strict certification ledger is still **0/40 product rows and 0/7
 > environment receipts** because the package is unsigned and production,
 > cross-device, keyring, compositor, and same-commit macOS differential proof
@@ -33,9 +33,9 @@ known platform divergences.
 
 Linux is not at full macOS parity.
 
-### Current source wave — 2026-07-19 UTC
+### Current source wave — 2026-07-20 UTC
 
-Integration head `2ad3b2752d` passes 90 frontend files / 856 tests, including
+Integration head `3258104c1a` passes 91 frontend files / 861 tests, including
 focused mission, shell, and IPv6 adapter regressions, TypeScript,
 production bundle verification, Tauri Rust 129/129, and package-payload
 contract checks. The current wave includes immediate Canvas2D recovery after
@@ -45,19 +45,22 @@ tray refresh, packaged-shell Reconnect, keyboard-complete overflow actions,
 cold-start notification-action retention, the ARM64-only AppHandle fix
 found by the real Linux build, stale diagnostics exports fenced
 across bridge replacement and overlapping requests, plus the latest mission,
-shell, and IPv6 endpoint fixes. The UTM guest passed the
-read-only staged-payload path, then installed a package rebuilt with fresh
-daemon and CLI payloads from the exact current head. These
+shell, and IPv6 endpoint fixes. The latest wave additionally makes custom
+Appearance radios keyboard-complete, fences stale Computer Use authority and
+approval polling, and preserves Activity's last good snapshot across transient
+refresh failures. The UTM guest passed the
+read-only staged-payload path, then installed a shell package rebuilt at this
+exact head while reusing the previously verified clean daemon and CLI payloads. These
 changes improve the engineering baseline; they do not close the strict 0/40
 product and 0/7 environment gates.
 
 ### Latest installed checkpoint — 2026-07-20 UTC
 
-The live Ubuntu guest has the exact current-head ARM64 DEB with fresh daemon
-and CLI payloads from the parity branch installed at `/usr/bin`. The
+The live Ubuntu guest has the exact current-head ARM64 DEB with the verified
+staged daemon and CLI payloads from the prior clean receipt installed at `/usr/bin`. The
 non-certifying receipt is
-`evidence/parity-audit-2026-07-10/linux-arm64-current-2ad3b2752d-fresh-daemon-postinstall-2026-07-20.json`.
-It proves daemon health, an unlocked active-window launch, and an animated
+`evidence/parity-audit-2026-07-10/linux-arm64-current-3258104c1a-fresh-shell-postinstall-2026-07-20.json`.
+It proves daemon health, an unlocked active-window launch, and a visible
 Canvas2D fallback with the explicit `WebGL2 unavailable` label. This guest
 reports `webgl2=false`, so it does not certify WebGL2-only kernels or the
 broader seven-environment matrix. The older `5b70a3d320` package remains the

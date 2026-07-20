@@ -3,11 +3,11 @@
 Generated from a 6-subagent parallel reconnaissance of `AgentLens/`, `apps/linux-desktop/`, `OpenBurnBarCore/`, `OpenBurnBarDaemon/`, design tokens, packaging, and release infrastructure.
 
 **Live status correction (2026-07-20):** the active implementation branch is
-`2ad3b2752d`, with 90 frontend test files / 856 passing tests. The exact-head ARM64
-package currently installed is the exact `2ad3b2752d` receipt and renders in
+`3258104c1a`, with 91 frontend test files / 861 passing tests. The exact-head ARM64
+package currently installed is the exact `3258104c1a` shell receipt and renders in
 the unlocked
 Ubuntu GNOME/X11 UTM guest; see the current non-certifying receipt in
-`evidence/parity-audit-2026-07-10/linux-arm64-current-2ad3b2752d-fresh-daemon-postinstall-2026-07-20.json`.
+`evidence/parity-audit-2026-07-10/linux-arm64-current-3258104c1a-fresh-shell-postinstall-2026-07-20.json`.
 The strict certification score remains 0/40 product rows and 0/7 environment
 receipts because unsigned local packaging, production configuration,
 cross-device flows, and the broader compositor/keyring/macOS differential
