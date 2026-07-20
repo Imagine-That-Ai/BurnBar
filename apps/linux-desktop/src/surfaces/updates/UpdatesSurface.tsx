@@ -36,6 +36,7 @@ export function UpdatesSurface() {
   const versionError = useSupportStore((s) => s.versionError);
   const loadVersion = useSupportStore((s) => s.loadVersion);
   const updateStatus = useSupportStore((s) => s.updateStatus);
+  const updateStatusStale = useSupportStore((s) => s.updateStatusStale);
   const updateLoading = useSupportStore((s) => s.updateLoading);
   const updateError = useSupportStore((s) => s.updateError);
   const checkUpdate = useSupportStore((s) => s.checkUpdate);
@@ -87,6 +88,7 @@ export function UpdatesSurface() {
         status={updateStatus}
         loading={updateLoading}
         error={updateError}
+        stale={updateStatusStale}
         onCheck={() => void checkUpdate()}
       />
       <div className="p09-channel-card">

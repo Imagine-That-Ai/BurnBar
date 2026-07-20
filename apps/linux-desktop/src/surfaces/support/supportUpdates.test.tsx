@@ -8,6 +8,7 @@ import { useShellStore } from '../../state/shellStore.js';
 import { useSupportStore } from '../../state/supportStore.js';
 import { isSafeDiagnosticsPath, type AppVersionInfo, type LinuxShellBridge } from '../../tauriBridge.js';
 import { UpdatesSurface } from '../updates/UpdatesSurface.js';
+import { UpdateStatusCard } from '../updates/UpdateStatusCard.js';
 import { KERNEL_RESOLUTION_EVENT } from '../../components/KernelBackdrop.js';
 import { SupportSurface } from './SupportSurface.js';
 
@@ -31,6 +32,7 @@ function resetStores(): void {
     versionLoading: false,
     versionError: null,
     updateStatus: null,
+    updateStatusStale: false,
     updateLoading: false,
     updateError: null,
     exportState: 'idle',
@@ -242,6 +244,76 @@ describe('P09 updates and support', () => {
     await act(async () => { await firstCheck; });
     expect(useSupportStore.getState().updateStatus).toMatchObject({ currentVersion: '1.1.0' });
     expect(useSupportStore.getState().updateLoading).toBe(false);
+  });
+
+  it('retains the last signed result as stale after a transient check failure and clears it on retry', async () => {
+    const signedStatus = {
+      state: 'available' as const,
+      currentVersion: '1.0.0',
+      latestVersion: '1.1.0',
+      channel: 'stable' as const,
+      signatureState: 'verified' as const,
+      feedFreshness: 'fresh' as const,
+      feedAgeSeconds: 120,
+      compatibility: { state: 'aligned' as const, shellVersion: '1.0.0', daemonVersion: '1.0.0' }
+    };
+    const updateStatus = vi.fn()
+      .mockResolvedValueOnce(signedStatus)
+      .mockRejectedValueOnce(new Error('network unavailable'))
+      .mockResolvedValueOnce(signedStatus);
+    const bridge = mockBridge({ updateStatus });
+    useShellStore.setState({ bridge, fixtureMode: false });
+
+    await act(async () => { await useSupportStore.getState().checkUpdate(); });
+    expect(useSupportStore.getState().updateStatus).toEqual(signedStatus);
+    expect(useSupportStore.getState().updateStatusStale).toBe(false);
+
+    await act(async () => { await useSupportStore.getState().checkUpdate(); });
+    expect(useSupportStore.getState().updateStatus).toMatchObject({
+      state: 'available',
+      latestVersion: '1.1.0',
+      feedFreshness: 'unknown',
+      reason: 'network unavailable'
+    });
+    expect(useSupportStore.getState().updateStatusStale).toBe(true);
+    expect(useSupportStore.getState().updateError).toBe('network unavailable');
+
+    await act(async () => { await useSupportStore.getState().checkUpdate(); });
+    expect(useSupportStore.getState().updateStatus).toEqual(signedStatus);
+    expect(useSupportStore.getState().updateStatusStale).toBe(false);
+    expect(useSupportStore.getState().updateError).toBeNull();
+  });
+
+  it('labels a stale result and disables package mutation actions until rechecked', () => {
+    const openUpdateUrl = vi.fn().mockResolvedValue(undefined);
+    const bridge = mockBridge({ openUpdateUrl });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(
+      <UpdateStatusCard
+        status={{
+          state: 'available',
+          currentVersion: '1.0.0',
+          latestVersion: '1.1.0',
+          signatureState: 'verified',
+          feedFreshness: 'unknown',
+          artifact: {
+            type: 'deb',
+            architecture: 'aarch64',
+            url: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb',
+            sha256: 'a'.repeat(64),
+            size: 100,
+            signatureUrl: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb.sig'
+          }
+        }}
+        loading={false}
+        error="network unavailable"
+        stale
+        onCheck={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/latest signed-feed check failed/i)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Download unavailable' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(openUpdateUrl).not.toHaveBeenCalled();
   });
 
   it('keeps the newest version facts when bridge refreshes overlap', async () => {

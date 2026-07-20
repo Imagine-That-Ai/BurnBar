@@ -17,20 +17,25 @@ export function UpdateStatusCard({
   status,
   loading,
   error,
+  stale = false,
   onCheck
 }: {
   status: LinuxUpdateStatus | null;
   loading: boolean;
   error: string | null;
+  stale?: boolean;
   onCheck: () => void;
 }) {
   const bridge = useShellStore((state) => state.bridge);
   const [copiedAction, setCopiedAction] = useState<string | null>(null);
-  const hasVerifiedFreshFeed = status?.signatureState === undefined
-    || (status.signatureState === 'verified' && status.feedFreshness === 'fresh');
+  const hasVerifiedFreshFeed = status === null
+    ? false
+    : status.signatureState === undefined
+      ? status.feedFreshness === undefined || status.feedFreshness === 'fresh'
+      : status.signatureState === 'verified' && status.feedFreshness === 'fresh';
   const daemonAllowsPackageChange = status?.compatibility === undefined
     || status.compatibility.state === 'aligned';
-  const packageActionsBlocked = !hasVerifiedFreshFeed || !daemonAllowsPackageChange;
+  const packageActionsBlocked = stale || !hasVerifiedFreshFeed || !daemonAllowsPackageChange;
   const openArtifact = async () => {
     if (!status?.artifact?.url || !bridge?.openUpdateUrl) return;
     await bridge.openUpdateUrl(status.artifact.url);
@@ -94,6 +99,12 @@ export function UpdateStatusCard({
         ) : status?.feedFreshness === 'fresh' ? (
           <p className="p09-update-freshness" aria-label="Feed freshness">
             Feed published {formatAge(status.feedAgeSeconds)} · signature verified
+          </p>
+        ) : null}
+        {stale ? (
+          <p className="p09-update-freshness p09-update-freshness--stale" role="alert">
+            The latest signed-feed check failed. Showing the last result; install, download, and rollback stay
+            disabled until a fresh check succeeds.
           </p>
         ) : null}
         {status?.compatibility?.state === 'mismatch' ? (

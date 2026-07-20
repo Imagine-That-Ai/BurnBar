@@ -86,6 +86,8 @@ export type SupportStoreState = {
   versionLoading: boolean;
   versionError: string | null;
   updateStatus: LinuxUpdateStatus | null;
+  /** True when updateStatus is the last result and the latest check failed. */
+  updateStatusStale: boolean;
   updateLoading: boolean;
   updateError: string | null;
   exportState: ExportState;
@@ -106,6 +108,7 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
   versionLoading: false,
   versionError: null,
   updateStatus: null,
+  updateStatusStale: false,
   updateLoading: false,
   updateError: null,
   exportState: 'idle',
@@ -140,6 +143,7 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
         versionLoading: false,
         versionError: null,
         updateStatus: fixtureUpdateStatus(),
+        updateStatusStale: false,
         updateLoading: false,
         updateError: null
       });
@@ -150,6 +154,8 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
         versionInfo: null,
         versionLoading: false,
         versionError: 'Packaged shell required for live version facts.',
+        updateStatus: null,
+        updateStatusStale: false,
         updateLoading: false,
         updateError: null
       });
@@ -174,12 +180,13 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
     const requestID = ++updateRequestSequence;
     const { fixtureMode, bridge } = useShellStore.getState();
     if (fixtureMode) {
-      set({ updateStatus: fixtureUpdateStatus(), updateLoading: false, updateError: null });
+      set({ updateStatus: fixtureUpdateStatus(), updateStatusStale: false, updateLoading: false, updateError: null });
       return;
     }
     if (!bridge?.updateStatus) {
       set({
         updateStatus: null,
+        updateStatusStale: false,
         updateLoading: false,
         updateError: 'This packaged shell does not expose the native signed-feed verifier.'
       });
@@ -189,13 +196,20 @@ export const useSupportStore = create<SupportStoreState>()((set) => ({
     try {
       const updateStatus = await bridge.updateStatus();
       if (requestID !== updateRequestSequence) return;
-      set({ updateStatus, updateLoading: false, updateError: null });
+      set({ updateStatus, updateStatusStale: false, updateLoading: false, updateError: null });
     } catch (e) {
       if (requestID !== updateRequestSequence) return;
+      const message = e instanceof Error ? e.message : 'Signed update check failed';
+      const previousStatus = useSupportStore.getState().updateStatus;
       set({
-        updateStatus: null,
+        // Keep the last signed answer visible during a transient outage, but
+        // mark its feed freshness unknown so package actions stay disabled.
+        updateStatus: previousStatus
+          ? { ...previousStatus, feedFreshness: 'unknown', feedAgeSeconds: undefined, reason: message }
+          : null,
+        updateStatusStale: previousStatus !== null,
         updateLoading: false,
-        updateError: e instanceof Error ? e.message : 'Signed update check failed'
+        updateError: message
       });
     }
   },
