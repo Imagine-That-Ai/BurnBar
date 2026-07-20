@@ -130,6 +130,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .searchQuery: "daemon.search.query",
         .memoryRemember: "daemon.memory.remember",
         .memoryRecall: "daemon.memory.recall",
+        .memoryReviewStatus: "daemon.memory.review_status",
         .memoryForget: "daemon.memory.forget",
         .memoryAuditTrail: "daemon.memory.audit_trail",
         .memoryAnalytics: "daemon.memory.analytics",
