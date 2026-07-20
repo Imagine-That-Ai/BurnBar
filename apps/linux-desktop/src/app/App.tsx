@@ -6,7 +6,7 @@ import { KernelBackdrop } from '../components/KernelBackdrop.js';
 import { TopChrome } from '../components/TopChrome.js';
 import { SurfaceRouter } from '../surfaces/SurfaceRouter.js';
 import { PetSurface } from '../surfaces/PetSurface.js';
-import { ROUTES, type ShellRoute } from '../routes.js';
+import { ROUTES, shellDestinationFromNative, type ShellRoute } from '../routes.js';
 import { readPersistedKernelId, writePersistedKernelId } from '../state/kernelPrefs.js';
 import { useShellStore } from '../state/shellStore.js';
 import type { NativeShortcutStatus } from '../tauriBridge.js';
@@ -104,8 +104,11 @@ export function App() {
     void import('@tauri-apps/api/event')
       .then(async ({ listen }) => {
         const stop = await listen<string>('tray-route', (event) => {
-          if (cancelled || !ROUTES.some((candidate) => candidate.id === event.payload)) return;
-          setRoute(event.payload as ShellRoute);
+          if (cancelled) return;
+          const destination = shellDestinationFromNative(event.payload);
+          if (!destination) return;
+          location.hash = destination.hash;
+          syncRouteFromHash();
         });
         if (cancelled) {
           stop();
@@ -119,9 +122,10 @@ export function App() {
         while (!cancelled && bridge?.initialDeepLinkRoute) {
           const pendingRoute = await bridge.initialDeepLinkRoute();
           if (pendingRoute === null) break;
-          if (ROUTES.some((candidate) => candidate.id === pendingRoute)) {
-            setRoute(pendingRoute as ShellRoute);
-          }
+          const destination = shellDestinationFromNative(pendingRoute);
+          if (!destination) continue;
+          location.hash = destination.hash;
+          syncRouteFromHash();
         }
       })
       .catch(() => {
@@ -132,7 +136,7 @@ export function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [bridge, setRoute]);
+  }, [bridge, syncRouteFromHash]);
 
   // The Linux native shell registers this event only for a successful X11
   // global binding. Validate its fixed payload before routing or opening the

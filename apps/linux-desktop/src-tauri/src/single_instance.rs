@@ -92,7 +92,7 @@ pub(crate) fn notification_action_route(action: &str) -> Option<&'static str> {
 }
 
 fn is_registered_shell_route(route: &str) -> bool {
-    matches!(
+    if matches!(
         route,
         "overview"
             | "insights"
@@ -113,7 +113,29 @@ fn is_registered_shell_route(route: &str) -> bool {
             | "computer-use"
             | "mercury"
             | "smarthub"
-    )
+    ) {
+        return true;
+    }
+    if route.len() > 1024 || !route.starts_with("providers?") {
+        return false;
+    }
+    let Ok(url) = reqwest::Url::parse(&format!("openburnbar://{route}")) else {
+        return false;
+    };
+    let mut provider_seen = false;
+    let mut model_seen = false;
+    for (key, value) in url.query_pairs() {
+        let value = value.trim();
+        if value.is_empty() || value.len() > 256 {
+            return false;
+        }
+        match key.as_ref() {
+            "provider" if !provider_seen => provider_seen = true,
+            "model" if !model_seen => model_seen = true,
+            _ => return false,
+        }
+    }
+    provider_seen
 }
 
 fn validate_message(message: &Message) -> Result<(), String> {
@@ -171,7 +193,7 @@ pub(crate) fn startup_messages_from_args<I, F>(
 ) -> Result<Vec<Message>, String>
 where
     I: IntoIterator<Item = String>,
-    F: Fn(&str) -> Option<&'static str>,
+    F: Fn(&str) -> Option<String>,
 {
     let arguments = args.into_iter().collect::<Vec<_>>();
     let mut messages = Vec::new();
@@ -181,9 +203,7 @@ where
         if let Some(deep_link) = deep_link_argument(argument) {
             let route = deep_link_validator(deep_link)
                 .ok_or_else(|| "single_instance_deep_link_rejected".to_string())?;
-            messages.push(Message::Route {
-                route: route.to_string(),
-            });
+            messages.push(Message::Route { route });
             index += 1;
             continue;
         }
@@ -493,10 +513,10 @@ mod tests {
         let _ = fs::remove_dir_all(directory);
     }
 
-    fn deep_link(value: &str) -> Option<&'static str> {
+    fn deep_link(value: &str) -> Option<String> {
         match value {
-            "openburnbar://route/chat" => Some("chat"),
-            "openburnbar://route/settings" => Some("settings"),
+            "openburnbar://route/chat" => Some("chat".to_string()),
+            "openburnbar://route/settings" => Some("settings".to_string()),
             _ => None,
         }
     }
@@ -532,7 +552,7 @@ mod tests {
             startup_messages_from_args(vec!["  OPENBURNBAR://route/chat  ".to_string()], |value| {
                 value
                     .eq_ignore_ascii_case("openburnbar://route/chat")
-                    .then_some("chat")
+                    .then_some("chat".to_string())
             })
             .unwrap();
         assert_eq!(
@@ -598,6 +618,18 @@ mod tests {
         assert!(parse_frame(
             br#"{"protocol":1,"message":{"kind":"route","route":"chat","extra":true}}"#
         )
+        .is_err());
+        assert!(frame_for_message(Message::Route {
+            route: "providers?provider=openai%2Fteam&model=gpt-5.2+codex".to_string()
+        })
+        .is_ok());
+        assert!(frame_for_message(Message::Route {
+            route: "providers?provider=openai&admin=true".to_string()
+        })
+        .is_err());
+        assert!(frame_for_message(Message::Route {
+            route: "chat?prompt=secret".to_string()
+        })
         .is_err());
     }
 

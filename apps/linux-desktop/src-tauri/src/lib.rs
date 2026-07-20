@@ -812,20 +812,19 @@ fn canonical_shell_route(value: &str) -> Option<&'static str> {
     }
 }
 
-fn validated_deep_link_route(raw: &str) -> Option<&'static str> {
+fn validated_deep_link_route(raw: &str) -> Option<String> {
     let url = reqwest::Url::parse(raw.trim()).ok()?;
     if url.scheme() != "openburnbar"
         || url.username() != ""
         || url.password().is_some()
         || url.port().is_some()
-        || url.query().is_some()
         || url.fragment().is_some()
     {
         return None;
     }
     let host = url.host_str()?;
     let path = url.path().trim_matches('/');
-    match (host, path) {
+    let static_route = match (host, path) {
         ("dashboard", "") | ("overview", "") => Some("overview"),
         ("chat", "") => Some("chat"),
         ("insights", "" | "today" | "year") => Some("insights"),
@@ -834,7 +833,7 @@ fn validated_deep_link_route(raw: &str) -> Option<&'static str> {
         ("settings", "") => Some("settings"),
         ("updates", "") => Some("updates"),
         ("database", "") => Some("database"),
-        ("providers", "") => Some("providers"),
+        ("providers", "") if url.query().is_none() => Some("providers"),
         ("projects", "") => Some("projects"),
         ("missions", "") => Some("missions"),
         ("activity", "") => Some("activity"),
@@ -847,7 +846,37 @@ fn validated_deep_link_route(raw: &str) -> Option<&'static str> {
         ("mercury", "") => Some("mercury"),
         ("smarthub", "") => Some("smarthub"),
         _ => None,
+    };
+    if let Some(route) = static_route {
+        return url.query().is_none().then(|| route.to_string());
     }
+
+    if host != "providers" || !path.is_empty() {
+        return None;
+    }
+    let mut provider_id: Option<String> = None;
+    let mut model_id: Option<String> = None;
+    for (key, value) in url.query_pairs() {
+        let value = value.trim();
+        if value.is_empty() || value.len() > 256 {
+            return None;
+        }
+        match key.as_ref() {
+            "provider" if provider_id.is_none() => provider_id = Some(value.to_string()),
+            "model" if model_id.is_none() => model_id = Some(value.to_string()),
+            _ => return None,
+        }
+    }
+    let provider_id = provider_id?;
+    let mut destination = reqwest::Url::parse("openburnbar://providers").ok()?;
+    {
+        let mut query = destination.query_pairs_mut();
+        query.append_pair("provider", &provider_id);
+        if let Some(model_id) = model_id {
+            query.append_pair("model", &model_id);
+        }
+    }
+    Some(format!("providers?{}", destination.query()?))
 }
 
 fn valid_single_instance_notification_id(value: &str) -> bool {
@@ -7612,9 +7641,7 @@ pub fn run() {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     let start_in_background = should_start_in_background(&args);
     configure_linux_webkit_runtime();
-    let initial_route = args
-        .iter()
-        .find_map(|arg| validated_deep_link_route(arg).map(str::to_string));
+    let initial_route = args.iter().find_map(|arg| validated_deep_link_route(arg));
     store_initial_deep_link_route(initial_route);
 
     // Fast-exit CLI flags before booting the GUI: a GTK/WebKit app launched
@@ -10258,27 +10285,41 @@ mod tests {
     fn deep_link_decoder_allows_registered_routes_only() {
         assert_eq!(
             validated_deep_link_route("openburnbar://dashboard"),
-            Some("overview")
+            Some("overview".to_string())
         );
         assert_eq!(
             validated_deep_link_route("openburnbar://membership"),
-            Some("account")
+            Some("account".to_string())
         );
         assert_eq!(
             validated_deep_link_route("openburnbar://membership/success"),
-            Some("account")
+            Some("account".to_string())
         );
         assert_eq!(
             validated_deep_link_route("openburnbar://insights/today"),
-            Some("insights")
+            Some("insights".to_string())
         );
         assert_eq!(
             validated_deep_link_route("openburnbar://route/computer-use"),
-            Some("computer-use")
+            Some("computer-use".to_string())
         );
         assert_eq!(
             validated_deep_link_route("openburnbar://route/chat"),
-            Some("chat")
+            Some("chat".to_string())
+        );
+        assert_eq!(
+            validated_deep_link_route(
+                "openburnbar://providers?provider=openai%2Fteam&model=gpt-5.2+codex"
+            ),
+            Some("providers?provider=openai%2Fteam&model=gpt-5.2+codex".to_string())
+        );
+        assert_eq!(
+            validated_deep_link_route("openburnbar://providers?provider=openai&admin=true"),
+            None
+        );
+        assert_eq!(
+            validated_deep_link_route("openburnbar://providers?model=gpt-5"),
+            None
         );
         assert_eq!(validated_deep_link_route("https://example.com/chat"), None);
         assert_eq!(

@@ -3,7 +3,8 @@ import {
   providerRouteHash,
   providerSelectionFromHash,
   ROUTES,
-  routeFromHash
+  routeFromHash,
+  shellDestinationFromNative
 } from './routes.js';
 
 describe('routeFromHash', () => {
@@ -30,6 +31,16 @@ describe('routeFromHash', () => {
     expect(providerSelectionFromHash('#/settings?provider=codex')).toBeNull();
     expect(providerSelectionFromHash('#/providers?model=gpt-5')).toBeNull();
     expect(providerSelectionFromHash(`#/providers?provider=${'a'.repeat(257)}`)).toBeNull();
+  });
+
+  it('validates native top-level and provider-detail destinations', () => {
+    expect(shellDestinationFromNative('chat')).toEqual({ route: 'chat', hash: '#/chat' });
+    expect(shellDestinationFromNative('providers?provider=openai&model=gpt-5')).toEqual({
+      route: 'providers',
+      hash: '#/providers?provider=openai&model=gpt-5'
+    });
+    expect(shellDestinationFromNative('chat?prompt=secret')).toBeNull();
+    expect(shellDestinationFromNative('unknown')).toBeNull();
   });
 
   it('covers all navigation ids', () => {

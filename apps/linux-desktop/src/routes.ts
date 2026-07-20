@@ -56,6 +56,11 @@ export type ProviderRouteSelection = {
   modelID: string | null;
 };
 
+export type ShellDestination = {
+  route: ShellRoute;
+  hash: string;
+};
+
 const ROUTE_DETAIL_MAX_LENGTH = 256;
 
 function decodedHashPath(hash: string): string {
@@ -72,6 +77,19 @@ export function routeFromHash(hash: string): ShellRoute {
   const raw = decodedHashPath(hash).split('?', 1)[0] || 'overview';
   const found = ROUTES.find((r) => r.id === raw);
   return found?.id ?? 'overview';
+}
+
+/** Validate a native route destination before allowing it to mutate renderer navigation. */
+export function shellDestinationFromNative(value: string): ShellDestination | null {
+  const candidate = value.trim();
+  if (!candidate || candidate.includes('#')) return null;
+  const hash = `#/${candidate}`;
+  const routeName = decodedHashPath(hash).split('?', 1)[0];
+  const route = ROUTES.find((entry) => entry.id === routeName)?.id;
+  if (!route) return null;
+  if (!candidate.includes('?')) return { route, hash };
+  if (route !== 'providers' || providerSelectionFromHash(hash) === null) return null;
+  return { route, hash };
 }
 
 /** Read the bounded provider/model detail encoded in a reload-safe shell hash. */
