@@ -38,25 +38,27 @@ function fixture() {
     buckets: [{ id: 'five-hour', label: '5h', usedPct: firstUsedPct, resetsAt: reset5h, state: 'ok' },
       { id: 'seven-day', label: '7 day', usedPct: 42, resetsAt: reset7d, state: 'ok' }]
   });
-  const rawProvider = (confidence, firstUsedPct) => ({
+  const swift = (iso) => Date.parse(iso) / 1000 - 978_307_200;
+  const rawProvider = (confidence, firstUsedPct, at) => ({
     providerID: { rawValue: 'claude' }, sourceId, sourceKind: 'provider', confidence,
-    buckets: [{ key: 'five-hour', label: '5h', usedPercent: firstUsedPct, resetsAt: reset5h },
-      { key: 'seven-day', label: '7 day', usedPercent: 42, resetsAt: reset7d }]
+    fetchedAt: swift(at), updatedAt: swift(at),
+    buckets: [{ key: 'five-hour', label: '5h', usedPercent: firstUsedPct, resetsAt: swift(reset5h) },
+      { key: 'seven-day', label: '7 day', usedPercent: 42, resetsAt: swift(reset7d) }]
   });
   const quotaHeaders = (used) => ({
     'x-ratelimit-limit-requests': '100', 'x-ratelimit-remaining-requests': String(100 - used), 'x-ratelimit-reset-requests': reset5h,
     'x-ratelimit-limit-tokens': '100', 'x-ratelimit-remaining-tokens': '58', 'x-ratelimit-reset-tokens': reset7d
   });
   const signal = (id, used) => ({ id, providerID: 'claude', headers: Object.entries(quotaHeaders(used)).map(([name, value]) => ({ name, value })) });
-  const rows = [['initial', times[0], rawProvider('high', 27), signal('signal-1', 27)],
-    ['retry', times[3], { ...rawProvider('high', 35), sourceId: 'daemon.quota.signals:signal-2' }, signal('signal-2', 35)],
-    ['restart', times[10], { ...rawProvider('high', 35), sourceId: 'daemon.quota.signals:signal-2' }, signal('signal-2', 35)]]
+  const rows = [['initial', times[0], rawProvider('high', 27, times[0]), signal('signal-1', 27)],
+    ['retry', times[3], { ...rawProvider('high', 35, times[3]), sourceId: 'daemon.quota.signals:signal-2' }, signal('signal-2', 35)],
+    ['restart', times[10], { ...rawProvider('high', 35, times[3]), sourceId: 'daemon.quota.signals:signal-2' }, signal('signal-2', 35)]]
     .map(([phase, at, snapshot, rawSignal]) => ({ at, phase, request: { method: 'daemon.quota.signals.recent', params: { limit: 200 } }, response: { result: { signals: [rawSignal], snapshots: [snapshot] } } }));
   const transcriptFile = json(path.join(raw, 'quota-rpc-transcript.json'), { producer: 'openburnbar-p12-native-quota-probe-v1', transport: 'AF_UNIX newline-framed BurnBarRPC', rows });
   json(path.join(raw, 'quota-gateway-transcript.json'), {
     producer: 'openburnbar-p12-native-quota-probe-v1', transport: 'HTTP/1.1 loopback OpenBurnBar gateway',
     rows: [['initial', times[0], 'signal-1', quotaHeaders(27)], ['retry', times[3], 'signal-2', quotaHeaders(35)]].map(([phase, at, signalId, headers]) => ({
-      at, phase, signalId, request: { method: 'POST', path: '/v1/chat/completions', model: 'claude-test' }, response: { status: 200 },
+      at, phase, signalId, request: { method: 'POST', path: '/v1/chat/completions', model: 'claude-test', providerId: 'claude' }, response: { status: 200 },
       upstream: { status: 200, requestCount: 1, quotaHeaders: headers }
     }))
   });
@@ -117,6 +119,8 @@ test('P-12 rejects mutation, replay, false rollback, stale capture, and forged s
     ['alias drift', (doc, value) => { const file = path.join(value.root, doc.catalogs.initial.path); const data = JSON.parse(fs.readFileSync(file)); data.providers[0].aliases = ['forged']; json(file, data); doc.catalogs.initial = record(value.root, file); }, /canonical provider/u],
     ['forged source id', (doc, value) => { const file = path.join(value.root, doc.catalogs.initial.path); const data = JSON.parse(fs.readFileSync(file)); data.providers[0].sourceId = 'daemon.quota.signals:forged'; json(file, data); doc.catalogs.initial = record(value.root, file); }, /raw daemon quota snapshot/u],
     ['forged gateway header', (doc, value) => { const file = path.join(value.root, doc.gatewayTranscript.path); const data = JSON.parse(fs.readFileSync(file)); data.rows[0].upstream.quotaHeaders['x-ratelimit-remaining-requests'] = '1'; json(file, data); doc.gatewayTranscript = record(value.root, file); }, /quota headers/u],
+    ['provider substitution', (doc, value) => { const file = path.join(value.root, doc.gatewayTranscript.path); const data = JSON.parse(fs.readFileSync(file)); data.rows[0].request.providerId = 'openai'; json(file, data); doc.gatewayTranscript = record(value.root, file); }, /persisted quota signal/u],
+    ['wrong reset epoch', (doc, value) => { const file = path.join(value.root, doc.quotaRpcTranscript.path); const data = JSON.parse(fs.readFileSync(file)); data.rows[0].response.result.snapshots[0].buckets[0].resetsAt = -978_307_201; json(file, data); doc.quotaRpcTranscript = record(value.root, file); const catalog = path.join(value.root, doc.catalogs.initial.path); const catalogData = JSON.parse(fs.readFileSync(catalog)); catalogData.sourceSha256 = doc.quotaRpcTranscript.sha256; json(catalog, catalogData); doc.catalogs.initial = record(value.root, catalog); }, /raw daemon values/u],
     ['stale value rewrite', (doc, value) => { const file = path.join(value.root, doc.catalogs.stale.path); const data = JSON.parse(fs.readFileSync(file)); data.providers[0].buckets[0].usedPct = 99; json(file, data); doc.catalogs.stale = record(value.root, file); }, /retain/u],
     ['stale retry', (doc, value) => { const file = path.join(value.root, doc.catalogs.retry.path); const data = JSON.parse(fs.readFileSync(file)); data.providers[0].confidence = 'stale'; json(file, data); doc.catalogs.retry = record(value.root, file); }, /provenance/u],
     ['restart drift', (doc, value) => { const file = path.join(value.root, doc.catalogs.restart.path); const data = JSON.parse(fs.readFileSync(file)); data.providers[0].buckets[0].usedPct = 36; json(file, data); doc.catalogs.restart = record(value.root, file); }, /raw daemon values|persist/u],

@@ -18,6 +18,9 @@ const MODES = new Set(['provider_family_failover', 'same_model_failover']);
 const SOURCES = new Set(['provider', 'officialAPI', 'localCLI', 'localSession', 'manualEstimate', 'unavailable']);
 const CONFIDENCE = new Set(['high', 'medium', 'low', 'stale']);
 const STATES = new Set(['ok', 'cooling_down', 'missing_credential', 'exhausted', 'unknown']);
+const FOUNDATION_REFERENCE_EPOCH_MS = Date.UTC(2001, 0, 1);
+const MIN_QUOTA_DATE_MS = Date.UTC(2000, 0, 1);
+const MAX_QUOTA_DATE_AHEAD_MS = 10 * 366 * 24 * 60 * 60 * 1000;
 
 function fail(message) { throw new Error(message); }
 function artifact(repoRoot, environmentId, record, label, options = {}) {
@@ -45,6 +48,15 @@ function rawUsedPct(bucket) {
   return null;
 }
 
+function canonicalQuotaDate(value, now) {
+  const milliseconds = typeof value === 'number' && Number.isFinite(value)
+    ? FOUNDATION_REFERENCE_EPOCH_MS + value * 1000
+    : typeof value === 'string' && value.trim() ? Date.parse(value) : Number.NaN;
+  if (!Number.isFinite(milliseconds) || milliseconds < MIN_QUOTA_DATE_MS
+      || milliseconds > now + MAX_QUOTA_DATE_AHEAD_MS) return null;
+  return new Date(milliseconds).toISOString();
+}
+
 function validateRpcTranscript(snapshot, canonical, captureStart, captureEnd) {
   const document = parseJson(snapshot.bytes, 'P-12 quota RPC transcript');
   exactKeys(document, ['producer', 'rows', 'transport'], 'P-12 quota RPC transcript');
@@ -63,7 +75,9 @@ function validateRpcTranscript(snapshot, canonical, captureStart, captureEnd) {
     for (const raw of row.response.result.snapshots) {
       const providerId = rawProviderID(raw);
       if (!canonical.has(providerId) || byProvider.has(providerId)
-          || typeof raw.sourceId !== 'string' || !/^daemon\.quota\.signals:[^\s:]+$/u.test(raw.sourceId)) fail(`P-12 quota RPC ${phases[index]} has invalid provider provenance`);
+          || typeof raw.sourceId !== 'string' || !/^daemon\.quota\.signals:[^\s:]+$/u.test(raw.sourceId)
+          || typeof raw.fetchedAt !== 'number' || typeof raw.updatedAt !== 'number'
+          || !canonicalQuotaDate(raw.fetchedAt, captureEnd) || !canonicalQuotaDate(raw.updatedAt, captureEnd)) fail(`P-12 quota RPC ${phases[index]} has invalid provider provenance`);
       byProvider.set(providerId, raw);
     }
     snapshots.set(row.phase, byProvider);
@@ -86,7 +100,7 @@ function validateGatewayTranscript(snapshot, rpc, canonical, captureStart, captu
   const quotaFingerprints = new Set();
   for (const [index, row] of document.rows.entries()) {
     exactKeys(row, ['at', 'phase', 'request', 'response', 'signalId', 'upstream'], `P-12 gateway row ${index}`);
-    exactKeys(row.request, ['method', 'model', 'path'], `P-12 gateway request ${index}`);
+    exactKeys(row.request, ['method', 'model', 'path', 'providerId'], `P-12 gateway request ${index}`);
     exactKeys(row.response, ['status'], `P-12 gateway response ${index}`);
     exactKeys(row.upstream, ['quotaHeaders', 'requestCount', 'status'], `P-12 upstream response ${index}`);
     const at = Date.parse(row.at);
@@ -96,10 +110,11 @@ function validateGatewayTranscript(snapshot, rpc, canonical, captureStart, captu
     const headers = quotaHeaderMap(signal);
     if (row.phase !== phases[index] || !Number.isFinite(at) || at < captureStart || at > captureEnd
         || row.request.method !== 'POST' || !['/v1/chat/completions', '/v1/responses', '/v1/messages'].includes(row.request.path)
-        || typeof row.request.model !== 'string' || !row.request.model || row.response.status !== 200
+        || typeof row.request.model !== 'string' || !row.request.model || !canonical.has(row.request.providerId) || row.response.status !== 200
         || row.upstream.status !== 200 || row.upstream.requestCount !== 1 || !row.upstream.quotaHeaders
         || typeof row.upstream.quotaHeaders !== 'object' || Array.isArray(row.upstream.quotaHeaders)
-        || !signal || !snapshotSource || !canonical.has(rawProviderID(snapshotSource))) fail(`P-12 gateway ${phases[index]} is not bound to a persisted quota signal`);
+        || !signal || signal.providerID !== row.request.providerId || !snapshotSource
+        || rawProviderID(snapshotSource) !== row.request.providerId) fail(`P-12 gateway ${phases[index]} is not bound to a persisted quota signal`);
     exactKeys(row.upstream.quotaHeaders, ['x-ratelimit-limit-requests', 'x-ratelimit-limit-tokens', 'x-ratelimit-remaining-requests', 'x-ratelimit-remaining-tokens', 'x-ratelimit-reset-requests', 'x-ratelimit-reset-tokens'], `P-12 upstream quota headers ${index}`);
     for (const [name, value] of Object.entries(row.upstream.quotaHeaders)) {
       if (headers[name] !== value) fail(`P-12 gateway ${phases[index]} quota headers do not match the daemon signal`);
@@ -142,8 +157,9 @@ function validateCatalog(snapshot, label, canonical, captureStart, captureEnd, p
       if (raw) {
         const rawBucket = raw.buckets?.find((candidate) => (candidate.key ?? candidate.id) === bucket.id);
         const usedPct = rawUsedPct(rawBucket);
-        if (!rawBucket || rawBucket.label !== bucket.label || usedPct === null || Math.abs(usedPct - bucket.usedPct) > 0.0001
-            || rawBucket.resetsAt !== bucket.resetsAt) fail(`${label} quota bucket is not bound to raw daemon values`);
+        if (!rawBucket || typeof rawBucket.resetsAt !== 'number' || rawBucket.label !== bucket.label
+            || usedPct === null || Math.abs(usedPct - bucket.usedPct) > 0.0001
+            || canonicalQuotaDate(rawBucket.resetsAt, captureEnd) !== new Date(bucket.resetsAt).toISOString()) fail(`${label} quota bucket is not bound to raw daemon values`);
       }
       bucketCount += 1;
     }

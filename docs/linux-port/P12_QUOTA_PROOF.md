@@ -39,3 +39,10 @@ The validator deliberately fails on stale captures, changed bytes, reused
 screenshots, forged signatures, fixture desktops, canonical-provider drift,
 missing windows, false retry/rollback sequences, or restart claims without a
 PID transition.
+
+`run-p12-native-quota-probes.mjs` is the only supported raw producer. It starts
+with an isolated support directory, routes the installed gateway to a bounded
+loopback upstream, and generates quota signals through normal provider traffic.
+It never creates or edits `quota-signals.jsonl`. The runner interrupts and
+restarts the user daemon, exercises retry and failover rollback, restarts the
+installed desktop, and writes the exact raw files consumed by the materializer.
