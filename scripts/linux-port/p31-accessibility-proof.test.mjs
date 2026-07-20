@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { captureP31Accessibility } from './capture-p31-accessibility.mjs';
+import { main as finalizeProductFeatureProofClosure } from './finalize-product-feature-proof-closure.mjs';
 import { validateProductRequirement } from './product-validators/P-31.mjs';
 import {
   P31_REQUIRED_ROUTES,
@@ -283,6 +284,7 @@ test('P-31 independently rejects an accessibility proof missing exact 200 percen
 });
 
 test('P-31 materializer selects accessibility feature proofs', () => {
+  assert.throws(() => finalizeProductFeatureProofClosure([]), /--requirement is required/u);
   const registry = JSON.parse(fs.readFileSync('docs/linux-port/product-feature-proof-registry.json', 'utf8'));
   const snapshot = readRegularSnapshot('.', 'docs/linux-port/product-feature-proof-registry.json', 'P-31 registry');
   const { contracts } = validateFeatureProofRegistry('.', snapshot);

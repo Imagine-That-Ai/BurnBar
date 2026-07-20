@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { captureP34CredentialSecurityProof } from './capture-p34-credential-security-proof.mjs';
+import { main as finalizeProductFeatureProofClosure } from './finalize-product-feature-proof-closure.mjs';
 import {
   P34_BACKEND_IDS,
   P34_CASE_IDS,
@@ -13,6 +14,7 @@ import {
   parseProofSnapshot,
   validateP34CredentialSecurityProof
 } from './lib/p34-credential-security-proof.mjs';
+import { validateProductRequirement } from './product-validators/P-34.mjs';
 
 const HEAD = 'a'.repeat(40);
 const ENVIRONMENT = 'ubuntu-24.04-gnome-x11-x86_64';
@@ -138,7 +140,11 @@ test('P-34 rejects stale checkout heads and symlinked evidence roots', () => {
   }
 });
 
-test('P-34 validator rejects missing, locked, rotated, recovery, and redaction mutations', () => {
+test('P-34 validator rejects missing, locked, rotated, recovery, and redaction mutations', async () => {
+  await assert.rejects(
+    () => validateProductRequirement({}),
+    /requirement release closure is not passed and invocation-bound/u
+  );
   const subject = capture();
   try {
     const snapshot = proof(subject);
@@ -174,6 +180,16 @@ test('P-34 validator rejects missing, locked, rotated, recovery, and redaction m
   } finally {
     cleanup(subject);
   }
+});
+
+test('P-34 materializer selects the candidate-bound credential security proof', () => {
+  assert.throws(() => finalizeProductFeatureProofClosure([]), /--requirement is required/u);
+  const registry = JSON.parse(fs.readFileSync('docs/linux-port/product-feature-proof-registry.json', 'utf8'));
+  assert.deepEqual(registry.requirements.find((row) => row.requirementId === 'P-34')?.artifacts, [{
+    role: P34_PROOF_ROLE,
+    mediaType: 'application/json',
+    maxBytes: 1_048_576
+  }]);
 });
 
 test('P-34 validator rejects candidate substitution and source-contract drift', () => {

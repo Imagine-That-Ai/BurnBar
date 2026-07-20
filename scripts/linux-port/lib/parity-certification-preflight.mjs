@@ -45,6 +45,8 @@ const MODULE_DEPENDENCY_ROOT = path.resolve(
 );
 const ISOLATED_TARGET_PATHS = Object.freeze([
   '.github/workflows',
+  'OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js',
+  'apps/linux-desktop/src-tauri/icons/icon.png',
   'apps/linux-desktop/src-tauri/src',
   'docs/linux-port/product-feature-proof-registry.json',
   'docs/linux-port/product-parity-evidence-policies.json',
