@@ -12,11 +12,13 @@ Linux is not at full macOS parity.
 
 ### Post-main integration status — 2026-07-20 UTC
 
-The current exact-native checkpoint is `22fd7dfad9`. Verified source and build
+Source verification extends through `5b52f3f92f`; the current exact-native
+checkpoint remains `22fd7dfad9`. Verified source and build
 gates are **94 frontend files / 910 tests**, Tauri Rust **133/133**, TypeScript,
 the production-bundle verifier, workflow verifier Node tests **28/28**, Linux
 Swift verifier Python tests **18/18**, and fresh Ubuntu ARM64 production builds
-of `OpenBurnBarDaemon` and `OpenBurnBarCLI`.
+of `OpenBurnBarDaemon` and `OpenBurnBarCLI`. The later source-only file splits
+also pass the zero-oversized-file ratchet and a host CLI product build.
 
 The current merge exposed and fixed two Linux-only compilation problems. Swift
 6.1 whole-module compilation could not reliably select the explicit-nonce

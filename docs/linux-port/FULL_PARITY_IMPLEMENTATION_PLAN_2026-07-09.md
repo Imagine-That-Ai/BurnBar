@@ -14,8 +14,9 @@ This is not a marketing checklist. It is a build plan with ownership,
 dependencies, acceptance contracts, proof commands, loophole controls, and
 known platform divergences.
 
-> **Live status (2026-07-20):** The post-`main` exact-native checkpoint is
-> `22fd7dfad9`. It passes **94 frontend files / 910 tests**, Tauri Rust
+> **Live status (2026-07-20):** Source verification extends through
+> `5b52f3f92f`; the post-`main` exact-native checkpoint remains `22fd7dfad9`.
+> It passes **94 frontend files / 910 tests**, Tauri Rust
 > **133/133**, TypeScript and production-bundle verification, the workflow
 > verifier's **28/28** Node tests, and the Linux Swift verifier's **18/18**
 > Python tests. The exact ARM64 DEB is 152,116,006 bytes with SHA-256
@@ -38,6 +39,11 @@ known platform divergences.
 > cross-device, keyring, compositor, and same-commit macOS differential proof
 > are not complete. These are separate numbers: source progress is real, but
 > it is not release certification.
+>
+> The source-only `6b6c5c68c6`, `be7b116ebc`, and `5b52f3f92f` refactors
+> split three merged Swift files below the 2,000-line CI limit without changing
+> behavior. The file-size and force-unwrap ratchets and the integrated host CLI
+> build pass; the installed receipt remains correctly bound to `22fd7dfad9`.
 
 ## Executive Verdict
 
