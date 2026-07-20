@@ -111,4 +111,19 @@ final class BurnBarQuotaSignalSnapshotTests: XCTestCase {
         XCTAssertTrue(response.signals.isEmpty)
         XCTAssertNil(response.snapshots)
     }
+
+    func testProviderSnapshotsGroupProviderIDsCaseInsensitively() throws {
+        let older = BurnBarQuotaSignalRecord(
+            id: "older", observedAt: Date(timeIntervalSince1970: 1), providerID: "Anthropic",
+            headers: [], remaining: 8, limit: 10
+        )
+        let newer = BurnBarQuotaSignalRecord(
+            id: "newer", observedAt: Date(timeIntervalSince1970: 2), providerID: "anthropic",
+            headers: [], remaining: 7, limit: 10
+        )
+        let snapshots = BurnBarQuotaSignalStore.providerSnapshots(from: [older, newer], now: Date(timeIntervalSince1970: 2))
+        XCTAssertEqual(snapshots.count, 1)
+        XCTAssertEqual(snapshots.first?.providerID.rawValue, "anthropic")
+        XCTAssertEqual(snapshots.first?.sourceId, "daemon.quota.signals:newer")
+    }
 }

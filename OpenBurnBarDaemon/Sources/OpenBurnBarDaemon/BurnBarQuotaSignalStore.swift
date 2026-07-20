@@ -54,8 +54,9 @@ public actor BurnBarQuotaSignalStore {
         for signal in signals {
             let providerID = signal.providerID.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !providerID.isEmpty, !quotaBuckets(from: signal).isEmpty else { continue }
-            if latest[providerID].map({ $0.observedAt >= signal.observedAt }) == true { continue }
-            latest[providerID] = signal
+            let groupingKey = ProviderID(rawValue: providerID).rawValue
+            if latest[groupingKey].map({ $0.observedAt >= signal.observedAt }) == true { continue }
+            latest[groupingKey] = signal
         }
 
         return latest.values.map { signal in
