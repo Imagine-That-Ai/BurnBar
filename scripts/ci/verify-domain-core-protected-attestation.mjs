@@ -29,6 +29,7 @@ const EXPECTED_JOB_NAMES = Object.freeze([
   "windows-native-win-x64",
   "windows-native-win-arm64",
   "candidate-bundle",
+  "Domain Core PR Gate",
 ]);
 
 function readJson(path, label) {

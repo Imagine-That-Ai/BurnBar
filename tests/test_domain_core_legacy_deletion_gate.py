@@ -1744,7 +1744,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
     def make_bundle(identity: dict) -> dict:
         return {
             "schemaVersion": 1,
-            "bundleKind": "unsigned-deterministic-candidate",
+            "bundleKind": "unsigned-domain-core-candidate",
             "status": "eligible_for_attestation",
             "proofComplete": True,
             "eligibleForAttestation": True,
@@ -1752,7 +1752,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             "trust": {
                 "authority": "none",
                 "attestationRequired": True,
-                "requiredSigner": GATE.PROMOTION_SIGNER_WORKFLOW,
+                "requiredSigner": GATE.PROMOTION_SIGNER_JOB,
                 "verificationSteps": [
                     "query-github-api",
                     "download-exact-run-artifacts",

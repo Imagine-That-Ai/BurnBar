@@ -159,6 +159,7 @@ jobs:
           $scripts = @(
             "scripts/windows-port/new-physical-hardware-attestation.ps1",
             "scripts/windows-port/new-release-certification-supplemental-receipt.ps1",
+            "scripts/windows-port/publish-staging-remote-config-fixture.ps1",
             "scripts/windows-port/run-physical-release-certification.ps1"
           )
           foreach ($script in $scripts) {

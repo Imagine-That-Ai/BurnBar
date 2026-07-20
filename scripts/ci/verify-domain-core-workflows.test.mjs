@@ -242,6 +242,42 @@ test("Python native evidence reports the candidate embedded by Rust", () => {
   );
 });
 
+test("every proof-bound artifact is uploaded for protected signer revalidation", () => {
+  const windowsUploadName =
+    "name: domain-core-attestation-${{ matrix.artifact }}-${{ github.run_id }}-${{ github.run_attempt }}";
+  const windowsUploadPath =
+    "path: ${{ runner.temp }}/attestation-${{ matrix.artifact }}";
+  for (const { id, jobId } of policy.requiredArtifacts) {
+    const producer = workflowJob(core, jobId);
+    if (jobId === "windows-native") {
+      assert.ok(
+        producer.includes(`artifact: ${id}`),
+        `${jobId} must enumerate ${id}`,
+      );
+      assert.ok(
+        producer.includes(windowsUploadName),
+        `${jobId} must upload its matrix artifact for the signer`,
+      );
+      assert.ok(
+        producer.includes(windowsUploadPath),
+        `${jobId} must upload the staged matrix artifact directory`,
+      );
+      continue;
+    }
+    assert.ok(
+      producer.includes(
+        `name: domain-core-attestation-${id}-` +
+          "${{ github.run_id }}-${{ github.run_attempt }}",
+      ),
+      `${jobId} must upload ${id} for the protected signer`,
+    );
+    assert.ok(
+      producer.includes("path: ${{ runner.temp }}/attestation-" + id),
+      `${jobId} must upload the staged ${id} directory`,
+    );
+  }
+});
+
 test("Android artifact generation rejects missing or duplicated embedded identity", () => {
   assert.match(
     androidAarBuild,
@@ -336,7 +372,12 @@ test("protected signer has no user-supplied evidence surface and revalidates tru
   assert.match(signer, /required_reviewers/u);
   assert.match(signer, /deployment-branch-policies/u);
   assert.match(signer, /verify-domain-core-protected-attestation\.mjs/u);
-  assert.match(signer, /gh api --paginate --slurp/u);
+  assert.match(signer, /gh-api-with-retry\.sh --paginate --slurp/u);
+  assert.doesNotMatch(
+    workflowJob(signer, "protected-domain-core-signer"),
+    /^\s+gh api /mu,
+    "protected signer GitHub API reads must use the bounded retry wrapper",
+  );
   assert.match(signer, /\.total_count == \(\.branch_policies \| length\)/u);
   assert.match(signer, /\.total_count == \(\.workflow_runs \| length\)/u);
   assert.match(signer, /\.total_count == \(\.jobs \| length\)/u);
