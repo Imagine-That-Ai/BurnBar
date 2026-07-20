@@ -37,6 +37,10 @@ function fixture() {
     join(root, "config/domain-core-legacy-deletion.json"),
     "rollout\n",
   );
+  writeFileSync(
+    join(root, "config/domain-core-control-plane-manifest.json"),
+    "candidate control plane\n",
+  );
   git(root, "init", "-q");
   git(root, "config", "user.email", "test@openburnbar.invalid");
   git(root, "config", "user.name", "OpenBurnBar Test");
@@ -47,6 +51,10 @@ function fixture() {
   writeFileSync(
     join(root, "config/domain-core-legacy-deletion.json"),
     "promotion receipt\n",
+  );
+  writeFileSync(
+    join(root, "config/domain-core-control-plane-manifest.json"),
+    "activation control plane\n",
   );
   git(root, "add", ".");
   git(root, "commit", "-qm", "activation P");
