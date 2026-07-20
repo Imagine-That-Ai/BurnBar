@@ -565,6 +565,7 @@ targets:
         link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
+        link: false
       - package: GRDB
         product: GRDB
       - package: SQLCipher
