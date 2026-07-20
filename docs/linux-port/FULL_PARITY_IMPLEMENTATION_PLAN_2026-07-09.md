@@ -15,11 +15,11 @@ dependencies, acceptance contracts, proof commands, loophole controls, and
 known platform divergences.
 
 > **Live status (2026-07-20):** The post-`main` exact-native checkpoint is
-> `0eb6efcc1a`. It passes **94 frontend files / 910 tests**, Tauri Rust
+> `22fd7dfad9`. It passes **94 frontend files / 910 tests**, Tauri Rust
 > **133/133**, TypeScript and production-bundle verification, the workflow
 > verifier's **28/28** Node tests, and the Linux Swift verifier's **18/18**
-> Python tests. The exact ARM64 DEB is 152,148,488 bytes with SHA-256
-> `f5b89a4a6ebb41fefe7588ee9843291ca97027080a94a49bf3132a38ba6f436d`.
+> Python tests. The exact ARM64 DEB is 152,116,006 bytes with SHA-256
+> `72fb15222374ee5231aa53b498aba984e4b281e5c93fa359c4a4f53c29886522`.
 > Its build and installation pass in the Ubuntu GNOME/X11 guest, including both
 > `OpenBurnBarCore_OpenBurnBarKernel.resources` and
 > `OpenBurnBarCore_OpenBurnBarPretext.resources`.
@@ -27,11 +27,11 @@ known platform divergences.
 > Package-versus-installed hashes match for the desktop, daemon, CLI, iroh
 > runtime, and both resource bundles. The daemon is active, CLI health is OK,
 > and a native provider deep link selected Codex with a passing AT-SPI tree at
-> 189/108/91/32 nodes/named/actionable/focusable. The exact receipt and visual
+> 189/108/91/33 nodes/named/actionable/focusable. The exact receipt and visual
 > proof are
-> [`evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-exact-native-2026-07-20.json)
+> [`evidence/parity-audit-2026-07-10/linux-arm64-current-22fd7dfad9-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-22fd7dfad9-exact-native-2026-07-20.json)
 > and
-> [`evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-provider-deep-link.png`](evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-provider-deep-link.png).
+> [`evidence/parity-audit-2026-07-10/linux-arm64-current-22fd7dfad9-provider-deep-link.png`](evidence/parity-audit-2026-07-10/linux-arm64-current-22fd7dfad9-provider-deep-link.png).
 > The strict certification ledger is still **0/40 product rows and 0/7
 > environment receipts** because the package manifest is the unsigned `{}`
 > placeholder and production,
@@ -54,15 +54,18 @@ builds. `8a17df54d2` avoids Swift 6.1 whole-module lookup ambiguity for explicit
 AES-GCM nonces, while `6aaae20226` fully qualifies that API and keeps the shared
 Insights widget-container code buildable off Apple platforms.
 
-`0eb6efcc1a` completes this exact-head package cycle. The payload path discovers,
-stages, embeds, and validates both decomposed SwiftPM resource bundles. The
-152,148,488-byte ARM64 DEB has SHA-256
-`f5b89a4a6ebb41fefe7588ee9843291ca97027080a94a49bf3132a38ba6f436d`;
+`22fd7dfad9` completes this exact-head package cycle. The payload path discovers,
+stages, embeds, and validates both decomposed SwiftPM resource bundles. The wave
+also reconciles post-merge CI contracts, removes 21 Linux force unwraps, and
+keeps UI-only Observation conformance out of the Linux daemon dependency graph,
+fixing the Swift 6.1 ARM64 release-link failure without changing macOS behavior.
+The 152,116,006-byte ARM64 DEB has SHA-256
+`72fb15222374ee5231aa53b498aba984e4b281e5c93fa359c4a4f53c29886522`;
 build/install passed, package and installed hashes match for the desktop,
 daemon, CLI, iroh runtime, Kernel resources, and Pretext resources, the daemon
 is active, CLI health is OK, and the native Codex deep link passes AT-SPI at
-189/108/91/32. The exact receipt and screenshot are linked in the live status
-above. This replaces `bfd0eefea9` as the latest installed checkpoint, but the
+189/108/91/33. The exact receipt and screenshot are linked in the live status
+above. This replaces `0eb6efcc1a` as the latest installed checkpoint, but the
 unsigned `{}` manifest and external proof gaps mean it does not advance the
 strict certification ledger.
 

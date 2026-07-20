@@ -12,7 +12,7 @@ Linux is not at full macOS parity.
 
 ### Post-main integration status — 2026-07-20 UTC
 
-The current exact-native checkpoint is `0eb6efcc1a`. Verified source and build
+The current exact-native checkpoint is `22fd7dfad9`. Verified source and build
 gates are **94 frontend files / 910 tests**, Tauri Rust **133/133**, TypeScript,
 the production-bundle verifier, workflow verifier Node tests **28/28**, Linux
 Swift verifier Python tests **18/18**, and fresh Ubuntu ARM64 production builds
@@ -26,15 +26,15 @@ support module. The newly cross-platform Insights target also called Apple's
 app-group container API unconditionally; non-Apple builds now return an honest
 unavailable result instead.
 
-Exact-head package proof now passes. The 152,148,488-byte ARM64 DEB has SHA-256
-`f5b89a4a6ebb41fefe7588ee9843291ca97027080a94a49bf3132a38ba6f436d`.
+Exact-head package proof now passes. The 152,116,006-byte ARM64 DEB has SHA-256
+`72fb15222374ee5231aa53b498aba984e4b281e5c93fa359c4a4f53c29886522`.
 Both decomposed resource bundles are packaged and installed; package-versus-
 installed desktop, daemon, CLI, iroh, Kernel-resource, and Pretext-resource
 hashes match. The daemon is active, CLI health is OK, and a native Codex deep
-link passes AT-SPI at 189/108/91/32 nodes/named/actionable/focusable. See the
-[`exact-native receipt`](evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-exact-native-2026-07-20.json)
+link passes AT-SPI at 189/108/91/33 nodes/named/actionable/focusable. See the
+[`exact-native receipt`](evidence/parity-audit-2026-07-10/linux-arm64-current-22fd7dfad9-exact-native-2026-07-20.json)
 and
-[`provider deep-link screenshot`](evidence/parity-audit-2026-07-10/linux-arm64-current-0eb6efcc1a-provider-deep-link.png).
+[`provider deep-link screenshot`](evidence/parity-audit-2026-07-10/linux-arm64-current-22fd7dfad9-provider-deep-link.png).
 
 The strict certification ledger remains **0/40 product rows and 0/7 environment
 receipts** because the package manifest is the unsigned `{}` placeholder.
