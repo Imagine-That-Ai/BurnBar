@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentType } from 'react';
+import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react';
 import { ROUTES, type ShellRoute } from '../routes.js';
 import {
   capabilityBlocksSurface,
@@ -6,29 +6,34 @@ import {
   type RuntimeCapabilityEntry
 } from '../runtimeCapabilities.js';
 import { useShellStore } from '../state/shellStore.js';
-import { AccountSurface } from './AccountSurface.js';
 import { DaemonDataSection } from './DaemonDataSection.js';
 import { OnboardingSurface } from './OnboardingSurface.js';
 import { OverviewSurface } from './OverviewSurface.js';
 import { PetSurface } from './PetSurface.js';
-import { ProvidersSurface } from './ProvidersSurface.js';
 import { SettingsSurface } from './SettingsSurface.js';
-import { SupportSurface } from './SupportSurface.js';
-import { TextExpansionSurface } from './TextExpansionSurface.js';
-import { UpdatesSurface } from './UpdatesSurface.js';
-import { ActivitySurface } from './activity/ActivitySurface.js';
-import { DatabaseSurface } from './database/DatabaseSurface.js';
-import { InsightsSurface } from './insights/InsightsSurface.js';
-import { MemorySurface } from './memory/MemorySurface.js';
-import { ChatSurface } from './chat/ChatSurface.js';
-import { MissionsSurface } from './missions/MissionsSurface.js';
-import { ProjectsSurface } from './projects/ProjectsSurface.js';
-import { ComputerUseSurface } from './computerUse/ComputerUseSurface.js';
-import { MercurySurface } from './media/MercurySurface.js';
-import { SmartHubSurface } from './smarthub/SmartHubSurface.js';
 import { SurfaceErrorBoundary } from './SurfaceErrorBoundary.js';
 import './capability-boundary.css';
 import './system/system.css';
+
+// Keep the first WebView payload focused on shell chrome and the current route.
+// The previous eager registry pulled every dashboard, settings, media, and
+// Computer Use surface into the initial chunk even when onboarding only needed
+// one screen. Named-export adapters keep each split point explicit for Vite.
+const InsightsSurface = lazy(() => import('./insights/InsightsSurface.js').then(({ InsightsSurface }) => ({ default: InsightsSurface })));
+const DatabaseSurface = lazy(() => import('./database/DatabaseSurface.js').then(({ DatabaseSurface }) => ({ default: DatabaseSurface })));
+const ProvidersSurface = lazy(() => import('./ProvidersSurface.js').then(({ ProvidersSurface }) => ({ default: ProvidersSurface })));
+const ProjectsSurface = lazy(() => import('./projects/ProjectsSurface.js').then(({ ProjectsSurface }) => ({ default: ProjectsSurface })));
+const MissionsSurface = lazy(() => import('./missions/MissionsSurface.js').then(({ MissionsSurface }) => ({ default: MissionsSurface })));
+const ActivitySurface = lazy(() => import('./activity/ActivitySurface.js').then(({ ActivitySurface }) => ({ default: ActivitySurface })));
+const ChatSurface = lazy(() => import('./chat/ChatSurface.js').then(({ ChatSurface }) => ({ default: ChatSurface })));
+const MemorySurface = lazy(() => import('./memory/MemorySurface.js').then(({ MemorySurface }) => ({ default: MemorySurface })));
+const ComputerUseSurface = lazy(() => import('./computerUse/ComputerUseSurface.js').then(({ ComputerUseSurface }) => ({ default: ComputerUseSurface })));
+const MercurySurface = lazy(() => import('./media/MercurySurface.js').then(({ MercurySurface }) => ({ default: MercurySurface })));
+const SmartHubSurface = lazy(() => import('./smarthub/SmartHubSurface.js').then(({ SmartHubSurface }) => ({ default: SmartHubSurface })));
+const AccountSurface = lazy(() => import('./AccountSurface.js').then(({ AccountSurface }) => ({ default: AccountSurface })));
+const UpdatesSurface = lazy(() => import('./UpdatesSurface.js').then(({ UpdatesSurface }) => ({ default: UpdatesSurface })));
+const SupportSurface = lazy(() => import('./SupportSurface.js').then(({ SupportSurface }) => ({ default: SupportSurface })));
+const TextExpansionSurface = lazy(() => import('./TextExpansionSurface.js').then(({ TextExpansionSurface }) => ({ default: TextExpansionSurface })));
 
 type IdleDeadlineLike = {
   didTimeout: boolean;
@@ -230,12 +235,14 @@ export function SurfaceRouter({ route }: { route: ShellRoute }) {
             repairRoute={repairRoute}
             onRepair={() => setRoute(repairRoute)}
           >
-            <SurfaceBody
-              Surface={Surface}
-              route={route}
-              label={meta?.label ?? route}
-              defer={deferSurfaceBody}
-            />
+            <Suspense fallback={<SurfaceBodySkeleton label={meta?.label ?? route} />}>
+              <SurfaceBody
+                Surface={Surface}
+                route={route}
+                label={meta?.label ?? route}
+                defer={deferSurfaceBody}
+              />
+            </Suspense>
           </SurfaceErrorBoundary>
         </>
       )}
