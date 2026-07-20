@@ -11,6 +11,24 @@ the current release sequence, cost model, maintenance cadence, evidence gates,
 rollback steps, and agent handoff format. This audit preserves the detailed
 historical evidence; the runbook owns repeatable operations.
 
+## Supplemental Harness Recovery - 2026-07-20
+
+PR #1867 merged as
+`37d88056066d876570df4b2887f33df7af7ebe56` after all required checks and an
+independent approval passed. GitHub and the GitLab mirror both resolved `main`
+to that commit at handoff time. The independent harness now includes the PR
+#1862 UIA/supplemental corrections and the Firebase Remote Config gzip/ETag
+repair: its staging publisher requests gzip on GET and PUT, reads the returned
+ETag through the response-header indexer, and reuses the exact value for
+optimistic concurrency. Its contract test forbids `If-Match: *`.
+
+This closes the known harness defect that prevented the HP staging protocol
+from obtaining an ETag. It does not promote the `staging-cloud` gate: the exact
+signed v1.0.38 candidate must still run OAuth, App Check/physical TPM,
+CloudVault, offline/revocation/sign-out, fixture restoration, and secret-scan
+assertions on the physical Intel machine. The updated continuation prompt is
+[`evidence/windows-v1.0.38-release/HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt`](evidence/windows-v1.0.38-release/HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt).
+
 ## Physical Intel x64 v1.0.38 Retry - 2026-07-19
 
 Protected tag `windows-v1.0.38` resolves to commit

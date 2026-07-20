@@ -43,6 +43,13 @@ detailed result and exact recovery actions are in
 The native-operator continuation prompt is
 [`HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt`](HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt).
 
+The continuation must use clean independent harness commit
+`37d88056066d876570df4b2887f33df7af7ebe56`, the merge of PR #1867. It
+contains the PR #1862 UIA/supplemental corrections plus the Firebase Remote
+Config gzip/ETag repair. This newer harness identity does not alter the
+historical retry receipt above; it identifies the harness required for the next
+timestamped continuation bundle.
+
 ## Certification boundary
 
 The exact package is stable on physical x64, but the release remains `NO-GO`.

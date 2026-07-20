@@ -462,6 +462,10 @@ Do not regress these fixes:
 - A valid signature and successful installation did not make `v1.0.37` usable.
   WebView2/Win2D airspace covered the dashboard; native composition, routed
   screenshots, accessible names, and `640x720` layout are permanent gates.
+- Firebase Remote Config may omit the concurrency ETag unless REST requests
+  advertise gzip. The staging fixture publisher must send
+  `Accept-Encoding: gzip` on GET and PUT, reuse the exact returned ETag, and
+  must never fall back to `If-Match: *`.
 - Portable and installed layouts must match their manifests exactly. A hash or
   size mismatch is a release failure.
 - First-time staging deployments may require Google APIs and IAM setup, but
