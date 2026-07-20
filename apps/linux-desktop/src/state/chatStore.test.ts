@@ -183,6 +183,16 @@ describe('exact-thread chat store', () => {
     });
   });
 
+  it('attaches live provider citation identities to the streamed assistant', () => {
+    const messages = applyChatStreamEvent([{ id: 'assistant-1', role: 'assistant', text: '' }], 'assistant-1', {
+      type: 'citations',
+      citations: [{ id: 'citation-1', label: 'Earlier answer', messageId: 'message-1', threadID: 'thread-1', state: 'live' }]
+    });
+    expect(messages[0]?.memoryCitations).toEqual([
+      { id: 'citation-1', label: 'Earlier answer', messageId: 'message-1', threadID: 'thread-1', state: 'live' }
+    ]);
+  });
+
   it('routes daemon-backed approval once when approve/reject clicks race', async () => {
     let release!: () => void;
     const response = vi.fn(

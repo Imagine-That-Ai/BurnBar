@@ -24,9 +24,18 @@ export type GatewayToolCallDelta = {
   approvalID?: string;
 };
 
+export type GatewayMemoryCitation = {
+  id: string;
+  label: string;
+  messageId?: string;
+  threadID?: string;
+  state?: 'live' | 'cross-device' | 'source-unavailable';
+};
+
 export type GatewayChatStreamEvent =
   | { type: 'delta'; text: string }
   | { type: 'thinking'; text: string }
+  | { type: 'citations'; citations: GatewayMemoryCitation[] }
   | { type: 'tool_call'; toolCall: GatewayToolCallDelta }
   | { type: 'usage'; usage: GatewayChatUsage }
   | { type: 'done'; finishReason?: string };
@@ -128,6 +137,8 @@ export class OpenAICompatibleSSEParser {
       if (content) events.push({ type: 'delta', text: content });
       const thinking = str(delta?.reasoning_content) ?? str(delta?.reasoning) ?? str(delta?.thinking);
       if (thinking) events.push({ type: 'thinking', text: thinking });
+      const citations = memoryCitationsFrom(delta?.memory_citations ?? delta?.memoryCitations);
+      if (citations.length) events.push({ type: 'citations', citations });
       const toolCalls = Array.isArray(delta?.tool_calls) ? delta.tool_calls : [];
       for (const rawCall of toolCalls) {
         const call = this.toolCallFrom(rawCall);
@@ -169,6 +180,26 @@ export class OpenAICompatibleSSEParser {
     this.toolCallBuffers.set(key, merged);
     return merged;
   }
+}
+
+function memoryCitationsFrom(raw: RawJson): GatewayMemoryCitation[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 8).flatMap((value) => {
+    const row = object(value);
+    const id = str(row?.id);
+    const label = str(row?.label);
+    if (!id || !label) return [];
+    const state = str(row?.state);
+    return [{
+      id,
+      label,
+      ...(str(row?.messageId) ?? str(row?.message_id) ? { messageId: str(row?.messageId) ?? str(row?.message_id) } : {}),
+      ...(str(row?.threadID) ?? str(row?.threadId) ?? str(row?.thread_id)
+        ? { threadID: str(row?.threadID) ?? str(row?.threadId) ?? str(row?.thread_id) } : {}),
+      ...(['live', 'cross-device', 'source-unavailable'].includes(state ?? '')
+        ? { state: state as GatewayMemoryCitation['state'] } : {})
+    }];
+  });
 }
 
 function usageFrom(raw: RawJson): GatewayChatUsage | null {

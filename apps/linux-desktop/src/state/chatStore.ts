@@ -484,6 +484,10 @@ export function applyChatStreamEvent(messages: ChatMessage[], assistantId: strin
           text: event.text
         }
       ];
+    case 'citations':
+      return messages.map((message) =>
+        message.id === assistantId ? { ...message, memoryCitations: event.citations } : message
+      );
     case 'tool_call': {
       const approvalID = event.toolCall.approvalID?.trim() || undefined;
       if (messages.some((message) => message.id === event.toolCall.id && message.role === 'tool')) {

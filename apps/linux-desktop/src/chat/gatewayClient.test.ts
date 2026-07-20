@@ -51,6 +51,17 @@ describe('OpenAICompatibleSSEParser', () => {
     });
   });
 
+  it('decodes bounded provider citation identities for live source navigation', () => {
+    const parser = new OpenAICompatibleSSEParser();
+    const events = parser.push(
+      'data: {"choices":[{"delta":{"memory_citations":[{"id":"citation-1","label":"Earlier answer","message_id":"message-1","thread_id":"thread-1","state":"live"}]}}]}\n\n'
+    );
+    expect(events).toContainEqual({
+      type: 'citations',
+      citations: [{ id: 'citation-1', label: 'Earlier answer', messageId: 'message-1', threadID: 'thread-1', state: 'live' }]
+    });
+  });
+
   it('accumulates split tool-call argument frames', () => {
     const parser = new OpenAICompatibleSSEParser();
     const events = parser.push(
