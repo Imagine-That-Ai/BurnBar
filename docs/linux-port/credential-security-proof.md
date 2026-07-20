@@ -1,5 +1,4 @@
 # P-34 Credential Security Proof
-
 P-34 is the Linux-native counterpart to the macOS Keychain boundary. The
 product parity workflow captures one candidate-bound JSON proof for each
 supported installed environment:
@@ -39,4 +38,3 @@ rotated values, locked-keyring fallback, and any credential-like material in
 the proof. The `fixture` mode is evidence of the contract and safety behavior;
 promotion still requires live GNOME/KDE/headless installed-environment
 receipts for the declared matrix.
-

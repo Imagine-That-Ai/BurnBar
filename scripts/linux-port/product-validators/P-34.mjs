@@ -1,6 +1,5 @@
 import { result, validateRequirementContext } from './lib.mjs';
 import { P34_PROOF_ROLE, validateP34CredentialSecurityProof } from '../lib/p34-credential-security-proof.mjs';
-
 export async function validateProductRequirement(context) {
   const validated = validateRequirementContext(context, [
     'aggregate-product-proof-closure',
@@ -20,4 +19,3 @@ export async function validateProductRequirement(context) {
   });
   return result(context, validated.artifacts);
 }
-
