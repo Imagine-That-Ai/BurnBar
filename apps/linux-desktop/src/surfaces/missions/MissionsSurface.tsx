@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { fixtureProjects } from '../../daemonFixture.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useMissionsStore } from '../../state/missionsStore.js';
-import type { ProjectEntry } from '../../tauriBridge.js';
+import type { MissionListResult, ProjectEntry } from '../../tauriBridge.js';
 import { ApprovalCard } from './ApprovalCard.js';
 import { ControllerSummary } from './ControllerSummary.js';
 import { MissionRow } from './MissionRow.js';
@@ -52,8 +52,17 @@ export function MissionsSurface() {
   const [refreshing, setRefreshing] = useState(false);
   const [newMissionOpen, setNewMissionOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectEntry[] | null>(null);
+  const lastDataRef = useRef<MissionListResult | null>(null);
 
   useLaneLoad(load);
+
+  // Keep the last successful snapshot visible while a transient daemon refresh
+  // fails. The store intentionally exposes the error, but clears its live data;
+  // retaining this local snapshot avoids turning a recoverable outage into an
+  // empty mission lane and gives the operator an explicit retry path.
+  useEffect(() => {
+    if (data) lastDataRef.current = data;
+  }, [data]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -108,11 +117,13 @@ export function MissionsSurface() {
     }
   }, [load, refreshing]);
 
+  const displayedData = data ?? lastDataRef.current;
+  const showingStaleData = Boolean(!data && displayedData && error);
   const packagedOffline =
     !fixtureMode && error === 'Packaged shell required for live data.' && !loading;
 
-  const missions = data?.missions ?? [];
-  const pendingApprovals = data?.pendingApprovals ?? [];
+  const missions = displayedData?.missions ?? [];
+  const pendingApprovals = displayedData?.pendingApprovals ?? [];
 
   const runCancellation = useCallback(
     async (missionId: string, note?: string) => {
@@ -163,7 +174,7 @@ export function MissionsSurface() {
     />
   );
 
-  if (loading && !data) {
+  if (loading && !displayedData) {
     return (
       <p className="missions-loading muted" role="status" aria-busy="true">
         Loading missions…
@@ -181,7 +192,7 @@ export function MissionsSurface() {
     );
   }
 
-  if (error && !data) {
+  if (error && !displayedData) {
     return (
       <Banner tone="degraded" role="alert">
         <p>{error}</p>
@@ -192,7 +203,7 @@ export function MissionsSurface() {
     );
   }
 
-  if (!data) {
+  if (!displayedData) {
     return null;
   }
 
@@ -203,6 +214,20 @@ export function MissionsSurface() {
       <div className="visually-hidden" aria-live="assertive" aria-atomic="true">
         {liveMessage}
       </div>
+
+      {showingStaleData ? (
+        <Banner tone="degraded" role="alert">
+          <p>Showing the last mission snapshot. {error}</p>
+          <button
+            type="button"
+            onClick={() => void refreshRuntime()}
+            disabled={refreshing}
+            aria-busy={refreshing}
+          >
+            {refreshing ? 'Retrying…' : 'Retry'}
+          </button>
+        </Banner>
+      ) : null}
 
       <header className="missions-control-header">
         <div className="missions-control-header-copy">

@@ -88,6 +88,40 @@ describe('MissionsSurface', () => {
     expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy();
   });
 
+  it('keeps the last mission snapshot visible when a refresh fails', async () => {
+    const fx = fixtureMissionList();
+    let shouldFail = false;
+    const load = vi.spyOn(useMissionsStore.getState(), 'load').mockImplementation(async () => {
+      if (shouldFail) {
+        useMissionsStore.setState({ data: null, loading: false, error: 'Daemon temporarily unavailable' });
+      } else {
+        useMissionsStore.setState({ data: fx, loading: false, error: null });
+      }
+    });
+    useShellStore.setState({ fixtureMode: true });
+    useMissionsStore.setState({ data: fx, loading: false, error: null });
+    renderMissions();
+
+    shouldFail = true;
+    await act(async () => {
+      await useMissionsStore.getState().load();
+    });
+
+    expect(screen.getByText('Port dashboard to Linux')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('Showing the last mission snapshot');
+    expect(screen.getByRole('alert').textContent).toContain('Daemon temporarily unavailable');
+
+    shouldFail = false;
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Retry$/i }));
+      await Promise.resolve();
+    });
+
+    expect(load).toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('Port dashboard to Linux')).toBeTruthy();
+  });
+
   it('shows offline notice without bridge', async () => {
     useShellStore.setState({ fixtureMode: false, bridge: null });
     stubLoad(() =>
