@@ -55,6 +55,7 @@ const ISOLATED_TARGET_PATHS = Object.freeze([
   'apps/linux-desktop/src-tauri/icons/icon.png',
   'apps/linux-desktop/src-tauri/src',
   'apps/linux-desktop/src-tauri/tauri.conf.json',
+  'contracts/provider-ingestion-catalog.json',
   'docs/linux-port/cloud-security-runbook.md',
   'docs/linux-port/product-feature-proof-registry.json',
   'docs/linux-port/product-parity-evidence-policies.json',
