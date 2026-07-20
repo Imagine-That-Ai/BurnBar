@@ -45,6 +45,7 @@ const MODULE_DEPENDENCY_ROOT = path.resolve(
 );
 const ISOLATED_TARGET_PATHS = Object.freeze([
   '.github/workflows',
+  'apps/linux-desktop/src-tauri/src',
   'docs/linux-port/product-feature-proof-registry.json',
   'docs/linux-port/product-parity-evidence-policies.json',
   'docs/linux-port/product-parity-requirements.json',
@@ -53,6 +54,35 @@ const ISOLATED_TARGET_PATHS = Object.freeze([
   'scripts/linux-port'
 ]);
 const CANONICAL_WORKFLOW_OWNERSHIP = Object.freeze({
+  'scripts/linux-port/capture-p05-credential-custody-proof.mjs': {
+    workflow: '.github/workflows/linux-product-parity.yml',
+    job: 'validate',
+    step: 'Capture P-05 installed credential custody proof',
+    condition: "inputs.requirement == 'P-05'",
+    run: [
+      'set -euo pipefail',
+      'input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"',
+      'evidence_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p05.XXXXXX")"',
+      'trap \'rm -rf "$evidence_root"\' EXIT',
+      'node scripts/linux-port/run-p05-credential-custody-session.mjs \\',
+      '  --output-root "$evidence_root" \\',
+      '  --environment "$ENVIRONMENT_ID" \\',
+      '  --target-head "$TARGET_HEAD" \\',
+      '  --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+      '  --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \\',
+      '  --package-version "$PACKAGE_VERSION" \\',
+      '  --manifest-sha256 "$MANIFEST_SHA256"',
+      'install -m 600 "$evidence_root/p05-installed-custody-session.json" \\',
+      '  "$input_root/p05-installed-custody-session.json"',
+      'node scripts/linux-port/capture-p05-credential-custody-proof.mjs \\',
+      '  --input-root "$input_root" \\',
+      '  --session-report "$input_root/p05-installed-custody-session.json" \\',
+      '  --environment "$ENVIRONMENT_ID" \\',
+      '  --target-head "$TARGET_HEAD" \\',
+      '  --candidate-run-id "$CANDIDATE_RUN_ID" \\',
+      '  --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+    ].join('\n')
+  },
   'scripts/linux-port/finalize-product-proof-closure.mjs': {
     workflow: '.github/workflows/linux-release.yml',
     job: 'assemble-release',
@@ -456,7 +486,11 @@ function installSemanticMutation(checkout, entry) {
       TMPDIR: os.tmpdir()
     }
   });
-  if (probe.status !== 0) throw new Error(`cannot enumerate exports for semantic mutation of ${sourcePath}`);
+  if (probe.status !== 0) {
+    const detail = canonicalOwnershipOutput(`${probe.stderr || ''}\n${probe.stdout || ''}`, [checkout])
+      .replace(/\s+/gu, ' ').trim().slice(0, 768);
+    throw new Error(`cannot enumerate exports for semantic mutation of ${sourcePath}${detail ? `: ${detail}` : ''}`);
+  }
   let exports;
   try {
     exports = JSON.parse(probe.stdout);

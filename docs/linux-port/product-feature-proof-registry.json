@@ -13,6 +13,16 @@
       ]
     },
     {
+      "requirementId": "P-05",
+      "artifacts": [
+        {
+          "role": "feature.credential-custody-installed",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
       "requirementId": "P-31",
       "artifacts": [
         {
@@ -149,6 +159,29 @@
         "workflowPath": ".github/workflows/linux-product-parity.yml",
         "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
         "testName": "P-04 materializer selects two-architecture smoke evidence"
+      }
+    },
+    {
+      "requirementId": "P-05",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-05.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "mutationTestName": "P-05 independently rejects custody lifecycle, availability, and source mutations"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p05-credential-custody-proof.mjs",
+        "entrypoint": "captureP05CredentialCustodyProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "testName": "P-05 capture emits a candidate-bound installed native custody proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "testName": "P-05 materializer selects the installed credential custody proof"
       }
     },
     {

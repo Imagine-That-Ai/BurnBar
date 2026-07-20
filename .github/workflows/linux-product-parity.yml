@@ -274,6 +274,90 @@ jobs:
             --candidate-run-id "$CANDIDATE_RUN_ID" \
             --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
 
+      - name: Install P-05 signed candidate package
+        id: p05_install
+        if: inputs.requirement == 'P-05'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          case "$ENVIRONMENT_ID" in
+            ubuntu-*)
+              expected_arch="$(case "$ENVIRONMENT_ID" in *-aarch64) echo arm64 ;; *) echo amd64 ;; esac)"
+              package=""
+              while IFS= read -r candidate; do
+                test "$(dpkg-deb -f "$candidate" Package)" = open-burn-bar || continue
+                test "$(dpkg-deb -f "$candidate" Architecture)" = "$expected_arch" || continue
+                package="$candidate"; break
+              done < <(find "$input_root" -type f -name '*.deb' -print | sort)
+              test -n "$package"
+              version="$(dpkg-deb -f "$package" Version)"
+              sudo apt-get install -y --reinstall "$package"
+              ;;
+            fedora-*)
+              expected_arch="$(case "$ENVIRONMENT_ID" in *-aarch64) echo aarch64 ;; *) echo x86_64 ;; esac)"
+              package=""
+              while IFS= read -r candidate; do
+                test "$(rpm -qp --qf '%{NAME}' "$candidate")" = open-burn-bar || continue
+                test "$(rpm -qp --qf '%{ARCH}' "$candidate")" = "$expected_arch" || continue
+                package="$candidate"; break
+              done < <(find "$input_root" -type f -name '*.rpm' -print | sort)
+              test -n "$package"
+              version="$(rpm -qp --qf '%{VERSION}' "$package")"
+              sudo dnf install -y "$package"
+              ;;
+            arch-*)
+              package="$(find "$input_root" -type f -name '*.pkg.tar.zst' -print | sort | head -1)"
+              test -n "$package"
+              package_info="$(bsdtar -xOf "$package" .PKGINFO)"
+              test "$(awk -F ' = ' '$1 == "pkgname" { print $2 }' <<<"$package_info")" = open-burn-bar
+              test "$(awk -F ' = ' '$1 == "arch" { print $2 }' <<<"$package_info")" = x86_64
+              version="$(awk -F ' = ' '$1 == "pkgver" { print $2 }' <<<"$package_info")"
+              sudo pacman -U --noconfirm "$package"
+              ;;
+            *) echo "unsupported P-05 environment: $ENVIRONMENT_ID" >&2; exit 1 ;;
+          esac
+          printf 'package_version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          sha256sum /usr/share/openburnbar/attestation/installed-manifest.json \
+            | awk '{print "manifest_sha256=" $1}' >> "$GITHUB_OUTPUT"
+
+      - name: Capture P-05 installed credential custody proof
+        if: inputs.requirement == 'P-05'
+        shell: bash
+        env:
+          REQUIREMENT_ID: ${{ inputs.requirement }}
+          ENVIRONMENT_ID: ${{ inputs.environment }}
+          CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}
+          TARGET_HEAD: ${{ github.sha }}
+          PACKAGE_VERSION: ${{ steps.p05_install.outputs.package_version }}
+          MANIFEST_SHA256: ${{ steps.p05_install.outputs.manifest_sha256 }}
+        run: |
+          set -euo pipefail
+          input_root="docs/linux-port/evidence/product-parity-inputs/${REQUIREMENT_ID}/${ENVIRONMENT_ID}"
+          evidence_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p05.XXXXXX")"
+          trap 'rm -rf "$evidence_root"' EXIT
+          node scripts/linux-port/run-p05-credential-custody-session.mjs \
+            --output-root "$evidence_root" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST" \
+            --package-version "$PACKAGE_VERSION" \
+            --manifest-sha256 "$MANIFEST_SHA256"
+          install -m 600 "$evidence_root/p05-installed-custody-session.json" \
+            "$input_root/p05-installed-custody-session.json"
+          node scripts/linux-port/capture-p05-credential-custody-proof.mjs \
+            --input-root "$input_root" \
+            --session-report "$input_root/p05-installed-custody-session.json" \
+            --environment "$ENVIRONMENT_ID" \
+            --target-head "$TARGET_HEAD" \
+            --candidate-run-id "$CANDIDATE_RUN_ID" \
+            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"
+
       - name: Capture P-34 credential security proof
         if: inputs.requirement == 'P-34'
         shell: bash

@@ -349,6 +349,9 @@ Primary files:
   manual GNOME/KDE certification. P-31 additionally requires exact 200 percent
   reflow, forced-colors/high-contrast/no-color, reduced-motion, and keyboard plus
   Linux screen-reader evidence on every support-matrix row.
+- [`credential-custody-proof.md`](credential-custody-proof.md) - P-05 installed
+  Secret Service, KWallet, and encrypted systemd credential lifecycle capture,
+  candidate binding, redaction rules, and seven-environment QA.
 - [`performance-reliability-validation.md`](performance-reliability-validation.md) -
   repeated packaged-shell percentiles, matched production-linked macOS/Linux
   workloads, resource soak, supervisor behavior, and fail-closed QA contract.
@@ -393,12 +396,12 @@ requirement, environment, and selected package, and registered materialized
 feature subjects are byte-validated and required in the validator result.
 Requirement-specific validators exist for P-01 release
 integrity, P-02 parity-certification preflight, P-03 installed runtime, P-04
-architecture reach, P-31 accessibility, P-34 credential security, P-37 Linux
+architecture reach, P-05 installed credential custody, P-31 accessibility, P-34 credential security, P-37 Linux
 matrix coverage, P-38 release automation, and P-40 data and privacy. P-02 captures a
 candidate-bound inventory of all 40 requirements, policies, support
 environments, substantive validator modules, registered capture roles, and
 materializer ownership. It remains blocked while any lane is incomplete; today
-31 substantive lanes are absent. The other 31 modules remain intentionally absent until their
+30 substantive lanes are absent. The other 30 modules remain intentionally absent until their
 installed-product acceptance packets land. Source availability is not a parity
 claim: every row remains blocked until all seven signed live receipts exist.
 
