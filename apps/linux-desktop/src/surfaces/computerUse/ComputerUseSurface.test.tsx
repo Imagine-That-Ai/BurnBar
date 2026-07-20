@@ -5,6 +5,7 @@ import { useShellStore } from '../../state/shellStore.js';
 import { makeAvailableRuntimeCapabilityManifest } from '../../testing/bridgeStubs.js';
 import {
   COMPUTER_USE_SESSION_DEFAULTS,
+  type ComputerUseSessionAuthorityStatus,
   type ComputerUseSessionStartRequest
 } from '../../tauriBridge.js';
 import {
@@ -15,12 +16,104 @@ import {
   isAuthoritativeInvalidSessionError
 } from './ComputerUseSurface.js';
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
 afterEach(() => {
   cleanup();
   useShellStore.setState({ bridge: null, fixtureMode: true, runtimeCapabilities: null });
 });
 
 describe('ComputerUseSurface', () => {
+  it('ignores a stale approval poll after a newer response wins', async () => {
+    const firstPoll = deferred<unknown>();
+    const computerUseApprovalPending = vi.fn()
+      .mockImplementationOnce(() => firstPoll.promise)
+      .mockResolvedValueOnce({
+        requests: [{
+          approvalId: 'new-approval',
+          title: 'New approval'
+        }],
+        runRequirements: [{
+          runID: 'new-run',
+          callID: 'new-call',
+          generation: 2,
+          toolKind: 'browser_goto'
+        }]
+      })
+      .mockResolvedValue({ requests: [] });
+    useShellStore.setState({
+      fixtureMode: false,
+      runtimeCapabilities: makeAvailableRuntimeCapabilityManifest(),
+      bridge: {
+        computerUseSessionAuthorityStatus: vi.fn(async () => ({ state: 'available' as const })),
+        computerUseApprovalPending
+      } as never
+    });
+
+    render(<ComputerUseSurface />);
+    fireEvent.click(await screen.findByRole('button', { name: /Refresh approvals/i }));
+    await waitFor(() => expect(computerUseApprovalPending).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('New approval')).toBeTruthy();
+
+    await act(async () => {
+      firstPoll.resolve({
+        requests: [{ approvalId: 'old-approval', title: 'Old approval' }],
+        runRequirements: [{
+          runID: 'old-run',
+          callID: 'old-call',
+          generation: 1,
+          toolKind: 'browser_goto'
+        }]
+      });
+      await firstPoll.promise;
+    });
+
+    expect(screen.getByText('New approval')).toBeTruthy();
+    expect(screen.queryByText('Old approval')).toBeNull();
+    expect(screen.getByRole('option', { name: /new-run/i })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /old-run/i })).toBeNull();
+  });
+
+  it('ignores an authority response from a replaced bridge', async () => {
+    const firstProbe = deferred<ComputerUseSessionAuthorityStatus>();
+    const oldBridge = {
+      computerUseSessionAuthorityStatus: vi.fn(() => firstProbe.promise),
+      computerUseApprovalPending: vi.fn(async () => ({ requests: [] }))
+    };
+    const newBridge = {
+      computerUseSessionAuthorityStatus: vi.fn(async () => ({
+        state: 'authorized' as const,
+        sessionId: 'new-session'
+      })),
+      computerUseApprovalPending: vi.fn(async () => ({ requests: [] }))
+    };
+    useShellStore.setState({
+      fixtureMode: false,
+      runtimeCapabilities: makeAvailableRuntimeCapabilityManifest(),
+      bridge: oldBridge as never
+    });
+
+    render(<ComputerUseSurface />);
+    act(() => useShellStore.setState({ bridge: newBridge as never }));
+    expect(await screen.findByText(/Computer Use authorization complete/i)).toBeTruthy();
+    expect(screen.getByText(/Session · new-sess/i)).toBeTruthy();
+
+    await act(async () => {
+      firstProbe.resolve({ state: 'waiting_phone' });
+      await firstProbe.promise;
+    });
+
+    expect(screen.getByText(/Computer Use authorization complete/i)).toBeTruthy();
+    expect(screen.getByText(/Session · new-sess/i)).toBeTruthy();
+    expect(screen.queryByText(/Waiting for approval on your paired phone/i)).toBeNull();
+  });
+
   it('builds an exact session start payload from the selected run requirement', () => {
     expect(buildComputerUseSessionStartParams(' run-1 ', 'step', [
       { runID: 'run-other', callID: 'call-other', generation: 99 },

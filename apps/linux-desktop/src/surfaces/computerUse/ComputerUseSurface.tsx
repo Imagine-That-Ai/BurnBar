@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useShellStore } from '../../state/shellStore.js';
 import type {
   ComputerUseBrowserActionArguments,
@@ -214,6 +214,12 @@ export function ComputerUseSurface() {
   const [capabilityProbeError, setCapabilityProbeError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
+  // Polling can overlap when the daemon is slow, and bridge replacement can
+  // leave an older request in flight. Fence each stream independently so a
+  // late response cannot resurrect a retired session or replace newer
+  // approval/run state.
+  const authorityRequestGeneration = useRef(0);
+  const pendingRequestGeneration = useRef(0);
 
   const capabilityManifest = runtimeCapabilities ?? probedCapabilities;
   const browserCapability = capabilityManifest
@@ -266,6 +272,8 @@ export function ComputerUseSurface() {
   }, [bridge, fixtureMode, runtimeCapabilities]);
 
   const retireSession = useCallback((expectedSessionId: string) => {
+    authorityRequestGeneration.current += 1;
+    pendingRequestGeneration.current += 1;
     setSessionId((current) => clearSessionIfCurrent(current, expectedSessionId));
     setInvokeResult(null);
     setPending((current) => current.filter(
@@ -281,6 +289,9 @@ export function ComputerUseSurface() {
         setError('Authorization completed without an active Computer Use session.');
         return;
       }
+      // A new authoritative session invalidates any pending response that
+      // belonged to the previous session.
+      pendingRequestGeneration.current += 1;
       setSessionId(next.sessionId);
       setStatus('idle');
       setError(null);
@@ -306,24 +317,32 @@ export function ComputerUseSurface() {
   }, [pushLog]);
 
   const refreshAuthorityStatus = useCallback(async () => {
+    const requestGeneration = ++authorityRequestGeneration.current;
     if (fixtureMode) {
+      if (requestGeneration !== authorityRequestGeneration.current) return;
       setAuthorityStatus({ state: 'authorized' });
       return;
     }
     if (!bridge?.computerUseSessionAuthorityStatus) {
+      if (requestGeneration !== authorityRequestGeneration.current) return;
       setAuthorityStatus({ state: 'unavailable' });
       return;
     }
     try {
-      applyAuthorityStatus(await bridge.computerUseSessionAuthorityStatus());
+      const result = await bridge.computerUseSessionAuthorityStatus();
+      if (requestGeneration !== authorityRequestGeneration.current) return;
+      applyAuthorityStatus(result);
     } catch (err) {
+      if (requestGeneration !== authorityRequestGeneration.current) return;
       setAuthorityStatus({ state: 'unavailable', detail: errorMessage(err) });
       setStatus('offline');
     }
   }, [applyAuthorityStatus, bridge, fixtureMode]);
 
   const refreshPending = useCallback(async () => {
+    const requestGeneration = ++pendingRequestGeneration.current;
     if (fixtureMode) {
+      if (requestGeneration !== pendingRequestGeneration.current) return;
       setPending([{
         approvalId: 'fixture-approval',
         title: 'Open the account settings page',
@@ -340,6 +359,7 @@ export function ComputerUseSurface() {
       return;
     }
     if (!bridge?.computerUseApprovalPending) {
+      if (requestGeneration !== pendingRequestGeneration.current) return;
       setStatus('offline');
       return;
     }
@@ -347,6 +367,7 @@ export function ComputerUseSurface() {
       const result = await bridge.computerUseApprovalPending(
         sessionId ? { sessionId } : undefined
       );
+      if (requestGeneration !== pendingRequestGeneration.current) return;
       if (sessionId && (result as { sessionActive?: unknown })?.sessionActive === false) {
         retireSession(sessionId);
         return;
@@ -363,6 +384,7 @@ export function ComputerUseSurface() {
         : [];
       setRunRequirements(requirements);
     } catch (err) {
+      if (requestGeneration !== pendingRequestGeneration.current) return;
       if (sessionId && isAuthoritativeInvalidSessionError(err)) {
         retireSession(sessionId);
       }
