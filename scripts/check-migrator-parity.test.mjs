@@ -331,6 +331,7 @@ function writeTree(root, overrides = {}) {
     [join(SURFACES.agentLens.dir, SURFACES.agentLens.assembly)]: SWIFT_ASSEMBLY,
     [join(SURFACES.agentLens.dir, "Migrations.swift")]: SWIFT_MIGRATIONS,
     [SURFACES.windows.provisioning]: WINDOWS_PROVISIONING,
+    [SURFACES.windows.schema]: WINDOWS_PROVISIONING,
     [SURFACES.windows.metadata]: WINDOWS_METADATA,
     [SURFACES.linux.dataLinuxTests]: LINUX_TESTS,
     [SURFACES.linux.manifest]: LINUX_MANIFEST,
@@ -419,7 +420,7 @@ test("synthetic tree: Windows FTS config drift (external content) is caught", ()
   const root = makeRoot();
   try {
     writeTree(root, {
-      [SURFACES.windows.provisioning]: WINDOWS_PROVISIONING.replace(
+      [SURFACES.windows.schema]: WINDOWS_PROVISIONING.replace(
         "USING fts5(inferredTaskTitle, fullText, tokenize='porter unicode61')",
         "USING fts5(fullText, inferredTaskTitle, tokenize='porter unicode61', content='conversations', content_rowid='rowid')",
       ),

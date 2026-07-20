@@ -1,5 +1,7 @@
 name: Domain Core trusted deletion guard
 
+# This required context is intentionally unfiltered: every PR must emit it, and the
+# trusted evaluator decides whether the candidate touches a governed deletion surface.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]

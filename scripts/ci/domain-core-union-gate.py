@@ -9,6 +9,7 @@ import json
 import os
 import pathlib
 import re
+import stat
 import sys
 import tomllib
 import zipfile
@@ -23,6 +24,7 @@ REQUIRED_DOMAINS = {
     "hermes",
     "pricing",
     "encryptedSearch",
+    "pensieveVectors",
 }
 FINGERPRINT_NAME = "openburnbar-domain-core-source.sha256"
 ANDROID_TOOLCHAIN_PROVENANCE_NAME = "openburnbar-domain-core-android-toolchain.env"
@@ -35,12 +37,54 @@ class GateError(RuntimeError):
 def load_manifest(root: pathlib.Path) -> tuple[pathlib.Path, dict[str, object]]:
     path = root / "crates/openburnbar-domain-core/union-abi-manifest.json"
     try:
+        if path.is_symlink() or not stat.S_ISREG(path.lstat().st_mode):
+            raise GateError("union ABI manifest must be a regular file inside the candidate checkout")
         manifest = json.loads(path.read_text(encoding="utf-8"))
+    except GateError:
+        raise
     except (OSError, json.JSONDecodeError) as error:
         raise GateError(f"cannot load {path}: {error}") from error
     if manifest.get("schemaVersion") != 1:
         raise GateError("union ABI manifest schemaVersion must be exactly 1")
     return path, manifest
+
+
+def verify_build_identity(root: pathlib.Path, manifest: dict[str, object]) -> None:
+    core_version = manifest.get("coreVersion")
+    abi_version = manifest.get("abiVersion")
+    if (
+        not isinstance(core_version, str)
+        or re.fullmatch(
+            r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*)|(?:\d*[A-Za-z-][0-9A-Za-z-]*))(?:\.(?:(?:0|[1-9]\d*)|(?:\d*[A-Za-z-][0-9A-Za-z-]*)))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
+            core_version,
+        )
+        is None
+    ):
+        raise GateError("coreVersion must be a canonical SemVer string")
+    if not isinstance(abi_version, int) or isinstance(abi_version, bool) or not 1 <= abi_version <= 0xFFFFFFFF:
+        raise GateError("abiVersion must be an unsigned 32-bit integer greater than zero")
+
+    cargo_path = root / "crates/openburnbar-domain-core/Cargo.toml"
+    try:
+        with cargo_path.open("rb") as handle:
+            cargo = tomllib.load(handle)
+        cargo_version = cargo["workspace"]["package"]["version"]
+    except (OSError, KeyError, TypeError, tomllib.TOMLDecodeError) as error:
+        raise GateError(f"cannot read canonical domain-core Cargo version: {error}") from error
+    if cargo_version != core_version:
+        raise GateError(f"coreVersion drifted: manifest={core_version} cargo={cargo_version}")
+
+    rust_path = root / "crates/openburnbar-domain-core/domain-core/src/lib.rs"
+    try:
+        rust_source = rust_path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise GateError(f"cannot read canonical domain-core ABI version: {error}") from error
+    match = re.search(r"^pub const DOMAIN_CORE_ABI_VERSION: u32 = (\d+);$", rust_source, re.MULTILINE)
+    if match is None:
+        raise GateError("cannot locate canonical DOMAIN_CORE_ABI_VERSION constant")
+    rust_abi_version = int(match.group(1))
+    if rust_abi_version != abi_version:
+        raise GateError(f"abiVersion drifted: manifest={abi_version} rust={rust_abi_version}")
 
 
 def source_files(crate_root: pathlib.Path, manifest: dict[str, object]) -> list[pathlib.Path]:
@@ -52,13 +96,58 @@ def source_files(crate_root: pathlib.Path, manifest: dict[str, object]) -> list[
     for raw_path in roots:
         if not isinstance(raw_path, str) or not raw_path:
             raise GateError("sourceRoots entries must be non-empty strings")
-        candidate = crate_root / raw_path
-        if not candidate.exists():
-            raise GateError(f"source root is missing: {raw_path}")
-        if candidate.is_file():
+        if "\\" in raw_path:
+            raise GateError(f"source root must use normalized POSIX separators: {raw_path}")
+        relative = pathlib.PurePosixPath(raw_path)
+        if (
+            relative.is_absolute()
+            or raw_path != relative.as_posix()
+            or any(part in ("", ".", "..") for part in relative.parts)
+        ):
+            raise GateError(f"source root must be a normalized relative path: {raw_path}")
+        candidate = crate_root.joinpath(*relative.parts)
+        try:
+            for parent in [crate_root, *candidate.parents][::-1]:
+                if parent == crate_root.parent:
+                    continue
+                if parent == crate_root or crate_root in parent.parents:
+                    if parent.is_symlink():
+                        raise GateError(f"source root traverses a symlink: {raw_path}")
+            mode = candidate.lstat().st_mode
+        except FileNotFoundError:
+            raise GateError(f"source root is missing: {raw_path}") from None
+        if stat.S_ISLNK(mode):
+            raise GateError(f"source root cannot be a symlink: {raw_path}")
+        if stat.S_ISREG(mode):
             files.add(candidate)
+        elif stat.S_ISDIR(mode):
+            for directory, names, filenames in os.walk(candidate, followlinks=False):
+                directory_path = pathlib.Path(directory)
+                retained_names = []
+                for name in names:
+                    child = directory_path / name
+                    child_mode = child.lstat().st_mode
+                    if stat.S_ISLNK(child_mode):
+                        raise GateError(
+                            f"sourceRoots cannot contain symlink directories: {child.relative_to(crate_root)}"
+                        )
+                    if not stat.S_ISDIR(child_mode):
+                        raise GateError(
+                            f"sourceRoots contain a special directory entry: {child.relative_to(crate_root)}"
+                        )
+                    if name != "target":
+                        retained_names.append(name)
+                names[:] = retained_names
+                for name in filenames:
+                    child = directory_path / name
+                    child_mode = child.lstat().st_mode
+                    if stat.S_ISLNK(child_mode):
+                        raise GateError(f"sourceRoots cannot contain symlink files: {child.relative_to(crate_root)}")
+                    if not stat.S_ISREG(child_mode):
+                        raise GateError(f"sourceRoots contain a special file: {child.relative_to(crate_root)}")
+                    files.add(child)
         else:
-            files.update(path for path in candidate.rglob("*") if path.is_file() and "target" not in path.parts)
+            raise GateError(f"source root must be a regular file or directory: {raw_path}")
     if not files:
         raise GateError("sourceRoots resolved to no files")
     return sorted(files, key=lambda path: path.relative_to(crate_root).as_posix())
@@ -283,6 +372,7 @@ def check_provenance(root: pathlib.Path, fingerprint: str, surfaces: list[str]) 
         "swift": root / "crates/openburnbar-domain-core/artifact-provenance/swift.sha256",
         "kotlin": root / "crates/openburnbar-domain-core/artifact-provenance/kotlin.sha256",
         "csharp": root / "crates/openburnbar-domain-core/artifact-provenance/csharp.sha256",
+        "python": root / "crates/openburnbar-domain-core/artifact-provenance/python.sha256",
         "browser-wasm": root / "apps/console/vendor/openburnbar-domain-core-wasm" / FINGERPRINT_NAME,
         "node-wasm": root / "functions/vendor/openburnbar/domain-core-wasm" / FINGERPRINT_NAME,
         "xcframework": root / "Vendor/OpenBurnBarDomainCore.xcframework" / FINGERPRINT_NAME,
@@ -324,6 +414,7 @@ def main() -> int:
     parser.add_argument("--source-fingerprint", action="store_true")
     parser.add_argument("--update-source-fingerprint", action="store_true")
     parser.add_argument("--check-abi", action="store_true")
+    parser.add_argument("--check-build-identity", action="store_true")
     parser.add_argument("--check-provenance", nargs="+", default=[])
     args = parser.parse_args()
 
@@ -331,21 +422,23 @@ def main() -> int:
         root = args.root.resolve()
         manifest_path, manifest = load_manifest(root)
         if args.update_source_fingerprint:
-            if args.source_fingerprint or args.check_abi or args.check_provenance:
+            if args.source_fingerprint or args.check_abi or args.check_build_identity or args.check_provenance:
                 raise GateError("--update-source-fingerprint cannot be combined with checks")
             fingerprint = update_source_fingerprint(root, manifest_path, manifest)
             print(fingerprint)
             return 0
         fingerprint = verified_source_fingerprint(root, manifest)
+        if args.check_abi or args.check_build_identity:
+            verify_build_identity(root, manifest)
         if args.check_abi:
             check_abi(root, manifest)
         if args.check_provenance:
             check_provenance(root, fingerprint, args.check_provenance)
         if args.source_fingerprint:
             print(fingerprint)
-        if not (args.source_fingerprint or args.check_abi or args.check_provenance):
+        if not (args.source_fingerprint or args.check_abi or args.check_build_identity or args.check_provenance):
             raise GateError(
-                "select --source-fingerprint, --update-source-fingerprint, --check-abi, or --check-provenance"
+                "select --source-fingerprint, --update-source-fingerprint, --check-abi, --check-build-identity, or --check-provenance"
             )
     except GateError as error:
         print(f"domain-core-union-gate: ERROR: {error}", file=sys.stderr)

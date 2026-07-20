@@ -1,33 +1,48 @@
 package com.openburnbar.data
 
+import android.content.Context
+import com.openburnbar.data.cloud.CloudVaultDocumentRewrapDomainCore
+import com.openburnbar.data.cloud.CloudVaultDomainCore
+import com.openburnbar.data.cloud.CloudVaultDomainCoreMode
+import com.openburnbar.data.cloud.CloudVaultSearchDomainCore
 import com.openburnbar.data.cloud.CloudVaultShadowComparison
+import com.openburnbar.data.hermes.relay.HermesDomainCoreAdapter
 import com.openburnbar.data.hermes.relay.HermesShadowComparison
 import io.mockk.every
+import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
+import java.math.BigDecimal
 import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermission
+import java.time.Duration
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.Job
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DomainCoreShadowEvidenceTest {
     @Test
-    fun `v2 sample map is exact and preserves explicit null mismatch category`() {
+    fun `v3 sample map is exact and preserves explicit null mismatch category`() {
         val sample = sample().toMap()
 
         assertEquals(
             setOf(
                 "schemaVersion", "sampleId", "domain", "slice", "consumer", "channel",
-                "operation", "coreVersion", "observedAt", "outcome", "mismatchCategory",
+                "operation", "candidateCommit", "expectedCoreVersion", "expectedCoreAbiVersion",
+                "expectedCoreSourceSha256", "loadedCoreVersion", "loadedCoreAbiVersion",
+                "loadedCoreSourceSha256", "observedAt", "outcome", "mismatchCategory",
                 "legacyMicros", "rustMicros",
             ),
             sample.keys,
         )
-        assertEquals(2, sample["schemaVersion"])
+        assertEquals(3, sample["schemaVersion"])
+        assertEquals(candidate.candidateCommit, sample["candidateCommit"])
         assertEquals("android", sample["consumer"])
         assertTrue(sample.containsKey("mismatchCategory"))
         assertEquals(null, sample["mismatchCategory"])
@@ -40,13 +55,13 @@ class DomainCoreShadowEvidenceTest {
             val spool = AndroidDomainCoreShadowSpool(directory, maxSamplesPerFile = 1)
             spool.append(sample())
 
-            val first = requireNotNull(spool.nextBatch(sealActive = true, expectedChannel = "internal"))
-            val retry = requireNotNull(spool.nextBatch(sealActive = true, expectedChannel = "internal"))
+            val first = requireNotNull(spool.nextBatch(sealActive = true, expectedChannel = "internal", expectedCandidate = candidate))
+            val retry = requireNotNull(spool.nextBatch(sealActive = true, expectedChannel = "internal", expectedCandidate = candidate))
             assertEquals(first.file.name, retry.file.name)
             assertEquals(first.samples, retry.samples)
 
             spool.acknowledge(retry)
-            assertEquals(null, spool.nextBatch(sealActive = true, expectedChannel = "internal"))
+            assertEquals(null, spool.nextBatch(sealActive = true, expectedChannel = "internal", expectedCandidate = candidate))
         } finally {
             directory.deleteRecursively()
         }
@@ -60,11 +75,11 @@ class DomainCoreShadowEvidenceTest {
             spool.append(sample(channel = "internal"))
             spool.append(sample(channel = "beta", sampleId = "00000000-0000-4000-8000-000000000002"))
 
-            val batch = requireNotNull(spool.nextBatch(sealActive = true, expectedChannel = "beta"))
+            val batch = requireNotNull(spool.nextBatch(sealActive = true, expectedChannel = "beta", expectedCandidate = candidate))
             assertEquals(1, batch.samples.size)
             assertEquals("beta", batch.samples.single()["channel"])
             spool.acknowledge(batch)
-            assertEquals(null, spool.nextBatch(sealActive = true, expectedChannel = "beta"))
+            assertEquals(null, spool.nextBatch(sealActive = true, expectedChannel = "beta", expectedCandidate = candidate))
         } finally {
             directory.deleteRecursively()
         }
@@ -77,10 +92,10 @@ class DomainCoreShadowEvidenceTest {
             val spool = AndroidDomainCoreShadowSpool(directory)
             spool.append(sample(channel = "internal"))
 
-            spool.prepareForChannel("beta")
+            spool.prepareForCandidate("beta", candidate)
             spool.append(sample(channel = "beta", sampleId = "00000000-0000-4000-8000-000000000002"))
 
-            val batch = requireNotNull(spool.nextBatch(sealActive = true, expectedChannel = "beta"))
+            val batch = requireNotNull(spool.nextBatch(sealActive = true, expectedChannel = "beta", expectedCandidate = candidate))
             assertEquals(listOf("beta"), batch.samples.map { it["channel"] })
         } finally {
             directory.deleteRecursively()
@@ -97,7 +112,7 @@ class DomainCoreShadowEvidenceTest {
 
             spool.discardAll()
 
-            assertEquals(null, spool.nextBatch(sealActive = true, expectedChannel = "internal"))
+            assertEquals(null, spool.nextBatch(sealActive = true, expectedChannel = "internal", expectedCandidate = candidate))
             assertTrue(directory.listFiles().orEmpty().isEmpty())
         } finally {
             directory.deleteRecursively()
@@ -142,7 +157,7 @@ class DomainCoreShadowEvidenceTest {
 
             val retained = buildList {
                 while (true) {
-                    val batch = spool.nextBatch(sealActive = true, expectedChannel = "internal") ?: break
+                    val batch = spool.nextBatch(sealActive = true, expectedChannel = "internal", expectedCandidate = candidate) ?: break
                     add(batch.samples.single()["sampleId"])
                     spool.acknowledge(batch)
                 }
@@ -156,36 +171,97 @@ class DomainCoreShadowEvidenceTest {
     }
 
     @Test
-    fun `batch reader quarantines malformed empty and mixed-channel files`() {
+    fun `batch reader discards malformed partial and wrong-channel files`() {
         val directory = Files.createTempDirectory("domain-core-shadow-quarantine").toFile()
         try {
             directory.resolve(readyName(1, "malformed")).writeText("{not-json}\n")
             directory.resolve(readyName(2, "empty")).writeText("\n")
             directory.resolve(readyName(3, "mixed")).writeText(
                 listOf(
-                    JSONObject(sample(channel = "internal").toMap()).toString(),
-                    JSONObject(
-                        sample(
-                            channel = "beta",
-                            sampleId = "00000000-0000-4000-8000-000000000002",
-                        ).toMap(),
-                    ).toString(),
+                    sample(channel = "beta").toMap().toExactJSONObject().toString(),
+                    sample(
+                        channel = "beta",
+                        sampleId = "00000000-0000-4000-8000-000000000002",
+                    ).toMap().toExactJSONObject().toString(),
                 ).joinToString(separator = "\n", postfix = "\n"),
             )
-            directory.resolve(readyName(4, "valid")).writeText(
-                JSONObject(
-                    sample(sampleId = "00000000-0000-4000-8000-000000000004").toMap() +
-                        ("metadata" to mapOf("authority" to "signed")),
-                ).toString() + "\n",
+            directory.resolve(readyName(4, "partial")).writeText(
+                (sample().toMap() + ("loadedCoreAbiVersion" to null)).toExactJSONObject().toString() + "\n",
+            )
+            directory.resolve(readyName(5, "valid")).writeText(
+                sample(sampleId = "00000000-0000-4000-8000-000000000005").toMap().toExactJSONObject().toString() + "\n",
             )
 
             val spool = AndroidDomainCoreShadowSpool(directory)
-            val batch = requireNotNull(spool.nextBatch(sealActive = false, expectedChannel = "internal"))
+            val batch = requireNotNull(spool.nextBatch(sealActive = false, expectedChannel = "internal", expectedCandidate = candidate))
 
-            assertEquals("00000000-0000-4000-8000-000000000004", batch.samples.single()["sampleId"])
-            assertEquals(mapOf("authority" to "signed"), batch.samples.single()["metadata"])
+            assertEquals("00000000-0000-4000-8000-000000000005", batch.samples.single()["sampleId"])
             assertEquals(listOf(batch.file.name), directory.listFiles().orEmpty().map { it.name })
         } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `expired and future head files cannot block fresh later batch`() {
+        val directory = Files.createTempDirectory("domain-core-shadow-expiry").toFile()
+        val now = Instant.now().truncatedTo(ChronoUnit.MILLIS)
+        try {
+            val spool = AndroidDomainCoreShadowSpool(directory)
+            spool.append(
+                sample(
+                    sampleId = "00000000-0000-4000-8000-000000000001",
+                    observedAt = now.minus(Duration.ofDays(31)).minusMillis(1).toString(),
+                ),
+            )
+            spool.append(
+                sample(
+                    sampleId = "00000000-0000-4000-8000-000000000002",
+                    observedAt = now.plus(Duration.ofMinutes(5)).plusMillis(1).toString(),
+                ),
+            )
+            spool.append(
+                sample(
+                    sampleId = "00000000-0000-4000-8000-000000000003",
+                    observedAt = now.toString(),
+                ),
+            )
+
+            val batch = requireNotNull(spool.nextBatch(true, "internal", candidate, now))
+
+            assertEquals("00000000-0000-4000-8000-000000000003", batch.samples.single()["sampleId"])
+            assertEquals(listOf(batch.file.name), directory.listFiles().orEmpty().map { it.name })
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `transient ready file read failure is retained for retry`() {
+        val directory = Files.createTempDirectory("domain-core-shadow-read-retry").toFile()
+        val ready = directory.resolve(readyName(1, "unreadable"))
+        try {
+            ready.writeText(sample().toMap().toExactJSONObject().toString() + "\n")
+            Files.setPosixFilePermissions(ready.toPath(), emptySet<PosixFilePermission>())
+            val spool = AndroidDomainCoreShadowSpool(directory)
+
+            assertThrows(Exception::class.java) {
+                spool.nextBatch(false, "internal", candidate)
+            }
+            assertTrue(ready.exists())
+
+            Files.setPosixFilePermissions(
+                ready.toPath(),
+                setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+            )
+            assertEquals(sample().sampleId, requireNotNull(spool.nextBatch(false, "internal", candidate)).samples.single()["sampleId"])
+        } finally {
+            runCatching {
+                Files.setPosixFilePermissions(
+                    ready.toPath(),
+                    setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+                )
+            }
             directory.deleteRecursively()
         }
     }
@@ -217,21 +293,42 @@ class DomainCoreShadowEvidenceTest {
     }
 
     @Test
+    fun `acknowledgement rejects negative fractional overbound and wrong sum counts`() {
+        assertTrue(
+            AndroidDomainCoreShadowEvidence.validAcknowledgement(
+                mapOf("accepted" to 1L, "duplicates" to 0L),
+                batchSize = 1,
+            ),
+        )
+        listOf(
+            mapOf("accepted" to -1L, "duplicates" to 2L),
+            mapOf("accepted" to 0.5, "duplicates" to 0.5),
+            mapOf("accepted" to BigDecimal("0.999999999999999999999"), "duplicates" to 0L),
+            mapOf("accepted" to 2L, "duplicates" to 0L),
+            mapOf("accepted" to 0L, "duplicates" to 0L),
+        ).forEach { response ->
+            assertFalse(AndroidDomainCoreShadowEvidence.validAcknowledgement(response, batchSize = 1))
+        }
+    }
+
+    @Test
     fun `installed collector persists only promotion-safe cloudvault and hermes comparisons`() {
         val directory = Files.createTempDirectory("domain-core-shadow-collector").toFile()
         val activeFlush = Job()
         mockkObject(DomainCoreBuildProfile)
-        every { DomainCoreBuildProfile.evidenceChannel() } returns DomainCoreEvidenceChannel.INTERNAL
+        every { DomainCoreBuildProfile.runtimeProfile() } returns signedProfile
         try {
             val spool = AndroidDomainCoreShadowSpool(directory)
             setEvidenceField("spool", spool)
             setEvidenceField("installedChannel", DomainCoreEvidenceChannel.INTERNAL)
+            setEvidenceField("installedCandidate", candidate)
             setEvidenceField("flushJob", activeFlush)
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = { loadedIdentity }
 
             invokeRecord(
                 CloudVaultShadowComparison(
                     slice = "aes",
-                    operation = "aes_open",
+                    operation = "aes_open_combined",
                     coreVersion = "1.2.3-beta.1",
                     outcome = "match",
                     mismatchCategory = null,
@@ -254,7 +351,6 @@ class DomainCoreShadowEvidenceTest {
             listOf(
                 comparison(slice = "unknown"),
                 comparison(operation = "INVALID OP"),
-                comparison(coreVersion = "not-semver"),
                 comparison(mismatchCategory = "native_error"),
                 comparison(outcome = "mismatch"),
                 comparison(outcome = "mismatch", mismatchCategory = "secret_detail"),
@@ -263,7 +359,7 @@ class DomainCoreShadowEvidenceTest {
                 comparison(rustMicros = 600_000_001),
             ).forEach(::invokeRecord)
 
-            val batch = requireNotNull(spool.nextBatch(sealActive = true, expectedChannel = "internal"))
+            val batch = requireNotNull(spool.nextBatch(sealActive = true, expectedChannel = "internal", expectedCandidate = candidate))
             assertEquals(2, batch.samples.size)
             assertEquals(listOf("cloudvault", "hermes"), batch.samples.map { it["domain"] })
             assertEquals(listOf("match", "mismatch"), batch.samples.map { it["outcome"] })
@@ -273,19 +369,166 @@ class DomainCoreShadowEvidenceTest {
             activeFlush.cancel()
             setEvidenceField("spool", null)
             setEvidenceField("installedChannel", null)
+            setEvidenceField("installedCandidate", null)
             setEvidenceField("flushJob", null)
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = null
             unmockkObject(DomainCoreBuildProfile)
             directory.deleteRecursively()
         }
     }
 
-    private fun sample(channel: String = "internal", sampleId: String = "00000000-0000-4000-8000-000000000001") = AndroidDomainCoreShadowSampleV2(
+    @Test
+    fun `collector relabels loaded mismatch and normalizes missing identity to native unavailable`() {
+        val directory = Files.createTempDirectory("domain-core-shadow-identity").toFile()
+        val activeFlush = Job()
+        mockkObject(DomainCoreBuildProfile)
+        every { DomainCoreBuildProfile.runtimeProfile() } returns signedProfile
+        try {
+            val spool = AndroidDomainCoreShadowSpool(directory)
+            setEvidenceField("spool", spool)
+            setEvidenceField("installedChannel", DomainCoreEvidenceChannel.INTERNAL)
+            setEvidenceField("installedCandidate", candidate)
+            setEvidenceField("flushJob", activeFlush)
+
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = {
+                loadedIdentity.copy(coreVersion = "0.3.1")
+            }
+            invokeRecord(comparison())
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = { loadedIdentity }
+            invokeRecord(comparison(outcome = "mismatch", mismatchCategory = "native_unavailable"))
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = {
+                loadedIdentity.copy(abiVersion = 4)
+            }
+            invokeRecord(comparison(outcome = "mismatch", mismatchCategory = "native_unavailable"))
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = { null }
+            invokeRecord(comparison(outcome = "mismatch", mismatchCategory = "native_error"))
+
+            val batch = requireNotNull(
+                spool.nextBatch(true, DomainCoreEvidenceChannel.INTERNAL.wireValue, candidate),
+            )
+            assertEquals(
+                listOf(
+                    "loaded_identity_mismatch",
+                    "native_error",
+                    "loaded_identity_mismatch",
+                    "native_unavailable",
+                ),
+                batch.samples.map { it["mismatchCategory"] },
+            )
+            assertEquals("0.3.1", batch.samples[0]["loadedCoreVersion"])
+            assertEquals(3L, (batch.samples[1]["loadedCoreAbiVersion"] as? Number)?.toLong())
+            assertEquals(4L, (batch.samples[2]["loadedCoreAbiVersion"] as? Number)?.toLong())
+            assertEquals(null, batch.samples[3]["loadedCoreVersion"])
+            assertEquals(null, batch.samples[3]["loadedCoreAbiVersion"])
+            assertEquals(null, batch.samples[3]["loadedCoreSourceSha256"])
+        } finally {
+            activeFlush.cancel()
+            setEvidenceField("spool", null)
+            setEvidenceField("installedChannel", null)
+            setEvidenceField("installedCandidate", null)
+            setEvidenceField("flushJob", null)
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = null
+            unmockkObject(DomainCoreBuildProfile)
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `candidate scoped spool never reads a prior candidate directory`() {
+        val root = Files.createTempDirectory("domain-core-shadow-candidates").toFile()
+        val priorCandidate = candidate.copy(candidateCommit = "c".repeat(40))
+        try {
+            val priorSpool = AndroidDomainCoreShadowSpool(root.resolve("prior"), maxSamplesPerFile = 1)
+            priorSpool.append(sample(candidate = priorCandidate))
+            val activeSpool = AndroidDomainCoreShadowSpool(root.resolve("active"), maxSamplesPerFile = 1)
+            activeSpool.append(sample())
+
+            val batch = requireNotNull(activeSpool.nextBatch(true, "internal", candidate))
+            assertEquals(listOf(candidate.candidateCommit), batch.samples.map { it["candidateCommit"] })
+            assertTrue(priorSpool.nextBatch(true, "internal", priorCandidate) != null)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `startup deletes legacy queues and stale candidate namespaces without relabeling`() {
+        val root = Files.createTempDirectory("domain-core-shadow-startup").toFile()
+        try {
+            root.resolve("active.jsonl").writeText("{\"schemaVersion\":2}\n")
+            root.resolve("ready-0000000000000000001.jsonl").writeText("{\"schemaVersion\":1}\n")
+            root.resolve("v2-old-candidate").mkdirs()
+            root.resolve("v3-old-candidate").mkdirs()
+            val active = root.resolve(AndroidDomainCoreShadowEvidence.candidateNamespace(candidate))
+            active.mkdirs()
+            active.resolve("sentinel").writeText("keep")
+
+            val prepared = AndroidDomainCoreShadowEvidence.prepareCandidateDirectory(root, candidate)
+
+            assertEquals(active, prepared)
+            assertFalse(root.resolve("active.jsonl").exists())
+            assertFalse(root.resolve("ready-0000000000000000001.jsonl").exists())
+            assertFalse(root.resolve("v2-old-candidate").exists())
+            assertFalse(root.resolve("v3-old-candidate").exists())
+            assertTrue(active.resolve("sentinel").exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `install disables diagnostic evidence when spool setup fails`() {
+        val parent = Files.createTempDirectory("domain-core-shadow-install-failure").toFile()
+        val filesDir = parent.resolve("not-a-directory").apply { writeText("occupied") }
+        val context = mockk<Context>()
+        every { context.filesDir } returns filesDir
+        mockkObject(DomainCoreBuildProfile)
+        every { DomainCoreBuildProfile.runtimeProfile() } returns signedProfile
+        try {
+            setEvidenceField("installed", false)
+            setEvidenceField("spool", null)
+            setEvidenceField("installedChannel", null)
+            setEvidenceField("installedCandidate", null)
+
+            AndroidDomainCoreShadowEvidence.install(context, DomainCoreEvidenceChannel.INTERNAL)
+
+            assertEquals(false, evidenceField("installed"))
+            assertEquals(null, evidenceField("spool"))
+            assertEquals(null, evidenceField("installedChannel"))
+            assertEquals(null, evidenceField("installedCandidate"))
+            assertEquals(null, CloudVaultDomainCore.comparisonOverride)
+            assertEquals(null, CloudVaultDocumentRewrapDomainCore.comparisonOverride)
+            assertEquals(null, CloudVaultSearchDomainCore.comparisonOverride)
+            assertEquals(null, HermesDomainCoreAdapter.comparisonOverride)
+        } finally {
+            setEvidenceField("installed", false)
+            setEvidenceField("spool", null)
+            setEvidenceField("installedChannel", null)
+            setEvidenceField("installedCandidate", null)
+            unmockkObject(DomainCoreBuildProfile)
+            parent.deleteRecursively()
+        }
+    }
+
+    private fun sample(
+        channel: String = "internal",
+        sampleId: String = "00000000-0000-4000-8000-000000000001",
+        candidate: AndroidDomainCoreCandidateIdentity = this.candidate,
+        observedAt: String = Instant.now().truncatedTo(ChronoUnit.MILLIS).toString(),
+    ) = AndroidDomainCoreShadowSampleV3(
         sampleId = sampleId,
         domain = "cloudvault",
         slice = "aes",
         channel = channel,
-        operation = "cloudvault_aes_open",
-        coreVersion = "0.1.0",
+        operation = "cloudvault_aes_open_combined",
+        candidateCommit = candidate.candidateCommit,
+        expectedCoreVersion = candidate.coreVersion,
+        expectedCoreAbiVersion = candidate.abiVersion,
+        expectedCoreSourceSha256 = candidate.sourceSha256,
+        loadedCoreVersion = candidate.coreVersion,
+        loadedCoreAbiVersion = candidate.abiVersion,
+        loadedCoreSourceSha256 = candidate.sourceSha256,
+        observedAt = observedAt,
         outcome = "match",
         mismatchCategory = null,
         legacyMicros = 12,
@@ -293,6 +536,33 @@ class DomainCoreShadowEvidenceTest {
     )
 
     private fun readyName(ordinal: Int, suffix: String): String = "ready-${ordinal.toString().padStart(19, '0')}-$suffix.jsonl"
+
+    private val candidate = AndroidDomainCoreCandidateIdentity(
+        candidateCommit = "a".repeat(40),
+        coreVersion = "0.3.0",
+        abiVersion = 3,
+        sourceSha256 = "b".repeat(64),
+    )
+    private val loadedIdentity = AndroidDomainCoreLoadedIdentity(
+        coreVersion = candidate.coreVersion,
+        abiVersion = candidate.abiVersion,
+        sourceSha256 = candidate.sourceSha256,
+    )
+    private val signedProfile = AndroidDomainCoreRuntimeProfile(
+        name = "internal",
+        artifactAuthority = DomainCoreArtifactAuthority.SIGNED,
+        distribution = "internal",
+        evidenceChannel = DomainCoreEvidenceChannel.INTERNAL,
+        candidateIdentity = candidate,
+        modes = mapOf(
+            "quota" to "shadow",
+            "cloudVault" to "shadow",
+            "cloudVaultRewrap" to "shadow",
+            "cloudVaultSearch" to "shadow",
+            "hermes" to "shadow",
+            "pricing" to "shadow",
+        ),
+    )
 
     private fun invokeRecord(comparison: CloudVaultShadowComparison) {
         val method = AndroidDomainCoreShadowEvidence::class.java.getDeclaredMethod(
@@ -318,9 +588,15 @@ class DomainCoreShadowEvidenceTest {
         field.set(AndroidDomainCoreShadowEvidence, value)
     }
 
+    private fun evidenceField(name: String): Any? {
+        val field = AndroidDomainCoreShadowEvidence::class.java.getDeclaredField(name)
+        field.isAccessible = true
+        return field.get(AndroidDomainCoreShadowEvidence)
+    }
+
     private fun comparison(
         slice: String = "aes",
-        operation: String = "aes_open",
+        operation: String = "aes_open_combined",
         coreVersion: String = "1.2.3",
         outcome: String = "match",
         mismatchCategory: String? = null,
@@ -335,4 +611,111 @@ class DomainCoreShadowEvidenceTest {
         legacyMicros = legacyMicros,
         rustMicros = rustMicros,
     )
+
+    @Test
+    fun `subscription_doc_id dispatch routes to opaque-identifiers slice`() {
+        val comparisons = mutableListOf<CloudVaultShadowComparison>()
+        CloudVaultDomainCore.comparisonOverride = comparisons::add
+        CloudVaultDomainCore.modeOverride = CloudVaultDomainCoreMode.SHADOW
+        try {
+            CloudVaultDomainCore.dispatchForTest(
+                selectedMode = CloudVaultDomainCoreMode.SHADOW,
+                operation = "subscription_doc_id",
+                legacy = { "legacy-doc-id" },
+                rust = { "legacy-doc-id" },
+            )
+            assertEquals(1, comparisons.size)
+            assertEquals("cloudvault", comparisons.single().domain)
+            assertEquals("opaque-identifiers", comparisons.single().slice)
+            assertEquals("subscription_doc_id", comparisons.single().operation)
+            assertEquals("android", comparisons.single().consumer)
+        } finally {
+            CloudVaultDomainCore.resetTestOverrides()
+        }
+    }
+
+    @Test
+    fun `subscription_doc_id comparison in opaque-identifiers passes local validation and spooling`() {
+        val directory = Files.createTempDirectory("domain-core-shadow-opaque-id").toFile()
+        val activeFlush = Job()
+        mockkObject(DomainCoreBuildProfile)
+        every { DomainCoreBuildProfile.runtimeProfile() } returns signedProfile
+        try {
+            val spool = AndroidDomainCoreShadowSpool(directory)
+            setEvidenceField("spool", spool)
+            setEvidenceField("installedChannel", DomainCoreEvidenceChannel.INTERNAL)
+            setEvidenceField("installedCandidate", candidate)
+            setEvidenceField("flushJob", activeFlush)
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = { loadedIdentity }
+
+            invokeRecord(
+                CloudVaultShadowComparison(
+                    slice = "opaque-identifiers",
+                    operation = "subscription_doc_id",
+                    coreVersion = "1.2.3",
+                    outcome = "match",
+                    mismatchCategory = null,
+                    legacyMicros = 12,
+                    rustMicros = 8,
+                ),
+            )
+
+            val batch = requireNotNull(spool.nextBatch(sealActive = true, expectedChannel = "internal", expectedCandidate = candidate))
+            assertEquals(1, batch.samples.size)
+            assertEquals("cloudvault", batch.samples.single()["domain"])
+            assertEquals("opaque-identifiers", batch.samples.single()["slice"])
+            assertEquals("subscription_doc_id", batch.samples.single()["operation"])
+            assertEquals("android", batch.samples.single()["consumer"])
+            assertEquals("internal", batch.samples.single()["channel"])
+        } finally {
+            activeFlush.cancel()
+            setEvidenceField("spool", null)
+            setEvidenceField("installedChannel", null)
+            setEvidenceField("installedCandidate", null)
+            setEvidenceField("flushJob", null)
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = null
+            unmockkObject(DomainCoreBuildProfile)
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `subscription_doc_id comparison with wrong slice is rejected`() {
+        val directory = Files.createTempDirectory("domain-core-shadow-wrong-slice").toFile()
+        val activeFlush = Job()
+        mockkObject(DomainCoreBuildProfile)
+        every { DomainCoreBuildProfile.runtimeProfile() } returns signedProfile
+        try {
+            val spool = AndroidDomainCoreShadowSpool(directory)
+            setEvidenceField("spool", spool)
+            setEvidenceField("installedChannel", DomainCoreEvidenceChannel.INTERNAL)
+            setEvidenceField("installedCandidate", candidate)
+            setEvidenceField("flushJob", activeFlush)
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = { loadedIdentity }
+
+            invokeRecord(
+                CloudVaultShadowComparison(
+                    slice = "foundation",
+                    operation = "subscription_doc_id",
+                    coreVersion = "1.2.3",
+                    outcome = "match",
+                    mismatchCategory = null,
+                    legacyMicros = 12,
+                    rustMicros = 8,
+                ),
+            )
+
+            val batch = spool.nextBatch(sealActive = true, expectedChannel = "internal", expectedCandidate = candidate)
+            assertNull("subscription_doc_id in foundation slice must be rejected", batch)
+        } finally {
+            activeFlush.cancel()
+            setEvidenceField("spool", null)
+            setEvidenceField("installedChannel", null)
+            setEvidenceField("installedCandidate", null)
+            setEvidenceField("flushJob", null)
+            AndroidDomainCoreShadowEvidence.loadedIdentityOverride = null
+            unmockkObject(DomainCoreBuildProfile)
+            directory.deleteRecursively()
+        }
+    }
 }

@@ -21,7 +21,6 @@ import OpenBurnBarLogParsers
 /// the condition loud is the safe reaction; exiting would lose user state.
 @MainActor
 final class MemoryFootprintWatchdog {
-    typealias Sleep = @Sendable (Duration) async throws -> Void
 
     /// Footprint that logs a single warning per crossing.
     static let softLimitBytes = ParserResourcePolicy.memorySoftLimitBytes
@@ -38,30 +37,29 @@ final class MemoryFootprintWatchdog {
     private var softLimitTripped = false
     private var criticalTripped = false
     private weak var aggregator: UsageAggregator?
-    private let sleep: Sleep
+    init() {}
 
-    init(sleep: @escaping Sleep = { duration in
-        try await Task.sleep(for: duration)
-    }) {
-        self.sleep = sleep
-    }
-
-    func start(aggregator: UsageAggregator) {
+    func start(
+        aggregator: UsageAggregator,
+        sleep: (@MainActor @Sendable () async throws -> Void)? = nil
+    ) {
         self.aggregator = aggregator
         guard monitorTask == nil else { return }
+
+        let sleepAction: @MainActor @Sendable () async throws -> Void =
+            sleep ?? { try await Task.sleep(for: Self.sampleInterval) }
 
         monitorTask = Task(priority: .utility) { [weak self] in
             while !Task.isCancelled {
                 await self?.sample(trigger: "timer")
-                guard let sleep = self?.sleep else { return }
                 do {
-                    try await sleep(Self.sampleInterval)
+                    try await sleepAction()
                 } catch is CancellationError {
                     return
                 } catch {
-                    AppLogger.parser.error(
+                    AppLogger.metrics.error(
                         "memory_watchdog_sleep_failed",
-                        metadata: ["error": String(describing: error)]
+                        metadata: ["error": "\(error)"]
                     )
                     return
                 }

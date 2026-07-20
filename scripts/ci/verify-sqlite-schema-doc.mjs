@@ -14,6 +14,9 @@ const sourceSpecs = [
     startMarker: 'migrator.registerMigration("v50_project_code_memory_schema")',
   },
   {
+    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationV56.swift",
+  },
+  {
     path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MemoryMigrations.swift",
   },
   {

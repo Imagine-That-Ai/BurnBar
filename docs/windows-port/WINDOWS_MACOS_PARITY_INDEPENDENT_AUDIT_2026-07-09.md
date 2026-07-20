@@ -3,7 +3,193 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** F1 source/product implementation is complete; the applicable WPD-0006 F2 source substitutions are complete; the `windows-v1.0.31` physical x64 candidate is NO-GO pending a corrected signed successor; physical/manual/live-staging/public-lifecycle release gates remain
+**Status:** F1 source/product implementation and applicable WPD-0006 F2 substitutions are complete. Exact signed candidate `windows-v1.0.38` is stable on physical Intel x64, but remains a validator-clean **NO-GO** until its supplemental accessibility, performance, staging, paired-device safety, and private Store/update receipts are complete; physical ARM64 remains an explicit beta limitation
+
+## Physical Intel x64 v1.0.38 Retry - 2026-07-19
+
+Protected tag `windows-v1.0.38` resolves to commit
+`48837746490b6468efa4dc06a476f305d496039c`; release workflow
+[29676266545](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29676266545)
+produced the exact x64 direct MSIX with SHA-256
+`fd14adb0870473f907c10f342eb3ee300cebf39c500848505a5887ad89602e69`.
+The Imagine That AI LLC Authenticode signature and RFC 3161 timestamp passed.
+
+The native HP Intel/AMD64 retry is stable: clean source and harness checkouts,
+20/20 cold launches, 20/20 warm relaunches, uninstall/reinstall plus a second
+20/20 launch hold, 300 idle samples, and a 30-minute/1,800-sample soak passed
+with zero crash, hang, or unresponsive sample. All 26 routed screenshots and
+route-root UI Automation anchors passed, including high contrast, reduced
+transparency, 100 percent DPI, and the permanent `640x720` scenario. Staging
+authentication/project access and environment enable/restore also passed.
+
+The content-addressed evidence ZIP has SHA-256
+`bf10318474556b1ea3f69b05831fa09dfc4f8b36ac9470fb113092ec4f7ed876`.
+Its ZIP integrity, all 436 internal checksums, and the seven-receipt evidence
+validator passed. The bundle verdict remains **NO-GO** because supplemental
+receipts are incomplete: manual Narrator/keyboard/150/200 percent and mixed-DPI
+proof; canonical surface latency, frame pacing, and sleep/wake; authorized
+staging OAuth/App Check/TPM/CloudVault drills; paired-device media/Computer Use
+safety; and private Store/update lifecycle. Physical ARM64 remains an explicit
+beta limitation. The durable record is under
+[`evidence/windows-v1.0.38-release/`](evidence/windows-v1.0.38-release/README.md).
+
+## Physical Intel x64 UI/Accessibility Finding - 2026-07-18
+
+The physical Intel x64 campaign completed for exact signed candidate
+`windows-v1.0.37` on an HP ENVY x360 15-ew0xxx and returned **NO-GO**. The
+candidate commit was `2757652e89440eb647d21721895fc61ec89935d3`; the tested
+direct MSIX SHA-256 was
+`63a9c374bb8d817f4642ddbcbc1c4847d5bcc0388d40fdac4c45b202e7e64bd9`.
+The signature was valid, matched Imagine That AI LLC, and carried a valid RFC
+3161 timestamp. The final evidence validator passed and produced a
+content-addressed ZIP with SHA-256
+`ba03236c7f2b0c018f9639a42e344e691d91ac7c5cfd28f9e3bd0effd5854eb9`.
+
+Install, uninstall, reinstall, normal launch, cold launch, Explorer restart,
+and a 30-minute soak completed without a crash or unresponsive sample. The
+soak recorded 1,800 samples without retained memory growth. The five-minute
+idle run measured 2.018% average CPU, 0.316 MB/min disk writes, and 168 MB
+maximum private memory; GPU p95 was 15.116% with a 17.153% maximum. These are
+useful sub-results, but the physical performance gate remained blocked because
+the required interactive workload could not be completed against a usable UI.
+
+The release-blocking defect was deterministic: the signed Providers/dashboard
+content was covered by the native WebView2 and Win2D composition surfaces.
+Disabling both layers diagnostically exposed the dashboard, but that override
+is not release evidence. The run also found unnamed focusable header/top-tab
+controls, clipping at a 640-pixel window width, and an unobserved Pretext
+not-ready task exception. Accessibility/display, complete physical performance,
+staging cloud, media/Computer Use safety, and Store/update lifecycle therefore
+remain blocked for this candidate. Physical ARM64 remains an explicit beta
+limitation.
+
+PR #1854 replaces the dashboard airspace hosts with a native
+`CanvasImageSource` in the XAML visual tree, adds explicit layer ordering and
+accessible control names, adds a permanent `640x720` certification scenario,
+and makes routed-body screenshot evidence fail closed. This source work does
+not relabel `windows-v1.0.37`; a newly signed candidate must pass the complete
+physical protocol.
+
+## Exact v1.0.37 Candidate and ARM64 VM Result - 2026-07-18
+
+Protected tag `windows-v1.0.37` resolves exactly to PR #1849 merge commit
+`2757652e89440eb647d21721895fc61ec89935d3`. Release workflow
+[29650389335](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29650389335)
+completed successfully with unsigned direct-download output forbidden. Both
+native Swift engine legs, the published-layout usage-scan smoke, WinUI publish,
+portable and direct-MSIX Authenticode verification, x64 hosted lifecycle,
+Store-identity packaging, Ed25519 update-feed signing, SPDX SBOM, OpenVEX, and
+Sigstore provenance passed.
+
+The exact downloaded release artifact independently matched every checksum:
+
+- x64 portable ZIP: `145276bef5a5940393bd8141b0bdd80fe3cd664dfe645634643944e7aa7b60f2`
+- ARM64 portable ZIP: `72bf88caa615a8a08ccb5e17742e992927987f99aab58d011b33dd8b32d89865`
+- x64 direct MSIX: `63a9c374bb8d817f4642ddbcbc1c4847d5bcc0388d40fdac4c45b202e7e64bd9`
+- ARM64 direct MSIX: `70de3a3dbd22fc51b21346d8d213532601ee79bb234be66c8998b86bf6b01918`
+- x64 Store MSIX: `ebca146a9504a6e8d68846b99de5324950c0098f7088084abbf2591d9cc2e0b7`
+- ARM64 Store MSIX: `06b0230ccea93f1f8c36860def5c07b2ded38ae4c110fed78bd1661a91e18144`
+
+The hosted x64 clean-install, responsive 20-second launch, uninstall,
+reinstall, and second responsive 20-second launch passed with zero crash
+events. The exact ARM64 direct MSIX then passed the same lifecycle in Windows
+11 Pro ARM64 under UTM. Its portable layout and 20-second launch passed, both
+Swift resource bundles were present and manifest-hashed, and an exact rerun of
+the UI Automation certification profile passed all 25 route/scenario runs.
+The content-addressed external ARM64 evidence ZIP has SHA-256
+`7cb325721430934d765cf32d115bcbf027e23f18589a41b0b1f653d2b1357e95`.
+
+This superseded `windows-v1.0.35` as the physical-certification candidate, but
+the later physical x64 result above invalidated `windows-v1.0.37` for release.
+It does not relabel the older failed physical memory result, and UTM remains VM
+evidence rather than physical ARM64 certification. The next required hardware
+action is a complete physical Intel x64 rerun against a newly signed successor.
+Manual Narrator/keyboard/DPI/high-contrast, authorized staging cloud, physical
+media/Computer Use safety, and controlled private Store/update lifecycle gates
+remain independently fail-closed. Physical ARM64 remains an explicit beta
+limitation until qualifying hardware is available.
+
+## Corrected Signed Successor - 2026-07-17
+
+Protected tag `windows-v1.0.35` resolves to PR #1832 merge commit
+`2cfa9db885dafef7f1f451a9e05a8ee775351d44`. Release workflow
+[29557726093](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29557726093)
+completed successfully with unsigned direct-download output forbidden. The
+published-layout parser smoke passed before signing with both
+`OpenBurnBarCore_OpenBurnBarCore.resources` and
+`OpenBurnBarCore_OpenBurnBarKernel.resources` present. Its isolated .NET 10
+testhost staged the Swift resource bundles beside the host process while the
+exact copied publish directory supplied the native DLL dependency search path.
+
+Azure Artifact Signing, portable and direct-MSIX signature verification,
+RFC 3161 timestamp checks, x64 and ARM64 native-layout validation, direct and
+Store MSIX packaging, Store unsigned-state verification, the hosted x64
+clean-install/uninstall/reinstall lifecycle, Ed25519 update-feed signing, SPDX
+SBOM, OpenVEX, and all 18 Sigstore attestations passed. Independent download
+verification matched both GitHub artifact archive digests, every release
+checksum, all four portable/direct native layouts, both Store identities and
+resource layouts, the pinned two-entry update feed, and all 18 Sigstore
+bundles under the exact tag workflow identity.
+
+Exact distribution hashes:
+
+- x64 portable ZIP: `bd851461b55da12a1b4d5470d26ccb5e8e6f2db7ea7e3a9a352b9ea7d47bf14e`
+- ARM64 portable ZIP: `59ddf9ccc07f9c9535d1a49d6d9e824fe952be6d469965a3ca71906665bfc3c7`
+- x64 direct MSIX: `1d68c24f044a0247d49a5f2e4030a4d46844ce49c34016d3605f129bcd9a43e1`
+- ARM64 direct MSIX: `c3ef5b12c06ede819965f301357ac8d84ef22c4a71631528d353092a425f11bf`
+- x64 Store MSIX: `a5fe60b3b0816f4b59482031e9e139725741665db0e2fd2150054a0f3f804d64`
+- ARM64 Store MSIX: `eafc14b7a9d6b408d7ce1cf9f82228228d878c2ae416670d70de94fe797ece2c`
+
+The machine-readable record and physical handoff are under
+[`evidence/windows-v1.0.35-release/`](evidence/windows-v1.0.35-release/README.md).
+This supersedes `windows-v1.0.31` only as the corrected automated signed
+candidate. It does not erase that candidate's physical NO-GO result or convert
+hosted lifecycle evidence into physical certification. A fresh physical Intel
+x64 run is required. Physical ARM64 remains an explicit beta limitation, and
+manual accessibility/display, live staging, advanced media/Computer Use
+safety, and controlled Store/update lifecycle gates remain open.
+
+The physical-performance gate is now fail-closed against an active numeric
+contract rather than a subjective checklist. Independent harness commit
+`0ff07832c9a2a8137d7a342682d4ccd785be7034` binds 18 launch, interaction,
+CPU, memory, GPU, disk, frame, and soak measurements to
+`release-performance-budgets.json`; requires declared tools, workload, power,
+display, and sampling context; enforces sample/duration floors; hashes every raw
+evidence file; independently derives each statistic from the complete sample
+series; bounds sample cardinality and value domains; and re-evaluates every
+threshold during receipt validation. This
+closes an evidence-integrity gap but is not physical performance evidence: the
+Intel x64 protocol must still run against the exact signed candidate, and ARM64
+physical performance remains the documented beta limitation.
+
+## Physical Intel x64 Performance Finding - 2026-07-17
+
+The fresh native Intel x64 run for exact signed candidate `windows-v1.0.35`
+remains **NO-GO**. Artifact binding, Authenticode identity and timestamp,
+install/uninstall/reinstall, local automated checks, hardware attestation, and
+the final seven-receipt evidence validator passed. The app completed a 30-minute
+soak without a crash or hang, but private memory grew from 99.16 MB to 325.13 MB
+across 1,801 samples: +227.88% against a +10% release budget. The sample series
+was flat near 99-106 MB for roughly 24 minutes, then recorded two retained
+high-water steps around 1,434 and 1,601 seconds. This is a physical performance
+failure, not a harness or evidence-integrity failure.
+
+The durable remediation moves the Swift C ABI parser out of the long-lived
+WinUI tray process. `OutOfProcessUsageEngine` invokes the already-packaged,
+signed `OpenBurnBar.Cli.exe` in a hidden one-scan worker mode over redirected
+JSON standard streams. The reviewed launch policy forbids shell execution,
+filters inherited environment, bounds stderr, enforces cancellation and a
+five-minute timeout, and kills the worker tree on communication failure. Each
+successful scan exits the worker so Windows reclaims the complete native heap.
+The release workflow executes this real worker against the exact published x64
+native engine and Swift resource layout before signing; distribution tests pin
+the WinUI composition root to the out-of-process engine.
+
+This source fix does not relabel the failed `windows-v1.0.35` result. A new
+signed candidate must pass the same physical Intel x64 performance protocol.
+Accessibility/display, authorized live staging, advanced media/Computer Use
+safety, and private Store/update lifecycle evidence remain separate open gates.
+Physical ARM64 remains the explicit beta limitation.
 
 ## Physical Intel x64 Packaging Finding - 2026-07-16
 
@@ -26,14 +212,16 @@ MSIX layouts contain only `OpenBurnBarCore_OpenBurnBarCore.resources`; they omit
 resolves the missing Kernel bundle, while Windows Error Reporting attributes the
 mixed managed/native crash to `coreclr.dll`.
 
-The replacement release line is `1.0.32`. Its source gate requires both SwiftPM
+The replacement release line began at `1.0.32` and produced the corrected
+signed successor at `1.0.35`. Its source gate requires both SwiftPM
 resource bundles at native staging, MSBuild publish, post-signature manifest
 refresh, portable packaging, and MSIX packaging. Both bundles and every file
 within them must be hashed by `native-engine-manifest.json`. The Windows engine
 workflow executes the real usage scan from the staged layout, and the release
 workflow repeats that parser smoke from the published x64 layout before signing.
-A new exact-head signed artifact and a fresh physical Intel certification run
-are required; no result from `windows-v1.0.31` may be promoted or relabeled.
+The exact-head signed artifact now exists as `windows-v1.0.35`; a fresh physical
+Intel certification run remains required. No result from `windows-v1.0.31` may
+be promoted or relabeled.
 
 ## Certification Update - 2026-07-11
 
@@ -732,10 +920,10 @@ project symbols, the sealed Pensieve watcher, the full Elder Wand fusion
 pipeline, standalone companion CLI, guarded Switcher, indexed search, and the
 connector/tooling plane. It does not close signed-host or physical evidence.
 The x64/ARM64 build, signing/provenance, hosted x64 registration, ARM64 UTM
-foundation, and corrected signed-runtime gates are proven. The corrected x64
-and ARM64 packages each passed clean-install and reinstall 20-second responsive
-launch holds with zero crash events. The evidence does not yet close every row
-in the QA checklist.
+foundation, and corrected signed-runtime gates are proven. The exact v1.0.38
+x64 package also passed repeated physical cold/warm/reinstall launch holds and
+a 30-minute soak. The evidence does not yet close every row in the QA
+checklist.
 
 Accordingly, the accurate current claim is: **F1 source/product parity is
 ledger-green; applicable F2 source composition is complete; the exact-head

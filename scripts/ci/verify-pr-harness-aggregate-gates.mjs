@@ -25,6 +25,8 @@ const REQUIRED_GATES = [
   "openburnbar-pr",
 ];
 
+const EXACT_SUCCESS_GATES = new Set(["harness-required"]);
+
 const failures = [];
 const fail = (message) => failures.push(message);
 
@@ -73,9 +75,13 @@ function hasNeeds(block) {
   return /^    needs:\s*$/mu.test(block);
 }
 
-function rejectsCancelledNeeds(block) {
+function rejectsUnacceptedNeeds(block, allowSkipped) {
   if (!/toJSON\(needs\)/u.test(block)) return false;
   if (/['"]cancelled['"]/u.test(block)) return false;
+  if (!allowSkipped) {
+    return /v\.get\(['"]result['"]\)\s*!=\s*['"]success['"]/u.test(block)
+      || /r\s*!=\s*['"]success['"]/u.test(block);
+  }
   return (
     /not in \('success', 'skipped'\)/u.test(block) ||
     /r not in \('success', 'skipped'\)/u.test(block) ||
@@ -111,8 +117,10 @@ if (!existsSync(WORKFLOW)) {
       fail(`${name} must depend on upstream jobs through needs`);
     }
 
-    if (!rejectsCancelledNeeds(block)) {
-      fail(`${name} must parse toJSON(needs) and reject any non-success/non-skipped upstream result`);
+    const allowSkipped = !EXACT_SUCCESS_GATES.has(name);
+    if (!rejectsUnacceptedNeeds(block, allowSkipped)) {
+      const accepted = allowSkipped ? "success/non-applicable skipped" : "exact success";
+      fail(`${name} must parse toJSON(needs) and accept only ${accepted} upstream results`);
     }
   }
 }

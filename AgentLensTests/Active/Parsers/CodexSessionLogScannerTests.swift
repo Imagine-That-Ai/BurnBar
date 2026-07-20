@@ -1,4 +1,5 @@
 import OpenBurnBarCore
+@testable import OpenBurnBarLogParsers
 import XCTest
 
 // MARK: - CodexSessionLogScannerTests
@@ -9,6 +10,76 @@ import XCTest
 /// resume, rewrite/truncation detection, and governed thread-row processing
 /// (budget deferral, boundary deferral, heuristic fallback).
 final class CodexSessionLogScannerTests: XCTestCase {
+    /// Models a rollout disappearing after metadata discovery but before the
+    /// scanner opens it, while forwarding every other filesystem operation.
+    private final class ScanFailingFileManager: FileManager, @unchecked Sendable {
+        private let unreadablePath: String
+
+        init(unreadablePath: String) {
+            self.unreadablePath = unreadablePath
+            super.init()
+        }
+
+        override func fileExists(atPath path: String) -> Bool {
+            path == unreadablePath ? false : super.fileExists(atPath: path)
+        }
+    }
+
+    /// Lets discovery capture real metadata, then fails the scanner's inner
+    /// size lookup for the same path.
+    private final class InnerStatFailingFileManager: FileManager, @unchecked Sendable {
+        struct StatUnavailable: Error {}
+
+        private let targetPath: String
+        private(set) var targetStatCount = 0
+
+        init(targetPath: String) {
+            self.targetPath = targetPath
+            super.init()
+        }
+
+        override func attributesOfItem(atPath path: String) throws -> [FileAttributeKey: Any] {
+            guard path == targetPath else { return try super.attributesOfItem(atPath: path) }
+            targetStatCount += 1
+            guard targetStatCount == 1 else { throw StatUnavailable() }
+            return try super.attributesOfItem(atPath: path)
+        }
+    }
+
+    /// Fails selected existence checks for one otherwise-readable rollout.
+    /// This deterministically models open races at the token/conversation
+    /// boundary without changing the real fixture on disk.
+    private final class SequencedExistenceFileManager: FileManager, @unchecked Sendable {
+        private let targetPath: String
+        private let failingChecks: Set<Int>
+        private(set) var targetCheckCount = 0
+
+        init(targetPath: String, failingChecks: Set<Int>) {
+            self.targetPath = targetPath
+            self.failingChecks = failingChecks
+            super.init()
+        }
+
+        override func fileExists(atPath path: String) -> Bool {
+            guard path == targetPath else { return super.fileExists(atPath: path) }
+            targetCheckCount += 1
+            return failingChecks.contains(targetCheckCount) ? false : super.fileExists(atPath: path)
+        }
+    }
+
+    private final class RecordingFileOpener {
+        private let failingChecks: Set<Int>
+        private(set) var openedPaths: [String] = []
+
+        init(failingChecks: Set<Int> = []) {
+            self.failingChecks = failingChecks
+        }
+
+        func open(path: String) -> FileHandle? {
+            openedPaths.append(path)
+            return failingChecks.contains(openedPaths.count) ? nil : FileHandle(forReadingAtPath: path)
+        }
+    }
 
     private var tempDirectory: URL!
     private let fileManager = FileManager.default
@@ -40,6 +111,10 @@ final class CodexSessionLogScannerTests: XCTestCase {
 
     private func deltaEvent(input: Int, output: Int, cachedInput: Int = 0) -> String {
         #"{"event_msg": {"last_token_usage": {"input_tokens": \#(input), "cached_input_tokens": \#(cachedInput), "output_tokens": \#(output)}}}"#
+    }
+
+    private func messageEvent(role: String, text: String) -> String {
+        #"{"item":{"role":"\#(role)","content":"\#(text)"}}"#
     }
 
     @discardableResult
@@ -442,6 +517,48 @@ final class CodexSessionLogScannerTests: XCTestCase {
         XCTAssertEqual(recovered.usages.first?.inputTokens, 5000)
     }
 
+    func test_processThreadRows_sameSizeHeadRewriteChargesFullRescanBeforeDeferringNextFile() throws {
+        let rewrittenFile = try write(cumulativeEvent(input: 1111, output: 11) + "\n", to: "rollout-rewritten.jsonl")
+        let deferredFile = try write(cumulativeEvent(input: 3333, output: 33) + "\n", to: "rollout-deferred.jsonl")
+        let rewrittenRow = makeRow(threadId: "thread-rewritten", rolloutPath: rewrittenFile.path)
+        let cacheStore = makeCacheStore()
+
+        _ = try CodexSessionLogScanner.processThreadRows(
+            [rewrittenRow],
+            options: LogParseOptions(includeConversationBodies: false),
+            fileManager: fileManager,
+            cacheStore: cacheStore
+        )
+
+        let originalAttributes = try fileManager.attributesOfItem(atPath: rewrittenFile.path)
+        let originalModificationDate = try XCTUnwrap(originalAttributes[.modificationDate] as? Date)
+        let originalSize = try XCTUnwrap(originalAttributes[.size] as? NSNumber).int64Value
+        let rewrittenContent = cumulativeEvent(input: 2222, output: 22) + "\n"
+        XCTAssertEqual(Int64(rewrittenContent.utf8.count), originalSize)
+
+        let handle = try FileHandle(forWritingTo: rewrittenFile)
+        try handle.write(contentsOf: Data(rewrittenContent.utf8))
+        try handle.close()
+        try fileManager.setAttributes(
+            [.modificationDate: originalModificationDate.addingTimeInterval(1)],
+            ofItemAtPath: rewrittenFile.path
+        )
+
+        let governor = ParserResourceGovernor(limits: ParserResourceLimits(fileByteBudget: 1))
+        let result = try CodexSessionLogScanner.processThreadRows(
+            [rewrittenRow, makeRow(threadId: "thread-deferred", rolloutPath: deferredFile.path)],
+            options: LogParseOptions(includeConversationBodies: false, resourceGovernor: governor),
+            fileManager: fileManager,
+            cacheStore: cacheStore
+        )
+
+        XCTAssertEqual(result.usages.map(\.sessionId), ["thread-rewritten"])
+        XCTAssertEqual(result.usages.first?.inputTokens, 2222, "head mismatch must rescan instead of reusing cached tokens")
+        XCTAssertEqual(governor.consumedBytes, originalSize, "a rewrite has no append tail, so the full file is new work")
+        XCTAssertEqual(governor.deferredFileCount, 1, "the full-rescan charge exhausts the pass budget before the next file")
+        XCTAssertNil(cacheStore.load().fileEntries[deferredFile.standardizedFileURL.path])
+    }
+
     func test_processThreadRows_boundaryDefer_uncachedFileEmitsNothingAndIsNeverRead() throws {
         let file = try write(cumulativeEvent(input: 1000, output: 100) + "\n", to: "rollout-boundary.jsonl")
         let rows = [makeRow(threadId: "thread-boundary", rolloutPath: file.path)]
@@ -495,6 +612,347 @@ final class CodexSessionLogScannerTests: XCTestCase {
         XCTAssertEqual(result.usages.map(\.sessionId), ["thread-boundary-cached"])
         XCTAssertEqual(result.usages.first?.inputTokens, 1000, "boundary defer surfaces cached values, not the new content")
         XCTAssertEqual(governor.consumedBytes, 0)
+    }
+
+    func test_processThreadRows_scanFailureWithoutCacheRemainsDeferredAndUncheckpointable() throws {
+        let file = try write(cumulativeEvent(input: 1000, output: 100) + "\n", to: "rollout-read-race.jsonl")
+        let tracker = ParserFileDiscoveryTracker()
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let cacheStore = makeCacheStore()
+
+        let result = try CodexSessionLogScanner.processThreadRows(
+            [makeRow(threadId: "thread-read-race", tokensUsed: 10_000, rolloutPath: file.path)],
+            options: LogParseOptions(
+                includeConversationBodies: false,
+                fileDiscoveryTracker: tracker,
+                resourceGovernor: governor
+            ),
+            fileManager: ScanFailingFileManager(unreadablePath: file.path),
+            cacheStore: cacheStore
+        )
+
+        XCTAssertTrue(result.usages.isEmpty, "a failed exact scan must not masquerade as a successful heuristic row")
+        XCTAssertEqual(governor.deferredFileCount, 1)
+        XCTAssertTrue(tracker.partialCheckpointFiles.isEmpty, "failed content must remain eligible for retry")
+        XCTAssertFalse(tracker.hasAdmittedFiles)
+        XCTAssertTrue(cacheStore.load().fileEntries.isEmpty)
+    }
+
+    func test_processThreadRows_innerMetadataFailureDoesNotReadChargeOrCheckpoint() throws {
+        let file = try write(cumulativeEvent(input: 1_234, output: 56) + "\n", to: "rollout-inner-stat-race.jsonl")
+        let faultingFileManager = InnerStatFailingFileManager(targetPath: file.path)
+        let tracker = ParserFileDiscoveryTracker()
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let metrics = ParserPassMetrics()
+        let cacheStore = makeCacheStore(name: "inner-stat-cache.json")
+
+        let result = try CodexSessionLogScanner.processThreadRows(
+            [makeRow(threadId: "thread-inner-stat-race", rolloutPath: file.path)],
+            options: LogParseOptions(
+                includeConversationBodies: false,
+                fileDiscoveryTracker: tracker,
+                resourceGovernor: governor,
+                metrics: metrics
+            ),
+            fileManager: faultingFileManager,
+            cacheStore: cacheStore
+        )
+
+        XCTAssertEqual(faultingFileManager.targetStatCount, 2, "the second, scanner-local metadata lookup must hit the injected race")
+        XCTAssertTrue(result.usages.isEmpty, "unknown size must defer rather than read the file as zero bytes")
+        XCTAssertEqual(governor.consumedBytes, 0, "unread content must never be charged as a zero-byte admission")
+        XCTAssertEqual(governor.deferredFileCount, 1)
+        XCTAssertEqual(metrics.snapshot().contentReadCount, 0)
+        XCTAssertFalse(tracker.hasAdmittedFiles)
+        XCTAssertTrue(tracker.partialCheckpointFiles.isEmpty, "metadata races must remain retryable")
+        XCTAssertTrue(cacheStore.load().fileEntries.isEmpty)
+    }
+
+    func test_processThreadRows_appendAndRewriteChargeOnlyTheBytesActuallyScanned() throws {
+        let appendFile = try write(cumulativeEvent(input: 100, output: 10) + "\n", to: "rollout-accounting-append.jsonl")
+        let appendRow = makeRow(threadId: "thread-accounting-append", rolloutPath: appendFile.path)
+        let appendCache = makeCacheStore(name: "append-accounting-cache.json")
+        _ = try CodexSessionLogScanner.processThreadRows(
+            [appendRow],
+            options: LogParseOptions(includeConversationBodies: false),
+            fileManager: fileManager,
+            cacheStore: appendCache
+        )
+        let appendProbeBytes = Int64(try XCTUnwrap(
+            appendCache.load().fileEntries[appendFile.standardizedFileURL.path]?.scanState
+        ).headDigestLength)
+
+        let appendedTail = cumulativeEvent(input: 200, output: 20) + "\n"
+        try append(appendedTail, to: appendFile)
+        let appendGovernor = ParserResourceGovernor(limits: .unlimited)
+        let appendResult = try CodexSessionLogScanner.processThreadRows(
+            [appendRow],
+            options: LogParseOptions(includeConversationBodies: false, resourceGovernor: appendGovernor),
+            fileManager: fileManager,
+            cacheStore: appendCache
+        )
+
+        XCTAssertEqual(appendResult.usages.first?.inputTokens, 200)
+        XCTAssertEqual(
+            appendGovernor.consumedBytes,
+            appendProbeBytes + Int64(appendedTail.utf8.count),
+            "append resume charges its cached-head validation probe and newly scanned tail"
+        )
+
+        let originalRewrite = cumulativeEvent(input: 1_111, output: 11) + "\n"
+        let rewriteFile = try write(originalRewrite, to: "rollout-accounting-rewrite.jsonl")
+        let rewriteRow = makeRow(threadId: "thread-accounting-rewrite", rolloutPath: rewriteFile.path)
+        let rewriteCache = makeCacheStore(name: "rewrite-accounting-cache.json")
+        _ = try CodexSessionLogScanner.processThreadRows(
+            [rewriteRow],
+            options: LogParseOptions(includeConversationBodies: false),
+            fileManager: fileManager,
+            cacheStore: rewriteCache
+        )
+
+        let originalAttributes = try fileManager.attributesOfItem(atPath: rewriteFile.path)
+        let originalModificationDate = try XCTUnwrap(originalAttributes[.modificationDate] as? Date)
+        let rewrittenContent = cumulativeEvent(input: 2_222, output: 22) + "\n"
+        XCTAssertEqual(rewrittenContent.utf8.count, originalRewrite.utf8.count)
+        let rewriteHandle = try FileHandle(forWritingTo: rewriteFile)
+        try rewriteHandle.write(contentsOf: Data(rewrittenContent.utf8))
+        try rewriteHandle.close()
+        try fileManager.setAttributes(
+            [.modificationDate: originalModificationDate.addingTimeInterval(1)],
+            ofItemAtPath: rewriteFile.path
+        )
+
+        let rewriteGovernor = ParserResourceGovernor(limits: .unlimited)
+        let rewriteResult = try CodexSessionLogScanner.processThreadRows(
+            [rewriteRow],
+            options: LogParseOptions(includeConversationBodies: false, resourceGovernor: rewriteGovernor),
+            fileManager: fileManager,
+            cacheStore: rewriteCache
+        )
+
+        XCTAssertEqual(rewriteResult.usages.first?.inputTokens, 2_222)
+        XCTAssertEqual(rewriteGovernor.consumedBytes, Int64(rewrittenContent.utf8.count), "same-size rewrite charges the full restarted scan")
+    }
+
+    func test_processThreadRows_transientTokenScanFailurePreservesCachedExactUsageAndRetries() throws {
+        let file = try write(cumulativeEvent(input: 1_000, output: 100) + "\n", to: "rollout-cached-read-race.jsonl")
+        let row = makeRow(threadId: "thread-cached-read-race", rolloutPath: file.path)
+        let cacheStore = makeCacheStore(name: "cached-read-race-cache.json")
+        _ = try CodexSessionLogScanner.processThreadRows(
+            [row],
+            options: LogParseOptions(includeConversationBodies: false),
+            fileManager: fileManager,
+            cacheStore: cacheStore
+        )
+        let cacheBeforeFailure = cacheStore.load()
+
+        try append(cumulativeEvent(input: 5_000, output: 500) + "\n", to: file)
+        let faultingFileManager = SequencedExistenceFileManager(targetPath: file.path, failingChecks: [1])
+        let tracker = ParserFileDiscoveryTracker()
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let failedPass = try CodexSessionLogScanner.processThreadRows(
+            [row],
+            options: LogParseOptions(
+                includeConversationBodies: false,
+                fileDiscoveryTracker: tracker,
+                resourceGovernor: governor
+            ),
+            fileManager: faultingFileManager,
+            cacheStore: cacheStore
+        )
+
+        let preserved = try XCTUnwrap(failedPass.usages.first)
+        XCTAssertEqual(preserved.inputTokens, 1_000)
+        XCTAssertEqual(preserved.outputTokens, 100)
+        XCTAssertEqual(preserved.provenanceMethod, .providerLog)
+        XCTAssertEqual(preserved.provenanceConfidence, .exact)
+        XCTAssertEqual(cacheStore.load(), cacheBeforeFailure, "a transient read race must not destroy the last exact state")
+        XCTAssertEqual(governor.deferredFileCount, 1)
+        XCTAssertFalse(tracker.hasAdmittedFiles)
+        XCTAssertTrue(tracker.partialCheckpointFiles.isEmpty)
+
+        let recoveredPass = try CodexSessionLogScanner.processThreadRows(
+            [row],
+            options: LogParseOptions(includeConversationBodies: false),
+            fileManager: fileManager,
+            cacheStore: cacheStore
+        )
+        XCTAssertEqual(recoveredPass.usages.first?.inputTokens, 5_000, "the preserved scan state must remain eligible for a later tail retry")
+        XCTAssertGreaterThan(
+            try XCTUnwrap(cacheStore.load().fileEntries[file.standardizedFileURL.path]?.scanState?.byteOffset),
+            try XCTUnwrap(cacheBeforeFailure.fileEntries[file.standardizedFileURL.path]?.scanState?.byteOffset)
+        )
+    }
+
+    func test_processThreadRows_knownUnchangedBodyDoesNotStarveNewlyDiscoveredConversation() throws {
+        let oldContent = [
+            cumulativeEvent(input: 100, output: 10),
+            messageEvent(role: "user", text: String(repeating: "old ", count: 1_000))
+        ].joined(separator: "\n") + "\n"
+        let oldFile = try write(oldContent, to: "rollout-known-body.jsonl")
+        let oldRow = makeRow(threadId: "thread-known-body", rolloutPath: oldFile.path)
+        let cacheStore = makeCacheStore(name: "known-body-cache.json")
+        let warmTracker = ParserFileDiscoveryTracker()
+        _ = try CodexSessionLogScanner.processThreadRows(
+            [oldRow],
+            options: LogParseOptions(includeConversationBodies: false, fileDiscoveryTracker: warmTracker),
+            fileManager: fileManager,
+            cacheStore: cacheStore
+        )
+
+        let newContent = [
+            cumulativeEvent(input: 200, output: 20),
+            messageEvent(role: "user", text: "newly admitted body")
+        ].joined(separator: "\n") + "\n"
+        let newFile = try write(newContent, to: "rollout-new-body.jsonl")
+        let newSize = Int64(newContent.utf8.count)
+        XCTAssertGreaterThan(Int64(oldContent.utf8.count), newSize * 2, "fixture must expose starvation if the known body is reread")
+
+        let tracker = ParserFileDiscoveryTracker(knownFiles: warmTracker.discoveredFiles)
+        let governor = ParserResourceGovernor(limits: ParserResourceLimits(fileByteBudget: newSize * 2))
+        let metrics = ParserPassMetrics()
+        let result = try CodexSessionLogScanner.processThreadRows(
+            [oldRow, makeRow(threadId: "thread-new-body", rolloutPath: newFile.path)],
+            options: LogParseOptions(
+                includeConversationBodies: true,
+                fileDiscoveryTracker: tracker,
+                resourceGovernor: governor,
+                metrics: metrics
+            ),
+            fileManager: fileManager,
+            cacheStore: cacheStore
+        )
+
+        XCTAssertEqual(result.usages.map(\.sessionId), ["thread-known-body", "thread-new-body"])
+        XCTAssertEqual(result.conversations.map(\.sessionId), ["thread-new-body"], "known manifest content stays skipped while newly admitted content emits its body")
+        XCTAssertEqual(result.conversations.first?.fullText, "## User\n\nnewly admitted body")
+        XCTAssertEqual(governor.consumedBytes, newSize * 2, "only the new file's token and conversation scans consume the pass")
+        XCTAssertEqual(governor.deferredFileCount, 0)
+        XCTAssertEqual(metrics.snapshot().contentReadCount, 2)
+    }
+
+    func test_processThreadRows_conversationOpenFailureAfterExactTokensRemainsUncheckpointableAndRetries() throws {
+        let content = [
+            cumulativeEvent(input: 700, output: 70),
+            messageEvent(role: "user", text: "retry this conversation")
+        ].joined(separator: "\n") + "\n"
+        let file = try write(content, to: "rollout-conversation-open-race.jsonl")
+        let row = makeRow(threadId: "thread-conversation-open-race", rolloutPath: file.path)
+        let cacheStore = makeCacheStore(name: "conversation-open-race-cache.json")
+        let tracker = ParserFileDiscoveryTracker()
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let metrics = ParserPassMetrics()
+        let faultingOpener = RecordingFileOpener(failingChecks: [2])
+
+        let failedPass = try CodexSessionLogScanner.processThreadRows(
+            [row],
+            options: LogParseOptions(
+                includeConversationBodies: true,
+                fileDiscoveryTracker: tracker,
+                resourceGovernor: governor,
+                metrics: metrics
+            ),
+            fileManager: fileManager,
+            cacheStore: cacheStore,
+            openFileForReading: faultingOpener.open(path:)
+        )
+
+        XCTAssertEqual(faultingOpener.openedPaths, [file.path, file.path], "token open succeeds before the requested conversation open fails")
+        XCTAssertEqual(failedPass.usages.first?.inputTokens, 700, "the successful token scan remains visible")
+        XCTAssertEqual(failedPass.usages.first?.provenanceMethod, .providerLog)
+        XCTAssertTrue(failedPass.conversations.isEmpty)
+        XCTAssertNotNil(cacheStore.load().fileEntries[file.standardizedFileURL.path]?.tokenUsage, "exact token progress may be cached independently")
+        XCTAssertEqual(governor.deferredFileCount, 1)
+        XCTAssertEqual(metrics.snapshot().contentReadFailedDeferredCount, 1)
+        XCTAssertFalse(tracker.hasAdmittedFiles)
+        XCTAssertTrue(tracker.partialCheckpointFiles.isEmpty, "a missing requested body must keep the rollout out of the checkpoint")
+
+        let retryTracker = ParserFileDiscoveryTracker(knownFiles: tracker.partialCheckpointFiles)
+        let recoveredPass = try CodexSessionLogScanner.processThreadRows(
+            [row],
+            options: LogParseOptions(includeConversationBodies: true, fileDiscoveryTracker: retryTracker),
+            fileManager: fileManager,
+            cacheStore: cacheStore
+        )
+        XCTAssertEqual(recoveredPass.conversations.map(\.sessionId), ["thread-conversation-open-race"])
+        XCTAssertEqual(recoveredPass.conversations.first?.fullText, "## User\n\nretry this conversation")
+    }
+
+    func test_processThreadRows_emptyConversationIsSuccessfulAndCheckpointable() throws {
+        let file = try write(
+            cumulativeEvent(input: 900, output: 90) + "\n",
+            to: "rollout-token-only.jsonl"
+        )
+        let tracker = ParserFileDiscoveryTracker()
+        let governor = ParserResourceGovernor(limits: .unlimited)
+        let metrics = ParserPassMetrics()
+        let result = try CodexSessionLogScanner.processThreadRows(
+            [makeRow(threadId: "thread-token-only", rolloutPath: file.path)],
+            options: LogParseOptions(
+                includeConversationBodies: true,
+                fileDiscoveryTracker: tracker,
+                resourceGovernor: governor,
+                metrics: metrics
+            ),
+            fileManager: fileManager,
+            cacheStore: makeCacheStore(name: "token-only-cache.json")
+        )
+
+        XCTAssertEqual(result.usages.first?.inputTokens, 900)
+        XCTAssertTrue(result.conversations.isEmpty, "a token-only rollout has no conversation to emit")
+        XCTAssertEqual(governor.deferredFileCount, 0)
+        XCTAssertEqual(metrics.snapshot().contentReadFailedDeferredCount, 0)
+        XCTAssertEqual(
+            tracker.partialCheckpointFiles.map(\.path),
+            [file.standardizedFileURL.path],
+            "a readable rollout with no message turns must advance the manifest"
+        )
+    }
+
+    func test_processThreadRows_zeroOrExhaustedBudgetNeverOpensFileForHeadProbe() throws {
+        let file = try write(cumulativeEvent(input: 1_000, output: 100) + "\n", to: "rollout-head-probe-budget.jsonl")
+        let row = makeRow(threadId: "thread-head-probe-budget", rolloutPath: file.path)
+        let cacheStore = makeCacheStore(name: "head-probe-budget-cache.json")
+        _ = try CodexSessionLogScanner.processThreadRows(
+            [row],
+            options: LogParseOptions(includeConversationBodies: false),
+            fileManager: fileManager,
+            cacheStore: cacheStore
+        )
+        let cacheBeforeDeferral = cacheStore.load()
+        try append(cumulativeEvent(input: 5_000, output: 500) + "\n", to: file)
+
+        let zeroBudget = ParserResourceGovernor(limits: ParserResourceLimits(fileByteBudget: 0))
+        let exhaustedBudget = ParserResourceGovernor(limits: ParserResourceLimits(fileByteBudget: 1))
+        XCTAssertTrue(exhaustedBudget.admitFile(estimatedBytes: 1), "fixture exhausts the second governor before scanning")
+
+        for (name, governor) in [("zero", zeroBudget), ("exhausted", exhaustedBudget)] {
+            let opener = RecordingFileOpener()
+            let tracker = ParserFileDiscoveryTracker()
+            let metrics = ParserPassMetrics()
+            let result = try CodexSessionLogScanner.processThreadRows(
+                [row],
+                options: LogParseOptions(
+                    includeConversationBodies: false,
+                    fileDiscoveryTracker: tracker,
+                    resourceGovernor: governor,
+                    metrics: metrics
+                ),
+                fileManager: fileManager,
+                cacheStore: cacheStore,
+                openFileForReading: opener.open(path:)
+            )
+
+            XCTAssertTrue(opener.openedPaths.isEmpty, "\(name) budget must reject before the rewrite-detection handle is opened")
+            XCTAssertEqual(result.usages.first?.inputTokens, 1_000, "\(name) budget keeps cached exact usage")
+            XCTAssertEqual(result.usages.first?.provenanceMethod, .providerLog)
+            XCTAssertEqual(metrics.snapshot().contentReadCount, 0)
+            XCTAssertEqual(metrics.snapshot().contentReadBytes, 0)
+            XCTAssertEqual(governor.deferredFileCount, 1)
+            XCTAssertFalse(tracker.hasAdmittedFiles)
+            XCTAssertTrue(tracker.partialCheckpointFiles.isEmpty)
+            XCTAssertEqual(cacheStore.load(), cacheBeforeDeferral)
+        }
     }
 
     func test_processThreadRows_rowWithoutRolloutPath_emitsHeuristicSplit() throws {

@@ -38,6 +38,13 @@ on:
       - "scripts/generate-macos-appcast.test.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
+      - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
+      - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/prepare-scoped-functions-deploy.mjs"
+      - "scripts/ci/prepare-scoped-functions-deploy.test.mjs"
+      - "functions/staging-deploy-targets.json"
+      - "scripts/ci/write-firebase-hosting-ci-config.mjs"
+      - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
       - "scripts/ci/verify-ops-plane-workflow-boundary.mjs"
@@ -109,6 +116,13 @@ on:
       - "scripts/generate-macos-appcast.test.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
+      - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
+      - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/prepare-scoped-functions-deploy.mjs"
+      - "scripts/ci/prepare-scoped-functions-deploy.test.mjs"
+      - "functions/staging-deploy-targets.json"
+      - "scripts/ci/write-firebase-hosting-ci-config.mjs"
+      - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
       - "scripts/ci/verify-ops-plane-workflow-boundary.mjs"
@@ -172,6 +186,9 @@ jobs:
 
       - name: Verify GitHub Actions pins
         run: node scripts/ci/verify-github-action-pins.mjs
+
+      - name: Self-test Firebase CI config generation
+        run: node scripts/ci/write-firebase-hosting-ci-config.test.mjs
 
       - name: Self-test QA artifact redaction
         run: node scripts/ci/redact-qa-artifacts.test.mjs
@@ -260,6 +277,15 @@ jobs:
 
       - name: Verify hosting deploy boundary
         run: node scripts/ci/verify-hosting-deploy-boundary.mjs
+
+      - name: Self-test staging Functions deploy boundary
+        run: node scripts/ci/verify-staging-functions-deploy-boundary.test.mjs
+
+      - name: Verify staging Functions deploy boundary
+        run: node scripts/ci/verify-staging-functions-deploy-boundary.mjs
+
+      - name: Self-test scoped staging Functions entrypoint
+        run: node scripts/ci/prepare-scoped-functions-deploy.test.mjs
 
       - name: Self-test native build workflow secret boundary
         run: node scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs

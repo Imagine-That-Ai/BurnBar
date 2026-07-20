@@ -37,7 +37,7 @@
         <StackPanel x:Name="ConfirmGroup" Spacing="6">
             <TextBlock x:Name="ConfirmPrompt" FontSize="11"
                        Foreground="{StaticResource PensieveColorTextMuteBrush}" />
-            <TextBox x:Name="ConfirmBox" FontFamily="Cascadia Mono, Consolas"
+            <TextBox x:Name="ConfirmBox" FontFamily="{StaticResource AuroraMonoFont}"
                      FontWeight="SemiBold" TextChanged="OnConfirmChanged" />
         </StackPanel>
 
@@ -48,7 +48,7 @@
                 <TextBlock Text="Access revoked" FontSize="13" FontWeight="SemiBold"
                            Foreground="{StaticResource PensieveColorTierEndToEndBrush}" />
             </StackPanel>
-            <TextBlock x:Name="ResultText" FontSize="11" FontFamily="Cascadia Mono, Consolas"
+            <TextBlock x:Name="ResultText" FontSize="11" FontFamily="{StaticResource AuroraMonoFont}"
                        Foreground="{StaticResource PensieveColorTextBaseBrush}" />
         </StackPanel>
 

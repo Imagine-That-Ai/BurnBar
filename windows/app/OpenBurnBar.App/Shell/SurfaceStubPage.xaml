@@ -28,19 +28,19 @@
                           FontFamily="Segoe MDL2 Assets"
                           FontSize="36"
                           HorizontalAlignment="Center"
-                          Foreground="{StaticResource OBBAccentBrush}" />
+                          Foreground="{ThemeResource AuroraAccentBrush}" />
                 <TextBlock x:Name="TitleText"
                            HorizontalAlignment="Center"
                            FontSize="22"
                            FontWeight="SemiBold"
                            TextAlignment="Center"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Foreground="{ThemeResource AuroraTextBrush}" />
                 <TextBlock x:Name="SubtitleText"
                            HorizontalAlignment="Center"
                            Opacity="0.75"
                            TextWrapping="Wrap"
                            TextAlignment="Center"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                 <Border x:Name="StatusPill"
                         Style="{StaticResource LiquidGlassPillStyle}"
                         theme:LiquidGlass.Surface="True"
@@ -56,7 +56,7 @@
                            FontSize="12"
                            TextWrapping="Wrap"
                            TextAlignment="Center"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                           Foreground="{ThemeResource AuroraTextSecondaryBrush}"
                            Opacity="0.9" />
             </StackPanel>
         </Border>

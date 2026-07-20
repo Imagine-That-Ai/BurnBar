@@ -41,9 +41,9 @@
                                 <StackPanel Spacing="8">
                                     <TextBlock Text="{x:Bind Title}" FontSize="13" FontWeight="SemiBold"
                                                TextWrapping="Wrap"
-                                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                               Foreground="{ThemeResource AuroraTextBrush}" />
                                     <TextBlock Text="{x:Bind Message}" FontSize="12" TextWrapping="Wrap"
-                                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                               Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Button Content="Approve" Tag="{x:Bind Id}" Click="Approve_Click"
                                                 Style="{StaticResource LiquidGlassInteractiveStyle}" />
@@ -51,7 +51,7 @@
                                                 Style="{StaticResource LiquidGlassInteractiveStyle}" />
                                         <TextBlock Text="{x:Bind RequestedLabel}" FontSize="11"
                                                    VerticalAlignment="Center"
-                                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                                   Foreground="{ThemeResource AuroraTextMutedBrush}" />
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
@@ -63,11 +63,11 @@
             <!-- Active tiles -->
             <StackPanel Spacing="8">
                 <TextBlock Text="IN FLIGHT" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="12"
-                           FontWeight="Bold" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           FontWeight="Bold" Foreground="{ThemeResource AuroraTextMutedBrush}" />
 
                 <TextBlock Text="No missions in flight. Compose one on the left."
                            FontSize="12" TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                           Foreground="{ThemeResource AuroraTextMutedBrush}"
                            Visibility="{x:Bind ViewModel.HasActiveTiles, Mode=OneWay, Converter={StaticResource NegatedBoolToVisibility}}" />
 
                 <ItemsControl ItemsSource="{x:Bind ViewModel.ActiveTiles, Mode=OneWay}">
@@ -82,27 +82,27 @@
                                     <Grid>
                                         <TextBlock Text="{x:Bind Title}" FontSize="13" FontWeight="SemiBold"
                                                    TextTrimming="CharacterEllipsis" HorizontalAlignment="Left"
-                                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                                   Foreground="{ThemeResource AuroraTextBrush}" />
                                         <TextBlock Text="{x:Bind BurnLabel}" HorizontalAlignment="Right"
                                                    FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="12"
-                                                   Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                                   Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                                     </Grid>
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Border Padding="6,1"
                                                 CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                                                Background="#1FC7CFDD">
+                                                Background="{ThemeResource AuroraGlassStrokeFrostBrush}">
                                             <TextBlock Text="{x:Bind PhaseLabel}"
                                                        FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="10"
                                                        Foreground="{x:Bind IsProblem, Converter={StaticResource ProblemBrush}}" />
                                         </Border>
                                         <TextBlock Text="{x:Bind RuntimeDisplayLabel}" FontSize="11"
                                                    VerticalAlignment="Center"
-                                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                                   Foreground="{ThemeResource AuroraTextMutedBrush}" />
                                     </StackPanel>
                                     <TextBlock Text="{x:Bind LastEventSnippet}" FontSize="12" TextWrapping="Wrap"
                                                MaxLines="2"
                                                Visibility="{x:Bind HasSnippet, Converter={StaticResource BoolToVisibility}}"
-                                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                               Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                                     <ProgressBar Minimum="0" Maximum="100" Value="{x:Bind ProgressPercent}"
                                                  Height="3" />
                                 </StackPanel>
@@ -116,7 +116,7 @@
             <StackPanel Spacing="8"
                         Visibility="{x:Bind ViewModel.HasTicker, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
                 <TextBlock Text="ACTIVITY" FontFamily="{StaticResource OBBMonoFontFamily}" FontSize="12"
-                           FontWeight="Bold" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           FontWeight="Bold" Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 <ItemsControl ItemsSource="{x:Bind ViewModel.RecentTicker, Mode=OneWay}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="mcp:MissionTickerEntry">
@@ -130,15 +130,15 @@
                                          Fill="{x:Bind IsError, Converter={StaticResource ProblemBrush}}" />
                                 <StackPanel Grid.Column="1" Spacing="1">
                                     <TextBlock Text="{x:Bind Message}" FontSize="12" TextWrapping="Wrap"
-                                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                               Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                                     <TextBlock Text="{x:Bind PathDetail}" FontSize="10"
                                                FontFamily="{StaticResource OBBMonoFontFamily}"
                                                Visibility="{x:Bind HasPathDetail, Converter={StaticResource BoolToVisibility}}"
-                                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                                 </StackPanel>
                                 <TextBlock Grid.Column="2" Text="{x:Bind TimeLabel}" FontSize="10"
                                            VerticalAlignment="Top"
-                                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
                             </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

@@ -7,7 +7,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenBurnBar.App.Chat;
-using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Interop;
 using OpenBurnBar.App.Storage;
@@ -124,7 +123,7 @@ public sealed partial class DataSourceSettingsPage : Page
             model.VaultKeyB64 = NullIfEmpty(VaultKeyBox.Text);
         });
 
-        WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+        WindowsSettingsComposition.ConfigureCloudSync();
         RenderStorageStatus(WindowsStorageDevHost.InitializeRuntime());
 
         StatusLabel.Text = AppConfiguration.Current.HasSqlCipherCredentials

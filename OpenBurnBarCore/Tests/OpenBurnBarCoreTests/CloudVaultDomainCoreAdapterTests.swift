@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarDomainCoreRuntime
 import XCTest
 @testable import OpenBurnBarCore
 @testable import OpenBurnBarKernel
@@ -139,6 +140,52 @@ final class CloudVaultDomainCoreAdapterTests: XCTestCase {
                 plaintext
             )
         }
+    }
+
+    func testNativeRustModeMatchesOpaqueIdentifierKATWithoutLegacyFallback() throws {
+        let key = Data((0 ..< 32).map(UInt8.init))
+        let neverLegacy: () throws -> String = {
+            XCTFail("Rust mode evaluated an opaque-identifier legacy closure")
+            return ""
+        }
+
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.projectMemoryDocID(
+                slug: "la-hormiga-dormida",
+                keyData: key,
+                environment: rustEnvironment,
+                legacy: neverLegacy
+            ),
+            "pm_445f38c87b0e3c474c2be6339b8cd8d8"
+        )
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.pensieveDedupHash(
+                plaintext: "deploy the daemon before midnight",
+                keyData: key,
+                environment: rustEnvironment,
+                legacy: neverLegacy
+            ),
+            "e55f699579cba539fb8f3a87c77bd768a95e331859c9fca9c89d21dac0c6d433"
+        )
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.pensieveSlugHmac(
+                slug: "burnbar-docs-secret-runbook",
+                keyData: key,
+                environment: rustEnvironment,
+                legacy: neverLegacy
+            ),
+            "f77ecba2eaa6012fb4a6846d8fd218b61a04094cad346683f029e1636da7a96d"
+        )
+        XCTAssertEqual(
+            try CloudVaultDomainCoreAdapter.subscriptionDocID(
+                agentURI: "agent://burnbar/research-scout",
+                topicID: "agent-updates",
+                keyData: key,
+                environment: rustEnvironment,
+                legacy: neverLegacy
+            ),
+            "sub_4b6aff30300ab361ad751d8d7c6b2bb0"
+        )
     }
 
     func testNativeRustModeMatchesRecoveryAndP256EscrowKAT() throws {
@@ -502,6 +549,103 @@ final class CloudVaultDomainCoreAdapterTests: XCTestCase {
             "tests/fixtures/domain-core/cloudvault/v1/cloudvault-deterministic-kat.json"
         )
         return try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+    }
+}
+
+/// Regressions for the CloudVault opaque-identifier shadow slice routing defect.
+///
+/// On the pre-fix head `recordComparison` mapped `project_memory_doc_id`,
+/// `pensieve_dedup_hash`, `pensieve_slug_hmac`, and `subscription_doc_id` to the
+/// `foundation` slice (none of the `if/else if` clauses matched those
+/// operations), so Apple shadow comparisons carried the wrong slice and were
+/// dropped by spool validation. These tests exercise the public adapter entry
+/// points in shadow mode and assert the recorded `DomainCoreShadowComparison`
+/// carries `slice == "opaque-identifiers"`. They do NOT require the native
+/// domain-core XCFramework: shadow mode records a `native_unavailable`
+/// comparison through the `#else` branch of `select`, which still runs
+/// `recordComparison` with the operation under test.
+final class CloudVaultOpaqueIdentifierShadowSliceTests: XCTestCase {
+    private let shadowEnvironment = ["OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE": "shadow"]
+
+    func testOpaqueIdentifierShadowComparisonsCarryOpaqueIdentifiersSlice() throws {
+        let key = Data(repeating: 0x09, count: 32)
+        let recorder = ShadowComparisonRecorder()
+        DomainCoreShadowComparisonCollector.configure { recorder.append($0) }
+        defer { DomainCoreShadowComparisonCollector.configure(nil) }
+
+        // Each operation routes through `select` -> `recordComparison`. The
+        // legacy closure returns a deterministic placeholder; shadow mode still
+        // records the comparison (with mismatchCategory `native_unavailable` on
+        // hosts without the XCFramework) and returns the legacy value.
+        _ = try CloudVaultDomainCoreAdapter.projectMemoryDocID(
+            slug: "la-hormiga-dormida",
+            keyData: key,
+            environment: shadowEnvironment,
+            legacy: { "legacy-pm" }
+        )
+        _ = try CloudVaultDomainCoreAdapter.pensieveDedupHash(
+            plaintext: "deploy the daemon before midnight",
+            keyData: key,
+            environment: shadowEnvironment,
+            legacy: { "legacy-dedup" }
+        )
+        _ = try CloudVaultDomainCoreAdapter.pensieveSlugHmac(
+            slug: "slug-atlas",
+            keyData: key,
+            environment: shadowEnvironment,
+            legacy: { "legacy-hmac" }
+        )
+        _ = try CloudVaultDomainCoreAdapter.subscriptionDocID(
+            agentURI: "agent://codex/1",
+            topicID: "topic-7",
+            keyData: key,
+            environment: shadowEnvironment,
+            legacy: { "legacy-sub" }
+        )
+
+        let comparisons = recorder.snapshot()
+        let opaqueComparisons = comparisons.filter { $0.domain == "cloudvault" }
+        XCTAssertEqual(opaqueComparisons.count, 4, "each opaque-identifier entry point must record exactly one shadow comparison")
+        for comparison in opaqueComparisons {
+            XCTAssertEqual(
+                comparison.slice,
+                "opaque-identifiers",
+                "operation \(comparison.operation) must carry the opaque-identifiers slice, not foundation"
+            )
+        }
+        // Pin the exact operation set so a dropped or renamed entry point fails loudly.
+        XCTAssertEqual(
+            Set(opaqueComparisons.map(\.operation)),
+            Set([
+                "project_memory_doc_id",
+                "pensieve_dedup_hash",
+                "pensieve_slug_hmac",
+                "subscription_doc_id"
+            ])
+        )
+    }
+}
+
+/// Thread-safe recorder for the `@Sendable` collector closure configured on
+/// `DomainCoreShadowComparisonCollector`. Swift 6 `SendableClosureCaptures`
+/// rejects mutating a captured local `var` from a `@Sendable` closure, so the
+/// collector appends through this `@unchecked Sendable` NSLock-backed box and
+/// the test reads a snapshot back on the main thread.
+private final class ShadowComparisonRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [DomainCoreShadowComparison] = []
+
+    func append(_ comparison: DomainCoreShadowComparison) {
+        lock.lock()
+        storage.append(comparison)
+        lock.unlock()
+    }
+
+    func snapshot() -> [DomainCoreShadowComparison] {
+        lock.lock()
+        let copy = storage
+        lock.unlock()
+        return copy
     }
 }
 

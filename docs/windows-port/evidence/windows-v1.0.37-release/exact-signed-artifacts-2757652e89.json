@@ -1,0 +1,107 @@
+{
+  "schema": "openburnbar.windows.exact-signed-release-evidence.v1",
+  "recordedAt": "2026-07-18T17:56:56Z",
+  "status": "SIGNED_EXACT_CANDIDATE_AND_ARM64_VM_VERIFIED_NOT_PHYSICAL_CERTIFICATION",
+  "source": {
+    "pullRequest": 1849,
+    "mergeCommitSha": "2757652e89440eb647d21721895fc61ec89935d3",
+    "protectedTag": "windows-v1.0.37",
+    "workflowRunId": 29650389335,
+    "workflowRunUrl": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29650389335",
+    "event": "push",
+    "ref": "refs/tags/windows-v1.0.37",
+    "version": "1.0.37",
+    "conclusion": "success"
+  },
+  "workflowArtifacts": [
+    {
+      "name": "windows-release-v1.0.37",
+      "artifactId": 8431805081,
+      "apiDigest": "sha256:c25c5c48bb8bb782559d5fdeaedf6f281f8417a56df9a9501d5f5d734953978c",
+      "sizeBytes": 1350852549,
+      "expiresAt": "2026-07-25T16:34:25Z"
+    },
+    {
+      "name": "windows-provenance-v1.0.37",
+      "artifactId": 8431829190,
+      "apiDigest": "sha256:15d8bb7224074055e2660e2b87ba06f4d77fbbf57168d1af5c8f6cebc6b4e3a9",
+      "sizeBytes": 748271,
+      "expiresAt": "2026-07-25T16:37:47Z"
+    }
+  ],
+  "distributionObjects": [
+    {
+      "fileName": "OpenBurnBar-1.0.37-x64.msix",
+      "channel": "direct-download",
+      "architecture": "x64",
+      "sizeBytes": 233711867,
+      "sha256": "63a9c374bb8d817f4642ddbcbc1c4847d5bcc0388d40fdac4c45b202e7e64bd9"
+    },
+    {
+      "fileName": "OpenBurnBar-1.0.37-arm64.msix",
+      "channel": "direct-download",
+      "architecture": "ARM64",
+      "sizeBytes": 227992663,
+      "sha256": "70de3a3dbd22fc51b21346d8d213532601ee79bb234be66c8998b86bf6b01918"
+    },
+    {
+      "fileName": "OpenBurnBar-1.0.37-win-x64.zip",
+      "channel": "direct-download",
+      "architecture": "x64",
+      "sizeBytes": 222744476,
+      "sha256": "145276bef5a5940393bd8141b0bdd80fe3cd664dfe645634643944e7aa7b60f2"
+    },
+    {
+      "fileName": "OpenBurnBar-1.0.37-win-arm64.zip",
+      "channel": "direct-download",
+      "architecture": "ARM64",
+      "sizeBytes": 216417721,
+      "sha256": "72bf88caa615a8a08ccb5e17742e992927987f99aab58d011b33dd8b32d89865"
+    },
+    {
+      "fileName": "OpenBurnBar-1.0.37-store-x64.msix",
+      "channel": "microsoft-store",
+      "architecture": "x64",
+      "sizeBytes": 233683346,
+      "sha256": "ebca146a9504a6e8d68846b99de5324950c0098f7088084abbf2591d9cc2e0b7"
+    },
+    {
+      "fileName": "OpenBurnBar-1.0.37-store-arm64.msix",
+      "channel": "microsoft-store",
+      "architecture": "ARM64",
+      "sizeBytes": 227964914,
+      "sha256": "06b0230ccea93f1f8c36860def5c07b2ded38ae4c110fed78bd1661a91e18144"
+    }
+  ],
+  "signedLifecycle": {
+    "status": "passed",
+    "package": "OpenBurnBar-1.0.37-x64.msix",
+    "packageSha256": "63a9c374bb8d817f4642ddbcbc1c4847d5bcc0388d40fdac4c45b202e7e64bd9",
+    "cleanInstallSustainedLaunch": "passed",
+    "uninstall": "passed",
+    "reinstallSustainedLaunch": "passed",
+    "crashEventCount": 0
+  },
+  "arm64Vm": {
+    "classification": "applicable-vm-validation-passed-not-physical-certification",
+    "signedLifecycle": "passed",
+    "portableLaunch": "passed",
+    "uiaRouteScenarioRuns": "25/25 passed",
+    "evidenceZipSha256": "7cb325721430934d765cf32d115bcbf027e23f18589a41b0b1f653d2b1357e95"
+  },
+  "storePackaging": {
+    "productId": "9PKMSDP99CJ6",
+    "packageIdentityName": "ImagineThatAiLLC.BurnBar",
+    "publisher": "CN=5AE4835A-8FC9-48CF-9453-81F465AD2216",
+    "submissionState": "unsigned",
+    "finalSigner": "Microsoft Store",
+    "submissionPerformed": false
+  },
+  "boundaries": [
+    "The Windows source/product port and exact signed x64/ARM64 beta artifacts are complete.",
+    "Physical x64, manual accessibility/display, authorized staging cloud, physical media/Computer Use safety, and controlled Store/update lifecycle require separate fresh receipts.",
+    "The ARM64 UTM pass is VM evidence and cannot claim physical ARM64 performance or manual physical-device certification.",
+    "Physical ARM64 remains an explicit beta limitation until qualifying hardware is available.",
+    "No Store submission, public update-feed publication, production change, or broad rollout occurred."
+  ]
+}

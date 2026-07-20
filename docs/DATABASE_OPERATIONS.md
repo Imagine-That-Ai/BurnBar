@@ -99,6 +99,7 @@ No current migration is classified as independently reversible. SQL snippets pri
 | 54 | `v53_memory_forget_outbox` | atomic | unapplied-only | backup-restore | User-scoped memory forget replication outbox |
 | 55 | `v54_provider_quota_snapshots` | atomic | unapplied-only | backup-restore | Durable provider quota snapshot cache |
 | 56 | `v55_search_chunks_fts_rowid` | atomic | unapplied-only | backup-restore | Backfill search_chunks ftsRowid and sweep orphaned FTS rows for rowid-targeted deletes |
+| 57 | `v56_parser_checkpoint_file_manifest` | atomic | unapplied-only | backup-restore | Normalized parser checkpoint file-identity manifest |
 <!-- END GENERATED MIGRATION CATALOG -->
 
 Regenerate and verify the table with:

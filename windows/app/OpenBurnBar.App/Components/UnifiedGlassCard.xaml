@@ -31,9 +31,9 @@
         <Border CornerRadius="{StaticResource PensieveRadiusLgCorner}">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                    <GradientStop Offset="0.0" Color="#14FFFFFF" />
+                    <GradientStop Offset="0.0" Color="{ThemeResource AuroraGlassSheenFromColor}" />
                     <GradientStop Offset="0.5" Color="#00000000" />
-                    <GradientStop Offset="1.0" Color="#05FA5053" />
+                    <GradientStop Offset="1.0" Color="{ThemeResource AuroraGlassSheenToColor}" />
                 </LinearGradientBrush>
             </Border.Background>
         </Border>
@@ -43,9 +43,9 @@
                 BorderThickness="0.75">
             <Border.BorderBrush>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                    <GradientStop Offset="0.0" Color="#1FFFFFFF" />
-                    <GradientStop Offset="0.5" Color="#26FFFFFF" />
-                    <GradientStop Offset="1.0" Color="#0FFA5053" />
+                    <GradientStop Offset="0.0" Color="{ThemeResource AuroraGlassEdgeColor}" />
+                    <GradientStop Offset="0.5" Color="{ThemeResource AuroraGlassEdgeColor}" />
+                    <GradientStop Offset="1.0" Color="{ThemeResource AuroraGlassEdgeBorderColor}" />
                 </LinearGradientBrush>
             </Border.BorderBrush>
         </Border>

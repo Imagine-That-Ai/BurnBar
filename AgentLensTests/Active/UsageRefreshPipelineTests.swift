@@ -306,7 +306,7 @@ final class UsageRefreshPipelineTests: XCTestCase {
 private struct EmptyParser: LogParser {
     let provider: AgentProvider
 
-    func parse() async throws -> ParseResult {
+    func parse(options _: LogParseOptions) async throws -> ParseResult {
         ParseResult(usages: [], conversations: [])
     }
 }
@@ -314,7 +314,7 @@ private struct EmptyParser: LogParser {
 private struct FailingParser: LogParser {
     let provider: AgentProvider = .factory
 
-    func parse() async throws -> ParseResult {
+    func parse(options _: LogParseOptions) async throws -> ParseResult {
         throw OpenBurnBarError.parse("simulated", message: "simulated parser failure")
     }
 }
@@ -322,7 +322,7 @@ private struct FailingParser: LogParser {
 private struct CancellingParser: LogParser {
     let provider: AgentProvider = .factory
 
-    func parse() async throws -> ParseResult {
+    func parse(options _: LogParseOptions) async throws -> ParseResult {
         throw CancellationError()
     }
 }

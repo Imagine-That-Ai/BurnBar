@@ -6,7 +6,7 @@ namespace OpenBurnBar.CloudSync.AppCheck.Attestation;
 /// <summary>
 /// Produces a fresh <see cref="WindowsAttestationClaim"/> bound to an App Check
 /// app id. This is the seam between the portable mint pipeline and the
-/// platform-specific proof of a genuine, unmodified app.
+/// platform-specific proof of a hardware-backed installation identity.
 /// </summary>
 /// <remarks>
 /// Two implementations exist:
@@ -19,9 +19,8 @@ namespace OpenBurnBar.CloudSync.AppCheck.Attestation;
 ///   <item>
 ///     <c>OpenBurnBar.CloudSync.AppCheck.Windows.TpmAttestationProducer</c> — the
 ///     REAL TPM CNG <c>NCryptCreateClaim</c> producer. It emits a <c>"tpm"</c>
-///     claim that AC-013's server verifier accepts in ALL configs (prod included).
-///     It is a <c>net8.0-windows</c> / dev-host adapter: R14/AC-013-deferred, it
-///     does not run off-Windows.
+///     claim accepted by the configured Windows <c>NCryptVerifyClaim</c> service.
+///     It is a <c>net8.0-windows</c> adapter and does not run off-Windows.
 ///   </item>
 /// </list>
 /// The producer NEVER weakens the server gate: it only assembles a claim. The
@@ -37,6 +36,9 @@ public interface IAttestationProducer
     /// </summary>
     string Kind { get; }
 
+    /// <summary>Whether this producer requires a server-issued one-time challenge.</summary>
+    bool RequiresServerChallenge { get; }
+
     /// <summary>
     /// Produce a fresh attestation claim bound to <paramref name="appId"/>, with a
     /// single-use nonce and a client-asserted issue time of <paramref name="nowMillis"/>.
@@ -44,5 +46,6 @@ public interface IAttestationProducer
     ValueTask<WindowsAttestationClaim> ProduceAsync(
         string appId,
         long nowMillis,
+        AttestationChallenge? challenge = null,
         CancellationToken cancellationToken = default);
 }

@@ -302,7 +302,7 @@ public sealed partial class SettingsViewModelHostPage : Page
             identity.Children.Add(new TextBlock
             {
                 Text = route.Endpoint,
-                FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+                FontFamily = Theme.BrandFonts.Mono,
                 FontSize = 11,
                 Opacity = 0.72,
                 TextWrapping = TextWrapping.Wrap,
@@ -525,7 +525,10 @@ public sealed partial class SettingsViewModelHostPage : Page
                     {
                         throw new InvalidOperationException("Computer Use permissions are not ready.");
                     }
-                    await App.Current.ClearComputerUsePanicAsync();
+                    if (computerUse.SelectedMode == OpenBurnBar.ComputerUse.Core.Gate.ComputerUseMode.System)
+                    {
+                        await App.Current.ClearComputerUsePanicAsync();
+                    }
                 }
                 else if (method.Name == "EndSession")
                 {

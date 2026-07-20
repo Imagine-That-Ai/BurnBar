@@ -192,6 +192,7 @@ public partial class App : Application
         _ = WindowsUpdateService.RunAutomaticCheckIfDueAsync(WindowsSettingsComposition.SharedPersistence);
         WindowsAppCheckComposition.RegisterIfConfigured();
         WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+        StartWindowsRuntimeSafetyConfig();
         StartComputerUseWatchdog();
         StartPrivilegedInputBroker();
         StartPensieveKnowledgeWatcher();
@@ -263,6 +264,14 @@ public partial class App : Application
         _mainWindow = new MainWindow(_theme!, _usageRuntime);
         _mainWindow.Shell.CommandPaletteRequested += (_, _) => OpenCommandPalette();
         _mainWindow.Activate();
+        if (smoke.WindowWidth is not null || smoke.WindowHeight is not null)
+        {
+            var appWindow = WindowChrome.GetAppWindow(_mainWindow);
+            var current = appWindow.Size;
+            appWindow.Resize(new Windows.Graphics.SizeInt32(
+                smoke.WindowWidth ?? current.Width,
+                smoke.WindowHeight ?? current.Height));
+        }
         _mainWindow.Shell.Navigate(smoke.RouteKey);
         _ = RouteSmokeHost.CaptureAndExitAsync(_mainWindow, smoke);
     }
@@ -367,7 +376,7 @@ public partial class App : Application
     private WindowsUsageRuntime CreateUsageRuntime()
     {
         GeneralSettingsSnapshot generalSettings = WindowsGeneralSettingsComposition.Load();
-        var engine = new CAbiUsageEngine();
+        var engine = new OutOfProcessUsageEngine();
         var store = new SqlCipherUsageRuntimeSnapshotStore(() =>
         {
             var (path, passphrase) = WindowsStorageDevHost.ResolveCredentials();

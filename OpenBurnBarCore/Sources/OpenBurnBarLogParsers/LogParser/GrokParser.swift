@@ -17,7 +17,12 @@ public final class GrokParser: LogParser, Sendable {
     }
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fileManager = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         let sessionsRoot = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
         guard fileManager.fileExists(atPath: sessionsRoot) else {
             return ParseResult(usages: [], conversations: [])
@@ -29,7 +34,7 @@ public final class GrokParser: LogParser, Sendable {
         let workspaceDirs = try fileManager.contentsOfDirectory(
             at: URL(fileURLWithPath: sessionsRoot),
             includingPropertiesForKeys: [.isDirectoryKey]
-        ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(non-dir excluded)
+        ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
         var sessions: [(directory: URL, projectName: String)] = []
         for workspaceDir in workspaceDirs {
@@ -37,8 +42,30 @@ public final class GrokParser: LogParser, Sendable {
             let sessionDirs = try fileManager.contentsOfDirectory(
                 at: workspaceDir,
                 includingPropertiesForKeys: [.isDirectoryKey]
-            ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(non-dir excluded)
-            sessions.append(contentsOf: sessionDirs.map { ($0, projectName) })
+            ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+
+            for sessionDir in sessionDirs {
+                var contentFiles = [
+                    sessionDir.appendingPathComponent("summary.json"),
+                    sessionDir.appendingPathComponent("signals.json"),
+                    sessionDir.appendingPathComponent("chat_history.jsonl"),
+                    sessionDir.appendingPathComponent("updates.jsonl")
+                ].filter { fileManager.fileExists(atPath: $0.path) }
+
+                let metadataRoot = sessionDir.appendingPathComponent("subagents", isDirectory: true)
+                if let metadataDirs = try? fileManager.contentsOfDirectory(
+                    at: metadataRoot,
+                    includingPropertiesForKeys: [.isDirectoryKey]
+                ) {
+                    contentFiles.append(contentsOf: metadataDirs
+                        .map { $0.appendingPathComponent("meta.json") }
+                        .filter { fileManager.fileExists(atPath: $0.path) })
+                }
+
+                if try gate.shouldRead(contentFiles) {
+                    sessions.append((sessionDir, projectName))
+                }
+            }
         }
 
         let sessionDirs = sessions.map(\.directory)
@@ -59,7 +86,7 @@ public final class GrokParser: LogParser, Sendable {
                 exactUsage: reconciledExactUsage[session.directory]
             ), let usage = pair.usage {
                 usages.append(usage)
-                if let conversation = pair.conversation {
+                if options.includeConversationBodies, let conversation = pair.conversation {
                     conversations.append(conversation)
                 }
             }

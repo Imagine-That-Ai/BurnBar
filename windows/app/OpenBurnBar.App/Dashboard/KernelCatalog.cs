@@ -5,10 +5,8 @@ using System.Linq;
 namespace OpenBurnBar.App.Dashboard;
 
 /// <summary>
-/// One selectable WebGL2 backdrop kernel from the shared
-/// <c>AgentLens/Resources/KernelBackdrop/</c> bundle. Mirrors macOS
-/// <c>KernelCatalogEntry</c> so the Windows picker stays offline and in lockstep
-/// with the engine's <c>KERNEL_META</c> registry.
+/// One selectable dashboard-kernel identity. The ids and picker labels mirror
+/// macOS while Windows resolves every entry to an airspace-free native substrate.
 /// </summary>
 public sealed record KernelCatalogEntry(string Id, string Label);
 
@@ -80,8 +78,8 @@ public static class KernelBackdropPreferences
     public const string KernelKey = "backdropKernel";
 
     /// <summary>
-    /// Master gate: when on, the dashboard backdrop renders the WebGL2 kernel field
-    /// instead of (or layered over) the Win2D swarm fallback.
+    /// Master gate: when on, the dashboard backdrop renders the selected native
+    /// kernel analog instead of the layout-driven Win2D swarm fallback.
     /// </summary>
     public const string EnabledKey = "useKernelBackdrop";
 }

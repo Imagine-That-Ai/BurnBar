@@ -158,6 +158,8 @@ jobs:
         run: |
           $scripts = @(
             "scripts/windows-port/new-physical-hardware-attestation.ps1",
+            "scripts/windows-port/new-release-certification-supplemental-receipt.ps1",
+            "scripts/windows-port/publish-staging-remote-config-fixture.ps1",
             "scripts/windows-port/run-physical-release-certification.ps1"
           )
           foreach ($script in $scripts) {
@@ -172,6 +174,27 @@ jobs:
               throw "Physical certification PowerShell has parse errors: $script"
             }
             Write-Host "PowerShell parse OK: $script"
+          }
+
+      - name: Smoke supplemental certification templates
+        run: |
+          $catalog = Get-Content -Raw "scripts/windows-port/release-certification-protocols.json" | ConvertFrom-Json
+          $outputRoot = Join-Path $env:RUNNER_TEMP ("certification-protocol-" + [Guid]::NewGuid().ToString("N"))
+          $tool = Resolve-Path "scripts/windows-port/new-release-certification-supplemental-receipt.ps1"
+          foreach ($gateProperty in $catalog.gates.PSObject.Properties) {
+            $gate = [string]$gateProperty.Name
+            $resultsPath = Join-Path $outputRoot ($gate + ".json")
+            & $tool -Gate $gate -ResultsPath $resultsPath -Initialize
+            $results = Get-Content -Raw $resultsPath | ConvertFrom-Json
+            $profileName = [string]$gateProperty.Value.profile
+            $profile = $catalog.profiles.PSObject.Properties[$profileName].Value
+            if ($results.schema -ne "openburnbar.windows.release-certification-protocol-results.v1" -or
+                $results.gate -ne $gate -or
+                @($results.assertions).Count -ne @($profile.assertions).Count -or
+                @($results.assertions | Where-Object { $_.status -ne "NOT_RUN" }).Count -ne 0) {
+              throw "Supplemental certification template smoke failed: $gate"
+            }
+            Write-Host "Supplemental template OK: $gate ($(@($results.assertions).Count) assertions)"
           }
 
       - name: Restore Windows solution
@@ -193,6 +216,31 @@ jobs:
 
       - name: Build Windows solution
         run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=x64
+
+      - name: Verify usage-scan worker staging
+        run: |
+          $appOutputRoot = "windows/app/OpenBurnBar.App/bin/x64/Debug"
+          $workers = @(
+            Get-ChildItem -Path $appOutputRoot -Recurse -File -Filter "OpenBurnBar.Cli.exe"
+          )
+          if ($workers.Count -eq 0) {
+            throw "The normal Windows app build did not stage OpenBurnBar.Cli.exe."
+          }
+          $requiredWorkerFiles = @(
+            "OpenBurnBar.Cli.exe",
+            "OpenBurnBar.Cli.dll",
+            "OpenBurnBar.Cli.deps.json",
+            "OpenBurnBar.Cli.runtimeconfig.json"
+          )
+          foreach ($worker in $workers) {
+            foreach ($requiredWorkerFile in $requiredWorkerFiles) {
+              $candidate = Join-Path $worker.DirectoryName $requiredWorkerFile
+              if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                throw "The normal Windows app build is missing usage-scan worker artifact: $candidate"
+              }
+            }
+            Write-Host "Usage-scan worker staged beside app output: $($worker.DirectoryName)"
+          }
 
       - name: Run Windows test suite
         env:
@@ -225,6 +273,9 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
         with:
           python-version: "3.11"
+
+      - name: XAML token discipline (Aurora/macOS parity — no raw colors or fonts outside Theme/)
+        run: bash scripts/windows-port/check-xaml-token-discipline.sh
 
       - name: Validate physical certification harness contract
         run: |

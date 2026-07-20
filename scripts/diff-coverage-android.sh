@@ -46,6 +46,7 @@ fi
 production_changed="$(printf '%s\n' "$changed_files" | awk '
   /\/src\/main\// &&
   $0 !~ /^android\/macrobenchmark\// &&
+  $0 != "android/app/src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt" &&
   $0 !~ /^android\/(burnbar-remote|openburnbar-domain-core|openburnbar-iroh-relay)\/src\/main\/java\/uniffi\//
 ')"
 if [[ -z "$production_changed" ]]; then
@@ -96,6 +97,12 @@ generated_uniffi_prefixes = (
     "android/openburnbar-iroh-relay/src/main/java/uniffi/",
 )
 changed = [c for c in changed if not c.startswith(generated_uniffi_prefixes)]
+# Style Dictionary owns this exact compile-time-constant file; token drift gates
+# validate the generator output, while JaCoCo cannot instrument const vals.
+generated_source_paths = {
+    "android/app/src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt",
+}
+changed = [c for c in changed if c not in generated_source_paths]
 if not changed:
     print(json.dumps({"diffCoverage": {"percent": 100.0, "passed": True, "surface": "android", "method": "no_production_kotlin"}}))
     raise SystemExit(0)

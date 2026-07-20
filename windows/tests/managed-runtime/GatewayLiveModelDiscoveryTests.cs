@@ -13,6 +13,7 @@ using Xunit;
 
 namespace OpenBurnBar.App.ManagedAgentRuntime.Tests;
 
+[Collection(LoopbackGatewayCollection.Name)]
 public sealed class GatewayLiveModelDiscoveryTests
 {
     [Fact]

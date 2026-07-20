@@ -7,3 +7,6 @@ security/remediation/**/*.patch -whitespace
 crates/openburnbar-domain-core/**/*.rs text eol=lf
 crates/openburnbar-domain-core/**/*.toml text eol=lf
 crates/openburnbar-domain-core/Cargo.lock text eol=lf
+
+# Physical certification receipts bind this policy by SHA-256 across hosts.
+scripts/windows-port/release-performance-budgets.json text eol=lf

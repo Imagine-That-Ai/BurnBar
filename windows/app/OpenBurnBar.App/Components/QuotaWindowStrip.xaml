@@ -35,8 +35,8 @@
                     <TextBlock x:Name="ShortLabel"
                                FontSize="10"
                                FontWeight="SemiBold"
-                               FontFamily="Cascadia Mono, Consolas"
-                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                               FontFamily="{StaticResource AuroraMonoFont}"
+                               Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                 </StackPanel>
                 <Grid x:Name="ShortTrackHost" Grid.Column="1" Height="10" SizeChanged="OnShortTrackSizeChanged">
                     <Border x:Name="ShortTrack" CornerRadius="3" BorderThickness="1" />
@@ -45,7 +45,7 @@
                 <TextBlock x:Name="ShortRemaining"
                            Grid.Column="2"
                            FontSize="10"
-                           FontFamily="Cascadia Mono, Consolas"
+                           FontFamily="{StaticResource AuroraMonoFont}"
                            TextAlignment="Right"
                            VerticalAlignment="Center" />
             </Grid>
@@ -64,8 +64,8 @@
                     <TextBlock x:Name="LongLabel"
                                FontSize="10"
                                FontWeight="SemiBold"
-                               FontFamily="Cascadia Mono, Consolas"
-                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                               FontFamily="{StaticResource AuroraMonoFont}"
+                               Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                 </StackPanel>
                 <Grid x:Name="LongTrackHost" Grid.Column="1" Height="10" SizeChanged="OnLongTrackSizeChanged">
                     <Border x:Name="LongTrack" CornerRadius="3" BorderThickness="1" />
@@ -74,7 +74,7 @@
                 <TextBlock x:Name="LongRemaining"
                            Grid.Column="2"
                            FontSize="10"
-                           FontFamily="Cascadia Mono, Consolas"
+                           FontFamily="{StaticResource AuroraMonoFont}"
                            TextAlignment="Right"
                            VerticalAlignment="Center" />
             </Grid>

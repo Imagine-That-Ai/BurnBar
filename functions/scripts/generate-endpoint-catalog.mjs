@@ -153,6 +153,50 @@ const CATALOG_OVERRIDES = {
     ],
     highRiskComputerUse: false,
   },
+  issueWindowsAppCheckChallenge: {
+    trigger: "callable",
+    authMethod: "Firebase Auth; server-nonce bootstrap for Windows TPM attestation",
+    appCheck: "not-required",
+    publicJustification:
+      "Bootstrap that precedes custom App Check minting, so it cannot require App Check. It returns a short-lived nonce only after Firebase Auth and exact server-configured app-id binding.",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    handlerModule: "callables/windowsAppCheck.ts",
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and accepts only the exact server-configured, allowlisted Windows app id",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["issueWindowsAppCheckChallenge"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  getWindowsRuntimeSafetyConfig: {
+    trigger: "callable",
+    authMethod: "Firebase Auth plus Windows TPM-backed App Check",
+    appCheck: "required",
+    tenantSource: "request.auth.uid; response contains global safety flags only",
+    objectIdsFromClient: [],
+    handlerModule: "callables/windowsRuntimeSafetyConfig.ts",
+    ownershipCheck:
+      "handler requires Auth and App Check, accepts no object ids, and returns only bounded global Remote Config booleans",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["getWindowsRuntimeSafetyConfig"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   burnBarHermesGateway: {
     trigger: "http",
     bolaCoverage: [

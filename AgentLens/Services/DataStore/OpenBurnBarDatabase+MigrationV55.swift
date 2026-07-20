@@ -131,4 +131,5 @@ extension OpenBurnBarDatabase {
             }
         }
     }
+
 }

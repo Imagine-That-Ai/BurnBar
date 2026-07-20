@@ -22,7 +22,7 @@
                        VerticalAlignment="Center"
                        FontFamily="{StaticResource PensieveFontMono}"
                        FontSize="10"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
             <Button x:Name="ClearButton"
                     Click="OnClearClicked"
                     Visibility="Collapsed"
@@ -48,7 +48,7 @@
                    FontSize="22"
                    FontWeight="SemiBold"
                    TextWrapping="Wrap"
-                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                   Foreground="{ThemeResource AuroraTextBrush}" />
 
         <!-- Meta strip (built in code-behind). -->
         <StackPanel x:Name="MetaStrip"

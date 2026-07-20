@@ -18,11 +18,11 @@
 
             <TextBlock
                 Style="{StaticResource TitleTextBlockStyle}"
-                Foreground="{StaticResource PensieveColorTextBrightBrush}"
+                Foreground="{ThemeResource AuroraTextBrush}"
                 Text="Updates" />
             <TextBlock
                 Margin="0,0,0,8"
-                Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                Foreground="{ThemeResource AuroraTextMutedBrush}"
                 Text="App version, automatic updates, and the release channel." />
 
             <tk:SettingsCard x:Name="OverviewCard" Header="App Version"
@@ -33,11 +33,11 @@
                 <StackPanel Spacing="2" HorizontalAlignment="Right">
                     <TextBlock x:Name="VersionText"
                                TextAlignment="Right"
-                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                               Foreground="{ThemeResource AuroraTextBrush}" />
                     <TextBlock x:Name="ChannelText"
                                TextAlignment="Right"
                                FontSize="12"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
             </tk:SettingsCard>
 
@@ -52,11 +52,11 @@
                 <StackPanel Spacing="6" MinWidth="280">
                     <TextBlock x:Name="UpdaterStatusText"
                                TextWrapping="Wrap"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     <TextBlock x:Name="AppcastText"
                                TextWrapping="WrapWholeWords"
                                FontSize="12"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     <Button x:Name="CheckNowButton"
                             Content="Check Now"
                             Click="CheckNowButton_Click" />
@@ -71,7 +71,7 @@
                     <TextBlock x:Name="StartupStatusText"
                                TextWrapping="Wrap"
                                FontSize="12"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
             </tk:SettingsCard>
 

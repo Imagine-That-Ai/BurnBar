@@ -10,11 +10,26 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  PERFORMANCE_BUDGET_CATALOG,
+  PERFORMANCE_BUDGET_SCHEMA,
+  PERFORMANCE_BUDGET_SHA256,
+  PERFORMANCE_BUDGET_STATUS,
+  validatePerformanceContext,
+  validatePerformanceMeasurements,
+} from "./release-performance-budget.mjs";
 
 export const BUNDLE_SCHEMA = "openburnbar.windows.release-certification-bundle.v1";
 export const RECEIPT_SCHEMA = "openburnbar.windows.release-certification-receipt.v1";
 export const HARDWARE_ATTESTATION_SCHEMA = "openburnbar.windows.physical-hardware-attestation.v1";
 export const CHECKSUM_FILE = "SHA256SUMS";
+export const CERTIFICATION_PROTOCOL_CATALOG = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL("./release-certification-protocols.json", import.meta.url)),
+    "utf8",
+  ),
+);
+export const CERTIFICATION_PROTOCOL_SCHEMA = CERTIFICATION_PROTOCOL_CATALOG.schema;
 export const REQUIRED_GATE_IDS = [
   "local-automated-checks",
   "physical-performance-x64",
@@ -35,6 +50,8 @@ const PHYSICAL_ASSET_TAG_SOURCES = new Set([
   "Win32_SystemEnclosure.SMBIOSAssetTag",
   "Win32_ComputerSystemProduct.IdentifyingNumber",
 ]);
+const UNUSABLE_ASSET_TAG_PATTERN =
+  /^(none|unknown|default string|to be filled by o\.e\.m\.|not specified|system asset tag|chassis asset tag)$/i;
 const VIRTUAL_HOST_IDENTITY_PATTERN =
   /(VMware|VirtualBox|QEMU|UTM|Parallels|KVM|Virtual Machine|Hyper-V|Amazon EC2|Google Compute Engine|HVM domU|\bXen\b|OpenStack|Bochs|BHYVE|DigitalOcean)/i;
 const HARDWARE_ATTESTATION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -63,6 +80,99 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+export function validateCertificationProtocolCatalog(
+  catalog = CERTIFICATION_PROTOCOL_CATALOG,
+) {
+  const errors = [];
+  if (!isRecord(catalog) || catalog.schema !== "openburnbar.windows.release-certification-protocols.v1") {
+    errors.push("protocol catalog schema is invalid");
+    return errors;
+  }
+  if (!isRecord(catalog.profiles) || !isRecord(catalog.gates)) {
+    errors.push("protocol catalog profiles and gates are required");
+    return errors;
+  }
+  const catalogGateIds = Object.keys(catalog.gates);
+  for (const gate of PHYSICAL_GATES) {
+    if (!catalogGateIds.includes(gate)) {
+      errors.push(`protocol catalog gate is missing: ${gate}`);
+    }
+  }
+  for (const gate of catalogGateIds) {
+    if (!PHYSICAL_GATES.has(gate)) {
+      errors.push(`protocol catalog gate is unknown: ${gate}`);
+    }
+  }
+  const referencedProfiles = new Set();
+  for (const gate of PHYSICAL_GATES) {
+    const gateConfig = catalog.gates[gate];
+    if (!isRecord(gateConfig) || typeof gateConfig.profile !== "string") {
+      continue;
+    }
+    referencedProfiles.add(gateConfig.profile);
+    const expectedArchitecture = PHYSICAL_PERFORMANCE_ARCHITECTURES.get(gate);
+    if (expectedArchitecture && normalizeArchitecture(gateConfig.architecture) !== expectedArchitecture) {
+      errors.push(`protocol catalog gate ${gate} requires architecture ${expectedArchitecture}`);
+    }
+    const profile = catalog.profiles[gateConfig.profile];
+    if (!isRecord(profile)) {
+      errors.push(`protocol catalog profile is missing: ${gateConfig.profile}`);
+      continue;
+    }
+    if (typeof profile.target !== "string" || profile.target.trim().length === 0) {
+      errors.push(`protocol catalog profile target is missing: ${gateConfig.profile}`);
+    }
+    if (typeof profile.expected !== "string" || profile.expected.trim().length === 0) {
+      errors.push(`protocol catalog profile expected result is missing: ${gateConfig.profile}`);
+    }
+    const ids = new Set();
+    for (const assertion of asArray(profile.assertions)) {
+      if (
+        !isRecord(assertion) ||
+        typeof assertion.id !== "string" ||
+        !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(assertion.id) ||
+        typeof assertion.description !== "string" ||
+        assertion.description.trim().length === 0
+      ) {
+        errors.push(`protocol catalog profile has an invalid assertion: ${gateConfig.profile}`);
+        continue;
+      }
+      if (ids.has(assertion.id)) {
+        errors.push(`protocol catalog profile has duplicate assertion ${assertion.id}`);
+      }
+      ids.add(assertion.id);
+    }
+    if (ids.size === 0) {
+      errors.push(`protocol catalog profile has no assertions: ${gateConfig.profile}`);
+    }
+    if (gateConfig.profile === "physical-performance") {
+      if (profile.performanceBudgetSchema !== PERFORMANCE_BUDGET_SCHEMA) {
+        errors.push(
+          `protocol catalog physical-performance profile must bind ${PERFORMANCE_BUDGET_SCHEMA}`,
+        );
+      }
+      for (const measurement of PERFORMANCE_BUDGET_CATALOG.measurements) {
+        if (!ids.has(measurement.assertionId)) {
+          errors.push(
+            `performance budget measurement ${measurement.id} references unknown assertion ${measurement.assertionId}`,
+          );
+        }
+      }
+    }
+  }
+  for (const profileName of Object.keys(catalog.profiles)) {
+    if (!referencedProfiles.has(profileName)) {
+      errors.push(`protocol catalog profile is unreferenced: ${profileName}`);
+    }
+  }
+  return [...new Set(errors)];
+}
+
+const protocolCatalogErrors = validateCertificationProtocolCatalog();
+if (protocolCatalogErrors.length > 0) {
+  throw new Error(`Invalid Windows certification protocol catalog:\n${protocolCatalogErrors.join("\n")}`);
+}
+
 function normalizeArchitecture(value) {
   const normalized = String(value ?? "")
     .toLowerCase()
@@ -70,6 +180,16 @@ function normalizeArchitecture(value) {
   if (["arm64", "aarch64"].includes(normalized)) return "arm64";
   if (["x64", "amd64", "x8664"].includes(normalized)) return "x64";
   return normalized;
+}
+
+export function certificationProtocolForGate(gate) {
+  const gateConfig = CERTIFICATION_PROTOCOL_CATALOG.gates?.[gate];
+  const profile = gateConfig
+    ? CERTIFICATION_PROTOCOL_CATALOG.profiles?.[gateConfig.profile]
+    : null;
+  return gateConfig && profile
+    ? { gate: gateConfig, profile, profileName: gateConfig.profile }
+    : null;
 }
 
 function sha256(path) {
@@ -110,8 +230,16 @@ function checkEvidenceFiles(receipt, bundleDir, errors, label) {
     return;
   }
 
+  const paths = new Set();
   for (const [index, file] of files.entries()) {
     const fileLabel = `${label}: evidence.files[${index}]`;
+    if (isRecord(file) && typeof file.path === "string") {
+      const normalizedPath = file.path.replaceAll("\\", "/");
+      if (paths.has(normalizedPath)) {
+        errors.push(`${fileLabel}: duplicate evidence path ${file.path}`);
+      }
+      paths.add(normalizedPath);
+    }
     const path = evidencePath(bundleDir, file);
     if (!path) {
       errors.push(`${fileLabel}: path must stay inside the bundle`);
@@ -153,6 +281,13 @@ function checkArtifact(receipt, errors, label) {
     if (typeof artifact.workflowRunUrl !== "string" || !/^https:\/\//.test(artifact.workflowRunUrl)) {
       errors.push(`${label}: recorded artifact requires workflowRunUrl`);
     }
+    if (receipt.status === "PASS") {
+      if (!/^[a-f0-9]{40}$/.test(artifact.sourceCommit ?? "")) {
+        errors.push(`${label}: recorded PASS artifact requires sourceCommit`);
+      } else if (artifact.sourceCommit !== receipt.source?.commitSha) {
+        errors.push(`${label}: artifact.sourceCommit does not match receipt source.commitSha`);
+      }
+    }
   }
   if (!isRecord(artifact.signature)) {
     errors.push(`${label}: artifact.signature is required`);
@@ -165,6 +300,46 @@ function checkArtifact(receipt, errors, label) {
     }
     if (receipt.status === "PASS" && artifact.availability === "recorded" && artifact.signature.result !== "verified") {
       errors.push(`${label}: a PASS receipt requires verified artifact signature`);
+    }
+  }
+}
+
+function artifactIdentity(artifact) {
+  if (!isRecord(artifact)) return null;
+  return JSON.stringify({
+    name: artifact.name,
+    architecture: artifact.architecture,
+    availability: artifact.availability,
+    sourceCommit: artifact.sourceCommit,
+    sha256: artifact.sha256,
+    workflowRunId: artifact.workflowRunId,
+    workflowRunUrl: artifact.workflowRunUrl,
+    signatureResult: artifact.signature?.result,
+    signatureIdentity: artifact.signature?.identity,
+  });
+}
+
+function checkSource(source, errors, label, options = {}) {
+  if (!isRecord(source)) {
+    errors.push(`${label}: source is required`);
+    return;
+  }
+  if (!/^[a-f0-9]{40,64}$/.test(source.commitSha ?? "")) {
+    errors.push(`${label}: source.commitSha is invalid`);
+  }
+  if (typeof source.dirtyTree !== "boolean") {
+    errors.push(`${label}: source.dirtyTree is required`);
+  }
+  if (source.harness !== undefined || options.requireHarness === true) {
+    if (!isRecord(source.harness)) {
+      errors.push(`${label}: source.harness is required`);
+    } else {
+      if (!/^[a-f0-9]{40}$/.test(source.harness.commitSha ?? "")) {
+        errors.push(`${label}: source.harness.commitSha must be a full Git SHA`);
+      }
+      if (typeof source.harness.dirtyTree !== "boolean") {
+        errors.push(`${label}: source.harness.dirtyTree is required`);
+      }
     }
   }
 }
@@ -187,6 +362,12 @@ function checkDevice(receipt, errors, label) {
       if (typeof receipt.device[field] !== "string" || receipt.device[field].trim().length === 0) {
         errors.push(`${label}: physical PASS requires device.${field}`);
       }
+    }
+    if (
+      typeof receipt.device.assetTag === "string" &&
+      UNUSABLE_ASSET_TAG_PATTERN.test(receipt.device.assetTag.trim())
+    ) {
+      errors.push(`${label}: physical PASS requires a usable device.assetTag`);
     }
     if (
       typeof receipt.device.assetTagSource === "string" &&
@@ -309,6 +490,130 @@ function checkBlocker(receipt, errors, label) {
   }
 }
 
+function checkProtocol(receipt, errors, label) {
+  if (!isRecord(receipt.protocol)) {
+    errors.push(`${label}: protocol is required`);
+    return;
+  }
+
+  const commands = asArray(receipt.protocol.commands);
+  const manualSteps = asArray(receipt.protocol.manualSteps);
+  if (commands.length === 0 && manualSteps.length === 0) {
+    errors.push(`${label}: protocol requires a command or manualSteps`);
+  }
+  for (const [kind, values] of [
+    ["commands", commands],
+    ["manualSteps", manualSteps],
+  ]) {
+    for (const [index, value] of values.entries()) {
+      if (typeof value !== "string" || value.trim().length === 0) {
+        errors.push(`${label}: protocol.${kind}[${index}] must be a non-empty string`);
+      }
+    }
+  }
+
+  if (!PHYSICAL_GATES.has(receipt.gate) || receipt.status !== "PASS") return;
+
+  const protocol = certificationProtocolForGate(receipt.gate);
+  if (!protocol) {
+    errors.push(`${label}: no certification protocol is defined for ${receipt.gate}`);
+    return;
+  }
+  if (receipt.protocol.profileSchema !== CERTIFICATION_PROTOCOL_SCHEMA) {
+    errors.push(`${label}: protocol.profileSchema must be ${CERTIFICATION_PROTOCOL_SCHEMA}`);
+  }
+  if (receipt.protocol.profile !== protocol.profileName) {
+    errors.push(`${label}: protocol.profile must be ${protocol.profileName}`);
+  }
+
+  const evidencePaths = new Set(
+    asArray(receipt.evidence?.files)
+      .filter(isRecord)
+      .map((file) => file.path),
+  );
+  const assertions = asArray(receipt.protocol.assertions);
+  const assertionById = new Map();
+  for (const [index, assertion] of assertions.entries()) {
+    const assertionLabel = `${label}: protocol.assertions[${index}]`;
+    if (!isRecord(assertion) || typeof assertion.id !== "string" || assertion.id.length === 0) {
+      errors.push(`${assertionLabel}: id is required`);
+      continue;
+    }
+    if (assertionById.has(assertion.id)) {
+      errors.push(`${label}: duplicate protocol assertion ${assertion.id}`);
+      continue;
+    }
+    assertionById.set(assertion.id, assertion);
+    if (assertion.status !== "PASS") {
+      errors.push(`${assertionLabel}: status must be PASS`);
+    }
+    if (typeof assertion.observed !== "string" || assertion.observed.trim().length === 0) {
+      errors.push(`${assertionLabel}: observed is required`);
+    }
+    const assertionEvidence = asArray(assertion.evidence);
+    if (assertionEvidence.length === 0) {
+      errors.push(`${assertionLabel}: evidence must reference at least one hashed file`);
+    }
+    for (const evidence of assertionEvidence) {
+      if (typeof evidence !== "string" || !evidencePaths.has(evidence)) {
+        errors.push(`${assertionLabel}: evidence reference is not present in receipt.evidence.files`);
+      }
+    }
+  }
+
+  const requiredIds = new Set(protocol.profile.assertions.map((assertion) => assertion.id));
+  for (const id of requiredIds) {
+    if (!assertionById.has(id)) {
+      errors.push(`${label}: required protocol assertion is missing: ${id}`);
+    }
+  }
+  for (const id of assertionById.keys()) {
+    if (!requiredIds.has(id)) {
+      errors.push(`${label}: unknown protocol assertion: ${id}`);
+    }
+  }
+
+  if (PHYSICAL_PERFORMANCE_ARCHITECTURES.has(receipt.gate)) {
+    const budget = receipt.protocol.performanceBudget;
+    if (!isRecord(budget)) {
+      errors.push(`${label}: physical performance PASS requires protocol.performanceBudget`);
+    } else {
+      const expectedBudget = {
+        schema: PERFORMANCE_BUDGET_SCHEMA,
+        status: PERFORMANCE_BUDGET_STATUS,
+        revision: PERFORMANCE_BUDGET_CATALOG.revision,
+        sha256: PERFORMANCE_BUDGET_SHA256,
+      };
+      for (const [field, expected] of Object.entries(expectedBudget)) {
+        if (budget[field] !== expected) {
+          errors.push(`${label}: protocol.performanceBudget.${field} does not match the active release budget`);
+        }
+      }
+    }
+    errors.push(
+      ...validatePerformanceContext(receipt.protocol.performanceContext, {
+        label: `${label}: protocol.performanceContext`,
+      }),
+      ...validatePerformanceMeasurements(receipt.protocol.performanceMeasurements, {
+        label: `${label}: protocol.performanceMeasurements`,
+        evidencePaths,
+      }),
+    );
+    for (const measurement of asArray(receipt.protocol.performanceMeasurements)) {
+      if (
+        isRecord(measurement) &&
+        typeof measurement.durationSeconds === "number" &&
+        typeof receipt.time?.durationSeconds === "number" &&
+        measurement.durationSeconds > receipt.time.durationSeconds + 1
+      ) {
+        errors.push(
+          `${label}: protocol.performanceMeasurements.${measurement.id}.durationSeconds exceeds the receipt interval`,
+        );
+      }
+    }
+  }
+}
+
 export function validateReceipt(receipt, options = {}) {
   const errors = [];
   const label = options.label ?? "receipt";
@@ -325,22 +630,14 @@ export function validateReceipt(receipt, options = {}) {
   if (typeof receipt.gate !== "string" || receipt.gate.length === 0) errors.push(`${label}: gate is required`);
   if (typeof receipt.target !== "string" || receipt.target.length === 0) errors.push(`${label}: target is required`);
 
-  if (!isRecord(receipt.source)) {
-    errors.push(`${label}: source is required`);
-  } else {
-    if (!/^[a-f0-9]{40,64}$/.test(receipt.source.commitSha ?? "")) errors.push(`${label}: source.commitSha is invalid`);
-    if (typeof receipt.source.dirtyTree !== "boolean") errors.push(`${label}: source.dirtyTree is required`);
-  }
+  checkSource(receipt.source, errors, label, {
+    requireHarness: PHYSICAL_GATES.has(receipt.gate) && receipt.status === "PASS",
+  });
 
   checkArtifact(receipt, errors, label);
   checkDevice(receipt, errors, label);
   checkPhysicalHardwareAttestation(receipt, bundleDir, errors, label);
-
-  if (!isRecord(receipt.protocol)) {
-    errors.push(`${label}: protocol is required`);
-  } else if (asArray(receipt.protocol.commands).length === 0 && asArray(receipt.protocol.manualSteps).length === 0) {
-    errors.push(`${label}: protocol requires a command or manualSteps`);
-  }
+  checkProtocol(receipt, errors, label);
 
   if (!isRecord(receipt.time)) {
     errors.push(`${label}: time is required`);
@@ -365,6 +662,9 @@ export function validateReceipt(receipt, options = {}) {
   if (PHYSICAL_GATES.has(receipt.gate) && receipt.status === "PASS") {
     if (receipt.artifact?.availability !== "recorded") errors.push(`${label}: physical PASS requires a recorded artifact`);
     if (receipt.source?.dirtyTree === true) errors.push(`${label}: physical PASS cannot use a dirty source tree`);
+    if (receipt.source?.harness?.dirtyTree === true) {
+      errors.push(`${label}: physical PASS cannot use a dirty certification harness`);
+    }
     const expectedArchitecture = PHYSICAL_PERFORMANCE_ARCHITECTURES.get(receipt.gate);
     if (expectedArchitecture && normalizeArchitecture(receipt.device?.architecture) !== expectedArchitecture) {
       errors.push(`${label}: ${receipt.gate} requires ${expectedArchitecture} device architecture`);
@@ -434,9 +734,19 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
   const manifest = readJson(manifestPath, errors, "certification-manifest.json");
   if (!manifest) return { ok: false, errors };
   if (manifest.schema !== BUNDLE_SCHEMA) errors.push("bundle: schema mismatch");
-  if (!/^[a-f0-9]{40,64}$/.test(manifest.source?.commitSha ?? "")) errors.push("bundle: source.commitSha is invalid");
-  if (typeof manifest.source?.dirtyTree !== "boolean") errors.push("bundle: source.dirtyTree is required");
+  checkSource(manifest.source, errors, "bundle");
   if (!["GO", "CONDITIONAL GO", "NO-GO"].includes(manifest.overallVerdict)) errors.push("bundle: overallVerdict is invalid");
+  if (manifest.artifact !== undefined) {
+    checkArtifact(
+      {
+        artifact: manifest.artifact,
+        source: manifest.source,
+        status: manifest.overallVerdict === "GO" ? "PASS" : "BLOCKED",
+      },
+      errors,
+      "bundle",
+    );
+  }
 
   const receiptEntries = asArray(manifest.receipts);
   if (receiptEntries.length === 0) errors.push("bundle: receipts must not be empty");
@@ -461,6 +771,18 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
     receiptByPath.set(entry.path, receipt);
     if (receipt.source?.commitSha !== manifest.source?.commitSha) {
       errors.push(`${label}: receipt commit does not match bundle source commit`);
+    }
+    if (
+      manifest.artifact !== undefined &&
+      artifactIdentity(receipt.artifact) !== artifactIdentity(manifest.artifact)
+    ) {
+      errors.push(`${label}: receipt artifact does not match bundle artifact`);
+    }
+    if (
+      receipt.source?.harness?.commitSha !== manifest.source?.harness?.commitSha ||
+      receipt.source?.harness?.dirtyTree !== manifest.source?.harness?.dirtyTree
+    ) {
+      errors.push(`${label}: receipt harness does not match bundle source harness`);
     }
     if (!/^[a-f0-9]{64}$/.test(entry.sha256 ?? "")) {
       errors.push(`${label}: receipt sha256 is required`);
@@ -510,6 +832,9 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
     if (manifest.source?.dirtyTree === true) {
       errors.push("bundle: overallVerdict GO requires a clean source tree");
     }
+    if (manifest.source?.harness?.dirtyTree === true) {
+      errors.push("bundle: overallVerdict GO requires a clean certification harness");
+    }
     const dirtyPassingReceipt = [...receiptByPath.values()].some(
       (receipt) => receipt.status === "PASS" && receipt.source?.dirtyTree === true,
     );
@@ -518,19 +843,35 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
     }
   }
 
-  if (options.expectedCommit && manifest.source.commitSha !== options.expectedCommit) {
-    errors.push(`bundle: commit mismatch expected ${options.expectedCommit} actual ${manifest.source.commitSha}`);
+  if (options.expectedCommit && manifest.source?.commitSha !== options.expectedCommit) {
+    errors.push(`bundle: commit mismatch expected ${options.expectedCommit} actual ${manifest.source?.commitSha}`);
+  }
+  if (
+    options.expectedHarnessCommit &&
+    manifest.source?.harness?.commitSha !== options.expectedHarnessCommit
+  ) {
+    errors.push(
+      `bundle: harness commit mismatch expected ${options.expectedHarnessCommit} actual ${manifest.source?.harness?.commitSha}`,
+    );
   }
   validateSha256Sums(root, errors);
   return { ok: errors.length === 0, errors, manifest };
 }
 
 function parseArgs(argv) {
-  const args = { bundleDir: "", writeSums: false, expectedCommit: "" };
+  const args = {
+    bundleDir: "",
+    writeSums: false,
+    expectedCommit: "",
+    expectedHarnessCommit: "",
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === "--write-sums") args.writeSums = true;
     else if (value === "--expected-commit") args.expectedCommit = argv[++index] ?? "";
+    else if (value === "--expected-harness-commit") {
+      args.expectedHarnessCommit = argv[++index] ?? "";
+    }
     else if (!args.bundleDir) args.bundleDir = value;
     else throw new Error(`unknown argument: ${value}`);
   }
@@ -547,7 +888,10 @@ if (isMain) {
       mkdirSync(bundleDir, { recursive: true });
       writeSha256Sums(bundleDir);
     }
-    const result = validateReleaseCertificationBundle(bundleDir, { expectedCommit: args.expectedCommit || undefined });
+    const result = validateReleaseCertificationBundle(bundleDir, {
+      expectedCommit: args.expectedCommit || undefined,
+      expectedHarnessCommit: args.expectedHarnessCommit || undefined,
+    });
     if (!result.ok) {
       console.error("FAIL: Windows release-certification evidence bundle is invalid.");
       for (const error of result.errors) console.error(`- ${error}`);

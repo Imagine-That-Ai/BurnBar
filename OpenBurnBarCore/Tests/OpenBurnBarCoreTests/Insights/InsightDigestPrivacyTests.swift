@@ -241,4 +241,216 @@ final class InsightDigestPrivacyTests: XCTestCase {
                           "Project ID is not an opaque ordinal token: \(id)")
         }
     }
+
+    func testOperatingActionPrivateTextStaysLocalWhileDigestUsesClosedCategories() throws {
+        let snapshot = makePrivateOperatingActionSnapshot(includeActions: true)
+
+        let localTrace = try XCTUnwrap(InsightSessionTraceBuilder().build(from: snapshot))
+        XCTAssertEqual(localTrace.summary, Self.privateTaskTitle)
+        XCTAssertEqual(
+            localTrace.lanes.first(where: { $0.kind == .tool })?.label,
+            String(Self.privateActionSummary.prefix(20)),
+            "The local trace is allowed to retain operator-authored detail; only model egress is redacted."
+        )
+
+        let digest = try InsightDigestBuilder().build(
+            from: snapshot,
+            filter: InsightFilter(window: .last24h)
+        )
+        let encoded = try JSONEncoder().encode(digest)
+        let encodedText = String(decoding: encoded, as: UTF8.self)
+        XCTAssertFalse(encodedText.contains(Self.privateActionSummary))
+        XCTAssertFalse(encodedText.contains(Self.privateTaskTitle))
+
+        let actionsByID = Dictionary(uniqueKeysWithValues: digest.operatingActions.map { ($0.id, $0) })
+        let privateAction = try XCTUnwrap(actionsByID["private-action"])
+        XCTAssertEqual(privateAction.kind, "deployment")
+        XCTAssertEqual(privateAction.summary, "Deployment action")
+        XCTAssertNil(privateAction.projectID)
+
+        let emptyAction = try XCTUnwrap(actionsByID["empty-action"])
+        XCTAssertEqual(emptyAction.kind, "other")
+        XCTAssertEqual(emptyAction.summary, "Other action")
+        XCTAssertNil(emptyAction.projectID)
+
+        let allowedKinds: Set<String> = [
+            "approval", "rollback", "deployment", "data_control", "computer_use",
+            "model", "tool", "workflow", "other"
+        ]
+        let allowedSummaries: Set<String> = [
+            "Approval action", "Rollback action", "Deployment action", "Data-control action",
+            "Computer-use action", "Model action", "Tool action", "Workflow action", "Other action"
+        ]
+        XCTAssertTrue(digest.operatingActions.allSatisfy { allowedKinds.contains($0.kind) })
+        XCTAssertTrue(digest.operatingActions.allSatisfy { allowedSummaries.contains($0.summary) })
+    }
+
+    func testAnalysisAndInvestigationPayloadsKeepPrivateActionsOutAndEncodeNoActionsAsEmpty() throws {
+        let digest = try InsightDigestBuilder().build(
+            from: makePrivateOperatingActionSnapshot(includeActions: true),
+            filter: InsightFilter(window: .last24h)
+        )
+        let tag = InsightModelTag(
+            providerKey: "privacy-test-provider",
+            modelID: "privacy-test-model",
+            displayName: "Privacy Test Model",
+            egressTier: .userKey
+        )
+        let analysisRequest = makeAnalysisRequest(digest: digest, modelTag: tag)
+        let investigateRequest = InsightInvestigateRequest(
+            prompt: "Summarize the safe aggregates.",
+            digest: digest,
+            modelTag: tag,
+            capabilityTier: .jsonObject,
+            allowToolCalls: false
+        )
+        let payloads: [(name: String, data: Data, actionPath: [String])] = [
+            (
+                "analysis",
+                try InsightAnalysisModelPrompt().userPayload(for: analysisRequest),
+                ["context", "digest", "operatingActions"]
+            ),
+            (
+                "investigation",
+                try InsightPromptEngine().userPayload(for: investigateRequest),
+                ["digest", "operatingActions"]
+            )
+        ]
+
+        for payload in payloads {
+            let encodedText = String(decoding: payload.data, as: UTF8.self)
+            XCTAssertFalse(
+                encodedText.contains(Self.privateActionSummary),
+                "\(payload.name) payload leaked the private operating-action summary"
+            )
+            XCTAssertFalse(
+                encodedText.contains(Self.privateTaskTitle),
+                "\(payload.name) payload leaked the private task title"
+            )
+            let actions = try actionDictionaries(in: payload.data, path: payload.actionPath)
+            XCTAssertEqual(Set(actions.compactMap { $0["kind"] as? String }), ["deployment", "other"])
+            XCTAssertEqual(
+                Set(actions.compactMap { $0["summary"] as? String }),
+                ["Deployment action", "Other action"]
+            )
+        }
+
+        let emptyDigest = try InsightDigestBuilder().build(
+            from: makePrivateOperatingActionSnapshot(includeActions: false),
+            filter: InsightFilter(window: .last24h)
+        )
+        let emptyAnalysis = makeAnalysisRequest(digest: emptyDigest, modelTag: tag)
+        let emptyInvestigation = InsightInvestigateRequest(
+            prompt: "Summarize the safe aggregates.",
+            digest: emptyDigest,
+            modelTag: tag,
+            capabilityTier: .jsonObject,
+            allowToolCalls: false
+        )
+        let emptyPayloads: [(data: Data, actionPath: [String])] = [
+            (
+                try InsightAnalysisModelPrompt().userPayload(for: emptyAnalysis),
+                ["context", "digest", "operatingActions"]
+            ),
+            (
+                try InsightPromptEngine().userPayload(for: emptyInvestigation),
+                ["digest", "operatingActions"]
+            )
+        ]
+        for payload in emptyPayloads {
+            XCTAssertTrue(try actionDictionaries(in: payload.data, path: payload.actionPath).isEmpty)
+        }
+    }
+
+    private static let privateActionSummary = "PRIVATE-OPERATING-ACTION-7F3A: rotate Acme acquisition credentials"
+    private static let privateTaskTitle = "PRIVATE-TASK-TITLE-91C2: undisclosed Acme acquisition"
+
+    private func makePrivateOperatingActionSnapshot(includeActions: Bool) -> InsightDataSnapshot {
+        let now = Date(timeIntervalSince1970: 1_767_225_600)
+        let sessionID = "private-session"
+        let session = InsightSessionRow(
+            sessionID: sessionID,
+            provider: "Codex",
+            projectName: nil,
+            startTime: now.addingTimeInterval(-300),
+            endTime: now,
+            messageCount: 2,
+            inferredTaskTitle: Self.privateTaskTitle,
+            keyTools: [],
+            keyCommands: [],
+            keyFiles: []
+        )
+        let usage = InsightUsageRow(
+            sessionID: sessionID,
+            provider: "Codex",
+            model: "gpt-5.5",
+            projectName: nil,
+            deviceID: nil,
+            deviceName: nil,
+            startTime: session.startTime,
+            endTime: session.endTime,
+            inputTokens: 100,
+            outputTokens: 50,
+            reasoningTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            totalTokens: 150,
+            costUSD: 0.01
+        )
+        let actions: [InsightOperatingAction] = includeActions ? [
+            InsightOperatingAction(
+                id: "private-action",
+                sessionID: sessionID,
+                actionKind: "deploy_\(Self.privateTaskTitle)",
+                projectName: nil,
+                occurredAt: now.addingTimeInterval(-120),
+                duration: nil,
+                summary: Self.privateActionSummary
+            ),
+            InsightOperatingAction(
+                id: "empty-action",
+                sessionID: nil,
+                actionKind: "",
+                projectName: nil,
+                occurredAt: now.addingTimeInterval(-180),
+                duration: nil,
+                summary: ""
+            )
+        ] : []
+        return InsightDataSnapshot(
+            window: DateInterval(start: now.addingTimeInterval(-3600), end: now),
+            generatedAt: now,
+            usages: [usage],
+            sessions: [session],
+            operatingActions: actions
+        )
+    }
+
+    private func makeAnalysisRequest(
+        digest: InsightDigest,
+        modelTag: InsightModelTag
+    ) -> InsightAnalysisRequest {
+        InsightAnalysisRequest(
+            prompt: "Summarize the safe aggregates.",
+            context: InsightAnalysisContext(
+                digest: digest,
+                evidenceIndex: [],
+                budgetReport: InsightContextBudgetReport(
+                    encodedBytes: 0,
+                    estimatedPromptTokens: 0,
+                    includedDataSources: []
+                )
+            ),
+            selectedModel: modelTag,
+            instruction: .answerFollowUp
+        )
+    }
+
+    private func actionDictionaries(in data: Data, path: [String]) throws -> [[String: Any]] {
+        var value: Any = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        for key in path {
+            value = try XCTUnwrap((value as? [String: Any])?[key], "Missing JSON path component '\(key)'")
+        }
+        return try XCTUnwrap(value as? [[String: Any]])
+    }
 }

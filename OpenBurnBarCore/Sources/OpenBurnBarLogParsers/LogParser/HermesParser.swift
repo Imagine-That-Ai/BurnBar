@@ -52,20 +52,41 @@ public final class HermesParser: LogParser, Sendable {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var seenSessionIds: Set<String> = []
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
 
         for scope in resolvedHermesScopes() {
             let hermesHome = scope.homeURL
             let sessionsDir = hermesHome.appendingPathComponent("sessions", isDirectory: true)
 
             let dbURL = hermesHome.appendingPathComponent("state.db")
-            if fileManager.fileExists(atPath: dbURL.path), fileSize(at: dbURL) > 0 {
+            let dbIdentity = ParserDiscoveredFile.capture(
+                for: dbURL,
+                attributes: try? fileManager.attributesOfItem(atPath: dbURL.path)
+            )
+            let dbFileWasKnown = options.fileDiscoveryTracker?
+                .wasKnownAtCheckpoint(dbIdentity) ?? true
+            if fileManager.fileExists(atPath: dbURL.path), fileSize(at: dbURL) > 0, try gate.shouldRead(dbURL) {
                 do {
-                    let sqliteResult = try parseSQLiteDatabase(dbURL: dbURL, scope: scope, options: options)
+                    var sqliteOptions = options
+                    if !dbFileWasKnown {
+                        // A newly watched/restored database may contain only
+                        // historical session timestamps; the file-discovery
+                        // decision is authoritative for this first scan.
+                        sqliteOptions.minimumFileModificationDate = nil
+                    }
+                    let sqliteResult = try parseSQLiteDatabase(
+                        dbURL: dbURL,
+                        scope: scope,
+                        options: sqliteOptions
+                    )
                     usages.append(contentsOf: sqliteResult.usages)
                     conversations.append(contentsOf: sqliteResult.conversations)
                     seenSessionIds.formUnion(sqliteResult.usages.map(\.sessionId))
                     seenSessionIds.formUnion(sqliteResult.conversations.map(\.sessionId))
                 } catch {
+                    options.resourceGovernor?.recordDeferredFile()
+                    options.fileDiscoveryTracker?.recordDeferred(dbIdentity)
+                    options.metrics?.recordDeferred(.contentReadFailed)
                     ParserDiagnostics.silentFailure(
                         "hermes_sqlite_scope_unreadable path=\(dbURL.path)",
                         error: error
@@ -74,7 +95,7 @@ public final class HermesParser: LogParser, Sendable {
             }
 
             let indexURL = sessionsDir.appendingPathComponent("sessions.json")
-            if fileManager.fileExists(atPath: indexURL.path) {
+            if fileManager.fileExists(atPath: indexURL.path), try gate.shouldRead(indexURL) {
                 let gatewayResult = try parseGatewayIndex(
                     indexURL: indexURL,
                     sessionsDir: sessionsDir,
@@ -89,13 +110,13 @@ public final class HermesParser: LogParser, Sendable {
             }
 
             if fileManager.fileExists(atPath: sessionsDir.path) {
-                let contents = (try? fileManager.contentsOfDirectory( // try?-ok(dir read, empty fallback)
+                let contents = (try? fileManager.contentsOfDirectory(
                     at: sessionsDir,
                     includingPropertiesForKeys: [.isRegularFileKey]
                 )) ?? []
 
                 for file in contents where file.lastPathComponent.hasPrefix("session_") && file.pathExtension == "json" {
-                    guard !shouldSkip(file: file, before: options.minimumFileModificationDate) else { continue }
+                    guard try gate.shouldRead(file) else { continue }
                     let result = try parseCLISnapshot(
                         file: file,
                         excluding: seenSessionIds,
@@ -109,7 +130,7 @@ public final class HermesParser: LogParser, Sendable {
                 }
 
                 for file in contents where file.pathExtension == "jsonl" && file.lastPathComponent != "sessions.json" {
-                    guard !shouldSkip(file: file, before: options.minimumFileModificationDate) else { continue }
+                    guard try gate.shouldRead(file) else { continue }
                     let rawSessionId = file.deletingPathExtension().lastPathComponent
                     let sessionId = scope.qualify(sessionId: rawSessionId)
                     guard !seenSessionIds.contains(sessionId) else { continue }
@@ -422,13 +443,14 @@ public final class HermesParser: LogParser, Sendable {
         scope: HermesHomeScope,
         options: LogParseOptions
     ) throws -> ParseResult {
-        guard let data = try? Data(contentsOf: indexURL), // try?-ok(optional index read)
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
+        guard let data = try? Data(contentsOf: indexURL),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return ParseResult(usages: [], conversations: [])
         }
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
 
         for value in root.values {
             guard let entry = value as? [String: Any],
@@ -440,14 +462,13 @@ public final class HermesParser: LogParser, Sendable {
 
             let transcriptURL = sessionsDir.appendingPathComponent("\(rawSessionId).jsonl")
             let entryDate = dateValue(entry["updated_at"]) ?? dateValue(entry["created_at"])
-            guard !shouldSkip(
-                file: transcriptURL,
-                before: options.minimumFileModificationDate,
-                fallbackDate: entryDate
-            ) else { continue }
-            let summary = fileManager.fileExists(atPath: transcriptURL.path)
-                ? parseLegacyTranscript(file: transcriptURL, includeConversationBody: options.includeConversationBodies)
-                : nil
+            let summary: TranscriptSummary?
+            if fileManager.fileExists(atPath: transcriptURL.path),
+               try gate.shouldRead(transcriptURL, fallbackModificationDate: entryDate) {
+                summary = parseLegacyTranscript(file: transcriptURL, includeConversationBody: options.includeConversationBodies)
+            } else {
+                summary = nil
+            }
 
             let inputTokens = integerValue(entry, key: "input_tokens")
             let outputTokens = integerValue(entry, key: "output_tokens")
@@ -473,37 +494,26 @@ public final class HermesParser: LogParser, Sendable {
                 return nil
             }()
 
-            // Determine if any explicit bucket is present in the gateway index
             let hasExplicit = inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheWriteTokens > 0
-            // Determine if summary has any usage data from message parsing
             let summaryHasUsage = (summary?.inputTokens ?? 0) > 0 || (summary?.outputTokens ?? 0) > 0
                 || (summary?.cacheCreationTokens ?? 0) > 0 || (summary?.cacheReadTokens ?? 0) > 0
 
-            // VAL-TOKEN-004: Fallback/estimation runs only when BOTH explicit and summary are unavailable
-            // When explicit buckets exist, use them directly (no max with summary)
-            // When explicit is absent but summary has data, use summary
-            // Only estimate when both explicit AND summary are absent
             let usageInput: Int
             let usageOutput: Int
             let usageCacheWrite: Int
             let usageCacheRead: Int
 
             if hasExplicit {
-                // Explicit buckets present - use them directly (VAL-TOKEN-001: preserve exact counts)
                 usageInput = inputTokens
                 usageOutput = outputTokens
                 usageCacheWrite = cacheWriteTokens
                 usageCacheRead = cacheReadTokens
             } else if summaryHasUsage {
-                // No explicit buckets, but summary has usage data from message parsing
                 usageInput = summary?.inputTokens ?? 0
                 usageOutput = summary?.outputTokens ?? 0
                 usageCacheWrite = summary?.cacheCreationTokens ?? 0
                 usageCacheRead = summary?.cacheReadTokens ?? 0
             } else {
-                // Neither explicit nor summary has data - fall back to estimation
-                // Note: EstimatedTokens only provides input/output; cache tokens are estimated as 0
-                // when no explicit cache data is available (VAL-TOKEN-006)
                 let estimated: EstimatedTokens
                 if let summary {
                     estimated = summary.estimatedUsage()

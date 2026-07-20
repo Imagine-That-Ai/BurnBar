@@ -21,7 +21,7 @@
         <!-- Per-kind transcript templates (selected by TranscriptBlockTemplateSelector). -->
         <DataTemplate x:Key="UserBlockTemplate" x:DataType="slvm:TranscriptBlock">
             <Border CornerRadius="{StaticResource PensieveRadiusMdCorner}"
-                    Background="#1FC7CFDD"
+                    Background="{ThemeResource AuroraGlassStrokeFrostBrush}"
                     BorderBrush="{StaticResource OBBStrokeBrush}"
                     BorderThickness="1"
                     Padding="12"
@@ -36,7 +36,7 @@
                                FontSize="13"
                                TextWrapping="Wrap"
                                IsTextSelectionEnabled="True"
-                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                               Foreground="{ThemeResource AuroraTextBrush}" />
                 </StackPanel>
             </Border>
         </DataTemplate>
@@ -51,7 +51,7 @@
                                FontSize="13"
                                TextWrapping="Wrap"
                                IsTextSelectionEnabled="True"
-                               Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                               Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                 </StackPanel>
             </Border>
         </DataTemplate>
@@ -66,10 +66,10 @@
                 <StackPanel Spacing="6">
                     <TextBlock Text="{x:Bind Label}"
                                FontSize="10"
-                               FontFamily="Cascadia Mono, Consolas"
+                               FontFamily="{StaticResource AuroraMonoFont}"
                                Foreground="{StaticResource OBBToolBrush}" />
                     <TextBlock Text="{x:Bind Content}"
-                               FontFamily="Cascadia Mono, Consolas, Courier New"
+                               FontFamily="{StaticResource AuroraMonoFont}"
                                FontSize="12.5"
                                TextWrapping="NoWrap"
                                IsTextSelectionEnabled="True"
@@ -93,9 +93,9 @@
                                    Foreground="{StaticResource OBBToolBrush}" />
                         <TextBlock Text="{x:Bind Content}"
                                    FontSize="11.5"
-                                   FontFamily="Cascadia Mono, Consolas"
+                                   FontFamily="{StaticResource AuroraMonoFont}"
                                    TextWrapping="Wrap"
-                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                   Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -121,10 +121,10 @@
                     VerticalAlignment="Center"
                     Spacing="10"
                     Padding="40">
-            <FontIcon Glyph="&#xE7C3;" FontSize="44" Foreground="{StaticResource PensieveColorTextDimBrush}" />
+            <FontIcon Glyph="&#xE7C3;" FontSize="44" Foreground="{ThemeResource AuroraTextMutedBrush}" />
             <TextBlock Text="Select a session to read its transcript"
                        FontSize="14"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
         </StackPanel>
 
         <!-- Detail content (visible when a record is bound). -->
@@ -156,12 +156,12 @@
                     <TextBlock x:Name="ProjectLabel"
                                FontSize="11"
                                VerticalAlignment="Center"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     <TextBlock x:Name="TimeLabel"
                                FontSize="11"
                                HorizontalAlignment="Right"
                                VerticalAlignment="Center"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
 
                 <TextBlock x:Name="TitleLabel"
@@ -169,11 +169,11 @@
                            FontWeight="SemiBold"
                            MaxLines="2"
                            TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Foreground="{ThemeResource AuroraTextBrush}" />
 
                 <TextBlock x:Name="MetaLabel"
                            FontSize="11"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
             </StackPanel>
 
             <Border Grid.Row="1" Height="1" Background="{StaticResource PensieveColorGlassLineBrush}" />
@@ -203,7 +203,7 @@
                        FontSize="13"
                        TextWrapping="Wrap"
                        IsTextSelectionEnabled="True"
-                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                       Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
 
             <Border Grid.Row="3" Height="1" Background="{StaticResource PensieveColorGlassLineBrush}" />
 

@@ -39,7 +39,7 @@
                 <TextBlock Text="RECOVERY KEY" FontSize="10" FontWeight="SemiBold"
                            Foreground="{StaticResource PensieveColorTextMuteBrush}" />
                 <TextBox x:Name="RecoveryKeyBox" PlaceholderText="recovery key"
-                         FontFamily="Cascadia Mono, Consolas" TextChanged="OnFormChanged" />
+                         FontFamily="{StaticResource AuroraMonoFont}" TextChanged="OnFormChanged" />
                 <TextBlock Text="Write this down and store it somewhere only you can reach. We never see it."
                            FontSize="11" TextWrapping="Wrap"
                            Foreground="{StaticResource PensieveColorTextMuteBrush}" />

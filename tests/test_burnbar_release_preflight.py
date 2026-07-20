@@ -215,7 +215,15 @@ def test_release_workflow_prepares_signal_ffi_before_xcode_release_build():
 
     assert prepare_start < lockfile_index < resolve_index < app_build_index
     assert "SIGNAL_FFI_BUILD_PROFILE: release" in prepare_step
-    assert 'SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"' in prepare_step
+    targets = re.search(r'SIGNAL_FFI_BUILD_TARGETS: "([^"]+)"', prepare_step)
+    assert targets is not None
+    assert targets.group(1).split() == [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
+        "x86_64-apple-ios",
+    ]
     assert 'CARGO_BUILD_JOBS: "2"' in prepare_step
     assert "bash scripts/lib/prepare-signal-ffi-xcframework.sh" in prepare_step
 
@@ -364,8 +372,10 @@ def test_release_workflow_parallelizes_independent_publish_gates():
     ):
         assert lane_job in body
 
-    publish_start = body.index("  publish:")
+    prepare_publication_start = body.index("  prepare-release-publication:")
+    publish_start = body.index("  domain-core-native-release-evidence:")
     verify_start = body.index("  verify-live-update-feed:")
+    prepare_publication_job = body[prepare_publication_start:publish_start]
     publish_job = body[publish_start:verify_start]
     for lane in (
         "release-preflight",
@@ -380,7 +390,10 @@ def test_release_workflow_parallelizes_independent_publish_gates():
         "build-and-release",
         "smoke-test",
     ):
-        assert f"      - {lane}\n" in publish_job
+        assert f"      - {lane}\n" in prepare_publication_job
+    assert "name: Atomically publish verified Apple and Android release set" in publish_job
+    assert "      - prepare-release-publication\n" in publish_job
+    assert "Publish the complete verified release set from one draft state machine" in publish_job
 
 
 def test_app_test_wrapper_supports_multiple_normalized_filters():

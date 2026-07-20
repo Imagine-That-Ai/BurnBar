@@ -16,22 +16,48 @@
  * runtime behavior under a controllable VM, so a regression that preserves the
  * text strings but breaks the pause logic is still caught.
  *
- * The test also validates the budget file `budgets/macos-idle-cpu.perf.json`
- * is machine-consumed: its `gate.testTarget` must point at this file and its
- * `gate.tripwireClass` must match the test name below.
+ * The fast prerequisite also self-tests the real-process gate's versioned
+ * config, robust statistic, zero/missing-sample rejection, macOS CPU sampler,
+ * and refusal to accept seeded sample/result inputs. It never builds the app.
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { EventEmitter } from "node:events";
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+
+import {
+  launchFreshProcess,
+  measureMatchedPairs,
+  median,
+  medianAbsoluteDeviation,
+  parseArguments,
+  summarizeAndEvaluatePairs,
+  validateConfig,
+} from "./macos-idle-occlusion-gate.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const bundlePath = path.join(root, "AgentLens/Resources/KernelBackdrop/kernel-backdrop.js");
 const bundleSource = readFileSync(bundlePath, "utf8");
 const budgetPath = path.join(root, "budgets/macos-idle-cpu.perf.json");
 const budget = JSON.parse(readFileSync(budgetPath, "utf8"));
+const realGatePath = path.join(root, "scripts/ci/macos-idle-occlusion-gate.mjs");
+const realGateConfigPath = path.join(root, "scripts/ci/macos-idle-occlusion-gate.config.json");
+const realGateHelperPath = path.join(root, "scripts/ci/macos-idle-occlusion-gate-helper.swift");
+const realGateConfig = validateConfig(JSON.parse(readFileSync(realGateConfigPath, "utf8")));
 
 // ── Budget machine-consumption ──────────────────────────────────────────────
 
@@ -345,4 +371,464 @@ test("reduced-motion mode does not start the loop, but occlusion still cancels h
   // Resuming in reduced-motion mode should not start the loop
   h.win.__setBackdropActive(true);
   assert.equal(h.pendingRafCount(), 0, "no loop started in reduced-motion mode even when visible");
+});
+
+// ── Real-process gate self-tests (no app build or launch) ──────────────────
+
+function sample(state, cpuPercent, pid = 4242) {
+  return {
+    state,
+    workload: "idle",
+    pid,
+    source: "proc_pidinfo/PROC_PIDTASKINFO",
+    durationNanoseconds: 2_000_000_000,
+    cpuDeltaNanoseconds: Math.round(cpuPercent * 20_000_000),
+    cpuPercent,
+  };
+}
+
+function passingPairs() {
+  const visible = [12, 10, 11, 14, 9];
+  const occluded = [1, 2, 1.5, 1, 1];
+  return visible.map((cpuPercent, index) => ({
+    pairIndex: index + 1,
+    visibleIdle: sample("visible-idle", cpuPercent),
+    occludedIdle: sample("occluded-idle", occluded[index]),
+  }));
+}
+
+test("launchFreshProcess rejects an existing matching gate PID instead of reusing it", async () => {
+  const helperBinaryPath = "/fake/macos-idle-occlusion-gate-helper";
+  const buildIdentity = {
+    executablePath: "/fake/OpenBurnBar.app/Contents/MacOS/OpenBurnBar",
+  };
+  const existingPID = 8675;
+  const conflictingProcess = {
+    pid: existingPID,
+    commandLine: [buildIdentity.executablePath, ...realGateConfig.app.launchArguments].join(" "),
+    initialState: {
+      running: true,
+      pid: existingPID,
+      executablePath: buildIdentity.executablePath,
+      bundleIdentifier: realGateConfig.app.expectedBundleIdentifier,
+      hidden: false,
+      visibleWindowCount: 1,
+    },
+  };
+  const unopenedWorkDirectory = path.join(
+    os.tmpdir(),
+    `openburnbar-fresh-process-must-not-open-${process.pid}-${Date.now()}`,
+  );
+  let finderCalls = 0;
+
+  await assert.rejects(
+    launchFreshProcess(
+      helperBinaryPath,
+      buildIdentity,
+      realGateConfig,
+      unopenedWorkDirectory,
+      {
+        findConflictingGateProcess: async (
+          observedHelperPath,
+          observedBuildIdentity,
+          observedConfig,
+        ) => {
+          finderCalls += 1;
+          assert.equal(observedHelperPath, helperBinaryPath);
+          assert.strictEqual(observedBuildIdentity, buildIdentity);
+          assert.strictEqual(observedConfig, realGateConfig);
+          return conflictingProcess;
+        },
+      },
+    ),
+    (error) => {
+      assert.equal(
+        error.message,
+        `performance gate requires a fresh process; refusing to reuse existing pid ${existingPID}`,
+      );
+      return true;
+    },
+  );
+  assert.equal(finderCalls, 1);
+});
+
+test("launchFreshProcess stops the owned child once and rethrows registration failure before command lookup", async () => {
+  const workDirectory = mkdtempSync(path.join(os.tmpdir(), "openburnbar-launch-cleanup-"));
+  const helperBinaryPath = "/fake/macos-idle-occlusion-gate-helper";
+  const buildIdentity = {
+    executablePath: "/fake/OpenBurnBar.app/Contents/MacOS/OpenBurnBar",
+  };
+  const child = new EventEmitter();
+  child.pid = 9753;
+  child.exitCode = null;
+  const registrationError = new Error("fake AppKit registration failed");
+  const stoppedRuntimes = [];
+  let spawnCalls = 0;
+  let commandLineCalls = 0;
+
+  try {
+    await assert.rejects(
+      launchFreshProcess(
+        helperBinaryPath,
+        buildIdentity,
+        realGateConfig,
+        workDirectory,
+        {
+          findConflictingGateProcess: async () => null,
+          spawn: (executablePath, launchArguments, options) => {
+            spawnCalls += 1;
+            assert.equal(executablePath, buildIdentity.executablePath);
+            assert.strictEqual(launchArguments, realGateConfig.app.launchArguments);
+            assert.equal(options.env.HOME, workDirectory);
+            queueMicrotask(() => child.emit("spawn"));
+            return child;
+          },
+          waitForRegisteredProcess: async (observedHelperPath, pid, timeout) => {
+            assert.equal(observedHelperPath, helperBinaryPath);
+            assert.equal(pid, child.pid);
+            assert.equal(timeout, realGateConfig.measurement.stateTransitionTimeoutSeconds);
+            throw registrationError;
+          },
+          commandLineForPID: async () => {
+            commandLineCalls += 1;
+            return "must not be reached";
+          },
+          stopOwnedProcess: async (runtime) => {
+            stoppedRuntimes.push(runtime);
+          },
+        },
+      ),
+      (error) => {
+        assert.strictEqual(error, registrationError);
+        return true;
+      },
+    );
+
+    assert.equal(spawnCalls, 1);
+    assert.equal(commandLineCalls, 0);
+    assert.equal(stoppedRuntimes.length, 1);
+    assert.deepEqual(stoppedRuntimes[0], {
+      pid: child.pid,
+      mode: "launched",
+      child,
+    });
+  } finally {
+    rmSync(workDirectory, { recursive: true, force: true });
+  }
+});
+
+test("measureMatchedPairs batches visible samples before one hide and pairs occluded samples by index", async () => {
+  const config = JSON.parse(JSON.stringify(realGateConfig));
+  config.measurement.matchedPairCount = 3;
+  config.measurement.minimumPositiveVisibleSamples = 3;
+
+  const helperBinaryPath = "/fake/macos-idle-occlusion-gate-helper";
+  const pid = 4242;
+  const executablePath = "/fake/OpenBurnBar.app/Contents/MacOS/OpenBurnBar";
+  const runtime = { pid };
+  const buildIdentity = { executablePath };
+  const visibleIdentity = {
+    running: true,
+    pid,
+    executablePath,
+    bundleIdentifier: config.app.expectedBundleIdentifier,
+    hidden: false,
+    visibleWindowCount: 1,
+  };
+  const occludedIdentity = {
+    ...visibleIdentity,
+    hidden: true,
+    visibleWindowCount: 0,
+  };
+  const actions = [];
+  const sleepCalls = [];
+  const monotonicCalls = [];
+  const sampleCounts = new Map();
+  const monotonicValues = ["1000", "2000"];
+  const partialMeasurement = { pairs: [], transitions: [] };
+
+  const measurement = await measureMatchedPairs(
+    helperBinaryPath,
+    runtime,
+    buildIdentity,
+    config,
+    partialMeasurement,
+    {
+      helper: async (observedHelperPath, command, observedPID, timeout) => {
+        assert.equal(observedHelperPath, helperBinaryPath);
+        assert.equal(observedPID, pid);
+        assert.equal(timeout, config.measurement.stateTransitionTimeoutSeconds);
+        actions.push(`helper:${command}`);
+        if (command === "show" || command === "wait-visible") return visibleIdentity;
+        if (command === "hide" || command === "wait-hidden") return occludedIdentity;
+        assert.fail(`unexpected helper command ${command}`);
+      },
+      takeCPUSample: async (observedHelperPath, observedPID, state, durationSeconds) => {
+        assert.equal(observedHelperPath, helperBinaryPath);
+        assert.equal(observedPID, pid);
+        assert.equal(durationSeconds, config.measurement.sampleDurationSeconds);
+        const sampleIndex = (sampleCounts.get(state) ?? 0) + 1;
+        sampleCounts.set(state, sampleIndex);
+        actions.push(`sample:${state}:${sampleIndex}`);
+        return {
+          ...sample(state, state === "visible-idle" ? 10 + sampleIndex : sampleIndex, pid),
+          sampleIndex,
+          sampleID: `${state}-${sampleIndex}`,
+        };
+      },
+      sleep: async (milliseconds) => {
+        sleepCalls.push(milliseconds);
+      },
+      monotonicNow: () => {
+        const value = monotonicValues[monotonicCalls.length];
+        assert.ok(value, "measureMatchedPairs requested an unexpected monotonic timestamp");
+        monotonicCalls.push(value);
+        return value;
+      },
+    },
+  );
+
+  assert.strictEqual(measurement, partialMeasurement);
+  assert.deepEqual(actions, [
+    "helper:show",
+    "helper:wait-visible",
+    "sample:visible-idle:1",
+    "helper:wait-visible",
+    "sample:visible-idle:2",
+    "helper:wait-visible",
+    "sample:visible-idle:3",
+    "helper:hide",
+    "sample:occluded-idle:1",
+    "helper:wait-hidden",
+    "sample:occluded-idle:2",
+    "helper:wait-hidden",
+    "sample:occluded-idle:3",
+  ]);
+  assert.equal(actions.filter((action) => action === "helper:hide").length, 1);
+  assert.equal(actions.filter((action) => action === "helper:show").length, 1);
+  assert.deepEqual(sleepCalls, [
+    config.measurement.initialVisibleWarmupSeconds * 1000,
+    config.measurement.transitionSettleSeconds * 1000,
+  ]);
+  assert.deepEqual(monotonicCalls, monotonicValues);
+  assert.equal(measurement.transitions[1].afterVisibleSampleCount, 3);
+  assert.deepEqual(
+    measurement.pairs.map((pair) => ({
+      pairIndex: pair.pairIndex,
+      visibleSampleID: pair.visibleIdle.sampleID,
+      occludedSampleID: pair.occludedIdle.sampleID,
+    })),
+    [
+      { pairIndex: 1, visibleSampleID: "visible-idle-1", occludedSampleID: "occluded-idle-1" },
+      { pairIndex: 2, visibleSampleID: "visible-idle-2", occludedSampleID: "occluded-idle-2" },
+      { pairIndex: 3, visibleSampleID: "visible-idle-3", occludedSampleID: "occluded-idle-3" },
+    ],
+  );
+});
+
+test("real gate config versions and enforces absolute plus relative ceilings", () => {
+  assert.equal(realGateConfig.gateVersion, "P-PERF-3-macos-real-process-v1");
+  assert.equal(realGateConfig.measurement.robustStatistic, "median");
+  assert.equal(realGateConfig.budgets.absoluteOccludedIdleCpuPercentCeiling, 5);
+  assert.equal(realGateConfig.budgets.maximumOccludedToVisibleCpuRatio, 0.35);
+  assert.ok(realGateConfig.app.relativeBundlePath.startsWith(".derived-data/"));
+});
+
+test("real gate accepts a valid matched robust sample set", () => {
+  const summary = summarizeAndEvaluatePairs(passingPairs(), realGateConfig);
+  assert.equal(summary.statistic, "median");
+  assert.deepEqual(summary.visibleIdleCpuPercent.samples, [12, 10, 11, 14, 9]);
+  assert.equal(summary.visibleIdleCpuPercent.median, 11);
+  assert.equal(summary.visibleIdleCpuPercent.medianAbsoluteDeviation, 1);
+  assert.deepEqual(summary.occludedIdleCpuPercent.samples, [1, 2, 1.5, 1, 1]);
+  assert.equal(summary.occludedIdleCpuPercent.median, 1);
+  assert.equal(summary.occludedIdleCpuPercent.medianAbsoluteDeviation, 0);
+  assert.equal(summary.occludedToVisibleRatio, 1 / 11);
+  assert.equal(summary.pass, true);
+});
+
+test("real gate independently enforces absolute idle and relative occlusion budgets", () => {
+  const absoluteBreach = passingPairs().map((pair) => ({
+    ...pair,
+    visibleIdle: sample("visible-idle", 25),
+    occludedIdle: sample("occluded-idle", 6),
+  }));
+  const absoluteSummary = summarizeAndEvaluatePairs(absoluteBreach, realGateConfig);
+  assert.equal(absoluteSummary.checks.absoluteOccludedIdleCpu.pass, false);
+  assert.equal(absoluteSummary.checks.visibleToOccludedReduction.pass, true);
+  assert.equal(absoluteSummary.pass, false);
+
+  const relativeBreach = passingPairs().map((pair) => ({
+    ...pair,
+    visibleIdle: sample("visible-idle", 10),
+    occludedIdle: sample("occluded-idle", 4),
+  }));
+  const relativeSummary = summarizeAndEvaluatePairs(relativeBreach, realGateConfig);
+  assert.equal(relativeSummary.checks.absoluteOccludedIdleCpu.pass, true);
+  assert.equal(relativeSummary.checks.visibleToOccludedReduction.pass, false);
+  assert.equal(relativeSummary.pass, false);
+});
+
+test("real gate rejects missing, zero-count, insufficient, and zero-visible measurements", () => {
+  assert.throws(() => summarizeAndEvaluatePairs([], realGateConfig), /zero matched samples/);
+  assert.throws(
+    () => summarizeAndEvaluatePairs(passingPairs().slice(0, 4), realGateConfig),
+    /expected 5/
+  );
+  const missingOccluded = passingPairs();
+  delete missingOccluded[2].occludedIdle;
+  assert.throws(
+    () => summarizeAndEvaluatePairs(missingOccluded, realGateConfig),
+    /missing its occluded-idle idle sample/
+  );
+  const zeroVisible = passingPairs().map((pair) => ({
+    ...pair,
+    visibleIdle: sample("visible-idle", 0),
+  }));
+  assert.throws(
+    () => summarizeAndEvaluatePairs(zeroVisible, realGateConfig),
+    /non-zero CPU/
+  );
+});
+
+test("real gate rejects samples without matched real-process provenance", () => {
+  for (const [name, mutate, error] of [
+    ["zero pid", (pairs) => { pairs[0].visibleIdle.pid = 0; }, /lacks real-process provenance/],
+    ["seeded source", (pairs) => { pairs[0].occludedIdle.source = "seeded-fixture"; }, /lacks real-process provenance/],
+    ["different process", (pairs) => { pairs[0].occludedIdle.pid += 1; }, /not sampled from one process/],
+  ]) {
+    const pairs = passingPairs();
+    mutate(pairs);
+    assert.throws(
+      () => summarizeAndEvaluatePairs(pairs, realGateConfig),
+      error,
+      name,
+    );
+  }
+});
+
+test("real gate CLI accepts only an evidence output sink, never seeded results", () => {
+  assert.deepEqual(parseArguments(["--output", "/tmp/result.json"], "/tmp/default.json"), {
+    outputPath: "/tmp/result.json",
+  });
+  for (const forbidden of ["--samples", "--result", "--app", "--budget"]) {
+    const result = spawnSync(process.execPath, [realGatePath, forbidden, "/tmp/seeded.json"], {
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 1, `${forbidden} must fail`);
+    assert.match(result.stderr, /does not accept sample, result, app, or budget inputs/);
+  }
+});
+
+function runGateAgainstFakeBuild({ bundleIdentifier, ageSeconds }) {
+  const fixtureRoot = mkdtempSync(path.join(os.tmpdir(), "macos-cpu-gate-build-identity-"));
+  const scriptDirectory = path.join(fixtureRoot, "scripts", "ci");
+  const config = JSON.parse(JSON.stringify(realGateConfig));
+  const bundlePath = path.join(fixtureRoot, config.app.relativeBundlePath);
+  const executablePath = path.join(
+    bundlePath,
+    "Contents",
+    "MacOS",
+    config.app.executableName,
+  );
+  const infoPlistPath = path.join(bundlePath, "Contents", "Info.plist");
+  const outputPath = path.join(fixtureRoot, "evidence", "result.json");
+
+  mkdirSync(scriptDirectory, { recursive: true });
+  mkdirSync(path.dirname(executablePath), { recursive: true });
+  copyFileSync(realGatePath, path.join(scriptDirectory, "macos-idle-occlusion-gate.mjs"));
+  copyFileSync(realGateHelperPath, path.join(scriptDirectory, "macos-idle-occlusion-gate-helper.swift"));
+  writeFileSync(
+    path.join(scriptDirectory, "macos-idle-occlusion-gate.config.json"),
+    `${JSON.stringify(config, null, 2)}\n`,
+  );
+  const runnerPath = path.join(fixtureRoot, "run-gate.mjs");
+  writeFileSync(
+    runnerPath,
+    'import { main } from "./scripts/ci/macos-idle-occlusion-gate.mjs";\nawait main(process.argv.slice(2));\n',
+  );
+  writeFileSync(executablePath, "#!/bin/sh\nexit 0\n");
+  chmodSync(executablePath, 0o755);
+  writeFileSync(infoPlistPath, `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>${bundleIdentifier}</string>
+<key>CFBundleShortVersionString</key><string>1.0</string>
+<key>CFBundleVersion</key><string>1</string>
+</dict></plist>\n`);
+  if (ageSeconds > 0) {
+    const modifiedAt = new Date(Date.now() - ageSeconds * 1000);
+    utimesSync(executablePath, modifiedAt, modifiedAt);
+  }
+
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [runnerPath, "--output", outputPath],
+      { encoding: "utf8" },
+    );
+    return {
+      ...result,
+      evidence: JSON.parse(readFileSync(outputPath, "utf8")),
+    };
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+}
+
+test("real gate rejects a built app with the wrong bundle identity", () => {
+  if (process.platform !== "darwin") return;
+  const result = runGateAgainstFakeBuild({
+    bundleIdentifier: "com.example.not-openburnbar",
+    ageSeconds: 0,
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /bundle id com\.example\.not-openburnbar does not match com\.openburnbar\.app/);
+  assert.equal(
+    result.evidence.measurementMethod.pairing,
+    "batched visible-idle then fully-occluded-idle samples from one PID, paired by sample index",
+  );
+});
+
+test("real gate rejects a stale OpenBurnBar executable", () => {
+  if (process.platform !== "darwin") return;
+  const result = runGateAgainstFakeBuild({
+    bundleIdentifier: realGateConfig.app.expectedBundleIdentifier,
+    ageSeconds: realGateConfig.app.maximumBuildAgeSeconds + 60,
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /built app is .* old; maximum is/);
+});
+
+test("macOS helper compiles and reads live monotonic process CPU counters", () => {
+  if (process.platform !== "darwin") return;
+  const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "macos-cpu-gate-self-test-"));
+  const helperBinary = path.join(temporaryDirectory, "helper");
+  try {
+    execFileSync("/usr/bin/xcrun", [
+      "swiftc",
+      realGateHelperPath,
+      "-o",
+      helperBinary,
+      "-framework",
+      "AppKit",
+      "-framework",
+      "CoreGraphics",
+    ]);
+    const first = JSON.parse(execFileSync(helperBinary, ["cpu", String(process.pid)], {
+      encoding: "utf8",
+    }));
+    let accumulator = 0;
+    for (let index = 0; index < 250_000; index += 1) accumulator += Math.sqrt(index);
+    assert.ok(accumulator > 0);
+    const second = JSON.parse(execFileSync(helperBinary, ["cpu", String(process.pid)], {
+      encoding: "utf8",
+    }));
+    assert.equal(first.pid, process.pid);
+    assert.equal(second.pid, process.pid);
+    assert.ok(BigInt(second.monotonicNanoseconds) > BigInt(first.monotonicNanoseconds));
+    assert.ok(BigInt(second.cpuNanoseconds) > BigInt(first.cpuNanoseconds));
+  } finally {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
 });
