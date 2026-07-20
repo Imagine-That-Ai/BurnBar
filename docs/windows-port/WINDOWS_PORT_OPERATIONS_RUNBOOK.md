@@ -207,7 +207,7 @@ After approval, verify the selected run rather than trusting the dispatch:
 ```bash
 gh run view <STAGING_RUN_ID> --repo "$REPO" \
   --json headSha,status,conclusion,jobs,url
-gcloud functions list --gen2 --project burnbar-staging \
+gcloud functions list --v2 --project burnbar-staging \
   --regions us-central1 --format='table(name,state,environment)'
 gcloud firestore fields ttls list --project burnbar-staging
 ```
