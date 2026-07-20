@@ -131,11 +131,12 @@ jobs:
           # because it cannot resolve the NuGet package's license expression. The
           # actual license (MIT) is already in allow-licenses above; exempt the
           # package by PURL so the Windows particle GPU renderer can land.
-          # brotli-decompressor (BSD-3-Clause/MIT), dbus and libdbus-sys
-          # (Apache-2.0 OR MIT) are dual-licensed Rust crates from the Linux
-          # Tauri shell; the dependency graph mangles their SPDX expressions
-          # into LicenseRef-bad-* strings, so exempt them by PURL.
-          allow-dependencies-licenses: pkg:nuget/Microsoft.Graphics.Win2D, pkg:cargo/brotli-decompressor, pkg:cargo/dbus, pkg:cargo/libdbus-sys
+          # brotli-decompressor (BSD-3-Clause/MIT), dbus, libdbus-sys, and
+          # mac-notification-sys (MIT/Apache-2.0) are permissively licensed Rust
+          # crates from the Linux Tauri shell; the dependency graph mangles
+          # their SPDX expressions into LicenseRef-bad-* strings, so exempt
+          # them by PURL.
+          allow-dependencies-licenses: pkg:nuget/Microsoft.Graphics.Win2D, pkg:cargo/brotli-decompressor, pkg:cargo/dbus, pkg:cargo/libdbus-sys, pkg:cargo/mac-notification-sys
           # Deny packages that have been deprecated or yanked
           deny-packages: ""
           comment-summary-in-pr: always

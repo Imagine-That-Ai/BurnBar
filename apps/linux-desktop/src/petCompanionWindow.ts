@@ -86,18 +86,17 @@ function unavailableState(status: PetCompanionStatus, reason: string): PetCompan
 async function waitForWindow(child: WebviewWindow): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     let settled = false;
-    let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
     const finish = (callback: () => void) => {
       if (settled) return;
       settled = true;
-      if (timeout !== undefined) globalThis.clearTimeout(timeout);
+      globalThis.clearTimeout(timeout);
       callback();
     };
     void child.once('tauri://created', () => finish(resolve));
     void child.once('tauri://error', (event) =>
       finish(() => reject(new Error(String(event.payload ?? 'pet companion window failed'))))
     );
-    timeout = globalThis.setTimeout(
+    const timeout = globalThis.setTimeout(
       () => finish(() => reject(new Error('Timed out waiting for the pet companion window.'))),
       5000
     );

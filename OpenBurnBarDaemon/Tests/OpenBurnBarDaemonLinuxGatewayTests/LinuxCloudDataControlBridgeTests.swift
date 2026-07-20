@@ -104,7 +104,7 @@ final class LinuxCloudDataControlBridgeTests: XCTestCase {
         return LinuxDaemonCloudCredentialAuthority(
             configuration: LinuxCloudAuthConfiguration(
                 googleOAuthClientID: "123456789012.apps.googleusercontent.com",
-                firebaseAPIKey: "AIza1234567890abcdefghij",
+                firebaseAPIKey: "test-firebase-api-key",
                 linuxAppCheckAppID: "1:123456789:linux:abcdef123456"
             ),
             custodian: LinuxSecretCustodian(backends: [backend]),

@@ -36,18 +36,17 @@ async function waitForChatPopoutWindow(child: {
 }): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     let settled = false;
-    let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
     const finish = (callback: () => void) => {
       if (settled) return;
       settled = true;
-      if (timeout !== undefined) globalThis.clearTimeout(timeout);
+      globalThis.clearTimeout(timeout);
       callback();
     };
     void child.once('tauri://created', () => finish(resolve));
     void child.once('tauri://error', (event) =>
       finish(() => reject(new Error(String(event.payload ?? 'chat pop-out failed'))))
     );
-    timeout = globalThis.setTimeout(
+    const timeout = globalThis.setTimeout(
       () => finish(() => reject(new Error('Timed out waiting for the chat pop-out window.'))),
       5000
     );

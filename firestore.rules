@@ -3453,7 +3453,7 @@ service cloud.firestore {
       // The signed host pairing record is a remote-control trust root. Clients
       // publish/revoke through high-risk server callables; direct owner writes
       // would let a stolen Firebase session replace the Mac endpoint.
-      allow create, update, delete: if false;
+      // Writes use Firestore's default deny; only Admin SDK callables publish or revoke.
     }
 
     // Iroh transport audit events. Append-only; written by the Mac (on stream
@@ -3577,7 +3577,7 @@ service cloud.firestore {
     // no private key material, but denying client reads prevents one client from
     // harvesting another controller's live signable challenge.
     match /users/{userId}/iroh_controller_route_challenges/{challengeId} {
-      allow read, create, update, delete: if false;
+      // All operations use Firestore's default deny.
     }
 
     // Mobile/Android sender keys for authenticated relay request envelopes.
@@ -3882,11 +3882,11 @@ service cloud.firestore {
     // exclusively by callable handlers. Even the owner must not bypass native
     // approval, signature verification, or atomic challenge consumption.
     match /users/{userId}/linux_app_check_devices/{deviceId} {
-      allow read, write: if false;
+      // All operations use Firestore's default deny.
     }
 
     match /users/{userId}/linux_app_check_challenges/{challengeId} {
-      allow read, write: if false;
+      // All operations use Firestore's default deny.
     }
 
     // Cloud-Pro monthly allowance meters (fusion/relay/hosted-action). The

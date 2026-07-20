@@ -119,7 +119,7 @@ export type ChatState = {
 
 function validStoredThreadID(raw: string | null): string | null {
   if (raw === null || raw.trim() !== raw || raw.length === 0) return null;
-  if (raw.includes('\u0000') || /[\u0000-\u001f\u007f]/.test(raw)) return null;
+  if ([...raw].some((character) => character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f)) return null;
   if (new TextEncoder().encode(raw).length > CHAT_THREAD_ID_MAX_BYTES) return null;
   return raw;
 }
@@ -255,10 +255,9 @@ function backendFromThread(thread: ChatThreadSummary | null, fallback: ChatBacke
     case 'claude-code':
     case 'anthropic':
       return 'claude';
+    // macOS persists ChatBackendID.piAgent.rawValue ("piAgent"), which arrives here lowercased.
     case 'pi':
     case 'pi-agent':
-    // macOS persists ChatBackendID.piAgent.rawValue ("piAgent"), which
-    // arrives here lowercased.
     case 'piagent':
       return 'pi-agent';
     case 'openclaude':
@@ -485,7 +484,7 @@ export function applyChatStreamEvent(messages: ChatMessage[], assistantId: strin
           text: event.text
         }
       ];
-    case 'tool_call':
+    case 'tool_call': {
       const approvalID = event.toolCall.approvalID?.trim() || undefined;
       if (messages.some((message) => message.id === event.toolCall.id && message.role === 'tool')) {
         return messages.map((message) =>
@@ -525,6 +524,7 @@ export function applyChatStreamEvent(messages: ChatMessage[], assistantId: strin
               }
         }
       ];
+    }
     case 'usage':
       return messages;
     case 'done':

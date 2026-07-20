@@ -60,6 +60,8 @@ public enum BurnBarLinuxDeviceAdapters {
     /// `DispatchQueue` reads the pipe while the child is running. Without a
     /// concurrent reader, a noisy Avahi process can fill the POSIX pipe and
     /// make `waitUntilExit()` hang forever before the timeout is reached.
+    // AUDIT(@unchecked Sendable): every mutable field is guarded by `lock`.
+    // sendable-allowlist: internal-lock-snapshot-store
     private final class AvahiOutputBox: @unchecked Sendable {
         private let lock = NSLock()
         private var value = Data()
@@ -79,6 +81,8 @@ public enum BurnBarLinuxDeviceAdapters {
         }
     }
 
+    // AUDIT(@unchecked Sendable): immutable ownership wrapper around Foundation's
+    // non-Sendable Pipe handle. sendable-allowlist: process-handle
     private final class AvahiPipeBox: @unchecked Sendable {
         let pipe: Pipe
 

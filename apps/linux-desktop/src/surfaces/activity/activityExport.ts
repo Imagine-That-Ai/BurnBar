@@ -763,7 +763,12 @@ function sanitizePart(value: string, maxLength: number): string {
   return value
     .normalize('NFKC')
     .trim()
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .split('')
+    .map((character) => {
+      const code = character.charCodeAt(0);
+      return code < 0x20 || code === 0x7f ? ' ' : character;
+    })
+    .join('')
     .replace(/[\\/]+/g, '-')
     .replace(/[^\p{L}\p{N}._-]+/gu, '-')
     .replace(/-{2,}/g, '-')
@@ -782,14 +787,19 @@ export function sanitizeActivityExportFilename(
 function inlineMarkdown(value: string): string {
   return value
     .replace(/\r\n|\r/g, '\n')
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .split('')
+    .map((character) => {
+      const code = character.charCodeAt(0);
+      return code < 0x20 || code === 0x7f ? ' ' : character;
+    })
+    .join('')
     .replace(/\n+/g, ' ')
     .replace(/`/g, "'")
     .trim();
 }
 
 function markdownHeading(value: string): string {
-  return inlineMarkdown(value).replace(/([\\#*_\[\]])/g, '\\$1');
+  return inlineMarkdown(value).replace(/([\\#*_[\]])/g, '\\$1');
 }
 
 function markdownValue(value: string): string {
@@ -839,7 +849,14 @@ export function serializeActivityExport(
     if (session.bodyMD) {
       const indentedBody = session.bodyMD
         .replace(/\r\n|\r/g, '\n')
-        .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, ' ')
+        .split('')
+        .map((character) => {
+          const code = character.charCodeAt(0);
+          return (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) || code === 0x7f
+            ? ' '
+            : character;
+        })
+        .join('')
         .split('\n')
         .map((line) => `    ${line}`)
         .join('\n');

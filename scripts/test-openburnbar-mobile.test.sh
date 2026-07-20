@@ -27,7 +27,8 @@ fail() {
   exit 1
 }
 
-destination="platform=iOS,id=00008132-001158191E9A401C"
+hardware_udid="00000000-0000-0000-0000-000000000002"
+destination="platform=iOS,id=$hardware_udid"
 filter="OpenBurnBarMobileTests/OpenBurnBarMobileTests/testSealedApprovalDecisionCarriesKindAndActionAtRootOfSealedPayload"
 
 scratch="$tmp_root/scratch"
@@ -45,7 +46,7 @@ OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT="$scratch" \
 OPENBURNBAR_MOBILE_TEST_FILTER="$filter" \
   "$repo_root/scripts/test-openburnbar-mobile.sh" >"$dry_output"
 
-grep -q "platform=iOS,id=00008132-001158191E9A401C" "$dry_output" ||
+grep -q "platform=iOS,id=$hardware_udid" "$dry_output" ||
   fail "dry run did not print the resolved physical-device destination"
 grep -q "SwiftPM cache root: $scratch/swiftpm-cache" "$dry_output" ||
   fail "dry run did not resolve the scratch-rooted SwiftPM cache"
@@ -127,7 +128,7 @@ SH
 chmod +x "$fake_bin/pkill"
 
 locked_json="$tmp_root/locked.json"
-printf '%s\n' '[{"simulator":false,"platform":"com.apple.platform.iphoneos","available":false,"identifier":"00008132-001158191E9A401C","name":"Alberto iPad","error":{"description":"Device is locked."}}]' > "$locked_json"
+printf '%s\n' "[{\"simulator\":false,\"platform\":\"com.apple.platform.iphoneos\",\"available\":false,\"identifier\":\"$hardware_udid\",\"name\":\"Test iPad\",\"error\":{\"description\":\"Device is locked.\"}}]" > "$locked_json"
 locked_output="$tmp_root/locked.out"
 locked_marker="$tmp_root/locked-preclean.marker"
 if PATH="$fake_bin:$PATH" \
@@ -148,7 +149,7 @@ grep -q "Developer Mode" "$locked_output" ||
 [[ ! -e "$locked_marker" ]] || fail "stale-process cleanup ran before locked-device refusal"
 
 developer_mode_json="$tmp_root/developer-mode.json"
-printf '%s\n' '[{"simulator":false,"platform":"com.apple.platform.iphoneos","available":true,"identifier":"00008132-001158191E9A401C","name":"Alberto iPad","error":{"description":"Developer Mode is disabled."}}]' > "$developer_mode_json"
+printf '%s\n' "[{\"simulator\":false,\"platform\":\"com.apple.platform.iphoneos\",\"available\":true,\"identifier\":\"$hardware_udid\",\"name\":\"Test iPad\",\"error\":{\"description\":\"Developer Mode is disabled.\"}}]" > "$developer_mode_json"
 developer_mode_output="$tmp_root/developer-mode.out"
 developer_mode_marker="$tmp_root/developer-mode-preclean.marker"
 if PATH="$fake_bin:$PATH" \
@@ -167,7 +168,7 @@ grep -qi "Settings > Privacy & Security > Developer Mode" "$developer_mode_outpu
 [[ ! -e "$developer_mode_marker" ]] || fail "stale-process cleanup ran before Developer Mode refusal"
 
 unavailable_json="$tmp_root/unavailable.json"
-printf '%s\n' '[{"simulator":false,"platform":"com.apple.platform.iphoneos","available":false,"identifier":"00008132-001158191E9A401C","name":"Alberto iPad","error":{"description":"The device is not paired with this Mac."}}]' > "$unavailable_json"
+printf '%s\n' "[{\"simulator\":false,\"platform\":\"com.apple.platform.iphoneos\",\"available\":false,\"identifier\":\"$hardware_udid\",\"name\":\"Test iPad\",\"error\":{\"description\":\"The device is not paired with this Mac.\"}}]" > "$unavailable_json"
 unavailable_output="$tmp_root/unavailable.out"
 unavailable_marker="$tmp_root/unavailable-preclean.marker"
 if PATH="$fake_bin:$PATH" \
@@ -238,7 +239,7 @@ grep -q "Mobile scratch root: $scratch" "$mobile_prune_output" ||
   fail "scratch-rooted mobile run did not report its owned scratch root"
 
 coredevice_id="407C0B12-010B-5970-8E85-D0E43DA8F457"
-hardware_udid="00008132-001158191E9A401C"
+hardware_udid="00000000-0000-0000-0000-000000000002"
 uuid_shaped_hardware_udid="00000000-0000-0000-0000-000000000001"
 coredevice_json="$tmp_root/coredevice.json"
 cat >"$coredevice_json" <<JSON
@@ -332,7 +333,7 @@ cat >"$ambiguous_coredevice_json" <<JSON
       {
         "identifier": "$coredevice_id",
         "deviceProperties": {"name": "Second iPad"},
-        "hardwareProperties": {"platform": "iOS", "reality": "physical", "udid": "00008132-001158191E9A402D"}
+        "hardwareProperties": {"platform": "iOS", "reality": "physical", "udid": "TEST-SECOND-IOS-UDID"}
       }
     ]
   }
@@ -364,7 +365,7 @@ stale_derived="$cleanup_derived/openburnbar-mobile-tests.stale1"
 mkdir -p "$stale_derived"
 printf 'stale\n' > "$stale_derived/marker"
 ready_json="$tmp_root/ready.json"
-printf '%s\n' '[{"simulator":false,"platform":"com.apple.platform.iphoneos","available":true,"identifier":"00008132-001158191E9A401C","name":"Alberto iPad"}]' > "$ready_json"
+printf '%s\n' "[{\"simulator\":false,\"platform\":\"com.apple.platform.iphoneos\",\"available\":true,\"identifier\":\"$hardware_udid\",\"name\":\"Test iPad\"}]" > "$ready_json"
 cleanup_output="$tmp_root/cleanup.out"
 if ! PATH="$fake_bin:$PATH" \
   FAKE_XCDEVICE_JSON="$ready_json" \

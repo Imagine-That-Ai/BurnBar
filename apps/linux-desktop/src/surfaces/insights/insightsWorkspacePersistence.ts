@@ -57,7 +57,7 @@ function isSafeWidgetID(value: unknown): value is string {
     value.length > 0 &&
     value.length <= MAX_WIDGET_ID_LENGTH &&
     value === value.trim() &&
-    !/[\u0000-\u001f\u007f]/.test(value)
+    ![...value].some((character) => character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f)
   );
 }
 

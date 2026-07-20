@@ -141,7 +141,10 @@ const SAFE_CITATION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 
 function boundedCitationText(value: string, maxBytes: number): string | null {
   const trimmed = value.trim();
-  if (!trimmed || trimmed.includes('\u0000') || /[\u0000-\u001f\u007f]/.test(trimmed)) return null;
+  if (
+    !trimmed ||
+    [...trimmed].some((character) => character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f)
+  ) return null;
   if (new TextEncoder().encode(trimmed).length > maxBytes) return null;
   return trimmed;
 }

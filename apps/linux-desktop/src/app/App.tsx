@@ -6,7 +6,7 @@ import { KernelBackdrop } from '../components/KernelBackdrop.js';
 import { TopChrome } from '../components/TopChrome.js';
 import { SurfaceRouter } from '../surfaces/SurfaceRouter.js';
 import { PetSurface } from '../surfaces/PetSurface.js';
-import { ROUTES, shellDestinationFromNative, type ShellRoute } from '../routes.js';
+import { shellDestinationFromNative } from '../routes.js';
 import { readPersistedKernelId, writePersistedKernelId } from '../state/kernelPrefs.js';
 import { useShellStore } from '../state/shellStore.js';
 import type { NativeShortcutStatus } from '../tauriBridge.js';

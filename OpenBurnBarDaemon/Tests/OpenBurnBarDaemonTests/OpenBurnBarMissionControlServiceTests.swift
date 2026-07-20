@@ -675,7 +675,9 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         var projection = BurnBarMissionControlProjectionFile.empty(
             now: Date(timeIntervalSince1970: 1_710_620_500)
         )
-        projection.lastSequence = 42
+        // A matching zero checkpoint proves that an otherwise unreadable old
+        // journal is not replayed when the persisted projection is current.
+        projection.lastSequence = 0
         projection.projects[persistedProject.projectSlug] = persistedProject
         try JSONEncoder().encode(projection).write(to: projectionFileURL, options: .atomic)
 

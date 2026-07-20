@@ -425,7 +425,6 @@ function ProjectListCard({
 export function ProjectsSurface() {
   const fixtureMode = useShellStore((s) => s.fixtureMode);
   const bridge = useShellStore((s) => s.bridge);
-  const bridgeReady = useShellStore((s) => s.bridgeReady);
   const status = useDaemonStatusCopy();
   const projects = useSystemStore((s) => s.projects);
   const loading = useSystemStore((s) => s.loading);

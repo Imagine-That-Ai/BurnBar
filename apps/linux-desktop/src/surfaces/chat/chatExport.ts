@@ -9,6 +9,22 @@ import type {
 
 export type ChatExportFormat = 'json' | 'markdown';
 
+function hasControlCharacter(value: string): boolean {
+  return [...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 0x20 || code === 0x7f;
+  });
+}
+
+function replaceControlCharacters(value: string): string {
+  return [...value]
+    .map((character) => {
+      const code = character.charCodeAt(0);
+      return code < 0x20 || code === 0x7f ? ' ' : character;
+    })
+    .join('');
+}
+
 /** Keep export/replay bounded even when a corrupted or runaway database reports an enormous count. */
 export const CHAT_HISTORY_PAGE_SIZE = 500;
 export const CHAT_HISTORY_MAX_MESSAGES = 10_000;
@@ -66,7 +82,7 @@ function exportAttachmentMetadata(
       fileName === '..' ||
       fileName.includes('/') ||
       fileName.includes('\\') ||
-      /[\u0000-\u001f\u007f]/.test(fileName) ||
+      hasControlCharacter(fileName) ||
       !mimeType ||
       mimeType.length > 128 ||
       !Number.isSafeInteger(attachment.byteSize) ||
@@ -127,8 +143,7 @@ export function sanitizeChatExportFilename(
   format: ChatExportFormat
 ): string {
   const source = title.normalize('NFKC').trim();
-  const normalized = source
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+  const normalized = replaceControlCharacters(source)
     .replace(/[\\/]+/g, '-')
     .replace(/[^\p{L}\p{N}._-]+/gu, '-')
     .replace(/-{2,}/g, '-')

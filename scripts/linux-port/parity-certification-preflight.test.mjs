@@ -785,7 +785,8 @@ test('paired no-op ownership, duplicate tests, workflow comments, and untracked 
 test('capture failure always leaves an uploadable non-promotable diagnostic', (t) => {
   const subject = createRepository();
   t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
-  const diagnosticRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-p02-diagnostic-test-'));
+  const runnerTemporaryRoot = fs.realpathSync(process.env.RUNNER_TEMP ?? os.tmpdir());
+  const diagnosticRoot = fs.mkdtempSync(path.join(runnerTemporaryRoot, 'openburnbar-p02-diagnostic-test-'));
   t.after(() => fs.rmSync(diagnosticRoot, { recursive: true, force: true }));
   write(subject.root, '.linux-parity-diagnostics', 'hostile repository path\n');
   const baseline = capture(subject);

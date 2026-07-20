@@ -8,8 +8,7 @@ import { useSystemStore } from '../../state/systemStore.js';
 import type {
   MemoryBoundary,
   MemoryReviewInbox,
-  MemoryReviewItem,
-  MemoryReviewStatus
+  MemoryReviewItem
 } from '../../tauriBridge.js';
 import '../system/system.css';
 import './memory.css';

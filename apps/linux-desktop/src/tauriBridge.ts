@@ -1901,7 +1901,10 @@ const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/;
 
 function normalizedCatalogID(value: RawJsonValue, pattern: RegExp): string | null {
   const candidate = str(value).trim();
-  if (!candidate || candidate.includes('\u0000') || /[\u0000-\u001f\u007f]/.test(candidate)) return null;
+  if (
+    !candidate ||
+    [...candidate].some((character) => character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f)
+  ) return null;
   return pattern.test(candidate) ? candidate : null;
 }
 
@@ -1984,7 +1987,7 @@ function providerHealth(
 ): ProviderHealthState {
   const configured = provider !== undefined;
   const enabledValue = pick(provider, 'isEnabled', 'enabled');
-  if (configured && enabledValue !== undefined && !Boolean(enabledValue)) return 'unavailable';
+  if (configured && enabledValue !== undefined && !enabledValue) return 'unavailable';
   const slots = arr(pick(provider, 'credentialSlots', 'credentials', 'accounts'));
   if (slots.length > 0) {
     const states = slots.map((slot) => normalizeProviderHealth(str(pick(slot, 'status', 'state', 'health'))));

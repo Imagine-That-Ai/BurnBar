@@ -387,6 +387,8 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
 /// negative PID can be used to terminate descendants.  The parent drains the
 /// master from a nonblocking polling loop so a chatty CLI cannot deadlock or
 /// grow memory without bound.
+// AUDIT(@unchecked Sendable): mutable process state is guarded by `state`'s lock;
+// launch configuration is immutable. sendable-allowlist: process-handle
 private final class LinuxPTYCLIProcess: @unchecked Sendable {
     /// C argument storage is prepared before `forkpty`.  The child then only
     /// performs `chdir`/`execve` using inherited pointers, avoiding Swift/heap

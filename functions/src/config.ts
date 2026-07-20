@@ -85,7 +85,7 @@ export const PLACEHOLDER_LINUX_APP_CHECK_APP_ID = "1:000000000000:linux:00000000
  * provisioned for the Linux release.  Keep this check local to the Functions
  * runtime as a second line of defense behind the release-package validator.
  */
-export function isProductionLinuxAppCheckAppID(value: unknown): value is string {
+function isProductionLinuxAppCheckAppID(value: unknown): value is string {
   if (typeof value !== "string") return false;
   const trimmed = value.trim();
   if (!/^1:[0-9]{6,20}:web:[A-Za-z0-9_-]{8,128}$/u.test(trimmed)) return false;
