@@ -78,9 +78,10 @@ The P-02 validator independently repeats that isolated execution instead of trus
 claims in the feature proof, then recomputes and validates the inventory. It can pass only when
 every one of the 40 rows has executable, mutation-sensitive ownership. A role, policy, empty test,
 reused test, workflow comment, untracked helper, or hand-authored passed JSON cannot satisfy a
-lane. The repository currently has ten ownership-ready rows and 30 named blockers. Ownership
-readiness is not product certification: a ready row still requires passed receipts from all seven
-support environments before it contributes to the strict 40/40 claim.
+lane. Ten rows are registered, but target-commit semantic execution currently leaves only P-02,
+P-05, and P-40 ownership-ready, with 37 named blockers. Registration is not ownership readiness,
+and ownership readiness is not product certification: a ready row still requires passed receipts
+from all seven support environments before it contributes to the strict 40/40 claim.
 
 If collection itself fails, the capture producer atomically leaves a non-promotable
 `capture-failed` diagnostic in a runner-owned `mktemp` directory, even when the downloaded input
