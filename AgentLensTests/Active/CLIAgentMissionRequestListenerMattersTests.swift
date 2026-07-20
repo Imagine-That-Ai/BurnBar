@@ -55,7 +55,6 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
         )
     }
 
-
     // MARK: - Wand routing authority
 
     @MainActor
