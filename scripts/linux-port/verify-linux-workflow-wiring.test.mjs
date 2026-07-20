@@ -38,6 +38,8 @@ function valid() {
       'p12-quota-proof.test.mjs',
       'p17-native-activity-probes.test.mjs',
       'p17-activity-proof.test.mjs',
+      'p18-native-memory-probes.test.mjs',
+      'p18-memory-review-proof.test.mjs',
       'p38-release-automation-proof.test.mjs',
       'p31-accessibility-proof.test.mjs',
       'p34-credential-security-proof.test.mjs',
@@ -156,8 +158,8 @@ function valid() {
         '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
       ].join('\n'),
       [
-        '      - name: Install P-09 through P-14 and P-17 signed candidate package',
-        "        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-14' || inputs.requirement == 'P-17'",
+        '      - name: Install P-09 through P-14 and P-17/P-18 signed candidate package',
+        "        if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-14' || inputs.requirement == 'P-17' || inputs.requirement == 'P-18'",
         '        run: |',
         '          set -euo pipefail',
         '          sudo apt-get install -y --reinstall "$package"',
@@ -308,6 +310,32 @@ function valid() {
         '          node scripts/linux-port/materialize-p17-activity-session.mjs',
         '          node scripts/linux-port/capture-p17-activity-proof.mjs'
       ].join('\n'),
+      [
+        "      - name: Capture P-18 installed memory-review proof",
+        "        if: inputs.requirement == 'P-18'",
+        "        run: |",
+        "          set -euo pipefail",
+        '          evidence_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p18-evidence.XXXXXX")"',
+        '          support_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p18-support.XXXXXX")"',
+        '          home_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p18-home.XXXXXX")"',
+        '          rm -rf "$evidence_root" "$support_root" "$home_root" || status=1',
+        '          chmod 700 "$evidence_root" "$support_root" "$home_root"',
+        "          test -x /usr/bin/openburnbar-linux-desktop",
+        "          test -x /usr/libexec/openburnbar-daemon-launch",
+        "          if pgrep -f '^/usr/bin/openburnbar-linux-desktop([[:space:]]|$)' >/dev/null; then",
+        '          openssl rand -hex 32 >"$token_file"',
+        '          chmod 600 "$token_file"',
+        "          node scripts/linux-port/run-p18-native-memory-probes.mjs",
+        '            --home-dir "$home_root"',
+        '            --socket-path "$socket_path"',
+        '            --token-file "$token_file"',
+        '            --index-database "$index_database"',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
+        '            --manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"',
+        "          node scripts/linux-port/materialize-p18-memory-review-session.mjs",
+        "          node scripts/linux-port/capture-p18-memory-review-proof.mjs",
+      ].join("\n"),
       'Capture P-31 installed accessibility matrix evidence',
       'Capture P-34 credential security proof',
       [
@@ -686,10 +714,17 @@ test('registered installed UI workflows require native runners before materializ
       'scripts/linux-port/run-p17-native-activity-probes.mjs',
       'scripts/linux-port/materialize-p17-activity-session.mjs',
       'scripts/linux-port/capture-p17-activity-proof.mjs'
-    ]
+    ],
+    [
+      "P-18",
+      "Capture P-18 installed memory-review proof",
+      "scripts/linux-port/run-p18-native-memory-probes.mjs",
+      "scripts/linux-port/materialize-p18-memory-review-session.mjs",
+      "scripts/linux-port/capture-p18-memory-review-proof.mjs",
+    ],
   ]) {
     for (const marker of [
-      'Install P-09 through P-14 and P-17 signed candidate package', stepName, runner, materializer, capture,
+      'Install P-09 through P-14 and P-17/P-18 signed candidate package', stepName, runner, materializer, capture,
       '--manifest-signature-sha256 "$MANIFEST_SIGNATURE_SHA256"'
     ]) {
       const input = valid();
@@ -787,6 +822,32 @@ test('P-17 installed Activity workflow preserves isolated state and exact export
   }
 });
 
+test("P-18 installed memory workflow preserves isolated daemon and home state fail closed", () => {
+  for (const marker of [
+    'evidence_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p18-evidence.XXXXXX")"',
+    'support_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p18-support.XXXXXX")"',
+    'home_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p18-home.XXXXXX")"',
+    'rm -rf "$evidence_root" "$support_root" "$home_root" || status=1',
+    'openssl rand -hex 32 >"$token_file"',
+    '--home-dir "$home_root"',
+    '--socket-path "$socket_path"',
+    '--token-file "$token_file"',
+    '--index-database "$index_database"',
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replaceAll(
+      marker,
+      "removed-p18-state-marker",
+    );
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(
+      result.failures.some((failure) => failure.includes("P-18")),
+      marker,
+    );
+  }
+});
+
 test('P-39 differential workflow cannot be removed or weakened', () => {
   for (const marker of [
     'resolve-p39-platform-evidence.mjs',
@@ -871,6 +932,8 @@ test('product evidence dependency install and mutation suites are mandatory in t
     'p12-quota-proof.test.mjs',
     'p17-native-activity-probes.test.mjs',
     'p17-activity-proof.test.mjs',
+    'p18-native-memory-probes.test.mjs',
+    'p18-memory-review-proof.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs'
   ]) {

@@ -115,6 +115,8 @@ jobs:
           scripts/linux-port/p14-chat-proof.test.mjs
           scripts/linux-port/p17-native-activity-probes.test.mjs
           scripts/linux-port/p17-activity-proof.test.mjs
+          scripts/linux-port/p18-native-memory-probes.test.mjs
+          scripts/linux-port/p18-memory-review-proof.test.mjs
           scripts/linux-port/p38-release-automation-proof.test.mjs
           scripts/linux-port/p31-accessibility-proof.test.mjs
           scripts/linux-port/p34-credential-security-proof.test.mjs

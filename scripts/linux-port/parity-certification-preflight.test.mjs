@@ -127,11 +127,11 @@ function policies(requirements) {
 
 function registry(complete) {
   const featureRequirements = complete
-    ? ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-31', 'P-34', 'P-40']
-    : ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-31', 'P-34', 'P-40'];
+    ? ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-18', 'P-31', 'P-34', 'P-40']
+    : ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-18', 'P-31', 'P-34', 'P-40'];
   const certificationIds = complete
-    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40']
-    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40'];
+    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-18', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40']
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-18', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40'];
   return {
     schemaVersion: 1,
     id: 'openburnbar-linux-product-feature-proof-registry-v1',
@@ -142,6 +142,8 @@ function registry(complete) {
           ? PARITY_PREFLIGHT_ROLE
           : requirementId === 'P-14'
             ? 'feature.chat-installed'
+          : requirementId === 'P-18'
+            ? 'feature.memory-review-installed'
             : `feature.${requirementId.toLowerCase()}-proof`,
         mediaType: 'application/json',
         maxBytes: 1048576
@@ -161,6 +163,8 @@ function registry(complete) {
           ? 'scripts/linux-port/capture-p14-chat-proof.mjs'
           : requirementId === 'P-17'
           ? 'scripts/linux-port/capture-p17-activity-proof.mjs'
+        : requirementId === 'P-18'
+          ? 'scripts/linux-port/capture-p18-memory-review-proof.mjs'
         : requirementId === 'P-02'
           ? 'scripts/linux-port/capture-parity-certification-preflight.mjs'
           : `scripts/linux-port/capture-${requirementId.toLowerCase()}.mjs`;
@@ -168,7 +172,7 @@ function registry(complete) {
         ? 'scripts/linux-port/prepare-product-requirement-input.mjs'
         : requirementId === 'P-39'
           ? 'scripts/linux-port/prepare-product-requirement-input.mjs'
-        : ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-31', 'P-34', 'P-40'].includes(requirementId)
+        : ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-18', 'P-31', 'P-34', 'P-40'].includes(requirementId)
           ? 'scripts/linux-port/finalize-product-feature-proof-closure.mjs'
           : `scripts/linux-port/materialize-${requirementId.toLowerCase()}.mjs`;
       return {
@@ -186,7 +190,7 @@ function registry(complete) {
             ? '.github/workflows/linux-release.yml'
             : requirementId === 'P-39'
               ? '.github/workflows/linux-product-parity.yml'
-            : ['P-02', 'P-11', 'P-12', 'P-14', 'P-17'].includes(requirementId)
+            : ['P-02', 'P-11', 'P-12', 'P-14', 'P-17', 'P-18'].includes(requirementId)
               ? '.github/workflows/linux-product-parity.yml'
               : `.github/workflows/${requirementId.toLowerCase()}-capture.yml`,
           testPath,
@@ -195,7 +199,7 @@ function registry(complete) {
         materializer: {
           producerPath: materializerProducerPath,
           entrypoint: 'requirement',
-          workflowPath: RELEASE_ONLY.has(requirementId) || ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-31', 'P-34', 'P-39', 'P-40'].includes(requirementId)
+          workflowPath: RELEASE_ONLY.has(requirementId) || ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-18', 'P-31', 'P-34', 'P-39', 'P-40'].includes(requirementId)
             ? '.github/workflows/linux-product-parity.yml'
             : `.github/workflows/${requirementId.toLowerCase()}-materialize.yml`,
           testPath,
@@ -221,8 +225,8 @@ function createRepository({ complete = true } = {}) {
     'schemas/linux-product-feature-proof-registry.schema.json'
   ]) write(root, schema, fs.readFileSync(path.join(SOURCE_ROOT, schema)));
   const validatorIds = complete
-    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40']
-    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40'];
+    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-18', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40']
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-14', 'P-17', 'P-18', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40'];
   for (const requirementId of validatorIds) {
     write(root, `scripts/linux-port/product-validators/${requirementId}.mjs`,
       `export async function validateProductRequirement(context) {\n`
@@ -521,16 +525,18 @@ test('ownership-ready fixture blocks exactly the 20 unregistered requirement lan
   const p12 = captured.document.requirements.find((row) => row.requirementId === 'P-12');
   const p14 = captured.document.requirements.find((row) => row.requirementId === 'P-14');
   const p17 = captured.document.requirements.find((row) => row.requirementId === 'P-17');
+  const p18 = captured.document.requirements.find((row) => row.requirementId === 'P-18');
   assert.equal(p39.ready, true, JSON.stringify(p39));
   assert.equal(p11.ready, true, JSON.stringify(p11));
   assert.equal(p12.ready, true, JSON.stringify(p12));
   assert.equal(p14.ready, true, JSON.stringify(p14));
   assert.equal(p17.ready, true, JSON.stringify(p17));
+  assert.equal(p18.ready, true, JSON.stringify(p18));
   assert.equal(captured.document.status, 'blocked');
-  assert.equal(captured.document.summary.validatorCount, 20);
-  assert.equal(captured.document.summary.captureCount, 20);
-  assert.equal(captured.document.summary.materializerCount, 20);
-  assert.equal(captured.document.summary.readyCount, 20, JSON.stringify(p14));
+  assert.equal(captured.document.summary.validatorCount, 21);
+  assert.equal(captured.document.summary.captureCount, 21);
+  assert.equal(captured.document.summary.materializerCount, 21);
+  assert.equal(captured.document.summary.readyCount, 21, JSON.stringify(p18));
   assert.deepEqual(
     captured.document.requirements.filter((row) => !row.ready).map((row) => row.requirementId),
     REQUIREMENT_IDS.filter((id) => ![

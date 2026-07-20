@@ -113,6 +113,16 @@
       ]
     },
     {
+      "requirementId": "P-18",
+      "artifacts": [
+        {
+          "role": "feature.memory-review-installed",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
       "requirementId": "P-31",
       "artifacts": [
         {
@@ -479,6 +489,1874 @@
         "workflowPath": ".github/workflows/linux-product-parity.yml",
         "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
         "testName": "P-17 materializer selects the installed Activity proof"
+      }
+    },
+    {
+      "requirementId": "P-31",
+      "artifacts": [
+        {
+          "role": "feature.accessibility-assistive-tech",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-contrast",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-motion",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-scale",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
+      "requirementId": "P-34",
+      "artifacts": [
+        {
+          "role": "feature.credential-security-proof",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
+      "requirementId": "P-40",
+      "artifacts": [
+        {
+          "role": "feature.data-and-privacy",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    }
+  ],
+  "certification": [
+    {
+      "requirementId": "P-01",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-01.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-01 independently rejects a release artifact with a substituted detached signature"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-01 release capture includes signed application artifacts"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-01 materializer selects signed application artifacts"
+      }
+    },
+    {
+      "requirementId": "P-02",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-02.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/parity-certification-preflight.test.mjs",
+        "mutationTestName": "P-02 validator rejects an invocation without a passed release closure"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-parity-certification-preflight.mjs",
+        "entrypoint": "captureParityCertificationPreflight",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/parity-certification-preflight.test.mjs",
+        "testName": "P-02 capture emits a blocked candidate-bound diagnostic inventory"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-02 materializer CLI materializes the exact candidate registration"
+      }
+    },
+    {
+      "requirementId": "P-03",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-03.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-03 rejects a live daemon protocol that drifts from the signed package manifest"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-03 release capture includes daemon protocol evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-03 materializer selects daemon protocol evidence"
+      }
+    },
+    {
+      "requirementId": "P-04",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-04.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-04 rejects architecture smoke evidence missing a release architecture"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-04 release capture includes two-architecture smoke evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-04 materializer selects two-architecture smoke evidence"
+      }
+    },
+    {
+      "requirementId": "P-05",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-05.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "mutationTestName": "P-05 independently rejects custody lifecycle, availability, and source mutations"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p05-credential-custody-proof.mjs",
+        "entrypoint": "captureP05CredentialCustodyProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "testName": "P-05 capture emits a candidate-bound installed native custody proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "testName": "P-05 materializer selects the installed credential custody proof"
+      }
+    },
+    {
+      "requirementId": "P-06",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-06.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p06-gateway-credential-boundary-proof.test.mjs",
+        "mutationTestName": "P-06 rejects credential exposure, renderer escape, native regression, and source drift"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p06-gateway-boundary-proof.mjs",
+        "entrypoint": "captureP06GatewayBoundaryProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p06-gateway-credential-boundary-proof.test.mjs",
+        "testName": "P-06 capture emits a candidate-bound installed renderer-boundary proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-06 materializer selects the candidate-bound gateway boundary proof"
+      }
+    },
+    {
+      "requirementId": "P-07",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-07.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p07-computer-use-proof.test.mjs",
+        "mutationTestName": "P-07 validator rejects target, candidate, rejection-policy, and source mutations"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p07-computer-use-proof.mjs",
+        "entrypoint": "captureP07ComputerUseProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p07-computer-use-capture.test.mjs",
+        "testName": "P-07 capture emits the exact candidate-bound feature registration"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-07 materializer selects the candidate-bound computer-use proof"
+      }
+    },
+    {
+      "requirementId": "P-08",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-08.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p08-mercury-media-proof.test.mjs",
+        "mutationTestName": "P-08 validator rejects candidate substitution and physical-device evidence mutation"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p08-mercury-media-proof.mjs",
+        "entrypoint": "captureP08MercuryMediaProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p08-mercury-media-proof.test.mjs",
+        "testName": "P-08 capture and independent validator accept exact installed Linux plus physical iPad evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-08 materializer selects the installed Mercury media proof"
+      }
+    },
+    {
+      "requirementId": "P-09",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-09.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p09-navigation-shell-proof.test.mjs",
+        "mutationTestName": "P-09 collector accepts exact signed installed route, deep-link, and window evidence"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p09-navigation-shell-proof.mjs",
+        "entrypoint": "captureP09NavigationShellProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p09-navigation-shell-proof.test.mjs",
+        "testName": "P-09 rejects stale collection and changed source bytes"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-09 materializer selects the installed navigation shell proof"
+      }
+    },
+    {
+      "requirementId": "P-10",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-10.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p10-dashboard-layout-proof.test.mjs",
+        "mutationTestName": "P-10 collector accepts six installed layouts at desktop and compact widths"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p10-dashboard-layout-proof.mjs",
+        "entrypoint": "captureP10DashboardLayoutProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p10-dashboard-layout-proof.test.mjs",
+        "testName": "P-10 rejects Xvfb, stale collection, and changed session bytes"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-10 materializer selects the installed dashboard layout proof"
+      }
+    },
+    {
+      "requirementId": "P-11",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-11.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p11-usage-ingestion-proof.test.mjs",
+        "mutationTestName": "P-11 validator rejects semantic proof mutation"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p11-usage-ingestion-proof.mjs",
+        "entrypoint": "captureP11UsageIngestionProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p11-usage-ingestion-proof.test.mjs",
+        "testName": "P-11 validates installed daemon ingestion, idempotency, provenance, restart, and refresh continuity"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-11 materializer selects the installed usage ingestion proof"
+      }
+    },
+    {
+      "requirementId": "P-12",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-12.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p12-quota-proof.test.mjs",
+        "mutationTestName": "P-12 product collector rejects a semantically mutated emitted proof"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p12-quota-proof.mjs",
+        "entrypoint": "captureP12QuotaProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p12-quota-proof.test.mjs",
+        "testName": "P-12 capture accepts installed quota retention, retry, failover rollback, and restart proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-12 materializer selects the installed quota proof"
+      }
+    },
+    {
+      "requirementId": "P-14",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-14.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p14-chat-proof.test.mjs",
+        "mutationTestName": "P-14 independently rejects semantic mutations, changed bytes, source drift, and forged signatures"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p14-chat-proof.mjs",
+        "entrypoint": "captureP14ChatProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p14-chat-proof.test.mjs",
+        "testName": "P-14 runner, materializer, capture, and product validator close one signed installed chat session"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-14 materializer selects the installed chat proof"
+      }
+    },
+    {
+      "requirementId": "P-17",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-17.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p17-activity-proof.test.mjs",
+        "mutationTestName": "P-17 rejects cross-environment paths and semantically mutated emitted claims"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p17-activity-proof.mjs",
+        "entrypoint": "captureP17ActivityProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p17-activity-proof.test.mjs",
+        "testName": "P-17 materializer, capture, and product validator close one signed installed Activity session"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-17 materializer selects the installed Activity proof"
+      }
+    },
+    {
+      "requirementId": "P-31",
+      "artifacts": [
+        {
+          "role": "feature.accessibility-assistive-tech",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-contrast",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-motion",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-scale",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
+      "requirementId": "P-34",
+      "artifacts": [
+        {
+          "role": "feature.credential-security-proof",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
+      "requirementId": "P-40",
+      "artifacts": [
+        {
+          "role": "feature.data-and-privacy",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    }
+  ],
+  "certification": [
+    {
+      "requirementId": "P-01",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-01.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-01 independently rejects a release artifact with a substituted detached signature"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-01 release capture includes signed application artifacts"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-01 materializer selects signed application artifacts"
+      }
+    },
+    {
+      "requirementId": "P-02",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-02.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/parity-certification-preflight.test.mjs",
+        "mutationTestName": "P-02 validator rejects an invocation without a passed release closure"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-parity-certification-preflight.mjs",
+        "entrypoint": "captureParityCertificationPreflight",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/parity-certification-preflight.test.mjs",
+        "testName": "P-02 capture emits a blocked candidate-bound diagnostic inventory"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-02 materializer CLI materializes the exact candidate registration"
+      }
+    },
+    {
+      "requirementId": "P-03",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-03.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-03 rejects a live daemon protocol that drifts from the signed package manifest"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-03 release capture includes daemon protocol evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-03 materializer selects daemon protocol evidence"
+      }
+    },
+    {
+      "requirementId": "P-04",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-04.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-04 rejects architecture smoke evidence missing a release architecture"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-04 release capture includes two-architecture smoke evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-04 materializer selects two-architecture smoke evidence"
+      }
+    },
+    {
+      "requirementId": "P-05",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-05.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "mutationTestName": "P-05 independently rejects custody lifecycle, availability, and source mutations"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p05-credential-custody-proof.mjs",
+        "entrypoint": "captureP05CredentialCustodyProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "testName": "P-05 capture emits a candidate-bound installed native custody proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "testName": "P-05 materializer selects the installed credential custody proof"
+      }
+    },
+    {
+      "requirementId": "P-06",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-06.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p06-gateway-credential-boundary-proof.test.mjs",
+        "mutationTestName": "P-06 rejects credential exposure, renderer escape, native regression, and source drift"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p06-gateway-boundary-proof.mjs",
+        "entrypoint": "captureP06GatewayBoundaryProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p06-gateway-credential-boundary-proof.test.mjs",
+        "testName": "P-06 capture emits a candidate-bound installed renderer-boundary proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-06 materializer selects the candidate-bound gateway boundary proof"
+      }
+    },
+    {
+      "requirementId": "P-07",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-07.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p07-computer-use-proof.test.mjs",
+        "mutationTestName": "P-07 validator rejects target, candidate, rejection-policy, and source mutations"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p07-computer-use-proof.mjs",
+        "entrypoint": "captureP07ComputerUseProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p07-computer-use-capture.test.mjs",
+        "testName": "P-07 capture emits the exact candidate-bound feature registration"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-07 materializer selects the candidate-bound computer-use proof"
+      }
+    },
+    {
+      "requirementId": "P-08",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-08.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p08-mercury-media-proof.test.mjs",
+        "mutationTestName": "P-08 validator rejects candidate substitution and physical-device evidence mutation"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p08-mercury-media-proof.mjs",
+        "entrypoint": "captureP08MercuryMediaProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p08-mercury-media-proof.test.mjs",
+        "testName": "P-08 capture and independent validator accept exact installed Linux plus physical iPad evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-08 materializer selects the installed Mercury media proof"
+      }
+    },
+    {
+      "requirementId": "P-09",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-09.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p09-navigation-shell-proof.test.mjs",
+        "mutationTestName": "P-09 collector accepts exact signed installed route, deep-link, and window evidence"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p09-navigation-shell-proof.mjs",
+        "entrypoint": "captureP09NavigationShellProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p09-navigation-shell-proof.test.mjs",
+        "testName": "P-09 rejects stale collection and changed source bytes"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-09 materializer selects the installed navigation shell proof"
+      }
+    },
+    {
+      "requirementId": "P-10",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-10.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p10-dashboard-layout-proof.test.mjs",
+        "mutationTestName": "P-10 collector accepts six installed layouts at desktop and compact widths"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p10-dashboard-layout-proof.mjs",
+        "entrypoint": "captureP10DashboardLayoutProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p10-dashboard-layout-proof.test.mjs",
+        "testName": "P-10 rejects Xvfb, stale collection, and changed session bytes"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-10 materializer selects the installed dashboard layout proof"
+      }
+    },
+    {
+      "requirementId": "P-11",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-11.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p11-usage-ingestion-proof.test.mjs",
+        "mutationTestName": "P-11 validator rejects semantic proof mutation"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p11-usage-ingestion-proof.mjs",
+        "entrypoint": "captureP11UsageIngestionProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p11-usage-ingestion-proof.test.mjs",
+        "testName": "P-11 validates installed daemon ingestion, idempotency, provenance, restart, and refresh continuity"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-11 materializer selects the installed usage ingestion proof"
+      }
+    },
+    {
+      "requirementId": "P-12",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-12.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p12-quota-proof.test.mjs",
+        "mutationTestName": "P-12 product collector rejects a semantically mutated emitted proof"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p12-quota-proof.mjs",
+        "entrypoint": "captureP12QuotaProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p12-quota-proof.test.mjs",
+        "testName": "P-12 capture accepts installed quota retention, retry, failover rollback, and restart proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-12 materializer selects the installed quota proof"
+      }
+    },
+    {
+      "requirementId": "P-14",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-14.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p14-chat-proof.test.mjs",
+        "mutationTestName": "P-14 independently rejects semantic mutations, changed bytes, source drift, and forged signatures"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p14-chat-proof.mjs",
+        "entrypoint": "captureP14ChatProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p14-chat-proof.test.mjs",
+        "testName": "P-14 runner, materializer, capture, and product validator close one signed installed chat session"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-14 materializer selects the installed chat proof"
+      }
+    },
+    {
+      "requirementId": "P-17",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-17.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p17-activity-proof.test.mjs",
+        "mutationTestName": "P-17 rejects cross-environment paths and semantically mutated emitted claims"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p17-activity-proof.mjs",
+        "entrypoint": "captureP17ActivityProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p17-activity-proof.test.mjs",
+        "testName": "P-17 materializer, capture, and product validator close one signed installed Activity session"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-17 materializer selects the installed Activity proof"
+      }
+    },
+    {
+      "requirementId": "P-31",
+      "artifacts": [
+        {
+          "role": "feature.accessibility-assistive-tech",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-contrast",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-motion",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-scale",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
+      "requirementId": "P-34",
+      "artifacts": [
+        {
+          "role": "feature.credential-security-proof",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
+      "requirementId": "P-40",
+      "artifacts": [
+        {
+          "role": "feature.data-and-privacy",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    }
+  ],
+  "certification": [
+    {
+      "requirementId": "P-01",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-01.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-01 independently rejects a release artifact with a substituted detached signature"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-01 release capture includes signed application artifacts"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-01 materializer selects signed application artifacts"
+      }
+    },
+    {
+      "requirementId": "P-02",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-02.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/parity-certification-preflight.test.mjs",
+        "mutationTestName": "P-02 validator rejects an invocation without a passed release closure"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-parity-certification-preflight.mjs",
+        "entrypoint": "captureParityCertificationPreflight",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/parity-certification-preflight.test.mjs",
+        "testName": "P-02 capture emits a blocked candidate-bound diagnostic inventory"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-02 materializer CLI materializes the exact candidate registration"
+      }
+    },
+    {
+      "requirementId": "P-03",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-03.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-03 rejects a live daemon protocol that drifts from the signed package manifest"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-03 release capture includes daemon protocol evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-03 materializer selects daemon protocol evidence"
+      }
+    },
+    {
+      "requirementId": "P-04",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-04.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-04 rejects architecture smoke evidence missing a release architecture"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-04 release capture includes two-architecture smoke evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-04 materializer selects two-architecture smoke evidence"
+      }
+    },
+    {
+      "requirementId": "P-05",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-05.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "mutationTestName": "P-05 independently rejects custody lifecycle, availability, and source mutations"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p05-credential-custody-proof.mjs",
+        "entrypoint": "captureP05CredentialCustodyProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "testName": "P-05 capture emits a candidate-bound installed native custody proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "testName": "P-05 materializer selects the installed credential custody proof"
+      }
+    },
+    {
+      "requirementId": "P-06",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-06.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p06-gateway-credential-boundary-proof.test.mjs",
+        "mutationTestName": "P-06 rejects credential exposure, renderer escape, native regression, and source drift"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p06-gateway-boundary-proof.mjs",
+        "entrypoint": "captureP06GatewayBoundaryProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p06-gateway-credential-boundary-proof.test.mjs",
+        "testName": "P-06 capture emits a candidate-bound installed renderer-boundary proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-06 materializer selects the candidate-bound gateway boundary proof"
+      }
+    },
+    {
+      "requirementId": "P-07",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-07.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p07-computer-use-proof.test.mjs",
+        "mutationTestName": "P-07 validator rejects target, candidate, rejection-policy, and source mutations"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p07-computer-use-proof.mjs",
+        "entrypoint": "captureP07ComputerUseProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p07-computer-use-capture.test.mjs",
+        "testName": "P-07 capture emits the exact candidate-bound feature registration"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-07 materializer selects the candidate-bound computer-use proof"
+      }
+    },
+    {
+      "requirementId": "P-08",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-08.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p08-mercury-media-proof.test.mjs",
+        "mutationTestName": "P-08 validator rejects candidate substitution and physical-device evidence mutation"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p08-mercury-media-proof.mjs",
+        "entrypoint": "captureP08MercuryMediaProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p08-mercury-media-proof.test.mjs",
+        "testName": "P-08 capture and independent validator accept exact installed Linux plus physical iPad evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-08 materializer selects the installed Mercury media proof"
+      }
+    },
+    {
+      "requirementId": "P-09",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-09.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p09-navigation-shell-proof.test.mjs",
+        "mutationTestName": "P-09 collector accepts exact signed installed route, deep-link, and window evidence"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p09-navigation-shell-proof.mjs",
+        "entrypoint": "captureP09NavigationShellProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p09-navigation-shell-proof.test.mjs",
+        "testName": "P-09 rejects stale collection and changed source bytes"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-09 materializer selects the installed navigation shell proof"
+      }
+    },
+    {
+      "requirementId": "P-10",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-10.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p10-dashboard-layout-proof.test.mjs",
+        "mutationTestName": "P-10 collector accepts six installed layouts at desktop and compact widths"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p10-dashboard-layout-proof.mjs",
+        "entrypoint": "captureP10DashboardLayoutProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p10-dashboard-layout-proof.test.mjs",
+        "testName": "P-10 rejects Xvfb, stale collection, and changed session bytes"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-10 materializer selects the installed dashboard layout proof"
+      }
+    },
+    {
+      "requirementId": "P-11",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-11.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p11-usage-ingestion-proof.test.mjs",
+        "mutationTestName": "P-11 validator rejects semantic proof mutation"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p11-usage-ingestion-proof.mjs",
+        "entrypoint": "captureP11UsageIngestionProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p11-usage-ingestion-proof.test.mjs",
+        "testName": "P-11 validates installed daemon ingestion, idempotency, provenance, restart, and refresh continuity"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-11 materializer selects the installed usage ingestion proof"
+      }
+    },
+    {
+      "requirementId": "P-12",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-12.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p12-quota-proof.test.mjs",
+        "mutationTestName": "P-12 product collector rejects a semantically mutated emitted proof"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p12-quota-proof.mjs",
+        "entrypoint": "captureP12QuotaProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p12-quota-proof.test.mjs",
+        "testName": "P-12 capture accepts installed quota retention, retry, failover rollback, and restart proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-12 materializer selects the installed quota proof"
+      }
+    },
+    {
+      "requirementId": "P-14",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-14.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p14-chat-proof.test.mjs",
+        "mutationTestName": "P-14 independently rejects semantic mutations, changed bytes, source drift, and forged signatures"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p14-chat-proof.mjs",
+        "entrypoint": "captureP14ChatProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p14-chat-proof.test.mjs",
+        "testName": "P-14 runner, materializer, capture, and product validator close one signed installed chat session"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-14 materializer selects the installed chat proof"
+      }
+    },
+    {
+      "requirementId": "P-17",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-17.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p17-activity-proof.test.mjs",
+        "mutationTestName": "P-17 rejects cross-environment paths and semantically mutated emitted claims"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p17-activity-proof.mjs",
+        "entrypoint": "captureP17ActivityProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p17-activity-proof.test.mjs",
+        "testName": "P-17 materializer, capture, and product validator close one signed installed Activity session"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-17 materializer selects the installed Activity proof"
+      }
+    },
+    {
+      "requirementId": "P-31",
+      "artifacts": [
+        {
+          "role": "feature.accessibility-assistive-tech",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-contrast",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-motion",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-scale",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
+      "requirementId": "P-34",
+      "artifacts": [
+        {
+          "role": "feature.credential-security-proof",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
+      "requirementId": "P-40",
+      "artifacts": [
+        {
+          "role": "feature.data-and-privacy",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    }
+  ],
+  "certification": [
+    {
+      "requirementId": "P-01",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-01.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-01 independently rejects a release artifact with a substituted detached signature"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-01 release capture includes signed application artifacts"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-01 materializer selects signed application artifacts"
+      }
+    },
+    {
+      "requirementId": "P-02",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-02.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/parity-certification-preflight.test.mjs",
+        "mutationTestName": "P-02 validator rejects an invocation without a passed release closure"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-parity-certification-preflight.mjs",
+        "entrypoint": "captureParityCertificationPreflight",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/parity-certification-preflight.test.mjs",
+        "testName": "P-02 capture emits a blocked candidate-bound diagnostic inventory"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-02 materializer CLI materializes the exact candidate registration"
+      }
+    },
+    {
+      "requirementId": "P-03",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-03.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-03 rejects a live daemon protocol that drifts from the signed package manifest"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-03 release capture includes daemon protocol evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-03 materializer selects daemon protocol evidence"
+      }
+    },
+    {
+      "requirementId": "P-04",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-04.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-04 rejects architecture smoke evidence missing a release architecture"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-04 release capture includes two-architecture smoke evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-04 materializer selects two-architecture smoke evidence"
+      }
+    },
+    {
+      "requirementId": "P-05",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-05.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "mutationTestName": "P-05 independently rejects custody lifecycle, availability, and source mutations"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p05-credential-custody-proof.mjs",
+        "entrypoint": "captureP05CredentialCustodyProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "testName": "P-05 capture emits a candidate-bound installed native custody proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "testName": "P-05 materializer selects the installed credential custody proof"
+      }
+    },
+    {
+      "requirementId": "P-06",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-06.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p06-gateway-credential-boundary-proof.test.mjs",
+        "mutationTestName": "P-06 rejects credential exposure, renderer escape, native regression, and source drift"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p06-gateway-boundary-proof.mjs",
+        "entrypoint": "captureP06GatewayBoundaryProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p06-gateway-credential-boundary-proof.test.mjs",
+        "testName": "P-06 capture emits a candidate-bound installed renderer-boundary proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-06 materializer selects the candidate-bound gateway boundary proof"
+      }
+    },
+    {
+      "requirementId": "P-07",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-07.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p07-computer-use-proof.test.mjs",
+        "mutationTestName": "P-07 validator rejects target, candidate, rejection-policy, and source mutations"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p07-computer-use-proof.mjs",
+        "entrypoint": "captureP07ComputerUseProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p07-computer-use-capture.test.mjs",
+        "testName": "P-07 capture emits the exact candidate-bound feature registration"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-07 materializer selects the candidate-bound computer-use proof"
+      }
+    },
+    {
+      "requirementId": "P-08",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-08.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p08-mercury-media-proof.test.mjs",
+        "mutationTestName": "P-08 validator rejects candidate substitution and physical-device evidence mutation"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p08-mercury-media-proof.mjs",
+        "entrypoint": "captureP08MercuryMediaProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p08-mercury-media-proof.test.mjs",
+        "testName": "P-08 capture and independent validator accept exact installed Linux plus physical iPad evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-08 materializer selects the installed Mercury media proof"
+      }
+    },
+    {
+      "requirementId": "P-09",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-09.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p09-navigation-shell-proof.test.mjs",
+        "mutationTestName": "P-09 collector accepts exact signed installed route, deep-link, and window evidence"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p09-navigation-shell-proof.mjs",
+        "entrypoint": "captureP09NavigationShellProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p09-navigation-shell-proof.test.mjs",
+        "testName": "P-09 rejects stale collection and changed source bytes"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-09 materializer selects the installed navigation shell proof"
+      }
+    },
+    {
+      "requirementId": "P-10",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-10.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p10-dashboard-layout-proof.test.mjs",
+        "mutationTestName": "P-10 collector accepts six installed layouts at desktop and compact widths"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p10-dashboard-layout-proof.mjs",
+        "entrypoint": "captureP10DashboardLayoutProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p10-dashboard-layout-proof.test.mjs",
+        "testName": "P-10 rejects Xvfb, stale collection, and changed session bytes"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-10 materializer selects the installed dashboard layout proof"
+      }
+    },
+    {
+      "requirementId": "P-11",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-11.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p11-usage-ingestion-proof.test.mjs",
+        "mutationTestName": "P-11 validator rejects semantic proof mutation"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p11-usage-ingestion-proof.mjs",
+        "entrypoint": "captureP11UsageIngestionProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p11-usage-ingestion-proof.test.mjs",
+        "testName": "P-11 validates installed daemon ingestion, idempotency, provenance, restart, and refresh continuity"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-11 materializer selects the installed usage ingestion proof"
+      }
+    },
+    {
+      "requirementId": "P-12",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-12.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p12-quota-proof.test.mjs",
+        "mutationTestName": "P-12 product collector rejects a semantically mutated emitted proof"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p12-quota-proof.mjs",
+        "entrypoint": "captureP12QuotaProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p12-quota-proof.test.mjs",
+        "testName": "P-12 capture accepts installed quota retention, retry, failover rollback, and restart proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-12 materializer selects the installed quota proof"
+      }
+    },
+    {
+      "requirementId": "P-14",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-14.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p14-chat-proof.test.mjs",
+        "mutationTestName": "P-14 independently rejects semantic mutations, changed bytes, source drift, and forged signatures"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p14-chat-proof.mjs",
+        "entrypoint": "captureP14ChatProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p14-chat-proof.test.mjs",
+        "testName": "P-14 runner, materializer, capture, and product validator close one signed installed chat session"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-14 materializer selects the installed chat proof"
+      }
+    },
+    {
+      "requirementId": "P-17",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-17.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p17-activity-proof.test.mjs",
+        "mutationTestName": "P-17 rejects cross-environment paths and semantically mutated emitted claims"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p17-activity-proof.mjs",
+        "entrypoint": "captureP17ActivityProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p17-activity-proof.test.mjs",
+        "testName": "P-17 materializer, capture, and product validator close one signed installed Activity session"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-17 materializer selects the installed Activity proof"
+      }
+    },
+    {
+      "requirementId": "P-31",
+      "artifacts": [
+        {
+          "role": "feature.accessibility-assistive-tech",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-contrast",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-motion",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-scale",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
+      "requirementId": "P-34",
+      "artifacts": [
+        {
+          "role": "feature.credential-security-proof",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
+      "requirementId": "P-40",
+      "artifacts": [
+        {
+          "role": "feature.data-and-privacy",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    }
+  ],
+  "certification": [
+    {
+      "requirementId": "P-01",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-01.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-01 independently rejects a release artifact with a substituted detached signature"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-01 release capture includes signed application artifacts"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-01 materializer selects signed application artifacts"
+      }
+    },
+    {
+      "requirementId": "P-02",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-02.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/parity-certification-preflight.test.mjs",
+        "mutationTestName": "P-02 validator rejects an invocation without a passed release closure"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-parity-certification-preflight.mjs",
+        "entrypoint": "captureParityCertificationPreflight",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/parity-certification-preflight.test.mjs",
+        "testName": "P-02 capture emits a blocked candidate-bound diagnostic inventory"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-02 materializer CLI materializes the exact candidate registration"
+      }
+    },
+    {
+      "requirementId": "P-03",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-03.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-03 rejects a live daemon protocol that drifts from the signed package manifest"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-03 release capture includes daemon protocol evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-03 materializer selects daemon protocol evidence"
+      }
+    },
+    {
+      "requirementId": "P-04",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-04.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-04 rejects architecture smoke evidence missing a release architecture"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-04 release capture includes two-architecture smoke evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-04 materializer selects two-architecture smoke evidence"
+      }
+    },
+    {
+      "requirementId": "P-05",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-05.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "mutationTestName": "P-05 independently rejects custody lifecycle, availability, and source mutations"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p05-credential-custody-proof.mjs",
+        "entrypoint": "captureP05CredentialCustodyProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "testName": "P-05 capture emits a candidate-bound installed native custody proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p05-credential-custody-proof.test.mjs",
+        "testName": "P-05 materializer selects the installed credential custody proof"
+      }
+    },
+    {
+      "requirementId": "P-06",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-06.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p06-gateway-credential-boundary-proof.test.mjs",
+        "mutationTestName": "P-06 rejects credential exposure, renderer escape, native regression, and source drift"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p06-gateway-boundary-proof.mjs",
+        "entrypoint": "captureP06GatewayBoundaryProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p06-gateway-credential-boundary-proof.test.mjs",
+        "testName": "P-06 capture emits a candidate-bound installed renderer-boundary proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-06 materializer selects the candidate-bound gateway boundary proof"
+      }
+    },
+    {
+      "requirementId": "P-07",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-07.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p07-computer-use-proof.test.mjs",
+        "mutationTestName": "P-07 validator rejects target, candidate, rejection-policy, and source mutations"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p07-computer-use-proof.mjs",
+        "entrypoint": "captureP07ComputerUseProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p07-computer-use-capture.test.mjs",
+        "testName": "P-07 capture emits the exact candidate-bound feature registration"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-07 materializer selects the candidate-bound computer-use proof"
+      }
+    },
+    {
+      "requirementId": "P-08",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-08.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p08-mercury-media-proof.test.mjs",
+        "mutationTestName": "P-08 validator rejects candidate substitution and physical-device evidence mutation"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p08-mercury-media-proof.mjs",
+        "entrypoint": "captureP08MercuryMediaProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p08-mercury-media-proof.test.mjs",
+        "testName": "P-08 capture and independent validator accept exact installed Linux plus physical iPad evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-08 materializer selects the installed Mercury media proof"
+      }
+    },
+    {
+      "requirementId": "P-09",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-09.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p09-navigation-shell-proof.test.mjs",
+        "mutationTestName": "P-09 collector accepts exact signed installed route, deep-link, and window evidence"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p09-navigation-shell-proof.mjs",
+        "entrypoint": "captureP09NavigationShellProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p09-navigation-shell-proof.test.mjs",
+        "testName": "P-09 rejects stale collection and changed source bytes"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-09 materializer selects the installed navigation shell proof"
+      }
+    },
+    {
+      "requirementId": "P-10",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-10.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p10-dashboard-layout-proof.test.mjs",
+        "mutationTestName": "P-10 collector accepts six installed layouts at desktop and compact widths"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p10-dashboard-layout-proof.mjs",
+        "entrypoint": "captureP10DashboardLayoutProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p10-dashboard-layout-proof.test.mjs",
+        "testName": "P-10 rejects Xvfb, stale collection, and changed session bytes"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-10 materializer selects the installed dashboard layout proof"
+      }
+    },
+    {
+      "requirementId": "P-11",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-11.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p11-usage-ingestion-proof.test.mjs",
+        "mutationTestName": "P-11 validator rejects semantic proof mutation"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p11-usage-ingestion-proof.mjs",
+        "entrypoint": "captureP11UsageIngestionProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p11-usage-ingestion-proof.test.mjs",
+        "testName": "P-11 validates installed daemon ingestion, idempotency, provenance, restart, and refresh continuity"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-11 materializer selects the installed usage ingestion proof"
+      }
+    },
+    {
+      "requirementId": "P-12",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-12.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p12-quota-proof.test.mjs",
+        "mutationTestName": "P-12 product collector rejects a semantically mutated emitted proof"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p12-quota-proof.mjs",
+        "entrypoint": "captureP12QuotaProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p12-quota-proof.test.mjs",
+        "testName": "P-12 capture accepts installed quota retention, retry, failover rollback, and restart proof"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-12 materializer selects the installed quota proof"
+      }
+    },
+    {
+      "requirementId": "P-14",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-14.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p14-chat-proof.test.mjs",
+        "mutationTestName": "P-14 independently rejects semantic mutations, changed bytes, source drift, and forged signatures"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p14-chat-proof.mjs",
+        "entrypoint": "captureP14ChatProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p14-chat-proof.test.mjs",
+        "testName": "P-14 runner, materializer, capture, and product validator close one signed installed chat session"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-14 materializer selects the installed chat proof"
+      }
+    },
+    {
+      "requirementId": "P-17",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-17.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p17-activity-proof.test.mjs",
+        "mutationTestName": "P-17 rejects cross-environment paths and semantically mutated emitted claims"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p17-activity-proof.mjs",
+        "entrypoint": "captureP17ActivityProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p17-activity-proof.test.mjs",
+        "testName": "P-17 materializer, capture, and product validator close one signed installed Activity session"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-17 materializer selects the installed Activity proof"
+      }
+    },
+    {
+      "requirementId": "P-18",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-18.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p18-memory-review-proof.test.mjs",
+        "mutationTestName": "P-18 rejects semantic mutation, replay, stale evidence, and forged signatures"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p18-memory-review-proof.mjs",
+        "entrypoint": "captureP18MemoryReviewProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p18-memory-review-proof.test.mjs",
+        "testName": "P-18 materializer, capture, and product validator close a signed installed memory lifecycle"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-18 materializer selects the installed memory-review proof"
       }
     },
     {
