@@ -741,49 +741,81 @@ public enum BurnBarLinuxDeviceAdapters {
     }
 
     public static func parityLedger() -> [ParityRow] {
-        let avahi = which("avahi-browse") != nil
+        parityLedger(
+            avahiAvailable: which("avahi-browse") != nil,
+            homeAssistantConfigured: ProcessInfo.processInfo.environment["OPENBURNBAR_HOME_ASSISTANT_URL"] != nil,
+            smartHubStatusProvider: smartHubStatus
+        )
+    }
+
+    private static func parityLedger(
+        avahiAvailable: Bool,
+        homeAssistantConfigured: Bool,
+        smartHubStatusProvider: () -> [String: String]
+    ) -> [ParityRow] {
+        // A SmartHub status check includes a control probe. Evaluate it once
+        // so parity output cannot duplicate side effects or double the probe
+        // timeout when the CLI renders the ledger.
+        let smartHub = smartHubStatusProvider()
+        let smartHubReady = smartHub["status"] == "bridge_control_ok"
         return [
             ParityRow(
                 adapter: AdapterID.pixelClock.rawValue,
-                status: avahi ? "discoverable" : "blocked",
+                status: avahiAvailable ? "discoverable" : "blocked",
                 discoveryMethod: "_http._tcp awtrix_*",
-                blocker: avahi ? nil : "Install avahi-utils for mDNS browse.",
+                blocker: avahiAvailable ? nil : "Install avahi-utils for mDNS browse.",
                 evidence: "CLI devices pixel-clock discover"
             ),
             ParityRow(
                 adapter: AdapterID.googleCast.rawValue,
-                status: avahi ? "discoverable" : "blocked",
+                status: avahiAvailable ? "discoverable" : "blocked",
                 discoveryMethod: "_googlecast._tcp",
-                blocker: avahi ? nil : "Install avahi-utils for Cast browse.",
+                blocker: avahiAvailable ? nil : "Install avahi-utils for Cast browse.",
                 evidence: "CLI devices iot cast status"
             ),
             ParityRow(
                 adapter: AdapterID.homeAssistant.rawValue,
-                status: ProcessInfo.processInfo.environment["OPENBURNBAR_HOME_ASSISTANT_URL"] == nil
-                    ? "blocked_missing_home_assistant_url"
-                    : "configured",
+                status: homeAssistantConfigured
+                    ? "configured"
+                    : "blocked_missing_home_assistant_url",
                 discoveryMethod: "_home-assistant._tcp",
-                blocker: ProcessInfo.processInfo.environment["OPENBURNBAR_HOME_ASSISTANT_URL"] == nil
-                    ? "Requires OPENBURNBAR_HOME_ASSISTANT_URL for control beyond discovery."
-                    : nil,
+                blocker: homeAssistantConfigured
+                    ? nil
+                    : "Requires OPENBURNBAR_HOME_ASSISTANT_URL for control beyond discovery.",
                 evidence: "CLI devices iot homeassistant status"
             ),
             ParityRow(
                 adapter: AdapterID.smartHubBridge.rawValue,
-                status: smartHubStatus()["status"] == "bridge_control_ok" ? "control_ready" : "blocked_until_bridge_health_reachable",
+                status: smartHubReady ? "control_ready" : "blocked_until_bridge_health_reachable",
                 discoveryMethod: "loopback_http",
-                blocker: smartHubStatus()["status"] == "bridge_control_ok" ? nil : "Start Linux SmartHub bridge and rerun CLI status for live control proof.",
+                blocker: smartHubReady ? nil : "Start Linux SmartHub bridge and rerun CLI status for live control proof.",
                 evidence: "CLI devices iot smarthub status"
             ),
             ParityRow(
                 adapter: AdapterID.awtrixHTTP.rawValue,
-                status: avahi ? "discoverable" : "blocked",
+                status: avahiAvailable ? "discoverable" : "blocked",
                 discoveryMethod: "_http._tcp",
-                blocker: avahi ? nil : "Install avahi-utils.",
+                blocker: avahiAvailable ? nil : "Install avahi-utils.",
                 evidence: "CLI devices discover awtrix"
             )
         ]
     }
+
+    #if DEBUG
+    /// Test-only seam for parity ledger evaluation. Production callers use
+    /// `parityLedger()`, which supplies the live SmartHub status helper.
+    static func testingParityLedger(
+        avahiAvailable: Bool = false,
+        homeAssistantConfigured: Bool = false,
+        smartHubStatusProvider: @escaping () -> [String: String]
+    ) -> [ParityRow] {
+        parityLedger(
+            avahiAvailable: avahiAvailable,
+            homeAssistantConfigured: homeAssistantConfigured,
+            smartHubStatusProvider: smartHubStatusProvider
+        )
+    }
+    #endif
 
     private static func which(_ name: String) -> String? {
         let pathValue = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"

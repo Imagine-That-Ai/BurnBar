@@ -50,6 +50,34 @@ final class BurnBarLinuxDeviceAdaptersTests: XCTestCase {
         XCTAssertEqual(result.transcript, "")
     }
 
+    func testParityLedgerEvaluatesSmartHubStatusOnce() {
+        var statusCalls = 0
+
+        let rows = BurnBarLinuxDeviceAdapters.testingParityLedger(
+            avahiAvailable: true,
+            homeAssistantConfigured: true,
+            smartHubStatusProvider: {
+                statusCalls += 1
+                return ["status": "bridge_control_ok"]
+            }
+        )
+
+        XCTAssertEqual(statusCalls, 1)
+        let smartHub = rows.first { $0.adapter == "smart_hub_bridge" }
+        XCTAssertEqual(smartHub?.status, "control_ready")
+        XCTAssertNil(smartHub?.blocker)
+    }
+
+    func testParityLedgerKeepsSmartHubBlockerWhenControlProbeFails() {
+        let rows = BurnBarLinuxDeviceAdapters.testingParityLedger(
+            smartHubStatusProvider: { ["status": "bridge_reachable_control_blocked"] }
+        )
+
+        let smartHub = rows.first { $0.adapter == "smart_hub_bridge" }
+        XCTAssertEqual(smartHub?.status, "blocked_until_bridge_health_reachable")
+        XCTAssertEqual(smartHub?.blocker, "Start Linux SmartHub bridge and rerun CLI status for live control proof.")
+    }
+
     private func makeExecutable(_ contents: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-avahi-test-(UUID().uuidString)")
