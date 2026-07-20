@@ -82,12 +82,13 @@ try {
         $current = Invoke-WebRequest -Method Get -Uri $uri -Headers @{
             Authorization = "Bearer $token"
             'x-goog-user-project' = $ProjectId
+            'Accept-Encoding' = 'gzip'
         }
     }
     catch {
         throw 'The staging Remote Config read failed. No mutation was attempted; inspect operator access without logging credentials.'
     }
-    $etag = [string]$current.Headers.ETag
+    $etag = [string]$current.Headers['ETag']
     if ([string]::IsNullOrWhiteSpace($etag)) {
         throw 'The current staging Remote Config response did not include an ETag.'
     }
@@ -96,6 +97,7 @@ try {
         $published = Invoke-WebRequest -Method Put -Uri $uri -Headers @{
             Authorization = "Bearer $token"
             'x-goog-user-project' = $ProjectId
+            'Accept-Encoding' = 'gzip'
             'If-Match' = $etag
         } -ContentType 'application/json; charset=utf-8' -Body $payload
     }
