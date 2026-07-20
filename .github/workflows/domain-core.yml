@@ -385,14 +385,6 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Check out trusted default-branch evaluator
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
-        with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
-          path: .domain-core-trusted-evaluator
-          persist-credentials: false
-          fetch-depth: 0
-
       - name: Test fail-closed promotion evidence evaluation
         run: |
           set -o pipefail
@@ -441,6 +433,14 @@ jobs:
 
       - name: Verify shadow evidence retention declaration
         run: bash scripts/ci/check-firestore-ttl-declared.sh
+
+      - name: Check out trusted default-branch evaluator
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          path: .domain-core-trusted-evaluator
+          persist-credentials: false
+          fetch-depth: 0
 
       - name: Verify deterministic legacy-deletion governance
         env:
@@ -1429,6 +1429,7 @@ jobs:
             test/domainCoreCloudVaultArtifact.test.ts \
             test/domainCoreShadowEvidence.test.ts \
             test/escrow.test.ts \
+            test/interop.test.ts \
             2>&1 | tee "$RUNNER_TEMP/console-consumer-contracts.log"
           npm run typecheck
           npm run lint
