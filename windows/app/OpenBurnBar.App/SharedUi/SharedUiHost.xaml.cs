@@ -318,7 +318,6 @@ public sealed partial class SharedUiHost : UserControl
             source = "windows-shared-ui-host",
         }).ToArray();
 
-        string now = DateTimeOffset.UtcNow.ToString("o");
         return new
         {
             schemaVersion = 1,
@@ -334,6 +333,7 @@ public sealed partial class SharedUiHost : UserControl
 
     private static object BuildOnboardingSnapshot()
     {
+        string now = DateTimeOffset.UtcNow.ToString("o");
         (string Id, string Requirement, string State)[] rows =
         {
             ("daemon", "required", "verified"),
