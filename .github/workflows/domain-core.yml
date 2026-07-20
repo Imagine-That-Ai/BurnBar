@@ -116,6 +116,7 @@ on:
       - "scripts/ci/domain-core-union-gate.py"
       - "scripts/ci/evaluate-domain-core-promotion.mjs"
       - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
+      - "scripts/ci/gh-api-with-retry*"
       - "scripts/ci/*domain-core-proof*"
       - "scripts/ci/verify-domain-core-protected-attestation*"
       - "scripts/ci/verify-domain-core-rollback.mjs"
@@ -291,6 +292,7 @@ on:
       - "scripts/ci/domain-core-union-gate.py"
       - "scripts/ci/evaluate-domain-core-promotion.mjs"
       - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
+      - "scripts/ci/gh-api-with-retry*"
       - "scripts/ci/*domain-core-proof*"
       - "scripts/ci/verify-domain-core-protected-attestation*"
       - "scripts/ci/verify-domain-core-rollback.mjs"
@@ -398,6 +400,7 @@ jobs:
             scripts/ci/create-domain-core-deterministic-candidate-bundle.test.mjs \
             scripts/ci/domain-core-proof-fragment.test.mjs \
             scripts/ci/evaluate-domain-core-promotion.test.mjs \
+            scripts/ci/gh-api-with-retry.test.mjs \
             scripts/ci/stage-domain-core-attestation-artifact.test.mjs \
             scripts/ci/verify-domain-core-control-plane.test.mjs \
             scripts/ci/verify-domain-core-protected-attestation.test.mjs \

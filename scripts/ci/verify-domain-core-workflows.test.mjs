@@ -372,7 +372,12 @@ test("protected signer has no user-supplied evidence surface and revalidates tru
   assert.match(signer, /required_reviewers/u);
   assert.match(signer, /deployment-branch-policies/u);
   assert.match(signer, /verify-domain-core-protected-attestation\.mjs/u);
-  assert.match(signer, /gh api --paginate --slurp/u);
+  assert.match(signer, /gh-api-with-retry\.sh --paginate --slurp/u);
+  assert.doesNotMatch(
+    workflowJob(signer, "protected-domain-core-signer"),
+    /^\s+gh api /mu,
+    "protected signer GitHub API reads must use the bounded retry wrapper",
+  );
   assert.match(signer, /\.total_count == \(\.branch_policies \| length\)/u);
   assert.match(signer, /\.total_count == \(\.workflow_runs \| length\)/u);
   assert.match(signer, /\.total_count == \(\.jobs \| length\)/u);
