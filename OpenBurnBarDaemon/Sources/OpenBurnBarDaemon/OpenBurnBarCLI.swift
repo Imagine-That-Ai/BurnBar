@@ -55,6 +55,8 @@ public struct BurnBarCLIRunner {
             return try runSubscribeCommand(Array(effectiveArguments.dropFirst()))
         case "chat":
             return try runChatQueryCommand(Array(effectiveArguments.dropFirst()))
+        case "activity":
+            return try runActivityQueryCommand(Array(effectiveArguments.dropFirst()))
         case "subscription-resume":
             return try runSubscriptionResumeCommand(Array(effectiveArguments.dropFirst()))
         case "controller", "status":
@@ -193,6 +195,23 @@ public struct BurnBarCLIRunner {
             let (response, mode) = try runResumeCommand(effectiveArguments)
             return BurnBarCLIInvocationResult(
                 output: Self.formatRunResumeResponse(response, mode: mode),
+                exitCode: response.kind == "error" ? EXIT_FAILURE : EXIT_SUCCESS
+            )
+        }
+
+        if effectiveArguments.first == "activity",
+           effectiveArguments.dropFirst().first == "replay" {
+            guard effectiveArguments.count == 3, !effectiveArguments[2].hasPrefix("--") else {
+                throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli activity replay <sourceID>")
+            }
+            let response = try client.runResume(
+                sessionID: effectiveArguments[2],
+                targetHarness: nil,
+                targetModel: nil,
+                mode: .print
+            )
+            return BurnBarCLIInvocationResult(
+                output: try Self.jsonString(response),
                 exitCode: response.kind == "error" ? EXIT_FAILURE : EXIT_SUCCESS
             )
         }
@@ -442,6 +461,43 @@ public struct BurnBarCLIRunner {
             return try Self.jsonString(response)
         default:
             throw BurnBarCLIError.invalidCommand("chat \(operation)")
+        }
+    }
+
+    private func runActivityQueryCommand(_ arguments: [String]) throws -> String {
+        guard let operation = arguments.first else {
+            throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli activity <history|search|replay> [options]")
+        }
+        switch operation {
+        case "history":
+            return try Self.jsonString(
+                client.activityHistory(limit: try positiveIntegerOption("--limit", in: arguments, defaultValue: 500))
+            )
+        case "search":
+            let query = positionalArguments(Array(arguments.dropFirst()), optionNames: ["--limit"])
+                .joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !query.isEmpty else {
+                throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli activity search <query> [--limit N]")
+            }
+            return try Self.jsonString(
+                client.activitySearch(
+                    query: query,
+                    limit: try positiveIntegerOption("--limit", in: arguments, defaultValue: 50)
+                )
+            )
+        case "replay":
+            guard arguments.count == 2, !arguments[1].hasPrefix("--") else {
+                throw BurnBarCLIError.missingArgument("Usage: openburnbar-cli activity replay <sourceID>")
+            }
+            return try Self.jsonString(client.runResume(
+                sessionID: arguments[1],
+                targetHarness: nil,
+                targetModel: nil,
+                mode: .print
+            ))
+        default:
+            throw BurnBarCLIError.invalidCommand("activity \(operation)")
         }
     }
 
@@ -871,6 +927,9 @@ public struct BurnBarCLIRunner {
       subscription-resume <subscriptionID> --topic <topic> --after-seq <seq>
       chat threads [--query text] [--limit N]
       chat thread <threadID> [--max-messages N] [--before-timestamp ISO8601 --before-message-id ID]
+      activity history [--limit N]
+      activity search <query> [--limit N]
+      activity replay <sourceID>
       controller [projectSlug]
       questions [projectSlug]
       followups [projectSlug]
@@ -919,6 +978,7 @@ public struct BurnBarCLIRunner {
         "subscribe",
         "subscription-resume",
         "chat",
+        "activity",
         "controller",
         "status",
         "questions",

@@ -34,6 +34,8 @@ public protocol BurnBarCLIClient: Sendable {
     func resumeSubscription(_ request: BurnBarSubscriptionResumeRequest) throws -> BurnBarSubscriptionResponse
     func chatThreadList(_ request: BurnBarChatThreadListRequest) throws -> BurnBarChatThreadListResponse
     func chatThreadGet(_ request: BurnBarChatThreadGetRequest) throws -> BurnBarChatThreadGetResponse
+    func activityHistory(limit: Int) throws -> BurnBarActivityHistoryResponse
+    func activitySearch(query: String, limit: Int) throws -> BurnBarSearchQueryResult
     func runResume(
         sessionID: String,
         targetHarness: String?,
@@ -395,6 +397,26 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
 
     public func chatThreadGet(_ request: BurnBarChatThreadGetRequest) throws -> BurnBarChatThreadGetResponse {
         try requestResult(BurnBarRPCRequestEnvelopeWithParams(method: .chatThreadGet, authToken: authToken, params: request))
+    }
+
+    public func activityHistory(limit: Int) throws -> BurnBarActivityHistoryResponse {
+        try requestResult(BurnBarRPCRequestEnvelopeWithParams(
+            method: .usageHistory,
+            authToken: authToken,
+            params: BurnBarActivityHistoryRequest(limit: limit)
+        ))
+    }
+
+    public func activitySearch(query: String, limit: Int) throws -> BurnBarSearchQueryResult {
+        try requestResult(BurnBarRPCRequestEnvelopeWithParams(
+            method: .searchQuery,
+            authToken: authToken,
+            params: BurnBarSearchQueryRequest(
+                query: query,
+                resultLimit: limit,
+                skipSemanticSearch: true
+            )
+        ))
     }
 
     public func runResume(

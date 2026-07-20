@@ -328,6 +328,46 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertThrowsError(try runner.run(arguments: ["chat", "threads", "--limit", "zero"]))
         XCTAssertThrowsError(try runner.run(arguments: ["chat", "thread", "thread-fixture", "--before-message-id", "message-fixture"]))
     }
+
+    func testActivityQueryCommandsEmitStableJSONAndRejectInvalidBounds() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+
+        let history = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(try runner.run(arguments: ["activity", "history", "--limit", "7"]).utf8)
+        ) as? [String: Any])
+        XCTAssertEqual(history["historyComplete"] as? Bool, true)
+        XCTAssertEqual((history["sessions"] as? [[String: Any]])?.first?["sourceID"] as? String, "Codex:activity-fixture")
+
+        let search = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(try runner.run(arguments: ["activity", "search", "needle", "--limit", "3"]).utf8)
+        ) as? [String: Any])
+        XCTAssertEqual((search["hits"] as? [[String: Any]])?.first?["sourceID"] as? String, "Codex:activity-fixture")
+
+        let replay = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(try runner.run(arguments: ["activity", "replay", "Codex:activity-fixture"]).utf8)
+        ) as? [String: Any])
+        XCTAssertEqual(replay["kind"] as? String, "native")
+
+        XCTAssertThrowsError(try runner.run(arguments: ["activity", "history", "--limit", "0"]))
+        XCTAssertThrowsError(try runner.run(arguments: ["activity", "search", "--limit", "1"]))
+        XCTAssertThrowsError(try runner.run(arguments: ["activity", "replay", "source", "extra"]))
+    }
+
+    func testActivityReplayInvocationUsesExitStatusForLookupFailure() async throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let success = try await runner.invoke(
+            arguments: ["activity", "replay", "Codex:activity-fixture"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        )
+        let missing = try await runner.invoke(
+            arguments: ["activity", "replay", "missing"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        )
+
+        XCTAssertEqual(success.exitCode, EXIT_SUCCESS)
+        XCTAssertEqual(missing.exitCode, EXIT_FAILURE)
+        XCTAssertEqual(missing.output?.contains("session_not_found"), true)
+    }
 }
 
 struct FakeCLIClient: BurnBarCLIClient {
@@ -701,6 +741,53 @@ struct FakeCLIClient: BurnBarCLIClient {
                 timestamp: "2026-07-20T00:00:00Z", backendID: "openai"
             )],
             hasMoreBefore: true
+        )
+    }
+
+    func activityHistory(limit: Int) throws -> BurnBarActivityHistoryResponse {
+        BurnBarActivityHistoryResponse(
+            sessions: [BurnBarActivityHistorySession(
+                id: "Codex:activity-fixture",
+                provider: "Codex",
+                model: "gpt-5.5",
+                startedAt: "2026-07-20T00:00:00Z",
+                tokens: 42,
+                costUsd: 0.01,
+                title: "Activity fixture",
+                sourceID: "Codex:activity-fixture",
+                providerSessionID: "activity-fixture",
+                projectName: "OpenBurnBar",
+                bodyMD: "# Activity fixture"
+            )],
+            nextCursor: nil,
+            historyComplete: true,
+            historyLimit: limit,
+            totalCount: 1
+        )
+    }
+
+    func activitySearch(query: String, limit: Int) throws -> BurnBarSearchQueryResult {
+        BurnBarSearchQueryResult(
+            plan: BurnBarSearchPlan(
+                mode: .retrieve,
+                lexicalFTSQuery: query,
+                semanticText: query,
+                aggregatePatterns: [],
+                note: nil
+            ),
+            aggregateOccurrenceCount: nil,
+            hits: [BurnBarIndexedSearchHit(
+                chunkID: "activity-chunk-fixture",
+                sourceKind: "conversation",
+                sourceID: "Codex:activity-fixture",
+                title: "Activity fixture",
+                snippet: "needle",
+                provider: "Codex",
+                projectName: "OpenBurnBar"
+            )],
+            degradedMessage: nil,
+            semanticSearchPerformed: false,
+            semanticHitCount: nil
         )
     }
 
