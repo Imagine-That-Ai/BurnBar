@@ -565,7 +565,6 @@ targets:
         link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
-        link: false
       - package: GRDB
         product: GRDB
       - package: SQLCipher
@@ -826,6 +825,8 @@ targets:
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
+      - package: OpenBurnBarCore
+        product: OpenBurnBarInsights
 
   OpenBurnBarMobile:
     type: application

@@ -805,6 +805,9 @@ private enum LinuxHTTPClient {
             let socketFD = try LinuxSocketSupport.connectToLoopback(port: port, host: host)
             defer { Glibc.close(socketFD) }
             try LinuxSocketSupport.sendAll(Data(request.utf8), to: socketFD)
+            guard Glibc.shutdown(socketFD, Int32(SHUT_WR)) == 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
             return try parseResponse(try LinuxSocketSupport.readUntilEOF(from: socketFD))
         }.value
     }
