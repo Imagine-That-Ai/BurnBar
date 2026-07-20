@@ -18,8 +18,9 @@ known platform divergences.
 > `7c5b68d750` and passes **90 frontend files / 853 tests**, TypeScript,
 > production-bundle verification, and **129/129 Rust tests**. An exact-head
 > ARM64 DEB is installed and visibly rendering in the unlocked Ubuntu
-> GNOME/X11 UTM guest; the non-certifying receipt is
-> [`evidence/parity-audit-2026-07-10/linux-arm64-current-7c5b68d750-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-7c5b68d750-postinstall-2026-07-19.json).
+> GNOME/X11 UTM guest; the non-certifying receipt with fresh daemon/CLI
+> payload hashes is
+> [`evidence/parity-audit-2026-07-10/linux-arm64-current-7c5b68d750-fresh-daemon-postinstall-2026-07-19.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-7c5b68d750-fresh-daemon-postinstall-2026-07-19.json).
 > The strict certification ledger is still **0/40 product rows and 0/7
 > environment receipts** because the package is unsigned and production,
 > cross-device, keyring, compositor, and same-commit macOS differential proof
@@ -40,16 +41,18 @@ performance empty state, stale-update/provider/subscription guards, periodic
 tray refresh, packaged-shell Reconnect, keyboard-complete overflow actions,
 cold-start notification-action retention, and the ARM64-only AppHandle fix
 found by the real Linux build, and stale diagnostics exports are now fenced
-across bridge replacement and overlapping requests. The UTM guest passed the read-only staged-payload
-path and the exact current-head package is installed and smoke-verified. These
+across bridge replacement and overlapping requests. The UTM guest passed the
+read-only staged-payload path, then installed a package rebuilt with fresh
+daemon and CLI payloads from the current head. These
 changes improve the engineering baseline; they do not close the strict 0/40
 product and 0/7 environment gates.
 
 ### Latest installed checkpoint — 2026-07-19 UTC
 
-The live Ubuntu guest has the exact current-head ARM64 DEB from the parity
-branch installed at `/usr/bin`. The non-certifying receipt is
-`evidence/parity-audit-2026-07-10/linux-arm64-current-7c5b68d750-postinstall-2026-07-19.json`.
+The live Ubuntu guest has the exact current-head ARM64 DEB with fresh daemon
+and CLI payloads from the parity branch installed at `/usr/bin`. The
+non-certifying receipt is
+`evidence/parity-audit-2026-07-10/linux-arm64-current-7c5b68d750-fresh-daemon-postinstall-2026-07-19.json`.
 It proves daemon health, an unlocked active-window launch, and an animated
 Canvas2D fallback with the explicit `WebGL2 unavailable` label. This guest
 reports `webgl2=false`, so it does not certify WebGL2-only kernels or the
