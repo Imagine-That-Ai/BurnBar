@@ -13,7 +13,9 @@
  * crypto itself; IndexedDB-backed key persistence is exercised separately under
  * the jsdom-ish path is skipped here (covered by build-time type checks).
  */
-import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { beforeAll, describe, it, expect } from "vitest";
 import {
   sealBlob,
   openBlob,
@@ -31,6 +33,29 @@ import {
   CURRENT_SEALED_TEXT_SCHEMA_VERSION,
   cloudVaultAADContext,
 } from "../lib/escrow";
+import { initializeCloudVaultDomainCoreForTests } from "../lib/domainCoreCloudVault";
+
+beforeAll(() => {
+  const wasmURL = new URL(
+    "../vendor/openburnbar-domain-core-wasm/openburnbar_domain_core_bg.wasm",
+    import.meta.url,
+  );
+  const manifestURL = new URL(
+    "../../../crates/openburnbar-domain-core/union-abi-manifest.json",
+    import.meta.url,
+  );
+  const expected = JSON.parse(
+    readFileSync(fileURLToPath(manifestURL), "utf8"),
+  ) as {
+    coreVersion: string;
+    abiVersion: number;
+    sourceSha256: string;
+  };
+  initializeCloudVaultDomainCoreForTests(
+    readFileSync(fileURLToPath(wasmURL)),
+    expected,
+  );
+});
 
 const subtle = globalThis.crypto.subtle;
 
