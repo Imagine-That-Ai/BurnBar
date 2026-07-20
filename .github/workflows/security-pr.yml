@@ -296,6 +296,7 @@ jobs:
             --lockfile=packages/libsignal-protocol/package-lock.json
             --lockfile=packages/signal-envelope-contracts/package-lock.json
             --lockfile=quota-runner/package-lock.json
+            --lockfile=scripts/linux-port/package-lock.json
             --lockfile=services/hermes-realtime-relay/package-lock.json
             --lockfile=services/hosted-mcp/package-lock.json
             --lockfile=tools/app-store-connect/package-lock.json

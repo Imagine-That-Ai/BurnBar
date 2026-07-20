@@ -3578,6 +3578,9 @@ service cloud.firestore {
     // harvesting another controller's live signable challenge.
     match /users/{userId}/iroh_controller_route_challenges/{challengeId} {
       // All operations use Firestore's default deny.
+      function serverOnly() {
+        return false;
+      }
     }
 
     // Mobile/Android sender keys for authenticated relay request envelopes.
@@ -3883,10 +3886,16 @@ service cloud.firestore {
     // approval, signature verification, or atomic challenge consumption.
     match /users/{userId}/linux_app_check_devices/{deviceId} {
       // All operations use Firestore's default deny.
+      function serverOnly() {
+        return false;
+      }
     }
 
     match /users/{userId}/linux_app_check_challenges/{challengeId} {
       // All operations use Firestore's default deny.
+      function serverOnly() {
+        return false;
+      }
     }
 
     // Cloud-Pro monthly allowance meters (fusion/relay/hosted-action). The
