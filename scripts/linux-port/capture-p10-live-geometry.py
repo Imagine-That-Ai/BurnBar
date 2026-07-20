@@ -52,8 +52,12 @@ def extent(node, pyatspi):
 
 
 def intersects(left, right) -> bool:
-    return left["x"] < right["x"] + right["width"] and right["x"] < left["x"] + left["width"] \
-        and left["y"] < right["y"] + right["height"] and right["y"] < left["y"] + left["height"]
+    return (
+        left["x"] < right["x"] + right["width"]
+        and right["x"] < left["x"] + left["width"]
+        and left["y"] < right["y"] + right["height"]
+        and right["y"] < left["y"] + left["height"]
+    )
 
 
 def main() -> None:
@@ -86,15 +90,23 @@ def main() -> None:
 
     right = app_extent["x"] + app_extent["width"]
     bottom = app_extent["y"] + app_extent["height"]
-    clipped = [row for row in rows if row["name"] and (
-        row["bounds"]["x"] < app_extent["x"] or row["bounds"]["y"] < app_extent["y"]
-        or row["bounds"]["x"] + row["bounds"]["width"] > right
-        or row["bounds"]["y"] + row["bounds"]["height"] > bottom
-    )]
-    actionable = [row for row in rows if row["role"] in ACTIONABLE and row["bounds"]["width"] > 0 and row["bounds"]["height"] > 0]
+    clipped = [
+        row
+        for row in rows
+        if row["name"]
+        and (
+            row["bounds"]["x"] < app_extent["x"]
+            or row["bounds"]["y"] < app_extent["y"]
+            or row["bounds"]["x"] + row["bounds"]["width"] > right
+            or row["bounds"]["y"] + row["bounds"]["height"] > bottom
+        )
+    ]
+    actionable = [
+        row for row in rows if row["role"] in ACTIONABLE and row["bounds"]["width"] > 0 and row["bounds"]["height"] > 0
+    ]
     overlaps = []
     for index, left in enumerate(actionable):
-        for right_row in actionable[index + 1:]:
+        for right_row in actionable[index + 1 :]:
             if left["parent"] == right_row["parent"] and intersects(left["bounds"], right_row["bounds"]):
                 overlaps.append({"left": left["path"], "right": right_row["path"]})
     text_overflow = [row for row in rows if row["name"] and (row["bounds"]["width"] < 8 or row["bounds"]["height"] < 8)]
