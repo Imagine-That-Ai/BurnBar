@@ -686,7 +686,7 @@ dependencies {
     // ANR detection, breadcrumbs, and release health metrics. Captures
     // errors via the sentry-issue-sync CI workflow → GitHub issues pipeline.
     // Gracefully no-ops when SENTRY_DSN meta-data value is empty.
-    implementation("io.sentry:sentry-android:8.44.1")
+    implementation("io.sentry:sentry-android:8.49.0")
     // Mercury Media — high-priority FCM data messages for incoming calls.
     implementation("com.google.firebase:firebase-messaging-ktx")
 
