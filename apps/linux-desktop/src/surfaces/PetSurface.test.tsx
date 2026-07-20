@@ -164,6 +164,44 @@ describe('PetSurface', () => {
     expect(screen.getByRole('button', { name: /enable click-through/i })).toBeTruthy();
   });
 
+  it('switches to the contained fallback when an X11 summon fails at runtime', async () => {
+    const runtimeCapabilities = makeAvailableRuntimeCapabilityManifest();
+    const availableStatus = {
+      state: 'available' as const,
+      compositor: 'GNOME/x11',
+      overlaySupported: true,
+      clickThroughSupported: true,
+      windowContract: 'tauri-x11-companion-v1',
+      reason: 'ready',
+      source: 'test'
+    };
+    const degradedStatus = {
+      ...availableStatus,
+      state: 'degraded' as const,
+      overlaySupported: false,
+      clickThroughSupported: false,
+      windowContract: 'none',
+      reason: 'The window manager rejected the companion child.',
+      source: 'tauri-x11-companion-fallback'
+    };
+    openCompanionMock.mockResolvedValue({ status: degradedStatus, opened: false, clickThrough: false });
+    useShellStore.setState({
+      runtimeCapabilities,
+      bridge: { petCompanionStatus: vi.fn().mockResolvedValue(availableStatus) } as never,
+      bridgeReady: true
+    });
+    render(<PetSurface />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /open native companion/i }));
+    const stage = await screen.findByRole('img', {
+      name: /pet companion contained preview/i
+    });
+    await waitFor(() => expect(stage.getAttribute('data-contained-fallback')).toBe('true'));
+    expect(stage.getAttribute('tabindex')).toBe('0');
+    expect(screen.getByRole('button', { name: /summon contained preview/i })).toBeTruthy();
+    expect(screen.getByText(/window manager rejected/i)).toBeTruthy();
+  });
+
   it('requires an explicit click-through action and restores focus when disabled', async () => {
     const runtimeCapabilities = makeAvailableRuntimeCapabilityManifest();
     const status = {

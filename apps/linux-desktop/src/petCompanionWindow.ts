@@ -61,8 +61,23 @@ async function nativeStatus(): Promise<PetCompanionStatus> {
 }
 
 function unavailableState(status: PetCompanionStatus, reason: string): PetCompanionWindowState {
+  // A capability probe can race a compositor/window-manager policy change.
+  // Once the native child fails, clear the optimistic X11 contract so the
+  // surface re-renders its bounded contained fallback instead of continuing
+  // to advertise an overlay that cannot be focused or controlled.
+  const failedAvailableContract = status.state === 'available';
   return {
-    status: { ...status, reason },
+    status: failedAvailableContract
+      ? {
+          ...status,
+          state: 'degraded',
+          overlaySupported: false,
+          clickThroughSupported: false,
+          windowContract: 'none',
+          reason,
+          source: 'tauri-x11-companion-fallback'
+        }
+      : { ...status, reason },
     opened: false,
     clickThrough: false
   };

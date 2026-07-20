@@ -139,4 +139,21 @@ describe('pet companion native window contract', () => {
     expect(existing.show).toHaveBeenCalledTimes(1);
     expect(existing.setFocus).toHaveBeenCalledTimes(1);
   });
+
+  it('downgrades a failed X11 child to the contained fallback contract', async () => {
+    const existing = new mocks.MockPetWindow('openburnbar-pet-companion', {});
+    existing.show.mockRejectedValueOnce(new Error('window manager rejected the child'));
+    mocks.windows.existing = existing;
+
+    const { openPetCompanionWindow } = await import('./petCompanionWindow.js');
+    const state = await openPetCompanionWindow();
+
+    expect(state.opened).toBe(false);
+    expect(state.status.state).toBe('degraded');
+    expect(state.status.overlaySupported).toBe(false);
+    expect(state.status.clickThroughSupported).toBe(false);
+    expect(state.status.windowContract).toBe('none');
+    expect(state.status.source).toBe('tauri-x11-companion-fallback');
+    expect(state.status.reason).toMatch(/window manager rejected/i);
+  });
 });
