@@ -176,7 +176,7 @@ assert.match(remoteConfigPublisher, /config get-value project/);
 assert.match(remoteConfigPublisher, /Join-Path \$PSScriptRoot 'remote-config-http\.psm1'/);
 assert.match(remoteConfigPublisher, /Import-Module -Name \$httpModulePath/);
 assert.match(remoteConfigPublisher, /New-RemoteConfigHttpClient/);
-assert.match(remoteConfigHttp, /System\.Net\.Http\.HttpClient/);
+assert.ok(remoteConfigHttp.includes("[System.Net.Http.HttpClient]"));
 assert.match(remoteConfigHttp, /System\.Net\.DecompressionMethods]::GZip/);
 assert.match(remoteConfigHttp, /ResponseHeadersRead/);
 assert.match(remoteConfigHttp, /TryAddWithoutValidation\('Accept-Encoding', 'gzip'\)/);
