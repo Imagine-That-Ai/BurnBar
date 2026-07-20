@@ -19,6 +19,20 @@
       "sha256": "d811ccbced1ed685eb57930bcdf8b4eceb54fec7da6658659136de0a2341e706"
     }
   },
+  "routeProof": {
+    "account": {
+      "activation": "Account header action press returned true",
+      "atspi": {
+        "nodeCount": 84,
+        "namedNodeCount": 46,
+        "actionableNodeCount": 26,
+        "focusableNodeCount": 25,
+        "pass": true,
+        "sha256": "f816f53acfac60735c577854c68b3d93bd03fb11067b6d42956c9ba04499409b"
+      },
+      "trustedDevicePostureNamePresent": true
+    }
+  },
   "source": {
     "shellHead": "fc0af729e1",
     "syncedSourceFilesMatch": true,
