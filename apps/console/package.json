@@ -29,7 +29,7 @@
     "@radix-ui/react-tooltip": "^1.1.8",
     "@sentry/browser": "10.64.0",
     "@sentry/core": "10.64.0",
-    "@sentry/node": "10.64.0",
+    "@sentry/node": "10.67.0",
     "@sentry/vercel-edge": "10.64.0",
     "@simplewebauthn/browser": "13.3.0",
     "class-variance-authority": "^0.7.1",
