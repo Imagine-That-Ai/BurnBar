@@ -29,6 +29,27 @@ CloudVault, offline/revocation/sign-out, fixture restoration, and secret-scan
 assertions on the physical Intel machine. The updated continuation prompt is
 [`evidence/windows-v1.0.38-release/HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt`](evidence/windows-v1.0.38-release/HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt).
 
+## Physical Intel x64 Supplemental Result - 2026-07-19
+
+A later native HP supplemental bundle, generated with independent harness
+`ddd839cf2719d2b3f54bce0d13d880c244d0d26d`, has SHA-256
+`f081f282949ef07620771d23c484bc31c6b629e77709e7c838aed9ed8041448c`.
+The archive hash matched on import, `unzip -t` reported no errors, and the
+current evidence validator independently passed its seven-receipt structure
+when pinned to candidate `48837746490b6468efa4dc06a476f305d496039c` and
+that harness commit.
+
+The result remains **NO-GO**. Exact artifact/signature binding,
+install/uninstall/reinstall, responsive relaunch, 26 UIA routes, and a
+30-minute signed-package soak passed. Accessibility/manual display,
+the complete 18-measurement performance receipt, staging cloud,
+paired-device safety, Store/update lifecycle, and physical ARM64 remained
+blocked. The staging attempt verified the reviewed baseline but correctly
+refused mutation when Firebase returned no ETag. PR #1867 addresses that
+harness defect for the next run; it does not retroactively change this result.
+The imported operator report is
+[`evidence/windows-v1.0.38-release/PHYSICAL_X64_SUPPLEMENTAL_RESULT.md`](evidence/windows-v1.0.38-release/PHYSICAL_X64_SUPPLEMENTAL_RESULT.md).
+
 ## Physical Intel x64 v1.0.38 Retry - 2026-07-19
 
 Protected tag `windows-v1.0.38` resolves to commit
