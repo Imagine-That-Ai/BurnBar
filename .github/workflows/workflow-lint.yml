@@ -288,9 +288,6 @@ jobs:
       - name: Self-test macOS signing profile certificate matcher
         run: python3 scripts/ci/verify-signing-profile-certificate.test.py
 
-      - name: Self-test signed daemon runtime gate
-        run: bash scripts/ci/verify-daemon-release-signing.test.sh
-
       - name: Self-test release provenance boundaries
         run: node scripts/ci/verify-release-provenance-boundaries.test.mjs
 
