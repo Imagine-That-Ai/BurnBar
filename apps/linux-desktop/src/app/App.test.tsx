@@ -7,7 +7,7 @@ import { fixtureUsageSummary } from '../daemonFixture.js';
 import { DaemonDataSection } from '../surfaces/DaemonDataSection.js';
 import { useOverviewStore } from '../state/overviewStore.js';
 import { useShellStore } from '../state/shellStore.js';
-import type { LinuxShellBridge, ProviderCatalog } from '../tauriBridge.js';
+import type { AccountStatus, LinuxShellBridge, ProviderCatalog } from '../tauriBridge.js';
 import { defaultLinuxOnboardingSnapshot } from '../onboardingStore.js';
 import { OnboardingSurface } from '../surfaces/OnboardingSurface.js';
 
@@ -32,6 +32,29 @@ function resetShell(): void {
     capabilityError: null,
     fixtureMode: false
   });
+}
+
+function cloudIdentitySnapshot() {
+  const base = defaultLinuxOnboardingSnapshot();
+  return {
+    ...base,
+    currentStepID: 'cloud_identity' as const,
+    steps: base.steps.map((step) =>
+      ['daemon', 'secret_store', 'provider_paths'].includes(step.id)
+        ? { ...step, state: 'verified' as const, attemptCount: 1, detail: 'verified' }
+        : step
+    )
+  };
+}
+
+function accountStatus(overrides: Partial<AccountStatus> = {}): AccountStatus {
+  return {
+    state: 'signed-out',
+    signedIn: false,
+    trustClass: 'linux-lower-trust',
+    syncState: 'local-only',
+    ...overrides
+  };
 }
 
 describe('App shell', () => {
@@ -254,6 +277,126 @@ describe('App shell', () => {
     });
     expect(await screen.findByText(/native cloud sign-in is required/i)).toBeTruthy();
     expect(screen.getByText(/Open the native account flow/i)).toBeTruthy();
+  });
+
+  it('starts and cancels native cloud sign-in without changing onboarding state', async () => {
+    const initial = cloudIdentitySnapshot();
+    const onboardingSnapshot = vi.fn().mockResolvedValue(initial);
+    const accountBeginSignIn = vi.fn().mockResolvedValue({
+      operationID: 'cloud-op-1',
+      expiresAt: '2099-07-10T00:00:00Z'
+    });
+    const accountCancelSignIn = vi.fn().mockResolvedValue(accountStatus({ detail: 'authorization_cancelled' }));
+    const accountStatusRead = vi.fn().mockResolvedValue(accountStatus());
+    useShellStore.setState({
+      bridge: {
+        onboardingSnapshot,
+        accountStatus: accountStatusRead,
+        accountBeginSignIn,
+        accountCancelSignIn,
+        onboardingAction: vi.fn()
+      } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+
+    render(<OnboardingSurface />);
+    expect(await screen.findByRole('button', { name: 'Start cloud sign-in' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Start cloud sign-in' }));
+
+    expect(await screen.findByRole('button', { name: 'Cancel sign-in' })).toBeTruthy();
+    expect(screen.getByText(/Browser authorization started/i)).toBeTruthy();
+    expect(accountBeginSignIn).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel sign-in' }));
+
+    await waitFor(() => expect(accountCancelSignIn).toHaveBeenCalledWith('cloud-op-1'));
+    expect(await screen.findByText(/sign-in cancelled/i)).toBeTruthy();
+    expect(screen.getByText('Step 4 of 8')).toBeTruthy();
+    expect(screen.queryByText('Setup verified')).toBeNull();
+  });
+
+  it('shows denied cloud auth as retryable and never marks the step verified', async () => {
+    const initial = cloudIdentitySnapshot();
+    const accountStatusRead = vi.fn()
+      .mockResolvedValueOnce(accountStatus({ state: 'unavailable', detail: 'authorization_denied' }))
+      .mockResolvedValueOnce(accountStatus());
+    useShellStore.setState({
+      bridge: {
+        onboardingSnapshot: vi.fn().mockResolvedValue(initial),
+        accountStatus: accountStatusRead,
+        onboardingAction: vi.fn()
+      } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+
+    render(<OnboardingSurface />);
+    expect(await screen.findByText(/denied or failed/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry cloud sign-in' }));
+    expect(await screen.findByRole('button', { name: 'Start cloud sign-in' })).toBeTruthy();
+    expect(screen.getByText(/local-first mode/i)).toBeTruthy();
+  });
+
+  it('waits for device approval, rechecks daemon state, then requires explicit onboarding verification', async () => {
+    const initial = cloudIdentitySnapshot();
+    const verified = {
+      ...initial,
+      currentStepID: 'portal_input' as const,
+      revision: 5,
+      steps: initial.steps.map((step) => step.id === 'cloud_identity'
+        ? { ...step, state: 'verified' as const, attemptCount: 1, detail: 'cloud identity verified' }
+        : step)
+    };
+    const accountStatusRead = vi.fn()
+      .mockResolvedValueOnce(accountStatus({
+        state: 'awaiting-device-approval',
+        authorizationOperationID: 'cloud-op-2',
+        authorizationExpiresAt: '2099-07-10T00:00:00Z',
+        deviceApprovalRequired: true
+      }))
+      .mockResolvedValueOnce(accountStatus({ state: 'active', signedIn: true, identityLabel: 'Primary identity' }));
+    const onboardingAction = vi.fn().mockResolvedValue(verified);
+    useShellStore.setState({
+      bridge: {
+        onboardingSnapshot: vi.fn().mockResolvedValue(initial),
+        accountStatus: accountStatusRead,
+        onboardingAction
+      } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+
+    render(<OnboardingSurface />);
+    expect(await screen.findByRole('button', { name: 'Check approval' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Check approval' }));
+    expect(await screen.findByRole('button', { name: 'Verify cloud identity' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Verify cloud identity' }));
+
+    await waitFor(() => expect(onboardingAction).toHaveBeenCalledWith({ stepID: 'cloud_identity', action: 'verify' }));
+    expect(await screen.findByText('Step 5 of 8')).toBeTruthy();
+  });
+
+  it('does not carry an in-flight cloud operation across an onboarding restart', async () => {
+    const initial = cloudIdentitySnapshot();
+    const accountBeginSignIn = vi.fn().mockResolvedValue({
+      operationID: 'cloud-op-restart',
+      expiresAt: '2099-07-10T00:00:00Z'
+    });
+    const bridge: Partial<LinuxShellBridge> = {
+      onboardingSnapshot: vi.fn().mockResolvedValue(initial),
+      accountStatus: vi.fn().mockResolvedValue(accountStatus()),
+      accountBeginSignIn
+    };
+    useShellStore.setState({ bridge: bridge as LinuxShellBridge, bridgeReady: true, fixtureMode: false });
+
+    const first = render(<OnboardingSurface />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Start cloud sign-in' }));
+    expect(await screen.findByRole('button', { name: 'Cancel sign-in' })).toBeTruthy();
+    first.unmount();
+
+    render(<OnboardingSurface />);
+    expect(await screen.findByRole('button', { name: 'Start cloud sign-in' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Cancel sign-in' })).toBeNull();
   });
 
   it('stores an onboarding provider credential through the daemon without caching the secret', async () => {

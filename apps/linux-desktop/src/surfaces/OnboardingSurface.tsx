@@ -10,7 +10,13 @@ import {
   type LinuxOnboardingRepairAction,
   type LinuxOnboardingSnapshot
 } from '../onboardingStore.js';
-import type { ConfigSnapshot, ProviderCatalog } from '../tauriBridge.js';
+import type {
+  AccountSignInOperation,
+  AccountStatus,
+  ConfigSnapshot,
+  LinuxShellBridge,
+  ProviderCatalog
+} from '../tauriBridge.js';
 import { useShellStore } from '../state/shellStore.js';
 import './onboarding.css';
 
@@ -44,6 +50,264 @@ function providerRouteStatus(
   return credentialStored
     ? 'Credential stored, but the daemon has not verified a healthy provider route. Retry provider verification before relying on this provider.'
     : 'Provider route is not verified by the daemon. Fix provider authentication, then retry verification.';
+}
+
+type CloudAuthPhase = 'unavailable' | 'signed-out' | 'authorizing' | 'awaiting-device-approval' | 'active';
+
+function cloudAuthPhase(status: AccountStatus | null): CloudAuthPhase {
+  if (!status) return 'unavailable';
+  if (status.state === 'unavailable') return 'unavailable';
+  if (status.state === 'authorizing') return 'authorizing';
+  if (status.state === 'awaiting-device-approval') return 'awaiting-device-approval';
+  if (status.state === 'active' || status.signedIn) return 'active';
+  return 'signed-out';
+}
+
+function cloudAuthStatusCopy(status: AccountStatus | null, operation: AccountSignInOperation | null): string {
+  switch (cloudAuthPhase(status)) {
+    case 'authorizing':
+      return 'The native browser sign-in is in progress. Finish authorization, then check again.';
+    case 'awaiting-device-approval':
+      return 'This installation is waiting for approval on the trusted device. Approve it, then check again.';
+    case 'active':
+      return 'A cloud identity is connected. Verify it with the daemon before continuing.';
+    case 'signed-out':
+      return operation
+        ? 'The native sign-in operation started. Finish authorization in the browser, then check again.'
+        : 'No cloud identity is connected. You can continue in local-first mode or start sign-in.';
+    case 'unavailable':
+      return status?.detail
+        ? `Cloud sign-in is unavailable: ${status.detail}. Setup remains local-first until the packaged daemon is configured.`
+        : 'Cloud sign-in is unavailable in this shell. Setup remains local-first until the packaged daemon is configured.';
+  }
+}
+
+function cloudAuthErrorCopy(status: AccountStatus | null): string | null {
+  const detail = status?.detail?.toLowerCase() ?? '';
+  if (detail.includes('cancel')) return 'Cloud sign-in was cancelled. No cloud identity was connected.';
+  if (
+    detail.includes('denied')
+    || detail.includes('reject')
+    || detail.includes('authorization_failed')
+    || detail.includes('authentication_failed')
+  ) {
+    return 'Cloud sign-in was denied or failed. Start sign-in again to retry.';
+  }
+  return null;
+}
+
+function cloudAuthPhaseForOperation(
+  status: AccountStatus | null,
+  operation: AccountSignInOperation | null
+): CloudAuthPhase {
+  const phase = cloudAuthPhase(status);
+  if (phase !== 'signed-out' || !operation || cloudAuthErrorCopy(status)) return phase;
+  const expiresAt = Date.parse(operation.expiresAt);
+  return !Number.isFinite(expiresAt) || expiresAt > Date.now() ? 'authorizing' : phase;
+}
+
+function CloudIdentitySetup({
+  bridge,
+  fixtureMode,
+  disabled,
+  onVerify,
+  onOpenAccount
+}: {
+  bridge: LinuxShellBridge | null;
+  fixtureMode: boolean;
+  disabled: boolean;
+  onVerify: () => Promise<void>;
+  onOpenAccount: () => void;
+}) {
+  const [status, setStatus] = useState<AccountStatus | null>(null);
+  const [operation, setOperation] = useState<AccountSignInOperation | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busyAction, setBusyAction] = useState<'start' | 'cancel' | 'refresh' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const requestID = useRef(0);
+
+  const loadStatus = useCallback(async () => {
+    const currentRequest = ++requestID.current;
+    setLoading(true);
+    setError(null);
+    if (fixtureMode) {
+      if (currentRequest === requestID.current) {
+        setStatus(null);
+        setOperation(null);
+        setLoading(false);
+        setError('Cloud sign-in is unavailable in fixture mode. Start the packaged shell to use native account authentication.');
+      }
+      return;
+    }
+    if (!bridge || typeof bridge.accountStatus !== 'function') {
+      if (currentRequest === requestID.current) {
+        setStatus(null);
+        setOperation(null);
+        setLoading(false);
+        setError('Native cloud sign-in is unavailable in this shell. Open the Account screen or start the packaged app.');
+      }
+      return;
+    }
+    try {
+      const next = await bridge.accountStatus();
+      if (currentRequest !== requestID.current) return;
+      setStatus(next);
+      if (cloudAuthPhase(next) === 'active' || cloudAuthErrorCopy(next)) setOperation(null);
+    } catch (statusError) {
+      if (currentRequest !== requestID.current) return;
+      setError(statusError instanceof Error ? statusError.message : 'Cloud sign-in status could not be read.');
+    } finally {
+      if (currentRequest === requestID.current) setLoading(false);
+    }
+  }, [bridge, fixtureMode]);
+
+  useEffect(() => {
+    requestID.current += 1;
+    void loadStatus();
+    return () => {
+      requestID.current += 1;
+    };
+  }, [loadStatus]);
+
+  const phase = cloudAuthPhaseForOperation(status, operation);
+  const operationID = status?.authorizationOperationID ?? operation?.operationID;
+  const expiresAt = status?.authorizationExpiresAt ?? operation?.expiresAt;
+
+  useEffect(() => {
+    if (phase !== 'authorizing' && phase !== 'awaiting-device-approval') return undefined;
+    const intervalID = window.setInterval(() => {
+      void loadStatus();
+    }, 2000);
+    const expiration = expiresAt ? Date.parse(expiresAt) : Number.NaN;
+    const remaining = expiration - Date.now();
+    // Browsers clamp timers to a signed 32-bit duration. Long-lived daemon
+    // operations remain covered by polling; only schedule the local expiry
+    // hint when it can be represented by the host timer.
+    const timeoutID = Number.isFinite(remaining) && remaining > 0 && remaining <= 2_147_483_647
+      ? window.setTimeout(() => {
+          setOperation(null);
+          setStatus((current) => current
+            ? {
+                ...current,
+                state: 'signed-out',
+                signedIn: false,
+                authorizationOperationID: undefined,
+                authorizationExpiresAt: undefined
+              }
+            : current);
+          setNotice('The cloud sign-in request expired. Start sign-in again.');
+          void loadStatus();
+        }, remaining)
+      : undefined;
+    return () => {
+      window.clearInterval(intervalID);
+      if (timeoutID !== undefined) window.clearTimeout(timeoutID);
+    };
+  }, [expiresAt, loadStatus, phase]);
+
+  const beginSignIn = async () => {
+    if (fixtureMode || !bridge || typeof bridge.accountBeginSignIn !== 'function') {
+      setError(fixtureMode
+        ? 'Cloud sign-in is unavailable in fixture mode. Start the packaged shell to use native account authentication.'
+        : 'Native cloud sign-in is unavailable in this shell. Open the Account screen or start the packaged app.');
+      return;
+    }
+    setBusyAction('start');
+    setError(null);
+    setNotice(null);
+    try {
+      const nextOperation = await bridge.accountBeginSignIn();
+      setOperation(nextOperation);
+      setStatus({
+        state: 'authorizing',
+        signedIn: false,
+        trustClass: 'linux-lower-trust',
+        syncState: 'local-only',
+        authorizationOperationID: nextOperation.operationID,
+        authorizationExpiresAt: nextOperation.expiresAt,
+        deviceApprovalRequired: false
+      });
+      setNotice('Browser authorization started. Return here after completing sign-in.');
+    } catch (signInError) {
+      setError(signInError instanceof Error ? signInError.message : 'Cloud sign-in could not be started.');
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const cancelSignIn = async () => {
+    if (!bridge || typeof bridge.accountCancelSignIn !== 'function' || !operationID) {
+      setError('No active cloud sign-in operation is available to cancel.');
+      return;
+    }
+    setBusyAction('cancel');
+    setError(null);
+    try {
+      const next = await bridge.accountCancelSignIn(operationID);
+      setOperation(null);
+      setStatus(next);
+      setNotice('Cloud sign-in cancelled. No cloud identity was connected.');
+    } catch (cancelError) {
+      setError(cancelError instanceof Error ? cancelError.message : 'Cloud sign-in could not be cancelled.');
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const refreshStatus = async () => {
+    setBusyAction('refresh');
+    setNotice(null);
+    await loadStatus();
+    setBusyAction(null);
+  };
+
+  const statusError = cloudAuthErrorCopy(status);
+  const controlsDisabled = disabled || busyAction !== null;
+
+  return (
+    <section className="onboarding-cloud-setup" aria-labelledby="onboarding-cloud-title">
+      <h4 id="onboarding-cloud-title">Cloud sign-in</h4>
+      <p className="onboarding-cloud-status" role={error || statusError ? 'alert' : 'status'}>
+        {loading && !status ? 'Reading daemon cloud identity state…' : error ?? statusError ?? cloudAuthStatusCopy(status, operation)}
+      </p>
+      {notice ? <p className="onboarding-cloud-status" role="status">{notice}</p> : null}
+      {phase === 'active' ? (
+        <button type="button" className="onboarding-btn-ghost" disabled={controlsDisabled} onClick={() => void onVerify()}>
+          Verify cloud identity
+        </button>
+      ) : null}
+      {phase === 'signed-out' ? (
+        <button type="button" className="onboarding-btn-ghost" disabled={controlsDisabled} onClick={() => void beginSignIn()}>
+          Start cloud sign-in
+        </button>
+      ) : null}
+      {phase === 'authorizing' || phase === 'awaiting-device-approval' ? (
+        <div className="onboarding-cloud-actions">
+          <button type="button" className="onboarding-btn-ghost" disabled={controlsDisabled} onClick={() => void refreshStatus()}>
+            {phase === 'awaiting-device-approval' ? 'Check approval' : 'Check sign-in'}
+          </button>
+          {operationID ? (
+            <button type="button" className="onboarding-btn-ghost" disabled={controlsDisabled} onClick={() => void cancelSignIn()}>
+              Cancel sign-in
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {phase === 'unavailable' ? (
+        <div className="onboarding-cloud-actions">
+          {!fixtureMode ? (
+            <button type="button" className="onboarding-btn-ghost" disabled={controlsDisabled} onClick={() => void refreshStatus()}>
+              Retry cloud sign-in
+            </button>
+          ) : null}
+          <button type="button" className="onboarding-btn-ghost" disabled={controlsDisabled} onClick={onOpenAccount}>
+            Open Account settings
+          </button>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 type ProviderCatalogLoadResult = {
@@ -593,6 +857,15 @@ export function OnboardingSurface() {
               status={providerStatus}
               loading={providerCatalogLoading}
               error={providerCatalogError}
+            />
+          ) : null}
+          {step.id === 'cloud_identity' ? (
+            <CloudIdentitySetup
+              bridge={bridge}
+              fixtureMode={fixtureMode}
+              disabled={busy}
+              onVerify={() => perform({ stepID: 'cloud_identity', action: 'verify' })}
+              onOpenAccount={() => setRoute('account')}
             />
           ) : null}
         </div>
