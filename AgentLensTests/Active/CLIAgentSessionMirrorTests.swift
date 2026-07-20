@@ -1268,6 +1268,112 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertEqual(event.message, expectedReply)
         XCTAssertEqual(mirror.finalOutputSnapshot(fallback: "raw-json-fallback"), expectedReply)
     }
+
+    func test_directCLIStreamMirror_mapsCodexLifecycleAndUsageEvents() throws {
+        let mirror = DirectCLIStreamMirror()
+
+        let session = try XCTUnwrap(mirror.parseJSONLine(#"{"type":"thread.started"}"#))
+        XCTAssertEqual(session.title, "LLM call started")
+        XCTAssertEqual(session.message, "Codex session initialized.")
+
+        let turn = try XCTUnwrap(mirror.parseJSONLine(#"{"type":"turn.started"}"#))
+        XCTAssertEqual(turn.title, "LLM call started")
+        XCTAssertEqual(turn.message, "Codex turn started.")
+
+        let usage = try XCTUnwrap(mirror.parseJSONLine(
+            #"{"type":"turn.completed","usage":{"output_tokens":5,"input_tokens":3}}"#
+        ))
+        XCTAssertEqual(usage.title, "LLM usage")
+        XCTAssertEqual(usage.message, "input_tokens=3\noutput_tokens=5")
+    }
+
+    func test_directCLIStreamMirror_mapsCodexCommandEventsAndFallbacks() throws {
+        let mirror = DirectCLIStreamMirror()
+
+        let started = try XCTUnwrap(mirror.parseJSONLine(
+            #"{"type":"item.started","item":{"type":"command_execution","command":"swift test"}}"#
+        ))
+        XCTAssertEqual(started.kind, "tool_call")
+        XCTAssertEqual(started.message, "swift test")
+        XCTAssertEqual(started.toolName, "Bash")
+
+        let output = try XCTUnwrap(mirror.parseJSONLine(
+            #"{"type":"item.completed","item":{"type":"command_execution","command":"swift test","output":"  42 tests passed  "}}"#
+        ))
+        XCTAssertEqual(output.kind, "tool_result")
+        XCTAssertEqual(output.message, "42 tests passed")
+
+        let stdout = try XCTUnwrap(mirror.parseJSONLine(
+            #"{"type":"item.finished","item":{"type":"command_execution","stdout":"stdout fallback"}}"#
+        ))
+        XCTAssertEqual(stdout.message, "stdout fallback")
+
+        let stderr = try XCTUnwrap(mirror.parseJSONLine(
+            #"{"type":"item.completed","item":{"type":"command_execution","stderr":"stderr fallback"}}"#
+        ))
+        XCTAssertEqual(stderr.message, "stderr fallback")
+
+        let result = try XCTUnwrap(mirror.parseJSONLine(
+            #"{"type":"item.completed","item":{"type":"command_execution","result":"result fallback"}}"#
+        ))
+        XCTAssertEqual(result.message, "result fallback")
+
+        let commandOnly = try XCTUnwrap(mirror.parseJSONLine(
+            #"{"type":"item.completed","item":{"type":"command_execution","command":"make ci"}}"#
+        ))
+        XCTAssertEqual(commandOnly.message, "Completed: make ci")
+
+        let defaulted = try XCTUnwrap(mirror.parseJSONLine(
+            #"{"type":"item.completed","item":{"type":"command_execution"}}"#
+        ))
+        XCTAssertEqual(defaulted.message, "Codex command completed.")
+    }
+
+    func test_directCLIStreamMirror_deduplicatesCumulativeCodexAssistantMessages() throws {
+        let mirror = DirectCLIStreamMirror()
+
+        let first = try XCTUnwrap(mirror.parseJSONLine(
+            #"{"type":"item.completed","item":{"type":"agent_message","text":"Ready"}}"#
+        ))
+        XCTAssertEqual(first.message, "Ready")
+
+        let delta = try XCTUnwrap(mirror.parseJSONLine(
+            #"{"type":"item.completed","item":{"type":"agent_message","text":"Ready to merge"}}"#
+        ))
+        XCTAssertEqual(delta.message, " to merge")
+        XCTAssertNil(mirror.parseJSONLine(
+            #"{"type":"item.completed","item":{"type":"agent_message","text":"Ready to merge"}}"#
+        ))
+
+        let replacement = try XCTUnwrap(mirror.parseJSONLine(
+            #"{"type":"item.completed","item":{"type":"agent_message","text":"Replacement answer"}}"#
+        ))
+        XCTAssertEqual(replacement.message, "Replacement answer")
+        XCTAssertEqual(mirror.finalOutputSnapshot(fallback: nil), "Replacement answer")
+    }
+
+    func test_directCLIStreamMirror_mapsCodexErrorsAndRejectsMalformedEvents() throws {
+        let mirror = DirectCLIStreamMirror()
+
+        let itemError = try XCTUnwrap(mirror.parseJSONLine(
+            #"{"type":"item.completed","item":{"type":"error","message":"tool failed"}}"#
+        ))
+        XCTAssertTrue(itemError.isError)
+        XCTAssertEqual(itemError.message, "tool failed")
+
+        let messageError = try XCTUnwrap(mirror.parseJSONLine(#"{"type":"error","message":"turn failed"}"#))
+        XCTAssertEqual(messageError.message, "turn failed")
+
+        let objectError = try XCTUnwrap(mirror.parseJSONLine(#"{"type":"error","error":"network unavailable"}"#))
+        XCTAssertEqual(objectError.message, "network unavailable")
+
+        let defaultError = try XCTUnwrap(mirror.parseJSONLine(#"{"type":"error"}"#))
+        XCTAssertEqual(defaultError.message, "Codex reported an error.")
+
+        XCTAssertNil(mirror.parseJSONLine(#"{"type":"item.completed","item":{}}"#))
+        XCTAssertNil(mirror.parseJSONLine(#"{"type":"unknown"}"#))
+        XCTAssertNil(mirror.parseJSONLine("not-json"))
+    }
 }
 
 private struct DecodedMissionEventPayload: Decodable {
