@@ -5,6 +5,7 @@ import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useDatabaseStore } from '../../state/databaseStore.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
+import type { DatabaseWorkspaceFile } from '../../tauriBridge.js';
 import { formatBytes } from '../system/systemFormat.js';
 import { CodeRetrievalPanel } from './CodeRetrievalPanel.js';
 import {
@@ -13,6 +14,7 @@ import {
   recoveryPhaseLabel,
   recoveryStatusMessage
 } from './recoveryCopy.js';
+import './database.css';
 import '../system/system.css';
 
 type DatabaseWorkspaceMode = 'story' | 'atlas' | 'system';
@@ -55,6 +57,56 @@ function DatabaseModeSwitcher({
         </button>
       ))}
     </div>
+  );
+}
+
+function DatabaseRecordInspector({
+  file,
+  projectID,
+  onClose
+}: {
+  file: DatabaseWorkspaceFile;
+  projectID: string;
+  onClose: () => void;
+}) {
+  return (
+    <section className="database-system-band database-record-inspector" aria-labelledby="database-record-inspector-heading">
+      <div className="database-record-inspector-header">
+        <div>
+          <h4 id="database-record-inspector-heading" className="database-system-band-title">
+            Record inspector
+          </h4>
+          <p className="muted">
+            Daemon-provided indexed metadata for this record. Source contents are not fetched or inferred by this view.
+          </p>
+        </div>
+        <button type="button" className="ghost" onClick={onClose} aria-label="Close record inspector">
+          Close inspector
+        </button>
+      </div>
+      <dl className="fact-grid">
+        <div className="fact">
+          <dt>Record ID</dt>
+          <dd><code className="inline-code">{file.id}</code></dd>
+        </div>
+        <div className="fact">
+          <dt>Path</dt>
+          <dd><code className="inline-code">{file.filePath}</code></dd>
+        </div>
+        <div className="fact">
+          <dt>Language</dt>
+          <dd>{file.lang}</dd>
+        </div>
+        <div className="fact">
+          <dt>Symbols</dt>
+          <dd>{file.symbolCount}</dd>
+        </div>
+        <div className="fact">
+          <dt>Project</dt>
+          <dd>{projectID}</dd>
+        </div>
+      </dl>
+    </section>
   );
 }
 
@@ -230,11 +282,19 @@ export function DatabaseSurface() {
   const exportSnapshot = useDatabaseStore((s) => s.exportSnapshot);
   const restoreSnapshot = useDatabaseStore((s) => s.restoreSnapshot);
   const [mode, setMode] = useState<DatabaseWorkspaceMode>('story');
+  const [selectedFileID, setSelectedFileID] = useState<string | null>(null);
   const [snapshotPath, setSnapshotPath] = useState('');
   const [restorePath, setRestorePath] = useState('');
+  const selectedFile = workspace?.files.find((file) => file.id === selectedFileID) ?? null;
   const loadAll = useCallback(async () => {
     await Promise.all([loadDb(), loadWorkspace()]);
   }, [loadDb, loadWorkspace]);
+
+  useEffect(() => {
+    if (selectedFileID && !workspace?.files.some((file) => file.id === selectedFileID)) {
+      setSelectedFileID(null);
+    }
+  }, [selectedFileID, workspace?.files]);
 
   useLaneLoad(loadAll);
 
@@ -277,7 +337,13 @@ export function DatabaseSurface() {
 
   return (
     <>
-      <DatabaseModeSwitcher mode={mode} onModeChange={setMode} />
+      <DatabaseModeSwitcher
+        mode={mode}
+        onModeChange={(nextMode) => {
+          setMode(nextMode);
+          if (nextMode !== 'atlas') setSelectedFileID(null);
+        }}
+      />
       {mode === 'story' ? (
         <>
           {degraded ? (
@@ -373,6 +439,7 @@ export function DatabaseSurface() {
                 <th>Provider</th>
                 <th>Project</th>
                 <th>Updated</th>
+                <th>Inspect</th>
               </tr>
             </thead>
             <tbody>
@@ -384,17 +451,35 @@ export function DatabaseSurface() {
                     <td>{file.symbolCount} symbols</td>
                     <td>{workspace?.projectID ?? 'unknown'}</td>
                     <td>{workspace?.indexedAt ?? 'not indexed'}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="ghost"
+                        aria-pressed={selectedFileID === file.id}
+                        aria-label={`Inspect ${file.filePath}`}
+                        onClick={() => setSelectedFileID(file.id)}
+                      >
+                        {selectedFileID === file.id ? 'Selected' : 'Inspect'}
+                      </button>
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="database-atlas-empty">
+                  <td colSpan={6} className="database-atlas-empty">
                     No corpus rows returned by the daemon. Check index status or run indexing from System mode.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+          {selectedFile ? (
+            <DatabaseRecordInspector
+              file={selectedFile}
+              projectID={workspace?.projectID ?? 'unknown'}
+              onClose={() => setSelectedFileID(null)}
+            />
+          ) : null}
           {(workspace?.languages ?? []).length > 0 ? (
             <table className="table database-atlas-table">
               <thead>

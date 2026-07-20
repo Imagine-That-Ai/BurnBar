@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../../state/shellStore.js';
 import { useDatabaseStore } from '../../state/databaseStore.js';
@@ -28,7 +28,10 @@ function resetStores(): void {
 
 describe('DatabaseSurface', () => {
   beforeEach(resetStores);
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
 
   it('renders populated fixture db facts and migration row', () => {
     useShellStore.setState({ fixtureMode: true });
@@ -121,6 +124,26 @@ describe('DatabaseSurface', () => {
     expect(screen.getByText('src/App.tsx')).toBeTruthy();
     expect(screen.getAllByText('tsx').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText(/live daemon code-memory RPCs/i)).toBeTruthy();
+  });
+
+  it('opens an accessible inspector for daemon-provided indexed file metadata', async () => {
+    useShellStore.setState({ fixtureMode: true });
+    render(<DatabaseSurface />);
+    const atlasButton = await screen.findByRole('button', { name: /atlas/i });
+    fireEvent.click(atlasButton);
+    const inspectButton = await screen.findByRole('button', { name: 'Inspect AgentLens/App.swift' });
+    expect(inspectButton.getAttribute('type')).toBe('button');
+    expect(inspectButton.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(inspectButton);
+
+    const inspector = screen.getByRole('region', { name: 'Record inspector' });
+    expect(within(inspector).getAllByText('AgentLens/App.swift')).toHaveLength(2);
+    expect(within(inspector).getByText('swift')).toBeTruthy();
+    expect(within(inspector).getByText('12')).toBeTruthy();
+    expect(within(inspector).getByText(/source contents are not fetched/i)).toBeTruthy();
+
+    fireEvent.click(within(inspector).getByRole('button', { name: /close record inspector/i }));
+    expect(screen.queryByRole('region', { name: 'Record inspector' })).toBeNull();
   });
 
   it('runs System mode index and poll-watch actions through the store', async () => {
