@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DatabaseRecoveryStatusResult, LinuxShellBridge } from '../../tauriBridge.js';
+import type {
+  DatabaseRecoveryBundleExportResult,
+  DatabaseRecoveryBundleImportResult,
+  DatabaseRecoveryStatusResult,
+  LinuxShellBridge
+} from '../../tauriBridge.js';
 import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
 import { useDatabaseStore } from '../../state/databaseStore.js';
 import { useShellStore } from '../../state/shellStore.js';
@@ -16,6 +21,23 @@ const readyStatus: DatabaseRecoveryStatusResult = {
   canImport: true,
   databasePresent: true,
   databaseIntegrityVerified: true,
+  restartRequired: false
+};
+
+const exportedBundle: DatabaseRecoveryBundleExportResult = {
+  destinationPath: '',
+  byteCount: 128,
+  formatVersion: 1
+};
+
+const importedBundle: DatabaseRecoveryBundleImportResult = {
+  sourcePath: '',
+  stored: true,
+  candidateKeyVerified: true,
+  databaseIntegrityVerified: true,
+  phase: 'ready',
+  recommendedAction: 'none',
+  message: '',
   restartRequired: false
 };
 
@@ -64,5 +86,70 @@ describe('RecoveryAndRestoreControl', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open Database recovery' }));
     expect(onOpenDatabase).toHaveBeenCalledOnce();
+  });
+
+  it('exports an encrypted recovery bundle from Data & Privacy and clears the passphrase', async () => {
+    const databaseRecoveryBundleStatus = vi.fn(async () => readyStatus);
+    const databaseRecoveryBundleExport = vi.fn(async () => exportedBundle);
+    useShellStore.setState({
+      bridge: {
+        ...bridgeStubDefaults,
+        databaseRecoveryBundleStatus,
+        databaseRecoveryBundleExport
+      } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+
+    render(<RecoveryAndRestoreControl fixtureMode={false} onOpenDatabase={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText('Ready')).toBeTruthy());
+    const destination = screen.getByRole('textbox', { name: 'Recovery bundle export destination' });
+    const passphrase = screen.getByLabelText('Recovery bundle export passphrase');
+    fireEvent.change(destination, { target: { value: '/tmp/recovery.obb' } });
+    fireEvent.change(passphrase, { target: { value: 'correct horse battery' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Export bundle' }));
+
+    await waitFor(() => expect(databaseRecoveryBundleExport).toHaveBeenCalledWith({
+      destinationPath: '/tmp/recovery.obb',
+      passphrase: 'correct horse battery'
+    }));
+    expect(await screen.findByText(/Recovery bundle exported successfully \(128 bytes\)/i)).toBeTruthy();
+    expect((passphrase as HTMLInputElement).value).toBe('');
+    expect(screen.queryByText('/tmp/recovery.obb')).toBeNull();
+  });
+
+  it('requires an exact confirmation before importing a recovery bundle', async () => {
+    const databaseRecoveryBundleStatus = vi.fn(async () => readyStatus);
+    const databaseRecoveryBundleImport = vi.fn(async () => importedBundle);
+    useShellStore.setState({
+      bridge: {
+        ...bridgeStubDefaults,
+        databaseRecoveryBundleStatus,
+        databaseRecoveryBundleImport
+      } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+
+    render(<RecoveryAndRestoreControl fixtureMode={false} onOpenDatabase={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText('Ready')).toBeTruthy());
+    const source = screen.getByRole('textbox', { name: 'Recovery bundle import source' });
+    const passphrase = screen.getByLabelText('Recovery bundle import passphrase');
+    const confirmation = screen.getByRole('textbox', { name: 'Recovery bundle import confirmation' });
+    fireEvent.change(source, { target: { value: '/tmp/recovery.obb' } });
+    fireEvent.change(passphrase, { target: { value: 'correct horse battery' } });
+    const importButton = screen.getByRole('button', { name: 'Import bundle' }) as HTMLButtonElement;
+    expect(importButton.disabled).toBe(true);
+    fireEvent.change(confirmation, { target: { value: 'IMPORT RECOVERY BUNDLE' } });
+    expect(importButton.disabled).toBe(false);
+    fireEvent.click(importButton);
+
+    await waitFor(() => expect(databaseRecoveryBundleImport).toHaveBeenCalledWith({
+      sourcePath: '/tmp/recovery.obb',
+      passphrase: 'correct horse battery'
+    }));
+    expect(await screen.findByText(/Recovery bundle imported and database integrity verified/i)).toBeTruthy();
+    expect((passphrase as HTMLInputElement).value).toBe('');
+    expect((confirmation as HTMLInputElement).value).toBe('');
   });
 });
