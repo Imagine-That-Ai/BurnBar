@@ -256,7 +256,9 @@ export async function runP14ChatSession(options, dependencies = {}) {
   const duplicate = assertRPC(await rpc('daemon.chat.message.append', firstRequest), 'P-14 duplicate append');
   assert(duplicate.inserted === false && duplicate.message?.id === messageID, 'P-14 duplicate append was not idempotent');
 
-  const messageCount = dependencies.nativeProbe ? 5 : LIVE_MESSAGE_COUNT;
+  const messageCount = dependencies.messageCount ?? (dependencies.nativeProbe ? 5 : LIVE_MESSAGE_COUNT);
+  assert(Number.isInteger(messageCount) && messageCount >= 5 && messageCount <= LIVE_MESSAGE_COUNT,
+    'P-14 message count must be within the installed pagination proof bounds');
   for (let index = 1; index < messageCount; index += 1) {
     const request = { threadID, messageID: `p14-message-${crypto.randomUUID()}`,
       role: index % 2 === 0 ? 'assistant' : 'user', content: `P14 ordering row ${index}`,

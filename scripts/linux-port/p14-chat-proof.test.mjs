@@ -69,6 +69,8 @@ function binding(value) {
     candidateArtifactDigest: DIGEST, packageVersion: VERSION, ...value.attestation };
 }
 function nativeEvidence(options) {
+  assert(options.olderPageMessageIDs.includes(options.citation.messageID),
+    'the native citation target must come from the observed older page');
   const at = (offset) => new Date(Date.now() + offset).toISOString();
   const attachment = { attachmentId: 'p14-attachment', fileName: path.basename(options.attachmentPath),
     mimeType: 'text/plain', byteSize: options.attachmentByteSize, sha256: options.attachmentSha256 };
@@ -89,8 +91,10 @@ function nativeEvidence(options) {
         exportMetadata: { ...attachment }, postRestartMetadata: { ...attachment },
         upstreamAttachment: { byteSize: attachment.byteSize, fileName: attachment.fileName, sha256: attachment.sha256 }
       } },
-      { kind: 'citation', at: at(3), data: { activatedCitationID: 'citation-1', citedMessageID: 'm3', citedThreadID: options.threadID,
-        loadedPageMessageIDs: ['m3', 'm4'], selectedThreadIDAfter: options.threadID, status: 'Cited source message opened.' } },
+      { kind: 'citation', at: at(3), data: { activatedCitationID: options.citation.id,
+        citedMessageID: options.citation.messageID, citedThreadID: options.threadID,
+        loadedPageMessageIDs: options.olderPageMessageIDs,
+        selectedThreadIDAfter: options.threadID, status: 'Cited source message opened.' } },
       { kind: 'approvals', at: at(4), data: { responses: [
         { approvalID: 'approval-1', daemonApprovalID: 'approval-1', invokedDecision: 'approve', postResponsePhase: 'completed', uiStatus: 'approved' },
         { approvalID: 'approval-2', daemonApprovalID: 'approval-2', invokedDecision: 'reject', postResponsePhase: 'cancelled', uiStatus: 'rejected' },
@@ -158,7 +162,7 @@ async function fixture() {
     packageVersion: VERSION, ...attestation, compositor: 'Mutter', backendID: 'Hermes', model: 'hermes-live', thinking: 'high',
     downloadDir: root, supportDir: root, threadID: THREAD_ID };
   const ran = await runP14ChatSession(options, { installedVerifier: () => ({}), rpcClient, cliRunner,
-    restartDaemon: () => { restarted = true; }, nativeProbe: nativeEvidence });
+    restartDaemon: () => { restarted = true; }, nativeProbe: nativeEvidence, messageCount: 505 });
   const inputRoot = path.join(root, 'docs/linux-port/evidence/product-parity-inputs/P-14', ENVIRONMENT);
   fs.mkdirSync(inputRoot, { recursive: true });
   const materialized = materializeP14ChatSession({ outputRoot: inputRoot, rawEvidenceDir: ran.output,
