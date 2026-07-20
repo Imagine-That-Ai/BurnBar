@@ -44,11 +44,11 @@ jobs:
           environment_json="$RUNNER_TEMP/domain-core-promotion-environment.json"
           branches_json="$RUNNER_TEMP/domain-core-promotion-branches.json"
           branch_pages_json="$RUNNER_TEMP/domain-core-promotion-branch-pages.json"
-          gh api "/repos/$REPOSITORY/environments/domain-core-promotion" > "$environment_json"
+          bash scripts/ci/gh-api-with-retry.sh "/repos/$REPOSITORY/environments/domain-core-promotion" > "$environment_json"
           jq -e \
             'any(.protection_rules[]?; .type == "required_reviewers" and ((.reviewers // []) | length) > 0) and .deployment_branch_policy.custom_branch_policies == true' \
             "$environment_json" >/dev/null
-          gh api --paginate --slurp \
+          bash scripts/ci/gh-api-with-retry.sh --paginate --slurp \
             "/repos/$REPOSITORY/environments/domain-core-promotion/deployment-branch-policies?per_page=100" \
             > "$branch_pages_json"
           jq -e \
@@ -82,7 +82,7 @@ jobs:
           git merge-base --is-ancestor "$CANDIDATE_COMMIT" origin/main
           runs="$RUNNER_TEMP/domain-core-runs.json"
           run_pages="$RUNNER_TEMP/domain-core-run-pages.json"
-          gh api --paginate --slurp \
+          bash scripts/ci/gh-api-with-retry.sh --paginate --slurp \
             -H "Accept: application/vnd.github+json" \
             "/repos/$REPOSITORY/actions/workflows/domain-core.yml/runs?event=push&status=completed&head_sha=$CANDIDATE_COMMIT&per_page=100" \
             > "$run_pages"
@@ -93,9 +93,9 @@ jobs:
             --arg sha "$CANDIDATE_COMMIT" \
             '[.workflow_runs[] | select(.event == "push" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success")] | if length == 1 then .[0].id else error("expected exactly one successful push run") end' \
             "$runs")"
-          gh api "/repos/$REPOSITORY/actions/runs/$run_id" > "$RUNNER_TEMP/domain-core-run.json"
+          bash scripts/ci/gh-api-with-retry.sh "/repos/$REPOSITORY/actions/runs/$run_id" > "$RUNNER_TEMP/domain-core-run.json"
           attempt="$(jq -er '.run_attempt' "$RUNNER_TEMP/domain-core-run.json")"
-          gh api --paginate --slurp \
+          bash scripts/ci/gh-api-with-retry.sh --paginate --slurp \
             "/repos/$REPOSITORY/actions/runs/$run_id/attempts/$attempt/jobs?per_page=100" \
             > "$RUNNER_TEMP/domain-core-job-pages.json"
           jq -e \
