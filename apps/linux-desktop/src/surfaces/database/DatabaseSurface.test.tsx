@@ -134,6 +134,8 @@ describe('DatabaseSurface', () => {
     const inspectButton = await screen.findByRole('button', { name: 'Inspect AgentLens/App.swift' });
     expect(inspectButton.getAttribute('type')).toBe('button');
     expect(inspectButton.getAttribute('aria-pressed')).toBe('false');
+    inspectButton.focus();
+    expect(document.activeElement).toBe(inspectButton);
     fireEvent.click(inspectButton);
 
     const inspector = screen.getByRole('region', { name: 'Record inspector' });
