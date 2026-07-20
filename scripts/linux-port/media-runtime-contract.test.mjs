@@ -41,6 +41,31 @@ test('the package build wrapper injects media-gst once and preserves release arg
       'media-gst'
     ]);
 
+    const customRun = spawnSync(
+      process.execPath,
+      [wrapper, '--no-bundle', '--features', 'custom-protocol'],
+      { cwd: root, env, encoding: 'utf8' }
+    );
+    assert.equal(customRun.status, 0, customRun.stderr);
+    assert.deepEqual(JSON.parse(fs.readFileSync(capturedArgs, 'utf8')), [
+      'build',
+      '--no-bundle',
+      '--features',
+      'custom-protocol,media-gst'
+    ]);
+
+    const inlineRun = spawnSync(
+      process.execPath,
+      [wrapper, '--no-bundle', '--features=custom-protocol'],
+      { cwd: root, env, encoding: 'utf8' }
+    );
+    assert.equal(inlineRun.status, 0, inlineRun.stderr);
+    assert.deepEqual(JSON.parse(fs.readFileSync(capturedArgs, 'utf8')), [
+      'build',
+      '--no-bundle',
+      '--features=custom-protocol,media-gst'
+    ]);
+
     const explicitRun = spawnSync(
       process.execPath,
       [wrapper, '--no-bundle', '--features', 'media-gst'],
@@ -66,8 +91,8 @@ test('release builds ship the GStreamer Mercury viewer contract', () => {
   );
 
   const tauriBuildWrapper = read('scripts/linux-port/tauri-build-linux.mjs');
-  assert.match(tauriBuildWrapper, /forwardedArgs\.includes\('--features'\)/u);
-  assert.match(tauriBuildWrapper, /forwardedArgs\.push\('--features', 'media-gst'\)/u);
+  assert.match(tauriBuildWrapper, /ensureMediaGstreamerFeature/u);
+  assert.match(tauriBuildWrapper, /media-gst/u);
   assert.match(tauriBuildWrapper, /spawnSync\('tauri', \['build', \.\.\.forwardedArgs\]/u);
 
   const releaseBuilder = read('scripts/linux-port/build-linux-release.mjs');
