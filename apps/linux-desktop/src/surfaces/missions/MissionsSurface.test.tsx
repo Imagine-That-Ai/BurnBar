@@ -405,6 +405,35 @@ describe('MissionsSurface', () => {
     expect(screen.getByText('Worker is running.')).toBeTruthy();
   });
 
+  it('makes Inspect logs load and reveal the canonical mission detail', async () => {
+    const mission: MissionListResult['missions'][number] = {
+      id: 'm-inspect',
+      title: 'Inspectable mission',
+      state: 'in_progress',
+      updatedAt: new Date().toISOString(),
+      laneCount: 1,
+      summary: 'Mission detail summary',
+      packets: [],
+      results: []
+    };
+    const list: MissionListResult = { missions: [mission], pendingApprovals: [] };
+    const missionGet = vi.fn().mockResolvedValue(mission);
+    const bridge = { missionList: vi.fn().mockResolvedValue(list), missionGet } as unknown as LinuxShellBridge;
+    useShellStore.setState({ fixtureMode: false, bridge });
+    stubLoad(() => useMissionsStore.setState({ data: list, loading: false, error: null }));
+    useMissionsStore.setState({ data: list, loading: false, error: null });
+
+    renderMissions();
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect logs' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(missionGet).toHaveBeenCalledWith('m-inspect');
+    expect(screen.getByText('Packets / tasks')).toBeTruthy();
+    expect(screen.getByText('Mission detail summary')).toBeTruthy();
+  });
+
   it('requires confirmation and calls canonical mission.cancel', async () => {
     const mission: MissionListResult['missions'][number] = {
       id: 'm-cancel',

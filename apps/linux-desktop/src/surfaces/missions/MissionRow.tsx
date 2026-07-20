@@ -56,6 +56,7 @@ export function MissionRow({
   const approval = missionApprovalDisplay(mission.id, pendingApprovals);
   const approvalAccent = missionApprovalAccent(approval);
   const gate = missionGateCode(mission.id);
+  const inspectMission = onInspectLogs ?? onInspect;
 
   const primaryAction = (() => {
     if (approval === 'pending') {
@@ -277,7 +278,10 @@ export function MissionRow({
             <button
               type="button"
               className="missions-gate-btn missions-gate-btn--secondary"
-              onClick={() => onInspectLogs?.(mission.id)}
+              onClick={() => {
+                setExpanded(true);
+                inspectMission?.(mission.id);
+              }}
             >
               Inspect logs
             </button>
