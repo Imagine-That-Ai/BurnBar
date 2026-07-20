@@ -7,6 +7,7 @@ import { weekOverWeekTokenDeltaPct } from './insightsChartMath.js';
 import {
   insightsCitationPrompt,
   resolveInsightsEvidence,
+  resolveInsightsFreshness,
   resolveQualitativeCapability,
   uniqueInsightsCitations
 } from './insightsEvidence.js';
@@ -305,6 +306,7 @@ export function InsightsWorkspace({
   const layout = workspace.layout;
   const selected = widgets.find((widget) => widget.id === selectedID) ?? widgets[0];
   const qualitative = resolveQualitativeCapability(data);
+  const freshness = useMemo(() => resolveInsightsFreshness(data), [data]);
   const compareOptions = useMemo(
     () => compareScopesFor(data, widgets, evidence),
     [data, evidence, widgets]
@@ -637,6 +639,22 @@ export function InsightsWorkspace({
                   <span className="insights-inspector-detail">{qualitative.reason}</span>
                 </dd>
               </div>
+              <div>
+                <dt>Qualitative freshness</dt>
+                <dd data-testid="insights-freshness-state">
+                  {freshness.state === 'fresh'
+                    ? 'Fresh'
+                    : freshness.state === 'stale'
+                      ? 'Stale'
+                      : 'Unavailable'}
+                  <span className="insights-inspector-detail">{freshness.detail}</span>
+                  {freshness.generatedAt && freshness.state !== 'unavailable' ? (
+                    <time dateTime={freshness.generatedAt} className="insights-inspector-detail">
+                      Generated {new Date(freshness.generatedAt).toLocaleString()}
+                    </time>
+                  ) : null}
+                </dd>
+              </div>
             </dl>
             {qualitative.analysis ? (
               <section className="insights-qualitative-brief" aria-label="Daemon qualitative brief">
@@ -705,6 +723,8 @@ export function InsightsWorkspace({
               <li><strong>Latest period:</strong> {data.weekly.at(-1)?.label ?? 'Unavailable'}</li>
               <li><strong>Cloud/shared evidence:</strong> Not included in this Linux surface</li>
               <li><strong>Qualitative analysis:</strong> {qualitative.state === 'unavailable' ? 'Unavailable' : qualitative.state}</li>
+              <li><strong>Qualitative freshness:</strong> {freshness.state}</li>
+              <li><strong>Qualitative generated at:</strong> {freshness.generatedAt ?? 'Unavailable'}</li>
             </ul>
           </section>
         </div>

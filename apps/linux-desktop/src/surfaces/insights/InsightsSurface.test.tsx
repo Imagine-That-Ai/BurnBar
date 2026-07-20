@@ -17,6 +17,7 @@ import { buildInsightsBrief } from './insightsBrief.js';
 import {
   insightsCitationPrompt,
   resolveInsightsEvidence,
+  resolveInsightsFreshness,
   resolveQualitativeCapability,
   uniqueInsightsCitations
 } from './insightsEvidence.js';
@@ -121,6 +122,32 @@ describe('insights evidence and workspace persistence', () => {
     ]);
     expect(insightsCitationPrompt(citations[0])).toContain('citation citation-1');
     expect(insightsCitationPrompt(citations[0])).toContain('Codex session');
+  });
+
+  it('marks daemon qualitative timestamps fresh, stale, or unavailable without guessing', () => {
+    const base = new Date('2026-07-19T12:00:00.000Z');
+    const withAnalysis = (generatedAt: string): UsageInsights => ({
+      ...fixtureUsageInsights(),
+      qualitative: {
+        state: 'available',
+        reason: 'Bounded local-rules analysis.',
+        analysis: {
+          requestID: 'request-1',
+          generatedAt,
+          executiveSummary: 'Summary',
+          modelDisplayName: 'Linux local rules',
+          findings: [],
+          citations: []
+        }
+      }
+    });
+    expect(resolveInsightsFreshness(withAnalysis('2026-07-19T11:00:00.000Z'), base).state).toBe('fresh');
+    expect(resolveInsightsFreshness(withAnalysis('2026-07-18T11:00:00.000Z'), base).state).toBe('stale');
+    expect(resolveInsightsFreshness(withAnalysis('not-a-date'), base).state).toBe('unavailable');
+    expect(resolveInsightsFreshness(fixtureUsageInsights(), base)).toMatchObject({
+      state: 'unavailable',
+      generatedAt: null
+    });
   });
 
   it('persists selection and density per account scope without storing the identity in the key', () => {
@@ -240,6 +267,19 @@ describe('InsightsSurface', () => {
     expect(screen.getByText('Daemon unreachable')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /retry/i }));
     expect(loadSpy).toHaveBeenCalled();
+  });
+
+  it('keeps the last successful snapshot visible when refresh fails', () => {
+    const loadSpy = vi.fn(noopLoad);
+    const data = fixtureUsageInsights();
+    useShellStore.setState({ bridge: null, fixtureMode: false });
+    useInsightsStore.setState({ data, loading: false, error: 'Daemon unreachable', load: loadSpy });
+    render(<InsightsSurface />);
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(screen.getByText(/last successful Insights snapshot/i)).toBeTruthy();
+    expect(screen.getByTestId('insights-workspace')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(loadSpy).toHaveBeenCalledTimes(2);
   });
 
   it('shows offline notice without bridge', () => {

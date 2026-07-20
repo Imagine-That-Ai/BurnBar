@@ -15,6 +15,57 @@ export type InsightsEvidence = {
   detail: string;
 };
 
+export type InsightsFreshnessState = 'fresh' | 'stale' | 'unavailable';
+
+export type InsightsFreshness = {
+  state: InsightsFreshnessState;
+  generatedAt: string | null;
+  detail: string;
+};
+
+/**
+ * Qualitative analysis is the only Insights payload with a daemon-issued
+ * generated-at timestamp. Keep the freshness claim scoped to that analysis;
+ * never infer an age for the aggregate usage response. Invalid or future
+ * timestamps remain unavailable rather than looking fresh by accident.
+ */
+export function resolveInsightsFreshness(
+  data: UsageInsights,
+  now: Date = new Date(),
+  staleAfterMs = 24 * 60 * 60 * 1000
+): InsightsFreshness {
+  const generatedAt = data.qualitative?.analysis?.generatedAt ?? null;
+  if (!generatedAt) {
+    return {
+      state: 'unavailable',
+      generatedAt: null,
+      detail: 'No daemon generated-at timestamp is available for the qualitative brief.'
+    };
+  }
+  const generatedMillis = Date.parse(generatedAt);
+  const nowMillis = now.getTime();
+  if (!Number.isFinite(generatedMillis) || !Number.isFinite(nowMillis) || generatedMillis > nowMillis) {
+    return {
+      state: 'unavailable',
+      generatedAt,
+      detail: 'The qualitative brief timestamp is invalid or ahead of the local clock.'
+    };
+  }
+  const age = nowMillis - generatedMillis;
+  if (age >= staleAfterMs) {
+    return {
+      state: 'stale',
+      generatedAt,
+      detail: 'The qualitative brief is older than the current freshness window. Refresh before relying on it.'
+    };
+  }
+  return {
+    state: 'fresh',
+    generatedAt,
+    detail: 'The qualitative brief was generated within the current freshness window.'
+  };
+}
+
 const VALID_SOURCES: Record<UsageInsightsSource['id'], Pick<UsageInsightsSource, 'kind' | 'label'>> = {
   'daemon.usage.recent': { kind: 'daemon-method', label: 'live daemon usage insights' },
   'daemon.usage.insights': { kind: 'daemon-method', label: 'daemon-authored qualitative insights' },

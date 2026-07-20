@@ -93,6 +93,14 @@ export function InsightsSurface() {
   const brief = buildInsightsBrief(data);
   return (
     <div className="insights-observatory">
+      {error ? (
+        <Banner tone="degraded">
+          <p>Showing the last successful Insights snapshot. {error}</p>
+          <button type="button" className="primary" onClick={() => void load()}>
+            Retry
+          </button>
+        </Banner>
+      ) : null}
       <InsightsEditorialBrief brief={brief} />
       <InsightsWorkspace
         data={data}
