@@ -181,6 +181,50 @@ describe('ProvidersSurface (quota workspace)', () => {
     await waitFor(() => expect(selector.value).toBe(providers[0]!.id));
   });
 
+  it('renders only the selected provider detail and switches model rows', async () => {
+    const providers: ProviderCatalog = fixtureProviderCatalog().slice(0, 2).map((provider) => ({
+      ...provider,
+      catalogAvailable: true,
+      catalogError: undefined,
+      models: [{
+        id: `${provider.id}-model`,
+        label: `${provider.label} model`,
+        aliases: [],
+        capabilities: [],
+        enabled: true,
+        health: 'healthy',
+        provenance: 'daemon-catalog',
+        detail: 'Verified model'
+      }]
+    }));
+    useShellStore.setState({ fixtureMode: true });
+    useProvidersStore.setState({ catalog: providers, loading: false, error: null, mutationBusy: null, mutationError: null });
+
+    const { container } = render(<ProviderModelWorkspace providers={providers} />);
+    const providerSelector = screen.getByRole('combobox', { name: 'Provider detail' }) as HTMLSelectElement;
+    const customModelProvider = screen.getByRole('combobox', { name: 'Custom model provider' }) as HTMLSelectElement;
+    const firstProvider = providers[0]!;
+    const secondProvider = providers[1]!;
+
+    expect(providerSelector.value).toBe(firstProvider.id);
+    expect(container.querySelector(`[data-provider="${firstProvider.id}"]`)).not.toBeNull();
+    expect(container.querySelector(`[data-provider="${secondProvider.id}"]`)).toBeNull();
+    expect(container.querySelector(`[data-model="${firstProvider.id}-model"]`)).not.toBeNull();
+    expect(container.querySelector(`[data-model="${secondProvider.id}-model"]`)).toBeNull();
+    expect(customModelProvider.value).toBe(firstProvider.id);
+    expect(screen.getByText('2 providers · 2 models')).toBeTruthy();
+
+    fireEvent.change(providerSelector, { target: { value: secondProvider.id } });
+    await waitFor(() => {
+      expect(providerSelector.value).toBe(secondProvider.id);
+      expect(container.querySelector(`[data-provider="${firstProvider.id}"]`)).toBeNull();
+      expect(container.querySelector(`[data-provider="${secondProvider.id}"]`)).not.toBeNull();
+      expect(container.querySelector(`[data-model="${firstProvider.id}-model"]`)).toBeNull();
+      expect(container.querySelector(`[data-model="${secondProvider.id}-model"]`)).not.toBeNull();
+      expect(customModelProvider.value).toBe(secondProvider.id);
+    });
+  });
+
   it('does not label an enabled but unavailable model as route ready', () => {
     const provider: ProviderCatalog[number] = {
       ...fixtureProviderCatalog()[0]!,

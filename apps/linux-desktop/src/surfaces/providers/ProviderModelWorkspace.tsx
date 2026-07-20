@@ -183,6 +183,7 @@ export function ProviderModelWorkspace({ providers }: { providers: ProviderCatal
   const modelCount = providers.reduce((count, provider) => count + (provider.models?.length ?? 0), 0);
   const catalogUnavailable = providers.some((provider) => provider.catalogAvailable === false);
   const routingWritable = fixtureMode || typeof bridge?.configUpdate === 'function';
+  const selectedProvider = providers.find((provider) => provider.id === selectedProviderID) ?? providers[0];
   return (
     <section className="provider-model-workspace" aria-labelledby="provider-model-workspace-heading">
       <header className="provider-model-workspace-header">
@@ -193,6 +194,19 @@ export function ProviderModelWorkspace({ providers }: { providers: ProviderCatal
         </div>
         <div className="provider-model-actions">
           <span aria-live="polite">{providers.length} providers · {modelCount} models</span>
+          <label className="provider-model-provider-picker">
+            <span>Provider detail</span>
+            <select
+              value={selectedProvider?.id ?? ''}
+              onChange={(event) => setSelectedProviderID(event.currentTarget.value)}
+              disabled={providers.length === 0}
+              aria-label="Provider detail"
+            >
+              {providers.map((provider) => (
+                <option key={provider.id} value={provider.id}>{provider.label}</option>
+              ))}
+            </select>
+          </label>
           <button type="button" className="ghost" onClick={() => void load()} disabled={loading} aria-busy={loading}>
             {loading ? 'Refreshing…' : 'Refresh catalog'}
           </button>
@@ -254,16 +268,16 @@ export function ProviderModelWorkspace({ providers }: { providers: ProviderCatal
       </p>
       {providers.length > 0 ? (
         <div className="provider-model-grid">
-          {providers.map((provider) => (
+          {selectedProvider ? (
             <ProviderCard
-              key={provider.id}
-              provider={provider}
+              key={selectedProvider.id}
+              provider={selectedProvider}
               mutationBusy={mutationBusy}
               onRemoveCustomModel={(providerID, modelID) => void removeCustomModel(providerID, modelID)}
               onPreferredCredentialSlot={(providerID, slotID) => void setPreferredCredentialSlot(providerID, slotID)}
               routingWritable={routingWritable}
             />
-          ))}
+          ) : null}
         </div>
       ) : (
         <p className="provider-model-empty" role="status">No daemon provider rows are available.</p>
