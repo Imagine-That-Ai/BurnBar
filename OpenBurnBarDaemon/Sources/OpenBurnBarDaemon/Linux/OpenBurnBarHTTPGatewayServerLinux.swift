@@ -367,7 +367,9 @@ public actor BurnBarHTTPGatewayServer {
               let host = components.host?.lowercased() else {
             return false
         }
-        return host == "localhost" || host == "127.0.0.1" || host == "::1"
+        // swift-corelibs-foundation may preserve the brackets around an IPv6
+        // URL host even though Darwin Foundation returns the unbracketed form.
+        return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]"
     }
 
     private func addingCORSHeaders(
@@ -1678,6 +1680,7 @@ private func insertingHeaders(_ headers: [String: String], into response: Data) 
         headers[key].map { "\(key): \($0)\r\n" }
     }.joined()
     var result = Data(response[..<separator.lowerBound])
+    result.append(Data("\r\n".utf8))
     result.append(contentsOf: additions.utf8)
     result.append(Data("\r\n\r\n".utf8))
     result.append(response[separator.upperBound...])
