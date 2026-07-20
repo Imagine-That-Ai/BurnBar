@@ -66,6 +66,22 @@ Config gzip/ETag repair. This newer harness identity does not alter the
 historical retry receipt above; it identifies the harness required for the next
 timestamped continuation bundle.
 
+## Corrected-harness attempt
+
+A subsequent HP attempt produced archive
+`OpenBurnBar-v1.0.38-physical-x64-evidence-dc9e37b1df2499528b8baa9587e3b6b93c5ac1151483486222bd6d162d620746.zip`.
+The filename digest and ZIP integrity independently passed, but the current
+validator rejected the final archive because
+`operator-evidence/validator-final.log` was added after `SHA256SUMS` was
+generated. The archive therefore remains immutable **NO-GO** evidence, not a
+validator PASS.
+
+That run also proved the independent UIA harness was still compiled from the
+candidate checkout and that Firebase's unquoted ETag is hidden by the .NET
+typed header parser. PR #1875 contains the transport, harness-checkout, and
+final-checksum fixes. See
+[`PHYSICAL_X64_CORRECTED_HARNESS_RESULT.md`](PHYSICAL_X64_CORRECTED_HARNESS_RESULT.md).
+
 ## Certification boundary
 
 The exact package is stable on physical x64, but the release remains `NO-GO`.

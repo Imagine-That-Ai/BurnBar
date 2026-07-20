@@ -50,6 +50,15 @@ harness defect for the next run; it does not retroactively change this result.
 The imported operator report is
 [`evidence/windows-v1.0.38-release/PHYSICAL_X64_SUPPLEMENTAL_RESULT.md`](evidence/windows-v1.0.38-release/PHYSICAL_X64_SUPPLEMENTAL_RESULT.md).
 
+A later `dc9e37b1df2499528b8baa9587e3b6b93c5ac1151483486222bd6d162d620746`
+HP archive preserved the same exact signed candidate and passed ZIP integrity,
+but current independent validation fails because its final validator log is
+not listed in `SHA256SUMS`. It also exposed that the UIA project was compiled
+from the candidate checkout rather than the declared independent harness.
+These are harness/evidence defects, not signed-app launch regressions. The
+immutable NO-GO result and recovery are recorded in
+[`evidence/windows-v1.0.38-release/PHYSICAL_X64_CORRECTED_HARNESS_RESULT.md`](evidence/windows-v1.0.38-release/PHYSICAL_X64_CORRECTED_HARNESS_RESULT.md).
+
 ## Physical Intel x64 v1.0.38 Retry - 2026-07-19
 
 Protected tag `windows-v1.0.38` resolves to commit
