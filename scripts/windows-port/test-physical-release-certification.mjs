@@ -172,7 +172,14 @@ assert.match(remoteConfigPublisher, /ValidateSet\('burnbar-staging'\)/);
 assert.match(remoteConfigPublisher, /hard-bound to burnbar-staging and refuses every other project/);
 assert.doesNotMatch(remoteConfigPublisher, /\[string\] \$CatalogPath/);
 assert.match(remoteConfigPublisher, /config get-value project/);
+assert.equal(
+  remoteConfigPublisher.match(/'Accept-Encoding' = 'gzip'/g)?.length,
+  2,
+  "Remote Config GET and PUT must request gzip so Firebase returns an ETag",
+);
+assert.match(remoteConfigPublisher, /\$current\.Headers\['ETag'\]/);
 assert.match(remoteConfigPublisher, /'If-Match' = \$etag/);
+assert.doesNotMatch(remoteConfigPublisher, /'If-Match' = '\*'/);
 assert.match(remoteConfigPublisher, /parameters do not match the selected fixture/);
 assert.match(remoteConfigPublisher, /restoreRequired = \(\$Fixture -ne 'Baseline'\)/);
 assert.match(remoteConfigPublisher, /read failed\. No mutation was attempted/);
