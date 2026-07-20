@@ -93,6 +93,16 @@
       ]
     },
     {
+      "requirementId": "P-17",
+      "artifacts": [
+        {
+          "role": "feature.activity-installed",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
       "requirementId": "P-31",
       "artifacts": [
         {
@@ -413,6 +423,29 @@
         "workflowPath": ".github/workflows/linux-product-parity.yml",
         "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
         "testName": "P-12 materializer selects the installed quota proof"
+      }
+    },
+    {
+      "requirementId": "P-17",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-17.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p17-activity-proof.test.mjs",
+        "mutationTestName": "P-17 rejects cross-environment paths and semantically mutated emitted claims"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p17-activity-proof.mjs",
+        "entrypoint": "captureP17ActivityProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p17-activity-proof.test.mjs",
+        "testName": "P-17 materializer, capture, and product validator close one signed installed Activity session"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-17 materializer selects the installed Activity proof"
       }
     },
     {

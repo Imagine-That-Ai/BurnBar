@@ -127,11 +127,11 @@ function policies(requirements) {
 
 function registry(complete) {
   const featureRequirements = complete
-    ? ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-31', 'P-34', 'P-40']
-    : ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-31', 'P-34', 'P-40'];
+    ? ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-17', 'P-31', 'P-34', 'P-40']
+    : ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-17', 'P-31', 'P-34', 'P-40'];
   const certificationIds = complete
-    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40']
-    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40'];
+    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-17', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40']
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-17', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40'];
   return {
     schemaVersion: 1,
     id: 'openburnbar-linux-product-feature-proof-registry-v1',
@@ -153,6 +153,8 @@ function registry(complete) {
           ? 'scripts/linux-port/capture-p11-usage-ingestion-proof.mjs'
         : requirementId === 'P-12'
           ? 'scripts/linux-port/capture-p12-quota-proof.mjs'
+        : requirementId === 'P-17'
+          ? 'scripts/linux-port/capture-p17-activity-proof.mjs'
         : requirementId === 'P-02'
           ? 'scripts/linux-port/capture-parity-certification-preflight.mjs'
           : `scripts/linux-port/capture-${requirementId.toLowerCase()}.mjs`;
@@ -160,7 +162,7 @@ function registry(complete) {
         ? 'scripts/linux-port/prepare-product-requirement-input.mjs'
         : requirementId === 'P-39'
           ? 'scripts/linux-port/prepare-product-requirement-input.mjs'
-        : ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-31', 'P-34', 'P-40'].includes(requirementId)
+        : ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-17', 'P-31', 'P-34', 'P-40'].includes(requirementId)
           ? 'scripts/linux-port/finalize-product-feature-proof-closure.mjs'
           : `scripts/linux-port/materialize-${requirementId.toLowerCase()}.mjs`;
       return {
@@ -178,7 +180,7 @@ function registry(complete) {
             ? '.github/workflows/linux-release.yml'
             : requirementId === 'P-39'
               ? '.github/workflows/linux-product-parity.yml'
-            : ['P-02', 'P-11', 'P-12'].includes(requirementId)
+            : ['P-02', 'P-11', 'P-12', 'P-17'].includes(requirementId)
               ? '.github/workflows/linux-product-parity.yml'
               : `.github/workflows/${requirementId.toLowerCase()}-capture.yml`,
           testPath,
@@ -187,7 +189,7 @@ function registry(complete) {
         materializer: {
           producerPath: materializerProducerPath,
           entrypoint: 'requirement',
-          workflowPath: RELEASE_ONLY.has(requirementId) || ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-31', 'P-34', 'P-39', 'P-40'].includes(requirementId)
+          workflowPath: RELEASE_ONLY.has(requirementId) || ['P-02', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-17', 'P-31', 'P-34', 'P-39', 'P-40'].includes(requirementId)
             ? '.github/workflows/linux-product-parity.yml'
             : `.github/workflows/${requirementId.toLowerCase()}-materialize.yml`,
           testPath,
@@ -213,8 +215,8 @@ function createRepository({ complete = true } = {}) {
     'schemas/linux-product-feature-proof-registry.schema.json'
   ]) write(root, schema, fs.readFileSync(path.join(SOURCE_ROOT, schema)));
   const validatorIds = complete
-    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40']
-    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40'];
+    ? ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-17', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40']
+    : ['P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-17', 'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40'];
   for (const requirementId of validatorIds) {
     write(root, `scripts/linux-port/product-validators/${requirementId}.mjs`,
       `export async function validateProductRequirement(context) {\n`
@@ -502,7 +504,7 @@ function validatorContext(subject, captureResult) {
   };
 }
 
-test('ownership-ready fixture blocks exactly the 22 unregistered requirement lanes', async (t) => {
+test('ownership-ready fixture blocks exactly the 21 unregistered requirement lanes', async (t) => {
   const subject = createRepository({ complete: false });
   t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
   const captured = capture(subject, {
@@ -511,18 +513,20 @@ test('ownership-ready fixture blocks exactly the 22 unregistered requirement lan
   const p39 = captured.document.requirements.find((row) => row.requirementId === 'P-39');
   const p11 = captured.document.requirements.find((row) => row.requirementId === 'P-11');
   const p12 = captured.document.requirements.find((row) => row.requirementId === 'P-12');
+  const p17 = captured.document.requirements.find((row) => row.requirementId === 'P-17');
   assert.equal(p39.ready, true, JSON.stringify(p39));
   assert.equal(p11.ready, true, JSON.stringify(p11));
   assert.equal(p12.ready, true, JSON.stringify(p12));
+  assert.equal(p17.ready, true, JSON.stringify(p17));
   assert.equal(captured.document.status, 'blocked');
-  assert.equal(captured.document.summary.validatorCount, 18);
-  assert.equal(captured.document.summary.captureCount, 18);
-  assert.equal(captured.document.summary.materializerCount, 18);
-  assert.equal(captured.document.summary.readyCount, 18, JSON.stringify(p12));
+  assert.equal(captured.document.summary.validatorCount, 19);
+  assert.equal(captured.document.summary.captureCount, 19);
+  assert.equal(captured.document.summary.materializerCount, 19);
+  assert.equal(captured.document.summary.readyCount, 19, JSON.stringify(p17));
   assert.deepEqual(
     captured.document.requirements.filter((row) => !row.ready).map((row) => row.requirementId),
     REQUIREMENT_IDS.filter((id) => ![
-      'P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12',
+      'P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08', 'P-09', 'P-10', 'P-11', 'P-12', 'P-17',
       'P-31', 'P-34', 'P-37', 'P-38', 'P-39', 'P-40'
     ].includes(id))
   );
@@ -582,7 +586,7 @@ test('P-02 capture emits a blocked candidate-bound diagnostic inventory', (t) =>
   assert.equal(captured.document.candidate.runId, RUN_ID);
   assert.equal(captured.document.candidate.artifactDigest, DIGEST);
   assert.equal(captured.document.status, 'blocked');
-  assert.equal(captured.document.summary.readyCount, 18);
+  assert.equal(captured.document.summary.readyCount, 19);
   assert.equal(fs.existsSync(captured.output), true);
 });
 

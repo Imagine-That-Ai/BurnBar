@@ -11,6 +11,7 @@ import { P09_PROOF_ROLE } from './lib/p09-navigation-shell-proof.mjs';
 import { P10_PROOF_ROLE } from './lib/p10-dashboard-layout-proof.mjs';
 import { P11_PROOF_ROLE } from './lib/p11-usage-ingestion-proof.mjs';
 import { P12_PROOF_ROLE } from './lib/p12-quota-proof.mjs';
+import { P17_PROOF_ROLE } from './lib/p17-activity-proof.mjs';
 import {
   MAX_FEATURE_PROOF_ARTIFACT_BYTES,
   MAX_FEATURE_PROOF_CONTRACT_BYTES,
@@ -326,6 +327,16 @@ test('P-12 materializer selects the installed quota proof', (t) => {
   assert.equal(result.registered, true);
   assert.equal(result.closure.requirementId, 'P-12');
   assert.deepEqual(result.closure.proofs.map((proof) => proof.role), [P12_PROOF_ROLE]);
+  const proof = result.closure.proofs[0];
+  assert.equal(proof.sha256, sha256(path.join(subject.root, proof.path)));
+});
+
+test('P-17 materializer selects the installed Activity proof', (t) => {
+  const { subject, result } = materializeSingleFeatureProof('P-17', P17_PROOF_ROLE);
+  t.after(() => fs.rmSync(subject.root, { recursive: true, force: true }));
+  assert.equal(result.registered, true);
+  assert.equal(result.closure.requirementId, 'P-17');
+  assert.deepEqual(result.closure.proofs.map((proof) => proof.role), [P17_PROOF_ROLE]);
   const proof = result.closure.proofs[0];
   assert.equal(proof.sha256, sha256(path.join(subject.root, proof.path)));
 });

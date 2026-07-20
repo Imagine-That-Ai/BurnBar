@@ -226,7 +226,7 @@ export function verifyLinuxWorkflowWiring(input) {
       const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
       return start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
     };
-    const installStep = 'Install P-09 through P-12 signed candidate package';
+    const installStep = 'Install P-09 through P-12 and P-17 signed candidate package';
     const captureStep = config.step;
     const install = blockFor(installStep);
     const capture = blockFor(captureStep);
@@ -236,7 +236,7 @@ export function verifyLinuxWorkflowWiring(input) {
       .filter((line) => line && !line.startsWith('#'));
     const required = [
       [installStep, install, [
-        "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12'",
+        "if: inputs.requirement == 'P-09' || inputs.requirement == 'P-10' || inputs.requirement == 'P-11' || inputs.requirement == 'P-12' || inputs.requirement == 'P-17'",
         'set -euo pipefail',
         'sudo apt-get install -y --reinstall "$package"',
         'sudo dnf install -y "$package"',
@@ -569,6 +569,8 @@ export function verifyLinuxWorkflowWiring(input) {
     'p10-dashboard-layout-proof.test.mjs',
     'p11-usage-ingestion-proof.test.mjs',
     'p12-quota-proof.test.mjs',
+    'p17-native-activity-probes.test.mjs',
+    'p17-activity-proof.test.mjs',
     'p38-release-automation-proof.test.mjs',
     'p31-accessibility-proof.test.mjs',
     'p34-credential-security-proof.test.mjs',
@@ -619,6 +621,11 @@ export function verifyLinuxWorkflowWiring(input) {
     'capture-p12-quota-proof.mjs',
     'Capture P-12 installed quota proof',
     "if: inputs.requirement == 'P-12'",
+    'run-p17-native-activity-probes.mjs',
+    'materialize-p17-activity-session.mjs',
+    'capture-p17-activity-proof.mjs',
+    'Capture P-17 installed Activity proof',
+    "if: inputs.requirement == 'P-17'",
     'capture-parity-certification-preflight.mjs',
     'capture-p34-credential-security-proof.mjs',
     'run-p40-privacy-rpc-session.mjs',
@@ -716,6 +723,31 @@ export function verifyLinuxWorkflowWiring(input) {
       '--gateway-token-file "$gateway_token_file"'
     ]
   });
+  requireInstalledUiCaptureContract(input.productParityWorkflow, 'P-17', {
+    step: 'Capture P-17 installed Activity proof',
+    runner: 'scripts/linux-port/run-p17-native-activity-probes.mjs',
+    materializer: 'scripts/linux-port/materialize-p17-activity-session.mjs',
+    capture: 'scripts/linux-port/capture-p17-activity-proof.mjs',
+    requiredLines: [
+      'evidence_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p17-evidence.XXXXXX")"',
+      'support_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p17-support.XXXXXX")"',
+      'home_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p17-home.XXXXXX")"',
+      'download_root="$(mktemp -d "${RUNNER_TEMP}/openburnbar-p17-downloads.XXXXXX")"',
+      'rm -rf "$evidence_root" "$support_root" "$home_root" "$download_root" || status=1',
+      'chmod 700 "$evidence_root" "$support_root" "$home_root" "$download_root"',
+      'test -x /usr/bin/openburnbar-cli',
+      'test -x /usr/bin/openburnbar-linux-desktop',
+      'test -x /usr/libexec/openburnbar-daemon-launch',
+      "if pgrep -f '^/usr/bin/openburnbar-linux-desktop([[:space:]]|$)' >/dev/null; then",
+      'openssl rand -hex 32 >"$token_file"',
+      'chmod 600 "$token_file"',
+      '--home-dir "$home_root"',
+      '--download-dir "$download_root"',
+      '--socket-path "$socket_path"',
+      '--token-file "$token_file"',
+      '--index-database "$index_database"'
+    ]
+  });
   requireP39CaptureContract(input.productParityWorkflow);
   for (const marker of [
     'p39-macos-producer',
@@ -736,11 +768,12 @@ export function verifyLinuxWorkflowWiring(input) {
     'Preserve non-promotable P-02 diagnostic evidence',
     'Install P-08 signed candidate package',
     'Capture P-08 installed Mercury media proof',
-    'Install P-09 through P-12 signed candidate package',
+    'Install P-09 through P-12 and P-17 signed candidate package',
     'Capture P-09 installed navigation shell proof',
     'Capture P-10 installed dashboard layout proof',
     'Capture P-11 installed usage ingestion proof',
     'Capture P-12 installed quota proof',
+    'Capture P-17 installed Activity proof',
     'Capture P-31 installed accessibility matrix evidence',
     'Capture P-34 credential security proof',
     'Capture P-39 Linux candidate-bound platform evidence',
