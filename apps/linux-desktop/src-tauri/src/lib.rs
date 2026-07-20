@@ -2861,7 +2861,11 @@ fn run_smarthub_cli(
         let mut bounded = stdout.take((SMART_HUB_MAX_OUTPUT_BYTES + 1) as u64);
         let mut bytes = Vec::new();
         let result = bounded.read_to_end(&mut bytes);
-        if bytes.len() > SMART_HUB_MAX_OUTPUT_BYTES {
+        // Treat a reader that reaches the hard cap as oversized even when the
+        // child closes the pipe before the extra sentinel byte arrives (for
+        // example after SIGPIPE). This keeps failure classification stable
+        // across Linux libc/process scheduling variants.
+        if bytes.len() >= SMART_HUB_MAX_OUTPUT_BYTES {
             output_too_large_for_reader.store(true, Ordering::Release);
         }
         result.map(|_| bytes)
@@ -2898,7 +2902,7 @@ fn run_smarthub_cli(
         .join()
         .map_err(|_| "openburnbar_cli_smarthub_output_failed".to_string())?
         .map_err(|_| "openburnbar_cli_smarthub_output_failed".to_string())?;
-    if output_too_large.load(Ordering::Acquire) || stdout.len() > SMART_HUB_MAX_OUTPUT_BYTES {
+    if output_too_large.load(Ordering::Acquire) || stdout.len() >= SMART_HUB_MAX_OUTPUT_BYTES {
         return Err("openburnbar_cli_smarthub_output_too_large".to_string());
     }
     if !status.success() {
@@ -9138,14 +9142,28 @@ mod tests {
 
     #[test]
     fn smarthub_cli_rejects_oversized_output_before_json_decode() {
-        // `yes` ignores the fixed SmartHub argv and continuously writes. The
-        // bounded reader must stop at the native cap and terminate the whole
-        // process group instead of allowing settings/status to grow memory.
+        // Use a helper that ignores the fixed SmartHub argv and emits one byte
+        // beyond the cap. `/usr/bin/yes` is not portable here because GNU yes
+        // treats the fixed `--json` argument as an option and exits early.
+        let helper = std::env::temp_dir().join(format!(
+            "openburnbar-smarthub-oversize-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        fs::write(
+            &helper,
+            format!(
+                "#!/bin/sh\nexec /usr/bin/head -c {} /dev/zero\n",
+                SMART_HUB_MAX_OUTPUT_BYTES + 1
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
         let result = run_smarthub_cli(
             "parity".to_string(),
-            PathBuf::from("/usr/bin/yes"),
+            helper.clone(),
             tokio_util::sync::CancellationToken::new(),
         );
+        let _ = fs::remove_file(helper);
         assert_eq!(
             result.unwrap_err(),
             "openburnbar_cli_smarthub_output_too_large"
