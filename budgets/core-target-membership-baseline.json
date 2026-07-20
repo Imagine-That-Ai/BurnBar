@@ -32,6 +32,11 @@
     }
   },
   "siblingCeilings": {
+    "OpenBurnBarAssistantModels": {
+      "maxFiles": 15,
+      "maxLines": 2700,
+      "planned": true
+    },
     "OpenBurnBarDomainCoreRuntime": {
       "maxFiles": 8,
       "maxLines": 1000,

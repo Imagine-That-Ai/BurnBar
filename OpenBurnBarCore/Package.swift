@@ -156,6 +156,10 @@ var packageProductsBase: [Product] = [
         targets: ["OpenBurnBarKernel"]
     ),
     .library(
+        name: "OpenBurnBarAssistantModels",
+        targets: ["OpenBurnBarAssistantModels"]
+    ),
+    .library(
         name: "OpenBurnBarDomainCoreRuntime",
         targets: ["OpenBurnBarDomainCoreRuntime"]
     ),
@@ -1050,6 +1054,13 @@ let firstPartyTargetsBase: [Target] = [
         .target(
             name: "OpenBurnBarDomainCoreRuntime"
         ),
+        // Assistant identity, manifest, persona, selection, prompt, and policy
+        // models form a Foundation-only leaf. Kernel re-exports this target so
+        // existing consumers retain the same public import surface.
+        .target(
+            name: "OpenBurnBarAssistantModels",
+            dependencies: ["OpenBurnBarPlatformSupport"]
+        ),
         // Phase-1 K1 kernel (see the OpenBurnBarKernel product comment above).
         // remediation(typespec-strangler): the generated Firestore canon stays
         // linked into the production graph — the `import OpenBurnBarFirestoreModels`
@@ -1060,6 +1071,7 @@ let firstPartyTargetsBase: [Target] = [
         .target(
             name: "OpenBurnBarKernel",
             dependencies: [
+                "OpenBurnBarAssistantModels",
                 "OpenBurnBarPlatformSupport",
                 "OpenBurnBarDomainCoreRuntime",
                 "OpenBurnBarFirestoreModels",
