@@ -9,19 +9,21 @@
     <Button x:Name="Trigger"
             Style="{StaticResource LiquidGlassInteractiveStyle}"
             theme:LiquidGlass.Interactive="True"
+            AutomationProperties.AutomationId="Shell.KernelSwitcher"
+            AutomationProperties.Name="Backdrop kernel"
             ToolTipService.ToolTip="Backdrop kernel">
         <StackPanel Orientation="Horizontal" Spacing="6">
             <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="12" Glyph="&#xE790;"
-                      Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                      Foreground="{ThemeResource AuroraTextBrush}" />
             <TextBlock x:Name="ActiveLabel"
                        Text="Fluid Aurora"
                        FontSize="12"
                        FontWeight="SemiBold"
                        MaxWidth="140"
                        TextTrimming="CharacterEllipsis"
-                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                       Foreground="{ThemeResource AuroraTextBrush}" />
             <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="10" Glyph="&#xE70D;"
-                      Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                      Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
         </StackPanel>
         <Button.Flyout>
             <Flyout x:Name="KernelFlyout" Placement="Bottom">
@@ -36,7 +38,7 @@
                                    FontWeight="Bold"
                                    CharacterSpacing="40"
                                    Margin="6,2,6,8"
-                                   Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                                   Foreground="{ThemeResource AuroraTextMutedBrush}" />
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="300">
                             <StackPanel x:Name="KernelList" Spacing="2" />
                         </ScrollViewer>

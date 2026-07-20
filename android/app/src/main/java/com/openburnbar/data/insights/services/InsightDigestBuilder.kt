@@ -7,8 +7,9 @@ import com.openburnbar.data.insights.InsightTimeWindow
 import java.security.MessageDigest
 
 /**
- * Builds a privacy-bounded InsightDigest from Firestore rollups on Android.
- * Mirrors the Swift InsightDigestBuilder with the same 24KB ceiling.
+ * Mirrors the Swift InsightDigestBuilder with the same 24KB ceiling and
+ * the same privacy treatment: project display names are replaced with hashed
+ * IDs and inferred task titles are omitted from the digest entirely.
  *
  * Android-specific note: useCaseHistogram, agentFocusSignals, and modelFocusSignals
  * are left empty because raw session data isn't synced to Android.
@@ -66,9 +67,12 @@ object InsightDigestBuilder {
     fun build(input: InsightDigestBuildInput): InsightDigest {
         val filter = input.filter
         val totals = input.totals
-        val providers = input.providers
-        val models = input.models
-        val projects = input.projects
+        val providers = input.providers.map { hashProviderSnapshot(it) }
+        // Build per-digest opaque ordinal project token map: sort original
+        // project IDs alphabetically, assign project_1, project_2, …
+        val projectTokenMap = buildProjectTokenMap(input.projects)
+        val models = input.models.map { remapModelProjects(it, projectTokenMap) }
+        val projects = input.projects.map { remapProject(it, projectTokenMap) }
         val daily = input.daily
         val quotaSnapshots = input.quotaSnapshots
         val modelBenchmarks = input.modelBenchmarks
@@ -218,6 +222,22 @@ object InsightDigestBuilder {
         val hash = digest.digest(input.toByteArray(Charsets.UTF_8))
         return hash.joinToString("") { "%02x".format(it) }
     }
+
+    private fun buildProjectTokenMap(projects: List<InsightDigest.ProjectSnapshot>): Map<String, String> =
+        projects.map { it.id }.sorted().mapIndexed { index, id -> id to "project_${index + 1}" }.toMap()
+
+    private fun remapProject(snapshot: InsightDigest.ProjectSnapshot, tokenMap: Map<String, String>): InsightDigest.ProjectSnapshot {
+        val token = tokenMap[snapshot.id] ?: snapshot.id
+        return snapshot.copy(id = token, displayName = token)
+    }
+
+    private fun remapModelProjects(snapshot: InsightDigest.ModelSnapshot, tokenMap: Map<String, String>): InsightDigest.ModelSnapshot = snapshot.copy(
+        topInferredTaskTitles = emptyList(),
+        topProjects = snapshot.topProjects.map { tokenMap[it] ?: it },
+    )
+
+    private fun hashProviderSnapshot(snapshot: InsightDigest.ProviderSnapshot): InsightDigest.ProviderSnapshot =
+        snapshot.copy(topInferredTaskTitles = emptyList())
 
     private fun InsightTimeWindow.toInterval(): Pair<String, String> {
         val now = java.time.Instant.now()

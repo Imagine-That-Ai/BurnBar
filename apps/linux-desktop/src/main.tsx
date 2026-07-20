@@ -4,7 +4,6 @@ import { applyReducedMotionClass } from './a11y.js';
 import { App } from './app/App.js';
 import {
   cacheOnboarding,
-  readOnboarding,
   shouldRouteToOnboarding
 } from './onboardingStore.js';
 import { markStart } from './perfMarks.js';
@@ -28,7 +27,6 @@ async function boot(): Promise<void> {
   if (petCompanion) document.documentElement.classList.add('pet-companion-window');
 
   // First run lands on the onboarding wizard unless a deep link is present.
-  const ob = readOnboarding();
   if (!chatPopout && !petCompanion && location.hash !== '#/onboarding') {
     location.hash = '#/onboarding';
     useShellStore.getState().syncRouteFromHash({ measure: false });

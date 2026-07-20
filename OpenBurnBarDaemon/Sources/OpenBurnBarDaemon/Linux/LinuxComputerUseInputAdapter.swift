@@ -2,7 +2,7 @@
 import Foundation
 import Glibc
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 enum LinuxPrivilegedInputKillFlag {
     static let legacyProductionFlagPath = "/var/run/openburnbar-privileged-input-kill"

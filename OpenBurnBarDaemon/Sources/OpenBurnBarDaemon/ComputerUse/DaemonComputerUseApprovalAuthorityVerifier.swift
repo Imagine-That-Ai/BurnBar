@@ -1,6 +1,6 @@
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Fail-closed verifier for phone-authorized Computer Use action decisions.
 /// The response is bound to the exact pending request and a pinned controller

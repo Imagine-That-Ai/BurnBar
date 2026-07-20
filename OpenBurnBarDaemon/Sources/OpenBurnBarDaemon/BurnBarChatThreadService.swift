@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 #if canImport(SQLite3)
 import SQLite3
 #else

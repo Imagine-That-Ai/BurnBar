@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import OpenBurnBarLinuxSecurity
 
 /// Daemon-owned export/import for the macOS-compatible passphrase-wrapped

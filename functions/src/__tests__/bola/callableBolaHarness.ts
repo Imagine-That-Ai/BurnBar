@@ -1,5 +1,7 @@
 import { expect } from "vitest";
 
+import { runFakeFirestoreTransaction } from "../fakeFirestoreTransaction.js";
+
 import { seedBolaVictimTenant } from "./bolaVictimSeeds.generated.js";
 
 type BolaExpectedCode = "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated";
@@ -281,44 +283,7 @@ export function pathKeyedFirestore(store: Map<string, Record<string, unknown>>) 
         },
       };
     },
-    runTransaction: async (
-      fn: (tx: {
-        get: (ref: { get: () => Promise<unknown> }) => Promise<unknown>;
-        set: (
-          ref: { set: (d: Record<string, unknown>) => Promise<void> },
-          data: Record<string, unknown>,
-        ) => Promise<void>;
-        update: (
-          ref: { update: (d: Record<string, unknown>) => Promise<void> },
-          data: Record<string, unknown>,
-        ) => Promise<void>;
-        delete: (ref: { delete: () => Promise<void> }) => Promise<void>;
-        create: (
-          ref: { get: () => Promise<{ exists: boolean }>; set: (d: Record<string, unknown>) => Promise<void> },
-          data: Record<string, unknown>,
-        ) => Promise<void>;
-      }) => Promise<unknown>,
-    ) => {
-      const tx = {
-        get: async (ref: { get: () => Promise<unknown> }) => ref.get(),
-        set: (ref: { set: (d: Record<string, unknown>) => Promise<void> }, data: Record<string, unknown>) =>
-          ref.set(data),
-        update: (ref: { update: (d: Record<string, unknown>) => Promise<void> }, data: Record<string, unknown>) =>
-          ref.update(data),
-        delete: (ref: { delete: () => Promise<void> }) => ref.delete(),
-        create: async (
-          ref: { get: () => Promise<{ exists: boolean }>; set: (d: Record<string, unknown>) => Promise<void> },
-          data: Record<string, unknown>,
-        ) => {
-          const snap = await ref.get();
-          if (snap.exists) {
-            throw new Error(`Document already exists`);
-          }
-          await ref.set(data);
-        },
-      };
-      return fn(tx);
-    },
+    runTransaction: runFakeFirestoreTransaction,
   };
 }
 

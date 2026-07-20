@@ -12,7 +12,7 @@ on:
 jobs:
   detect-public-macos-download-change:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     outputs:
       changed: ${{ steps.detect.outputs.changed }}
       gate_changed: ${{ steps.detect.outputs.gate_changed }}

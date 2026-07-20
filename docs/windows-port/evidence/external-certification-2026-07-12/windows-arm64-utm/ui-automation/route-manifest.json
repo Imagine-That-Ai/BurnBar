@@ -1,0 +1,80 @@
+[
+  {
+    "Key": "dashboard",
+    "Title": "Dashboard",
+    "ExpectedAutomationId": "RouteRoot.dashboard",
+    "XamlPath": "windows/app/OpenBurnBar.App/Dashboard/DashboardPage.xaml"
+  },
+  {
+    "Key": "quota",
+    "Title": "Quota",
+    "ExpectedAutomationId": "RouteRoot.quota",
+    "XamlPath": "windows/app/OpenBurnBar.App/Quota/QuotaWorkspacePage.xaml"
+  },
+  {
+    "Key": "insights",
+    "Title": "Insights",
+    "ExpectedAutomationId": "RouteRoot.insights",
+    "XamlPath": "windows/app/OpenBurnBar.App/Insights/InsightsPage.xaml"
+  },
+  {
+    "Key": "sessionLogs",
+    "Title": "Session Logs",
+    "ExpectedAutomationId": "RouteRoot.sessionLogs",
+    "XamlPath": "windows/app/OpenBurnBar.App/SessionLogs/SessionLogsHostPage.xaml"
+  },
+  {
+    "Key": "memory",
+    "Title": "Memory",
+    "ExpectedAutomationId": "RouteRoot.memory",
+    "XamlPath": "windows/app/OpenBurnBar.App/Memory/MemoryPage.xaml"
+  },
+  {
+    "Key": "missionControl",
+    "Title": "Mission Control",
+    "ExpectedAutomationId": "RouteRoot.missionControl",
+    "XamlPath": "windows/app/OpenBurnBar.App/MissionControl/MissionControlPage.xaml"
+  },
+  {
+    "Key": "budget",
+    "Title": "Budget",
+    "ExpectedAutomationId": "RouteRoot.budget",
+    "XamlPath": "windows/app/OpenBurnBar.App/Budget/BudgetPage.xaml"
+  },
+  {
+    "Key": "dataControlCenter",
+    "Title": "Data Control Center",
+    "ExpectedAutomationId": "RouteRoot.dataControlCenter",
+    "XamlPath": "windows/app/OpenBurnBar.App/DataControlCenter/DataControlCenterPage.xaml"
+  },
+  {
+    "Key": "chat",
+    "Title": "Chat",
+    "ExpectedAutomationId": "RouteRoot.chat",
+    "XamlPath": "windows/app/OpenBurnBar.App/Chat/ChatHostPage.xaml"
+  },
+  {
+    "Key": "switcher",
+    "Title": "Switcher",
+    "ExpectedAutomationId": "RouteRoot.switcher",
+    "XamlPath": "windows/app/OpenBurnBar.App/Switcher/SwitcherHostPage.xaml"
+  },
+  {
+    "Key": "onboarding",
+    "Title": "Onboarding",
+    "ExpectedAutomationId": "RouteRoot.onboarding",
+    "XamlPath": "windows/app/OpenBurnBar.App/Onboarding/OnboardingPage.xaml"
+  },
+  {
+    "Key": "settings",
+    "Title": "Settings",
+    "ExpectedAutomationId": "RouteRoot.settings",
+    "XamlPath": "windows/app/OpenBurnBar.App/Settings/SettingsPage.xaml"
+  },
+  {
+    "Key": "elderWand",
+    "Title": "Elder Wand",
+    "ExpectedAutomationId": "RouteRoot.elderWand",
+    "XamlPath": "windows/app/OpenBurnBar.App/ElderWand/ElderWandPage.xaml"
+  }
+]

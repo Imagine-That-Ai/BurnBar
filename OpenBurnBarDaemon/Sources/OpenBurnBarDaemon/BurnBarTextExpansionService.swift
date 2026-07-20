@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import OpenBurnBarLinuxSecurity
 
 /// Daemon-owned encrypted persistence for Linux in-app text expansion.

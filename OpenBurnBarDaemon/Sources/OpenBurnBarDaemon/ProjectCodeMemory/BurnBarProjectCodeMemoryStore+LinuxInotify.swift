@@ -2,7 +2,7 @@
 import Glibc
 #endif
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 #if os(Linux)
 extension BurnBarProjectCodeMemoryStore {

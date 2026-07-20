@@ -30,7 +30,7 @@
         <StackPanel x:Name="ConfirmGroup" Spacing="6">
             <TextBlock Text="Type DELETE to confirm" FontSize="11"
                        Foreground="{StaticResource PensieveColorTextMuteBrush}" />
-            <TextBox x:Name="ConfirmBox" FontFamily="Cascadia Mono, Consolas"
+            <TextBox x:Name="ConfirmBox" FontFamily="{StaticResource AuroraMonoFont}"
                      FontWeight="SemiBold" TextChanged="OnConfirmChanged" />
         </StackPanel>
 

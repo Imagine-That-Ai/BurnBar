@@ -5,7 +5,7 @@ import OpenBurnBarCore
 import OSLog
 
 // Mission document handling and group-claim validation.
-// Extracted from CLIAgentMissionRequestListener.swift (god-file decomposition) — same module, verbatim.
+// Extracted from CLIAgentMissionRequestListener.swift (god-file decomposition) — same module.
 
 private struct MissionGroupValidationError: LocalizedError {
     let reason: String
@@ -50,6 +50,12 @@ private enum WandMissionEntitlements {
 }
 
 extension CLIAgentMissionRequestListener {
+    struct ShadowContextFields {
+        let requestedRuntime: String?, requestedModelID: String?, commandsAllowed: Bool?, fileEditsAllowed: Bool?, originDeviceID: String?
+        let createdBy: String?, originPlatform: String?, source: String?, personaScopeJSON: String?, approvalMode: String?
+        let approvalStatus: String?, approverDeviceID: String?, entitlementTier: String?, workingDirectory: String?
+    }
+
     private func validateMissionGroupClaimIfNeeded(
         data: [String: Any],
         uid: String,
@@ -193,6 +199,28 @@ extension CLIAgentMissionRequestListener {
         }
     }
 
+    /// Builds the typed authorization input from the listener's post-decryption data.
+    /// Kept as a pure helper so the security-sensitive field mapping is
+    /// directly testable without requiring a live Firestore listener.
+    nonisolated static func makeShadowContext(
+        fields: ShadowContextFields,
+        missionID: String,
+        prompt: String,
+        fanOutCount: Int
+        ) -> MissionRemoteAuthorizationShadow.ShadowContext {
+        MissionRemoteAuthorizationShadow.ShadowContext(
+            missionID: missionID, prompt: prompt,
+            runtime: fields.requestedRuntime ?? "auto", modelID: fields.requestedModelID?.trimmingCharacters(in: .whitespacesAndNewlines),
+            commandsAllowed: fields.commandsAllowed ?? false, fileEditsAllowed: fields.fileEditsAllowed ?? false,
+            originDeviceID: fields.originDeviceID?.nilIfBlank ?? fields.createdBy?.nilIfBlank ?? "unknown",
+            originPlatform: fields.originPlatform?.nilIfBlank ?? fields.source?.nilIfBlank ?? "unknown",
+            personaScopeJSON: fields.personaScopeJSON?.nilIfBlank, approvalMode: fields.approvalMode?.nilIfBlank,
+            approvalStatus: fields.approvalStatus ?? "", approverDeviceID: fields.approverDeviceID?.nilIfBlank,
+            entitlementTier: fields.entitlementTier?.nilIfBlank ?? "none", workingDirectory: fields.workingDirectory?.nilIfBlank,
+            fanOutCount: fanOutCount
+        )
+    }
+
     func handle(document: QueryDocumentSnapshot) async {
         let cancellationTracker = MissionCancellationTracker()
         let logger = self.logger
@@ -233,15 +261,31 @@ extension CLIAgentMissionRequestListener {
             return
         }
         var data = mergePrivateMissionPayload(privatePayload, into: rawData)
+        // Build authorization context from current data at call time (reads post-wand-routing values).
+        func shadowCtx(_ id: String, _ p: String, _ fanOut: Int) -> MissionRemoteAuthorizationShadow.ShadowContext {
+            Self.makeShadowContext(
+                fields: .init(
+                    requestedRuntime: data["requestedRuntime"] as? String, requestedModelID: data["requestedModelID"] as? String,
+                    commandsAllowed: data["commandsAllowed"] as? Bool, fileEditsAllowed: data["fileEditsAllowed"] as? Bool,
+                    originDeviceID: data["originDeviceID"] as? String, createdBy: data["createdBy"] as? String,
+                    originPlatform: data["originPlatform"] as? String, source: data["source"] as? String,
+                    personaScopeJSON: data["personaScopeJSON"] as? String, approvalMode: data["approvalMode"] as? String,
+                    approvalStatus: data["approvalStatus"] as? String, approverDeviceID: data["approverDeviceID"] as? String,
+                    entitlementTier: data["entitlementTier"] as? String, workingDirectory: CLIAgentMissionRuntimePlanner.workingDirectoryPath(from: data)
+                ),
+                missionID: id, prompt: p, fanOutCount: fanOut
+            )
+        }
         let missionGroupContext: MissionGroupClaimContext?
         do {
             missionGroupContext = try await validateMissionGroupClaimIfNeeded(
-                data: data,
-                uid: uid,
-                requestID: document.documentID
-            )
+                data: data, uid: uid, requestID: document.documentID)
         } catch {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
+            // cov:ignore-start -- live Firestore mission-listener denial telemetry; reducer behavior is unit-tested.
+            MissionRemoteAuthorizationShadow.observeDeny(
+                ctx: shadowCtx(document.documentID, "", 1), executorTrustState: "trusted")
+            // cov:ignore-end
             await fail(document: document, message: error.localizedDescription)
             return
         }
@@ -267,6 +311,10 @@ extension CLIAgentMissionRequestListener {
         )
         guard trustResult.isTrusted else {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused for untrusted Mac device=\(self.accountManager.deviceId, privacy: .public)")
+            // cov:ignore-start -- live Firestore mission-listener denial telemetry; reducer behavior is unit-tested.
+            MissionRemoteAuthorizationShadow.observeDeny(
+                ctx: shadowCtx(document.documentID, prompt, missionGroupContext?.siblingCount ?? 1), executorTrustState: "untrusted")
+            // cov:ignore-end
             return
         }
 
@@ -296,8 +344,26 @@ extension CLIAgentMissionRequestListener {
             await fail(document: document, message: error.localizedDescription)
             return
         }
-        if await shouldPauseForApproval(document: document, data: data, backend: backend) {
+        let localApprovalDecision = approvalDecision(data: data, backend: backend)
+        let ctx = shadowCtx(document.documentID, prompt, missionGroupContext?.siblingCount ?? 1)
+        let personaMalformed: Bool = { if case .refused = CLIAgentMissionPersonaScopeResolution.resolve(from: data) { return true }; return false }()
+        let outcome = await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+            ctx: ctx, isTerminalDenial: localApprovalDecision.isTerminalDenial,
+            personaScopeMalformed: personaMalformed, willPauseForApproval: localApprovalDecision.willPauseForApproval)
+        switch outcome {
+        case .proceed: break
+        case .authorized(let response):
+            guard let grantCeiling = response.grantCeiling else {
+                await fail(document: document, message: "The Mac daemon returned an authorized mission without a capability ceiling, so the mission was rejected. Re-send the mission from your device.")
+                return
+            }
+            data["commandsAllowed"] = ((data["commandsAllowed"] as? Bool) ?? false) && grantCeiling.commandsAllowed
+            data["fileEditsAllowed"] = ((data["fileEditsAllowed"] as? Bool) ?? false) && grantCeiling.fileEditsAllowed
+            // Backend routing remains owned by the existing launch planner.
+        case .pauseForApproval:
+            await applyApprovalDecision(localApprovalDecision, document: document, data: data, backend: backend)
             return
+        case .deny(let message): await fail(document: document, message: message); return
         }
 
         if cancellationTracker.isCancelled {

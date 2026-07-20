@@ -47,6 +47,7 @@ public sealed class SwitcherProfileRowViewModel
         // Account-change is offered for browser profiles and Codex/Claude CLI profiles.
         CanChangeAccount = profile.TargetKind == SwitcherProfileTargetKind.Browser
             || profile.CliType is SwitcherCLIProfileType.Codex or SwitcherCLIProfileType.Claude;
+        CanLaunchShell = profile.TargetKind == SwitcherProfileTargetKind.Cli && !profile.IsDisabled;
     }
 
     public SwitcherProfileRecord Profile { get; }
@@ -88,6 +89,8 @@ public sealed class SwitcherProfileRowViewModel
     public bool CanToggleDisabled { get; }
 
     public bool CanChangeAccount { get; }
+
+    public bool CanLaunchShell { get; }
 
     /// <summary>Build every row for a group in order, with active + clock injected.</summary>
     public static System.Collections.Generic.IReadOnlyList<SwitcherProfileRowViewModel> ForGroup(

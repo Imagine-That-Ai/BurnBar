@@ -1,0 +1,778 @@
+"""Regression + adversarial tests for the domain-core trusted deletion guard non-deletion bypass.
+
+Context
+-------
+PR #1805 merged a trusted ``pull_request_target`` deletion guard that checks out the
+PR *base* SHA as trusted default-branch code and the PR *head* SHA as candidate data,
+then runs ``scripts/ci/verify-domain-core-legacy-deletion.py`` with
+``--base-ref <base.sha>`` against the candidate tree.
+
+The guard calls ``require_commit(repo_root, base_ref, "base ref")`` which runs
+``git merge-base --is-ancestor <base_ref> HEAD`` *inside the candidate checkout*. When
+the current default branch has advanced past the commit an ordinary PR branched from,
+``base_ref`` (current main) is **not** an ancestor of the candidate ``HEAD`` (the PR
+branch tip). For any PR that touches none of the ledger-covered deletion surfaces that
+is a false failure: the gate aborts with
+``base ref: commit must exist and be an ancestor of HEAD`` before it ever classifies the
+PR as non-deletion.
+
+These tests lock the contract that a behind-base **non-deletion** PR passes, while a
+behind-base candidate that removes or weakens any ledger-covered legacy target, rollback
+control, policy, workflow, reviewer catalog, immutable ledger artifact, or the guard
+itself **cannot** claim non-deletion and remains fail-closed.
+
+The classification is performed by trusted default-branch code (the verifier script).
+Candidate code cannot declare itself non-deletion — a candidate that touches the guard
+workflow or the verifier script itself is deletion-sensitive regardless of ancestry.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_gate():
+    path = ROOT / "scripts/ci/verify-domain-core-legacy-deletion.py"
+    spec = importlib.util.spec_from_file_location("trusted_deletion_non_deletion_bypass_gate", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+GATE = _load_gate()
+
+LEDGER_PATH = Path("config/domain-core-legacy-deletion.json")
+REVIEWERS_PATH = Path("config/domain-core-deletion-reviewers.json")
+GUARD_WORKFLOW = Path(".github/workflows/domain-core-deletion-guard.yml")
+VERIFIER_SCRIPT = Path("scripts/ci/verify-domain-core-legacy-deletion.py")
+IMMUTABLE_ROOTS = (
+    Path("config/domain-core-legacy-deletion-receipts"),
+    Path("config/domain-core-promotion-attestations"),
+    Path("config/domain-core-promotion-bundles"),
+    Path("config/domain-core-promotion-provenance"),
+    Path("config/domain-core-release-provenance"),
+    Path("config/domain-core-deletion-plans"),
+)
+
+GOVERNED_ROOTS = (
+    Path("crates/openburnbar-domain-core"),
+    Path("OpenBurnBarCore/Sources/OpenBurnBarDomainCoreRuntime"),
+)
+
+
+def _git(repository: Path, *arguments: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repository), *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _commit(repository: Path, message: str) -> str:
+    _git(repository, "add", ".")
+    _git(repository, "commit", "-m", message)
+    return _git(repository, "rev-parse", "HEAD")
+
+
+def _is_ancestor(repository: Path, ancestor: str, descendant: str) -> bool:
+    return (
+        subprocess.run(
+            ["git", "-C", str(repository), "merge-base", "--is-ancestor", ancestor, descendant],
+            check=False,
+            capture_output=True,
+        ).returncode
+        == 0
+    )
+
+
+def _write(repository: Path, relative: Path, contents: str) -> None:
+    target = repository / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(contents)
+
+
+def _remove(repository: Path, relative: Path) -> None:
+    (repository / relative).unlink()
+
+
+def _repository(tmp_path: Path) -> Path:
+    """A fresh candidate repository with a single bootstrap commit on ``main``."""
+    repository = tmp_path / "candidate"
+    repository.mkdir()
+    _git(repository, "init", "--initial-branch=main")
+    _git(repository, "config", "user.name", "Domain Core Test")
+    _git(repository, "config", "user.email", "domain-core@example.invalid")
+    _write(repository, Path("README.md"), "bootstrap\n")
+    _commit(repository, "bootstrap")
+    return repository
+
+
+def _behind_base_topology(tmp_path: Path, *, branch_commit: str) -> tuple[Path, str, str, str]:
+    """Build the false-failure topology from run 29452164288 / job 87477014759.
+
+    Returns ``(repository, older_main, branch_head, current_base)`` where:
+
+    * ``older_main`` is the commit an ordinary PR branched from (ancestor of the head).
+    * ``branch_head`` is the PR head — a descendant of ``older_main`` but **not** of
+      ``current_base``.
+    * ``current_base`` is the advanced default branch (= ``base.sha`` for the PR) and is
+      **not** an ancestor of ``branch_head``.
+
+    The worktree is left checked out at ``branch_head`` to mirror the candidate
+    checkout at ``head.sha``.
+    """
+    repository = _repository(tmp_path)
+    older_main = _git(repository, "rev-parse", "HEAD")
+
+    _git(repository, "checkout", "-b", "feature")
+    _write(repository, Path("mobile-qa.txt"), "ordinary mobile QA change\n")
+    _commit(repository, branch_commit)
+    branch_head = _git(repository, "rev-parse", "HEAD")
+
+    _git(repository, "checkout", "main")
+    _write(repository, Path("main-advance.txt"), "default branch advanced\n")
+    _commit(repository, "default branch advanced past the PR branch point")
+    current_base = _git(repository, "rev-parse", "HEAD")
+
+    _git(repository, "checkout", branch_head)
+
+    assert _is_ancestor(repository, older_main, branch_head)
+    assert not _is_ancestor(repository, current_base, branch_head)
+    return repository, older_main, branch_head, current_base
+
+
+def _bootstrap_ledger() -> dict[str, Any]:
+    return {
+        "schemaVersion": 2,
+        "sourceRoots": {"rust": "crates/openburnbar-domain-core"},
+        "rows": [
+            {
+                "id": row_id,
+                "state": "rollout",
+                "authorityGeneration": 0,
+                "receipts": {},
+                "targets": [
+                    {
+                        "kind": "source_symbol",
+                        "role": "legacy_implementation",
+                        "root": "rust",
+                        "path": f"crates/openburnbar-domain-core/src/legacy/{row_id}.rs",
+                        "symbol": "legacy_entry",
+                    }
+                ],
+            }
+            for row_id in GATE.ROW_IDS
+        ],
+        "sharedTargets": [
+            {
+                "rowIds": ["hermes.relay_crypto", "hermes.ratchet_transforms"],
+                "target": {
+                    "kind": "mode_literal",
+                    "role": "rollback_control",
+                    "root": "rust",
+                    "path": "crates/openburnbar-domain-core/src/legacy/hermes_rollback.rs",
+                    "literal": "HERMES_ROLLBACK_GUARD",
+                },
+            }
+        ],
+    }
+
+
+def _materialize_ledger_tree(repository: Path, ledger: dict[str, Any]) -> None:
+    """Write the ledger plus every source root/target path it references so the gate can read them."""
+    _write(repository, LEDGER_PATH, json.dumps(ledger, separators=(",", ":")))
+    for root_path in set(ledger["sourceRoots"].values()):
+        root_dir = repository / Path(root_path)
+        root_dir.mkdir(parents=True, exist_ok=True)
+    for row in ledger["rows"]:
+        for target in row["targets"]:
+            _write(repository, Path(target["path"]), f"// legacy {target['symbol']}\n")
+    for shared in ledger["sharedTargets"]:
+        target = shared["target"]
+        _write(repository, Path(target["path"]), f"// {target['literal']} = true\n")
+
+
+def _governed_ledger(*, deleted: bool) -> dict[str, Any]:
+    """Build a trusted inventory whose two source roots each own legacy rows."""
+    ledger = _bootstrap_ledger()
+    ledger["sourceRoots"] = {
+        "rust": GOVERNED_ROOTS[0].as_posix(),
+        "swift": GOVERNED_ROOTS[1].as_posix(),
+    }
+    for index, row in enumerate(ledger["rows"]):
+        root_id = "rust" if index % 2 == 0 else "swift"
+        root = Path(ledger["sourceRoots"][root_id])
+        row["state"] = "legacy_deleted" if deleted else "rollout"
+        row["targets"][0]["root"] = root_id
+        row["targets"][0]["path"] = (root / "legacy" / f"{row['id']}.legacy").as_posix()
+    ledger["sharedTargets"][0]["target"]["path"] = (
+        GOVERNED_ROOTS[0] / "legacy" / "hermes_rollback.legacy"
+    ).as_posix()
+    return ledger
+
+
+def _governed_repository(tmp_path: Path, *, deleted: bool) -> tuple[Path, str, dict[str, Any]]:
+    repository = _repository(tmp_path)
+    ledger = _governed_ledger(deleted=deleted)
+    _write(repository, LEDGER_PATH, json.dumps(ledger, separators=(",", ":")))
+    for index, root in enumerate(GOVERNED_ROOTS):
+        _write(repository, root / "retained" / "current-authority.keep", f"authority {index}\n")
+    _write(repository, Path("ordinary/source.keep"), "ordinary source\n")
+    base = _commit(repository, "seed governed deletion roots")
+    _git(repository, "checkout", "-b", "feature")
+    return repository, base, ledger
+
+
+def _assert_deleted_root_rejection(repository: Path, base: str, governed_path: Path) -> None:
+    with pytest.raises(GATE.GateError, match="post-deletion governed legacy roots are immutable") as error:
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=base)
+    assert governed_path.as_posix() in str(error.value)
+
+
+# ---------------------------------------------------------------------------
+# Regression: the false failure on an ordinary non-deletion PR.
+# ---------------------------------------------------------------------------
+
+
+class TestNonDeletionBehindBaseBypass:
+    """A behind-base PR that touches none of the deletion-covered surfaces must pass."""
+
+    def test_ordinary_non_deletion_pr_passes_when_base_is_not_ancestor_of_head(self, tmp_path: Path) -> None:
+        repository, _older_main, branch_head, current_base = _behind_base_topology(
+            tmp_path, branch_commit="ordinary mobile QA PR"
+        )
+
+        # The reproduced production topology: current base is NOT an ancestor of the head.
+        assert not _is_ancestor(repository, current_base, branch_head)
+
+        # On unmodified main this raises "base ref: commit must exist and be an ancestor of
+        # HEAD" before classifying the PR as non-deletion — a false failure.
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
+
+    def test_control_non_deletion_pr_passes_when_base_is_ancestor_of_head(self, tmp_path: Path) -> None:
+        """When the base IS an ancestor of head, a non-deletion PR must also pass (no regression)."""
+        repository = _repository(tmp_path)
+        base = _git(repository, "rev-parse", "HEAD")
+
+        _git(repository, "checkout", "-b", "feature")
+        _write(repository, Path("docs/notes.md"), "ordinary doc change\n")
+        _commit(repository, "ordinary doc PR")
+        branch_head = _git(repository, "rev-parse", "HEAD")
+
+        assert _is_ancestor(repository, base, branch_head)
+
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=base)
+
+
+def _assert_malformed_trusted_base_fails_closed(
+    tmp_path: Path,
+    ledger: dict[str, Any],
+    *,
+    message: str,
+) -> None:
+    repository = _repository(tmp_path)
+
+    _git(repository, "checkout", "-b", "feature")
+    _write(repository, Path("docs/notes.md"), "ordinary doc change\n")
+    _commit(repository, "ordinary doc PR")
+    branch_head = _git(repository, "rev-parse", "HEAD")
+
+    _git(repository, "checkout", "main")
+    _write(
+        repository,
+        LEDGER_PATH,
+        json.dumps(ledger),
+    )
+    current_base = _commit(repository, "malformed trusted deletion inventory")
+    _git(repository, "checkout", branch_head)
+
+    assert not _is_ancestor(repository, current_base, branch_head)
+    with pytest.raises(GATE.GateError, match=message):
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
+
+
+def test_malformed_trusted_base_ledger_fails_closed(tmp_path: Path) -> None:
+    """Invalid trusted inventory must not erase sensitive targets from classification."""
+    _assert_malformed_trusted_base_fails_closed(
+        tmp_path,
+        {"schemaVersion": 2, "rows": "invalid", "sharedTargets": []},
+        message="base manifest rows",
+    )
+
+
+@pytest.mark.parametrize("invalid_rows", [[], None])
+def test_incomplete_trusted_row_set_fails_closed(tmp_path: Path, invalid_rows: Any) -> None:
+    ledger = _bootstrap_ledger()
+    ledger["rows"] = invalid_rows
+    _assert_malformed_trusted_base_fails_closed(
+        tmp_path,
+        ledger,
+        message="base manifest rows",
+    )
+
+
+@pytest.mark.parametrize("invalid_path", [None, "", 7, "../outside"])
+def test_malformed_trusted_target_path_fails_closed(tmp_path: Path, invalid_path: Any) -> None:
+    ledger = _bootstrap_ledger()
+    ledger["rows"][0]["targets"][0]["path"] = invalid_path
+    _assert_malformed_trusted_base_fails_closed(
+        tmp_path,
+        ledger,
+        message="base manifest target.path",
+    )
+
+
+@pytest.mark.parametrize("invalid_path", [None, "", 7, "../outside"])
+def test_malformed_trusted_shared_target_path_fails_closed(tmp_path: Path, invalid_path: Any) -> None:
+    ledger = _bootstrap_ledger()
+    ledger["sharedTargets"][0]["target"]["path"] = invalid_path
+    _assert_malformed_trusted_base_fails_closed(
+        tmp_path,
+        ledger,
+        message="base manifest sharedTarget.target.path",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Adversarial: a behind-base candidate that touches a deletion-covered surface
+# cannot claim non-deletion and stays fail-closed.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "label, prepare",
+    [
+        (
+            "removes-the-legacy-deletion-ledger",
+            lambda repo, older: _remove(repo, LEDGER_PATH),
+        ),
+        (
+            "removes-an-immutable-receipt-artifact",
+            lambda repo, older: _remove(repo, IMMUTABLE_ROOTS[0] / "quota.claude_statusline" / "0" / "promotion.json"),
+        ),
+        (
+            "weakens-the-deletion-reviewer-catalog",
+            lambda repo, older: _write(
+                repo,
+                REVIEWERS_PATH,
+                json.dumps({"schemaVersion": 1, "reviewers": []}),
+            ),
+        ),
+        (
+            "weakens-the-deletion-guard-workflow",
+            lambda repo, older: _write(repo, GUARD_WORKFLOW, "name: weakened guard\n"),
+        ),
+        (
+            "weakens-the-verifier-script-itself",
+            lambda repo, older: _write(repo, VERIFIER_SCRIPT, "# gutted verifier\n"),
+        ),
+        (
+            "removes-a-ledger-covered-legacy-target",
+            lambda repo, older: _remove(repo, Path("crates/openburnbar-domain-core/src/legacy/quota.claude_statusline.rs")),
+        ),
+        (
+            "weakens-a-rollback-control",
+            lambda repo, older: _write(
+                repo,
+                Path("crates/openburnbar-domain-core/src/legacy/hermes_rollback.rs"),
+                "// rollback guard removed\n",
+            ),
+        ),
+    ],
+)
+class TestBehindBaseDeletionCandidateStaysFailClosed:
+    """Each sensitive-surface touch must fail closed even when base is not an ancestor of head."""
+
+    def test_behind_base_candidate_cannot_bypass(
+        self, tmp_path: Path, label: str, prepare
+    ) -> None:
+        # Start from the false-failure topology, but seed deletion-covered surfaces on the
+        # older main so the candidate has something real to remove/weaken.
+        repository = _repository(tmp_path)
+        _materialize_ledger_tree(repository, _bootstrap_ledger())
+        # Seed an immutable receipt artifact + a reviewer catalog the candidate can attack.
+        _write(
+            repository,
+            IMMUTABLE_ROOTS[0] / "quota.claude_statusline" / "0" / "promotion.json",
+            json.dumps({"immutable": True}),
+        )
+        _write(
+            repository,
+            REVIEWERS_PATH,
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "reviewers": [
+                        {
+                            "handle": "@domain-owner",
+                            "reviewClasses": ["domain_owner"],
+                        },
+                        {
+                            "handle": "@crypto-security",
+                            "reviewClasses": ["security_crypto"],
+                        },
+                    ],
+                }
+            ),
+        )
+        older_main = _commit(repository, "seed deletion-covered surfaces")
+
+        # Branch from the seeded older main and apply the sensitive-surface change.
+        _git(repository, "checkout", "-b", "feature")
+        prepare(repository, older_main)
+        _commit(repository, f"candidate: {label}")
+        branch_head = _git(repository, "rev-parse", "HEAD")
+
+        # Main advances past the branch point → current base is not an ancestor of head.
+        _git(repository, "checkout", "main")
+        _write(repository, Path("main-advance.txt"), "default branch advanced\n")
+        _commit(repository, "default branch advanced past the PR branch point")
+        current_base = _git(repository, "rev-parse", "HEAD")
+        _git(repository, "checkout", branch_head)
+
+        assert not _is_ancestor(repository, current_base, branch_head)
+
+        with pytest.raises(GATE.GateError):
+            GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
+
+
+def test_candidate_that_adds_the_ledger_is_deletion_sensitive(tmp_path: Path) -> None:
+    """A behind-base candidate that bootstraps the ledger touches a deletion-covered surface."""
+    repository, _older_main, branch_head, current_base = _behind_base_topology(
+        tmp_path, branch_commit="ordinary change"
+    )
+    # The branch introduces the ledger where none existed on the older main.
+    _materialize_ledger_tree(repository, _bootstrap_ledger())
+    _git(repository, "add", ".")
+    _git(repository, "commit", "--amend", "--no-edit")
+    branch_head = _git(repository, "rev-parse", "HEAD")
+    assert not _is_ancestor(repository, current_base, branch_head)
+
+    # Adding the ledger is deletion-sensitive: the gate must not bypass it silently. It
+    # will attempt full validation of the bootstrap ledger; we only assert it does not
+    # claim a free non-deletion pass. A bootstrap that fails validation stays fail-closed.
+    with pytest.raises(GATE.GateError):
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
+
+
+# ---------------------------------------------------------------------------
+# Sanity: the classifier lives in trusted code, not candidate code.
+# ---------------------------------------------------------------------------
+
+
+def test_self_declaration_is_not_trusted(tmp_path: Path) -> None:
+    """A candidate that edits the verifier to force a non-deletion classification is itself sensitive.
+
+    The guard runs trusted default-branch code (``verify-domain-core-legacy-deletion.py``
+    checked out at ``base.sha``). A candidate that weakens the verifier script cannot
+    declare its own diff non-deletion: touching the verifier is a deletion-covered
+    surface, so the gate must stay fail-closed regardless of ancestry.
+    """
+    repository = _repository(tmp_path)
+    _write(repository, VERIFIER_SCRIPT, "# original verifier\n")
+    older_main = _commit(repository, "seed verifier")
+
+    _git(repository, "checkout", "-b", "feature")
+    # Candidate attempts to neuter the verifier (a deletion-covered surface).
+    _write(repository, VERIFIER_SCRIPT, "print('non-deletion')\n")
+    _commit(repository, "candidate weakens verifier to self-declare non-deletion")
+    branch_head = _git(repository, "rev-parse", "HEAD")
+
+    _git(repository, "checkout", "main")
+    _write(repository, Path("main-advance.txt"), "default branch advanced\n")
+    _commit(repository, "default branch advanced")
+    current_base = _git(repository, "rev-parse", "HEAD")
+    _git(repository, "checkout", branch_head)
+
+    assert not _is_ancestor(repository, current_base, branch_head)
+
+    with pytest.raises(GATE.GateError):
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
+
+
+# ---------------------------------------------------------------------------
+# Adversarial: a rename of a sensitive path to an ordinary name must stay
+# fail-closed. With --no-renames the classifier sees the old path as Deleted,
+# so the sensitive source is detected regardless of the new destination.
+# ---------------------------------------------------------------------------
+
+
+def test_rename_sensitive_ledger_target_to_ordinary_name_stays_fail_closed(tmp_path: Path) -> None:
+    """Renaming a ledger-covered legacy target to ordinary.txt is deletion-sensitive."""
+    repository = _repository(tmp_path)
+    _materialize_ledger_tree(repository, _bootstrap_ledger())
+    _write(
+        repository,
+        REVIEWERS_PATH,
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "reviewers": [
+                    {"handle": "@domain-owner", "reviewClasses": ["domain_owner"]},
+                    {"handle": "@crypto-security", "reviewClasses": ["security_crypto"]},
+                ],
+            }
+        ),
+    )
+    older_main = _commit(repository, "seed deletion-covered surfaces")
+
+    _git(repository, "checkout", "-b", "feature")
+    sensitive_target = Path("crates/openburnbar-domain-core/src/legacy/quota.claude_statusline.rs")
+    ordinary_dest = Path("crates/openburnbar-domain-core/src/legacy/ordinary.txt")
+    _git(repository, "mv", str(sensitive_target), str(ordinary_dest))
+    _commit(repository, "rename sensitive target to ordinary name")
+    branch_head = _git(repository, "rev-parse", "HEAD")
+
+    _git(repository, "checkout", "main")
+    _write(repository, Path("main-advance.txt"), "default branch advanced\n")
+    _commit(repository, "default branch advanced")
+    current_base = _git(repository, "rev-parse", "HEAD")
+    _git(repository, "checkout", branch_head)
+
+    assert not _is_ancestor(repository, current_base, branch_head)
+
+    with pytest.raises(GATE.GateError):
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
+
+
+def test_rename_immutable_artifact_to_ordinary_name_stays_fail_closed(tmp_path: Path) -> None:
+    """Renaming an immutable receipt artifact to an ordinary path is deletion-sensitive."""
+    repository = _repository(tmp_path)
+    _materialize_ledger_tree(repository, _bootstrap_ledger())
+    immutable_artifact = IMMUTABLE_ROOTS[0] / "quota.claude_statusline" / "0" / "promotion.json"
+    _write(repository, immutable_artifact, json.dumps({"immutable": True}))
+    _write(
+        repository,
+        REVIEWERS_PATH,
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "reviewers": [
+                    {"handle": "@domain-owner", "reviewClasses": ["domain_owner"]},
+                    {"handle": "@crypto-security", "reviewClasses": ["security_crypto"]},
+                ],
+            }
+        ),
+    )
+    older_main = _commit(repository, "seed immutable artifact")
+
+    _git(repository, "checkout", "-b", "feature")
+    ordinary_dest = Path("config/ordinary.txt")
+    _git(repository, "mv", str(immutable_artifact), str(ordinary_dest))
+    _commit(repository, "rename immutable artifact to ordinary name")
+    branch_head = _git(repository, "rev-parse", "HEAD")
+
+    _git(repository, "checkout", "main")
+    _write(repository, Path("main-advance.txt"), "default branch advanced\n")
+    _commit(repository, "default branch advanced")
+    current_base = _git(repository, "rev-parse", "HEAD")
+    _git(repository, "checkout", branch_head)
+
+    assert not _is_ancestor(repository, current_base, branch_head)
+
+    with pytest.raises(GATE.GateError):
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)
+
+
+
+@pytest.mark.parametrize(
+    "root,new_path",
+    [
+        (GOVERNED_ROOTS[0], Path("nested/revival/undeclared.adapter.ktx")),
+        (GOVERNED_ROOTS[1], Path("nested/revival/undeclared.bridge.swiftinterface")),
+    ],
+    ids=("rust-root", "swift-root"),
+)
+def test_deleted_governed_roots_reject_uninventoried_nested_extensions(
+    tmp_path: Path, root: Path, new_path: Path
+) -> None:
+    """A deleted root cannot hide new legacy code behind an unlisted nested extension."""
+    repository, base, _ledger = _governed_repository(tmp_path, deleted=True)
+    candidate_path = root / new_path
+    _write(repository, candidate_path, "reintroduced implementation\n")
+    _commit(repository, "add uninventoried nested implementation")
+
+    inventory = GATE._deletion_sensitivity_inventory(repository, base)
+    assert candidate_path.as_posix() not in inventory.target_paths
+    _assert_deleted_root_rejection(repository, base, candidate_path)
+
+
+@pytest.mark.parametrize("operation", ("modified", "reintroduced"))
+def test_deleted_governed_root_rejects_modified_and_reintroduced_paths(
+    tmp_path: Path, operation: str
+) -> None:
+    """A deleted root rejects edits to retained files and restoration of an absent target."""
+    repository, base, ledger = _governed_repository(tmp_path, deleted=True)
+    if operation == "modified":
+        governed_path = GOVERNED_ROOTS[0] / "retained/current-authority.keep"
+        _write(repository, governed_path, "modified authority\n")
+    else:
+        governed_path = Path(ledger["rows"][0]["targets"][0]["path"])
+        assert not (repository / governed_path).exists()
+        _write(repository, governed_path, "restored legacy implementation\n")
+    _commit(repository, f"{operation} path under deleted root")
+
+    _assert_deleted_root_rejection(repository, base, governed_path)
+
+
+@pytest.mark.parametrize("direction", ("from-governed-root", "into-governed-root"))
+def test_deleted_governed_root_rejects_either_side_of_a_rename(
+    tmp_path: Path, direction: str
+) -> None:
+    """Rename classification retains both names, so neither direction escapes a deleted root."""
+    repository, base, _ledger = _governed_repository(tmp_path, deleted=True)
+    inside = GOVERNED_ROOTS[0] / "retained/current-authority.keep"
+    outside = Path("ordinary/source.keep")
+    destination = Path("ordinary/renamed.keep") if direction == "from-governed-root" else (
+        GOVERNED_ROOTS[0] / "retained/renamed.keep"
+    )
+    source = inside if direction == "from-governed-root" else outside
+    _git(repository, "mv", source.as_posix(), destination.as_posix())
+    _commit(repository, f"rename {direction}")
+
+    changed_paths = GATE._candidate_changed_paths(repository, base)
+    assert {source.as_posix(), destination.as_posix()} <= changed_paths
+    governed_path = source if direction == "from-governed-root" else destination
+    _assert_deleted_root_rejection(repository, base, governed_path)
+
+
+@pytest.mark.parametrize("direction", ("from-governed-root", "into-governed-root"))
+def test_deleted_governed_root_rejects_either_side_of_a_copy(
+    tmp_path: Path, direction: str
+) -> None:
+    """Copy classification retains source and destination so code cannot escape a deleted root."""
+    repository, base, _ledger = _governed_repository(tmp_path, deleted=True)
+    inside = GOVERNED_ROOTS[0] / "retained/current-authority.keep"
+    outside = Path("ordinary/source.keep")
+    destination = Path("ordinary/copied.keep") if direction == "from-governed-root" else (
+        GOVERNED_ROOTS[0] / "retained/copied.keep"
+    )
+    source = inside if direction == "from-governed-root" else outside
+    shutil.copyfile(repository / source, repository / destination)
+    _commit(repository, f"copy {direction}")
+
+    changed_paths = GATE._candidate_changed_paths(repository, base)
+    assert {source.as_posix(), destination.as_posix()} <= changed_paths
+    governed_path = source if direction == "from-governed-root" else destination
+    _assert_deleted_root_rejection(repository, base, governed_path)
+
+
+def test_deleted_governed_roots_leave_unrelated_paths_non_sensitive(tmp_path: Path) -> None:
+    """A deleted-root ledger does not turn an ordinary path into a deletion-sensitive change."""
+    repository, base, _ledger = _governed_repository(tmp_path, deleted=True)
+    _write(repository, Path("ordinary/source.keep"), "unrelated edit\n")
+    _commit(repository, "edit outside governed roots")
+
+    assert not GATE.classify_deletion_sensitivity(repository, base)
+    GATE.run_gate(repository, LEDGER_PATH, base_ref=base)
+
+
+def test_pre_deletion_root_changes_remain_sensitive_without_becoming_immutable(tmp_path: Path) -> None:
+    """Before legacy_deleted, root changes still receive full validation rather than the deletion ban."""
+    repository, base, _ledger = _governed_repository(tmp_path, deleted=False)
+    governed_path = GOVERNED_ROOTS[0] / "retained/current-authority.keep"
+    _write(repository, governed_path, "pre-deletion edit\n")
+    _commit(repository, "edit active legacy root")
+
+    inventory = GATE._deletion_sensitivity_inventory(repository, base)
+    changed_paths = GATE._candidate_changed_paths(repository, base)
+    assert not inventory.deleted_legacy_roots
+    assert GATE.classify_deletion_sensitivity(
+        repository, base, inventory=inventory, changed_paths=changed_paths
+    )
+    GATE.verify_post_deletion_root_changes(
+        repository, base, inventory=inventory, changed_paths=changed_paths
+    )
+
+# ---------------------------------------------------------------------------
+# Regression for run 29470881643 / job 87533675580 (PR #1820):
+# ``verify_append_only_artifacts`` must use the fork point, not an ancestry gate.
+# ---------------------------------------------------------------------------
+
+
+def test_append_only_uses_fork_point_not_ancestry_gate(tmp_path: Path) -> None:
+    """The append-only artifact baseline is merge-base(base_ref, HEAD), not base_ref.
+
+    Reproduces the exact topology of PR #1820: the PR is rebased onto a newer main so
+    base.sha is NOT an ancestor of head. Before the fix,
+    ``verify_append_only_artifacts`` called ``require_commit(repo_root, base_ref)``
+    which ran ``git merge-base --is-ancestor base_ref HEAD`` and raised
+    ``base ref: commit must exist and be an ancestor of HEAD`` before any artifact
+    comparison — a false failure on a legitimate rebased deletion PR. After the fix,
+    the function computes ``merge-base(base_ref, HEAD)`` (the fork point, always an
+    ancestor of HEAD) and uses it as the append-only baseline.
+    """
+    repository, _older_main, branch_head, current_base = _behind_base_topology(
+        tmp_path, branch_commit="deletion-sensitive PR"
+    )
+    assert not _is_ancestor(repository, current_base, branch_head)
+
+    # Must not raise: the fork point (merge-base) is always an ancestor of HEAD, so the
+    # append-only baseline is valid even when base_ref itself is not an ancestor.
+    GATE.verify_append_only_artifacts(repository, base_ref=current_base)
+
+
+def test_append_only_fork_point_detects_rewritten_immutable_artifact(tmp_path: Path) -> None:
+    """The fork-point baseline still catches a candidate that rewrites an immutable artifact.
+
+    Seeds an immutable receipt at the fork point, then the candidate rewrites it. The
+    append-only check must fail closed — the fork-point fix does not weaken coverage.
+    """
+    repository = _repository(tmp_path)
+    immutable_artifact = IMMUTABLE_ROOTS[0] / "quota.claude_statusline" / "0" / "promotion.json"
+    _write(repository, immutable_artifact, json.dumps({"immutable": True}))
+    older_main = _commit(repository, "seed immutable artifact")
+
+    _git(repository, "checkout", "-b", "feature")
+    _write(repository, immutable_artifact, json.dumps({"immutable": False}))
+    _commit(repository, "candidate rewrites immutable artifact")
+    branch_head = _git(repository, "rev-parse", "HEAD")
+
+    _git(repository, "checkout", "main")
+    _write(repository, Path("main-advance.txt"), "default branch advanced\n")
+    _commit(repository, "default branch advanced")
+    current_base = _git(repository, "rev-parse", "HEAD")
+    _git(repository, "checkout", branch_head)
+
+    assert not _is_ancestor(repository, current_base, branch_head)
+
+    with pytest.raises(GATE.GateError, match="committed history cannot be rewritten"):
+        GATE.verify_append_only_artifacts(repository, base_ref=current_base)
+
+
+def test_behind_base_deletion_sensitive_without_ledger_fails_closed(tmp_path: Path) -> None:
+    """A rebased deletion-sensitive PR with no ledger cannot silently pass.
+
+    Locks the fail-closed contract added alongside the fork-point fix: when
+    ``classify_deletion_sensitivity`` returns True but no legacy deletion ledger
+    exists in the candidate (and none at base), the gate must fail closed rather
+    than silently returning — a deletion-sensitive change with no ledger anchor is
+    unverifiable.
+    """
+    repository, _older_main, branch_head, current_base = _behind_base_topology(
+        tmp_path, branch_commit="ordinary change"
+    )
+    # Touch the verifier script — always sensitive via SENSITIVE_EXACT_PATHS, so the
+    # classifier marks the PR deletion-sensitive regardless of any manifest at base.
+    _write(repository, VERIFIER_SCRIPT, "# weakened verifier\n")
+    _git(repository, "add", ".")
+    _git(repository, "commit", "--amend", "--no-edit")
+    branch_head = _git(repository, "rev-parse", "HEAD")
+    assert not _is_ancestor(repository, current_base, branch_head)
+
+    with pytest.raises(GATE.GateError, match="no legacy deletion ledger to anchor validation"):
+        GATE.run_gate(repository, LEDGER_PATH, base_ref=current_base)

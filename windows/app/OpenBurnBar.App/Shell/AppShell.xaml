@@ -14,10 +14,12 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    RequestedTheme="Dark">
+    FontFamily="{StaticResource AuroraBodyFont}"
+    SizeChanged="OnShellSizeChanged">
 
     <Grid Background="Transparent" RowSpacing="0">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
@@ -31,9 +33,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -41,88 +41,98 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Brand: AppLogo + wordmark (Linux DeckBrandMark) -->
-                <Button Grid.Column="0"
+                <Button x:Name="BrandButton"
+                        Grid.Column="0"
                         Click="Brand_Click"
                         Background="Transparent"
                         BorderThickness="0"
                         Padding="4,2"
                         VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="Shell.Brand"
+                        AutomationProperties.Name="OpenBurnBar dashboard"
                         ToolTipService.ToolTip="OpenBurnBar — Dashboard">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <components:AppLogoView Size="26" VerticalAlignment="Center" />
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="0">
+                        <StackPanel x:Name="BrandWordmark"
+                                    Orientation="Horizontal"
+                                    VerticalAlignment="Center"
+                                    Spacing="0">
                             <TextBlock Text="Open" FontSize="13" FontWeight="SemiBold"
-                                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                       Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                             <TextBlock Text="BurnBar" FontSize="13" FontWeight="SemiBold"
-                                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                       Foreground="{ThemeResource AuroraTextBrush}" />
                         </StackPanel>
                     </StackPanel>
                 </Button>
 
-                <!-- Section switcher -->
-                <Button x:Name="SectionSwitcher"
+                <!-- Omnibar: wide glass search pill (macOS BurnBarTopRail / Linux TopChrome) -->
+                <Button x:Name="PaletteButton"
                         Grid.Column="1"
-                        Style="{StaticResource LiquidGlassInteractiveStyle}"
-                        theme:LiquidGlass.Interactive="True"
-                        VerticalAlignment="Center"
-                        ToolTipService.ToolTip="Switch section">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon x:Name="SectionGlyph"
-                                  FontFamily="Segoe MDL2 Assets"
-                                  FontSize="12"
-                                  Glyph="&#xE80F;"
-                                  Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                        <TextBlock x:Name="SectionTitle"
-                                   Text="Dashboard"
-                                   FontSize="13"
-                                   FontWeight="SemiBold"
-                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                        <FontIcon FontFamily="Segoe MDL2 Assets"
-                                  FontSize="10"
-                                  Glyph="&#xE70D;"
-                                  Foreground="{StaticResource PensieveColorTextMuteBrush}" />
-                    </StackPanel>
-                    <Button.Flyout>
-                        <MenuFlyout x:Name="SectionMenu" Placement="Bottom" />
-                    </Button.Flyout>
-                </Button>
-
-                <!-- Ctrl+K -->
-                <Button Grid.Column="2"
                         Style="{StaticResource LiquidGlassInteractiveStyle}"
                         theme:LiquidGlass.Interactive="True"
                         Click="Palette_Click"
                         VerticalAlignment="Center"
+                        CornerRadius="999"
+                        MinWidth="220"
+                        MaxWidth="400"
+                        HorizontalContentAlignment="Stretch"
+                        AutomationProperties.AutomationId="Shell.CommandPalette"
+                        AutomationProperties.Name="Command palette"
                         ToolTipService.ToolTip="Command palette (Ctrl+K)">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="12" Glyph="&#xE721;"
-                                  Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                        <TextBlock Text="Ctrl K" FontSize="11" Opacity="0.65"
-                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
-                    </StackPanel>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0"
+                                  FontFamily="Segoe MDL2 Assets"
+                                  FontSize="12"
+                                  Glyph="&#xE721;"
+                                  Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
+                        <TextBlock x:Name="PaletteLabel"
+                                   Grid.Column="1"
+                                   Text="Search or jump to…"
+                                   FontSize="12"
+                                   Foreground="{ThemeResource AuroraTextMutedBrush}" />
+                        <Border x:Name="PaletteShortcut"
+                                Grid.Column="3"
+                                VerticalAlignment="Center"
+                                CornerRadius="4"
+                                Padding="6,2"
+                                Background="{ThemeResource AuroraGlassTintElevatedBrush}">
+                            <TextBlock Text="Ctrl K"
+                                       FontSize="10"
+                                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
+                        </Border>
+                    </Grid>
                 </Button>
 
-                <Border Grid.Column="3" />
+                <Border Grid.Column="2" />
 
                 <!-- Full 31-kernel switcher (Linux KernelSwitcher) -->
                 <shell:KernelSwitcherControl x:Name="KernelSwitcher"
-                                             Grid.Column="4"
+                                             Grid.Column="3"
                                              VerticalAlignment="Center" />
 
                 <!-- BURN hero -->
                 <shell:BurnHeroControl x:Name="BurnHero"
-                                       Grid.Column="5"
+                                       Grid.Column="4"
                                        VerticalAlignment="Center"
                                        Margin="4,0,0,0" />
 
                 <!-- Appearance -->
-                <Button Grid.Column="6"
+                <Button x:Name="AppearanceButton"
+                        Grid.Column="5"
                         Style="{StaticResource LiquidGlassCircleButtonStyle}"
                         theme:LiquidGlass.CircleButtonDiameter="30"
                         VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="Shell.Appearance"
+                        AutomationProperties.Name="Appearance"
                         ToolTipService.ToolTip="Appearance">
                     <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE771;"
-                              Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                              Foreground="{ThemeResource AuroraTextBrush}" />
                     <Button.Flyout>
                         <Flyout x:Name="AppearanceFlyout" Opening="AppearanceFlyout_Opening">
                             <theme:AppearanceModeControl x:Name="AppearanceControl" MinWidth="300" />
@@ -131,13 +141,16 @@
                 </Button>
 
                 <!-- Overflow -->
-                <Button Grid.Column="7"
+                <Button x:Name="OverflowButton"
+                        Grid.Column="6"
                         Style="{StaticResource LiquidGlassCircleButtonStyle}"
                         theme:LiquidGlass.CircleButtonDiameter="30"
                         VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="Shell.More"
+                        AutomationProperties.Name="More navigation and settings"
                         ToolTipService.ToolTip="More">
                     <FontIcon FontFamily="Segoe MDL2 Assets" FontSize="14" Glyph="&#xE712;"
-                              Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                              Foreground="{ThemeResource AuroraTextBrush}" />
                     <Button.Flyout>
                         <MenuFlyout x:Name="OverflowMenu" Placement="Bottom" />
                     </Button.Flyout>
@@ -145,8 +158,18 @@
             </Grid>
         </Border>
 
+        <!-- Linux TopTabbar: the 7-tab glass pill strip (chat/providers/database/projects/
+             missions/activity/memory). Tabs are built in code-behind from the NavCatalog. -->
+        <Border Grid.Row="1"
+                Style="{StaticResource LiquidGlassPillStyle}"
+                theme:LiquidGlass.Surface="True"
+                Margin="10,2,10,6"
+                Padding="3">
+            <Grid x:Name="TopTabsHost" ColumnSpacing="2" />
+        </Border>
+
         <Frame x:Name="ContentFrame"
-               Grid.Row="1"
-               Background="Transparent" />
+               Grid.Row="2"
+               Background="{ThemeResource AuroraCanvasBrush}" />
     </Grid>
 </UserControl>

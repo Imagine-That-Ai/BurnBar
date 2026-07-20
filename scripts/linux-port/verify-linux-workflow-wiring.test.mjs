@@ -56,7 +56,8 @@ function valid() {
       '          name: linux-pr-gate-evidence',
       '          path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/',
       '          include-hidden-files: true',
-      '          if-no-files-found: warn'
+      '          if-no-files-found: warn',
+      'npm run typecheck --prefix apps/linux-desktop'
     ].join('\n'),
     productParityWorkflow: [
       'id-token: write',
@@ -258,7 +259,8 @@ function valid() {
       '          name: linux-nightly-${{ matrix.label }}',
       '          path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/',
       '          include-hidden-files: true',
-      '          if-no-files-found: warn'
+      '          if-no-files-found: warn',
+      'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests'
     ].join('\n'),
     release: [
       '- "linux-v*"',
@@ -675,6 +677,12 @@ test('each Browser Computer Use package-family suite is independently required',
     assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
   }
 });
+
+test('hidden Linux evidence upload cannot be disabled', () => {
+  const input = valid();
+  input.pr = input.pr.replace('include-hidden-files: true', 'include-hidden-files: false');
+  assert.equal(verifyLinuxWorkflowWiring(input).passed, false);
+});
 test('attestation and publish order drift fails', () => {
   const input = valid();
   input.release = input.release.replace(
@@ -785,4 +793,34 @@ test('nightly macOS evidence upload retries once and fails closed without an art
     input.nightly = input.nightly.replace(marker, '');
     assert.equal(verifyLinuxWorkflowWiring(input).passed, false, marker);
   }
+});
+
+test('Linux Swift evidence must route through the host-mounted evidence tree', () => {
+  const marker = 'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests';
+  for (const field of ['pr', 'nightly']) {
+    const input = valid();
+    input[field] = input[field].replace(marker, '');
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, field);
+    assert.ok(result.failures.some((failure) => failure.includes('Linux Swift evidence routing')), field);
+  }
+});
+
+test('removing the TypeScript typecheck gate from the PR workflow fails', () => {
+  const input = valid();
+  input.pr = input.pr.replace('npm run typecheck --prefix apps/linux-desktop', '');
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.ok(result.failures.some((f) => f.includes('TypeScript typecheck gate')));
+});
+
+test('TypeScript typecheck gate may not continue on error', () => {
+  const input = valid();
+  input.pr = input.pr.replace(
+    'npm run typecheck --prefix apps/linux-desktop',
+    '- name: Linux desktop TypeScript typecheck\n        run: npm run typecheck --prefix apps/linux-desktop\n        continue-on-error: true'
+  );
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.ok(result.failures.some((f) => f.includes('typecheck gate may not continue on error')));
 });

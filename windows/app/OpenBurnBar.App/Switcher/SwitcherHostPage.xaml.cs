@@ -24,8 +24,9 @@ public sealed partial class SwitcherHostPage : Page
     {
         Loaded -= OnLoaded;
 
-        var viewModel = new SwitcherSettingsViewModel(WindowsStorageDevHost.CreateSwitcherProfileStore());
-        SwitcherView.SetModel(viewModel);
+        ISwitcherProfileStore store = WindowsStorageDevHost.CreateSwitcherProfileStore();
+        var viewModel = new SwitcherSettingsViewModel(store);
+        SwitcherView.SetModel(viewModel, store);
         viewModel.Load();
     }
 }

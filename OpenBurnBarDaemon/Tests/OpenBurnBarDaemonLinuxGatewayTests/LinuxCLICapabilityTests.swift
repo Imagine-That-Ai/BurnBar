@@ -1,5 +1,5 @@
 #if os(Linux)
-import OpenBurnBarCore
+import OpenBurnBarEngine
 @testable import OpenBurnBarDaemon
 import XCTest
 

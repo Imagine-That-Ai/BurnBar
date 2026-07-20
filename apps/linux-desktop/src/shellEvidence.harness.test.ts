@@ -259,7 +259,7 @@ describe('shell evidence harness', () => {
     };
     expect(tokenDiff.changed).toEqual(expect.arrayContaining(['--color-ink-void', '--color-brass-core']));
     expect(stateKinds).toEqual(
-      new Set(['daemon-backed', 'honest-empty', 'settings-failure', 'local-crud', 'pet-runtime'])
+      new Set(['daemon-backed', 'settings-failure', 'honest-empty', 'local-crud', 'pet-runtime'])
     );
     expect(reducedMotion.cssRulePresent).toBe(true);
 

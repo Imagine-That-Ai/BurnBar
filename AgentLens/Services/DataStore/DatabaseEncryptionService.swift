@@ -128,6 +128,42 @@ private final class DatabaseEncryptionKeychainClientBox: @unchecked Sendable {
     }
 }
 
+#if DEBUG
+// AUDIT(@unchecked Sendable): test injection state is guarded by `lock`;
+// sendable-allowlist: foundation-sdk-shim
+private final class OrphanSizeLookupBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: DatabaseEncryptionService.OrphanSizeLookup
+
+    init() {
+        current = { fileManager, path in
+            try fileManager.attributesOfItem(atPath: path)
+        }
+    }
+
+    func lookup(_ fileManager: FileManager, _ path: String) throws -> [FileAttributeKey: Any] {
+        lock.lock()
+        let fn = current
+        lock.unlock()
+        return try fn(fileManager, path)
+    }
+
+    func withLookup<T>(_ lookup: @escaping DatabaseEncryptionService.OrphanSizeLookup, _ body: () throws -> T) rethrows -> T {
+        let previous = swap(lookup)
+        defer { _ = swap(previous) }
+        return try body()
+    }
+
+    private func swap(_ fn: @escaping DatabaseEncryptionService.OrphanSizeLookup) -> DatabaseEncryptionService.OrphanSizeLookup {
+        lock.lock()
+        defer { lock.unlock() }
+        let previous = current
+        current = fn
+        return previous
+    }
+}
+#endif
+
 enum DatabaseEncryptionService {
     private static let service = "com.openburnbar.database-encryption"
     private static let keyIdentifierAccount = "database-encryption-key-v1"
@@ -404,6 +440,34 @@ enum DatabaseEncryptionService {
     }
 
     #if DEBUG
+    typealias OrphanSizeLookup = (_ fileManager: FileManager, _ path: String) throws -> [FileAttributeKey: Any]
+
+    private static let orphanSizeLookupBox = OrphanSizeLookupBox()
+
+    private static func orphanSizeLookup(_ fileManager: FileManager, _ path: String) throws -> [FileAttributeKey: Any] {
+        try orphanSizeLookupBox.lookup(fileManager, path)
+    }
+
+    /// Swaps the orphan size-lookup closure for the duration of `body`,
+    /// restoring the previous closure on exit. Mirrors
+    /// `withKeychainClientForTesting`. Used to exercise the fail-open catch
+    /// branch in `removeOrphanedMigrationArtifacts` deterministically.
+    static func withOrphanSizeLookupForTesting<T>(
+        _ lookup: @escaping OrphanSizeLookup,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        try orphanSizeLookupBox.withLookup(lookup, body)
+    }
+#else
+    private static func orphanSizeLookup(
+        _ fileManager: FileManager,
+        _ path: String
+    ) throws -> [FileAttributeKey: Any] {
+        try fileManager.attributesOfItem(atPath: path)
+    }
+    #endif
+
+    #if DEBUG
     static func withKeychainClientForTesting<T>(
         _ client: DatabaseEncryptionKeychainClient,
         _ body: () throws -> T
@@ -519,6 +583,7 @@ extension DatabaseEncryptionService {
     /// unless the encrypted replacement is complete.
     @discardableResult
     static func migratePlaintextDatabaseIfNeeded(at path: String, encryptionKey: String) throws -> Bool {
+        removeOrphanedMigrationArtifacts(forDatabaseAt: path)
         guard FileManager.default.fileExists(atPath: path) else { return false }
         guard isEncryptedDatabaseFile(at: path) == false else { return false }
         guard isCipherAvailable() else { throw DatabaseEncryptionError.cipherUnavailable }
@@ -600,6 +665,61 @@ extension DatabaseEncryptionService {
         } catch {
             removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: true)
             throw DatabaseEncryptionError.plaintextMigrationFailed(path: path, detail: "\(error)")
+        }
+    }
+
+    /// Deletes orphaned `<dbFileName>.sqlcipher-migrating-<UUID>` temp databases
+    /// (and their `-wal`/`-shm`/`-journal` sidecars, which share that prefix)
+    /// from the database's parent directory. The temp file is only valid DURING a
+    /// live `migratePlaintextDatabaseIfNeeded` call; when the process dies
+    /// mid-export (SIGKILL, force quit, shutdown) the catch-path cleanup never
+    /// runs and a multi-gigabyte orphan is stranded forever — a real machine
+    /// accumulated 9.4 GB of them. Anything matching the prefix at entry is
+    /// therefore dead and safe to remove; the live database and its own
+    /// `-wal`/`-shm` never match. Best-effort by design: failures are logged and
+    /// never interrupt startup or migration.
+    static func removeOrphanedMigrationArtifacts(forDatabaseAt path: String) {
+        let fileManager = FileManager.default
+        let databaseURL = URL(fileURLWithPath: path)
+        let databaseFileName = databaseURL.lastPathComponent
+        guard databaseFileName.isEmpty == false else { return }
+        let orphanPrefix = databaseFileName + ".sqlcipher-migrating-"
+        let directoryURL = databaseURL.deletingLastPathComponent()
+        let entries: [String]
+        do {
+            entries = try fileManager.contentsOfDirectory(atPath: directoryURL.path)
+        } catch {
+            AppLogger.dataStore.error(
+                "database_migration_orphan_enumeration_failed",
+                metadata: ["path": directoryURL.path, "error": "\(error)"]
+            )
+            return
+        }
+        for entry in entries where entry.hasPrefix(orphanPrefix) {
+            let orphanPath = directoryURL.appendingPathComponent(entry).path
+            let orphanBytes: Int64
+            do {
+                let attributes = try orphanSizeLookup(fileManager, orphanPath)
+                orphanBytes = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+            } catch {
+                AppLogger.dataStore.debug(
+                    "database_migration_orphan_size_unavailable",
+                    metadata: ["path": orphanPath, "error": "\(error)"]
+                )
+                orphanBytes = 0
+            }
+            do {
+                try fileManager.removeItem(atPath: orphanPath)
+                AppLogger.dataStore.notice(
+                    "database_migration_orphan_removed",
+                    metadata: ["path": orphanPath, "reclaimedBytes": "\(orphanBytes)"]
+                )
+            } catch {
+                AppLogger.dataStore.error(
+                    "database_migration_orphan_cleanup_failed",
+                    metadata: ["path": orphanPath, "error": "\(error)"]
+                )
+            }
         }
     }
 

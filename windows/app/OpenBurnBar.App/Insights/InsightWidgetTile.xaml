@@ -43,14 +43,14 @@
                            FontWeight="SemiBold"
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Foreground="{ThemeResource AuroraTextBrush}" />
                 <Border Grid.Column="2"
                         CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                        Background="#1FC7CFDD"
+                        Background="{ThemeResource AuroraGlassStrokeFrostBrush}"
                         Padding="6,1">
                     <TextBlock x:Name="KindChip"
                                FontSize="9"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </Border>
             </Grid>
 

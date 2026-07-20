@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.dev/schemas/domain-core-deletion-plan.schema.json",
+  "title": "OpenBurnBar Shared Rust Legacy Deletion Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "rowId",
+    "authorityGeneration",
+    "stableReceiptSha256",
+    "reviewer",
+    "reviewClass",
+    "legacyTargetsSha256",
+    "requestedAction"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "rowId": {
+      "type": "string",
+      "enum": [
+        "quota.claude_statusline",
+        "quota.codex_usage",
+        "quota.cursor_usage",
+        "quota.anthropic_headers",
+        "cloudvault.portable_primitives",
+        "cloudvault.document_rewrap",
+        "cloudvault.search",
+        "hermes.relay_crypto",
+        "hermes.ratchet_transforms",
+        "pricing.token_cost",
+        "pricing.kimi_historical"
+      ]
+    },
+    "authorityGeneration": { "type": "integer", "minimum": 1 },
+    "stableReceiptSha256": { "$ref": "#/$defs/digest" },
+    "reviewer": {
+      "type": "string",
+      "pattern": "^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+    },
+    "reviewClass": { "enum": ["domain_owner", "security_crypto"] },
+    "legacyTargetsSha256": { "$ref": "#/$defs/digest" },
+    "requestedAction": { "const": "approve_legacy_deletion" }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

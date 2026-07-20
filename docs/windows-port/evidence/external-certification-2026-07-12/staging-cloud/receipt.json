@@ -1,0 +1,75 @@
+{
+  "schema": "openburnbar.windows.external-certification.staging-cloud.v1",
+  "status": "PARTIAL",
+  "capturedAtUtc": "2026-07-12T06:34:43Z",
+  "source": {
+    "commitSha": "7287c9fb501b1f842ccbe8263c0122764a57f020"
+  },
+  "project": {
+    "id": "burnbar-staging",
+    "number": "1079930549647",
+    "firebaseEnabled": true,
+    "wifProviderConfigured": true,
+    "deployServiceAccountConfigured": true,
+    "githubEnvironmentSecretsConfigured": [
+      "STAGING_GCP_DEPLOY_SERVICE_ACCOUNT",
+      "STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER"
+    ],
+    "githubVariablesConfigured": [
+      "STAGING_FIREBASE_PROJECT"
+    ],
+    "stagingEnabled": false
+  },
+  "preflight": {
+    "workflowRunId": 29181481661,
+    "status": "success",
+    "result": "safe no-op confirmed before provisioning"
+  },
+  "blocker": {
+    "id": "EXT-STAGING-BILLING-PROJECT-QUOTA",
+    "owner": "Alberto",
+    "missing": "The imagine-that.ai Cloud Billing account rejected the staging project link because its project quota is exhausted.",
+    "recovery": "Increase the billing account project quota or explicitly authorize a different billing account, link burnbar-staging, then enable STAGING_ENABLED and run the live deploy/App Check/OAuth/CloudVault/TPM protocols."
+  },
+  "evidence": {
+    "files": [
+      {
+        "path": "staging-cloud/billing-state-error.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "staging-cloud/billing-state.json",
+        "sha256": "652370efa8b03c94144eadbebb340b530ed64c24c5ba8ca65786b7e148fb1640"
+      },
+      {
+        "path": "staging-cloud/dry-run-preflight.json",
+        "sha256": "4a09f3742191718ee7056ae82abe40eb5839ab7b56a41b97bf7c1fbc91e01cc3"
+      },
+      {
+        "path": "staging-cloud/firebase-project.json",
+        "sha256": "fd73084ef8518fdd28a69187c878fbce0a94679ce6f450976aa36e54d6e4c17d"
+      },
+      {
+        "path": "staging-cloud/gcp-project.json",
+        "sha256": "64b01b4a1d4db1e13db26714b4ac5f83f08ab47dbdcae1e79f60d44a85dc2f2d"
+      },
+      {
+        "path": "staging-cloud/github-environment-secret-names.txt",
+        "sha256": "32a50d6c7ba9b6644a3c8bf77b3bec48da27156ec18149987ef77e4739653f51"
+      },
+      {
+        "path": "staging-cloud/github-variable-names.txt",
+        "sha256": "439af24f2cfe78eaf0c25487bf9de4d9357f6b406b1b053d1564588b3d886925"
+      },
+      {
+        "path": "staging-cloud/wif-provider.json",
+        "sha256": "316837b286d1bdcd9adb697debf6b218a3775208402b363a8b393fe765f667c7"
+      }
+    ]
+  },
+  "boundaries": [
+    "No production Firebase/GCP resource was modified.",
+    "No STAGING_ENABLED variable was set while billing was unavailable.",
+    "OAuth, App Check enforcement, CloudVault live round trips, and physical TPM claims are not yet proven."
+  ]
+}

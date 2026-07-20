@@ -3,8 +3,9 @@
 // The appcast mirrors scripts/generate-macos-appcast.mjs: an RSS 2.0 channel
 // whose newest <item> carries <sparkle:shortVersionString>, <sparkle:version>,
 // <sparkle:minimumSystemVersion>, <sparkle:releaseNotesLink>, an optional
-// <sparkle:tags><sparkle:criticalUpdate/>, and an <enclosure> with url / length
-// / type / sparkle:edSignature (+ our sparkle:sha256 extension). It selects the
+// <sparkle:tags><sparkle:criticalUpdate/>, an optional <sparkle:channel>, and
+// an <enclosure> with url / length / type / sparkle:edSignature (+ our
+// sparkle:sha256 and sparkle:edDescriptorSignature extensions). It selects the
 // HIGHEST-versioned item (not merely the first) so a feed that lists several
 // releases still yields the newest candidate.
 //
@@ -119,6 +120,11 @@ public static class AppcastFeedReader
             .Descendants(Sparkle + "criticalUpdate")
             .Any();
 
+        // Sparkle channel semantics: a missing <sparkle:channel> means the
+        // default channel. The channel MUST round-trip because the descriptor
+        // signature binds it.
+        var channel = ((string?)item.Element(Sparkle + "channel"))?.Trim();
+
         return new UpdateManifest
         {
             Version = version!,
@@ -127,6 +133,9 @@ public static class AppcastFeedReader
             Length = length,
             Sha256 = ((string?)enclosure.Attribute(Sparkle + "sha256"))?.Trim(),
             EdSignatureBase64 = ((string?)enclosure.Attribute(Sparkle + "edSignature"))?.Trim(),
+            DescriptorSignatureBase64 =
+                ((string?)enclosure.Attribute(Sparkle + "edDescriptorSignature"))?.Trim(),
+            Channel = string.IsNullOrWhiteSpace(channel) ? AppcastFeedWriter.DefaultChannel : channel!,
             Critical = critical,
             MinimumSystemVersion = ((string?)item.Element(Sparkle + "minimumSystemVersion"))?.Trim(),
             ReleaseNotesUrl = ((string?)item.Element(Sparkle + "releaseNotesLink"))?.Trim(),

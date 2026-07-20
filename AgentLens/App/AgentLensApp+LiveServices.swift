@@ -25,6 +25,10 @@ extension OpenBurnBarApp {
         router.openDashboard = {
             openDashboard(context: context)
         }
+        router.openCharts = {
+            openDashboard(context: context)
+            navigationCoordinator.setDashboardRoute(.charts)
+        }
         router.openConversationSearch = {
             openDashboard(context: context)
             navigationCoordinator.openConversationSearch()
@@ -169,6 +173,9 @@ extension OpenBurnBarApp {
             context.aggregator = aggregator
             context.operatingLayer.aggregator = aggregator
             context.operatingLayer.chatController = context.chatController
+            StartupProfiler.interval("memory_watchdog_start") {
+                context.memoryFootprintWatchdog.start(aggregator: aggregator)
+            }
             StartupProfiler.interval("daemon_attach") {
                 context.daemonManager.attach(dataStore: context.dataStore, cloudSyncService: sync)
             }

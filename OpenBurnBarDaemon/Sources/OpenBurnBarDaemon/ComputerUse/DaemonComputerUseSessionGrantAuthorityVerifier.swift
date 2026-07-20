@@ -1,6 +1,6 @@
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Verifies a live phone-issued session grant before the broker accepts it.
 /// Transport identity is checked by the broker; this verifier owns the

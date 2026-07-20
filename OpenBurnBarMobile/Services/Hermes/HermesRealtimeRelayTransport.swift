@@ -225,7 +225,7 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
         let plaintext = try HermesRelayCrypto.openBase64(
             ciphertext: ciphertext,
             keyData: keyData,
-            aad: HermesRelayCrypto.chunkAAD(
+            aad: try HermesRelayCrypto.chunkAAD(
                 uid: uid,
                 connectionID: frame.connectionId,
                 requestID: requestID,

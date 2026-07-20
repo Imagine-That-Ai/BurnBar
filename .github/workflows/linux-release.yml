@@ -44,8 +44,22 @@ jobs:
       publish_allowed: ${{ steps.release-version.outputs.publish_allowed }}
       channel: ${{ steps.channel.outputs.value }}
       previous_version: ${{ steps.previous-version.outputs.version }}
+      candidate_commit: ${{ steps.domain-core-activation.outputs.candidate_commit }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify official Linux release history
+        run: |
+          set -euo pipefail
+          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          if [[ "$GITHUB_REF" == refs/tags/linux-v* ]]; then
+            test "$(git rev-list -n 1 "${GITHUB_REF}^{commit}")" = "$GITHUB_SHA"
+          fi
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
@@ -63,6 +77,10 @@ jobs:
           OPENBURNBAR_FIREBASE_API_KEY: ${{ vars.OPENBURNBAR_FIREBASE_API_KEY }}
           OPENBURNBAR_LINUX_APP_CHECK_APP_ID: ${{ vars.OPENBURNBAR_LINUX_APP_CHECK_APP_ID }}
         run: node scripts/linux-port/validate-linux-release-public-config.mjs
+
+      - name: Resolve protected Domain Core candidate C and activation P
+        id: domain-core-activation
+        run: node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$GITHUB_SHA" --format github-output >> "$GITHUB_OUTPUT"
 
       - name: Resolve signed update channel
         id: channel
@@ -115,6 +133,19 @@ jobs:
       OPENBURNBAR_LINUX_APP_CHECK_APP_ID: ${{ vars.OPENBURNBAR_LINUX_APP_CHECK_APP_ID }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify candidate-to-activation history is complete
+        env:
+          CANDIDATE_COMMIT: ${{ needs.resolve-release.outputs.candidate_commit }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git cat-file -e "${CANDIDATE_COMMIT}^{commit}"
+          git merge-base --is-ancestor "$CANDIDATE_COMMIT" "$RELEASE_COMMIT"
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
@@ -129,6 +160,13 @@ jobs:
           set -euo pipefail
           actual="$(node -p "process.arch === 'arm64' ? 'aarch64' : process.arch === 'x64' ? 'x86_64' : process.arch")"
           test "$actual" = "$EXPECTED_ARCHITECTURE"
+
+      - name: Resolve signed Domain Core profile for Linux artifact
+        env:
+          CANDIDATE_COMMIT: ${{ needs.resolve-release.outputs.candidate_commit }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$CANDIDATE_COMMIT" --expected-release-commit "$RELEASE_COMMIT" --format github-env >> "$GITHUB_ENV"
 
       - name: Build mission Linux toolchain image
         run: docker build -t openburnbar-linux-toolchain:mission-001 tools/linux-toolchain
@@ -461,6 +499,19 @@ jobs:
       OPENBURNBAR_LINUX_COSIGN_IDENTITY: https://github.com/${{ github.workflow_ref }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify candidate-to-activation history is complete
+        env:
+          CANDIDATE_COMMIT: ${{ needs.resolve-release.outputs.candidate_commit }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git cat-file -e "${CANDIDATE_COMMIT}^{commit}"
+          git merge-base --is-ancestor "$CANDIDATE_COMMIT" "$RELEASE_COMMIT"
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
@@ -526,6 +577,60 @@ jobs:
           --candidate
           --phase final
           --version '${{ needs.resolve-release.outputs.version }}'
+
+      - name: Create candidate-bound Domain Core Linux release evidence
+        env:
+          CANDIDATE_COMMIT: ${{ needs.resolve-release.outputs.candidate_commit }}
+          RELEASE_COMMIT: ${{ github.sha }}
+          VERSION: ${{ needs.resolve-release.outputs.version }}
+          TAG: ${{ needs.resolve-release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          closure="$OPENBURNBAR_LINUX_RELEASE_OUT/OpenBurnBar-${VERSION}-linux-release.tar.zst"
+          tar --zstd -cf "$closure" -C "$OPENBURNBAR_LINUX_RELEASE_OUT" artifacts sidecars latest-linux.draft.json
+          inputs="$RUNNER_TEMP/domain-core-linux-release"
+          mkdir -p "$inputs"
+          activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"
+          activation_path="$inputs/domain-core-release-activation.json"
+          jq '{candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256}' \
+            <<<"$activation" > "$activation_path"
+          rollback="$inputs/domain-core-public-production-rollback.json"
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile public-production-rollback \
+            --expected-candidate-commit "$CANDIDATE_COMMIT" \
+            --expected-release-commit "$RELEASE_COMMIT" \
+            --format json \
+            --output "$rollback"
+          while IFS= read -r encoded; do
+            domain="$(jq -r '.domain' <<<"$encoded")"
+            bundle="$inputs/domain-core-candidate-bundle.json"
+            provenance="$inputs/${domain}-promotion.sigstore.json"
+            cp "$(jq -r '.bundlePath' <<<"$encoded")" "$bundle"
+            cp "$(jq -r '.provenancePath' <<<"$encoded")" "$provenance"
+            predicate="$OPENBURNBAR_LINUX_RELEASE_OUT/sidecars/domain-core-${domain}.predicate.json"
+            node scripts/ci/create-domain-core-release-evidence.mjs \
+              --consumer linux \
+              --domain "$domain" \
+              --artifact-kind linux-release-bundle \
+              --target linux-x64-arm64 \
+              --version "$VERSION" \
+              --tag "$TAG" \
+              --commit "$RELEASE_COMMIT" \
+              --artifact "$closure" \
+              --predicate "$predicate" \
+              --public-profile-sha256 "$(jq -r '.publicProfileSha256' <<<"$encoded")" \
+              --activation "$activation_path" \
+              --candidate-bundle "$bundle" \
+              --promotion-attestation "$provenance" \
+              --protected-signer-run-id "$(jq -r '.signerRunId' <<<"$encoded")" \
+              --protected-signer-run-attempt "$(jq -r '.signerRunAttempt' <<<"$encoded")" \
+              --rollback-artifact "$rollback"
+            cosign attest-blob --yes \
+              --type "https://openburnbar.dev/attestations/domain-core-release-artifact/v2" \
+              --predicate "$predicate" \
+              --bundle "${predicate}.sigstore.json" \
+              "$closure"
+          done < <(jq -c '.domains[]' <<<"$activation")
 
       - name: Finalize installed-product proof closure
         env:

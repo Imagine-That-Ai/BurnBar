@@ -2,7 +2,7 @@ import Foundation
 #if canImport(OSLog)
 import OSLog
 #endif
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Abstraction over structured daemon logging so tests can intercept log
 /// emissions without coupling to `OSLog`. Production code uses

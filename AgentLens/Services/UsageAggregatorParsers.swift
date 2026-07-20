@@ -15,8 +15,9 @@ import OpenBurnBarCore
 final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider = .copilot
 
-    func parse() async throws -> OpenBurnBarCore.ParseResult {
+    func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
         let fm = FileManager.default
+        let gate = OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fm)
         let sessionStatePath = ("~/.copilot/session-state" as NSString).expandingTildeInPath
         let logsPath = ("~/.copilot/logs" as NSString).expandingTildeInPath
 
@@ -24,16 +25,18 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
-        // Parse CompactionProcessor token data from process logs (fallback for old CLI)
-        let tokensBySession = parseProcessLogs(logsPath: logsPath)
+        // Parse CompactionProcessor token data from process logs (fallback for old CLI).
+        let tokensBySession = try parseProcessLogs(logsPath: logsPath, gate: gate)
 
         var usages: [TokenUsage] = []
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
 
-        let sessionDirs = (try? fm.contentsOfDirectory( // try?-ok(dir scan, empty fallback)
+        // try?-ok(absent or unreadable session root yields no sessions)
+        let sessionDirs = (try? fm.contentsOfDirectory(
             at: URL(fileURLWithPath: sessionStatePath),
             includingPropertiesForKeys: [.isDirectoryKey]
-        ))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? [] // try?-ok(isDir filter)
+        // try?-ok(unreadable directory metadata excludes that entry)
+        ))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
 
         for sessionDir in sessionDirs {
             let sessionId = sessionDir.lastPathComponent
@@ -41,18 +44,22 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
             let metadataFile = sessionDir.appendingPathComponent("metadata.json")
 
             guard fm.fileExists(atPath: eventsFile.path) else { continue }
+            var sessionFiles = [eventsFile]
+            if fm.fileExists(atPath: metadataFile.path) {
+                sessionFiles.append(metadataFile)
+            }
+            guard try gate.shouldRead(sessionFiles) else { continue }
 
-            // Try metadata.json for session-level summary first
-            let metadataSummary = parseMetadata(metadataFile)
-
+            let metadataSummary = sessionFiles.count == 2 ? parseMetadata(metadataFile) : nil
             if let pair = parseSession(
                 eventsFile: eventsFile,
                 sessionId: sessionId,
                 metadataSummary: metadataSummary,
-                processLogData: tokensBySession[sessionId]
+                processLogData: tokensBySession[sessionId],
+                includeConversationBody: options.includeConversationBodies
             ) {
                 if let usage = pair.usage { usages.append(usage) }
-                if let conv = pair.conversation { conversations.append(conv) }
+                if let conversation = pair.conversation { conversations.append(conversation) }
             }
         }
 
@@ -86,12 +93,16 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
         eventsFile: URL,
         sessionId: String,
         metadataSummary: CopilotMetadataSummary?,
-        processLogData: (input: Int, output: Int)?
+        processLogData: (input: Int, output: Int)?,
+        includeConversationBody: Bool
     ) -> (usage: TokenUsage?, conversation: OpenBurnBarCore.ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: eventsFile) else { return nil } // try?-ok(log open, skip if absent)
-        defer { try? handle.close() } // try?-ok(handle teardown)
+        // try?-ok(unreadable optional session file is skipped)
+        guard let handle = try? FileHandle(forReadingFrom: eventsFile) else { return nil }
+        // try?-ok(best-effort read-handle teardown)
+        defer { try? handle.close() }
 
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: eventsFile.path)[.modificationDate]) as? Date // try?-ok(optional mtime)
+        // try?-ok(missing modification metadata preserves a nil timestamp)
+        let mtime = (try? FileManager.default.attributesOfItem(atPath: eventsFile.path)[.modificationDate]) as? Date
 
         var exactInputTokens = 0
         var exactOutputTokens = 0
@@ -111,18 +122,15 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
+                  // try?-ok(malformed JSONL records are skipped independently)
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 continue
             }
 
             let eventType = json["type"] as? String ?? json["event"] as? String ?? ""
             let role = json["role"] as? String ?? ""
 
-            // Timestamps
             if let ts = json["timestamp"] as? String {
-                // Lock-guarded shared parser: accepts fractional-second timestamps
-                // (which a default ISO8601DateFormatter() rejects) and avoids a
-                // per-line formatter allocation.
                 let date = ThreadSafeISO8601DateFormatter.parse(ts)
                 if startTime == nil { startTime = date }
                 endTime = date
@@ -132,16 +140,11 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
                 endTime = date
             }
 
-            // Model
-            if let m = json["model"] as? String, !m.isEmpty { model = m }
+            if let discoveredModel = json["model"] as? String, !discoveredModel.isEmpty {
+                model = discoveredModel
+            }
 
-            // Exact usage data (post-Feb 2026 Copilot CLI)
-            // assistant.usage events and session.shutdown events contain token counts
             if eventType == "assistant.usage" || eventType == "session.shutdown" {
-                // `usage` and `token_usage` are alternate spellings of the same
-                // payload; an event carrying both would previously be counted
-                // twice. Prefer `usage`, fall back to `token_usage` — never add
-                // both for a single event.
                 if let usage = (json["usage"] as? [String: Any]) ?? (json["token_usage"] as? [String: Any]) {
                     let extracted = OpenBurnBarCore.TokenExtractionUtility.extractUsageTokens(usage)
                     exactInputTokens += extracted.input
@@ -151,8 +154,8 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
                 }
             }
 
-            // Also check for inline usage on any message
-            if let usage = json["usage"] as? [String: Any], eventType != "assistant.usage" && eventType != "session.shutdown" {
+            if let usage = json["usage"] as? [String: Any],
+               eventType != "assistant.usage", eventType != "session.shutdown" {
                 let extracted = OpenBurnBarCore.TokenExtractionUtility.extractUsageTokens(usage)
                 if extracted.input > 0 || extracted.output > 0 {
                     exactInputTokens += extracted.input
@@ -162,11 +165,10 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
                 }
             }
 
-            // Content for conversation record
             let content = json["content"] as? String ?? json["text"] as? String ?? ""
             if role == "user" || eventType == "user_message" {
                 userChars += content.count
-                if !content.isEmpty {
+                if includeConversationBody, !content.isEmpty {
                     userWords += wordCount(content)
                     if firstUser == nil {
                         firstUser = String(content.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
@@ -176,7 +178,7 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
                 }
             } else if role == "assistant" || eventType == "assistant_message" {
                 assistantChars += content.count
-                if !content.isEmpty {
+                if includeConversationBody, !content.isEmpty {
                     assistantWords += wordCount(content)
                     lastAssistant = content
                     appendText(&fullText, content, isAssistant: true)
@@ -185,7 +187,6 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
             }
         }
 
-        // Determine best token data source: exact events > metadata > process logs > char estimation
         let inputTokens: Int
         let outputTokens: Int
         let cacheReadTokens: Int
@@ -196,14 +197,14 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
             outputTokens = exactOutputTokens
             cacheReadTokens = exactCachedTokens
             isExact = true
-        } else if let meta = metadataSummary {
-            inputTokens = meta.input
-            outputTokens = meta.output
-            cacheReadTokens = meta.cached
+        } else if let metadataSummary {
+            inputTokens = metadataSummary.input
+            outputTokens = metadataSummary.output
+            cacheReadTokens = metadataSummary.cached
             isExact = true
-        } else if let pd = processLogData {
-            inputTokens = pd.input
-            outputTokens = pd.output
+        } else if let processLogData {
+            inputTokens = processLogData.input
+            outputTokens = processLogData.output
             cacheReadTokens = 0
             isExact = true
         } else {
@@ -216,7 +217,11 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
         guard inputTokens > 0 || outputTokens > 0 else { return nil }
 
         let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-        let cost = pricing.cost(inputTokens: inputTokens, outputTokens: outputTokens, cacheReadTokens: cacheReadTokens)
+        guard let cost = AppLogger.shared.silentlyOptional("domain_core_pricing_cost", try pricing.cost(
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheReadTokens: cacheReadTokens
+        )) else { return nil }
 
         let usage = TokenUsage(
             provider: .copilot,
@@ -235,6 +240,7 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
             estimatorVersion: isExact ? "" : OpenBurnBarCore.TokenExtractionUtility.currentEstimatorVersion
         )
 
+        guard includeConversationBody else { return (usage, nil) }
         let conversation = OpenBurnBarCore.ConversationRecord(
             id: OpenBurnBarCore.ConversationRecord.stableId(provider: .copilot, sessionId: sessionId),
             provider: .copilot,
@@ -260,20 +266,25 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
     }
 
     /// Parse process logs for CompactionProcessor entries (fallback for pre-Feb 2026 CLI).
-    private func parseProcessLogs(logsPath: String) -> [String: (input: Int, output: Int)] {
+    private func parseProcessLogs(
+        logsPath: String,
+        gate: OpenBurnBarCore.ParserFileReadGate
+    ) throws -> [String: (input: Int, output: Int)] {
         let fm = FileManager.default
         guard fm.fileExists(atPath: logsPath) else { return [:] }
 
         var result: [String: (input: Int, output: Int)] = [:]
 
-        guard let logFiles = try? fm.contentsOfDirectory(atPath: logsPath) // try?-ok(log dir scan, empty fallback)
+        // try?-ok(absent or unreadable fallback log directory yields no logs)
+        guard let logFiles = try? fm.contentsOfDirectory(atPath: logsPath)
             .filter({ $0.hasPrefix("process-") && $0.hasSuffix(".log") }) else {
             return [:]
         }
 
         for logFile in logFiles {
             let fullPath = (logsPath as NSString).appendingPathComponent(logFile)
-            guard let data = fm.contents(atPath: fullPath),
+            guard try gate.shouldRead(URL(fileURLWithPath: fullPath)),
+                  let data = fm.contents(atPath: fullPath),
                   let content = String(data: data, encoding: .utf8) else { continue }
 
             var lastTokensBySession: [String: Int] = [:]
@@ -333,16 +344,15 @@ struct CopilotMetadataSummary {
 final class AiderParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider = .aider
 
-    func parse() async throws -> OpenBurnBarCore.ParseResult {
+    func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
         let fm = FileManager.default
+        let gate = OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fm)
 
-        // Check common analytics log locations
         let candidatePaths = [
             ("~/.aider/analytics.jsonl" as NSString).expandingTildeInPath,
             ("~/.aider/analytics.json" as NSString).expandingTildeInPath
         ]
 
-        // Also check for per-project .aider.analytics.jsonl in recent git repos
         var analyticsFiles: [URL] = []
         for path in candidatePaths where fm.fileExists(atPath: path) {
             analyticsFiles.append(URL(fileURLWithPath: path))
@@ -356,9 +366,12 @@ final class AiderParser: OpenBurnBarCore.LogParser, Sendable {
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
 
         for file in analyticsFiles {
-            let (fileUsages, fileConvs) = parseAnalyticsLog(file: file)
+            guard try gate.shouldRead(file) else { continue }
+            let (fileUsages, fileConversations) = parseAnalyticsLog(file: file)
             usages.append(contentsOf: fileUsages)
-            conversations.append(contentsOf: fileConvs)
+            if options.includeConversationBodies {
+                conversations.append(contentsOf: fileConversations)
+            }
         }
 
         return OpenBurnBarCore.ParseResult(usages: usages, conversations: conversations)
@@ -438,7 +451,11 @@ final class AiderParser: OpenBurnBarCore.LogParser, Sendable {
                 cost = session.totalCost
             } else {
                 let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-                cost = pricing.cost(inputTokens: session.inputTokens, outputTokens: session.outputTokens)
+                guard let computedCost = AppLogger.shared.silentlyOptional("domain_core_pricing_cost", try pricing.cost(
+                    inputTokens: session.inputTokens,
+                    outputTokens: session.outputTokens
+                )) else { continue }
+                cost = computedCost
             }
 
             let usage = TokenUsage(
@@ -500,10 +517,13 @@ struct AiderSession {
 final class CursorParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider = .cursor
 
-    func parse() async throws -> OpenBurnBarCore.ParseResult {
+    func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
+        let fileManager = FileManager.default
         let dbPath = ("~/.cursor/ai-tracking/ai-code-tracking.db" as NSString).expandingTildeInPath
+        let dbURL = URL(fileURLWithPath: dbPath)
 
-        guard FileManager.default.fileExists(atPath: dbPath) else {
+        guard fileManager.fileExists(atPath: dbPath),
+              try OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fileManager).shouldRead(dbURL) else {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
@@ -557,7 +577,7 @@ final class CursorParser: OpenBurnBarCore.LogParser, Sendable {
                 let estimatedInput = hashCount * 500
 
                 let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-                let cost = pricing.cost(inputTokens: estimatedInput, outputTokens: estimatedOutput)
+                let cost = try pricing.cost(inputTokens: estimatedInput, outputTokens: estimatedOutput)
 
                 let usage = TokenUsage(
                     provider: .cursor,

@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 
 public enum BurnBarMissionControlError: Error, LocalizedError {

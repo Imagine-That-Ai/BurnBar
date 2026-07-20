@@ -239,10 +239,30 @@ final class SearchIndexStore: Sendable {
             )
 
             for documentID in documentIDs {
+                // Rowid-targeted delete via the ftsRowid mapping (documentID is
+                // an UNINDEXED FTS5 column; matching on it scans the whole FTS
+                // table). Legacy chunks with NULL ftsRowid predate v55 and take
+                // the scan path once, individually.
                 try db.execute(
-                    sql: "DELETE FROM search_chunks_fts WHERE documentID = ?",
+                    sql: """
+                    DELETE FROM search_chunks_fts WHERE rowid IN (
+                        SELECT ftsRowid FROM search_chunks
+                        WHERE documentID = ? AND ftsRowid IS NOT NULL
+                    )
+                    """,
                     arguments: [documentID]
                 )
+                let legacyChunkIDs = try String.fetchAll(
+                    db,
+                    sql: "SELECT id FROM search_chunks WHERE documentID = ? AND ftsRowid IS NULL",
+                    arguments: [documentID]
+                )
+                for chunkID in legacyChunkIDs {
+                    try db.execute(
+                        sql: "DELETE FROM search_chunks_fts WHERE chunkID = ?",
+                        arguments: [chunkID]
+                    )
+                }
             }
 
             try db.execute(
@@ -487,7 +507,7 @@ final class SearchIndexStore: Sendable {
             let batch = Array(chunkIDsToDelete[start..<end])
             try await dbQueue.write { db in
                 for chunkID in batch {
-                    try db.execute(sql: "DELETE FROM search_chunks_fts WHERE chunkID = ?", arguments: [chunkID])
+                    try Self.deleteChunkFTSRow(chunkID: chunkID, db: db)
                     try db.execute(sql: "DELETE FROM search_chunks WHERE id = ?", arguments: [chunkID])
                 }
             }
@@ -542,6 +562,25 @@ final class SearchIndexStore: Sendable {
         }
     }
 
+    /// Deletes a chunk's FTS row by its recorded rowid (O(log n)). `chunkID` /
+    /// `documentID` are UNINDEXED FTS5 columns, so a plain
+    /// `DELETE ... WHERE chunkID = ?` full-scans the entire FTS content table —
+    /// on a mature index that is a multi-GB read per chunk. Rows written by a
+    /// pre-`v55_search_chunks_fts_rowid` binary can carry a NULL `ftsRowid`;
+    /// only those take the legacy scan path.
+    static func deleteChunkFTSRow(chunkID: String, db: Database) throws {
+        let ftsRowid = try Int64.fetchOne(
+            db,
+            sql: "SELECT ftsRowid FROM search_chunks WHERE id = ? AND ftsRowid IS NOT NULL",
+            arguments: [chunkID]
+        )
+        if let ftsRowid {
+            try db.execute(sql: "DELETE FROM search_chunks_fts WHERE rowid = ?", arguments: [ftsRowid])
+        } else {
+            try db.execute(sql: "DELETE FROM search_chunks_fts WHERE chunkID = ?", arguments: [chunkID])
+        }
+    }
+
     private static func insertChunk(
         _ chunk: SearchChunkRecord,
         documentID: String,
@@ -550,13 +589,24 @@ final class SearchIndexStore: Sendable {
         provider: String,
         db: Database
     ) throws {
+        // FTS row first so its rowid can be recorded on the chunk row —
+        // deletes then target the FTS rowid instead of scanning the table.
+        try db.execute(
+            sql: """
+            INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText, projectName, provider)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            arguments: [chunk.id, chunk.documentID, title, chunk.text, projectName, provider]
+        )
+        let ftsRowid = db.lastInsertedRowID
+
         try db.execute(
             sql: """
             INSERT INTO search_chunks (
                 id, documentID, sourceKind, sourceID, sourceVersionID, ordinal,
                 startOffset, endOffset, messageStartOffset, messageEndOffset,
-                sectionPath, text, contentHash, createdAt, updatedAt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                sectionPath, text, contentHash, ftsRowid, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             arguments: [
                 chunk.id,
@@ -572,17 +622,10 @@ final class SearchIndexStore: Sendable {
                 chunk.sectionPath,
                 chunk.text,
                 chunk.contentHash,
+                ftsRowid,
                 chunk.createdAt,
                 chunk.updatedAt
             ]
-        )
-
-        try db.execute(
-            sql: """
-            INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText, projectName, provider)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            arguments: [chunk.id, chunk.documentID, title, chunk.text, projectName, provider]
         )
     }
 

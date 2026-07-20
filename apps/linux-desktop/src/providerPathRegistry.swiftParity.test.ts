@@ -16,7 +16,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const coreRoot = path.resolve(here, '../../../OpenBurnBarCore/Sources');
 const swiftDiscoveryPath = path.join(
   coreRoot,
-  'OpenBurnBarCore/SharedModels/AgentProviderLogDiscovery.swift'
+  'OpenBurnBarLogParsers/AgentProviderLogDiscovery.swift'
 );
 const swiftProviderPath = path.join(
   coreRoot,

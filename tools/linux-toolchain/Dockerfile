@@ -26,6 +26,11 @@ RUN set -eux; \
         fi; \
     done
 
+# GitHub's arm64 runners can block or intermittently drop cleartext port 80.
+# Use Canonical's TLS endpoint so package resolution stays fail-closed and reliable.
+RUN sed -i 's|http://ports.ubuntu.com/ubuntu-ports/|https://ports.ubuntu.com/ubuntu-ports/|g' \
+        /etc/apt/sources.list.d/ubuntu.sources
+
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update \
     && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends \

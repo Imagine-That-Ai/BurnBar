@@ -140,15 +140,15 @@ def validate_contract(root: Path, manifest: dict) -> dict:
         failures.append("Linux Swift test runner must terminate timed-out builds fail-closed")
 
     runner = "bash scripts/linux-port/run-linux-swift-tests.sh"
+    evidence_mount = '-v "$OPENBURNBAR_LINUX_EVIDENCE_OUT:/evidence"'
+    evidence_results = "--env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests"
     for relative in (".github/workflows/linux-pr-gate.yml", ".github/workflows/linux-nightly.yml"):
         workflow = root / relative
         workflow_source = workflow.read_text(encoding="utf-8") if workflow.is_file() else ""
         if runner not in workflow_source:
             failures.append(f"{relative} does not execute the Linux Swift test runner")
-        if '-v "$OPENBURNBAR_LINUX_EVIDENCE_OUT:/evidence"' not in workflow_source:
-            failures.append(f"{relative} does not host-mount Linux Swift evidence")
-        if "--env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests" not in workflow_source:
-            failures.append(f"{relative} does not route Linux Swift results to the host evidence tree")
+        if evidence_mount not in workflow_source or evidence_results not in workflow_source:
+            failures.append(f"{relative} does not persist Linux Swift evidence through the host evidence mount")
 
     if failures:
         raise VerificationError("\n".join(failures))

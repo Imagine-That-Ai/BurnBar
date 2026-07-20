@@ -26,6 +26,20 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
+        <!-- Code-built rows read these typed properties so WinUI performs real
+             ThemeResource resolution and refreshes them when ActualTheme changes. -->
+        <Border x:Name="AuroraGlassTintBaseBrushProbe" Visibility="Collapsed"
+                Background="{ThemeResource AuroraGlassTintBaseBrush}" />
+        <Border x:Name="AuroraGlassTintElevatedBrushProbe" Visibility="Collapsed"
+                Background="{ThemeResource AuroraGlassTintElevatedBrush}" />
+        <Border x:Name="AuroraGlassStrokeBrushProbe" Visibility="Collapsed"
+                Background="{ThemeResource AuroraGlassStrokeBrush}" />
+        <Border x:Name="AuroraTextBrushProbe" Visibility="Collapsed"
+                Background="{ThemeResource AuroraTextBrush}" />
+        <Border x:Name="AuroraTextSecondaryBrushProbe" Visibility="Collapsed"
+                Background="{ThemeResource AuroraTextSecondaryBrush}" />
+        <Border x:Name="AuroraTextMutedBrushProbe" Visibility="Collapsed"
+                Background="{ThemeResource AuroraTextMutedBrush}" />
 
         <ScrollViewer VerticalScrollBarVisibility="Auto"
                       HorizontalScrollMode="Disabled"

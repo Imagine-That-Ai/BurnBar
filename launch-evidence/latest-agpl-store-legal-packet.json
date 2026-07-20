@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-04T23:39:29Z",
+  "generatedAt": "2026-07-17T16:27:27Z",
   "status": "owner_attested_soft_approval",
   "reviewStatus": "owner_attested_soft_approval",
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
-    "branch": "release/v1.0.29-origin-main",
-    "originMain": "8092d19ea1",
-    "releaseTag": "v1.0.29"
+    "branch": "codex/shared-rust-domain-final-v3",
+    "originMain": "3c8de9f230149faf27a739afc9cfcc7b610998a6",
+    "releaseTag": "v1.0.30"
   },
-  "purpose": "Owner-attested emergency release evidence for the public macOS direct-download artifact and App Store/TestFlight lane cut from the latest origin/main release branch after v1.0.28 was superseded by the Windows parity integration merge.",
+  "purpose": "Owner-attested emergency release evidence for the v1.0.30 public release boundary. The release must be cut from protected main only after the shared-Rust candidate at f10b3f26963ebaf8157325ae8cd00bb1f387c411 passes its exact-head gates and merges; this packet does not authorize release from the open PR branch.",
   "ownerAttestation": {
     "ownerName": "Alberto Nunez",
     "ownerGitHub": "Ajnunezg",
     "ownerRole": "release_owner",
-    "attestedAt": "2026-07-04T23:39:29Z",
+    "attestedAt": "2026-07-17T16:27:27Z",
     "counselName": "Heather Meeker",
     "approvalType": "soft_approval",
-    "emergencyReason": "Publish the newest origin/main signed and notarized macOS direct-download artifact and matching App Store/TestFlight release lane from the post-Windows parity integration commit instead of leaving users on the superseded v1.0.28 release branch.",
-    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.29 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
-    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker gave soft approval for this release boundary and authorizes the emergency v1.0.29 public release lane.",
+    "emergencyReason": "Publish the shared-Rust-authoritative v1.0.30 release train from protected main after its exact candidate, promotion, rollback, and independent-review gates pass, instead of moving immutable v1.0.29 or shipping from an unmerged branch.",
+    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.30 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
+    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker's existing soft approval applies to this v1.0.30 release boundary and authorizes the emergency owner-approved public release lane.",
     "followUpRequired": true
   },
   "scope": [
@@ -59,7 +59,7 @@
     {
       "id": "release_owner_attestation",
       "status": "owner_attested",
-      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag v1.0.29",
+      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --allow-owner-emergency-runtime-hold --expected-release-tag v1.0.30",
       "proof": "The emergency release lane validates this structured owner attestation. It does not replace the normal signed external-counsel approval packet."
     },
     {

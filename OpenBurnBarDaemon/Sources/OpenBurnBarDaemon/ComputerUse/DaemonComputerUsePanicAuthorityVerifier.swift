@@ -1,6 +1,6 @@
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 public actor DaemonComputerUsePanicAuthorityVerifier {
     public enum VerificationFailure: Error, Equatable, Sendable {

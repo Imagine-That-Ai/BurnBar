@@ -1,0 +1,146 @@
+name: Domain Core Post-Deletion Completion
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: Exact release-B commit shared by all seven final surfaces
+        required: true
+        type: string
+      release_version:
+        description: Stable release-B semantic version without v prefix
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  attestations: write
+  contents: read
+  id-token: write
+
+concurrency:
+  group: domain-core-post-deletion-${{ inputs.release_commit }}
+  cancel-in-progress: false
+
+jobs:
+  complete-post-deletion-release:
+    name: Complete post-deletion stable release
+    environment: domain-core-promotion
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact release-B commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ inputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require immutable main release ancestry and exact platform tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          git fetch origin main
+          git merge-base --is-ancestor "$RELEASE_COMMIT" origin/main
+          for tag in "v${RELEASE_VERSION}" "linux-v${RELEASE_VERSION}" "windows-v${RELEASE_VERSION}"; do
+            git fetch --force origin "+refs/tags/${tag}:refs/tags/${tag}"
+            test "$(git rev-list -n 1 "refs/tags/${tag}^{commit}")" = "$RELEASE_COMMIT"
+          done
+          jq -e 'all(.rows[]; .state == "legacy_deleted")' \
+            config/domain-core-legacy-deletion.json >/dev/null
+
+      - name: Download exact seven final surfaces and signed predicates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/final-absence"
+          mkdir -p "$root"/{apple,ios,android,windows,linux,console,functions}
+          fetch() {
+            local tag="$1" asset="$2" destination="$3"
+            local scratch="$RUNNER_TEMP/download-${RANDOM}-${RANDOM}"
+            mkdir -p "$scratch"
+            gh release download "$tag" --pattern "$asset" --dir "$scratch"
+            test "$(find "$scratch" -maxdepth 1 -type f | wc -l | tr -d ' ')" = 1
+            mv "$scratch/$asset" "$destination"
+            rmdir "$scratch"
+          }
+          version="$RELEASE_VERSION"
+          fetch "v${version}" "OpenBurnBar-${version}-macOS.dmg" "$root/apple/artifact"
+          fetch "v${version}" "OpenBurnBar-${version}-iOS.xcarchive.zip" "$root/ios/artifact"
+          fetch "v${version}" "OpenBurnBar-${version}-Android.aab" "$root/android/artifact"
+          fetch "windows-v${version}" "OpenBurnBar-${version}-windows-release.zip" "$root/windows/artifact"
+          fetch "linux-v${version}" "OpenBurnBar-${version}-linux-release.tar.zst" "$root/linux/artifact"
+          fetch "v${version}" "OpenBurnBar-${version}-console-deployment.json" "$root/console/artifact"
+          fetch "v${version}" "OpenBurnBar-${version}-functions-deployment.json" "$root/functions/artifact"
+
+          for domain in quota cloudVault cloudVaultRewrap cloudVaultSearch hermes pricing; do
+            fetch "v${version}" "OpenBurnBar-${version}-apple-${domain}-domain-core.sigstore.json" \
+              "$root/apple/${domain}.predicate.sigstore.json"
+          done
+          for domain in cloudVault cloudVaultRewrap cloudVaultSearch hermes; do
+            fetch "v${version}" "OpenBurnBar-${version}-android-${domain}-domain-core.sigstore.json" \
+              "$root/android/${domain}.predicate.sigstore.json"
+            fetch "v${version}" "OpenBurnBar-${version}-iOS-${domain}-domain-core-attestation.sigstore.json" \
+              "$root/ios/${domain}.predicate.sigstore.json"
+          done
+          for domain in quota cloudVault; do
+            fetch "windows-v${version}" "OpenBurnBar-${version}-windows-${domain}-domain-core.sigstore.json" \
+              "$root/windows/${domain}.predicate.sigstore.json"
+          done
+          for domain in quota cloudVault cloudVaultRewrap cloudVaultSearch hermes pricing; do
+            fetch "linux-v${version}" "domain-core-${domain}.predicate.json.sigstore.json" \
+              "$root/linux/${domain}.predicate.sigstore.json"
+          done
+          fetch "v${version}" "OpenBurnBar-${version}-console-cloudVault-domain-core-attestation.sigstore.json" \
+            "$root/console/cloudVault.predicate.sigstore.json"
+          fetch "v${version}" "OpenBurnBar-${version}-functions-pricing.sigstore.json" \
+            "$root/functions/pricing.predicate.sigstore.json"
+
+          ipa_entry="$(unzip -Z1 "$root/ios/artifact" | grep -E '(^|/)OpenBurnBarMobile\.ipa$')"
+          test "$(printf '%s\n' "$ipa_entry" | grep -c .)" = 1
+          unzip -p "$root/ios/artifact" "$ipa_entry" > "$root/ios/ipa"
+          test -s "$root/ios/ipa"
+
+      - name: Verify exact shipped bytes, signed absence predicates, and authorized deletion ancestry
+        env:
+          DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "Imagine-That-Ai/BurnBar"
+          python3 scripts/ci/verify-domain-core-final-absence-receipts.py \
+            --evidence-root "$RUNNER_TEMP/final-absence" \
+            --release-commit "${{ inputs.release_commit }}" \
+            --release-version "${{ inputs.release_version }}" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --output "$RUNNER_TEMP/domain-core-post-deletion-completion.json"
+          test "$(jq -r '.completion' "$RUNNER_TEMP/domain-core-post-deletion-completion.json")" \
+            = post_deletion_release_complete
+          jq -e '.deletionReviewAuthority.coveredDeletedRows | length > 0' \
+            "$RUNNER_TEMP/domain-core-post-deletion-completion.json" >/dev/null
+          jq -e '.deletionReviewAuthority.rowAuthorities | length > 0' \
+            "$RUNNER_TEMP/domain-core-post-deletion-completion.json" >/dev/null
+
+      - name: Sign post-deletion completion receipt
+        id: attest
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v3.0.0
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-post-deletion-completion.json
+
+      - name: Publish immutable completion receipt and provenance
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: domain-core-post-deletion-completion-${{ inputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/domain-core-post-deletion-completion.json
+            ${{ steps.attest.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 90

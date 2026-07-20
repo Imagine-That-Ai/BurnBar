@@ -1,6 +1,6 @@
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Daemon-owned rendezvous between one exact Linux Computer Use session
 /// request and the paired phone grant that authorizes it. Proof material never

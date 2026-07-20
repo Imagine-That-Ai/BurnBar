@@ -1,8 +1,30 @@
+import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import java.util.Properties
+import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
 import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 import org.gradle.testing.jacoco.tasks.JacocoReport
+
+abstract class GenerateDomainCoreBuildProfileAsset : DefaultTask() {
+    @get:Input
+    abstract val profileJson: Property<String>
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val file = outputDirectory.file("domain-core-build-profile.json").get().asFile
+        file.parentFile.mkdirs()
+        file.writeText(profileJson.get())
+    }
+}
 
 plugins {
     id("com.android.application")
@@ -38,9 +60,130 @@ val openBurnBarUseDebugAppCheck =
 val openBurnBarDebugAppCheckToken =
     providers.environmentVariable("OPENBURNBAR_APP_CHECK_DEBUG_TOKEN")
         .orElse("")
-
+val openBurnBarAppVersionName =
+    providers.gradleProperty("openBurnBarAppVersionName")
+        .orElse("1.0.30")
 fun Any?.asJsonMap(): Map<*, *> = this as? Map<*, *> ?: emptyMap<Any, Any>()
 fun Any?.asJsonList(): List<*> = this as? List<*> ?: emptyList<Any>()
+
+val domainCoreProfileCatalogFile = rootProject.projectDir.resolve("../config/domain-core-build-profiles.json")
+val domainCoreProfileCatalog = JsonSlurper().parse(domainCoreProfileCatalogFile).asJsonMap()
+require((domainCoreProfileCatalog["schemaVersion"] as? Number)?.toInt() == 1) { "Unsupported domain-core profile schema" }
+val domainCoreDomains = domainCoreProfileCatalog["domains"].asJsonList().map { it as? String ?: error("Invalid domain-core domain") }
+val domainCoreProfiles = domainCoreProfileCatalog["profiles"].asJsonMap()
+val domainCoreProfileName = providers.environmentVariable("OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE").orElse("developer").get()
+val domainCoreProfile = domainCoreProfiles[domainCoreProfileName].asJsonMap()
+require(domainCoreProfile.isNotEmpty()) { "Unknown domain-core build profile: $domainCoreProfileName" }
+val domainCoreAuthority = domainCoreProfile["artifactAuthority"] as? String ?: error("Missing domain-core artifact authority")
+val domainCoreDistribution = domainCoreProfile["distribution"] as? String ?: error("Missing domain-core distribution")
+val domainCoreChannel = domainCoreProfile["rolloutChannel"] as? String ?: ""
+val domainCoreEvidenceEnabled = domainCoreProfile["evidenceEnabled"] as? Boolean ?: error("Missing domain-core evidence policy")
+val domainCoreCandidateCommit = providers.environmentVariable("OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT").orElse("").get()
+val domainCoreExpectedVersion = providers.environmentVariable("OPENBURNBAR_DOMAIN_CORE_EXPECTED_VERSION").orElse("").get()
+val domainCoreExpectedAbiVersionRaw = providers.environmentVariable("OPENBURNBAR_DOMAIN_CORE_EXPECTED_ABI_VERSION").orElse("").get()
+val domainCoreExpectedSourceSha256 = providers.environmentVariable("OPENBURNBAR_DOMAIN_CORE_EXPECTED_SOURCE_SHA256").orElse("").get()
+val domainCoreCandidateValues = listOf(
+    domainCoreCandidateCommit,
+    domainCoreExpectedVersion,
+    domainCoreExpectedAbiVersionRaw,
+    domainCoreExpectedSourceSha256
+)
+val domainCoreCandidateIdentityPresent = domainCoreCandidateValues.any(String::isNotEmpty)
+val canonicalDomainCoreSemVer = Regex(
+    """^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)""" +
+        """(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?""" +
+        """(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?${'$'}"""
+)
+val domainCoreExpectedAbiVersion = domainCoreExpectedAbiVersionRaw.toLongOrNull() ?: 0L
+if (domainCoreCandidateIdentityPresent) {
+    require(Regex("^[0-9a-f]{40}$").matches(domainCoreCandidateCommit)) {
+        "Domain-core candidate commit must be a lowercase 40-character Git commit"
+    }
+    require(domainCoreExpectedVersion.toByteArray().size <= 64 && canonicalDomainCoreSemVer.matches(domainCoreExpectedVersion)) {
+        "Domain-core expected version must be canonical SemVer with at most 64 bytes"
+    }
+    require(
+        Regex("^[1-9]\\d*$").matches(domainCoreExpectedAbiVersionRaw) &&
+            domainCoreExpectedAbiVersion in 1L..4_294_967_295L
+    ) { "Domain-core expected ABI version must be a canonical positive uint32" }
+    require(Regex("^[0-9a-f]{64}$").matches(domainCoreExpectedSourceSha256)) {
+        "Domain-core expected source SHA-256 must be 64 lowercase hexadecimal characters"
+    }
+}
+val domainCoreCandidateIdentityWire = if (domainCoreCandidateIdentityPresent) {
+    domainCoreCandidateValues.joinToString("|")
+} else {
+    ""
+}
+val canonicalDomainCoreModes = domainCoreProfile["modes"].asJsonMap().mapKeys { it.key as String }.mapValues { it.value as String }
+require(canonicalDomainCoreModes.keys == domainCoreDomains.toSet()) { "Domain-core profile modes must exactly cover catalog domains" }
+require(canonicalDomainCoreModes.values.all { it in setOf("legacy", "shadow", "rust") }) { "Invalid domain-core mode" }
+val canonicalDomainCoreIdentity = mapOf(
+    "developer" to ("development" to "development"),
+    "public-production" to ("signed" to "public"),
+    "public-production-rollback" to ("signed" to "public"),
+    "internal" to ("signed" to "internal"),
+    "beta" to ("signed" to "beta")
+)[domainCoreProfileName] ?: error("Unknown domain-core profile identity")
+require(domainCoreAuthority == canonicalDomainCoreIdentity.first && domainCoreDistribution == canonicalDomainCoreIdentity.second) {
+    "Domain-core profile authority/distribution does not match its canonical identity"
+}
+require(domainCoreAuthority != "signed" || domainCoreCandidateIdentityPresent) {
+    "Signed domain-core profiles require a complete expected candidate identity"
+}
+if (domainCoreAuthority == "signed" && domainCoreDistribution == "public") {
+    require(!domainCoreEvidenceEnabled && domainCoreChannel.isEmpty() && "shadow" !in canonicalDomainCoreModes.values) {
+        "Public domain-core profile cannot enable evidence, rollout channel, or shadow mode"
+    }
+}
+if (domainCoreAuthority == "signed" && domainCoreDistribution in setOf("internal", "beta")) {
+    require(domainCoreEvidenceEnabled && domainCoreChannel == domainCoreDistribution && canonicalDomainCoreModes["quota"] == "shadow") {
+        "Internal/beta domain-core profile must enable the matching channel and quota shadow"
+    }
+}
+
+fun developerDomainCoreMode(domain: String, vararg environmentKeys: String): String {
+    if (domainCoreAuthority != "development") return canonicalDomainCoreModes.getValue(domain)
+    val raw = environmentKeys.firstNotNullOfOrNull { providers.environmentVariable(it).orNull }?.trim()?.lowercase()
+    return if (raw in setOf("legacy", "shadow", "rust")) raw!! else canonicalDomainCoreModes.getValue(domain)
+}
+
+val cloudVaultSearchDomainCoreMode = developerDomainCoreMode(
+    "cloudVaultSearch",
+    "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE",
+    "OPENBURNBAR_CLOUDVAULT_SEARCH_MODE"
+)
+val cloudVaultDocumentRewrapMode = developerDomainCoreMode("cloudVaultRewrap", "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE")
+val cloudVaultDomainCoreMode = developerDomainCoreMode(
+    "cloudVault",
+    "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE",
+    "OPENBURNBAR_CLOUDVAULT_DOMAIN_MODE"
+)
+val hermesDomainCoreMode = developerDomainCoreMode("hermes", "OPENBURNBAR_DOMAIN_CORE_HERMES_MODE")
+val generatedDomainCoreProfileAssetsDir = layout.buildDirectory.dir("generated/domainCoreProfile/assets")
+val resolvedDomainCoreProfileArtifact = mapOf(
+    "schemaVersion" to 1,
+    "name" to domainCoreProfileName,
+    "artifactAuthority" to domainCoreAuthority,
+    "distribution" to domainCoreDistribution,
+    "rolloutChannel" to domainCoreChannel.ifEmpty { null },
+    "evidenceEnabled" to domainCoreEvidenceEnabled,
+    "candidateIdentity" to if (domainCoreCandidateIdentityPresent) {
+        mapOf(
+            "candidateCommit" to domainCoreCandidateCommit,
+            "coreVersion" to domainCoreExpectedVersion,
+            "abiVersion" to domainCoreExpectedAbiVersion,
+            "sourceSha256" to domainCoreExpectedSourceSha256
+        )
+    } else {
+        null
+    },
+    "modes" to canonicalDomainCoreModes
+)
+val generateDomainCoreBuildProfileAsset = tasks.register<GenerateDomainCoreBuildProfileAsset>("generateDomainCoreBuildProfileAsset") {
+    profileJson.set(JsonOutput.prettyPrint(JsonOutput.toJson(resolvedDomainCoreProfileArtifact)) + "\n")
+    outputDirectory.set(generatedDomainCoreProfileAssetsDir)
+}
 
 /**
  * Resolve a build-time secret/config value from the environment first, then the
@@ -67,7 +210,13 @@ fun resolveAmplitudeConfig(envVar: String, localPropertyKey: String): String {
 gradle.taskGraph.whenReady {
     val releaseTask =
         allTasks.firstOrNull { task ->
-            task.path.startsWith("${project.path}:") && task.name.contains("Release")
+            val artifactTask =
+                listOf("assemble", "bundle", "package", "install").any(task.name::startsWith) &&
+                    task.name.endsWith("Release")
+            val distributionTask =
+                listOf("publish", "upload").any(task.name::startsWith) && task.name.contains("Release")
+            task.path.startsWith("${project.path}:") &&
+                (artifactTask || distributionTask)
         }
     if (releaseTask != null) {
         if (openBurnBarUseDebugAppCheck.get()) {
@@ -80,6 +229,12 @@ gradle.taskGraph.whenReady {
             throw GradleException(
                 "OPENBURNBAR_APP_CHECK_DEBUG_TOKEN is forbidden for Android release variant task ${releaseTask.path}. " +
                     "Unset it before assembling, bundling, signing, or uploading a release artifact."
+            )
+        }
+        if (domainCoreAuthority != "signed") {
+            throw GradleException(
+                "Android release artifact task ${releaseTask.path} requires " +
+                    "OPENBURNBAR_DOMAIN_CORE_BUILD_PROFILE to resolve to a signed profile"
             )
         }
     }
@@ -116,8 +271,8 @@ android {
         applicationId = "com.openburnbar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 39
-        versionName = "1.0.29"
+        versionCode = 40
+        versionName = openBurnBarAppVersionName.get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // App Check: when this build is meant for Firebase App Distribution
@@ -131,6 +286,26 @@ android {
         buildConfigField("boolean", "USE_DEBUG_APP_CHECK", useDebugAppCheck.toString())
         val debugAppCheckToken = openBurnBarDebugAppCheckToken.get()
         buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"" + debugAppCheckToken + "\"")
+        buildConfigField(
+            "String",
+            "CLOUDVAULT_SEARCH_DOMAIN_CORE_MODE",
+            "\"$cloudVaultSearchDomainCoreMode\""
+        )
+        buildConfigField(
+            "String",
+            "CLOUDVAULT_REWRAP_DOMAIN_CORE_MODE",
+            "\"$cloudVaultDocumentRewrapMode\""
+        )
+        buildConfigField("String", "CLOUDVAULT_DOMAIN_CORE_MODE", "\"$cloudVaultDomainCoreMode\"")
+        buildConfigField("String", "HERMES_DOMAIN_CORE_MODE", "\"$hermesDomainCoreMode\"")
+        buildConfigField("String", "QUOTA_DOMAIN_CORE_MODE", "\"${canonicalDomainCoreModes.getValue("quota")}\"")
+        buildConfigField("String", "PRICING_DOMAIN_CORE_MODE", "\"${canonicalDomainCoreModes.getValue("pricing")}\"")
+        buildConfigField("String", "DOMAIN_CORE_BUILD_PROFILE", "\"$domainCoreProfileName\"")
+        buildConfigField("String", "DOMAIN_CORE_BUILD_AUTHORITY", "\"$domainCoreAuthority\"")
+        buildConfigField("String", "DOMAIN_CORE_DISTRIBUTION", "\"$domainCoreDistribution\"")
+        buildConfigField("String", "DOMAIN_CORE_ROLLOUT_CHANNEL", "\"$domainCoreChannel\"")
+        buildConfigField("boolean", "DOMAIN_CORE_EVIDENCE_ENABLED", domainCoreEvidenceEnabled.toString())
+        buildConfigField("String", "DOMAIN_CORE_CANDIDATE_IDENTITY", "\"$domainCoreCandidateIdentityWire\"")
 
         // Sentry DSN injected at build time — empty string disables Sentry.
         // CI sets OPENBURNBAR_ANDROID_SENTRY_DSN from the GitHub secret.
@@ -204,6 +379,10 @@ android {
             excludes += setOf("*.dylib", "**/*.dylib")
         }
         jniLibs {
+            // The release identity gate executes this exact AAR library on an
+            // arm64 emulator, then compares its digest with the final AAB.
+            // Preserve identical ELF bytes across debug-test and release packaging.
+            keepDebugSymbols += "**/libopenburnbar_domain_ffi.so"
             // Vendor/openburnbar-iroh.aar ships the same cdylib under two names per ABI;
             // only libopenburnbar_iroh.so is ever loaded (JNA findLibraryName +
             // System.loadLibrary), so drop the byte-identical libuniffi_ duplicate
@@ -221,6 +400,24 @@ android {
             it.jvmArgs("-Xshare:off")
         }
         unitTests.isIncludeAndroidResources = true
+    }
+
+    sourceSets {
+        getByName("test").resources.directories.add(
+            rootProject.layout.projectDirectory.dir("../tests/fixtures/domain-core/cloudvault/v1").asFile.absolutePath
+        )
+        getByName("androidTest").assets.directories.add(
+            rootProject.layout.projectDirectory.dir("../tests/fixtures/domain-core/cloudvault/v1").asFile.absolutePath
+        )
+    }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            generateDomainCoreBuildProfileAsset,
+            GenerateDomainCoreBuildProfileAsset::outputDirectory
+        )
     }
 }
 
@@ -410,6 +607,9 @@ dependencies {
     // Local Kotlin library: Android-side iroh transport + pairing
     // verifier. 1:1 mirror of the Swift OpenBurnBarIrohRelay package.
     implementation(project(":openburnbar-iroh-relay"))
+    // Shared Rust domain logic. The module owns generated UniFFI Kotlin sources;
+    // this app attaches the native-only AAR below when it has been built.
+    implementation(project(":openburnbar-domain-core"))
     // Local Kotlin facade for the burnbar-remote UniFFI engine. It runs with
     // deterministic Kotlin fallbacks until Vendor/burnbar-remote.aar exists.
     implementation(project(":burnbar-remote"))
@@ -419,6 +619,12 @@ dependencies {
     val irohAar = rootProject.layout.projectDirectory.dir("..").asFile.resolve("Vendor/openburnbar-iroh.aar")
     if (irohAar.exists()) {
         implementation(files(irohAar))
+    }
+    val domainCoreAar =
+        rootProject.layout.projectDirectory.dir("..").asFile
+            .resolve("Vendor/openburnbar-domain-core.aar")
+    if (domainCoreAar.exists()) {
+        implementation(files(domainCoreAar))
     }
     val burnBarRemoteAar = rootProject.layout.projectDirectory.dir("..").asFile.resolve("Vendor/burnbar-remote.aar")
     if (burnBarRemoteAar.exists()) {

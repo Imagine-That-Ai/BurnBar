@@ -9,8 +9,19 @@ var packageDependencies: [Package.Dependency] = [
     .package(path: "../OpenBurnBarCore")
 ]
 let buildForLinuxBoundary = ProcessInfo.processInfo.environment["OPENBURNBAR_DAEMON_LINUX_BOUNDARY_BUILD"] == "1"
+// Core-decomposition S17 (docs/CORE_DECOMPOSITION_PROGRAM.md) — THE SECURITY PAYOFF:
+// the daemon + CLI link the UI-free `OpenBurnBarEngine` umbrella instead of the
+// SwiftUI/AppKit `OpenBurnBarCore` monolith, so the most-privileged binaries gain NO
+// transitive path to OpenBurnBarUI, OpenBurnBarLaunchServices, or
+// OpenBurnBarTextExpansion. The daemon links the Foundation-only OpenBurnBarInsights
+// module directly for its bounded usage-insights RPC. Engine re-exports the six
+// engine leaves {Kernel, LogParsers, Quota, VectorKit, Hermes, Pretext}; every symbol
+// the daemon used from Core resolves through them (the CLI-launch cluster is now
+// Kernel-resident — P-15b + P-18). ComputerUseCore / IrohRelay / Media / LinuxSecurity
+// stay as-is (K2 privileged closure, orthogonal to the UI monolith).
 var daemonTargetDependencies: [Target.Dependency] = [
-    .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
+    .product(name: "OpenBurnBarEngine", package: "OpenBurnBarCore"),
+    .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore"),
     .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
     .product(name: "OpenBurnBarIrohRelay", package: "OpenBurnBarCore"),
     .product(name: "OpenBurnBarMedia", package: "OpenBurnBarCore"),
@@ -81,7 +92,6 @@ if !buildForLinuxBoundary {
     ])
     daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
     daemonTargetDependencies.append(.product(name: "SQLCipher", package: "SQLCipher.swift"))
-    daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
     daemonLinkerSettings = [.unsafeFlags(["-framework", "Network", "-framework", "CoreServices"])]
     daemonExecutableDependencies.append(.product(name: "Sentry", package: "sentry-cocoa"))
 } else {
@@ -239,7 +249,10 @@ var packageTargets: [Target] = [
         name: "OpenBurnBarDaemonLinuxGatewayTests",
         dependencies: [
             "OpenBurnBarDaemon",
-            .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore"),
+            // S17 repoint: the Linux-gateway harness links the UI-free Engine umbrella,
+            // matching the daemon target under test (no path to the UI monolith).
+            .product(name: "OpenBurnBarEngine", package: "OpenBurnBarCore"),
+            .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore"),
             .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
             .product(name: "OpenBurnBarIrohRelay", package: "OpenBurnBarCore"),
             .product(name: "OpenBurnBarMedia", package: "OpenBurnBarCore")
@@ -324,7 +337,10 @@ packageTargets.append(contentsOf: [
     ),
     .testTarget(
         name: "OpenBurnBarDaemonTests",
-        dependencies: ["OpenBurnBarDaemon"],
+        dependencies: [
+            "OpenBurnBarDaemon",
+            .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore")
+        ],
         // Harness-only test target stays Swift 5 (region-isolation checker gaps).
         swiftSettings: [.swiftLanguageMode(.v5)]
     ),

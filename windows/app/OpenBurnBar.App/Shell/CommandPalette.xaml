@@ -13,12 +13,14 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
+    Style="{StaticResource AuroraGlassDialogStyle}"
     DefaultButton="None"
     Padding="0"
     CornerRadius="{StaticResource OBBCardCornerRadius}">
 
     <Grid Width="520" Height="440">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -46,10 +48,18 @@
                      KeyDown="QueryBox_KeyDown" />
         </Grid>
 
-        <Border Grid.Row="1" Height="1" Background="{StaticResource OBBStrokeBrush}" />
+        <Border Grid.Row="1" Height="1" Background="{ThemeResource AuroraGlassStrokeBrush}" />
+
+        <TextBlock Grid.Row="2"
+                   x:Name="StatusText"
+                   Margin="16,8,16,0"
+                   Opacity="0.7"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   Visibility="Collapsed" />
 
         <!-- Results. -->
-        <ListView Grid.Row="2"
+        <ListView Grid.Row="3"
                   x:Name="ResultsList"
                   Padding="8,8"
                   SelectionMode="Single"
@@ -74,7 +84,7 @@
                                   FontFamily="Segoe MDL2 Assets"
                                   FontSize="14"
                                   Glyph="{x:Bind Glyph}"
-                                  Foreground="{StaticResource OBBAccentBrush}"
+                                  Foreground="{ThemeResource AuroraAccentBrush}"
                                   VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" FontSize="13" />

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "openburnbar.staging-function-targets.v1",
+  "targets": {
+    "getWindowsRuntimeSafetyConfig": {
+      "module": "./callables/windowsRuntimeSafetyConfig.js",
+      "export": "getWindowsRuntimeSafetyConfig"
+    },
+    "issueWindowsAppCheckChallenge": {
+      "module": "./callables/windowsAppCheck.js",
+      "export": "issueWindowsAppCheckChallenge"
+    },
+    "mintWindowsAppCheckToken": {
+      "module": "./callables/windowsAppCheck.js",
+      "export": "mintWindowsAppCheckToken"
+    },
+    "submitDomainCoreShadowSamples": {
+      "module": "./callables/domainCoreShadowEvidence.js",
+      "export": "submitDomainCoreShadowSamples"
+    }
+  }
+}

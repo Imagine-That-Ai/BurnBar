@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "consumer": "local-mcp-python",
+  "entrypoint": "tools/openburnbar-mcp/server.py",
+  "adapter": "tools/openburnbar-mcp/domain_core_cloudvault.py",
+  "legacyModules": {
+    "cloudvault.portable_primitives": "tools/openburnbar-mcp/cloudvault_primitives_legacy.py",
+    "cloudvault.search": "tools/openburnbar-mcp/cloudvault_search_legacy.py"
+  },
+  "modeEnvironment": "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE",
+  "defaultMode": "legacy",
+  "identity": {
+    "manifest": "crates/openburnbar-domain-core/union-abi-manifest.json",
+    "sourceFingerprint": "tools/openburnbar-mcp/vendor/openburnbar-domain-core-python/openburnbar-domain-core-source.sha256",
+    "packageReceipt": "openburnbar-domain-core-package-receipt.json",
+    "verifiedFields": [
+      "coreVersion",
+      "abiVersion",
+      "sourceSha256",
+      "platform",
+      "architecture",
+      "nativeSha256",
+      "bindingSha256"
+    ]
+  },
+  "migratedOperations": [
+    "cloud-vault-aad-v2",
+    "cloud-vault-aad-validation",
+    "cloud-vault-fixed-keyed-hashes",
+    "project-memory-document-id",
+    "token-search-hashes",
+    "semantic-search-hashes",
+    "sealed-text-open",
+    "blob-open",
+    "blob-seal"
+  ],
+  "deletedFromEntrypoint": [
+    "_hkdf_sha256",
+    "_cloud_vault_aad_context",
+    "_validate_cloud_vault_aad",
+    "_cloud_vault_hmac_hex",
+    "_cloud_vault_project_memory_doc_id",
+    "_cloud_normalized_tokens",
+    "_cloud_token_hashes",
+    "_cloud_semantic_hashes",
+    "_aesgcm_open",
+    "_open_cloud_sealed_text",
+    "_open_cloud_blob_envelope",
+    "_seal_cloud_blob_envelope"
+  ],
+  "legacyDeletion": {
+    "state": "blocked-by-promotion-gate",
+    "targets": [
+      "tools/openburnbar-mcp/cloudvault_primitives_legacy.py",
+      "tools/openburnbar-mcp/cloudvault_search_legacy.py"
+    ],
+    "requiredBeforeDeletion": [
+      "protected-candidate-attestation",
+      "crypto-security-review",
+      "one-stable-rust-authoritative-release",
+      "rollback-artifact-retained"
+    ]
+  }
+}

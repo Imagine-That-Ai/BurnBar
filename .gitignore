@@ -17,6 +17,7 @@ build/
 build-derived/
 .lane-modulecache/
 Vendor/OpenBurnBarIroh.xcframework/
+Vendor/OpenBurnBarDomainCore.xcframework/
 Vendor/OpenBurnBarSignalFfi.xcframework/
 Vendor/BurnBarRemote.xcframework/
 build_ios/
@@ -234,6 +235,9 @@ assets/generated/
 # Raw logs regenerate from their runners (scripts/e2e/ios-iroh-gate.sh, CI jobs);
 # structured evidence (JSON/JSONL exports) stays tracked, raw .log streams do not.
 *.log
+# Exception: windows-port certification evidence bundles hash their logs into
+# receipts, so those logs are auditable evidence and must stay tracked.
+!docs/windows-port/evidence/**/*.log
 verify-ops-plane-summary.json
 apple-login.png
 pensieve-route-snapshot.md

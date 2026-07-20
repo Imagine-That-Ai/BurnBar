@@ -86,6 +86,54 @@ check "missing JaCoCo report fails closed" "1" "$rc"
 check "missing report error names JaCoCo" \
   "True" "$(grep -q 'JaCoCo report not found' "$tmp_root/missing.err" && echo True || echo False)"
 
+# Generated UniFFI bindings are verified by binding drift/ABI gates, not app-module JaCoCo.
+repo="$tmp_root/generated-uniffi"
+new_repo "$repo"
+mkdir -p "$repo/android/openburnbar-domain-core/src/main/java/uniffi/generated"
+printf 'package uniffi.generated\nfun generatedValue(): Int = 1\n' \
+  > "$repo/android/openburnbar-domain-core/src/main/java/uniffi/generated/Bindings.kt"
+base="$(commit_change "$repo")"
+rc="$(run_gate "$repo" "$base" "$repo/does-not-exist.xml" "$tmp_root/generated.json" "$tmp_root/generated.err")"
+check "generated UniFFI Kotlin does not require app JaCoCo" "0" "$rc"
+check "generated-only change reports no production Kotlin" \
+  "no_production_kotlin" "$(json_get "$tmp_root/generated.json" 'v["diffCoverage"]["method"]')"
+
+# The canonical Style Dictionary output is compile-time-only generated Kotlin.
+repo="$tmp_root/generated-design-tokens"
+new_repo "$repo"
+mkdir -p "$repo/android/app/src/main/java/com/openburnbar/ui/tokens"
+printf 'package com.openburnbar.ui.tokens\nobject PensieveTokens { const val Color = "#fff" }\n' \
+  > "$repo/android/app/src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt"
+base="$(commit_change "$repo")"
+rc="$(run_gate "$repo" "$base" "$repo/does-not-exist.xml" "$tmp_root/generated-design-tokens.json" "$tmp_root/generated-design-tokens.err")"
+check "generated design-token Kotlin does not require app JaCoCo" "0" "$rc"
+check "generated design-token-only change reports no production Kotlin" \
+  "no_production_kotlin" "$(json_get "$tmp_root/generated-design-tokens.json" 'v["diffCoverage"]["method"]')"
+
+# Only the canonical generated path is excluded; adjacent handwritten tokens remain gated.
+repo="$tmp_root/handwritten-design-tokens"
+new_repo "$repo"
+add_kotlin "$repo" com/openburnbar/ui/tokens HandwrittenTokens 1
+base="$(commit_change "$repo")"
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/handwritten-design-tokens.json" "$tmp_root/handwritten-design-tokens.err")"
+check "handwritten design-token Kotlin remains coverage-gated" "1" "$rc"
+check "handwritten design-token Kotlin requires its own evidence" \
+  "no_jacoco_source" "$(json_get "$tmp_root/handwritten-design-tokens.json" 'v["details"][0]["method"]')"
+
+# A similarly named directory in any other module is handwritten production code.
+repo="$tmp_root/handwritten-uniffi"
+new_repo "$repo"
+add_kotlin "$repo" uniffi/handwritten Handwritten 1
+base="$(commit_change "$repo")"
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/handwritten.json" "$tmp_root/handwritten.err")"
+check "handwritten UniFFI namespace remains coverage-gated" "1" "$rc"
+check "handwritten UniFFI namespace requires its own evidence" \
+  "no_jacoco_source" "$(json_get "$tmp_root/handwritten.json" 'v["details"][0]["method"]')"
+
 # One executable changed line is gated; there is no minimum-line exemption.
 repo="$tmp_root/one-line"
 new_repo "$repo"
@@ -155,6 +203,49 @@ rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/pass.json" "$tmp_root/pass.e
 check "covered per-line evidence passes" "0" "$rc"
 check "passing verdict is 100 percent" \
   "100.0" "$(json_get "$tmp_root/pass.json" 'v["diffCoverage"]["percent"]')"
+
+# A deletion-only diff (no added lines) has zero executable lines to cover
+# and must not require JaCoCo evidence.
+repo="$tmp_root/deletion-only"
+new_repo "$repo"
+add_kotlin "$repo" sample/del Del 1
+# Add a second line so there is something left after deletion.
+printf 'package sample.del\nfun delValue(): Int = 1\nfun delExtra(): Int = 2\n' \
+  > "$repo/android/app/src/main/java/sample/del/Del.kt"
+git -C "$repo" add -A
+git -C "$repo" commit -qm "add extra line"
+# Now delete the first function line (deletion-only diff).
+printf 'package sample.del\nfun delExtra(): Int = 2\n' \
+  > "$repo/android/app/src/main/java/sample/del/Del.kt"
+base="$(commit_change "$repo")"
+# Use a report that does NOT contain Del.kt — proving deletion-only
+# does not need JaCoCo evidence.
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/del-only.json" "$tmp_root/del-only.err")"
+check "deletion-only diff passes without JaCoCo evidence" "0" "$rc"
+check "deletion-only method is reported" \
+  "deletion_only" "$(json_get "$tmp_root/del-only.json" 'v["details"][0]["method"]')"
+
+# A deletion-only diff must NOT mask an added executable line in the
+# same hunk: if the file has both added and deleted lines, the added
+# lines still need coverage evidence.
+repo="$tmp_root/mixed-add-delete"
+new_repo "$repo"
+add_kotlin "$repo" sample/mixed Mixed 1
+base="$(commit_change "$repo")"
+# Modify the file: delete the old function and add a new one.
+printf 'package sample.mixed\nfun mixedNew(): Int = 42\n' \
+  > "$repo/android/app/src/main/java/sample/mixed/Mixed.kt"
+git -C "$repo" add -A
+git -C "$repo" commit -qm "replace function"
+# JaCoCo report has no entry for Mixed.kt → added line is uninstrumented.
+report="$repo/jacoco.xml"
+write_report "$report" '<package name="sample/other"><sourcefile name="Other.kt"><line nr="2" mi="0" ci="1"/></sourcefile></package>'
+rc="$(run_gate "$repo" "$base" "$report" "$tmp_root/mixed.json" "$tmp_root/mixed.err")"
+check "added executable line with no JaCoCo source still fails" "1" "$rc"
+check "mixed add+delete reports no_jacoco_source for the added line" \
+  "no_jacoco_source" "$(json_get "$tmp_root/mixed.json" 'v["details"][0]["method"]')"
 
 if [[ "$failures" -gt 0 ]]; then
   echo "Android diff-coverage self-test: $failures assertion(s) failed" >&2

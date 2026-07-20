@@ -19,6 +19,14 @@ public sealed partial class SettingsPage : Page
     private bool _suppressNavSelection;
     private NavigationViewItem? _homeItem;
 
+    /// <summary>
+    /// Injected HWND resolver (the <c>Func&lt;IntPtr&gt;</c> pattern from
+    /// <c>DataControlCenterView.WindowHandleProvider</c>). The host window sets this so
+    /// it can be threaded into <see cref="SettingsPageContext"/> for leaf pages that
+    /// open file pickers (e.g. <see cref="DataSourceSettingsPage"/>).
+    /// </summary>
+    public Func<IntPtr>? WindowHandleProvider { get; set; }
+
     public SettingsPage()
     {
         InitializeComponent();
@@ -88,7 +96,7 @@ public sealed partial class SettingsPage : Page
     private void NavigateToTab(SettingsTab tab)
     {
         _router.SelectedTab = tab;
-        ContentFrame.Navigate(PageTypeForTab(tab), new SettingsPageContext(_router, tab));
+        ContentFrame.Navigate(PageTypeForTab(tab), new SettingsPageContext(_router, tab, windowHandleProvider: WindowHandleProvider));
     }
 
     private void SelectNavItem(SettingsTab tab)
@@ -121,7 +129,7 @@ public sealed partial class SettingsPage : Page
             {
                 ContentFrame.Navigate(
                     typeof(SettingsSearchResultsPage),
-                    new SettingsPageContext(_router, _router.SelectedTab ?? SettingsTab.Home, NavigateForItem));
+                    new SettingsPageContext(_router, _router.SelectedTab ?? SettingsTab.Home, NavigateForItem, windowHandleProvider: WindowHandleProvider));
             }
         }
         else
@@ -139,7 +147,7 @@ public sealed partial class SettingsPage : Page
         SelectNavItem(item.Tab);
         ContentFrame.Navigate(
             PageTypeForRoute(item.PageRoute, item.Tab),
-            new SettingsPageContext(_router, item.Tab));
+            new SettingsPageContext(_router, item.Tab, windowHandleProvider: WindowHandleProvider));
     }
 
     private void OnOpenSettingsItem(string itemId)

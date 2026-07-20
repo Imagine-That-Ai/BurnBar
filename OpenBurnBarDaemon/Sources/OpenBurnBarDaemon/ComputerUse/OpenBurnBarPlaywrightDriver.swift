@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import OpenBurnBarComputerUseCore
 
 /// JSON-RPC framing for the Computer Use Playwright driver. Phase 9.

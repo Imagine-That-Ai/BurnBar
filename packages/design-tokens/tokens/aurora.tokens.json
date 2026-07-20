@@ -1,0 +1,138 @@
+{
+  "color": {
+    "macos": {
+      "$description": "macOS Aurora DARK ramp + accents — the cross-platform export of AgentLens/Theme/DesignSystem.swift (flagship shell look: cool GitHub/Xcode slate + ember/amber/whimsy). Sibling groups: color.auroraLight (Aurora LIGHT ramp), glass.* (the Liquid Glass material recipes from LiquidGlass.swift + apps/linux-desktop/src/styles/liquid-glass-tokens.css, alpha math baked to rgba() for WinUI). Additive to pensieve.tokens.json (the Data Control Center 'Pensieve' world) — no existing token changes.",
+      "bg": { "$value": "#0d1117", "$type": "color", "$description": "Aurora dark canvas — GitHub/Xcode cool slate" },
+      "surface": { "$value": "#161b22", "$type": "color" },
+      "surfaceElevated": { "$value": "#1f2630", "$type": "color" },
+      "surfaceMuted": { "$value": "#1b202a", "$type": "color" },
+      "border": { "$value": "#30363d", "$type": "color" },
+      "borderSubtle": { "$value": "#21262d", "$type": "color" },
+      "text": { "$value": "#e6edf3", "$type": "color" },
+      "textSecondary": { "$value": "#8b949e", "$type": "color" },
+      "textMuted": { "$value": "#6e7681", "$type": "color" },
+      "ember": { "$value": "#fa5053", "$type": "color", "$description": "primary accent (dark) — macOS DesignSystem.Colors.ember" },
+      "amber": { "$value": "#ffa800", "$type": "color" },
+      "blaze": { "$value": "#e86100", "$type": "color" },
+      "whimsy": { "$value": "#8b7fe8", "$type": "color", "$description": "violet contrast accent" },
+      "success": { "$value": "#38d898", "$type": "color" },
+      "warning": { "$value": "#ffa800", "$type": "color" },
+      "error": { "$value": "#fa5053", "$type": "color" },
+      "hermesMercury": { "$value": "#c8bfb5", "$type": "color" },
+      "hermesAureate": { "$value": "#d4aa3c", "$type": "color" },
+      "chatUserStroke": { "$value": "#8b7fe8", "$type": "color" },
+      "chatAssistantStroke": { "$value": "#fa5053", "$type": "color" },
+      "frost": { "$value": "#6fc2ff", "$type": "color", "$description": "cooling/Quit spectrum (dark)" },
+      "glacier": { "$value": "#4d9bf5", "$type": "color" },
+      "abyss": { "$value": "#12294d", "$type": "color" }
+    },
+    "auroraLight": {
+      "bg": { "$value": "#f3e8e6", "$type": "color", "$description": "Aurora light canvas — coral dust" },
+      "surface": { "$value": "#faf5f2", "$type": "color" },
+      "surfaceElevated": { "$value": "#fdf8f5", "$type": "color" },
+      "surfaceMuted": { "$value": "#f2e0da", "$type": "color" },
+      "border": { "$value": "#e8bfb5", "$type": "color" },
+      "borderSubtle": { "$value": "#f2e0da", "$type": "color" },
+      "text": { "$value": "#2a1816", "$type": "color" },
+      "textSecondary": { "$value": "#6e4e48", "$type": "color" },
+      "textMuted": { "$value": "#9a756d", "$type": "color" },
+      "ember": { "$value": "#f45b69", "$type": "color", "$description": "primary accent (light)" },
+      "amber": { "$value": "#f28c38", "$type": "color" },
+      "blaze": { "$value": "#e86100", "$type": "color" },
+      "whimsy": { "$value": "#6a5acd", "$type": "color" },
+      "success": { "$value": "#3a7835", "$type": "color" },
+      "warning": { "$value": "#c47800", "$type": "color" },
+      "error": { "$value": "#d43030", "$type": "color" },
+      "hermesMercury": { "$value": "#aea69c", "$type": "color" },
+      "hermesAureate": { "$value": "#b8942e", "$type": "color" }
+    }
+  },
+  "glass": {
+    "tint": {
+      "base": { "$value": "rgba(22,27,34,0.48)", "$type": "color", "$description": "surface @48% — toolbar/panel plate" },
+      "elevated": { "$value": "rgba(31,38,48,0.55)", "$type": "color", "$description": "surfaceElevated @55% — card plate" },
+      "sunken": { "$value": "rgba(13,17,23,0.42)", "$type": "color", "$description": "bg @42% — input/inset plate" },
+      "clear": { "$value": "rgba(22,27,34,0.28)", "$type": "color", "$description": "surface @28% — pill plate" },
+      "interactive": { "$value": "rgba(31,38,48,0.38)", "$type": "color", "$description": "surfaceElevated @38% — clickable glass" }
+    },
+    "lightTint": {
+      "base": { "$value": "rgba(250,245,242,0.72)", "$type": "color", "$description": "Aurora light surface plate" },
+      "elevated": { "$value": "rgba(253,248,245,0.80)", "$type": "color", "$description": "Aurora light elevated card plate" }
+    },
+    "stroke": {
+      "base": { "$value": "rgba(48,54,61,0.65)", "$type": "color", "$description": "border @65%" },
+      "bright": { "$value": "rgba(255,255,255,0.18)", "$type": "color" },
+      "frost": { "$value": "rgba(255,255,255,0.12)", "$type": "color" },
+      "lightBase": { "$value": "rgba(232,191,181,0.65)", "$type": "color", "$description": "Aurora light border @65%" },
+      "lightFrost": { "$value": "rgba(255,255,255,0.50)", "$type": "color" }
+    },
+    "innerLight": { "$value": "rgba(255,255,255,0.12)", "$type": "color", "$description": "inset 0 1px 0 top hairline highlight on every plate" },
+    "innerGlow": { "$value": "rgba(200,191,181,0.14)", "$type": "color", "$description": "hermes-mercury top glow" },
+    "specular": {
+      "white": { "$value": "rgba(255,255,255,0.10)", "$type": "color", "$description": "155deg specular sweep start" },
+      "ember": { "$value": "rgba(250,80,83,0.03)", "$type": "color", "$description": "155deg specular sweep end" }
+    },
+    "sheen": {
+      "darkFrom": { "$value": "rgba(255,255,255,0.08)", "$type": "color", "$description": "GlassCard sheen (dark): white@8%" },
+      "darkTo": { "$value": "rgba(250,80,83,0.02)", "$type": "color", "$description": "GlassCard sheen (dark): ember@2%" },
+      "lightFrom": { "$value": "rgba(244,91,105,0.07)", "$type": "color", "$description": "GlassCard sheen (light): ember@7%" },
+      "lightTo": { "$value": "rgba(232,97,0,0.045)", "$type": "color", "$description": "GlassCard sheen (light): blaze@4.5%" }
+    },
+    "edge": {
+      "light": { "$value": "rgba(255,255,255,0.18)", "$type": "color", "$description": "luminous edge start: white@18%" },
+      "darkBorder": { "$value": "rgba(48,54,61,0.45)", "$type": "color", "$description": "luminous edge end (dark): border@45%" },
+      "lightBorder": { "$value": "rgba(232,191,181,0.45)", "$type": "color", "$description": "luminous edge end (light): border@45%" }
+    },
+    "shadow": {
+      "sm": { "$value": "rgba(0,0,0,0.32)", "$type": "color" },
+      "md": { "$value": "rgba(0,0,0,0.38)", "$type": "color" },
+      "lg": { "$value": "rgba(0,0,0,0.44)", "$type": "color" }
+    },
+    "scrim": { "$value": "#0d1117", "$type": "color", "$description": "LiquidGlassWindowBlend scrim base color" },
+    "inputFocus": {
+      "ring": { "$value": "rgba(250,80,83,0.45)", "$type": "color", "$description": "ember @45% focus border" },
+      "glow": { "$value": "rgba(250,80,83,0.22)", "$type": "color", "$description": "ember @22% outer focus glow" }
+    },
+    "alert": {
+      "info": { "$value": "rgba(56,216,152,0.10)", "$type": "color", "$description": "success @10% over elevated" },
+      "warning": { "$value": "rgba(255,168,0,0.10)", "$type": "color", "$description": "amber @10% over elevated" },
+      "error": { "$value": "rgba(250,80,83,0.10)", "$type": "color", "$description": "ember @10% over elevated" }
+    },
+    "selection": {
+      "fill": { "$value": "rgba(250,80,83,0.08)", "$type": "color", "$description": "sidebar/nav selected: ember @8%" },
+      "stroke": { "$value": "rgba(250,80,83,0.30)", "$type": "color", "$description": "sidebar/nav selected: ember @30%" }
+    },
+    "blur": {
+      "sm": { "$value": "12px", "$type": "dimension" },
+      "md": { "$value": "22px", "$type": "dimension" },
+      "lg": { "$value": "32px", "$type": "dimension" },
+      "xl": { "$value": "40px", "$type": "dimension" }
+    },
+    "saturate": {
+      "standard": { "$value": "1.65", "$type": "number" },
+      "high": { "$value": "1.85", "$type": "number" }
+    }
+  },
+  "radius": {
+    "xs": { "$value": "6px", "$type": "dimension", "$description": "segmented-picker selected segment" },
+    "xl": { "$value": "22px", "$type": "dimension", "$description": "popover window / dashboard top corners" }
+  },
+  "space": {
+    "xxs": { "$value": "2px", "$type": "dimension" }
+  },
+  "type": {
+    "size": {
+      "displayLarge": { "$value": "36px", "$type": "dimension", "$description": "bold" },
+      "display": { "$value": "28px", "$type": "dimension", "$description": "bold" },
+      "title": { "$value": "20px", "$type": "dimension", "$description": "semibold" },
+      "headline": { "$value": "16px", "$type": "dimension", "$description": "semibold" },
+      "body": { "$value": "14px", "$type": "dimension", "$description": "regular" },
+      "caption": { "$value": "12px", "$type": "dimension", "$description": "medium" },
+      "tiny": { "$value": "11px", "$type": "dimension", "$description": "medium" },
+      "monoLarge": { "$value": "28px", "$type": "dimension", "$description": "bold" },
+      "mono": { "$value": "14px", "$type": "dimension", "$description": "medium" },
+      "monoSmall": { "$value": "12px", "$type": "dimension" },
+      "monoTiny": { "$value": "11px", "$type": "dimension" }
+    }
+  }
+}

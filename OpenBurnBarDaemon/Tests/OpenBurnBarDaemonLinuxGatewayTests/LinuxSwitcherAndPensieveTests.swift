@@ -2,7 +2,7 @@
 import Foundation
 import Glibc
 @testable import OpenBurnBarDaemon
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import XCTest
 
 final class LinuxSwitcherAndPensieveTests: XCTestCase {

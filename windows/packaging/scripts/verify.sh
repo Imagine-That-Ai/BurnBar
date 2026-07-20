@@ -221,7 +221,7 @@ fi
 
 echo "== SOFT: PowerShell parse (pwsh, if available) =="
 if command -v pwsh >/dev/null 2>&1; then
-  for ps in "$pkg_root"/portable/New-PortableZip.ps1 "$pkg_root"/msix/New-MsixPackage.ps1 "$pkg_root"/chocolatey/tools/*.ps1; do
+  for ps in "$pkg_root"/portable/New-PortableZip.ps1 "$pkg_root"/msix/New-MsixPackage.ps1 "$pkg_root"/scripts/*.ps1 "$pkg_root"/chocolatey/tools/*.ps1; do
     if pwsh -NoProfile -NonInteractive -Command "\$e=\$null;[void][System.Management.Automation.Language.Parser]::ParseFile('$ps',[ref]\$null,[ref]\$e); if(\$e){\$e|%{Write-Error \$_.Message}; exit 1} else { exit 0 }" 2>/tmp/obb_ps.err; then
       ok "pwsh parse $(basename "$ps")"
     else

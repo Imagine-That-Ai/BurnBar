@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Durable high-water marks for phone-signed Computer Use approval counters.
 /// A corrupt existing store is distinguishable from first run so callers can

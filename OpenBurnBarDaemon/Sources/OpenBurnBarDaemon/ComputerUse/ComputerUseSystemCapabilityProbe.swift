@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Read-only capability probe used by the pending-approval RPC.  Session
 /// start and input dispatch remain owned by the existing Computer Use service;

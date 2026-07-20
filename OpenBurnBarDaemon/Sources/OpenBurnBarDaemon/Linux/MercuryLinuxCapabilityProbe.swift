@@ -1,6 +1,6 @@
 #if os(Linux)
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 public enum MercuryLinuxCapabilityProbe {
     public static func snapshot(

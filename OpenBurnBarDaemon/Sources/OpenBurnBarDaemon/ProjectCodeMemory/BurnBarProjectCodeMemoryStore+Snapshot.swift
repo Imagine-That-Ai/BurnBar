@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 #if canImport(CryptoKit)
 import CryptoKit
 #else

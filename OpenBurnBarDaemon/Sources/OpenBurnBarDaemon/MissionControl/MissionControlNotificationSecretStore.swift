@@ -1,9 +1,9 @@
 import Foundation
-import OpenBurnBarCore
 import OpenBurnBarLinuxSecurity
 #if canImport(LocalAuthentication)
 import LocalAuthentication
 #endif
+import OpenBurnBarEngine
 #if canImport(Security)
 import Security
 #endif

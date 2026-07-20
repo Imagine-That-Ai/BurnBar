@@ -19,6 +19,8 @@ const TOUCHED = [
   "LINUX_APP_CHECK_APP_ID",
   "APP_CHECK_ALLOWED_APP_IDS",
   "ALLOW_MOCK_APP_CHECK_ATTESTATION",
+  "WINDOWS_TPM_VERIFIER_URL",
+  "WINDOWS_TPM_VERIFIER_TOKEN",
   "APP_STORE_APPLE_APP_ID",
   "APP_STORE_ENV",
 ] as const;
@@ -94,6 +96,16 @@ describe("VAL-P0-AC-011B config.ts App Check allowlist surface", () => {
     expect(cfg.linuxAppCheckAppID).toBe("1:123:linux:overridden");
     expect(isAppCheckAppIdAllowed("1:123:windows:overridden", cfg)).toBe(true);
     expect(isAppCheckAppIdAllowed("1:123:linux:overridden", cfg)).toBe(true);
+  });
+
+  it("reads the Windows TPM verifier URL without treating its credential as ordinary config", async () => {
+    process.env.GCLOUD_PROJECT = "demo-project";
+    process.env.WINDOWS_TPM_VERIFIER_URL = "https://attestation.example.test/verify";
+    process.env.WINDOWS_TPM_VERIFIER_TOKEN = "must-not-enter-get-config";
+    const { getConfig } = await import("../config.js");
+    const cfg = getConfig();
+    expect(cfg.windowsTpmVerifierURL).toBe("https://attestation.example.test/verify");
+    expect(cfg).not.toHaveProperty("windowsTpmVerifierToken");
   });
 });
 

@@ -1,0 +1,82 @@
+{
+  "schema": "openburnbar.windows.remote-config-certification-fixtures.v1",
+  "projectId": "burnbar-staging",
+  "baseline": {
+    "parameters": {
+      "computer_use_watch_enabled": {
+        "defaultValue": { "value": "true" },
+        "valueType": "BOOLEAN",
+        "description": "Staging certification: enable Computer Use watch surfaces"
+      },
+      "computer_use_browser_enabled": {
+        "defaultValue": { "value": "true" },
+        "valueType": "BOOLEAN",
+        "description": "Staging certification: enable Browser Computer Use"
+      },
+      "computer_use_system_enabled": {
+        "defaultValue": { "value": "true" },
+        "valueType": "BOOLEAN",
+        "description": "Staging certification: enable System Computer Use behind local permissions and remote lease"
+      },
+      "computer_use_phone_control_enabled": {
+        "defaultValue": { "value": "true" },
+        "valueType": "BOOLEAN",
+        "description": "Staging certification: enable paired-phone control"
+      },
+      "computer_use_phone_control_attestation_required": {
+        "defaultValue": { "value": "true" },
+        "valueType": "BOOLEAN",
+        "description": "Staging certification: require phone attestation"
+      },
+      "computer_use_trust_modes_enabled": {
+        "defaultValue": { "value": "true" },
+        "valueType": "BOOLEAN",
+        "description": "Staging certification: enable explicit trust-mode controls"
+      },
+      "computer_use_polish_enabled": {
+        "defaultValue": { "value": "true" },
+        "valueType": "BOOLEAN",
+        "description": "Staging certification: enable Computer Use polish surfaces"
+      },
+      "computer_use_kill_switch": {
+        "defaultValue": { "value": "false" },
+        "valueType": "BOOLEAN",
+        "description": "Staging certification: Computer Use emergency kill switch"
+      },
+      "computer_use_phone_control_respects_deny_regions": {
+        "defaultValue": { "value": "true" },
+        "valueType": "BOOLEAN",
+        "description": "Staging certification: preserve deny-region enforcement"
+      },
+      "media_kill_switch": {
+        "defaultValue": { "value": "false" },
+        "valueType": "BOOLEAN",
+        "description": "Staging certification: Mercury media emergency kill switch"
+      }
+    }
+  },
+  "fixtures": {
+    "Baseline": {
+      "description": "Restore the reviewed staging defaults.",
+      "overrides": {}
+    },
+    "ComputerKill": {
+      "description": "Enable the Computer Use emergency kill switch.",
+      "overrides": {
+        "computer_use_kill_switch": "true"
+      }
+    },
+    "MediaKill": {
+      "description": "Enable the Mercury media emergency kill switch.",
+      "overrides": {
+        "media_kill_switch": "true"
+      }
+    },
+    "MalformedSystem": {
+      "description": "Supply an invalid system-enable value to prove fail-closed parsing.",
+      "overrides": {
+        "computer_use_system_enabled": "invalid-certification-value"
+      }
+    }
+  }
+}

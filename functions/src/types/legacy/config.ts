@@ -111,6 +111,9 @@ export interface EnvConfig {
    */
   allowMockAppCheckAttestation: boolean;
 
+  /** HTTPS endpoint for the Windows-hosted NCryptVerifyClaim service. */
+  windowsTpmVerifierURL: string;
+
   /** Maximum credential string length (default 8192). */
   maxCredentialLength: number;
 

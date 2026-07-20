@@ -1,7 +1,7 @@
 #if os(Linux)
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Owns the lifetime of Linux system-input grants for daemon Computer Use
 /// sessions.  Wayland RemoteDesktop consent is granted once per CU session;

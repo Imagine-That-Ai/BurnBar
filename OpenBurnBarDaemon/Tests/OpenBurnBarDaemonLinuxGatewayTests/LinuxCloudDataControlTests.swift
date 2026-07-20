@@ -1,7 +1,7 @@
 #if os(Linux)
 import Foundation
 import FoundationNetworking
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import XCTest
 @testable import OpenBurnBarDaemon
 

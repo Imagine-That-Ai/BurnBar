@@ -17,6 +17,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:OpenBurnBar.App.Presentation.Switcher"
     xmlns:local="using:OpenBurnBar.App.Switcher"
+    xmlns:views="using:OpenBurnBar.App.Views"
     xmlns:comp="using:OpenBurnBar.App.Components"
     xmlns:conv="using:OpenBurnBar.App.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -26,8 +27,6 @@
     <UserControl.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
         <local:HexToBrushConverter x:Key="HexToBrush" />
-        <SolidColorBrush x:Key="SwitcherActiveBrush" Color="#3FB950" />
-        <SolidColorBrush x:Key="SwitcherPausedBrush" Color="#7D8590" />
 
         <!-- One profile row (SwitcherProfileRowViewModel). Referenced by both section templates. -->
         <DataTemplate x:Key="ProfileRowTemplate" x:DataType="vm:SwitcherProfileRowViewModel">
@@ -44,7 +43,7 @@
                             VerticalAlignment="Center"
                             Background="{x:Bind BrandColorHex, Converter={StaticResource HexToBrush}}" />
                     <Ellipse Width="7" Height="7"
-                             Fill="{StaticResource SwitcherActiveBrush}"
+                             Fill="{ThemeResource AuroraSuccessBrush}"
                              VerticalAlignment="Bottom" HorizontalAlignment="Center"
                              Visibility="{x:Bind IsActive, Converter={StaticResource BoolToVisibility}}" />
                 </Grid>
@@ -55,15 +54,15 @@
                         <TextBlock Text="{x:Bind DisplayName}"
                                    FontSize="13"
                                    TextTrimming="CharacterEllipsis"
-                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                   Foreground="{ThemeResource AuroraTextBrush}" />
                         <Border CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                                Background="{StaticResource SwitcherPausedBrush}"
+                                Background="{ThemeResource AuroraTextMutedBrush}"
                                 Padding="6,1"
                                 Visibility="{x:Bind IsDisabled, Converter={StaticResource BoolToVisibility}}">
                             <TextBlock Text="Paused" FontSize="10" Foreground="White" />
                         </Border>
                         <Border CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                                Background="{StaticResource SwitcherActiveBrush}"
+                                Background="{ThemeResource AuroraSuccessBrush}"
                                 Padding="6,1"
                                 Visibility="{x:Bind IsConnected, Converter={StaticResource BoolToVisibility}}">
                             <TextBlock Text="Logged in" FontSize="10" Foreground="White" />
@@ -73,7 +72,7 @@
                                 Padding="6,1"
                                 Visibility="{x:Bind HasSlotLabel, Converter={StaticResource BoolToVisibility}}">
                             <TextBlock Text="{x:Bind SlotLabel}"
-                                       FontFamily="Cascadia Mono, Consolas"
+                                       FontFamily="{StaticResource AuroraMonoFont}"
                                        FontSize="10"
                                        Foreground="{x:Bind BrandColorHex, Converter={StaticResource HexToBrush}}" />
                         </Border>
@@ -81,11 +80,17 @@
                     <TextBlock Text="{x:Bind AccountIdentityText}"
                                FontSize="11"
                                TextTrimming="CharacterEllipsis"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
 
                 <!-- Actions -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <Button Click="OnLaunchShell"
+                            Style="{StaticResource LiquidGlassInteractiveStyle}"
+                            ToolTipService.ToolTip="Launch CLI profile"
+                            Visibility="{x:Bind CanLaunchShell, Converter={StaticResource BoolToVisibility}}">
+                        <FontIcon Glyph="&#xE768;" FontSize="11" />
+                    </Button>
                     <Button Content="Make Primary"
                             FontSize="11"
                             Click="OnMakePrimary"
@@ -145,14 +150,14 @@
                                                    Provider="{x:Bind local:SwitcherViewSupport.Brand(CliType)}" />
                             <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
                                 <TextBlock Text="{x:Bind Label}" FontSize="14" FontWeight="SemiBold"
-                                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                           Foreground="{ThemeResource AuroraTextBrush}" />
                                 <TextBlock Text="{x:Bind Summary}" FontSize="11" TextWrapping="Wrap"
-                                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
                             </StackPanel>
                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                 <TextBlock Text="{x:Bind ConnectedBadge}" FontSize="11"
                                            VerticalAlignment="Center"
-                                           Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
                                 <Button Content="{x:Bind AddButtonLabel}" FontSize="11"
                                         Click="OnAddAccount"
                                         Style="{StaticResource LiquidGlassInteractiveStyle}" />
@@ -184,14 +189,14 @@
                             </Border>
                             <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
                                 <TextBlock Text="{x:Bind Label}" FontSize="14" FontWeight="SemiBold"
-                                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                           Foreground="{ThemeResource AuroraTextBrush}" />
                                 <TextBlock Text="{x:Bind Summary}" FontSize="11" TextWrapping="Wrap"
-                                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
                             </StackPanel>
                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                 <TextBlock Text="{x:Bind ConnectedBadge}" FontSize="11"
                                            VerticalAlignment="Center"
-                                           Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
                                 <Button Content="{x:Bind AddButtonLabel}" FontSize="11"
                                         Click="OnAddAccount"
                                         Style="{StaticResource LiquidGlassInteractiveStyle}" />
@@ -217,10 +222,10 @@
                 <StackPanel Grid.Column="0" Spacing="2">
                     <TextBlock Text="{x:Bind ViewModel.CountLabel, Mode=OneWay}"
                                FontSize="20" FontWeight="SemiBold"
-                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                               Foreground="{ThemeResource AuroraTextBrush}" />
                     <TextBlock Text="Manage provider accounts, keep reserves ready, and connect new logins without leaving BurnBar."
                                FontSize="12" TextWrapping="Wrap"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
                 <Button Grid.Column="1" Click="OnManualAdd" VerticalAlignment="Top"
                         Style="{StaticResource LiquidGlassInteractiveStyle}">
@@ -237,23 +242,32 @@
                      Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
                      IsClosable="True" />
 
+            <InfoBar x:Name="ShellErrorBar"
+                     IsOpen="False"
+                     Severity="Error"
+                     IsClosable="True" />
+
             <!-- CLI section -->
             <TextBlock Text="CLI PROFILES" FontSize="11" FontWeight="SemiBold"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
             <ItemsControl x:Name="CliList"
                           ItemsSource="{x:Bind ViewModel.CliSections, Mode=OneWay}"
                           ItemTemplate="{StaticResource CliSectionTemplate}" />
 
+            <views:LiveCliStreamView x:Name="LiveShell"
+                                     Height="280"
+                                     Visibility="Collapsed" />
+
             <!-- Browser section -->
             <TextBlock Text="BROWSER PROFILES" FontSize="11" FontWeight="SemiBold"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
             <ItemsControl x:Name="BrowserList"
                           ItemsSource="{x:Bind ViewModel.BrowserSections, Mode=OneWay}"
                           ItemTemplate="{StaticResource BrowserSectionTemplate}" />
 
             <TextBlock Text="Codex, Claude, and OpenCode stay available at the same time. Primary and reserve order only apply within the same provider, so switching Codex accounts never deactivates Claude."
                        FontSize="11" TextWrapping="Wrap"
-                       Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>

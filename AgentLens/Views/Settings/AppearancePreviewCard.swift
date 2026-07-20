@@ -19,7 +19,7 @@ struct AppearancePreviewCard: View {
     @AppStorage(LiquidGlassTransparency.contentSurfacesEnabledKey) private var contentSurfacesEnabled: Bool = LiquidGlassTransparency.defaultContentSurfacesEnabled
     @StateObject private var substrateBox = SwarmSubstrateBox()
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
-    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
     @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = SwarmSubstratePreferences.defaultKernelID
 
     private let previewProviders: [AgentProvider] = [.claudeCode, .codex, .factory]

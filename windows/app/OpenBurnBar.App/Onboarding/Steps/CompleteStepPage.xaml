@@ -16,9 +16,9 @@
 
         <StackPanel Grid.Row="0" Spacing="16" VerticalAlignment="Center" HorizontalAlignment="Center">
             <Border Width="72" Height="72" CornerRadius="36" HorizontalAlignment="Center"
-                    Background="#1A22C55E">
+                    Style="{StaticResource AuroraGlassAlertInfoStyle}">
                 <TextBlock Text="&#x2713;" FontSize="40" FontWeight="SemiBold"
-                           Foreground="#FF22C55E"
+                           Foreground="{ThemeResource AuroraSuccessBrush}"
                            HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
 
@@ -38,7 +38,7 @@
                        HorizontalAlignment="Center" />
 
             <Border x:Name="EmptyNote"
-                    Background="#14F59E0B"
+                    Style="{StaticResource AuroraGlassAlertWarningStyle}"
                     CornerRadius="8"
                     Padding="12,8"
                     MaxWidth="400"

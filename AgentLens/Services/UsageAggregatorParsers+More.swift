@@ -11,19 +11,28 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
     private let modelPattern: String
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
+    private let sessionsURL: URL
     private let cacheURL: URL
     private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<ModelFilterCacheEntry>
+    private let fileHandleForReading: @Sendable (URL) throws -> FileHandle
 
     init(
         modelPattern: String,
         provider: AgentProvider,
         fileManager: FileManager = .default,
-        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live()
+        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live(),
+        sessionsDirectoryOverride: URL? = nil,
+        fileHandleForReading: @escaping @Sendable (URL) throws -> FileHandle = { url in
+            try FileHandle(forReadingFrom: url)
+        }
     ) {
         self.modelPattern = modelPattern.lowercased()
         self.provider = provider
         self.fileManager = fileManager
         self.appPaths = appPaths
+        self.sessionsURL = sessionsDirectoryOverride
+            ?? URL(fileURLWithPath: ("~/.factory/sessions" as NSString).expandingTildeInPath)
+        self.fileHandleForReading = fileHandleForReading
 
         let providerKey = provider.rawValue
             .lowercased()
@@ -44,14 +53,13 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
     }
 
     func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
-        let sessionsPath = "~/.factory/sessions"
-        let sessionsURL = URL(fileURLWithPath: (sessionsPath as NSString).expandingTildeInPath)
         let includeConversationBodies = options.includeConversationBodies
 
         guard fileManager.fileExists(atPath: sessionsURL.path) else {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
+        let gate = OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
         var parseCache = cacheStore.load()
@@ -59,11 +67,11 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         var cacheMutated = false
 
         let projectDirs = try fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])
-            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(isDir filter)
+            // try?-ok(unreadable directory metadata excludes that entry)
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
         for projectDir in projectDirs {
             let projectName = decodeProjectName(projectDir.lastPathComponent)
-
             let files = try fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)
                 .filter { $0.pathExtension == "jsonl" }
 
@@ -74,30 +82,94 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
                 let cacheKey = cachePath(for: jsonlFile)
                 activePaths.insert(cacheKey)
 
-                if let signature = compositeSignature(
+                options.metrics?.recordCandidate()
+                let signature = compositeSignature(
                     jsonlFile: jsonlFile,
                     settingsFile: settingsFile,
                     metadataFile: metadataFile
-                ),
-                   let cached = parseCache.fileEntries[cacheKey],
-                   cached.signature == signature {
-                    appendCached(
-                        cached,
-                        includeConversation: includeConversationBodies,
-                        usages: &usages,
-                        conversations: &conversations
-                    )
-                    if !includeConversationBodies,
-                       cached.conversation != nil {
-                        parseCache.fileEntries[cacheKey] = ModelFilterCacheEntry(
-                            signature: cached.signature,
-                            usage: cached.usage,
-                            conversation: nil
+                )
+                var sessionFiles = [jsonlFile]
+                if fileManager.fileExists(atPath: settingsFile.path) { sessionFiles.append(settingsFile) }
+                if fileManager.fileExists(atPath: metadataFile.path) { sessionFiles.append(metadataFile) }
+
+                let cached = signature.flatMap { signature in
+                    parseCache.fileEntries[cacheKey].flatMap { $0.signature == signature ? $0 : nil }
+                }
+
+                if let cached {
+                    if includeConversationBodies, cached.conversation == nil {
+                        let sessionAdmitted = try gate.shouldRead(sessionFiles, candidateAlreadyRecorded: true)
+                        guard sessionAdmitted else {
+                            appendCached(
+                                cached,
+                                includeConversation: false,
+                                usages: &usages,
+                                conversations: &conversations
+                            )
+                            continue
+                        }
+
+                        do {
+                            let parsed = try parseSession(file: jsonlFile, projectName: projectName)
+                            let refreshed = ModelFilterCacheEntry(
+                                signature: cached.signature,
+                                usage: cached.usage ?? parsed?.usage,
+                                conversation: parsed?.conversation
+                            )
+                            if refreshed != cached {
+                                parseCache.fileEntries[cacheKey] = refreshed
+                                cacheMutated = true
+                            }
+                            appendCached(
+                                refreshed,
+                                includeConversation: true,
+                                usages: &usages,
+                                conversations: &conversations
+                            )
+                        } catch {
+                            gate.recordContentReadFailure(for: sessionFiles)
+                            appendCached(
+                                cached,
+                                includeConversation: false,
+                                usages: &usages,
+                                conversations: &conversations
+                            )
+                        }
+                    } else {
+                        try recordObservedFiles(sessionFiles, options: options)
+                        appendCached(
+                            cached,
+                            includeConversation: includeConversationBodies,
+                            usages: &usages,
+                            conversations: &conversations
                         )
-                        cacheMutated = true
+                        if !includeConversationBodies, cached.conversation != nil {
+                            parseCache.fileEntries[cacheKey] = ModelFilterCacheEntry(
+                                signature: cached.signature,
+                                usage: cached.usage,
+                                conversation: nil
+                            )
+                            cacheMutated = true
+                        }
                     }
-                } else {
-                    let parsed = try? parseSession(file: jsonlFile, projectName: projectName) // try?-ok(per-session parse, skip)
+                    continue
+                }
+
+                let sessionAdmitted = try gate.shouldRead(sessionFiles, candidateAlreadyRecorded: true)
+                guard sessionAdmitted else {
+                    if let cached = parseCache.fileEntries[cacheKey] {
+                        appendCached(
+                            cached,
+                            includeConversation: false,
+                            usages: &usages,
+                            conversations: &conversations
+                        )
+                    }
+                    continue
+                }
+
+                do {
+                    let parsed = try parseSession(file: jsonlFile, projectName: projectName)
                     appendParsed(
                         parsed,
                         includeConversation: includeConversationBodies,
@@ -105,11 +177,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
                         conversations: &conversations
                     )
 
-                    if let signature = compositeSignature(
-                        jsonlFile: jsonlFile,
-                        settingsFile: settingsFile,
-                        metadataFile: metadataFile
-                    ) {
+                    if let signature {
                         parseCache.fileEntries[cacheKey] = ModelFilterCacheEntry(
                             signature: signature,
                             usage: parsed?.usage,
@@ -117,6 +185,8 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
                         )
                         cacheMutated = true
                     }
+                } catch {
+                    gate.recordContentReadFailure(for: sessionFiles)
                 }
             }
         }
@@ -146,10 +216,20 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         return decoded
     }
 
-    private func parseSession(file: URL, projectName: String) throws -> (usage: TokenUsage?, conversation: OpenBurnBarCore.ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { // try?-ok(log open, skip if absent)
+    private func readOptionalSidecarJSON(_ file: URL) throws -> [String: Any]? {
+        guard fileManager.fileExists(atPath: file.path) else { return nil }
+        let handle = try fileHandleForReading(file)
+        defer { try? handle.close() } // try?-ok(handle teardown)
+        let data = try handle.readToEnd() ?? Data()
+        do {
+            return try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        } catch {
             return nil
         }
+    }
+
+    private func parseSession(file: URL, projectName: String) throws -> (usage: TokenUsage?, conversation: OpenBurnBarCore.ConversationRecord?)? {
+        let handle = try fileHandleForReading(file)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
         let mtime = (try? fileManager.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(optional mtime)
@@ -168,8 +248,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         var usedFallbackEstimate = false
         var settingsModel: String?
 
-        if let data = try? Data(contentsOf: settingsURL), // try?-ok(optional sidecar read)
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(sidecar decode)
+        if let json = try readOptionalSidecarJSON(settingsURL) {
             if let m = json["model"] as? String {
                 settingsModel = OpenBurnBarCore.TokenExtractionUtility.normalizeModelName(m)
             }
@@ -186,8 +265,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         }
 
         if !usedSettingsTotals,
-           let data = try? Data(contentsOf: metadataURL), // try?-ok(optional sidecar read)
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(sidecar decode)
+           let json = try readOptionalSidecarJSON(metadataURL) {
             if settingsModel == nil, let m = json["model"] as? String {
                 settingsModel = OpenBurnBarCore.TokenExtractionUtility.normalizeModelName(m)
             }
@@ -310,7 +388,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         let resolvedStart = startTime ?? conv.startTime ?? Date()
         let resolvedEnd = endTime ?? conv.endTime ?? resolvedStart
 
-        let cost = OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
+        let cost = try OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,
@@ -392,6 +470,32 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         }
     }
 
+    private func recordObservedFiles(
+        _ files: [URL],
+        options: OpenBurnBarCore.LogParseOptions
+    ) throws {
+        guard let tracker = options.fileDiscoveryTracker else { return }
+        try options.resourceGovernor?.checkpoint()
+        for file in files {
+            options.metrics?.recordMetadataStat()
+            let attributes = try fileManager.attributesOfItem(atPath: file.path)
+            _ = tracker.record(OpenBurnBarCore.ParserDiscoveredFile(
+                path: file.standardizedFileURL.path,
+                fileSizeBytes: (attributes[.size] as? NSNumber)?.int64Value,
+                modificationDate: normalizedCheckpointDate(attributes[.modificationDate] as? Date),
+                creationDate: normalizedCheckpointDate(attributes[.creationDate] as? Date),
+                fileSystemNumber: (attributes[.systemNumber] as? NSNumber)?.uint64Value,
+                fileNumber: (attributes[.systemFileNumber] as? NSNumber)?.uint64Value
+            ))
+        }
+    }
+
+    private func normalizedCheckpointDate(_ date: Date?) -> Date? {
+        guard let date else { return nil }
+        let milliseconds = (date.timeIntervalSince1970 * 1_000).rounded()
+        return Date(timeIntervalSince1970: milliseconds / 1_000)
+    }
+
     private func compositeSignature(
         jsonlFile: URL,
         settingsFile: URL,
@@ -430,14 +534,21 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
         self.databasePathOverride = databasePathOverride
     }
 
-    func parse() async throws -> OpenBurnBarCore.ParseResult {
+    func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
         let fm = FileManager.default
         let resolved = databasePathOverride.map { ($0 as NSString).expandingTildeInPath }
             ?? Self.resolvedDatabasePath()
         guard let dbPath = resolved, fm.fileExists(atPath: dbPath) else {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
-        return try parseDatabase(dbPath: dbPath)
+        let dbURL = URL(fileURLWithPath: dbPath)
+        guard try OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fm).shouldRead(dbURL) else {
+            return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
+        }
+        let result = try parseDatabase(dbPath: dbPath)
+        return options.includeConversationBodies
+            ? result
+            : OpenBurnBarCore.ParseResult(usages: result.usages, conversations: [])
     }
 
     static func resolvedDatabasePath() -> String? {
@@ -592,7 +703,7 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
             }
 
             if cost <= 0 {
-                cost = OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
+                cost = try OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
                     inputTokens: input,
                     outputTokens: output,
                     cacheCreationTokens: cacheCreation,
@@ -788,25 +899,30 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
 final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider = .piAgent
 
-    func parse() async throws -> OpenBurnBarCore.ParseResult {
+    func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
         let fm = FileManager.default
+        let gate = OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fm)
         let sessionsPath = (provider.logDirectory as NSString).expandingTildeInPath
         guard fm.fileExists(atPath: sessionsPath) else {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
-        let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))? // try?-ok(dir scan, empty fallback)
+        // try?-ok(absent or unreadable session root yields no sessions)
+        let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))?
             .filter { $0.pathExtension == "jsonl" } ?? []
 
         var usages: [TokenUsage] = []
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
 
         for file in jsonlFiles {
+            guard try gate.shouldRead(file) else { continue }
             let sessionId = file.deletingPathExtension().lastPathComponent
             if let pair = parseSession(file: file, sessionId: sessionId) {
                 if let usage = pair.usage { usages.append(usage) }
-                if let conversation = pair.conversation { conversations.append(conversation) }
+                if options.includeConversationBodies, let conversation = pair.conversation {
+                    conversations.append(conversation)
+                }
             }
         }
 
@@ -904,12 +1020,12 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
 
         guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else { return nil }
 
-        let cost = OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
+        guard let cost = AppLogger.shared.silentlyOptional("domain_core_pricing_cost", try OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,
             cacheReadTokens: cacheReadTokens
-        )
+        )) else { return nil }
         let projectName = workingDirectory.map { ($0 as NSString).lastPathComponent.nonEmpty ?? $0 } ?? sessionId
 
         let usage = TokenUsage(

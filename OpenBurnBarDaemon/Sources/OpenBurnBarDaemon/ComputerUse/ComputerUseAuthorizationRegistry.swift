@@ -1,6 +1,6 @@
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Shared authority for explicit Computer Use RPCs and daemon-internal agent
 /// browser dispatch. Production enables lease enforcement; development and

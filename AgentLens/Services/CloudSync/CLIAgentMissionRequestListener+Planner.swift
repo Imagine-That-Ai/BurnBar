@@ -325,10 +325,7 @@ enum CLIAgentMissionRuntimePlanner {
         case ChatBackendID.cursorAgent.rawValue:
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "cursor-agent",
-                arguments: CLIArgumentBuilder.cursorAgentArguments(
-                    prompt: hostPrompt,
-                    model: requestedModelID ?? ""
-                ),
+                arguments: CLIArgumentBuilder.cursorAgentArguments(prompt: hostPrompt, model: requestedModelID ?? ""),
                 extraEnvironment: [:]
             )
         case "opencode":
@@ -373,8 +370,6 @@ enum CLIAgentMissionRuntimePlanner {
                 arguments: arguments,
                 extraEnvironment: [:]
             )
-        case ChatBackendID.codex.rawValue, ChatBackendID.claude.rawValue:
-            return nil
         default:
             return nil
         }
@@ -424,6 +419,8 @@ enum CLIAgentMissionRuntimePlanner {
                 extraEnvironment: [:]
             )
         case ChatBackendID.junie.rawValue:
+            // Junie has no enforceable read-only/no-shell flags: require the full interactive grant.
+            guard grant.capabilities.contains(.workspaceWrite), grant.capabilities.contains(.shell) else { return nil }
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "junie",
                 arguments: CLIArgumentBuilder.junieArguments(
@@ -459,8 +456,7 @@ enum CLIAgentMissionRuntimePlanner {
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "cursor-agent",
                 arguments: CLIArgumentBuilder.cursorAgentArguments(
-                    prompt: hostPrompt,
-                    model: requestedModelID ?? "",
+                    prompt: hostPrompt, model: requestedModelID ?? "",
                     workspaceDirectory: workingDirectory,
                     capabilityGrant: grant
                 ),

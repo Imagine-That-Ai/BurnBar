@@ -21,7 +21,7 @@ struct UsageCostBucket: Equatable, Sendable {
     let cost: Double
 }
 
-struct UsageTotals { // pure-move: was private
+struct UsageTotals: Equatable, Sendable { // pure-move: was private
     var sessionCount: Int
     var inputTokens: Int
     var outputTokens: Int

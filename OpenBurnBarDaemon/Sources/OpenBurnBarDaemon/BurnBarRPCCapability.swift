@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// T-DMN-01 — per-operation capability attenuation for the main control socket.
 ///

@@ -478,6 +478,38 @@ function runBridge() {
       params && typeof params.timeoutMs === "number"
         ? params.timeoutMs
         : perActionTimeoutMs;
+    if (method === "launch") {
+      const launchPage = await ensurePage();
+      if (params && params.url) {
+        return dispatch("goto", { ...params, timeoutMs: timeout });
+      }
+      return { kind: "launch", url: launchPage.url() };
+    }
+    if (method === "navigate") {
+      return dispatch("goto", { ...params, timeoutMs: timeout });
+    }
+    if (method === "evaluate") {
+      const script = params && typeof params.script === "string" ? params.script : "";
+      if (!script || script.length > 256 * 1024) {
+        throw new Error("evaluate requires a bounded script");
+      }
+      const evalPage = await ensurePage();
+      const value = await evalPage.evaluate((source) => {
+        // The page context is the only execution target; Node APIs are not
+        // exposed to the evaluated function.
+        return eval(source);
+      }, script);
+      return { kind: "evaluate", value };
+    }
+    if (method === "close") {
+      try {
+        if (browser) await browser.close();
+      } catch (_) {}
+      try {
+        if (context) await context.close();
+      } catch (_) {}
+      return { kind: "close" };
+    }
     const p = await ensurePage();
     switch (method) {
       case "click": {
@@ -584,7 +616,9 @@ function runBridge() {
     const started = Date.now();
     let response;
     try {
-      const result = await dispatch(req.method, req.params || {});
+      const method = typeof req.method === "string" ? req.method : req.op;
+      const params = req.params && typeof req.params === "object" ? req.params : req;
+      const result = await dispatch(method, params || {});
       response = {
         id: req.id,
         ok: true,

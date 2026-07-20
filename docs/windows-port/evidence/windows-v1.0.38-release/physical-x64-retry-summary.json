@@ -1,0 +1,74 @@
+{
+  "schema": "openburnbar.windows.physical-x64-retry-summary.v1",
+  "notCertificationReceipt": true,
+  "capturedAtUtc": "2026-07-19T11:18:13.6861913+00:00",
+  "candidate": {
+    "tag": "windows-v1.0.38",
+    "commitSha": "48837746490b6468efa4dc06a476f305d496039c",
+    "harnessCommitSha": "00d0751f1c671d99fe7ef8f4059e91d689a30f44",
+    "releaseWorkflowRunId": "29676266545",
+    "stagingWorkflowRunId": "29675617068"
+  },
+  "artifact": {
+    "name": "OpenBurnBar-1.0.38-x64.msix",
+    "architecture": "x64",
+    "sha256": "fd14adb0870473f907c10f342eb3ee300cebf39c500848505a5887ad89602e69",
+    "signature": "verified",
+    "timestamp": "verified"
+  },
+  "device": {
+    "kind": "physical-windows",
+    "manufacturer": "HP",
+    "model": "HP ENVY x360 2-in-1 Laptop 15-ew0xxx",
+    "processor": "12th Gen Intel(R) Core(TM) i7-1255U",
+    "processorArchitecture": "AMD64",
+    "certificationArchitecture": "x64"
+  },
+  "evidence": {
+    "archiveName": "OpenBurnBar-v1.0.38-physical-x64-retry-evidence-bf10318474556b1ea3f69b05831fa09dfc4f8b36ac9470fb113092ec4f7ed876.zip",
+    "archiveSha256": "bf10318474556b1ea3f69b05831fa09dfc4f8b36ac9470fb113092ec4f7ed876",
+    "zipIntegrity": "PASS",
+    "internalChecksumsPassed": 436,
+    "internalChecksumsTotal": 436,
+    "validator": "PASS",
+    "bundleVerdict": "NO-GO"
+  },
+  "observations": {
+    "coldLaunchResponsive": { "passed": 20, "total": 20, "crashEvents": 0 },
+    "warmLaunchResponsive": { "passed": 20, "total": 20, "crashEvents": 0 },
+    "reinstallLaunchResponsive": { "passed": 20, "total": 20, "crashEvents": 0 },
+    "idle": {
+      "durationSeconds": 300,
+      "sampleCount": 300,
+      "normalizedCpuP95Percent": 8.08419437446013,
+      "privateBytesMaxMegabytes": 101.9375,
+      "processWriteMegabytesPerMinute": 0.20010654286470272
+    },
+    "soak": {
+      "durationSeconds": 1822.0014942,
+      "sampleCount": 1800,
+      "unresponsiveSamples": 0,
+      "crashEvents": 0,
+      "normalizedCpuAveragePercent": 0.6161406461111107,
+      "privateBytesMaxMegabytes": 100.335938,
+      "privateBytesGrowthPercent": -0.9379951411040035
+    },
+    "uiRoutes": { "passed": 26, "total": 26 }
+  },
+  "gates": {
+    "local-automated-checks": "PASS",
+    "accessibility-display": "BLOCKED",
+    "physical-performance-x64": "BLOCKED",
+    "staging-cloud": "BLOCKED",
+    "media-computer-use-safety": "BLOCKED",
+    "store-update-lifecycle": "BLOCKED",
+    "physical-performance-arm64": "BLOCKED"
+  },
+  "safetyBoundary": {
+    "productionChanged": false,
+    "publicRolloutChanged": false,
+    "diskOrPartitionChanged": false,
+    "firmwareChanged": false,
+    "vmUsed": false
+  }
+}

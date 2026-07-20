@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import OpenBurnBarComputerUseCore
 #if canImport(Darwin)
 import Darwin

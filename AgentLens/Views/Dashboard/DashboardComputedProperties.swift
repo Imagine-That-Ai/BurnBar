@@ -84,30 +84,30 @@ extension DashboardView {
         BurnRailSparklineBuilder.buildSamples(
             from: dashboardUsageWindow.usages,
             range: dashboardDateRange,
+            displayMode: settingsManager.usageDisplayMode,
             bucketCount: 24
         )
+    }
+
+    /// The compact chart always ends at this instant. Today can otherwise run
+    /// to midnight, which leaves a misleading empty future on the right.
+    var burnRailDisplayRange: ClosedRange<Date> {
+        let now = Date()
+        if let range = dashboardDateRange {
+            return range.lowerBound...min(range.upperBound, now)
+        }
+        let earliest = dashboardUsageWindow.usages.map(\.startTime).min()
+            ?? Calendar.current.date(byAdding: .hour, value: -1, to: now)
+            ?? now
+        return min(earliest, now)...now
     }
 
     /// % change vs. the immediately preceding equal-length window. `nil` for
     /// "All Time" (no preceding window) or when the previous window is empty.
     var burnRailDeltaPercent: Double? {
-        guard let current = dashboardDateRange else { return nil }
-        let span = current.upperBound.timeIntervalSince(current.lowerBound)
-        guard span > 0 else { return nil }
-        let prev = current.lowerBound.addingTimeInterval(-span)...current.lowerBound
-        let prevSummary = dataStore.usageWindowSummary(in: prev)
-        let currentMetric: Double
-        let previousMetric: Double
-        switch settingsManager.usageDisplayMode {
-        case .currency:
-            currentMetric = dashboardUsageWindow.totalCost
-            previousMetric = prevSummary.totalCost
-        case .tokens:
-            currentMetric = Double(dashboardUsageWindow.totalTokens)
-            previousMetric = Double(prevSummary.totalTokens)
-        }
-        guard previousMetric > 0 else { return nil }
-        return ((currentMetric - previousMetric) / previousMetric) * 100.0
+        guard dashboardDateRange != nil else { return nil }
+        guard burnRailDeltaRequestID == burnRailDeltaTaskID else { return nil }
+        return burnRailDelta
     }
 
     /// A "live" rail dot animates when new usage is arriving — defined as a

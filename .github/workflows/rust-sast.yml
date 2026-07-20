@@ -6,10 +6,11 @@ name: Rust SAST
 # NOT Rust — CodeQL has no GA-stable Rust analyzer here. cargo-deny already gates
 # licenses + bans (fast-feedback.yml `rust-deny-fast`, license-posture.yml), but
 # advisory *vulnerabilities* were scanned in ZERO workflows. This lane closes
-# that gap with cargo-audit (RustSec advisory DB) over BOTH Rust crates, plus
+# that gap with cargo-audit (RustSec advisory DB) over every shipping Rust workspace, plus
 # clippy security lints, failing closed on any new advisory:
 #   - crates/openburnbar-iroh  (iroh QUIC FFI shipped into the Swift/Android app)
 #   - crates/burnbar-remote    (gen-2 remote-control engine workspace)
+#   - crates/openburnbar-domain-core (shared pure business logic + UniFFI)
 #
 # cargo-audit fails the job on any advisory except the four unmaintained
 # transitive deps already accepted (with justification) in
@@ -64,6 +65,9 @@ jobs:
           - crate: burnbar-remote
             path: crates/burnbar-remote
             toolchain: "1.94.0"
+          - crate: openburnbar-domain-core
+            path: crates/openburnbar-domain-core
+            toolchain: "1.96.0"
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -125,6 +129,9 @@ jobs:
           - crate: burnbar-remote
             path: crates/burnbar-remote
             toolchain: "1.94.0"
+          - crate: openburnbar-domain-core
+            path: crates/openburnbar-domain-core
+            toolchain: "1.96.0"
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 

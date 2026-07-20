@@ -47,6 +47,8 @@ export const AUTH_ONLY_CALLABLES = [
   "verifyPasskeyAssertion",
   "bindAppCheckAttestation",
   "mintWindowsAppCheckToken",
+  "issueWindowsAppCheckChallenge",
+  "getWindowsRuntimeSafetyConfig",
   "issueHighRiskActionNonce",
   "searchStreams",
   "issueRemoteMcpGrant",

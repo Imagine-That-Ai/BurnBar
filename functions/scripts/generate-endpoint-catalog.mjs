@@ -334,6 +334,50 @@ const CATALOG_OVERRIDES = {
     ],
     highRiskComputerUse: false,
   },
+  issueWindowsAppCheckChallenge: {
+    trigger: "callable",
+    authMethod: "Firebase Auth; server-nonce bootstrap for Windows TPM attestation",
+    appCheck: "not-required",
+    publicJustification:
+      "Bootstrap that precedes custom App Check minting, so it cannot require App Check. It returns a short-lived nonce only after Firebase Auth and exact server-configured app-id binding.",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    handlerModule: "callables/windowsAppCheck.ts",
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and accepts only the exact server-configured, allowlisted Windows app id",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["issueWindowsAppCheckChallenge"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  getWindowsRuntimeSafetyConfig: {
+    trigger: "callable",
+    authMethod: "Firebase Auth plus Windows TPM-backed App Check",
+    appCheck: "required",
+    tenantSource: "request.auth.uid; response contains global safety flags only",
+    objectIdsFromClient: [],
+    handlerModule: "callables/windowsRuntimeSafetyConfig.ts",
+    ownershipCheck:
+      "handler requires Auth and App Check, accepts no object ids, and returns only bounded global Remote Config booleans",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["getWindowsRuntimeSafetyConfig"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   burnBarHermesGateway: {
     trigger: "http",
     bolaCoverage: [
@@ -555,6 +599,26 @@ const CATALOG_OVERRIDES = {
     highRiskComputerUse: true,
     actionKind: "remote_mcp_grant_revoke",
   },
+  deleteDomainData: {
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["deleteDomainData"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+      {
+        file: "functions/src/__tests__/highRiskOwnerActionCallableGuards.test.ts",
+        test: "deleteDomainData calls enforceHighRiskOwnerAction with actionKind",
+        kind: "static-high-risk-wiring",
+        covers: ["deleteDomainData"],
+      },
+    ],
+    highRiskComputerUse: true,
+    actionKind: "data_domain_delete",
+  },
   startCliLink: {
     trigger: "http",
     authMethod: "public rate-limited device enrollment with credential-delivery key (no tenant objects)",
@@ -639,6 +703,21 @@ const CATALOG_OVERRIDES = {
         covers: ["scanLegacyPlaintextArtifacts"],
         expectedOutcome: "throws",
         expectedCode: "unauthenticated",
+      },
+    ],
+  },
+  submitDomainCoreShadowSamples: {
+    objectIdsFromClient: ["sampleId"],
+    ownershipCheck:
+      "handler requires Auth, App Check, and a matching server-issued rollout-channel claim; writes immutable uid-free samples to a global TTL collection",
+    handlerModule: "callables/domainCoreShadowEvidence.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/domainCoreShadowEvidence.bola.test.ts",
+        test: "submitDomainCoreShadowSamples preserves victim tenant data",
+        kind: "runtime-cross-user",
+        covers: ["submitDomainCoreShadowSamples"],
+        expectedOutcome: "no-side-effect",
       },
     ],
   },

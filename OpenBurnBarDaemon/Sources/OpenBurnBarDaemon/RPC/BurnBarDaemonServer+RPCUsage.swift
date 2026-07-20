@@ -1,4 +1,5 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
+import OpenBurnBarInsights
 import Foundation
 
 extension BurnBarDaemonServer {

@@ -27,6 +27,28 @@ public sealed class WindowsUsageRuntimeTests
     }
 
     [Fact]
+    public async Task Constructor_UsesConfiguredPeriodicInterval()
+    {
+        var runtime = CreateRuntime(
+            new FakeUsageEngine(Response(withUsage: false)),
+            new RecordingSnapshotStore(),
+            periodicInterval: TimeSpan.FromMinutes(10));
+        await using (runtime)
+        {
+            Assert.Equal(TimeSpan.FromMinutes(10), runtime.PeriodicInterval);
+        }
+    }
+
+    [Fact]
+    public void ForCurrentUser_IndexingGateControlsConversationBodyCollection()
+    {
+        Assert.False(WindowsUsagePaths.ForCurrentUser(includeConversationBodies: false)
+            .ScanRequest.IncludeConversationBodies);
+        Assert.True(WindowsUsagePaths.ForCurrentUser(includeConversationBodies: true)
+            .ScanRequest.IncludeConversationBodies);
+    }
+
+    [Fact]
     public async Task ManualScan_WithProviderFailure_PublishesDegradedStateAndKeepsGoodRows()
     {
         var engine = new FakeUsageEngine(
@@ -93,11 +115,12 @@ public sealed class WindowsUsageRuntimeTests
 
     private static WindowsUsageRuntime CreateRuntime(
         IUsageEngine engine,
-        IUsageRuntimeSnapshotStore store) => new(
+        IUsageRuntimeSnapshotStore store,
+        TimeSpan? periodicInterval = null) => new(
             engine,
             store,
             TestPaths(Path.Combine(Path.GetTempPath(), "obb-runtime-missing-" + Guid.NewGuid().ToString("N"))),
-            periodicInterval: TimeSpan.FromHours(1),
+            periodicInterval: periodicInterval ?? TimeSpan.FromHours(1),
             fileChangeDebounce: TimeSpan.FromMilliseconds(10));
 
     private static WindowsUsagePaths TestPaths(string root) => new(

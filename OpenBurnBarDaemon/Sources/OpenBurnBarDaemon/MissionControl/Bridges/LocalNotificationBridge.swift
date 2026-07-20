@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 #if os(Linux)
 /// Linux's native notification bridge is deliberately small and explicit. The daemon does not

@@ -25,16 +25,26 @@ on:
       - "scripts/lib/curl-bearer.test.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.test.sh"
+      - "scripts/hooks/pre-push"
+      - "scripts/hooks/pre-push.test.sh"
       - "scripts/ci/verify-release-provenance-boundaries.mjs"
       - "scripts/ci/verify-release-provenance-boundaries.test.mjs"
       - "scripts/ci/check_burnbar_release_preflight.py"
       - "scripts/ci/check_burnbar_release_preflight.test.py"
-      - "scripts/ci/deploy-firebase-rules-releases.mjs"
-      - "scripts/ci/deploy-firebase-rules-releases.test.mjs"
+      - "scripts/ci/check-firestore-rules-size.mjs"
+      - "scripts/ci/check-firestore-rules-size.test.mjs"
+      - "scripts/ci/compact-firestore-rules-inplace.mjs"
       - "scripts/generate-macos-appcast.mjs"
       - "scripts/generate-macos-appcast.test.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
+      - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
+      - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/prepare-scoped-functions-deploy.mjs"
+      - "scripts/ci/prepare-scoped-functions-deploy.test.mjs"
+      - "functions/staging-deploy-targets.json"
+      - "scripts/ci/write-firebase-hosting-ci-config.mjs"
+      - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
       - "scripts/ci/verify-ops-plane-workflow-boundary.mjs"
@@ -55,12 +65,19 @@ on:
       - "scripts/ci/verify-jscpd-report.test.mjs"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ci/verify-release-tag-safety.mjs"
+      - "scripts/ci/verify-release-tag-safety.test.mjs"
+      - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
+      - "scripts/ci/release-dry-run-attestation.mjs"
+      - "scripts/ci/release-dry-run-attestation.test.mjs"
       - "scripts/ops/run-firestore-restore-drill.sh"
       - "scripts/ops/run-firestore-restore-drill.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
       - "scripts/ci/verify-libsignal-submodule-delta.sh"
+      - "scripts/ci/verify-scanner-governance.test.mjs"
+      - "scripts/ci/verify-codeowners-security-trees.test.sh"
       - "third_party/hermes-agent/manifest.json"
       - "third_party/libsignal/manifest.json"
       - "tools/qa/run-functional-qa.sh"
@@ -86,16 +103,26 @@ on:
       - "scripts/lib/curl-bearer.test.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.test.sh"
+      - "scripts/hooks/pre-push"
+      - "scripts/hooks/pre-push.test.sh"
       - "scripts/ci/verify-release-provenance-boundaries.mjs"
       - "scripts/ci/verify-release-provenance-boundaries.test.mjs"
       - "scripts/ci/check_burnbar_release_preflight.py"
       - "scripts/ci/check_burnbar_release_preflight.test.py"
-      - "scripts/ci/deploy-firebase-rules-releases.mjs"
-      - "scripts/ci/deploy-firebase-rules-releases.test.mjs"
+      - "scripts/ci/check-firestore-rules-size.mjs"
+      - "scripts/ci/check-firestore-rules-size.test.mjs"
+      - "scripts/ci/compact-firestore-rules-inplace.mjs"
       - "scripts/generate-macos-appcast.mjs"
       - "scripts/generate-macos-appcast.test.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
+      - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
+      - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/prepare-scoped-functions-deploy.mjs"
+      - "scripts/ci/prepare-scoped-functions-deploy.test.mjs"
+      - "functions/staging-deploy-targets.json"
+      - "scripts/ci/write-firebase-hosting-ci-config.mjs"
+      - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
       - "scripts/ci/verify-ops-plane-workflow-boundary.mjs"
@@ -116,12 +143,19 @@ on:
       - "scripts/ci/verify-jscpd-report.test.mjs"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ci/verify-release-tag-safety.mjs"
+      - "scripts/ci/verify-release-tag-safety.test.mjs"
+      - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
+      - "scripts/ci/release-dry-run-attestation.mjs"
+      - "scripts/ci/release-dry-run-attestation.test.mjs"
       - "scripts/ops/run-firestore-restore-drill.sh"
       - "scripts/ops/run-firestore-restore-drill.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
       - "scripts/ci/verify-libsignal-submodule-delta.sh"
+      - "scripts/ci/verify-scanner-governance.test.mjs"
+      - "scripts/ci/verify-codeowners-security-trees.test.sh"
       - "third_party/hermes-agent/manifest.json"
       - "third_party/libsignal/manifest.json"
       - "tools/qa/run-functional-qa.sh"
@@ -153,6 +187,9 @@ jobs:
       - name: Verify GitHub Actions pins
         run: node scripts/ci/verify-github-action-pins.mjs
 
+      - name: Self-test Firebase CI config generation
+        run: node scripts/ci/write-firebase-hosting-ci-config.test.mjs
+
       - name: Self-test QA artifact redaction
         run: node scripts/ci/redact-qa-artifacts.test.mjs
 
@@ -162,8 +199,8 @@ jobs:
       - name: Self-test duplicate-code report verifier
         run: node scripts/ci/verify-jscpd-report.test.mjs
 
-      - name: Self-test overdue P0 escalation policy
-        run: node --test .github/actions/ops-failure-issue/escalation.test.cjs
+      - name: Self-test ops failure issue (escalation + paging)
+        run: node --test .github/actions/ops-failure-issue/escalation.test.cjs .github/actions/ops-failure-issue/paging-wiring.test.cjs .github/actions/ops-failure-issue/paging-payload.test.cjs
 
       - name: Self-test release attestation verifier
         run: bash scripts/ci/verify-release-attestations.test.sh
@@ -223,8 +260,11 @@ jobs:
       - name: Self-test BurnBar release preflight imports
         run: python3 scripts/ci/check_burnbar_release_preflight.test.py
 
-      - name: Self-test Firebase Rules release deploy requests
-        run: node scripts/ci/deploy-firebase-rules-releases.test.mjs
+      - name: Self-test Firestore rules size tripwire
+        run: node scripts/ci/check-firestore-rules-size.test.mjs
+
+      - name: Self-test preserve/* tag pre-push guard
+        run: bash scripts/hooks/pre-push.test.sh
 
       - name: Verify release provenance boundaries
         run: node scripts/ci/verify-release-provenance-boundaries.mjs
@@ -238,6 +278,15 @@ jobs:
       - name: Verify hosting deploy boundary
         run: node scripts/ci/verify-hosting-deploy-boundary.mjs
 
+      - name: Self-test staging Functions deploy boundary
+        run: node scripts/ci/verify-staging-functions-deploy-boundary.test.mjs
+
+      - name: Verify staging Functions deploy boundary
+        run: node scripts/ci/verify-staging-functions-deploy-boundary.mjs
+
+      - name: Self-test scoped staging Functions entrypoint
+        run: node scripts/ci/prepare-scoped-functions-deploy.test.mjs
+
       - name: Self-test native build workflow secret boundary
         run: node scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs
 
@@ -249,6 +298,18 @@ jobs:
 
       - name: Verify ops-plane workflow boundary
         run: node scripts/ci/verify-ops-plane-workflow-boundary.mjs
+
+      - name: Self-test release tag safety
+        run: node scripts/ci/verify-release-tag-safety.test.mjs
+
+      - name: Functional test release tag safety
+        run: node scripts/ci/verify-release-tag-safety.functional.test.mjs
+
+      - name: Verify release tag safety
+        run: node scripts/ci/verify-release-tag-safety.mjs
+
+      - name: Self-test release dry-run attestation
+        run: node scripts/ci/release-dry-run-attestation.test.mjs
 
       - name: Self-test PR harness aggregate gates
         run: node scripts/ci/verify-pr-harness-aggregate-gates.test.mjs
@@ -279,3 +340,9 @@ jobs:
 
       - name: Verify gitleaks workflow boundary
         run: node scripts/ci/verify-gitleaks-workflow-boundary.mjs
+
+      - name: Self-test scanner governance regression suite
+        run: node scripts/ci/verify-scanner-governance.test.mjs
+
+      - name: Self-test CODEOWNERS security trees verifier
+        run: bash scripts/ci/verify-codeowners-security-trees.test.sh

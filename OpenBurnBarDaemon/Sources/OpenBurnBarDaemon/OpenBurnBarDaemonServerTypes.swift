@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 
 // Socket/RPC envelope types shared by `BurnBarDaemonServer` (actor implementation stays in BurnBarDaemonServer.swift).

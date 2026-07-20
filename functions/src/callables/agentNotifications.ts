@@ -11,6 +11,7 @@ import { errorCode, isRecord } from "../guards.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { AGENT_NOTIFICATION_EVENT_TTL_MS } from "../agentNotifications.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
+import { checkAgentNotificationReplyRateLimit } from "./publicRateLimit.js";
 
 const REGION = FUNCTIONS_REGION;
 const EVENT_COLLECTION = "agent_notification_events";
@@ -75,6 +76,7 @@ export const submitAgentNotificationReply = onCall(
       throw new HttpsError("unauthenticated", "Sign in before replying.");
     }
     const uid = request.auth.uid;
+    await checkAgentNotificationReplyRateLimit(uid);
     const data = parseSubmitReplyRequest(request.data);
     const eventId = boundedString(data.eventId, "eventId", 512);
     const sealedReplyPayload = parseSealedPayload(data.sealedReplyPayload);
