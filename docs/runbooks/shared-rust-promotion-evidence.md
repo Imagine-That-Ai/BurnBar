@@ -247,9 +247,10 @@ substitutes for the deterministic workflow below.
 1. Merge the exact candidate to `main`. A PR merge ref, dispatch checkout, or
    unmerged commit is ineligible.
 2. Require the `Shared Rust domain core` `push` run at that commit to succeed.
-   Its 14 exact policy job IDs expand to 16 exact GitHub API jobs because Windows
-   runs x64 and ARM64 separately and the final `candidate-bundle` job aggregates
-   them. Any failed, skipped, missing, duplicate, extra, mixed-run, or
+   Its 14 exact policy job IDs expand to 17 exact GitHub API jobs because Windows
+   runs x64 and ARM64 separately, `candidate-bundle` aggregates the proof
+   fragments, and `Domain Core PR Gate` fails closed over the entire workflow.
+   Any failed, skipped, missing, duplicate, extra, mixed-run, or
    mixed-candidate job fails closed.
 3. The jobs emit suite reports and artifact hashes tied to the exact run ID,
    attempt, commit, version, ABI, and source fingerprint. Required native/Wasm
