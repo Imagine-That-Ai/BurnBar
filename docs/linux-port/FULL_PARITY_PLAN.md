@@ -3,12 +3,13 @@
 Generated from a 6-subagent parallel reconnaissance of `AgentLens/`, `apps/linux-desktop/`, `OpenBurnBarCore/`, `OpenBurnBarDaemon/`, design tokens, packaging, and release infrastructure.
 
 **Live status correction (2026-07-20):** the active implementation branch is
-`af31748ece`, with 91 frontend test files / 865 passing tests and 130/130
-media-enabled Rust tests. The exact-head ARM64 package currently installed is the exact
-`af31748ece` media-enabled shell receipt and renders in
-the unlocked
-Ubuntu GNOME/X11 UTM guest; see the current non-certifying receipt in
-`evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json`.
+`90c5bd34ca`, with 91 frontend test files / 873 passing tests, 129/129 host
+Tauri Rust tests, and 130/130 media-enabled Rust tests on Ubuntu ARM64. The
+current source was synced, built, and installed in the unlocked Ubuntu
+GNOME/X11 UTM guest; the non-certifying staged-daemon receipt is
+`evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json`.
+The current shell matches the source head, while the daemon/CLI remain reused
+staged payloads and therefore do not promote an exact-head product row.
 The strict certification score remains 0/40 product rows and 0/7 environment
 receipts because unsigned local packaging, production configuration,
 cross-device flows, and the broader compositor/keyring/macOS differential

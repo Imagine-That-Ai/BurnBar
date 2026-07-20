@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "capture": {
+    "mode": "installed-shell-atspi",
+    "capturedAt": "2026-07-20T03:42:44Z",
+    "environment": "ubuntu-24.04-gnome-x11-aarch64",
+    "vmAddress": "192.168.64.5",
+    "window": {
+      "name": "OpenBurnBar",
+      "geometry": "1280x782",
+      "present": true
+    },
+    "atspi": {
+      "nodeCount": 44,
+      "namedNodeCount": 27,
+      "actionableNodeCount": 18,
+      "focusableNodeCount": 21,
+      "pass": true,
+      "sha256": "fc42b74f7a73978ef9971903315072164fb3d06abab6ff0540a166368bc99d1f"
+    },
+    "screenshot": {
+      "tool": "scrot",
+      "sha256": "5403ea0417272b92518b1e81c6469caee62afac73b9a37cfbb946875a39b1808",
+      "visualVerdict": "unusable-black-spice-capture"
+    }
+  },
+  "source": {
+    "shellHead": "90c5bd34ca",
+    "syncedSourceFilesMatch": true,
+    "files": {
+      "apps/linux-desktop/src/surfaces/SurfaceRouter.tsx": "ad24925948c01e4c53cf5506acbfb557a68c553706e81e9cecb5ab7db450bd17",
+      "apps/linux-desktop/src/surfaces/projects/ProjectsSurface.tsx": "d0a2edaf5306570ca75224da24f8d7f0f947248dbaf6f6ce76f2d9f2cf8fc2f3",
+      "apps/linux-desktop/src/providerPathRegistry.ts": "7f4e3ca2c8bd5d247b585822917f96296cf0369475a41c4d3c6aeaa0b26a8810",
+      "apps/linux-desktop/src/surfaces/settings/RecoveryAndRestoreControl.tsx": "4341b160a58f727669ec04ebbc8c34a20cc6e5086ef01ec32ea0d472bf0d988b"
+    }
+  },
+  "package": {
+    "format": "deb",
+    "architecture": "arm64",
+    "version": "0.1.1",
+    "sha256": "19f49c6a15ba3afb4c475b538a2db3eec27fef572ca6f5b916bfc8d48b8582d9",
+    "bytes": 132754354,
+    "buildCommand": "OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1 npm run tauri:build -- --bundles deb",
+    "mediaFeature": "media-gst"
+  },
+  "installed": {
+    "desktopSha256": "35a32b40d71d7f788a5f633296b20ecc812fe49df5ee18ea3ec05e40d5190a9d",
+    "daemonSha256": "17aa56ff0e5d4b618f260f83a2b383bad3be275fab697f39c2b3d37ca582e55d",
+    "cliSha256": "c12c5dd24904559c1b11b61a73957bbe9863c21af1a75eb6c42704538a70e739",
+    "daemonHealth": "ok=true",
+    "daemonService": "active",
+    "dependencies": [
+      "libsecret-tools",
+      "gstreamer1.0-plugins-base",
+      "gstreamer1.0-plugins-good",
+      "gstreamer1.0-pipewire",
+      "libayatana-appindicator3-1",
+      "libwebkit2gtk-4.1-0",
+      "libgtk-3-0"
+    ]
+  },
+  "verification": {
+    "frontendTests": "91 files / 873 passed",
+    "typescript": "passed",
+    "productionBundleVerifier": "passed",
+    "tauriRustHost": "129 passed",
+    "tauriRustUbuntuMediaGst": "130 passed",
+    "accessibility": "passed",
+    "webgl": "webgl2=false; webgl1=true; visible 2D fallback label",
+    "manifest": {
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "status": "staged payload manifest did not contain a source commit and is not certifying"
+    }
+  },
+  "limitations": [
+    "The daemon and CLI were reused from the previously staged ARM64 payload; this receipt certifies the current shell, not an exact current-head daemon payload.",
+    "The package and manifest are unsigned/non-certifying for release promotion.",
+    "The SPICE scrot capture was black; AT-SPI, X11 window presence, source hash matching, and daemon health are the accepted evidence for this run.",
+    "This does not close the seven-environment matrix, physical iPad execution, cross-device Mercury/Computer Use proof, production callables, or the 40-row strict ledger."
+  ],
+  "certifying": false
+}

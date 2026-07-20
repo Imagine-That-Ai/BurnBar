@@ -15,15 +15,15 @@ dependencies, acceptance contracts, proof commands, loophole controls, and
 known platform divergences.
 
 > **Live status (2026-07-20):** The implementation branch is
-> `af31748ece` and passes **91 frontend files / 865 tests** plus **130/130
-> media-enabled Rust tests**, including the
+> `90c5bd34ca` and passes **91 frontend files / 873 tests**, **129/129 host
+> Tauri Rust tests**, plus **130/130 media-enabled Rust tests on Ubuntu ARM64**,
+> including the
 > focused mission, shell, and IPv6 adapter regressions, along with
 > TypeScript,
-> production-bundle verification. An exact-head
-> ARM64 DEB is installed and visibly rendering in the unlocked Ubuntu
-> GNOME/X11 UTM guest; the non-certifying exact-head receipt with the
-> verified staged daemon/CLI payload hashes is
-> [`evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json).
+> production-bundle verification. A current-source ARM64 DEB is installed and
+> its shell is live in the unlocked Ubuntu GNOME/X11 UTM guest; the
+> non-certifying staged-daemon receipt is
+> [`evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json).
 > The strict certification ledger is still **0/40 product rows and 0/7
 > environment receipts** because the package is unsigned and production,
 > cross-device, keyring, compositor, and same-commit macOS differential proof
@@ -36,10 +36,11 @@ Linux is not at full macOS parity.
 
 ### Current source wave — 2026-07-20 UTC
 
-Integration head `af31748ece` passes 91 frontend files / 865 tests, including
+Integration head `90c5bd34ca` passes 91 frontend files / 873 tests, including
 focused mission, shell, and IPv6 adapter regressions, TypeScript,
-production bundle verification, Tauri Rust 130/130 with `media-gst`, and package-payload
-contract checks. The current wave includes immediate Canvas2D recovery after
+production bundle verification, Tauri Rust 129/129 on the host and 130/130
+with `media-gst` on Ubuntu ARM64, and package-payload contract checks. The
+current wave includes immediate Canvas2D recovery after
 WebGL context loss, keyboard-complete kernel selection, truthful Support
 performance empty state, stale-update/provider/subscription guards, periodic
 tray refresh, packaged-shell Reconnect, keyboard-complete overflow actions,
@@ -53,24 +54,26 @@ Appearance radios keyboard-complete, fences stale Computer Use authority and
   signed-update facts while blocking package mutation, and forces the native
   GStreamer Mercury viewer feature in package builds. `af31748ece` also makes
   the SmartHub bounded-output guard and oversized-output test fixture stable.
-  The UTM guest passed the
-read-only staged-payload path, then installed a shell package rebuilt at this
-exact head while reusing the previously verified clean daemon and CLI payloads. These
-changes improve the engineering baseline; they do not close the strict 0/40
+  The current wave adds provider catalog/path provenance, daemon-backed project
+  history and exact session associations, encrypted recovery-bundle controls,
+  and route-level code splitting with synchronous Support error wiring. The
+  UTM guest passed the read-only staged-payload path, then installed a shell
+  package rebuilt from the current source while reusing the previously verified
+  clean daemon and CLI payloads. These changes improve the engineering baseline;
+  they do not close the strict 0/40
 product and 0/7 environment gates.
 
 ### Latest installed checkpoint — 2026-07-20 UTC
 
-The live Ubuntu guest has the exact current-head ARM64 DEB with native
-GStreamer media linkage and the verified
-staged daemon and CLI payloads from the prior clean receipt installed at `/usr/bin`. The
-non-certifying receipt is
-`evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json`.
-It proves daemon health, an unlocked active-window launch, and a visible
-Canvas2D fallback with the explicit `WebGL2 unavailable` label. This guest
-reports `webgl2=false`, so it does not certify WebGL2-only kernels or the
-broader seven-environment matrix. The older `5b70a3d320` package remains the
-historical Settings-hydration baseline below.
+The live Ubuntu guest has the current-source `90c5bd34ca` ARM64 DEB with
+native GStreamer media linkage and the verified staged daemon and CLI payloads
+from the prior clean receipt installed at `/usr/bin`. The non-certifying receipt
+is `evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json`.
+It proves daemon health, an unlocked active-window launch, AT-SPI readiness,
+and the explicit `WebGL2 unavailable` fallback label. This guest reports
+`webgl2=false`, so it does not certify WebGL2-only kernels or the broader
+seven-environment matrix. The older `5b70a3d320` package remains the historical
+Settings-hydration baseline below.
 
 Packaging hardening `59d49c7d59` also makes an explicit staged
 `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, allowing a Swift-less Linux build

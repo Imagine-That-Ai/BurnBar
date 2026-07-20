@@ -6,9 +6,9 @@
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Current exact-head proof | `af31748ece` is the installed ARM64 package head. Frontend tests are 865/865 and the media-enabled Rust gate is 130/130. Receipt: [`evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json). |
-| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets rotate; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh; `465431d0fc` hardens startup forwarding; `7ac2e021c9` makes Browser Computer Use capability checks fail closed; `c0a725447d` adds a trusted embedded autostart fallback; `447abb0564` fences stale Mercury capability responses; `9e868e60a7` refreshes tray state periodically; `3e7ede75e3` bounds expired browser authorization polling; `ebab7da744` fences stale concurrent version/feed responses; `534d7aae65` completes overflow-menu keyboard/focus behavior; `519f0456a7` adds a packaged-shell reconnect action for degraded daemon health; `811d84172a` queues native notification actions until renderer bootstrap completes; `66b280162f` fixes the Linux-only AppHandle ownership path caught by the ARM64 build; `b2c8579835` fences stale/overlapping diagnostics exports across bridge replacement; `90fac18c86` scopes the test-only notification queue helper so release builds stay warning-clean for that path; `7c5b68d750` matches macOS loopback-only CORS/preflight behavior for buffered and streamed gateway responses; `106b15855b` retains the last good mission snapshot during transient refresh failure; `e4f14c4387` avoids duplicate SmartHub health/control probes; `9f1bd7ca8c` wires Mission Inspect logs; `5e1a2dd962` routes Import sessions to Activity; `2ad3b2752d` brackets IPv6 device endpoints; `10c26c9a5d` makes Appearance radios keyboard-navigable; `2b64049552` fences stale Computer Use authority/approval responses; `3258104c1a` retains Activity snapshots across refresh failures; `f9bf08c600` fails closed from a broken X11 pet child; `e114bca710` retains stale signed-update facts while blocking package mutation; `36514bee98`/`72afa18f7e` force and validate native GStreamer Mercury packaging; and `af31748ece` stabilizes the SmartHub bounded-output guard/test fixture. Source-only checks are green at 865/865 frontend tests and 130/130 media-enabled Rust tests; the exact `af31748ece` ARM64 media-enabled shell package is built, installed, and smoke-verified. |
-| Latest VM proof | The exact `af31748ece` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest, reusing the previously verified clean daemon and CLI payloads. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json). Daemon/CLI health is green; the desktop links `libgstreamer-1.0`, discovers `vp9dec`, and has native video sinks available. A clean unlocked GNOME active-window capture renders the first-run setup surface and visible Fluid Aurora 2D fallback. This bounded capture is non-black; animation was not measured in this run. |
+| Current source proof | `90c5bd34ca` is the current source head. Frontend tests are 873/873, host Tauri Rust is 129/129, and Ubuntu ARM64 media-enabled Rust is 130/130. The current shell receipt is non-certifying because its daemon/CLI are reused staged payloads: [`evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json). |
+| Latest packaging hardening | `59d49c7d59` makes an explicit staged `OPENBURNBAR_SWIFT_LIB_DIR` authoritative, `804ced4523` adds a read-only `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1` validation path for Swift-less hosts, and `aa188d24fa` makes Cargo invalidate generated Tauri context when hashed frontend assets rotate; `ded781e94d` adds route-level render recovery; `8cafd2d7e0`, `da42c16a78`, and `872074af3a` add provider-catalog, daemon-subscription, and SmartHub shell-loss reliability guards; `e6c32ec2b2` repairs stale provider selection after catalog refresh; `465431d0fc` hardens startup forwarding; `7ac2e021c9` makes Browser Computer Use capability checks fail closed; `c0a725447d` adds a trusted embedded autostart fallback; `447abb0564` fences stale Mercury capability responses; `9e868e60a7` refreshes tray state periodically; `3e7ede75e3` bounds expired browser authorization polling; `ebab7da744` fences stale concurrent version/feed responses; `534d7aae65` completes overflow-menu keyboard/focus behavior; `519f0456a7` adds a packaged-shell reconnect action for degraded daemon health; `811d84172a` queues native notification actions until renderer bootstrap completes; `66b280162f` fixes the Linux-only AppHandle ownership path caught by the ARM64 build; `b2c8579835` fences stale/overlapping diagnostics exports across bridge replacement; `90fac18c86` scopes the test-only notification queue helper so release builds stay warning-clean for that path; `7c5b68d750` matches macOS loopback-only CORS/preflight behavior for buffered and streamed gateway responses; `106b15855b` retains the last good mission snapshot during transient refresh failure; `e4f14c4387` avoids duplicate SmartHub health/control probes; `9f1bd7ca8c` wires Mission Inspect logs; `5e1a2dd962` routes Import sessions to Activity; `2ad3b2752d` brackets IPv6 device endpoints; `10c26c9a5d` makes Appearance radios keyboard-navigable; `2b64049552` fences stale Computer Use authority/approval responses; `3258104c1a` retains Activity snapshots across refresh failures; `f9bf08c600` fails closed from a broken X11 pet child; `e114bca710` retains stale signed-update facts while blocking package mutation; `36514bee98`/`72afa18f7e` force and validate native GStreamer Mercury packaging; `af31748ece` stabilizes the SmartHub bounded-output guard/test fixture; `41a9381e9e` exposes recovery-bundle controls in Data & Privacy; `7cdeb0ab85` adds daemon-backed project history; `1eae2dcc7e` preserves quota provenance and canonical provider aliases; `c0853c29af` splits heavy routes into lazy chunks; and `90c5bd34ca` keeps Support error wiring synchronous. Source-only checks are green at 873/873 frontend tests, 129/129 host Tauri Rust tests, and 130/130 media-enabled Rust tests on Ubuntu ARM64; the current shell receipt is non-certifying because the daemon/CLI remain staged. |
+| Latest VM proof | The current-source `90c5bd34ca` ARM64 DEB is installed in the Ubuntu 24.04.4 GNOME/X11 UTM guest. The current non-certifying receipt is [`evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json). The shell source hashes match the worktree, daemon/CLI health is green, the desktop window is present, and AT-SPI reports 44 nodes / 27 named / 18 actionable. The SPICE screenshot was black, so this run does not claim visual-pixel proof. |
 | Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
@@ -16,7 +16,9 @@
 ## Current Source Checkpoint — 2026-07-20
 
 The current integration branch includes source changes through
-`af31748ece`; the latest installed package is bound to that exact source head.
+`90c5bd34ca`; the latest installed package contains the current shell source
+head, while its daemon/CLI are reused staged payloads. This is a source and
+build checkpoint, not a promotion claim:
 This is a source and build checkpoint, not a promotion claim:
 
 - `1130524331` immediately reveals a visible 2D backdrop when a WebGL context
@@ -95,17 +97,25 @@ This is a source and build checkpoint, not a promotion claim:
   package mutation until a fresh check succeeds; and `36514bee98`/`72afa18f7e`
   force and validate the native GStreamer Mercury viewer feature for package
   builds.
-- Source gates pass: 91 frontend files / 865 tests, TypeScript, production
-  bundle verification, Tauri Rust 130/130 with `media-gst`, package-payload contract checks
+- Current source wave adds three source-completable parity gaps: provider
+  catalog aliases now resolve macOS vendor IDs to canonical Linux parser paths
+  and preserve daemon quota provenance; Projects detail now reads recent
+  daemon-controller history and exact session associations; and Data & Privacy
+  now exposes encrypted recovery-bundle export/import with explicit import
+  confirmation. Heavy routes are split into lazy chunks while Support error
+  wiring remains synchronous for deterministic startup failure states.
+- Source gates pass: 91 frontend files / 873 tests, TypeScript, production
+  bundle verification, Tauri Rust 129/129 on the host and 130/130 with
+  `media-gst` on Ubuntu ARM64, package-payload contract checks
   (2 pass, 2 historical skips), and product validators 12/12.
 - The ARM64 VM validated the supported Swift-less staged-payload path with
-  `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`; the latest shell package was
-  rebuilt at `af31748ece` with native GStreamer linkage while reusing the previously clean verified daemon
-  and CLI payloads, then captured separately in
-  [`evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-af31748ece-media-update-postinstall-2026-07-20.json);
-  it remains unsigned and non-certifying. The initial blank/locked-era process
-  was superseded by the clean unlocked exact-head active-window launch recorded
-  in that receipt.
+  `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`; the current shell package was
+  rebuilt from synced source `90c5bd34ca` with native GStreamer linkage while
+  reusing the previously clean verified daemon and CLI payloads, then captured
+  separately in
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json).
+  It remains unsigned and non-certifying; AT-SPI and window presence passed,
+  while the SPICE screenshot was black.
 
 The strict certification ledger remains **0/40 product rows** and **0/7
 environment receipts**. The remaining blockers are signed exact-head artifacts,

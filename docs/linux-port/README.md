@@ -5,7 +5,27 @@ implemented as reviewable infrastructure, not a public availability claim.
 
 Current parity status as of 2026-07-20:
 
-- **Current source head:** the integration branch now includes source changes
+Current source verification supersedes the older receipt chronology below:
+
+- **Current source head:** `90c5bd34ca` (provider provenance, project history,
+  privacy recovery controls, and route-level code splitting). The source gates
+  are **91 frontend files / 873 tests**, TypeScript, production-bundle
+  verification, and **129/129** Tauri Rust tests on the host. Ubuntu ARM64
+  reran the media-enabled Tauri gate at **130/130**.
+- **Current ARM64 shell run:** the current source was synced into the live
+  Ubuntu 24.04.4 GNOME/X11 UTM guest, built with `media-gst`, installed, and
+  launched. The non-certifying receipt is
+  [`evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-90c5bd34ca-ui-staged-daemon-2026-07-20.json).
+  AT-SPI reports 44 nodes, 27 named nodes, and 18 actionable controls; the
+  window and authenticated daemon are present. The shell matches the current
+  source, but the daemon/CLI are reused staged payloads and therefore do not
+  certify an exact-head product row.
+- **Strict certification:** remains **0/40 product rows and 0/7 environment
+  receipts**. That is a release-proof gate, not a source-progress percentage.
+
+- **Prior receipt chronology:** the earlier installed-candidate sequence
+  includes source changes through `af31748ece`; it remains useful historical
+  context but is superseded for current source status by `90c5bd34ca` above.
   through `af31748ece` (with `e114bca710`, `f9bf08c600`, and the media packaging
   commits). It passes 91 frontend files / 865 tests, TypeScript, production
   bundle verification, Tauri Rust 130/130 with `media-gst`,
@@ -110,10 +130,11 @@ Current parity status as of 2026-07-20:
   105 nodes and 50 actionable controls with no `Loading Settings` node; the
   General startup checkbox and Media & Sharing route are reachable.
   The package is unsigned and this receipt is non-certifying.
-- Current source gates are **91 frontend files / 865 tests**, focused provider
+- Current source gates are **91 frontend files / 873 tests**, focused provider
   recovery **11/11**, daemon subscription lifecycle **8/8**, SmartHub **9/9**,
   Settings/route **51/51**, Support **34/34**, media **38/38**, Tauri Rust
-  **130/130 with `media-gst`**, TypeScript, formatting, and production-bundle verification. The strict ledger remains
+  **129/129 host and 130/130 Ubuntu with `media-gst`**, TypeScript, formatting,
+  and production-bundle verification. The strict ledger remains
   **0/40 product rows and 0/7 environment receipts**; this is a certification
   gate, not a source-progress percentage.
 - PR #1691's only current CI failure is the trusted Domain Core deletion guard:
