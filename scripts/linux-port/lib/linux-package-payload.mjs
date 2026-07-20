@@ -86,29 +86,75 @@ export function resolveIrohNativeLibrary({ env = process.env } = {}) {
   );
 }
 
-const linuxResourceBundleName = 'OpenBurnBarCore_OpenBurnBarCore.resources';
+const legacyLinuxResourceBundleName = 'OpenBurnBarCore_OpenBurnBarCore.resources';
+const linuxResourceBundlePattern = /^OpenBurnBarCore_.+\.resources$/u;
+export const linuxResourceBundlesDirectoryName = 'resource-bundles';
 
-export function resolveLinuxResourceBundle({ repoRoot, env = process.env } = {}) {
-  const candidates = [];
-  if (env.OPENBURNBAR_LINUX_RESOURCE_BUNDLE?.trim()) {
-    candidates.push(env.OPENBURNBAR_LINUX_RESOURCE_BUNDLE.trim());
-  }
-  if (repoRoot) {
-    const daemonBuildRoot = path.join(repoRoot, 'OpenBurnBarDaemon/.build');
-    candidates.push(
-      path.join(daemonBuildRoot, 'release', linuxResourceBundleName),
-      path.join(daemonBuildRoot, 'aarch64-unknown-linux-gnu/release', linuxResourceBundleName),
-      path.join(daemonBuildRoot, 'x86_64-unknown-linux-gnu/release', linuxResourceBundleName),
-      path.join(repoRoot, 'OpenBurnBarCore/.build/release', linuxResourceBundleName)
-    );
-    if (fs.existsSync(daemonBuildRoot)) {
-      for (const entry of fs.readdirSync(daemonBuildRoot)) {
-        candidates.push(path.join(daemonBuildRoot, entry, 'release', linuxResourceBundleName));
-      }
+function resourceBundlesIn(directory) {
+  if (!directory || !fs.existsSync(directory) || !fs.statSync(directory).isDirectory()) return [];
+  return fs.readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && linuxResourceBundlePattern.test(entry.name))
+    .map((entry) => path.resolve(directory, entry.name))
+    .sort((left, right) => path.basename(left).localeCompare(path.basename(right)));
+}
+
+function resourceBundleBuildDirectories(repoRoot) {
+  const daemonBuildRoot = path.join(repoRoot, 'OpenBurnBarDaemon/.build');
+  const candidates = [
+    path.join(daemonBuildRoot, 'release'),
+    path.join(daemonBuildRoot, 'aarch64-unknown-linux-gnu/release'),
+    path.join(daemonBuildRoot, 'x86_64-unknown-linux-gnu/release'),
+    path.join(repoRoot, 'OpenBurnBarCore/.build/release')
+  ];
+  if (fs.existsSync(daemonBuildRoot)) {
+    for (const entry of fs.readdirSync(daemonBuildRoot)) {
+      candidates.push(path.join(daemonBuildRoot, entry, 'release'));
     }
   }
-  const found = candidates.find((candidate) => candidate && fs.existsSync(candidate));
-  return requireDirectory(found, 'OpenBurnBarCore Linux resource bundle');
+  return [...new Set(candidates.map((candidate) => path.resolve(candidate)))];
+}
+
+export function resolveLinuxResourceBundles({ repoRoot, env = process.env } = {}) {
+  const override = env.OPENBURNBAR_LINUX_RESOURCE_BUNDLE?.trim();
+  if (override) {
+    const explicit = requireDirectory(override, 'OpenBurnBarCore Linux resource bundle');
+    const siblings = resourceBundlesIn(path.dirname(explicit));
+    return siblings.includes(explicit) ? siblings : [explicit];
+  }
+  if (repoRoot) {
+    for (const directory of resourceBundleBuildDirectories(repoRoot)) {
+      const bundles = resourceBundlesIn(directory);
+      if (bundles.length > 0) return bundles;
+    }
+  }
+  throw new Error('OpenBurnBarCore Linux resource bundle directory not found: (unset)');
+}
+
+export function resolveLinuxResourceBundle({ repoRoot, env = process.env } = {}) {
+  const bundles = resolveLinuxResourceBundles({ repoRoot, env });
+  return bundles.find((bundle) => path.basename(bundle) === legacyLinuxResourceBundleName)
+    ?? bundles[0];
+}
+
+function requireResourceBundles(resourceBundles, resourceBundle) {
+  const candidates = resourceBundles ?? (resourceBundle ? [resourceBundle] : []);
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    throw new Error('At least one OpenBurnBarCore Linux resource bundle is required');
+  }
+  const byName = new Map();
+  for (const candidate of candidates) {
+    const source = requireDirectory(candidate, 'OpenBurnBarCore Linux resource bundle');
+    const name = path.basename(source);
+    if (!linuxResourceBundlePattern.test(name)) {
+      throw new Error(`OpenBurnBarCore Linux resource bundle has an invalid basename: ${name}`);
+    }
+    const existing = byName.get(name);
+    if (existing && existing !== source) {
+      throw new Error(`Duplicate OpenBurnBarCore Linux resource bundle basename: ${name}`);
+    }
+    byName.set(name, source);
+  }
+  return [...byName.values()].sort((left, right) => path.basename(left).localeCompare(path.basename(right)));
 }
 
 export function buildLinuxCloudAuthConfig({ env = process.env, requireConfigured = false } = {}) {
@@ -290,10 +336,16 @@ export function validateLinuxPackagePayload({
   const root = requireDirectory(payloadRoot, 'Linux package payload');
   const daemon = payloadRegularFile(root, 'openburnbar-daemon', 'OpenBurnBar daemon', 0o755);
   const cli = payloadRegularFile(root, 'openburnbar-cli', 'OpenBurnBar CLI', 0o755);
-  const resourceBundle = requireDirectory(
-    path.join(root, linuxResourceBundleName),
-    'OpenBurnBarCore Linux resource bundle'
+  // Accept legacy payloads that staged the single bundle at the payload root,
+  // while new payloads keep all bundles in one directory that package tools
+  // can install into /usr/bin without hardcoding SwiftPM target names.
+  const resourceBundleRoot = path.join(root, linuxResourceBundlesDirectoryName);
+  const resourceBundles = requireResourceBundles(
+    resourceBundlesIn(fs.existsSync(resourceBundleRoot) ? resourceBundleRoot : root)
   );
+  const resourceBundle = resourceBundles.find(
+    (bundle) => path.basename(bundle) === legacyLinuxResourceBundleName
+  ) ?? resourceBundles[0];
   const swiftRuntime = requireDirectory(path.join(root, 'swift'), 'Swift runtime');
   const nativeRuntime = requireDirectory(path.join(root, 'native'), 'Linux native runtime');
   payloadRegularFile(
@@ -374,6 +426,7 @@ export function validateLinuxPackagePayload({
     payloadRoot: root,
     daemon,
     resourceBundle,
+    resourceBundles,
     cli,
     swiftRuntime,
     nativeRuntime,
@@ -399,7 +452,8 @@ export function stageLinuxPackagePayload({
   browserRuntimeProbe,
   browserRuntimeRequirements,
   releasePublicKey,
-  resourceBundle,
+  resourceBundle = null,
+  resourceBundles = null,
   payloadRoot,
   swiftRuntimeDir,
   sqlcipherLibDir,
@@ -416,13 +470,13 @@ export function stageLinuxPackagePayload({
     'browser runtime requirements'
   );
   const releasePublicKeySource = requireRegularFile(releasePublicKey, 'Linux release public key');
-  const resourceBundleSource = requireDirectory(resourceBundle, 'OpenBurnBarCore Linux resource bundle');
+  const resourceBundleSources = requireResourceBundles(resourceBundles, resourceBundle);
   const swiftSource = requireDirectory(swiftRuntimeDir, 'Swift runtime');
   const sqlcipherSource = requireDirectory(sqlcipherLibDir, 'SQLCipher runtime');
   const irohNativeSource = requireRegularFile(irohNativeLibrary, 'Linux iroh native runtime');
   const root = path.resolve(payloadRoot);
+  const resourceBundlesDestination = path.join(root, linuxResourceBundlesDirectoryName);
   const daemonDestination = path.join(root, 'openburnbar-daemon');
-  const resourceBundleDestination = path.join(root, linuxResourceBundleName);
   const cliDestination = path.join(root, 'openburnbar-cli');
   const swiftDestination = path.join(root, 'swift');
   const nativeDestination = path.join(root, 'native');
@@ -434,11 +488,18 @@ export function stageLinuxPackagePayload({
   fs.mkdirSync(root, { recursive: true });
   fs.copyFileSync(daemonSource, daemonDestination);
   fs.chmodSync(daemonDestination, 0o755);
-  fs.cpSync(resourceBundleSource, resourceBundleDestination, {
-    recursive: true,
-    dereference: false,
-    preserveTimestamps: true
+  const resourceBundleDestinations = resourceBundleSources.map((source) => {
+    const destination = path.join(resourceBundlesDestination, path.basename(source));
+    fs.cpSync(source, destination, {
+      recursive: true,
+      dereference: false,
+      preserveTimestamps: true
+    });
+    return destination;
   });
+  const resourceBundleDestination = resourceBundleDestinations.find(
+    (bundle) => path.basename(bundle) === legacyLinuxResourceBundleName
+  ) ?? resourceBundleDestinations[0];
   if (cliSource) {
     fs.copyFileSync(cliSource, cliDestination);
     fs.chmodSync(cliDestination, 0o755);
@@ -507,6 +568,7 @@ export function stageLinuxPackagePayload({
     architecture: process.arch === 'arm64' ? 'aarch64' : process.arch === 'x64' ? 'x86_64' : process.arch,
     daemon: daemonDestination,
     resourceBundle: resourceBundleDestination,
+    resourceBundles: resourceBundleDestinations,
     cli: cliSource ? cliDestination : null,
     swiftRuntime: swiftDestination,
     nativeRuntime: nativeDestination,

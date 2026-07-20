@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   resolveIrohNativeLibrary,
-  resolveLinuxResourceBundle,
+  resolveLinuxResourceBundles,
   resolveSqlcipherLibDir,
   resolveSwiftRuntimeDir,
   stageLinuxPackagePayload,
@@ -50,7 +50,7 @@ try {
       browserRuntimeProbe,
       browserRuntimeRequirements,
       releasePublicKey,
-      resourceBundle: resolveLinuxResourceBundle({ repoRoot }),
+      resourceBundles: resolveLinuxResourceBundles({ repoRoot }),
       payloadRoot,
       swiftRuntimeDir: resolveSwiftRuntimeDir(),
       sqlcipherLibDir: resolveSqlcipherLibDir(),

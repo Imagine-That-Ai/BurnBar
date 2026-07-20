@@ -74,7 +74,7 @@ const tauri = readJson(path.join(repoRoot, 'apps/linux-desktop/src-tauri/tauri.c
 const packageSources = {
   '/usr/bin/openburnbar-cli': 'target/openburnbar-package-payload/openburnbar-cli',
   '/usr/bin/openburnbar-daemon': 'target/openburnbar-package-payload/openburnbar-daemon',
-  '/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources': 'target/openburnbar-package-payload/OpenBurnBarCore_OpenBurnBarCore.resources',
+  '/usr/bin': 'target/openburnbar-package-payload/resource-bundles',
   '/usr/lib/openburnbar/swift': 'target/openburnbar-package-payload/swift',
   '/usr/lib/openburnbar/native': 'target/openburnbar-package-payload/native',
   '/usr/lib/openburnbar/playwright': 'target/openburnbar-package-payload/playwright',

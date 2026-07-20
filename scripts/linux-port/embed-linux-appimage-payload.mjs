@@ -16,12 +16,12 @@ import {
 } from './lib/linux-appimage-peer-manifest.mjs';
 import { withoutLinuxReleasePrivateKey } from './lib/linux-signing-environment.mjs';
 
-export const linuxResourceBundleRelativePath = 'OpenBurnBarCore_OpenBurnBarCore.resources';
+export const linuxResourceBundlesRelativePath = 'resource-bundles';
 
 export const requiredPayloadPaths = [
   'openburnbar-cli',
   'openburnbar-daemon',
-  linuxResourceBundleRelativePath,
+  linuxResourceBundlesRelativePath,
   'swift',
   'native/libsqlcipher.so.0',
   'native/libopenburnbar_iroh.so',
@@ -55,9 +55,12 @@ export function validatePayload(payloadRoot) {
     requirePath(
       path.join(root, entry),
       `AppImage payload ${entry}`,
-      entry === 'swift' || entry === linuxResourceBundleRelativePath ? 'directory' : 'file'
+      entry === 'swift' || entry === linuxResourceBundlesRelativePath ? 'directory' : 'file'
     );
   }
+  const resourceBundles = fs.readdirSync(path.join(root, linuxResourceBundlesRelativePath))
+    .filter((entry) => /^OpenBurnBarCore_.+\.resources$/u.test(entry));
+  if (resourceBundles.length === 0) throw new Error('AppImage payload has no OpenBurnBarCore resource bundles');
   requireRegularResource(
     path.join(root, 'openburnbar-cli'),
     'AppImage OpenBurnBar CLI',
@@ -126,7 +129,6 @@ function assertEmbeddedPayload(appDir, { requirePeerManifest }) {
   const required = [
     'usr/bin/openburnbar-cli',
     'usr/bin/openburnbar-daemon',
-    `usr/bin/${linuxResourceBundleRelativePath}`,
     'usr/libexec/openburnbar-daemon-launch',
     'usr/lib/openburnbar/swift',
     'usr/lib/openburnbar/native/libsqlcipher.so.0',
@@ -146,10 +148,15 @@ function assertEmbeddedPayload(appDir, { requirePeerManifest }) {
     requirePath(
       path.join(appDir, entry),
       `embedded AppImage path ${entry}`,
-      entry.endsWith('/swift') || entry.endsWith(`/${linuxResourceBundleRelativePath}`)
+      entry.endsWith('/swift')
         ? 'directory'
         : 'file'
     );
+  }
+  const embeddedResourceBundles = fs.readdirSync(path.join(appDir, 'usr/bin'))
+    .filter((entry) => /^OpenBurnBarCore_.+\.resources$/u.test(entry));
+  if (embeddedResourceBundles.length === 0) {
+    throw new Error('embedded AppImage has no OpenBurnBarCore resource bundles');
   }
   requireRegularResource(
     path.join(appDir, 'usr/lib/openburnbar/native/libopenburnbar_iroh.so'),
@@ -279,15 +286,15 @@ export function embedLinuxAppImagePayload({
     fs.chmodSync(path.join(appDir, 'usr/bin/openburnbar-cli'), 0o755);
     fs.copyFileSync(path.join(payload, 'openburnbar-daemon'), path.join(appDir, 'usr/bin/openburnbar-daemon'));
     fs.chmodSync(path.join(appDir, 'usr/bin/openburnbar-daemon'), 0o755);
-    fs.rmSync(path.join(appDir, 'usr/bin', linuxResourceBundleRelativePath), {
-      recursive: true,
-      force: true
-    });
-    fs.cpSync(
-      path.join(payload, linuxResourceBundleRelativePath),
-      path.join(appDir, 'usr/bin', linuxResourceBundleRelativePath),
-      { recursive: true, dereference: false, preserveTimestamps: true }
-    );
+    for (const entry of fs.readdirSync(path.join(payload, linuxResourceBundlesRelativePath))) {
+      if (!/^OpenBurnBarCore_.+\.resources$/u.test(entry)) continue;
+      fs.rmSync(path.join(appDir, 'usr/bin', entry), { recursive: true, force: true });
+      fs.cpSync(
+        path.join(payload, linuxResourceBundlesRelativePath, entry),
+        path.join(appDir, 'usr/bin', entry),
+        { recursive: true, dereference: false, preserveTimestamps: true }
+      );
+    }
     fs.rmSync(path.join(appDir, 'usr/lib/openburnbar/swift'), { recursive: true, force: true });
     fs.rmSync(path.join(appDir, 'usr/lib/openburnbar/native'), { recursive: true, force: true });
     fs.rmSync(path.join(appDir, 'usr/lib/openburnbar/playwright'), { recursive: true, force: true });

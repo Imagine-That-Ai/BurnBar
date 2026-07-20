@@ -7,6 +7,7 @@ import {
   buildLinuxCloudAuthConfig,
   resolveIrohNativeLibrary,
   resolveLinuxResourceBundle,
+  resolveLinuxResourceBundles,
   resolveSqlcipherLibDir,
   resolveSwiftRuntimeDir,
   stageLinuxPackagePayload,
@@ -138,6 +139,46 @@ test('resource bundle discovery honors the Linux SwiftPM output name', () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test('resource bundle discovery returns every OpenBurnBarCore SwiftPM sibling', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-resource-bundles-'));
+  const release = path.join(root, 'OpenBurnBarDaemon', '.build', 'release');
+  fs.mkdirSync(release, { recursive: true });
+  for (const name of [
+    'OpenBurnBarCore_OpenBurnBarKernel.resources',
+    'OpenBurnBarCore_OpenBurnBarPretext.resources'
+  ]) fs.mkdirSync(path.join(release, name));
+  fs.mkdirSync(path.join(release, 'Unrelated.resources'));
+
+  assert.deepEqual(resolveLinuxResourceBundles({ repoRoot: root, env: {} }), [
+    path.join(release, 'OpenBurnBarCore_OpenBurnBarKernel.resources'),
+    path.join(release, 'OpenBurnBarCore_OpenBurnBarPretext.resources')
+  ]);
+  assert.equal(
+    resolveLinuxResourceBundle({ repoRoot: root, env: {} }),
+    path.join(release, 'OpenBurnBarCore_OpenBurnBarKernel.resources')
+  );
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('explicit resource bundle discovers matching siblings without falling back elsewhere', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-explicit-resource-bundles-'));
+  const explicitRoot = path.join(root, 'explicit');
+  fs.mkdirSync(explicitRoot);
+  const kernel = path.join(explicitRoot, 'OpenBurnBarCore_OpenBurnBarKernel.resources');
+  const pretext = path.join(explicitRoot, 'OpenBurnBarCore_OpenBurnBarPretext.resources');
+  fs.mkdirSync(kernel);
+  fs.mkdirSync(pretext);
+  assert.deepEqual(resolveLinuxResourceBundles({
+    repoRoot: root,
+    env: { OPENBURNBAR_LINUX_RESOURCE_BUNDLE: kernel }
+  }), [kernel, pretext]);
+  assert.throws(() => resolveLinuxResourceBundles({
+    repoRoot: root,
+    env: { OPENBURNBAR_LINUX_RESOURCE_BUNDLE: path.join(root, 'missing') }
+  }), /directory not found/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-package-payload-'));
   const daemon = path.join(root, 'OpenBurnBarDaemon');
@@ -202,6 +243,55 @@ test('payload staging copies daemon, Swift tree, and SQLCipher SONAME', () => {
   assert.equal(fs.readFileSync(report.installedManifest, 'utf8'), '{}\n');
   assert.equal(fs.readFileSync(report.installedManifestSignature).length, 64);
   assert.equal(fs.statSync(report.releasePublicKey).mode & 0o777, 0o644);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('payload staging and reuse preserve every resource bundle exact basename', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-multi-bundle-payload-'));
+  const inputs = Object.fromEntries(['daemon', 'cli', 'bridge', 'probe', 'requirements', 'iroh', 'key']
+    .map((name) => [name, path.join(root, name)]));
+  for (const candidate of Object.values(inputs)) fs.writeFileSync(candidate, candidate);
+  const swift = path.join(root, 'swift');
+  const sqlcipher = path.join(root, 'sqlcipher');
+  fs.mkdirSync(swift);
+  fs.mkdirSync(sqlcipher);
+  fs.writeFileSync(path.join(sqlcipher, 'libsqlcipher.so.0'), 'sqlcipher');
+  const bundles = [
+    'OpenBurnBarCore_OpenBurnBarKernel.resources',
+    'OpenBurnBarCore_OpenBurnBarPretext.resources'
+  ].map((name) => {
+    const bundle = path.join(root, name);
+    fs.mkdirSync(bundle);
+    fs.writeFileSync(path.join(bundle, 'marker'), name);
+    return bundle;
+  });
+  const payload = path.join(root, 'payload');
+  const report = stageLinuxPackagePayload({
+    daemonBinary: inputs.daemon,
+    cliBinary: inputs.cli,
+    playwrightBridge: inputs.bridge,
+    browserRuntimeProbe: inputs.probe,
+    browserRuntimeRequirements: inputs.requirements,
+    releasePublicKey: inputs.key,
+    resourceBundles: bundles,
+    payloadRoot: payload,
+    swiftRuntimeDir: swift,
+    sqlcipherLibDir: sqlcipher,
+    irohNativeLibrary: inputs.iroh,
+    probe: false
+  });
+  assert.deepEqual(
+    report.resourceBundles.map((bundle) => path.basename(bundle)),
+    bundles.map((bundle) => path.basename(bundle))
+  );
+  for (const bundle of report.resourceBundles) {
+    assert.equal(fs.readFileSync(path.join(bundle, 'marker'), 'utf8'), path.basename(bundle));
+  }
+  const reused = validateLinuxPackagePayload({ payloadRoot: payload, probe: false });
+  assert.deepEqual(
+    reused.resourceBundles.map((bundle) => path.basename(bundle)),
+    bundles.map((bundle) => path.basename(bundle))
+  );
   fs.rmSync(root, { recursive: true, force: true });
 });
 

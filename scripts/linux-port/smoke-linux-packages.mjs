@@ -38,6 +38,18 @@ function assertContains(command, haystack, needle, stderr) {
   return ok;
 }
 
+function assertMatches(command, haystack, pattern, stderr) {
+  const ok = typeof haystack === 'string' && pattern.test(haystack);
+  steps.push({
+    command,
+    cwd: '.',
+    exitCode: ok ? 0 : 1,
+    stdout: ok ? `matched ${pattern}` : '',
+    stderr: ok ? '' : stderr
+  });
+  return ok;
+}
+
 function runtimeProbeEnv(label) {
   const root = path.join(smokeDir, 'runtime-probes', label);
   fs.rmSync(root, { recursive: true, force: true });
@@ -105,10 +117,10 @@ for (const artifact of closure.artifacts ?? []) {
       'usr/bin/openburnbar-daemon',
       'deb package missing /usr/bin/openburnbar-daemon'
     );
-    assertContains(
+    assertMatches(
       'assert deb contains OpenBurnBarCore resource bundle',
       contents.stdout,
-      'usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources',
+      /usr\/bin\/OpenBurnBarCore_.+\.resources/u,
       'deb package missing the SwiftPM resource bundle required by the daemon'
     );
     assertContains(
@@ -183,10 +195,10 @@ for (const artifact of closure.artifacts ?? []) {
       '/usr/bin/openburnbar-daemon',
       'rpm package missing /usr/bin/openburnbar-daemon'
     );
-    assertContains(
+    assertMatches(
       'assert rpm contains OpenBurnBarCore resource bundle',
       listing.stdout,
-      '/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources',
+      /\/usr\/bin\/OpenBurnBarCore_.+\.resources/u,
       'rpm package missing the SwiftPM resource bundle required by the daemon'
     );
     assertContains(
@@ -265,9 +277,17 @@ for (const artifact of closure.artifacts ?? []) {
       ]);
     if (extract) steps.push(extract);
     if (extract?.exitCode === 0) {
+      const resourceBundles = fs.readdirSync(path.join(appDir, 'usr/bin'))
+        .filter((entry) => /^OpenBurnBarCore_.+\.resources$/u.test(entry));
+      steps.push({
+        command: 'assert appimage contains OpenBurnBarCore resource bundles',
+        cwd: '.',
+        exitCode: resourceBundles.length > 0 ? 0 : 1,
+        stdout: resourceBundles.join('\n'),
+        stderr: resourceBundles.length > 0 ? '' : 'AppImage missing OpenBurnBarCore resource bundles'
+      });
       for (const requiredPath of [
         'usr/bin/openburnbar-daemon',
-        'usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources',
         'usr/libexec/openburnbar-daemon-launch',
         'usr/lib/openburnbar/swift',
         'usr/lib/openburnbar/native/libsqlcipher.so.0',

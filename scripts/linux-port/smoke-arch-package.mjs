@@ -64,7 +64,15 @@ if (install.exitCode === 0) {
     allowSymlink: true
   }));
   steps.push(installedFileStep('/usr/share/icons/hicolor/256x256/apps/dev.openburnbar.OpenBurnBar.png'));
-  steps.push(installedDirectoryStep('/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources'));
+  const installedResourceBundles = fs.readdirSync('/usr/bin')
+    .filter((entry) => /^OpenBurnBarCore_.+\.resources$/u.test(entry))
+    .filter((entry) => fs.statSync(path.join('/usr/bin', entry)).isDirectory());
+  steps.push(assertionStep(
+    'installed OpenBurnBarCore resource bundles',
+    installedResourceBundles.length > 0,
+    installedResourceBundles.join('\n'),
+    installedResourceBundles.length > 0 ? '' : 'no OpenBurnBarCore resource bundle is installed'
+  ));
   steps.push(runStep('/usr/bin/openburnbar-daemon', ['--help'], {
     env: isolatedRuntimeEnvironment()
   }));

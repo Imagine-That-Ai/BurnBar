@@ -105,12 +105,16 @@ package() {
   for required in \
     AppRun \
     usr/bin/openburnbar-cli \
-    usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources \
     usr/lib/openburnbar/native/libopenburnbar_iroh.so \
     usr/lib/openburnbar/native/libsqlcipher.so.0 \
     usr/lib/openburnbar/swift; do
     require_payload_path "${required}"
   done
+  local resource_bundles=("${srcdir}"/squashfs-root/usr/bin/OpenBurnBarCore_*.resources)
+  if (( ${#resource_bundles[@]} == 0 )) || [[ ! -d "${resource_bundles[0]}" ]]; then
+    printf 'openburnbar: extracted AppImage has no OpenBurnBarCore resource bundles\n' >&2
+    return 1
+  fi
 
   # AppImage extraction preserves the source mode bits. Some AppImage
   # producers mark wrapper files (notably AppRun.wrapped) 0777, which is
@@ -172,9 +176,11 @@ package() {
   install -Dm755 "${srcdir}/openburnbar-linux-desktop" "${pkgdir}/usr/bin/openburnbar-linux-desktop"
   install -Dm755 "${srcdir}/squashfs-root/usr/bin/openburnbar-cli" "${pkgdir}/usr/bin/openburnbar-cli"
   install -Dm755 "${srcdir}/openburnbar-daemon-${pkgver}-${CARCH}" "${pkgdir}/usr/bin/openburnbar-daemon"
-  install -d "${pkgdir}/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources"
-  cp -a "${srcdir}/squashfs-root/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources/." \
-    "${pkgdir}/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources/"
+  local resource_bundle
+  for resource_bundle in "${resource_bundles[@]}"; do
+    install -d "${pkgdir}/usr/bin/$(basename "${resource_bundle}")"
+    cp -a "${resource_bundle}/." "${pkgdir}/usr/bin/$(basename "${resource_bundle}")/"
+  done
   install -d "${pkgdir}/usr/lib/openburnbar"
   cp -a "${srcdir}/squashfs-root/usr/lib/openburnbar/native" "${pkgdir}/usr/lib/openburnbar/"
   cp -a "${srcdir}/squashfs-root/usr/lib/openburnbar/swift" "${pkgdir}/usr/lib/openburnbar/"

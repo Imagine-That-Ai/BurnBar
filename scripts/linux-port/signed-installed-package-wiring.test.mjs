@@ -32,7 +32,7 @@ test('deb, rpm, and Arch package exact installed attestation subjects', () => {
   const config = JSON.parse(read('apps/linux-desktop/src-tauri/tauri.conf.json'));
   const expected = {
     '/usr/bin/openburnbar-cli': 'target/openburnbar-package-payload/openburnbar-cli',
-    '/usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources': 'target/openburnbar-package-payload/OpenBurnBarCore_OpenBurnBarCore.resources',
+    '/usr/bin': 'target/openburnbar-package-payload/resource-bundles',
     '/usr/share/openburnbar/attestation/installed-manifest.json': 'target/openburnbar-package-payload/attestation/installed-manifest.json',
     '/usr/share/openburnbar/attestation/installed-manifest.json.sig': 'target/openburnbar-package-payload/attestation/installed-manifest.json.sig',
     '/usr/share/openburnbar/attestation/release-ed25519.pub.pem': 'target/openburnbar-package-payload/attestation/release-ed25519.pub.pem',

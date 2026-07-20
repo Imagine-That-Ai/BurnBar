@@ -899,7 +899,7 @@ else
       -c release \
       --show-bin-path)"
     resource_bundle="$(find "$swift_bin_dir" -maxdepth 1 -type d \
-      -name 'OpenBurnBarCore_OpenBurnBarCore.resources' -print -quit)"
+      -name 'OpenBurnBarCore_*.resources' -print -quit)"
     export OPENBURNBAR_LINUX_DAEMON_BIN="$swift_bin_dir/OpenBurnBarDaemon"
     export OPENBURNBAR_LINUX_CLI_BIN="$swift_bin_dir/OpenBurnBarCLI"
     export OPENBURNBAR_LINUX_RESOURCE_BUNDLE="$resource_bundle"

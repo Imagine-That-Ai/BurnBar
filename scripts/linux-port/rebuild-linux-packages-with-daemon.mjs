@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveLinuxResourceBundle } from './lib/linux-package-payload.mjs';
+import { resolveLinuxResourceBundles } from './lib/linux-package-payload.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const outDir = path.resolve(
@@ -35,7 +35,7 @@ const swiftSrc =
     '/opt/swift-6.1-RELEASE-ubuntu24.04-aarch64/usr/lib/swift/linux',
     '/opt/swift/usr/lib/swift/linux'
   ].find((p) => fs.existsSync(p));
-const resourceBundleSrc = resolveLinuxResourceBundle({ repoRoot: root });
+const resourceBundleSources = resolveLinuxResourceBundles({ repoRoot: root });
 
 function run(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, {
@@ -60,7 +60,9 @@ mustExist(launchSrc, 'launch script');
 mustExist(serviceSrc, 'systemd unit');
 mustExist(autostartSrc, 'XDG autostart entry');
 if (!swiftSrc) throw new Error('Swift runtime dir not found (set OPENBURNBAR_SWIFT_LIB_DIR)');
-mustExist(resourceBundleSrc, 'OpenBurnBarCore resource bundle');
+for (const resourceBundle of resourceBundleSources) {
+  mustExist(resourceBundle, 'OpenBurnBarCore resource bundle');
+}
 
 fs.rmSync(workRoot, { recursive: true, force: true });
 fs.mkdirSync(artDir, { recursive: true });
@@ -73,18 +75,19 @@ const paths = {
   apps: path.join(tree, 'usr/share/applications'),
   autostart: path.join(tree, 'etc/xdg/autostart'),
   swift: path.join(tree, 'opt/openburnbar/lib/swift'),
-  resourceBundle: path.join(tree, 'usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources'),
   lib: path.join(tree, 'opt/openburnbar/lib')
 };
 for (const d of Object.values(paths)) fs.mkdirSync(d, { recursive: true });
 
 fs.copyFileSync(daemonBin, path.join(paths.bin, 'openburnbar-daemon'));
 fs.chmodSync(path.join(paths.bin, 'openburnbar-daemon'), 0o755);
-fs.cpSync(resourceBundleSrc, paths.resourceBundle, {
-  recursive: true,
-  dereference: false,
-  preserveTimestamps: true
-});
+for (const resourceBundle of resourceBundleSources) {
+  fs.cpSync(resourceBundle, path.join(paths.bin, path.basename(resourceBundle)), {
+    recursive: true,
+    dereference: false,
+    preserveTimestamps: true
+  });
+}
 fs.copyFileSync(launchSrc, path.join(paths.libexec, 'openburnbar-daemon-launch'));
 fs.chmodSync(path.join(paths.libexec, 'openburnbar-daemon-launch'), 0o755);
 fs.copyFileSync(serviceSrc, path.join(paths.systemd, 'openburnbar-daemon.service'));
@@ -220,15 +223,15 @@ function injectAppImageIfPresent() {
   }
   fs.copyFileSync(path.join(paths.bin, 'openburnbar-daemon'), path.join(squash, 'usr/bin/openburnbar-daemon'));
   fs.chmodSync(path.join(squash, 'usr/bin/openburnbar-daemon'), 0o755);
-  fs.rmSync(path.join(squash, 'usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources'), {
-    recursive: true,
-    force: true
-  });
-  fs.cpSync(
-    paths.resourceBundle,
-    path.join(squash, 'usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources'),
-    { recursive: true, dereference: false, preserveTimestamps: true }
-  );
+  for (const resourceBundle of resourceBundleSources) {
+    const destination = path.join(squash, 'usr/bin', path.basename(resourceBundle));
+    fs.rmSync(destination, { recursive: true, force: true });
+    fs.cpSync(path.join(paths.bin, path.basename(resourceBundle)), destination, {
+      recursive: true,
+      dereference: false,
+      preserveTimestamps: true
+    });
+  }
   fs.copyFileSync(path.join(paths.libexec, 'openburnbar-daemon-launch'), path.join(squash, 'usr/libexec/openburnbar-daemon-launch'));
   fs.chmodSync(path.join(squash, 'usr/libexec/openburnbar-daemon-launch'), 0o755);
   fs.copyFileSync(path.join(paths.systemd, 'openburnbar-daemon.service'), path.join(squash, 'usr/lib/systemd/user/openburnbar-daemon.service'));
@@ -284,7 +287,7 @@ const report = {
   swiftSrc,
   contains: [
     'usr/bin/openburnbar-daemon',
-    'usr/bin/OpenBurnBarCore_OpenBurnBarCore.resources',
+    ...resourceBundleSources.map((bundle) => `usr/bin/${path.basename(bundle)}`),
     'usr/libexec/openburnbar-daemon-launch',
     'usr/lib/systemd/user/openburnbar-daemon.service',
     'opt/openburnbar/lib/swift'
