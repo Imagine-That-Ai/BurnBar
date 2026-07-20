@@ -37,6 +37,16 @@ describe('VAL-RPC-002 bridge behavior', () => {
     return b;
   }
 
+  it('keeps startup and forwarded deep-link queues under distinct consumers', async () => {
+    invoke.mockResolvedValueOnce('providers?provider=codex').mockResolvedValueOnce('settings');
+    const b = await bridge();
+
+    await expect(b.initialDeepLinkRoute?.()).resolves.toBe('providers?provider=codex');
+    await expect(b.forwardedDeepLinkRoute?.()).resolves.toBe('settings');
+    expect(invoke).toHaveBeenNthCalledWith(1, 'initial_deep_link_route');
+    expect(invoke).toHaveBeenNthCalledWith(2, 'forwarded_deep_link_route');
+  });
+
   it('maps exact-thread chat commands without changing daemon field names', async () => {
     const thread = {
       id: 'thread-1',

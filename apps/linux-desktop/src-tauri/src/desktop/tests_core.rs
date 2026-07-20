@@ -644,23 +644,24 @@
     }
 
     #[test]
-    fn initial_deep_link_drain_preserves_initial_then_forwarded_routes() {
+    fn initial_and_forwarded_deep_link_drains_have_distinct_owners() {
         let initial = Mutex::new(Some("overview".to_string()));
         let forwarded = Mutex::new(vec!["chat".to_string(), "settings".to_string()]);
 
         assert_eq!(
-            take_next_deep_link_route(&initial, &forwarded).as_deref(),
+            take_initial_deep_link_route(&initial).as_deref(),
             Some("overview")
         );
+        assert_eq!(take_initial_deep_link_route(&initial), None);
         assert_eq!(
-            take_next_deep_link_route(&initial, &forwarded).as_deref(),
+            take_forwarded_deep_link_route(&forwarded).as_deref(),
             Some("chat")
         );
         assert_eq!(
-            take_next_deep_link_route(&initial, &forwarded).as_deref(),
+            take_forwarded_deep_link_route(&forwarded).as_deref(),
             Some("settings")
         );
-        assert_eq!(take_next_deep_link_route(&initial, &forwarded), None);
+        assert_eq!(take_forwarded_deep_link_route(&forwarded), None);
     }
 
     #[test]

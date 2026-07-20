@@ -1524,7 +1524,10 @@ export interface LinuxShellBridge {
   gatewayChatStream(request: GatewayProxyRequest, onChunk: (chunk: string) => void): Promise<void>;
   gatewayChatCancel(requestId: string): Promise<void>;
   openDashboard(): Promise<void>;
+  /** Consumed only by startup bootstrap; never drains later instance messages. */
   initialDeepLinkRoute?(): Promise<string | null>;
+  /** Drains routes forwarded by later launches after the renderer listener is ready. */
+  forwardedDeepLinkRoute?(): Promise<string | null>;
   /** Drains native notification actions received before the renderer listener was ready. */
   initialNotificationActions?(): Promise<NativeNotificationActionEvent[]>;
   quitApp(): Promise<void>;

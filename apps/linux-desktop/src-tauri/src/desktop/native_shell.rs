@@ -136,16 +136,19 @@ fn open_dashboard(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn initial_deep_link_route() -> Option<String> {
-    take_next_deep_link_route(initial_deep_link_route_store(), forwarded_route_queue())
+    take_initial_deep_link_route(initial_deep_link_route_store())
 }
 
-fn take_next_deep_link_route(
-    initial: &Mutex<Option<String>>,
-    forwarded: &Mutex<Vec<String>>,
-) -> Option<String> {
-    if let Some(route) = initial.lock().ok().and_then(|mut route| route.take()) {
-        return Some(route);
-    }
+fn take_initial_deep_link_route(initial: &Mutex<Option<String>>) -> Option<String> {
+    initial.lock().ok().and_then(|mut route| route.take())
+}
+
+#[tauri::command]
+fn forwarded_deep_link_route() -> Option<String> {
+    take_forwarded_deep_link_route(forwarded_route_queue())
+}
+
+fn take_forwarded_deep_link_route(forwarded: &Mutex<Vec<String>>) -> Option<String> {
     forwarded
         .lock()
         .ok()

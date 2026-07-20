@@ -119,8 +119,8 @@ export function App() {
         // A secondary launch can forward a route before the renderer has
         // installed the native event listener. Drain every queued route after
         // registration; main.tsx already consumed the original launch route.
-        while (!cancelled && bridge?.initialDeepLinkRoute) {
-          const pendingRoute = await bridge.initialDeepLinkRoute();
+        while (!cancelled && bridge?.forwardedDeepLinkRoute) {
+          const pendingRoute = await bridge.forwardedDeepLinkRoute();
           if (pendingRoute === null) break;
           const destination = shellDestinationFromNative(pendingRoute);
           if (!destination) continue;

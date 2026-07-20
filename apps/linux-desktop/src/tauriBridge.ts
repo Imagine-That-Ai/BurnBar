@@ -157,6 +157,7 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     gatewayChatCancel: (requestId) => invoke<void>('gateway_chat_cancel', { requestId }),
     openDashboard: () => invoke<void>('open_dashboard'),
     initialDeepLinkRoute: () => invoke<string | null>('initial_deep_link_route'),
+    forwardedDeepLinkRoute: () => invoke<string | null>('forwarded_deep_link_route'),
     initialNotificationActions: async () =>
       decodeNativeNotificationActionEvents(await invoke<RawJsonValue>('initial_notification_actions')),
     quitApp: () => invoke<void>('quit_app'),

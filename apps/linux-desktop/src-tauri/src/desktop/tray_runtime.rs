@@ -423,6 +423,7 @@ pub fn run() {
             open_update_url,
             open_dashboard,
             initial_deep_link_route,
+            forwarded_deep_link_route,
             initial_notification_actions,
             quit_app,
             launch_at_login_status,
