@@ -8,7 +8,7 @@ import hashlib
 import json
 import time
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -18,9 +18,11 @@ ACTIONABLE = {"button", "check box", "combo box", "entry", "link", "page tab", "
 def children(node):
     for index in range(int(getattr(node, "childCount", 0))):
         try:
-            yield node.getChildAtIndex(index)
+            child = node.getChildAtIndex(index)
         except Exception:
-            continue
+            child = None
+        if child is not None:
+            yield child
 
 
 def text(value) -> str:
@@ -100,7 +102,7 @@ def main() -> None:
     source = Path(args.source_atspi).read_bytes()
     output = {
         "producer": "openburnbar-p10-live-geometry-probe-v1",
-        "capturedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "capturedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "sourceAtspiSha256": hashlib.sha256(source).hexdigest(),
         "nodesInspected": len(rows),
         "clippedElements": [{"path": row["path"], "name": row["name"], "bounds": row["bounds"]} for row in clipped],
