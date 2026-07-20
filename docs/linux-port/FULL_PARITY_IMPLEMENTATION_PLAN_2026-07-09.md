@@ -15,7 +15,9 @@ dependencies, acceptance contracts, proof commands, loophole controls, and
 known platform divergences.
 
 > **Live status (2026-07-20):** The implementation branch is
-> `e4f14c4387` and passes **90 frontend files / 853 tests**, TypeScript,
+> `2ad3b2752d`. The prior source gate passes **90 frontend files / 853 tests**;
+> focused mission, shell, and IPv6 adapter regressions are green, along with
+> TypeScript,
 > production-bundle verification, and **129/129 Rust tests**. An exact-head
 > ARM64 DEB is installed and visibly rendering in the unlocked Ubuntu
 > GNOME/X11 UTM guest; the non-certifying receipt with fresh daemon/CLI
@@ -33,17 +35,20 @@ Linux is not at full macOS parity.
 
 ### Current source wave — 2026-07-19 UTC
 
-Integration head `e4f14c4387` passes 90 frontend files / 853 tests, TypeScript,
+Integration head `2ad3b2752d` carries the prior 90 frontend files / 853 tests,
+plus focused mission, shell, and IPv6 adapter regressions, TypeScript,
 production bundle verification, Tauri Rust 129/129, and package-payload
 contract checks. The current wave includes immediate Canvas2D recovery after
 WebGL context loss, keyboard-complete kernel selection, truthful Support
 performance empty state, stale-update/provider/subscription guards, periodic
 tray refresh, packaged-shell Reconnect, keyboard-complete overflow actions,
-cold-start notification-action retention, and the ARM64-only AppHandle fix
-found by the real Linux build, and stale diagnostics exports are now fenced
-across bridge replacement and overlapping requests. The UTM guest passed the
+cold-start notification-action retention, the ARM64-only AppHandle fix
+found by the real Linux build, stale diagnostics exports fenced
+across bridge replacement and overlapping requests, plus the latest mission,
+shell, and IPv6 endpoint fixes. The UTM guest passed the
 read-only staged-payload path, then installed a package rebuilt with fresh
-daemon and CLI payloads from the current head. These
+daemon and CLI payloads from the preceding installed head; the latest source
+fixes are not yet installed. These
 changes improve the engineering baseline; they do not close the strict 0/40
 product and 0/7 environment gates.
 

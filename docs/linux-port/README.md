@@ -6,7 +6,7 @@ implemented as reviewable infrastructure, not a public availability claim.
 Current parity status as of 2026-07-20:
 
 - **Current source head:** the integration branch now includes source changes
-  through `e4f14c4387`. It passes 90 frontend files /
+  through `2ad3b2752d` (with `9f1bd7ca8c` and `5e1a2dd962`). It passes 90 frontend files /
   853 tests, TypeScript, production bundle verification, Tauri Rust 129/129,
   package-payload contract checks (2 pass, 2 historical skips), and product
   validators 12/12. `1130524331` recovers a visible 2D backdrop after
@@ -48,7 +48,12 @@ Current parity status as of 2026-07-20:
   release binary no longer reports that test-only helper as dead code.
   `7c5b68d750` matches macOS loopback-only CORS, preflight, and streamed
   response headers on the Linux gateway, with focused allowed/blocked/IPv6
-  origin coverage.
+  origin coverage. `106b15855b` retains the last good mission snapshot during
+  transient refresh failures; `e4f14c4387` avoids duplicate SmartHub health
+  probes; `9f1bd7ca8c` wires Mission **Inspect logs** to canonical detail;
+  `5e1a2dd962` routes **Import sessions** to Activity; and `2ad3b2752d`
+  brackets Avahi-discovered IPv6 control endpoints for SmartHub/Cast/Home
+  Assistant/PixelClock.
   The ARM VM passed the supported Swift-less staged-payload
   `pretauri:build`/`tauri:build` path via
   `OPENBURNBAR_LINUX_REUSE_STAGED_PAYLOAD=1`, and then a separate package was
@@ -60,6 +65,8 @@ Current parity status as of 2026-07-20:
   The preceding `b4cd3e8b8b`, `534d7aae65`, `872074af3a`, and `ded781e94d` receipts remain historical
   visible-shell evidence.
   The strict ledger remains **0/40 product rows and 0/7 environment receipts**.
+  The VM package is one source wave behind these three fixes; they require a
+  new exact-head package before counting as installed evidence.
 
 - **Latest live VM candidate:** the exact `e4f14c4387` ARM64 DEB with freshly
   built daemon and CLI payloads is installed in the Ubuntu 24.04.4 GNOME/X11
