@@ -92,3 +92,41 @@ test("collector paginates repositories with more than 100 checks", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("collector keeps the newest duplicate commit status", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => ({
+    ok: true,
+    json: async () =>
+      url.includes("check-runs")
+        ? { check_runs: [] }
+        : {
+            statuses: [
+              {
+                context: "external-gate",
+                state: "success",
+                target_url: "new",
+              },
+              {
+                context: "external-gate",
+                state: "failure",
+                target_url: "old",
+              },
+            ],
+          },
+  });
+  try {
+    const observations = await collectObservations(
+      "owner/repo",
+      "sha",
+      "token",
+    );
+    assert.deepEqual(observations.get("external-gate"), {
+      status: "completed",
+      conclusion: "success",
+      url: "new",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

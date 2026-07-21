@@ -83,7 +83,9 @@ export async function collectObservations(repository, sha, token) {
       url: check.html_url,
     });
   }
-  for (const status of [...statuses].reverse()) {
+  // The combined-status API returns newest first. Keep the first observation
+  // for each context so stale retries cannot override the current result.
+  for (const status of statuses) {
     if (!observations.has(status.context)) {
       observations.set(status.context, {
         status: status.state === "pending" ? "in_progress" : "completed",
