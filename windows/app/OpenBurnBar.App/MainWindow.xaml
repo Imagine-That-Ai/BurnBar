@@ -25,6 +25,8 @@
               Height="32"
               Background="Transparent" />
 
-        <shell:AppShell x:Name="ShellControl" Grid.Row="1" />
+        <!-- Content: the shared Linux UI WebView2 host by default, or the native XAML
+             AppShell when OPENBURNBAR_XAML_SHELL=1 (see MainWindow.xaml.cs). -->
+        <Grid x:Name="ContentHost" Grid.Row="1" />
     </Grid>
 </Window>
