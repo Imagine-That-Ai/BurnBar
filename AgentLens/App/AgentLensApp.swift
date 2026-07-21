@@ -87,12 +87,25 @@ enum OpenBurnBarRuntime {
         #endif
     }
 
+    /// The real-process backdrop gate must measure window rendering, not
+    /// unrelated updater, wallpaper, or cloud-maintenance work. Keep the
+    /// status item and dashboard alive, but suppress those background services
+    /// for this dedicated harness launch only.
+    static func shouldStartBackgroundApplicationServices(
+        isPerformanceGateLaunch: Bool
+    ) -> Bool {
+        !isPerformanceGateLaunch
+    }
+
     /// Shared contract for the DEBUG performance harness. The native helper
     /// cannot import the app module, so its notification string must match this
     /// value exactly.
     static let performanceGateVisibilityNotification = Notification.Name(
         "com.openburnbar.performance-gate.window-visibility"
     )
+    static var performanceGateBackdropStateNotification: Notification.Name {
+        Notification.Name("com.openburnbar.performance-gate.backdrop-state")
+    }
 
     static var currentPerformanceGateNotificationObject: String {
         performanceGateNotificationObject(
@@ -102,6 +115,17 @@ enum OpenBurnBarRuntime {
 
     static func performanceGateNotificationObject(processIdentifier: Int32) -> String {
         String(processIdentifier)
+    }
+
+    static func performanceGateBackdropKernelOverride(
+        isPerformanceGateLaunch: Bool,
+        arguments: [String]
+    ) -> String? {
+        guard isPerformanceGateLaunch,
+              let keyIndex = arguments.firstIndex(of: "-backdropKernel"),
+              arguments.indices.contains(keyIndex + 1) else { return nil }
+        let kernel = arguments[keyIndex + 1].trimmingCharacters(in: .whitespacesAndNewlines)
+        return kernel.isEmpty ? nil : kernel
     }
 
     static var shouldOpenSettingsForUITest: Bool {
