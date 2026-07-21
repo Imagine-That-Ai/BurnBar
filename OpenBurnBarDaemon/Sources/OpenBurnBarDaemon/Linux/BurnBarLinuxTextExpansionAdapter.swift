@@ -1317,8 +1317,8 @@ public struct BurnBarLinuxTextExpansionAdapter: Sendable {
     }
 
     private func isValidManifestShape(_ manifest: EngineManifest) -> Bool {
-        guard (1...2).contains(manifest.schemaVersion),
-              (manifest.schemaVersion == 1 || manifest.executableSha256 != nil),
+        guard 1...2 ~= manifest.schemaVersion,
+              manifest.schemaVersion == 1 || manifest.executableSha256 != nil,
               !manifest.engineID.isEmpty,
               manifest.engineID.count <= Self.maxEngineIDLength,
               manifest.engineID.unicodeScalars.allSatisfy({

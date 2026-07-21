@@ -233,6 +233,16 @@ private enum LocalUsageParserSupport {
 
 // MARK: Aider
 
+private struct AiderSessionAggregate {
+    var input: Int = 0
+    var output: Int = 0
+    var cost: Double = 0
+    var model: String = "unknown"
+    var start: Date?
+    var end: Date?
+    var count: Int = 0
+}
+
 public final class AiderParser: LogParser, Sendable {
     public let provider: AgentProvider = .aider
     private let rootOverride: URL?
@@ -245,12 +255,12 @@ public final class AiderParser: LogParser, Sendable {
         let root = rootOverride ?? LocalUsageParserSupport.expanded(provider.logDirectory)
         let files = [root.appendingPathComponent("analytics.jsonl"), root.appendingPathComponent("analytics.json")]
             .filter { FileManager.default.fileExists(atPath: $0.path) }
-        var sessions: [(input: Int, output: Int, cost: Double, model: String, start: Date?, end: Date?, count: Int)] = []
-        var current = (input: 0, output: 0, cost: 0.0, model: "unknown", start: nil as Date?, end: nil as Date?, count: 0)
+        var sessions: [AiderSessionAggregate] = []
+        var current = AiderSessionAggregate()
         func flush() {
             guard current.input > 0 || current.output > 0 else { return }
             sessions.append(current)
-            current = (0, 0, 0, "unknown", nil, nil, 0)
+            current = AiderSessionAggregate()
         }
         for file in files {
             for object in LocalUsageParserSupport.jsonObjects(at: file) {
@@ -358,14 +368,48 @@ public final class OpenCodeParser: LogParser, Sendable {
                 let timestamp = LocalUsageParserSupport.epoch(time?["created"] ?? json["created"] ?? row.double("time_created")) ?? 0
                 let tokens: ExtractedTokenUsage
                 if let tokenObject = LocalUsageParserSupport.dictionary(json["tokens"]) {
-                    tokens = ExtractedTokenUsage(input: LocalUsageParserSupport.int(tokenObject["input"]), output: LocalUsageParserSupport.int(tokenObject["output"]), cacheCreation: LocalUsageParserSupport.int(tokenObject["cache_write"] ?? LocalUsageParserSupport.dictionary(tokenObject["cache"])?["write"]), cacheRead: LocalUsageParserSupport.int(tokenObject["cache_read"] ?? LocalUsageParserSupport.dictionary(tokenObject["cache"])?["read"]), reasoningTokens: 0)
-                } else { tokens = TokenExtractionUtility.extractUsageTokens(LocalUsageParserSupport.dictionary(json["usage"]) ?? [:]) }
-                messages[session, default: []].append(Message(id: id, session: session, role: LocalUsageParserSupport.string(json["role"])?.lowercased() ?? "", time: timestamp, model: LocalUsageParserSupport.model(in: json), tokens: tokens, cost: LocalUsageParserSupport.double(json["cost"])))
+                    let cacheObject = LocalUsageParserSupport.dictionary(tokenObject["cache"])
+                    tokens = ExtractedTokenUsage(
+                        input: LocalUsageParserSupport.int(tokenObject["input"]),
+                        output: LocalUsageParserSupport.int(tokenObject["output"]),
+                        cacheCreation: LocalUsageParserSupport.int(
+                            tokenObject["cache_write"] ?? cacheObject?["write"]
+                        ),
+                        cacheRead: LocalUsageParserSupport.int(
+                            tokenObject["cache_read"] ?? cacheObject?["read"]
+                        ),
+                        reasoningTokens: 0
+                    )
+                } else {
+                    tokens = TokenExtractionUtility.extractUsageTokens(
+                        LocalUsageParserSupport.dictionary(json["usage"]) ?? [:]
+                    )
+                }
+                messages[session, default: []].append(Message(
+                    id: id,
+                    session: session,
+                    role: LocalUsageParserSupport.string(json["role"])?.lowercased() ?? "",
+                    time: timestamp,
+                    model: LocalUsageParserSupport.model(in: json),
+                    tokens: tokens,
+                    cost: LocalUsageParserSupport.double(json["cost"])
+                ))
             }
         }
         if tables.contains("part") {
             for row in try db.query("SELECT * FROM part") {
-                guard let json = Self.data(from: row), ["text", "reasoning"].contains(LocalUsageParserSupport.string(json["type"])?.lowercased() ?? "text"), let id = row.string("messageID") ?? row.string("message_id") ?? LocalUsageParserSupport.firstString(json, keys: ["messageID", "messageId", "message_id"]), let text = LocalUsageParserSupport.string(json["text"] ?? json["content"]) else { continue }
+                guard let json = Self.data(from: row),
+                      ["text", "reasoning"].contains(
+                          LocalUsageParserSupport.string(json["type"])?.lowercased() ?? "text"
+                      ),
+                      let id = row.string("messageID")
+                        ?? row.string("message_id")
+                        ?? LocalUsageParserSupport.firstString(
+                            json,
+                            keys: ["messageID", "messageId", "message_id"]
+                        ),
+                      let text = LocalUsageParserSupport.string(json["text"] ?? json["content"])
+                else { continue }
                 texts[id, default: ""] += ((texts[id]?.isEmpty ?? true) ? "" : "\n\n") + text
             }
         }
@@ -396,8 +440,40 @@ public final class OpenCodeParser: LogParser, Sendable {
             let end = meta?.updated ?? TimestampNormalizationUtility.date(fromEpoch: ordered.last?.time, fallback: start)
             let costFromRows = ordered.compactMap(\.cost).reduce(0, +)
             let cost = costFromRows > 0 ? costFromRows : ((try? ModelPricing.lookup(model: model).cost(inputTokens: input, outputTokens: output, cacheCreationTokens: cacheCreation, cacheReadTokens: cacheRead)) ?? 0)
-            if let usage = LocalUsageParserSupport.usage(provider: .openCode, sessionID: session, project: meta?.directory.map { URL(fileURLWithPath: $0).lastPathComponent } ?? session, model: model, input: input, output: output, cacheCreation: cacheCreation, cacheRead: cacheRead, cost: cost, start: start, end: end, method: method, confidence: confidence, estimatorVersion: method == .heuristicEstimate ? TokenExtractionUtility.currentEstimatorVersion : "") { usages.append(usage) }
-            if options.includeConversationBodies && !turns.isEmpty { conversations.append(LocalUsageParserSupport.transcript(provider: .openCode, sessionID: session, project: meta?.directory.map { URL(fileURLWithPath: $0).lastPathComponent } ?? session, turns: turns, start: start, end: end, fileModifiedAt: end, workingDirectory: meta?.directory)) }
+            let project = meta?.directory.map { URL(fileURLWithPath: $0).lastPathComponent } ?? session
+            let estimatorVersion = method == .heuristicEstimate
+                ? TokenExtractionUtility.currentEstimatorVersion
+                : ""
+            if let usage = LocalUsageParserSupport.usage(
+                provider: .openCode,
+                sessionID: session,
+                project: project,
+                model: model,
+                input: input,
+                output: output,
+                cacheCreation: cacheCreation,
+                cacheRead: cacheRead,
+                cost: cost,
+                start: start,
+                end: end,
+                method: method,
+                confidence: confidence,
+                estimatorVersion: estimatorVersion
+            ) {
+                usages.append(usage)
+            }
+            if options.includeConversationBodies && !turns.isEmpty {
+                conversations.append(LocalUsageParserSupport.transcript(
+                    provider: .openCode,
+                    sessionID: session,
+                    project: project,
+                    turns: turns,
+                    start: start,
+                    end: end,
+                    fileModifiedAt: end,
+                    workingDirectory: meta?.directory
+                ))
+            }
         }
         return ParseResult(usages: usages, conversations: conversations)
     }
@@ -456,8 +532,39 @@ public final class PiAgentParser: LogParser, Sendable {
         }
         let startTime = start ?? mtime, endTime = end ?? startTime
         let cost = (try? ModelPricing.lookup(model: model).cost(inputTokens: input, outputTokens: output, cacheCreationTokens: cacheCreation, cacheReadTokens: cacheRead)) ?? 0
-        let usage = LocalUsageParserSupport.usage(provider: .piAgent, sessionID: sessionID, project: cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? sessionID, model: model, input: input, output: output, cacheCreation: cacheCreation, cacheRead: cacheRead, cost: cost, start: startTime, end: endTime, method: method, confidence: confidence, estimatorVersion: method == .heuristicEstimate ? TokenExtractionUtility.currentEstimatorVersion : "")
-        return (usage, turns.isEmpty ? nil : LocalUsageParserSupport.transcript(provider: .piAgent, sessionID: sessionID, project: cwd ?? sessionID, turns: turns, start: startTime, end: endTime, fileModifiedAt: mtime, workingDirectory: cwd))
+        let project = cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? sessionID
+        let estimatorVersion = method == .heuristicEstimate
+            ? TokenExtractionUtility.currentEstimatorVersion
+            : ""
+        let usage = LocalUsageParserSupport.usage(
+            provider: .piAgent,
+            sessionID: sessionID,
+            project: project,
+            model: model,
+            input: input,
+            output: output,
+            cacheCreation: cacheCreation,
+            cacheRead: cacheRead,
+            cost: cost,
+            start: startTime,
+            end: endTime,
+            method: method,
+            confidence: confidence,
+            estimatorVersion: estimatorVersion
+        )
+        let conversation = turns.isEmpty
+            ? nil
+            : LocalUsageParserSupport.transcript(
+                provider: .piAgent,
+                sessionID: sessionID,
+                project: cwd ?? sessionID,
+                turns: turns,
+                start: startTime,
+                end: endTime,
+                fileModifiedAt: mtime,
+                workingDirectory: cwd
+            )
+        return (usage, conversation)
     }
 }
 
@@ -478,18 +585,83 @@ public final class OpenClawParser: LogParser, Sendable {
             for object in objects {
                 let timestamp = LocalUsageParserSupport.date(object["timestamp"] ?? object["createdAt"] ?? object["time"]); start = start ?? timestamp; end = timestamp ?? end
                 model = LocalUsageParserSupport.model(in: object) ?? model
-                let tokens = LocalUsageParserSupport.extracted(object); input += tokens.input; output += tokens.output; cacheRead += tokens.cacheRead
-                let message = LocalUsageParserSupport.dictionary(object["message"]); let role = (LocalUsageParserSupport.string(object["role"]) ?? LocalUsageParserSupport.string(message?["role"]) ?? "").lowercased(); let text = LocalUsageParserSupport.contentText(object["content"] ?? message?["content"] ?? object["text"])
-                if !text.isEmpty, ["user", "human", "assistant", "agent", "model"].contains(role) { turns.append(.init(role: role == "user" || role == "human" ? "user" : "assistant", text: text, timestamp: timestamp)) }
+                let tokens = LocalUsageParserSupport.extracted(object)
+                input += tokens.input
+                output += tokens.output
+                cacheRead += tokens.cacheRead
+                let message = LocalUsageParserSupport.dictionary(object["message"])
+                let role = (
+                    LocalUsageParserSupport.string(object["role"])
+                        ?? LocalUsageParserSupport.string(message?["role"])
+                        ?? ""
+                ).lowercased()
+                let text = LocalUsageParserSupport.contentText(
+                    object["content"] ?? message?["content"] ?? object["text"]
+                )
+                if !text.isEmpty, ["user", "human", "assistant", "agent", "model"].contains(role) {
+                    let canonical = role == "user" || role == "human" ? "user" : "assistant"
+                    turns.append(.init(role: canonical, text: text, timestamp: timestamp))
+                }
             }
             guard !turns.isEmpty else { continue }
-            let mtime = LocalUsageParserSupport.modificationDate(file) ?? Date(); let startTime = start ?? mtime; let endTime = end ?? startTime
-            var method: UsageProvenanceMethod = .providerLog; var confidence: UsageProvenanceConfidence = .exact
-            if input == 0 && output == 0 { let estimate = TokenExtractionUtility.estimateFallbackTokens(userVisibleChars: turns.filter { $0.role == "user" }.reduce(0) { $0 + $1.text.count }, assistantVisibleChars: turns.filter { $0.role == "assistant" }.reduce(0) { $0 + $1.text.count }, assistantReasoningChars: 0, userMessageCount: 1, assistantMessageCount: 1); input = estimate.input; output = estimate.output; method = .heuristicEstimate; confidence = .lowConfidenceEstimate }
-            let cost = (try? ModelPricing.lookup(model: model).cost(inputTokens: input, outputTokens: output, cacheReadTokens: cacheRead)) ?? 0
+            let mtime = LocalUsageParserSupport.modificationDate(file) ?? Date()
+            let startTime = start ?? mtime
+            let endTime = end ?? startTime
+            var method: UsageProvenanceMethod = .providerLog
+            var confidence: UsageProvenanceConfidence = .exact
+            if input == 0 && output == 0 {
+                let userChars = turns.filter { $0.role == "user" }.reduce(0) { $0 + $1.text.count }
+                let assistantChars = turns.filter { $0.role == "assistant" }
+                    .reduce(0) { $0 + $1.text.count }
+                let estimate = TokenExtractionUtility.estimateFallbackTokens(
+                    userVisibleChars: userChars,
+                    assistantVisibleChars: assistantChars,
+                    assistantReasoningChars: 0,
+                    userMessageCount: 1,
+                    assistantMessageCount: 1
+                )
+                input = estimate.input
+                output = estimate.output
+                method = .heuristicEstimate
+                confidence = .lowConfidenceEstimate
+            }
+            let cost = (try? ModelPricing.lookup(model: model).cost(
+                inputTokens: input,
+                outputTokens: output,
+                cacheReadTokens: cacheRead
+            )) ?? 0
             let session = file.deletingPathExtension().lastPathComponent
-            if let usage = LocalUsageParserSupport.usage(provider: .openClaw, sessionID: session, project: "OpenClaw", model: model, input: input, output: output, cacheRead: cacheRead, cost: cost, start: startTime, end: endTime, method: method, confidence: confidence, estimatorVersion: method == .heuristicEstimate ? TokenExtractionUtility.currentEstimatorVersion : "") { usages.append(usage) }
-            if options.includeConversationBodies { conversations.append(LocalUsageParserSupport.transcript(provider: .openClaw, sessionID: session, project: "OpenClaw", turns: turns, start: startTime, end: endTime, fileModifiedAt: mtime)) }
+            let estimatorVersion = method == .heuristicEstimate
+                ? TokenExtractionUtility.currentEstimatorVersion
+                : ""
+            if let usage = LocalUsageParserSupport.usage(
+                provider: .openClaw,
+                sessionID: session,
+                project: "OpenClaw",
+                model: model,
+                input: input,
+                output: output,
+                cacheRead: cacheRead,
+                cost: cost,
+                start: startTime,
+                end: endTime,
+                method: method,
+                confidence: confidence,
+                estimatorVersion: estimatorVersion
+            ) {
+                usages.append(usage)
+            }
+            if options.includeConversationBodies {
+                conversations.append(LocalUsageParserSupport.transcript(
+                    provider: .openClaw,
+                    sessionID: session,
+                    project: "OpenClaw",
+                    turns: turns,
+                    start: startTime,
+                    end: endTime,
+                    fileModifiedAt: mtime
+                ))
+            }
         }
         return ParseResult(usages: usages, conversations: conversations)
     }
@@ -540,21 +712,127 @@ public final class JunieParser: LogParser, Sendable {
         guard FileManager.default.fileExists(atPath: root.path) else { return ParseResult(usages: [], conversations: []) }
         var projects: [String: String] = [:]
         let index = root.appendingPathComponent("index.jsonl")
-        for object in LocalUsageParserSupport.jsonLines(at: index) { if let id = LocalUsageParserSupport.firstString(object, keys: ["sessionId", "session_id", "id"]), let project = LocalUsageParserSupport.firstString(object, keys: ["projectPath", "project_path", "cwd", "workingDirectory"]) { projects[id] = project } }
-        let dirs = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey]))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
-        var usages: [TokenUsage] = []; var conversations: [ConversationRecord] = []
-        for dir in dirs {
-            let id = dir.lastPathComponent; let events = dir.appendingPathComponent("events.jsonl"); guard FileManager.default.fileExists(atPath: events.path) else { continue }
-            let objects = LocalUsageParserSupport.jsonLines(at: events); var input = 0, output = 0, cacheCreation = 0, cacheRead = 0, reasoning = 0, userChars = 0, assistantChars = 0; var model = "unknown"; var start: Date?, end: Date?; var turns: [LocalUsageParserSupport.Turn] = []
-            for raw in objects {
-                let payload = LocalUsageParserSupport.dictionary(raw["event"]) ?? LocalUsageParserSupport.dictionary(raw["payload"]) ?? raw; let message = LocalUsageParserSupport.dictionary(payload["message"]) ?? payload; let timestamp = LocalUsageParserSupport.date(raw["timestamp"] ?? payload["timestamp"]); start = start ?? timestamp; end = timestamp ?? end; model = LocalUsageParserSupport.model(in: payload) ?? model; let tokens = LocalUsageParserSupport.extracted(payload); input += tokens.input; output += tokens.output; cacheCreation += tokens.cacheCreation; cacheRead += tokens.cacheRead; reasoning += tokens.reasoningTokens
-                let role = (LocalUsageParserSupport.string(message["role"]) ?? LocalUsageParserSupport.string(message["author"]) ?? LocalUsageParserSupport.string(message["sender"]) ?? "").lowercased(); let text = LocalUsageParserSupport.contentText(message["content"] ?? message["text"] ?? message["parts"]); if !text.isEmpty, ["user", "assistant", "agent", "model"].contains(role) { let canonical = role == "user" ? "user" : "assistant"; turns.append(.init(role: canonical, text: text, timestamp: timestamp)); if canonical == "user" { userChars += text.count } else { assistantChars += text.count } }
+        for object in LocalUsageParserSupport.jsonLines(at: index) {
+            if let id = LocalUsageParserSupport.firstString(object, keys: ["sessionId", "session_id", "id"]),
+               let project = LocalUsageParserSupport.firstString(
+                   object,
+                   keys: ["projectPath", "project_path", "cwd", "workingDirectory"]
+               ) {
+                projects[id] = project
             }
-            var method: UsageProvenanceMethod = .providerLog; var confidence: UsageProvenanceConfidence = .exact
-            if input == 0 && output == 0 && cacheCreation == 0 && cacheRead == 0 && reasoning == 0 { guard userChars + assistantChars > 0 else { continue }; let estimate = TokenExtractionUtility.estimateFallbackTokens(userVisibleChars: userChars, assistantVisibleChars: assistantChars, assistantReasoningChars: 0, userMessageCount: 1, assistantMessageCount: 1); input = estimate.input; output = estimate.output; method = .heuristicEstimate; confidence = .lowConfidenceEstimate }
-            let mtime = LocalUsageParserSupport.modificationDate(events) ?? Date(); let startTime = start ?? mtime; let endTime = end ?? startTime; let project = projects[id] ?? "Junie"; let cost = (try? ModelPricing.lookup(model: model, providerID: "junie").cost(inputTokens: input, outputTokens: output, cacheCreationTokens: cacheCreation, cacheReadTokens: cacheRead)) ?? 0
-            if let usage = LocalUsageParserSupport.usage(provider: .junie, sessionID: id, project: project, model: model, input: input, output: output, cacheCreation: cacheCreation, cacheRead: cacheRead, reasoning: reasoning, cost: cost, start: startTime, end: endTime, method: method, confidence: confidence, estimatorVersion: method == .heuristicEstimate ? TokenExtractionUtility.currentEstimatorVersion : "") { usages.append(usage) }
-            if options.includeConversationBodies, !turns.isEmpty { conversations.append(LocalUsageParserSupport.transcript(provider: .junie, sessionID: id, project: project, turns: turns, start: startTime, end: endTime, fileModifiedAt: mtime, workingDirectory: projects[id])) }
+        }
+        let dirs = (try? FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
+        var usages: [TokenUsage] = []
+        var conversations: [ConversationRecord] = []
+        for dir in dirs {
+            let id = dir.lastPathComponent
+            let events = dir.appendingPathComponent("events.jsonl")
+            guard FileManager.default.fileExists(atPath: events.path) else { continue }
+            let objects = LocalUsageParserSupport.jsonLines(at: events)
+            var input = 0, output = 0, cacheCreation = 0, cacheRead = 0, reasoning = 0
+            var userChars = 0, assistantChars = 0
+            var model = "unknown"
+            var start: Date?, end: Date?
+            var turns: [LocalUsageParserSupport.Turn] = []
+            for raw in objects {
+                let payload = LocalUsageParserSupport.dictionary(raw["event"])
+                    ?? LocalUsageParserSupport.dictionary(raw["payload"])
+                    ?? raw
+                let message = LocalUsageParserSupport.dictionary(payload["message"]) ?? payload
+                let timestamp = LocalUsageParserSupport.date(
+                    raw["timestamp"] ?? payload["timestamp"]
+                )
+                start = start ?? timestamp
+                end = timestamp ?? end
+                model = LocalUsageParserSupport.model(in: payload) ?? model
+                let tokens = LocalUsageParserSupport.extracted(payload)
+                input += tokens.input
+                output += tokens.output
+                cacheCreation += tokens.cacheCreation
+                cacheRead += tokens.cacheRead
+                reasoning += tokens.reasoningTokens
+                let role = (
+                    LocalUsageParserSupport.string(message["role"])
+                        ?? LocalUsageParserSupport.string(message["author"])
+                        ?? LocalUsageParserSupport.string(message["sender"])
+                        ?? ""
+                ).lowercased()
+                let text = LocalUsageParserSupport.contentText(
+                    message["content"] ?? message["text"] ?? message["parts"]
+                )
+                if !text.isEmpty, ["user", "assistant", "agent", "model"].contains(role) {
+                    let canonical = role == "user" ? "user" : "assistant"
+                    turns.append(.init(role: canonical, text: text, timestamp: timestamp))
+                    if canonical == "user" {
+                        userChars += text.count
+                    } else {
+                        assistantChars += text.count
+                    }
+                }
+            }
+            var method: UsageProvenanceMethod = .providerLog
+            var confidence: UsageProvenanceConfidence = .exact
+            if input == 0 && output == 0 && cacheCreation == 0 && cacheRead == 0 && reasoning == 0 {
+                guard userChars + assistantChars > 0 else { continue }
+                let estimate = TokenExtractionUtility.estimateFallbackTokens(
+                    userVisibleChars: userChars,
+                    assistantVisibleChars: assistantChars,
+                    assistantReasoningChars: 0,
+                    userMessageCount: 1,
+                    assistantMessageCount: 1
+                )
+                input = estimate.input
+                output = estimate.output
+                method = .heuristicEstimate
+                confidence = .lowConfidenceEstimate
+            }
+            let mtime = LocalUsageParserSupport.modificationDate(events) ?? Date()
+            let startTime = start ?? mtime
+            let endTime = end ?? startTime
+            let project = projects[id] ?? "Junie"
+            let cost = (try? ModelPricing.lookup(model: model, providerID: "junie").cost(
+                inputTokens: input,
+                outputTokens: output,
+                cacheCreationTokens: cacheCreation,
+                cacheReadTokens: cacheRead
+            )) ?? 0
+            let estimatorVersion = method == .heuristicEstimate
+                ? TokenExtractionUtility.currentEstimatorVersion
+                : ""
+            if let usage = LocalUsageParserSupport.usage(
+                provider: .junie,
+                sessionID: id,
+                project: project,
+                model: model,
+                input: input,
+                output: output,
+                cacheCreation: cacheCreation,
+                cacheRead: cacheRead,
+                reasoning: reasoning,
+                cost: cost,
+                start: startTime,
+                end: endTime,
+                method: method,
+                confidence: confidence,
+                estimatorVersion: estimatorVersion
+            ) {
+                usages.append(usage)
+            }
+            if options.includeConversationBodies, !turns.isEmpty {
+                conversations.append(LocalUsageParserSupport.transcript(
+                    provider: .junie,
+                    sessionID: id,
+                    project: project,
+                    turns: turns,
+                    start: startTime,
+                    end: endTime,
+                    fileModifiedAt: mtime,
+                    workingDirectory: projects[id]
+                ))
+            }
         }
         return ParseResult(usages: usages, conversations: conversations)
     }
@@ -585,15 +863,89 @@ public final class ModelFilterParser: LogParser, Sendable {
                 }
             }
             for object in objects {
-                let timestamp = LocalUsageParserSupport.date(object["timestamp"]); start = start ?? timestamp; end = timestamp ?? end; model = model ?? LocalUsageParserSupport.model(in: object); let tokens = LocalUsageParserSupport.extracted(object); input += tokens.input; output += tokens.output; cacheCreation += tokens.cacheCreation; cacheRead += tokens.cacheRead
-                let message = LocalUsageParserSupport.dictionary(object["message"]); let role = (LocalUsageParserSupport.string(message?["role"]) ?? "").lowercased(); let text = LocalUsageParserSupport.contentText(message?["content"]); if !text.isEmpty, ["user", "assistant"].contains(role) { turns.append(.init(role: role, text: text, timestamp: timestamp)); if role == "user" { userChars += text.count } else { assistantChars += text.count } }
+                let timestamp = LocalUsageParserSupport.date(object["timestamp"])
+                start = start ?? timestamp
+                end = timestamp ?? end
+                model = model ?? LocalUsageParserSupport.model(in: object)
+                let tokens = LocalUsageParserSupport.extracted(object)
+                input += tokens.input
+                output += tokens.output
+                cacheCreation += tokens.cacheCreation
+                cacheRead += tokens.cacheRead
+                let message = LocalUsageParserSupport.dictionary(object["message"])
+                let role = (LocalUsageParserSupport.string(message?["role"]) ?? "").lowercased()
+                let text = LocalUsageParserSupport.contentText(message?["content"])
+                if !text.isEmpty, ["user", "assistant"].contains(role) {
+                    turns.append(.init(role: role, text: text, timestamp: timestamp))
+                    if role == "user" {
+                        userChars += text.count
+                    } else {
+                        assistantChars += text.count
+                    }
+                }
             }
-            guard let resolvedModel = model, resolvedModel.lowercased().contains(modelPattern) else { continue }
-            var method: UsageProvenanceMethod = .providerLog; var confidence: UsageProvenanceConfidence = .exact
-            if input == 0 && output == 0 { guard userChars + assistantChars > 0 else { continue }; let estimate = TokenExtractionUtility.estimateFallbackTokens(userVisibleChars: userChars, assistantVisibleChars: assistantChars, assistantReasoningChars: 0, userMessageCount: 1, assistantMessageCount: 1); input = estimate.input; output = estimate.output; method = .heuristicEstimate; confidence = .lowConfidenceEstimate }
-            let mtime = LocalUsageParserSupport.modificationDate(file) ?? Date(); let startTime = start ?? mtime; let endTime = end ?? startTime; let project = file.deletingLastPathComponent().lastPathComponent; let cost = (try? ModelPricing.lookup(model: resolvedModel).cost(inputTokens: input, outputTokens: output, cacheCreationTokens: cacheCreation, cacheReadTokens: cacheRead)) ?? 0; let id = file.deletingPathExtension().lastPathComponent
-            if let usage = LocalUsageParserSupport.usage(provider: provider, sessionID: id, project: project, model: resolvedModel, input: input, output: output, cacheCreation: cacheCreation, cacheRead: cacheRead, cost: cost, start: startTime, end: endTime, method: method, confidence: confidence, estimatorVersion: method == .heuristicEstimate ? TokenExtractionUtility.currentEstimatorVersion : "") { usages.append(usage) }
-            if options.includeConversationBodies, !turns.isEmpty { conversations.append(LocalUsageParserSupport.transcript(provider: provider, sessionID: id, project: project, turns: turns, start: startTime, end: endTime, fileModifiedAt: mtime)) }
+            guard let resolvedModel = model, resolvedModel.lowercased().contains(modelPattern) else {
+                continue
+            }
+            var method: UsageProvenanceMethod = .providerLog
+            var confidence: UsageProvenanceConfidence = .exact
+            if input == 0 && output == 0 {
+                guard userChars + assistantChars > 0 else { continue }
+                let estimate = TokenExtractionUtility.estimateFallbackTokens(
+                    userVisibleChars: userChars,
+                    assistantVisibleChars: assistantChars,
+                    assistantReasoningChars: 0,
+                    userMessageCount: 1,
+                    assistantMessageCount: 1
+                )
+                input = estimate.input
+                output = estimate.output
+                method = .heuristicEstimate
+                confidence = .lowConfidenceEstimate
+            }
+            let mtime = LocalUsageParserSupport.modificationDate(file) ?? Date()
+            let startTime = start ?? mtime
+            let endTime = end ?? startTime
+            let project = file.deletingLastPathComponent().lastPathComponent
+            let cost = (try? ModelPricing.lookup(model: resolvedModel).cost(
+                inputTokens: input,
+                outputTokens: output,
+                cacheCreationTokens: cacheCreation,
+                cacheReadTokens: cacheRead
+            )) ?? 0
+            let id = file.deletingPathExtension().lastPathComponent
+            let estimatorVersion = method == .heuristicEstimate
+                ? TokenExtractionUtility.currentEstimatorVersion
+                : ""
+            if let usage = LocalUsageParserSupport.usage(
+                provider: provider,
+                sessionID: id,
+                project: project,
+                model: resolvedModel,
+                input: input,
+                output: output,
+                cacheCreation: cacheCreation,
+                cacheRead: cacheRead,
+                cost: cost,
+                start: startTime,
+                end: endTime,
+                method: method,
+                confidence: confidence,
+                estimatorVersion: estimatorVersion
+            ) {
+                usages.append(usage)
+            }
+            if options.includeConversationBodies, !turns.isEmpty {
+                conversations.append(LocalUsageParserSupport.transcript(
+                    provider: provider,
+                    sessionID: id,
+                    project: project,
+                    turns: turns,
+                    start: startTime,
+                    end: endTime,
+                    fileModifiedAt: mtime
+                ))
+            }
         }
         return ParseResult(usages: usages, conversations: conversations)
     }

@@ -218,9 +218,7 @@ private struct AudioPlaybackStaticSealKeyOpener: MercuryLinuxMediaSealKeyOpening
 }
 
 private final class AudioPlaybackNoopCaptureAdapter:
-    MercuryLinuxCaptureAdapterProtocol,
-    @unchecked Sendable
-{
+    MercuryLinuxCaptureAdapterProtocol, @unchecked Sendable {
     func startOutboundCapture(
         targetBitrateBps: UInt32,
         codec: MercuryLinuxCaptureCodec,

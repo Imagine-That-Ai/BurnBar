@@ -279,6 +279,10 @@ const NONCE_TOUCHED_PRIMARY = [
   "FUNCTIONS_EMULATOR",
   "FIRESTORE_EMULATOR_HOST",
   "FIREBASE_CONFIG",
+  // Production-looking projects refuse to boot without a real Linux App Check
+  // Web app id (see resolveAppCheckAppIdSurface). Keep the fixture provisioned
+  // so these tests isolate the nonce default, not the App Check id guard.
+  "LINUX_APP_CHECK_APP_ID",
 ] as const;
 
 describe("F-RR04-002 requireHighRiskNonce production default", () => {
@@ -290,6 +294,7 @@ describe("F-RR04-002 requireHighRiskNonce production default", () => {
       saved[k] = process.env[k];
       delete process.env[k];
     }
+    process.env.LINUX_APP_CHECK_APP_ID = VALID_LINUX_APP_CHECK_APP_ID;
   });
   afterEach(() => {
     for (const k of NONCE_TOUCHED_PRIMARY) {
@@ -346,6 +351,7 @@ describe("F-RR04-002 requireHighRiskNonce production default", () => {
     vi.resetModules();
     process.env.GCLOUD_PROJECT = "demo-project";
     delete process.env.REQUIRE_HIGH_RISK_NONCE;
+    process.env.LINUX_APP_CHECK_APP_ID = VALID_LINUX_APP_CHECK_APP_ID;
     const { getConfig: getConfigTest } = await import("../config.js");
     expect(getConfigTest().requireHighRiskNonce).toBe(false);
   });
@@ -386,6 +392,7 @@ describe("L-3 / F-RR04-002 empty-string env var bypass (toBool fix)", () => {
     "FUNCTIONS_EMULATOR",
     "FIRESTORE_EMULATOR_HOST",
     "FIREBASE_CONFIG",
+    "LINUX_APP_CHECK_APP_ID",
   ] as const;
   const saved: Record<string, string | undefined> = {};
 
@@ -395,6 +402,8 @@ describe("L-3 / F-RR04-002 empty-string env var bypass (toBool fix)", () => {
       saved[k] = process.env[k];
       delete process.env[k];
     }
+    // Production-looking projects require a real Linux App Check Web app id.
+    process.env.LINUX_APP_CHECK_APP_ID = VALID_LINUX_APP_CHECK_APP_ID;
   });
   afterEach(() => {
     for (const k of KEYS) {

@@ -18,5 +18,8 @@
     "@typespec/openapi3": "1.13.0",
     "@typespec/rest": "0.83.0"
   },
-  "license": "AGPL-3.0-only"
+  "license": "AGPL-3.0-only",
+  "overrides": {
+    "fast-uri": "3.1.3"
+  }
 }

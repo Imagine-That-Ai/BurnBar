@@ -59,7 +59,7 @@ final class FirebaseLinuxCloudReplicaGatewayTests: XCTestCase {
             "http://us-central1-burnbar.cloudfunctions.net",
             "https://us-central1-burnbar.cloudfunctions.net.evil.example",
             "https://us-central1-burnbar.cloudfunctions.net/untrusted",
-            "https://user@us-central1-burnbar.cloudfunctions.net",
+            "https://user@us-central1-burnbar.cloudfunctions.net"
         ] {
             let gateway = FirebaseLinuxCloudReplicaGateway(
                 baseURL: try XCTUnwrap(URL(string: rawURL)),

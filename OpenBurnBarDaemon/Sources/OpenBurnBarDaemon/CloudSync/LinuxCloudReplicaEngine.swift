@@ -377,9 +377,11 @@ public actor LinuxCloudReplicaEngine {
             let failures: Int = row?["failures"] ?? 0
             let retryAt: Int64? = row?["retry_at"]
             let phase: Phase
-            if policy.enabledDomains.isEmpty { phase = .disabled }
-            else if let retryAt, failures > 0, retryAt > nowMillis() { phase = .backoff }
-            else { phase = .ready }
+            if policy.enabledDomains.isEmpty { phase = .disabled } else if let retryAt, failures > 0, retryAt > nowMillis() {
+                phase = .backoff
+            } else {
+                phase = .ready
+            }
             return Status(
                 phase: phase,
                 pendingMutationCount: pending,

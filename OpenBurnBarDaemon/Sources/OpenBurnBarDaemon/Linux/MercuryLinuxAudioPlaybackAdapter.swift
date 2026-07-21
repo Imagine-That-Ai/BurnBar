@@ -42,8 +42,7 @@ public enum MercuryLinuxAudioPlaybackError: Error, LocalizedError, Equatable {
 // are serialized by `lock`; sendable-allowlist: internal-lock-snapshot-store
 public final class MercuryLinuxGStreamerAudioPlaybackAdapter:
     MercuryLinuxAudioPlaybackAdapterProtocol,
-    @unchecked Sendable // sendable-allowlist: internal-lock-snapshot-store
-{
+    @unchecked Sendable { // sendable-allowlist: internal-lock-snapshot-store
     private let lock = NSLock()
     private var pipeline: UnsafeMutableRawPointer?
     private let sampleRate: UInt32
@@ -117,19 +116,18 @@ public final class MercuryLinuxGStreamerAudioPlaybackAdapter:
     }
 }
 
-/// Test double used by the daemon controller tests. It records packets but
-/// never opens a desktop audio device.
 // AUDIT(@unchecked Sendable): recorded frames and lifecycle counters are
 // serialized by `lock`; sendable-allowlist: internal-lock-snapshot-store
+/// Test double used by the daemon controller tests. It records packets but
+/// never opens a desktop audio device.
 public final class RecordingMercuryLinuxAudioPlaybackAdapter:
     MercuryLinuxAudioPlaybackAdapterProtocol,
-    @unchecked Sendable // sendable-allowlist: internal-lock-snapshot-store
-{
+    @unchecked Sendable { // sendable-allowlist: internal-lock-snapshot-store
     private let lock = NSLock()
     private var started = false
-    private(set) public var startCount = 0
-    private(set) public var stopCount = 0
-    private(set) public var frames: [MediaFrame] = []
+    public private(set) var startCount = 0
+    public private(set) var stopCount = 0
+    public private(set) var frames: [MediaFrame] = []
     public var startError: Error?
     public var playError: Error?
 

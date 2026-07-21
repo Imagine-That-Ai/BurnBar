@@ -365,8 +365,7 @@ public final class CopilotParser: LogParser, Sendable {
                   let content = String(data: data, encoding: .utf8)
             else { continue }
             for line in content.split(whereSeparator: \.isNewline).map(String.init)
-                where seenLines.insert(line).inserted
-            {
+                where seenLines.insert(line).inserted {
                 guard line.contains("CompactionProcessor") || line.contains("context_tokens") else { continue }
                 var sessionID: String?
                 var tokens: Int?

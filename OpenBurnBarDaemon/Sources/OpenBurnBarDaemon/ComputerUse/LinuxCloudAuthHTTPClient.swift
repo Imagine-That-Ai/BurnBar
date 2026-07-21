@@ -1015,7 +1015,7 @@ public struct LinuxCloudTrustedDeviceMutationAuthorization: Sendable, Equatable 
 public typealias LinuxCloudTrustedDeviceCredentialsProvider =
     @Sendable () async throws -> LinuxCloudTrustedDeviceManagerCredentials
 
-public typealias LinuxCloudTrustedDeviceMutationAuthorizationProvider =
+public typealias LinuxCloudTrustedDeviceAuthProvider =
     @Sendable (_ actionKind: String, _ subjectDeviceID: String) async throws
     -> LinuxCloudTrustedDeviceMutationAuthorization
 
@@ -1026,13 +1026,13 @@ public typealias LinuxCloudTrustedDeviceMutationAuthorizationProvider =
 public struct LinuxCloudTrustedDeviceHTTPAdapter: LinuxTrustedDeviceManaging, Sendable {
     private let functionsBaseURL: URL
     private let credentials: LinuxCloudTrustedDeviceCredentialsProvider
-    private let authorizeMutation: LinuxCloudTrustedDeviceMutationAuthorizationProvider
+    private let authorizeMutation: LinuxCloudTrustedDeviceAuthProvider
     private let client: LinuxCloudAuthHTTPClient
 
     public init(
         functionsBaseURL: URL,
         credentials: @escaping LinuxCloudTrustedDeviceCredentialsProvider,
-        authorizeMutation: @escaping LinuxCloudTrustedDeviceMutationAuthorizationProvider
+        authorizeMutation: @escaping LinuxCloudTrustedDeviceAuthProvider
     ) {
         self.init(
             functionsBaseURL: functionsBaseURL,
@@ -1047,7 +1047,7 @@ public struct LinuxCloudTrustedDeviceHTTPAdapter: LinuxTrustedDeviceManaging, Se
     init(
         functionsBaseURL: URL,
         credentials: @escaping LinuxCloudTrustedDeviceCredentialsProvider,
-        authorizeMutation: @escaping LinuxCloudTrustedDeviceMutationAuthorizationProvider,
+        authorizeMutation: @escaping LinuxCloudTrustedDeviceAuthProvider,
         allowedHosts: Set<String>,
         transport: @escaping LinuxCloudAuthHTTPTransport,
         now: @escaping @Sendable () -> Date = Date.init
@@ -1067,7 +1067,7 @@ public struct LinuxCloudTrustedDeviceHTTPAdapter: LinuxTrustedDeviceManaging, Se
     private init(
         functionsBaseURL: URL,
         credentials: @escaping LinuxCloudTrustedDeviceCredentialsProvider,
-        authorizeMutation: @escaping LinuxCloudTrustedDeviceMutationAuthorizationProvider,
+        authorizeMutation: @escaping LinuxCloudTrustedDeviceAuthProvider,
         client: LinuxCloudAuthHTTPClient
     ) {
         self.functionsBaseURL = functionsBaseURL

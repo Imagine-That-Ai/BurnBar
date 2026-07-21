@@ -394,12 +394,7 @@ private final class MercuryLinuxAudioCaptureCallbackBox: Sendable {
 private typealias MercuryLinuxAudioCaptureFrameCallback =
     @convention(c) (UnsafePointer<UInt8>?, Int, UInt64, UInt8, UnsafeMutableRawPointer?) -> Void
 
-private let mercuryLinuxAudioCaptureFrameCallback: MercuryLinuxAudioCaptureFrameCallback = {
-    payload,
-    len,
-    ptsMS,
-    flags,
-    userData in
+private let mercuryLinuxAudioCaptureFrameCallback: MercuryLinuxAudioCaptureFrameCallback = { payload, len, ptsMS, flags, userData in
     guard let payload, let userData, len > 0 else { return }
     let box = Unmanaged<MercuryLinuxAudioCaptureCallbackBox>
         .fromOpaque(userData)
@@ -415,10 +410,7 @@ private let mercuryLinuxAudioCaptureFrameCallback: MercuryLinuxAudioCaptureFrame
 private typealias MercuryLinuxAudioCaptureStoppedCallback =
     @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?, Int) -> Void
 
-private let mercuryLinuxAudioCaptureStoppedCallback: MercuryLinuxAudioCaptureStoppedCallback = {
-    userData,
-    reasonPointer,
-    reasonLength in
+private let mercuryLinuxAudioCaptureStoppedCallback: MercuryLinuxAudioCaptureStoppedCallback = { userData, reasonPointer, reasonLength in
     guard let userData else { return }
     let box = Unmanaged<MercuryLinuxAudioCaptureCallbackBox>
         .fromOpaque(userData)

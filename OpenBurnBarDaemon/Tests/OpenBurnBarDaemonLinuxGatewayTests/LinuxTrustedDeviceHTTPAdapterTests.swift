@@ -150,7 +150,7 @@ final class LinuxTrustedDeviceHTTPAdapterTests: XCTestCase {
         response: Data,
         recorder: HTTPRequestRecorder,
         credentials: @escaping LinuxCloudTrustedDeviceCredentialsProvider,
-        authorizeMutation: @escaping LinuxCloudTrustedDeviceMutationAuthorizationProvider
+        authorizeMutation: @escaping LinuxCloudTrustedDeviceAuthProvider
     ) -> LinuxCloudTrustedDeviceHTTPAdapter {
         LinuxCloudTrustedDeviceHTTPAdapter(
             functionsBaseURL: baseURL,

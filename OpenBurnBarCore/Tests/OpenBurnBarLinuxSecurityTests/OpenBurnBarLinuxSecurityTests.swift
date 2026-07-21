@@ -367,7 +367,8 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         )
 
         guard let kwallet = rows.first(where: { $0.backend == "kwallet" }) else {
-            return XCTFail("KWallet setup row is missing")
+            XCTFail("KWallet setup row is missing")
+            return
         }
         XCTAssertEqual(kwallet.status, "available")
         XCTAssertEqual(kwallet.command, "/usr/bin/kwallet-query -l kdewallet")

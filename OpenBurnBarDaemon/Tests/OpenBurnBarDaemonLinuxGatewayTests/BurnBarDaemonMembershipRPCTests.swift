@@ -445,8 +445,8 @@ private final class MembershipURLProtocol: URLProtocol, @unchecked Sendable {
         return requestBody
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         let body = request.httpBody ?? Self.readBodyStream(request.httpBodyStream)

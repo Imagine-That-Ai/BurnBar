@@ -21,9 +21,9 @@ final class BurnBarLinuxQuotaAdapterCoverageTests: XCTestCase {
         let openBurnBar = try XCTUnwrap(entries.first { $0.provider == .openBurnBar })
 
         XCTAssertEqual(cursorAgent.state, .unavailable)
-        XCTAssertTrue(cursorAgent.reason?.contains("stable quota API") == true)
+        XCTAssertEqual(cursorAgent.reason?.contains("stable quota API"), true)
         XCTAssertEqual(openBurnBar.state, .unavailable)
-        XCTAssertTrue(openBurnBar.reason?.contains("cloud account service") == true)
+        XCTAssertEqual(openBurnBar.reason?.contains("cloud account service"), true)
     }
 
     func testMissingRegistryEntryFailsClosedInsteadOfMasqueradingAsLive() {
