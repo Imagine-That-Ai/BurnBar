@@ -16,7 +16,7 @@ The database normally runs in WAL mode. `openburnbar.sqlite`, `openburnbar.sqlit
 
 ## Migration Architecture
 
-GRDB registers 56 ordered migrations through `v55_search_chunks_fts_rowid`. Applied identifiers live in `grdb_migrations`, inside the encrypted database.
+GRDB registers 58 ordered migrations through `v57_execution_source_attribution`. Applied identifiers live in `grdb_migrations`, inside the encrypted database.
 
 The macOS app and shared `OpenBurnBarData` target intentionally carry parallel migration definitions. CI runs `scripts/ci/verify-migration-rollback-catalog.mjs`, which enforces:
 
@@ -100,6 +100,7 @@ No current migration is classified as independently reversible. SQL snippets pri
 | 55 | `v54_provider_quota_snapshots` | atomic | unapplied-only | backup-restore | Durable provider quota snapshot cache |
 | 56 | `v55_search_chunks_fts_rowid` | atomic | unapplied-only | backup-restore | Backfill search_chunks ftsRowid and sweep orphaned FTS rows for rowid-targeted deletes |
 | 57 | `v56_parser_checkpoint_file_manifest` | atomic | unapplied-only | backup-restore | Normalized parser checkpoint file-identity manifest |
+| 58 | `v57_execution_source_attribution` | atomic | unapplied-only | backup-restore | Execution-source columns, index, and evidence-backed historical attribution |
 <!-- END GENERATED MIGRATION CATALOG -->
 
 Regenerate and verify the table with:
