@@ -219,6 +219,10 @@ assert.match(remoteConfigPublisher, /unsupported Remote Config valueType/);
 assert.match(remoteConfigPublisher, /\[switch\] \$ValidateOnly/);
 assert.match(remoteConfigPublisher, /payloadValidated = \$true/);
 assert.match(remoteConfigPublisher, /mutationAttempted = \$false/);
+assert.doesNotMatch(
+  remoteConfigPublisher,
+  /\$fixtureProperty\.Value\.overrides\.PSObject\.Properties\.Name/,
+);
 assert.doesNotMatch(remoteConfigPublisher, /Write-(Host|Output).*\$token/i);
 assert.match(remoteConfigSafetyObserver, /ValidateSet\('ComputerKill', 'MalformedSystem'\)/);
 assert.match(remoteConfigSafetyObserver, /ValidateSet\('burnbar-staging'\)/);

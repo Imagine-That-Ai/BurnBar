@@ -80,10 +80,11 @@ if ($ValidateOnly) {
     $valueTypeOverrideNames = if ($null -eq $valueTypeOverrides) {
         @()
     } else {
-        @($valueTypeOverrides.Value.PSObject.Properties.Name)
+        @($valueTypeOverrides.Value.PSObject.Properties | ForEach-Object { [string]$_.Name })
     }
     $overrideNames = @(
-        @($fixtureProperty.Value.overrides.PSObject.Properties.Name) + $valueTypeOverrideNames |
+        @($fixtureProperty.Value.overrides.PSObject.Properties |
+            ForEach-Object { [string]$_.Name }) + $valueTypeOverrideNames |
             Sort-Object -Unique
     )
     $overriddenParameters = @($overrideNames | ForEach-Object {
