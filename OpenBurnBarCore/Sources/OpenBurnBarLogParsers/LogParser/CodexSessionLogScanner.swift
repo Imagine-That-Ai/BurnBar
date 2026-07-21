@@ -457,7 +457,9 @@ public enum CodexSessionLogScanner {
         buckets: inout [Date: CodexDailyTokenUsage]
     ) {
         guard input > 0 || output > 0 || cacheRead > 0 else { return }
-        let dayStart = Calendar.current.startOfDay(for: eventDate)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .gmt
+        let dayStart = calendar.startOfDay(for: eventDate)
         let existing = buckets[dayStart]
         buckets[dayStart] = CodexDailyTokenUsage(
             dayStart: dayStart,
