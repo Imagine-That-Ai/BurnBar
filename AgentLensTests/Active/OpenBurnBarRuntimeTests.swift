@@ -150,6 +150,15 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
         )
     }
 
+    func test_performanceGateRuntimeAccessors_useCurrentNonGateProcess() {
+        XCTAssertTrue(OpenBurnBarRuntime.shouldStartBackgroundApplicationServices)
+        XCTAssertNil(OpenBurnBarRuntime.performanceGateBackdropKernelOverride)
+        XCTAssertEqual(
+            OpenBurnBarRuntime.performanceGateBackdropStateNotification.rawValue,
+            "com.openburnbar.performance-gate.backdrop-state"
+        )
+    }
+
     func test_performanceGateBackdropKernelOverride_readsValidatedLaunchArgument() {
         XCTAssertEqual(
             OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
