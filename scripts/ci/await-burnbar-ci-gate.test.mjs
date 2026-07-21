@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { collectObservations, evaluateGate } from "./await-burnbar-ci-gate.mjs";
+import {
+  collectObservations,
+  evaluateGate,
+  resolveObservedSha,
+} from "./await-burnbar-ci-gate.mjs";
 
 test("workflow observes the PR head and the merge-group candidate exactly", () => {
   const workflow = readFileSync(
@@ -10,8 +14,19 @@ test("workflow observes the PR head and the merge-group candidate exactly", () =
   );
   assert.match(
     workflow,
-    /GITHUB_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/,
+    /BURNBAR_CI_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/,
   );
+});
+
+test("explicit observed SHA wins over GitHub's immutable merge-ref SHA", () => {
+  assert.equal(
+    resolveObservedSha({
+      BURNBAR_CI_SHA: "pull-request-head",
+      GITHUB_SHA: "ephemeral-merge-ref",
+    }),
+    "pull-request-head",
+  );
+  assert.equal(resolveObservedSha({ GITHUB_SHA: "merge-group" }), "merge-group");
 });
 
 test("gate accepts successful, neutral, and intentionally skipped contexts", () => {

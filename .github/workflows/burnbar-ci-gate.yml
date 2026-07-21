@@ -29,5 +29,5 @@ jobs:
       - name: Verify every component context on this exact head
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BURNBAR_CI_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node scripts/ci/await-burnbar-ci-gate.mjs governance/burnbar-ci-gate.json

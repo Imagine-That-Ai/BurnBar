@@ -13,6 +13,10 @@ const FAILING = new Set([
   "stale",
 ]);
 
+export function resolveObservedSha(environment = process.env) {
+  return environment.BURNBAR_CI_SHA || environment.GITHUB_SHA;
+}
+
 export function evaluateGate(required, observations) {
   const missing = [];
   const pending = [];
@@ -110,11 +114,11 @@ async function main() {
     readFileSync(process.argv[2] ?? "governance/burnbar-ci-gate.json", "utf8"),
   );
   const repository = process.env.GITHUB_REPOSITORY;
-  const sha = process.env.GITHUB_SHA;
+  const sha = resolveObservedSha();
   const token = process.env.GITHUB_TOKEN;
   if (!repository || !sha || !token)
     throw new Error(
-      "GITHUB_REPOSITORY, GITHUB_SHA, and GITHUB_TOKEN are required",
+      "GITHUB_REPOSITORY, BURNBAR_CI_SHA (or GITHUB_SHA), and GITHUB_TOKEN are required",
     );
   const deadline = Date.now() + Number(config.timeout_minutes) * 60_000;
   while (true) {
