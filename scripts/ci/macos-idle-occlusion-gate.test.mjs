@@ -744,7 +744,7 @@ test("real gate accepts a valid matched robust sample set", () => {
   assert.equal(summary.pass, true);
 });
 
-test("real gate independently enforces absolute idle and relative occlusion budgets", () => {
+test("real gate enforces absolute idle and applicable relative occlusion budgets", () => {
   const absoluteBreach = passingPairs().map((pair) => ({
     ...pair,
     visibleIdle: sample("visible-idle", 25),
@@ -752,6 +752,7 @@ test("real gate independently enforces absolute idle and relative occlusion budg
   }));
   const absoluteSummary = summarizeAndEvaluatePairs(absoluteBreach, realGateConfig);
   assert.equal(absoluteSummary.checks.absoluteOccludedIdleCpu.pass, false);
+  assert.equal(absoluteSummary.checks.visibleToOccludedReduction.applicable, true);
   assert.equal(absoluteSummary.checks.visibleToOccludedReduction.pass, true);
   assert.equal(absoluteSummary.pass, false);
 
@@ -762,8 +763,36 @@ test("real gate independently enforces absolute idle and relative occlusion budg
   }));
   const relativeSummary = summarizeAndEvaluatePairs(relativeBreach, realGateConfig);
   assert.equal(relativeSummary.checks.absoluteOccludedIdleCpu.pass, true);
+  assert.equal(relativeSummary.checks.visibleToOccludedReduction.applicable, true);
   assert.equal(relativeSummary.checks.visibleToOccludedReduction.pass, false);
   assert.equal(relativeSummary.pass, false);
+});
+
+test("real gate does not ratio-gate samples already inside the absolute idle noise band", () => {
+  const lowSignal = passingPairs().map((pair) => ({
+    ...pair,
+    visibleIdle: sample("visible-idle", 2.25),
+    occludedIdle: sample("occluded-idle", 1.8),
+  }));
+  const summary = summarizeAndEvaluatePairs(lowSignal, realGateConfig);
+  assert.equal(summary.occludedToVisibleRatio, 0.8);
+  assert.equal(summary.checks.absoluteOccludedIdleCpu.pass, true);
+  assert.equal(summary.checks.visibleToOccludedReduction.applicable, false);
+  assert.equal(summary.checks.visibleToOccludedReduction.pass, null);
+  assert.match(summary.checks.visibleToOccludedReduction.reason, /idle noise band/);
+  assert.equal(summary.pass, true);
+});
+
+test("real gate ratio-check remains active at the absolute ceiling boundary", () => {
+  const boundaryBreach = passingPairs().map((pair) => ({
+    ...pair,
+    visibleIdle: sample("visible-idle", 5),
+    occludedIdle: sample("occluded-idle", 2),
+  }));
+  const summary = summarizeAndEvaluatePairs(boundaryBreach, realGateConfig);
+  assert.equal(summary.checks.visibleToOccludedReduction.applicable, true);
+  assert.equal(summary.checks.visibleToOccludedReduction.pass, false);
+  assert.equal(summary.pass, false);
 });
 
 test("real gate rejects missing, zero-count, insufficient, and zero-visible measurements", () => {
