@@ -40,6 +40,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  assertProcessIdentity,
   launchFreshProcess,
   measureMatchedPairs,
   median,
@@ -125,7 +126,12 @@ function createHarness(opts = {}) {
     requestAnimationFrame, cancelAnimationFrame,
   };
 
-  const location = { hash: "", href: "https://localhost/", search: "", pathname: "/" };
+  const location = {
+    hash: "",
+    href: "https://localhost/",
+    search: opts.locationSearch ?? "",
+    pathname: "/",
+  };
   const navigator = {};
 
   class ResizeObserver { observe() {} unobserve() {} disconnect() {} }
@@ -244,6 +250,18 @@ test("bundle exposes __setBackdropActive and __backdropReady after bootstrap", (
   loadAndSettle(h);
   assert.equal(h.win.__backdropReady, true);
   assert.equal(typeof h.win.__setBackdropActive, "function");
+  assert.equal(typeof h.win.__getBackdropState, "function");
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(h.win.__getBackdropState())),
+    {
+      hostVisible: true,
+      renderLoopScheduled: true,
+      reducedMotion: false,
+      // The deterministic mock intentionally exposes no WebGL2 context, so
+      // the real engine resolves the requested shader to its 2D fallback.
+      resolvedKernel: "constellation",
+    },
+  );
 });
 
 test("animation loop is running before occlusion (rAF pending)", () => {
@@ -262,6 +280,15 @@ test("occluded (__setBackdropActive(false)) cancels loop rAF and stops schedulin
 
   assert.equal(h.pendingRafCount(), 0, "pending rAF must be 0 after occlusion");
   assert.ok(h.rafCancelCount > 0, "cancelAnimationFrame must have been called");
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(h.win.__getBackdropState())),
+    {
+      hostVisible: false,
+      renderLoopScheduled: false,
+      reducedMotion: false,
+      resolvedKernel: "constellation",
+    },
+  );
 
   // Tick while hidden: nothing fires, nothing re-schedules
   h.tickRaf();
@@ -371,6 +398,15 @@ test("reduced-motion mode does not start the loop, but occlusion still cancels h
   // Resuming in reduced-motion mode should not start the loop
   h.win.__setBackdropActive(true);
   assert.equal(h.pendingRafCount(), 0, "no loop started in reduced-motion mode even when visible");
+});
+
+test("native performance profile runs the real loop when the host OS prefers reduced motion", () => {
+  const h = createHarness({ reducedMotion: true, locationSearch: "?motion=full" });
+  loadAndSettle(h);
+
+  const state = JSON.parse(JSON.stringify(h.win.__getBackdropState()));
+  assert.equal(state.reducedMotion, false, "the explicit certification profile must win");
+  assert.ok(h.pendingRafCount() > 0, "the performance workload must have a live render loop");
 });
 
 // ── Real-process gate self-tests (no app build or launch) ──────────────────
@@ -517,6 +553,55 @@ test("launchFreshProcess stops the owned child once and rethrows registration fa
   }
 });
 
+test("process identity requires acknowledged engine readiness and render-loop state", () => {
+  const pid = 4242;
+  const buildIdentity = { executablePath: "/fake/OpenBurnBar" };
+  const baseState = {
+    running: true,
+    pid,
+    executablePath: buildIdentity.executablePath,
+    bundleIdentifier: realGateConfig.app.expectedBundleIdentifier,
+    hidden: false,
+    visibleWindowCount: 1,
+  };
+
+  assert.throws(
+    () => assertProcessIdentity(baseState, pid, buildIdentity, realGateConfig, "visible"),
+    /did not acknowledge a ready backdrop engine/u,
+  );
+  assert.doesNotThrow(() => assertProcessIdentity(
+    {
+      ...baseState,
+      backdropReady: true,
+      backdropActive: true,
+      backdropRenderLoopScheduled: true,
+      backdropReducedMotion: false,
+      backdropKernel: "boids",
+    },
+    pid,
+    buildIdentity,
+    realGateConfig,
+    "visible",
+  ));
+  assert.throws(
+    () => assertProcessIdentity(
+      {
+        ...baseState,
+        backdropReady: true,
+        backdropActive: true,
+        backdropRenderLoopScheduled: false,
+        backdropReducedMotion: false,
+        backdropKernel: "boids",
+      },
+      pid,
+      buildIdentity,
+      realGateConfig,
+      "visible",
+    ),
+    /render-loop state did not match visible/u,
+  );
+});
+
 test("measureMatchedPairs batches visible samples before one hide and pairs occluded samples by index", async () => {
   const config = JSON.parse(JSON.stringify(realGateConfig));
   config.measurement.matchedPairCount = 3;
@@ -534,11 +619,18 @@ test("measureMatchedPairs batches visible samples before one hide and pairs occl
     bundleIdentifier: config.app.expectedBundleIdentifier,
     hidden: false,
     visibleWindowCount: 1,
+    backdropReady: true,
+    backdropActive: true,
+    backdropRenderLoopScheduled: true,
+    backdropReducedMotion: false,
+    backdropKernel: "boids",
   };
   const occludedIdentity = {
     ...visibleIdentity,
     hidden: true,
     visibleWindowCount: 0,
+    backdropActive: false,
+    backdropRenderLoopScheduled: false,
   };
   const actions = [];
   const sleepCalls = [];
@@ -631,6 +723,11 @@ test("real gate config versions and enforces absolute plus relative ceilings", (
   assert.equal(realGateConfig.measurement.robustStatistic, "median");
   assert.equal(realGateConfig.budgets.absoluteOccludedIdleCpuPercentCeiling, 5);
   assert.equal(realGateConfig.budgets.maximumOccludedToVisibleCpuRatio, 0.35);
+  assert.deepEqual(
+    realGateConfig.app.launchArguments.slice(-2),
+    ["-backdropKernel", "boids"],
+    "real-process gate must use a CPU-rendered backdrop so proc_pidinfo has a stable visible signal",
+  );
   assert.ok(realGateConfig.app.relativeBundlePath.startsWith(".derived-data/"));
 });
 
@@ -647,7 +744,7 @@ test("real gate accepts a valid matched robust sample set", () => {
   assert.equal(summary.pass, true);
 });
 
-test("real gate independently enforces absolute idle and relative occlusion budgets", () => {
+test("real gate enforces absolute idle and applicable relative occlusion budgets", () => {
   const absoluteBreach = passingPairs().map((pair) => ({
     ...pair,
     visibleIdle: sample("visible-idle", 25),
@@ -655,6 +752,7 @@ test("real gate independently enforces absolute idle and relative occlusion budg
   }));
   const absoluteSummary = summarizeAndEvaluatePairs(absoluteBreach, realGateConfig);
   assert.equal(absoluteSummary.checks.absoluteOccludedIdleCpu.pass, false);
+  assert.equal(absoluteSummary.checks.visibleToOccludedReduction.applicable, true);
   assert.equal(absoluteSummary.checks.visibleToOccludedReduction.pass, true);
   assert.equal(absoluteSummary.pass, false);
 
@@ -665,8 +763,36 @@ test("real gate independently enforces absolute idle and relative occlusion budg
   }));
   const relativeSummary = summarizeAndEvaluatePairs(relativeBreach, realGateConfig);
   assert.equal(relativeSummary.checks.absoluteOccludedIdleCpu.pass, true);
+  assert.equal(relativeSummary.checks.visibleToOccludedReduction.applicable, true);
   assert.equal(relativeSummary.checks.visibleToOccludedReduction.pass, false);
   assert.equal(relativeSummary.pass, false);
+});
+
+test("real gate does not ratio-gate samples already inside the absolute idle noise band", () => {
+  const lowSignal = passingPairs().map((pair) => ({
+    ...pair,
+    visibleIdle: sample("visible-idle", 2.25),
+    occludedIdle: sample("occluded-idle", 1.8),
+  }));
+  const summary = summarizeAndEvaluatePairs(lowSignal, realGateConfig);
+  assert.equal(summary.occludedToVisibleRatio, 0.8);
+  assert.equal(summary.checks.absoluteOccludedIdleCpu.pass, true);
+  assert.equal(summary.checks.visibleToOccludedReduction.applicable, false);
+  assert.equal(summary.checks.visibleToOccludedReduction.pass, null);
+  assert.match(summary.checks.visibleToOccludedReduction.reason, /idle noise band/);
+  assert.equal(summary.pass, true);
+});
+
+test("real gate ratio-check remains active at the absolute ceiling boundary", () => {
+  const boundaryBreach = passingPairs().map((pair) => ({
+    ...pair,
+    visibleIdle: sample("visible-idle", 5),
+    occludedIdle: sample("occluded-idle", 2),
+  }));
+  const summary = summarizeAndEvaluatePairs(boundaryBreach, realGateConfig);
+  assert.equal(summary.checks.visibleToOccludedReduction.applicable, true);
+  assert.equal(summary.checks.visibleToOccludedReduction.pass, false);
+  assert.equal(summary.pass, false);
 });
 
 test("real gate rejects missing, zero-count, insufficient, and zero-visible measurements", () => {

@@ -19,6 +19,28 @@ import XCTest
 @MainActor
 final class MacOSIdleOcclusionGateTests: XCTestCase {
 
+    func testPerformanceGateLoadURLPinsFullMotionWithoutChangingNormalLoads() throws {
+        let indexURL = try XCTUnwrap(URL(string: "file:///tmp/KernelBackdrop/index.html"))
+        let production = KernelBackdropView.Coordinator.loadURL(
+            indexURL: indexURL,
+            initialKernel: "boids",
+            performanceGate: false
+        )
+        let certification = KernelBackdropView.Coordinator.loadURL(
+            indexURL: indexURL,
+            initialKernel: "boids",
+            performanceGate: true
+        )
+
+        XCTAssertEqual(production.fragment, "boids")
+        XCTAssertNil(URLComponents(url: production, resolvingAgainstBaseURL: false)?.query)
+        XCTAssertEqual(certification.fragment, "boids")
+        XCTAssertEqual(
+            URLComponents(url: certification, resolvingAgainstBaseURL: false)?.queryItems,
+            [URLQueryItem(name: "motion", value: "full")]
+        )
+    }
+
     // MARK: - OcclusionVisibilityPolicy: nil window (detached)
 
     func testPolicy_nilWindow_returnsInactive() {

@@ -12,13 +12,14 @@
       "JS bundle __setBackdropActive(false) cancels pending requestAnimationFrame and stops scheduling while hidden",
       "JS bundle __setBackdropActive(true) resumes the rAF loop (new rAF scheduled)",
       "JS bundle with cancelAnimationFrame gutted is caught (rAF not cancelled on occlusion)",
-      "Swift OcclusionVisibilityPolicy returns inactive for no-window and occluded states, active for visible"
+      "Swift OcclusionVisibilityPolicy returns inactive for no-window and occluded states, active for visible",
+      "Fresh real OpenBurnBar process acknowledges the configured kernel and actual render-loop state before every CPU sample"
     ]
   },
   "measurementLimitations": {
-    "actualCpuMeasurementInfeasible": true,
-    "reason": "GitHub Actions macOS runners do not support real NSWindow occlusion state transitions; a headless app launch cannot exercise the occlusion→rAF-cancel path at runtime. The behavioral tripwire (exercising the real JS bundle in a mock DOM+rAF harness) is the strongest executable gate available in CI.",
-    "localVerification": "On a real Mac, launch the app, occlude the window, and confirm Activity Monitor shows ~0% CPU (documented in PetCompanion BUILD-NOTES.md §Idle CPU)."
+    "actualCpuMeasurementInfeasible": false,
+    "reason": "The gate builds and launches a fresh DEBUG OpenBurnBar process, drives deterministic visible/minimized transitions through the performance-gate channel, requires acknowledgement from the embedded WKWebView engine, and samples cumulative process CPU with proc_pidinfo. Window minimization is the deterministic fully occluded path; partial overlap is not simulated.",
+    "localVerification": "The same scripts/ci/macos-idle-occlusion-gate.mjs command can be run against the fresh derived-data app on a real Mac; CI retains the versioned machine, process, transition, sample, and robust-statistic evidence."
   },
   "seededValues": {
     "idleCpuPercentObserved": "128–195% on recurrence (socially caught, not CI-gated)",
