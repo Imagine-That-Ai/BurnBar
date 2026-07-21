@@ -290,8 +290,6 @@ public actor ComputerUseService {
                 guard resolvedRequiresManagedBrowserRunAuthority else { return true }
                 return await authorizationRegistry.permits(sessionID: sessionID, invocation: invocation)
             },
-            macInputDispatcher: systemInputDispatcher ?? defaultSystemInputDispatcher,
-            macInspectDispatcher: systemInspectDispatcher ?? defaultSystemInspectDispatcher,
             macAppVersion: macAppVersion,
             auditBaseDirectory: auditBaseDirectory,
             quotaLedger: resolvedQuotaLedger,
@@ -351,14 +349,6 @@ public actor ComputerUseService {
                 throw ServiceError.runAlreadyBound(runID.rawValue)
             }
         }
-
-        let capabilityState = try await currentCapabilityState()
-        try await enforceSessionAdmission(capabilityState, mode: mode)
-        guard !sessionStartReserved else {
-            throw ServiceError.capabilityDenied(ComputerUseDenyReason.concurrentSession.rawValue)
-        }
-        sessionStartReserved = true
-        defer { sessionStartReserved = false }
 
         let sessionId = ComputerUseSessionID.newRandom()
         let ownerClientID = boundClientID ?? request.clientID
@@ -1080,66 +1070,6 @@ public actor ComputerUseService {
             status: .denied,
             denyReason: reason
         )
-    }
-
-    private static func entitlementIsActive(
-        _ entitlement: ComputerUseEntitlementSnapshot,
-        now: Date = Date()
-    ) -> Bool {
-        entitlement.isActive && (entitlement.expireAt.map { $0 > now } ?? true)
-    }
-
-    private static func entitlementAllowsMode(
-        _ entitlement: ComputerUseEntitlementSnapshot,
-        mode: ComputerUseMode
-    ) -> Bool {
-        switch mode {
-        case .browser:
-            return entitlement.allowsBrowser
-        case .system:
-            return entitlement.allowsSystem
-        case .agentWatch:
-            return false
-        }
-    }
-
-    private func effectiveKillSwitchEnabled(_ state: ComputerUseCapabilityStateSnapshot) -> Bool {
-        state.killSwitch || leafKillSwitch() || computerUseKillSwitchEnabled()
-    }
-
-    private static func supportsDaemonMode(_ mode: ComputerUseMode) -> Bool {
-        #if os(Linux)
-        return mode == .browser || mode == .system
-        #else
-        return mode == .browser
-        #endif
-    }
-
-    private func accessibilityDenyReason(
-        for action: ComputerUseAction?,
-        mode: ComputerUseMode
-    ) async -> ComputerUseAccessibilityDenyReason? {
-        guard mode == .system,
-              case .macInput(let inputAction) = action else {
-            return nil
-        }
-        return await systemInputAccessibilityDeny(inputAction)
-    }
-
-    private static func environmentComputerUseKillSwitchEnabled() -> Bool {
-        [
-            "OPENBURNBAR_COMPUTER_USE_KILL_SWITCH",
-            "COMPUTER_USE_KILL_SWITCH",
-            "computer_use_kill_switch"
-        ].contains { name in
-            guard let value = ProcessInfo.processInfo.environment[name]?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased(),
-                !value.isEmpty else {
-                return false
-            }
-            return ["1", "true", "yes", "on"].contains(value)
-        }
     }
 
     private static func entitlementIsActive(

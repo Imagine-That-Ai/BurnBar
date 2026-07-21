@@ -341,82 +341,11 @@ public actor ComputerUseRunCoordinator {
         try decodeAction(invocation: invocation)
     }
 
-    public func hasActiveSession(excluding sessionId: ComputerUseSessionID? = nil) async -> Bool {
-        await expireStaleSessions()
-        return sessions.keys.contains { $0 != sessionId }
-    }
-
-    @discardableResult
-    public func expireStaleSessions(now: Date = Date()) async -> [ComputerUseSessionID] {
-        let expired = sessions.compactMap { sessionId, active in
-            sessionIsExpired(active, now: now) ? sessionId : nil
-        }
-        for sessionId in expired {
-            _ = await endSession(sessionId: sessionId, reason: .timeout)
-        }
-        return expired
-    }
-
-    @discardableResult
-    public func endAll(reason: ComputerUseEndReason) async -> [ComputerUseSessionID] {
-        let records = await endAllWithRecords(reason: reason)
-        return records.map { ComputerUseSessionID(rawValue: $0.sessionId) }
-    }
-
-    public func endAllWithRecords(reason: ComputerUseEndReason) async -> [ComputerUseSessionEndRecord] {
-        let activeSessionIds = Array(sessions.keys)
-        var records: [ComputerUseSessionEndRecord] = []
-        for sessionId in activeSessionIds {
-            if let record = await endSession(sessionId: sessionId, reason: reason) {
-                records.append(record)
-            }
-        }
-        return records
-    }
-
-    private func sessionIsExpired(_ active: ActiveSession, now: Date) -> Bool {
-        active.state.manifest.sessionTimeoutSeconds > 0
-            && now.timeIntervalSince(active.state.manifest.startedAt)
-                >= TimeInterval(active.state.manifest.sessionTimeoutSeconds)
-    }
-
-    private func isCurrent(sessionId: ComputerUseSessionID, generation: UUID) -> Bool {
-        sessions[sessionId]?.generation == generation
-    }
-
-    @discardableResult
-    private func storeIfCurrent(
-        _ active: ActiveSession,
-        sessionId: ComputerUseSessionID,
-        generation: UUID
-    ) -> Bool {
-        guard isCurrent(sessionId: sessionId, generation: generation) else { return false }
-        sessions[sessionId] = active
-        return true
-    }
-
-    private func endedResponse(
-        sessionId: ComputerUseSessionID,
-        invocation: BurnBarToolInvocation,
-        reason: String = "session_revoked"
-    ) -> ComputerUseInvokeResponse {
-        ComputerUseInvokeResponse(
-            sessionId: sessionId.rawValue,
-            callID: invocation.callID,
-            status: .denied,
-            denyReason: reason
-        )
-    }
-
     private func removeInFlightDispatch(sessionId: ComputerUseSessionID, dispatchId: UUID) {
         inFlightDispatches[sessionId]?.removeValue(forKey: dispatchId)
         if inFlightDispatches[sessionId]?.isEmpty == true {
             inFlightDispatches.removeValue(forKey: sessionId)
         }
-    }
-
-    public func actionDescriptor(invocation: BurnBarToolInvocation) throws -> ComputerUseAction {
-        try decodeAction(invocation: invocation)
     }
 
     // MARK: Dispatch

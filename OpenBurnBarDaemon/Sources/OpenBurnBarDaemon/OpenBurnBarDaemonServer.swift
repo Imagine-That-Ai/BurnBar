@@ -595,18 +595,6 @@ public actor BurnBarDaemonServer {
                     )
                 }
             }
-            do {
-                self.projectCodeMemory = try BurnBarProjectCodeMemoryStore(
-                    databasePath: path,
-                    logger: BurnBarDaemonLogger(category: "project-code-memory")
-                )
-            } catch {
-                logger.warning(
-                    "project_code_memory_init_failed",
-                    metadata: ["path": path, "error": "\(error)"]
-                )
-                self.projectCodeMemory = nil
-            }
         } else {
             self.indexedSearch = nil
             self.projectCodeMemoryStorage = nil
