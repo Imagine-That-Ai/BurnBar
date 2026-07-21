@@ -610,6 +610,15 @@ test("promotion-contracts cleanup removes trusted evaluator after final use and 
   assert.doesNotMatch(job, /rm -rf -- \.domain-core-trusted-evaluator[^\/\s]/, "cleanup must not target partial paths");
 });
 
+test("promotion-contracts gives its trusted evaluator a bounded shallow checkout", () => {
+  const job = workflowJob(core, "promotion-contracts");
+  assert.match(job, /timeout-minutes: 15/u);
+  assert.match(
+    job,
+    /Check out trusted default-branch evaluator[\s\S]*?fetch-depth: 1[\s\S]*?sparse-checkout: scripts\/ci\/verify-domain-core-legacy-deletion\.py[\s\S]*?sparse-checkout-cone-mode: false/u,
+  );
+});
+
 test("swift-consumer-contracts builds the host domain-core XCFramework in release mode", () => {
   // Regression: the swift-consumer-contracts job must build the domain-core
   // XCFramework with DOMAIN_CORE_BUILD_PROFILE=release. A debug build links
