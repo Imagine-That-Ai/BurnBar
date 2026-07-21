@@ -19,6 +19,8 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
+      - "scripts/ci/verify-merge-queue-workflows.mjs"
+      - "scripts/ci/verify-merge-queue-workflows.test.mjs"
       - "scripts/ci/verify-curl-bearer-token-boundary.sh"
       - "scripts/ci/verify-curl-bearer-token-boundary.test.sh"
       - "scripts/lib/curl-bearer.sh"
@@ -205,6 +207,11 @@ jobs:
       - name: Lint workflow files
         run: |
           "$HOME/go/bin/actionlint" -color
+
+      - name: Verify merge queue required-check coverage
+        run: |
+          node scripts/ci/verify-merge-queue-workflows.mjs
+          node scripts/ci/verify-merge-queue-workflows.test.mjs
 
       - name: Verify GitHub Actions pins
         run: node scripts/ci/verify-github-action-pins.mjs
