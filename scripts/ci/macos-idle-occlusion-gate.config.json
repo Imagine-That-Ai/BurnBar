@@ -15,7 +15,7 @@
       "-useKernelBackdrop",
       "YES",
       "-backdropKernel",
-      "fluid-aurora"
+      "boids"
     ]
   },
   "measurement": {

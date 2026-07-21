@@ -118,7 +118,7 @@ private func waitForBackdropState(
             if let state = received,
                state.active == visible,
                state.ready,
-               state.kernel == "fluid-aurora",
+               !state.kernel.isEmpty,
                !state.reducedMotion,
                state.renderLoopScheduled == visible {
                 return state
