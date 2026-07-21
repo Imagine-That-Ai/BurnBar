@@ -322,18 +322,40 @@ check("App aggregate emits its exact required context once and binds both prereq
       .length,
     1,
   );
-  assert.deepEqual(jobNeeds(appGate), ["app-build-test", "mobile-build-gate"]);
+  assert.deepEqual(jobNeeds(appGate), ["classify", "app-build-test", "mobile-build-gate"]);
   assert.equal(jobField(appGate, "if"), "always()");
   assert.deepEqual(stepEnvironment(appStep), {
     AGENTLENS_RESULT: "${{ needs.app-build-test.result }}",
     MOBILE_RESULT: "${{ needs.mobile-build-gate.result }}",
+    CLASSIFIER_RESULT: "${{ needs.classify.result }}",
+    MACOS_REQUIRED: "${{ needs.classify.outputs.macos }}",
+    MOBILE_REQUIRED: "${{ needs.classify.outputs.mobile }}",
   });
 });
 
 expectShell(
   "App aggregate passes only successful AgentLens and mobile prerequisites",
   appScript,
-  { AGENTLENS_RESULT: "success", MOBILE_RESULT: "success" },
+  {
+    AGENTLENS_RESULT: "success",
+    MOBILE_RESULT: "success",
+    CLASSIFIER_RESULT: "success",
+    MACOS_REQUIRED: "true",
+    MOBILE_REQUIRED: "true",
+  },
+  0,
+);
+
+expectShell(
+  "App aggregate accepts classifier-proven product skips",
+  appScript,
+  {
+    AGENTLENS_RESULT: "skipped",
+    MOBILE_RESULT: "skipped",
+    CLASSIFIER_RESULT: "success",
+    MACOS_REQUIRED: "false",
+    MOBILE_REQUIRED: "false",
+  },
   0,
 );
 
@@ -350,6 +372,9 @@ for (const prerequisite of ["AGENTLENS_RESULT", "MOBILE_RESULT"]) {
       {
         AGENTLENS_RESULT: "success",
         MOBILE_RESULT: "success",
+        CLASSIFIER_RESULT: "success",
+        MACOS_REQUIRED: "true",
+        MOBILE_REQUIRED: "true",
         [prerequisite]: result,
       },
       1,
@@ -425,6 +450,9 @@ check("Rust path detector is mandatory and only a proven unchanged path may skip
     NEEDS_JSON: "${{ toJSON(needs) }}",
     RUST_CHANGED:
       "${{ needs.fast-feedback-path-filter.outputs.rust_changed }}",
+    FUNCTIONS_REQUIRED: "${{ needs.classify.outputs.functions }}",
+    WEB_REQUIRED: "${{ needs.classify.outputs.web }}",
+    CONSOLE_REQUIRED: "${{ needs.classify.outputs.console }}",
   });
 });
 
@@ -447,7 +475,13 @@ function fastEnvironment({
   needs["functions-fast"] = omitOrdinaryResult
     ? {}
     : { result: ordinaryResult };
-  return { NEEDS_JSON: JSON.stringify(needs), RUST_CHANGED: rustChanged };
+  return {
+    NEEDS_JSON: JSON.stringify(needs),
+    RUST_CHANGED: rustChanged,
+    FUNCTIONS_REQUIRED: "true",
+    WEB_REQUIRED: "true",
+    CONSOLE_REQUIRED: "true",
+  };
 }
 
 for (const [label, options] of [
@@ -539,9 +573,13 @@ check("TypeScript package lint floors install, lint, and typecheck linux-desktop
   assert.ok(invocations.includes("run typecheck --prefix apps/linux-desktop"));
 });
 
-check("desired main branch protection requires Mobile build + unit test", () => {
+check("desired main branch protection requires only the umbrella gate", () => {
   const protection = JSON.parse(readFileSync(join(REPO_ROOT, BRANCH_PROTECTION), "utf8"));
-  assert.ok(protection.required_status_checks.contexts.includes("Mobile build + unit test"));
+  const gate = JSON.parse(
+    readFileSync(join(REPO_ROOT, "governance/burnbar-ci-gate.json"), "utf8"),
+  );
+  assert.deepEqual(protection.required_status_checks.contexts, ["BurnBar CI Gate"]);
+  assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
 });
 
 if (failed > 0) {

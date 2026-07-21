@@ -12,7 +12,7 @@ name: Fast Feedback (<5 min)
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -26,9 +26,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  classify:
+    uses: ./.github/workflows/ci-impact.yml
+
   # ── Functions: lint + typecheck + unit tests ──────────────────────────────
   functions-fast:
     name: Functions (lint + types + unit tests)
+    needs: classify
+    if: needs.classify.outputs.functions == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -89,6 +94,8 @@ jobs:
   # ── Extension: lint + typecheck + unit tests ─────────────────────────────
   extension-fast:
     name: Extension (lint + types + unit tests)
+    needs: classify
+    if: needs.classify.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -242,6 +249,8 @@ jobs:
   # ── Website: typecheck + lint ─────────────────────────────────────────────
   website-fast:
     name: Website (types + lint + format)
+    needs: classify
+    if: needs.classify.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -687,6 +696,8 @@ jobs:
   # ── Web console (app.burnbar.ai): lint + types + tests + static build ──────
   console-web:
     name: Console (lint + types + tests + build)
+    needs: classify
+    if: needs.classify.outputs.console == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -905,6 +916,8 @@ jobs:
   # ── Security vitest + iroh bindgen gate ───────────────────────────────────
   functions-security-fast:
     name: Functions (security vitest)
+    needs: classify
+    if: needs.classify.outputs.functions == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1197,6 +1210,8 @@ jobs:
   # Each is self-contained (no emulator/secrets) and exits non-zero on a regression.
   functions-correctness:
     name: Functions (money + compliance harnesses)
+    needs: classify
+    if: needs.classify.outputs.functions == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
@@ -1332,6 +1347,7 @@ jobs:
   fast-feedback-gate:
     name: Fast Feedback Gate
     needs:
+      - classify
       - fast-feedback-path-filter
       - functions-fast
       - extension-fast
@@ -1365,6 +1381,9 @@ jobs:
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
           RUST_CHANGED: ${{ needs.fast-feedback-path-filter.outputs.rust_changed }}
+          FUNCTIONS_REQUIRED: ${{ needs.classify.outputs.functions }}
+          WEB_REQUIRED: ${{ needs.classify.outputs.web }}
+          CONSOLE_REQUIRED: ${{ needs.classify.outputs.console }}
         run: |
           set -euo pipefail
           failed=$(printf '%s\n' "$NEEDS_JSON" | python3 -c "
@@ -1372,6 +1391,14 @@ jobs:
           data = json.load(sys.stdin)
           detector_result = data.get('fast-feedback-path-filter', {}).get('result')
           rust_changed = os.environ.get('RUST_CHANGED', '')
+          selected = {
+              'functions-fast': os.environ.get('FUNCTIONS_REQUIRED') == 'true',
+              'functions-security-fast': os.environ.get('FUNCTIONS_REQUIRED') == 'true',
+              'functions-correctness': os.environ.get('FUNCTIONS_REQUIRED') == 'true',
+              'extension-fast': os.environ.get('WEB_REQUIRED') == 'true',
+              'website-fast': os.environ.get('WEB_REQUIRED') == 'true',
+              'console-web': os.environ.get('CONSOLE_REQUIRED') == 'true',
+          }
           failed = []
           for name, value in data.items():
               result = value.get('result')
@@ -1379,6 +1406,8 @@ jobs:
                   continue
               if (name == 'rust-deny-fast' and result == 'skipped'
                       and detector_result == 'success' and rust_changed == 'false'):
+                  continue
+              if name in selected and result == 'skipped' and not selected[name]:
                   continue
               failed.append(name + ' (result=' + str(result or 'missing') + ')')
           print('\\n'.join(failed))

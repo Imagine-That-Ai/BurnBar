@@ -138,7 +138,7 @@ test("native consumer jobs keep their measured execution margin and emulator she
   assert.ok(androidCheckoutRef < canonicalCandidateResolution);
   assert.match(
     core,
-    /^  swift-consumer-contracts:\n(?:.*\n){0,4}    timeout-minutes: 90$/mu,
+    /^  swift-consumer-contracts:\n(?:.*\n){0,8}    timeout-minutes: 90$/mu,
   );
   assert.match(
     core,
@@ -696,31 +696,18 @@ function workflowTriggerPaths(source, name) {
   return paths;
 }
 
-test("pull_request trigger covers tools/hermes-platform-burnbar so PRs touching the platform adapter run the gate", () => {
-  // Regression: the pull_request path filter omitted tools/hermes-platform-burnbar/**,
-  // so edits to the Hermes platform-burnbar adapter never surfaced in domain-core CI.
+test("pull_request trigger is unfiltered and the classifier owns the Hermes adapter", () => {
   const trigger = workflowTrigger(core, "pull_request");
-  assert.match(
-    trigger,
-    /^      - "tools\/hermes-platform-burnbar\/\*\*"/mu,
-    "pull_request.paths must include tools/hermes-platform-burnbar/** so platform-burnbar changes trigger the gate",
+  assert.doesNotMatch(trigger, /^    paths:/mu);
+  const classifier = readFileSync(
+    new URL("./classify-ci-impact.mjs", import.meta.url),
+    "utf8",
   );
+  assert.match(classifier, /hermes-platform-burnbar/u);
 });
 
-test("pull_request trigger covers every branch-control input that can change Domain Core PR Gate authority", () => {
-  const paths = new Set(workflowTriggerPaths(core, "pull_request"));
-  for (const path of [
-    "governance/branch-protection.main.json",
-    "scripts/lib/branch-protection-drift.mjs",
-    "scripts/ops/check-branch-protection-drift*.mjs",
-    "scripts/ci/verify-domain-core-default-branch-controls*.mjs",
-    "tests/test_domain_core_trusted_deletion_workflow.py",
-  ]) {
-    assert.ok(
-      paths.has(path),
-      `pull_request.paths must include ${path} so changing branch-control authority runs Domain Core PR Gate`,
-    );
-  }
+test("pull_request trigger cannot omit branch-control inputs", () => {
+  assert.doesNotMatch(workflowTrigger(core, "pull_request"), /^    paths:/mu);
 });
 
 test("domain-core-pr-gate needs both python contract jobs before the aggregate count", () => {
