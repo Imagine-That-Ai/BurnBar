@@ -26,6 +26,13 @@ interface KernelBridgeMeta {
   substrate: KernelSubstrate;
 }
 
+interface KernelBackdropRuntimeState {
+  hostVisible: boolean;
+  renderLoopScheduled: boolean;
+  reducedMotion: boolean;
+  resolvedKernel: KernelId;
+}
+
 declare global {
   interface Window {
     /** Switch the live kernel. Returns false (and no-ops) for junk ids. */
@@ -34,6 +41,8 @@ declare global {
     __setTheme?: (theme: string) => void;
     /** The kernel actually shown (may differ from requested on GL fallback). */
     __getKernel?: () => KernelId;
+    /** Actual engine visibility and render-loop state for native handshakes. */
+    __getBackdropState?: () => KernelBackdropRuntimeState;
     /** Import-free registry metadata for native pickers. */
     __kernels?: KernelBridgeMeta[];
     /**
@@ -87,6 +96,7 @@ function mount(): void {
     if (theme === "dark" || theme === "light") engine.setTheme(theme);
   };
   window.__getKernel = (): KernelId => engine.getResolvedKernel();
+  window.__getBackdropState = (): KernelBackdropRuntimeState => engine.getRuntimeState();
   window.__setBackdropActive = (active: boolean): void => {
     engine.setHostVisible(active === true);
   };

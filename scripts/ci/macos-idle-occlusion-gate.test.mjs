@@ -40,6 +40,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  assertProcessIdentity,
   launchFreshProcess,
   measureMatchedPairs,
   median,
@@ -244,6 +245,18 @@ test("bundle exposes __setBackdropActive and __backdropReady after bootstrap", (
   loadAndSettle(h);
   assert.equal(h.win.__backdropReady, true);
   assert.equal(typeof h.win.__setBackdropActive, "function");
+  assert.equal(typeof h.win.__getBackdropState, "function");
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(h.win.__getBackdropState())),
+    {
+      hostVisible: true,
+      renderLoopScheduled: true,
+      reducedMotion: false,
+      // The deterministic mock intentionally exposes no WebGL2 context, so
+      // the real engine resolves the requested shader to its 2D fallback.
+      resolvedKernel: "constellation",
+    },
+  );
 });
 
 test("animation loop is running before occlusion (rAF pending)", () => {
@@ -262,6 +275,15 @@ test("occluded (__setBackdropActive(false)) cancels loop rAF and stops schedulin
 
   assert.equal(h.pendingRafCount(), 0, "pending rAF must be 0 after occlusion");
   assert.ok(h.rafCancelCount > 0, "cancelAnimationFrame must have been called");
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(h.win.__getBackdropState())),
+    {
+      hostVisible: false,
+      renderLoopScheduled: false,
+      reducedMotion: false,
+      resolvedKernel: "constellation",
+    },
+  );
 
   // Tick while hidden: nothing fires, nothing re-schedules
   h.tickRaf();
@@ -517,6 +539,55 @@ test("launchFreshProcess stops the owned child once and rethrows registration fa
   }
 });
 
+test("process identity requires acknowledged engine readiness and render-loop state", () => {
+  const pid = 4242;
+  const buildIdentity = { executablePath: "/fake/OpenBurnBar" };
+  const baseState = {
+    running: true,
+    pid,
+    executablePath: buildIdentity.executablePath,
+    bundleIdentifier: realGateConfig.app.expectedBundleIdentifier,
+    hidden: false,
+    visibleWindowCount: 1,
+  };
+
+  assert.throws(
+    () => assertProcessIdentity(baseState, pid, buildIdentity, realGateConfig, "visible"),
+    /did not acknowledge a ready backdrop engine/u,
+  );
+  assert.doesNotThrow(() => assertProcessIdentity(
+    {
+      ...baseState,
+      backdropReady: true,
+      backdropActive: true,
+      backdropRenderLoopScheduled: true,
+      backdropReducedMotion: false,
+      backdropKernel: "fluid-aurora",
+    },
+    pid,
+    buildIdentity,
+    realGateConfig,
+    "visible",
+  ));
+  assert.throws(
+    () => assertProcessIdentity(
+      {
+        ...baseState,
+        backdropReady: true,
+        backdropActive: true,
+        backdropRenderLoopScheduled: false,
+        backdropReducedMotion: false,
+        backdropKernel: "fluid-aurora",
+      },
+      pid,
+      buildIdentity,
+      realGateConfig,
+      "visible",
+    ),
+    /render-loop state did not match visible/u,
+  );
+});
+
 test("measureMatchedPairs batches visible samples before one hide and pairs occluded samples by index", async () => {
   const config = JSON.parse(JSON.stringify(realGateConfig));
   config.measurement.matchedPairCount = 3;
@@ -534,11 +605,18 @@ test("measureMatchedPairs batches visible samples before one hide and pairs occl
     bundleIdentifier: config.app.expectedBundleIdentifier,
     hidden: false,
     visibleWindowCount: 1,
+    backdropReady: true,
+    backdropActive: true,
+    backdropRenderLoopScheduled: true,
+    backdropReducedMotion: false,
+    backdropKernel: "fluid-aurora",
   };
   const occludedIdentity = {
     ...visibleIdentity,
     hidden: true,
     visibleWindowCount: 0,
+    backdropActive: false,
+    backdropRenderLoopScheduled: false,
   };
   const actions = [];
   const sleepCalls = [];

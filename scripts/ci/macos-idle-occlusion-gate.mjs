@@ -31,7 +31,7 @@ const helperSourcePath = path.join(scriptDirectory, "macos-idle-occlusion-gate-h
 const supportedGateVersion = "P-PERF-3-macos-real-process-v1";
 const measurementMethod = Object.freeze({
   processCPU: "two proc_pidinfo(PROC_PIDTASKINFO) cumulative CPU snapshots divided by monotonic uptime",
-  windowControl: "DEBUG gate channel minimizes/restores the real dashboard window with CGWindow on-screen verification",
+  windowControl: "DEBUG gate channel minimizes/restores the real dashboard and requires a cross-process WKWebView engine acknowledgement",
   workload: "idle dashboard with the existing --uitest seam and fluid-aurora kernel enabled",
   pairing: "batched visible-idle then fully-occluded-idle samples from one PID, paired by sample index",
   limitation: "window minimization is the deterministic fully occluded path; partial window overlap is not simulated",
@@ -525,7 +525,7 @@ async function stopOwnedProcess(runtime) {
   }
 }
 
-function assertProcessIdentity(state, pid, buildIdentity, config, expectedVisibility) {
+export function assertProcessIdentity(state, pid, buildIdentity, config, expectedVisibility) {
   if (!state.running || state.pid !== pid) throw new Error(`OpenBurnBar pid ${pid} is not running`);
   if (state.executablePath !== buildIdentity.executablePath) {
     throw new Error(`pid ${pid} executable changed to ${state.executablePath ?? "missing"}`);
@@ -538,6 +538,26 @@ function assertProcessIdentity(state, pid, buildIdentity, config, expectedVisibi
   }
   if (expectedVisibility === "occluded" && state.visibleWindowCount !== 0) {
     throw new Error(`pid ${pid} still had an on-screen application window`);
+  }
+  const kernelArgumentIndex = config.app.launchArguments.indexOf("-backdropKernel");
+  const expectedKernel = config.app.launchArguments[kernelArgumentIndex + 1];
+  if (state.backdropReady !== true) {
+    throw new Error(`pid ${pid} did not acknowledge a ready backdrop engine`);
+  }
+  if (state.backdropKernel !== expectedKernel) {
+    throw new Error(
+      `pid ${pid} acknowledged kernel ${state.backdropKernel ?? "missing"}; expected ${expectedKernel}`
+    );
+  }
+  const expectedActive = expectedVisibility === "visible";
+  if (state.backdropActive !== expectedActive) {
+    throw new Error(`pid ${pid} backdrop active state did not match ${expectedVisibility}`);
+  }
+  if (state.backdropReducedMotion !== false) {
+    throw new Error(`pid ${pid} backdrop cannot prove animation while reduced motion is active`);
+  }
+  if (state.backdropRenderLoopScheduled !== expectedActive) {
+    throw new Error(`pid ${pid} backdrop render-loop state did not match ${expectedVisibility}`);
   }
 }
 

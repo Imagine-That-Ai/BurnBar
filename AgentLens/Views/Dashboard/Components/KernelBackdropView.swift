@@ -235,14 +235,76 @@ struct KernelBackdropView: NSViewRepresentable {
         }
 
         private func pushBackdropActive(_ active: Bool, to webView: WKWebView) {
-            guard lastReportedActive != active else { return }
-            lastReportedActive = active
-            // Optional-call: before the bundle mounts this is a harmless no-op;
-            // `didFinish` re-syncs the real state once the bridge exists.
             let flag = active ? "true" : "false"
+            guard OpenBurnBarRuntime.isPerformanceGateLaunch else {
+                guard lastReportedActive != active else { return }
+                lastReportedActive = active
+                // Optional-call: before the bundle mounts this is a harmless no-op;
+                // `didFinish` re-syncs the real state once the bridge exists.
+                webView.evaluateJavaScript(
+                    "window.__setBackdropActive && window.__setBackdropActive(\(flag));"
+                )
+                return
+            }
+
+            // The real-process performance gate needs an acknowledgement from
+            // the actual engine. A visible NSWindow alone does not prove that a
+            // notification sent during startup reached this late-bound WKWebView.
+            let script = """
+            (function () {
+              if (window.__backdropReady !== true ||
+                  typeof window.__setBackdropActive !== 'function' ||
+                  typeof window.__getBackdropState !== 'function') {
+                return { ready: false };
+              }
+              window.__setBackdropActive(\(flag));
+              var state = window.__getBackdropState();
+              return {
+                ready: true,
+                hostVisible: state.hostVisible === true,
+                renderLoopScheduled: state.renderLoopScheduled === true,
+                reducedMotion: state.reducedMotion === true,
+                kernel: String(state.resolvedKernel || '')
+              };
+            })();
+            """
             webView.evaluateJavaScript(
-                "window.__setBackdropActive && window.__setBackdropActive(\(flag));"
-            )
+                script
+            ) { [weak self] value, error in
+                MainActor.assumeIsolated {
+                    guard error == nil,
+                          let state = value as? [String: Any],
+                          state["ready"] as? Bool == true,
+                          let hostVisible = state["hostVisible"] as? Bool,
+                          let renderLoopScheduled = state["renderLoopScheduled"] as? Bool,
+                          let reducedMotion = state["reducedMotion"] as? Bool,
+                          let kernel = state["kernel"] as? String
+                    else {
+                        self?.lastReportedActive = nil
+                        return
+                    }
+
+                    let commandApplied = hostVisible == active
+                        && (active ? (renderLoopScheduled && !reducedMotion) : !renderLoopScheduled)
+                    guard commandApplied else {
+                        self?.lastReportedActive = nil
+                        return
+                    }
+                    self?.lastReportedActive = active
+                    DistributedNotificationCenter.default().postNotificationName(
+                        OpenBurnBarRuntime.performanceGateBackdropStateNotification,
+                        object: OpenBurnBarRuntime.currentPerformanceGateNotificationObject,
+                        userInfo: [
+                            "ready": true,
+                            "hostVisible": hostVisible,
+                            "renderLoopScheduled": renderLoopScheduled,
+                            "reducedMotion": reducedMotion,
+                            "kernel": kernel
+                        ],
+                        deliverImmediately: true
+                    )
+                }
+            }
         }
 
         func load(initialKernel: String, into webView: WKWebView) {
