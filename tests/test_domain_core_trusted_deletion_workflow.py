@@ -14,20 +14,22 @@ def test_required_guard_is_unconditional_and_runs_only_default_branch_code() -> 
     assert trigger_lines == [
         "pull_request_target:",
         "types: [opened, synchronize, reopened, ready_for_review]",
+        "merge_group:",
+        "types: [checks_requested]",
     ]
     assert "\n    if:" not in source
     for marker in (
         "Domain Core Trusted Deletion Guard",
-        "ref: ${{ github.event.pull_request.base.sha }}",
+        "ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}",
         "path: trusted",
-        "ref: ${{ github.event.pull_request.head.sha }}",
+        "ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}",
         "path: candidate",
         "persist-credentials: false",
         "TRUSTED_ROOT: ${{ github.workspace }}/trusted",
         "CANDIDATE_ROOT: ${{ github.workspace }}/candidate",
         'python3 "$TRUSTED_ROOT/scripts/ci/verify-domain-core-legacy-deletion.py"',
         '--repo-root "$CANDIDATE_ROOT"',
-        '--deletion-head "$HEAD_SHA"',
+        '--deletion-head "$PULL_REQUEST_HEAD"',
         "DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache",
     ):
         assert marker in source
