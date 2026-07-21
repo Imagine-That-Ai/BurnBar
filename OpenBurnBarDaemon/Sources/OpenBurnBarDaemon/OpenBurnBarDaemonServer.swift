@@ -1660,5 +1660,3 @@ public actor BurnBarDaemonServer {
         }
     }
 }
-
-
