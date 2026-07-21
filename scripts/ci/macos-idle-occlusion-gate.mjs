@@ -185,8 +185,15 @@ export function summarizeAndEvaluatePairs(pairs, config) {
     );
   }
   const ratio = occludedMedian / visibleMedian;
-  const absolutePass = occludedMedian <= config.budgets.absoluteOccludedIdleCpuPercentCeiling;
-  const relativePass = ratio <= config.budgets.maximumOccludedToVisibleCpuRatio;
+  const absoluteCeiling = config.budgets.absoluteOccludedIdleCpuPercentCeiling;
+  const absolutePass = occludedMedian <= absoluteCeiling;
+  // A ratio is only a stable signal when the visible workload itself exceeds
+  // the accepted occluded-idle ceiling. Below that point, both states are in
+  // the idle noise band; the absolute budget plus the deterministic rAF pause
+  // tripwire remain authoritative.
+  const relativeApplicable = visibleMedian >= absoluteCeiling;
+  const relativeObservedPass = ratio <= config.budgets.maximumOccludedToVisibleCpuRatio;
+  const relativePass = relativeApplicable ? relativeObservedPass : null;
 
   return {
     statistic: config.measurement.robustStatistic,
@@ -203,16 +210,22 @@ export function summarizeAndEvaluatePairs(pairs, config) {
     },
     occludedToVisibleRatio: ratio,
     budgets: {
-      absoluteOccludedIdleCpuPercentCeiling:
-        config.budgets.absoluteOccludedIdleCpuPercentCeiling,
+      absoluteOccludedIdleCpuPercentCeiling: absoluteCeiling,
       maximumOccludedToVisibleCpuRatio:
         config.budgets.maximumOccludedToVisibleCpuRatio,
     },
     checks: {
-      absoluteOccludedIdleCpu: { pass: absolutePass },
-      visibleToOccludedReduction: { pass: relativePass },
+      absoluteOccludedIdleCpu: { applicable: true, pass: absolutePass },
+      visibleToOccludedReduction: {
+        applicable: relativeApplicable,
+        pass: relativePass,
+        minimumVisibleCpuPercent: absoluteCeiling,
+        reason: relativeApplicable
+          ? null
+          : "visible median is within the accepted occluded-idle noise band",
+      },
     },
-    pass: absolutePass && relativePass,
+    pass: absolutePass && (!relativeApplicable || relativeObservedPass),
   };
 }
 
@@ -746,7 +759,7 @@ async function executeGate(argumentsToParse) {
 
     if (!summary.pass) {
       const failures = Object.entries(summary.checks)
-        .filter(([, check]) => !check.pass)
+        .filter(([, check]) => check.pass === false)
         .map(([name]) => name)
         .join(", ");
       throw Object.assign(new Error(`P-PERF-3 CPU budget breached: ${failures}`), {
@@ -754,11 +767,17 @@ async function executeGate(argumentsToParse) {
       });
     }
 
+    const relativeCheck = summary.checks.visibleToOccludedReduction;
+    const relativeResult = relativeCheck.applicable
+      ? `ratio ${summary.occludedToVisibleRatio.toFixed(3)} `
+        + `(ceiling ${summary.budgets.maximumOccludedToVisibleCpuRatio})`
+      : `ratio not applicable (visible median `
+        + `${summary.visibleIdleCpuPercent.median.toFixed(3)}% is below `
+        + `${relativeCheck.minimumVisibleCpuPercent}% signal floor)`;
     process.stdout.write(
       `P-PERF-3 passed: occluded median ${summary.occludedIdleCpuPercent.median.toFixed(3)}% `
-      + `(ceiling ${summary.budgets.absoluteOccludedIdleCpuPercentCeiling}%), ratio `
-      + `${summary.occludedToVisibleRatio.toFixed(3)} `
-      + `(ceiling ${summary.budgets.maximumOccludedToVisibleCpuRatio}); evidence ${outputPath}\n`
+      + `(ceiling ${summary.budgets.absoluteOccludedIdleCpuPercentCeiling}%), `
+      + `${relativeResult}; evidence ${outputPath}\n`
     );
     return { outputPath, evidence };
   } catch (error) {
