@@ -110,7 +110,9 @@ extension OpenBurnBarApp {
 
         Task { @MainActor in
             let shouldStartBackgroundServices =
-                OpenBurnBarRuntime.shouldStartBackgroundApplicationServices
+                OpenBurnBarRuntime.shouldStartBackgroundApplicationServices(
+                    isPerformanceGateLaunch: OpenBurnBarRuntime.isPerformanceGateLaunch
+                )
             StartupProfiler.event("live_services_start")
             if shouldStartBackgroundServices {
                 startMemoryExtractionIfNeeded(context: context)

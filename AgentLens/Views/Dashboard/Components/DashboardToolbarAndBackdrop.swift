@@ -104,7 +104,10 @@ struct DashboardBackdrop: View {
     /// backdrop deterministically instead of relying on `@AppStorage` to
     /// consume the argument domain before this view is first constructed.
     private var shouldUseKernelBackdrop: Bool {
-        useKernelBackdrop || OpenBurnBarRuntime.performanceGateBackdropKernelOverride != nil
+        useKernelBackdrop || OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
+            isPerformanceGateLaunch: OpenBurnBarRuntime.isPerformanceGateLaunch,
+            arguments: ProcessInfo.processInfo.arguments
+        ) != nil
     }
 
     private var substrate: SwarmSubstrate {

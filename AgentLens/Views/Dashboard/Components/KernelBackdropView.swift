@@ -146,7 +146,10 @@ struct KernelBackdropView: NSViewRepresentable {
     /// Clamp persisted junk back to the default so a stale/removed id never
     /// leaves a blank canvas.
     private var resolvedKernelID: String {
-        if let override = OpenBurnBarRuntime.performanceGateBackdropKernelOverride,
+        if let override = OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
+            isPerformanceGateLaunch: OpenBurnBarRuntime.isPerformanceGateLaunch,
+            arguments: ProcessInfo.processInfo.arguments
+        ),
            KernelCatalog.isValid(override) {
             return override
         }

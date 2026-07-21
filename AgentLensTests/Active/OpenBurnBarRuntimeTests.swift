@@ -121,6 +121,10 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
     }
 
     func test_performanceGateNotificationObject_mapsPIDToDecimalString() {
+        XCTAssertEqual(
+            OpenBurnBarRuntime.performanceGateBackdropStateNotification.rawValue,
+            "com.openburnbar.performance-gate.backdrop-state"
+        )
         let expectedMappings: [(processIdentifier: Int32, notificationObject: String)] = [
             (1, "1"),
             (42_424, "42424"),
@@ -174,6 +178,10 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
         XCTAssertNil(OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
             isPerformanceGateLaunch: true,
             arguments: ["OpenBurnBar", "-backdropKernel"]
+        ))
+        XCTAssertNil(OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
+            isPerformanceGateLaunch: true,
+            arguments: ["OpenBurnBar", "-backdropKernel", "   "]
         ))
     }
 
