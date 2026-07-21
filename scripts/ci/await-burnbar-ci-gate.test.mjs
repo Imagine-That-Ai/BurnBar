@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { collectObservations, evaluateGate } from "./await-burnbar-ci-gate.mjs";
+
+test("workflow observes the PR head and the merge-group candidate exactly", () => {
+  const workflow = readFileSync(
+    new URL("../../.github/workflows/burnbar-ci-gate.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /GITHUB_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/,
+  );
+});
 
 test("gate accepts successful, neutral, and intentionally skipped contexts", () => {
   const required = ["build", "advisory", "unowned lane"];
