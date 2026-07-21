@@ -74,6 +74,11 @@ final class SettingsRouter {
     /// independently of the scroll target).
     var highlightedAnchor: String?
 
+    init(initialItemID: String? = nil) {
+        guard let item = SettingsDeepLinkRouting.item(matching: initialItemID) else { return }
+        navigate(to: item)
+    }
+
     /// `true` when the user is actively searching.
     var isSearching: Bool {
         !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

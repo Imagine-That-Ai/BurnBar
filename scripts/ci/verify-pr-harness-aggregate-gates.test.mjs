@@ -423,10 +423,16 @@ check("P-PERF-3 always uploads required evidence and fails when evidence is abse
 
 const fastWorkflow = readFileSync(join(REPO_ROOT, FAST_WORKFLOW), "utf8");
 const rustJob = workflowJob(fastWorkflow, "rust-deny-fast");
+const sqlcipherJob = workflowJob(fastWorkflow, "sqlcipher-codec-policy");
 const fastGate = workflowJob(fastWorkflow, "fast-feedback-gate");
 const fastStep = workflowStep(fastGate, "Check all fast jobs passed");
 const fastScript = stepScript(fastStep);
 const fastNeeds = jobNeeds(fastGate);
+
+check("SQLCipher policy leaves enough time for checkout and verification", () => {
+  const timeoutMinutes = Number.parseInt(jobField(sqlcipherJob, "timeout-minutes"), 10);
+  assert.ok(timeoutMinutes >= 6, "SQLCipher policy timeout must tolerate a two-minute checkout delay");
+});
 
 check("Rust path detector is mandatory and only a proven unchanged path may skip Rust", () => {
   assert.deepEqual(jobNeeds(rustJob), ["fast-feedback-path-filter"]);

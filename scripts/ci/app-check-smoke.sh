@@ -31,4 +31,4 @@ if ! command -v gcloud >/dev/null 2>&1; then
 fi
 
 OPENBURNBAR_FIREBASE_PROJECT="$PROJECT" scripts/ops/verify-firestore-app-check-enforcement.sh
-echo "App Check smoke: Firestore and Storage enforcementMode=ENFORCED for project ${PROJECT}."
+echo "App Check smoke: required services and production providers verified for project ${PROJECT}."

@@ -212,6 +212,8 @@ jobs:
     needs: classify
     if: needs.classify.outputs.rust == 'true'
     runs-on: ubuntu-latest
+    # This job performs two full-history checkouts. Either fetch can take several
+    # minutes during GitHub degradation, before the contract tests even run.
     timeout-minutes: 15
     steps:
       - name: Check out repository
