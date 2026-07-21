@@ -615,6 +615,10 @@ test("promotion-contracts gives its trusted evaluator a bounded shallow checkout
   assert.match(job, /timeout-minutes: 15/u);
   assert.match(
     job,
+    /Check out repository[\s\S]*?ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/u,
+  );
+  assert.match(
+    job,
     /Check out trusted default-branch evaluator[\s\S]*?fetch-depth: 1[\s\S]*?sparse-checkout: scripts\/ci\/verify-domain-core-legacy-deletion\.py[\s\S]*?sparse-checkout-cone-mode: false/u,
   );
 });
