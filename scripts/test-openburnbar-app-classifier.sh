@@ -326,7 +326,8 @@ assert_true "SwiftPM cache race plus Signal FFI mapping miss is retryable infras
 assert_true "Xcode SwiftPM package graph internal crash is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_xcode_internal_package_graph_crash_log"
 assert_false "unknown failure is not a SwiftPM dependency transient" is_swiftpm_dependency_resolution_transient "$unknown_failure_log"
 
-media_isolated_filter="OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
+media_admission_isolated_filter="OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
+media_retry_isolated_filter="OpenBurnBarTests/MediaSessionCoordinatorTests/testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry"
 projection_chunker_isolated_filter="OpenBurnBarTests/ProjectionChunkerTests"
 projection_service_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceTests"
 projection_matters_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
@@ -336,7 +337,7 @@ default_plan="$(
         "$repo_root/scripts/test-openburnbar-app.sh" --print-xcodebuild-plan
 )"
 assert_equals "default app test plan preserves all sensitive tests in a fresh host" \
-    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_isolated_filter"$'\nmain-skip\t'"$projection_chunker_isolated_filter"$'\nmain-skip\t'"$projection_service_isolated_filter"$'\nmain-skip\t'"$projection_matters_isolated_filter"$'\nmain-skip\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-only\t'"$media_isolated_filter"$'\nfresh-host-only\t'"$projection_chunker_isolated_filter"$'\nfresh-host-only\t'"$projection_service_isolated_filter"$'\nfresh-host-only\t'"$projection_matters_isolated_filter"$'\nfresh-host-only\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-expected-count\t120' \
+    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_admission_isolated_filter"$'\nmain-skip\t'"$media_retry_isolated_filter"$'\nmain-skip\t'"$projection_chunker_isolated_filter"$'\nmain-skip\t'"$projection_service_isolated_filter"$'\nmain-skip\t'"$projection_matters_isolated_filter"$'\nmain-skip\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-only\t'"$media_admission_isolated_filter"$'\nfresh-host-only\t'"$media_retry_isolated_filter"$'\nfresh-host-only\t'"$projection_chunker_isolated_filter"$'\nfresh-host-only\t'"$projection_service_isolated_filter"$'\nfresh-host-only\t'"$projection_matters_isolated_filter"$'\nfresh-host-only\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-expected-count\t121' \
     "$default_plan"
 
 projection_test_count=0
@@ -355,8 +356,8 @@ for projection_test_file in "$repo_root"/AgentLensTests/Active/Projection*Tests.
     ))
 done
 declared_fresh_host_count="$(awk -F '\t' '$1 == "fresh-host-expected-count" { print $2 }' <<<"$default_plan")"
-assert_equals "fresh-host count covers every projection test plus the isolated media test" \
-    "$((projection_test_count + 1))" \
+assert_equals "fresh-host count covers every projection test plus the isolated media tests" \
+    "$((projection_test_count + 2))" \
     "$declared_fresh_host_count"
 
 custom_plan="$(

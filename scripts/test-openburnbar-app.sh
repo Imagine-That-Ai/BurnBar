@@ -194,12 +194,13 @@ done
 
 isolated_test_filters=(
     "OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
+    "OpenBurnBarTests/MediaSessionCoordinatorTests/testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry"
     "OpenBurnBarTests/ProjectionChunkerTests"
     "OpenBurnBarTests/ProjectionPipelineServiceTests"
     "OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
     "OpenBurnBarTests/ProjectionStoreLifecycleTests"
 )
-isolated_test_expected_count=120
+isolated_test_expected_count=121
 main_skip_test_filters=()
 run_isolated_test_phase=0
 if ((${#test_filters[@]} == 1)) && [[ "${test_filters[0]}" == "OpenBurnBarTests" ]]; then
