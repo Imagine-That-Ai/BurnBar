@@ -190,6 +190,9 @@ preserve and enforce this contract.
   Ministry to select at claim time.
 - Failure in one Wand does not silently activate the other. Both fail closed at
   their authority boundary and expose recovery text to the initiating surface.
+- A failed or interrupted local SQLite read returns through the normal error
+  path; it must not unbalance GRDB read-only state, crash the app host, or poison
+  later Wand persistence and prompt-building work.
 
 ## Verification ownership
 
@@ -205,6 +208,7 @@ preserve and enforce this contract.
 | Dispatch-to-claim route authority | `OpenBurnBarTests/CLIAgentMissionRequestListenerMattersTests` |
 | Approved Claude/Codex mission launch and structured final-reply extraction | `OpenBurnBarTests/CLIAgentSessionMirrorTests` |
 | Signed relay access to the shared SQLCipher key | `OpenBurnBarDaemonTests/BurnBarDaemonDatabaseCipherTests`, `verify-sqlcipher-codec.sh`, and the public macOS artifact gate |
+| Interrupted/failed SQLite read cleanup and recovery | `OpenBurnBarTests/OpenBurnBarDatabaseMattersTests` |
 | Ministry ranking, caps, proof fallback, persistence, concurrency, malformed/error paths | `tools/openburnbar-mcp/tests/test_ministry.py` |
 | Cloud mission-group width and parallelism enforcement | `functions/scripts/test-firestore-rules.mjs` |
 

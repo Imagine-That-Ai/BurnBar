@@ -45,7 +45,8 @@ packages:
     path: OpenBurnBarCore
   # SQLCipher-enabled GRDB (SPM). Must stay aligned with OpenBurnBarDaemon/Package.swift.
   # Vendored from https://github.com/SahebRoy92/GRDB-SQLCipher at 2cf6c756 and
-  # patched so SwiftPM GRDB imports the pinned SQLCipher XCFramework instead of system sqlite3.
+  # patched so SwiftPM GRDB imports the pinned SQLCipher XCFramework instead of system sqlite3,
+  # and so failed async reads cannot unbalance DatabaseQueue read-only state.
   GRDB:
     path: Vendor/GRDB-SQLCipher
   SQLCipher:

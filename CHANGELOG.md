@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Startup also preserves an existing encrypted database without creating a
   replacement key when its original key is missing, and reports a specific
   recovery error when the stored key is rejected.
+- **Stopped failed async database reads from crashing the app test host**: the
+  vendored GRDB queue now leaves read-only mode only after entering it, and
+  rolls back a failed commit before reusing the connection.
 
 ### Fixed - Incremental conversation indexing
 
