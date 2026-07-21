@@ -557,39 +557,6 @@ class BurnBarApplication : Application() {
         return digest.joinToString("") { "%02x".format(it) }
     }
 
-    /**
-     * First-launch detection for `app.session.started`'s `is_first_launch`.
-     * A boolean marker in a private prefs file; flips to false after the first
-     * read. Independent of analytics consent so the marker is correct whenever
-     * the user eventually opts in. No PII — a single boolean.
-     */
-    private fun detectFirstLaunch(): Boolean {
-        val prefs = getSharedPreferences("burnbar.analytics.lifecycle", MODE_PRIVATE)
-        val seen = prefs.getBoolean("has_launched_before", false)
-        if (!seen) prefs.edit().putBoolean("has_launched_before", true).apply()
-        return !seen
-    }
-
-    /**
-     * Identify the signed-in user to analytics with a **hashed** account uid
-     * (SHA-256, hex) — never the raw Firebase uid, email, or display name. The
-     * recorder no-ops the call entirely until consent is granted, so nothing
-     * leaks pre-opt-in. Cleared (`setUserId(null)`) on sign-out so a shared
-     * device doesn't attribute one user's anonymous events to another.
-     */
-    private fun installAnalyticsIdentity() {
-        val listener = FirebaseAuth.AuthStateListener { auth ->
-            val uid = auth.currentUser?.uid
-            com.openburnbar.analytics.AnalyticsManager.setUserId(uid?.let { hashedAccountId(it) })
-        }
-        FirebaseAuth.getInstance().addAuthStateListener(listener)
-    }
-
-    private fun hashedAccountId(uid: String): String {
-        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(uid.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { "%02x".format(it) }
-    }
-
     private fun registerFcmToken() {
         applicationScope.launch {
             runCatching {

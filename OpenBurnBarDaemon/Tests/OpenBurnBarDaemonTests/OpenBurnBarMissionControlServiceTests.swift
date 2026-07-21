@@ -4975,8 +4975,6 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         )
         XCTAssertEqual(questions.questions.map(\.projectSlug), ["orion"])
     }
-}
-
 extension BurnBarMissionControlServiceTests {
     // MARK: - VAL-EXEC-009: Parallel scheduler enforces dependency invariants
 
