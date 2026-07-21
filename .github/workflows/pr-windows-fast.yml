@@ -161,6 +161,7 @@ jobs:
             "scripts/windows-port/new-release-certification-supplemental-receipt.ps1",
             "scripts/windows-port/publish-staging-remote-config-fixture.ps1",
             "scripts/windows-port/remote-config-http.psm1",
+            "scripts/windows-port/test-staging-runtime-safety-fixture.ps1",
             "scripts/windows-port/run-ui-automation.ps1",
             "scripts/windows-port/run-physical-release-certification.ps1"
           )
@@ -199,8 +200,26 @@ jobs:
             }
             Write-Host "Remote Config unquoted ETag parser PASS."
           }
+
           finally {
             $response.Dispose()
+          }
+
+      - name: Validate staging Remote Config certification fixtures
+        run: |
+          $publisher = "scripts/windows-port/publish-staging-remote-config-fixture.ps1"
+          foreach ($fixture in @("Baseline", "ComputerKill", "MediaKill", "MalformedSystem")) {
+            $result = & $publisher -Fixture $fixture -ValidateOnly | ConvertFrom-Json
+            if (-not $result.payloadValidated -or $result.mutationAttempted) {
+              throw "Fixture validation was not side-effect free: $fixture"
+            }
+          }
+          $malformed = & $publisher -Fixture MalformedSystem -ValidateOnly | ConvertFrom-Json
+          $system = @($malformed.overriddenParameters | Where-Object { $_.name -ceq "computer_use_system_enabled" })
+          if ($system.Count -ne 1 -or
+              $system[0].valueType -cne "STRING" -or
+              $system[0].valueSha256 -cne "20e6695ec9d873ae768f6ceffd4500ba2ffc6bc7e123389cf143d7caae21ae69") {
+            throw "MalformedSystem must publish its invalid value as STRING."
           }
 
       - name: Smoke supplemental certification templates
