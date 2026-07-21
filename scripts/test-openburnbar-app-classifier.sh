@@ -327,16 +327,14 @@ assert_true "Xcode SwiftPM package graph internal crash is retryable infrastruct
 assert_false "unknown failure is not a SwiftPM dependency transient" is_swiftpm_dependency_resolution_transient "$unknown_failure_log"
 
 media_isolated_filter="OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
-conversation_projection_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_conversationReuseCopyFailure_reembedsChunks_neverLeavingThemUnsearchable"
-conversation_projection_success_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_conversationReuseCopySuccess_stillReusesWithoutReembedding"
-projection_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_artifactReuseCopyFailure_reembedsChunks_neverLeavingThemUnsearchable"
-partial_projection_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_partialReuseCopyFailure_onlyConfirmedChunksAreReused_othersReembedded"
+projection_service_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceTests"
+projection_matters_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
 default_plan="$(
     env -u OPENBURNBAR_APP_TEST_FILTER -u OPENBURNBAR_APP_TEST_FILTERS \
         "$repo_root/scripts/test-openburnbar-app.sh" --print-xcodebuild-plan
 )"
 assert_equals "default app test plan preserves all sensitive tests in a fresh host" \
-    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_isolated_filter"$'\nmain-skip\t'"$conversation_projection_isolated_filter"$'\nmain-skip\t'"$conversation_projection_success_isolated_filter"$'\nmain-skip\t'"$projection_isolated_filter"$'\nmain-skip\t'"$partial_projection_isolated_filter"$'\nfresh-host-only\t'"$media_isolated_filter"$'\nfresh-host-only\t'"$conversation_projection_isolated_filter"$'\nfresh-host-only\t'"$conversation_projection_success_isolated_filter"$'\nfresh-host-only\t'"$projection_isolated_filter"$'\nfresh-host-only\t'"$partial_projection_isolated_filter" \
+    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_isolated_filter"$'\nmain-skip\t'"$projection_service_isolated_filter"$'\nmain-skip\t'"$projection_matters_isolated_filter"$'\nfresh-host-only\t'"$media_isolated_filter"$'\nfresh-host-only\t'"$projection_service_isolated_filter"$'\nfresh-host-only\t'"$projection_matters_isolated_filter" \
     "$default_plan"
 
 custom_plan="$(
