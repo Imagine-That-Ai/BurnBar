@@ -82,6 +82,32 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
         XCTAssertEqual((row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0), 150)
     }
 
+    func test_modelSummaries_includeExecutionSourceBreakdown() throws {
+        let usage = TokenUsage(
+            provider: .codex,
+            sessionId: "execution-source-summary",
+            projectName: "SourceProject",
+            model: "gpt-5.6-codex",
+            inputTokens: 100,
+            outputTokens: 20,
+            costUSD: 1,
+            startTime: Date(timeIntervalSince1970: 1),
+            endTime: Date(timeIntervalSince1970: 2),
+            executionSourceID: "codex-desktop",
+            executionSourceName: "Codex Desktop",
+            executionSourceKind: .desktopApp,
+            executionSourceConfidence: .exact
+        )
+
+        let summary = try XCTUnwrap(UsageStore.makeModelSummaries(from: [usage]).first)
+        let source = try XCTUnwrap(summary.executionSourceBreakdown.first)
+
+        XCTAssertEqual(source.executionSourceID, "codex-desktop")
+        XCTAssertEqual(source.name, "Codex Desktop")
+        XCTAssertEqual(source.totalTokens, 120)
+        XCTAssertEqual(source.percentage, 100)
+    }
+
     func test_exactRow_isNotDowngradedByLowerConfidenceEstimate() async throws {
         // Given: an exact row already exists
         let queue = try DatabaseQueue()
