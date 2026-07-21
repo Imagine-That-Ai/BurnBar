@@ -72,6 +72,14 @@ function initialKernel(): KernelId {
   return isKernelId(PREFERRED_DEFAULT) ? PREFERRED_DEFAULT : KERNELS[0]!.id;
 }
 
+function performanceMotionOverride(): boolean | undefined {
+  try {
+    return new URLSearchParams(location.search).get("motion") === "full" ? false : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function mount(): void {
   let host = document.getElementById("host");
   if (!host) {
@@ -85,7 +93,11 @@ function mount(): void {
   host.style.height = "100%";
   host.style.overflow = "hidden";
 
-  const engine = new BackdropEngine(host, { theme: "dark", initialKernel: initialKernel() });
+  const engine = new BackdropEngine(host, {
+    theme: "dark",
+    initialKernel: initialKernel(),
+    reducedMotionOverride: performanceMotionOverride(),
+  });
 
   window.__setKernel = (id: string): boolean => {
     if (!isKernelId(id)) return false;

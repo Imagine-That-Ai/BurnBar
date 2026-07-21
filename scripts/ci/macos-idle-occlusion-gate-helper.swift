@@ -12,7 +12,7 @@ private enum HelperError: Error, CustomStringConvertible {
     case timeout(String)
     case processInfoUnavailable(pid_t)
     case invalidCPUTimestamp
-    case backdropStateTimeout(pid_t, Bool)
+    case backdropStateTimeout(pid_t, Bool, String)
 
     var description: String {
         switch self {
@@ -28,8 +28,8 @@ private enum HelperError: Error, CustomStringConvertible {
             return "proc_pidinfo failed for pid \(pid)"
         case .invalidCPUTimestamp:
             return "failed to convert proc_pidinfo CPU time to nanoseconds"
-        case .backdropStateTimeout(let pid, let visible):
-            return "timed out waiting for pid \(pid) backdrop state visible=\(visible)"
+        case .backdropStateTimeout(let pid, let visible, let lastState):
+            return "timed out waiting for pid \(pid) backdrop state visible=\(visible); lastState=\(lastState)"
         }
     }
 }
@@ -52,10 +52,22 @@ private struct WindowState: Codable {
 
 private struct BackdropState {
     let ready: Bool
-    let active: Bool
-    let renderLoopScheduled: Bool
-    let reducedMotion: Bool
-    let kernel: String
+    let active: Bool?
+    let renderLoopScheduled: Bool?
+    let reducedMotion: Bool?
+    let kernel: String?
+    let commandApplied: Bool?
+    let diagnostic: String?
+
+    var diagnosticDescription: String {
+        let kernelDescription = kernel ?? "nil"
+        let diagnosticText = diagnostic ?? "nil"
+        return "ready=\(ready), active=\(String(describing: active)), "
+            + "renderLoopScheduled=\(String(describing: renderLoopScheduled)), "
+            + "reducedMotion=\(String(describing: reducedMotion)), "
+            + "kernel=\(kernelDescription), commandApplied=\(String(describing: commandApplied)), "
+            + "diagnostic=\(diagnosticText)"
+    }
 }
 
 private struct CPUSnapshot: Codable {
@@ -92,18 +104,15 @@ private func waitForBackdropState(
         queue: .main
     ) { notification in
         guard let userInfo = notification.userInfo,
-              userInfo["ready"] as? Bool == true,
-              let active = userInfo["hostVisible"] as? Bool,
-              let renderLoopScheduled = userInfo["renderLoopScheduled"] as? Bool,
-              let reducedMotion = userInfo["reducedMotion"] as? Bool,
-              let kernel = userInfo["kernel"] as? String
-        else { return }
+              let ready = userInfo["ready"] as? Bool else { return }
         received = BackdropState(
-            ready: true,
-            active: active,
-            renderLoopScheduled: renderLoopScheduled,
-            reducedMotion: reducedMotion,
-            kernel: kernel
+            ready: ready,
+            active: userInfo["hostVisible"] as? Bool,
+            renderLoopScheduled: userInfo["renderLoopScheduled"] as? Bool,
+            reducedMotion: userInfo["reducedMotion"] as? Bool,
+            kernel: userInfo["kernel"] as? String,
+            commandApplied: userInfo["commandApplied"] as? Bool,
+            diagnostic: userInfo["diagnostic"] as? String
         )
     }
     defer { center.removeObserver(observer) }
@@ -118,14 +127,19 @@ private func waitForBackdropState(
             if let state = received,
                state.active == visible,
                state.ready,
-               !state.kernel.isEmpty,
-               !state.reducedMotion,
+               state.commandApplied == true,
+               state.kernel?.isEmpty == false,
+               state.reducedMotion == false,
                state.renderLoopScheduled == visible {
                 return state
             }
         } while Date() < responseDeadline
     }
-    throw HelperError.backdropStateTimeout(pid, visible)
+    throw HelperError.backdropStateTimeout(
+        pid,
+        visible,
+        received?.diagnosticDescription ?? "no backdrop response received"
+    )
 }
 
 private func visibleWindowCount(for pid: pid_t) -> Int {

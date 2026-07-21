@@ -57,6 +57,11 @@ export interface BackdropEngineOptions {
   swarmEmberOptions?: SwarmEmberKernelOptions;
   /** Notified with the kernel actually shown (may differ on GL fallback). */
   onResolve?: (id: KernelId) => void;
+  /**
+   * Deterministic host profile for performance certification. Production
+   * callers leave this unset so the engine follows the user's OS preference.
+   */
+  reducedMotionOverride?: boolean;
 }
 
 export interface BackdropRuntimeState {
@@ -133,9 +138,10 @@ export class BackdropEngine {
     this.onResolve = opts.onResolve;
     this.activeId = opts.initialKernel ?? DEFAULT_KERNEL_ID;
 
-    this.reducedMotion =
+    this.reducedMotion = opts.reducedMotionOverride ?? (
       typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
 
     const rect = container.getBoundingClientRect();
     this.width = rect.width || window.innerWidth;

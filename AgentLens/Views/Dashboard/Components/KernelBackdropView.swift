@@ -272,39 +272,54 @@ struct KernelBackdropView: NSViewRepresentable {
                 script
             ) { [weak self] value, error in
                 MainActor.assumeIsolated {
-                    guard error == nil,
-                          let state = value as? [String: Any],
-                          state["ready"] as? Bool == true,
+                    guard error == nil, let state = value as? [String: Any] else {
+                        self?.lastReportedActive = nil
+                        self?.postPerformanceGateBackdropState([
+                            "ready": false,
+                            "requestedVisible": active,
+                            "diagnostic": error?.localizedDescription ?? "malformed JavaScript result"
+                        ])
+                        return
+                    }
+
+                    guard state["ready"] as? Bool == true,
                           let hostVisible = state["hostVisible"] as? Bool,
                           let renderLoopScheduled = state["renderLoopScheduled"] as? Bool,
                           let reducedMotion = state["reducedMotion"] as? Bool,
                           let kernel = state["kernel"] as? String
                     else {
                         self?.lastReportedActive = nil
+                        self?.postPerformanceGateBackdropState([
+                            "ready": false,
+                            "requestedVisible": active,
+                            "diagnostic": "backdrop bridge not ready"
+                        ])
                         return
                     }
 
                     let commandApplied = hostVisible == active
                         && (active ? (renderLoopScheduled && !reducedMotion) : !renderLoopScheduled)
-                    guard commandApplied else {
-                        self?.lastReportedActive = nil
-                        return
-                    }
-                    self?.lastReportedActive = active
-                    DistributedNotificationCenter.default().postNotificationName(
-                        OpenBurnBarRuntime.performanceGateBackdropStateNotification,
-                        object: OpenBurnBarRuntime.currentPerformanceGateNotificationObject,
-                        userInfo: [
-                            "ready": true,
-                            "hostVisible": hostVisible,
-                            "renderLoopScheduled": renderLoopScheduled,
-                            "reducedMotion": reducedMotion,
-                            "kernel": kernel
-                        ],
-                        deliverImmediately: true
-                    )
+                    self?.lastReportedActive = commandApplied ? active : nil
+                    self?.postPerformanceGateBackdropState([
+                        "ready": true,
+                        "requestedVisible": active,
+                        "commandApplied": commandApplied,
+                        "hostVisible": hostVisible,
+                        "renderLoopScheduled": renderLoopScheduled,
+                        "reducedMotion": reducedMotion,
+                        "kernel": kernel
+                    ])
                 }
             }
+        }
+
+        private func postPerformanceGateBackdropState(_ userInfo: [String: Any]) {
+            DistributedNotificationCenter.default().postNotificationName(
+                OpenBurnBarRuntime.performanceGateBackdropStateNotification,
+                object: OpenBurnBarRuntime.currentPerformanceGateNotificationObject,
+                userInfo: userInfo,
+                deliverImmediately: true
+            )
         }
 
         func load(initialKernel: String, into webView: WKWebView) {
@@ -319,11 +334,26 @@ struct KernelBackdropView: NSViewRepresentable {
             // Seed the initial kernel via the URL fragment the bundle reads on
             // boot (`location.hash` first), avoiding a flash of the default
             // before our JS bridge fires.
-            var components = URLComponents(url: indexURL, resolvingAgainstBaseURL: false)
-            components?.fragment = initialKernel
-            let target = components?.url ?? indexURL
+            let target = Self.loadURL(
+                indexURL: indexURL,
+                initialKernel: initialKernel,
+                performanceGate: OpenBurnBarRuntime.isPerformanceGateLaunch
+            )
 
             webView.loadFileURL(target, allowingReadAccessTo: indexURL.deletingLastPathComponent())
+        }
+
+        static func loadURL(
+            indexURL: URL,
+            initialKernel: String,
+            performanceGate: Bool
+        ) -> URL {
+            var components = URLComponents(url: indexURL, resolvingAgainstBaseURL: false)
+            components?.fragment = initialKernel
+            if performanceGate {
+                components?.queryItems = [URLQueryItem(name: "motion", value: "full")]
+            }
+            return components?.url ?? indexURL
         }
 
         func apply(kernel: String, theme: String, to webView: WKWebView) {

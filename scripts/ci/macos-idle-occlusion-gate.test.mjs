@@ -126,7 +126,12 @@ function createHarness(opts = {}) {
     requestAnimationFrame, cancelAnimationFrame,
   };
 
-  const location = { hash: "", href: "https://localhost/", search: "", pathname: "/" };
+  const location = {
+    hash: "",
+    href: "https://localhost/",
+    search: opts.locationSearch ?? "",
+    pathname: "/",
+  };
   const navigator = {};
 
   class ResizeObserver { observe() {} unobserve() {} disconnect() {} }
@@ -393,6 +398,15 @@ test("reduced-motion mode does not start the loop, but occlusion still cancels h
   // Resuming in reduced-motion mode should not start the loop
   h.win.__setBackdropActive(true);
   assert.equal(h.pendingRafCount(), 0, "no loop started in reduced-motion mode even when visible");
+});
+
+test("native performance profile runs the real loop when the host OS prefers reduced motion", () => {
+  const h = createHarness({ reducedMotion: true, locationSearch: "?motion=full" });
+  loadAndSettle(h);
+
+  const state = JSON.parse(JSON.stringify(h.win.__getBackdropState()));
+  assert.equal(state.reducedMotion, false, "the explicit certification profile must win");
+  assert.ok(h.pendingRafCount() > 0, "the performance workload must have a live render loop");
 });
 
 // ── Real-process gate self-tests (no app build or launch) ──────────────────
