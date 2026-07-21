@@ -6,8 +6,10 @@ import { clearPerfSamples, recordPerfSample } from '../../perfMarks.js';
 import { useMediaStore } from '../../state/mediaStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { useSupportStore } from '../../state/supportStore.js';
-import type { LinuxShellBridge } from '../../tauriBridge.js';
+import { isSafeDiagnosticsPath, type AppVersionInfo, type LinuxShellBridge } from '../../tauriBridge.js';
 import { UpdatesSurface } from '../updates/UpdatesSurface.js';
+import { UpdateStatusCard } from '../updates/UpdateStatusCard.js';
+import { KERNEL_RESOLUTION_EVENT } from '../../components/KernelBackdrop.js';
 import { SupportSurface } from './SupportSurface.js';
 
 function resetStores(): void {
@@ -30,11 +32,15 @@ function resetStores(): void {
     versionLoading: false,
     versionError: null,
     updateStatus: null,
+    updateStatusStale: false,
     updateLoading: false,
     updateError: null,
     exportState: 'idle',
     exportPath: null,
-    exportError: null
+    exportPreview: null,
+    exportError: null,
+    copyState: 'idle',
+    copyError: null
   });
   useMediaStore.setState({
     status: null,
@@ -67,6 +73,14 @@ function mockBridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge
       shellVersion: '1.0.0',
       daemonVersion: '1.0.0',
       packageChannel: 'deb',
+      package: { channel: 'deb', manager: 'dpkg', evidence: 'test' },
+      runtime: {
+        os: 'linux',
+        architecture: 'x86_64',
+        kernel: '6.8.0',
+        desktop: 'GNOME',
+        displayServer: 'wayland'
+      },
       updateCheck: 'unavailable-in-shell'
     }),
     updateStatus: vi.fn().mockResolvedValue({
@@ -76,16 +90,50 @@ function mockBridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge
       channel: 'stable',
       publishedAt: '2026-07-09T00:00:00Z'
     }),
-    exportDiagnostics: vi.fn().mockResolvedValue({ path: '/home/user/diagnostics.json' }),
+    exportDiagnostics: vi.fn().mockResolvedValue({
+      path: '/home/user/diagnostics-1720512345.json',
+      preview: {
+        schemaVersion: 1,
+        byteCount: 512,
+        fileMode: '0600',
+        included: ['package channel and runtime facts'],
+        excluded: ['provider API keys and credentials']
+      }
+    }),
     sessionEnv: vi.fn(),
     mediaStatus: vi.fn().mockResolvedValue({ capabilityAvailable: false, pairedDevices: [] }),
     ...overrides
   } as LinuxShellBridge;
 }
 
+function mountBackdropReceipt(overrides: Record<string, string> = {}): () => void {
+  const backdrop = document.createElement('div');
+  backdrop.dataset.backdropMode = 'canvas';
+  backdrop.dataset.kernelRequested = 'aurora';
+  backdrop.dataset.kernelResolved = 'constellation';
+  backdrop.dataset.kernelResolution = 'webgl2-unavailable';
+  backdrop.dataset.kernelFallback = '1';
+  backdrop.dataset.kernelSubstrate = '2d';
+  backdrop.dataset.glSupported = '0';
+  for (const [key, value] of Object.entries(overrides)) {
+    backdrop.dataset[key] = value;
+  }
+  document.body.appendChild(backdrop);
+  return () => backdrop.remove();
+}
+
 describe('P09 updates and support', () => {
   beforeEach(resetStores);
   afterEach(cleanup);
+
+  it('accepts native diagnostics paths but rejects traversal and control input', () => {
+    expect(isSafeDiagnosticsPath('/tmp/openburnbar-diagnostics-fixture.json')).toBe(true);
+    expect(isSafeDiagnosticsPath('/home/user/diagnostics-1720512345.json')).toBe(true);
+    expect(isSafeDiagnosticsPath('/home/user/support-report.json')).toBe(true);
+    expect(isSafeDiagnosticsPath('/tmp/../../secrets.json')).toBe(false);
+    expect(isSafeDiagnosticsPath('/tmp/diagnostics-\n.json')).toBe(false);
+    expect(isSafeDiagnosticsPath('/tmp/.diagnostics.json')).toBe(false);
+  });
 
   it('shows offline notice on updates without bridge or fixture', async () => {
     const { container } = render(<UpdatesSurface />);
@@ -105,6 +153,7 @@ describe('P09 updates and support', () => {
     expect(container.querySelector('[data-failure-state="channel-unavailable"]')).not.toBeNull();
     expect(container.querySelector('[data-failure-state="restart-required"]')).not.toBeNull();
     expect(screen.getAllByText('0.1.0-fixture').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('fixture-only')).toBeTruthy();
   });
 
   it('shows version-mismatch degraded banner on updates', async () => {
@@ -135,6 +184,19 @@ describe('P09 updates and support', () => {
         latestVersion: '1.1.0',
         channel: 'stable',
         publishedAt: '2026-07-09T00:00:00Z',
+        signatureState: 'verified',
+        feedFreshness: 'fresh',
+        feedAgeSeconds: 120,
+        compatibility: { state: 'aligned', shellVersion: '1.0.0', daemonVersion: '1.0.0' },
+        channelInfo: {
+          id: 'deb',
+          label: 'Debian package (.deb)',
+          owner: 'apt/dpkg',
+          installMode: 'package-manager-guided',
+          automaticInstall: false,
+          rollbackMode: 'apt-version-selection',
+          explanation: 'The distro package manager owns files and upgrades.'
+        },
         notes: 'Security and reliability fixes.',
         artifact: {
           type: 'deb',
@@ -158,6 +220,241 @@ describe('P09 updates and support', () => {
     expect(openUpdateUrl).toHaveBeenCalledWith(
       'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb'
     );
+    expect(screen.getByText('apt/dpkg')).toBeTruthy();
+  });
+
+  it('keeps the newest signed update response when checks overlap', async () => {
+    let resolveFirst: ((status: { state: 'current'; currentVersion: string; latestVersion: string }) => void) | undefined;
+    const firstResponse = new Promise<{ state: 'current'; currentVersion: string; latestVersion: string }>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const updateStatus = vi.fn()
+      .mockImplementationOnce(() => firstResponse)
+      .mockResolvedValueOnce({ state: 'current', currentVersion: '1.1.0', latestVersion: '1.1.0' });
+    const bridge = mockBridge({ updateStatus });
+    useShellStore.setState({ bridge, fixtureMode: false });
+
+    const firstCheck = useSupportStore.getState().checkUpdate();
+    await act(async () => { await Promise.resolve(); });
+    const secondCheck = useSupportStore.getState().checkUpdate();
+    await act(async () => { await secondCheck; });
+
+    expect(useSupportStore.getState().updateStatus).toMatchObject({ currentVersion: '1.1.0' });
+    resolveFirst?.({ state: 'current', currentVersion: '1.0.0', latestVersion: '1.0.0' });
+    await act(async () => { await firstCheck; });
+    expect(useSupportStore.getState().updateStatus).toMatchObject({ currentVersion: '1.1.0' });
+    expect(useSupportStore.getState().updateLoading).toBe(false);
+  });
+
+  it('retains the last signed result as stale after a transient check failure and clears it on retry', async () => {
+    const signedStatus = {
+      state: 'available' as const,
+      currentVersion: '1.0.0',
+      latestVersion: '1.1.0',
+      channel: 'stable' as const,
+      signatureState: 'verified' as const,
+      feedFreshness: 'fresh' as const,
+      feedAgeSeconds: 120,
+      compatibility: { state: 'aligned' as const, shellVersion: '1.0.0', daemonVersion: '1.0.0' }
+    };
+    const updateStatus = vi.fn()
+      .mockResolvedValueOnce(signedStatus)
+      .mockRejectedValueOnce(new Error('network unavailable'))
+      .mockResolvedValueOnce(signedStatus);
+    const bridge = mockBridge({ updateStatus });
+    useShellStore.setState({ bridge, fixtureMode: false });
+
+    await act(async () => { await useSupportStore.getState().checkUpdate(); });
+    expect(useSupportStore.getState().updateStatus).toEqual(signedStatus);
+    expect(useSupportStore.getState().updateStatusStale).toBe(false);
+
+    await act(async () => { await useSupportStore.getState().checkUpdate(); });
+    expect(useSupportStore.getState().updateStatus).toMatchObject({
+      state: 'available',
+      latestVersion: '1.1.0',
+      feedFreshness: 'unknown',
+      reason: 'network unavailable'
+    });
+    expect(useSupportStore.getState().updateStatusStale).toBe(true);
+    expect(useSupportStore.getState().updateError).toBe('network unavailable');
+
+    await act(async () => { await useSupportStore.getState().checkUpdate(); });
+    expect(useSupportStore.getState().updateStatus).toEqual(signedStatus);
+    expect(useSupportStore.getState().updateStatusStale).toBe(false);
+    expect(useSupportStore.getState().updateError).toBeNull();
+  });
+
+  it('labels a stale result and disables package mutation actions until rechecked', () => {
+    const openUpdateUrl = vi.fn().mockResolvedValue(undefined);
+    const bridge = mockBridge({ openUpdateUrl });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(
+      <UpdateStatusCard
+        status={{
+          state: 'available',
+          currentVersion: '1.0.0',
+          latestVersion: '1.1.0',
+          signatureState: 'verified',
+          feedFreshness: 'unknown',
+          artifact: {
+            type: 'deb',
+            architecture: 'aarch64',
+            url: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb',
+            sha256: 'a'.repeat(64),
+            size: 100,
+            signatureUrl: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb.sig'
+          }
+        }}
+        loading={false}
+        error="network unavailable"
+        stale
+        onCheck={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/latest signed-feed check failed/i)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Download unavailable' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(openUpdateUrl).not.toHaveBeenCalled();
+  });
+
+  it('keeps the newest version facts when bridge refreshes overlap', async () => {
+    let resolveFirst: ((info: AppVersionInfo) => void) | undefined;
+    const firstResponse = new Promise<AppVersionInfo>((resolve) => { resolveFirst = resolve; });
+    const appVersionInfo = vi.fn()
+      .mockImplementationOnce(() => firstResponse)
+      .mockResolvedValueOnce({
+        shellVersion: '2.0.0',
+        daemonVersion: '2.0.0',
+        packageChannel: 'deb',
+        updateCheck: 'unavailable-in-shell'
+      });
+    const bridge = mockBridge({ appVersionInfo });
+    useShellStore.setState({ bridge, fixtureMode: false });
+
+    const firstLoad = useSupportStore.getState().loadVersion();
+    await act(async () => { await Promise.resolve(); });
+    const secondLoad = useSupportStore.getState().loadVersion();
+    await act(async () => { await secondLoad; });
+
+    expect(useSupportStore.getState().versionInfo?.shellVersion).toBe('2.0.0');
+    resolveFirst?.({
+      shellVersion: '1.0.0',
+      daemonVersion: '1.0.0',
+      packageChannel: 'deb',
+      updateCheck: 'unavailable-in-shell'
+    });
+    await act(async () => { await firstLoad; });
+    expect(useSupportStore.getState().versionInfo?.shellVersion).toBe('2.0.0');
+  });
+
+  it('renders package-native install and rollback actions without executing them', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const bridge = mockBridge({
+      updateStatus: vi.fn().mockResolvedValue({
+        state: 'available',
+        currentVersion: '1.0.0',
+        latestVersion: '1.1.0',
+        channel: 'stable',
+        artifact: undefined,
+        instructions: {
+          packageManager: 'apt',
+          install: {
+            id: 'install',
+            label: 'Update with apt',
+            instruction: 'Use apt after reviewing the signed artifact.',
+            command: 'sudo apt-get install --only-upgrade open-burn-bar',
+            available: true,
+            requiresConfirmation: true
+          },
+          rollback: {
+            id: 'rollback',
+            label: 'Roll back with apt',
+            instruction: 'Choose a previously signed version first.',
+            command: 'sudo apt-get install --allow-downgrades open-burn-bar=<previous-version>',
+            available: true,
+            requiresConfirmation: true
+          },
+          restart: {
+            id: 'restart',
+            label: 'Restart OpenBurnBar',
+            instruction: 'Quit and relaunch after apt finishes.',
+            command: 'systemctl --user restart openburnbar-daemon.service',
+            available: true,
+            requiresConfirmation: false
+          }
+        }
+      })
+    });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(<UpdatesSurface />);
+    await act(async () => {
+      await useSupportStore.getState().loadVersion();
+    });
+    expect(screen.getByText('Linux-native apt actions')).toBeTruthy();
+    expect(screen.getByText('sudo apt-get install --only-upgrade open-burn-bar')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy rollback command' }));
+    expect(writeText).toHaveBeenCalledWith('sudo apt-get install --allow-downgrades open-burn-bar=<previous-version>');
+    expect(bridge.updateStatus).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['stale feed', { feedFreshness: 'stale' as const, feedAgeSeconds: 8 * 24 * 60 * 60 }],
+    ['daemon mismatch', {
+      feedFreshness: 'fresh' as const,
+      compatibility: {
+        state: 'mismatch' as const,
+        shellVersion: '1.1.0',
+        daemonVersion: '1.0.0',
+        reason: 'Shell 1.1.0 and daemon 1.0.0 differ; restart after the package manager finishes.'
+      }
+    }]
+  ])('keeps install and download actions disabled for %s', async (_label, metadata) => {
+    const openUpdateUrl = vi.fn().mockResolvedValue(undefined);
+    const bridge = mockBridge({
+      openUpdateUrl,
+      updateStatus: vi.fn().mockResolvedValue({
+        state: 'available',
+        currentVersion: '1.0.0',
+        latestVersion: '1.1.0',
+        channel: 'stable',
+        signatureState: 'verified',
+        ...metadata,
+        artifact: {
+          type: 'deb',
+          architecture: 'aarch64',
+          url: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb',
+          sha256: 'a'.repeat(64),
+          size: 100,
+          signatureUrl: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb.sig'
+        },
+        instructions: {
+          packageManager: 'apt',
+          install: {
+            id: 'install', label: 'Update with apt', instruction: 'Use apt.',
+            command: 'sudo apt-get install --only-upgrade open-burn-bar', available: true, requiresConfirmation: true
+          },
+          rollback: {
+            id: 'rollback', label: 'Roll back with apt', instruction: 'Choose a prior version.',
+            command: 'sudo apt-get install --allow-downgrades open-burn-bar=PREVIOUS_VERSION', available: true, requiresConfirmation: true
+          },
+          restart: {
+            id: 'restart', label: 'Restart OpenBurnBar', instruction: 'Restart after replacement.',
+            command: 'systemctl --user restart openburnbar-daemon.service', available: true, requiresConfirmation: false
+          }
+        }
+      })
+    });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(<UpdatesSurface />);
+    await act(async () => {
+      await useSupportStore.getState().loadVersion();
+    });
+    expect((screen.getByRole('button', { name: 'Copy install command' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Copy rollback command' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Copy restart command' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Download unavailable' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Install and rollback guidance is disabled/)).toBeTruthy();
+    expect(openUpdateUrl).not.toHaveBeenCalled();
   });
 
   it('renders rejected update metadata as an alert with the native reason', async () => {
@@ -192,20 +489,115 @@ describe('P09 updates and support', () => {
       await useSupportStore.getState().exportDiagnostics();
     });
     expect(screen.getByText(/Export written:/)).toBeTruthy();
-    expect(screen.getByText('/home/user/diagnostics.json')).toBeTruthy();
+    expect(screen.getByText('/home/user/diagnostics-1720512345.json')).toBeTruthy();
+    expect(screen.getByText('Native export metadata')).toBeTruthy();
     expect(bridge.exportDiagnostics).toHaveBeenCalled();
   });
 
-  it('shows export failure with raw error from bridge', async () => {
+  it('ignores a late diagnostics export from a replaced shell bridge', async () => {
+    let resolveExport: ((result: { path: string }) => void) | undefined;
+    const firstBridge = mockBridge({
+      exportDiagnostics: vi.fn().mockImplementation(
+        () => new Promise<{ path: string }>((resolve) => { resolveExport = resolve; })
+      )
+    });
+    useShellStore.setState({ bridge: firstBridge, fixtureMode: false });
+    render(<SupportSurface />);
+    const pendingExport = useSupportStore.getState().exportDiagnostics();
+    await act(async () => { await Promise.resolve(); });
+
+    const replacementBridge = mockBridge({
+      exportDiagnostics: vi.fn().mockResolvedValue({ path: '/home/user/new-shell-diagnostics.json' })
+    });
+    act(() => useShellStore.setState({ bridge: replacementBridge }));
+    resolveExport?.({ path: '/home/user/old-shell-diagnostics.json' });
+    await act(async () => { await pendingExport; });
+
+    expect(useSupportStore.getState().exportPath).toBeNull();
+    expect(screen.queryByText('/home/user/old-shell-diagnostics.json')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Export redacted diagnostics' })).toBeTruthy();
+  });
+
+  it('keeps the newest diagnostics export when calls overlap', async () => {
+    let resolveFirst: ((result: { path: string }) => void) | undefined;
     const bridge = mockBridge({
-      exportDiagnostics: vi.fn().mockRejectedValue(new Error('dialog cancelled by user'))
+      exportDiagnostics: vi.fn()
+        .mockImplementationOnce(
+          () => new Promise<{ path: string }>((resolve) => { resolveFirst = resolve; })
+        )
+        .mockResolvedValueOnce({ path: '/home/user/newest-diagnostics.json' })
+    });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(<SupportSurface />);
+    const firstExport = useSupportStore.getState().exportDiagnostics();
+    await act(async () => { await Promise.resolve(); });
+    const secondExport = useSupportStore.getState().exportDiagnostics();
+    await act(async () => { await secondExport; });
+
+    expect(useSupportStore.getState().exportPath).toBe('/home/user/newest-diagnostics.json');
+    resolveFirst?.({ path: '/home/user/oldest-diagnostics.json' });
+    await act(async () => { await firstExport; });
+    expect(useSupportStore.getState().exportPath).toBe('/home/user/newest-diagnostics.json');
+  });
+
+  it('copies only the validated native export path', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const bridge = mockBridge();
+    useShellStore.setState({ bridge });
+    render(<SupportSurface />);
+    await act(async () => {
+      await useSupportStore.getState().exportDiagnostics();
+      await useSupportStore.getState().copyDiagnosticsPath();
+    });
+    expect(writeText).toHaveBeenCalledWith('/home/user/diagnostics-1720512345.json');
+    expect(screen.getByText('Diagnostics path copied.')).toBeTruthy();
+  });
+
+  it('fails closed when a bridge returns a path outside the diagnostics contract', async () => {
+    const bridge = mockBridge({
+      exportDiagnostics: vi.fn().mockResolvedValue({ path: '/tmp/../../secrets.json' })
     });
     useShellStore.setState({ bridge });
     render(<SupportSurface />);
     await act(async () => {
       await useSupportStore.getState().exportDiagnostics();
     });
-    expect(screen.getByText('dialog cancelled by user')).toBeTruthy();
+    expect(screen.getByText('Native diagnostics export returned an unsafe path.')).toBeTruthy();
+  });
+
+  it('fails closed when preview privacy metadata is malformed', async () => {
+    const bridge = mockBridge({
+      exportDiagnostics: vi.fn().mockResolvedValue({
+        path: '/tmp/diagnostics-1720512345.json',
+        preview: {
+          schemaVersion: 1,
+          byteCount: 512,
+          fileMode: '0644',
+          included: ['shell version'],
+          excluded: ['provider API keys and credentials']
+        }
+      })
+    });
+    useShellStore.setState({ bridge });
+    render(<SupportSurface />);
+    await act(async () => {
+      await useSupportStore.getState().exportDiagnostics();
+    });
+    expect(screen.getByText('Native diagnostics export returned unsafe preview metadata.')).toBeTruthy();
+  });
+
+  it('redacts export failures instead of echoing native error text', async () => {
+    const bridge = mockBridge({
+      exportDiagnostics: vi.fn().mockRejectedValue(new Error('dialog cancelled by user; apiKey=sk-live-should-not-render'))
+    });
+    useShellStore.setState({ bridge });
+    render(<SupportSurface />);
+    await act(async () => {
+      await useSupportStore.getState().exportDiagnostics();
+    });
+    expect(screen.getByText('Export cancelled. No diagnostics file was written.')).toBeTruthy();
+    expect(screen.queryByText(/sk-live-should-not-render/)).toBeNull();
   });
 
   it('fixture export succeeds without bridge', async () => {
@@ -217,7 +609,7 @@ describe('P09 updates and support', () => {
     expect(screen.getByText('/tmp/openburnbar-diagnostics-fixture.json')).toBeTruthy();
   });
 
-  it('keeps fixture toggle, perf table, raw diagnostic, and tray note', async () => {
+  it('keeps fixture toggle, perf table, structured diagnostic summary, and tray note', async () => {
     recordPerfSample('overview.route', 12.5, 'test');
     recordPerfSample('overview.route', 14.2, 'test');
     useShellStore.setState({
@@ -231,13 +623,182 @@ describe('P09 updates and support', () => {
       await useSupportStore.getState().loadVersion();
     });
     expect(screen.getByText('Tray degraded: use window reopen from launcher.')).toBeTruthy();
-    expect(container.querySelector('.diagnostic-detail')).not.toBeNull();
+    expect(container.querySelector('.p09-diagnostic-summary')).not.toBeNull();
+    expect(container.querySelector('.diagnostic-detail')).toBeNull();
+    expect(screen.getByText('Daemon diagnostics summary')).toBeTruthy();
+    expect(screen.queryByText('connection refused')).toBeNull();
     const table = container.querySelector('.p09-perf-table tbody');
     expect(table).not.toBeNull();
     expect(within(table as HTMLElement).getByText('overview.route')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Enable daemon fixture (host smoke)' }));
+    const fixtureToggle = screen.getByRole('button', { name: 'Enable fixture data (host smoke only)' });
+    expect(fixtureToggle.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(fixtureToggle);
     expect(useShellStore.getState().fixtureMode).toBe(true);
+    expect(screen.getByRole('button', { name: 'Disable fixture data' }).getAttribute('aria-pressed')).toBe('true');
     expect(localStorage.getItem('openburnbar.linux.daemonFixture')).toBe('1');
+  });
+
+  it('shows an accessible empty state before any performance samples exist', () => {
+    const { container } = render(<SupportSurface />);
+    const table = container.querySelector('.p09-perf-table');
+    expect(table).not.toBeNull();
+    const empty = table?.querySelector('.p09-perf-empty');
+    expect(empty).not.toBeNull();
+    expect(empty?.getAttribute('role')).toBe('status');
+    expect(empty?.getAttribute('colspan')).toBe('3');
+    expect(empty?.textContent).toMatch(/No performance samples yet/);
+  });
+
+  it('shows the live 2D fallback and truthful WebGL2-unavailable receipt', () => {
+    const removeReceipt = mountBackdropReceipt();
+    try {
+      render(<SupportSurface />);
+      const runtime = screen.getByRole('region', { name: 'Backdrop runtime' });
+      expect(runtime.getAttribute('data-provenance')).toBe('renderer');
+      expect(within(runtime).getByText('Aurora')).toBeTruthy();
+      expect(within(runtime).getByText('Constellation')).toBeTruthy();
+      expect(within(runtime).getByText('2D fallback (WebGL2 unavailable)')).toBeTruthy();
+      const webglRow = within(runtime).getByText('WebGL2 capability').parentElement;
+      expect(webglRow?.querySelector('dd')?.textContent).toBe('Unavailable');
+      const substrateRow = within(runtime).getByText('Active substrate').parentElement;
+      expect(substrateRow?.querySelector('dd')?.textContent).toBe('2d');
+    } finally {
+      removeReceipt();
+    }
+  });
+
+  it('accepts the typed renderer receipt while backdrop attributes are transitioning', () => {
+    render(<SupportSurface />);
+    fireEvent(
+      window,
+      new CustomEvent(KERNEL_RESOLUTION_EVENT, {
+        detail: {
+          requestedId: 'aurora',
+          resolvedId: 'constellation',
+          requestedSubstrate: 'webgl2',
+          resolvedSubstrate: '2d',
+          reason: 'webgl2-unavailable',
+          fallback: true,
+          glSupported: false
+        }
+      })
+    );
+    const runtime = screen.getByRole('region', { name: 'Backdrop runtime' });
+    expect(within(runtime).getByText('2D fallback (WebGL2 unavailable)')).toBeTruthy();
+    expect(within(runtime).getByText('Aurora')).toBeTruthy();
+  });
+
+  it('does not guess renderer facts when the live receipt is missing', () => {
+    render(<SupportSurface />);
+    const runtime = screen.getByRole('region', { name: 'Backdrop runtime' });
+    expect(runtime.getAttribute('data-provenance')).toBe('unavailable');
+    expect(within(runtime).getAllByText('Unavailable').length).toBeGreaterThan(0);
+    expect(within(runtime).getByRole('status').textContent).toContain('Live backdrop capability data is unavailable.');
+    expect(within(runtime).queryByText('2D fallback (WebGL2 unavailable)')).toBeNull();
+  });
+
+  it('labels fixture mode without presenting synthetic renderer capability facts', () => {
+    useShellStore.setState({ fixtureMode: true, bridge: null });
+    render(<SupportSurface />);
+    const runtime = screen.getByRole('region', { name: 'Backdrop runtime' });
+    expect(runtime.getAttribute('data-provenance')).toBe('fixture-unavailable');
+    expect(within(runtime).getByText(/Fixture mode does not fabricate WebGL2/)).toBeTruthy();
+    expect(within(runtime).getByRole('status').textContent).toContain('Live backdrop capability data is unavailable.');
+  });
+
+  it('shows fixture provenance and disables copying metadata-only output', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    useShellStore.setState({ fixtureMode: true, bridge: null });
+    render(<SupportSurface />);
+    await act(async () => {
+      await useSupportStore.getState().exportDiagnostics();
+    });
+    expect(screen.getByText('Fixture preview')).toBeTruthy();
+    expect(screen.getByText('Fixture output is metadata only; no file was written.')).toBeTruthy();
+    const copy = screen.getByRole('button', { name: 'Copy diagnostics path unavailable for fixture preview' }) as HTMLButtonElement;
+    expect(copy.disabled).toBe(true);
+    fireEvent.click(copy);
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it('exposes an accessible loading state and prevents duplicate exports', () => {
+    useShellStore.setState({ bridge: mockBridge(), fixtureMode: false });
+    useSupportStore.setState({ exportState: 'exporting' });
+    render(<SupportSurface />);
+    const exportButton = screen.getByRole('button', { name: 'Exporting…' }) as HTMLButtonElement;
+    expect(exportButton.disabled).toBe(true);
+    expect(screen.getByText('Export in progress…')).toBeTruthy();
+    expect(document.querySelector('.p09-export-status[aria-live="polite"]')).not.toBeNull();
+  });
+
+  it('renders a redacted health summary without secret-bearing daemon diagnostics', () => {
+    useShellStore.setState({
+      bridge: mockBridge(),
+      bridgeReady: true,
+      health: { ok: false, protocolVersion: 1 },
+      healthError: 'permission denied; authToken=sk-live-should-not-render'
+    });
+    const { container } = render(<SupportSurface />);
+    const summary = container.querySelector('.p09-diagnostic-summary');
+    expect(summary).not.toBeNull();
+    expect(summary?.getAttribute('data-provenance')).toBe('packaged');
+    expect(screen.getByText('Daemon unavailable')).toBeTruthy();
+    expect(screen.getByText('Protocol')).toBeTruthy();
+    expect(screen.queryByText(/sk-live-should-not-render/)).toBeNull();
+    expect(container.querySelector('.diagnostic-detail')).toBeNull();
+  });
+
+  it('offers a bounded daemon reconnect action when support health is degraded', async () => {
+    const refreshHealth = vi.fn().mockImplementation(() => new Promise<void>(() => undefined));
+    useShellStore.setState({
+      bridge: mockBridge(),
+      bridgeReady: true,
+      health: { ok: false, protocolVersion: 1 },
+      healthError: 'connection refused',
+      healthBusy: false,
+      refreshHealth
+    });
+    render(<SupportSurface />);
+
+    const reconnect = screen.getByRole('button', { name: 'Reconnect' }) as HTMLButtonElement;
+    expect(reconnect.disabled).toBe(false);
+    fireEvent.click(reconnect);
+    expect(refreshHealth).toHaveBeenCalledTimes(1);
+
+    act(() => useShellStore.setState({ healthBusy: true }));
+    expect(screen.getByRole('button', { name: 'Reconnecting…' })).toHaveProperty('disabled', true);
+  });
+
+  it('redacts arbitrary native preview labels while preserving privacy metadata facts', async () => {
+    const bridge = mockBridge({
+      exportDiagnostics: vi.fn().mockResolvedValue({
+        path: '/home/user/diagnostics-1720512345.json',
+        preview: {
+          schemaVersion: 1,
+          byteCount: 512,
+          fileMode: '0600',
+          included: ['apiKey=sk-live-should-not-render'],
+          excluded: ['opaque-session-secret=never-render']
+        }
+      })
+    });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(<SupportSurface />);
+    await act(async () => {
+      await useSupportStore.getState().exportDiagnostics();
+    });
+    expect(screen.getByText('Diagnostic metadata (redacted)')).toBeTruthy();
+    expect(screen.getByText('Sensitive fields (redacted)')).toBeTruthy();
+    expect(screen.queryByText(/sk-live-should-not-render|never-render/)).toBeNull();
+    expect(screen.getByText('Native export metadata')).toBeTruthy();
+  });
+
+  it('describes the packaged export destination and native save dialog', () => {
+    useShellStore.setState({ bridge: mockBridge(), fixtureMode: false });
+    render(<SupportSurface />);
+    expect(screen.getByText(/native save dialog/i)).toBeTruthy();
+    expect(screen.getByText(/Native save destination/)).toBeTruthy();
   });
 
   it('mounts Mercury media below diagnostics without treating staged media as performance proof', async () => {

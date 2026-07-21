@@ -2,7 +2,13 @@ import { useId, useRef, useState, type ChangeEvent } from 'react';
 import { Banner } from '../../components/Banner.js';
 import { exportSnippets, importSnippets } from '../../textExpansionStore.js';
 
-export function SnippetImportExport({ onImported }: { onImported: () => void }) {
+export function SnippetImportExport({
+  disabled = false,
+  onImported
+}: {
+  disabled?: boolean;
+  onImported: () => void;
+}) {
   const fileInputId = useId();
   const fileRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{ tone: 'ok' | 'degraded'; message: string } | null>(null);
@@ -49,10 +55,10 @@ export function SnippetImportExport({ onImported }: { onImported: () => void }) 
   return (
     <section className="te-import-export" aria-label="Snippet import and export">
       <div className="te-import-export-actions">
-        <button type="button" className="ghost" onClick={onExport}>
+        <button type="button" className="ghost" disabled={disabled} onClick={onExport}>
           Export JSON
         </button>
-        <button type="button" className="ghost" onClick={() => fileRef.current?.click()}>
+        <button type="button" className="ghost" disabled={disabled} onClick={() => fileRef.current?.click()}>
           Import JSON
         </button>
         <input
@@ -62,6 +68,7 @@ export function SnippetImportExport({ onImported }: { onImported: () => void }) 
           accept="application/json,.json"
           className="te-import-file"
           onChange={onFileChange}
+          disabled={disabled}
           tabIndex={-1}
           aria-hidden
         />

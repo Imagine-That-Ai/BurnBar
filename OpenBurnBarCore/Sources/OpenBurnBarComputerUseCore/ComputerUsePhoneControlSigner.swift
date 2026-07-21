@@ -19,6 +19,45 @@ import OpenBurnBarKernel
 /// encoding of the intent. The plan labels the field "blake3" — see
 /// `ComputerUseAuditHasher` for the algorithm note.
 public struct ComputerUsePhoneControlSigner: Sendable {
+    public static let sessionGrantChallengeVersion = 1
+    public static let sessionGrantChallengeMaximumLifetime: TimeInterval = 5 * 60
+    public static let sessionGrantChallengeMaximumClockSkew: TimeInterval = 30
+
+    public enum SessionGrantChallengeValidationError: Error, Equatable, Sendable {
+        case unsupportedVersion(Int)
+        case malformedIdentifier(String)
+        case malformedNonce
+        case malformedSession
+        case expired
+        case issuedInFuture
+        case lifetimeExceeded
+        case unsupportedRuntime(String)
+        case unsupportedPreset(String)
+        case unsupportedCapability(String)
+        case unsupportedMode(String)
+        case unsupportedTrustMode(String)
+        case unsupportedDesktopOwnerAuthorizationMethod(String)
+        case desktopOwnerAuthorizationRequired
+        case presetCapabilityTrustMismatch
+        case sessionIntentMismatch
+    }
+
+    private struct SignableComputerUseSessionIntent: Encodable {
+        let version: Int
+        let mode: String
+        let trustMode: String
+        let scopeRuleIds: [String]
+        let phoneViewerNodeId: String?
+        let macHostNodeId: String?
+        let actionCap: Int
+        let sessionTimeoutSeconds: Int
+        let clientId: String
+        let runId: String?
+        let runCallId: String?
+        let runGeneration: UInt64?
+        let desktopOwnerAuthorizationMethod: String?
+    }
+
     public init() {}
 
     private static func canonicalRelayDateString(_ date: Date) -> String {
@@ -209,6 +248,142 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             clientIntentId: binding.clientIntentId,
             localAuthenticationSatisfied: binding.localAuthenticationSatisfied
         )
+    }
+
+    /// Canonical identifier placed in a Computer Use grant's signed
+    /// `clientIntentId`. Proof verification can then bind the grant to the exact
+    /// session request without including the proof fields themselves.
+    public func canonicalComputerUseSessionIntentID(
+        request: ComputerUseSessionStartRequest
+    ) throws -> String {
+        return try canonicalIntentHashHex(intent: SignableComputerUseSessionIntent(
+            version: 2,
+            mode: request.mode,
+            trustMode: request.trustMode,
+            scopeRuleIds: request.scopeRuleIds.sorted(),
+            phoneViewerNodeId: request.phoneViewerNodeId,
+            macHostNodeId: request.macHostNodeId,
+            actionCap: request.actionCap,
+            sessionTimeoutSeconds: request.sessionTimeoutSeconds,
+            clientId: request.clientID.rawValue,
+            runId: request.runID?.rawValue,
+            runCallId: request.runCallID,
+            runGeneration: request.runGeneration,
+            desktopOwnerAuthorizationMethod: request.desktopOwnerAuthorizationRequest?.method.rawValue
+        ))
+    }
+
+    /// Recomputes the session identifier from the challenge's exact session
+    /// fields. Challenge metadata is intentionally excluded: the resulting ID
+    /// is byte-identical to `ComputerUseSessionStartRequest` canonicalization.
+    public func canonicalComputerUseSessionIntentID(
+        challenge: HermesRealtimeRelaySessionGrantChallenge
+    ) throws -> String {
+        try canonicalIntentHashHex(intent: SignableComputerUseSessionIntent(
+            version: 2,
+            mode: challenge.mode,
+            trustMode: challenge.trustMode,
+            scopeRuleIds: challenge.scopeRuleIds.sorted(),
+            phoneViewerNodeId: challenge.phoneViewerNodeId,
+            macHostNodeId: challenge.macHostNodeId,
+            actionCap: challenge.actionCap,
+            sessionTimeoutSeconds: challenge.sessionTimeoutSeconds,
+            clientId: challenge.clientId,
+            runId: challenge.runId,
+            runCallId: challenge.runCallId,
+            runGeneration: challenge.runGeneration,
+            desktopOwnerAuthorizationMethod: challenge.desktopOwnerAuthorizationMethod
+        ))
+    }
+
+    /// Validates all phone-visible challenge data before local authentication.
+    /// A successful result is the only value permitted in the grant's
+    /// `clientIntentId`.
+    @discardableResult
+    public func validateSessionGrantChallenge(
+        _ challenge: HermesRealtimeRelaySessionGrantChallenge,
+        now: Date = Date()
+    ) throws -> String {
+        guard challenge.version == Self.sessionGrantChallengeVersion else {
+            throw SessionGrantChallengeValidationError.unsupportedVersion(challenge.version)
+        }
+        guard isBoundedIdentifier(challenge.challengeId) else {
+            throw SessionGrantChallengeValidationError.malformedIdentifier("challengeId")
+        }
+        guard challenge.nonce.utf8.count >= 16, challenge.nonce.utf8.count <= 128,
+              challenge.nonce.allSatisfy({ $0.isASCII && !$0.isWhitespace }) else {
+            throw SessionGrantChallengeValidationError.malformedNonce
+        }
+        guard challenge.issuedAt.timeIntervalSinceReferenceDate.isFinite,
+              challenge.expiresAt.timeIntervalSinceReferenceDate.isFinite,
+              challenge.expiresAt > challenge.issuedAt else {
+            throw SessionGrantChallengeValidationError.malformedSession
+        }
+        guard challenge.expiresAt > now else {
+            throw SessionGrantChallengeValidationError.expired
+        }
+        guard challenge.issuedAt.timeIntervalSince(now) <= Self.sessionGrantChallengeMaximumClockSkew else {
+            throw SessionGrantChallengeValidationError.issuedInFuture
+        }
+        guard challenge.expiresAt.timeIntervalSince(challenge.issuedAt) <= Self.sessionGrantChallengeMaximumLifetime else {
+            throw SessionGrantChallengeValidationError.lifetimeExceeded
+        }
+        guard AssistantRuntimeID(rawValue: challenge.runtime) != nil else {
+            throw SessionGrantChallengeValidationError.unsupportedRuntime(challenge.runtime)
+        }
+        guard let preset = AgentPermissionPreset(rawValue: challenge.preset) else {
+            throw SessionGrantChallengeValidationError.unsupportedPreset(challenge.preset)
+        }
+        var capabilities = Set<AgentDesktopCapability>()
+        for rawCapability in challenge.capabilities {
+            guard let capability = AgentDesktopCapability(rawValue: rawCapability) else {
+                throw SessionGrantChallengeValidationError.unsupportedCapability(rawCapability)
+            }
+            capabilities.insert(capability)
+        }
+        guard ComputerUseMode(rawValue: challenge.mode) != nil else {
+            throw SessionGrantChallengeValidationError.unsupportedMode(challenge.mode)
+        }
+        guard let trustMode = ComputerUseTrustMode(rawValue: challenge.trustMode) else {
+            throw SessionGrantChallengeValidationError.unsupportedTrustMode(challenge.trustMode)
+        }
+        if let rawMethod = challenge.desktopOwnerAuthorizationMethod,
+           ComputerUseDesktopOwnerAuthorizationMethod(rawValue: rawMethod) == nil {
+            throw SessionGrantChallengeValidationError.unsupportedDesktopOwnerAuthorizationMethod(rawMethod)
+        }
+        if trustMode == .trusted,
+           challenge.desktopOwnerAuthorizationMethod != ComputerUseDesktopOwnerAuthorizationMethod.linuxDesktopOwner.rawValue {
+            throw SessionGrantChallengeValidationError.desktopOwnerAuthorizationRequired
+        }
+        guard preset != .off,
+              capabilities.isEmpty == false,
+              capabilities.isSubset(of: preset.capabilities),
+              challenge.capabilities.count == capabilities.count else {
+            throw SessionGrantChallengeValidationError.presetCapabilityTrustMismatch
+        }
+        guard isBoundedIdentifier(challenge.threadId),
+              isBoundedIdentifier(challenge.clientId),
+              challenge.actionCap > 0,
+              challenge.actionCap <= 10_000,
+              challenge.sessionTimeoutSeconds > 0,
+              challenge.sessionTimeoutSeconds <= 24 * 60 * 60,
+              challenge.scopeRuleIds.count <= 256,
+              challenge.scopeRuleIds.allSatisfy(isBoundedIdentifier),
+              challenge.phoneViewerNodeId.map(isBoundedIdentifier) ?? true,
+              challenge.macHostNodeId.map(isBoundedIdentifier) ?? true,
+              challenge.runId.map(isBoundedIdentifier) ?? true,
+              challenge.runCallId.map(isBoundedIdentifier) ?? true else {
+            throw SessionGrantChallengeValidationError.malformedSession
+        }
+        let expected = try canonicalComputerUseSessionIntentID(challenge: challenge)
+        guard challenge.sessionIntentId == expected else {
+            throw SessionGrantChallengeValidationError.sessionIntentMismatch
+        }
+        return expected
+    }
+
+    private func isBoundedIdentifier(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.count <= 512 && value.allSatisfy { $0.isASCII && !$0.isNewline }
     }
 
     private func canonicalAgentGrantRequestHashHex(

@@ -4,11 +4,12 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.firebase.FirebaseApp
+import com.openburnbar.ui.hermes.AccountScopedHermesServiceProvider
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -37,7 +38,9 @@ class HermesSquareScreenTest {
         composeRule.setContent {
             MaterialTheme {
                 Surface {
-                    HermesSquareScreen()
+                    AccountScopedHermesServiceProvider(accountUid = "instrumented-test-user") {
+                        HermesSquareScreen()
+                    }
                 }
             }
         }

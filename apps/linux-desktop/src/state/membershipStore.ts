@@ -12,6 +12,7 @@ export type MembershipPhase =
   | 'idle'
   | 'loading'
   | 'checkout-in-flight'
+  | 'portal-in-flight'
   | 'restore-in-flight'
   | 'error'
   | 'offline'
@@ -22,6 +23,7 @@ export type MembershipState = {
   phase: MembershipPhase;
   error: string | null;
   checkoutUrl: string | null;
+  externalDestination: 'checkout' | 'portal' | null;
   load(): Promise<void>;
   startCheckout(): Promise<void>;
   restore(): Promise<void>;
@@ -33,7 +35,7 @@ const CACHE_TTL_MS = 60_000;
 
 function isCapabilityAbsent(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? '');
-  return /unknown|unsupported|unrecognized|not implemented|invalid method|method not found/i.test(message);
+  return /capability_absent|unknown|unsupported|unrecognized|not implemented|invalid method|method not found/i.test(message);
 }
 
 function cacheStatus(data: MembershipStatus): void {
@@ -47,11 +49,17 @@ function fixtureState(): MembershipFixtureState {
   return 'active';
 }
 
+export function hasActivePaidMembership(data: MembershipStatus | null): boolean {
+  if (!data || data.state === 'cancelled' || data.state === 'paymentFailed' || data.state === 'offline') return false;
+  return data.tier === 'pro' || data.entitlements.length > 0;
+}
+
 export const useMembershipStore = create<MembershipState>()((set, get) => ({
   data: null,
   phase: 'idle',
   error: null,
   checkoutUrl: null,
+  externalDestination: null,
 
   async load() {
     const { fixtureMode, bridge } = useShellStore.getState();
@@ -94,17 +102,36 @@ export const useMembershipStore = create<MembershipState>()((set, get) => ({
 
   async startCheckout() {
     const { fixtureMode, bridge } = useShellStore.getState();
-    set({ phase: 'checkout-in-flight', error: null });
+    const destination = hasActivePaidMembership(get().data) ? 'portal' : 'checkout';
+    set({ phase: destination === 'portal' ? 'portal-in-flight' : 'checkout-in-flight', error: null });
     try {
-      const url = fixtureMode ? fixtureMembershipCheckoutUrl() : await bridge?.membershipCheckoutUrl?.();
-      if (!url) throw new Error('Packaged shell required for Stripe checkout.');
+      const url = fixtureMode
+        ? fixtureMembershipCheckoutUrl()
+        : destination === 'portal'
+          ? await bridge?.membershipPortalUrl?.()
+          : await bridge?.membershipCheckoutUrl?.();
+      if (!url) {
+        throw new Error(
+          destination === 'portal'
+            ? 'This daemon build does not expose Stripe billing management yet.'
+            : 'Packaged shell required for Stripe checkout.'
+        );
+      }
       if (bridge?.openExternalUrl) await bridge.openExternalUrl(url);
-      set({ checkoutUrl: url, phase: 'checkout-in-flight', error: null });
+      set({
+        checkoutUrl: url,
+        externalDestination: destination,
+        phase: destination === 'portal' ? 'portal-in-flight' : 'checkout-in-flight',
+        error: null
+      });
     } catch (e) {
       if (isCapabilityAbsent(e)) {
         set({
           phase: 'capability-absent',
-          error: 'This daemon build cannot mint Stripe checkout URLs yet.'
+          error:
+            destination === 'portal'
+              ? 'This daemon build does not expose Stripe billing management yet.'
+              : 'This daemon build cannot mint Stripe checkout URLs yet.'
         });
         return;
       }

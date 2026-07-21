@@ -25,6 +25,7 @@ export const AUDIT_DIRS = [
   "packages/libsignal-protocol",
   "packages/signal-envelope-contracts",
   "quota-runner",
+  "scripts/linux-port",
   "services/hermes-realtime-relay",
   "services/hosted-mcp",
   "tools/app-store-connect",

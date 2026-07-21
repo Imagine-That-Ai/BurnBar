@@ -1,0 +1,94 @@
+{
+  "schema": "openburnbar.parity.linux-installed-runtime-receipt.v1",
+  "capturedAt": "2026-07-19T23:40:00Z",
+  "certificationScope": "non-certifying exact current-source ARM64 package and live VM smoke receipt",
+  "sourceCommit": "90fac18c8646c6201acec64a00a0efd44f344f04",
+  "sourceDescription": "Current Linux parity integration head after scoping the notification queue helper to test builds; frontend and Rust source gates passed before packaging.",
+  "environment": {
+    "guest": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11",
+    "display": ":0",
+    "vmAddress": "192.168.64.5",
+    "session": "Unlocked GNOME session 1; active-window capture used the session X authority and D-Bus bus",
+    "renderNode": "/dev/dri/renderD128",
+    "webgl2": false,
+    "webgl1": true,
+    "webkitNote": "WebKitGTK WebGL2 is unavailable in this UTM guest; the shell visibly selects its Canvas2D fallback and labels the limitation."
+  },
+  "package": {
+    "name": "open-burn-bar",
+    "version": "0.1.1",
+    "architecture": "arm64",
+    "archiveBytes": 151395140,
+    "archiveSha256": "c9da9e6b890626946c92d12ce3c16626e9cea59b4e02a23b84930b024c46f459",
+    "desktopSha256": "02c477e380f74325345a12d56a7a5cfcaf728c7230ed888e4ea37cae92257217",
+    "daemonSha256": "fb0f87ccc0638f84c2ba9f2a34ca97f8cec707534a5473f19bf6f317291c480c",
+    "cliSha256": "db0d6931ca8644a91f78ee3dccac27364bab5a373e63917a53915cf836e180e5",
+    "embeddedFrontendAsset": "/assets/index-BQTOp6Xc.js",
+    "stalePreviousFrontendAssetAbsent": true,
+    "signed": false,
+    "publicFeed": false
+  },
+  "runtime": {
+    "daemonService": "active",
+    "daemonHealth": {
+      "ok": true,
+      "protocolVersion": 1,
+      "daemonVersion": "1.0.29",
+      "socketPath": "/run/user/1000/openburnbar/daemon.sock"
+    },
+    "installedDesktopPid": 51330,
+    "desktopWindow": {
+      "exists": true,
+      "title": "OpenBurnBar",
+      "renderedSurface": "first-run-setup-secret-service-visible-after-unlocked-active-window-capture"
+    },
+    "launchEnvironment": {
+      "display": ":0",
+      "xauthority": "/run/user/1000/gdm/Xauthority",
+      "dbusSessionBus": "unix:path=/run/user/1000/bus",
+      "webkitSafeMode": "auto"
+    }
+  },
+  "backdrop": {
+    "requestedKernel": "fluid-aurora",
+    "resolvedSubstrate": "2d",
+    "resolutionLabel": "Fluid Aurora - 2D fallback (WebGL2 unavailable)",
+    "captureIntervalSeconds": 2,
+    "captureASha256": "af4212cbe4a9832f24562dc6ff79c4599cc80950c1875ce84e75d803d8918536",
+    "captureBSha256": "abd67bdb3a972f8dafaa9a63c8d1a062dc5244c7bfa2c00b26edaaf8fdc299c6",
+    "capturePaths": [
+      ".tmp/arm64-build-20260719-final8/window-a.png",
+      ".tmp/arm64-build-20260719-final8/window-b.png"
+    ],
+    "captureDimensions": "1280x782",
+    "pixelsChangedBetweenCaptures": 512193,
+    "visible": true,
+    "animated": true,
+    "blackFrame": false,
+    "captureNote": "The VM lock screen was dismissed before launch verification. scrot -u captured the active OpenBurnBar window, avoiding the tiled/blank raw child-window artifact seen while the session was locked.",
+    "backgroundRecovery": {
+      "verified": false,
+      "reason": "Minimize/restore was not part of this bounded capture."
+    }
+  },
+  "onboarding": {
+    "daemonVerifyAction": "not-captured-current-run",
+    "advancedToStep": null,
+    "visibleRoute": "Overview",
+    "visibleCard": "Secret Service / SQLCipher",
+    "visibleStep": "2 of 8"
+  },
+  "limitations": [
+    "The package is locally built and unsigned; it is not release provenance evidence.",
+    "The clean unlocked launch proves the exact ARM64 package renders on Ubuntu GNOME/X11, but does not certify every route, onboarding interaction, accessibility matrix, or full visual parity.",
+    "This guest does not certify WebGL2-only kernels, KDE/Wayland/wlroots, x86_64, or cross-device workflows.",
+    "The strict ledger remains 0/40 product requirements and 0/7 environment receipts."
+  ],
+  "strictLedger": {
+    "productRequirementsReady": "0/40",
+    "environmentReceiptsComplete": "0/7",
+    "productParityClaim": false
+  }
+}

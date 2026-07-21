@@ -1,0 +1,91 @@
+{
+  "capturedAt": "2026-07-19T14:05:05Z",
+  "sourceCommit": "5b70a3d320495463fc7fd5022388c4b5e277f8ee",
+  "environment": {
+    "guest": "Ubuntu 24.04.4 LTS aarch64",
+    "desktop": "GNOME/X11",
+    "vmAddress": "192.168.64.5",
+    "package": "open-burn-bar 0.1.1 arm64",
+    "packageArchiveSha256": "86d94c8322af6dfc9331ffd0b911c3645ac58a736234390e2e15e014223fdc46",
+    "packageArchiveBytes": 151412092,
+    "packageUnsigned": true
+  },
+  "installed": {
+    "desktopSha256": "1c7ce31a50a4376b8a28d8cab86e88eb6e845328d8d55786f6c405948eaa464",
+    "daemonSha256": "fb0f87ccc0638f84c2ba9f2a34ca97f8cec707534a5473f19bf6f317291c480c",
+    "cliSha256": "db0d6931ca8644a91f78ee3dccac27364bab5a373e63917a53915cf836e180e5",
+    "daemonMainPid": 111502,
+    "desktopPid": 111511,
+    "daemonHealth": "Daemon 1.0.29 | protocol 1 | socket /run/user/1000/openburnbar/daemon.sock | ok=true",
+    "desktopLog": "/tmp/openburnbar-linux-desktop-5b70a3d320.log",
+    "desktopLogFatalOrStub": false,
+    "newDesktopLaunchPeerRejections": 0,
+    "gstreamer": {
+      "vp9dec": "available",
+      "ximagesink": "available"
+    },
+    "ibusEngine": "xkb:us::eng"
+  },
+  "verification": {
+    "frontendSuite": "83 files / 793 tests passed",
+    "focusedSettingsAndRouter": "45/45 passed",
+    "tauriRust": "125/125 passed",
+    "typescript": "pass",
+    "format": "pass",
+    "productionBundleVerifier": "pass",
+    "settingsActivation": {
+      "pass": true,
+      "nodeCount": 105,
+      "namedNodeCount": 69,
+      "actionableNodeCount": 50,
+      "loadingSettingsNodePresent": false,
+      "controls": [
+        "Search settings",
+        "General Appearance, refresh, indexing, and setup",
+        "Devices & Sync Cloud sync, trusted devices, smart displays"
+      ]
+    },
+    "settingsGeneral": {
+      "pass": true,
+      "nodeCount": 148,
+      "launchAtLoginControlPresent": true,
+      "launchAtLoginControl": "Launch OpenBurnBar at login"
+    },
+    "settingsMedia": {
+      "navigationActivation": true,
+      "pass": true,
+      "nodeCount": 91,
+      "namedNodeCount": 53,
+      "actionableNodeCount": 38,
+      "sectionPresent": "Media & Sharing",
+      "openMediaLinkPresent": true
+    },
+    "daemonConfigHydration": {
+      "configLoadedProviderCount": 21,
+      "responseBytes": 8397,
+      "settingsExitedLoading": true
+    },
+    "physicalIpad": {
+      "device": "Alberto's iPad",
+      "destination": "00008132-001158191E9A401C",
+      "focusedSuite": "OpenBurnBarMobileTests/iPadNavigationUITests",
+      "outcome": "passed",
+      "xcodebuildExitCode": 0,
+      "attempts": 1,
+      "durationSeconds": 517
+    }
+  },
+  "certifying": false,
+  "strictLedger": {
+    "productRequirementsReady": "0/40",
+    "environmentReceiptsComplete": "0/7",
+    "productParityClaim": false
+  },
+  "remaining": [
+    "signed exact-head provenance and release lifecycle",
+    "production Linux App Check/OAuth callable deployment",
+    "physical iPad/Linux enrollment and real approval execution",
+    "two-device Mercury and Browser Computer Use proof",
+    "KDE/Wayland/wlroots/accessibility/performance matrix"
+  ]
+}

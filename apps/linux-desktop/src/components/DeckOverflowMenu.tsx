@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useShellStore, type ShellSkin } from '../state/shellStore.js';
 
 type AppearanceMode = 'system' | 'light' | 'dark';
@@ -61,6 +61,8 @@ export function DeckOverflowMenu({
   const [open, setOpen] = useState(false);
   const [appearance, setAppearance] = useState<AppearanceMode>(() => readAppearanceMode());
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
 
   useEffect(() => {
@@ -70,11 +72,18 @@ export function DeckOverflowMenu({
 
   useEffect(() => {
     if (!open) return;
+    const checked = menuRef.current?.querySelector<HTMLButtonElement>('[aria-checked="true"]');
+    const firstEnabled = menuRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)');
+    (checked ?? firstEnabled)?.focus();
     const onDoc = (ev: MouseEvent) => {
       if (!rootRef.current?.contains(ev.target as Node)) setOpen(false);
     };
     const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') setOpen(false);
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener('mousedown', onDoc);
     document.addEventListener('keydown', onKey);
@@ -83,6 +92,33 @@ export function DeckOverflowMenu({
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
+
+  const closeMenu = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const onMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []
+    );
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const delta = event.key === 'ArrowDown' ? 1 : -1;
+      items[(current + delta + items.length) % items.length]?.focus();
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      items[event.key === 'Home' ? 0 : items.length - 1]?.focus();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      closeMenu();
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      (document.activeElement as HTMLButtonElement | null)?.click();
+    }
+  };
 
   const pickAppearance = (mode: AppearanceMode) => {
     setAppearance(mode);
@@ -96,6 +132,7 @@ export function DeckOverflowMenu({
   return (
     <div className="deck-overflow" ref={rootRef}>
       <button
+        ref={triggerRef}
         type="button"
         className="deck-overflow-trigger deck-capsule-trigger deck-capsule-trigger--icon"
         aria-haspopup="menu"
@@ -103,6 +140,12 @@ export function DeckOverflowMenu({
         aria-controls={menuId}
         aria-label="More actions"
         onClick={() => setOpen((v) => !v)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
       >
         {importBusy ? (
           <span className="deck-overflow-spin" aria-hidden="true">
@@ -115,7 +158,14 @@ export function DeckOverflowMenu({
         )}
       </button>
       {open ? (
-        <div className="deck-overflow-panel" id={menuId} role="menu">
+        <div
+          ref={menuRef}
+          className="deck-overflow-panel"
+          id={menuId}
+          role="menu"
+          aria-label="More actions"
+          onKeyDown={onMenuKeyDown}
+        >
           <p className="deck-overflow-section-label">Appearance</p>
           {APPEARANCE_OPTIONS.map((opt) => (
             <button
@@ -159,7 +209,7 @@ export function DeckOverflowMenu({
             disabled={importBusy}
             onClick={() => {
               onImportSessions?.();
-              setOpen(false);
+              closeMenu();
             }}
           >
             Import sessions
@@ -171,7 +221,7 @@ export function DeckOverflowMenu({
             disabled={recountDisabled}
             onClick={() => {
               onRecountTotals?.();
-              setOpen(false);
+              closeMenu();
             }}
           >
             Recount totals
@@ -182,7 +232,7 @@ export function DeckOverflowMenu({
             className="deck-overflow-item"
             onClick={() => {
               setRoute('settings');
-              setOpen(false);
+              closeMenu();
             }}
           >
             Settings…

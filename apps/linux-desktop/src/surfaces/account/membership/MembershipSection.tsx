@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Banner } from '../../../components/Banner.js';
 import { SurfaceCard } from '../../../components/SurfaceCard.js';
 import { useLaneLoad } from '../../../state/useLaneLoad.js';
-import { useMembershipStore } from '../../../state/membershipStore.js';
+import { hasActivePaidMembership, useMembershipStore } from '../../../state/membershipStore.js';
 import { useShellStore } from '../../../state/shellStore.js';
 import { FoilButton } from './FoilButton.js';
 import { FoilCard } from './FoilCard.js';
@@ -40,14 +40,16 @@ export function MembershipSection() {
   const phase = useMembershipStore((s) => s.phase);
   const error = useMembershipStore((s) => s.error);
   const checkoutUrl = useMembershipStore((s) => s.checkoutUrl);
+  const externalDestination = useMembershipStore((s) => s.externalDestination);
   const fixtureMode = useShellStore((s) => s.fixtureMode);
 
   useLaneLoad(load);
 
   const loading = phase === 'loading';
   const checkoutInFlight = phase === 'checkout-in-flight';
+  const portalInFlight = phase === 'portal-in-flight';
   const restoreInFlight = phase === 'restore-in-flight';
-  const pro = data?.tier === 'pro';
+  const pro = hasActivePaidMembership(data);
   const entitlementSet = useMemo(() => new Set(data?.entitlements ?? []), [data]);
   const statusText = stateCopy(data?.state, data?.tier);
   const provenance =
@@ -79,10 +81,12 @@ export function MembershipSection() {
           </Banner>
         ) : null}
 
-        {checkoutInFlight ? (
+        {checkoutInFlight || portalInFlight ? (
           <Banner tone="ok" role="status">
-            Stripe checkout opened in your browser. Return here and use Check again after completing
-            {checkoutUrl ? ` ${new URL(checkoutUrl).hostname}` : ' checkout'}.
+            {externalDestination === 'portal'
+              ? 'Stripe billing management opened in your browser.'
+              : 'Stripe checkout opened in your browser. Return here and use Check again after completing checkout.'}
+            {checkoutUrl ? ` Secure host: ${new URL(checkoutUrl).hostname}.` : ''}
           </Banner>
         ) : null}
 
@@ -102,8 +106,8 @@ export function MembershipSection() {
           }
           active={pro}
         >
-          <FoilButton disabled={loading || checkoutInFlight} onClick={() => void startCheckout()}>
-            {checkoutInFlight ? 'Waiting…' : pro ? 'Manage checkout' : 'Open checkout'}
+          <FoilButton disabled={loading || checkoutInFlight || portalInFlight} onClick={() => void startCheckout()}>
+            {checkoutInFlight || portalInFlight ? 'Opening…' : pro ? 'Manage subscription' : 'Open checkout'}
           </FoilButton>
           <FoilButton variant="secondary" disabled={loading || restoreInFlight} onClick={() => void restore()}>
             {restoreInFlight ? 'Restoring…' : 'Restore'}

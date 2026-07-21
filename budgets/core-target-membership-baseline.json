@@ -37,9 +37,14 @@
       "maxLines": 1000,
       "planned": true
     },
+    "OpenBurnBarAssistantModels": {
+      "maxFiles": 15,
+      "maxLines": 2700,
+      "planned": true
+    },
     "OpenBurnBarKernel": {
       "maxFiles": 185,
-      "maxLines": 46250,
+      "maxLines": 47000,
       "planned": true
     },
     "OpenBurnBarParserSupport": {
@@ -54,7 +59,7 @@
     },
     "OpenBurnBarLogParsers": {
       "maxFiles": 35,
-      "maxLines": 11800,
+      "maxLines": 13000,
       "planned": true
     },
     "OpenBurnBarQuota": {
@@ -104,15 +109,15 @@
     },
     "OpenBurnBarComputerUseCore": {
       "maxFiles": 74,
-      "maxLines": 15050
+      "maxLines": 15324
     },
     "OpenBurnBarMedia": {
       "maxFiles": 25,
-      "maxLines": 4349
+      "maxLines": 4359
     },
     "OpenBurnBarIrohRelay": {
       "maxFiles": 19,
-      "maxLines": 2547
+      "maxLines": 2688
     },
     "OpenBurnBarSignalCore": {
       "maxFiles": 9,
@@ -124,7 +129,7 @@
     },
     "OpenBurnBarFirestoreModels": {
       "maxFiles": 18,
-      "maxLines": 659
+      "maxLines": 703
     },
     "OpenBurnBarAnalytics": {
       "maxFiles": 12,
@@ -132,11 +137,11 @@
     },
     "OpenBurnBarLinuxSecurity": {
       "maxFiles": 4,
-      "maxLines": 2934
+      "maxLines": 3227
     },
     "OpenBurnBarData": {
-      "maxFiles": 18,
-      "maxLines": 4742
+      "maxFiles": 20,
+      "maxLines": 4920
     },
     "BurnBarRemoteEngine": {
       "maxFiles": 2,

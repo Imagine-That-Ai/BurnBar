@@ -1,0 +1,91 @@
+{
+  "schema": "openburnbar.parity.linux-installed-runtime-receipt.v1",
+  "capturedAt": "2026-07-19T20:30:01Z",
+  "certificationScope": "non-certifying exact integration-head ARM64 package and live VM smoke receipt",
+  "sourceCommit": "e4f3109ca8a963303a76e575beea5cfe4c6ba3ea",
+  "sourceDescription": "Exact integration checkout with provider-selection reconciliation and frontend test-race stabilization synced into the Ubuntu guest; frontend bundle verification passed, native ARM64 DEB build and install completed, daemon health verified, and a clean unlocked GNOME launch rendered the packaged desktop.",
+  "environment": {
+    "guest": "Ubuntu 24.04.4 LTS",
+    "architecture": "aarch64",
+    "desktop": "GNOME/X11",
+    "display": ":0",
+    "vmAddress": "192.168.64.5",
+    "session": "Unlocked GNOME session 1; clean launch used the session X authority and D-Bus bus",
+    "webgl2": false,
+    "webgl1": true,
+    "webkitNote": "WebKitGTK reports the GBM WebGL2 path unavailable; the packaged shell uses the Canvas2D fallback."
+  },
+  "package": {
+    "name": "open-burn-bar",
+    "version": "0.1.1",
+    "architecture": "arm64",
+    "archiveBytes": 151389394,
+    "archiveSha256": "7fc9f0e3328627fb520ac03ec98f03a62e23382354a7aef707da83d1f99c65e2",
+    "desktopSha256": "fc5b171d9ed1e9808858f074796e78cc13ca0e6b3183fc2d1ec0741641710860",
+    "daemonSha256": "fb0f87ccc0638f84c2ba9f2a34ca97f8cec707534a5473f19bf6f317291c480c",
+    "cliSha256": "db0d6931ca8644a91f78ee3dccac27364bab5a373e63917a53915cf836e180e5",
+    "signed": false,
+    "publicFeed": false
+  },
+  "runtime": {
+    "daemonService": "active",
+    "daemonHealth": {
+      "ok": true,
+      "protocolVersion": 1,
+      "daemonVersion": "1.0.29",
+      "socketPath": "/run/user/1000/openburnbar/daemon.sock"
+    },
+    "installedDesktopPid": 12189,
+    "desktopWindow": {
+      "exists": true,
+      "title": "OpenBurnBar",
+      "renderedSurface": "first-run-setup-secret-service-visible-after-clean-unlocked-launch"
+    },
+    "launchEnvironment": {
+      "display": ":0",
+      "xauthority": "/run/user/1000/gdm/Xauthority",
+      "dbusSessionBus": "unix:path=/run/user/1000/bus",
+      "webkitInspector": "127.0.0.1:9222"
+    }
+  },
+  "backdrop": {
+    "requestedKernel": "fluid-aurora",
+    "resolvedSubstrate": "2d",
+    "resolutionLabel": "Fluid Aurora - 2D fallback (WebGL2 unavailable)",
+    "captureIntervalSeconds": 2,
+    "captureASha256": "d94563fcf497fa235eee77f403022e8e7a0dabab03e41c2bf4e72d46d2cca522",
+    "captureBSha256": "c354095643b1862d8e6fae3a22d5a7e9bdb3e48584dd32c8355abb53da0851a4",
+    "capturePaths": [
+      ".tmp/arm64-build-20260719-e61/frame-final-a.png",
+      ".tmp/arm64-build-20260719-e61/frame-final-b.png"
+    ],
+    "captureDimensions": "1792x851",
+    "pixelsChangedBetweenCaptures": 971972,
+    "visible": true,
+    "animated": true,
+    "blackFrame": false,
+    "captureNote": "An orphaned duplicate autostart process was stopped. The exact package was then launched normally with the default XDG runtime single-instance directory in the unlocked GNOME session; the resulting captures show the onboarding surface and animated Canvas2D fallback.",
+    "backgroundRecovery": {
+      "verified": false,
+      "reason": "Minimize/restore was not part of this bounded capture."
+    }
+  },
+  "onboarding": {
+    "daemonVerifyAction": "not-captured-current-run",
+    "advancedToStep": null,
+    "visibleRoute": "Overview",
+    "visibleCard": "Secret Service / SQLCipher",
+    "historicalBlankCause": "Orphaned duplicate autostart/locked-era process; clean default-directory exact-head launch rendered normally"
+  },
+  "limitations": [
+    "The package is locally built and unsigned; it is not release provenance evidence.",
+    "The clean launch proves the exact ARM64 package renders on Ubuntu GNOME/X11, but does not certify every route, onboarding interaction, accessibility matrix, or full visual parity.",
+    "This guest does not certify WebGL2-only kernels, KDE/Wayland/wlroots, x86_64, or cross-device workflows.",
+    "The strict ledger remains 0/40 product requirements and 0/7 environment receipts."
+  ],
+  "strictLedger": {
+    "productRequirementsReady": "0/40",
+    "environmentReceiptsComplete": "0/7",
+    "productParityClaim": false
+  }
+}

@@ -67,7 +67,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/linux-desktop/package-lock.json
+          cache-dependency-path: |
+            apps/linux-desktop/package-lock.json
+            scripts/linux-port/package-lock.json
+
+      - name: Install Linux evidence contract dependencies
+        run: npm ci --prefix scripts/linux-port --ignore-scripts
 
       - name: Validate Linux release config
         run: node scripts/linux-port/validate-linux-release-config.mjs
@@ -95,6 +100,65 @@ jobs:
       - name: Linux parity ledger unit tests
         run: >
           node --test
+          scripts/linux-port/attest-product-requirement.test.mjs
+          scripts/linux-port/github-artifact-provenance.test.mjs
+          scripts/linux-port/live-installed-product-evidence.test.mjs
+          scripts/linux-port/smoke-linux-packages.test.mjs
+          scripts/linux-port/product-proof-closure.test.mjs
+          scripts/linux-port/product-feature-proof-closure.test.mjs
+          scripts/linux-port/p07-computer-use-proof.test.mjs
+          scripts/linux-port/p08-mercury-media-proof.test.mjs
+          scripts/linux-port/p09-navigation-shell-proof.test.mjs
+          scripts/linux-port/p10-dashboard-layout-proof.test.mjs
+          scripts/linux-port/p11-usage-ingestion-proof.test.mjs
+          scripts/linux-port/p12-quota-proof.test.mjs
+          scripts/linux-port/p13-native-onboarding-probes.test.mjs
+          scripts/linux-port/p13-onboarding-proof.test.mjs
+          scripts/linux-port/p14-chat-proof.test.mjs
+          scripts/linux-port/p15-account-billing-proof.test.mjs
+          scripts/linux-port/p16-cloud-devices-proof.test.mjs
+          scripts/linux-port/p16-physical-ipad-coordination.test.mjs
+          scripts/linux-port/p17-native-activity-probes.test.mjs
+          scripts/linux-port/p17-activity-proof.test.mjs
+          scripts/linux-port/p18-native-memory-probes.test.mjs
+          scripts/linux-port/p18-memory-review-proof.test.mjs
+          scripts/linux-port/p19-native-projects-probes.test.mjs
+          scripts/linux-port/p19-projects-proof.test.mjs
+          scripts/linux-port/p20-native-missions-probes.test.mjs
+          scripts/linux-port/p20-missions-proof.test.mjs
+          scripts/linux-port/p21-native-insights-probes.test.mjs
+          scripts/linux-port/p21-insights-proof.test.mjs
+          scripts/linux-port/p22-native-database-probes.test.mjs
+          scripts/linux-port/p22-database-proof.test.mjs
+          scripts/linux-port/p23-native-provider-workspace-probes.test.mjs
+          scripts/linux-port/p23-provider-workspace-proof.test.mjs
+          scripts/linux-port/p24-installed-settings-workflow.test.mjs
+          scripts/linux-port/p24-native-settings-probes.test.mjs
+          scripts/linux-port/p24-settings-proof.test.mjs
+          scripts/linux-port/p26-native-tray-probes.test.mjs
+          scripts/linux-port/p26-tray-proof.test.mjs
+          scripts/linux-port/p27-native-notification-probes.test.mjs
+          scripts/linux-port/p27-notifications-proof.test.mjs
+          scripts/linux-port/p28-native-smarthub-probes.test.mjs
+          scripts/linux-port/p28-smarthub-proof.test.mjs
+          scripts/linux-port/p29-native-text-expansion-probes.test.mjs
+          scripts/linux-port/p29-text-expansion-proof.test.mjs
+          scripts/linux-port/p30-native-pet-probes.test.mjs
+          scripts/linux-port/p30-pet-proof.test.mjs
+          scripts/linux-port/p32-performance-proof.test.mjs
+          scripts/linux-port/p33-reliability-proof.test.mjs
+          scripts/linux-port/p35-diagnostics-support-proof.test.mjs
+          scripts/linux-port/p36-visual-polish-proof.test.mjs
+          scripts/linux-port/install-tauri-webdriver-prerequisites.test.mjs
+          scripts/linux-port/p25-installed-update-lifecycle.test.mjs
+          scripts/linux-port/p25-native-update-probes.test.mjs
+          scripts/linux-port/p25-updates-proof.test.mjs
+          scripts/linux-port/p38-release-automation-proof.test.mjs
+          scripts/linux-port/p31-accessibility-proof.test.mjs
+          scripts/linux-port/p34-credential-security-proof.test.mjs
+          scripts/linux-port/parity-certification-preflight.test.mjs
+          scripts/linux-port/run-linux-matrix-harness.test.mjs
+          scripts/linux-port/run-product-requirement-validator.test.mjs
           scripts/linux-port/validate-parity-ledger.test.mjs
           scripts/linux-port/render-parity-ledger.test.mjs
 
@@ -102,20 +166,38 @@ jobs:
         run: >
           node --test
           scripts/linux-port/assemble-linux-release.test.mjs
+          scripts/linux-port/linux-aggregate-installed-attestation.test.mjs
+          scripts/linux-port/browser-runtime-packaging.test.mjs
+          scripts/linux-port/aur-browser-runtime-packaging.test.mjs
+          scripts/linux-port/arch-package-lifecycle.test.mjs
+          scripts/linux-port/embed-linux-appimage-payload.test.mjs
+          scripts/linux-port/linux-appimage-peer-manifest.test.mjs
+          scripts/linux-port/linux-native-package-real-tools.test.mjs
           scripts/linux-port/linux-package-session.test.mjs
+          scripts/linux-port/arch-lifecycle-authentication.test.mjs
           scripts/linux-port/prepare-linux-package-payload.test.mjs
+          scripts/linux-port/validate-linux-release-public-config.test.mjs
+          scripts/linux-port/sign-linux-release-requests.test.mjs
+          scripts/linux-port/sign-product-proof-closure.test.mjs
+          scripts/linux-port/signed-installed-package-wiring.test.mjs
           scripts/linux-port/credential-storage-contract.test.mjs
+          scripts/linux-port/media-runtime-contract.test.mjs
+          scripts/linux-port/linux-toolchain-node-runtime.test.mjs
           scripts/linux-port/verify-linux-release.test.mjs
           scripts/linux-port/resolve-linux-release-version.test.mjs
+          scripts/linux-port/resolve-linux-previous-release.test.mjs
 
       - name: Verify Linux workflow wiring
         run: |
           node scripts/linux-port/verify-linux-workflow-wiring.mjs
           node --test \
             scripts/linux-port/verify-linux-workflow-wiring.test.mjs \
+            scripts/linux-port/resolve-product-evidence-run.test.mjs \
+            scripts/linux-port/resolve-product-receipt-artifacts.test.mjs \
             scripts/linux-port/runtime-capability-contract.test.mjs \
             scripts/linux-port/accessibility-harness-contract.test.mjs \
             scripts/linux-port/run-linux-native-tests.test.mjs \
+            scripts/linux-port/text-expansion-native-evidence.test.mjs \
             scripts/linux-port/matched-performance-contract.test.mjs \
             scripts/linux-port/perf-budget-contract.test.mjs
 
@@ -140,6 +222,13 @@ jobs:
       - name: Toolchain smoke
         run: docker run --rm -v "$PWD:/workspace" -w /workspace openburnbar-linux-toolchain:mission-001 bash tools/linux-toolchain/smoke.sh
 
+      - name: Real deb and rpm metadata and extraction tests
+        run: >
+          docker run --rm -v "$PWD:/workspace:ro" -w /workspace
+          openburnbar-linux-toolchain:mission-001
+          node --test
+          scripts/linux-port/linux-native-package-real-tools.test.mjs
+          scripts/linux-port/linux-installed-manifest.test.mjs
       - name: Run Linux Swift package tests
         run: |
           mkdir -p "$OPENBURNBAR_LINUX_EVIDENCE_OUT"
@@ -180,5 +269,5 @@ jobs:
         with:
           name: linux-pr-gate-evidence
           path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/
-          if-no-files-found: warn
           include-hidden-files: true
+          if-no-files-found: warn

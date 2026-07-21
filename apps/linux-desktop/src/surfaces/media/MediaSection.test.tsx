@@ -189,6 +189,134 @@ describe('P12 Mercury media section', () => {
     expect(screen.getByText('Phase: Connecting')).toBeTruthy();
   });
 
+  it('keeps daemon call actions visible when the media socket advertises receive-only transport', async () => {
+    const mediaAcceptCall = vi.fn().mockResolvedValue({
+      phase: 'streaming',
+      requestId: 'incoming-receive-only',
+      peerName: 'Live iPhone',
+      kind: 'call',
+      capabilityAvailable: true
+    });
+    const status = {
+      capabilityAvailable: true,
+      supportsShellToDaemonControl: false,
+      pairedDevices: [
+        {
+          id: 'live-iphone',
+          name: 'Live iPhone',
+          platform: 'ios',
+          isOnline: true,
+          lastSeenAt: new Date().toISOString(),
+          capabilities: ['call.receive']
+        }
+      ]
+    } as unknown as MercuryMediaStatus;
+    useShellStore.setState({
+      bridge: bridgeWithMedia(Promise.resolve(status), {
+        mediaSessionState: vi.fn().mockResolvedValue({
+          phase: 'ringing',
+          requestId: 'incoming-receive-only',
+          peerName: 'Live iPhone',
+          kind: 'call',
+          capabilityAvailable: true
+        }),
+        mediaAcceptCall
+      })
+    });
+    render(<MediaSection />);
+    await act(async () => {
+      await useMediaStore.getState().load();
+    });
+
+    expect(screen.getByText('Media stream receive-only')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Decline' })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+      await Promise.resolve();
+    });
+    expect(mediaAcceptCall).toHaveBeenCalledWith('incoming-receive-only');
+  });
+
+  it('disables stale file-offer actions when the daemon withdraws file capability', async () => {
+    useShellStore.setState({
+      bridge: bridgeWithMedia(Promise.resolve({ capabilityAvailable: true, pairedDevices: [] }), {
+        mediaSessionState: vi.fn().mockResolvedValue({ phase: 'idle', kind: 'call', capabilityAvailable: true }),
+        mediaFileOfferList: vi.fn().mockResolvedValue({
+          capabilityAvailable: false,
+          transfers: [fileTransfer()],
+          detail: 'File transfer capability was withdrawn.'
+        })
+      })
+    });
+    render(<MediaSection />);
+    await act(async () => {
+      await useMediaStore.getState().load();
+    });
+
+    expect((screen.getByRole('button', { name: 'Accept file' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Decline file' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Send file' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('hides dead call controls when the shell viewer lacks a decoder while preserving file transfer', async () => {
+    const status: MercuryMediaStatus = {
+      capabilityAvailable: true,
+      pairedDevices: [],
+      viewerCapability: {
+        available: false,
+        renderer: 'media-gst',
+        featureEnabled: true,
+        canDecodeVp9: false,
+        hasVideoSink: true,
+        status: 'gstreamer_vp9_decoder_missing',
+        reason: 'gstreamer_vp9_decoder_missing',
+        installHint: 'Install a VP9 decoder plugin, then restart OpenBurnBar.'
+      }
+    };
+    const mediaStatus = vi.fn().mockResolvedValue(status);
+    useShellStore.setState({
+      bridge: bridgeWithMedia(
+        Promise.resolve(status),
+        {
+          mediaStatus,
+          mediaSessionState: vi.fn().mockResolvedValue({
+            phase: 'ringing',
+            requestId: 'incoming-1',
+            peerName: 'Live iPhone',
+            kind: 'call',
+            capabilityAvailable: true
+          }),
+          mediaFileOfferList: vi.fn().mockResolvedValue({
+            capabilityAvailable: true,
+            downloadDirectory: '/home/alberto/Downloads',
+            transfers: []
+          })
+        }
+      )
+    });
+    render(<MediaSection />);
+    await act(async () => {
+      await useMediaStore.getState().load();
+    });
+    expect(screen.getByText('Calls and screen sharing are paused on this Linux session')).toBeTruthy();
+    expect(screen.getByText('The GStreamer runtime is present, but its VP9 decoder is missing.')).toBeTruthy();
+    expect(screen.getByText('Install a VP9 decoder plugin, then restart OpenBurnBar.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Decline' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'End' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Send file' })).toBeTruthy();
+
+    const callsBeforeRetry = mediaStatus.mock.calls.length;
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mediaStatus.mock.calls.length).toBeGreaterThan(callsBeforeRetry);
+    expect(screen.getByRole('button', { name: 'Check again' })).toBeTruthy();
+  });
+
   it('renders incoming file offer actions and completed path rows', async () => {
     const completed = fileTransfer({
       phase: 'completed',

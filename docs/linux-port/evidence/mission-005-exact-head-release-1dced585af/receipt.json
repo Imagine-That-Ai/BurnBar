@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "workflow": "Linux Release Candidate",
+  "runId": 29664085758,
+  "runUrl": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29664085758",
+  "targetHead": "1dced585af2441ac8ac1d4fdcb2e4666177f0474",
+  "version": "0.1.1",
+  "channel": "prerelease",
+  "status": "success",
+  "jobs": {
+    "resolve": { "id": 88131492409, "status": "success" },
+    "x86_64": { "id": 88131531712, "status": "success" },
+    "aarch64": { "id": 88131531733, "status": "success" },
+    "aggregate": { "id": 88134572099, "status": "success" }
+  },
+  "artifact": {
+    "id": 8435577756,
+    "name": "linux-release-evidence",
+    "sizeBytes": 3681812676,
+    "digest": "sha256:cb4eeed2f2263707bbf5d563200d02367065067b5c6e4ff6deed651f47299807"
+  },
+  "coverage": [
+    "native x86_64 and aarch64 package construction",
+    "DEB/RPM/Arch ownership and install/uninstall",
+    "packaged daemon and desktop/tray/accessibility/route sessions",
+    "native update/rollback/data-preservation checks",
+    "signed closure, attestation, and installed-product proof closure"
+  ],
+  "lifecycleNote": "The run passed the lifecycle contract with no compatible previous same-architecture package supplied; update/rollback/data-preservation promotion remains blocked rather than being inferred from the candidate run."
+}

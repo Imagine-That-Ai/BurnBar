@@ -100,6 +100,9 @@ enum class HermesRealtimeRelayFrameType {
     /** Human approval response for a control action. */
     @SerialName("control.approval.response")
     CONTROL_APPROVAL_RESPONSE,
+    /** Request a phone-authenticated grant bound to one exact Computer Use session intent. */
+    @SerialName("control.session.grant.challenge")
+    CONTROL_SESSION_GRANT_CHALLENGE,
     /** Request an agent capability grant. */
     @SerialName("control.agent.grant.request")
     CONTROL_AGENT_GRANT_REQUEST,

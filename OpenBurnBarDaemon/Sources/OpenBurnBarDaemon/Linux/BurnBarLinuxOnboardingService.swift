@@ -10,6 +10,7 @@ public enum BurnBarLinuxOnboardingError: Error, LocalizedError, Equatable {
     )
     case invalidPrivacyChoices
     case invalidPersistedState(String)
+    case probeUnavailable(step: BurnBarLinuxOnboardingStepID, detail: String)
     case secretStoreUnavailable(String)
     case providerPathsUnavailable(String)
 
@@ -23,6 +24,8 @@ public enum BurnBarLinuxOnboardingError: Error, LocalizedError, Equatable {
             return "Choose both telemetry and cloud-sync preferences before continuing."
         case .invalidPersistedState(let detail):
             return "The daemon-owned onboarding state is invalid: \(detail)"
+        case .probeUnavailable(let step, let detail):
+            return "The \(step.rawValue) onboarding probe is unavailable: \(detail)"
         case .secretStoreUnavailable(let detail):
             return "Secret Service verification failed: \(detail)"
         case .providerPathsUnavailable(let detail):
@@ -51,6 +54,7 @@ public actor BurnBarLinuxOnboardingService {
     private let daemonProbe: Probe
     private let secretStoreProbe: Probe
     private let providerPathsProbe: Probe
+    private let optionalProbes: [BurnBarLinuxOnboardingStepID: Probe]
     private let configStore: BurnBarConfigStore?
 
     public init(
@@ -61,7 +65,12 @@ public actor BurnBarLinuxOnboardingService {
             "The daemon accepted and verified this authenticated onboarding RPC."
         },
         secretStoreProbe: @escaping Probe = BurnBarLinuxOnboardingService.verifyProductionSecretStore,
+        providerCatalogCount: Int = BurnBarCatalogLoader.bundledCatalog.providers.count,
         providerPathsProbe: Probe? = nil,
+        cloudIdentityProbe: Probe? = nil,
+        portalInputProbe: Probe? = nil,
+        trayProbe: Probe? = nil,
+        updatesProbe: Probe? = nil,
         configStore: BurnBarConfigStore? = nil
     ) {
         self.stateURL = stateURL
@@ -70,9 +79,36 @@ public actor BurnBarLinuxOnboardingService {
         self.daemonProbe = daemonProbe
         self.secretStoreProbe = secretStoreProbe
         self.configStore = configStore
+        var optionalProbes: [BurnBarLinuxOnboardingStepID: Probe] = [:]
+        optionalProbes[.cloudIdentity] = cloudIdentityProbe ?? {
+            throw BurnBarLinuxOnboardingError.probeUnavailable(
+                step: .cloudIdentity,
+                detail: "native cloud sign-in must be completed from the account flow"
+            )
+        }
+        optionalProbes[.portalInput] = portalInputProbe ?? {
+            throw BurnBarLinuxOnboardingError.probeUnavailable(
+                step: .portalInput,
+                detail: "portal consent is granted only by a live desktop session"
+            )
+        }
+        optionalProbes[.tray] = trayProbe ?? {
+            throw BurnBarLinuxOnboardingError.probeUnavailable(
+                step: .tray,
+                detail: "tray availability must be confirmed by the native shell"
+            )
+        }
+        optionalProbes[.updates] = updatesProbe ?? {
+            throw BurnBarLinuxOnboardingError.probeUnavailable(
+                step: .updates,
+                detail: "a signed package channel is required before update verification"
+            )
+        }
+        self.optionalProbes = optionalProbes
         self.providerPathsProbe = providerPathsProbe ?? {
-            try BurnBarLinuxOnboardingService.verifyWritableDirectory(
-                stateURL.deletingLastPathComponent(),
+            try BurnBarLinuxOnboardingService.verifyProviderData(
+                at: stateURL.deletingLastPathComponent(),
+                providerCount: providerCatalogCount,
                 fileManager: fileManager
             )
         }
@@ -124,6 +160,14 @@ public actor BurnBarLinuxOnboardingService {
                 probe = secretStoreProbe
             case .providerPaths:
                 probe = providerPathsProbe
+            case .cloudIdentity, .portalInput, .tray, .updates:
+                guard let optionalProbe = optionalProbes[request.stepID] else {
+                    throw BurnBarLinuxOnboardingError.probeUnavailable(
+                        step: request.stepID,
+                        detail: "no daemon probe is registered"
+                    )
+                }
+                probe = optionalProbe
             default:
                 throw BurnBarLinuxOnboardingError.invalidAction(step: request.stepID, action: request.action)
             }
@@ -137,7 +181,8 @@ public actor BurnBarLinuxOnboardingService {
                     state: .blocked,
                     attemptCount: step.attemptCount + 1,
                     detail: boundedErrorDetail(error),
-                    verifiedAt: nil
+                    verifiedAt: nil,
+                    repairAction: Self.repairAction(for: step.id)
                 )
             }
         case .acknowledge:
@@ -226,7 +271,31 @@ public actor BurnBarLinuxOnboardingService {
         }
     }
 
+    private nonisolated static func repairAction(
+        for stepID: BurnBarLinuxOnboardingStepID
+    ) -> BurnBarLinuxOnboardingRepairAction {
+        switch stepID {
+        case .daemon:
+            return .startDaemon
+        case .secretStore:
+            return .unlockSecretStore
+        case .providerPaths:
+            return .repairProviderData
+        case .cloudIdentity:
+            return .signIn
+        case .portalInput:
+            return .grantPortal
+        case .tray:
+            return .enableTray
+        case .updates:
+            return .openUpdates
+        case .privacy:
+            return .choosePrivacy
+        }
+    }
+
     private func loadSnapshot() throws -> BurnBarLinuxOnboardingSnapshot {
+        try rejectSymbolicStatePathComponents()
         guard fileManager.fileExists(atPath: stateURL.path) else {
             return initialSnapshot(revision: 0)
         }
@@ -312,7 +381,8 @@ public actor BurnBarLinuxOnboardingService {
             state: state,
             attemptCount: step.attemptCount + 1,
             detail: detail,
-            verifiedAt: timestamp()
+            verifiedAt: timestamp(),
+            repairAction: nil
         )
     }
 
@@ -339,6 +409,7 @@ public actor BurnBarLinuxOnboardingService {
     }
 
     private func persist(_ snapshot: BurnBarLinuxOnboardingSnapshot) throws {
+        try rejectSymbolicStatePathComponents()
         let stateDirectoryURL = stateURL.deletingLastPathComponent()
         try fileManager.createDirectory(
             at: stateDirectoryURL,
@@ -355,6 +426,36 @@ public actor BurnBarLinuxOnboardingService {
         try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: stateURL.path)
     }
 
+    /// Onboarding state is daemon-owned and must stay below the configured
+    /// support directory.  Reject both existing symlinks and dangling links
+    /// before reads or atomic replacement so a user-controlled path cannot
+    /// redirect state outside the private 0700/0600 boundary.
+    private func rejectSymbolicStatePathComponents() throws {
+        let components: [(URL, String)] = [
+            (stateURL.deletingLastPathComponent(), "state directory"),
+            (stateURL, "state file")
+        ]
+
+        for (url, label) in components {
+            if let attributes = try? fileManager.attributesOfItem(atPath: url.path),
+               let fileType = attributes[.type] as? FileAttributeType,
+               fileType == .typeSymbolicLink {
+                throw BurnBarLinuxOnboardingError.invalidPersistedState(
+                    "onboarding \(label) must not be a symbolic link"
+                )
+            }
+
+            // `attributesOfItem` may not report a dangling link as existing.
+            // FileManager's destination lookup is link-specific and catches
+            // that case without resolving the destination for any operation.
+            if (try? fileManager.destinationOfSymbolicLink(atPath: url.path)) != nil {
+                throw BurnBarLinuxOnboardingError.invalidPersistedState(
+                    "onboarding \(label) must not be a symbolic link"
+                )
+            }
+        }
+    }
+
     private func timestamp() -> String {
         ISO8601DateFormatter().string(from: now())
     }
@@ -366,21 +467,38 @@ public actor BurnBarLinuxOnboardingService {
 
     public nonisolated static func verifyProductionSecretStore() throws -> String {
         #if os(Linux)
-        let custodian = LinuxSecretStoreFactory.production()
+        return try verifyProductionSecretStore(using: LinuxSecretStoreFactory.production())
+        #else
+        throw BurnBarLinuxOnboardingError.secretStoreUnavailable(
+            "native Secret Service verification requires Linux"
+        )
+        #endif
+    }
+
+    /// Runs the ephemeral production probe against an injected custodian so
+    /// the same health-before-mutation contract is testable without touching
+    /// a user's keyring. Production callers use the zero-argument overload.
+    public nonisolated static func verifyProductionSecretStore(
+        using custodian: LinuxSecretCustodian
+    ) throws -> String {
         let probeID = "openburnbar-onboarding-\(UUID().uuidString)"
         let probeValue = UUID().uuidString.replacingOccurrences(of: "-", with: "")
         var lastError: Error?
         for backend in custodian.backends
             where backend.supportsMutations && backend.trustLevel.approvedForHighValueSecrets {
+            var probeStored = false
             do {
+                // Secret Service and KWallet can expose an executable command
+                // while their session/keyring is locked. Health must succeed
+                // before any write so onboarding never mutates a backend that
+                // cannot be read back and cleaned up reliably.
+                try backend.healthCheck()
                 _ = try backend.storeSecret(
                     probeValue,
                     id: probeID,
                     secretClass: .providerCredential
                 )
-                defer {
-                    try? backend.deleteSecret(id: probeID, secretClass: .providerCredential)
-                }
+                probeStored = true
                 let readback = try backend.readSecret(id: probeID, secretClass: .providerCredential)
                 guard readback?.secret == probeValue else {
                     throw LinuxSecretStoreError.commandFailed(
@@ -390,19 +508,29 @@ public actor BurnBarLinuxOnboardingService {
                     )
                 }
                 try backend.deleteSecret(id: probeID, secretClass: .providerCredential)
+                probeStored = false
                 return "\(backend.backendName) passed an ephemeral write/read/delete verification."
             } catch {
+                if probeStored {
+                    do {
+                        // A successful write must never be allowed to escape
+                        // onboarding when cleanup cannot be confirmed. Retry
+                        // once after a readback/delete failure, then fail
+                        // closed instead of falling through to another backend
+                        // with an orphaned probe secret.
+                        try backend.deleteSecret(id: probeID, secretClass: .providerCredential)
+                    } catch {
+                        throw BurnBarLinuxOnboardingError.secretStoreUnavailable(
+                            "\(backend.backendName) could not delete its ephemeral verification value; onboarding remains blocked."
+                        )
+                    }
+                }
                 lastError = error
             }
         }
         let detail = lastError.map { String(describing: $0) }
             ?? "no writable approved Secret Service or KWallet backend is available"
         throw BurnBarLinuxOnboardingError.secretStoreUnavailable(detail)
-        #else
-        throw BurnBarLinuxOnboardingError.secretStoreUnavailable(
-            "native Secret Service verification requires Linux"
-        )
-        #endif
     }
 
     public nonisolated static func verifyWritableDirectory(
@@ -429,5 +557,23 @@ public actor BurnBarLinuxOnboardingService {
         } catch {
             throw BurnBarLinuxOnboardingError.providerPathsUnavailable(error.localizedDescription)
         }
+    }
+
+    /// Required first-data probe used by the packaged daemon. A writable XDG
+    /// directory alone is not enough to complete onboarding: the bundled
+    /// provider catalog must also be present so the first renderer read has a
+    /// real data source.
+    public nonisolated static func verifyProviderData(
+        at directoryURL: URL,
+        providerCount: Int,
+        fileManager: FileManager = .default
+    ) throws -> String {
+        let pathDetail = try verifyWritableDirectory(directoryURL, fileManager: fileManager)
+        guard providerCount > 0 else {
+            throw BurnBarLinuxOnboardingError.providerPathsUnavailable(
+                "The bundled provider catalog is empty; first-run data cannot be loaded."
+            )
+        }
+        return "\(pathDetail) Bundled provider catalog loaded with \(providerCount) provider definitions."
     }
 }

@@ -26,8 +26,15 @@ nonisolated(unsafe) let projectCodeMemoryQueueKey = DispatchSpecificKey<UUID>()
 enum BurnBarProjectCodeMemoryStoreError: Error, LocalizedError {
     case emptyText
     case emptyQuery
+    case memoryNotFound(String)
+    case invalidMemoryReviewStatus(String)
     case projectPathUnavailable(String)
     case secretRejected(labels: [String])
+    case databaseSnapshotUnavailable(String)
+    case databaseSnapshotInvalidPath(String)
+    case databaseSnapshotTooLarge(Int)
+    case databaseSnapshotPermissions(String)
+    case databaseSnapshotFailed(String)
     case sqlite(String)
 
     var errorDescription: String? {
@@ -36,14 +43,29 @@ enum BurnBarProjectCodeMemoryStoreError: Error, LocalizedError {
             return "Memory text is empty."
         case .emptyQuery:
             return "Query is empty."
+        case .memoryNotFound(let memoryID):
+            return "Memory was not found in the selected project: \(memoryID)"
+        case .invalidMemoryReviewStatus(let status):
+            return "Unsupported memory review status: \(status)"
         case .projectPathUnavailable(let path):
             return "Project path is not readable: \(path)"
         case .secretRejected(let labels):
             return "Rejected before persistence by the project memory secret scanner: \(labels.joined(separator: ", "))."
+        case .databaseSnapshotUnavailable(let reason):
+            return "Encrypted database snapshots are unavailable: \(reason)"
+        case .databaseSnapshotInvalidPath(let path):
+            return "Database snapshot path is not allowed: \(path)"
+        case .databaseSnapshotTooLarge(let bytes):
+            return "Database snapshot exceeds the configured byte limit (\(bytes) bytes)."
+        case .databaseSnapshotPermissions(let path):
+            return "Database snapshot permissions are unsafe: \(path)"
+        case .databaseSnapshotFailed(let reason):
+            return "Database snapshot operation failed: \(reason)"
         case .sqlite(let message):
             return message
         }
     }
+
 }
 
 // AUDIT(@unchecked Sendable): raw SQLite access is serialized through `dbQueue`.
@@ -183,6 +205,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let tags: [String]
         let sourcePath: String?
         let updatedAt: String
+        let reviewStatus: MemoryReviewStatus
     }
 
     static let agentMemoryPageID = "agent-notes"
@@ -207,7 +230,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     /// operator can confirm which schema generation a daemon's index DB is running.
     static let schemaVersion = 2
 
-    let db: OpaquePointer?
+    var db: OpaquePointer?
     let dbQueue = DispatchQueue(label: "com.openburnbar.daemon.project-code-memory.sqlite")
     let dbQueueID = UUID()
     let logger: BurnBarDaemonLogger
@@ -246,6 +269,13 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         try databaseSync {
             try bootstrapSchema()
         }
+        // The code-memory store contains indexed source text and memory
+        // references. Tighten the primary file on every open so snapshot export
+        // never has to copy a group/world-readable database.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: databasePath
+        )
     }
 
     deinit {
@@ -260,6 +290,9 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let traceID = TraceContextBridge.currentContext().traceID
         let body = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard body.isEmpty == false else { throw BurnBarProjectCodeMemoryStoreError.emptyText }
+        guard request.reviewStatus == .approved || request.reviewStatus == .quarantined else {
+            throw BurnBarProjectCodeMemoryStoreError.invalidMemoryReviewStatus(request.reviewStatus.rawValue)
+        }
         let root = try projectRoot(request.projectPath)
         let projectID = try resolveProjectIdentity(root: root).projectID
         let labels = Self.secretLabels(in: body)
@@ -292,8 +325,8 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 try execute(
                     """
                     INSERT INTO agent_memories
-                        (id, project_id, kind, scope, confidence, body_ref, body_redacted, tags_json, source_path, valid_from, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (id, project_id, kind, scope, confidence, body_ref, body_redacted, tags_json, source_path, valid_from, review_status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         kind = excluded.kind,
                         scope = excluded.scope,
@@ -302,15 +335,23 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         body_redacted = excluded.body_redacted,
                         tags_json = excluded.tags_json,
                         source_path = excluded.source_path,
+                        review_status = excluded.review_status,
                         updated_at = excluded.updated_at
                     """,
                     [
                         .text(memoryID), .text(projectID), .text(request.kind), .text(request.scope),
                         .double(request.confidence), .text(bodyRef), .text(Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)),
-                        .text(tagsJSON), request.sourcePath.map(SQLiteBind.text) ?? .null, .text(now), .text(now), .text(now)
+                        .text(tagsJSON), request.sourcePath.map(SQLiteBind.text) ?? .null, .text(now),
+                        .text(request.reviewStatus.rawValue), .text(now), .text(now)
                     ]
                 )
-                let auditHash = try auditEvent(action: "memory.remember", domain: "memory", projectID: projectID, subjectID: memoryID, labels: [])
+                let auditHash = try auditEvent(
+                    action: "memory.remember",
+                    domain: "memory",
+                    projectID: projectID,
+                    subjectID: memoryID,
+                    labels: ["review_status:\(request.reviewStatus.rawValue)"]
+                )
                 try execute("COMMIT", [])
                 return BurnBarProjectMemoryRememberResponse(
                     traceID: traceID,
@@ -349,13 +390,19 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             let whereClause = clauses.isEmpty ? "" : "WHERE \(clauses.joined(separator: " AND "))"
             let sql = """
                 SELECT m.id, m.project_id, m.kind, m.scope, m.confidence, m.body_redacted,
-                       m.tags_json, m.source_path, m.updated_at
+                       m.tags_json, m.source_path, m.updated_at, m.review_status
                 FROM agent_memories AS m
-                \(whereClause)
+                \(whereClause.isEmpty ? "WHERE 1 = 1" : whereClause)
+                AND (
+                    m.review_status = 'approved'
+                    OR (? = 1 AND m.review_status IN ('quarantined', 'rejected'))
+                    OR (? = 1 AND m.review_status = 'forgotten')
+                )
                 ORDER BY m.updated_at DESC
                 LIMIT 1000
             """
-            let ranked = try queryRows(sql, binds)
+            let queryBinds = binds + [.int(request.includeQuarantined ? 1 : 0), .int(request.includeForgotten ? 1 : 0)]
+            let ranked = try queryRows(sql, queryBinds)
                 .map { row in
                     MemoryIndexRow(
                         id: row.string(0),
@@ -366,15 +413,20 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         bodyReference: row.string(5),
                         tags: decodeStringArray(row.string(6)),
                         sourcePath: row.optionalString(7),
-                        updatedAt: row.string(8)
+                        updatedAt: row.string(8),
+                        reviewStatus: MemoryReviewStatus(rawValue: row.string(9)) ?? .approved
                     )
                 }
                 .compactMap { row -> BurnBarProjectMemoryHit? in
-                    guard let body = try projectMemorySectionBody(projectID: row.projectID, memoryID: row.id) else {
+                    let body = try projectMemorySectionBody(projectID: row.projectID, memoryID: row.id)
+                    if body == nil, row.reviewStatus != .forgotten || request.includeForgotten == false {
                         return nil
                     }
-                    let searchable = ([body] + row.tags + [row.sourcePath ?? ""]).joined(separator: " ")
-                    guard let rank = Self.memoryRank(tokens: tokens, query: query, searchable: searchable) else {
+                    let searchable = ([body ?? ""] + row.tags + [row.sourcePath ?? ""]).joined(separator: " ")
+                    let rank = request.includeQuarantined || request.includeForgotten
+                        ? nil
+                        : Self.memoryRank(tokens: tokens, query: query, searchable: searchable)
+                    if request.includeQuarantined == false && request.includeForgotten == false && rank == nil {
                         return nil
                     }
                     return BurnBarProjectMemoryHit(
@@ -383,11 +435,12 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         kind: row.kind,
                         scope: row.scope,
                         confidence: row.confidence,
-                        bodyRedacted: body,
+                        bodyRedacted: body ?? "",
                         tags: row.tags,
                         sourcePath: row.sourcePath,
-                        snippet: Self.memorySnippet(body: body, tokens: tokens, fallbackQuery: query),
-                        rank: rank
+                        snippet: body.map { Self.memorySnippet(body: $0, tokens: tokens, fallbackQuery: query) } ?? "",
+                        rank: rank,
+                        reviewStatus: row.reviewStatus
                     )
                 }
                 .sorted { ($0.rank ?? 0) < ($1.rank ?? 0) }
@@ -403,7 +456,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let memoryID = request.memoryID.trimmingCharacters(in: .whitespacesAndNewlines)
         return try databaseSync {
             let rows = try queryRows(
-                "SELECT id FROM agent_memories WHERE id = ? AND project_id = ? LIMIT 1",
+                "SELECT id, review_status FROM agent_memories WHERE id = ? AND project_id = ? LIMIT 1",
                 [.text(memoryID), .text(projectID)]
             )
             let existed = rows.isEmpty == false
@@ -415,24 +468,19 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     memoryID: memoryID,
                     now: Self.isoNow()
                 )
-                try execute("DELETE FROM agent_memories WHERE id = ? AND project_id = ?", [.text(memoryID), .text(projectID)])
-                // Cross-tier forget for the paths PCM actually uses. The local row is hard-
-                // deleted above, and the memory's ONLY cloud presence — its section in
-                // project_memory_snapshots, which syncs to the cloud as a sealed blob — was
-                // removed by removeProjectMemorySection, so the next snapshot sync propagates
-                // the deletion (the snapshot-purge regression test proves the body is gone).
-                // PCM writes no server-readable Pensieve knowledge rows (remember stores to
-                // agent_memories + the sealed snapshot, not the knowledge store), so there is
-                // no separate sealed row to hard-delete — and therefore no honest "pending"
-                // tombstone to leave behind. `requireCloudDelete` is reserved for the future
-                // hosted-code-sync opt-in, which would additionally drive an app-authenticated
-                // deleteKnowledgeSource by projectHmac; until that ships, forget is complete.
+                // Keep a metadata tombstone so every forget remains visible to the
+                // daemon-owned review/audit feed across reloads and devices. The sealed
+                // body is removed above and the row is excluded from normal recall.
+                try execute(
+                    "UPDATE agent_memories SET body_ref = '', body_redacted = '', review_status = 'forgotten', updated_at = ? WHERE id = ? AND project_id = ?",
+                    [.text(Self.isoNow()), .text(memoryID), .text(projectID)]
+                )
                 let auditHash = try auditEvent(
                     action: "memory.forget",
                     domain: "memory",
                     projectID: projectID,
                     subjectID: memoryID,
-                    labels: ["local hard delete", "snapshot section removed"]
+                    labels: ["local body delete", "metadata tombstone", "review_status:forgotten", "snapshot section removed"]
                 )
                 try execute("COMMIT", [])
                 return BurnBarProjectMemoryForgetResponse(
@@ -441,6 +489,56 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     memoryID: memoryID,
                     localDeleted: existed,
                     cloudDeletePending: false,
+                    auditHash: auditHash
+                )
+            } catch {
+                try? execute("ROLLBACK", [])
+                throw error
+            }
+        }
+    }
+
+    func setReviewStatus(
+        _ request: BurnBarProjectMemoryReviewStatusRequest
+    ) throws -> BurnBarProjectMemoryReviewStatusResponse {
+        let traceID = TraceContextBridge.currentContext().traceID
+        let root = try projectRoot(request.projectPath)
+        let projectID = try resolveProjectIdentity(root: root).projectID
+        let memoryID = request.memoryID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard memoryID.isEmpty == false else {
+            throw BurnBarProjectCodeMemoryStoreError.memoryNotFound(memoryID)
+        }
+        guard request.status == .quarantined || request.status == .approved || request.status == .rejected else {
+            throw BurnBarProjectCodeMemoryStoreError.invalidMemoryReviewStatus(request.status.rawValue)
+        }
+
+        return try databaseSync {
+            let exists = try fetchInt(
+                "SELECT COUNT(*) FROM agent_memories WHERE id = ? AND project_id = ?",
+                [.text(memoryID), .text(projectID)]
+            ) > 0
+            guard exists else {
+                throw BurnBarProjectCodeMemoryStoreError.memoryNotFound(memoryID)
+            }
+            try execute("BEGIN IMMEDIATE", [])
+            do {
+                try execute(
+                    "UPDATE agent_memories SET review_status = ?, updated_at = ? WHERE id = ? AND project_id = ?",
+                    [.text(request.status.rawValue), .text(Self.isoNow()), .text(memoryID), .text(projectID)]
+                )
+                let auditHash = try auditEvent(
+                    action: "memory.review_status",
+                    domain: "memory",
+                    projectID: projectID,
+                    subjectID: memoryID,
+                    labels: ["review_status:\(request.status.rawValue)"]
+                )
+                try execute("COMMIT", [])
+                return BurnBarProjectMemoryReviewStatusResponse(
+                    traceID: traceID,
+                    projectID: projectID,
+                    memoryID: memoryID,
+                    status: request.status,
                     auditHash: auditHash
                 )
             } catch {
@@ -491,9 +589,9 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             BurnBarProjectMemoryAnalyticsResponse(
                 traceID: traceID,
                 projectID: projectID,
-                total: try fetchInt("SELECT COUNT(*) FROM agent_memories WHERE project_id = ?", [.text(projectID)]),
-                byKind: try groupedCounts("SELECT kind, COUNT(*) FROM agent_memories WHERE project_id = ? GROUP BY kind", [.text(projectID)]),
-                byScope: try groupedCounts("SELECT scope, COUNT(*) FROM agent_memories WHERE project_id = ? GROUP BY scope", [.text(projectID)]),
+                total: try fetchInt("SELECT COUNT(*) FROM agent_memories WHERE project_id = ? AND review_status != 'forgotten'", [.text(projectID)]),
+                byKind: try groupedCounts("SELECT kind, COUNT(*) FROM agent_memories WHERE project_id = ? AND review_status != 'forgotten' GROUP BY kind", [.text(projectID)]),
+                byScope: try groupedCounts("SELECT scope, COUNT(*) FROM agent_memories WHERE project_id = ? AND review_status != 'forgotten' GROUP BY scope", [.text(projectID)]),
                 lastAuditHash: try queryRows("SELECT hash FROM memory_audit ORDER BY seq DESC LIMIT 1", []).first?.optionalString(0)
             )
         }
@@ -1370,167 +1468,6 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         )
     }
 
-    private func insertSymbol(_ symbol: ExtractedSymbol, indexedAt: String) throws {
-        let rangeJSON = try encodeJSONString(symbol.range)
-        try execute(
-            """
-            INSERT OR IGNORE INTO code_symbols
-                (id, project_id, artifact_id, blob_sha, name, kind, range_json, confidence_tier, tier_evidence_json, indexed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                .text(symbol.id), .text(symbol.projectID), .text(symbol.artifactID), .text(symbol.blobSHA),
-                .text(symbol.name), .text(symbol.kind), .text(rangeJSON), .text(symbol.confidenceTier),
-                symbol.tierEvidenceJSON.map(SQLiteBind.text) ?? .null, .text(indexedAt)
-            ]
-        )
-    }
-
-    private func buildReferences(projectID: String, root: URL, artifacts: [IndexedArtifact], indexedAt: String) throws {
-        let symbols = try querySymbols(
-            """
-            SELECT s.id, s.artifact_id, a.file_path, s.name, s.kind, s.range_json,
-                   s.confidence_tier, s.blob_sha, s.tier_evidence_json
-            FROM code_symbols s
-            JOIN code_artifacts a ON a.id = s.artifact_id
-            WHERE s.project_id = ?
-            """,
-            [.text(projectID)]
-        )
-        guard symbols.isEmpty == false else { return }
-        let symbolsByArtifact = Dictionary(grouping: symbols, by: \.artifactID)
-        let symbolsByName = Dictionary(grouping: symbols, by: \.name)
-        for artifact in artifacts {
-            let fileURL = root.appendingPathComponent(artifact.filePath, isDirectory: false)
-            guard let text = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-            let fileSymbols = (symbolsByArtifact[artifact.id] ?? []).sorted { $0.range.startLine < $1.range.startLine }
-            let lines = text.components(separatedBy: .newlines)
-            for (lineIndex, line) in lines.enumerated() {
-                let scanLine = Self.referenceScanLine(line)
-                let caller = fileSymbols.last(where: { $0.range.startLine <= lineIndex + 1 })
-                for token in Self.identifierTokens(in: scanLine) {
-                    guard let targets = symbolsByName[token] else { continue }
-                    for target in targets {
-                        if target.artifactID == artifact.id, target.range.startLine == lineIndex + 1 { continue }
-                        let refID = "ref_" + String(Self.sha256Hex("\(projectID):\(artifact.id):\(target.id):\(lineIndex + 1)").prefix(32))
-                        let range = BurnBarProjectCodeRange(startLine: lineIndex + 1, endLine: lineIndex + 1)
-                        try execute(
-                            """
-                            INSERT OR IGNORE INTO code_references
-                                (id, project_id, from_artifact_id, to_symbol_id, range_json, blob_sha, confidence_tier, indexed_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            [
-                                .text(refID), .text(projectID), .text(artifact.id), .text(target.id),
-                                .text(try encodeJSONString(range)), .text(artifact.blobSHA), .text("lexical_fallback"), .text(indexedAt)
-                            ]
-                        )
-                        if let caller, Self.lineContainsCall(to: target.name, in: scanLine), caller.id != target.id {
-                            let edgeID = "edge_" + String(Self.sha256Hex("\(projectID):\(caller.id):\(target.id)").prefix(32))
-                            try execute(
-                                """
-                                INSERT OR IGNORE INTO code_call_edges
-                                    (id, project_id, caller_symbol_id, callee_symbol_id, confidence_tier, indexed_at)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                                """,
-                                [.text(edgeID), .text(projectID), .text(caller.id), .text(target.id), .text("lexical_fallback"), .text(indexedAt)]
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    func exactLSPReferences(
-        symbolName: String,
-        root: URL,
-        projectID: String,
-        limit: Int
-    ) throws -> [BurnBarProjectCodeReference] {
-        guard let helperPath = Self.staticParserExecutablePath() else { return [] }
-        let target = try databaseSync {
-            try querySymbols(
-                """
-                SELECT s.id, s.artifact_id, a.file_path, s.name, s.kind, s.range_json,
-                       s.confidence_tier, s.blob_sha, s.tier_evidence_json
-                FROM code_symbols s
-                JOIN code_artifacts a ON a.id = s.artifact_id
-                WHERE s.project_id = ? AND s.name = ?
-                ORDER BY
-                    CASE WHEN s.confidence_tier = 'exact_lsp' THEN 0
-                         WHEN s.confidence_tier = 'static_tree_sitter' THEN 1
-                         ELSE 2 END,
-                    a.file_path ASC
-                LIMIT 1
-                """,
-                [.text(projectID), .text(symbolName)]
-            ).first
-        }
-        guard let target,
-              Self.isCurrentBlob(root: root, filePath: target.filePath, blobSHA: target.blobSHA) else {
-            return []
-        }
-        let fileURL = root.appendingPathComponent(target.filePath, isDirectory: false)
-        guard let text = try? String(contentsOf: fileURL, encoding: .utf8) else { return [] }
-        let request = StaticParserRequest(
-            requestId: "refs:\(symbolName)",
-            filePath: target.filePath,
-            language: Self.language(for: fileURL),
-            blobSha: target.blobSHA,
-            text: text,
-            rootPath: root.path,
-            operation: "references",
-            position: StaticParserPosition(
-                line: max(0, target.range.startLine - 1),
-                character: max(0, (target.range.startColumn ?? 1) - 1)
-            )
-        )
-        guard let payload = try? JSONEncoder().encode(request) else { return [] }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: helperPath)
-        let input = Pipe()
-        let output = Pipe()
-        process.standardInput = input
-        process.standardOutput = output
-        process.standardError = Pipe()
-        guard Self.runHelperProcess(process, input: input, payload: payload) else {
-            return []
-        }
-        guard process.terminationStatus == 0 else { return [] }
-        let outputData = output.fileHandleForReading.readDataToEndOfFile()
-        guard outputData.count <= Self.codeHelperMaxOutputBytes() else { return [] }
-        guard let line = String(data: outputData, encoding: .utf8)?
-            .split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
-            .first,
-            let response = try? JSONDecoder().decode(StaticParserResponse.self, from: Data(line.utf8)),
-            response.ok,
-            response.blobSha == target.blobSHA,
-            response.errors.isEmpty,
-            let refs = response.references,
-            refs.isEmpty == false
-        else {
-            return []
-        }
-        let capped = max(1, min(limit, 200))
-        return refs.prefix(capped).enumerated().map { index, ref in
-            let range = BurnBarProjectCodeRange(
-                startLine: max(1, ref.startLine),
-                endLine: max(max(1, ref.startLine), ref.endLine),
-                startColumn: ref.startCharacter + 1,
-                endColumn: ref.endCharacter + 1
-            )
-            let id = "lsp_ref_" + String(Self.sha256Hex("\(projectID):\(symbolName):\(ref.filePath):\(index)").prefix(32))
-            return BurnBarProjectCodeReference(
-                referenceID: id,
-                fromFilePath: ref.filePath,
-                targetSymbol: Self.publicSymbol(target),
-                range: range,
-                confidenceTier: ref.confidenceTier
-            )
-        }
-    }
-
     func codeSearchHits(query: String, root: URL, projectID: String, limit: Int) throws -> CodeSearchEvaluation {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { throw BurnBarProjectCodeMemoryStoreError.emptyQuery }
@@ -1876,6 +1813,30 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 snippet: row.string(5),
                 rank: nil
             )
+        }
+    }
+
+    func suspendProjectWatchersForSnapshot() -> [BurnBarProjectCodeWatchProjectRequest] {
+        let requests = projectWatchers.values.map { watcher in
+            BurnBarProjectCodeWatchProjectRequest(
+                projectPath: watcher.projectRoot.path,
+                maxFiles: watcher.maxFiles,
+                maxFileBytes: watcher.maxFileBytes,
+                storageBudgetBytes: watcher.storageBudgetBytes,
+                pollIntervalSeconds: watcher.pollIntervalSeconds
+            )
+        }
+        for watcher in projectWatchers.values {
+            watcher.timer.cancel()
+            watcher.teardownEventStream()
+        }
+        projectWatchers.removeAll()
+        return requests
+    }
+
+    func resumeProjectWatchersAfterSnapshot(_ requests: [BurnBarProjectCodeWatchProjectRequest]) throws {
+        for request in requests {
+            _ = try watchProject(request)
         }
     }
 }

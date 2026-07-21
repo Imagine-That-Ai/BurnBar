@@ -1,6 +1,9 @@
 import Foundation
 @testable import OpenBurnBarLinuxSecurity
 import XCTest
+#if os(Linux)
+import Glibc
+#endif
 
 final class OpenBurnBarLinuxSecurityTests: XCTestCase {
     func testNativeSecretServiceCRUDKeepsSecretOutOfArguments() throws {
@@ -46,6 +49,38 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
             )
         ) { error in
             XCTAssertEqual(error as? LinuxSecretStoreError, .missingSecret("com.openburnbar.provider:provider.anthropic.apiKey"))
+        }
+    }
+
+    func testSecretServiceHealthCheckAcceptsMissingProbeItemOnFreshKeyring() throws {
+        let backend = LinuxNativeSecretStoreBackend(
+            kind: .secretService,
+            executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
+            runner: { _, arguments, _ in
+                XCTAssertEqual(arguments, ["search", "openburnbar-health", "probe"])
+                return LinuxSecretCommandResult(exitCode: 1, stderr: "No such secret")
+            }
+        )
+
+        XCTAssertNoThrow(try backend.healthCheck())
+    }
+
+    func testSecretServiceHealthCheckStillFailsForLockedOrUnavailableBackend() throws {
+        let backend = LinuxNativeSecretStoreBackend(
+            kind: .secretService,
+            executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
+            runner: { _, _, _ in
+                LinuxSecretCommandResult(exitCode: 1, stderr: "The Secret Service is locked")
+            }
+        )
+
+        XCTAssertThrowsError(try backend.healthCheck()) { error in
+            guard case let LinuxSecretStoreError.commandFailed(backend, operation, detail) = error else {
+                return XCTFail("Expected a command failure, got \(error)")
+            }
+            XCTAssertEqual(backend, "org.freedesktop.secrets")
+            XCTAssertEqual(operation, "health-check")
+            XCTAssertEqual(detail, "The Secret Service is locked")
         }
     }
 
@@ -215,9 +250,97 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         )
         let fileCustodian = LinuxSecretCustodian(backends: [fileStore])
         let auditKey = try fileCustodian.requireHighValueSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
-        XCTAssertEqual(auditKey.metadata.trustLevel, .headlessPassphrase)
-        XCTAssertTrue(auditKey.metadata.note.contains("systemd credentials"))
+        XCTAssertEqual(auditKey.metadata.trustLevel, .systemdCredential)
+        XCTAssertTrue(auditKey.metadata.note.contains("systemd credential file"))
     }
+
+    func testHeadlessCredentialBoundaryRejectsTraversalAndMultilineValues() throws {
+        let calls = StringArrayCaptureBox()
+        let store = LinuxHeadlessSecretStoreBackend(
+            environment: ["CREDENTIALS_DIRECTORY": "/run/credentials/openburnbar.service"],
+            credentialReader: { path in
+                calls.append(path)
+                return "  systemd-secret  \n"
+            }
+        )
+
+        let record = try store.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+        XCTAssertEqual(record?.secret, "  systemd-secret  ")
+        XCTAssertEqual(record?.metadata.trustLevel, .systemdCredential)
+        XCTAssertEqual(record?.metadata.note.contains("owner-only"), true)
+
+        for invalidID in ["../outside", "nested/name", "/absolute", "..", ".", "line\nbreak"] {
+            XCTAssertThrowsError(
+                try store.readSecret(id: invalidID, secretClass: .auditSigningKey)
+            ) { error in
+                XCTAssertEqual(error as? LinuxSecretStoreError, .invalidSecretID(invalidID))
+            }
+        }
+        XCTAssertEqual(calls.values.count, 1)
+
+        let malformed = LinuxHeadlessSecretStoreBackend(
+            environment: ["CREDENTIALS_DIRECTORY": "/run/credentials/openburnbar.service"],
+            credentialReader: { _ in "line-one\nline-two" }
+        )
+        XCTAssertThrowsError(
+            try malformed.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+        ) { error in
+            guard case .invalidSecretValue = error as? LinuxSecretStoreError else {
+                return XCTFail("Expected invalidSecretValue, got \(error)")
+            }
+        }
+    }
+
+#if os(Linux)
+    func testSystemdCredentialReaderRequiresOwnerOnlyRegularFilesAndRejectsSymlinks() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-systemd-credential-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        XCTAssertEqual(root.path.withCString { Glibc.chmod($0, 0o700) }, 0)
+
+        let credential = root.appendingPathComponent("audit-signing-key")
+        try Data("audit-secret\n".utf8).write(to: credential)
+        XCTAssertEqual(credential.path.withCString { Glibc.chmod($0, 0o600) }, 0)
+        let store = LinuxHeadlessSecretStoreBackend(
+            environment: ["CREDENTIALS_DIRECTORY": root.path]
+        )
+        XCTAssertEqual(
+            try store.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)?.secret,
+            "audit-secret"
+        )
+
+        XCTAssertEqual(credential.path.withCString { Glibc.chmod($0, 0o640) }, 0)
+        XCTAssertThrowsError(
+            try store.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+        ) { error in
+            guard case let .backendUnavailable(reason) = error as? LinuxSecretStoreError else {
+                return XCTFail("Expected backendUnavailable, got \(error)")
+            }
+            XCTAssertFalse(reason.contains(root.path))
+        }
+
+        try? FileManager.default.removeItem(at: credential)
+        let target = root.appendingPathComponent("target")
+        try Data("symlink-secret\n".utf8).write(to: target)
+        XCTAssertEqual(target.path.withCString { Glibc.chmod($0, 0o600) }, 0)
+        XCTAssertEqual(
+            target.path.withCString { targetPath in
+                credential.path.withCString { linkPath in
+                    Glibc.symlink(targetPath, linkPath)
+                }
+            },
+            0
+        )
+        XCTAssertThrowsError(
+            try store.readSecret(id: "audit-signing-key", secretClass: .auditSigningKey)
+        ) { error in
+            guard case .backendUnavailable = error as? LinuxSecretStoreError else {
+                return XCTFail("Expected backendUnavailable for symlink, got \(error)")
+            }
+        }
+    }
+#endif
 
     func testSecretStoreSetupProbeIncludesLibsecretTPMAndUXBlockers() {
         let rows = LinuxSecretStoreSetupProbeBuilder.rows(
@@ -228,10 +351,27 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         )
 
         XCTAssertTrue(rows.contains { $0.backend == "org.freedesktop.secrets" && $0.status == "blocked" })
-        XCTAssertTrue(rows.contains { $0.backend == "kwallet" && $0.status == "test_command_fixture" })
+        XCTAssertTrue(rows.contains { $0.backend == "kwallet" && $0.status == "blocked" })
         XCTAssertTrue(rows.contains { $0.backend == "systemd_credentials" && $0.status == "fallback_supported" })
         XCTAssertTrue(rows.contains { $0.backend == "tpm2" && $0.status == "blocked_optional_hardening" })
         XCTAssertTrue(rows.allSatisfy { $0.setupUX.isEmpty == false })
+    }
+
+    func testSecretStoreSetupProbeReportsAvailableKWalletOnlyWithSessionBus() {
+        let rows = LinuxSecretStoreSetupProbeBuilder.rows(
+            secretToolPath: nil,
+            hasSessionBus: true,
+            kwalletPath: "/usr/bin/kwallet-query",
+            tpm2ToolPath: nil,
+            hasTPMDevice: false
+        )
+
+        guard let kwallet = rows.first(where: { $0.backend == "kwallet" }) else {
+            return XCTFail("KWallet setup row is missing")
+        }
+        XCTAssertEqual(kwallet.status, "available")
+        XCTAssertEqual(kwallet.command, "/usr/bin/kwallet-query -l kdewallet")
+        XCTAssertNil(kwallet.blocker)
     }
 
     func testDesktopOwnerLocalAuthenticationUsesPolkitAllowUserInteraction() async throws {
@@ -380,7 +520,7 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         }
     }
 
-    func testLockedNativeKeyringFailsClosedWithoutEnvironmentFallback() throws {
+    func testLockedNativeKeyringFallsBackToExplicitApprovedEnvironmentSecret() throws {
         let native = LinuxNativeSecretStoreBackend(
             kind: .secretService,
             executableURL: URL(fileURLWithPath: "/usr/bin/secret-tool"),
@@ -394,19 +534,12 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         )
         let custodian = LinuxSecretCustodian(backends: [native, fallback])
 
-        XCTAssertThrowsError(
-            try custodian.requireHighValueSecret(
-                id: "firebase-refresh-token",
-                secretClass: .refreshToken
-            )
-        ) { error in
-            guard case let LinuxSecretStoreError.commandFailed(backend, operation, detail) = error else {
-                return XCTFail("Expected native keyring failure, got \(error)")
-            }
-            XCTAssertEqual(backend, "org.freedesktop.secrets")
-            XCTAssertEqual(operation, "read")
-            XCTAssertEqual(detail, "keyring is locked")
-        }
+        let record = try custodian.requireHighValueSecret(
+            id: "firebase-refresh-token",
+            secretClass: .refreshToken
+        )
+        XCTAssertEqual(record.secret, "plaintext-process-secret")
+        XCTAssertEqual(record.metadata.trustLevel, .headlessPassphrase)
     }
 
     func testDeletingSecretSkipsWritableBackendsWithoutTheItem() throws {
@@ -593,6 +726,22 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertFalse(bundle.contains("/home/alberto"))
     }
 
+    func testTelemetryRedactorCoversJSONBearerAndLinuxPathForms() {
+        let redactor = LinuxTelemetryRedactor()
+        let diagnostic = #"{"apiKey":"json-secret","access_token":"json-refresh","authorization":"Bearer eyJhbGciOiJIUzI1NiJ9.payload.signature","session_id":"session-secret","path":"/run/user/1000/openburnbar/session.json"}"#
+
+        let redacted = redactor.redact(diagnostic)
+
+        XCTAssertTrue(redacted.contains(#""apiKey":[REDACTED]"#))
+        XCTAssertTrue(redacted.contains(#""access_token":[REDACTED]"#))
+        XCTAssertTrue(redacted.contains(#""authorization":[REDACTED]"#))
+        XCTAssertTrue(redacted.contains(#""session_id":[REDACTED]"#))
+        XCTAssertFalse(redacted.contains("json-secret"))
+        XCTAssertFalse(redacted.contains("json-refresh"))
+        XCTAssertFalse(redacted.contains("eyJhbGciOiJIUzI1NiJ9"))
+        XCTAssertFalse(redacted.contains("/run/user/1000"))
+    }
+
     func testTelemetryBridgeControlsAndRedactionSurfaceProofs() {
         let seeded = "token=sk-ant-abcdefghijklmnopqrstuvwxyz refreshToken=secret123 email=alberto@example.com path=/home/alberto/.config/openburnbar/session.json cookie=sessionid apiKey=key123 prompt=private operator request"
         var controls = LinuxTelemetryControlStore()
@@ -665,6 +814,98 @@ final class OpenBurnBarLinuxSecurityTests: XCTestCase {
         XCTAssertTrue(rows.contains { $0.step == "retry_backoff_before_commit" && $0.backoffMillis == [100, 250, 500] })
         XCTAssertTrue(rows.contains { $0.step == "conflict_remote_newer_wins" && $0.conflictResolution == "remote_newer_by_update_time" })
         XCTAssertEqual(rows.last?.watermark, 1_800_000_001_000)
+    }
+
+    func testRequireHighValueSecretFallsBackWhenDesktopKeyringIsUnavailable() throws {
+        let lockedSecretService = LinuxReadFailureBackend(
+            backendName: "secret-service",
+            failure: .backendUnavailable("keyring is locked")
+        )
+        let systemdCredential = LinuxInMemorySecretStoreBackend(
+            backendName: "systemd-credentials",
+            trustLevel: .systemdCredential,
+            secrets: ["database-key": "recovered-database-key"]
+        )
+        let custodian = LinuxSecretCustodian(backends: [lockedSecretService, systemdCredential])
+
+        let record = try custodian.requireHighValueSecret(
+            id: "database-key",
+            secretClass: .databaseKey
+        )
+
+        XCTAssertEqual(record.secret, "recovered-database-key")
+        XCTAssertEqual(record.metadata.backend, "systemd-credentials")
+        XCTAssertEqual(record.metadata.trustLevel, .systemdCredential)
+    }
+
+    func testRequireHighValueSecretReportsLastBackendFailureWhenAllStoresAreUnavailable() {
+        let secretService = LinuxReadFailureBackend(
+            backendName: "secret-service",
+            failure: .backendUnavailable("keyring is locked")
+        )
+        let kwallet = LinuxReadFailureBackend(
+            backendName: "kwallet",
+            failure: .commandFailed(backend: "kwallet", operation: "read", detail: "wallet unavailable")
+        )
+        let custodian = LinuxSecretCustodian(backends: [secretService, kwallet])
+
+        XCTAssertThrowsError(
+            try custodian.requireHighValueSecret(id: "database-key", secretClass: .databaseKey)
+        ) { error in
+            guard let secretError = error as? LinuxSecretStoreError else {
+                return XCTFail("expected LinuxSecretStoreError")
+            }
+            XCTAssertEqual(
+                secretError,
+                .commandFailed(
+                    backend: "kwallet",
+                    operation: "read",
+                    detail: "wallet unavailable"
+                )
+            )
+        }
+    }
+
+    func testRequireHighValueSecretDoesNotSkipPlaintextFallbackRefusal() {
+        let plaintext = LinuxInMemorySecretStoreBackend(
+            backendName: "legacy-file",
+            trustLevel: .explicitLowerTrustFile,
+            secrets: ["database-key": "plaintext-key"]
+        )
+        let approvedFallback = LinuxInMemorySecretStoreBackend(
+            backendName: "secret-service",
+            trustLevel: .secretService,
+            secrets: ["database-key": "native-key"]
+        )
+        let custodian = LinuxSecretCustodian(backends: [plaintext, approvedFallback])
+
+        XCTAssertThrowsError(
+            try custodian.requireHighValueSecret(id: "database-key", secretClass: .databaseKey)
+        ) { error in
+            guard let secretError = error as? LinuxSecretStoreError else {
+                return XCTFail("expected LinuxSecretStoreError")
+            }
+            if case .plaintextFallbackRefused = secretError {
+                // A lower-trust record must never be bypassed to make a
+                // potentially ambiguous multi-backend lookup appear healthy.
+            } else {
+                XCTFail("expected plaintextFallbackRefused, got \(secretError)")
+            }
+        }
+    }
+}
+
+private struct LinuxReadFailureBackend: LinuxSecretStoreBackend {
+    let backendName: String
+    let failure: LinuxSecretStoreError
+    let trustLevel: LinuxSecretTrustLevel = .secretService
+    let supportsMutations = false
+
+    func readSecret(
+        id _: String,
+        secretClass _: LinuxHighValueSecretClass
+    ) throws -> LinuxSecretRecord? {
+        throw failure
     }
 }
 
@@ -803,6 +1044,23 @@ private final class TelemetryCaptureBox: @unchecked Sendable {
     }
 
     var events: [(String, [String: String])] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+}
+
+private final class StringArrayCaptureBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+
+    func append(_ value: String) {
+        lock.lock()
+        storage.append(value)
+        lock.unlock()
+    }
+
+    var values: [String] {
         lock.lock()
         defer { lock.unlock() }
         return storage

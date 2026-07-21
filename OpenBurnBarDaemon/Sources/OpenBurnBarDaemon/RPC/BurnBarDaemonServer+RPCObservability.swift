@@ -41,7 +41,11 @@ extension BurnBarDaemonServer {
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
                 protocolVersion: BurnBarProtocolVersion.current,
-                result: BurnBarQuotaSignalsRecentResponse(signals: signals)
+                result: BurnBarQuotaSignalsRecentResponse(
+                    signals: signals,
+                    snapshots: BurnBarQuotaSignalStore.providerSnapshots(from: signals),
+                    adapterCoverage: BurnBarLinuxQuotaAdapterCoverageCatalog.entries()
+                )
             )
             return encode(response)
         case .quotaSignalsClear:

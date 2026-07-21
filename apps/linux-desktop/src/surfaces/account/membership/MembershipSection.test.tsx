@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fixtureMembershipStatus } from '../../../daemonFixture.js';
 import {
   clearMembershipEntitlementCache,
+  hasActivePaidMembership,
   useEntitlement,
   useMembershipStore
 } from '../../../state/membershipStore.js';
@@ -19,7 +20,8 @@ function resetStores(): void {
     data: null,
     phase: 'idle',
     error: null,
-    checkoutUrl: null
+    checkoutUrl: null,
+    externalDestination: null
   });
   useShellStore.setState({
     fixtureMode: false,
@@ -60,6 +62,10 @@ function bridge(partial: Partial<LinuxShellBridge>): LinuxShellBridge {
     exportDiagnostics: async () => ({ path: '' }),
     sessionEnv: async () => ({}),
     ...partial,
+    accountBeginSignIn: partial.accountBeginSignIn ?? bridgeStubDefaults.accountBeginSignIn,
+    accountCancelSignIn: partial.accountCancelSignIn ?? bridgeStubDefaults.accountCancelSignIn,
+    accountRotateIdentity: partial.accountRotateIdentity ?? bridgeStubDefaults.accountRotateIdentity,
+    accountSignOut: partial.accountSignOut ?? bridgeStubDefaults.accountSignOut,
     onboardingSnapshot: partial.onboardingSnapshot ?? bridgeStubDefaults.onboardingSnapshot,
     onboardingAction: partial.onboardingAction ?? bridgeStubDefaults.onboardingAction,
     onboardingReset: partial.onboardingReset ?? bridgeStubDefaults.onboardingReset
@@ -90,6 +96,25 @@ describe('MembershipSection', () => {
     expect(screen.getByText('BurnBar Pro').closest('.membership-entitlement-row')?.textContent).toContain('Active');
     expect(screen.getByTestId('entitlement-probe').textContent).toBe('yes');
     expect(screen.queryByTestId('membership-veiled-content')).toBeNull();
+  });
+
+  it('recognizes active paid entitlement families without relying on the legacy pro tier string', () => {
+    expect(
+      hasActivePaidMembership({
+        tier: 'free',
+        entitlements: ['burnbar_ultra'],
+        restoreAvailable: true,
+        state: 'active'
+      })
+    ).toBe(true);
+    expect(
+      hasActivePaidMembership({
+        tier: 'pro',
+        entitlements: ['burnbar_pro'],
+        restoreAvailable: true,
+        state: 'cancelled'
+      })
+    ).toBe(false);
   });
 
   it('renders the loading state while daemon membership is pending', async () => {
@@ -169,6 +194,71 @@ describe('MembershipSection', () => {
     );
     expect(screen.getByText(/Stripe checkout opened in your browser/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /Re-check membership/i })).toBeTruthy();
+  });
+
+  it('opens billing portal for an active member and never starts another checkout', async () => {
+    const membershipCheckoutUrl = vi.fn(async () => 'https://checkout.stripe.com/c/pay/should-not-open');
+    const membershipPortalUrl = vi.fn(async () => 'https://billing.stripe.com/p/session/member_123');
+    const openExternalUrl = vi.fn(async () => {});
+    useShellStore.setState({
+      bridge: bridge({
+        membershipStatus: async () => fixtureMembershipStatus('active'),
+        membershipCheckoutUrl,
+        membershipPortalUrl,
+        openExternalUrl
+      })
+    });
+    render(<MembershipSection />);
+    await screen.findByText(/Cloud Pro member/i);
+    fireEvent.click(screen.getByRole('button', { name: /Manage subscription/i }));
+    await waitFor(() =>
+      expect(openExternalUrl).toHaveBeenCalledWith('https://billing.stripe.com/p/session/member_123')
+    );
+    expect(membershipPortalUrl).toHaveBeenCalledTimes(1);
+    expect(membershipCheckoutUrl).not.toHaveBeenCalled();
+    expect(screen.getByText(/Stripe billing management opened in your browser/i)).toBeTruthy();
+  });
+
+  it('opens billing portal for an active future paid entitlement even when tier maps to free', async () => {
+    const membershipCheckoutUrl = vi.fn(async () => 'https://checkout.stripe.com/c/pay/should-not-open');
+    const membershipPortalUrl = vi.fn(async () => 'https://billing.stripe.com/p/session/ultra_123');
+    useShellStore.setState({
+      bridge: bridge({
+        membershipStatus: async () => ({
+          tier: 'free',
+          entitlements: ['future_paid_family'],
+          restoreAvailable: true,
+          state: 'active'
+        }),
+        membershipCheckoutUrl,
+        membershipPortalUrl,
+        openExternalUrl: async () => {}
+      })
+    });
+    render(<MembershipSection />);
+    await screen.findByText(/Cloud Pro member/i);
+    fireEvent.click(screen.getByRole('button', { name: /Manage subscription/i }));
+    await waitFor(() => expect(membershipPortalUrl).toHaveBeenCalledTimes(1));
+    expect(membershipCheckoutUrl).not.toHaveBeenCalled();
+  });
+
+  it('reports an absent portal capability without falling back to checkout', async () => {
+    const membershipCheckoutUrl = vi.fn(async () => 'https://checkout.stripe.com/c/pay/should-not-open');
+    useShellStore.setState({
+      bridge: bridge({
+        membershipStatus: async () => fixtureMembershipStatus('active'),
+        membershipCheckoutUrl,
+        membershipPortalUrl: async () => {
+          throw new Error('membership_capability_absent');
+        }
+      })
+    });
+    render(<MembershipSection />);
+    await screen.findByText(/Cloud Pro member/i);
+    fireEvent.click(screen.getByRole('button', { name: /Manage subscription/i }));
+    expect(await screen.findByText(/does not expose Stripe billing management yet/i)).toBeTruthy();
+    expect(membershipCheckoutUrl).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-membership-phase="capability-absent"]')).toBeTruthy();
   });
 
   it('manual re-check re-fetches membership after checkout', async () => {

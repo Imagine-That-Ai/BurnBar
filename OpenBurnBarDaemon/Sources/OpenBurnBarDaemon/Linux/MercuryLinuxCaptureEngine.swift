@@ -96,11 +96,13 @@ public struct MercuryLinuxMediaCapabilities: Sendable, Equatable {
     public var opusEncode: Bool
     public var opusDecode: Bool
     public var pipeWireSource: Bool
+    public var audioPlaybackSink: Bool = false
 
     public var daemonCodecMap: [String: Bool] {
         [
             "vp9": vp9Encode && pipeWireSource,
             "opus": opusEncode && pipeWireSource,
+            "opusPlayback": opusDecode && audioPlaybackSink,
             "h264": false,
             "av1": av1Encode && pipeWireSource
         ]
@@ -117,7 +119,8 @@ public struct MercuryLinuxMediaCapabilities: Sendable, Equatable {
             av1Decode: raw.av1dec != 0,
             opusEncode: raw.opusenc != 0,
             opusDecode: raw.opusdec != 0,
-            pipeWireSource: raw.pipewiresrc != 0
+            pipeWireSource: raw.pipewiresrc != 0,
+            audioPlaybackSink: media_audio_playback_probe() != 0
         )
         #else
         return MercuryLinuxMediaCapabilities(
@@ -128,7 +131,8 @@ public struct MercuryLinuxMediaCapabilities: Sendable, Equatable {
             av1Decode: false,
             opusEncode: false,
             opusDecode: false,
-            pipeWireSource: false
+            pipeWireSource: false,
+            audioPlaybackSink: false
         )
         #endif
     }
@@ -321,4 +325,222 @@ public final class MercuryLinuxCaptureEngine: @unchecked Sendable {
 }
 
 extension MercuryLinuxCaptureEngine: MercuryLinuxCaptureEngineProtocol {}
+
+/// A portal-backed Opus capture request. Audio is kept separate from the
+/// screen-share request because PipeWire grants are source-specific and the
+/// receiver must negotiate `MediaFrame.Kind.audioOpus` independently.
+public struct MercuryLinuxAudioCaptureRequest: Sendable, Equatable {
+    public enum Source: Sendable, Equatable {
+        case portal(MercuryLinuxScreenCastGrant)
+        case testPattern(numBuffers: UInt32)
+    }
+
+    public var source: Source
+
+    public static func portal(
+        _ grant: MercuryLinuxScreenCastGrant
+    ) -> MercuryLinuxAudioCaptureRequest {
+        MercuryLinuxAudioCaptureRequest(source: .portal(grant))
+    }
+
+    /// Test-only source. It is never selected by the production portal adapter.
+    static func testPattern(
+        numBuffers: UInt32 = 10
+    ) -> MercuryLinuxAudioCaptureRequest {
+        MercuryLinuxAudioCaptureRequest(source: .testPattern(numBuffers: numBuffers))
+    }
+
+    private init(source: Source) {
+        self.source = source
+    }
+}
+
+public enum MercuryLinuxAudioCaptureError: Error, LocalizedError, Equatable {
+    case invalidPipeWireFD(Int32)
+    case portalConsentNotLive
+    case mediaCrateUnavailable
+    case startFailed
+    case noActivePipeline
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidPipeWireFD(let fd):
+            return "PipeWire fd \(fd) is invalid for Linux Mercury audio capture."
+        case .portalConsentNotLive:
+            return "Linux Mercury audio capture requires a live portal grant."
+        case .mediaCrateUnavailable:
+            return "Linux Mercury audio capture is not linked in this build."
+        case .startFailed:
+            return "Linux Mercury audio capture failed to start."
+        case .noActivePipeline:
+            return "Linux Mercury audio capture has no active pipeline."
+        }
+    }
+}
+
+private final class MercuryLinuxAudioCaptureCallbackBox: Sendable {
+    let onFrame: @Sendable (MediaFrame) -> Void
+    let onStopped: @Sendable (String) -> Void
+
+    init(
+        onFrame: @escaping @Sendable (MediaFrame) -> Void,
+        onStopped: @escaping @Sendable (String) -> Void
+    ) {
+        self.onFrame = onFrame
+        self.onStopped = onStopped
+    }
+}
+
+private typealias MercuryLinuxAudioCaptureFrameCallback =
+    @convention(c) (UnsafePointer<UInt8>?, Int, UInt64, UInt8, UnsafeMutableRawPointer?) -> Void
+
+private let mercuryLinuxAudioCaptureFrameCallback: MercuryLinuxAudioCaptureFrameCallback = {
+    payload,
+    len,
+    ptsMS,
+    flags,
+    userData in
+    guard let payload, let userData, len > 0 else { return }
+    let box = Unmanaged<MercuryLinuxAudioCaptureCallbackBox>
+        .fromOpaque(userData)
+        .takeUnretainedValue()
+    box.onFrame(MediaFrame(
+        kind: .audioOpus,
+        flags: MediaFrame.Flags(rawValue: flags),
+        presentationTimestampMillis: ptsMS,
+        payload: Data(bytes: payload, count: len)
+    ))
+}
+
+private typealias MercuryLinuxAudioCaptureStoppedCallback =
+    @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?, Int) -> Void
+
+private let mercuryLinuxAudioCaptureStoppedCallback: MercuryLinuxAudioCaptureStoppedCallback = {
+    userData,
+    reasonPointer,
+    reasonLength in
+    guard let userData else { return }
+    let box = Unmanaged<MercuryLinuxAudioCaptureCallbackBox>
+        .fromOpaque(userData)
+        .takeUnretainedValue()
+    let reason: String
+    if let reasonPointer, reasonLength > 0 {
+        reason = String(
+            decoding: UnsafeRawBufferPointer(start: reasonPointer, count: reasonLength),
+            as: UTF8.self
+        )
+    } else {
+        reason = "audio_capture_pipeline_ended"
+    }
+    box.onStopped(reason)
+}
+
+public protocol MercuryLinuxAudioCaptureEngineProtocol: Sendable {
+    func start(
+        _ request: MercuryLinuxAudioCaptureRequest,
+        onFrame: @escaping @Sendable (MediaFrame) -> Void,
+        onStopped: @escaping @Sendable (String) -> Void
+    ) throws
+    func stop()
+}
+
+// AUDIT: Native pipeline/context pointers are touched only under the
+// lifecycle lock. The C ABI cannot express that ownership.
+// sendable-allowlist: internal-lock-snapshot-store
+public final class MercuryLinuxAudioCaptureEngine: @unchecked Sendable {
+    private let lock = NSRecursiveLock()
+    private var pipeline: UnsafeMutableRawPointer?
+    private var callbackContext: UnsafeMutableRawPointer?
+
+    public init() {}
+
+    deinit {
+        stop()
+    }
+
+    public func start(
+        _ request: MercuryLinuxAudioCaptureRequest,
+        onFrame: @escaping @Sendable (MediaFrame) -> Void,
+        onStopped: @escaping @Sendable (String) -> Void = { _ in }
+    ) throws {
+        #if OPENBURNBAR_MEDIA_CAPTURE_LINKED
+        lock.lock()
+        defer { lock.unlock() }
+
+        let pipelineStarter: (UnsafeMutableRawPointer) -> UnsafeMutableRawPointer?
+        switch request.source {
+        case .portal(let grant):
+            guard grant.isLive else {
+                throw MercuryLinuxAudioCaptureError.portalConsentNotLive
+            }
+            guard grant.pipeWireFD >= 0 else {
+                throw MercuryLinuxAudioCaptureError.invalidPipeWireFD(grant.pipeWireFD)
+            }
+            pipelineStarter = { context in
+                media_audio_capture_start(
+                    grant.pipeWireFD,
+                    grant.pipeWireNodeID,
+                    mercuryLinuxAudioCaptureFrameCallback,
+                    mercuryLinuxAudioCaptureStoppedCallback,
+                    context
+                )
+            }
+        case .testPattern(let numBuffers):
+            pipelineStarter = { context in
+                media_audio_capture_start_test(
+                    numBuffers,
+                    mercuryLinuxAudioCaptureFrameCallback,
+                    mercuryLinuxAudioCaptureStoppedCallback,
+                    context
+                )
+            }
+        }
+
+        stopLocked()
+        let callbackBox = MercuryLinuxAudioCaptureCallbackBox(onFrame: onFrame, onStopped: onStopped)
+        let context = Unmanaged.passRetained(callbackBox).toOpaque()
+        guard let pipeline = pipelineStarter(context) else {
+            Unmanaged<MercuryLinuxAudioCaptureCallbackBox>.fromOpaque(context).release()
+            throw MercuryLinuxAudioCaptureError.startFailed
+        }
+        self.pipeline = pipeline
+        self.callbackContext = context
+        #else
+        _ = request
+        _ = onFrame
+        _ = onStopped
+        throw MercuryLinuxAudioCaptureError.mediaCrateUnavailable
+        #endif
+    }
+
+    public func stop() {
+        lock.lock()
+        defer { lock.unlock() }
+        #if OPENBURNBAR_MEDIA_CAPTURE_LINKED
+        stopLocked()
+        #else
+        pipeline = nil
+        callbackContext = nil
+        #endif
+    }
+
+    #if OPENBURNBAR_MEDIA_CAPTURE_LINKED
+    private func stopLocked() {
+        let oldPipeline = pipeline
+        let oldContext = callbackContext
+        pipeline = nil
+        callbackContext = nil
+        if let oldPipeline {
+            media_capture_stop(oldPipeline)
+        }
+        if let oldContext {
+            Unmanaged<MercuryLinuxAudioCaptureCallbackBox>
+                .fromOpaque(oldContext)
+                .release()
+        }
+    }
+    #endif
+}
+
+extension MercuryLinuxAudioCaptureEngine: MercuryLinuxAudioCaptureEngineProtocol {}
 #endif

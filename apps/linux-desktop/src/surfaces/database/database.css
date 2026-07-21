@@ -1,0 +1,37 @@
+.database-record-inspector {
+  margin-top: var(--space-4);
+}
+
+.database-record-inspector-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.database-record-inspector-header > div {
+  min-width: 0;
+}
+
+.database-record-inspector .fact {
+  min-width: 0;
+}
+
+.database-record-inspector .fact dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.database-record-inspector code {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (max-width: 560px) {
+  .database-record-inspector-header {
+    flex-direction: column;
+  }
+}

@@ -825,6 +825,7 @@ describe("WebView Message Protocol", () => {
         { phase: "planning", expectedColor: "active" },
         { phase: "executing_tool", expectedColor: "active" },
         { phase: "awaiting_approval", expectedColor: "warning" },
+        { phase: "awaiting_computer_use_session", expectedColor: "warning" },
         { phase: "completed", expectedColor: "success" },
         { phase: "failed", expectedColor: "error" },
         { phase: "cancelled", expectedColor: "error" },

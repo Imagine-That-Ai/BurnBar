@@ -51,12 +51,20 @@ public actor ComputerUseRunCoordinator {
 
     public typealias BrowserHostResolver = @Sendable (_ host: String) -> [String]
 
+    public typealias PreDispatchAuthorizer = @Sendable (
+        _ sessionId: ComputerUseSessionID,
+        _ invocation: BurnBarToolInvocation
+    ) async -> Bool
+
     private struct ActiveSession {
         let generation: UUID
         var state: ComputerUseSessionState
         var logger: ComputerUseAuditLogger
         var driver: OpenBurnBarPlaywrightDriver?
         var stepBurstApproval: StepBurstApproval?
+        var isReady = false
+        var inFlightInvocationId: UUID?
+        var cancelInFlight: (@Sendable () -> Void)?
     }
 
     private struct StepBurstApproval {
@@ -76,6 +84,7 @@ public actor ComputerUseRunCoordinator {
     private let macInputDispatcher: MacInputDispatcher?
     private let macInspectDispatcher: MacInspectDispatcher?
     private let browserHostResolver: BrowserHostResolver
+    private let preDispatchAuthorizer: PreDispatchAuthorizer?
     private let macAppVersion: String
     private let auditBaseDirectory: URL
     private let quotaLedger: ComputerUseLocalQuotaLedger
@@ -95,6 +104,7 @@ public actor ComputerUseRunCoordinator {
         macInputDispatcher: MacInputDispatcher? = nil,
         macInspectDispatcher: MacInspectDispatcher? = nil,
         browserHostResolver: BrowserHostResolver? = nil,
+        preDispatchAuthorizer: PreDispatchAuthorizer? = nil,
         macAppVersion: String,
         auditBaseDirectory: URL,
         quotaLedger: ComputerUseLocalQuotaLedger? = nil,
@@ -105,6 +115,7 @@ public actor ComputerUseRunCoordinator {
         self.macInputDispatcher = macInputDispatcher
         self.macInspectDispatcher = macInspectDispatcher
         self.browserHostResolver = browserHostResolver ?? OpenBurnBarBrowserTargetPolicy.systemResolvedAddresses
+        self.preDispatchAuthorizer = preDispatchAuthorizer
         self.macAppVersion = macAppVersion
         self.auditBaseDirectory = auditBaseDirectory
         self.quotaLedger = quotaLedger ?? ComputerUseLocalQuotaLedger(
@@ -136,14 +147,18 @@ public actor ComputerUseRunCoordinator {
             auditChainHeadHashHex: auditLogger.headHashHex
         )
         let generation = UUID()
+        let startTask = Task {
+            try await playwrightDriver?.start()
+        }
         sessions[manifest.sessionId] = ActiveSession(
             generation: generation,
             state: state,
             logger: auditLogger,
-            driver: playwrightDriver
+            driver: playwrightDriver,
+            cancelInFlight: { startTask.cancel() }
         )
         do {
-            try await playwrightDriver?.start()
+            try await startTask.value
         } catch {
             if sessions[manifest.sessionId]?.generation == generation {
                 sessions.removeValue(forKey: manifest.sessionId)
@@ -151,10 +166,13 @@ public actor ComputerUseRunCoordinator {
             await playwrightDriver?.stop()
             throw error
         }
-        guard sessions[manifest.sessionId]?.generation == generation else {
+        guard var active = sessions[manifest.sessionId], active.generation == generation else {
             await playwrightDriver?.stop()
             throw DispatchError.sessionEnded
         }
+        active.isReady = true
+        active.cancelInFlight = nil
+        sessions[manifest.sessionId] = active
         return auditLogger.headHashHex
     }
 
@@ -166,12 +184,7 @@ public actor ComputerUseRunCoordinator {
         // already suspended in approval or dispatch will fail its generation
         // check when it resumes and cannot restore this session.
         guard var active = sessions.removeValue(forKey: sessionId) else { return nil }
-        let dispatches = inFlightDispatches.removeValue(forKey: sessionId).map {
-            Array($0.values)
-        } ?? []
-        for dispatch in dispatches {
-            dispatch.cancel()
-        }
+        active.cancelInFlight?()
         active.state.endReason = reason
         let endedAt = Date()
         active.state.endedAt = endedAt
@@ -200,7 +213,8 @@ public actor ComputerUseRunCoordinator {
         sessionId: ComputerUseSessionID,
         source: ComputerUsePanicSource
     ) async -> ComputerUseSessionEndRecord? {
-        guard sessions[sessionId] != nil else { return nil }
+        guard var active = sessions[sessionId] else { return nil }
+        active.cancelInFlight?()
         let endReason: ComputerUseEndReason
         switch source {
         case .hotkey: endReason = .panicHotkey
@@ -213,21 +227,21 @@ public actor ComputerUseRunCoordinator {
         // the panic source ("revoked") is preserved in the audit chain.
         case .revoked: endReason = .entitlementLost
         }
-        if let active = sessions[sessionId] {
-            let panicAction: ComputerUseAction = .macInspect(MacInspectAction(kind: .accessibility))
-            do {
-                let entry = try active.logger.makeEntry(
-                    for: panicAction,
-                    approvedBy: .panic,
-                    denyReason: source.rawValue
-                )
-                try active.logger.append(entry)
-            } catch {
-                logger.warning("panic_halt_log_failed", metadata: [
-                    "session": sessionId.rawValue,
-                    "error": String(describing: error)
-                ])
-            }
+        active.state.endReason = endReason
+        active.state.endedAt = Date()
+        let panicAction: ComputerUseAction = .macInspect(MacInspectAction(kind: .accessibility))
+        do {
+            let entry = try active.logger.makeEntry(
+                for: panicAction,
+                approvedBy: .panic,
+                denyReason: source.rawValue
+            )
+            try active.logger.append(entry)
+        } catch {
+            logger.warning("panic_halt_log_failed", metadata: [
+                "session": sessionId.rawValue,
+                "error": String(describing: error)
+            ])
         }
         return await endSession(sessionId: sessionId, reason: endReason)
     }
@@ -252,7 +266,79 @@ public actor ComputerUseRunCoordinator {
     }
 
     public func session(_ id: ComputerUseSessionID) -> ComputerUseSessionState? {
-        sessions[id]?.state
+        guard let active = sessions[id], active.isReady else { return nil }
+        return active.state
+    }
+
+    public func hasActiveSession(excluding sessionId: ComputerUseSessionID? = nil) async -> Bool {
+        await expireStaleSessions()
+        return sessions.keys.contains { $0 != sessionId }
+    }
+
+    @discardableResult
+    public func expireStaleSessions(now: Date = Date()) async -> [ComputerUseSessionID] {
+        let expired = sessions.compactMap { sessionId, active in
+            sessionIsExpired(active, now: now) ? sessionId : nil
+        }
+        for sessionId in expired {
+            _ = await endSession(sessionId: sessionId, reason: .timeout)
+        }
+        return expired
+    }
+
+    @discardableResult
+    public func endAll(reason: ComputerUseEndReason) async -> [ComputerUseSessionID] {
+        let records = await endAllWithRecords(reason: reason)
+        return records.map { ComputerUseSessionID(rawValue: $0.sessionId) }
+    }
+
+    public func endAllWithRecords(reason: ComputerUseEndReason) async -> [ComputerUseSessionEndRecord] {
+        let activeSessionIds = Array(sessions.keys)
+        var records: [ComputerUseSessionEndRecord] = []
+        for sessionId in activeSessionIds {
+            if let record = await endSession(sessionId: sessionId, reason: reason) {
+                records.append(record)
+            }
+        }
+        return records
+    }
+
+    private func sessionIsExpired(_ active: ActiveSession, now: Date) -> Bool {
+        active.state.manifest.sessionTimeoutSeconds > 0
+            && now.timeIntervalSince(active.state.manifest.startedAt)
+                >= TimeInterval(active.state.manifest.sessionTimeoutSeconds)
+    }
+
+    private func isCurrent(sessionId: ComputerUseSessionID, generation: UUID) -> Bool {
+        sessions[sessionId]?.generation == generation
+    }
+
+    @discardableResult
+    private func storeIfCurrent(
+        _ active: ActiveSession,
+        sessionId: ComputerUseSessionID,
+        generation: UUID
+    ) -> Bool {
+        guard isCurrent(sessionId: sessionId, generation: generation) else { return false }
+        sessions[sessionId] = active
+        return true
+    }
+
+    private func endedResponse(
+        sessionId: ComputerUseSessionID,
+        invocation: BurnBarToolInvocation,
+        reason: String = "session_revoked"
+    ) -> ComputerUseInvokeResponse {
+        ComputerUseInvokeResponse(
+            sessionId: sessionId.rawValue,
+            callID: invocation.callID,
+            status: .denied,
+            denyReason: reason
+        )
+    }
+
+    public func actionDescriptor(invocation: BurnBarToolInvocation) throws -> ComputerUseAction {
+        try decodeAction(invocation: invocation)
     }
 
     public func hasActiveSession(excluding sessionId: ComputerUseSessionID? = nil) async -> Bool {
@@ -343,7 +429,7 @@ public actor ComputerUseRunCoordinator {
         accessibilityDeny: ComputerUseAccessibilityDenyReason?,
         capability: ComputerUseCapabilityContext
     ) async -> ComputerUseInvokeResponse {
-        guard var active = sessions[sessionId] else {
+        guard var active = sessions[sessionId], active.isReady else {
             return ComputerUseInvokeResponse(
                 sessionId: sessionId.rawValue,
                 callID: invocation.callID,
@@ -351,13 +437,31 @@ public actor ComputerUseRunCoordinator {
                 denyReason: "unknown_session"
             )
         }
-        let generation = active.generation
         if sessionIsExpired(active, now: Date()) {
             _ = await endSession(sessionId: sessionId, reason: .timeout)
             return endedResponse(
                 sessionId: sessionId,
                 invocation: invocation,
                 reason: "session_expired"
+            )
+        }
+        guard active.inFlightInvocationId == nil else {
+            return ComputerUseInvokeResponse(
+                sessionId: sessionId.rawValue,
+                callID: invocation.callID,
+                status: .denied,
+                denyReason: "session_action_in_flight"
+            )
+        }
+        let generation = active.generation
+        let invocationId = UUID()
+        active.inFlightInvocationId = invocationId
+        sessions[sessionId] = active
+        defer {
+            releaseInvocation(
+                sessionId: sessionId,
+                generation: generation,
+                invocationId: invocationId
             )
         }
         let action: ComputerUseAction
@@ -404,45 +508,20 @@ public actor ComputerUseRunCoordinator {
             action: action,
             scopeOutcome: scopeOutcome,
             accessibilityDeny: accessibilityDeny,
-            context: effectiveCapability
+            context: refreshedCapabilityContext(effectiveCapability, active: active, sessionId: sessionId)
         )
 
         switch gateOutcome {
         case .denied(let reason):
-            let entry: ComputerUseAuditEntry
-            do {
-                entry = try active.logger.makeEntry(
-                    for: action,
-                    approvedBy: .denied,
-                    scopeRuleId: scopeRuleIfDenied(outcome: scopeOutcome),
-                    denyReason: reason.rawValue,
-                    scopeContext: scopeContext
-                )
-                try active.logger.append(entry)
-                active.state.actionsRejected += 1
-                guard storeIfCurrent(active, sessionId: sessionId, generation: generation) else {
-                    return endedResponse(sessionId: sessionId, invocation: invocation)
-                }
-            } catch {
-                logger.warning("audit_append_failed", metadata: [
-                    "session": sessionId.rawValue,
-                    "error": String(describing: error)
-                ])
-                return ComputerUseInvokeResponse(
-                    sessionId: sessionId.rawValue,
-                    callID: invocation.callID,
-                    status: .error,
-                    denyReason: reason.rawValue
-                )
-            }
-            return ComputerUseInvokeResponse(
+            return deniedResponse(
                 sessionId: sessionId.rawValue,
-                callID: invocation.callID,
-                status: .denied,
-                denyReason: reason.rawValue,
-                auditEntryIndex: entry.entryIndex,
-                auditHeadHashHex: active.logger.headHashHex,
-                meteringHeader: ComputerUseActionMeteringHeader(auditEntry: entry)
+                invocation: invocation,
+                action: action,
+                scopeContext: scopeContext,
+                scopeRuleId: scopeRuleIfDenied(outcome: scopeOutcome),
+                reason: reason.rawValue,
+                generation: generation,
+                invocationId: invocationId
             )
 
         case .allowed(let approvedByCandidate):
@@ -463,11 +542,43 @@ public actor ComputerUseRunCoordinator {
             ) {
                 approvedBy = burst.approvedBy
                 approvalId = burst.approvalId
+                sessions[sessionId] = active
             } else {
                 // Raise the approval. Wait for resolution.
-                let evidence = await approvalEvidence(for: action, activeDriver: active.driver)
-                guard isCurrent(sessionId: sessionId, generation: generation) else {
-                    return endedResponse(sessionId: sessionId, invocation: invocation)
+                let evidence: ApprovalEvidence?
+                do {
+                    evidence = try await performCancellableOperation(
+                        sessionId: sessionId,
+                        generation: generation,
+                        invocationId: invocationId
+                    ) { [self, activeDriver = active.driver] in
+                        await approvalEvidence(for: action, activeDriver: activeDriver)
+                    }
+                } catch {
+                    return revokedResponse(sessionId: sessionId, invocation: invocation)
+                }
+                guard let current = currentActiveSession(
+                    sessionId: sessionId,
+                    generation: generation,
+                    invocationId: invocationId
+                ) else {
+                    return revokedResponse(sessionId: sessionId, invocation: invocation)
+                }
+                active = current
+                guard await authorize(
+                    sessionId: sessionId,
+                    invocation: invocation,
+                    generation: generation,
+                    invocationId: invocationId
+                ) else {
+                    return authorizationDeniedResponse(
+                        sessionId: sessionId,
+                        invocation: invocation,
+                        action: action,
+                        scopeContext: scopeContext,
+                        generation: generation,
+                        invocationId: invocationId
+                    )
                 }
                 let request = HermesRealtimeRelayApprovalRequest(
                     approvalId: UUID().uuidString,
@@ -485,13 +596,47 @@ public actor ComputerUseRunCoordinator {
                     trustMode: active.state.liveTrustMode.rawValue
                 )
                 do {
-                    let response = try await approvalIssuer(request)
-                    guard isCurrent(sessionId: sessionId, generation: generation) else {
-                        return endedResponse(sessionId: sessionId, invocation: invocation)
+                    let response = try await performCancellableOperation(
+                        sessionId: sessionId,
+                        generation: generation,
+                        invocationId: invocationId
+                    ) { [approvalIssuer] in
+                        try await approvalIssuer(request)
                     }
+                    guard let current = currentActiveSession(
+                        sessionId: sessionId,
+                        generation: generation,
+                        invocationId: invocationId
+                    ) else {
+                        return revokedResponse(sessionId: sessionId, invocation: invocation)
+                    }
+                    active = current
                     switch response.decision {
                     case .approve:
-                        approvedBy = response.respondedBy == "phone" ? .phone : .mac
+                        guard await authorize(
+                            sessionId: sessionId,
+                            invocation: invocation,
+                            generation: generation,
+                            invocationId: invocationId
+                        ) else {
+                            return authorizationDeniedResponse(
+                                sessionId: sessionId,
+                                invocation: invocation,
+                                action: action,
+                                scopeContext: scopeContext,
+                                generation: generation,
+                                invocationId: invocationId
+                            )
+                        }
+                        guard let authorized = currentActiveSession(
+                            sessionId: sessionId,
+                            generation: generation,
+                            invocationId: invocationId
+                        ) else {
+                            return revokedResponse(sessionId: sessionId, invocation: invocation)
+                        }
+                        active = authorized
+                        approvedBy = response.authority != nil || response.respondedBy == "phone" ? .phone : .mac
                         approvalId = response.approvalId
                         if shouldOpenStepBurst(from: response, active: active) {
                             active.stepBurstApproval = StepBurstApproval(
@@ -502,6 +647,7 @@ public actor ComputerUseRunCoordinator {
                                 expiresAt: Date().addingTimeInterval(30)
                             )
                         }
+                        sessions[sessionId] = active
                     case .reject, .rejectAndHalt:
                         let entry = try? active.logger.makeEntry(
                             for: action,
@@ -528,8 +674,12 @@ public actor ComputerUseRunCoordinator {
                         )
                     }
                 } catch {
-                    guard isCurrent(sessionId: sessionId, generation: generation) else {
-                        return endedResponse(sessionId: sessionId, invocation: invocation)
+                    guard currentActiveSession(
+                        sessionId: sessionId,
+                        generation: generation,
+                        invocationId: invocationId
+                    ) != nil else {
+                        return revokedResponse(sessionId: sessionId, invocation: invocation)
                     }
                     return ComputerUseInvokeResponse(
                         sessionId: sessionId.rawValue,
@@ -539,6 +689,59 @@ public actor ComputerUseRunCoordinator {
                     )
                 }
             }
+
+            guard let current = currentActiveSession(
+                sessionId: sessionId,
+                generation: generation,
+                invocationId: invocationId
+            ) else {
+                return revokedResponse(sessionId: sessionId, invocation: invocation)
+            }
+            active = current
+            sessions[sessionId] = active
+
+            let currentGateOutcome = gate.check(
+                action: action,
+                scopeOutcome: scopeOutcome,
+                accessibilityDeny: accessibilityDeny,
+                context: refreshedCapabilityContext(effectiveCapability, active: active, sessionId: sessionId)
+            )
+            if case .denied(let reason) = currentGateOutcome {
+                return deniedResponse(
+                    sessionId: sessionId.rawValue,
+                    invocation: invocation,
+                    action: action,
+                    scopeContext: scopeContext,
+                    scopeRuleId: scopeRuleIfDenied(outcome: scopeOutcome),
+                    reason: reason.rawValue,
+                    generation: generation,
+                    invocationId: invocationId
+                )
+            }
+
+            guard await authorize(
+                sessionId: sessionId,
+                invocation: invocation,
+                generation: generation,
+                invocationId: invocationId
+            ) else {
+                return authorizationDeniedResponse(
+                    sessionId: sessionId,
+                    invocation: invocation,
+                    action: action,
+                    scopeContext: scopeContext,
+                    generation: generation,
+                    invocationId: invocationId
+                )
+            }
+            guard let authorizedActive = currentActiveSession(
+                sessionId: sessionId,
+                generation: generation,
+                invocationId: invocationId
+            ) else {
+                return revokedResponse(sessionId: sessionId, invocation: invocation)
+            }
+            active = authorizedActive
 
             // AUDIT-BEFORE-ACTION (fail-closed): reserve a pending audit
             // entry on the chain BEFORE dispatch. If the reservation append
@@ -651,24 +854,20 @@ public actor ComputerUseRunCoordinator {
 
             // Dispatch.
             let result: BurnBarToolResult
-            let dispatchId = UUID()
-            let dispatchTask = Task {
-                try Task.checkCancellation()
-                let result = try await self.dispatch(
-                    sessionId: sessionId,
-                    invocation: invocation,
-                    action: action,
-                    activeDriver: active.driver
-                )
-                try Task.checkCancellation()
-                return result
-            }
-            inFlightDispatches[sessionId, default: [:]][dispatchId] = dispatchTask
             do {
-                result = try await dispatchTask.value
-                removeInFlightDispatch(sessionId: sessionId, dispatchId: dispatchId)
+                result = try await performCancellableOperation(
+                    sessionId: sessionId,
+                    generation: generation,
+                    invocationId: invocationId
+                ) { [self, activeDriver = active.driver] in
+                    try await dispatch(
+                        sessionId: sessionId,
+                        invocation: invocation,
+                        action: action,
+                        activeDriver: activeDriver
+                    )
+                }
             } catch {
-                removeInFlightDispatch(sessionId: sessionId, dispatchId: dispatchId)
                 if quotaReservationInserted {
                     _ = try? quotaLedger.rollbackAction(
                         idempotencyKey: "\(sessionId.rawValue)|\(invocation.callID)",
@@ -676,9 +875,14 @@ public actor ComputerUseRunCoordinator {
                         exemptFromMeteredCap: exemptsMeteredCap
                     )
                 }
-                guard isCurrent(sessionId: sessionId, generation: generation) else {
-                    return endedResponse(sessionId: sessionId, invocation: invocation)
+                guard let current = currentActiveSession(
+                    sessionId: sessionId,
+                    generation: generation,
+                    invocationId: invocationId
+                ) else {
+                    return revokedResponse(sessionId: sessionId, invocation: invocation)
                 }
+                active = current
                 let failureEntry = try? active.logger.makeEntry(
                     for: action,
                     approvalId: approvalId,
@@ -704,10 +908,14 @@ public actor ComputerUseRunCoordinator {
                 )
             }
 
-            guard isCurrent(sessionId: sessionId, generation: generation) else {
-                return endedResponse(sessionId: sessionId, invocation: invocation)
+            guard let current = currentActiveSession(
+                sessionId: sessionId,
+                generation: generation,
+                invocationId: invocationId
+            ) else {
+                return revokedResponse(sessionId: sessionId, invocation: invocation)
             }
-
+            active = current
             do {
                 let entry = try active.logger.makeEntry(
                     for: action,
@@ -741,6 +949,210 @@ public actor ComputerUseRunCoordinator {
                     denyReason: String(describing: error)
                 )
             }
+        }
+    }
+
+    private func currentActiveSession(
+        sessionId: ComputerUseSessionID,
+        generation: UUID,
+        invocationId: UUID
+    ) -> ActiveSession? {
+        guard let active = sessions[sessionId],
+              active.isReady,
+              active.generation == generation,
+              active.inFlightInvocationId == invocationId else {
+            return nil
+        }
+        return active
+    }
+
+    private func releaseInvocation(
+        sessionId: ComputerUseSessionID,
+        generation: UUID,
+        invocationId: UUID
+    ) {
+        guard var active = currentActiveSession(
+            sessionId: sessionId,
+            generation: generation,
+            invocationId: invocationId
+        ) else { return }
+        active.inFlightInvocationId = nil
+        active.cancelInFlight = nil
+        sessions[sessionId] = active
+    }
+
+    private func performCancellableOperation<T: Sendable>(
+        sessionId: ComputerUseSessionID,
+        generation: UUID,
+        invocationId: UUID,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        let task = Task {
+            try Task.checkCancellation()
+            return try await operation()
+        }
+        guard var active = currentActiveSession(
+            sessionId: sessionId,
+            generation: generation,
+            invocationId: invocationId
+        ) else {
+            task.cancel()
+            throw DispatchError.unknownSession
+        }
+        active.cancelInFlight = { task.cancel() }
+        sessions[sessionId] = active
+        defer {
+            if var current = currentActiveSession(
+                sessionId: sessionId,
+                generation: generation,
+                invocationId: invocationId
+            ) {
+                current.cancelInFlight = nil
+                sessions[sessionId] = current
+            }
+        }
+        return try await task.value
+    }
+
+    private func authorize(
+        sessionId: ComputerUseSessionID,
+        invocation: BurnBarToolInvocation,
+        generation: UUID,
+        invocationId: UUID
+    ) async -> Bool {
+        guard let preDispatchAuthorizer else {
+            return currentActiveSession(
+                sessionId: sessionId,
+                generation: generation,
+                invocationId: invocationId
+            ) != nil
+        }
+        let allowed: Bool
+        do {
+            allowed = try await performCancellableOperation(
+                sessionId: sessionId,
+                generation: generation,
+                invocationId: invocationId
+            ) {
+                await preDispatchAuthorizer(sessionId, invocation)
+            }
+        } catch {
+            return false
+        }
+        return allowed && currentActiveSession(
+            sessionId: sessionId,
+            generation: generation,
+            invocationId: invocationId
+        ) != nil
+    }
+
+    private func refreshedCapabilityContext(
+        _ capability: ComputerUseCapabilityContext,
+        active: ActiveSession,
+        sessionId: ComputerUseSessionID
+    ) -> ComputerUseCapabilityContext {
+        ComputerUseCapabilityContext(
+            entitlement: capability.entitlement,
+            envelope: capability.envelope,
+            usage: capability.usage,
+            session: active.state,
+            concurrentSessionActive: sessions.keys.contains { $0 != sessionId },
+            killSwitch: capability.killSwitch,
+            accessibilityTrusted: capability.accessibilityTrusted,
+            originatedFromPhone: capability.originatedFromPhone,
+            phoneControlRespectsDenyRegions: capability.phoneControlRespectsDenyRegions,
+            phoneSessionFirstActionConfirmed: capability.phoneSessionFirstActionConfirmed,
+            clipboardConsentGranted: capability.clipboardConsentGranted
+        )
+    }
+
+    private func revokedResponse(
+        sessionId: ComputerUseSessionID,
+        invocation: BurnBarToolInvocation
+    ) -> ComputerUseInvokeResponse {
+        ComputerUseInvokeResponse(
+            sessionId: sessionId.rawValue,
+            callID: invocation.callID,
+            status: .denied,
+            denyReason: "session_revoked"
+        )
+    }
+
+    private func authorizationDeniedResponse(
+        sessionId: ComputerUseSessionID,
+        invocation: BurnBarToolInvocation,
+        action: ComputerUseAction,
+        scopeContext: ComputerUseScopeContext,
+        generation: UUID,
+        invocationId: UUID
+    ) -> ComputerUseInvokeResponse {
+        guard currentActiveSession(
+            sessionId: sessionId,
+            generation: generation,
+            invocationId: invocationId
+        ) != nil else {
+            return revokedResponse(sessionId: sessionId, invocation: invocation)
+        }
+        return deniedResponse(
+            sessionId: sessionId.rawValue,
+            invocation: invocation,
+            action: action,
+            scopeContext: scopeContext,
+            scopeRuleId: nil,
+            reason: "pre_dispatch_authorization_denied",
+            generation: generation,
+            invocationId: invocationId
+        )
+    }
+
+    private func deniedResponse(
+        sessionId: String,
+        invocation: BurnBarToolInvocation,
+        action: ComputerUseAction,
+        scopeContext: ComputerUseScopeContext,
+        scopeRuleId: String?,
+        reason: String,
+        generation: UUID,
+        invocationId: UUID
+    ) -> ComputerUseInvokeResponse {
+        let typedSessionId = ComputerUseSessionID(sessionId)
+        guard var active = currentActiveSession(
+            sessionId: typedSessionId,
+            generation: generation,
+            invocationId: invocationId
+        ) else {
+            return revokedResponse(sessionId: typedSessionId, invocation: invocation)
+        }
+        do {
+            let entry = try active.logger.makeEntry(
+                for: action,
+                approvedBy: .denied,
+                scopeRuleId: scopeRuleId,
+                denyReason: reason,
+                scopeContext: scopeContext
+            )
+            try active.logger.append(entry)
+            active.state.actionsRejected += 1
+            sessions[typedSessionId] = active
+            return ComputerUseInvokeResponse(
+                sessionId: sessionId,
+                callID: invocation.callID,
+                status: .denied,
+                denyReason: reason,
+                auditEntryIndex: entry.entryIndex,
+                auditHeadHashHex: active.logger.headHashHex
+            )
+        } catch {
+            logger.warning("audit_append_failed", metadata: [
+                "session": sessionId,
+                "error": String(describing: error)
+            ])
+            return ComputerUseInvokeResponse(
+                sessionId: sessionId,
+                callID: invocation.callID,
+                status: .error,
+                denyReason: reason
+            )
         }
     }
 
@@ -973,6 +1385,7 @@ public actor ComputerUseRunCoordinator {
         action: ComputerUseAction,
         activeDriver: OpenBurnBarPlaywrightDriver?
     ) async throws -> BurnBarToolResult {
+        try Task.checkCancellation()
         switch action {
         case .browser(let browser):
             guard let driver = activeDriver else { throw DispatchError.missingDriver }

@@ -3,11 +3,12 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_FEED_URL: &str = "https://downloads.burnbar.ai/latest-linux.json";
 const MAX_FEED_BYTES: usize = 1024 * 1024;
 const MAX_SIGNATURE_BYTES: usize = 1024;
+const MAX_FEED_AGE_SECONDS: u64 = 7 * 24 * 60 * 60;
 const PINNED_PUBLIC_KEY_PEM: &str =
     include_str!("../../../../packaging/linux/openburnbar-linux-ed25519.pub.pem");
 const PINNED_PUBLIC_KEY_SPKI_SHA256: &str =
@@ -58,7 +59,60 @@ pub struct LinuxUpdateStatus {
     pub published_at: Option<String>,
     pub notes: Option<String>,
     pub artifact: Option<LinuxUpdateArtifact>,
+    pub instructions: Option<LinuxUpdateInstructions>,
+    pub package_channel: Option<String>,
+    pub channel_info: Option<LinuxUpdateChannelInfo>,
+    pub signature_state: String,
+    pub feed_freshness: String,
+    pub feed_age_seconds: Option<u64>,
+    pub checked_at_unix_seconds: u64,
+    pub compatibility: Option<LinuxUpdateCompatibility>,
     pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinuxUpdateChannelInfo {
+    pub id: String,
+    pub label: String,
+    pub owner: String,
+    pub install_mode: String,
+    pub automatic_install: bool,
+    pub rollback_mode: String,
+    pub explanation: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinuxUpdateCompatibility {
+    pub state: String,
+    pub shell_version: String,
+    pub daemon_version: Option<String>,
+    pub reason: Option<String>,
+}
+
+/// Package-manager-owned actions exposed to the renderer as fixed, audited
+/// instructions. The desktop shell never executes these strings; users run
+/// them through their distro's terminal/package UI after reviewing the signed
+/// feed result.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinuxUpdateAction {
+    pub id: String,
+    pub label: String,
+    pub instruction: String,
+    pub command: Option<String>,
+    pub available: bool,
+    pub requires_confirmation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinuxUpdateInstructions {
+    pub package_manager: String,
+    pub install: LinuxUpdateAction,
+    pub rollback: LinuxUpdateAction,
+    pub restart: LinuxUpdateAction,
 }
 
 impl LinuxUpdateStatus {
@@ -71,6 +125,14 @@ impl LinuxUpdateStatus {
             published_at: None,
             notes: None,
             artifact: None,
+            instructions: None,
+            package_channel: None,
+            channel_info: None,
+            signature_state: "unknown".into(),
+            feed_freshness: "unknown".into(),
+            feed_age_seconds: None,
+            checked_at_unix_seconds: now_unix_seconds(),
+            compatibility: None,
             reason: Some(reason.into()),
         }
     }
@@ -84,6 +146,14 @@ impl LinuxUpdateStatus {
             published_at: None,
             notes: None,
             artifact: None,
+            instructions: None,
+            package_channel: None,
+            channel_info: None,
+            signature_state: "rejected".into(),
+            feed_freshness: "unknown".into(),
+            feed_age_seconds: None,
+            checked_at_unix_seconds: now_unix_seconds(),
+            compatibility: None,
             reason: Some(reason.into()),
         }
     }
@@ -180,24 +250,13 @@ pub async fn check_linux_update(current_version: &str, package_channel: &str) ->
     }
 
     let architecture = normalized_architecture(std::env::consts::ARCH);
-    let artifact_type = match package_channel {
-        "deb" => "deb",
-        "rpm" => "rpm",
-        _ => "appimage",
+    let Some(artifact_type) = artifact_type_for_package_channel(package_channel) else {
+        return LinuxUpdateStatus::unavailable(
+            current_version,
+            format!("Installed package channel {package_channel} is unsupported."),
+        );
     };
-    let artifact = feed
-        .artifacts
-        .iter()
-        .find(|artifact| artifact.r#type == artifact_type && artifact.architecture == architecture)
-        .cloned()
-        .or_else(|| {
-            feed.artifacts
-                .iter()
-                .find(|artifact| {
-                    artifact.r#type == "appimage" && artifact.architecture == architecture
-                })
-                .cloned()
-        });
+    let artifact = select_artifact(&feed, artifact_type, architecture);
     let Some(artifact) = artifact else {
         return LinuxUpdateStatus::invalid(
             current_version,
@@ -211,15 +270,357 @@ pub async fn check_linux_update(current_version: &str, package_channel: &str) ->
         Ok(state) => state,
         Err(error) => return LinuxUpdateStatus::invalid(current_version, error),
     };
-    LinuxUpdateStatus {
+    let feed_version = feed.version.clone();
+    let feed_channel = feed.channel.clone();
+    let feed_published_at = feed.published_at.clone();
+    let feed_notes = feed.notes.clone();
+    let mut status = LinuxUpdateStatus {
         state: state.into(),
         current_version: current_version.into(),
-        latest_version: Some(feed.version),
-        channel: Some(feed.channel),
-        published_at: Some(feed.published_at),
-        notes: feed.notes,
+        latest_version: Some(feed_version),
+        channel: Some(feed_channel),
+        published_at: Some(feed_published_at.clone()),
+        notes: feed_notes,
         artifact: Some(artifact),
+        instructions: None,
+        package_channel: Some(package_channel.to_string()),
+        channel_info: Some(channel_info(package_channel)),
+        signature_state: "verified".into(),
+        feed_freshness: feed_freshness(&feed_published_at),
+        feed_age_seconds: feed_age_seconds(&feed_published_at),
+        checked_at_unix_seconds: now_unix_seconds(),
+        compatibility: None,
         reason: None,
+    };
+    status.instructions = Some(build_update_instructions(
+        package_channel,
+        current_version,
+        status.latest_version.as_deref(),
+    ));
+    status
+}
+
+/// Attach deterministic package-manager instructions to a status that may
+/// have failed before the signed feed was available. This keeps recovery UX
+/// useful during outages without inventing release metadata or a download URL.
+pub fn attach_update_instructions(
+    mut status: LinuxUpdateStatus,
+    package_channel: &str,
+) -> LinuxUpdateStatus {
+    status.package_channel = Some(package_channel.to_string());
+    status.channel_info = Some(channel_info(package_channel));
+    if status.instructions.is_none() {
+        status.instructions = Some(build_update_instructions(
+            package_channel,
+            &status.current_version,
+            status.latest_version.as_deref(),
+        ));
+    }
+    if status.artifact.is_none()
+        || status.signature_state != "verified"
+        || status.feed_freshness != "fresh"
+    {
+        if let Some(instructions) = status.instructions.as_mut() {
+            instructions.install.available = false;
+            instructions.rollback.available = false;
+        }
+    }
+    status
+}
+
+/// Add daemon compatibility facts after the signed feed check. The daemon
+/// version is optional because an offline daemon must remain a typed,
+/// recoverable state rather than being represented as a fake match.
+pub fn attach_compatibility(
+    mut status: LinuxUpdateStatus,
+    shell_version: &str,
+    daemon_version: Option<&str>,
+) -> LinuxUpdateStatus {
+    let (state, reason) = match daemon_version {
+        None => (
+            "unknown",
+            Some("Daemon version is unavailable; reconnect before installing an update.".into()),
+        ),
+        Some(version) if version == shell_version => ("aligned", None),
+        Some(version) => (
+            "mismatch",
+            Some(format!(
+                "Shell {shell_version} and daemon {version} differ; restart after the package manager finishes."
+            )),
+        ),
+    };
+    status.compatibility = Some(LinuxUpdateCompatibility {
+        state: state.into(),
+        shell_version: shell_version.into(),
+        daemon_version: daemon_version.map(str::to_string),
+        reason,
+    });
+    let package_actions_allowed = status.signature_state == "verified"
+        && status.feed_freshness == "fresh"
+        && status
+            .compatibility
+            .as_ref()
+            .is_some_and(|compatibility| compatibility.state == "aligned");
+    if !package_actions_allowed {
+        if let Some(instructions) = status.instructions.as_mut() {
+            instructions.install.available = false;
+            instructions.rollback.available = false;
+        }
+    }
+    status
+}
+
+fn channel_info(package_channel: &str) -> LinuxUpdateChannelInfo {
+    match package_channel {
+        "deb" => LinuxUpdateChannelInfo {
+            id: "deb".into(),
+            label: "Debian package (.deb)".into(),
+            owner: "apt/dpkg".into(),
+            install_mode: "package-manager-guided".into(),
+            automatic_install: false,
+            rollback_mode: "apt-version-selection".into(),
+            explanation: "The distro package manager owns files and upgrades; OpenBurnBar only verifies release metadata and shows safe guidance.".into(),
+        },
+        "rpm" => LinuxUpdateChannelInfo {
+            id: "rpm".into(),
+            label: "RPM package (.rpm)".into(),
+            owner: "dnf/rpm".into(),
+            install_mode: "package-manager-guided".into(),
+            automatic_install: false,
+            rollback_mode: "dnf-history".into(),
+            explanation: "The distro package manager owns files and upgrades; OpenBurnBar never replaces RPM-owned files from the shell.".into(),
+        },
+        "arch" => LinuxUpdateChannelInfo {
+            id: "arch".into(),
+            label: "Arch package (.pkg.tar.zst)".into(),
+            owner: "pacman".into(),
+            install_mode: "package-manager-guided".into(),
+            automatic_install: false,
+            rollback_mode: "pacman-cache".into(),
+            explanation: "The Arch package manager owns files and upgrades; OpenBurnBar never replaces pacman-owned files from the shell.".into(),
+        },
+        "appimage" => LinuxUpdateChannelInfo {
+            id: "appimage".into(),
+            label: "AppImage".into(),
+            owner: "user-managed artifact".into(),
+            install_mode: "artifact-replacement-guided".into(),
+            automatic_install: false,
+            rollback_mode: "previous-artifact".into(),
+            explanation: "AppImage replacement is user-managed; keep a signed previous image and preserve its executable bit before relaunching.".into(),
+        },
+        _ => LinuxUpdateChannelInfo {
+            id: "unknown".into(),
+            label: "Unknown package channel".into(),
+            owner: "unresolved".into(),
+            install_mode: "unavailable".into(),
+            automatic_install: false,
+            rollback_mode: "unavailable".into(),
+            explanation: "The owning package channel is not known, so install and rollback actions stay unavailable until it is identified.".into(),
+        },
+    }
+}
+
+fn artifact_type_for_package_channel(package_channel: &str) -> Option<&'static str> {
+    match package_channel {
+        "deb" => Some("deb"),
+        "rpm" => Some("rpm"),
+        "arch" => Some("arch"),
+        "appimage" => Some("appimage"),
+        _ => None,
+    }
+}
+
+fn select_artifact(
+    feed: &LinuxUpdateFeed,
+    artifact_type: &str,
+    architecture: &str,
+) -> Option<LinuxUpdateArtifact> {
+    feed.artifacts
+        .iter()
+        .find(|artifact| artifact.r#type == artifact_type && artifact.architecture == architecture)
+        .cloned()
+}
+
+fn now_unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn feed_freshness(published_at: &str) -> String {
+    let Some(published) = timestamp_to_unix_seconds(published_at) else {
+        return "unknown".into();
+    };
+    let now = now_unix_seconds() as i64;
+    if published > now.saturating_add(300) {
+        "future".into()
+    } else if now.saturating_sub(published) as u64 > MAX_FEED_AGE_SECONDS {
+        "stale".into()
+    } else {
+        "fresh".into()
+    }
+}
+
+fn feed_age_seconds(published_at: &str) -> Option<u64> {
+    let published = timestamp_to_unix_seconds(published_at)?;
+    let now = now_unix_seconds() as i64;
+    if published > now {
+        return None;
+    }
+    Some(now.saturating_sub(published) as u64)
+}
+
+/// Convert the already-validated UTC timestamp shape to Unix seconds without
+/// pulling a date/time dependency into the native shell.
+fn timestamp_to_unix_seconds(value: &str) -> Option<i64> {
+    let (date, time) = value.split_once('T')?;
+    let year = date.get(0..4)?.parse::<i64>().ok()?;
+    let month = date.get(5..7)?.parse::<i64>().ok()?;
+    let day = date.get(8..10)?.parse::<i64>().ok()?;
+    let clock = time.strip_suffix('Z')?;
+    let mut parts = clock.split(':');
+    let hour = parts.next()?.parse::<i64>().ok()?;
+    let minute = parts.next()?.parse::<i64>().ok()?;
+    let second_part = parts.next()?;
+    let second = second_part.get(0..2)?.parse::<i64>().ok()?;
+    let y = year - if month <= 2 { 1 } else { 0 };
+    let era = (if y >= 0 { y } else { y - 399 }) / 400;
+    let year_of_era = y - era * 400;
+    let month_prime = month + if month > 2 { -3 } else { 9 };
+    let day_of_year = (153 * month_prime + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let days = era * 146_097 + day_of_era - 719_468;
+    Some(days * 86_400 + hour * 3_600 + minute * 60 + second)
+}
+
+fn build_update_instructions(
+    package_channel: &str,
+    current_version: &str,
+    latest_version: Option<&str>,
+) -> LinuxUpdateInstructions {
+    let channel = match package_channel {
+        "deb" => "apt",
+        "rpm" => "dnf",
+        "arch" => "pacman",
+        "appimage" => "appimage",
+        _ => "unknown",
+    };
+    let version = latest_version
+        .filter(|value| compare_semver(value, "0.0.0").is_some())
+        .unwrap_or(current_version);
+    let install = match channel {
+        "apt" => LinuxUpdateAction {
+            id: "install".into(),
+            label: "Update with apt".into(),
+            instruction: "A signed direct-download artifact is available, but no apt repository channel is configured; install that artifact manually after verifying its digest.".into(),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+        "dnf" => LinuxUpdateAction {
+            id: "install".into(),
+            label: "Update with dnf".into(),
+            instruction: "A signed direct-download artifact is available, but no dnf repository channel is configured; install that artifact manually after verifying its digest.".into(),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+        "pacman" => LinuxUpdateAction {
+            id: "install".into(),
+            label: "Update with pacman".into(),
+            instruction: "A signed direct-download artifact is available, but no pacman repository channel is configured; install that artifact manually after verifying its digest.".into(),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+        "appimage" => LinuxUpdateAction {
+            id: "install".into(),
+            label: "Replace the AppImage".into(),
+            instruction: "Download the signed artifact, replace the current AppImage atomically, and keep its executable bit.".into(),
+            command: None,
+            available: true,
+            requires_confirmation: true,
+        },
+        _ => LinuxUpdateAction {
+            id: "install".into(),
+            label: "Use your package manager".into(),
+            instruction: "Identify the owning package channel before replacing OpenBurnBar.".into(),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+    };
+    let rollback = match channel {
+        "apt" => LinuxUpdateAction {
+            id: "rollback".into(),
+            label: "Roll back with apt".into(),
+            instruction: format!(
+                "No previous signed Debian artifact is attached to this feed (current: {current_version}, feed: {version}); rollback stays unavailable until release metadata supplies one."
+            ),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+        "dnf" => LinuxUpdateAction {
+            id: "rollback".into(),
+            label: "Roll back with dnf".into(),
+            instruction: format!(
+                "No previous signed RPM artifact is attached to this feed (current: {current_version}, feed: {version}); rollback stays unavailable until release metadata supplies one."
+            ),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+        "pacman" => LinuxUpdateAction {
+            id: "rollback".into(),
+            label: "Roll back with pacman".into(),
+            instruction: format!(
+                "No previous signed Arch artifact is attached to this feed (current: {current_version}, feed: {version}); rollback stays unavailable until release metadata supplies one."
+            ),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+        "appimage" => LinuxUpdateAction {
+            id: "rollback".into(),
+            label: "Restore the previous AppImage".into(),
+            instruction: "Restore a previously signed AppImage backup, verify its digest, and relaunch OpenBurnBar.".into(),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+        _ => LinuxUpdateAction {
+            id: "rollback".into(),
+            label: "Rollback guidance unavailable".into(),
+            instruction: "The owning package channel is unknown; do not replace binaries until it is identified.".into(),
+            command: None,
+            available: false,
+            requires_confirmation: true,
+        },
+    };
+    let restart = LinuxUpdateAction {
+        id: "restart".into(),
+        label: "Restart OpenBurnBar".into(),
+        instruction: if channel == "appimage" || channel == "unknown" {
+            "Quit OpenBurnBar from the tray, replace or restore the signed artifact, then launch it again.".into()
+        } else {
+            "Quit OpenBurnBar from the tray, let the package manager finish, then launch it again."
+                .into()
+        },
+        command: if channel == "appimage" || channel == "unknown" {
+            None
+        } else {
+            Some("systemctl --user restart openburnbar-daemon.service".into())
+        },
+        available: true,
+        requires_confirmation: false,
+    };
+    LinuxUpdateInstructions {
+        package_manager: channel.into(),
+        install,
+        rollback,
+        restart,
     }
 }
 
@@ -256,7 +657,7 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
     if !matches!(feed.channel.as_str(), "stable" | "prerelease" | "nightly") {
         return Err("Update feed channel is invalid.".into());
     }
-    if feed.published_at.len() < 20 || !feed.published_at.ends_with('Z') {
+    if !is_utc_timestamp(&feed.published_at) {
         return Err("Update feed publication timestamp is invalid.".into());
     }
     if feed.signature.algorithm != "Ed25519"
@@ -264,10 +665,12 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
     {
         return Err("Update feed signing identity does not match the pinned release key.".into());
     }
-    let signature_url = reqwest::Url::parse(&feed.signature.url)
+    reqwest::Url::parse(&feed.signature.url)
         .map_err(|_| "Update feed signature URL is invalid.".to_string())?;
-    if !allowed_download_url(&signature_url) {
-        return Err("Update feed signature URL is not allowlisted HTTPS.".into());
+    if validate_update_artifact_url(&feed.signature.url).is_err() {
+        return Err(
+            "Update feed signature URL is not allowlisted first-party release HTTPS.".into(),
+        );
     }
     if feed.artifacts.is_empty() {
         return Err("Update feed has no artifacts.".into());
@@ -276,7 +679,7 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
     for artifact in &feed.artifacts {
         if !matches!(
             artifact.r#type.as_str(),
-            "appimage" | "deb" | "rpm" | "daemon"
+            "appimage" | "arch" | "deb" | "rpm" | "daemon"
         ) || !matches!(artifact.architecture.as_str(), "aarch64" | "x86_64")
             || artifact.size == 0
             || artifact.sha256.len() != 64
@@ -291,10 +694,12 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
             return Err("Update feed contains duplicate artifact metadata.".into());
         }
         for raw_url in [&artifact.url, &artifact.signature_url] {
-            let url = reqwest::Url::parse(raw_url)
+            reqwest::Url::parse(raw_url)
                 .map_err(|_| "Update artifact URL is invalid.".to_string())?;
-            if !allowed_download_url(&url) {
-                return Err("Update artifact URL is not allowlisted HTTPS.".into());
+            if validate_update_artifact_url(raw_url).is_err() {
+                return Err(
+                    "Update artifact URL is not allowlisted first-party release HTTPS.".into(),
+                );
             }
         }
     }
@@ -306,6 +711,73 @@ fn validate_feed(feed: &LinuxUpdateFeed) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn is_utc_timestamp(value: &str) -> bool {
+    // Keep the release contract dependency-free while rejecting ambiguous
+    // local timestamps and date-like strings. Fractional seconds are allowed
+    // because the release assembler uses RFC3339 output from Date::toISOString.
+    let Some((date, time)) = value.split_once('T') else {
+        return false;
+    };
+    if date.len() != 10
+        || !date.bytes().enumerate().all(|(index, byte)| {
+            if matches!(index, 4 | 7) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_digit()
+            }
+        })
+        || !time.ends_with('Z')
+    {
+        return false;
+    }
+    let year = date[..4].parse::<u32>().ok();
+    let month = date[5..7].parse::<u8>().ok();
+    let day = date[8..10].parse::<u8>().ok();
+    let (Some(year), Some(month), Some(day)) = (year, month, day) else {
+        return false;
+    };
+    let days_in_month = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if year % 400 == 0 || (year % 4 == 0 && year % 100 != 0) => 29,
+        2 => 28,
+        _ => 0,
+    };
+    if day == 0 || day > days_in_month {
+        return false;
+    }
+    let clock = &time[..time.len() - 1];
+    let clock_parts = clock.split(':').collect::<Vec<_>>();
+    if clock_parts.len() != 3 {
+        return false;
+    }
+    let hours = clock_parts[0];
+    let minutes = clock_parts[1];
+    let seconds = clock_parts[2];
+    if hours.len() != 2 || minutes.len() != 2 || seconds.len() < 2 || !seconds.is_char_boundary(2) {
+        return false;
+    }
+    if !hours.bytes().all(|byte| byte.is_ascii_digit())
+        || !minutes.bytes().all(|byte| byte.is_ascii_digit())
+        || !seconds[..2].bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return false;
+    }
+    let fractional = &seconds[2..];
+    if !fractional.is_empty() {
+        if !fractional.starts_with('.') {
+            return false;
+        }
+        let digits = &fractional[1..];
+        if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+            return false;
+        }
+    }
+    hours.parse::<u8>().is_ok_and(|value| value < 24)
+        && minutes.parse::<u8>().is_ok_and(|value| value < 60)
+        && seconds[..2].parse::<u8>().is_ok_and(|value| value < 60)
 }
 
 async fn verify_feed_signature(
@@ -489,9 +961,197 @@ mod tests {
     #[test]
     fn validates_strict_feed_and_required_architectures() {
         assert!(validate_feed(&feed()).is_ok());
+        let mut arch_feed = feed();
+        arch_feed.artifacts.push(artifact("arch", "aarch64"));
+        assert!(validate_feed(&arch_feed).is_ok());
         let mut missing = feed();
         missing.artifacts.pop();
         assert!(validate_feed(&missing).unwrap_err().contains("x86_64"));
+    }
+
+    #[test]
+    fn rejects_ambiguous_publication_timestamps() {
+        let mut invalid = feed();
+        invalid.published_at = "2026-07-09 00:00:00Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-07-09T25:00:00Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-07-09T00:60:00Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-07-09T00:00:60Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-02-30T00:00:00Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-13-01T00:00:00Z".into();
+        assert!(validate_feed(&invalid).unwrap_err().contains("timestamp"));
+        invalid.published_at = "2026-07-09T00:00:00.123Z".into();
+        assert!(validate_feed(&invalid).is_ok());
+    }
+
+    #[test]
+    fn package_actions_are_channel_native_and_fail_closed_for_unknown_channels() {
+        let deb = build_update_instructions("deb", "1.0.0", Some("1.1.0"));
+        assert_eq!(deb.package_manager, "apt");
+        assert!(deb.install.command.is_none());
+        assert!(!deb.install.available);
+        assert!(deb.rollback.command.is_none());
+        assert!(!deb.rollback.available);
+        let rpm = build_update_instructions("rpm", "1.0.0", Some("1.1.0"));
+        assert!(rpm.rollback.command.is_none());
+        assert!(!rpm.rollback.available);
+        let arch = build_update_instructions("arch", "1.0.0", Some("1.1.0"));
+        assert_eq!(arch.package_manager, "pacman");
+        assert_eq!(arch.install.label, "Update with pacman");
+        assert!(!arch.install.available);
+        assert!(arch.rollback.instruction.contains("Arch artifact"));
+        let unknown = build_update_instructions("unknown", "1.0.0", None);
+        assert!(!unknown.install.available);
+        assert!(!unknown.rollback.available);
+        assert!(unknown.install.command.is_none());
+    }
+
+    #[test]
+    fn artifact_selection_never_falls_back_to_a_different_package_channel_or_architecture() {
+        let release = feed();
+        assert_eq!(artifact_type_for_package_channel("deb"), Some("deb"));
+        assert_eq!(artifact_type_for_package_channel("rpm"), Some("rpm"));
+        assert_eq!(artifact_type_for_package_channel("arch"), Some("arch"));
+        assert_eq!(
+            artifact_type_for_package_channel("appimage"),
+            Some("appimage")
+        );
+        assert_eq!(artifact_type_for_package_channel("flatpak"), None);
+        assert!(select_artifact(&release, "deb", "aarch64").is_none());
+        assert!(select_artifact(&release, "rpm", "x86_64").is_none());
+        assert!(select_artifact(&release, "appimage", "mips64").is_none());
+        assert_eq!(
+            select_artifact(&release, "appimage", "aarch64")
+                .expect("matching appimage")
+                .architecture,
+            "aarch64"
+        );
+        let mut arch_release = release;
+        arch_release.artifacts.push(artifact("arch", "aarch64"));
+        assert_eq!(
+            select_artifact(&arch_release, "arch", "aarch64")
+                .expect("matching Arch package")
+                .r#type,
+            "arch"
+        );
+    }
+
+    #[test]
+    fn status_exposes_channel_ownership_and_signature_freshness_contract() {
+        let status = attach_update_instructions(
+            LinuxUpdateStatus::unavailable("1.0.0", "network unavailable"),
+            "deb",
+        );
+        let channel = status.channel_info.expect("channel metadata");
+        assert_eq!(channel.id, "deb");
+        assert_eq!(channel.owner, "apt/dpkg");
+        assert_eq!(channel.install_mode, "package-manager-guided");
+        assert!(!channel.automatic_install);
+        assert_eq!(status.package_channel.as_deref(), Some("deb"));
+        assert_eq!(status.signature_state, "unknown");
+        assert_eq!(status.feed_freshness, "unknown");
+        assert!(status.checked_at_unix_seconds > 0);
+    }
+
+    #[test]
+    fn compatibility_is_typed_and_never_assumes_an_offline_daemon_matches() {
+        let status = LinuxUpdateStatus::unavailable("1.0.0", "network unavailable");
+        let unknown = attach_compatibility(status, "1.0.0", None);
+        let compatibility = unknown.compatibility.expect("compatibility metadata");
+        assert_eq!(compatibility.state, "unknown");
+        assert!(compatibility.daemon_version.is_none());
+
+        let status = LinuxUpdateStatus::unavailable("1.0.0", "network unavailable");
+        let mismatch = attach_compatibility(status, "1.0.0", Some("0.9.0"));
+        let compatibility = mismatch.compatibility.expect("compatibility metadata");
+        assert_eq!(compatibility.state, "mismatch");
+        assert!(compatibility.reason.unwrap().contains("differ"));
+    }
+
+    #[test]
+    fn aligned_daemon_preserves_only_real_appimage_install_guidance() {
+        let mut status = LinuxUpdateStatus::unavailable("1.0.0", "signed feed");
+        status.state = "available".into();
+        status.artifact = Some(artifact("appimage", "x86_64"));
+        status.signature_state = "verified".into();
+        status.feed_freshness = "fresh".into();
+        status.instructions = Some(build_update_instructions(
+            "appimage",
+            "1.0.0",
+            Some("1.1.0"),
+        ));
+        let status = attach_compatibility(status, "1.0.0", Some("1.0.0"));
+        let compatibility = status.compatibility.expect("compatibility metadata");
+        assert_eq!(compatibility.state, "aligned");
+        let instructions = status.instructions.expect("instructions");
+        assert!(instructions.install.available);
+        assert!(instructions.install.command.is_none());
+        assert!(!instructions.rollback.available);
+    }
+
+    #[test]
+    fn package_mutation_actions_are_disabled_when_feed_is_not_fresh() {
+        let mut status = LinuxUpdateStatus::unavailable("1.0.0", "stale feed");
+        status.state = "available".into();
+        status.signature_state = "verified".into();
+        status.feed_freshness = "stale".into();
+        status.instructions = Some(build_update_instructions("deb", "1.0.0", Some("1.1.0")));
+        let status = attach_compatibility(status, "1.0.0", Some("1.0.0"));
+        let instructions = status.instructions.expect("instructions");
+        assert!(!instructions.install.available);
+        assert!(!instructions.rollback.available);
+        assert!(instructions.restart.available);
+    }
+
+    #[test]
+    fn stale_future_and_tampered_feed_states_are_not_mutation_ready() {
+        assert_eq!(feed_freshness("2000-01-01T00:00:00Z"), "stale");
+        assert_eq!(feed_freshness("2999-01-01T00:00:00Z"), "future");
+        assert!(feed_age_seconds("2999-01-01T00:00:00Z").is_none());
+
+        let mut tampered = LinuxUpdateStatus::invalid(
+            "1.0.0",
+            "Update feed detached Ed25519 signature verification failed.",
+        );
+        tampered.instructions = Some(build_update_instructions(
+            "appimage",
+            "1.0.0",
+            Some("1.1.0"),
+        ));
+        let tampered = attach_compatibility(tampered, "1.0.0", Some("1.0.0"));
+        let instructions = tampered.instructions.expect("instructions");
+        assert_eq!(tampered.signature_state, "rejected");
+        assert!(!instructions.install.available);
+        assert!(!instructions.rollback.available);
+    }
+
+    #[test]
+    fn timestamp_conversion_handles_epoch_and_fractional_utc_values() {
+        assert_eq!(timestamp_to_unix_seconds("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(
+            timestamp_to_unix_seconds("2000-01-01T00:00:00.123Z"),
+            Some(946684800)
+        );
+        assert!(timestamp_to_unix_seconds("not-a-timestamp").is_none());
+    }
+
+    #[test]
+    fn failed_feed_status_keeps_recovery_instructions_without_feed_metadata() {
+        let status = attach_update_instructions(
+            LinuxUpdateStatus::unavailable("1.0.0", "network unavailable"),
+            "rpm",
+        );
+        let instructions = status.instructions.expect("recovery instructions");
+        assert_eq!(instructions.package_manager, "dnf");
+        assert!(instructions.install.command.is_none());
+        assert!(!instructions.install.available);
+        assert!(instructions.rollback.command.is_none());
+        assert!(!instructions.rollback.available);
+        assert!(status.latest_version.is_none());
     }
 
     #[test]
@@ -502,6 +1162,30 @@ mod tests {
         let mut bad = feed();
         bad.signature.public_key_spki_sha256 = "c".repeat(64);
         assert!(validate_feed(&bad).unwrap_err().contains("pinned"));
+    }
+
+    #[test]
+    fn rejects_allowlisted_hosts_with_non_first_party_release_paths() {
+        let mut bad_artifact = feed();
+        bad_artifact.artifacts[0].url =
+            "https://github.com/another/repo/releases/download/linux-v1.2.3/app".into();
+        assert!(validate_feed(&bad_artifact)
+            .unwrap_err()
+            .contains("first-party release"));
+
+        let mut bad_signature = feed();
+        bad_signature.signature.url =
+            "https://github.com/another/repo/releases/download/linux-v1.2.3/feed.sig".into();
+        assert!(validate_feed(&bad_signature)
+            .unwrap_err()
+            .contains("first-party release"));
+
+        let mut bad_artifact_host = feed();
+        bad_artifact_host.artifacts[0].signature_url =
+            "https://burnbar.ai/not-downloads/artifact.sig".into();
+        assert!(validate_feed(&bad_artifact_host)
+            .unwrap_err()
+            .contains("first-party release"));
     }
 
     #[test]
@@ -522,6 +1206,25 @@ mod tests {
             .unwrap_err()
             .contains("older than installed"));
         assert!(classify_version("1.2.3", "1.2.3-beta.1").is_err());
+    }
+
+    #[test]
+    fn replayed_signed_version_is_rejected_when_it_would_downgrade_or_is_stale() {
+        assert!(classify_version("1.2.3", "1.2.2").is_err());
+        let mut replay = LinuxUpdateStatus::unavailable("1.2.3", "replayed signed feed");
+        replay.state = "current".into();
+        replay.artifact = Some(artifact("appimage", "x86_64"));
+        replay.signature_state = "verified".into();
+        replay.feed_freshness = "stale".into();
+        replay.instructions = Some(build_update_instructions(
+            "appimage",
+            "1.2.3",
+            Some("1.2.3"),
+        ));
+        let replay = attach_compatibility(replay, "1.2.3", Some("1.2.3"));
+        let instructions = replay.instructions.expect("instructions");
+        assert!(!instructions.install.available);
+        assert!(!instructions.rollback.available);
     }
 
     #[test]

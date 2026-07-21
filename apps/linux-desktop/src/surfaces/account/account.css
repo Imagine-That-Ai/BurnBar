@@ -51,10 +51,138 @@
   margin: 0;
 }
 
+.account-installation-verification {
+  padding: var(--space-3);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-glass-elevated);
+}
+
+.account-installation-verification h3 {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-bright);
+  font-size: 0.95rem;
+  letter-spacing: 0;
+}
+
+.account-installation-verification dl {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.account-installation-verification dl > div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.account-installation-verification dt {
+  color: var(--color-text-mute);
+  font-size: 0.78rem;
+}
+
+.account-installation-verification dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.account-verification-value {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.account-installation-note {
+  margin: var(--space-3) 0 0;
+}
+
+.account-installation-verification code {
+  color: var(--color-text-bright);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
 .account-trust {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+.account-device-trust-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-glass-elevated);
+}
+
+.account-device-trust-card--active {
+  border-color: var(--color-tier-end-to-end);
+}
+
+.account-device-trust-card--pending,
+.account-device-trust-card--authorizing {
+  border-color: var(--color-brass-deep);
+}
+
+.account-device-trust-card--rejected,
+.account-device-trust-card--unavailable {
+  border-color: color-mix(in srgb, var(--color-danger, var(--color-ember-bright)) 62%, var(--color-glass-line));
+}
+
+.account-device-trust-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.account-device-trust-heading h3,
+.account-device-trust-heading p,
+.account-device-trust-detail {
+  margin: 0;
+}
+
+.account-device-trust-heading h3 {
+  color: var(--color-text-bright);
+  font-size: 0.92rem;
+}
+
+.account-device-trust-heading p {
+  margin-top: var(--space-1);
+  color: var(--color-text-bright);
+  font-weight: 650;
+}
+
+.account-device-trust-mark {
+  flex: 0 0 auto;
+  width: 0.62rem;
+  height: 0.62rem;
+  margin-top: 0.32rem;
+  border-radius: 50%;
+  background: var(--color-frost-line-bright, var(--color-text-mute));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-frost-line-bright, var(--color-text-mute)) 16%, transparent);
+}
+
+.account-device-trust-card--active .account-device-trust-mark {
+  background: var(--color-tier-end-to-end);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-tier-end-to-end) 18%, transparent);
+}
+
+.account-device-trust-card--pending .account-device-trust-mark,
+.account-device-trust-card--authorizing .account-device-trust-mark {
+  background: var(--color-brass-bright);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brass-bright) 18%, transparent);
+}
+
+.account-device-trust-card--rejected .account-device-trust-mark,
+.account-device-trust-card--unavailable .account-device-trust-mark {
+  background: var(--color-danger, var(--color-ember-bright));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger, var(--color-ember-bright)) 18%, transparent);
 }
 
 .account-trust-primary {
@@ -186,6 +314,28 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.account-signout-confirmation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--color-brass-deep);
+  border-radius: var(--radius-sm);
+  background: var(--color-glass-elevated);
+}
+
+.account-signout-confirmation span {
+  flex: 1 1 18rem;
+}
+
+.account-signout-confirmation .danger {
+  border-color: color-mix(in srgb, var(--color-danger, var(--color-ember-bright)) 62%, var(--color-glass-line));
+  color: var(--color-text-bright);
+  background: color-mix(in srgb, var(--color-danger, var(--color-ember-bright)) 16%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

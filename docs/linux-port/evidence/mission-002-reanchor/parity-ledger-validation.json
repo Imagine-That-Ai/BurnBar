@@ -1,29 +1,21 @@
 {
-  "generatedAt": "2026-07-12T22:17:44.587Z",
-  "targetHead": "70a9e92cd006b9430e0ad1aba0de4022477257b5",
+  "generatedAt": "2026-07-19T06:35:30.555Z",
+  "targetHead": "389577c933185bdaaac1ca18941666534be73123",
   "allowBlocked": true,
   "git": {
-    "commit": "70a9e92cd006b9430e0ad1aba0de4022477257b5",
-    "dirtyEntries": [
-      " M docs/DATABASE_OPERATIONS.md",
-      " M docs/linux-port/evidence/mission-002-reanchor/parity-ledger-validation.json",
-      " M scripts/ci/verify-migration-rollback-catalog.test.mjs",
-      " M scripts/rollback-migration.sh"
-    ]
+    "commit": "389577c933185bdaaac1ca18941666534be73123",
+    "dirtyEntries": []
   },
   "semantics": {
     "kind": "product-parity",
     "productParityClaim": false,
     "goldStandard": "OpenBurnBar for macOS",
     "audit": "docs/linux-port/LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md",
-    "note": "Blocked is the honest initial state. Ready evidence is generated at validation time and bound to the target HEAD and artifact hashes.",
-    "refreshedAt": "2026-07-09T18:08:20Z",
-    "productPlan": "docs/linux-port/FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md",
-    "reanchorEvidence": "docs/linux-port/evidence/mission-002-reanchor/",
-    "sealCommit": "bf829967b657646c40285bc059eacd6863d04e26"
+    "note": "Blocked is the honest initial state. Ready evidence is generated at validation time and bound to the target HEAD and artifact hashes."
   },
   "productParityClaim": false,
   "requirementsManifest": "openburnbar-linux-macos-parity-v1",
+  "evidencePolicyManifest": "openburnbar-linux-product-parity-evidence-policies-v1",
   "passed": true,
   "structuralPassed": true,
   "promotionPassed": false,
@@ -572,5 +564,6 @@
       "message": "blocked row evidence has not been generated",
       "row": "P-40"
     }
-  ]
+  ],
+  "validatedAttestations": []
 }

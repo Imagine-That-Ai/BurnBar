@@ -111,6 +111,31 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  approveLinuxAppCheckDevice: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/approverDeviceId/bob-approverDeviceId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   beginEncryptedSessionBlobUpload: [
     {
       path: "users/__BOB_UID__/escrow_devices/bob-device",
@@ -1363,6 +1388,93 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  issueIrohControllerRouteChallenge: [
+    {
+      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/sourceDeviceId/bob-sourceDeviceId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/authorityPeerNodeId/bob-authorityPeerNodeId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/transportNodeId/bob-transportNodeId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  issueLinuxAppCheckChallenge: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  listLinuxAppCheckDevices: [
+    {
+      path: "users/__BOB_UID__/bola_victim/approverDeviceId/bob-approverDeviceId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  mintLinuxAppCheckToken: [
+    {
+      path: "users/__BOB_UID__/bola_victim/attestation.deviceId/bob-attestation.deviceId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/attestation.challengeId/bob-attestation.challengeId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   pollCliLink: [
     {
       path: "cli_link_sessions/bob-device-code",
@@ -1826,6 +1938,59 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  registerIrohControllerRoute: [
+    {
+      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/challengeId/bob-challengeId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  registerLinuxAppCheckDevice: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  resolveActiveIrohControllerRoutes: [
+    {
+      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   respondHermesGatewayApproval: [
     {
       path: "users/__BOB_UID__/hermes_gateway_clients/bob-client",
@@ -2002,6 +2167,32 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  revokeIrohControllerRoute: [
+    {
+      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/sourceDeviceId/bob-sourceDeviceId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   revokeIrohPairingRecord: [
     {
       path: "users/__BOB_UID__/escrow_devices/bob-device",
@@ -2036,6 +2227,31 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     },
     {
       path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  revokeLinuxAppCheckDevice: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/approverDeviceId/bob-approverDeviceId",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",

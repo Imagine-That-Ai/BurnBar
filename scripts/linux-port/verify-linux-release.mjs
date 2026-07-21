@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   manifestPath,
+  expectedLinuxCosignIdentity,
   readJson,
   relative,
   releaseEvidenceDir,
@@ -13,6 +14,7 @@ import {
   writeJson
 } from './lib/linux-release-common.mjs';
 import { verifyLinuxReleaseCandidate } from './lib/linux-release-verify.mjs';
+import { deriveReleaseAttestationSubjects } from './lib/product-proof-closure.mjs';
 
 const argv = process.argv.slice(2);
 const phaseIndex = argv.indexOf('--phase');
@@ -20,6 +22,7 @@ const versionIndex = argv.indexOf('--version');
 const phase = phaseIndex >= 0 ? argv[phaseIndex + 1] : 'pre-attestation';
 const requestedVersion = versionIndex >= 0 ? argv[versionIndex + 1] : null;
 const diagnostic = argv.includes('--diagnostic') || argv.includes('--allow-blocked');
+const candidate = argv.includes('--candidate');
 const outDir = path.resolve(process.env.OPENBURNBAR_LINUX_RELEASE_OUT ?? releaseEvidenceDir);
 const manifest = readJson(manifestPath);
 const failures = [];
@@ -64,6 +67,16 @@ const headStep = runStep('git', ['rev-parse', 'HEAD']);
 const expectedHead = process.env.OPENBURNBAR_GIT_COMMIT?.trim() || headStep.stdout.trim();
 if (headStep.exitCode !== 0 && !process.env.OPENBURNBAR_GIT_COMMIT) fail('release verifier cannot determine target git HEAD.');
 const expectedVersion = requestedVersion?.trim() || closure.version;
+let expectedCosignIdentity;
+try {
+  expectedCosignIdentity = expectedLinuxCosignIdentity({
+    manifest,
+    version: expectedVersion,
+    candidate
+  });
+} catch (error) {
+  fail('Linux release cosign identity is invalid.', { error: String(error) });
+}
 
 const pure = verifyLinuxReleaseCandidate({
   repoRoot,
@@ -75,7 +88,9 @@ const pure = verifyLinuxReleaseCandidate({
   publicKeyPem,
   expectedHead,
   expectedVersion,
-  phase
+  expectedCosignIdentity,
+  phase,
+  requireParity: !candidate
 });
 failures.push(...pure.failures);
 
@@ -107,23 +122,39 @@ if (sourceRel && expectedHead && expectedVersion) {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
 
-const ledger = runStep('node', ['scripts/linux-port/validate-parity-ledger.mjs'], {
-  cwd: repoRoot,
-  env: process.env
-});
-if (ledger.exitCode !== 0) {
-  fail('parity ledger is not green for release promotion.', {
-    command: ledger.command,
-    stdout: ledger.stdout,
-    stderr: ledger.stderr
+if (!candidate) {
+  const ledger = runStep('node', ['scripts/linux-port/validate-parity-ledger.mjs'], {
+    cwd: repoRoot,
+    env: process.env
   });
+  if (ledger.exitCode !== 0) {
+    fail('parity ledger is not green for release promotion.', {
+      command: ledger.command,
+      stdout: ledger.stdout,
+      stderr: ledger.stderr
+    });
+  }
 }
 
 if (phase === 'final' && closure.artifacts) {
-  const identity = manifest.signing.cosignIdentityTemplate.replace('{version}', expectedVersion);
-  for (const artifact of closure.artifacts) {
-    const bundle = `${artifact.file}.sigstore.json`;
-    if (!fs.existsSync(path.join(repoRoot, bundle))) continue;
+  const identity = expectedCosignIdentity;
+  if (!identity) {
+    fail('Linux release cosign identity is unavailable for final attestation verification.');
+  }
+  let attestationSubjects = [];
+  try {
+    attestationSubjects = deriveReleaseAttestationSubjects(closure, manifest.requiredArtifacts);
+  } catch (error) {
+    fail('Exact Linux release attestation subject set is invalid.', { error: error.message });
+  }
+  for (const subject of attestationSubjects) {
+    const subjectFile = subject.record.file ?? subject.record.path;
+    const bundle = `${subjectFile}.sigstore.json`;
+    if (!fs.existsSync(path.join(repoRoot, bundle))) {
+      fail('Sigstore bundle is missing for a required release subject.', { artifact: subjectFile, bundle });
+      continue;
+    }
+    if (!identity) continue;
     const verification = runStep('cosign', [
       'verify-blob-attestation',
       '--bundle',
@@ -134,11 +165,11 @@ if (phase === 'final' && closure.artifacts) {
       identity,
       '--certificate-oidc-issuer',
       manifest.signing.cosignIssuer,
-      path.join(repoRoot, artifact.file)
+      path.join(repoRoot, subjectFile)
     ]);
     if (verification.exitCode !== 0) {
       fail('Sigstore bundle verification failed.', {
-        artifact: artifact.file,
+        artifact: subjectFile,
         stderr: verification.stderr
       });
     }

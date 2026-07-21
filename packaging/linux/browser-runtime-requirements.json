@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "bridge": {
+    "installedPath": "/usr/lib/openburnbar/playwright/openburnbar-playwright-bridge.js",
+    "sourcePath": "OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js"
+  },
+  "node": {
+    "minimumMajorVersion": 18,
+    "nativePackageDependencies": ["nodejs", "npm"],
+    "appImageBundled": false
+  },
+  "playwright": {
+    "requiredVersion": "1.49.1",
+    "moduleResolution": "root-owned-system-global",
+    "trustedModuleRoot": "/usr/lib/node_modules/playwright",
+    "trustedCoreModuleRoot": "/usr/lib/node_modules/playwright-core",
+    "bundled": false
+  },
+  "chromium": {
+    "distribution": "playwright-managed",
+    "trustedBrowserRoot": "/usr/lib/openburnbar/playwright-browsers",
+    "bundled": false,
+    "launchProbeRequired": true
+  },
+  "runtimeProbe": "/usr/lib/openburnbar/playwright/openburnbar-browser-runtime-probe",
+  "dynamicInstallAtActionTime": false,
+  "packagedRuntimeTrust": "uid-0-owned-no-group-or-world-write-recursive",
+  "parityStatus": "blocked-until-preprovisioned-runtime-and-installed-matrix-evidence-pass"
+}
