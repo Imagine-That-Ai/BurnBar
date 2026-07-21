@@ -11,13 +11,15 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     branches: [main]
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: pr-review-${{ github.event.pull_request.number }}
+  group: pr-review-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Only run on internal PRs (not forks) to protect secrets
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'merge_group' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -41,8 +43,8 @@ jobs:
         id: diff
         run: |
           set -euo pipefail
-          BASE="${{ github.event.pull_request.base.sha }}"
-          HEAD="${{ github.event.pull_request.head.sha }}"
+          BASE="${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
+          HEAD="${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}"
 
           # Summarize what changed for the review comment
           STATS=$(git diff --stat "$BASE...$HEAD" | tail -1)
@@ -61,8 +63,8 @@ jobs:
         id: security_scan
         run: |
           set -euo pipefail
-          BASE="${{ github.event.pull_request.base.sha }}"
-          HEAD="${{ github.event.pull_request.head.sha }}"
+          BASE="${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
+          HEAD="${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}"
 
           ISSUES=""
 
@@ -108,8 +110,8 @@ jobs:
         id: coverage_check
         run: |
           set -euo pipefail
-          BASE="${{ github.event.pull_request.base.sha }}"
-          HEAD="${{ github.event.pull_request.head.sha }}"
+          BASE="${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
+          HEAD="${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}"
 
           # Check if any source files changed without corresponding tests
           SRC_CHANGED=$(git diff --name-only "$BASE...$HEAD" | grep -cE '\.(swift|kt|ts)$' || true)
@@ -122,6 +124,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Post review comment
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           HAS_ISSUES: ${{ steps.security_scan.outputs.has_issues }}
