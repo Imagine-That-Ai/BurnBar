@@ -4687,7 +4687,6 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(refreshed.mission?.results.count, 1)
         XCTAssertEqual(refreshed.mission?.results.first?.runID, runID)
     }
-}
 
     func testProjectLifecycleDeleteAndReassignPreserveUnrelatedState() async throws {
         let harness = try makeHarnessWithStore(name: "project-lifecycle")
@@ -4975,6 +4974,8 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         )
         XCTAssertEqual(questions.questions.map(\.projectSlug), ["orion"])
     }
+}
+
 extension BurnBarMissionControlServiceTests {
     // MARK: - VAL-EXEC-009: Parallel scheduler enforces dependency invariants
 
