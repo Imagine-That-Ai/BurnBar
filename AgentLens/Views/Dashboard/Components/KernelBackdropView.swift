@@ -322,7 +322,7 @@ struct KernelBackdropView: NSViewRepresentable {
 
         private func postPerformanceGateBackdropState(_ userInfo: [String: Any]) {
             DistributedNotificationCenter.default().postNotificationName(
-                OpenBurnBarRuntime.performanceGateBackdropStateNotification,
+                Notification.Name("com.openburnbar.performance-gate.backdrop-state"),
                 object: OpenBurnBarRuntime.currentPerformanceGateNotificationObject,
                 userInfo: userInfo,
                 deliverImmediately: true
