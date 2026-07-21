@@ -194,17 +194,19 @@ done
 
 isolated_test_filters=(
     "OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
+    "OpenBurnBarTests/ProjectionChunkerTests"
     "OpenBurnBarTests/ProjectionPipelineServiceTests"
     "OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
+    "OpenBurnBarTests/ProjectionStoreLifecycleTests"
 )
-isolated_test_expected_count=56
+isolated_test_expected_count=120
 main_skip_test_filters=()
 run_isolated_test_phase=0
 if ((${#test_filters[@]} == 1)) && [[ "${test_filters[0]}" == "OpenBurnBarTests" ]]; then
     # These tests pass together in a fresh host but are contaminated by
     # process-global media/GRDB state after the 1,900-test monolithic run.
-    # Keep the complete projection service surface mandatory in one clean
-    # XCTest process so newly added projection tests cannot inherit that state.
+    # Keep the complete projection surface mandatory in one clean XCTest
+    # process so newly added projection tests cannot inherit that state.
     main_skip_test_filters=("${isolated_test_filters[@]}")
     run_isolated_test_phase=1
 fi
@@ -584,10 +586,10 @@ if [ "$final_outcome" = "failed" ] && [ "$test_attempt" -gt "$max_test_attempts"
     xcodebuild build-for-testing "${xcodebuild_args[@]}" || true
 fi
 
-# The default full-bundle run keeps two tests out of the long-lived host, then
-# executes them against the same built products in a clean XCTest process. Both
-# phases must pass, and their result bundles are merged into the canonical
-# evidence artifact consumed by test-count and coverage gates.
+# The default full-bundle run keeps state-sensitive tests out of the long-lived
+# host, then executes them against the same built products in a clean XCTest
+# process. Both phases must pass, and their result bundles are merged into the
+# canonical evidence artifact consumed by test-count and coverage gates.
 if [[ "$final_outcome" == "passed" && "$run_isolated_test_phase" == "1" ]]; then
     main_xcresult="$final_xcresult"
     isolated_attempt=1

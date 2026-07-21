@@ -327,15 +327,37 @@ assert_true "Xcode SwiftPM package graph internal crash is retryable infrastruct
 assert_false "unknown failure is not a SwiftPM dependency transient" is_swiftpm_dependency_resolution_transient "$unknown_failure_log"
 
 media_isolated_filter="OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
+projection_chunker_isolated_filter="OpenBurnBarTests/ProjectionChunkerTests"
 projection_service_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceTests"
 projection_matters_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
+projection_lifecycle_isolated_filter="OpenBurnBarTests/ProjectionStoreLifecycleTests"
 default_plan="$(
     env -u OPENBURNBAR_APP_TEST_FILTER -u OPENBURNBAR_APP_TEST_FILTERS \
         "$repo_root/scripts/test-openburnbar-app.sh" --print-xcodebuild-plan
 )"
 assert_equals "default app test plan preserves all sensitive tests in a fresh host" \
-    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_isolated_filter"$'\nmain-skip\t'"$projection_service_isolated_filter"$'\nmain-skip\t'"$projection_matters_isolated_filter"$'\nfresh-host-only\t'"$media_isolated_filter"$'\nfresh-host-only\t'"$projection_service_isolated_filter"$'\nfresh-host-only\t'"$projection_matters_isolated_filter"$'\nfresh-host-expected-count\t56' \
+    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_isolated_filter"$'\nmain-skip\t'"$projection_chunker_isolated_filter"$'\nmain-skip\t'"$projection_service_isolated_filter"$'\nmain-skip\t'"$projection_matters_isolated_filter"$'\nmain-skip\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-only\t'"$media_isolated_filter"$'\nfresh-host-only\t'"$projection_chunker_isolated_filter"$'\nfresh-host-only\t'"$projection_service_isolated_filter"$'\nfresh-host-only\t'"$projection_matters_isolated_filter"$'\nfresh-host-only\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-expected-count\t120' \
     "$default_plan"
+
+projection_test_count=0
+for projection_test_file in "$repo_root"/AgentLensTests/Active/Projection*Tests.swift; do
+    projection_test_class="$(
+        sed -nE 's/.*final class (Projection[^ :]+Tests).*/\1/p' "$projection_test_file" | head -1
+    )"
+    if [[ -z "$projection_test_class" ]]; then
+        echo "FAIL: no projection XCTest class found in $projection_test_file" >&2
+        exit 1
+    fi
+    assert_true "projection test class $projection_test_class stays in the fresh-host plan" \
+        grep -Fqx $'fresh-host-only\tOpenBurnBarTests/'"$projection_test_class" <<<"$default_plan"
+    projection_test_count=$((
+        projection_test_count + $(grep -Ec '^    func test[^ (]*\(' "$projection_test_file")
+    ))
+done
+declared_fresh_host_count="$(awk -F '\t' '$1 == "fresh-host-expected-count" { print $2 }' <<<"$default_plan")"
+assert_equals "fresh-host count covers every projection test plus the isolated media test" \
+    "$((projection_test_count + 1))" \
+    "$declared_fresh_host_count"
 
 custom_plan="$(
     env -u OPENBURNBAR_APP_TEST_FILTER -u OPENBURNBAR_APP_TEST_FILTERS \
