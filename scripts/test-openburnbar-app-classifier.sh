@@ -334,7 +334,7 @@ default_plan="$(
         "$repo_root/scripts/test-openburnbar-app.sh" --print-xcodebuild-plan
 )"
 assert_equals "default app test plan preserves all sensitive tests in a fresh host" \
-    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_isolated_filter"$'\nmain-skip\t'"$projection_service_isolated_filter"$'\nmain-skip\t'"$projection_matters_isolated_filter"$'\nfresh-host-only\t'"$media_isolated_filter"$'\nfresh-host-only\t'"$projection_service_isolated_filter"$'\nfresh-host-only\t'"$projection_matters_isolated_filter" \
+    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_isolated_filter"$'\nmain-skip\t'"$projection_service_isolated_filter"$'\nmain-skip\t'"$projection_matters_isolated_filter"$'\nfresh-host-only\t'"$media_isolated_filter"$'\nfresh-host-only\t'"$projection_service_isolated_filter"$'\nfresh-host-only\t'"$projection_matters_isolated_filter"$'\nfresh-host-expected-count\t56' \
     "$default_plan"
 
 custom_plan="$(

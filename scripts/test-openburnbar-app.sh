@@ -197,6 +197,7 @@ isolated_test_filters=(
     "OpenBurnBarTests/ProjectionPipelineServiceTests"
     "OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
 )
+isolated_test_expected_count=56
 main_skip_test_filters=()
 run_isolated_test_phase=0
 if ((${#test_filters[@]} == 1)) && [[ "${test_filters[0]}" == "OpenBurnBarTests" ]]; then
@@ -224,6 +225,7 @@ if [[ "$print_xcodebuild_plan" == "1" ]]; then
         for filter in "${isolated_test_filters[@]}"; do
             printf 'fresh-host-only\t%s\n' "$filter"
         done
+        printf 'fresh-host-expected-count\t%s\n' "$isolated_test_expected_count"
     fi
     exit 0
 fi
@@ -428,7 +430,7 @@ fi
 
 validate_fresh_host_xcresult() {
     local xcresult_path="$1"
-    local expected_count="${#isolated_test_filters[@]}"
+    local expected_count="$isolated_test_expected_count"
 
     xcrun xcresulttool get test-results summary \
         --path "$xcresult_path" \
