@@ -40,7 +40,8 @@ extension CLIAgentMissionDispatcher {
         deliveryMode: SkillRunDeliveryMode = .actionOnly,
         parentHermesThreadID: String? = nil,
         presentationMode: CLIAgentChatPresentationMode = .nativeChat,
-        wandPolicy: WandPolicy? = nil
+        wandPolicy: WandPolicy? = nil,
+        catalogProvider: (any CLIRuntimeCatalogProviding)? = nil
     ) async throws -> FanOutDispatchResult {
         guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
         guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
@@ -53,7 +54,8 @@ extension CLIAgentMissionDispatcher {
             ?? "Wand cast"
         let resolvedWandPolicy = try await Self.resolvedWandPolicy(
             wandPolicy,
-            runtimeTokens: runtimeTokens
+            runtimeTokens: runtimeTokens,
+            catalogProvider: catalogProvider ?? HermesService.shared
         )
 
         // Build child mission IDs up front so the group doc can list them.
@@ -90,7 +92,10 @@ extension CLIAgentMissionDispatcher {
             )
             return MissionConsoleForecastComputer.forecast(for: draft, runtime: runtime)
         }
-        let plim = max(1, parallelismLimit ?? runtimeTokens.count)
+        let plim = Self.resolvedParallelismLimit(
+            parallelismLimit,
+            childCount: runtimeTokens.count
+        )
         let aggregated = MissionGroupForecastComputer.combine(
             children: childForecasts,
             parallelismLimit: plim
@@ -164,26 +169,17 @@ extension CLIAgentMissionDispatcher {
             if let envelope = personaScopeByRuntime[runtimeToken] {
                 payload["personaID"] = envelope.personaID
             }
-            // BEST-EFFORT at-rest Signal seal; legacy sealedPayload is the FLOOR. On any
-            // failure log and write legacy-only rather than abort the fan-out child.
-            do {
-                if let signalEnvelope = try await CLIAgentMissionCloudSealer.signalEnvelopeIfEnabled(
-                    from: payload,
-                    uid: uid,
-                    firestore: db,
-                    collection: "cli_agent_mission_requests",
-                    docId: missionID,
-                    resolvedKey: resolvedKey
-                ) {
-                    payload["signalEnvelope"] = signalEnvelope
-                }
-            } catch {
-                cliMissionSignalLogger.error("Signal at-rest seal failed; writing CLI mission child legacy-only: \(String(describing: error), privacy: .public)")
-            }
+            // Direct Firestore writes carry only the path-bound CloudVault seal;
+            // Signal envelopes are reserved for the validating server path.
+            payload.removeValue(forKey: "signalEnvelope")
             let requestRef = db
                 .collection("users").document(uid)
                 .collection("cli_agent_mission_requests").document(missionID)
-            batch.setData(payload, forDocument: requestRef, merge: false)
+            batch.setData(
+                payload,
+                forDocument: requestRef,
+                merge: false
+            )
             batch.setData(
                 try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
                     sourceSkillID: sourceSkillID,
@@ -360,13 +356,25 @@ extension CLIAgentMissionDispatcher {
         wandPolicy: WandPolicy? = nil
     ) throws -> String? {
         let runtime = runtimeID(forRequestedRuntime: runtimeToken)
-        guard let runtime else { return nil }
+        guard let runtime else {
+            guard wandPolicy == nil else {
+                throw DispatchError.wandRoutingUnavailable(
+                    "The selected agent runtime is not recognized by The Wand. Refresh the agent list or switch to Manual."
+                )
+            }
+            return nil
+        }
 
         // Phase 2: when a Wand policy is active, this must be a concrete
         // catalog-backed routing table. `resolvedWandPolicy` fails before
         // Firestore writes if no selected runtime can be routed, so the UI
         // never looks like a Wand cast happened while silently using defaults.
-        if let policy = wandPolicy, let routed = policy.routedModelID(for: runtime) {
+        if let policy = wandPolicy {
+            guard let routed = policy.routedModelID(for: runtime) else {
+                throw DispatchError.wandRoutingUnavailable(
+                    "The Wand did not produce a model route for \(runtime.displayName). Refresh the Mac model catalog or switch to Manual."
+                )
+            }
             return routed
         }
 
@@ -383,9 +391,15 @@ extension CLIAgentMissionDispatcher {
         }
     }
 
-    private static func resolvedWandPolicy(
+    static func resolvedParallelismLimit(_ requested: Int?, childCount: Int) -> Int {
+        let boundedChildCount = max(1, childCount)
+        return min(boundedChildCount, max(1, requested ?? boundedChildCount))
+    }
+
+    static func resolvedWandPolicy(
         _ policy: WandPolicy?,
-        runtimeTokens: [String]
+        runtimeTokens: [String],
+        catalogProvider: any CLIRuntimeCatalogProviding
     ) async throws -> WandPolicy? {
         guard let policy else { return nil }
         let runtimes = runtimeTokens.compactMap(runtimeID(forRequestedRuntime:))
@@ -393,14 +407,29 @@ extension CLIAgentMissionDispatcher {
             throw DispatchError.wandRoutingUnavailable("No selected runtime can be routed by The Wand.")
         }
 
+        var attemptedRuntimes: Set<AssistantRuntimeID> = []
+        let uniqueRuntimes = runtimes.filter { attemptedRuntimes.insert($0).inserted }
+        let catalogTasks = uniqueRuntimes.map { runtime in
+            Task { @MainActor () -> (AssistantRuntimeID, [CLIRuntimeModelOption]?, String?) in
+                do {
+                    let response = try await catalogProvider.fetchCLIRuntimeModelCatalog(runtime: runtime)
+                    return (runtime, response.options, nil as String?)
+                } catch {
+                    cliMissionSignalLogger.warning("wand catalog fetch failed runtime=\(runtime.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                    return (runtime, nil, wandCatalogFailureSummary(error))
+                }
+            }
+        }
+        defer { catalogTasks.forEach { $0.cancel() } }
+
         var catalogs: [AssistantRuntimeID: [CLIRuntimeModelOption]] = [:]
-        for runtime in runtimes {
-            guard catalogs[runtime] == nil else { continue }
-            do {
-                let response = try await HermesService.shared.fetchCLIRuntimeModelCatalog(runtime: runtime)
-                catalogs[runtime] = response.options
-            } catch {
-                cliMissionSignalLogger.warning("wand catalog fetch failed runtime=\(runtime.rawValue, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+        var catalogFailures: [AssistantRuntimeID: String] = [:]
+        for task in catalogTasks {
+            let (runtime, options, failure) = await task.value
+            if let options {
+                catalogs[runtime] = options
+            } else if let failure {
+                catalogFailures[runtime] = failure
             }
         }
 
@@ -409,12 +438,27 @@ extension CLIAgentMissionDispatcher {
             runtimes: runtimes,
             catalogs: catalogs
         )
-        guard !routed.routedModels.isEmpty else {
+        let missingRuntimes = Set(runtimes.filter { routed.routedModelID(for: $0) == nil })
+            .sorted { $0.rawValue < $1.rawValue }
+        guard missingRuntimes.isEmpty else {
+            let details = missingRuntimes.map { runtime in
+                let reason = catalogFailures[runtime] ?? "no compatible model was advertised"
+                return "\(runtime.displayName): \(reason)"
+            }.joined(separator: "; ")
             throw DispatchError.wandRoutingUnavailable(
-                "The Wand could not route any selected agent. Refresh the Mac model catalog, choose agents with available catalogs, or switch to Manual."
+                "The Wand could not load a usable live model for every selected agent. \(details). No agents were dispatched. Keep OpenBurnBar open on the paired Mac, confirm both devices use the same account, then retry or switch to Manual."
             )
         }
         return routed
+    }
+
+    private static func wandCatalogFailureSummary(_ error: Error) -> String {
+        let flattened = error.localizedDescription
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !flattened.isEmpty else { return "the Mac model catalog request failed" }
+        guard flattened.count > 240 else { return flattened }
+        return String(flattened.prefix(240)) + "..."
     }
 
     private static func runtimeID(forRequestedRuntime runtimeToken: String) -> AssistantRuntimeID? {

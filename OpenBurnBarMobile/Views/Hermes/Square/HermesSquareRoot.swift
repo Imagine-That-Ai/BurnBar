@@ -177,8 +177,10 @@ struct HermesSquareRoot: View {
 
             // Fan-out group card — when an observer is active,
             // render the side-by-side child tiles.
-            if let group = activeGroupObserver.group {
-                let tiles = childTilesForActiveGroup(group)
+            if let group = activeGroupObserver.displayGroup {
+                let tiles = activeGroupObserver.childTiles(
+                    fallbackActiveTiles: missionHost.snapshot.activeTiles
+                )
                 MissionFanOutGroupCard(
                     group: group,
                     childTiles: tiles,
@@ -234,6 +236,9 @@ struct HermesSquareRoot: View {
         .accessibilityIdentifier("screen.agents")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .task {
+            activeGroupObserver.startLatest()
+        }
         .task {
             inbox.bind(historyStore: historyStore, missionHost: missionHost)
             await registry.refresh(hermesService: hermesService, piService: piService, missionHost: missionHost)
@@ -434,6 +439,7 @@ struct HermesSquareRoot: View {
     private var fanOutSheet: some View {
         FanOutComposerSheet(
             registry: registry,
+            catalogProvider: hermesService,
             onDispatched: { result in
                 activeGroupObserver.start(groupID: result.groupID)
             }
@@ -1357,41 +1363,6 @@ struct HermesSquareRoot: View {
             NSLog("OpenBurnBarMercury ensure_mercury_live_failed connectionID=\(relay.id) error=\(error.localizedDescription)")
             #endif
             mercuryBootError = error.localizedDescription
-        }
-    }
-
-    private func childTilesForActiveGroup(_ group: MissionGroupDocument) -> [MissionConsoleActiveTile] {
-        let snapshot = missionHost.snapshot
-        let knownByID = Dictionary(uniqueKeysWithValues: snapshot.activeTiles.map { ($0.id, $0) })
-        let now = Date()
-        return group.childMissionIDs.enumerated().map { idx, id -> MissionConsoleActiveTile in
-            if let existing = knownByID[id] { return existing }
-            let runtimeToken = idx < group.runtimeTokens.count ? group.runtimeTokens[idx] : nil
-            // Auto-rescue: a child that's been queued for > 120s without
-            // the mission console host observing it almost certainly means
-            // the paired Mac never came online. Surface a `.macOffline`
-            // phase explicitly so the merge bar and the tile colour
-            // honestly reflect "this isn't ever going to run."
-            let elapsedSinceGroupCreation = now.timeIntervalSince(group.createdAt)
-            let isStale = elapsedSinceGroupCreation > 120
-            let phase: MissionConsoleActiveTile.Phase = isStale ? .macOffline : .queued
-            let detail = isStale
-                ? "Paired Mac hasn't claimed this child. Wake your Mac and reopen BurnBar."
-                : "Queued in group"
-            return MissionConsoleActiveTile(
-                id: id,
-                title: "\(group.title) · \(runtimeToken ?? "?")",
-                runtimeID: runtimeToken,
-                runtimeDisplayLabel: (runtimeToken ?? "auto").capitalized,
-                phase: phase,
-                phaseDetail: detail,
-                currentToolName: nil,
-                lastEventSnippet: nil,
-                startedAt: group.createdAt,
-                burnSoFarUSD: 0,
-                progressFraction: nil,
-                approvalPending: false
-            )
         }
     }
 

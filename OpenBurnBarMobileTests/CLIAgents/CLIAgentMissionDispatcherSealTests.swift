@@ -12,6 +12,91 @@ import OpenBurnBarSignalCore
 @MainActor
 final class CLIAgentMissionDispatcherSealTests: XCTestCase {
 
+    func test_wandSelectionCanonicalizesExactRuntimeSetWithoutFallback() {
+        XCTAssertEqual(
+            FanOutComposerSheet.canonicalRuntimeTokens(["codex", "claude"]),
+            ["claude", "codex"]
+        )
+        XCTAssertFalse(
+            FanOutComposerSheet.canonicalRuntimeTokens(["codex", "claude"]).contains("junie")
+        )
+    }
+
+    func test_directFirestoreMissionFactoryNeverAddsServerOnlySignalEnvelope() throws {
+        let key = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        let direct = try CLIAgentMissionRequestPayloadFactory.buildSealed(
+            id: "wand-child-1",
+            title: "Pareto child",
+            prompt: "Return the marker.",
+            missionKind: "parallel",
+            requestedRuntime: "claude",
+            targetProject: "BurnBar",
+            depth: "standard",
+            approvalMode: "existing_policy",
+            commandsAllowed: false,
+            fileEditsAllowed: false,
+            uid: "user-1",
+            vaultKey: key,
+            vaultKeyID: vaultKeyID
+        )
+
+        XCTAssertNil(direct["signalEnvelope"])
+        XCTAssertNotNil(direct["sealedPayload"])
+        XCTAssertEqual(direct["id"] as? String, "wand-child-1")
+    }
+
+    func test_missionConsoleHostOpensSealedApprovalMissionFromListListenerPayload() throws {
+        let uid = "mission-console-user"
+        let documentID = "wand-child-approval"
+        let key = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
+        var document = try CLIAgentMissionRequestPayloadFactory.buildSealed(
+            id: documentID,
+            title: "Pareto Claude child",
+            prompt: "Return the requested sales-ready marker.",
+            missionKind: "parallel",
+            requestedRuntime: "claude",
+            targetProject: "BurnBar",
+            depth: "standard",
+            approvalMode: "existing_policy",
+            commandsAllowed: false,
+            fileEditsAllowed: false,
+            uid: uid,
+            vaultKey: key,
+            vaultKeyID: vaultKeyID
+        )
+        document["status"] = "waiting_for_approval"
+        document["approvalRequestId"] = "approval-wand-child"
+        document["approvalStatus"] = "pending"
+
+        XCTAssertNil(
+            CLIAgentMissionSnapshot(documentID: documentID, data: document),
+            "The production list payload is sealed, so plaintext-only decoding must fail."
+        )
+
+        let decoded = try XCTUnwrap(
+            CLIAgentMissionSnapshot(
+                documentID: documentID,
+                data: document,
+                vaultKey: key,
+                uid: uid
+            )
+        )
+        let host = MobileMissionConsoleHost()
+        host.absorbMissionSnapshots(
+            [decoded],
+            documentCount: 1,
+            hasResolvedKey: true
+        )
+
+        XCTAssertEqual(host.snapshot.activeTiles.map(\.id), [documentID])
+        XCTAssertEqual(host.snapshot.activeTiles.first?.phase, .awaitingApproval)
+        XCTAssertEqual(host.snapshot.approvalAsks.map(\.missionID), [documentID])
+        XCTAssertEqual(host.snapshot.approvalAsks.first?.runtimeID, "claude")
+        XCTAssertNil(host.inlineError)
+    }
+
     // MARK: - cancelMission
 
     func test_cancelMissionUpdate_sealsSummary_writesNoPlaintextLiveSummary() throws {
@@ -507,6 +592,237 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
             createdAt: ISO8601DateFormatter().date(from: "2026-06-02T12:00:00Z")!,
             updatedAt: ISO8601DateFormatter().date(from: "2026-06-02T12:05:00Z")!
         )
+    }
+
+    func test_selectedModelIDFailsClosedWhenActiveWandDidNotRouteRuntime() throws {
+        let partialPolicy = WandPolicy(
+            selector: .pareto,
+            routedModels: [.codex: "gpt-5.5"]
+        )
+
+        XCTAssertThrowsError(
+            try CLIAgentMissionDispatcher.selectedModelID(
+                forRequestedRuntime: "claude",
+                wandPolicy: partialPolicy
+            )
+        ) { error in
+            guard case CLIAgentMissionDispatcher.DispatchError.wandRoutingUnavailable = error else {
+                return XCTFail("Expected wandRoutingUnavailable, got \(error)")
+            }
+        }
+    }
+
+    func test_selectedModelIDFailsClosedForUnknownRuntimeOnlyWhenWandIsActive() throws {
+        let policy = WandPolicy(
+            selector: .pareto,
+            routedModels: [.codex: "gpt-5.5"]
+        )
+
+        XCTAssertThrowsError(
+            try CLIAgentMissionDispatcher.selectedModelID(
+                forRequestedRuntime: "future-runtime",
+                wandPolicy: policy
+            )
+        ) { error in
+            guard case CLIAgentMissionDispatcher.DispatchError.wandRoutingUnavailable = error else {
+                return XCTFail("Expected wandRoutingUnavailable, got \(error)")
+            }
+        }
+        XCTAssertNil(
+            try CLIAgentMissionDispatcher.selectedModelID(
+                forRequestedRuntime: "future-runtime",
+                wandPolicy: nil
+            )
+        )
+    }
+
+    func test_resolvedParallelismLimitStaysWithinPersistedChildCount() {
+        XCTAssertEqual(
+            CLIAgentMissionDispatcher.resolvedParallelismLimit(99, childCount: 2),
+            2
+        )
+        XCTAssertEqual(
+            CLIAgentMissionDispatcher.resolvedParallelismLimit(0, childCount: 2),
+            1
+        )
+        XCTAssertEqual(
+            CLIAgentMissionDispatcher.resolvedParallelismLimit(nil, childCount: 3),
+            3
+        )
+    }
+
+    func test_resolvedWandPolicyUsesInjectedLiveCatalogsAndFetchesEachRuntimeOnce() async throws {
+        let provider = WandCatalogProviderStub(
+            results: [
+                .codex: .success(Self.catalogResponse(
+                    runtime: .codex,
+                    modelID: "gpt-5.5",
+                    providerID: "openai",
+                    source: .codexModelCatalog
+                )),
+                .claude: .success(Self.catalogResponse(
+                    runtime: .claude,
+                    modelID: "claude-opus-4-8",
+                    providerID: "anthropic",
+                    source: .claudeModelCatalog
+                ))
+            ]
+        )
+
+        let resolvedPolicy = try await CLIAgentMissionDispatcher.resolvedWandPolicy(
+            WandPolicy(selector: .highestCapability, routedModels: [:]),
+            runtimeTokens: ["codex", "codex", "claude"],
+            catalogProvider: provider
+        )
+        let policy = try XCTUnwrap(resolvedPolicy)
+
+        XCTAssertEqual(policy.routedModelID(for: .codex), "gpt-5.5")
+        XCTAssertEqual(policy.routedModelID(for: .claude), "claude-opus-4-8")
+        XCTAssertEqual(provider.requests.filter { $0 == .codex }.count, 1)
+        XCTAssertEqual(provider.requests.filter { $0 == .claude }.count, 1)
+    }
+
+    func test_resolvedWandPolicyReportsTheFailingRuntimeAndRootCause() async throws {
+        let provider = WandCatalogProviderStub(
+            results: [
+                .codex: .success(Self.catalogResponse(
+                    runtime: .codex,
+                    modelID: "gpt-5.5",
+                    providerID: "openai",
+                    source: .codexModelCatalog
+                )),
+                .claude: .failure(WandCatalogProviderStub.StubError.catalogOffline)
+            ]
+        )
+
+        do {
+            _ = try await CLIAgentMissionDispatcher.resolvedWandPolicy(
+                WandPolicy(selector: .pareto, routedModels: [:]),
+                runtimeTokens: ["codex", "claude", "claude"],
+                catalogProvider: provider
+            )
+            XCTFail("Expected wand catalog resolution to fail closed")
+        } catch let error as CLIAgentMissionDispatcher.DispatchError {
+            guard case let .wandRoutingUnavailable(message) = error else {
+                XCTFail("Expected wandRoutingUnavailable, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("Claude: relay catalog offline"))
+            XCTAssertTrue(message.contains("No agents were dispatched"))
+            XCTAssertFalse(message.localizedCaseInsensitiveContains("Junie"))
+            XCTAssertEqual(provider.requests.filter { $0 == .claude }.count, 1)
+        }
+    }
+
+    func test_resolvedWandPolicyFetchesDistinctRuntimeCatalogsConcurrently() async throws {
+        let provider = ConcurrentWandCatalogProviderStub()
+
+        let resolvedPolicy = try await CLIAgentMissionDispatcher.resolvedWandPolicy(
+            WandPolicy(selector: .pareto, routedModels: [:]),
+            runtimeTokens: ["claude", "codex", "claude"],
+            catalogProvider: provider
+        )
+
+        XCTAssertEqual(provider.requests.count, 2)
+        XCTAssertEqual(resolvedPolicy?.routedModelID(for: .claude), "claude-opus-4-8")
+        XCTAssertEqual(resolvedPolicy?.routedModelID(for: .codex), "gpt-5.5")
+    }
+
+    private static func catalogResponse(
+        runtime: AssistantRuntimeID,
+        modelID: String,
+        providerID: String,
+        source: CLIRuntimeModelSource
+    ) -> CLIRuntimeModelCatalogResponse {
+        CLIRuntimeModelCatalogResponse(
+            runtime: runtime.rawValue,
+            generatedAtEpochMillis: 1,
+            options: [
+                CLIRuntimeModelOption(
+                    modelID: modelID,
+                    displayName: modelID,
+                    providerID: providerID,
+                    providerName: providerID,
+                    tier: "flagship",
+                    source: source
+                )
+            ]
+        )
+    }
+
+    private final class WandCatalogProviderStub: CLIRuntimeCatalogProviding {
+        enum StubError: LocalizedError {
+            case catalogOffline
+            case missingFixture
+
+            var errorDescription: String? {
+                switch self {
+                case .catalogOffline: "relay catalog offline"
+                case .missingFixture: "missing catalog fixture"
+                }
+            }
+        }
+
+        enum StubResult {
+            case success(CLIRuntimeModelCatalogResponse)
+            case failure(StubError)
+        }
+
+        let results: [AssistantRuntimeID: StubResult]
+        private(set) var requests: [AssistantRuntimeID] = []
+
+        init(results: [AssistantRuntimeID: StubResult]) {
+            self.results = results
+        }
+
+        func fetchCLIRuntimeModelCatalog(
+            runtime: AssistantRuntimeID
+        ) async throws -> CLIRuntimeModelCatalogResponse {
+            requests.append(runtime)
+            guard let result = results[runtime] else { throw StubError.missingFixture }
+            switch result {
+            case let .success(response): return response
+            case let .failure(error): throw error
+            }
+        }
+    }
+
+    private final class ConcurrentWandCatalogProviderStub: CLIRuntimeCatalogProviding {
+        enum StubError: LocalizedError {
+            case fetchedSerially
+
+            var errorDescription: String? { "catalogs were fetched serially" }
+        }
+
+        private(set) var requests: [AssistantRuntimeID] = []
+
+        func fetchCLIRuntimeModelCatalog(
+            runtime: AssistantRuntimeID
+        ) async throws -> CLIRuntimeModelCatalogResponse {
+            requests.append(runtime)
+            for _ in 0..<100 where requests.count < 2 {
+                await Task.yield()
+            }
+            guard requests.count == 2 else { throw StubError.fetchedSerially }
+            switch runtime {
+            case .claude:
+                return CLIAgentMissionDispatcherSealTests.catalogResponse(
+                    runtime: .claude,
+                    modelID: "claude-opus-4-8",
+                    providerID: "anthropic",
+                    source: .claudeModelCatalog
+                )
+            case .codex:
+                return CLIAgentMissionDispatcherSealTests.catalogResponse(
+                    runtime: .codex,
+                    modelID: "gpt-5.5",
+                    providerID: "openai",
+                    source: .codexModelCatalog
+                )
+            default:
+                throw StubError.fetchedSerially
+            }
+        }
     }
 
     private static func childSnapshot(
