@@ -1182,6 +1182,15 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(pricing.cacheReadPerMToken, 0.5, accuracy: 0.001)
     }
 
+    func test_lookup_gpt56SolUsesCurrentTokenRates() throws {
+        let pricing = ModelPricing.lookup(model: "gpt-5.6-sol")
+
+        XCTAssertEqual(pricing.inputPerMToken, 5, accuracy: 0.001)
+        XCTAssertEqual(pricing.outputPerMToken, 30, accuracy: 0.001)
+        XCTAssertEqual(pricing.cacheCreationPerMToken ?? 0, 6.25, accuracy: 0.001)
+        XCTAssertEqual(pricing.cacheReadPerMToken, 0.5, accuracy: 0.001)
+    }
+
     func test_lookup_claudeSonnetUsesPromptCacheWriteRate() throws {
         let pricing = ModelPricing.lookup(model: "claude-sonnet-4-6")
 

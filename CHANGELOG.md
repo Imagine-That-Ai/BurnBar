@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Codex usage accounting
+
+- **Stopped Codex subagents from multiplying their parent's cumulative token
+  counter**: refreshes now purge mirrored subagent ledger rows and persist the
+  top-level thread's cumulative high-water increases as exact local-day slices.
+  This also repairs already-inflated dashboards on the next refresh and keeps
+  long-running threads from charging their lifetime total to Today.
+- **Added GPT-5.6 Sol, Terra, and Luna to the shared model catalog** with their
+  current input, cached-input, output, and cache-write rates, so Codex 5.6 logs
+  no longer fall through to generic GPT-5 pricing.
+- **Made dashboard burn tiles follow the selected time range** instead of
+  always labeling the selected range's cost as Today.
+
 ### Fixed - Incremental conversation indexing
 
 - **Stopped steady-state conversation indexing from re-reading the full log
