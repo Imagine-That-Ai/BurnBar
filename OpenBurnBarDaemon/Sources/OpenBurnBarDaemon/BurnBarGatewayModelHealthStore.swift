@@ -171,6 +171,14 @@ public actor BurnBarGatewayModelHealthStore {
         if BurnBarProviderExecutorError.isTransientCapacityFailure(statusCode: statusCode, body: body) {
             return 60
         }
+        // A provider can keep a retired model on its discovery page after the
+        // serving API has removed it. Remember HTTP 410 per model so one stale
+        // catalog row does not keep producing a user-visible dead route. The
+        // finite window lets the model recover automatically if the provider
+        // restores the slug or fixes its catalog.
+        if statusCode == 410 {
+            return 24 * 60 * 60
+        }
         if statusCode == 429 {
             return isAnthropicOAuth(route) ? 15 * 60 : 5 * 60
         }

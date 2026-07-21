@@ -242,6 +242,13 @@ if ! grep -q "$expected_app_identifier" <<<"$actual_keychain_groups"; then
   exit 1
 fi
 
+daemon_path="$app_path/Contents/Helpers/OpenBurnBarDaemon"
+if [[ ! -x "$daemon_path" ]]; then
+  echo "::error::Public app is missing the OpenBurnBarDaemon helper." >&2
+  exit 1
+fi
+bash "$repo_root/scripts/ci/verify-daemon-release-signing.sh" "$app_path" "$expected_team_id"
+
 embedded_profile="$app_path/Contents/embedded.provisionprofile"
 if [[ ! -f "$embedded_profile" ]]; then
   echo "::error::Public app is missing embedded MAC_APP_DIRECT provisioning profile." >&2
@@ -261,6 +268,9 @@ if ! grep -q "${expected_team_id}\\.\\*\\|${expected_app_identifier}" <<<"$profi
   printf '%s\n' "$profile_keychain_groups" >&2
   exit 1
 fi
+bash "$repo_root/scripts/ci/verify-signing-profile-certificate.sh" \
+  "$app_path" \
+  "$embedded_profile"
 
 signature="$(
   codesign -dv --verbose=4 "$app_path" 2>&1 || true

@@ -203,8 +203,7 @@ final class FactoryDroidParserIntegrationTests: XCTestCase {
 
         let result = try await parser.parse()
 
-        XCTAssertFalse(result.usages.isEmpty)
-        let usage = result.usages[0]
+        let usage = try XCTUnwrap(result.usages.first, "Metadata-only sessions must produce usage.")
         XCTAssertEqual(usage.model, "glm-5")
         XCTAssertEqual(usage.inputTokens, 1200)
     }

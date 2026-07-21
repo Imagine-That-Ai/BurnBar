@@ -377,7 +377,9 @@ jobs:
   promotion-contracts:
     name: promotion-contracts
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # This job performs two full-history checkouts. Either fetch can take several
+    # minutes during GitHub degradation, before the contract tests even run.
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
