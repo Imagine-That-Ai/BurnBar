@@ -14,8 +14,8 @@ Authoritative candidate identity:
 - Existing physical retry ZIP SHA-256: bf10318474556b1ea3f69b05831fa09dfc4f8b36ac9470fb113092ec4f7ed876
 
 Independent harness requirement:
-- Require PR https://github.com/Imagine-That-Ai/BurnBar/pull/1862 to be MERGED before using it for certification.
-- Resolve its GitHub mergeCommit.oid and use that exact clean commit as the new independent harness commit.
+- Require PR https://github.com/Imagine-That-Ai/BurnBar/pull/1932 to be MERGED before using it for certification. It retains the corrected UIA work from PR #1862 and adds the fail-closed staging runtime-safety observer.
+- Resolve PR #1932's GitHub mergeCommit.oid and use that exact clean commit as the new independent harness commit.
 - Do not use the old harness commit 00d0751f1c671d99fe7ef8f4059e91d689a30f44 for the new baseline. It coupled valid semantic UIA evidence to an unreliable scheduled-task desktop bitmap.
 - The new harness keeps routed RenderTargetBitmap screenshots fail-closed, uses UI Automation for the semantic deny-region verdict, reports external desktop capture separately, and discovers visible WinUI windows by PID when Process.MainWindowHandle is zero.
 
@@ -50,13 +50,13 @@ Phase 1 - verify transfer and establish clean roots:
 1. Resolve the flash drive whose volume label is BURNBAR. The original signed handoff is BurnBar-cert\windows-v1.0.38-final-handoff. The physical retry evidence is in the latest windows-v1.0.38-development-handoff-* directory.
 2. Run the original VERIFY-TRANSFER.ps1 and require PASS. Independently hash the physical retry ZIP and require bf10318474556b1ea3f69b05831fa09dfc4f8b36ac9470fb113092ec4f7ed876. Test the ZIP and its internal SHA256SUMS.
 3. Create a new timestamped C:\BurnBar-cert\windows-v1.0.38-supplemental-* root. Never overwrite C:\BurnBar-cert\windows-v1.0.38 or an earlier run.
-4. Clone the repo twice into candidate and harness. Check candidate out detached at windows-v1.0.38 and require exact commit 48837746490b6468efa4dc06a476f305d496039c. Resolve PR #1862 mergeCommit.oid, check the harness out detached there, and require both trees clean.
+4. Clone the repo twice into candidate and harness. Check candidate out detached at windows-v1.0.38 and require exact commit 48837746490b6468efa4dc06a476f305d496039c. Resolve PR #1932 mergeCommit.oid, check the harness out detached there, and require both trees clean.
 5. Copy the exact verified release/provenance handoff into the new root. Reverify the MSIX hash, signed-artifact manifest, package identity/version/architecture, Authenticode signer/timestamp, checksums, and supplied provenance before installation.
 
 Phase 2 - rerun the baseline with the corrected harness:
 1. Generate a fresh physical x64 attestation with new-physical-hardware-attestation.ps1. Use only live CIM fallback logic; never fabricate an identifier.
 2. Run run-physical-release-certification.ps1 with no SkipAutomatedTests and no SkipUiAutomation, candidate RepoRoot, exact artifact manifest, fresh attestation, Platform x64, and PhysicalHardware.
-3. Run validate-release-certification-evidence.mjs with --write-sums, --expected-commit 48837746490b6468efa4dc06a476f305d496039c, and --expected-harness-commit set to the PR #1862 merge commit.
+3. Run validate-release-certification-evidence.mjs with --write-sums, --expected-commit 48837746490b6468efa4dc06a476f305d496039c, and --expected-harness-commit set to the PR #1932 merge commit.
 4. Require all routed screenshots and UIA anchors to remain PASS. The semantic UIA verdict must PASS. If external capture is Skipped, retain its diagnostic status; do not relabel it as a screenshot PASS.
 
 Phase 3 - complete accessibility-display:
