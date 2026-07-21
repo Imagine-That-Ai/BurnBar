@@ -103,9 +103,9 @@ enum OpenBurnBarRuntime {
     static let performanceGateVisibilityNotification = Notification.Name(
         "com.openburnbar.performance-gate.window-visibility"
     )
-    static let performanceGateBackdropStateNotification = Notification.Name(
-        "com.openburnbar.performance-gate.backdrop-state"
-    )
+    static var performanceGateBackdropStateNotification: Notification.Name {
+        Notification.Name("com.openburnbar.performance-gate.backdrop-state")
+    }
 
     static var currentPerformanceGateNotificationObject: String {
         performanceGateNotificationObject(
