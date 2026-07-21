@@ -700,8 +700,8 @@ public enum CodexSessionLogScanner {
                 let cached = sessionCache.fileEntries[cacheKey]
                 let cachedExecutionSource = cached?.executionSource ?? .unknown
                 if cachedExecutionSource.id != UsageExecutionSource.unknown.id,
-                   (executionSource.id == UsageExecutionSource.unknown.id
-                       || cachedExecutionSource.confidence > executionSource.confidence) {
+                   executionSource.id == UsageExecutionSource.unknown.id
+                       || cachedExecutionSource.confidence > executionSource.confidence {
                     executionSource = cachedExecutionSource
                 }
 
@@ -756,8 +756,8 @@ public enum CodexSessionLogScanner {
                             options.metrics?.recordContentRead(bytes: contentReadBytes)
 
                             if scan.executionSource.id != UsageExecutionSource.unknown.id,
-                               (executionSource.id == UsageExecutionSource.unknown.id
-                                   || scan.executionSource.confidence > executionSource.confidence) {
+                               executionSource.id == UsageExecutionSource.unknown.id
+                                   || scan.executionSource.confidence > executionSource.confidence {
                                 executionSource = scan.executionSource
                             }
 

@@ -775,7 +775,7 @@ final class ParserParseOptionsTests: XCTestCase {
 
         XCTAssertEqual(result.usages.count, 1)
         XCTAssertEqual(result.usages.first?.totalTokens, 176)
-        XCTAssertTrue(result.usages.first?.sessionId.hasPrefix("codex-body-retry#day-") == true)
+        XCTAssertEqual(result.usages.first?.sessionId.hasPrefix("codex-body-retry#day-"), true)
         XCTAssertEqual(Set(result.usageSessionIDsToDelete), ["codex-body-retry", "codex-child"])
     }
 
