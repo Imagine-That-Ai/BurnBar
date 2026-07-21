@@ -471,7 +471,7 @@ if ($SkipUiAutomation) {
     $blockerMissing = 'The operator supplied -SkipUiAutomation.'
     $blockerRecovery = 'Run the accessibility profile in the signed-in Windows desktop session.'
 } else {
-    $uiStep = Invoke-LoggedProcess 'ui-automation-accessibility' (Join-Path $HarnessRoot 'scripts\windows-port\run-ui-automation.ps1') @('-RepoRoot', $RepoRoot, '-Platform', $Platform, '-CertificationProfile', 'all', '-OutputDirectory', (Join-Path $OutputDir 'ui-automation'))
+    $uiStep = Invoke-LoggedProcess 'ui-automation-accessibility' (Join-Path $HarnessRoot 'scripts\windows-port\run-ui-automation.ps1') @('-RepoRoot', $RepoRoot, '-HarnessRoot', $HarnessRoot, '-Platform', $Platform, '-CertificationProfile', 'all', '-OutputDirectory', (Join-Path $OutputDir 'ui-automation'))
     $steps.Add($uiStep)
     $uiEvidence = @([ordered]@{ path = $uiStep.log; sha256 = $uiStep.logSha256 })
     if ($uiStep.exitCode -eq 0) {
@@ -696,8 +696,19 @@ Write-JsonFile (Join-Path $OutputDir 'certification-manifest.json') $manifest
 
 $node = Get-Command node -ErrorAction SilentlyContinue
 if ($null -eq $node) { throw 'Node.js is required to validate and hash the evidence bundle.' }
-& $node.Source (Join-Path $HarnessRoot 'scripts\windows-port\validate-release-certification-evidence.mjs') `
+$validatorPath = Join-Path $HarnessRoot 'scripts\windows-port\validate-release-certification-evidence.mjs'
+$validatorOutput = @(& $node.Source $validatorPath `
+    $OutputDir --write-sums --expected-commit $script:SourceIdentity.commitSha `
+    --expected-harness-commit $script:SourceIdentity.harness.commitSha 2>&1)
+$validatorExitCode = $LASTEXITCODE
+$validatorLogPath = Join-Path $OutputDir 'operator-evidence\validator-final.log'
+$validatorOutput | ForEach-Object { [string]$_ } | Set-Content -LiteralPath $validatorLogPath -Encoding UTF8
+if ($validatorExitCode -ne 0) { throw 'Evidence bundle validation failed.' }
+
+# The validator log is evidence too. Regenerate SHA256SUMS after recording it,
+# then perform the final validation without mutating any covered file.
+& $node.Source $validatorPath `
     $OutputDir --write-sums --expected-commit $script:SourceIdentity.commitSha `
     --expected-harness-commit $script:SourceIdentity.harness.commitSha
-if ($LASTEXITCODE -ne 0) { throw 'Evidence bundle validation failed.' }
+if ($LASTEXITCODE -ne 0) { throw 'Final evidence bundle validation failed.' }
 Write-Host "Windows physical release-certification bundle written to $OutputDir" -ForegroundColor Yellow
