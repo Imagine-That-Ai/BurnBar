@@ -1130,7 +1130,7 @@ jobs:
     name: apple-native-smoke
     needs: [classify, apple]
     if: needs.classify.outputs.rust == 'true'
-    runs-on: macos-26
+    runs-on: ${{ (github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'ci-turbo')) && 'BurnBar-macos-26-xlarge' || 'macos-26' }}
     timeout-minutes: 30
     steps:
       - name: Check out repository
@@ -1200,7 +1200,7 @@ jobs:
     name: swift-consumer-contracts
     needs: classify
     if: needs.classify.outputs.rust == 'true'
-    runs-on: macos-26
+    runs-on: ${{ (github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'ci-turbo')) && 'BurnBar-macos-26-xlarge' || 'macos-26' }}
     # Cold macos-26 runners can spend nearly an hour building the domain-core
     # XCFramework and app-test dependency graph before the focused spool test.
     timeout-minutes: 90

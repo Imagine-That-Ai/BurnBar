@@ -36,6 +36,19 @@ SwiftPM uses `.spm-cache-new` plus the SwiftPM download cache, Gradle uses
 Generated outputs may be cached only when their generator inputs are included
 in the key and the workflow still runs its drift check after restore.
 
+## Paid merge-queue acceleration
+
+The `BurnBar-macos-26-xlarge` GitHub-hosted runner pool is ephemeral,
+BurnBar-only, and capped at five concurrent M2 runners. Expensive macOS 26 jobs
+use that pool for native `merge_group` candidates and pull requests carrying
+the `ci-turbo` label; ordinary pull requests stay on standard hosted runners.
+This keeps untrusted public pull-request code off persistent self-hosted Macs
+while spending only on approval-ready candidates or explicit urgent work.
+
+Do not grant this public repository access to the shared self-hosted runner
+group. Increase the paid pool cap only after checking the organization macOS
+concurrency limit and recent queue demand.
+
 ## Changing ownership
 
 Update classifier rules and tests in the same pull request. New or unmatched

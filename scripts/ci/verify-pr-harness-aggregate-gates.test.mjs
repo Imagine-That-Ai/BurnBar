@@ -23,7 +23,10 @@ const REPO_ROOT = join(SCRIPT_DIR, "..", "..");
 const GATE = join(SCRIPT_DIR, "verify-pr-harness-aggregate-gates.mjs");
 const WORKFLOW = ".github/workflows/openburnbar-pr-harness.yml";
 const APP_WORKFLOW = ".github/workflows/app-pr-gate.yml";
+const DAEMON_WORKFLOW = ".github/workflows/daemon-pr-gate.yml";
+const DOMAIN_CORE_WORKFLOW = ".github/workflows/domain-core.yml";
 const FAST_WORKFLOW = ".github/workflows/fast-feedback.yml";
+const NATIVE_WORKFLOW = ".github/workflows/pr-native-fast.yml";
 const BRANCH_PROTECTION = "governance/branch-protection.main.json";
 const roots = [];
 
@@ -586,6 +589,24 @@ check("desired main branch protection requires only the umbrella gate", () => {
   );
   assert.deepEqual(protection.required_status_checks.contexts, ["BurnBar CI Gate"]);
   assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
+});
+
+check("urgent PRs and merge-queue candidates use the bounded paid macOS pool", () => {
+  const expectedRunner =
+    "runs-on: ${{ (github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'ci-turbo')) && 'BurnBar-macos-26-xlarge' || 'macos-26' }}";
+  for (const [workflow, expectedCount] of [
+    [APP_WORKFLOW, 2],
+    [DAEMON_WORKFLOW, 2],
+    [DOMAIN_CORE_WORKFLOW, 2],
+    [NATIVE_WORKFLOW, 2],
+  ]) {
+    const source = readFileSync(join(REPO_ROOT, workflow), "utf8");
+    assert.equal(
+      source.split(expectedRunner).length - 1,
+      expectedCount,
+      `${workflow} paid runner routing count`,
+    );
+  }
 });
 
 if (failed > 0) {
