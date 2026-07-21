@@ -663,6 +663,122 @@ final class ParserParseOptionsTests: XCTestCase {
         )
     }
 
+    func testCodexBudgetPrioritizesRecentlyUpdatedLongRunningParent() async throws {
+        let root = try makeTemporaryDirectory("codex-updated-priority")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let codexRoot = root.appendingPathComponent(".codex", isDirectory: true)
+        try fileManager.createDirectory(at: codexRoot, withIntermediateDirectories: true)
+        let activeRollout = codexRoot.appendingPathComponent("old-active.jsonl")
+        let idleRollout = codexRoot.appendingPathComponent("new-idle.jsonl")
+        try write(
+            #"{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":900,"cached_input_tokens":100,"output_tokens":20}}}}"#,
+            to: activeRollout
+        )
+        try write(
+            #"{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":90,"cached_input_tokens":10,"output_tokens":2}}}}"#,
+            to: idleRollout
+        )
+
+        let database = try createCodexThreadDatabase(at: codexRoot, rolloutPath: activeRollout.path)
+        let connection = try SQLiteConnection.openForWriting(creatingAt: database.path)
+        try connection.execute(
+            "UPDATE threads SET created_at = ?, updated_at = ? WHERE id = ?",
+            arguments: [.int(100), .int(300), .text("codex-body-retry")]
+        )
+        try connection.execute(
+            """
+            INSERT INTO threads (
+                id, title, model, model_provider, tokens_used,
+                created_at, updated_at, cwd, rollout_path, thread_source, archived
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            arguments: [
+                .text("new-idle"),
+                .text("Newer idle thread"),
+                .text("gpt-5.6-sol"),
+                .text("openai"),
+                .int(102),
+                .int(200),
+                .int(201),
+                .text("/tmp/BurnBar"),
+                .text(idleRollout.path),
+                .text("user")
+            ]
+        )
+        connection.close()
+
+        let governor = ParserResourceGovernor(
+            limits: ParserResourceLimits(fileByteBudget: Int64(try Data(contentsOf: activeRollout).count))
+        )
+        let result = try await CodexParser(
+            fileManager: fileManager,
+            appPaths: OpenBurnBarAppPaths(
+                applicationSupportRoot: root.appendingPathComponent("support", isDirectory: true)
+            ),
+            homeDirectoryURL: root
+        ).parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            resourceGovernor: governor
+        ))
+
+        XCTAssertEqual(result.usages.map(\.sessionId), ["codex-body-retry"])
+        XCTAssertEqual(result.usages.first?.totalTokens, 920)
+        XCTAssertEqual(governor.deferredFileCount, 1)
+    }
+
+    func testCodexParserExcludesSubagentMirrorsAndBucketsParentByDay() async throws {
+        let root = try makeTemporaryDirectory("codex-subagent-accounting")
+        defer { try? fileManager.removeItem(at: root) }
+
+        let codexRoot = root.appendingPathComponent(".codex", isDirectory: true)
+        try fileManager.createDirectory(at: codexRoot, withIntermediateDirectories: true)
+        let rollout = codexRoot.appendingPathComponent("parent.jsonl")
+        try write(
+            """
+            {"timestamp":"2026-07-20T12:00:01.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":160,"cached_input_tokens":40,"output_tokens":16}}}}
+            """,
+            to: rollout
+        )
+        let database = try createCodexThreadDatabase(at: codexRoot, rolloutPath: rollout.path)
+        let connection = try SQLiteConnection.openForWriting(creatingAt: database.path)
+        try connection.execute(
+            """
+            INSERT INTO threads (
+                id, title, model, model_provider, tokens_used,
+                created_at, updated_at, cwd, rollout_path, thread_source, archived
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            arguments: [
+                .text("codex-child"),
+                .text("Codex child"),
+                .text("gpt-5.6-sol"),
+                .text("openai"),
+                .int(176),
+                .int(1_768_651_202),
+                .int(1_768_651_203),
+                .text("/tmp/BurnBar"),
+                .text(rollout.path),
+                .text("subagent")
+            ]
+        )
+        connection.close()
+
+        let parser = CodexParser(
+            fileManager: fileManager,
+            appPaths: OpenBurnBarAppPaths(
+                applicationSupportRoot: root.appendingPathComponent("support", isDirectory: true)
+            ),
+            homeDirectoryURL: root
+        )
+        let result = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(result.usages.first?.totalTokens, 176)
+        XCTAssertTrue(result.usages.first?.sessionId.hasPrefix("codex-body-retry#day-") == true)
+        XCTAssertEqual(Set(result.usageSessionIDsToDelete), ["codex-body-retry", "codex-child"])
+    }
+
     func testFactoryOptionsPreserveUsageAndGateConversationBodiesAndHistory() async throws {
         let root = try makeTemporaryDirectory("factory")
         defer { try? fileManager.removeItem(at: root) }
@@ -1166,6 +1282,7 @@ final class ParserParseOptionsTests: XCTestCase {
                 updated_at INTEGER,
                 cwd TEXT,
                 rollout_path TEXT,
+                thread_source TEXT,
                 archived INTEGER DEFAULT 0
             )
             """)

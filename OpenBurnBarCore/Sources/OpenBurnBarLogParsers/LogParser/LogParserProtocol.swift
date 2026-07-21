@@ -6,10 +6,16 @@ import OpenBurnBarKernel
 public struct ParseResult: Sendable {
     public let usages: [TokenUsage]
     public let conversations: [ConversationRecord]
+    public let usageSessionIDsToDelete: [String]
 
-    public init(usages: [TokenUsage], conversations: [ConversationRecord]) {
+    public init(
+        usages: [TokenUsage],
+        conversations: [ConversationRecord],
+        usageSessionIDsToDelete: [String] = []
+    ) {
         self.usages = usages
         self.conversations = conversations
+        self.usageSessionIDsToDelete = usageSessionIDsToDelete
     }
 }
 

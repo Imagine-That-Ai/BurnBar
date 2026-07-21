@@ -34,7 +34,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
         self.cacheStore = OpenBurnBarCore.ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 2,
+            schemaVersion: 5,
             logLabel: "CodexParser"
         )
         ParserSupportDirectoryWarmUp.prepare(fileManager: fileManager, appPaths: appPaths)
@@ -57,17 +57,26 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
         // Rows first, connection closed, then file scanning — never hold a
         // read snapshot on Codex's live database across multi-second file
         // work (a pinned snapshot starves Codex's own WAL checkpoints).
-        let threadRows = try fetchThreadRows(dbPath: dbPath)
+        let fetched = try fetchThreadRows(dbPath: dbPath)
         let parsed = try OpenBurnBarCore.CodexSessionLogScanner.processThreadRows(
-            threadRows,
+            fetched.rows,
             options: options,
             fileManager: fileManager,
             cacheStore: cacheStore
         )
-        return OpenBurnBarCore.ParseResult(usages: parsed.usages, conversations: parsed.conversations)
+        let invalidations = Set(fetched.usageSessionIDsToDelete)
+            .union(parsed.usageSessionIDsToDelete)
+        return OpenBurnBarCore.ParseResult(
+            usages: parsed.usages,
+            conversations: parsed.conversations,
+            usageSessionIDsToDelete: invalidations.sorted()
+        )
     }
 
-    private func fetchThreadRows(dbPath: String) throws -> [OpenBurnBarCore.CodexThreadRow] {
+    private func fetchThreadRows(dbPath: String) throws -> (
+        rows: [OpenBurnBarCore.CodexThreadRow],
+        usageSessionIDsToDelete: [String]
+    ) {
         var config = Configuration()
         config.readonly = true
         let db = try DatabaseQueue(path: dbPath, configuration: config)
@@ -78,18 +87,43 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
             let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(threads)")
             let columnNames = Set(columns.compactMap { $0["name"] as? String })
             let hasRolloutPath = columnNames.contains("rollout_path")
+            let hasThreadSource = columnNames.contains("thread_source")
+
+            let subagentSessionIDs: Set<String>
+            if hasThreadSource {
+                subagentSessionIDs = Set(try String.fetchAll(
+                    db,
+                    sql: "SELECT id FROM threads WHERE thread_source = 'subagent'"
+                ))
+            } else if hasRolloutPath {
+                let cleanupRows = try Row.fetchAll(db, sql: "SELECT id, rollout_path FROM threads")
+                subagentSessionIDs = Set(cleanupRows.compactMap { row -> String? in
+                    guard let threadID: String = row["id"],
+                          let rolloutPath: String = row["rollout_path"] else { return nil }
+                    let expandedPath = (rolloutPath as NSString).expandingTildeInPath
+                    return isCodexSubagentRollout(expandedPath) ? threadID : nil
+                })
+            } else {
+                subagentSessionIDs = []
+            }
 
             let sql: String
             if hasRolloutPath {
+                let sourceFilter = hasThreadSource
+                    ? "AND (thread_source IS NULL OR thread_source != 'subagent')"
+                    : ""
                 sql = """
                     SELECT
                         id, title, model, model_provider, tokens_used,
                         created_at, updated_at, cwd, rollout_path
                     FROM threads
                     WHERE archived = 0
-                    ORDER BY created_at DESC
-                    LIMIT 500
-                """
+                    \(sourceFilter)
+                    -- The scanner is byte-budgeted. Prioritize threads that
+                    -- changed most recently so long-running parents active
+                    -- today are repaired before newer but idle sessions.
+                    ORDER BY updated_at DESC
+                    """
             } else {
                 sql = """
                     SELECT
@@ -97,9 +131,8 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                         created_at, updated_at, cwd
                     FROM threads
                     WHERE archived = 0
-                    ORDER BY created_at DESC
-                    LIMIT 500
-                """
+                    ORDER BY updated_at DESC
+                    """
             }
 
             let rows = try Row.fetchAll(db, sql: sql)
@@ -114,6 +147,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                 }
                 let cwd: String = row["cwd"] ?? "~"
                 let rolloutPath: String? = hasRolloutPath ? (row["rollout_path"] as? String) : nil
+                guard !subagentSessionIDs.contains(threadId) else { continue }
                 threadRows.append(
                     OpenBurnBarCore.CodexThreadRow(
                         threadId: threadId,
@@ -127,8 +161,27 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                     )
                 )
             }
-            return threadRows
+            return (threadRows, subagentSessionIDs.sorted())
         }
+    }
+
+    private func isCodexSubagentRollout(_ path: String) -> Bool {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
+        defer { try? handle.close() } // try?-ok(read-only teardown)
+
+        guard let prefix = try? handle.read(upToCount: 256 * 1024),
+              !prefix.isEmpty else { return false }
+
+        let text = String(decoding: prefix, as: UTF8.self)
+        for line in text.split(separator: "\n", maxSplits: 15, omittingEmptySubsequences: true) {
+            guard let data = String(line).data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  json["type"] as? String == "session_meta",
+                  let payload = json["payload"] as? [String: Any],
+                  let source = payload["source"] as? [String: Any] else { continue }
+            return source["subagent"] != nil
+        }
+        return false
     }
 }
 
