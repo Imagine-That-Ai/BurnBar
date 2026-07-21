@@ -137,6 +137,19 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
         }
     }
 
+    func test_performanceGateLaunch_suppressesUnrelatedBackgroundServices() {
+        XCTAssertFalse(
+            OpenBurnBarRuntime.shouldStartBackgroundApplicationServices(
+                isPerformanceGateLaunch: true
+            )
+        )
+        XCTAssertTrue(
+            OpenBurnBarRuntime.shouldStartBackgroundApplicationServices(
+                isPerformanceGateLaunch: false
+            )
+        )
+    }
+
     func test_shouldDisableAutomaticTerminationForHarness_honorsE2EEnvironment() {
         XCTAssertTrue(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForHarness(
             environment: ["OPENBURNBAR_FORCE_LIVE_SCENE": "1"]
