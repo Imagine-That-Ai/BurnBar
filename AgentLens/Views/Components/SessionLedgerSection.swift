@@ -345,6 +345,14 @@ private struct SessionLedgerEntryRow: View {
                             .background(DesignSystem.Colors.primary(for: usage.provider).opacity(0.12))
                             .clipShape(.capsule)
                     }
+
+                    Text(usage.executionSourceName)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(usage.executionSourceID == "unknown" ? DesignSystem.Colors.textMuted : theme.primaryColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background((usage.executionSourceID == "unknown" ? DesignSystem.Colors.textMuted : theme.primaryColor).opacity(0.1))
+                        .clipShape(.capsule)
                 }
 
                 Text(usage.projectName)

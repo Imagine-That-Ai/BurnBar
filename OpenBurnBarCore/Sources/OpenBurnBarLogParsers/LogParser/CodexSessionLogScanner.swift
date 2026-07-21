@@ -115,6 +115,8 @@ public enum CodexSessionLogScanner {
         public let dailyUsage: [CodexDailyTokenUsage]
         /// State to persist for the next incremental scan.
         public let state: CodexTokenScanState
+        /// Execution surface found in the rollout's leading session metadata.
+        let executionSource: UsageExecutionSource
     }
 
     private enum TokenScanAttempt {
@@ -283,11 +285,21 @@ public enum CodexSessionLogScanner {
         var persistedOffset = resumeOffset
         var scannedLines = 0
         var tailAccumulator: TokenAccumulator?
+        var sourceProbeLinesRemaining = resumeOffset == 0 ? 20 : 0
+        var executionSource = UsageExecutionSource.unknown
 
         while let line = reader.nextLine() {
             scannedLines += 1
             if scannedLines % checkpointLineInterval == 0 {
                 try governor?.checkpoint()
+            }
+
+            if sourceProbeLinesRemaining > 0 {
+                sourceProbeLinesRemaining -= 1
+                if executionSource.id == UsageExecutionSource.unknown.id,
+                   let detected = Self.executionSource(fromSessionMetadataLine: line.text) {
+                    executionSource = detected
+                }
             }
 
             // Cheap byte-scan prefilter: every envelope shape that can carry
@@ -336,7 +348,8 @@ public enum CodexSessionLogScanner {
             TokenScanResult(
                 usage: usage,
                 dailyUsage: effective.dailyUsage.values.sorted { $0.dayStart < $1.dayStart },
-                state: state
+                state: state,
+                executionSource: executionSource
             ),
             contentReadBytes: contentReadBytes
         )
@@ -664,6 +677,7 @@ public enum CodexSessionLogScanner {
             var cacheReadTokens = 0
             var dailyTokenUsage: [CodexDailyTokenUsage] = []
             var foundExact = false
+            var executionSource = UsageExecutionSource.unknown
             var deferredWithoutCache = false
             var contentUnavailable = false
 
@@ -684,6 +698,12 @@ public enum CodexSessionLogScanner {
                 )
                 let isNewlyDiscovered = options.fileDiscoveryTracker?.record(discoveredFile) ?? false
                 let cached = sessionCache.fileEntries[cacheKey]
+                let cachedExecutionSource = cached?.executionSource ?? .unknown
+                if cachedExecutionSource.id != UsageExecutionSource.unknown.id,
+                   (executionSource.id == UsageExecutionSource.unknown.id
+                       || cachedExecutionSource.confidence > executionSource.confidence) {
+                    executionSource = cachedExecutionSource
+                }
 
                 if governor != nil, signature == nil {
                     governor?.recordDeferredFile()
@@ -735,6 +755,12 @@ public enum CodexSessionLogScanner {
                             options.fileDiscoveryTracker?.recordAdmitted(discoveredFile)
                             options.metrics?.recordContentRead(bytes: contentReadBytes)
 
+                            if scan.executionSource.id != UsageExecutionSource.unknown.id,
+                               (executionSource.id == UsageExecutionSource.unknown.id
+                                   || scan.executionSource.confidence > executionSource.confidence) {
+                                executionSource = scan.executionSource
+                            }
+
                             if let usage = scan.usage {
                                 inputTokens = usage.input
                                 outputTokens = usage.output
@@ -754,7 +780,8 @@ public enum CodexSessionLogScanner {
                                             daily: scan.dailyUsage
                                         )
                                     },
-                                    scanState: scan.state
+                                    scanState: scan.state,
+                                    executionSource: executionSource
                                 )
                                 cacheMutated = true
                             }
@@ -872,6 +899,10 @@ public enum CodexSessionLogScanner {
                         costUSD: cost,
                         startTime: bucket.dayStart,
                         endTime: bucket.endTime,
+                        executionSourceID: executionSource.id,
+                        executionSourceName: executionSource.name,
+                        executionSourceKind: executionSource.kind,
+                        executionSourceConfidence: executionSource.confidence,
                         provenanceMethod: .providerLog,
                         provenanceConfidence: .exact,
                         estimatorVersion: "codex-daily-cumulative-v1"
@@ -897,6 +928,10 @@ public enum CodexSessionLogScanner {
                     costUSD: cost,
                     startTime: row.startTime,
                     endTime: row.endTime,
+                    executionSourceID: executionSource.id,
+                    executionSourceName: executionSource.name,
+                    executionSourceKind: executionSource.kind,
+                    executionSourceConfidence: executionSource.confidence,
                     provenanceMethod: foundExact ? .providerLog : .heuristicEstimate,
                     provenanceConfidence: foundExact ? .exact : .lowConfidenceEstimate,
                     estimatorVersion: foundExact ? "" : "tokens-used-split-v1"
@@ -941,6 +976,47 @@ public enum CodexSessionLogScanner {
         }
 
         return (usages, conversations, usageSessionIDsToDelete.sorted())
+    }
+
+    private static func executionSource(fromSessionMetadataLine line: String) -> UsageExecutionSource? {
+        guard let data = line.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              json["type"] as? String == "session_meta",
+              let payload = json["payload"] as? [String: Any] else { return nil }
+
+        if let originator = payload["originator"] as? String,
+           let source = UsageExecutionSourceResolver.fromClientMarker(originator) {
+            return source
+        }
+        guard let source = payload["source"] as? String else { return nil }
+        if let resolved = UsageExecutionSourceResolver.fromClientMarker(source) {
+            return resolved
+        }
+        switch source.lowercased() {
+        case "cli", "exec":
+            return UsageExecutionSource(
+                id: "codex-cli",
+                name: "Codex CLI",
+                kind: .cli,
+                confidence: .exact
+            )
+        case "vscode":
+            return UsageExecutionSource(
+                id: "codex-vscode",
+                name: "Codex for VS Code",
+                kind: .ide,
+                confidence: .exact
+            )
+        case "cloud", "web":
+            return UsageExecutionSource(
+                id: "codex-cloud",
+                name: "Codex Cloud",
+                kind: .service,
+                confidence: .exact
+            )
+        default:
+            return nil
+        }
     }
 
     /// `LogParseOptions.minimumFileModificationDate` contract: files whose

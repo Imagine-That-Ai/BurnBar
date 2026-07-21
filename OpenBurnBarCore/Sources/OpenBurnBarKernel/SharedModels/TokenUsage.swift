@@ -71,6 +71,211 @@ public enum UsageSource: String, Codable, Hashable, CaseIterable, Sendable {
     case unknown = "unknown"
 }
 
+// MARK: - Execution Source
+
+/// The product surface that executed a model request. This is intentionally
+/// separate from `UsageSource`, which describes how BurnBar ingested the row.
+public enum UsageExecutionSourceKind: String, Codable, Hashable, CaseIterable, Sendable {
+    case ide
+    case cli
+    case desktopApp = "desktop_app"
+    case service
+    case automation
+    case unknown
+}
+
+public struct UsageExecutionSource: Codable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public let kind: UsageExecutionSourceKind
+    public let confidence: UsageProvenanceConfidence
+
+    public init(
+        id: String,
+        name: String,
+        kind: UsageExecutionSourceKind,
+        confidence: UsageProvenanceConfidence
+    ) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.confidence = confidence
+    }
+
+    public static let unknown = UsageExecutionSource(
+        id: "unknown",
+        name: "Unknown",
+        kind: .unknown,
+        confidence: .unknown
+    )
+}
+
+/// Normalizes parser identities and client headers into stable reporting IDs.
+/// Raw user-agent strings are never retained.
+public enum UsageExecutionSourceResolver {
+    public static func resolve(
+        provider: AgentProvider,
+        usageSource: UsageSource,
+        explicitID: String? = nil,
+        explicitName: String? = nil,
+        explicitKind: UsageExecutionSourceKind? = nil,
+        explicitConfidence: UsageProvenanceConfidence? = nil
+    ) -> UsageExecutionSource {
+        if let explicitID,
+           let normalizedID = normalizedID(explicitID),
+           normalizedID != "unknown" {
+            let known = knownSource(matching: normalizedID) ?? UsageExecutionSource(
+                id: normalizedID,
+                name: normalizedDisplayName(explicitName) ?? displayName(for: normalizedID),
+                kind: explicitKind ?? .unknown,
+                confidence: explicitConfidence ?? .exact
+            )
+            return UsageExecutionSource(
+                id: known.id,
+                name: normalizedDisplayName(explicitName) ?? known.name,
+                kind: explicitKind ?? known.kind,
+                confidence: explicitConfidence ?? known.confidence
+            )
+        }
+
+        guard usageSource == .providerLog,
+              let inferred = providerLogSource(for: provider) else {
+            return .unknown
+        }
+        return inferred
+    }
+
+    /// Resolves a first-party client marker or a user-agent into a bounded,
+    /// normalized source. Callers should prefer `x-openburnbar-client` and use
+    /// the user-agent only as a fallback.
+    public static func fromClientMarker(
+        _ rawValue: String?,
+        allowCustom: Bool = false
+    ) -> UsageExecutionSource? {
+        guard let value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        let normalized = value.lowercased()
+
+        let aliases: [(needles: [String], source: UsageExecutionSource)] = [
+            (["codex desktop", "codex-desktop", "chatgpt desktop"], known("codex-desktop", "Codex Desktop", .desktopApp)),
+            (["codex vscode", "codex-vscode", "codex_vscode"], known("codex-vscode", "Codex for VS Code", .ide)),
+            (["codex web", "codex-web", "codex cloud", "codex-cloud"], known("codex-cloud", "Codex Cloud", .service)),
+            (["cursor"], known("cursor", "Cursor", .ide)),
+            (["grok build", "grok-build"], known("grok-build", "Grok Build", .cli)),
+            (["claude code", "claude-code"], known("claude-code", "Claude Code", .cli)),
+            (["factory-droid", "factory droid", "factory"], known("factory-droid", "Factory Droid", .automation)),
+            (["opencode", "open-code"], known("opencode", "OpenCode", .cli)),
+            (["codex"], known("codex-cli", "Codex CLI", .cli)),
+            (["cline"], known("cline", "Cline", .ide)),
+            (["kilo code", "kilo-code"], known("kilo-code", "Kilo Code", .ide)),
+            (["roo code", "roo-code"], known("roo-code", "Roo Code", .ide)),
+            (["windsurf"], known("windsurf", "Windsurf", .ide)),
+            (["warp"], known("warp", "Warp", .cli)),
+            (["gemini cli", "gemini-cli"], known("gemini-cli", "Gemini CLI", .cli)),
+            (["openburnbar-cli", "burnbar-cli"], known("openburnbar-cli", "OpenBurnBar CLI", .cli)),
+            (["openburnbar", "burnbar"], known("openburnbar", "OpenBurnBar", .desktopApp))
+        ]
+        if let known = aliases.first(where: { needles, _ in
+            needles.contains { normalized.contains($0) }
+        })?.source {
+            return known
+        }
+
+        guard allowCustom else { return nil }
+        let productMarker = value
+            .split(separator: "/", maxSplits: 1, omittingEmptySubsequences: true)
+            .first
+            .map(String.init) ?? value
+        guard let id = normalizedID(productMarker), id != "unknown" else { return nil }
+        return UsageExecutionSource(
+            id: id,
+            name: displayName(for: id),
+            kind: .unknown,
+            confidence: .exact
+        )
+    }
+
+    private static func providerLogSource(for provider: AgentProvider) -> UsageExecutionSource? {
+        switch provider {
+        case .factory: return known("factory-droid", "Factory Droid", .automation, .derivedExact)
+        case .claudeCode: return known("claude-code", "Claude Code", .cli, .derivedExact)
+        case .copilot: return known("github-copilot", "GitHub Copilot", .ide, .derivedExact)
+        case .aider: return known("aider", "Aider", .cli, .derivedExact)
+        case .cursor, .cursorAgent: return known("cursor", "Cursor", .ide, .derivedExact)
+        case .codex: return nil // Rollout session_meta distinguishes CLI from Desktop.
+        case .openCode: return known("opencode", "OpenCode", .cli, .derivedExact)
+        case .zai: return known("zai-cli", "Z.ai CLI", .cli, .derivedExact)
+        case .minimax: return known("minimax-cli", "MiniMax CLI", .cli, .derivedExact)
+        case .kimi: return known("kimi-cli", "Kimi CLI", .cli, .derivedExact)
+        case .cline: return known("cline", "Cline", .ide, .derivedExact)
+        case .kiloCode: return known("kilo-code", "Kilo Code", .ide, .derivedExact)
+        case .rooCode: return known("roo-code", "Roo Code", .ide, .derivedExact)
+        case .forgeDev: return known("forge", "Forge", .cli, .derivedExact)
+        case .augment: return known("augment", "Augment", .ide, .derivedExact)
+        case .hermes: return known("hermes", "Hermes", .cli, .derivedExact)
+        case .piAgent: return known("pi-agent", "Pi Agent", .cli, .derivedExact)
+        case .geminiCLI: return known("gemini-cli", "Gemini CLI", .cli, .derivedExact)
+        case .antigravity: return known("antigravity", "Antigravity", .cli, .derivedExact)
+        case .goose: return known("goose", "Goose", .cli, .derivedExact)
+        case .openClaw: return known("openclaw", "OpenClaw", .service, .derivedExact)
+        case .openClaude: return known("openclaude", "OpenClaude", .cli, .derivedExact)
+        case .omp: return known("omp", "OMP", .cli, .derivedExact)
+        case .ollama: return known("ollama", "Ollama", .service, .derivedExact)
+        case .windsurf: return known("windsurf", "Windsurf", .ide, .derivedExact)
+        case .warp: return known("warp", "Warp", .cli, .derivedExact)
+        case .xAI: return known("grok-build", "Grok Build", .cli, .derivedExact)
+        case .junie: return known("junie", "Junie", .ide, .derivedExact)
+        case .openAI, .openBurnBar, .deepSeek, .mimo: return nil
+        }
+    }
+
+    private static func knownSource(matching id: String) -> UsageExecutionSource? {
+        let sources: [UsageExecutionSource] = [
+            known("codex-cli", "Codex CLI", .cli),
+            known("codex-desktop", "Codex Desktop", .desktopApp),
+            known("codex-vscode", "Codex for VS Code", .ide),
+            known("codex-cloud", "Codex Cloud", .service),
+            known("cursor", "Cursor", .ide),
+            known("grok-build", "Grok Build", .cli),
+            known("claude-code", "Claude Code", .cli),
+            known("factory-droid", "Factory Droid", .automation),
+            known("opencode", "OpenCode", .cli),
+            known("openburnbar", "OpenBurnBar", .desktopApp)
+        ]
+        return sources.first { $0.id == id }
+    }
+
+    private static func known(
+        _ id: String,
+        _ name: String,
+        _ kind: UsageExecutionSourceKind,
+        _ confidence: UsageProvenanceConfidence = .exact
+    ) -> UsageExecutionSource {
+        UsageExecutionSource(id: id, name: name, kind: kind, confidence: confidence)
+    }
+
+    private static func normalizedID(_ rawValue: String) -> String? {
+        let slug = rawValue.lowercased().unicodeScalars.map { scalar -> Character in
+            CharacterSet.alphanumerics.contains(scalar) ? Character(String(scalar)) : "-"
+        }
+        let normalized = String(slug)
+            .split(separator: "-", omittingEmptySubsequences: true)
+            .joined(separator: "-")
+        guard !normalized.isEmpty else { return nil }
+        return String(normalized.prefix(64))
+    }
+
+    private static func normalizedDisplayName(_ rawValue: String?) -> String? {
+        guard let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(80))
+    }
+
+    private static func displayName(for id: String) -> String {
+        id.split(separator: "-").map { $0.capitalized }.joined(separator: " ")
+    }
+}
+
 // MARK: - Token Usage Record
 
 public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
@@ -90,6 +295,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
     public let endTime: Date
     public let createdAt: Date
     public let usageSource: UsageSource
+    public let executionSourceID: String
+    public let executionSourceName: String
+    public let executionSourceKind: UsageExecutionSourceKind
+    public let executionSourceConfidence: UsageProvenanceConfidence
     public let deviceId: String?
     public let sourceDeviceId: String?
     public let sourceDeviceName: String?
@@ -138,6 +347,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         endTime: Date,
         createdAt: Date = Date(),
         usageSource: UsageSource = .providerLog,
+        executionSourceID: String? = nil,
+        executionSourceName: String? = nil,
+        executionSourceKind: UsageExecutionSourceKind? = nil,
+        executionSourceConfidence: UsageProvenanceConfidence? = nil,
         deviceId: String? = nil,
         sourceDeviceId: String? = nil,
         sourceDeviceName: String? = nil,
@@ -183,6 +396,18 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         self.endTime = endTime
         self.createdAt = createdAt
         self.usageSource = usageSource
+        let executionSource = UsageExecutionSourceResolver.resolve(
+            provider: provider,
+            usageSource: usageSource,
+            explicitID: executionSourceID,
+            explicitName: executionSourceName,
+            explicitKind: executionSourceKind,
+            explicitConfidence: executionSourceConfidence
+        )
+        self.executionSourceID = executionSource.id
+        self.executionSourceName = executionSource.name
+        self.executionSourceKind = executionSource.kind
+        self.executionSourceConfidence = executionSource.confidence
         self.deviceId = deviceId
         self.sourceDeviceId = sourceDeviceId
         self.sourceDeviceName = sourceDeviceName
@@ -279,6 +504,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         case id, provider, sessionId, projectName, model
         case inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens
         case totalTokens, cost, costUsd, startTime, endTime, createdAt, usageSource
+        case executionSourceID, executionSourceName, executionSourceKind, executionSourceConfidence
         case deviceId, sourceDeviceId, sourceDeviceName, isRemote
         case providerID, providerAccountID, providerAccountLabel, providerAccountSource
         case currency, recordedAt, eventKind, idempotencyKey
@@ -315,6 +541,18 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         endTime = try c.decode(Date.self, forKey: .endTime)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         usageSource = try c.decodeIfPresent(UsageSource.self, forKey: .usageSource) ?? .unknown
+        let decodedExecutionSource = UsageExecutionSourceResolver.resolve(
+            provider: provider,
+            usageSource: usageSource,
+            explicitID: try c.decodeIfPresent(String.self, forKey: .executionSourceID),
+            explicitName: try c.decodeIfPresent(String.self, forKey: .executionSourceName),
+            explicitKind: try c.decodeIfPresent(UsageExecutionSourceKind.self, forKey: .executionSourceKind),
+            explicitConfidence: try c.decodeIfPresent(UsageProvenanceConfidence.self, forKey: .executionSourceConfidence)
+        )
+        executionSourceID = decodedExecutionSource.id
+        executionSourceName = decodedExecutionSource.name
+        executionSourceKind = decodedExecutionSource.kind
+        executionSourceConfidence = decodedExecutionSource.confidence
         deviceId = try c.decodeIfPresent(String.self, forKey: .deviceId)
         sourceDeviceId = try c.decodeIfPresent(String.self, forKey: .sourceDeviceId)
         sourceDeviceName = try c.decodeIfPresent(String.self, forKey: .sourceDeviceName)
@@ -352,6 +590,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         try c.encode(endTime, forKey: .endTime)
         try c.encode(createdAt, forKey: .createdAt)
         try c.encode(usageSource, forKey: .usageSource)
+        try c.encode(executionSourceID, forKey: .executionSourceID)
+        try c.encode(executionSourceName, forKey: .executionSourceName)
+        try c.encode(executionSourceKind, forKey: .executionSourceKind)
+        try c.encode(executionSourceConfidence, forKey: .executionSourceConfidence)
         try c.encodeIfPresent(deviceId, forKey: .deviceId)
         try c.encodeIfPresent(sourceDeviceId, forKey: .sourceDeviceId)
         try c.encodeIfPresent(sourceDeviceName, forKey: .sourceDeviceName)

@@ -34,7 +34,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
         self.cacheStore = OpenBurnBarCore.ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 5,
+            schemaVersion: 6,
             logLabel: "CodexParser"
         )
         ParserSupportDirectoryWarmUp.prepare(fileManager: fileManager, appPaths: appPaths)

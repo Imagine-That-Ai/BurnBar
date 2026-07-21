@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Execution-source attribution
+
+- **Split model usage by the product that executed each request** with a
+  provider-independent execution-source dimension (for example Cursor, Grok
+  Build, Codex CLI, or Codex Desktop). Local logs, daemon runs, HTTP gateway
+  client markers, cloud sync, Android, and Windows now preserve the same
+  normalized source fields, and model/session dashboards expose the split.
+- **Backfilled historical usage only from durable evidence**: dedicated parser
+  identities map existing rows to their runtime, while Codex rollout
+  `session_meta` distinguishes CLI, Desktop, VS Code, and Cloud sessions.
+  Ambiguous rows remain Unknown instead of being guessed.
+
 ### Fixed - Codex usage accounting
 
 - **Stopped Codex subagents from multiplying their parent's cumulative token
