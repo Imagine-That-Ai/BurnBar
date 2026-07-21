@@ -409,6 +409,11 @@
          families the macOS tokens + Linux shell render; OFL, see Assets\Fonts\LICENSE-fonts.txt).
          Referenced as ms-appx:///Assets/Fonts/<file>#<Family> in Theme/Typography.xaml. -->
     <Content Include="Assets\Fonts\*.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The shared Linux/Windows UI (apps/linux-desktop vite "windows" mode build), hosted
+         by SharedUi/SharedUiHost in a WebView2. Regenerate by running the vite build with
+         the windows mode flag inside apps/linux-desktop, then copy dist-windows/* into
+         Resources\SharedUi\. -->
+    <Content Include="Resources\SharedUi\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Fonts\LICENSE-fonts.txt"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />

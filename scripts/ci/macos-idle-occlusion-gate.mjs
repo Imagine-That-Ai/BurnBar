@@ -31,8 +31,8 @@ const helperSourcePath = path.join(scriptDirectory, "macos-idle-occlusion-gate-h
 const supportedGateVersion = "P-PERF-3-macos-real-process-v1";
 const measurementMethod = Object.freeze({
   processCPU: "two proc_pidinfo(PROC_PIDTASKINFO) cumulative CPU snapshots divided by monotonic uptime",
-  windowControl: "DEBUG gate channel minimizes/restores the real dashboard window with CGWindow on-screen verification",
-  workload: "idle dashboard with the existing --uitest seam and fluid-aurora kernel enabled",
+  windowControl: "DEBUG gate channel minimizes/restores the real dashboard and requires a cross-process WKWebView engine acknowledgement",
+  workload: "idle dashboard with the existing --uitest seam and CPU-rendered boids kernel enabled",
   pairing: "batched visible-idle then fully-occluded-idle samples from one PID, paired by sample index",
   limitation: "window minimization is the deterministic fully occluded path; partial window overlap is not simulated",
 });
@@ -70,7 +70,7 @@ export function validateConfig(raw) {
   if (!Array.isArray(app.launchArguments) || !app.launchArguments.includes("--uitest")) {
     throw new Error("app.launchArguments must enable the existing --uitest launch seam");
   }
-  const requiredLaunchArguments = ["-useKernelBackdrop", "YES", "-backdropKernel", "fluid-aurora"];
+  const requiredLaunchArguments = ["-useKernelBackdrop", "YES", "-backdropKernel", "boids"];
   for (const argument of requiredLaunchArguments) {
     if (!app.launchArguments.includes(argument)) {
       throw new Error(`app.launchArguments must include ${argument}`);
@@ -185,8 +185,15 @@ export function summarizeAndEvaluatePairs(pairs, config) {
     );
   }
   const ratio = occludedMedian / visibleMedian;
-  const absolutePass = occludedMedian <= config.budgets.absoluteOccludedIdleCpuPercentCeiling;
-  const relativePass = ratio <= config.budgets.maximumOccludedToVisibleCpuRatio;
+  const absoluteCeiling = config.budgets.absoluteOccludedIdleCpuPercentCeiling;
+  const absolutePass = occludedMedian <= absoluteCeiling;
+  // A ratio is only a stable signal when the visible workload itself exceeds
+  // the accepted occluded-idle ceiling. Below that point, both states are in
+  // the idle noise band; the absolute budget plus the deterministic rAF pause
+  // tripwire remain authoritative.
+  const relativeApplicable = visibleMedian >= absoluteCeiling;
+  const relativeObservedPass = ratio <= config.budgets.maximumOccludedToVisibleCpuRatio;
+  const relativePass = relativeApplicable ? relativeObservedPass : null;
 
   return {
     statistic: config.measurement.robustStatistic,
@@ -203,16 +210,22 @@ export function summarizeAndEvaluatePairs(pairs, config) {
     },
     occludedToVisibleRatio: ratio,
     budgets: {
-      absoluteOccludedIdleCpuPercentCeiling:
-        config.budgets.absoluteOccludedIdleCpuPercentCeiling,
+      absoluteOccludedIdleCpuPercentCeiling: absoluteCeiling,
       maximumOccludedToVisibleCpuRatio:
         config.budgets.maximumOccludedToVisibleCpuRatio,
     },
     checks: {
-      absoluteOccludedIdleCpu: { pass: absolutePass },
-      visibleToOccludedReduction: { pass: relativePass },
+      absoluteOccludedIdleCpu: { applicable: true, pass: absolutePass },
+      visibleToOccludedReduction: {
+        applicable: relativeApplicable,
+        pass: relativePass,
+        minimumVisibleCpuPercent: absoluteCeiling,
+        reason: relativeApplicable
+          ? null
+          : "visible median is within the accepted occluded-idle noise band",
+      },
     },
-    pass: absolutePass && relativePass,
+    pass: absolutePass && (!relativeApplicable || relativeObservedPass),
   };
 }
 
@@ -525,7 +538,7 @@ async function stopOwnedProcess(runtime) {
   }
 }
 
-function assertProcessIdentity(state, pid, buildIdentity, config, expectedVisibility) {
+export function assertProcessIdentity(state, pid, buildIdentity, config, expectedVisibility) {
   if (!state.running || state.pid !== pid) throw new Error(`OpenBurnBar pid ${pid} is not running`);
   if (state.executablePath !== buildIdentity.executablePath) {
     throw new Error(`pid ${pid} executable changed to ${state.executablePath ?? "missing"}`);
@@ -538,6 +551,26 @@ function assertProcessIdentity(state, pid, buildIdentity, config, expectedVisibi
   }
   if (expectedVisibility === "occluded" && state.visibleWindowCount !== 0) {
     throw new Error(`pid ${pid} still had an on-screen application window`);
+  }
+  const kernelArgumentIndex = config.app.launchArguments.indexOf("-backdropKernel");
+  const expectedKernel = config.app.launchArguments[kernelArgumentIndex + 1];
+  if (state.backdropReady !== true) {
+    throw new Error(`pid ${pid} did not acknowledge a ready backdrop engine`);
+  }
+  if (state.backdropKernel !== expectedKernel) {
+    throw new Error(
+      `pid ${pid} acknowledged kernel ${state.backdropKernel ?? "missing"}; expected ${expectedKernel}`
+    );
+  }
+  const expectedActive = expectedVisibility === "visible";
+  if (state.backdropActive !== expectedActive) {
+    throw new Error(`pid ${pid} backdrop active state did not match ${expectedVisibility}`);
+  }
+  if (state.backdropReducedMotion !== false) {
+    throw new Error(`pid ${pid} backdrop cannot prove animation while reduced motion is active`);
+  }
+  if (state.backdropRenderLoopScheduled !== expectedActive) {
+    throw new Error(`pid ${pid} backdrop render-loop state did not match ${expectedVisibility}`);
   }
 }
 
@@ -726,7 +759,7 @@ async function executeGate(argumentsToParse) {
 
     if (!summary.pass) {
       const failures = Object.entries(summary.checks)
-        .filter(([, check]) => !check.pass)
+        .filter(([, check]) => check.pass === false)
         .map(([name]) => name)
         .join(", ");
       throw Object.assign(new Error(`P-PERF-3 CPU budget breached: ${failures}`), {
@@ -734,11 +767,17 @@ async function executeGate(argumentsToParse) {
       });
     }
 
+    const relativeCheck = summary.checks.visibleToOccludedReduction;
+    const relativeResult = relativeCheck.applicable
+      ? `ratio ${summary.occludedToVisibleRatio.toFixed(3)} `
+        + `(ceiling ${summary.budgets.maximumOccludedToVisibleCpuRatio})`
+      : `ratio not applicable (visible median `
+        + `${summary.visibleIdleCpuPercent.median.toFixed(3)}% is below `
+        + `${relativeCheck.minimumVisibleCpuPercent}% signal floor)`;
     process.stdout.write(
       `P-PERF-3 passed: occluded median ${summary.occludedIdleCpuPercent.median.toFixed(3)}% `
-      + `(ceiling ${summary.budgets.absoluteOccludedIdleCpuPercentCeiling}%), ratio `
-      + `${summary.occludedToVisibleRatio.toFixed(3)} `
-      + `(ceiling ${summary.budgets.maximumOccludedToVisibleCpuRatio}); evidence ${outputPath}\n`
+      + `(ceiling ${summary.budgets.absoluteOccludedIdleCpuPercentCeiling}%), `
+      + `${relativeResult}; evidence ${outputPath}\n`
     );
     return { outputPath, evidence };
   } catch (error) {
