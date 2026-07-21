@@ -103,6 +103,9 @@ enum OpenBurnBarRuntime {
     static let performanceGateVisibilityNotification = Notification.Name(
         "com.openburnbar.performance-gate.window-visibility"
     )
+    static var performanceGateBackdropStateNotification: Notification.Name {
+        Notification.Name("com.openburnbar.performance-gate.backdrop-state")
+    }
 
     static var currentPerformanceGateNotificationObject: String {
         performanceGateNotificationObject(
@@ -112,6 +115,17 @@ enum OpenBurnBarRuntime {
 
     static func performanceGateNotificationObject(processIdentifier: Int32) -> String {
         String(processIdentifier)
+    }
+
+    static func performanceGateBackdropKernelOverride(
+        isPerformanceGateLaunch: Bool,
+        arguments: [String]
+    ) -> String? {
+        guard isPerformanceGateLaunch,
+              let keyIndex = arguments.firstIndex(of: "-backdropKernel"),
+              arguments.indices.contains(keyIndex + 1) else { return nil }
+        let kernel = arguments[keyIndex + 1].trimmingCharacters(in: .whitespacesAndNewlines)
+        return kernel.isEmpty ? nil : kernel
     }
 
     static var shouldOpenSettingsForUITest: Bool {

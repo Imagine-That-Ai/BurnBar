@@ -12,6 +12,7 @@ private enum HelperError: Error, CustomStringConvertible {
     case timeout(String)
     case processInfoUnavailable(pid_t)
     case invalidCPUTimestamp
+    case backdropStateTimeout(pid_t, Bool, String)
 
     var description: String {
         switch self {
@@ -27,6 +28,8 @@ private enum HelperError: Error, CustomStringConvertible {
             return "proc_pidinfo failed for pid \(pid)"
         case .invalidCPUTimestamp:
             return "failed to convert proc_pidinfo CPU time to nanoseconds"
+        case .backdropStateTimeout(let pid, let visible, let lastState):
+            return "timed out waiting for pid \(pid) backdrop state visible=\(visible); lastState=\(lastState)"
         }
     }
 }
@@ -40,6 +43,31 @@ private struct WindowState: Codable {
     let visibleWindowCount: Int
     let executablePath: String?
     let bundleIdentifier: String?
+    let backdropReady: Bool?
+    let backdropActive: Bool?
+    let backdropRenderLoopScheduled: Bool?
+    let backdropReducedMotion: Bool?
+    let backdropKernel: String?
+}
+
+private struct BackdropState {
+    let ready: Bool
+    let active: Bool?
+    let renderLoopScheduled: Bool?
+    let reducedMotion: Bool?
+    let kernel: String?
+    let commandApplied: Bool?
+    let diagnostic: String?
+
+    var diagnosticDescription: String {
+        let kernelDescription = kernel ?? "nil"
+        let diagnosticText = diagnostic ?? "nil"
+        return "ready=\(ready), active=\(String(describing: active)), "
+            + "renderLoopScheduled=\(String(describing: renderLoopScheduled)), "
+            + "reducedMotion=\(String(describing: reducedMotion)), "
+            + "kernel=\(kernelDescription), commandApplied=\(String(describing: commandApplied)), "
+            + "diagnostic=\(diagnosticText)"
+    }
 }
 
 private struct CPUSnapshot: Codable {
@@ -50,6 +78,9 @@ private struct CPUSnapshot: Codable {
 private let performanceGateVisibilityNotification = Notification.Name(
     "com.openburnbar.performance-gate.window-visibility"
 )
+private let performanceGateBackdropStateNotification = Notification.Name(
+    "com.openburnbar.performance-gate.backdrop-state"
+)
 
 private func requestWindowVisibility(pid: pid_t, visible: Bool) {
     DistributedNotificationCenter.default().postNotificationName(
@@ -57,6 +88,57 @@ private func requestWindowVisibility(pid: pid_t, visible: Bool) {
         object: String(pid),
         userInfo: ["visible": visible],
         deliverImmediately: true
+    )
+}
+
+private func waitForBackdropState(
+    pid: pid_t,
+    visible: Bool,
+    timeoutMilliseconds: Int
+) throws -> BackdropState {
+    let center = DistributedNotificationCenter.default()
+    var received: BackdropState?
+    let observer = center.addObserver(
+        forName: performanceGateBackdropStateNotification,
+        object: String(pid),
+        queue: .main
+    ) { notification in
+        guard let userInfo = notification.userInfo,
+              let ready = userInfo["ready"] as? Bool else { return }
+        received = BackdropState(
+            ready: ready,
+            active: userInfo["hostVisible"] as? Bool,
+            renderLoopScheduled: userInfo["renderLoopScheduled"] as? Bool,
+            reducedMotion: userInfo["reducedMotion"] as? Bool,
+            kernel: userInfo["kernel"] as? String,
+            commandApplied: userInfo["commandApplied"] as? Bool,
+            diagnostic: userInfo["diagnostic"] as? String
+        )
+    }
+    defer { center.removeObserver(observer) }
+
+    let deadline = DispatchTime.now().uptimeNanoseconds
+        + UInt64(timeoutMilliseconds) * 1_000_000
+    while DispatchTime.now().uptimeNanoseconds < deadline {
+        requestWindowVisibility(pid: pid, visible: visible)
+        let responseDeadline = Date().addingTimeInterval(0.1)
+        repeat {
+            _ = RunLoop.current.run(mode: .default, before: responseDeadline)
+            if let state = received,
+               state.active == visible,
+               state.ready,
+               state.commandApplied == true,
+               state.kernel?.isEmpty == false,
+               state.reducedMotion == false,
+               state.renderLoopScheduled == visible {
+                return state
+            }
+        } while Date() < responseDeadline
+    }
+    throw HelperError.backdropStateTimeout(
+        pid,
+        visible,
+        received?.diagnosticDescription ?? "no backdrop response received"
     )
 }
 
@@ -80,7 +162,7 @@ private func visibleWindowCount(for pid: pid_t) -> Int {
     }
 }
 
-private func state(for pid: pid_t) throws -> WindowState {
+private func state(for pid: pid_t, backdrop: BackdropState? = nil) throws -> WindowState {
     guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else {
         throw HelperError.processNotRunning(pid)
     }
@@ -92,7 +174,12 @@ private func state(for pid: pid_t) throws -> WindowState {
         activationPolicy: app.activationPolicy.rawValue,
         visibleWindowCount: visibleWindowCount(for: pid),
         executablePath: app.executableURL?.resolvingSymlinksInPath().path,
-        bundleIdentifier: app.bundleIdentifier
+        bundleIdentifier: app.bundleIdentifier,
+        backdropReady: backdrop?.ready,
+        backdropActive: backdrop?.active,
+        backdropRenderLoopScheduled: backdrop?.renderLoopScheduled,
+        backdropReducedMotion: backdrop?.reducedMotion,
+        backdropKernel: backdrop?.kernel
     )
 }
 
@@ -178,34 +265,54 @@ private func run() throws {
         try emit(state(for: pid))
     case "show":
         _ = try state(for: pid)
-        requestWindowVisibility(pid: pid, visible: true)
+        let backdrop = try waitForBackdropState(
+            pid: pid,
+            visible: true,
+            timeoutMilliseconds: timeoutMilliseconds
+        )
         let visible = try waitForState(
             pid: pid,
             timeoutMilliseconds: timeoutMilliseconds,
             description: "a visible application window"
         ) { $0.visibleWindowCount > 0 }
-        try emit(visible)
+        try emit(try state(for: visible.pid, backdrop: backdrop))
     case "hide":
         _ = try state(for: pid)
-        requestWindowVisibility(pid: pid, visible: false)
+        let backdrop = try waitForBackdropState(
+            pid: pid,
+            visible: false,
+            timeoutMilliseconds: timeoutMilliseconds
+        )
         let hidden = try waitForState(
             pid: pid,
             timeoutMilliseconds: timeoutMilliseconds,
             description: "a fully occluded application window"
         ) { $0.visibleWindowCount == 0 }
-        try emit(hidden)
+        try emit(try state(for: hidden.pid, backdrop: backdrop))
     case "wait-visible":
-        try emit(waitForState(
+        let backdrop = try waitForBackdropState(
+            pid: pid,
+            visible: true,
+            timeoutMilliseconds: timeoutMilliseconds
+        )
+        let visible = try waitForState(
             pid: pid,
             timeoutMilliseconds: timeoutMilliseconds,
             description: "a visible application window"
-        ) { $0.visibleWindowCount > 0 })
+        ) { $0.visibleWindowCount > 0 }
+        try emit(try state(for: visible.pid, backdrop: backdrop))
     case "wait-hidden":
-        try emit(waitForState(
+        let backdrop = try waitForBackdropState(
+            pid: pid,
+            visible: false,
+            timeoutMilliseconds: timeoutMilliseconds
+        )
+        let hidden = try waitForState(
             pid: pid,
             timeoutMilliseconds: timeoutMilliseconds,
             description: "a fully occluded application window"
-        ) { $0.visibleWindowCount == 0 })
+        ) { $0.visibleWindowCount == 0 }
+        try emit(try state(for: hidden.pid, backdrop: backdrop))
     case "cpu":
         try emit(cpuSnapshot(for: pid))
     default:
