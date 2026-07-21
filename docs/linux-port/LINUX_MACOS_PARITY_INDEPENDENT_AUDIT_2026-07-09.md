@@ -225,6 +225,16 @@ release validation, and diff hygiene. These are source and CI quality gates;
 they do not create signed-candidate, production, or seven-environment
 certification receipts.
 
+The current integration head `b27d98a696` also restores the
+`BurnBarMissionControlServiceTests` class boundary that had left the project
+lifecycle methods outside their XCTest type. A fresh SwiftPM scratch build of
+the daemon test target now completes, and the focused mission-control suite
+passes **80/80**. The attached physical iPad ran the current-source Settings
+selector and passed **1/1**. These checks close the source/test regression only;
+the normal PR daemon/Linux workflows have not yet attached to this SHA beyond
+the trusted deletion guard, and the signed-candidate/live environment matrix
+remains non-certifying.
+
 ## Current proof-ownership checkpoint — 2026-07-20
 
 The implementation audit classifies six of the forty product rows as near
