@@ -245,7 +245,7 @@
     "scripts/supply-chain/run-ecosystem-deny-checks.sh": ["5c95a456c45c7224","1f90c56052f6e1c1","7f27729809cc09c9","5f281a48feaac538"],
     "scripts/test-domain-core-python.sh": ["de86f90949f4e899","6a74d1b09555d21c","d52ad5c8f0c6caf9","e155243a554402bf"],
     "scripts/test-openburnbar-android.sh": ["2409ce3f3040bab6","97b99fd05a810cd0","ef4b8dcf2cf1c6b4","1309a8c426108737"],
-    "scripts/test-openburnbar-app.sh": ["32b73fe8607c679a","1c17c65918bd40a3","0dfc07082ce342e1","dc604d8aa3416e3f"],
+    "scripts/test-openburnbar-app.sh": ["85957d07ed6e37dd","70d04793dddf70b4","e7806e1b4c8ffaf6","3f39aa8096d9b020"],
     "scripts/test-openburnbar-extension-host.sh": ["55881dc4191880bc","57ba986049baa342","ae5f3c24ce793c66","81cd103a6cf2cd6e"],
     "scripts/test-openburnbar-mobile.sh": ["319280ed6c61a156","7959ed20e135fafe","682b4e03d200fcf0","995e908db8063341"],
     "scripts/test-openburnbar-replay-evals.sh": ["3b22eb8a2b7b4593","8e37c6eef5714aa5","966fdb5771009db3","fe968b5cade68ce9"],

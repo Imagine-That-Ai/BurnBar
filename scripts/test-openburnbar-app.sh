@@ -195,7 +195,9 @@ done
 isolated_test_filters=(
     "OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
     "OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_conversationReuseCopyFailure_reembedsChunks_neverLeavingThemUnsearchable"
+    "OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_conversationReuseCopySuccess_stillReusesWithoutReembedding"
     "OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_artifactReuseCopyFailure_reembedsChunks_neverLeavingThemUnsearchable"
+    "OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_partialReuseCopyFailure_onlyConfirmedChunksAreReused_othersReembedded"
 )
 main_skip_test_filters=()
 run_isolated_test_phase=0
