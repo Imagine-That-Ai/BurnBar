@@ -443,7 +443,7 @@ private fun DocumentSnapshot.toModelBenchmarkSummary(): InsightDigest.ModelBench
 
 // ── Document parsers ──
 
-private fun DocumentSnapshot.toTokenUsage(vaultKey: ByteArray? = null, projectNameCache: SealedProjectNameCache? = null): TokenUsage? {
+internal fun DocumentSnapshot.toTokenUsage(vaultKey: ByteArray? = null, projectNameCache: SealedProjectNameCache? = null): TokenUsage? {
     val data = data ?: return null
     val startMillis = FirestoreValueParsers.millis(data["startTime"])
     val endMillis = FirestoreValueParsers.millis(data["endTime"])
