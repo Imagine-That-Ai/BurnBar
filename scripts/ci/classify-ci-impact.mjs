@@ -187,7 +187,11 @@ export function classifyEvent(event, eventName, diff = gitDiff) {
   try {
     return classifyPaths(diff(base, head), { eventName, labels });
   } catch {
-    return classifyPaths([], { eventName, labels });
+    try {
+      return classifyPaths(diff("HEAD^1", "HEAD^2"), { eventName, labels });
+    } catch {
+      return classifyPaths([], { eventName, labels });
+    }
   }
 }
 

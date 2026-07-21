@@ -84,3 +84,19 @@ test("unresolvable event diff fails closed", () => {
   });
   assert.equal(result.full, true);
 });
+
+test("shallow synthetic checkout falls back to merge parents", () => {
+  const event = {
+    pull_request: {
+      base: { sha: "unavailable-base" },
+      head: { sha: "unavailable-head" },
+      labels: [],
+    },
+  };
+  const result = classifyEvent(event, "pull_request", (base, head) => {
+    if (base === "HEAD^1" && head === "HEAD^2") return ["website/src/page.ts"];
+    throw new Error("event commits are outside the shallow checkout");
+  });
+  assert.equal(result.web, true);
+  assert.equal(result.full, false);
+});

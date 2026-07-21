@@ -31,7 +31,7 @@ jobs:
   classify:
     name: Deterministic changed-path classification
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     outputs:
       full: ${{ steps.impact.outputs.full }}
       reason: ${{ steps.impact.outputs.reason }}
@@ -46,7 +46,8 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
+          submodules: false
       - id: impact
         name: Classify exact candidate diff (fail closed)
         run: node scripts/ci/classify-ci-impact.mjs
