@@ -305,9 +305,11 @@ jobs:
         run: rm -rf -- .domain-core-trusted-evaluator
 
       - name: Emit promotion-contracts proof fragment
+        env:
+          DOMAIN_CORE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >-
           node scripts/ci/domain-core-proof-fragment.mjs emit
-          --expected-candidate-commit "$GITHUB_SHA"
+          --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_SHA"
           --job-id promotion-contracts
           --suite "promotion-contracts=$RUNNER_TEMP/promotion-contracts.log"
           --output "$RUNNER_TEMP/promotion-contracts.json"

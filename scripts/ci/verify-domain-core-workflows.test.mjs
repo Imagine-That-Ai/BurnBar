@@ -621,6 +621,14 @@ test("promotion-contracts gives its trusted evaluator a bounded shallow checkout
     job,
     /Check out trusted default-branch evaluator[\s\S]*?fetch-depth: 1[\s\S]*?sparse-checkout: scripts\/ci\/verify-domain-core-legacy-deletion\.py[\s\S]*?sparse-checkout-cone-mode: false/u,
   );
+  assert.match(
+    job,
+    /DOMAIN_CORE_CANDIDATE_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}[\s\S]*?--expected-candidate-commit "\$DOMAIN_CORE_CANDIDATE_SHA"/u,
+  );
+  assert.doesNotMatch(
+    job,
+    /--expected-candidate-commit "\$GITHUB_SHA"/u,
+  );
 });
 
 test("swift-consumer-contracts builds the host domain-core XCFramework in release mode", () => {
