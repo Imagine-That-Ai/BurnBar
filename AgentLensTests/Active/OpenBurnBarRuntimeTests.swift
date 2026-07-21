@@ -150,6 +150,24 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
         )
     }
 
+    func test_performanceGateBackdropKernelOverride_readsValidatedLaunchArgument() {
+        XCTAssertEqual(
+            OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
+                isPerformanceGateLaunch: true,
+                arguments: ["OpenBurnBar", "--uitest", "-backdropKernel", "boids"]
+            ),
+            "boids"
+        )
+        XCTAssertNil(OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
+            isPerformanceGateLaunch: false,
+            arguments: ["OpenBurnBar", "-backdropKernel", "boids"]
+        ))
+        XCTAssertNil(OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
+            isPerformanceGateLaunch: true,
+            arguments: ["OpenBurnBar", "-backdropKernel"]
+        ))
+    }
+
     func test_shouldDisableAutomaticTerminationForHarness_honorsE2EEnvironment() {
         XCTAssertTrue(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForHarness(
             environment: ["OPENBURNBAR_FORCE_LIVE_SCENE": "1"]

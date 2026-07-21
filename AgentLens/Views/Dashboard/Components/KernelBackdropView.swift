@@ -146,7 +146,11 @@ struct KernelBackdropView: NSViewRepresentable {
     /// Clamp persisted junk back to the default so a stale/removed id never
     /// leaves a blank canvas.
     private var resolvedKernelID: String {
-        KernelCatalog.isValid(backdropKernel) ? backdropKernel : KernelCatalog.defaultID
+        if let override = OpenBurnBarRuntime.performanceGateBackdropKernelOverride,
+           KernelCatalog.isValid(override) {
+            return override
+        }
+        return KernelCatalog.isValid(backdropKernel) ? backdropKernel : KernelCatalog.defaultID
     }
 
     private func themeName(for scheme: ColorScheme) -> String {

@@ -122,6 +122,28 @@ enum OpenBurnBarRuntime {
         String(processIdentifier)
     }
 
+    /// The performance gate must not depend on `@AppStorage` observing the
+    /// process argument domain before SwiftUI builds the dashboard hierarchy.
+    /// Read the requested kernel directly from the validated launch arguments
+    /// so the real backdrop host is always mounted for the measurement.
+    static var performanceGateBackdropKernelOverride: String? {
+        performanceGateBackdropKernelOverride(
+            isPerformanceGateLaunch: isPerformanceGateLaunch,
+            arguments: ProcessInfo.processInfo.arguments
+        )
+    }
+
+    static func performanceGateBackdropKernelOverride(
+        isPerformanceGateLaunch: Bool,
+        arguments: [String]
+    ) -> String? {
+        guard isPerformanceGateLaunch,
+              let keyIndex = arguments.firstIndex(of: "-backdropKernel"),
+              arguments.indices.contains(keyIndex + 1) else { return nil }
+        let kernel = arguments[keyIndex + 1].trimmingCharacters(in: .whitespacesAndNewlines)
+        return kernel.isEmpty ? nil : kernel
+    }
+
     static var shouldOpenSettingsForUITest: Bool {
         ProcessInfo.processInfo.environment["OPENBURNBAR_UITEST_OPEN_SETTINGS"] == "1"
     }
