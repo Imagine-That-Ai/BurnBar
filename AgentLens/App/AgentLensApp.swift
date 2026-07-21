@@ -87,15 +87,10 @@ enum OpenBurnBarRuntime {
         #endif
     }
 
-    /// The real-process backdrop gate measures window rendering, not updater,
-    /// wallpaper, cloud-sync, relay, or periodic-refresh work. Production and
-    /// every other harness launch retain the normal service lifecycle.
-    static var shouldStartBackgroundApplicationServices: Bool {
-        shouldStartBackgroundApplicationServices(
-            isPerformanceGateLaunch: isPerformanceGateLaunch
-        )
-    }
-
+    /// The real-process backdrop gate must measure window rendering, not
+    /// unrelated updater, wallpaper, or cloud-maintenance work. Keep the
+    /// status item and dashboard alive, but suppress those background services
+    /// for this dedicated harness launch only.
     static func shouldStartBackgroundApplicationServices(
         isPerformanceGateLaunch: Bool
     ) -> Bool {
@@ -120,17 +115,6 @@ enum OpenBurnBarRuntime {
 
     static func performanceGateNotificationObject(processIdentifier: Int32) -> String {
         String(processIdentifier)
-    }
-
-    /// The performance gate must not depend on `@AppStorage` observing the
-    /// process argument domain before SwiftUI builds the dashboard hierarchy.
-    /// Read the requested kernel directly from the validated launch arguments
-    /// so the real backdrop host is always mounted for the measurement.
-    static var performanceGateBackdropKernelOverride: String? {
-        performanceGateBackdropKernelOverride(
-            isPerformanceGateLaunch: isPerformanceGateLaunch,
-            arguments: ProcessInfo.processInfo.arguments
-        )
     }
 
     static func performanceGateBackdropKernelOverride(
