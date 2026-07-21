@@ -109,8 +109,12 @@ extension OpenBurnBarApp {
         Analytics.shared.track(.appSessionStarted)
 
         Task { @MainActor in
+            let shouldStartBackgroundServices =
+                OpenBurnBarRuntime.shouldStartBackgroundApplicationServices
             StartupProfiler.event("live_services_start")
-            startMemoryExtractionIfNeeded(context: context)
+            if shouldStartBackgroundServices {
+                startMemoryExtractionIfNeeded(context: context)
+            }
 
             let sync: CloudSyncService
             sync = StartupProfiler.interval("cloud_sync_init") {
@@ -132,20 +136,22 @@ extension OpenBurnBarApp {
                 accountManager?.userID
             }
 
-            StartupProfiler.interval("relay_services_start") {
-                context.startRelayServices()
+            if shouldStartBackgroundServices {
+                StartupProfiler.interval("relay_services_start") {
+                    context.startRelayServices()
+                }
+                StartupProfiler.interval("smart_display_services_start") {
+                    context.startSmartDisplayServices()
+                }
+                StartupProfiler.interval("mercury_services_start") {
+                    context.startMercuryServices()
+                }
+                #if canImport(AppKit) && !DISTRIBUTION_MAS
+                StartupProfiler.interval("text_expansion_start") {
+                    context.textExpansionRuntimeController?.start()
+                }
+                #endif
             }
-            StartupProfiler.interval("smart_display_services_start") {
-                context.startSmartDisplayServices()
-            }
-            StartupProfiler.interval("mercury_services_start") {
-                context.startMercuryServices()
-            }
-            #if canImport(AppKit) && !DISTRIBUTION_MAS
-            StartupProfiler.interval("text_expansion_start") {
-                context.textExpansionRuntimeController?.start()
-            }
-            #endif
 
             let mirror: ICloudSessionMirrorService
             mirror = StartupProfiler.interval("icloud_mirror_init") {
@@ -173,30 +179,42 @@ extension OpenBurnBarApp {
             context.aggregator = aggregator
             context.operatingLayer.aggregator = aggregator
             context.operatingLayer.chatController = context.chatController
-            StartupProfiler.interval("memory_watchdog_start") {
-                context.memoryFootprintWatchdog.start(aggregator: aggregator)
+            if shouldStartBackgroundServices {
+                StartupProfiler.interval("memory_watchdog_start") {
+                    context.memoryFootprintWatchdog.start(aggregator: aggregator)
+                }
+                StartupProfiler.interval("daemon_attach") {
+                    context.daemonManager.attach(
+                        dataStore: context.dataStore,
+                        cloudSyncService: sync
+                    )
+                }
+                #if !DISTRIBUTION_MAS
+                StartupProfiler.interval("computer_use_approval_start") {
+                    ComputerUseDaemonApprovalPresenter.shared.start(
+                        daemonManager: context.daemonManager
+                    )
+                }
+                #endif
+                StartupProfiler.interval("cursor_connector_attach") {
+                    context.cursorConnectorManager.attach(dataStore: context.dataStore)
+                }
+                StartupProfiler.interval("quota_refresh_schedule") {
+                    context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
+                }
+                StartupProfiler.interval("agent_reply_listener_start") {
+                    MacAgentReplyNotificationListener.shared.start(
+                        chatController: context.chatController,
+                        accountManager: context.accountManager
+                    )
+                }
+                StartupProfiler.interval("pet_companion_activate") {
+                    PetCompanionFeature.activateIfEnabled(chat: context.chatController)
+                    PetOnboardingWindowPresenter.openIfNeeded(
+                        chatController: context.chatController
+                    )
+                }
             }
-            StartupProfiler.interval("daemon_attach") {
-                context.daemonManager.attach(dataStore: context.dataStore, cloudSyncService: sync)
-            }
-            #if !DISTRIBUTION_MAS
-            StartupProfiler.interval("computer_use_approval_start") {
-                ComputerUseDaemonApprovalPresenter.shared.start(daemonManager: context.daemonManager)
-            }
-            #endif
-            StartupProfiler.interval("cursor_connector_attach") {
-                context.cursorConnectorManager.attach(dataStore: context.dataStore)
-            }
-            StartupProfiler.interval("quota_refresh_schedule") {
-                context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
-            }
-            StartupProfiler.interval("agent_reply_listener_start") {
-                MacAgentReplyNotificationListener.shared.start(
-                    chatController: context.chatController,
-                    accountManager: context.accountManager
-                )
-            }
-            StartupProfiler.interval("pet_companion_activate") { PetCompanionFeature.activateIfEnabled(chat: context.chatController); PetOnboardingWindowPresenter.openIfNeeded(chatController: context.chatController) }
 
             if !hasShownInitialDashboard {
                 hasShownInitialDashboard = true
@@ -216,6 +234,11 @@ extension OpenBurnBarApp {
                 }
             }
             StartupProfiler.event("first_ui_ready")
+
+            // The performance harness now has the real dashboard and backdrop
+            // it came to measure. Do not contaminate that process-level sample
+            // with probes, uploads, notifications, or refresh cadences.
+            guard shouldStartBackgroundServices else { return }
 
             Task(priority: .utility) {
                 try? await Task.sleep(for: .seconds(2))

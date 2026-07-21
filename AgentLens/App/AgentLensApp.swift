@@ -87,6 +87,21 @@ enum OpenBurnBarRuntime {
         #endif
     }
 
+    /// The real-process backdrop gate measures window rendering, not updater,
+    /// wallpaper, cloud-sync, relay, or periodic-refresh work. Production and
+    /// every other harness launch retain the normal service lifecycle.
+    static var shouldStartBackgroundApplicationServices: Bool {
+        shouldStartBackgroundApplicationServices(
+            isPerformanceGateLaunch: isPerformanceGateLaunch
+        )
+    }
+
+    static func shouldStartBackgroundApplicationServices(
+        isPerformanceGateLaunch: Bool
+    ) -> Bool {
+        !isPerformanceGateLaunch
+    }
+
     /// Shared contract for the DEBUG performance harness. The native helper
     /// cannot import the app module, so its notification string must match this
     /// value exactly.
