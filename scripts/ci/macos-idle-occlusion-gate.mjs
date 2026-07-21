@@ -32,7 +32,7 @@ const supportedGateVersion = "P-PERF-3-macos-real-process-v1";
 const measurementMethod = Object.freeze({
   processCPU: "two proc_pidinfo(PROC_PIDTASKINFO) cumulative CPU snapshots divided by monotonic uptime",
   windowControl: "DEBUG gate channel minimizes/restores the real dashboard window with CGWindow on-screen verification",
-  workload: "idle dashboard with the existing --uitest seam and fluid-aurora kernel enabled",
+  workload: "idle dashboard with the existing --uitest seam and CPU-rendered boids kernel enabled",
   pairing: "batched visible-idle then fully-occluded-idle samples from one PID, paired by sample index",
   limitation: "window minimization is the deterministic fully occluded path; partial window overlap is not simulated",
 });
@@ -70,7 +70,7 @@ export function validateConfig(raw) {
   if (!Array.isArray(app.launchArguments) || !app.launchArguments.includes("--uitest")) {
     throw new Error("app.launchArguments must enable the existing --uitest launch seam");
   }
-  const requiredLaunchArguments = ["-useKernelBackdrop", "YES", "-backdropKernel", "fluid-aurora"];
+  const requiredLaunchArguments = ["-useKernelBackdrop", "YES", "-backdropKernel", "boids"];
   for (const argument of requiredLaunchArguments) {
     if (!app.launchArguments.includes(argument)) {
       throw new Error(`app.launchArguments must include ${argument}`);

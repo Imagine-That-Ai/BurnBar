@@ -631,6 +631,11 @@ test("real gate config versions and enforces absolute plus relative ceilings", (
   assert.equal(realGateConfig.measurement.robustStatistic, "median");
   assert.equal(realGateConfig.budgets.absoluteOccludedIdleCpuPercentCeiling, 5);
   assert.equal(realGateConfig.budgets.maximumOccludedToVisibleCpuRatio, 0.35);
+  assert.deepEqual(
+    realGateConfig.app.launchArguments.slice(-2),
+    ["-backdropKernel", "boids"],
+    "real-process gate must use a CPU-rendered backdrop so proc_pidinfo has a stable visible signal",
+  );
   assert.ok(realGateConfig.app.relativeBundlePath.startsWith(".derived-data/"));
 });
 
