@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   droid-review:
-    if: github.event_name == 'merge_group' || (github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -29,14 +29,11 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - name: Skip Droid review when Factory API key is unavailable
-        if: github.event_name == 'pull_request' && env.FACTORY_API_KEY_AVAILABLE == 'false'
+        if: env.FACTORY_API_KEY_AVAILABLE == 'false'
         run: echo "::notice::FACTORY_API_KEY is unavailable; skipping Droid review."
-      - name: Reuse PR-head Droid review for merge queue
-        if: github.event_name == 'merge_group'
-        run: echo "The merge queue revalidates required code and security gates; Droid's advisory review already ran on the PR head."
       - name: Run Droid Auto Review
         id: droid_auto_review
-        if: github.event_name == 'pull_request' && env.FACTORY_API_KEY_AVAILABLE == 'true'
+        if: env.FACTORY_API_KEY_AVAILABLE == 'true'
         continue-on-error: true
         uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3
         with:
@@ -48,7 +45,7 @@ jobs:
           reasoning_effort: high
           security_model: glm-5.2
       - name: Report Droid review service degradation
-        if: github.event_name == 'pull_request' && env.FACTORY_API_KEY_AVAILABLE == 'true' && steps.droid_auto_review.outcome == 'failure'
+        if: env.FACTORY_API_KEY_AVAILABLE == 'true' && steps.droid_auto_review.outcome == 'failure'
         run: |
           echo "::warning::Droid Auto Review service returned a failure. The review artifact/comment link is preserved for diagnosis, but PR mergeability is not blocked on Factory API quota or transient SaaS availability."
           {
@@ -56,3 +53,13 @@ jobs:
             echo
             echo "The Droid review action failed after preparing the review run. Treat this as an external review-service degradation, not a product build failure. The workflow uploaded its debug artifact and updated the PR review comment with the job link."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  droid-merge-group:
+    name: droid-review
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Reuse PR-head Droid review for merge queue
+        run: echo "The merge queue revalidates required code and security gates; Droid's advisory review already ran on the PR head."
