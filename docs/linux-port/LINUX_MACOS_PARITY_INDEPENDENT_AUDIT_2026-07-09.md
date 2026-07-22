@@ -2887,21 +2887,22 @@ stay in Rust, and production builds replace daemon fixtures with a fail-closed
 module whose activation is unavailable. Mutation tests cover the IPC, URL,
 fixture, and production-bundle boundaries.
 
-- **Difference:** macOS uses narrow native service APIs. Linux has CSP, but still
-  grants broad `shell:default`; the support UI exposes a persistent daemon
-  fixture toggle in normal product UI; sensitive operations are not uniformly
-  typed and allowlisted.
-- **Why it matters:** WebView compromise has more process-launch leverage, and
-  users/evidence can silently mistake fake data for live state.
-- **Recommended solution:** remove generic shell capability, expose narrow Rust
-  commands with strict URL/argument allowlists, compile fixtures only into
-  development/evidence builds, and show an unavoidable test-mode banner.
+- **Difference:** macOS uses narrow native service APIs; Linux now has the
+  corresponding narrow Tauri command set, CSP, strict URL/argument validation,
+  Rust-owned gateway secrets, and a production fixture module that fails closed.
+  The remaining difference is operational proof that signed release artifacts
+  contain no fixture activation path and that every sensitive mutation remains
+  on the typed allowlist.
+- **Why it matters:** WebView compromise must not gain process-launch leverage,
+  and users/evidence must never mistake fake data for live state.
+- **Recommended solution:** retain the narrow command boundary and bind the
+  release-bundle scan, fixture-provenance receipts, and mutation tests to every
+  signed candidate.
 - **Priority:** **Critical** for bearer/shell containment; **High** for fixture
-  leakage.
-- **Implementation notes:** centralize external URL validation; add command-level
-  authorization and schema validation; make release profiles fail if fixture
-  code or test flags are reachable; record live vs fixture provenance in every
-  evidence artifact.
+  leakage proof.
+- **Implementation notes:** keep external URL validation centralized; preserve
+  command-level schema validation and production fail-closed fixtures; record
+  live vs fixture provenance in every evidence artifact.
 - **QA verification:** arbitrary command, local-file URL, unexpected scheme,
   non-HTTPS host, argument injection, oversized payload, path traversal, and XSS
   probes all fail; release artifacts have no fixture activation path; debug mode
