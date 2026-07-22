@@ -5,6 +5,23 @@ import WebKit
 
 // MARK: - Dashboard View
 
+@MainActor
+@Observable
+final class DashboardSettingsPresentation {
+    var isPresented = false
+    private(set) var itemID: String?
+
+    func present(itemID: String? = nil) {
+        self.itemID = itemID
+        isPresented = true
+    }
+
+    func dismiss() {
+        isPresented = false
+        itemID = nil
+    }
+}
+
 struct DashboardView: View {
     @Bindable var dataStore: DataStore
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
@@ -25,7 +42,7 @@ struct DashboardView: View {
     @State var selectedTimeRange: TimeRange = .today
     @AppStorage("dashboardViewMode") var viewMode: DashboardViewMode = .agents
     @AppStorage("dashboardViewMode") var storedViewMode: DashboardViewMode = .agents
-    @State var showingSettings = false
+    @State var settingsPresentation = DashboardSettingsPresentation()
     @State var showProgressPanel = false
     @State var overviewAppeared = false
     @State private var overviewEmptyStateAppeared = false
@@ -96,6 +113,13 @@ struct DashboardView: View {
             settingsManager: context.settingsManager,
             runtimeContext: context.runtimeContext
         )
+    }
+
+    var showingSettings: Bool { settingsPresentation.isPresented }
+    var pendingSettingsItemID: String? { settingsPresentation.itemID }
+
+    func presentSettings(itemID: String? = nil) {
+        settingsPresentation.present(itemID: itemID)
     }
 
     var isScanning: Bool { aggregator?.isRefreshing ?? false }
@@ -404,16 +428,22 @@ struct DashboardView: View {
                 }
             )
         }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView(
-                settingsManager: settingsManager,
-                accountManager: accountManager,
-                cloudSyncService: cloudSyncService,
-                iCloudSessionMirrorService: iCloudSessionMirrorService,
-                dataStore: dataStore,
-                runtimeContext: runtimeContext
-            )
-        }
+        .sheet(
+            isPresented: $settingsPresentation.isPresented,
+            onDismiss: { settingsPresentation.dismiss() },
+            content: {
+                SettingsView(
+                    settingsManager: settingsManager,
+                    accountManager: accountManager,
+                    cloudSyncService: cloudSyncService,
+                    iCloudSessionMirrorService: iCloudSessionMirrorService,
+                    dataStore: dataStore,
+                    runtimeContext: runtimeContext,
+                    chatController: chatController,
+                    initialItemID: settingsPresentation.itemID
+                )
+            }
+        )
         .onAppear {
             if !settingsManager.conversationIndexingConsentShown {
                 showIndexingConsent = true
@@ -663,7 +693,7 @@ struct DashboardView: View {
                         settingsManager: settingsManager,
                         onOpenConnections: {
                             UserDefaults.standard.set(SettingsTab.agents.rawValue, forKey: "settings.pendingTab")
-                            showingSettings = true
+                            presentSettings()
                         }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

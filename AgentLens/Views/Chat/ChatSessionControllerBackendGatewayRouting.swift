@@ -19,6 +19,10 @@ extension ChatSessionController {
 
     var piAgentGatewayModels: [OpenAICompatibleAdvertisedModel] { cliBridge.piAgentGatewayModels }
 
+    var isElderWandActive: Bool {
+        settingsManager.elderWandPluginsPayload() != nil
+    }
+
     func chatModelSelection(for backend: ChatBackendID) -> String {
         switch backend {
         case .codex: return chatModelCodex
@@ -105,6 +109,12 @@ extension ChatSessionController {
         case .claude:
             return chatModelClaude.trimmingCharacters(in: .whitespacesAndNewlines)
         case .hermes:
+            if isElderWandActive {
+                return Self.resolvedElderWandOriginatingModel(
+                    selection: chatModelHermes,
+                    liveModels: burnBarGatewayModels
+                )
+            }
             return Self.resolvedHermesModelSelection(
                 panelSelection: chatModelHermes,
                 settingsOverride: settingsManager.hermesChatModelOverride,
@@ -113,10 +123,22 @@ extension ChatSessionController {
                 gatewayDefault: liveDefaultModel(for: .hermes)
             )
         case .openclaw:
+            if isElderWandActive {
+                return Self.resolvedElderWandOriginatingModel(
+                    selection: chatModelOpenClaw,
+                    liveModels: burnBarGatewayModels
+                )
+            }
             let s = chatModelOpenClaw.trimmingCharacters(in: .whitespacesAndNewlines)
             if s.isEmpty { return liveDefaultModel(for: .openclaw) ?? "" }
             return s
         case .piAgent:
+            if isElderWandActive {
+                return Self.resolvedElderWandOriginatingModel(
+                    selection: chatModelPiAgent,
+                    liveModels: burnBarGatewayModels
+                )
+            }
             let s = chatModelPiAgent.trimmingCharacters(in: .whitespacesAndNewlines)
             if s.isEmpty { return liveDefaultModel(for: .piAgent) ?? "" }
             return s
@@ -205,7 +227,7 @@ extension ChatSessionController {
         for backend: ChatBackendID,
         modelID: String
     ) -> HermesBackendCapabilities {
-        liveAdvertisedModels(for: backend)
+        chatModelCatalog(for: backend)
             .first { $0.id.caseInsensitiveCompare(modelID) == .orderedSame }?
             .modelCapabilities?
             .asHermesBackendCapabilities
@@ -216,6 +238,17 @@ extension ChatSessionController {
         liveAdvertisedModels(for: backend)
             .first { $0.routeEligible }?
             .id
+    }
+
+    /// Catalog shown by the chat model picker. Fusion executes on the BurnBar
+    /// daemon, not the selected upstream chat gateway, so an active Elder Wand
+    /// preset switches every compatible OpenAI chat surface to the daemon's
+    /// exact advertised catalog.
+    func chatModelCatalog(for backend: ChatBackendID) -> [OpenAICompatibleAdvertisedModel] {
+        if isElderWandActive, Self.supportsElderWandGateway(backend) {
+            return burnBarGatewayModels
+        }
+        return liveAdvertisedModels(for: backend)
     }
 
     nonisolated static func allowsTextExpansionRewriteGateway(_ baseURL: URL) -> Bool {
@@ -301,6 +334,19 @@ extension ChatSessionController {
         return hermesCanonicalModelAlias
     }
 
+    /// Resolve the top-level model that writes an Elder Wand response. An
+    /// explicit user selection is preserved so a stale choice fails visibly;
+    /// Automatic selects the first route-eligible model from the same daemon
+    /// catalog that will execute the request.
+    nonisolated static func resolvedElderWandOriginatingModel(
+        selection: String,
+        liveModels: [OpenAICompatibleAdvertisedModel]
+    ) -> String {
+        let selected = selection.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !selected.isEmpty { return selected }
+        return liveModels.first { $0.routeEligible }?.id ?? ""
+    }
+
     /// The Hermes gateway's self alias: routed server-side to the gateway's
     /// default agent, and permanently present in `CLIBridge.chatHermes`'s model
     /// allowlist even when the `/v1/models` catalog is unreadable.
@@ -330,11 +376,55 @@ extension ChatSessionController {
     }
 
     func selectedModelRoutingError(for backend: ChatBackendID) -> String? {
-        Self.selectedModelRoutingError(
+        if isElderWandActive {
+            return Self.elderWandRoutingError(
+                backend: backend,
+                selectedModel: effectiveChatModel(for: backend),
+                gatewayAvailable: burnBarGatewayAvailable,
+                authRejected: burnBarGatewayCatalogAuthRejected,
+                liveModels: burnBarGatewayModels
+            )
+        }
+        return Self.selectedModelRoutingError(
             backend: backend,
             selectedModel: effectiveChatModel(for: backend).trimmingCharacters(in: .whitespacesAndNewlines),
             liveModels: liveAdvertisedModels(for: backend)
         )
+    }
+
+    nonisolated static func elderWandRoutingError(
+        backend: ChatBackendID,
+        selectedModel: String,
+        gatewayAvailable: Bool,
+        authRejected: Bool,
+        liveModels: [OpenAICompatibleAdvertisedModel]
+    ) -> String? {
+        guard supportsElderWandGateway(backend) else {
+            return "The Elder Wand requires an OpenAI-compatible chat engine. Switch to Hermes, OpenClaw, or Pi Agent and try again."
+        }
+        if authRejected {
+            return "The BurnBar gateway rejected its bearer token. Open Settings -> Model Gateway, repair the gateway token, and try again."
+        }
+        guard gatewayAvailable else {
+            return "The BurnBar gateway is unavailable. Start or restart OpenBurnBar, then try The Elder Wand again."
+        }
+        guard !liveModels.isEmpty else {
+            return "The BurnBar gateway has no live routed models. Add or enable a provider before using The Elder Wand."
+        }
+        let model = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !model.isEmpty else {
+            return "Choose a live final-answer model from the chat model menu before using The Elder Wand."
+        }
+        guard liveModels.contains(where: {
+            $0.id.caseInsensitiveCompare(model) == .orderedSame && $0.routeEligible
+        }) else {
+            return "The Elder Wand final-answer model '\(model)' is not routed by the BurnBar gateway. Choose a live model from the chat model menu."
+        }
+        return nil
+    }
+
+    nonisolated static func supportsElderWandGateway(_ backend: ChatBackendID) -> Bool {
+        backend == .hermes || backend == .openclaw || backend == .piAgent
     }
 
     /// Pure routing-eligibility gate (extracted so the empty-catalog policy is
@@ -486,6 +576,16 @@ extension ChatSessionController {
             bearerToken: piAgentBearerToken
         )
         piAgentAvailable = cliBridge.piAgentAvailable
+    }
+
+    func probeBurnBarGatewayAvailability() async {
+        let result = await OpenAICompatibleModelProbe.probeWithModels(
+            baseURL: burnBarGatewayBaseURL,
+            bearerToken: burnBarGatewayBearerToken
+        )
+        burnBarGatewayAvailable = result.available
+        burnBarGatewayCatalogAuthRejected = result.authRejected
+        burnBarGatewayModels = result.models
     }
 
     /// Pi agent model name currently advertised by the configured Pi gateway.

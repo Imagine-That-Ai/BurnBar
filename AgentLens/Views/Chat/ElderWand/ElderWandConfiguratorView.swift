@@ -10,10 +10,9 @@ import SwiftUI
 // button) with `.gatedFeature(.elderWand, …)`; this view assumes it is already
 // reachable.
 //
-// Live model list comes from `controller.liveAdvertisedModels(for:)`. When no
-// controller is in scope (e.g. opened from the Settings tree, which has no
-// `ChatSessionController`), the view renders an empty state instead of a live
-// picker, per the agreed interface.
+// Live model list comes from the BurnBar daemon gateway that executes Fusion. When no
+// controller is in scope (for example, a preview or disconnected legacy
+// surface), the view renders an empty state instead of a live picker.
 
 struct ElderWandConfiguratorView: View {
     let controller: ChatSessionController?
@@ -41,6 +40,9 @@ struct ElderWandConfiguratorView: View {
             } else {
                 ElderWandEmptyState()
             }
+        }
+        .task {
+            await controller?.probeBurnBarGatewayAvailability()
         }
     }
 }
@@ -105,7 +107,7 @@ private struct ElderWandNoModelsState: View {
                         .font(DesignSystem.Typography.headline)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                    Text("Connect or enable a routed provider, then refresh the chat gateway.")
+                    Text("Connect or enable a routed provider, then refresh the BurnBar gateway.")
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -115,7 +117,7 @@ private struct ElderWandNoModelsState: View {
             .padding(DesignSystem.Spacing.xl)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("No live models advertised. Connect or enable a routed provider, then refresh the chat gateway.")
+        .accessibilityLabel("No live models advertised. Connect or enable a routed provider, then refresh the BurnBar gateway.")
     }
 }
 
@@ -201,7 +203,7 @@ private struct ElderWandEmptyState: View {
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                     .multilineTextAlignment(.center)
 
-                Text("The Elder Wand panel is built from the models your chat gateway is advertising right now. Start a chat, then open Analysis Models from the chat header.")
+                Text("The Elder Wand panel is built from the models the BurnBar gateway is advertising right now. Start a chat, then open Analysis Models from the chat header.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -217,38 +219,38 @@ private struct ElderWandEmptyState: View {
 
 // MARK: - Model grouping
 
-/// Resolves the live advertised models across the routed gateway backends and
-/// groups them by provider, de-duplicating by model ID. Pure transform so the
-/// view body stays free of heavy compute.
+/// Groups the BurnBar daemon's live advertised models by provider,
+/// de-duplicating by model ID. Pure transform so the view body stays free of
+/// heavy compute.
 enum ElderWandModelGrouping {
-    /// The gateway backends that advertise a live multi-provider model catalog
-    /// (the single-provider CLIs return `[]` from `liveAdvertisedModels`).
-    static let routedBackends: [ChatBackendID] = [.hermes, .openclaw, .piAgent]
-
     @MainActor static func groups(from controller: ChatSessionController) -> [ElderWandProviderGroup] {
+        groups(from: controller.burnBarGatewayModels)
+    }
+
+    static func groups(
+        from advertisedModels: [OpenAICompatibleAdvertisedModel]
+    ) -> [ElderWandProviderGroup] {
         var seen = Set<String>()
         var byProvider: [String: [ElderWandModelOption]] = [:]
         var providerOrder: [String] = []
 
-        for backend in routedBackends {
-            for advertised in controller.liveAdvertisedModels(for: backend) {
-                let modelID = advertised.id.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !modelID.isEmpty, !seen.contains(modelID) else { continue }
-                seen.insert(modelID)
+        for advertised in advertisedModels {
+            let modelID = advertised.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !modelID.isEmpty, !seen.contains(modelID) else { continue }
+            seen.insert(modelID)
 
-                let providerName = resolvedProviderName(for: advertised)
-                if byProvider[providerName] == nil {
-                    byProvider[providerName] = []
-                    providerOrder.append(providerName)
-                }
-                byProvider[providerName]?.append(
-                    ElderWandModelOption(
-                        id: modelID,
-                        title: advertised.menuTitle,
-                        isRouteEligible: advertised.routeEligible
-                    )
-                )
+            let providerName = resolvedProviderName(for: advertised)
+            if byProvider[providerName] == nil {
+                byProvider[providerName] = []
+                providerOrder.append(providerName)
             }
+            byProvider[providerName]?.append(
+                ElderWandModelOption(
+                    id: modelID,
+                    title: advertised.menuTitle,
+                    isRouteEligible: advertised.routeEligible
+                )
+            )
         }
 
         return providerOrder.map { provider in

@@ -35,7 +35,7 @@ import CommonCrypto
 // and importRecoveryBundle.
 
 /// Failures raised while configuring or opening an encrypted database.
-enum DatabaseEncryptionError: Error, CustomStringConvertible {
+enum DatabaseEncryptionError: Error, CustomStringConvertible, LocalizedError {
     /// The build links a SQLite that is NOT SQLCipher (the `PRAGMA key` was a
     /// silent no-op, proven by `PRAGMA cipher_version` returning empty/nil), so
     /// the database would have been written in PLAINTEXT despite encryption being
@@ -49,6 +49,14 @@ enum DatabaseEncryptionError: Error, CustomStringConvertible {
     /// Keychain persistence returned an OSStatus failure while saving a newly
     /// generated database key. The caller must abort before opening SQLCipher.
     case keychainPersistenceFailed(status: OSStatus)
+
+    /// An encrypted database already exists, but its Keychain item is absent.
+    /// Startup must preserve the file and must not generate a replacement key.
+    case existingEncryptedDatabaseKeyMissing(path: String)
+
+    /// The stored key did not unlock an existing encrypted database. This can
+    /// mean the key belongs to another database or the file is damaged.
+    case existingEncryptedDatabaseKeyRejected(path: String)
 
     /// SQLCipher was available and a plaintext database was eligible for first
     /// launch migration, but the export or atomic replacement failed.
@@ -65,8 +73,34 @@ enum DatabaseEncryptionError: Error, CustomStringConvertible {
         case let .keychainPersistenceFailed(status):
             return "Failed to persist a new database encryption key to the Keychain (OSStatus \(status)). "
                 + "Cannot create an encrypted database with an unpersisted key."
+        case let .existingEncryptedDatabaseKeyMissing(path):
+            return "The encryption key for the existing database at \(path) is missing. "
+                + "The database was preserved and no replacement key was created."
+        case let .existingEncryptedDatabaseKeyRejected(path):
+            return "The stored encryption key did not unlock the existing database at \(path). "
+                + "The database was preserved and may require its original key or recovery from damage."
         case let .plaintextMigrationFailed(path, detail):
             return "Failed to migrate plaintext database at \(path) to SQLCipher: \(detail)"
+        }
+    }
+
+    var errorDescription: String? {
+        switch self {
+        case .existingEncryptedDatabaseKeyMissing:
+            return "The encryption key for this database is missing. OpenBurnBar preserved the database."
+        case .existingEncryptedDatabaseKeyRejected:
+            return "The stored encryption key cannot open this database. OpenBurnBar preserved the database."
+        default:
+            return description
+        }
+    }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .existingEncryptedDatabaseKeyMissing, .existingEncryptedDatabaseKeyRejected:
+            return "Restore the original key from a recovery bundle, or archive and reset to rebuild local data."
+        default:
+            return nil
         }
     }
 }
@@ -166,7 +200,13 @@ private final class OrphanSizeLookupBox: @unchecked Sendable {
 
 enum DatabaseEncryptionService {
     private static let service = "com.openburnbar.database-encryption"
-    private static let keyIdentifierAccount = "database-encryption-key-v1"
+    private static let productionKeyIdentifierAccount = "database-encryption-key-v1"
+    private static var keyIdentifierAccount: String {
+        resolvedKeyIdentifierAccount(
+            environment: ProcessInfo.processInfo.environment,
+            processIdentifier: ProcessInfo.processInfo.processIdentifier
+        )
+    }
     private static let allowedKeyCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+/=-"))
 
     private static let keychainClient = DatabaseEncryptionKeychainClientBox(DatabaseEncryptionKeychainClient(
@@ -188,6 +228,23 @@ enum DatabaseEncryptionService {
     /// this header, so its presence/absence cheaply distinguishes the two without
     /// needing the key. Reference: <https://www.sqlite.org/fileformat2.html#the_database_header>.
     private static let plaintextSQLiteMagic = Data("SQLite format 3\u{0}".utf8)
+
+    /// XCTest must never address the production database-key item. A prior test
+    /// suite called `deleteKey()` in setup/teardown and made a real encrypted
+    /// database unreadable. Keep a process-local account namespace as a second
+    /// line of defense even when a test forgets to inject the in-memory client.
+    static func resolvedKeyIdentifierAccount(
+        environment: [String: String],
+        processIdentifier: Int32
+    ) -> String {
+        let isTestProcess = environment["OPENBURNBAR_UITEST"] == "1"
+            || environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestSessionIdentifier"] != nil
+            || environment["XCTestBundlePath"] != nil
+            || environment["__XPC_DYLD_LIBRARY_PATH"]?.contains(".xctest") == true
+        guard isTestProcess else { return productionKeyIdentifierAccount }
+        return "\(productionKeyIdentifierAccount).xctest.\(processIdentifier)"
+    }
 
     // MARK: - Key Management
 
@@ -791,6 +848,14 @@ extension DatabaseEncryptionService {
     static func isMissingSQLiteSidecarRemoval(_ error: Error) -> Bool {
         let nsError = error as NSError
         return isMissingSQLiteSidecarRemoval(nsError)
+    }
+
+    /// SQLCipher reports a wrong passphrase as SQLITE_NOTADB after page-one HMAC
+    /// verification. For an already encrypted file, surface that as a typed,
+    /// non-destructive recovery failure instead of a generic SQLite error.
+    static func isEncryptedDatabaseKeyRejection(_ error: Error) -> Bool {
+        guard let databaseError = error as? DatabaseError else { return false }
+        return databaseError.resultCode == .SQLITE_NOTADB
     }
 
     private static func isMissingSQLiteSidecarRemoval(_ error: NSError) -> Bool {

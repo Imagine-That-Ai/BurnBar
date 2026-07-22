@@ -50,6 +50,14 @@ service cloud.firestore {
         && request.resource.data.keys().size() < 20;
     }
 
+    function escrowDeviceDocumentLimits() {
+      // Trusted device records include the approval chain and server-owned
+      // Signal repair receipt. `validEscrowDeviceDocument` still provides an
+      // exact field allowlist, so this wider count applies only to that schema.
+      return request.resource.size() < 51200
+        && request.resource.data.keys().size() <= 24;
+    }
+
     function ownsUserNamespace(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
@@ -1147,7 +1155,7 @@ service cloud.firestore {
         && payload.vaultKeyID == vaultKeyID;
     }
 
-    function validPathBoundCloudSealedPayload(userId, collection, docId, value) {
+    function validPathBoundCloudSealedPayloadAt(userId, collection, docId, field, value) {
       return value is map
         && value.keys().hasOnly([
           "schemaVersion",
@@ -1163,11 +1171,15 @@ service cloud.firestore {
         && value.keyVersion >= 1
         && value.keyVersion <= 100
         && validVaultKeyID(value.vaultKeyID)
-        && value.aad == cloudVaultAADContext(userId, collection, docId, "sealedPayload")
+        && value.aad == cloudVaultAADContext(userId, collection, docId, field)
         && value.sealedBoxBase64 is string
         && value.sealedBoxBase64.size() > 0
         && value.sealedBoxBase64.size() <= 900000
         && value.sealedBoxBase64.matches("^[A-Za-z0-9+/=]+$");
+    }
+
+    function validPathBoundCloudSealedPayload(userId, collection, docId, value) {
+      return validPathBoundCloudSealedPayloadAt(userId, collection, docId, "sealedPayload", value);
     }
 
     function validRoamingProfileSealedPayload(userId, value) {
@@ -2098,6 +2110,10 @@ service cloud.firestore {
         return value in ["action_only", "full_stream", "muted"];
       }
 
+      function validCliMissionPresentationMode(value) {
+        return value in ["native_chat", "mac_visible_cli", "mac_interactive_cli"];
+      }
+
       function validCliMissionResumeAction(value) {
         return value in ["new", "resume", "fork", "forward", "continue"];
       }
@@ -2116,6 +2132,7 @@ service cloud.firestore {
           "sourceSkillID",
           "sourceSurface",
           "deliveryMode",
+          "presentationMode",
           "parentHermesThreadID",
           "status",
           "createdAt",
@@ -2166,13 +2183,14 @@ service cloud.firestore {
         && (!("sealedStatePayload" in request.resource.data) || (
           request.resource.data.sealedStateSchemaVersion == 1
           && request.resource.data.sealedStateVaultKeyID == request.resource.data.vaultKeyID
-          && validPathBoundCloudSealedPayload(userId, "cli_agent_mission_requests", requestId, request.resource.data.sealedStatePayload)
+          && validPathBoundCloudSealedPayloadAt(userId, "cli_agent_mission_requests", requestId, "sealedStatePayload", request.resource.data.sealedStatePayload)
           && request.resource.data.sealedStatePayload.vaultKeyID == request.resource.data.vaultKeyID
         ))
         && validCliMissionKind(request.resource.data.missionKind)
         && validCliMissionRuntime(request.resource.data.requestedRuntime)
         && validCliMissionSource(request.resource.data.source)
         && (!("deliveryMode" in request.resource.data) || validCliMissionDeliveryMode(request.resource.data.deliveryMode))
+        && (!("presentationMode" in request.resource.data) || validCliMissionPresentationMode(request.resource.data.presentationMode))
         && request.resource.data.status is string
         && request.resource.data.schemaVersion is int
         && (!("depth" in request.resource.data) || validCliMissionDepth(request.resource.data.depth))
@@ -2194,15 +2212,12 @@ service cloud.firestore {
         && (!("personaID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.personaID, 160))
         && (!("groupID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.groupID, 160))
         && (!("resumeAction" in request.resource.data) || validCliMissionResumeAction(request.resource.data.resumeAction))
-        // NOTE: forbidsSealedPlaintextContentFields() is intentionally NOT applied
-        // here. cli_agent_mission_requests already pins an exact hasOnly([...])
-        // allowlist (above) that contains NO plaintext content field, so the
-        // denylist is fully redundant on this collection — and adding it tips this
-        // already-large rule past Firestore's 1000-expression evaluation limit
-        // (the create/update rule then fails to evaluate at all). Defense-in-depth
-        // is preserved by the allowlist; the explicit denylist stays on the
-        // smaller chat-thread mirror rules where it fits within the limit.
-        && forbidsDirectSignalEnvelope();
+        // The exact hasOnly([...]) allowlist above contains neither plaintext
+        // content fields nor signalEnvelope. Repeating either deny check here
+        // pushes the full fan-out child payload past Firestore's 1000-expression
+        // evaluation limit, while adding no accepted or rejected wire shapes.
+        // The explicit deny helpers remain on smaller mirrors where they fit.
+        ;
       }
 
       function validCliAgentMissionCreate() {
@@ -2238,7 +2253,7 @@ service cloud.firestore {
           request.resource.data.contentSealed == true
           && request.resource.data.sealedStateSchemaVersion == 1
           && request.resource.data.sealedStateVaultKeyID == request.resource.data.vaultKeyID
-          && validPathBoundCloudSealedPayload(userId, "cli_agent_mission_requests", requestId, request.resource.data.sealedStatePayload)
+          && validPathBoundCloudSealedPayloadAt(userId, "cli_agent_mission_requests", requestId, "sealedStatePayload", request.resource.data.sealedStatePayload)
           && request.resource.data.sealedStatePayload.vaultKeyID == request.resource.data.vaultKeyID
         );
       }
@@ -2250,8 +2265,7 @@ service cloud.firestore {
           && request.resource.data.sealedSchemaVersion == resource.data.sealedSchemaVersion
           && request.resource.data.vaultKeyID == resource.data.vaultKeyID
           && request.resource.data.sealedPayload == resource.data.sealedPayload
-          && validCliAgentMissionSealedStateUpdate()
-          && forbidsDirectSignalEnvelope();
+          && validCliAgentMissionSealedStateUpdate();
       }
 
       function trustedMissionExecutorDevice(userId) {
@@ -2585,7 +2599,10 @@ service cloud.firestore {
           "android-chat",
           "ios-insights",
           "android-insights",
-          "mac-insights"
+          "mac-insights",
+          "ios-hermes-square",
+          "android-hermes-square",
+          "mac-wand"
         ];
       }
 
@@ -3106,12 +3123,14 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.trustState == "trusted";
       }
-      allow create: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId);
-      allow update: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          "wrappedVaultKey",
-          "updatedAt"
-        ]);
+	      allow create: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId);
+	      allow update: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId)
+	        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+	          "wrappedVaultKey",
+	          "sourceDeviceId",
+	          "createdAt",
+	          "updatedAt"
+	        ]);
 	    }
 
 	    match /users/{userId}/cloud_vault_rotation_jobs/{jobId} {
@@ -3923,7 +3942,11 @@ service cloud.firestore {
           "targetSignalIdentityKeyId",
           "targetSignalIdentityPublicKeyFingerprint",
           "approvedBySignalIdentityKeyId",
-          "approvedBySignalIdentityPublicKeyFingerprint"
+          "approvedBySignalIdentityPublicKeyFingerprint",
+          "signalIdentityRepairVersion",
+          "signalIdentityRepairAlgorithm",
+          "signalIdentityReapprovalRequired",
+          "signalIdentityRepairedAt"
         ])
         && request.resource.data.deviceId == deviceId
         && request.resource.data.deviceName is string
@@ -3952,6 +3975,14 @@ service cloud.firestore {
         && (!("approvedBySignalIdentityPublicKeyFingerprint" in request.resource.data)
           || (request.resource.data.approvedBySignalIdentityPublicKeyFingerprint is string
             && request.resource.data.approvedBySignalIdentityPublicKeyFingerprint.size() <= 128))
+        && (!("signalIdentityRepairVersion" in request.resource.data)
+          || request.resource.data.signalIdentityRepairVersion == 1)
+        && (!("signalIdentityRepairAlgorithm" in request.resource.data)
+          || request.resource.data.signalIdentityRepairAlgorithm == "escrow-possession-challenge-v1")
+        && (!("signalIdentityReapprovalRequired" in request.resource.data)
+          || request.resource.data.signalIdentityReapprovalRequired is bool)
+        && (!("signalIdentityRepairedAt" in request.resource.data)
+          || request.resource.data.signalIdentityRepairedAt is timestamp)
         && (!("approvedAt" in request.resource.data) || request.resource.data.approvedAt is timestamp)
         && (!("createdAt" in request.resource.data) || request.resource.data.createdAt is timestamp)
         && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
@@ -3959,7 +3990,11 @@ service cloud.firestore {
 
       function validEscrowDeviceCreate(deviceId) {
         return validEscrowDeviceDocument(deviceId)
-          && request.resource.data.trustState != "trusted";
+          && request.resource.data.trustState != "trusted"
+          && !("signalIdentityRepairVersion" in request.resource.data)
+          && !("signalIdentityRepairAlgorithm" in request.resource.data)
+          && !("signalIdentityReapprovalRequired" in request.resource.data)
+          && !("signalIdentityRepairedAt" in request.resource.data);
       }
 
       function validEscrowDeviceUpdate(deviceId) {
@@ -4015,6 +4050,22 @@ service cloud.firestore {
               && request.resource.data.approvedBySignalIdentityPublicKeyFingerprint == resource.data.approvedBySignalIdentityPublicKeyFingerprint)
             || (!("approvedBySignalIdentityPublicKeyFingerprint" in resource.data)
               && !("approvedBySignalIdentityPublicKeyFingerprint" in request.resource.data)))
+          && ((("signalIdentityRepairVersion" in resource.data)
+              && request.resource.data.signalIdentityRepairVersion == resource.data.signalIdentityRepairVersion)
+            || (!("signalIdentityRepairVersion" in resource.data)
+              && !("signalIdentityRepairVersion" in request.resource.data)))
+          && ((("signalIdentityRepairAlgorithm" in resource.data)
+              && request.resource.data.signalIdentityRepairAlgorithm == resource.data.signalIdentityRepairAlgorithm)
+            || (!("signalIdentityRepairAlgorithm" in resource.data)
+              && !("signalIdentityRepairAlgorithm" in request.resource.data)))
+          && ((("signalIdentityReapprovalRequired" in resource.data)
+              && request.resource.data.signalIdentityReapprovalRequired == resource.data.signalIdentityReapprovalRequired)
+            || (!("signalIdentityReapprovalRequired" in resource.data)
+              && !("signalIdentityReapprovalRequired" in request.resource.data)))
+          && ((("signalIdentityRepairedAt" in resource.data)
+              && request.resource.data.signalIdentityRepairedAt == resource.data.signalIdentityRepairedAt)
+            || (!("signalIdentityRepairedAt" in resource.data)
+              && !("signalIdentityRepairedAt" in request.resource.data)))
           && ((("approvedAt" in resource.data)
               && request.resource.data.approvedAt == resource.data.approvedAt)
             || (!("approvedAt" in resource.data)
@@ -4026,11 +4077,11 @@ service cloud.firestore {
       }
 
       allow create: if ownsUserNamespace(userId)
-        && escrowDocumentLimits()
+        && escrowDeviceDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validEscrowDeviceCreate(deviceId);
       allow update: if ownsUserNamespace(userId)
-        && escrowDocumentLimits()
+        && escrowDeviceDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validEscrowDeviceUpdate(deviceId);
 

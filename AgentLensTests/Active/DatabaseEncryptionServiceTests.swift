@@ -3,18 +3,57 @@ import XCTest
 
 @testable import OpenBurnBar
 
+private final class InMemoryDatabaseEncryptionKeychain {
+    private let lock = NSLock()
+    private var storedData: Data?
+
+    lazy var client = DatabaseEncryptionKeychainClient(
+        copyMatching: { [weak self] _ in
+            guard let self else { return (errSecItemNotFound, nil) }
+            return self.copyMatching()
+        },
+        add: { [weak self] query in
+            guard let self else { return errSecNotAvailable }
+            return self.add(query)
+        },
+        delete: { [weak self] _ in
+            guard let self else { return errSecNotAvailable }
+            return self.delete()
+        }
+    )
+
+    private func copyMatching() -> (status: OSStatus, result: AnyObject?) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let storedData else { return (errSecItemNotFound, nil) }
+        return (errSecSuccess, storedData as AnyObject)
+    }
+
+    private func add(_ query: [String: Any]) -> OSStatus {
+        lock.lock()
+        defer { lock.unlock() }
+        guard storedData == nil else { return errSecDuplicateItem }
+        guard let data = query[kSecValueData as String] as? Data else { return errSecParam }
+        storedData = data
+        return errSecSuccess
+    }
+
+    private func delete() -> OSStatus {
+        lock.lock()
+        defer { lock.unlock() }
+        storedData = nil
+        return errSecSuccess
+    }
+}
+
 /// Verifies the GRDB+SQLCipher SPM build applies the SQLCipher passphrase and reports `cipher_version`,
 /// and validates the SOTA key recovery design (Keychain-only + explicit passphrase bundle).
 final class DatabaseEncryptionServiceTests: XCTestCase {
-    override func setUp() {
-        super.setUp()
-        // Ensure a clean state for each test
-        DatabaseEncryptionService.deleteKey()
-    }
-
-    override func tearDown() {
-        DatabaseEncryptionService.deleteKey()
-        super.tearDown()
+    override func invokeTest() {
+        let keychain = InMemoryDatabaseEncryptionKeychain()
+        DatabaseEncryptionService.withKeychainClientForTesting(keychain.client) {
+            super.invokeTest()
+        }
     }
 
     /// Opens the app target's GRDB module and reads `PRAGMA cipher_version`.
@@ -372,6 +411,54 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         XCTAssertEqual(first, second, "Repeated calls must return the same persisted key")
     }
 
+    func testXCTestKeychainAccountIsIsolatedFromProduction() {
+        let productionAccount = DatabaseEncryptionService.resolvedKeyIdentifierAccount(
+            environment: [:],
+            processIdentifier: 42
+        )
+        let testAccount = DatabaseEncryptionService.resolvedKeyIdentifierAccount(
+            environment: ["XCTestConfigurationFilePath": "/tmp/OpenBurnBarTests.xctestconfiguration"],
+            processIdentifier: 42
+        )
+
+        XCTAssertEqual(productionAccount, "database-encryption-key-v1")
+        XCTAssertEqual(testAccount, "database-encryption-key-v1.xctest.42")
+        XCTAssertNotEqual(testAccount, productionAccount)
+
+        let runningTestAccount = DatabaseEncryptionService.resolvedKeyIdentifierAccount(
+            environment: ProcessInfo.processInfo.environment,
+            processIdentifier: ProcessInfo.processInfo.processIdentifier
+        )
+        XCTAssertEqual(
+            runningTestAccount,
+            "database-encryption-key-v1.xctest.\(ProcessInfo.processInfo.processIdentifier)",
+            "The real XCTest host must never resolve the production database-key account."
+        )
+    }
+
+    func testExistingEncryptedDatabaseKeyFailuresProduceActionableRecoveryCopy() {
+        let path = "/tmp/preserved-openburnbar.sqlite"
+        let missing = DatabaseEncryptionError.existingEncryptedDatabaseKeyMissing(path: path)
+        let rejected = DatabaseEncryptionError.existingEncryptedDatabaseKeyRejected(path: path)
+
+        XCTAssertEqual(
+            missing.localizedDescription,
+            "The encryption key for this database is missing. OpenBurnBar preserved the database."
+        )
+        XCTAssertEqual(
+            rejected.localizedDescription,
+            "The stored encryption key cannot open this database. OpenBurnBar preserved the database."
+        )
+        XCTAssertEqual(
+            missing.recoverySuggestion,
+            "Restore the original key from a recovery bundle, or archive and reset to rebuild local data."
+        )
+
+        let failure = DataStoreStartupFailure.make(error: missing)
+        XCTAssertEqual(failure.errorSummary, missing.localizedDescription)
+        XCTAssertTrue(failure.technicalDetails.contains(path))
+    }
+
     #if DEBUG
     func testGetOrCreatePersistedKey_throwsTypedErrorWhenKeychainAddFails() {
         let failingKeychain = DatabaseEncryptionKeychainClient(
@@ -438,6 +525,112 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
                 "Coordinator must not create a database file when the generated SQLCipher key was not persisted."
             )
         }
+    }
+
+    @MainActor
+    func testCoordinatorDoesNotCreateReplacementKeyForEncryptedDatabaseWhenKeyIsMissing() throws {
+        let path = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("obb-encrypted-missing-key-\(UUID().uuidString).sqlite")
+        defer {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(atPath: path + suffix)
+            }
+        }
+
+        let originalKey = Data("missing-key-regression".utf8).base64EncodedString()
+        let originalConfig = try DatabaseEncryptionService.makeConfiguration(encryptionKey: originalKey)
+        let original = try DatabasePool(path: path, configuration: originalConfig)
+        try original.write { db in
+            try db.execute(sql: "CREATE TABLE protected_value (value TEXT NOT NULL)")
+            try db.execute(sql: "INSERT INTO protected_value (value) VALUES ('preserved')")
+        }
+        try original.close()
+        let bytesBeforeOpen = try Data(contentsOf: URL(fileURLWithPath: path))
+
+        var addCalls = 0
+        let missingKeychain = DatabaseEncryptionKeychainClient(
+            copyMatching: { _ in (errSecItemNotFound, nil) },
+            add: { _ in
+                addCalls += 1
+                return errSecSuccess
+            },
+            delete: { _ in errSecSuccess }
+        )
+
+        XCTAssertThrowsError(
+            try DatabaseEncryptionService.withKeychainClientForTesting(missingKeychain) {
+                try DataStoreCoordinator.makeDatabasePoolForTesting(path: path)
+            }
+        ) { error in
+            guard case DatabaseEncryptionError.existingEncryptedDatabaseKeyMissing(let failedPath) = error else {
+                return XCTFail("Expected existingEncryptedDatabaseKeyMissing, got \(error)")
+            }
+            XCTAssertEqual(failedPath, path)
+        }
+
+        XCTAssertEqual(addCalls, 0, "Startup must not create a replacement key for an encrypted database.")
+        XCTAssertEqual(
+            try Data(contentsOf: URL(fileURLWithPath: path)),
+            bytesBeforeOpen,
+            "A missing-key startup attempt must leave the encrypted database byte-for-byte unchanged."
+        )
+    }
+
+    @MainActor
+    func testCoordinatorRejectsWrongKeyWithoutChangingEncryptedDatabase() throws {
+        let path = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("obb-encrypted-wrong-key-\(UUID().uuidString).sqlite")
+        defer {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(atPath: path + suffix)
+            }
+        }
+
+        let originalKey = Data("correct-key-regression".utf8).base64EncodedString()
+        let wrongKey = Data("incorrect-key-regression".utf8).base64EncodedString()
+        let originalConfig = try DatabaseEncryptionService.makeConfiguration(encryptionKey: originalKey)
+        let original = try DatabasePool(path: path, configuration: originalConfig)
+        try original.write { db in
+            try db.execute(sql: "CREATE TABLE protected_value (value TEXT NOT NULL)")
+            try db.execute(sql: "INSERT INTO protected_value (value) VALUES ('preserved')")
+        }
+        try original.close()
+        let bytesBeforeOpen = try Data(contentsOf: URL(fileURLWithPath: path))
+
+        var addCalls = 0
+        let wrongKeychain = DatabaseEncryptionKeychainClient(
+            copyMatching: { _ in (errSecSuccess, Data(wrongKey.utf8) as AnyObject) },
+            add: { _ in
+                addCalls += 1
+                return errSecSuccess
+            },
+            delete: { _ in errSecSuccess }
+        )
+
+        XCTAssertThrowsError(
+            try DatabaseEncryptionService.withKeychainClientForTesting(wrongKeychain) {
+                try DataStoreCoordinator.makeDatabasePoolForTesting(path: path)
+            }
+        ) { error in
+            guard case DatabaseEncryptionError.existingEncryptedDatabaseKeyRejected(let failedPath) = error else {
+                return XCTFail("Expected existingEncryptedDatabaseKeyRejected, got \(error)")
+            }
+            XCTAssertEqual(failedPath, path)
+        }
+
+        XCTAssertEqual(addCalls, 0)
+        XCTAssertEqual(
+            try Data(contentsOf: URL(fileURLWithPath: path)),
+            bytesBeforeOpen,
+            "A wrong-key startup attempt must leave the encrypted database byte-for-byte unchanged."
+        )
+
+        let reopened = try DatabasePool(path: path, configuration: originalConfig)
+        let value = try reopened.read { db in
+            try String.fetchOne(db, sql: "SELECT value FROM protected_value")
+        }
+        XCTAssertEqual(value, "preserved")
+        try reopened.close()
     }
     #endif
 

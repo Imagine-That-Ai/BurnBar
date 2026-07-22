@@ -9,6 +9,11 @@
 > §2/§3/§6 below also predate the 2026-07-04 atomic integration (#1267) — verify against
 > the ledger + live code, not "done" phrasing in this handoff.
 
+> **CURRENT OPERATIONS ENTRYPOINT:** use
+> [`WINDOWS_PORT_OPERATIONS_RUNBOOK.md`](WINDOWS_PORT_OPERATIONS_RUNBOOK.md) for
+> releases, staging, signing, costs, physical certification, Store flights,
+> rollback, maintenance, and agent handoffs. This file is historical context.
+
 The single doc to continue the entire Windows port. Read `docs/WINDOWS_PORT_MASTER_PLAN.md` (v2.1) for the
 authoritative spec; this is the *current state + how to finish*.
 

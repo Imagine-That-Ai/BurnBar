@@ -8,6 +8,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.testing.Test
 import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 import org.gradle.testing.jacoco.tasks.JacocoReport
 
@@ -411,6 +412,16 @@ android {
         )
     }
 }
+tasks.withType<Test>().configureEach {
+    providers.systemProperty("openburnbar.domainCore.nativeLibraryPath").orNull?.let { nativeLibraryPath ->
+        val resolvedNativeLibraryPath = rootProject.file(nativeLibraryPath).absolutePath
+        systemProperty(
+            "uniffi.component.openburnbar_domain_ffi.libraryOverride",
+            resolvedNativeLibraryPath
+        )
+    }
+}
+
 
 androidComponents {
     onVariants(selector().all()) { variant ->
@@ -703,7 +714,7 @@ dependencies {
     // kotlinx-coroutines-guava bridge provides `.await()`.
     implementation("androidx.concurrent:concurrent-futures:1.2.0")
     implementation("androidx.concurrent:concurrent-futures-ktx:1.2.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.11.0")
     // Auth — Credential Manager is the single Google sign-in path; the
     // googleid bridge returns the ID token that Firebase Auth exchanges.
     implementation("androidx.credentials:credentials:1.6.0")
@@ -727,8 +738,8 @@ dependencies {
     implementation("com.patrykandpatrick.vico:compose-m3:2.1.2")
 
     // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
 
     // Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
@@ -758,9 +769,12 @@ dependencies {
 
     // Testing
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("io.mockk:mockk:1.13.13")
     testImplementation("org.signal:libsignal-client:0.94.4")
+    // Android's JNA AAR supplies only device JNI slices. Activated Rust-mode
+    // JVM contracts need the desktop JAR's host libjnidispatch resource.
+    testImplementation("net.java.dev.jna:jna:5.19.0")
     // Real org.json on the JVM test classpath so parsers can run without an
     // emulator (Android's bundled JSONObject is stubbed in unit tests).
     testImplementation("org.json:json:20240303")

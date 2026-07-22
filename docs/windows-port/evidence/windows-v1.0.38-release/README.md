@@ -43,6 +43,45 @@ detailed result and exact recovery actions are in
 The native-operator continuation prompt is
 [`HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt`](HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt).
 
+## Later supplemental bundle
+
+The later HP supplemental archive is
+`OpenBurnBar-v1.0.38-physical-x64-evidence-f081f282949ef07620771d23c484bc31c6b629e77709e7c838aed9ed8041448c.zip`.
+Its imported SHA-256 matched the filename digest, ZIP integrity passed, and the
+current validator independently passed all seven receipt records when bound to
+candidate `48837746490b6468efa4dc06a476f305d496039c` and harness
+`ddd839cf2719d2b3f54bce0d13d880c244d0d26d`. The archive remains externally
+retained on the `BURNBAR` drive rather than committed to Git.
+
+This supplemental result remains `NO-GO`: signed lifecycle, 26 UIA routes, and
+the 30-minute soak passed, while the five supplemental gates remained
+incomplete and physical ARM64 remained the explicit beta limitation. The exact
+imported operator report is
+[`PHYSICAL_X64_SUPPLEMENTAL_RESULT.md`](PHYSICAL_X64_SUPPLEMENTAL_RESULT.md).
+
+The continuation must use clean independent harness commit
+`37d88056066d876570df4b2887f33df7af7ebe56`, the merge of PR #1867. It
+contains the PR #1862 UIA/supplemental corrections plus the Firebase Remote
+Config gzip/ETag repair. This newer harness identity does not alter the
+historical retry receipt above; it identifies the harness required for the next
+timestamped continuation bundle.
+
+## Corrected-harness attempt
+
+A subsequent HP attempt produced archive
+`OpenBurnBar-v1.0.38-physical-x64-evidence-dc9e37b1df2499528b8baa9587e3b6b93c5ac1151483486222bd6d162d620746.zip`.
+The filename digest and ZIP integrity independently passed, but the current
+validator rejected the final archive because
+`operator-evidence/validator-final.log` was added after `SHA256SUMS` was
+generated. The archive therefore remains immutable **NO-GO** evidence, not a
+validator PASS.
+
+That run also proved the independent UIA harness was still compiled from the
+candidate checkout and that Firebase's unquoted ETag is hidden by the .NET
+typed header parser. PR #1875 contains the transport, harness-checkout, and
+final-checksum fixes. See
+[`PHYSICAL_X64_CORRECTED_HARNESS_RESULT.md`](PHYSICAL_X64_CORRECTED_HARNESS_RESULT.md).
+
 ## Certification boundary
 
 The exact package is stable on physical x64, but the release remains `NO-GO`.

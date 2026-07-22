@@ -33,6 +33,30 @@ const candidateIdentity = {
 const signedProfile = (name) =>
   resolveDomainCoreBuildProfile(catalog, name, candidateIdentity);
 
+function activationCoordinates() {
+  const releaseCommit = spawnSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).stdout.trim();
+  const modes = Object.values(
+    catalog.profiles["public-production"].modes,
+  );
+  if (!modes.includes("rust")) {
+    return { candidateCommit: releaseCommit, releaseCommit };
+  }
+
+  const ledger = JSON.parse(
+    readFileSync(resolve("config/domain-core-legacy-deletion.json"), "utf8"),
+  );
+  const candidateCommits = new Set(
+    ledger.rows
+      .map((row) => row.receipts?.promotion)
+      .filter((path) => typeof path === "string")
+      .map((path) => JSON.parse(readFileSync(resolve(path), "utf8")).commit),
+  );
+  assert.equal(candidateCommits.size, 1, "active rows must bind one candidate");
+  return { candidateCommit: [...candidateCommits][0], releaseCommit };
+}
+
 test("canonical profiles satisfy signed artifact invariants", () => {
   assert.equal(validateDomainCoreBuildProfiles(catalog), catalog);
   assert.equal(signedProfile("public-production").evidenceEnabled, false);
@@ -383,7 +407,7 @@ test("artifact verifier accepts MSBuild UTF-8 BOM receipts and still rejects mal
   }
 });
 
-test("release-bound Functions artifact verifies with a complete release commit/version/tag triplet", () => {
+test("release-bound verification keeps Functions artifacts candidate-scoped", () => {
   const temporaryRoot = mkdtempSync(
     join(tmpdir(), "openburnbar-functions-release-"),
   );
@@ -398,10 +422,7 @@ test("release-bound Functions artifact verifies with a complete release commit/v
       "utf8",
     ),
   );
-  const candidateCommit = spawnSync("git", ["rev-parse", "HEAD"], {
-    encoding: "utf8",
-  }).stdout.trim();
-  const releaseCommit = candidateCommit;
+  const { candidateCommit, releaseCommit } = activationCoordinates();
   const releaseVersion = "1.2.3";
   const releaseTag = `v${releaseVersion}`;
   const identity = {
@@ -415,17 +436,7 @@ test("release-bound Functions artifact verifies with a complete release commit/v
     "public-production",
     identity,
   );
-  const releaseBound = resolveDomainCoreBuildProfile(
-    catalog,
-    "public-production",
-    identity,
-    { version: releaseVersion, tag: releaseTag, commit: releaseCommit },
-  );
-  assert.deepEqual(releaseBound.release, {
-    version: releaseVersion,
-    tag: releaseTag,
-    commit: releaseCommit,
-  });
+  assert.equal(expected.release, undefined);
   mkdirSync(generatedDirectory, { recursive: true });
   writeFileSync(
     join(generatedDirectory, "domainCoreCandidateReceipt.js"),
@@ -533,13 +544,13 @@ test("mismatched release coordinates fail receipt verification", () => {
       "utf8",
     ),
   );
-  const candidateCommit = spawnSync("git", ["rev-parse", "HEAD"], {
-    encoding: "utf8",
-  }).stdout.trim();
-  const artifactReleaseCommit = spawnSync("git", ["rev-parse", "HEAD~1"], {
-    encoding: "utf8",
-  }).stdout.trim();
-  const expectedReleaseCommit = candidateCommit;
+  const { candidateCommit, releaseCommit: expectedReleaseCommit } =
+    activationCoordinates();
+  const artifactReleaseCommit = spawnSync(
+    "git",
+    ["rev-parse", `${candidateCommit}^`],
+    { encoding: "utf8" },
+  ).stdout.trim();
   const releaseVersion = "1.2.3";
   const releaseTag = `v${releaseVersion}`;
   const artifactProfile = resolveDomainCoreBuildProfile(

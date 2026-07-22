@@ -101,6 +101,7 @@ function verify() {
     "__setTheme",
     "__setMaxFps",
     "__getKernel",
+    "__getBackdropState",
     "__kernels",
     "__backdropReady",
   ]) {

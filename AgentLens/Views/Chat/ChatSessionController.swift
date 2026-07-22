@@ -146,6 +146,15 @@ final class ChatSessionController {
 
     var piAgentAvailable: Bool = false
 
+    /// Availability and live model rows for the BurnBar daemon gateway. Elder
+    /// Wand requests execute on this gateway, so its catalog is the authority
+    /// for panel, judge, and originating-model choices.
+    var burnBarGatewayAvailable: Bool = false
+
+    var burnBarGatewayCatalogAuthRejected: Bool = false
+
+    var burnBarGatewayModels: [OpenAICompatibleAdvertisedModel] = []
+
     var searchQuery = "" {
         didSet {
             handleSearchQueryChange(previousValue: oldValue)
