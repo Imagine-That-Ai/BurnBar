@@ -8,6 +8,8 @@ import type {
   ChatThreadGetResult,
   ChatThreadListResult,
   ComputerUsePanicHaltResult,
+  ComputerUseInvokeRequest,
+  ComputerUseInvokeResponse,
   ComputerUseSessionAuthorityStatus,
   ComputerUseSessionStartRequest,
   IntegrationsStatus,
@@ -89,6 +91,15 @@ export const emptyToolApprovalRespond = async (): Promise<void> => {};
 export const emptyComputerUse = async (
   _params?: Record<string, unknown>
 ): Promise<unknown> => ({ ok: false, reason: 'stub' });
+
+export const emptyComputerUseInvoke = async (
+  _params: ComputerUseInvokeRequest
+): Promise<ComputerUseInvokeResponse> => ({
+  sessionId: '*',
+  callID: 'stub',
+  status: 'error',
+  denyReason: 'Computer Use is unavailable in the test bridge.'
+});
 
 export const emptyComputerUseSessionAuthorityStatus = (
 ): Promise<ComputerUseSessionAuthorityStatus> => Promise.resolve({ state: 'available' });
@@ -302,7 +313,7 @@ export const bridgeStubDefaults = {
   toolApprovalRespond: emptyToolApprovalRespond,
   computerUseSessionAuthorityStatus: emptyComputerUseSessionAuthorityStatus,
   computerUseSessionStart: emptyComputerUseSessionStart,
-  computerUseInvoke: emptyComputerUse,
+  computerUseInvoke: emptyComputerUseInvoke,
   computerUseApprovalPending: emptyComputerUse,
   computerUseApprovalRespond: emptyComputerUse,
   computerUsePanicHalt: emptyComputerUsePanicHalt,

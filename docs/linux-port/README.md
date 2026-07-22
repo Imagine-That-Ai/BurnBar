@@ -62,6 +62,9 @@ Primary files:
   capability probes, including the fail-closed packaged Browser Computer Use
   bridge and external runtime boundary, route gating, change procedure, and QA
   steps.
+- [`P07_COMPUTER_USE_BROWSER_PANEL.md`](P07_COMPUTER_USE_BROWSER_PANEL.md) -
+  typed Browser Computer Use actions, Swift/Rust/Tauri wire-shape boundary,
+  system-mode unavailability, and focused QA contract.
 - [`accessibility-validation.md`](accessibility-validation.md) - axe route
   matrix, installed-app AT-SPI/Orca harness, evidence contract, and remaining
   manual GNOME/KDE certification. P-31 additionally requires exact 200 percent

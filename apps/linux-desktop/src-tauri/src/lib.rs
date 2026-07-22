@@ -5232,6 +5232,37 @@ mod tests {
     }
 
     #[test]
+    fn computer_use_invoke_renderer_shape_uses_lower_camel_ids() {
+        let params: ComputerUseInvokeParams = serde_json::from_value(serde_json::json!({
+            "sessionId": "session-1",
+            "invocation": {
+                "callId": "call-1",
+                "runId": "run-1",
+                "tool": "browser_screenshot",
+                "arguments": {},
+                "requestedBy": "linux-shell",
+                "requestedAt": 800000050.123
+            }
+        }))
+        .expect("Tauri renderer request must use lower-camel serde keys");
+        assert_eq!(params.session_id, "session-1");
+        assert_eq!(params.invocation.call_id, "call-1");
+        assert_eq!(params.invocation.run_id, "run-1");
+        assert!(
+            serde_json::from_value::<ComputerUseInvokeParams>(serde_json::json!({
+                "sessionId": "session-1",
+                "invocation": {
+                    "callID": "call-1",
+                    "runID": "run-1",
+                    "tool": "browser_screenshot",
+                    "arguments": {}
+                }
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
     fn computer_use_local_auth_canonical_hash_matches_android_and_swift_golden() {
         let (_, mut binding, _) = computer_use_local_auth_fixture();
         binding.capabilities = vec!["workspace_read".into(), "desktop_file_export".into()];
