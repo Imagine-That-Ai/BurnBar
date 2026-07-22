@@ -19,6 +19,10 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
+      - "scripts/ci/verify-burnbar-turbo-workflow.test.mjs"
+      - "scripts/ci/burnbar-turbo-runner-host.sh"
+      - "scripts/ci/burnbar-turbo-runner-guest.sh"
+      - "scripts/ci/burnbar-turbo-runner-host.test.mjs"
       - "scripts/ci/verify-merge-queue-workflows.mjs"
       - "scripts/ci/verify-merge-queue-workflows.test.mjs"
       - "scripts/ci/verify-curl-bearer-token-boundary.sh"
@@ -27,6 +31,13 @@ on:
       - "scripts/lib/curl-bearer.test.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.test.sh"
+      - "scripts/lib/resolve-repo-path.sh"
+      - "scripts/lib/resolve-repo-path.test.sh"
+      - "scripts/ci/verify-signing-profile-certificate.py"
+      - "scripts/ci/verify-signing-profile-certificate.sh"
+      - "scripts/ci/verify-signing-profile-certificate.test.py"
+      - "scripts/ci/verify-daemon-release-signing.sh"
+      - "scripts/ci/verify-daemon-release-signing.test.sh"
       - "scripts/hooks/pre-push"
       - "scripts/hooks/pre-push.test.sh"
       - "scripts/ci/verify-release-provenance-boundaries.mjs"
@@ -74,6 +85,10 @@ on:
       - "scripts/ci/release-dry-run-attestation.test.mjs"
       - "scripts/ops/run-firestore-restore-drill.sh"
       - "scripts/ops/run-firestore-restore-drill.test.sh"
+      - "scripts/ops/verify-firestore-app-check-enforcement.sh"
+      - "scripts/ops/verify-firestore-app-check-enforcement.test.sh"
+      - "scripts/test-openburnbar-mobile.sh"
+      - "scripts/ci/test-openburnbar-mobile.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
@@ -99,12 +114,23 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
+      - "scripts/ci/verify-burnbar-turbo-workflow.test.mjs"
+      - "scripts/ci/burnbar-turbo-runner-host.sh"
+      - "scripts/ci/burnbar-turbo-runner-guest.sh"
+      - "scripts/ci/burnbar-turbo-runner-host.test.mjs"
       - "scripts/ci/verify-curl-bearer-token-boundary.sh"
       - "scripts/ci/verify-curl-bearer-token-boundary.test.sh"
       - "scripts/lib/curl-bearer.sh"
       - "scripts/lib/curl-bearer.test.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.test.sh"
+      - "scripts/lib/resolve-repo-path.sh"
+      - "scripts/lib/resolve-repo-path.test.sh"
+      - "scripts/ci/verify-signing-profile-certificate.py"
+      - "scripts/ci/verify-signing-profile-certificate.sh"
+      - "scripts/ci/verify-signing-profile-certificate.test.py"
+      - "scripts/ci/verify-daemon-release-signing.sh"
+      - "scripts/ci/verify-daemon-release-signing.test.sh"
       - "scripts/hooks/pre-push"
       - "scripts/hooks/pre-push.test.sh"
       - "scripts/ci/verify-release-provenance-boundaries.mjs"
@@ -152,6 +178,10 @@ on:
       - "scripts/ci/release-dry-run-attestation.test.mjs"
       - "scripts/ops/run-firestore-restore-drill.sh"
       - "scripts/ops/run-firestore-restore-drill.test.sh"
+      - "scripts/ops/verify-firestore-app-check-enforcement.sh"
+      - "scripts/ops/verify-firestore-app-check-enforcement.test.sh"
+      - "scripts/test-openburnbar-mobile.sh"
+      - "scripts/ci/test-openburnbar-mobile.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
@@ -203,6 +233,12 @@ jobs:
       - name: Self-test App Check smoke fail-closed gate
         run: bash scripts/ci/app-check-smoke.test.sh
 
+      - name: Self-test Apple DeviceCheck production gate
+        run: bash scripts/ops/verify-firestore-app-check-enforcement.test.sh
+
+      - name: Self-test mobile test destination selection
+        run: bash scripts/ci/test-openburnbar-mobile.test.sh
+
       - name: Self-test duplicate-code report verifier
         run: node scripts/ci/verify-jscpd-report.test.mjs
 
@@ -249,6 +285,14 @@ jobs:
       - name: Verify PR secret boundaries
         run: node scripts/ci/verify-pr-secret-boundaries.mjs
 
+      - name: Verify BurnBar turbo runner boundary
+        run: |
+          bash -n scripts/ci/burnbar-turbo-runner-host.sh
+          bash -n scripts/ci/burnbar-turbo-runner-guest.sh
+          node --test \
+            scripts/ci/verify-burnbar-turbo-workflow.test.mjs \
+            scripts/ci/burnbar-turbo-runner-host.test.mjs
+
       - name: Self-test curl bearer-token argv boundary
         run: bash scripts/ci/verify-curl-bearer-token-boundary.test.sh
 
@@ -260,6 +304,12 @@ jobs:
 
       - name: Self-test Signal FFI XCFramework prepare boundary
         run: bash scripts/lib/prepare-signal-ffi-xcframework.test.sh
+
+      - name: Self-test macOS release output path resolution
+        run: bash scripts/lib/resolve-repo-path.test.sh
+
+      - name: Self-test macOS signing profile certificate matcher
+        run: python3 scripts/ci/verify-signing-profile-certificate.test.py
 
       - name: Self-test release provenance boundaries
         run: node scripts/ci/verify-release-provenance-boundaries.test.mjs

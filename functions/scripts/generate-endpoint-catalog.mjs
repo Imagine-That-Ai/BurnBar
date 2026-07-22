@@ -193,7 +193,7 @@ const CATALOG_OVERRIDES = {
   mintLinuxAppCheckToken: {
     trigger: "callable",
     authMethod:
-      "Firebase Auth; approved per-install Ed25519 key and a durable single-use challenge (no App Check on the bootstrap path)",
+      "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
     appCheck: "not-required",
     publicJustification:
       "Bootstrap that mints a lower-trust Linux App Check token, so it cannot itself require one. Production accepts only an account-scoped install key explicitly approved by an already trusted native device plus a durable single-use signed challenge; mock claims remain disabled.",
@@ -393,6 +393,40 @@ const CATALOG_OVERRIDES = {
         covers: ["issueWindowsAppCheckChallenge"],
         expectedOutcome: "throws",
         expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  issueTrustedSignalIdentityRepairChallenge: {
+    objectIdsFromClient: ["deviceId"],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and reads only that user's trusted device and pinned escrow public key",
+    handlerModule: "callables/signalIdentityRepair.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
+        test: "issueTrustedSignalIdentityRepairChallenge rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["issueTrustedSignalIdentityRepairChallenge"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  repairTrustedSignalIdentity: {
+    objectIdsFromClient: ["deviceId", "challengeId", "identityKeyId"],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and transactionally consumes only that user's one-time challenge, trusted device, escrow key, and Signal identity",
+    handlerModule: "callables/signalIdentityRepair.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
+        test: "repairTrustedSignalIdentity rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["repairTrustedSignalIdentity"],
+        expectedOutcome: "throws",
+        expectedCode: "failed-precondition",
       },
     ],
     highRiskComputerUse: false,

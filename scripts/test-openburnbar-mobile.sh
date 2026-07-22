@@ -20,6 +20,7 @@
 #                                           targets. Separate multiple selectors
 #                                           with commas or whitespace.
 #   OPENBURNBAR_MOBILE_TEST_SCHEME=...   Override scheme (default: OpenBurnBarMobileUnitTests).
+#                                           Use OpenBurnBarMobile for UI tests.
 #   OPENBURNBAR_MOBILE_SIMULATOR=...     Simulator name for CI fallback (default: iPhone 17 Pro Max).
 #   OPENBURNBAR_MOBILE_DISABLE_SIMULATOR_SIGNING=1
 #                                           Force the CI-style unsigned simulator host locally.
@@ -291,6 +292,17 @@ print_test_filters() {
     for entry in "${test_filters[@]}"; do
         echo "  - $entry"
     done
+}
+
+test_filters_include_bundle() {
+    local bundle="$1"
+    local selector
+    for selector in "${test_filters[@]}"; do
+        if [[ "$selector" == "$bundle" || "$selector" == "$bundle/"* ]]; then
+            return 0
+        fi
+    done
+    return 1
 }
 
 normalize_ios_destination() {
@@ -700,7 +712,7 @@ if [[ "$ios_destination" == *"Simulator"* ]]; then
     uses_ios_simulator=1
 fi
 
-if [[ "$uses_ios_simulator" -eq 1 ]]; then
+if [[ "$uses_ios_simulator" -eq 1 && -z "${OPENBURNBAR_IOS_DESTINATION:-}" ]]; then
     resolve_simulator_udid
     ios_destination="$simulator_destination"
 fi
@@ -1017,7 +1029,8 @@ populate_xcodebuild_args() {
         echo "ERROR: OPENBURNBAR_MOBILE_TEST_FILTER resolved to zero -only-testing selectors." >&2
         return 64
     fi
-    if [[ "$test_scheme" == "OpenBurnBarMobile" ]]; then
+    if [[ "$test_scheme" == "OpenBurnBarMobile" ]] \
+        && ! test_filters_include_bundle "OpenBurnBarMobileUITests"; then
         xcodebuild_args+=(-skip-testing:OpenBurnBarMobileUITests)
     fi
     if [[ "$uses_ios_simulator" -eq 1 ]] \

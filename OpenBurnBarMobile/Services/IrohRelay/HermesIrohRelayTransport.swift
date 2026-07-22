@@ -1035,11 +1035,16 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         )
     }
 
-    static func defaultTransport(relayURL: String? = nil) -> any IrohRelayTransport {
+    static func defaultTransport(
+        relayURL: String? = nil,
+        backendFactory: @Sendable () -> IrohEndpointBackend? = {
+            OpenBurnBarIrohFFIBackendFactory.make()
+        }
+    ) -> any IrohRelayTransport {
         let secretProvider: @Sendable () throws -> IrohSecretKeyMaterial = {
             try IrohRelayKeyStore.shared.secretKeyMaterial()
         }
-        if let backend = OpenBurnBarIrohFFIBackendFactory.make() {
+        if let backend = backendFactory() {
             let normalizedRelayURL = Self.normalizedRelayURL(relayURL)
             return IrohXcframeworkTransport(
                 backend: backend,
@@ -1049,8 +1054,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 }
             )
         }
-        let rendezvous = LoopbackIrohRelayRendezvous()
-        return LoopbackIrohRelayTransport(rendezvous: rendezvous)
+        return UnavailableIrohRelayTransport()
     }
 
     private func registerControllerRouteBeforeConnect(

@@ -96,8 +96,10 @@ server-owned sender-key root cannot be advanced by metadata replay alone.
 The HPKE Auth key-wrap AAD and the payload AEAD AAD both bind `uid`,
 `connectionId`, `requestId`, `operation`, `senderDeviceId`,
 `senderPeerNodeId`, `senderCounter`, and `keyId`. The Mac persists a
-sender-scoped replay cache and rejects duplicate request IDs and counters that
-do not strictly advance for that sender/key pair.
+sender-scoped replay cache and rejects duplicate request IDs, duplicate
+counters, and counters outside a bounded 64-counter anti-replay window. Unique
+requests inside that window may complete out of order so concurrent encrypted
+relay calls cannot falsely reject one another.
 
 ### 2.4 Server-owned trust roots
 

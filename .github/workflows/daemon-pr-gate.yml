@@ -16,7 +16,7 @@ permissions:
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -27,13 +27,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  classify:
+    uses: ./.github/workflows/ci-impact.yml
+
   daemon-swift:
     name: Daemon Swift tests (proxy + router + quota)
     runs-on: macos-26
     # Cold cache + libsignal FFI build on a slow runner needs headroom; the
     # daemon package alone is far lighter than the full Swift suite (~40 min cap).
     timeout-minutes: 40
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: classify
+    if: needs.classify.outputs.daemon == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -49,6 +53,7 @@ jobs:
           path: |
             .spm-cache
             .build
+            ~/.cache/org.swift.swiftpm
           key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-
@@ -84,7 +89,8 @@ jobs:
     name: Release build (debug-only escape hatches compiled out)
     runs-on: macos-26
     timeout-minutes: 40
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: classify
+    if: needs.classify.outputs.daemon == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -100,6 +106,7 @@ jobs:
           path: |
             .spm-cache
             .build
+            ~/.cache/org.swift.swiftpm
           key: ${{ runner.os }}-spm-release-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-
@@ -139,3 +146,24 @@ jobs:
           fi
 
           echo "Release build verification passed: debug-only escape hatches are compiled out."
+
+  daemon-pr-gate:
+    name: Daemon PR Gate
+    needs: [classify, daemon-swift, release-build-verification]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the selected daemon floor
+        env:
+          CLASSIFIER_RESULT: ${{ needs.classify.result }}
+          REQUIRED: ${{ needs.classify.outputs.daemon }}
+          TEST_RESULT: ${{ needs.daemon-swift.result }}
+          RELEASE_RESULT: ${{ needs.release-build-verification.result }}
+        run: |
+          set -euo pipefail
+          [[ "$CLASSIFIER_RESULT" == "success" ]] || { echo "::error::Impact classifier failed."; exit 1; }
+          expected=skipped; [[ "$REQUIRED" == "true" ]] && expected=success
+          for result in "$TEST_RESULT" "$RELEASE_RESULT"; do
+            [[ "$result" == "$expected" ]] || { echo "::error::Daemon prerequisite ended $result; expected $expected."; exit 1; }
+          done

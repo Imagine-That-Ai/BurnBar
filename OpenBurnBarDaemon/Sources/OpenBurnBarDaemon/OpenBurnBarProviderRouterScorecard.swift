@@ -57,7 +57,8 @@ extension BurnBarProviderRouter {
             modelName: modelName,
             preferredProviderID: effectivePreferredProviderID,
             requestedFormatFamily: requestedFormatFamily,
-            configurations: configurations
+            configurations: configurations,
+            allowForeignCatalogModelForPinnedLocalProvider: preferredProviderID != nil
         )
         let resolvedRequiredCapabilityClassID = resolveRequiredCapabilityClassID(
             explicitCapabilityClassID: requiredCapabilityClassID,

@@ -142,7 +142,7 @@ test("native consumer jobs keep their measured execution margin and emulator she
   assert.ok(androidCheckoutRef < canonicalCandidateResolution);
   assert.match(
     core,
-    /^  swift-consumer-contracts:\n(?:.*\n){0,4}    timeout-minutes: 90$/mu,
+    /^  swift-consumer-contracts:\n(?:.*\n){0,8}    timeout-minutes: 90$/mu,
   );
   assert.match(
     core,
@@ -578,6 +578,12 @@ test("protected Functions inventory covers every pricing execution entry and bot
 test("promotion-contracts executes native release workflow contract tests", () => {
   const job = workflowJob(core, "promotion-contracts");
 
+  const timeout = job.match(/^    timeout-minutes: (\d+)$/mu);
+  assert.ok(timeout, "promotion-contracts must declare a timeout");
+  assert.ok(
+    Number.parseInt(timeout[1], 10) >= 15,
+    "promotion-contracts timeout must tolerate both full-history checkouts",
+  );
   assert.match(
     job,
     /node --test \\\n(?:            [^\n]+ \\\n)*            scripts\/ci\/verify-domain-core-native-release-workflows\.test\.mjs \\/u,
@@ -608,6 +614,27 @@ test("promotion-contracts cleanup removes trusted evaluator after final use and 
   // Verify cleanup does not target wrong paths
   assert.doesNotMatch(job, /rm -rf -- \.domain-core-trusted-evaluator[^_\n]/, "cleanup must not target similar but wrong paths");
   assert.doesNotMatch(job, /rm -rf -- \.domain-core-trusted-evaluator[^\/\s]/, "cleanup must not target partial paths");
+});
+
+test("promotion-contracts gives its trusted evaluator a bounded shallow checkout", () => {
+  const job = workflowJob(core, "promotion-contracts");
+  assert.match(job, /timeout-minutes: 15/u);
+  assert.match(
+    job,
+    /Check out repository[\s\S]*?ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/u,
+  );
+  assert.match(
+    job,
+    /Check out trusted default-branch evaluator[\s\S]*?fetch-depth: 1[\s\S]*?sparse-checkout: scripts\/ci\/verify-domain-core-legacy-deletion\.py[\s\S]*?sparse-checkout-cone-mode: false/u,
+  );
+  assert.match(
+    job,
+    /DOMAIN_CORE_CANDIDATE_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}[\s\S]*?--expected-candidate-commit "\$DOMAIN_CORE_CANDIDATE_SHA"/u,
+  );
+  assert.doesNotMatch(
+    job,
+    /--expected-candidate-commit "\$GITHUB_SHA"/u,
+  );
 });
 
 test("swift-consumer-contracts builds the host domain-core XCFramework in release mode", () => {
@@ -724,31 +751,18 @@ function workflowTriggerPaths(source, name) {
   return paths;
 }
 
-test("pull_request trigger covers tools/hermes-platform-burnbar so PRs touching the platform adapter run the gate", () => {
-  // Regression: the pull_request path filter omitted tools/hermes-platform-burnbar/**,
-  // so edits to the Hermes platform-burnbar adapter never surfaced in domain-core CI.
+test("pull_request trigger is unfiltered and the classifier owns the Hermes adapter", () => {
   const trigger = workflowTrigger(core, "pull_request");
-  assert.match(
-    trigger,
-    /^      - "tools\/hermes-platform-burnbar\/\*\*"/mu,
-    "pull_request.paths must include tools/hermes-platform-burnbar/** so platform-burnbar changes trigger the gate",
+  assert.doesNotMatch(trigger, /^    paths:/mu);
+  const classifier = readFileSync(
+    new URL("./classify-ci-impact.mjs", import.meta.url),
+    "utf8",
   );
+  assert.match(classifier, /hermes-platform-burnbar/u);
 });
 
-test("pull_request trigger covers every branch-control input that can change Domain Core PR Gate authority", () => {
-  const paths = new Set(workflowTriggerPaths(core, "pull_request"));
-  for (const path of [
-    "governance/branch-protection.main.json",
-    "scripts/lib/branch-protection-drift.mjs",
-    "scripts/ops/check-branch-protection-drift*.mjs",
-    "scripts/ci/verify-domain-core-default-branch-controls*.mjs",
-    "tests/test_domain_core_trusted_deletion_workflow.py",
-  ]) {
-    assert.ok(
-      paths.has(path),
-      `pull_request.paths must include ${path} so changing branch-control authority runs Domain Core PR Gate`,
-    );
-  }
+test("pull_request trigger cannot omit branch-control inputs", () => {
+  assert.doesNotMatch(workflowTrigger(core, "pull_request"), /^    paths:/mu);
 });
 
 test("domain-core-pr-gate needs both python contract jobs before the aggregate count", () => {

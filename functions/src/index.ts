@@ -169,6 +169,8 @@ export {
   registerEscrowDevice,
   approveEscrowDeviceTrust,
   revokeEscrowDeviceTrust,
+  issueTrustedSignalIdentityRepairChallenge,
+  repairTrustedSignalIdentity,
   publishIrohPairingPublicKey,
   publishIrohPairingRecord,
   revokeIrohPairingRecord,

@@ -49,6 +49,7 @@ export {
   approveEscrowDeviceTrust,
   revokeEscrowDeviceTrust,
 } from "./escrowDeviceCallables.js";
+export { issueTrustedSignalIdentityRepairChallenge, repairTrustedSignalIdentity } from "./signalIdentityRepair.js";
 export {
   publishIrohPairingPublicKey,
   publishIrohPairingRecord,

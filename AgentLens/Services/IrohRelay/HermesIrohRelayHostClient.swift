@@ -1253,7 +1253,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         }
     }
 
-    private static func shouldRebuildAfterAcceptError(_ error: Error) -> Bool {
+    static func shouldRebuildAfterAcceptError(_ error: Error) -> Bool {
         guard let transportError = error as? IrohRelayTransportError else { return false }
         switch transportError {
         case .endpointNotReady, .shutdown:
@@ -1264,12 +1264,12 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 || lowered.contains("shut down")
                 || lowered.contains("not initialized")
                 || lowered.contains("runtime")
-        case .nodeIdUnreachable, .protocolMismatch, .timedOut:
+        case .backendUnavailable, .nodeIdUnreachable, .protocolMismatch, .timedOut:
             return false
         }
     }
 
-    private static func isRecoverablePeerAcceptError(_ error: Error) -> Bool {
+    static func isRecoverablePeerAcceptError(_ error: Error) -> Bool {
         guard let transportError = error as? IrohRelayTransportError else { return false }
         switch transportError {
         case .streamRejected(let message), .decodeFailed(let message):
@@ -1282,23 +1282,27 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 || lowered.contains("finished early")
         case .timedOut:
             return true
-        case .endpointNotReady, .nodeIdUnreachable, .protocolMismatch, .shutdown:
+        case .backendUnavailable, .endpointNotReady, .nodeIdUnreachable, .protocolMismatch, .shutdown:
             return false
         }
     }
 
     /// Default transport: prefers the xcframework-backed UniFFI backend when
-    /// the `OpenBurnBarIrohFFI` module is linked; falls back to the loopback
-    /// transport (which only works against same-process Macs) for dev
-    /// builds. Real production builds always have the FFI module.
-    static func defaultTransport() -> any IrohRelayTransport {
+    /// the `OpenBurnBarIrohFFI` module is linked. A build without that optional
+    /// module fails fast so callers do not advertise a process-local loopback
+    /// peer to physical devices.
+    static func defaultTransport(
+        backendFactory: @Sendable () -> IrohEndpointBackend? = {
+            OpenBurnBarIrohFFIBackendFactory.make()
+        }
+    ) -> any IrohRelayTransport {
         let secretProvider: @Sendable () throws -> IrohSecretKeyMaterial = {
             // Persist the iroh secret key alongside the existing relay
             // keypair so deleting the app removes both. Real implementation
             // is added by `IrohRelayKeyStore` in this directory.
             try IrohRelayKeyStore.shared.secretKeyMaterial()
         }
-        if let backend = OpenBurnBarIrohFFIBackendFactory.make() {
+        if let backend = backendFactory() {
             return IrohXcframeworkTransport(
                 backend: backend,
                 secretProvider: secretProvider,
@@ -1307,13 +1311,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 }
             )
         }
-        // Dev fallback: a process-local loopback transport. Note that in
-        // this case `iOSTransport.connect(to:)` is never reachable from a
-        // real device, so this branch is for local development against an
-        // AgentLens / OpenBurnBarMobile pair on the same Mac via the
-        // simulator.
-        let rendezvous = LoopbackIrohRelayRendezvous()
-        return LoopbackIrohRelayTransport(rendezvous: rendezvous)
+        return UnavailableIrohRelayTransport()
     }
 }
 

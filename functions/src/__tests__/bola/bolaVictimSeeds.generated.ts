@@ -1388,49 +1388,7 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
-  issueIrohControllerRouteChallenge: [
-    {
-      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
-      data: {
-        ownerUid: "__BOB_UID__",
-        status: "active",
-        schemaVersion: 1,
-      },
-    },
-    {
-      path: "users/__BOB_UID__/bola_victim/sourceDeviceId/bob-sourceDeviceId",
-      data: {
-        ownerUid: "__BOB_UID__",
-        status: "active",
-        schemaVersion: 1,
-      },
-    },
-    {
-      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
-      data: {
-        ownerUid: "__BOB_UID__",
-        status: "active",
-        schemaVersion: 1,
-      },
-    },
-    {
-      path: "users/__BOB_UID__/bola_victim/authorityPeerNodeId/bob-authorityPeerNodeId",
-      data: {
-        ownerUid: "__BOB_UID__",
-        status: "active",
-        schemaVersion: 1,
-      },
-    },
-    {
-      path: "users/__BOB_UID__/bola_victim/transportNodeId/bob-transportNodeId",
-      data: {
-        ownerUid: "__BOB_UID__",
-        status: "active",
-        schemaVersion: 1,
-      },
-    },
-  ],
-  issueLinuxAppCheckChallenge: [
+  issueTrustedSignalIdentityRepairChallenge: [
     {
       path: "users/__BOB_UID__/escrow_devices/bob-device",
       data: {
@@ -1439,35 +1397,13 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
     {
+      path: "users/__BOB_UID__/signal_identity_public_keys/bob-id",
+      data: {
+        published: true,
+      },
+    },
+    {
       path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      data: {
-        ownerUid: "__BOB_UID__",
-        status: "active",
-        schemaVersion: 1,
-      },
-    },
-  ],
-  listLinuxAppCheckDevices: [
-    {
-      path: "users/__BOB_UID__/bola_victim/approverDeviceId/bob-approverDeviceId",
-      data: {
-        ownerUid: "__BOB_UID__",
-        status: "active",
-        schemaVersion: 1,
-      },
-    },
-  ],
-  mintLinuxAppCheckToken: [
-    {
-      path: "users/__BOB_UID__/bola_victim/attestation.deviceId/bob-attestation.deviceId",
-      data: {
-        ownerUid: "__BOB_UID__",
-        status: "active",
-        schemaVersion: 1,
-      },
-    },
-    {
-      path: "users/__BOB_UID__/bola_victim/attestation.challengeId/bob-attestation.challengeId",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",
@@ -1938,9 +1874,22 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
-  registerIrohControllerRoute: [
+  repairTrustedSignalIdentity: [
     {
-      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/signal_identity_public_keys/bob-id",
+      data: {
+        published: true,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",
@@ -1955,35 +1904,8 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
         schemaVersion: 1,
       },
     },
-  ],
-  registerLinuxAppCheckDevice: [
     {
-      path: "users/__BOB_UID__/escrow_devices/bob-device",
-      data: {
-        trustRoot: "__BOB_UID__",
-        status: "trusted",
-      },
-    },
-    {
-      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
-      data: {
-        ownerUid: "__BOB_UID__",
-        status: "active",
-        schemaVersion: 1,
-      },
-    },
-  ],
-  resolveActiveIrohControllerRoutes: [
-    {
-      path: "users/__BOB_UID__/iroh_pairing/bob-conn",
-      data: {
-        ownerUid: "__BOB_UID__",
-        status: "active",
-        schemaVersion: 1,
-      },
-    },
-    {
-      path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      path: "users/__BOB_UID__/bola_victim/identityKeyId/bob-id",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",
