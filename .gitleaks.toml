@@ -291,6 +291,18 @@ regexes = [
 paths = [
   '''OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/RemoteUnlockCredentialEnvelopeCrypto\.swift''',
   '''OpenBurnBarCore/Sources/OpenBurnBarCore/Platform/PlatformSupport\.swift''',
+  '''OpenBurnBarCore/Sources/OpenBurnBarKernelPlatform/Platform/PlatformSupport\.swift''',
+]
+
+[[allowlists]]
+description = "Swift P-256 typealias names a type, not committed key material"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''PlatformP256KeyAgreementPrivateKey''',
+]
+paths = [
+  '''OpenBurnBarCore/Sources/OpenBurnBarKernelPlatform/Platform/PlatformSupport\.swift''',
 ]
 
 [[allowlists]]
