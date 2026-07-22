@@ -40,6 +40,9 @@ Current active-checkout status as of 2026-07-05:
 
 Primary files:
 
+- [`P16_ACCOUNT_CLOUD_DEVICES.md`](P16_ACCOUNT_CLOUD_DEVICES.md) - Linux
+  daemon-auth account posture, enrollment verification, and the explicit
+  trusted-device mutation boundary.
 - [`release-runbook.md`](release-runbook.md) - package, update, signature,
   provenance, source-offer, and promotion process.
 - [`parity-ledger.json`](parity-ledger.json) - machine-readable Tier A/B/C

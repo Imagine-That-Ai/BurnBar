@@ -115,8 +115,12 @@ export const useAccountStore = create<AccountState>()((set, get) => {
       }
     },
     async cancelSignIn() {
-      const bridge = useShellStore.getState().bridge;
+      const { fixtureMode, bridge } = useShellStore.getState();
       const operationID = get().data?.authorizationOperationID;
+      if (fixtureMode) {
+        set({ error: 'Sign-in cancellation is unavailable in fixture mode.' });
+        return;
+      }
       if (!bridge || !operationID) {
         set({ error: 'No active sign-in operation is available to cancel.' });
         return;
@@ -130,7 +134,11 @@ export const useAccountStore = create<AccountState>()((set, get) => {
       }
     },
     async rotateIdentity() {
-      const bridge = useShellStore.getState().bridge;
+      const { fixtureMode, bridge } = useShellStore.getState();
+      if (fixtureMode) {
+        set({ error: 'Installation identity rotation is unavailable in fixture mode.' });
+        return;
+      }
       if (!bridge) {
         set({ error: 'Packaged shell required to rotate the Linux installation identity.' });
         return;
@@ -161,7 +169,11 @@ export const useAccountStore = create<AccountState>()((set, get) => {
       }
     },
     async signOut() {
-      const bridge = useShellStore.getState().bridge;
+      const { fixtureMode, bridge } = useShellStore.getState();
+      if (fixtureMode) {
+        set({ error: 'Sign-out is unavailable in fixture mode.' });
+        return;
+      }
       if (!bridge) {
         set({ error: 'Packaged shell required for sign-out.' });
         return;
