@@ -44,10 +44,18 @@ bundle without rebuilding the entire product and dependency graph from scratch.
 
 ## Runner policy
 
-BurnBar uses standard GitHub-hosted runners. The public repository must not be
-granted access to the shared persistent self-hosted runner group, and workflows
-must not route labels to paid larger-runner pools. Throughput comes from narrow
-path classification, caching, and concurrent merge-queue candidate builds.
+BurnBar uses standard GitHub-hosted runners by default. The public repository
+must not be granted access to the shared persistent self-hosted runner group,
+and workflows must not route labels to paid larger-runner pools. Throughput
+normally comes from narrow path classification, caching, and concurrent
+merge-queue candidate builds.
+
+Urgent native validation may use the owned M4/M5 fleet only through the
+manual, main-pinned `BurnBar Turbo Native CI` workflow and the
+`burnbar-turbo-ephemeral` group. Those workers are disposable macOS VMs, accept
+one exact same-repository commit, receive no secrets, and are destroyed after
+one job. The bring-up and isolation contract is documented in
+[`runbooks/burnbar-turbo-runners.md`](runbooks/burnbar-turbo-runners.md).
 
 ## Changing ownership
 

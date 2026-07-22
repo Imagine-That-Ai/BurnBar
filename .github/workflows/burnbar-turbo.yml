@@ -1,0 +1,392 @@
+name: BurnBar Turbo Native CI
+
+# Deliberately manual until the ephemeral M4/M5 runner fleet is proven. The
+# workflow must live on main before the runner group can allowlist it. A later
+# integration change may route an explicit ci-turbo label through this trusted
+# workflow; public pull_request events must never target the runner group
+# directly.
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact 40-character same-repository commit SHA to validate
+        required: true
+        type: string
+      suite:
+        description: Native suite to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - app
+          - mobile
+          - daemon
+
+permissions:
+  contents: read
+
+concurrency:
+  group: burnbar-turbo-${{ inputs.candidate_sha }}-${{ inputs.suite }}
+  cancel-in-progress: true
+
+jobs:
+  authorize:
+    name: Authorize exact trusted candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      candidate_sha: ${{ steps.authorize.outputs.candidate_sha }}
+      suite: ${{ steps.authorize.outputs.suite }}
+    steps:
+      - name: Require main-dispatched same-repository commit
+        id: authorize
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          REQUESTED_SUITE: ${{ inputs.suite }}
+        with:
+          script: |
+            const sha = process.env.CANDIDATE_SHA.trim();
+            const suite = process.env.REQUESTED_SUITE.trim();
+            if (context.ref !== "refs/heads/main") {
+              core.setFailed("BurnBar Turbo must be dispatched from the trusted main workflow.");
+              return;
+            }
+            if (!/^[0-9a-f]{40}$/.test(sha)) {
+              core.setFailed("candidate_sha must be an exact lowercase 40-character commit SHA.");
+              return;
+            }
+            if (!new Set(["all", "app", "mobile", "daemon"]).has(suite)) {
+              core.setFailed(`Unsupported suite: ${suite}`);
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+            const permission = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner,
+              repo,
+              username: context.actor,
+            });
+            if (!["admin", "maintain", "write"].includes(permission.data.permission)) {
+              core.setFailed(`Actor ${context.actor} lacks write permission.`);
+              return;
+            }
+
+            const repository = await github.rest.repos.get({ owner, repo });
+            const main = await github.rest.repos.getCommit({
+              owner,
+              repo,
+              ref: repository.data.default_branch,
+            });
+            let trusted = main.data.sha === sha;
+            if (!trusted) {
+              const associated = await github.paginate(
+                github.rest.repos.listPullRequestsAssociatedWithCommit,
+                { owner, repo, commit_sha: sha, per_page: 100 },
+              );
+              trusted = associated.some((pull) =>
+                pull.state === "open" &&
+                pull.draft === false &&
+                pull.head.sha === sha &&
+                pull.head.repo?.full_name === `${owner}/${repo}`
+              );
+            }
+            if (!trusted) {
+              core.setFailed("Candidate must be main or the exact head of an open, non-draft, same-repository PR.");
+              return;
+            }
+
+            core.setOutput("candidate_sha", sha);
+            core.setOutput("suite", suite);
+            core.notice(`Authorized ${suite} for exact candidate ${sha}.`);
+
+  app:
+    name: Turbo app build + test
+    needs: authorize
+    if: needs.authorize.outputs.suite == 'all' || needs.authorize.outputs.suite == 'app'
+    runs-on:
+      group: burnbar-turbo-ephemeral
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact candidate without persisted credentials
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ needs.authorize.outputs.candidate_sha }}
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+
+      - name: Verify disposable Apple-silicon worker
+        run: |
+          set -euo pipefail
+          [[ "$(uname -m)" == "arm64" ]]
+          xcodebuild -version
+          sw_vers
+
+      - name: Initialize libsignal submodule with retry
+        run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
+
+      - name: Restore SwiftPM and build caches
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            .spm-cache-new
+            .build
+            .derived-data
+            ~/.cache/org.swift.swiftpm
+          key: turbo-${{ runner.os }}-app-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            turbo-${{ runner.os }}-app-
+            turbo-${{ runner.os }}-swift-
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Require prebaked protobuf
+        run: protoc --version
+
+      - name: Validate macOS performance gate
+        run: node --test scripts/ci/macos-idle-occlusion-gate.test.mjs
+
+      - name: Prepare macOS Signal FFI
+        run: >-
+          SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin
+          ./scripts/lib/prepare-signal-ffi-xcframework.sh
+
+      - name: Build once for performance and XCTest reuse
+        run: |
+          set -euo pipefail
+          PERF_DERIVED_DATA="$GITHUB_WORKSPACE/.derived-data/macos-idle-occlusion-gate"
+          rm -rf "$PERF_DERIVED_DATA"
+          FIREBASE_SOURCE_FIRESTORE=1 xcodebuild build \
+            -project OpenBurnBar.xcodeproj \
+            -scheme OpenBurnBar \
+            -configuration Debug \
+            -destination "platform=macOS,arch=arm64" \
+            -clonedSourcePackagesDirPath .spm-cache-new \
+            -derivedDataPath "$PERF_DERIVED_DATA" \
+            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+            SWIFT_COMPILATION_MODE=singlefile \
+            SWIFT_ENABLE_BATCH_MODE=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+
+      - name: Enforce real macOS idle/occluded CPU budget
+        run: >-
+          node scripts/ci/macos-idle-occlusion-gate.mjs
+          --output "$RUNNER_TEMP/macos-idle-occlusion-evidence/result.json"
+
+      - name: Run app XCTest against the existing build
+        run: >-
+          OPENBURNBAR_ENABLE_COVERAGE=YES
+          OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="$GITHUB_WORKSPACE/.derived-data/macos-idle-occlusion-gate"
+          ./scripts/test-openburnbar-app.sh
+
+      - name: Guard against zero-test false greens
+        run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"
+
+      - name: Enforce app diff coverage
+        env:
+          DIFF_COVERAGE_SCOPE: app
+          DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/openburnbar-app-diff-coverage.json
+        run: |
+          set -euo pipefail
+          ./scripts/diff-coverage-self-test.sh
+          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          ./scripts/extract-coverage.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-app-coverage.json"
+          ./scripts/extract-coverage-lines.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-app-coverage-lines.json"
+          ./scripts/diff-coverage.sh origin/main \
+            "$GITHUB_WORKSPACE/openburnbar-app-coverage.json" \
+            "$GITHUB_WORKSPACE/openburnbar-app-coverage-lines.json"
+
+      - name: Upload app evidence
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: turbo-app-${{ needs.authorize.outputs.candidate_sha }}
+          path: |
+            ${{ runner.temp }}/macos-idle-occlusion-evidence/result.json
+            openburnbar-app-coverage.json
+            openburnbar-app-coverage-lines.json
+            openburnbar-app-diff-coverage.json
+          if-no-files-found: error
+
+  mobile:
+    name: Turbo mobile build + unit test
+    needs: authorize
+    if: needs.authorize.outputs.suite == 'all' || needs.authorize.outputs.suite == 'mobile'
+    runs-on:
+      group: burnbar-turbo-ephemeral
+    timeout-minutes: 75
+    steps:
+      - name: Check out exact candidate without persisted credentials
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ needs.authorize.outputs.candidate_sha }}
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+
+      - name: Verify disposable Apple-silicon worker
+        run: |
+          set -euo pipefail
+          [[ "$(uname -m)" == "arm64" ]]
+          xcodebuild -version
+          sw_vers
+
+      - name: Initialize libsignal submodule with retry
+        run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
+
+      - name: Restore SwiftPM and build caches
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            .spm-cache-new
+            .derived-data
+            ~/.cache/org.swift.swiftpm
+          key: turbo-${{ runner.os }}-mobile-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: turbo-${{ runner.os }}-mobile-
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Require prebaked protobuf
+        run: protoc --version
+
+      - name: Prepare Signal FFI XCFramework
+        run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
+
+      - name: Build mobile app + tests
+        run: |
+          set -euo pipefail
+          FIREBASE_SOURCE_FIRESTORE=1 xcodebuild build-for-testing \
+            -project OpenBurnBar.xcodeproj \
+            -scheme OpenBurnBarMobileUnitTests \
+            -destination "generic/platform=iOS Simulator" \
+            -clonedSourcePackagesDirPath .spm-cache-new \
+            -derivedDataPath .derived-data/mobile-pr-gate \
+            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+            SWIFT_COMPILATION_MODE=wholemodule \
+            SWIFT_ENABLE_BATCH_MODE=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+
+      - name: Boot simulator and run focused unit tests
+        run: |
+          set -euo pipefail
+          SIM_NAME="${OPENBURNBAR_MOBILE_SIMULATOR:-iPhone 17 Pro Max}"
+          SIM_UDID="$(xcrun simctl list devices available | grep -E "$SIM_NAME \(" | head -1 | sed 's/.*(\([0-9A-F-]*\)).*/\1/' || true)"
+          if [[ -z "$SIM_UDID" ]]; then
+            SIM_UDID="$(xcrun simctl create "CI-Mobile-Test" "iPhone 17 Pro Max")"
+          fi
+          xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
+          xcrun simctl bootstatus "$SIM_UDID" -b
+          FIREBASE_SOURCE_FIRESTORE=1 xcodebuild test-without-building \
+            -project OpenBurnBar.xcodeproj \
+            -scheme OpenBurnBarMobileUnitTests \
+            -destination "id=$SIM_UDID" \
+            -clonedSourcePackagesDirPath .spm-cache-new \
+            -derivedDataPath .derived-data/mobile-pr-gate \
+            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            -resultBundlePath "$RUNNER_TEMP/Mobile_TestResults.xcresult" \
+            -only-testing:OpenBurnBarMobileTests/AssistantPendingThreadIsolationTests \
+            -only-testing:OpenBurnBarMobileTests/OpenBurnBarCoreTypeIdentityTests \
+            -only-testing:OpenBurnBarMobileTests/HermesServiceToolUseLoopTests
+          ./scripts/ci/check-executed-test-count.sh "$RUNNER_TEMP/Mobile_TestResults.xcresult"
+
+  daemon:
+    name: Turbo daemon tests + release build
+    needs: authorize
+    if: needs.authorize.outputs.suite == 'all' || needs.authorize.outputs.suite == 'daemon'
+    runs-on:
+      group: burnbar-turbo-ephemeral
+    timeout-minutes: 60
+    steps:
+      - name: Check out exact candidate without persisted credentials
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ needs.authorize.outputs.candidate_sha }}
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+
+      - name: Verify disposable Apple-silicon worker
+        run: |
+          set -euo pipefail
+          [[ "$(uname -m)" == "arm64" ]]
+          swift --version
+          sw_vers
+
+      - name: Initialize libsignal submodule with retry
+        run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
+
+      - name: Restore SwiftPM caches
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            .spm-cache
+            .build
+            ~/.cache/org.swift.swiftpm
+          key: turbo-${{ runner.os }}-daemon-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: turbo-${{ runner.os }}-daemon-
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Require prebaked protobuf
+        run: protoc --version
+
+      - name: Run daemon Swift tests
+        env:
+          OPENBURNBAR_SKIP_CORE_SWIFT_TESTS: "1"
+        run: ./scripts/test-openburnbar-swift.sh
+
+      - name: Build daemon release executable
+        run: swift build --package-path OpenBurnBarDaemon -c release --target OpenBurnBarDaemonExecutable
+
+      - name: Verify debug-only escape hatches are absent
+        run: |
+          set -euo pipefail
+          BINARY="OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon"
+          HELP_OUTPUT="$("$BINARY" --help 2>&1 || true)"
+          if grep -q "gateway-allow-unauthenticated-loopback" <<<"$HELP_OUTPUT"; then
+            echo "::error::Release binary exposes the debug-only unauthenticated-loopback flag."
+            exit 1
+          fi
+          if grep -q "debugOnlyArgument" <<<"$HELP_OUTPUT"; then
+            echo "::error::Release binary exposes debugOnlyArgument text."
+            exit 1
+          fi
+
+  gate:
+    name: BurnBar Turbo Gate
+    needs: [authorize, app, mobile, daemon]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every selected native lane
+        env:
+          AUTH_RESULT: ${{ needs.authorize.result }}
+          SUITE: ${{ needs.authorize.outputs.suite }}
+          APP_RESULT: ${{ needs.app.result }}
+          MOBILE_RESULT: ${{ needs.mobile.result }}
+          DAEMON_RESULT: ${{ needs.daemon.result }}
+          CANDIDATE_SHA: ${{ needs.authorize.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$AUTH_RESULT" == "success" ]] || { echo "::error::Turbo authorization failed."; exit 1; }
+          expected() { [[ "$SUITE" == "all" || "$SUITE" == "$1" ]] && printf success || printf skipped; }
+          [[ "$APP_RESULT" == "$(expected app)" ]] || { echo "::error::App ended $APP_RESULT."; exit 1; }
+          [[ "$MOBILE_RESULT" == "$(expected mobile)" ]] || { echo "::error::Mobile ended $MOBILE_RESULT."; exit 1; }
+          [[ "$DAEMON_RESULT" == "$(expected daemon)" ]] || { echo "::error::Daemon ended $DAEMON_RESULT."; exit 1; }
+          echo "BurnBar Turbo ${SUITE} passed on exact candidate ${CANDIDATE_SHA}."
