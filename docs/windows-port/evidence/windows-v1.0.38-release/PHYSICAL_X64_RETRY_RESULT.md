@@ -41,6 +41,14 @@ The retry's loose-file handoff failure is removed by
 derives all four payloads from one committed catalog and refuses every project
 except `burnbar-staging`.
 
+PR #1867 fixed the remaining Firebase concurrency preflight: Remote Config may
+omit its ETag unless the REST request advertises gzip. Independent harness
+commit `37d88056066d876570df4b2887f33df7af7ebe56` sends
+`Accept-Encoding: gzip` on GET and PUT, reads the returned ETag through the
+response-header indexer, and reuses that exact value as `If-Match`. The
+contract test rejects wildcard concurrency. This is a harness fix, not a
+staging PASS; the HP must still execute and finalize every staging assertion.
+
 For every non-baseline drill, restoration remains mandatory:
 
 ```powershell
