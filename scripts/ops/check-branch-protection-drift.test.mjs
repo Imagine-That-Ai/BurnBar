@@ -106,6 +106,19 @@ test("classic mirror of the file reports MATCH", () => {
   assert.equal(result.ok, true, JSON.stringify(result.differences, null, 2));
 });
 
+test("merge-queue-only ruleset layers over classic governance", () => {
+  const live = canonicalizeLive({
+    classic: matchingClassic(),
+    ruleset: {
+      enforcement: "active",
+      bypass_actors: [],
+      rules: [{ type: "merge_queue", ruleset_id: 99, parameters: { merge_method: "squash" } }],
+    },
+  });
+  const result = diffBranchProtection(live, desired);
+  assert.equal(result.ok, true, JSON.stringify(result.differences, null, 2));
+});
+
 test("empty live protection (nothing enforcing main) reports DRIFT with critical reviews-wiped", () => {
   const live = canonicalizeLive({ classic: null, ruleset: null });
   const result = diffBranchProtection(live, desired);

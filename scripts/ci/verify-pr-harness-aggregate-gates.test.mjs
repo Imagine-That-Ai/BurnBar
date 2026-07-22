@@ -23,7 +23,10 @@ const REPO_ROOT = join(SCRIPT_DIR, "..", "..");
 const GATE = join(SCRIPT_DIR, "verify-pr-harness-aggregate-gates.mjs");
 const WORKFLOW = ".github/workflows/openburnbar-pr-harness.yml";
 const APP_WORKFLOW = ".github/workflows/app-pr-gate.yml";
+const DAEMON_WORKFLOW = ".github/workflows/daemon-pr-gate.yml";
+const DOMAIN_CORE_WORKFLOW = ".github/workflows/domain-core.yml";
 const FAST_WORKFLOW = ".github/workflows/fast-feedback.yml";
+const NATIVE_WORKFLOW = ".github/workflows/pr-native-fast.yml";
 const BRANCH_PROTECTION = "governance/branch-protection.main.json";
 const roots = [];
 
@@ -322,18 +325,40 @@ check("App aggregate emits its exact required context once and binds both prereq
       .length,
     1,
   );
-  assert.deepEqual(jobNeeds(appGate), ["app-build-test", "mobile-build-gate"]);
+  assert.deepEqual(jobNeeds(appGate), ["classify", "app-build-test", "mobile-build-gate"]);
   assert.equal(jobField(appGate, "if"), "always()");
   assert.deepEqual(stepEnvironment(appStep), {
     AGENTLENS_RESULT: "${{ needs.app-build-test.result }}",
     MOBILE_RESULT: "${{ needs.mobile-build-gate.result }}",
+    CLASSIFIER_RESULT: "${{ needs.classify.result }}",
+    MACOS_REQUIRED: "${{ needs.classify.outputs.macos }}",
+    MOBILE_REQUIRED: "${{ needs.classify.outputs.mobile }}",
   });
 });
 
 expectShell(
   "App aggregate passes only successful AgentLens and mobile prerequisites",
   appScript,
-  { AGENTLENS_RESULT: "success", MOBILE_RESULT: "success" },
+  {
+    AGENTLENS_RESULT: "success",
+    MOBILE_RESULT: "success",
+    CLASSIFIER_RESULT: "success",
+    MACOS_REQUIRED: "true",
+    MOBILE_REQUIRED: "true",
+  },
+  0,
+);
+
+expectShell(
+  "App aggregate accepts classifier-proven product skips",
+  appScript,
+  {
+    AGENTLENS_RESULT: "skipped",
+    MOBILE_RESULT: "skipped",
+    CLASSIFIER_RESULT: "success",
+    MACOS_REQUIRED: "false",
+    MOBILE_REQUIRED: "false",
+  },
   0,
 );
 
@@ -350,6 +375,9 @@ for (const prerequisite of ["AGENTLENS_RESULT", "MOBILE_RESULT"]) {
       {
         AGENTLENS_RESULT: "success",
         MOBILE_RESULT: "success",
+        CLASSIFIER_RESULT: "success",
+        MACOS_REQUIRED: "true",
+        MOBILE_REQUIRED: "true",
         [prerequisite]: result,
       },
       1,
@@ -363,6 +391,7 @@ const rafStep = appBuildSteps.get("macOS rAF pause prerequisite (P-PERF-3)");
 const buildStep = appBuildSteps.get("Build AgentLens app for real-process CPU gate");
 const realGateStep = appBuildSteps.get("Enforce real macOS idle/occluded CPU budget (P-PERF-3)");
 const evidenceStep = appBuildSteps.get("Upload macOS idle/occlusion CPU evidence");
+const appTestStep = appBuildSteps.get("Build + test the AgentLens app target");
 
 check("P-PERF-3 runs the deterministic rAF test before building the real OpenBurnBar app", () => {
   assert.ok(rafStep && buildStep && realGateStep && evidenceStep, "missing P-PERF-3 workflow step");
@@ -394,6 +423,23 @@ check("P-PERF-3 always uploads required evidence and fails when evidence is abse
   assert.match(evidenceStep, /^          path: \$\{\{ runner\.temp \}\}\/macos-idle-occlusion-evidence\/result\.json$/mu);
   assert.match(evidenceStep, /^          if-no-files-found: error$/mu);
   assert.equal(optionalStepField(evidenceStep, "continue-on-error"), undefined);
+});
+
+check("app tests reuse the real-process build instead of compiling the product twice", () => {
+  assert.ok(buildStep && appTestStep, "missing real-process build or app test step");
+  const build = stepRun(buildStep);
+  const test = stepRun(appTestStep);
+  assert.match(build, /PERF_DERIVED_DATA="\$GITHUB_WORKSPACE\/\.derived-data\/macos-idle-occlusion-gate"/u);
+  assert.match(
+    test,
+    /OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="\$GITHUB_WORKSPACE\/\.derived-data\/macos-idle-occlusion-gate"/u,
+  );
+  const driver = readFileSync(
+    join(REPO_ROOT, "scripts/test-openburnbar-app.sh"),
+    "utf8",
+  );
+  assert.match(driver, /OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR/u);
+  assert.match(driver, /derived_data_dir="\$\(create_derived_data_dir\)"/u);
 });
 
 const fastWorkflow = readFileSync(join(REPO_ROOT, FAST_WORKFLOW), "utf8");
@@ -431,6 +477,9 @@ check("Rust path detector is mandatory and only a proven unchanged path may skip
     NEEDS_JSON: "${{ toJSON(needs) }}",
     RUST_CHANGED:
       "${{ needs.fast-feedback-path-filter.outputs.rust_changed }}",
+    FUNCTIONS_REQUIRED: "${{ needs.classify.outputs.functions }}",
+    WEB_REQUIRED: "${{ needs.classify.outputs.web }}",
+    CONSOLE_REQUIRED: "${{ needs.classify.outputs.console }}",
   });
 });
 
@@ -453,7 +502,13 @@ function fastEnvironment({
   needs["functions-fast"] = omitOrdinaryResult
     ? {}
     : { result: ordinaryResult };
-  return { NEEDS_JSON: JSON.stringify(needs), RUST_CHANGED: rustChanged };
+  return {
+    NEEDS_JSON: JSON.stringify(needs),
+    RUST_CHANGED: rustChanged,
+    FUNCTIONS_REQUIRED: "true",
+    WEB_REQUIRED: "true",
+    CONSOLE_REQUIRED: "true",
+  };
 }
 
 for (const [label, options] of [
@@ -545,9 +600,26 @@ check("TypeScript package lint floors install, lint, and typecheck linux-desktop
   assert.ok(invocations.includes("run typecheck --prefix apps/linux-desktop"));
 });
 
-check("desired main branch protection requires Mobile build + unit test", () => {
+check("desired main branch protection requires only the umbrella gate", () => {
   const protection = JSON.parse(readFileSync(join(REPO_ROOT, BRANCH_PROTECTION), "utf8"));
-  assert.ok(protection.required_status_checks.contexts.includes("Mobile build + unit test"));
+  const gate = JSON.parse(
+    readFileSync(join(REPO_ROOT, "governance/burnbar-ci-gate.json"), "utf8"),
+  );
+  assert.deepEqual(protection.required_status_checks.contexts, ["BurnBar CI Gate"]);
+  assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
+});
+
+check("macOS gates stay on free standard hosted runners", () => {
+  for (const [workflow, expectedCount] of [
+    [APP_WORKFLOW, 2],
+    [DAEMON_WORKFLOW, 2],
+    [DOMAIN_CORE_WORKFLOW, 2],
+    [NATIVE_WORKFLOW, 2],
+  ]) {
+    const source = readFileSync(join(REPO_ROOT, workflow), "utf8");
+    assert.equal(source.split("runs-on: macos-26").length - 1, expectedCount);
+    assert.doesNotMatch(source, /ci-turbo|BurnBar-macos-26-xlarge/);
+  }
 });
 
 if (failed > 0) {
