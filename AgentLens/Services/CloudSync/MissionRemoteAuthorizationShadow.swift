@@ -539,7 +539,7 @@ enum MissionRemoteAuthorizationShadow {
         let entitlementTier: String
         let workingDirectory: String?
         let fanOutCount: Int
-        let trustedFanOutCap: Int? = nil
+        let trustedFanOutCap: Int?
 
         init(
             missionID: String,
