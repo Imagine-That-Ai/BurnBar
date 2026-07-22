@@ -73,9 +73,19 @@ const packageSources = {
   '/usr/lib/openburnbar/playwright': 'target/openburnbar-package-payload/playwright',
   '/usr/share/openburnbar/cloud-auth.json': 'target/openburnbar-package-payload/cloud-auth.json'
 };
+const shellPackageSources = {
+  '/usr/share/applications/dev.openburnbar.OpenBurnBar.desktop': '../../../packaging/linux/openburnbar.desktop',
+  '/usr/share/applications/dev.openburnbar.OpenBurnBar.SafeMode.desktop': '../../../packaging/linux/openburnbar-safe-mode.desktop',
+  '/etc/xdg/autostart/openburnbar.desktop': '../../../packaging/linux/autostart/openburnbar.desktop'
+};
 for (const packageType of ['deb', 'rpm']) {
   const files = tauri.bundle?.linux?.[packageType]?.files ?? {};
   for (const [destination, source] of Object.entries(packageSources)) {
+    if (files[destination] !== source) {
+      failures.push(`${packageType} must package ${source} at ${destination}`);
+    }
+  }
+  for (const [destination, source] of Object.entries(shellPackageSources)) {
     if (files[destination] !== source) {
       failures.push(`${packageType} must package ${source} at ${destination}`);
     }
@@ -89,9 +99,20 @@ for (const destination of Object.keys(packageSources)) {
 }
 for (const destination of [
   '/usr/libexec/openburnbar-daemon-launch',
-  '/usr/lib/systemd/user/openburnbar-daemon.service'
+  '/usr/lib/systemd/user/openburnbar-daemon.service',
+  ...Object.keys(shellPackageSources)
 ]) {
   if (!appImageFiles[destination]) failures.push(`appimage must package ${destination}`);
+}
+for (const [destination, source] of Object.entries(shellPackageSources)) {
+  if (appImageFiles[destination] !== source) {
+    failures.push(`appimage must package ${source} at ${destination}`);
+  }
+}
+const desktopEntry = fs.readFileSync(path.join(repoRoot, 'packaging/linux/openburnbar.desktop'), 'utf8');
+if (!desktopEntry.includes('Exec=openburnbar-linux-desktop %U')
+    || !desktopEntry.includes('MimeType=x-scheme-handler/openburnbar;')) {
+  failures.push('desktop entry must register openburnbar:// and pass URL arguments to the shell');
 }
 if (!tauri.bundle?.linux?.deb?.depends?.includes('libsecret-tools')) {
   failures.push('deb package must depend on libsecret-tools');

@@ -18,8 +18,8 @@ import { useShellStore } from './state/shellStore.js';
 async function boot(): Promise<void> {
   const end = markStart('app.start');
   applyReducedMotionClass();
-  const requestedHash = location.hash;
-  const hadDeepLink = Boolean(requestedHash && requestedHash !== '#/onboarding');
+  let requestedHash = location.hash;
+  let hadDeepLink = Boolean(requestedHash && requestedHash !== '#/onboarding');
 
   // First run lands on the onboarding wizard unless a deep link is present.
   const ob = readOnboarding();
@@ -39,6 +39,19 @@ async function boot(): Promise<void> {
   await useShellStore.getState().boot();
   const bridge = useShellStore.getState().bridge;
   if (bridge) {
+    try {
+      const startupDeepLink = await bridge.startupDeepLink?.();
+      if (startupDeepLink) {
+        requestedHash = `#/${startupDeepLink.route}`;
+        hadDeepLink = true;
+        // The native command returns a typed, allowlisted handoff. Keep the
+        // browser URL opaque and let the destination surface decide when it
+        // can consume OAuth or membership state safely.
+        window.dispatchEvent(new CustomEvent('openburnbar-deep-link', { detail: startupDeepLink }));
+      }
+    } catch (error) {
+      console.error('linux_deep_link_handoff_rejected', error);
+    }
     try {
       const authoritative = await bridge.onboardingSnapshot();
       cacheOnboarding(authoritative);
