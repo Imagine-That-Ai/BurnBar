@@ -70,7 +70,7 @@ final class BurnBarTextExpansionServiceTests: XCTestCase {
         )
 
         XCTAssertFalse(response.consent.inAppOnly)
-        XCTAssertFalse(response.consent.systemIMEEnabled)
+        XCTAssertFalse(response.consent.systemIMEEnabled ?? false)
         XCTAssertEqual(try service.snapshot().consent, response.consent)
     }
 
