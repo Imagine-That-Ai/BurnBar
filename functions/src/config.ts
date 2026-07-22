@@ -88,7 +88,11 @@ function resolveAppCheckAppIdSurface(
   looksProd: boolean,
 ): Pick<
   EnvConfig,
-  "allowedAppCheckAppIDs" | "windowsAppCheckAppID" | "linuxAppCheckAppID" | "allowMockAppCheckAttestation"
+  | "allowedAppCheckAppIDs"
+  | "windowsAppCheckAppID"
+  | "linuxAppCheckAppID"
+  | "allowMockAppCheckAttestation"
+  | "windowsTpmVerifierURL"
 > {
   const windowsAppCheckAppID =
     process.env.WINDOWS_APP_CHECK_APP_ID ??
@@ -120,7 +124,15 @@ function resolveAppCheckAppIdSurface(
       true,
     );
 
-  return { allowedAppCheckAppIDs, windowsAppCheckAppID, linuxAppCheckAppID, allowMockAppCheckAttestation };
+  const windowsTpmVerifierURL =
+    process.env.WINDOWS_TPM_VERIFIER_URL ?? configString(openburnbar, "windows_tpm_verifier_url") ?? "";
+  return {
+    allowedAppCheckAppIDs,
+    windowsAppCheckAppID,
+    linuxAppCheckAppID,
+    allowMockAppCheckAttestation,
+    windowsTpmVerifierURL,
+  };
 }
 
 /**
