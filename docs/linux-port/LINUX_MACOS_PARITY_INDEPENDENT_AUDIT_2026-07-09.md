@@ -2550,19 +2550,22 @@ credential escrow, and live two-device execution remain required.
 
 ### GAP-012B - Complete Missions
 
-- **Difference:** Linux can list, create, and approve mission decisions, but lacks
-  macOS depth for questions, evidence, operating history, freshness, health,
-  cancellation, and recovery.
+- **Difference:** Linux now has daemon-backed questions, packet/result evidence,
+  ordered health history, freshness, cancellation, and an approval/readiness-
+  gated Start/Resume action (`bc30c6a796`). The remaining difference is macOS's
+  deeper takeover/recovery orchestration plus installed and cross-device proof.
 - **Why it matters:** users cannot understand or safely operate a long-running
   mission from Linux when state changes, stalls, or requires intervention.
-- **Recommended solution:** expose typed mission event/history/evidence/question/
-  health RPCs and build actionable stale, blocked, approval, and recovery states.
+- **Recommended solution:** retain the daemon-owned dispatch boundary, add typed
+  takeover/recovery orchestration when the runtime contract is ready, and certify
+  start/resume/cancel/reconnect on the signed installed candidate.
 - **Priority:** **Medium**.
 - **Implementation notes:** keep ordering and idempotency daemon-owned; separate
   mission state from transient UI state; preserve evidence IDs and audit links.
-- **QA verification:** create/start/approve/deny/answer/cancel/retry/recover;
-  history ordering, stale/fresh transitions, missing evidence, daemon restart,
-  concurrent decisions, and offline/reconnect.
+- **QA verification:** create/start/approve/deny/answer/cancel/resume/retry/recover;
+  verify approval and readiness rejection before side effects, packet/history
+  ordering, stale/fresh transitions, missing evidence, daemon restart, concurrent
+  decisions, and offline/reconnect.
 
 ### GAP-012C - Complete Insights
 

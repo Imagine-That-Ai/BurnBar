@@ -270,6 +270,16 @@ known platform divergences.
 > Firebase/App Check trust-cycle execution, and the remaining environment rows
 > are still required.
 
+> **Continuation update (2026-07-22, mission dispatch):** `bc30c6a796` closes
+> the Linux UI dead-end for planned, blocked, and partial missions. Start/Resume
+> now submits a fresh daemon-owned packet through `daemon.mission.packet.dispatch`;
+> the daemon remains authoritative for approval, terminal-state,
+> enterprise-policy, and runtime-readiness gates, with bounded mission IDs and
+> no renderer-side execution state. The focused Linux mission/bridge suite is
+> **61/61**, TypeScript typecheck passes, and the isolated Rust wire test passes.
+> Typed takeover/recovery orchestration, signed installed proof, and the
+> cross-device trust cycle remain open for strict certification.
+
 ## Executive Verdict
 
 Linux is not at full macOS parity.
