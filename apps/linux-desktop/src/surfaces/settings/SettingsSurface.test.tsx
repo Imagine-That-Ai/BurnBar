@@ -197,6 +197,17 @@ describe('SettingsSurface', () => {
     await waitFor(() => expect(screen.getByText('Copied')).toBeTruthy());
   });
 
+  it('labels parser, API-backed, and unavailable usage sources in the daemon pane', () => {
+    useShellStore.setState({ fixtureMode: true });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /Engine Room/i }));
+    expect(screen.getByText(/27 local parsers, 4 API-backed sources, 2 unavailable local sources/)).toBeTruthy();
+    expect(screen.getAllByText('API-backed; no local parser').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Local usage unavailable').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Local parser registered').length).toBeGreaterThan(0);
+  });
+
   it('Done returns to overview route', () => {
     useShellStore.setState({ fixtureMode: true, route: 'settings' });
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
