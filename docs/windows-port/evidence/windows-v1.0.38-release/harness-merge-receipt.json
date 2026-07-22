@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "repository": "Imagine-That-Ai/BurnBar",
+  "pullRequest": {
+    "number": 1932,
+    "title": "Fix Windows staging safety certification semantics",
+    "url": "https://github.com/Imagine-That-Ai/BurnBar/pull/1932",
+    "state": "MERGED",
+    "mergedAt": "2026-07-22T13:51:02Z",
+    "mergeCommit": "3a2d0a9f746228a23bb7461745fa1275bb0662c9"
+  },
+  "candidate": {
+    "tag": "windows-v1.0.38",
+    "commit": "48837746490b6468efa4dc06a476f305d496039c",
+    "platform": "x64",
+    "msixSha256": "fd14adb0870473f907c10f342eb3ee300cebf39c500848505a5887ad89602e69"
+  },
+  "stagingProject": "burnbar-staging",
+  "certificationVerdict": "NO-GO",
+  "nextRequiredAction": "Run the supplemental protocol on native physical Intel x64 hardware and validate the resulting evidence bundle."
+}

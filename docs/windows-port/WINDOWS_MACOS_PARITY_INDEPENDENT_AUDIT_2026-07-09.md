@@ -3,13 +3,37 @@
 **Date:** 2026-07-09
 **Reference product:** shipping macOS OpenBurnBar
 **Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** F1 source/product implementation and applicable WPD-0006 F2 substitutions are complete. Exact signed candidate `windows-v1.0.38` is stable on physical Intel x64, but remains a validator-clean **NO-GO** until its supplemental accessibility, performance, staging, paired-device safety, and private Store/update receipts are complete; physical ARM64 remains an explicit beta limitation
+**Status:** F1 source/product implementation and applicable WPD-0006 F2 substitutions are complete. Exact signed candidate `windows-v1.0.38` is stable on physical Intel x64 and its corrected supplemental harness is merged, but the candidate remains a validator-clean **NO-GO** until its supplemental accessibility, performance, staging, paired-device safety, and private Store/update receipts are complete; physical ARM64 remains an explicit beta limitation
 
 **Day-two operations:** use
 [`WINDOWS_PORT_OPERATIONS_RUNBOOK.md`](WINDOWS_PORT_OPERATIONS_RUNBOOK.md) for
 the current release sequence, cost model, maintenance cadence, evidence gates,
 rollback steps, and agent handoff format. This audit preserves the detailed
 historical evidence; the runbook owns repeatable operations.
+
+## Corrected Supplemental Harness Merge - 2026-07-22
+
+PR [#1932](https://github.com/Imagine-That-Ai/BurnBar/pull/1932) merged as
+`3a2d0a9f746228a23bb7461745fa1275bb0662c9` after its required checks passed.
+This is the exact independent harness commit for the next native Intel x64
+continuation. It retains the PR #1862 UIA corrections, compiles the UI
+Automation harness from the declared independent checkout, includes the
+fail-closed Remote Config runtime-safety observer, and indexes the final
+validator log before the archive's last checksum validation.
+
+The harness also preserves exact Remote Config optimistic concurrency: the
+publisher requests gzip for both GET and PUT, reads Firebase's raw ETag, and
+reuses that exact value in `If-Match`. Wildcard mutation remains forbidden.
+The Computer Use kill-switch contract is semantic: privileged execution must
+halt within 60 seconds while the main app stays alive and responsive. The
+observer must also prove the blocked lease, durable `remote_config` panic
+latch, matching diagnostics, and reviewed Baseline restoration.
+
+This merge repairs the evidence machinery; it is not a physical PASS. The
+exact signed v1.0.38 candidate still requires a fresh timestamped HP run and
+complete supplemental receipts. The authoritative operator prompt and merge
+receipt are under
+[`evidence/windows-v1.0.38-release/`](evidence/windows-v1.0.38-release/).
 
 ## Supplemental Harness Recovery - 2026-07-20
 

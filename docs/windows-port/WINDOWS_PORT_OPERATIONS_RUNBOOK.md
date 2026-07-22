@@ -34,6 +34,7 @@ This checkpoint is history, not a substitute for live verification:
 - Staging deployment: passed in run `29675617068`
 - Signed release workflow: run `29676266545`
 - Physical x64 retry for `windows-v1.0.38`: validator-clean `NO-GO`. Exact package integrity, native hardware identity, clean checkout, 20/20 cold launches, 20/20 warm launches, uninstall/reinstall, 300-second idle capture, and a 30-minute/1,800-sample soak passed with no crash or hang. Accessibility/display, the remaining interactive performance measurements, staging fixtures, paired-device safety, and private Store lifecycle receipts remain incomplete.
+- Supplemental harness: PR #1932 is merged at exact commit `3a2d0a9f746228a23bb7461745fa1275bb0662c9`; every new HP continuation must use that detached clean commit and must not reuse the superseded `37d88056066d876570df4b2887f33df7af7ebe56` harness identity.
 - Physical retry evidence ZIP SHA-256: `bf10318474556b1ea3f69b05831fa09dfc4f8b36ac9470fb113092ec4f7ed876`.
 - Physical ARM64 certification: explicit beta limitation until qualifying hardware exists. Hosted ARM64 CI and an ARM64 VM are useful functional evidence, but neither is physical certification.
 
