@@ -212,7 +212,7 @@ stable Rust-authoritative release.
 
 ## Current landing state
 
-Snapshot: **2026-07-13**. “Merged” below means merged into a feature branch,
+Snapshot: **2026-07-14**. “Merged” below means merged into a feature branch,
 not into `main`, and does not mean production promotion.
 
 - Quota: pilot [#1590](https://github.com/Imagine-That-Ai/BurnBar/pull/1590),
@@ -244,9 +244,13 @@ not into `main`, and does not mean production promotion.
   no promotion, stable-release, or deletion receipts in this snapshot.
 - Stable Functions tags can now publish an immutable, health-gated deployment
   receipt plus exact custom GitHub attestation once the pricing domain is
-  Rust-authoritative. Apple, Android, Windows, and Console exact domain
-  producer evidence remains to be landed before their
-  mapped rows can satisfy stable authority.
+  Rust-authoritative. Stable Console tags have the equivalent producer for the
+  CloudVault hosting deployment: the deployed site must serve the exact
+  profile, source commit, and tag identity before the workflow signs and
+  immutably publishes its receipt. Both producers remain dormant while their
+  public profiles are legacy-authoritative. Apple, Android, and Windows exact
+  artifact producers remain to be landed before their mapped rows can satisfy
+  stable authority.
 
 ## Required CI
 

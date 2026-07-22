@@ -46,6 +46,53 @@
     },
     "release": { "$ref": "#/$defs/release" }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "consumer": { "const": "apple" } } },
+      "then": {
+        "properties": {
+          "artifactKind": { "const": "macos-dmg" },
+          "target": { "const": "macos-universal" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "consumer": { "const": "android" } } },
+      "then": {
+        "properties": {
+          "artifactKind": { "const": "android-aab" },
+          "target": { "const": "android-universal" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "consumer": { "const": "windows" } } },
+      "then": {
+        "properties": {
+          "artifactKind": { "const": "windows-release-bundle" },
+          "target": { "const": "windows-x64-arm64" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "consumer": { "const": "console" } } },
+      "then": {
+        "properties": {
+          "artifactKind": { "const": "console-deployment-receipt" },
+          "target": { "const": "firebase-hosting-production" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "consumer": { "const": "functions" } } },
+      "then": {
+        "properties": {
+          "artifactKind": { "const": "functions-deployment-receipt" },
+          "target": { "const": "firebase-functions-production" }
+        }
+      }
+    }
+  ],
   "$defs": {
     "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },

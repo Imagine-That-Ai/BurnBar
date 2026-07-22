@@ -23,6 +23,11 @@ Apple embeds the profile in `Info.plist`, Android embeds
 `domain-core-build-profile.json` in AAB assets, Windows writes the same receipt
 beside the published app, and Console publishes it at
 `/domain-core-build-profile.json`. Release lanes verify the built receipt.
+For stable Console releases, Hosting also serves
+`/domain-core-deployment-identity.json`. That identity binds the exact profile
+digest, repository, source commit, and tag. The post-deploy smoke refuses
+redirects and must verify those live bytes before it can emit deletion-grade
+deployment health evidence.
 
 ## Account enrollment
 

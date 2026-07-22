@@ -26,6 +26,7 @@ permissions:
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -36,19 +37,37 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
       - name: Verify hosting deploy ref
-        env:
-          EVENT_NAME: \${{ github.event_name }}
         run: |
           set -euo pipefail
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
-            echo "::error::Manual hosting deploys must run from refs/heads/main."
+          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
+          release_tag=""
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            commit="$GITHUB_SHA"
+          elif [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+            release_tag="\${GITHUB_REF#refs/tags/}"
+            git fetch --force --tags origin "+$GITHUB_REF:$GITHUB_REF"
+            commit="$(git rev-parse "$GITHUB_REF^{commit}")"
+            if [[ "$GITHUB_SHA" != "$commit" ]]; then
+              echo "::error::Hosting release tag and workflow source do not resolve to the same commit."
+              exit 1
+            fi
+          else
+            echo "::error::Hosting deploys must run from main or an exact stable semantic v* tag, not \${GITHUB_REF}."
             exit 1
           fi
-          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
             echo "::error::Hosting deploy commit is not reachable from origin/main."
             exit 1
           fi
+          stable_release=false
+          if [[ "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+            stable_release=true
+          fi
+          {
+            echo "commit=$commit"
+            echo "release_tag=$release_tag"
+            echo "stable_release=$stable_release"
+          } >> "$GITHUB_OUTPUT"
       - name: Build immutable hosting outputs
         run: npm run build --prefix website
       - name: Upload immutable hosting artifact
@@ -125,34 +144,55 @@ console.log("Self-test: verify-hosting-deploy-boundary.mjs\n");
 
 expect("current hardened hosting workflow passes", GOOD, 0);
 expect(
-  "missing manual main-ref guard fails",
+  "missing main-ref allowlist fails",
   GOOD.replace(
-    'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then',
-    'if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then',
+    'if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then',
+    'if [[ -n "$GITHUB_REF" ]]; then',
   ),
   1,
 );
 expect(
-  "comment-only manual main-ref guard fails",
+  "broad tag matcher fails",
   GOOD.replace(
-    'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then',
-    '# if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then',
+    'elif [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(\\+[0-9A-Za-z.-]+)?$ ]]; then',
+    'elif [[ "$GITHUB_REF" == refs/tags/* ]]; then',
   ),
   1,
 );
 expect(
-  "manual guard without exit fails",
+  "tag-to-workflow commit guard without exit fails",
   GOOD.replace(
-    '            exit 1\n          fi\n          git fetch',
-    '            echo "::warning::continuing"\n          fi\n          git fetch',
+    "              exit 1\n            fi\n          else",
+    '              echo "::warning::continuing"\n            fi\n          else',
   ),
   1,
 );
 expect(
   "missing origin-main reachability check fails",
   GOOD.replace(
-    'if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then',
-    'if [[ -n "$GITHUB_SHA" ]]; then',
+    'if ! git merge-base --is-ancestor "$commit" origin/main; then',
+    'if [[ -n "$commit" ]]; then',
+  ),
+  1,
+);
+expect(
+  "missing release-tag trigger fails",
+  GOOD.replace('    tags: ["v*"]\n', ""),
+  1,
+);
+expect(
+  "missing tag fetch fails",
+  GOOD.replace(
+    '            git fetch --force --tags origin "+$GITHUB_REF:$GITHUB_REF"',
+    '            echo "tag fetch skipped"',
+  ),
+  1,
+);
+expect(
+  "prerelease accepted as stable fails",
+  GOOD.replace(
+    'if [[ "$release_tag" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+(\\+[0-9A-Za-z.-]+)?$ ]]; then',
+    'if [[ "$release_tag" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$ ]]; then',
   ),
   1,
 );
@@ -160,24 +200,42 @@ expect(
   "ref guard after artifact upload fails",
   GOOD.replace(
     /      - name: Verify hosting deploy ref[\s\S]*?      - name: Build immutable hosting outputs/u,
-    '      - name: Build immutable hosting outputs',
+    "      - name: Build immutable hosting outputs",
   ).replace(
     "      - name: Upload immutable hosting artifact",
     `      - name: Upload immutable hosting artifact
       - name: Verify hosting deploy ref
-        env:
-          EVENT_NAME: \${{ github.event_name }}
         run: |
           set -euo pipefail
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
-            echo "::error::Manual hosting deploys must run from refs/heads/main."
+          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
+          release_tag=""
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            commit="$GITHUB_SHA"
+          elif [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+            release_tag="\${GITHUB_REF#refs/tags/}"
+            git fetch --force --tags origin "+$GITHUB_REF:$GITHUB_REF"
+            commit="$(git rev-parse "$GITHUB_REF^{commit}")"
+            if [[ "$GITHUB_SHA" != "$commit" ]]; then
+              echo "::error::Hosting release tag and workflow source do not resolve to the same commit."
+              exit 1
+            fi
+          else
+            echo "::error::Hosting deploys must run from main or an exact stable semantic v* tag, not \${GITHUB_REF}."
             exit 1
           fi
-          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
             echo "::error::Hosting deploy commit is not reachable from origin/main."
             exit 1
-          fi`,
+          fi
+          stable_release=false
+          if [[ "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+            stable_release=true
+          fi
+          {
+            echo "commit=$commit"
+            echo "release_tag=$release_tag"
+            echo "stable_release=$stable_release"
+          } >> "$GITHUB_OUTPUT"`,
   ),
   1,
 );
@@ -251,4 +309,6 @@ if (failed > 0) {
   process.exit(1);
 }
 
-console.log(`\nPASS: ${passed} hosting deploy boundary self-test case(s) passed.`);
+console.log(
+  `\nPASS: ${passed} hosting deploy boundary self-test case(s) passed.`,
+);

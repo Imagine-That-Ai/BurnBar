@@ -65,6 +65,17 @@ function plainObject(value, label) {
   return value;
 }
 
+function requireExactKeys(value, expected, label) {
+  const actual = Object.keys(value).sort();
+  const required = [...expected].sort();
+  if (
+    actual.length !== required.length ||
+    actual.some((key, index) => key !== required[index])
+  ) {
+    throw new Error(`${label} must contain exactly: ${required.join(", ")}`);
+  }
+}
+
 export function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
@@ -119,6 +130,91 @@ function validateFunctionsHealthEvidence(healthEvidence, { commit, tag }) {
   ) {
     throw new Error(
       "health evidence healthReady does not bind the release version and production Sentry state",
+    );
+  }
+}
+
+function validateConsoleHealthEvidence(
+  healthEvidence,
+  { commit, tag, publicProfileSha256 },
+) {
+  const health = plainObject(healthEvidence, "health evidence");
+  requireExactKeys(
+    health,
+    [
+      "schemaVersion",
+      "project",
+      "tag",
+      "commit",
+      "checks",
+      "deploymentIdentity",
+    ],
+    "Console health evidence",
+  );
+  if (
+    health.schemaVersion !== 1 ||
+    health.project !== "burnbar" ||
+    health.tag !== tag ||
+    health.commit !== commit
+  ) {
+    throw new Error(
+      "Console health evidence must bind the burnbar project, release tag, and commit",
+    );
+  }
+  const checks = plainObject(health.checks, "health evidence.checks");
+  requireExactKeys(
+    checks,
+    ["marketing", "console", "deploymentIdentity"],
+    "Console health evidence checks",
+  );
+  if (
+    checks.marketing !== "ok" ||
+    checks.console !== "ok" ||
+    checks.deploymentIdentity !== "ok"
+  ) {
+    throw new Error(
+      "Console health evidence must contain successful marketing, console, and identity checks",
+    );
+  }
+  const identity = plainObject(
+    health.deploymentIdentity,
+    "health evidence.deploymentIdentity",
+  );
+  requireExactKeys(
+    identity,
+    [
+      "schemaVersion",
+      "consumer",
+      "target",
+      "repository",
+      "commit",
+      "tag",
+      "profile",
+    ],
+    "Console deployment identity",
+  );
+  const profile = plainObject(
+    identity.profile,
+    "health evidence.deploymentIdentity.profile",
+  );
+  requireExactKeys(
+    profile,
+    ["domain", "mode", "publicProfileSha256"],
+    "Console deployment profile",
+  );
+  if (
+    identity.schemaVersion !== 1 ||
+    identity.consumer !== "console" ||
+    identity.target !== "firebase-hosting-production" ||
+    identity.repository !== "https://github.com/Imagine-That-Ai/BurnBar" ||
+    identity.commit !== commit ||
+    identity.tag !== tag ||
+    profile.domain !== "cloudVault" ||
+    profile.mode !== "rust" ||
+    profile.publicProfileSha256 !== publicProfileSha256
+  ) {
+    throw new Error(
+      "Console health evidence does not bind the live Rust deployment identity",
     );
   }
 }
@@ -186,6 +282,12 @@ export function buildReleaseEvidence({
   if (identity.deployment) {
     if (consumer === "functions")
       validateFunctionsHealthEvidence(healthEvidence, { commit, tag });
+    if (consumer === "console")
+      validateConsoleHealthEvidence(healthEvidence, {
+        commit,
+        tag,
+        publicProfileSha256,
+      });
     deploymentReceipt = {
       schemaVersion: 1,
       consumer,
@@ -199,7 +301,13 @@ export function buildReleaseEvidence({
               status: "healthy",
               healthChecks: ["healthLive", "healthReady"],
             }
-          : { ...identity.deployment, status: "healthy" },
+          : consumer === "console"
+            ? {
+                ...identity.deployment,
+                status: "healthy",
+                healthChecks: ["marketing", "console", "deploymentIdentity"],
+              }
+            : { ...identity.deployment, status: "healthy" },
     };
   }
   return {

@@ -41,7 +41,13 @@
     "deployment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["provider", "project", "environment", "status"],
+      "required": [
+        "provider",
+        "project",
+        "environment",
+        "status",
+        "healthChecks"
+      ],
       "properties": {
         "provider": { "enum": ["firebase-hosting", "firebase-functions"] },
         "project": { "const": "burnbar" },
@@ -49,15 +55,69 @@
         "status": { "const": "healthy" },
         "healthChecks": {
           "type": "array",
-          "prefixItems": [
-            { "const": "healthLive" },
-            { "const": "healthReady" }
-          ],
-          "items": false,
+          "items": {
+            "enum": [
+              "healthLive",
+              "healthReady",
+              "marketing",
+              "console",
+              "deploymentIdentity"
+            ]
+          },
+          "uniqueItems": true,
           "minItems": 2,
-          "maxItems": 2
+          "maxItems": 3
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "consumer": { "const": "console" } } },
+      "then": {
+        "properties": {
+          "artifactKind": { "const": "console-deployment-receipt" },
+          "target": { "const": "firebase-hosting-production" },
+          "deployment": {
+            "properties": {
+              "provider": { "const": "firebase-hosting" },
+              "healthChecks": {
+                "prefixItems": [
+                  { "const": "marketing" },
+                  { "const": "console" },
+                  { "const": "deploymentIdentity" }
+                ],
+                "items": false,
+                "minItems": 3,
+                "maxItems": 3
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "consumer": { "const": "functions" } } },
+      "then": {
+        "properties": {
+          "artifactKind": { "const": "functions-deployment-receipt" },
+          "target": { "const": "firebase-functions-production" },
+          "deployment": {
+            "properties": {
+              "provider": { "const": "firebase-functions" },
+              "healthChecks": {
+                "prefixItems": [
+                  { "const": "healthLive" },
+                  { "const": "healthReady" }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

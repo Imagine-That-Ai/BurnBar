@@ -3,9 +3,10 @@
  * Static boundary gate for the production Firebase Hosting deploy workflow.
  *
  * The hosting deploy is intentionally split into an uncredentialed artifact
- * build job and a credentialed deploy job. Manual dispatch must be main-bound:
- * a user-selected branch must not be able to build arbitrary hosting artifacts
- * and then hand them to the production WIF/OIDC deploy job.
+ * build job and a credentialed deploy job. Builds may originate only from main
+ * or an exact release tag that resolves to a main-reachable commit. A
+ * user-selected branch must not be able to hand arbitrary hosting artifacts to
+ * the production WIF/OIDC deploy job.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -194,18 +195,30 @@ if (/^\s{8}if\s*:/mu.test(verifyStep)) {
   fail("Verify hosting deploy ref step must not be conditional");
 }
 
-requireIncludes(source, "workflow_dispatch:", "hosting deploy must support manual dispatch");
-requireIncludes(verifyStep, "EVENT_NAME: ${{ github.event_name }}", "verify step must read event name through env");
-requireIncludes(verifyRun, "set -euo pipefail", "verify step must run fail-closed shell mode");
+requireIncludes(
+  source,
+  "workflow_dispatch:",
+  "hosting deploy must support manual dispatch",
+);
+requireIncludes(
+  source,
+  'tags: ["v*"]',
+  "hosting deploy must run for release tags",
+);
 requireIncludes(
   verifyRun,
-  'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then',
-  "manual hosting deploy must fail unless dispatch ref is main",
+  "set -euo pipefail",
+  "verify step must run fail-closed shell mode",
 );
-requireShellIfExits(
+requireIncludes(
   verifyRun,
-  'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then',
-  "manual hosting dispatch main-ref guard",
+  'if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then',
+  "hosting deploy must explicitly accept main",
+);
+requireIncludes(
+  verifyRun,
+  'elif [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(\\+[0-9A-Za-z.-]+)?$ ]]; then',
+  "hosting deploy must accept only exact stable semantic release tags",
 );
 requireIncludes(
   verifyRun,
@@ -214,14 +227,46 @@ requireIncludes(
 );
 requireIncludes(
   verifyRun,
-  'if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then',
+  'git fetch --force --tags origin "+$GITHUB_REF:$GITHUB_REF"',
+  "hosting deploy must fetch only the selected release tag",
+);
+requireIncludes(
+  verifyRun,
+  'commit="$(git rev-parse "$GITHUB_REF^{commit}")"',
+  "hosting deploy must resolve the selected tag to a commit",
+);
+requireShellIfExits(
+  verifyRun,
+  'if [[ "$GITHUB_SHA" != "$commit" ]]; then',
+  "hosting deploy tag and workflow commit identity guard",
+);
+requireIncludes(
+  verifyRun,
+  'echo "::error::Hosting deploys must run from main or an exact stable semantic v* tag, not ${GITHUB_REF}."',
+  "hosting deploy must reject every other ref",
+);
+requireIncludes(
+  verifyRun,
+  'if ! git merge-base --is-ancestor "$commit" origin/main; then',
   "hosting deploy commit must be reachable from origin/main",
 );
 requireShellIfExits(
   verifyRun,
-  'if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then',
+  'if ! git merge-base --is-ancestor "$commit" origin/main; then',
   "hosting deploy origin/main reachability guard",
 );
+requireIncludes(
+  verifyRun,
+  'if [[ "$release_tag" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+(\\+[0-9A-Za-z.-]+)?$ ]]; then',
+  "stable release evidence must exclude prerelease tags",
+);
+for (const output of [
+  "commit=$commit",
+  "release_tag=$release_tag",
+  "stable_release=$stable_release",
+]) {
+  requireIncludes(verifyRun, output, `hosting ref guard must emit ${output}`);
+}
 
 requireOrder(
   buildJob,
@@ -327,4 +372,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("PASS: hosting deploy manual dispatch is main-bound and artifact-bound.");
+console.log(
+  "PASS: hosting deploy refs are main-or-tag-bound and artifacts are credential-bound.",
+);

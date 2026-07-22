@@ -144,10 +144,15 @@ python3 scripts/ops/create-domain-core-promotion-receipt.py \
    GitHub Release never holds the production Functions deploy lock. Its
    custom GitHub attestation binds the pricing Rust profile, artifact digest,
    tag, and commit; reruns verify existing release assets byte-for-byte and
-   never overwrite them. Apple, Android, Windows, and Console still do not publish
-   every canonical asset and exact custom attestation required by this
-   contract. Do not create a stable receipt from an Actions artifact or
-   unsigned deployment summary.
+   never overwrite them. Console uses the same pattern through
+   `domain-core-console-release-evidence.yml`, but only after the live Hosting
+   endpoint directly serves the exact release tag, commit, and CloudVault Rust
+   profile identity. The publisher signs
+   `OpenBurnBar-<version>-console-deployment.json`, publishes its attestation
+   bundle first, and refuses to replace different existing bytes. Apple,
+   Android, and Windows still do not publish every canonical asset and exact
+   custom attestation required by this contract. Do not create a stable receipt
+   from an Actions artifact or unsigned deployment summary.
 7. Commit active `stable_release` receipts and advance the observed rows to
    `rust_authoritative_with_rollback`. The stable receipt must identify the
    actually published release commit and hash the promotion receipt and public

@@ -11,6 +11,7 @@ permissions:
 on:
   push:
     branches: [main]
+    tags: ["v*"]
     paths:
       - "website/**"
       - "apps/console/**"
@@ -37,26 +38,49 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    outputs:
+      commit: ${{ steps.ref.outputs.commit }}
+      release_tag: ${{ steps.ref.outputs.release_tag }}
+      stable_release: ${{ steps.ref.outputs.stable_release }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify hosting deploy ref
-        env:
-          EVENT_NAME: ${{ github.event_name }}
+        id: ref
         run: |
           set -euo pipefail
-
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
-            echo "::error::Manual hosting deploys must run from refs/heads/main, not ${GITHUB_REF}."
-            echo "::error::Select main as the workflow dispatch ref so production hosting artifacts are main-bound."
-            exit 1
-          fi
-
           git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::Hosting deploy commit ${GITHUB_SHA} is not reachable from origin/main."
+          release_tag=""
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            commit="$GITHUB_SHA"
+          elif [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+            release_tag="${GITHUB_REF#refs/tags/}"
+            git fetch --force --tags origin "+$GITHUB_REF:$GITHUB_REF"
+            commit="$(git rev-parse "$GITHUB_REF^{commit}")"
+            if [[ "$GITHUB_SHA" != "$commit" ]]; then
+              echo "::error::Hosting release tag and workflow source do not resolve to the same commit."
+              exit 1
+            fi
+          else
+            echo "::error::Hosting deploys must run from main or an exact stable semantic v* tag, not ${GITHUB_REF}."
             exit 1
           fi
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "::error::Hosting deploy commit ${commit} is not reachable from origin/main."
+            exit 1
+          fi
+          stable_release=false
+          if [[ "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+            stable_release=true
+          fi
+          {
+            echo "commit=$commit"
+            echo "release_tag=$release_tag"
+            echo "stable_release=$stable_release"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
@@ -72,6 +96,22 @@ jobs:
           node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format github-env-web >> "$GITHUB_ENV"
           node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --format json --output apps/console/public/domain-core-build-profile.json
 
+      - name: Embed exact console deployment identity
+        env:
+          RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
+          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          args=(
+            --consumer console
+            --commit "$RELEASE_COMMIT"
+            --output apps/console/public/domain-core-deployment-identity.json
+          )
+          if [[ -n "$RELEASE_TAG" ]]; then
+            args+=(--tag "$RELEASE_TAG")
+          fi
+          node scripts/ci/create-domain-core-deployment-identity.mjs "${args[@]}"
+
       - name: Trust copy drift gates (block deploy)
         run: |
           node website/scripts/generate-crypto-claims.mjs --check
@@ -82,7 +122,7 @@ jobs:
 
       - name: Build immutable hosting outputs
         env:
-          PUBLIC_SOURCE_COMMIT: ${{ github.sha }}
+          PUBLIC_SOURCE_COMMIT: ${{ steps.ref.outputs.commit }}
         run: |
           npm run verify --prefix website
           npm run build --prefix apps/console
@@ -239,7 +279,7 @@ jobs:
             --message "GitHub Actions ${GITHUB_SHA}"
 
   hosting-smoke-result:
-    needs: deploy-hosting
+    needs: [build-hosting-artifacts, deploy-hosting]
     if: ${{ always() && github.event.inputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -257,6 +297,9 @@ jobs:
 
       - name: Post-deploy hosting smoke
         env:
+          HOSTING_SMOKE_EXPECTED_COMMIT: ${{ needs.build-hosting-artifacts.outputs.commit }}
+          HOSTING_SMOKE_EXPECTED_TAG: ${{ needs.build-hosting-artifacts.outputs.release_tag }}
+          CONSOLE_DEPLOY_HEALTH_JSON: ${{ needs.build-hosting-artifacts.outputs.stable_release == 'true' && 'console-deploy-health.json' || '' }}
           # The signed macOS update feed is produced by release.yml, which
           # fail-closes on its own freshly published feed (verify-live-update-feed
           # job). Hosting deploys still monitor the live feed continuously:
@@ -266,6 +309,15 @@ jobs:
           # to enforce fail-closed here too.
           OPENBURNBAR_REQUIRE_DOWNLOAD_FEED: ${{ vars.OPENBURNBAR_REQUIRE_DOWNLOAD_FEED || 'warn' }}
         run: bash scripts/ci/hosting-smoke.sh
+
+      - name: Upload exact console deploy health evidence
+        if: ${{ needs.build-hosting-artifacts.outputs.stable_release == 'true' }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: console-deploy-health-${{ needs.build-hosting-artifacts.outputs.release_tag }}
+          path: console-deploy-health.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Deployment summary
         if: always()
@@ -302,3 +354,27 @@ jobs:
           mode: close
           lane: deploy-hosting
           title-prefix: Hosting deploy smoke failed
+
+  dispatch-domain-core-console-evidence:
+    needs: [build-hosting-artifacts, deploy-hosting, hosting-smoke-result]
+    if: >-
+      ${{ needs.build-hosting-artifacts.result == 'success'
+          && needs.deploy-hosting.result == 'success'
+          && needs.hosting-smoke-result.result == 'success'
+          && needs.build-hosting-artifacts.outputs.stable_release == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch tag-bound Console evidence publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build-hosting-artifacts.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          gh workflow run domain-core-console-release-evidence.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$RELEASE_TAG" \
+            --field deploy_run_id="$GITHUB_RUN_ID"

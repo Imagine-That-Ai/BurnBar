@@ -47,6 +47,33 @@ function healthyFunctionsEvidence(commit = "a".repeat(40), tag = "v1.2.3") {
   };
 }
 
+function healthyConsoleEvidence(commit = "a".repeat(40), tag = "v1.2.3") {
+  const publicProfileSha256 = canonicalSha256({
+    artifactAuthority: "signed",
+    distribution: "public",
+    rolloutChannel: null,
+    evidenceEnabled: false,
+    domain: "cloudVault",
+    mode: "rust",
+  });
+  return {
+    schemaVersion: 1,
+    project: "burnbar",
+    tag,
+    commit,
+    checks: { marketing: "ok", console: "ok", deploymentIdentity: "ok" },
+    deploymentIdentity: {
+      schemaVersion: 1,
+      consumer: "console",
+      target: "firebase-hosting-production",
+      repository: "https://github.com/Imagine-That-Ai/BurnBar",
+      commit,
+      tag,
+      profile: { domain: "cloudVault", mode: "rust", publicProfileSha256 },
+    },
+  };
+}
+
 test("functions deployment evidence exactly binds the stable pricing profile", () => {
   const directory = mkdtempSync(
     join(tmpdir(), "domain-core-functions-evidence-"),
@@ -253,4 +280,78 @@ test("stable build metadata is accepted consistently without allowing prerelease
   });
   assert.equal(evidence.enabled, true);
   assert.equal(evidence.deploymentReceipt.release.version, "1.2.3+build.7");
+});
+
+test("console deployment evidence binds the exact live hosting identity", () => {
+  const evidence = buildReleaseEvidence({
+    catalog: catalogWithRust("cloudVault"),
+    consumer: "console",
+    domain: "cloudVault",
+    version: "1.2.3",
+    tag: "v1.2.3",
+    commit: "a".repeat(40),
+    artifactPath: "/tmp/OpenBurnBar-1.2.3-console-deployment.json",
+    healthEvidence: healthyConsoleEvidence(),
+  });
+  assert.deepEqual(evidence.deploymentReceipt.deployment, {
+    provider: "firebase-hosting",
+    project: "burnbar",
+    environment: "production",
+    status: "healthy",
+    healthChecks: ["marketing", "console", "deploymentIdentity"],
+  });
+});
+
+test("console deployment evidence rejects stale and legacy live identities", () => {
+  const base = {
+    catalog: catalogWithRust("cloudVault"),
+    consumer: "console",
+    domain: "cloudVault",
+    version: "1.2.3",
+    tag: "v1.2.3",
+    commit: "a".repeat(40),
+    artifactPath: "/tmp/OpenBurnBar-1.2.3-console-deployment.json",
+    healthEvidence: healthyConsoleEvidence(),
+  };
+  const stale = structuredClone(base.healthEvidence);
+  stale.deploymentIdentity.commit = "b".repeat(40);
+  assert.throws(
+    () => buildReleaseEvidence({ ...base, healthEvidence: stale }),
+    /live Rust deployment identity/,
+  );
+  const legacy = structuredClone(base.healthEvidence);
+  legacy.deploymentIdentity.profile.mode = "legacy";
+  assert.throws(
+    () => buildReleaseEvidence({ ...base, healthEvidence: legacy }),
+    /live Rust deployment identity/,
+  );
+});
+
+test("console deployment evidence rejects unknown or contradictory health fields", () => {
+  const base = {
+    catalog: catalogWithRust("cloudVault"),
+    consumer: "console",
+    domain: "cloudVault",
+    version: "1.2.3",
+    tag: "v1.2.3",
+    commit: "a".repeat(40),
+    artifactPath: "/tmp/OpenBurnBar-1.2.3-console-deployment.json",
+    healthEvidence: healthyConsoleEvidence(),
+  };
+  for (const mutate of [
+    (health) => delete health.schemaVersion,
+    (health) => (health.schemaVersion = 2),
+    (health) => (health.untrusted = true),
+    (health) => delete health.checks.console,
+    (health) => (health.checks.extra = "ok"),
+    (health) => (health.deploymentIdentity.extra = true),
+    (health) => (health.deploymentIdentity.profile.extra = true),
+  ]) {
+    const invalid = structuredClone(base.healthEvidence);
+    mutate(invalid);
+    assert.throws(
+      () => buildReleaseEvidence({ ...base, healthEvidence: invalid }),
+      /Console health evidence|Console deployment/,
+    );
+  }
 });
