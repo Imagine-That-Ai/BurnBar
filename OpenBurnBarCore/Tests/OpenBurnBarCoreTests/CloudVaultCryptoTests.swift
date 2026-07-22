@@ -47,6 +47,32 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertEqual(try CloudVaultCrypto.openBlob(legacyBlob, keyData: key), body)
     }
 
+    func test_openTextRejectsFutureSchemaBeforeDecrypting() throws {
+        let key = Data(repeating: 0x42, count: 32)
+        let context = try CloudVaultAADContext(
+            uid: "user",
+            collection: "session_logs",
+            docID: "doc",
+            field: "sealedTitle"
+        )
+        let sealed = try CloudVaultCrypto.sealText("future", keyData: key, aadContext: context)
+        let future = CloudVaultSealedText(
+            schemaVersion: CloudVaultCrypto.currentSealedTextSchemaVersion + 1,
+            algorithm: sealed.algorithm,
+            keyVersion: sealed.keyVersion,
+            nonce: sealed.nonce,
+            ciphertext: sealed.ciphertext,
+            tag: sealed.tag,
+            aad: sealed.aad
+        )
+
+        XCTAssertThrowsError(try CloudVaultCrypto.openText(future, keyData: key, aadContext: context)) { error in
+            guard case CloudVaultCryptoError.invalidEnvelope = error else {
+                return XCTFail("Expected invalidEnvelope, got \(error)")
+            }
+        }
+    }
+
     func test_cloudVaultBodyAndChunkHashesAreVaultKeyedHMACs() throws {
         let key = Data(repeating: 0x62, count: 32)
         let otherKey = Data(repeating: 0x63, count: 32)
