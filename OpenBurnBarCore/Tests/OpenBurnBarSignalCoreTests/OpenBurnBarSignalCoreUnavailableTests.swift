@@ -44,6 +44,38 @@ final class OpenBurnBarSignalCoreUnavailableTests: XCTestCase {
         }
     }
 
+    func testUnavailableSignalCoreRejectsStrippedSenderAuthBeforeFallback() throws {
+        let binding = CloudVaultSignalBinding(
+            uid: "uid-1",
+            collection: "conversations",
+            docId: "doc-1",
+            field: "signalEnvelope"
+        )
+        let envelope = CloudVaultSignalEnvelope(
+            ciphertextLayer: CloudVaultSignalCiphertextLayer(
+                payloadCiphertextB64: "Y2lwaGVydGV4dA==",
+                payloadAADLabel: "bindingToAAD-sha256:fixture",
+                schemaVersion: 1
+            ),
+            keyDelivery: CloudVaultSignalAtRestKeyDelivery(wraps: []),
+            binding: binding
+        )
+
+        XCTAssertThrowsError(
+            try OpenBurnBarSignalAtRest.openPayload(
+                envelope,
+                recipientIdentityKeyId: "device-1",
+                recipientIdentityPrivateKey: Data(repeating: 0, count: 32),
+                expectedBinding: binding,
+                trustedSenderPublicKeys: [:]
+            )
+        ) { error in
+            let signalError = error as? OpenBurnBarSignalCoreError
+            XCTAssertEqual(signalError, .senderAuthMissing)
+            XCTAssertFalse(signalError?.allowsLegacyAtRestFallback(senderSetComplete: false) ?? true)
+        }
+    }
+
     func testUnavailableSignalCoreFailsClosedForTrustProofs() throws {
         let identity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "approver")
         let trustPayload = CloudVaultDeviceTrustChainPayload(

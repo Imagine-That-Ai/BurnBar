@@ -334,6 +334,30 @@ public enum OpenBurnBarSignalAtRest {
         expectedBinding: CloudVaultSignalBinding,
         trustedSenderPublicKeys: [String: Data]
     ) throws -> Data {
+        // Preserve the sender-authentication downgrade boundary even when the
+        // Signal backend is unavailable. Callers intentionally treat
+        // `.libSignalUnavailable` as legacy-compatible during rollout, so a
+        // stripped or malformed sender block must be classified before the
+        // backend-unavailable result is returned.
+        guard envelope.signalEnvelopeFormatVersion == CloudVaultSignalEnvelopeContract.signalEnvelopeFormatVersion,
+              envelope.mode == CloudVaultSignalEnvelopeContract.signalAtRestMode,
+              envelope.relayEncryption == CloudVaultSignalEnvelopeContract.signalAtRestEncryption,
+              envelope.keyDelivery.scheme == CloudVaultSignalEnvelopeContract.signalAtRestEncryption,
+              envelope.keyDelivery.contentKeyLength == CloudVaultSignalEnvelopeContract.signalAtRestContentKeyLength,
+              envelope.ciphertextLayer.schemaVersion == payloadCiphertextSchemaVersion else {
+            throw OpenBurnBarSignalCoreError.invalidEnvelope
+        }
+        guard envelope.binding == expectedBinding else {
+            throw OpenBurnBarSignalCoreError.bindingMismatch
+        }
+        guard let senderAuth = envelope.senderAuth else {
+            throw OpenBurnBarSignalCoreError.senderAuthMissing
+        }
+        guard !senderAuth.senderIdentityKeyId.isEmpty,
+              Data(base64Encoded: senderAuth.signatureB64) != nil else {
+            throw OpenBurnBarSignalCoreError.senderSignatureInvalid
+        }
+        _ = (recipientIdentityKeyId, recipientIdentityPrivateKey, trustedSenderPublicKeys)
         throw OpenBurnBarSignalCoreError.libSignalUnavailable
     }
 
