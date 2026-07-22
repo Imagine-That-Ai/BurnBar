@@ -59,6 +59,18 @@ jobs:
       - name: Initialize libsignal submodule with retry
         run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
 
+      - name: Resolve Signal FFI cache identity
+        id: signal-ffi-cache
+        run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache macOS Signal FFI artifact
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: Vendor/OpenBurnBarSignalFfiMac.xcframework
+          key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-
+
       - name: Cache Swift Package Manager dependencies
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
@@ -67,6 +79,8 @@ jobs:
             .build
             .derived-data
             ~/.cache/org.swift.swiftpm
+            ~/.cargo/registry
+            ~/.cargo/git
           key: ${{ runner.os }}-app-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-app-spm-
@@ -135,6 +149,7 @@ jobs:
         # the memory subsystem) and runs the app XCTest suite.
         run: >-
           OPENBURNBAR_ENABLE_COVERAGE=YES
+          SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin
           OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="$GITHUB_WORKSPACE/.derived-data/macos-idle-occlusion-gate"
           ./scripts/test-openburnbar-app.sh
 
@@ -191,6 +206,18 @@ jobs:
       - name: Initialize libsignal submodule with retry
         run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
 
+      - name: Resolve Signal FFI cache identity
+        id: signal-ffi-cache
+        run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache iOS Signal FFI artifact
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: Vendor/OpenBurnBarSignalFfiIOS.xcframework
+          key: ${{ runner.os }}-signal-ffi-ios-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-signal-ffi-ios-${{ steps.signal-ffi-cache.outputs.sha }}-
+
       - name: Cache Swift Package Manager dependencies
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
@@ -198,6 +225,8 @@ jobs:
             .spm-cache-new
             .derived-data
             ~/.cache/org.swift.swiftpm
+            ~/.cargo/registry
+            ~/.cargo/git
           key: ${{ runner.os }}-mobile-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-mobile-spm-
@@ -215,7 +244,9 @@ jobs:
           protoc --version
 
       - name: Prepare Signal FFI XCFramework
-        run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
+        run: >-
+          SIGNAL_FFI_BUILD_TARGETS="aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios"
+          bash scripts/lib/prepare-signal-ffi-xcframework.sh
 
       - name: Build mobile app + unit tests for testing
         # Observing-first: build-for-testing compiles the OpenBurnBarMobile
