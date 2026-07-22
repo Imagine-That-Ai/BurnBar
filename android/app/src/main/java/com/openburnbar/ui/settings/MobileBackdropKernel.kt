@@ -17,8 +17,11 @@ enum class MobileBackdropKernel(
     FLOW("flow", "Flow Field", "A curl-noise wind drawn as silky streamlines.", MobileBackdropKernelFamily.FLOW),
     AURORA("aurora", "Aurora", "Domain-warped light, drifting in slow ribbons.", MobileBackdropKernelFamily.RIBBONS),
     MESH("mesh", "Iridescent Mesh", "A living gradient mesh with fine grain.", MobileBackdropKernelFamily.ORBS),
+    PRISMATICA("prismatica", "Prismatica", "Prismatic facets turn slowly through spectral light.", MobileBackdropKernelFamily.LATTICE),
     MOIRE("moire", "Moiré", "Light interfering through a breathing crystal lattice.", MobileBackdropKernelFamily.LATTICE),
     VOLUMETRIC("volumetric", "Volumetric", "Crepuscular shafts of light through an unseen medium.", MobileBackdropKernelFamily.CLOUDS),
+    IRIDESCENCE("iridescence", "Iridescence", "Thin-film color glides across a liquid metallic field.", MobileBackdropKernelFamily.ORBS),
+    GYROID("gyroid", "Gyroid", "An infinite triply periodic surface folds through light.", MobileBackdropKernelFamily.LATTICE),
     LIC("lic", "Flow Imaging", "The same wind as Flow, rendered as honest silk.", MobileBackdropKernelFamily.FLOW),
     FLUID_AURORA("fluid-aurora", "Fluid Aurora", "Domain-warped fluid ribbons — the 2026 mainstream background standard.", MobileBackdropKernelFamily.RIBBONS),
     CLOUDFIELD("cloudfield", "Cloud Field", "Raymarched cloudscape from a compact demoscene kernel — infinite sky.", MobileBackdropKernelFamily.CLOUDS),
@@ -44,6 +47,14 @@ enum class MobileBackdropKernel(
     INK_DIFFUSION("ink-diffusion", "Ink Diffusion", "Ink wicks into wet fiber and separates into spectral halos.", MobileBackdropKernelFamily.MARBLE),
     PETROLEUM_SHEEN("petroleum-sheen", "Petroleum Sheen", "Thin-film oil-slick rainbows drift over deep water.", MobileBackdropKernelFamily.MARBLE),
     BOIDS("boids", "Boids", "A living murmuration — hundreds of birds flocking as one.", MobileBackdropKernelFamily.CONSTELLATION),
+    VOXEL("voxel", "Voxel", "A luminous voxel world assembles beyond the glass.", MobileBackdropKernelFamily.CONSTELLATION),
+    STAR_ATLAS("star-atlas", "Star Atlas", "A navigable atlas of stars, routes, and deep-space dust.", MobileBackdropKernelFamily.CONSTELLATION),
+    SKY_ASCENT("sky-ascent", "Sky Ascent", "An endless climb through radiant atmosphere and cloud.", MobileBackdropKernelFamily.CLOUDS),
+    OPEN_WORLD_ARMADA("open-world-armada", "Voxel Armada", "A voxel armada crosses an immense procedural horizon.", MobileBackdropKernelFamily.CONSTELLATION),
+    GENESIS("genesis", "Genesis", "Color and structure emerge from a quiet generative origin.", MobileBackdropKernelFamily.RIBBONS),
+    SINGULARITY("singularity", "Singularity", "Light bends toward a dense, breathing gravitational core.", MobileBackdropKernelFamily.ORBS),
+    KNOT_FIELD("knot-field", "Knot Field", "Luminous strands weave through a field of impossible knots.", MobileBackdropKernelFamily.LATTICE),
+    HYPERSPHERE("hypersphere", "Hypersphere", "A higher-dimensional sphere turns through visible space.", MobileBackdropKernelFamily.LATTICE),
     ;
 
     companion object {

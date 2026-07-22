@@ -1,0 +1,23 @@
+{
+  "id": "cloudfield",
+  "label": "Cloud Field",
+  "metalFileBase": "K_Cloudfield",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_cloudfield_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}
