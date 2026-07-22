@@ -174,9 +174,8 @@ final class CLIAgentMobileChatService {
     ) async {
         // Forward any live desktop grant for this thread (matching Android's
         // optimistic-grant forwarding) so Mac-side capability gates — e.g.
-        // Junie's full-interactive requirement for visible launches — see
-        // what the user actually approved instead of a hard-coded
-        // read-only payload.
+        // Junie's full-desktop requirement — see what the user actually
+        // approved instead of a hard-coded read-only payload.
         let optimisticGrant = MobileAgentPermissionGrantController.shared.optimisticGrant(
             runtimeID: runtime.assistantRuntime,
             threadID: threadID
