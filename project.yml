@@ -13,12 +13,27 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_PREVIEWS: YES
-    MARKETING_VERSION: "1.0.29"
-    CURRENT_PROJECT_VERSION: 69
+    MARKETING_VERSION: "1.0.30"
+    CURRENT_PROJECT_VERSION: 70
     CODE_SIGN_STYLE: Automatic
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
     INFOPLIST_KEY_LSUIElement: true
     GENERATE_INFOPLIST_FILE: YES
+    DOMAIN_CORE_BUILD_PROFILE: developer
+    DOMAIN_CORE_BUILD_AUTHORITY: development
+    DOMAIN_CORE_DISTRIBUTION: development
+    DOMAIN_CORE_ROLLOUT_CHANNEL: ""
+    DOMAIN_CORE_EVIDENCE_ENABLED: NO
+    DOMAIN_CORE_CANDIDATE_COMMIT: ""
+    DOMAIN_CORE_EXPECTED_VERSION: ""
+    DOMAIN_CORE_EXPECTED_ABI_VERSION: ""
+    DOMAIN_CORE_EXPECTED_SOURCE_SHA256: ""
+    DOMAIN_CORE_QUOTA_MODE: legacy
+    DOMAIN_CORE_CLOUDVAULT_MODE: legacy
+    DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE: legacy
+    DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE: legacy
+    DOMAIN_CORE_HERMES_MODE: legacy
+    DOMAIN_CORE_PRICING_MODE: legacy
 
 # macOS Debug: the OpenBurnBar target uses keychain-access-groups (Firebase Auth). Xcode must sign with a
 # development identity. Under targets.OpenBurnBar.settings.base add:
@@ -30,7 +45,8 @@ packages:
     path: OpenBurnBarCore
   # SQLCipher-enabled GRDB (SPM). Must stay aligned with OpenBurnBarDaemon/Package.swift.
   # Vendored from https://github.com/SahebRoy92/GRDB-SQLCipher at 2cf6c756 and
-  # patched so SwiftPM GRDB imports the pinned SQLCipher XCFramework instead of system sqlite3.
+  # patched so SwiftPM GRDB imports the pinned SQLCipher XCFramework instead of system sqlite3,
+  # and so failed async reads cannot unbalance DatabaseQueue read-only state.
   GRDB:
     path: Vendor/GRDB-SQLCipher
   SQLCipher:
@@ -131,6 +147,21 @@ targets:
         SUPublicEDKey: 613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        OpenBurnBarDomainCoreBuildProfile: "$(DOMAIN_CORE_BUILD_PROFILE)"
+        OpenBurnBarDomainCoreBuildAuthority: "$(DOMAIN_CORE_BUILD_AUTHORITY)"
+        OpenBurnBarDomainCoreDistribution: "$(DOMAIN_CORE_DISTRIBUTION)"
+        OpenBurnBarDomainCoreRolloutChannel: "$(DOMAIN_CORE_ROLLOUT_CHANNEL)"
+        OpenBurnBarDomainCoreEvidenceEnabled: "$(DOMAIN_CORE_EVIDENCE_ENABLED)"
+        OpenBurnBarDomainCoreCandidateCommit: "$(DOMAIN_CORE_CANDIDATE_COMMIT)"
+        OpenBurnBarDomainCoreExpectedVersion: "$(DOMAIN_CORE_EXPECTED_VERSION)"
+        OpenBurnBarDomainCoreExpectedABIVersion: "$(DOMAIN_CORE_EXPECTED_ABI_VERSION)"
+        OpenBurnBarDomainCoreExpectedSourceSHA256: "$(DOMAIN_CORE_EXPECTED_SOURCE_SHA256)"
+        OpenBurnBarDomainCoreModeQuota: "$(DOMAIN_CORE_QUOTA_MODE)"
+        OpenBurnBarDomainCoreModeCloudVault: "$(DOMAIN_CORE_CLOUDVAULT_MODE)"
+        OpenBurnBarDomainCoreModeCloudVaultRewrap: "$(DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE)"
+        OpenBurnBarDomainCoreModeCloudVaultSearch: "$(DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE)"
+        OpenBurnBarDomainCoreModeHermes: "$(DOMAIN_CORE_HERMES_MODE)"
+        OpenBurnBarDomainCoreModePricing: "$(DOMAIN_CORE_PRICING_MODE)"
         # Swift 6.2 (Xcode 26+) made swift_task_isCurrentExecutor crash on an isolation
         # mismatch where it previously returned false. Restore legacy non-crashing
         # behavior until the concurrency-isolation migration is complete. Keep aligned
@@ -426,6 +457,24 @@ targets:
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
         product: OpenBurnBarSignalCore
+      # Core-decomposition: explicit sibling products so the OpenBurnBarTests app test target can
+      # `@testable import` them to reach INTERNAL symbols that moved out of the Core monolith
+      # (Quota: WarpQuotaAdapter.candidateLogFiles, AntigravityQuotaAdapter.referenceDate*,
+      # XAIQuotaAdapter.superGrokLogURL, ClaudeOAuthUsageFetcher.scopedCacheURL,
+      # FactoryQuotaAdapter.inferPlanTier, AnthropicCredentialProbe.{parse,isHealthy,rateLimitHeaders},
+      # ClaudeQuotaAdapter.scopedClaudeProfileMatchesDefaultLogin; Kernel: OpenBurnBarError.database;
+      # LogParsers: TimestampNormalizationUtility.firestoreMaxEpochSeconds, TokenUsage bucket helpers;
+      # UI: SwarmCanvasView.{sanitizedFrameRate,animationFrameScale,shouldDrawGlyphParticle}). Redundant
+      # for runtime — the linked OpenBurnBarCore umbrella already `@_exported import`s all of them — but
+      # required for internal @testable access, mirroring the other explicitly-linked siblings above.
+      - package: OpenBurnBarCore
+        product: OpenBurnBarQuota
+      - package: OpenBurnBarCore
+        product: OpenBurnBarKernel
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLogParsers
+      - package: OpenBurnBarCore
+        product: OpenBurnBarUI
       - package: GRDB
         product: GRDB
       - package: SQLCipher
@@ -495,11 +544,22 @@ targets:
             done
           fi
     dependencies:
+      # Core-decomposition P-18 (S17): the app-side OpenBurnBarDaemon target
+      # mirrors OpenBurnBarDaemon/Package.swift — its 133 source files import the
+      # UI-free OpenBurnBarEngine umbrella (+ ComputerUseCore/IrohRelay/Media/
+      # LinuxSecurity), NEVER the SwiftUI/AppKit OpenBurnBarCore monolith, so this
+      # binary has no path to the UI. See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarEngine
         link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+        link: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarIrohRelay
+        link: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMedia
         link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
@@ -524,14 +584,24 @@ targets:
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: YES
-        OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.daemon --options runtime,library
+        # The bare helper shares the app's designated requirement so both can
+        # read the ordinary database-key Keychain ACL. Restricted entitlements
+        # on an unbundled executable are rejected by macOS before main().
+        OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.app --options runtime,library
         SKIP_INSTALL: true
     dependencies:
+      # Core-decomposition P-18 (S17): OpenBurnBarDaemonMain imports OpenBurnBarEngine
+      # (the UI-free umbrella), matching OpenBurnBarDaemon/Package.swift; no path to
+      # the OpenBurnBarCore UI monolith. See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - target: OpenBurnBarDaemon
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarEngine
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+      - package: OpenBurnBarCore
+        product: OpenBurnBarIrohRelay
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMedia
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
 
@@ -741,12 +811,16 @@ targets:
         PRODUCT_NAME: OpenBurnBarDaemonTests
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.daemon.tests
     dependencies:
+      # Core-decomposition P-18 (S17): the daemon test bundle links the UI-free
+      # OpenBurnBarEngine umbrella (58 test files import it; ZERO import
+      # OpenBurnBarCore), matching the OpenBurnBarDaemon target under test.
+      # See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - target: OpenBurnBarDaemon
       - target: OpenBurnBarDaemonExecutable
         link: false
         embed: false
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarEngine
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
@@ -966,6 +1040,21 @@ targets:
       properties:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        OpenBurnBarDomainCoreBuildProfile: "$(DOMAIN_CORE_BUILD_PROFILE)"
+        OpenBurnBarDomainCoreBuildAuthority: "$(DOMAIN_CORE_BUILD_AUTHORITY)"
+        OpenBurnBarDomainCoreDistribution: "$(DOMAIN_CORE_DISTRIBUTION)"
+        OpenBurnBarDomainCoreRolloutChannel: "$(DOMAIN_CORE_ROLLOUT_CHANNEL)"
+        OpenBurnBarDomainCoreEvidenceEnabled: "$(DOMAIN_CORE_EVIDENCE_ENABLED)"
+        OpenBurnBarDomainCoreCandidateCommit: "$(DOMAIN_CORE_CANDIDATE_COMMIT)"
+        OpenBurnBarDomainCoreExpectedVersion: "$(DOMAIN_CORE_EXPECTED_VERSION)"
+        OpenBurnBarDomainCoreExpectedABIVersion: "$(DOMAIN_CORE_EXPECTED_ABI_VERSION)"
+        OpenBurnBarDomainCoreExpectedSourceSHA256: "$(DOMAIN_CORE_EXPECTED_SOURCE_SHA256)"
+        OpenBurnBarDomainCoreModeQuota: "$(DOMAIN_CORE_QUOTA_MODE)"
+        OpenBurnBarDomainCoreModeCloudVault: "$(DOMAIN_CORE_CLOUDVAULT_MODE)"
+        OpenBurnBarDomainCoreModeCloudVaultRewrap: "$(DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE)"
+        OpenBurnBarDomainCoreModeCloudVaultSearch: "$(DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE)"
+        OpenBurnBarDomainCoreModeHermes: "$(DOMAIN_CORE_HERMES_MODE)"
+        OpenBurnBarDomainCoreModePricing: "$(DOMAIN_CORE_PRICING_MODE)"
         ITSAppUsesNonExemptEncryption: false
         # Resolved from the BURNBAR_AMPLITUDE_API_KEY build setting (empty by
         # default). AnalyticsConfig reads this; empty/placeholder → analytics dark.
@@ -1057,13 +1146,23 @@ targets:
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
     dependencies:
+      # Depend ONLY on the host app. On iOS, SwiftPM products link statically, so
+      # declaring `- package: OpenBurnBarCore` here linked a SECOND copy of
+      # OpenBurnBarCore into the test bundle on top of the copy already inside the
+      # OpenBurnBarMobile host app. Two Core copies split every Core-owned
+      # singleton, actor, and type identity in the test process (`T.self ==
+      # TokenUsage.self` metatype checks fail, `AssistantPendingThread.shared`
+      # forks, real-Keychain -34018), which is why MediaControlStreamPresenceTests
+      # never observed `.live` and each such test hung to its per-test timeout —
+      # blowing the whole iOS Mobile harness job past the 3h cap (cancelled), and
+      # why FirestoreNormalization/Hermes tests failed. The app already links
+      # OpenBurnBarCore, OpenBurnBarAnalytics, and OpenBurnBarSignalCore; with
+      # TEST_HOST/BUNDLE_LOADER (auto-wired for this app-hosted unit-test target),
+      # `@testable import OpenBurnBarMobile` plus `import OpenBurnBarCore` resolve
+      # against that single host copy at runtime. This matches how the other
+      # transitively-imported Core products (OpenBurnBarIrohRelay, Media,
+      # ComputerUseCore) are already consumed here without a direct dependency.
       - target: OpenBurnBarMobile
-      - package: OpenBurnBarCore
-        product: OpenBurnBarCore
-      - package: OpenBurnBarCore
-        product: OpenBurnBarAnalytics
-      - package: OpenBurnBarCore
-        product: OpenBurnBarSignalCore
 
   OpenBurnBarMobileUITests:
     type: bundle.ui-testing
@@ -1120,8 +1219,15 @@ targets:
     dependencies:
       - sdk: SwiftUI.framework
       - sdk: WidgetKit.framework
+      # Core-decomposition P-19 (S18): repointed off the OpenBurnBarCore umbrella
+      # onto the narrow products the widget's 17 source files actually import
+      # (Kernel + Insights + UI). See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarKernel
+      - package: OpenBurnBarCore
+        product: OpenBurnBarInsights
+      - package: OpenBurnBarCore
+        product: OpenBurnBarUI
       - package: OpenBurnBarCore
         product: OpenBurnBarAnalytics
       - package: AmplitudeSwift
@@ -1171,8 +1277,15 @@ targets:
 
     dependencies:
       - sdk: UIKit.framework
+      # Core-decomposition P-20 (S19): repointed off the OpenBurnBarCore umbrella
+      # onto the narrow products the keyboard's 2 source files import —
+      # OpenBurnBarTextExpansion (matcher/snippet/composer/usage+snapshot stores)
+      # and OpenBurnBarUI (UnifiedDesignSystem.Colors, 7 sites in KeyboardView).
+      # See docs/CORE_DECOMPOSITION_PROGRAM.md.
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarTextExpansion
+      - package: OpenBurnBarCore
+        product: OpenBurnBarUI
       - package: OpenBurnBarCore
         product: OpenBurnBarAnalytics
       - package: AmplitudeSwift

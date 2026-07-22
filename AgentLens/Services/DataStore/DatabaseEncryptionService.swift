@@ -35,7 +35,7 @@ import CommonCrypto
 // and importRecoveryBundle.
 
 /// Failures raised while configuring or opening an encrypted database.
-enum DatabaseEncryptionError: Error, CustomStringConvertible {
+enum DatabaseEncryptionError: Error, CustomStringConvertible, LocalizedError {
     /// The build links a SQLite that is NOT SQLCipher (the `PRAGMA key` was a
     /// silent no-op, proven by `PRAGMA cipher_version` returning empty/nil), so
     /// the database would have been written in PLAINTEXT despite encryption being
@@ -49,6 +49,14 @@ enum DatabaseEncryptionError: Error, CustomStringConvertible {
     /// Keychain persistence returned an OSStatus failure while saving a newly
     /// generated database key. The caller must abort before opening SQLCipher.
     case keychainPersistenceFailed(status: OSStatus)
+
+    /// An encrypted database already exists, but its Keychain item is absent.
+    /// Startup must preserve the file and must not generate a replacement key.
+    case existingEncryptedDatabaseKeyMissing(path: String)
+
+    /// The stored key did not unlock an existing encrypted database. This can
+    /// mean the key belongs to another database or the file is damaged.
+    case existingEncryptedDatabaseKeyRejected(path: String)
 
     /// SQLCipher was available and a plaintext database was eligible for first
     /// launch migration, but the export or atomic replacement failed.
@@ -65,8 +73,34 @@ enum DatabaseEncryptionError: Error, CustomStringConvertible {
         case let .keychainPersistenceFailed(status):
             return "Failed to persist a new database encryption key to the Keychain (OSStatus \(status)). "
                 + "Cannot create an encrypted database with an unpersisted key."
+        case let .existingEncryptedDatabaseKeyMissing(path):
+            return "The encryption key for the existing database at \(path) is missing. "
+                + "The database was preserved and no replacement key was created."
+        case let .existingEncryptedDatabaseKeyRejected(path):
+            return "The stored encryption key did not unlock the existing database at \(path). "
+                + "The database was preserved and may require its original key or recovery from damage."
         case let .plaintextMigrationFailed(path, detail):
             return "Failed to migrate plaintext database at \(path) to SQLCipher: \(detail)"
+        }
+    }
+
+    var errorDescription: String? {
+        switch self {
+        case .existingEncryptedDatabaseKeyMissing:
+            return "The encryption key for this database is missing. OpenBurnBar preserved the database."
+        case .existingEncryptedDatabaseKeyRejected:
+            return "The stored encryption key cannot open this database. OpenBurnBar preserved the database."
+        default:
+            return description
+        }
+    }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .existingEncryptedDatabaseKeyMissing, .existingEncryptedDatabaseKeyRejected:
+            return "Restore the original key from a recovery bundle, or archive and reset to rebuild local data."
+        default:
+            return nil
         }
     }
 }
@@ -128,9 +162,51 @@ private final class DatabaseEncryptionKeychainClientBox: @unchecked Sendable {
     }
 }
 
+#if DEBUG
+// AUDIT(@unchecked Sendable): test injection state is guarded by `lock`;
+// sendable-allowlist: foundation-sdk-shim
+private final class OrphanSizeLookupBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: DatabaseEncryptionService.OrphanSizeLookup
+
+    init() {
+        current = { fileManager, path in
+            try fileManager.attributesOfItem(atPath: path)
+        }
+    }
+
+    func lookup(_ fileManager: FileManager, _ path: String) throws -> [FileAttributeKey: Any] {
+        lock.lock()
+        let fn = current
+        lock.unlock()
+        return try fn(fileManager, path)
+    }
+
+    func withLookup<T>(_ lookup: @escaping DatabaseEncryptionService.OrphanSizeLookup, _ body: () throws -> T) rethrows -> T {
+        let previous = swap(lookup)
+        defer { _ = swap(previous) }
+        return try body()
+    }
+
+    private func swap(_ fn: @escaping DatabaseEncryptionService.OrphanSizeLookup) -> DatabaseEncryptionService.OrphanSizeLookup {
+        lock.lock()
+        defer { lock.unlock() }
+        let previous = current
+        current = fn
+        return previous
+    }
+}
+#endif
+
 enum DatabaseEncryptionService {
     private static let service = "com.openburnbar.database-encryption"
-    private static let keyIdentifierAccount = "database-encryption-key-v1"
+    private static let productionKeyIdentifierAccount = "database-encryption-key-v1"
+    private static var keyIdentifierAccount: String {
+        resolvedKeyIdentifierAccount(
+            environment: ProcessInfo.processInfo.environment,
+            processIdentifier: ProcessInfo.processInfo.processIdentifier
+        )
+    }
     private static let allowedKeyCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+/=-"))
 
     private static let keychainClient = DatabaseEncryptionKeychainClientBox(DatabaseEncryptionKeychainClient(
@@ -152,6 +228,23 @@ enum DatabaseEncryptionService {
     /// this header, so its presence/absence cheaply distinguishes the two without
     /// needing the key. Reference: <https://www.sqlite.org/fileformat2.html#the_database_header>.
     private static let plaintextSQLiteMagic = Data("SQLite format 3\u{0}".utf8)
+
+    /// XCTest must never address the production database-key item. A prior test
+    /// suite called `deleteKey()` in setup/teardown and made a real encrypted
+    /// database unreadable. Keep a process-local account namespace as a second
+    /// line of defense even when a test forgets to inject the in-memory client.
+    static func resolvedKeyIdentifierAccount(
+        environment: [String: String],
+        processIdentifier: Int32
+    ) -> String {
+        let isTestProcess = environment["OPENBURNBAR_UITEST"] == "1"
+            || environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestSessionIdentifier"] != nil
+            || environment["XCTestBundlePath"] != nil
+            || environment["__XPC_DYLD_LIBRARY_PATH"]?.contains(".xctest") == true
+        guard isTestProcess else { return productionKeyIdentifierAccount }
+        return "\(productionKeyIdentifierAccount).xctest.\(processIdentifier)"
+    }
 
     // MARK: - Key Management
 
@@ -404,6 +497,34 @@ enum DatabaseEncryptionService {
     }
 
     #if DEBUG
+    typealias OrphanSizeLookup = (_ fileManager: FileManager, _ path: String) throws -> [FileAttributeKey: Any]
+
+    private static let orphanSizeLookupBox = OrphanSizeLookupBox()
+
+    private static func orphanSizeLookup(_ fileManager: FileManager, _ path: String) throws -> [FileAttributeKey: Any] {
+        try orphanSizeLookupBox.lookup(fileManager, path)
+    }
+
+    /// Swaps the orphan size-lookup closure for the duration of `body`,
+    /// restoring the previous closure on exit. Mirrors
+    /// `withKeychainClientForTesting`. Used to exercise the fail-open catch
+    /// branch in `removeOrphanedMigrationArtifacts` deterministically.
+    static func withOrphanSizeLookupForTesting<T>(
+        _ lookup: @escaping OrphanSizeLookup,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        try orphanSizeLookupBox.withLookup(lookup, body)
+    }
+#else
+    private static func orphanSizeLookup(
+        _ fileManager: FileManager,
+        _ path: String
+    ) throws -> [FileAttributeKey: Any] {
+        try fileManager.attributesOfItem(atPath: path)
+    }
+    #endif
+
+    #if DEBUG
     static func withKeychainClientForTesting<T>(
         _ client: DatabaseEncryptionKeychainClient,
         _ body: () throws -> T
@@ -519,6 +640,7 @@ extension DatabaseEncryptionService {
     /// unless the encrypted replacement is complete.
     @discardableResult
     static func migratePlaintextDatabaseIfNeeded(at path: String, encryptionKey: String) throws -> Bool {
+        removeOrphanedMigrationArtifacts(forDatabaseAt: path)
         guard FileManager.default.fileExists(atPath: path) else { return false }
         guard isEncryptedDatabaseFile(at: path) == false else { return false }
         guard isCipherAvailable() else { throw DatabaseEncryptionError.cipherUnavailable }
@@ -603,6 +725,61 @@ extension DatabaseEncryptionService {
         }
     }
 
+    /// Deletes orphaned `<dbFileName>.sqlcipher-migrating-<UUID>` temp databases
+    /// (and their `-wal`/`-shm`/`-journal` sidecars, which share that prefix)
+    /// from the database's parent directory. The temp file is only valid DURING a
+    /// live `migratePlaintextDatabaseIfNeeded` call; when the process dies
+    /// mid-export (SIGKILL, force quit, shutdown) the catch-path cleanup never
+    /// runs and a multi-gigabyte orphan is stranded forever — a real machine
+    /// accumulated 9.4 GB of them. Anything matching the prefix at entry is
+    /// therefore dead and safe to remove; the live database and its own
+    /// `-wal`/`-shm` never match. Best-effort by design: failures are logged and
+    /// never interrupt startup or migration.
+    static func removeOrphanedMigrationArtifacts(forDatabaseAt path: String) {
+        let fileManager = FileManager.default
+        let databaseURL = URL(fileURLWithPath: path)
+        let databaseFileName = databaseURL.lastPathComponent
+        guard databaseFileName.isEmpty == false else { return }
+        let orphanPrefix = databaseFileName + ".sqlcipher-migrating-"
+        let directoryURL = databaseURL.deletingLastPathComponent()
+        let entries: [String]
+        do {
+            entries = try fileManager.contentsOfDirectory(atPath: directoryURL.path)
+        } catch {
+            AppLogger.dataStore.error(
+                "database_migration_orphan_enumeration_failed",
+                metadata: ["path": directoryURL.path, "error": "\(error)"]
+            )
+            return
+        }
+        for entry in entries where entry.hasPrefix(orphanPrefix) {
+            let orphanPath = directoryURL.appendingPathComponent(entry).path
+            let orphanBytes: Int64
+            do {
+                let attributes = try orphanSizeLookup(fileManager, orphanPath)
+                orphanBytes = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+            } catch {
+                AppLogger.dataStore.debug(
+                    "database_migration_orphan_size_unavailable",
+                    metadata: ["path": orphanPath, "error": "\(error)"]
+                )
+                orphanBytes = 0
+            }
+            do {
+                try fileManager.removeItem(atPath: orphanPath)
+                AppLogger.dataStore.notice(
+                    "database_migration_orphan_removed",
+                    metadata: ["path": orphanPath, "reclaimedBytes": "\(orphanBytes)"]
+                )
+            } catch {
+                AppLogger.dataStore.error(
+                    "database_migration_orphan_cleanup_failed",
+                    metadata: ["path": orphanPath, "error": "\(error)"]
+                )
+            }
+        }
+    }
+
     private static func removeDatabaseFilesIfPresent(at path: String, includePrimary: Bool) {
         let suffixes = includePrimary ? ["", "-wal", "-shm"] : ["-wal", "-shm"]
         for suffix in suffixes {
@@ -669,6 +846,14 @@ extension DatabaseEncryptionService {
     static func isMissingSQLiteSidecarRemoval(_ error: Error) -> Bool {
         let nsError = error as NSError
         return isMissingSQLiteSidecarRemoval(nsError)
+    }
+
+    /// SQLCipher reports a wrong passphrase as SQLITE_NOTADB after page-one HMAC
+    /// verification. For an already encrypted file, surface that as a typed,
+    /// non-destructive recovery failure instead of a generic SQLite error.
+    static func isEncryptedDatabaseKeyRejection(_ error: Error) -> Bool {
+        guard let databaseError = error as? DatabaseError else { return false }
+        return databaseError.resultCode == .SQLITE_NOTADB
     }
 
     private static func isMissingSQLiteSidecarRemoval(_ error: NSError) -> Bool {

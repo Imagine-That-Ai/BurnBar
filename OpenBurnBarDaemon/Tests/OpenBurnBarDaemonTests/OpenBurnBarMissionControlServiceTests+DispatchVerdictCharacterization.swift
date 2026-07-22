@@ -1,5 +1,5 @@
 import XCTest
-import OpenBurnBarCore
+import OpenBurnBarEngine
 @testable import OpenBurnBarDaemon
 
 // M1 characterization (split-brain remediation, Phase 2 —

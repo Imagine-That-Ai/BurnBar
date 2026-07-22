@@ -1,8 +1,8 @@
 {
   "description": "Annotated, exact-set schema divergence baseline for scripts/check-migrator-parity.mjs. Every entry is an intentional, explained divergence between the canonical Swift migrator endpoint schema (OpenBurnBarCore/Sources/OpenBurnBarData) and a mirror surface. New divergences and stale entries both fail CI; keep reasons real.",
   "updateCommand": "node scripts/check-migrator-parity.mjs --update-baseline",
-  "migrationEndpoint": "v54_provider_quota_snapshots",
-  "migrationCount": 55,
+  "migrationEndpoint": "v56_parser_checkpoint_file_manifest",
+  "migrationCount": 57,
   "divergences": [
     {
       "key": "windows:missing-table:agent_memories",
@@ -95,10 +95,6 @@
     {
       "key": "windows:missing-table:operating_action_history",
       "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table operating_action_history belongs to parser checkpoints / operating history / controller cache (v25/v26/v29), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
-    },
-    {
-      "key": "windows:missing-table:parser_checkpoints",
-      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table parser_checkpoints belongs to parser checkpoints / operating history / controller cache (v25/v26/v29), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
     },
     {
       "key": "windows:missing-table:pcm_file_manifest",

@@ -8,6 +8,7 @@ import com.openburnbar.data.cloud.CloudConversationSearchService
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.ProjectSummary
 import com.openburnbar.data.models.TokenUsage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -117,6 +118,8 @@ class ActivityStore(
                     kotlinx.coroutines.delay(SEARCH_DEBOUNCE_MS.toLong())
                     if (lastSearchQuery != trimmed) return@launch
                     _cloudSearchHits.value = cloudSearchService().search(trimmed)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     _cloudSearchHits.value = emptyList()
                 }

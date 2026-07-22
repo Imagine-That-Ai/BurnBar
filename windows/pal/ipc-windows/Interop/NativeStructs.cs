@@ -138,3 +138,35 @@ internal struct WINTRUST_DATA
     public uint dwUIContext;
     public IntPtr pSignatureSettings;
 }
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct CRYPT_PROVIDER_SGNR
+{
+    public uint cbStruct;
+    public System.Runtime.InteropServices.ComTypes.FILETIME sftVerifyAsOf;
+    public uint csCertChain;
+    public IntPtr pasCertChain;
+    public uint dwSignerType;
+    public IntPtr psSigner;
+    public uint dwError;
+    public uint csCounterSigners;
+    public IntPtr pasCounterSigners;
+    public IntPtr pChainContext;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct CRYPT_PROVIDER_CERT
+{
+    public uint cbStruct;
+    public IntPtr pCert;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct CERT_CONTEXT
+{
+    public uint dwCertEncodingType;
+    public IntPtr pbCertEncoded;
+    public uint cbCertEncoded;
+    public IntPtr pCertInfo;
+    public IntPtr hCertStore;
+}

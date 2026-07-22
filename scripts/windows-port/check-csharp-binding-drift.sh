@@ -17,9 +17,10 @@
 # twice (or right after regenerate.sh) is always green.
 #
 # Usage:
-#   scripts/windows-port/check-csharp-binding-drift.sh              # both crates
+#   scripts/windows-port/check-csharp-binding-drift.sh              # all crates
 #   scripts/windows-port/check-csharp-binding-drift.sh burnbar-remote
 #   scripts/windows-port/check-csharp-binding-drift.sh iroh
+#   scripts/windows-port/check-csharp-binding-drift.sh domain-core
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -99,7 +100,7 @@ check_binding() {
   local normalized_generated="${tmp_root}/${label}.generated.normalized.cs"
   cp "${repo_root}/${committed}" "${normalized_committed}"
   cp "${out_dir}/${generated_name}" "${normalized_generated}"
-  perl -0pi -e 's/[ \t]+$//mg' "${normalized_committed}" "${normalized_generated}"
+  perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/' "${normalized_committed}" "${normalized_generated}"
   if ! diff -u "${normalized_committed}" "${normalized_generated}"; then
     echo "" >&2
     echo "ERROR: [${label}] the committed C# binding is stale — the Rust" >&2
@@ -112,9 +113,9 @@ check_binding() {
 
 selection="${1:-all}"
 case "${selection}" in
-  all|burnbar-remote|iroh) ;;
+  all|burnbar-remote|iroh|domain-core) ;;
   *)
-    echo "ERROR: unknown selection '${selection}' (expected: all | burnbar-remote | iroh)" >&2
+    echo "ERROR: unknown selection '${selection}' (expected: all | burnbar-remote | iroh | domain-core)" >&2
     exit 1
     ;;
 esac
@@ -139,6 +140,17 @@ if [[ "${selection}" == "all" || "${selection}" == "iroh" ]]; then
     "uniffi.toml" \
     "crates/openburnbar-iroh/bindings/csharp/OpenBurnBarIroh.Ffi/generated/openburnbar_iroh.cs" \
     "crates/openburnbar-iroh/bindings/csharp/regenerate.sh"
+fi
+
+if [[ "${selection}" == "all" || "${selection}" == "domain-core" ]]; then
+  check_binding \
+    "openburnbar-domain-core" \
+    "crates/openburnbar-domain-core" \
+    "openburnbar-domain-ffi" \
+    "openburnbar_domain_ffi" \
+    "domain-ffi/uniffi.toml" \
+    "crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/generated/openburnbar_domain_ffi.cs" \
+    "crates/openburnbar-domain-core/bindings/csharp/regenerate.sh"
 fi
 
 echo "OK: committed C# bindings match the pinned generator's output."

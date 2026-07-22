@@ -16,6 +16,8 @@ on:
   pull_request:
     branches:
       - main
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -32,7 +34,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 25
     env:
-      RUN_PR_SAFE_QA: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
+      RUN_PR_SAFE_QA: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.ref != 'refs/heads/main' }}
       RUN_SECRET_BACKED_QA: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
     steps:
       - name: Checkout repository
@@ -225,32 +227,77 @@ jobs:
 
       - name: Post QA report as PR comment
         if: always() && steps.qa_artifacts.outputs.ready == 'true' && steps.pr.outputs.number != ''
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          python3 - <<'PY'
-          import json, os, subprocess
-          from pathlib import Path
+        with:
+          github-token: ${{ env.GH_TOKEN }}
+          retries: 3
+          retry-exempt-status-codes: 400,401,403,404,422
+          script: |
+            const fs = require('fs');
+            const pr = Number(process.env.PR_NUMBER);
+            const runUrl = process.env.RUN_URL;
+            const marker = '<!-- qa-report -->';
+            const reportPath = 'qa-results/report.md';
+            let report = fs.existsSync(reportPath)
+              ? fs.readFileSync(reportPath, 'utf8')
+              : '## QA Report\n\n:no_entry: BLOCKED -- report missing.';
+            if (!report.startsWith('## QA Report')) {
+              report = `## QA Report\n\n${report}`;
+            }
+            const body = `${marker}\n${report}\n\n---\nArtifacts: see \`qa-results-${process.env.GITHUB_RUN_NUMBER || ''}\` in the workflow run.\nWorkflow run: ${runUrl}\n`;
 
-          pr = os.environ['PR_NUMBER']
-          run_url = os.environ['RUN_URL']
-          marker = '<!-- qa-report -->'
-          report_path = Path('qa-results/report.md')
-          body = report_path.read_text() if report_path.exists() else '## QA Report\n\n:no_entry: BLOCKED -- report missing.'
-          if not body.startswith('## QA Report'):
-              body = '## QA Report\n\n' + body
-          body = f"{marker}\n{body}\n\n---\nArtifacts: see `qa-results-{os.environ.get('GITHUB_RUN_NUMBER', '')}` in the workflow run.\nWorkflow run: {run_url}\n"
+            // REST issue-comment reads and writes can return 503 for very large PRs.
+            // Keep discovery and mutation on GraphQL so the QA result remains reportable.
+            let before = null;
+            let existing = null;
+            let subjectId = null;
+            do {
+              const result = await github.graphql(`
+                query QAComment($owner: String!, $repo: String!, $number: Int!, $before: String) {
+                  repository(owner: $owner, name: $repo) {
+                    pullRequest(number: $number) {
+                      id
+                      comments(last: 100, before: $before) {
+                        nodes { id body }
+                        pageInfo { hasPreviousPage startCursor }
+                      }
+                    }
+                  }
+                }
+              `, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                number: pr,
+                before,
+              });
+              const pullRequest = result.repository.pullRequest;
+              subjectId = pullRequest.id;
+              const page = pullRequest.comments;
+              existing = page.nodes.find(comment => comment.body.startsWith(marker));
+              before = page.pageInfo.hasPreviousPage ? page.pageInfo.startCursor : null;
+            } while (!existing && before);
 
-          comments_json = subprocess.check_output(['gh', 'api', f'repos/{os.environ["GITHUB_REPOSITORY"]}/issues/{pr}/comments', '--paginate'], text=True)
-          comments = json.loads(comments_json)
-          existing = next((c for c in comments if c.get('body', '').startswith(marker)), None)
-          if existing:
-              subprocess.check_call(['gh', 'api', f'repos/{os.environ["GITHUB_REPOSITORY"]}/issues/comments/{existing["id"]}', '-X', 'PATCH', '-f', f'body={body}'])
-          else:
-              subprocess.check_call(['gh', 'api', f'repos/{os.environ["GITHUB_REPOSITORY"]}/issues/{pr}/comments', '-f', f'body={body}'])
-          PY
+            if (existing) {
+              await github.graphql(`
+                mutation UpdateQAComment($id: ID!, $body: String!) {
+                  updateIssueComment(input: {id: $id, body: $body}) {
+                    issueComment { id }
+                  }
+                }
+              `, { id: existing.id, body });
+            } else {
+              await github.graphql(`
+                mutation CreateQAComment($subjectId: ID!, $body: String!) {
+                  addComment(input: {subjectId: $subjectId, body: $body}) {
+                    commentEdge { node { id } }
+                  }
+                }
+              `, { subjectId, body });
+            }
 
       - name: Honest conclusion
         if: always()

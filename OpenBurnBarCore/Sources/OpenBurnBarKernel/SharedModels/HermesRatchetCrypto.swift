@@ -1,0 +1,578 @@
+import Foundation
+import OpenBurnBarDomainCoreRuntime
+
+#if canImport(OpenBurnBarDomainCoreFFI)
+import OpenBurnBarDomainCoreFFI
+#endif
+
+public enum HermesRatchetError: Error, Equatable {
+    case invalidBase64(String)
+    case invalidKeyLength(String)
+    case invalidPublicKey(String)
+    case invalidPrivateKey(String)
+    case missingRemoteRatchetKey
+    case missingSendingChain
+    case missingReceivingChain
+    case tooManySkippedKeys
+    case skippedKeyLimitExceeded
+    case invalidEnvelope
+    case authenticationFailed
+    case nativeUnavailable
+}
+
+public enum HermesRatchetRole: String, Codable, Sendable {
+    case initiator
+    case responder
+}
+
+public struct HermesRatchetKeyPair: Codable, Hashable, Sendable {
+    public let privateKeyBase64: String
+    public let publicKeyBase64: String
+
+    public init(privateKeyBase64: String, publicKeyBase64: String) {
+        self.privateKeyBase64 = privateKeyBase64
+        self.publicKeyBase64 = publicKeyBase64
+    }
+}
+
+public struct HermesRatchetHeader: Codable, Hashable, Sendable {
+    public let version: Int
+    public let algorithm: String
+    public let sessionID: String
+    public let senderDeviceID: String
+    public let receiverDeviceID: String
+    public let ratchetPublicKeyBase64: String
+    public let previousChainLength: Int
+    public let messageNumber: Int
+    public let epoch: Int
+
+    public init(
+        version: Int = HermesRatchetCrypto.version,
+        algorithm: String = HermesRatchetCrypto.algorithm,
+        sessionID: String,
+        senderDeviceID: String,
+        receiverDeviceID: String,
+        ratchetPublicKeyBase64: String,
+        previousChainLength: Int,
+        messageNumber: Int,
+        epoch: Int
+    ) {
+        self.version = version
+        self.algorithm = algorithm
+        self.sessionID = sessionID
+        self.senderDeviceID = senderDeviceID
+        self.receiverDeviceID = receiverDeviceID
+        self.ratchetPublicKeyBase64 = ratchetPublicKeyBase64
+        self.previousChainLength = previousChainLength
+        self.messageNumber = messageNumber
+        self.epoch = epoch
+    }
+}
+
+public struct HermesRatchetEnvelope: Codable, Hashable, Sendable {
+    public let header: HermesRatchetHeader
+    public let ciphertextBase64: String
+
+    public init(header: HermesRatchetHeader, ciphertextBase64: String) {
+        self.header = header
+        self.ciphertextBase64 = ciphertextBase64
+    }
+}
+
+public struct HermesRatchetSessionState: Codable, Hashable, Sendable {
+    public var role: HermesRatchetRole
+    public var sessionID: String
+    public var localDeviceID: String
+    public var remoteDeviceID: String
+    public var rootKeyBase64: String
+    public var sendingChainKeyBase64: String?
+    public var receivingChainKeyBase64: String?
+    public var sendingRatchetPrivateKeyBase64: String
+    public var remoteRatchetPublicKeyBase64: String?
+    public var sendMessageNumber: Int
+    public var receiveMessageNumber: Int
+    public var previousSendingChainLength: Int
+    public var epoch: Int
+    public var maxSkip: Int
+    public var skippedMessageKeys: [String: String]
+
+    public init(
+        role: HermesRatchetRole,
+        sessionID: String,
+        localDeviceID: String,
+        remoteDeviceID: String,
+        rootKeyBase64: String,
+        sendingChainKeyBase64: String? = nil,
+        receivingChainKeyBase64: String? = nil,
+        sendingRatchetPrivateKeyBase64: String,
+        remoteRatchetPublicKeyBase64: String? = nil,
+        sendMessageNumber: Int = 0,
+        receiveMessageNumber: Int = 0,
+        previousSendingChainLength: Int = 0,
+        epoch: Int = 0,
+        maxSkip: Int = HermesRatchetCrypto.defaultMaxSkip,
+        skippedMessageKeys: [String: String] = [:]
+    ) {
+        self.role = role
+        self.sessionID = sessionID
+        self.localDeviceID = localDeviceID
+        self.remoteDeviceID = remoteDeviceID
+        self.rootKeyBase64 = rootKeyBase64
+        self.sendingChainKeyBase64 = sendingChainKeyBase64
+        self.receivingChainKeyBase64 = receivingChainKeyBase64
+        self.sendingRatchetPrivateKeyBase64 = sendingRatchetPrivateKeyBase64
+        self.remoteRatchetPublicKeyBase64 = remoteRatchetPublicKeyBase64
+        self.sendMessageNumber = sendMessageNumber
+        self.receiveMessageNumber = receiveMessageNumber
+        self.previousSendingChainLength = previousSendingChainLength
+        self.epoch = epoch
+        self.maxSkip = maxSkip
+        self.skippedMessageKeys = skippedMessageKeys
+    }
+}
+
+public enum HermesRatchetCrypto {
+    public static let version = 1
+    public static let algorithm = "OpenBurnBar-HermesRatchet-v1-P256-HKDFSHA256-AESGCM"
+    public static let defaultMaxSkip = 64
+
+    public static func generateKeyPair() -> HermesRatchetKeyPair {
+        let key = PlatformCrypto.p256KeyAgreementPrivateKey()
+        return HermesRatchetKeyPair(
+            privateKeyBase64: key.rawRepresentation.base64EncodedString(),
+            publicKeyBase64: key.publicKey.x963Representation.base64EncodedString()
+        )
+    }
+
+    public static func randomRootKey() throws -> Data {
+        do {
+            return try PlatformCrypto.secureRandomBytes(count: 32)
+        } catch {
+            throw HermesRatchetError.invalidKeyLength("secure random failed")
+        }
+    }
+
+    public static func initiatorState(
+        sessionID: String,
+        localDeviceID: String,
+        remoteDeviceID: String,
+        sharedSecret: Data,
+        remoteInitialRatchetPublicKeyBase64: String,
+        localInitialRatchetKeyPair: HermesRatchetKeyPair = generateKeyPair(),
+        maxSkip: Int = defaultMaxSkip
+    ) throws -> HermesRatchetSessionState {
+        try validateSymmetricKey(sharedSecret, label: "sharedSecret")
+        let localPrivateKey = try privateKey(from: localInitialRatchetKeyPair.privateKeyBase64)
+        let remotePublicKey = try publicKey(from: remoteInitialRatchetPublicKeyBase64)
+        let dhOutput = try sharedSecretBytes(privateKey: localPrivateKey, publicKey: remotePublicKey)
+        let derived = try rootKDF(rootKey: sharedSecret, dhOutput: dhOutput)
+        return HermesRatchetSessionState(
+            role: .initiator,
+            sessionID: sessionID,
+            localDeviceID: localDeviceID,
+            remoteDeviceID: remoteDeviceID,
+            rootKeyBase64: derived.rootKey.base64EncodedString(),
+            sendingChainKeyBase64: derived.chainKey.base64EncodedString(),
+            sendingRatchetPrivateKeyBase64: localInitialRatchetKeyPair.privateKeyBase64,
+            remoteRatchetPublicKeyBase64: remoteInitialRatchetPublicKeyBase64,
+            maxSkip: maxSkip
+        )
+    }
+
+    public static func responderState(
+        sessionID: String,
+        localDeviceID: String,
+        remoteDeviceID: String,
+        sharedSecret: Data,
+        localInitialRatchetKeyPair: HermesRatchetKeyPair,
+        maxSkip: Int = defaultMaxSkip
+    ) throws -> HermesRatchetSessionState {
+        try validateSymmetricKey(sharedSecret, label: "sharedSecret")
+        _ = try privateKey(from: localInitialRatchetKeyPair.privateKeyBase64)
+        return HermesRatchetSessionState(
+            role: .responder,
+            sessionID: sessionID,
+            localDeviceID: localDeviceID,
+            remoteDeviceID: remoteDeviceID,
+            rootKeyBase64: sharedSecret.base64EncodedString(),
+            sendingRatchetPrivateKeyBase64: localInitialRatchetKeyPair.privateKeyBase64,
+            maxSkip: maxSkip
+        )
+    }
+
+    public static func encrypt(
+        plaintext: Data,
+        state: inout HermesRatchetSessionState,
+        associatedData: Data = Data()
+    ) throws -> HermesRatchetEnvelope {
+        guard let sendingChainKeyBase64 = state.sendingChainKeyBase64 else {
+            throw HermesRatchetError.missingSendingChain
+        }
+        let sendingChainKey = try symmetricKeyData(fromBase64: sendingChainKeyBase64, label: "sendingChainKey")
+        let derived = try chainKDF(chainKey: sendingChainKey)
+        let privateKey = try privateKey(from: state.sendingRatchetPrivateKeyBase64)
+        let header = HermesRatchetHeader(
+            sessionID: state.sessionID,
+            senderDeviceID: state.localDeviceID,
+            receiverDeviceID: state.remoteDeviceID,
+            ratchetPublicKeyBase64: privateKey.publicKey.x963Representation.base64EncodedString(),
+            previousChainLength: state.previousSendingChainLength,
+            messageNumber: state.sendMessageNumber,
+            epoch: state.epoch
+        )
+        let aad = try envelopeAAD(header: header, associatedData: associatedData)
+        let combined = try seal(plaintext: plaintext, key: derived.messageKey, aad: aad)
+        state.sendingChainKeyBase64 = derived.chainKey.base64EncodedString()
+        state.sendMessageNumber += 1
+        return HermesRatchetEnvelope(header: header, ciphertextBase64: combined.base64EncodedString())
+    }
+
+    public static func decrypt(
+        _ envelope: HermesRatchetEnvelope,
+        state: inout HermesRatchetSessionState,
+        associatedData: Data = Data()
+    ) throws -> Data {
+        try validateHeader(envelope.header, state: state)
+        let skippedKey = skippedKeyID(
+            ratchetPublicKeyBase64: envelope.header.ratchetPublicKeyBase64,
+            messageNumber: envelope.header.messageNumber
+        )
+        if let keyBase64 = state.skippedMessageKeys.removeValue(forKey: skippedKey) {
+            let messageKey = try symmetricKeyData(fromBase64: keyBase64, label: "skippedMessageKey")
+            return try open(envelope, messageKey: messageKey, associatedData: associatedData)
+        }
+
+        if state.remoteRatchetPublicKeyBase64 != envelope.header.ratchetPublicKeyBase64 {
+            if let remote = state.remoteRatchetPublicKeyBase64 {
+                try skipMessageKeys(
+                    until: envelope.header.previousChainLength,
+                    remoteRatchetPublicKeyBase64: remote,
+                    state: &state
+                )
+            }
+            try dhRatchet(remoteRatchetPublicKeyBase64: envelope.header.ratchetPublicKeyBase64, state: &state)
+        }
+
+        try skipMessageKeys(
+            until: envelope.header.messageNumber,
+            remoteRatchetPublicKeyBase64: envelope.header.ratchetPublicKeyBase64,
+            state: &state
+        )
+        guard let receivingChainKeyBase64 = state.receivingChainKeyBase64 else {
+            throw HermesRatchetError.missingReceivingChain
+        }
+        let receivingChainKey = try symmetricKeyData(fromBase64: receivingChainKeyBase64, label: "receivingChainKey")
+        let derived = try chainKDF(chainKey: receivingChainKey)
+        let plaintext = try open(envelope, messageKey: derived.messageKey, associatedData: associatedData)
+        state.receivingChainKeyBase64 = derived.chainKey.base64EncodedString()
+        state.receiveMessageNumber += 1
+        return plaintext
+    }
+
+    private static func dhRatchet(
+        remoteRatchetPublicKeyBase64: String,
+        state: inout HermesRatchetSessionState
+    ) throws {
+        let currentPrivateKey = try privateKey(from: state.sendingRatchetPrivateKeyBase64)
+        let remotePublicKey = try publicKey(from: remoteRatchetPublicKeyBase64)
+        let rootKey = try symmetricKeyData(fromBase64: state.rootKeyBase64, label: "rootKey")
+        let receiveDerived = try rootKDF(
+            rootKey: rootKey,
+            dhOutput: try sharedSecretBytes(privateKey: currentPrivateKey, publicKey: remotePublicKey)
+        )
+        let nextPrivateKey = PlatformCrypto.p256KeyAgreementPrivateKey()
+        let sendDerived = try rootKDF(
+            rootKey: receiveDerived.rootKey,
+            dhOutput: try sharedSecretBytes(privateKey: nextPrivateKey, publicKey: remotePublicKey)
+        )
+        state.previousSendingChainLength = state.sendMessageNumber
+        state.sendMessageNumber = 0
+        state.receiveMessageNumber = 0
+        state.epoch += 1
+        state.remoteRatchetPublicKeyBase64 = remoteRatchetPublicKeyBase64
+        state.rootKeyBase64 = sendDerived.rootKey.base64EncodedString()
+        state.receivingChainKeyBase64 = receiveDerived.chainKey.base64EncodedString()
+        state.sendingChainKeyBase64 = sendDerived.chainKey.base64EncodedString()
+        state.sendingRatchetPrivateKeyBase64 = nextPrivateKey.rawRepresentation.base64EncodedString()
+    }
+
+    private static func skipMessageKeys(
+        until messageNumber: Int,
+        remoteRatchetPublicKeyBase64: String,
+        state: inout HermesRatchetSessionState
+    ) throws {
+        guard messageNumber >= state.receiveMessageNumber else { return }
+        guard messageNumber - state.receiveMessageNumber <= state.maxSkip else {
+            throw HermesRatchetError.tooManySkippedKeys
+        }
+        guard var receivingChainKey = try state.receivingChainKeyBase64.map({
+            try symmetricKeyData(fromBase64: $0, label: "receivingChainKey")
+        }) else {
+            if messageNumber == state.receiveMessageNumber { return }
+            throw HermesRatchetError.missingReceivingChain
+        }
+        while state.receiveMessageNumber < messageNumber {
+            let derived = try chainKDF(chainKey: receivingChainKey)
+            let key = skippedKeyID(
+                ratchetPublicKeyBase64: remoteRatchetPublicKeyBase64,
+                messageNumber: state.receiveMessageNumber
+            )
+            guard state.skippedMessageKeys.count < state.maxSkip else {
+                throw HermesRatchetError.skippedKeyLimitExceeded
+            }
+            state.skippedMessageKeys[key] = derived.messageKey.base64EncodedString()
+            receivingChainKey = derived.chainKey
+            state.receiveMessageNumber += 1
+        }
+        state.receivingChainKeyBase64 = receivingChainKey.base64EncodedString()
+    }
+
+    private static func open(
+        _ envelope: HermesRatchetEnvelope,
+        messageKey: Data,
+        associatedData: Data
+    ) throws -> Data {
+        guard let combined = Data(base64Encoded: envelope.ciphertextBase64) else {
+            throw HermesRatchetError.invalidEnvelope
+        }
+        do {
+            let aad = try envelopeAAD(header: envelope.header, associatedData: associatedData)
+            return try domainCoreBytes(operation: "ratchet_open") {
+                try HermesRatchetLegacyCrypto.open(combined: combined, key: messageKey, aad: aad)
+            } rust: {
+                #if canImport(OpenBurnBarDomainCoreFFI)
+                try OpenBurnBarDomainCoreFFI.hermesOpenCombined(
+                    combined: combined,
+                    key: messageKey,
+                    aad: aad
+                )
+                #else
+                Data()
+                #endif
+            }
+        } catch {
+            throw HermesRatchetError.authenticationFailed
+        }
+    }
+
+    private static func validateHeader(_ header: HermesRatchetHeader, state: HermesRatchetSessionState) throws {
+        guard header.version == version,
+              header.algorithm == algorithm,
+              header.sessionID == state.sessionID,
+              header.receiverDeviceID == state.localDeviceID,
+              header.senderDeviceID == state.remoteDeviceID,
+              header.messageNumber >= 0,
+              header.previousChainLength >= 0,
+              header.epoch >= 0 else {
+            throw HermesRatchetError.invalidEnvelope
+        }
+        _ = try publicKey(from: header.ratchetPublicKeyBase64)
+    }
+
+    private static func rootKDF(rootKey: Data, dhOutput: Data) throws -> (rootKey: Data, chainKey: Data) {
+        let info = Data("OpenBurnBar-HermesRatchet-v1-root".utf8)
+        let data = try domainCoreBytes(operation: "ratchet_root_kdf") {
+            try HermesRatchetLegacyCrypto.rootKDFBytes(rootKey: rootKey, dhOutput: dhOutput)
+        } rust: {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.hermesHkdfSha256(
+                inputKeyMaterial: dhOutput,
+                salt: rootKey,
+                info: info,
+                outputByteCount: 64
+            )
+            #else
+            Data()
+            #endif
+        }
+        return (Data(data.prefix(32)), Data(data.suffix(32)))
+    }
+
+    private static func chainKDF(chainKey: Data) throws -> (chainKey: Data, messageKey: Data) {
+        let chainLabel = Data("OpenBurnBar-HermesRatchet-v1-chain".utf8)
+        let messageLabel = Data("OpenBurnBar-HermesRatchet-v1-message".utf8)
+        let next = try domainCoreBytes(operation: "ratchet_chain_kdf") {
+            try HermesRatchetLegacyCrypto.nextChainKey(chainKey)
+        } rust: {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.hermesHmacSha256(key: chainKey, data: chainLabel)
+            #else
+            Data()
+            #endif
+        }
+        let message = try domainCoreBytes(operation: "ratchet_message_kdf") {
+            try HermesRatchetLegacyCrypto.messageKey(chainKey)
+        } rust: {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.hermesHmacSha256(key: chainKey, data: messageLabel)
+            #else
+            Data()
+            #endif
+        }
+        return (next, message)
+    }
+
+    private static func envelopeAAD(header: HermesRatchetHeader, associatedData: Data) throws -> Data {
+        let legacy = { HermesRatchetLegacyCrypto.envelopeAAD(header: header, associatedData: associatedData) }
+        return try domainCoreBytes(operation: "ratchet_aad", legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.hermesRatchetEnvelopeAad(
+                associatedData: associatedData,
+                algorithm: header.algorithm,
+                sessionId: header.sessionID,
+                senderDeviceId: header.senderDeviceID,
+                receiverDeviceId: header.receiverDeviceID,
+                ratchetPublicKeyBase64: header.ratchetPublicKeyBase64,
+                version: UInt64(header.version),
+                previousChainLength: UInt64(header.previousChainLength),
+                messageNumber: UInt64(header.messageNumber),
+                epoch: UInt64(header.epoch)
+            )
+            #else
+            throw HermesRatchetError.nativeUnavailable
+            #endif
+        }
+    }
+
+    private static func seal(plaintext: Data, key: Data, aad: Data) throws -> Data {
+        try DomainCoreShadowRuntime.selectVerifiedLegacy(
+            domain: "hermes",
+            slice: "ratchet",
+            operation: "ratchet_seal",
+            mode: DomainCoreBuildMode(rawValue: domainCoreMode) ?? .legacy,
+            nativeStatus: HermesDomainCoreAdapter.nativeStatus,
+            coreVersion: HermesDomainCoreAdapter.currentCoreVersion,
+            legacy: {
+                try HermesRatchetLegacyCrypto.seal(plaintext: plaintext, key: key, aad: aad)
+            },
+            rustAuthority: {
+                #if canImport(OpenBurnBarDomainCoreFFI)
+                try OpenBurnBarDomainCoreFFI.hermesSealCombined(
+                    plaintext: plaintext,
+                    key: key,
+                    aad: aad,
+                    nonce: PlatformCrypto.secureRandomBytes(count: 12)
+                )
+                #else
+                throw HermesRatchetError.nativeUnavailable
+                #endif
+            },
+            verifyLegacyWithRust: { combined in
+                #if canImport(OpenBurnBarDomainCoreFFI)
+                try OpenBurnBarDomainCoreFFI.hermesOpenCombined(combined: combined, key: key, aad: aad) == plaintext
+                #else
+                throw HermesRatchetError.nativeUnavailable
+                #endif
+            },
+            nativeUnavailableError: HermesRatchetError.nativeUnavailable,
+            diagnostic: diagnostic
+        )
+    }
+
+    private static func domainCoreBytes(
+        operation: String,
+        legacy: () throws -> Data,
+        rust: () throws -> Data
+    ) throws -> Data {
+        let mode = domainCoreMode
+        return try selectDomainCoreBytes(
+            operation: operation,
+            mode: mode,
+            nativeStatus: HermesDomainCoreAdapter.nativeStatus,
+            coreVersion: HermesDomainCoreAdapter.currentCoreVersion,
+            legacy: legacy,
+            rust: rust,
+            record: DomainCoreShadowComparisonCollector.record
+        )
+    }
+
+    static func selectDomainCoreBytes(
+        operation: String,
+        mode: String,
+        nativeStatus: () -> DomainCoreRuntimeNativeStatus,
+        coreVersion: () -> String,
+        legacy: () throws -> Data,
+        rust: () throws -> Data,
+        record: (DomainCoreShadowComparison) -> Void
+    ) throws -> Data {
+        try DomainCoreShadowRuntime.select(
+            domain: "hermes",
+            slice: "ratchet",
+            operation: operation,
+            mode: DomainCoreBuildMode(rawValue: mode) ?? .legacy,
+            nativeStatus: nativeStatus,
+            coreVersion: coreVersion,
+            legacy: legacy,
+            rust: rust,
+            equivalent: ==,
+            nativeUnavailableError: HermesRatchetError.nativeUnavailable,
+            diagnostic: diagnostic,
+            recordComparison: record
+        )
+    }
+
+    private static var domainCoreMode: String {
+        DomainCoreBuildProfileResolver.mode(for: .hermes).rawValue
+    }
+
+    private static func diagnostic(_ operation: String, _ outcome: String) {
+        NSLog("domain_core.hermes.%@ %@", operation, outcome)
+    }
+
+    private static func skippedKeyID(ratchetPublicKeyBase64: String, messageNumber: Int) -> String {
+        "\(ratchetPublicKeyBase64):\(messageNumber)"
+    }
+
+    private static func privateKey(from base64: String) throws -> PlatformP256KeyAgreementPrivateKey {
+        guard let data = Data(base64Encoded: base64) else {
+            throw HermesRatchetError.invalidBase64("privateKey")
+        }
+        guard data.count == 32 else {
+            throw HermesRatchetError.invalidKeyLength("privateKey")
+        }
+        do {
+            return try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: data)
+        } catch {
+            throw HermesRatchetError.invalidPrivateKey("privateKey")
+        }
+    }
+
+    private static func publicKey(from base64: String) throws -> PlatformP256KeyAgreementPublicKey {
+        guard let data = Data(base64Encoded: base64) else {
+            throw HermesRatchetError.invalidBase64("publicKey")
+        }
+        guard data.count == 65 else {
+            throw HermesRatchetError.invalidKeyLength("publicKey")
+        }
+        do {
+            return try PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: data)
+        } catch {
+            throw HermesRatchetError.invalidPublicKey("publicKey")
+        }
+    }
+
+    private static func sharedSecretBytes(
+        privateKey: PlatformP256KeyAgreementPrivateKey,
+        publicKey: PlatformP256KeyAgreementPublicKey
+    ) throws -> Data {
+        let secret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: privateKey, publicKey: publicKey)
+        var data = Data()
+        secret.withUnsafeBytes { data.append(contentsOf: $0) }
+        return data
+    }
+
+    private static func symmetricKeyData(fromBase64 base64: String, label: String) throws -> Data {
+        guard let data = Data(base64Encoded: base64) else {
+            throw HermesRatchetError.invalidBase64(label)
+        }
+        try validateSymmetricKey(data, label: label)
+        return data
+    }
+
+    private static func validateSymmetricKey(_ data: Data, label: String) throws {
+        guard data.count == 32 else {
+            throw HermesRatchetError.invalidKeyLength(label)
+        }
+    }
+
+}

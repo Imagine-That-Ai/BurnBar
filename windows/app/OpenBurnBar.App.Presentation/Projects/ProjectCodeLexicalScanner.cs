@@ -15,7 +15,18 @@ public static class ProjectCodeLexicalScanner
     private static readonly HashSet<string> CodeExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".cs", ".swift", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".kt", ".java", ".go",
+        ".m", ".mm", ".h", ".hpp", ".c", ".cc", ".cpp", ".json", ".md", ".yml", ".yaml",
     };
+
+    private static readonly HashSet<string> TreeSitterExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".cs", ".swift", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".kt", ".java", ".go",
+        ".m", ".mm", ".h", ".hpp", ".c", ".cc", ".cpp", ".json", ".md", ".yml", ".yaml",
+    };
+
+    public static bool IsCodeFile(string path) => CodeExtensions.Contains(Path.GetExtension(path));
+
+    public static bool SupportsTreeSitter(string path) => TreeSitterExtensions.Contains(Path.GetExtension(path));
 
     /// <summary>
     /// Scan <paramref name="rootDirectory"/> for code files and return a lexical inventory.
@@ -29,29 +40,9 @@ public static class ProjectCodeLexicalScanner
         }
 
         var files = new List<string>();
-        try
+        foreach (string path in ProjectCodeFileEnumerator.EnumerateCodeFiles(rootDirectory, maxFiles))
         {
-            foreach (string path in Directory.EnumerateFiles(rootDirectory, "*", SearchOption.AllDirectories))
-            {
-                if (!CodeExtensions.Contains(Path.GetExtension(path)))
-                {
-                    continue;
-                }
-
-                files.Add(path);
-                if (files.Count >= maxFiles)
-                {
-                    break;
-                }
-            }
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return ProjectCodeInventory.Empty(rootDirectory);
-        }
-        catch (IOException)
-        {
-            return ProjectCodeInventory.Empty(rootDirectory);
+            files.Add(path);
         }
 
         var byExt = files

@@ -208,6 +208,19 @@ public struct AppLogger: Sendable {
             return fallback
         }
     }
+
+    /// Execute a throwing expression whose caller already models failure as absence.
+    public func silentlyOptional<T>(
+        _ operation: String,
+        _ body: @autoclosure () throws -> T
+    ) -> T? {
+        do {
+            return try body()
+        } catch {
+            silentFailure(operation, error: error)
+            return nil
+        }
+    }
     
     // MARK: - Formatting
     

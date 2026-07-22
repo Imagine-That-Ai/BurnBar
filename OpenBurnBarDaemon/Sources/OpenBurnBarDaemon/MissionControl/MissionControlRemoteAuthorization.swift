@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 // M2 of the split-brain remediation program
 // (docs/SURFACE_SPRAWL_AND_SPLITBRAIN_REMEDIATION_PLAN.md, Phase 2).

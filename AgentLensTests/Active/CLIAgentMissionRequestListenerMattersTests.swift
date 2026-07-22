@@ -18,6 +18,120 @@ import OpenBurnBarCore
 /// Kept outside any `@MainActor` suite: `CLIAgentMissionPersonaScopeResolution` is
 /// a pure value type, so the checks need no app-host MainActor queue.
 final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
+    @MainActor
+    func testApprovalTransitionGetsNewQueueIdentityAndUnparksMission() {
+        let pending: [String: Any] = [
+            "status": "waiting_for_approval",
+            "approvalStatus": "pending",
+            "approvalRequestId": "approval-1"
+        ]
+        let approved: [String: Any] = [
+            "status": "waiting_for_approval",
+            "approvalStatus": "approved",
+            "approvalRequestId": "approval-1"
+        ]
+
+        let pendingIdentity = CLIAgentMissionRequestListener.processingIdentity(
+            documentID: "mission-1",
+            data: pending
+        )
+        let approvedIdentity = CLIAgentMissionRequestListener.processingIdentity(
+            documentID: "mission-1",
+            data: approved
+        )
+
+        XCTAssertNotEqual(pendingIdentity, approvedIdentity)
+        XCTAssertTrue(CLIAgentMissionRequestListener.isParkedPendingApproval(pending))
+        XCTAssertFalse(CLIAgentMissionRequestListener.isParkedPendingApproval(approved))
+    }
+
+    @MainActor
+    func testMalformedPendingApprovalIsNotSilentlyParked() {
+        XCTAssertFalse(
+            CLIAgentMissionRequestListener.isParkedPendingApproval([
+                "status": "waiting_for_approval",
+                "approvalStatus": "pending"
+            ])
+        )
+    }
+
+    // MARK: - Wand routing authority
+
+    @MainActor
+    func testGroupedMissionKeepsConcreteDispatchRoute() {
+        let context = MissionGroupClaimContext(
+            groupID: "group",
+            siblingIndex: 0,
+            siblingCount: 2,
+            parallelismLimit: 2,
+            tierCap: 2
+        )
+
+        XCTAssertFalse(
+            CLIAgentMissionRequestListener.shouldResolveWandRouting(
+                context: context,
+                data: ["requestedModelID": "anthropic/claude-sonnet-4"]
+            ),
+            "A mobile Pareto or Manual route must not be replaced by the Mac's default Ministry wand."
+        )
+    }
+
+    @MainActor
+    func testMacWandGroupWithoutConcreteRouteStillUsesMinistry() {
+        let context = MissionGroupClaimContext(
+            groupID: "group",
+            siblingIndex: 1,
+            siblingCount: 2,
+            parallelismLimit: 2,
+            tierCap: 2
+        )
+
+        XCTAssertTrue(
+            CLIAgentMissionRequestListener.shouldResolveWandRouting(
+                context: context,
+                data: [:]
+            )
+        )
+        XCTAssertTrue(
+            CLIAgentMissionRequestListener.shouldResolveWandRouting(
+                context: context,
+                data: ["requestedModelID": "  \n"]
+            )
+        )
+        XCTAssertFalse(
+            CLIAgentMissionRequestListener.shouldResolveWandRouting(
+                context: nil,
+                data: [:]
+            )
+        )
+    }
+
+    @MainActor
+    func testConcreteDispatchRouteBypassesMinistryAtListenerBoundary() async {
+        let context = MissionGroupClaimContext(
+            groupID: "group",
+            siblingIndex: 0,
+            siblingCount: 2,
+            parallelismLimit: 2,
+            tierCap: 2
+        )
+
+        do {
+            let concreteSelection = try await CLIAgentMissionRequestListener.resolveWandRoutingIfNeeded(
+                context: context,
+                data: ["requestedModelID": "anthropic/claude-sonnet-4"]
+            )
+            let ungroupedSelection = try await CLIAgentMissionRequestListener.resolveWandRoutingIfNeeded(
+                context: nil,
+                data: [:]
+            )
+
+            XCTAssertNil(concreteSelection)
+            XCTAssertNil(ungroupedSelection)
+        } catch {
+            XCTFail("Concrete and ungrouped routes must bypass Ministry without error: \(error)")
+        }
+    }
 
     // MARK: - Legitimate "no scope" path stays open
 

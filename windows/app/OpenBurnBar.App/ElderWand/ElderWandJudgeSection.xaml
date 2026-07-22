@@ -23,7 +23,6 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVisibility" />
         <conv:NegatedBoolToVisibilityConverter x:Key="NegatedBoolToVisibility" />
         <conv:ElderWandModelAccentBrushConverter x:Key="ModelAccent" />
-        <SolidColorBrush x:Key="ElderWandWhimsyBrush" Color="#FFA855F7" />
     </UserControl.Resources>
 
     <StackPanel Spacing="12">
@@ -32,10 +31,10 @@
             <TextBlock Text="Judge"
                        FontSize="15"
                        FontWeight="SemiBold"
-                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                       Foreground="{ThemeResource AuroraTextBrush}" />
             <TextBlock Text="Compares the panel answers into a structured verdict."
                        FontSize="11"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
         </StackPanel>
 
         <!-- Empty hint -->
@@ -45,7 +44,7 @@
             <TextBlock Text="No live models advertised yet. Refresh the chat gateway to choose a judge."
                        FontSize="12"
                        TextWrapping="Wrap"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
         </Border>
 
         <!-- Provider-grouped single-select rail -->
@@ -57,7 +56,7 @@
                         <TextBlock Text="{x:Bind ProviderName}"
                                    FontSize="12"
                                    FontWeight="SemiBold"
-                                   Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                   Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                         <ItemsControl ItemsSource="{x:Bind Chips}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -83,22 +82,22 @@
                                                                  Visibility="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource NegatedBoolToVisibility}}" />
                                                         <FontIcon Glyph="&#xE73E;"
                                                                   FontSize="11"
-                                                                  Foreground="{StaticResource ElderWandWhimsyBrush}"
+                                                                  Foreground="{ThemeResource AuroraWhimsyBrush}"
                                                                   Visibility="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
                                                     </Grid>
                                                     <TextBlock Text="{x:Bind Title}"
                                                                FontSize="12"
-                                                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                                               Foreground="{ThemeResource AuroraTextBrush}" />
                                                     <FontIcon Glyph="&#xE708;"
                                                               FontSize="9"
-                                                              Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                                                              Foreground="{ThemeResource AuroraTextMutedBrush}"
                                                               Visibility="{x:Bind IsRouteAsleep, Converter={StaticResource BoolToVisibility}}" />
                                                 </StackPanel>
                                             </Border>
                                             <!-- Selection ring (whimsy) -->
                                             <Border CornerRadius="{StaticResource PensieveRadiusPillCorner}"
                                                     BorderThickness="1.25"
-                                                    BorderBrush="{StaticResource ElderWandWhimsyBrush}"
+                                                    BorderBrush="{ThemeResource AuroraWhimsyBrush}"
                                                     Visibility="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource BoolToVisibility}}" />
                                         </Grid>
                                     </Button>

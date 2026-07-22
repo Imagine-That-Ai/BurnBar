@@ -122,7 +122,6 @@ final class CloudSyncService {
             )
             if service.lastSyncDate != nil {
                 await downloadRemoteData()
-                await fetchCloudTotal()
             }
         } else {
             TelemetryService.shared.record(
@@ -229,7 +228,7 @@ final class CloudSyncService {
         await DownloadSyncService(context: context).updateLocalDeviceName(name)
     }
 
-    /// Fetch sum of cost across all devices for this user (last 90 days).
+    /// Fetch the 90-day cloud total from the usage rollup document.
     func fetchCloudTotal(uid: String? = nil) async {
         let context = makeSyncContext()
         let gate = await context.syncGate()

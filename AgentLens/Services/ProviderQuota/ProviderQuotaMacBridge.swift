@@ -49,12 +49,38 @@ struct ProcessQuotaCLIExecutor: CLIExecutor {
 }
 
 struct AppLoggerQuotaLogger: QuotaLogger {
+    private let shadowComparisonRecorder: @Sendable (DomainCoreQuotaShadowComparison) -> Void
+
+    init(
+        shadowComparisonRecorder: @escaping @Sendable (DomainCoreQuotaShadowComparison) -> Void = {
+            ProviderQuotaMacPlatform.recordDomainCoreShadowComparison($0)
+        }
+    ) {
+        self.shadowComparisonRecorder = shadowComparisonRecorder
+    }
+
     func log(_ message: String) {
         AppLogger.shared.error("quota_seam", metadata: ["message": message])
+    }
+
+    func recordDomainCoreShadowComparison(_ comparison: DomainCoreQuotaShadowComparison) {
+        shadowComparisonRecorder(comparison)
     }
 }
 
 enum ProviderQuotaMacPlatform {
+    private static let shadowEvidenceRecorder = MacDomainCoreShadowEvidenceRecorder()
+
+    /// Installs the process-wide generic shadow sink before any domain can emit.
+    /// Safe to call repeatedly; the recorder is a single, lifetime-owned static.
+    static func installDomainCoreShadowEvidenceRecorder() {
+        shadowEvidenceRecorder.installGenericComparisonCollector()
+    }
+
+    static func recordDomainCoreShadowComparison(_ comparison: DomainCoreQuotaShadowComparison) {
+        shadowEvidenceRecorder.record(comparison)
+    }
+
     static let secretStore: any SecretStore = KeychainQuotaSecretStore()
     static let cliExecutor: any CLIExecutor = ProcessQuotaCLIExecutor()
     static let quotaLogger: any QuotaLogger = AppLoggerQuotaLogger()

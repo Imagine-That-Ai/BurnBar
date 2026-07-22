@@ -4,7 +4,6 @@ import { applyReducedMotionClass } from './a11y.js';
 import { App } from './app/App.js';
 import {
   cacheOnboarding,
-  readOnboarding,
   shouldRouteToOnboarding
 } from './onboardingStore.js';
 import { markStart } from './perfMarks.js';
@@ -22,7 +21,6 @@ async function boot(): Promise<void> {
   const hadDeepLink = Boolean(requestedHash && requestedHash !== '#/onboarding');
 
   // First run lands on the onboarding wizard unless a deep link is present.
-  const ob = readOnboarding();
   if (location.hash !== '#/onboarding') {
     location.hash = '#/onboarding';
     useShellStore.getState().syncRouteFromHash();

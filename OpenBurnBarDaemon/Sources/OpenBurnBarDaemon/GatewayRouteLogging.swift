@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Per-request fields threaded through every proxy route-log entry while the
 /// gateway serves a single request. Collapses the former 19-parameter

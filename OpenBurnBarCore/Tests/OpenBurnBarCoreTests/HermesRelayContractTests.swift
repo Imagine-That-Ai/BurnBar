@@ -110,7 +110,7 @@ final class HermesRelayContractTests: XCTestCase {
         let uid = "user-1"
         let connectionID = "relay-mac"
         let requestID = "relay-request-1"
-        let keyAAD = HermesRelayCrypto.keyAAD(uid: uid, connectionID: connectionID, requestID: requestID)
+        let keyAAD = try HermesRelayCrypto.keyAAD(uid: uid, connectionID: connectionID, requestID: requestID)
         let wrappedKey = try HermesRelayCrypto.wrapSymmetricKey(
             keyData,
             recipientPublicKeyBase64: privateKey.publicKeyBase64,
@@ -132,18 +132,18 @@ final class HermesRelayContractTests: XCTestCase {
         let requestCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: requestPlaintext,
             keyData: keyData,
-            aad: HermesRelayCrypto.requestAAD(uid: uid, connectionID: connectionID, requestID: requestID)
+            aad: try HermesRelayCrypto.requestAAD(uid: uid, connectionID: connectionID, requestID: requestID)
         )
         XCTAssertFalse(requestCiphertext.contains("messages"))
 
         let openedRequest = try HermesRelayCrypto.openBase64(
             ciphertext: requestCiphertext,
             keyData: unwrappedKey,
-            aad: HermesRelayCrypto.requestAAD(uid: uid, connectionID: connectionID, requestID: requestID)
+            aad: try HermesRelayCrypto.requestAAD(uid: uid, connectionID: connectionID, requestID: requestID)
         )
         XCTAssertEqual(try JSONDecoder().decode(HermesRelayEncryptedRequestPayload.self, from: openedRequest), requestPayload)
 
-        let chunkAAD = HermesRelayCrypto.chunkAAD(
+        let chunkAAD = try HermesRelayCrypto.chunkAAD(
             uid: uid,
             connectionID: connectionID,
             requestID: requestID,

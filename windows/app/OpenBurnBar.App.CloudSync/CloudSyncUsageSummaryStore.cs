@@ -36,12 +36,13 @@ public sealed class CloudSyncUsageSummaryStore
     public string CollectionPath => $"users/{_uid}/usage";
 
     /// <summary>
-    /// Aggregate the usage events into the Dashboard summary — spend for the current UTC
-    /// calendar month, total tokens across all rows, and the distinct session count —
+    /// Aggregate the usage events into one consistently filtered Dashboard window,
     /// mirroring <see cref="OpenBurnBar.Storage.TokenUsageReadSeam"/>. Returns <c>null</c>
     /// when the collection has no decodable rows so the caller treats it as "no cloud data".
     /// </summary>
-    public async Task<DashboardUsageSummary?> LoadSummaryAsync(CancellationToken cancellationToken = default)
+    public async Task<DashboardUsageSummary?> LoadSummaryAsync(
+        DashboardUsageWindow window = DashboardUsageWindow.ThisMonth,
+        CancellationToken cancellationToken = default)
     {
         ICloudSyncQuerySnapshot snap = await _gateway
             .Collection(CollectionPath)
@@ -50,7 +51,7 @@ public sealed class CloudSyncUsageSummaryStore
             .ConfigureAwait(false);
 
         DateTimeOffset now = _clock();
-        var monthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        DateTimeOffset? start = window.StartUtc(now);
 
         double spend = 0;
         long tokens = 0;
@@ -65,9 +66,14 @@ public sealed class CloudSyncUsageSummaryStore
             }
 
             decoded++;
+            if (start is not null && (row.RecordedAt is null || row.RecordedAt < start))
+            {
+                continue;
+            }
+
             tokens += row.TotalTokens;
 
-            if (row.CostUSD is { } cost && row.RecordedAt is { } recordedAt && recordedAt >= monthStart)
+            if (row.CostUSD is { } cost)
             {
                 spend += cost;
             }
@@ -84,7 +90,13 @@ public sealed class CloudSyncUsageSummaryStore
         }
 
         bool hasData = spend > 0 || tokens > 0 || sessions.Count > 0;
-        return new DashboardUsageSummary(spend, tokens, sessions.Count, hasData, DashboardUsageOrigin.Cloud);
+        return new DashboardUsageSummary(
+            spend,
+            tokens,
+            sessions.Count,
+            hasData,
+            DashboardUsageOrigin.Cloud,
+            window);
     }
 }
 

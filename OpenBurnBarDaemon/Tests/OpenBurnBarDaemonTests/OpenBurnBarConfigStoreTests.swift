@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 @testable import OpenBurnBarDaemon
 import Foundation
 import XCTest
@@ -35,6 +35,10 @@ final class BurnBarConfigStoreTests: XCTestCase {
             contentsOf: packageRoot.appendingPathComponent("Sources/OpenBurnBarDaemon/OpenBurnBarSwitcherShell.swift"),
             encoding: .utf8
         )
+        let databaseCipherSource = try String(
+            contentsOf: packageRoot.appendingPathComponent("Sources/OpenBurnBarDaemon/BurnBarDaemonDatabaseCipher.swift"),
+            encoding: .utf8
+        )
 
         XCTAssertTrue(gateSource.contains("SecKeychainSetUserInteractionAllowed"))
         func sourceWrapsSecurityCall(_ source: String, call: String) -> Bool {
@@ -68,7 +72,11 @@ final class BurnBarConfigStoreTests: XCTestCase {
             sourceWrapsSecurityCall(switcherSource, call: "SecItemCopyMatching"),
             "Switcher keychain reads must not be able to show login-keychain prompts."
         )
-        for source in [connectorSource, providerSource, switcherSource] {
+        XCTAssertTrue(
+            sourceWrapsSecurityCall(databaseCipherSource, call: "SecItemCopyMatching"),
+            "Database-key reads must not be able to show login-keychain prompts."
+        )
+        for source in [connectorSource, providerSource, switcherSource, databaseCipherSource] {
             XCTAssertTrue(
                 source.contains("kSecUseAuthenticationUI as String") && source.contains("kSecUseAuthenticationUIFail"),
                 "Daemon keychain reads must explicitly fail instead of opening macOS SecurityAgent UI."

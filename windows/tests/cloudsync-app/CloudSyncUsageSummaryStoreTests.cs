@@ -11,14 +11,14 @@ namespace OpenBurnBar.App.CloudSync.Tests;
 /// <summary>
 /// Proves the Dashboard's live cloud usage source aggregates real Mac-uploaded
 /// <c>users/{uid}/usage</c> events (UsageSyncService.swift) into the headline summary
-/// through the fake Firestore gateway — spend for the current UTC month, total tokens
-/// across all rows, and the distinct session count — mirroring TokenUsageReadSeam.
+/// through the fake Firestore gateway with one consistent selected window for
+/// spend, tokens, and sessions, mirroring TokenUsageReadSeam.
 /// </summary>
 public sealed class CloudSyncUsageSummaryStoreTests
 {
     private const string Uid = "user_test_usage";
 
-    // Deterministic "now" so the current-UTC-month spend window is stable.
+    // Deterministic "now" so calendar and rolling windows are stable.
     private static readonly DateTimeOffset FixedNow = DateTimeOffset.Parse(
         "2026-07-15T12:00:00Z", CultureInfo.InvariantCulture);
 
@@ -48,7 +48,7 @@ public sealed class CloudSyncUsageSummaryStoreTests
         new(gateway, Uid, clock: () => FixedNow);
 
     [Fact]
-    public async Task Aggregates_month_spend_all_tokens_and_distinct_sessions()
+    public async Task ThisMonth_FiltersSpendTokensAndSessionsConsistently()
     {
         var gateway = new FakeCloudSyncGateway();
         var store = Store(gateway);
@@ -56,7 +56,7 @@ public sealed class CloudSyncUsageSummaryStoreTests
         var alsoJuly = DateTimeOffset.Parse("2026-07-10T22:00:00Z", CultureInfo.InvariantCulture);
         var june = DateTimeOffset.Parse("2026-06-28T09:00:00Z", CultureInfo.InvariantCulture);
 
-        // Two July rows (this month) + one June row (last month, spend excluded).
+        // Two July rows (this month) + one June row (excluded from every metric).
         gateway.SetDocumentData(UsageDoc(1200, 3.50, "sess-a", july), $"{store.CollectionPath}/dev_1");
         gateway.SetDocumentData(UsageDoc(800, 1.25, "sess-a", alsoJuly), $"{store.CollectionPath}/dev_2");
         gateway.SetDocumentData(UsageDoc(500, 9.99, "sess-b", june), $"{store.CollectionPath}/dev_3");
@@ -66,9 +66,30 @@ public sealed class CloudSyncUsageSummaryStoreTests
         Assert.NotNull(summary);
         Assert.True(summary!.HasData);
         Assert.Equal(DashboardUsageOrigin.Cloud, summary.Origin);
-        Assert.Equal(4.75, summary.SpendThisMonthUsd, 3); // 3.50 + 1.25 (June's 9.99 excluded)
-        Assert.Equal(2500, summary.TotalTokens);           // 1200 + 800 + 500 (all rows)
-        Assert.Equal(2, summary.SessionCount);             // sess-a, sess-b
+        Assert.Equal(4.75, summary.TotalCostUsd, 3);      // 3.50 + 1.25 (June's 9.99 excluded)
+        Assert.Equal(2000, summary.TotalTokens);           // July rows only
+        Assert.Equal(1, summary.SessionCount);             // sess-a only
+        Assert.Equal(DashboardUsageWindow.ThisMonth, summary.Window);
+    }
+
+    [Fact]
+    public async Task AllTime_IncludesRowsOutsideTheCurrentMonth()
+    {
+        var gateway = new FakeCloudSyncGateway();
+        var store = Store(gateway);
+        var july = DateTimeOffset.Parse("2026-07-04T09:00:00Z", CultureInfo.InvariantCulture);
+        var june = DateTimeOffset.Parse("2026-06-28T09:00:00Z", CultureInfo.InvariantCulture);
+
+        gateway.SetDocumentData(UsageDoc(1200, 3.50, "sess-a", july), $"{store.CollectionPath}/dev_1");
+        gateway.SetDocumentData(UsageDoc(500, 9.99, "sess-b", june), $"{store.CollectionPath}/dev_2");
+
+        DashboardUsageSummary? summary = await store.LoadSummaryAsync(DashboardUsageWindow.AllTime);
+
+        Assert.NotNull(summary);
+        Assert.Equal(13.49, summary!.TotalCostUsd, 3);
+        Assert.Equal(1700, summary.TotalTokens);
+        Assert.Equal(2, summary.SessionCount);
+        Assert.Equal(DashboardUsageWindow.AllTime, summary.Window);
     }
 
     [Fact]
@@ -95,7 +116,7 @@ public sealed class CloudSyncUsageSummaryStoreTests
 
         Assert.NotNull(summary);
         Assert.True(summary!.HasData);
-        Assert.Equal(0, summary.SpendThisMonthUsd);
+        Assert.Equal(0, summary.TotalCostUsd);
         Assert.Equal(640, summary.TotalTokens);
         Assert.Equal(1, summary.SessionCount);
     }
@@ -120,7 +141,7 @@ public sealed class CloudSyncUsageSummaryStoreTests
         DashboardUsageSummary? summary = await store.LoadSummaryAsync();
 
         Assert.NotNull(summary);
-        Assert.Equal(2.5, summary!.SpendThisMonthUsd, 3);
+        Assert.Equal(2.5, summary!.TotalCostUsd, 3);
         Assert.Equal(300, summary.TotalTokens);
         Assert.Equal(1, summary.SessionCount);
     }

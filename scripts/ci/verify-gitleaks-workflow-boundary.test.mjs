@@ -39,6 +39,15 @@ expect(
 );
 
 expect(
+  "direct head-branch ignore file fails",
+  currentWorkflow.replaceAll(
+    '--gitleaks-ignore-path "${GITLEAKS_IGNORE_PATH}"',
+    "--gitleaks-ignore-path .gitleaksignore",
+  ),
+  false,
+);
+
+expect(
   "missing base config checkout fails",
   currentWorkflow.replace(
     'git show "${BASE_SHA}:.gitleaks.toml" > "${GITLEAKS_CONFIG_PATH}"',
@@ -48,10 +57,28 @@ expect(
 );
 
 expect(
+  "missing base ignore checkout fails",
+  currentWorkflow.replace(
+    'git show "${BASE_SHA}:.gitleaksignore" > "${GITLEAKS_IGNORE_PATH}"',
+    'cp .gitleaksignore "${GITLEAKS_IGNORE_PATH}"',
+  ),
+  false,
+);
+
+expect(
   "missing fail-closed guard fails",
   currentWorkflow.replaceAll(
     'Refusing to use head .gitleaks.toml',
     "Falling back to head config",
+  ),
+  false,
+);
+
+expect(
+  "missing ignore fail-closed guard fails",
+  currentWorkflow.replaceAll(
+    'Refusing to use head .gitleaksignore',
+    "Falling back to head ignore file",
   ),
   false,
 );

@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "gateVersion": "P-PERF-3-macos-real-process-v1",
+  "app": {
+    "relativeBundlePath": ".derived-data/macos-idle-occlusion-gate/Build/Products/Debug/OpenBurnBar.app",
+    "expectedBundleIdentifier": "com.openburnbar.app",
+    "executableName": "OpenBurnBar",
+    "maximumBuildAgeSeconds": 7200,
+    "launchArguments": [
+      "--uitest",
+      "-enableDesktopWallpaper",
+      "NO",
+      "-swarmSubstrateEnabled",
+      "NO",
+      "-useKernelBackdrop",
+      "YES",
+      "-backdropKernel",
+      "boids"
+    ]
+  },
+  "measurement": {
+    "matchedPairCount": 5,
+    "initialVisibleWarmupSeconds": 12,
+    "transitionSettleSeconds": 3,
+    "sampleDurationSeconds": 2,
+    "stateTransitionTimeoutSeconds": 60,
+    "robustStatistic": "median",
+    "minimumPositiveVisibleSamples": 3,
+    "minimumVisibleMedianCpuPercent": 0.25
+  },
+  "budgets": {
+    "absoluteOccludedIdleCpuPercentCeiling": 5.0,
+    "maximumOccludedToVisibleCpuRatio": 0.35
+  },
+  "evidence": {
+    "schemaVersion": 1,
+    "defaultRelativeOutputPath": ".derived-data/macos-idle-occlusion-evidence/result.json"
+  }
+}

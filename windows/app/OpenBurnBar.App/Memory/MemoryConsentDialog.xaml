@@ -24,22 +24,22 @@
             <Border Width="48" Height="48" CornerRadius="24">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                        <GradientStop Color="#59FA6B06" Offset="0" />
+                        <GradientStop Color="{ThemeResource AuroraGlassSelectionFillColor}" Offset="0" />
                         <GradientStop Color="#40FDC42C" Offset="1" />
                     </LinearGradientBrush>
                 </Border.Background>
-                <FontIcon Glyph="&#xE8F1;" FontSize="20" Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                <FontIcon Glyph="&#xE8F1;" FontSize="20" Foreground="{ThemeResource AuroraTextBrush}" />
             </Border>
             <StackPanel Spacing="4" MaxWidth="330">
                 <TextBlock Text="Remember useful details from your chats?"
                            FontSize="16"
                            FontWeight="SemiBold"
                            TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Foreground="{ThemeResource AuroraTextBrush}" />
                 <TextBlock Text="OpenBurnBar can quietly note durable facts and preferences as you chat, so future answers pick up where you left off."
                            FontSize="13"
                            TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                           Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
             </StackPanel>
         </StackPanel>
 
@@ -48,25 +48,25 @@
                 <FontIcon Glyph="&#xE721;" FontSize="14" Foreground="{StaticResource OBBAccentBrush}" />
                 <TextBlock Text="Extracts lasting facts and preferences locally on this PC."
                            FontSize="12" TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="10">
                 <FontIcon Glyph="&#xED1A;" FontSize="14" Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
                 <TextBlock Text="Strips secrets and personal identifiers before anything is stored."
                            FontSize="12" TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="10">
                 <FontIcon Glyph="&#xE72E;" FontSize="14" Foreground="{StaticResource PensieveColorTierEndToEndBrush}" />
                 <TextBlock Text="Everything is quarantined for your approval before it's ever used."
                            FontSize="12" TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="10">
-                <FontIcon Glyph="&#xE72E;" FontSize="14" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                <FontIcon Glyph="&#xE72E;" FontSize="14" Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 <TextBlock Text="Nothing leaves your device. Change this anytime in Settings → Privacy."
                            FontSize="12" TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
             </StackPanel>
         </StackPanel>
     </StackPanel>

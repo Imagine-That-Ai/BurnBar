@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 #if canImport(FoundationNetworking)
 @preconcurrency import FoundationNetworking
@@ -70,6 +70,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
     /// gateway only requires that the first text block of the `system`
     /// field starts with it.
     public static let claudeCodeSystemGuard = "You are Claude Code, Anthropic's official CLI for Claude."
+    static let upstreamRequestTimeout: TimeInterval = 300
 
     private let session: URLSession
     private let anthropicVersion: String
@@ -123,6 +124,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             ? Self.appendingBetaQueryItem(to: messagesURL)
             : messagesURL
         var request = URLRequest(url: endpoint)
+        request.timeoutInterval = Self.upstreamRequestTimeout
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
@@ -202,6 +204,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             ? Self.appendingBetaQueryItem(to: messagesURL)
             : messagesURL
         var request = URLRequest(url: endpoint)
+        request.timeoutInterval = Self.upstreamRequestTimeout
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
@@ -436,17 +439,39 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             if trimmed.isEmpty {
                 return guardString
             }
-            if trimmed.hasPrefix(guardString) {
+            if trimmed == guardString {
                 return asString
             }
-            return "\(guardString)\n\n\(asString)"
+            let callerText: String
+            if trimmed.hasPrefix(guardString) {
+                callerText = String(trimmed.dropFirst(guardString.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                callerText = asString
+            }
+            guard !callerText.isEmpty else { return guardString }
+            return [
+                ["type": "text", "text": guardString],
+                ["type": "text", "text": callerText]
+            ]
         }
 
         if let asArray = existing as? [[String: Any]] {
             if let firstBlock = asArray.first,
                let text = firstBlock["text"] as? String,
                text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(guardString) {
-                return asArray
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmed != guardString else { return asArray }
+                let callerText = String(trimmed.dropFirst(guardString.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                var guardBlock = firstBlock
+                guardBlock["text"] = guardString
+                var normalized = [guardBlock]
+                if !callerText.isEmpty {
+                    normalized.append(["type": "text", "text": callerText])
+                }
+                normalized.append(contentsOf: asArray.dropFirst())
+                return normalized
             }
             var combined: [[String: Any]] = [
                 ["type": "text", "text": guardString]
@@ -527,6 +552,17 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         var systemText: [String] = []
         var anthropicMessages: [[String: Any]] = []
 
+        func appendMessage(role: String, content: [[String: Any]]) {
+            guard !content.isEmpty else { return }
+            if let lastIndex = anthropicMessages.indices.last,
+               anthropicMessages[lastIndex]["role"] as? String == role {
+                let existing = anthropicMessages[lastIndex]["content"] as? [[String: Any]] ?? []
+                anthropicMessages[lastIndex]["content"] = existing + content
+            } else {
+                anthropicMessages.append(["role": role, "content": content])
+            }
+        }
+
         for message in messages {
             let role = (message["role"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "user"
             if role == "system" || role == "developer" {
@@ -539,7 +575,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
 
             if role == "tool" {
                 guard let toolResult = anthropicToolResultBlock(from: message) else { continue }
-                anthropicMessages.append(["role": "user", "content": [toolResult]])
+                appendMessage(role: "user", content: [toolResult])
                 continue
             }
 
@@ -550,7 +586,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             guard !contentBlocks.isEmpty else { continue }
 
             let anthropicRole = role == "assistant" ? "assistant" : "user"
-            anthropicMessages.append(["role": anthropicRole, "content": contentBlocks])
+            appendMessage(role: anthropicRole, content: contentBlocks)
         }
 
         guard !anthropicMessages.isEmpty else {

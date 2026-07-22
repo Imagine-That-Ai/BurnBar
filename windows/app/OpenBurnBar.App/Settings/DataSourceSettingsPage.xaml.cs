@@ -7,7 +7,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenBurnBar.App.Chat;
-using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Interop;
 using OpenBurnBar.App.Storage;
@@ -25,6 +24,14 @@ public sealed partial class DataSourceSettingsPage : Page
     private readonly IChatExecutableInventory _chatExecutableInventory =
         ProtectedChatExecutableInventoryStore.CreateDefault();
 
+    /// <summary>
+    /// Injected HWND resolver (the <c>Func&lt;IntPtr&gt;</c> pattern from
+    /// <c>DataControlCenterView.WindowHandleProvider</c>). When set, <see cref="ResolveOwnerHwnd"/>
+    /// uses this instead of the App composition-root fallback so a host can supply the
+    /// exact owner window for the file picker.
+    /// </summary>
+    public Func<IntPtr>? WindowHandleProvider { get; set; }
+
     public DataSourceSettingsPage()
     {
         InitializeComponent();
@@ -35,6 +42,10 @@ public sealed partial class DataSourceSettingsPage : Page
     {
         base.OnNavigatedTo(e);
         _context = e.Parameter as SettingsPageContext;
+        if (_context?.WindowHandleProvider is { } provider)
+        {
+            WindowHandleProvider = provider;
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -79,7 +90,17 @@ public sealed partial class DataSourceSettingsPage : Page
 
     private nint ResolveOwnerHwnd()
     {
-        return System.IntPtr.Zero;
+        // Resolve the real Win32 HWND backing this page's host window. The provider is
+        // the injected Func<IntPtr> pattern from DataControlCenterView.xaml.cs:35,345;
+        // when no provider is wired (unit tests, headless harness) the fallback resolves
+        // the main window handle from the App composition root so the file picker still
+        // gets a real owner in the shipped app.
+        if (WindowHandleProvider is not null)
+        {
+            return WindowHandleProvider();
+        }
+
+        return App.Current.MainWindowHandle;
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
@@ -102,7 +123,7 @@ public sealed partial class DataSourceSettingsPage : Page
             model.VaultKeyB64 = NullIfEmpty(VaultKeyBox.Text);
         });
 
-        WinAppCloudSyncHost.ConfigureFromAppConfiguration();
+        WindowsSettingsComposition.ConfigureCloudSync();
         RenderStorageStatus(WindowsStorageDevHost.InitializeRuntime());
 
         StatusLabel.Text = AppConfiguration.Current.HasSqlCipherCredentials

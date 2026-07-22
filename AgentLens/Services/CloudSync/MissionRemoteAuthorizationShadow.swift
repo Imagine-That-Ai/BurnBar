@@ -3,35 +3,21 @@ import Foundation
 import OpenBurnBarCore
 import OSLog
 
-// MARK: - Mission remote-authorization SHADOW mode (split-brain Phase M3)
+// MARK: - Mission remote authorization (split-brain cutover)
 //
-// docs/SURFACE_SPRAWL_AND_SPLITBRAIN_REMEDIATION_PLAN.md — the menubar GUI
-// (`CLIAgentMissionRequestListener`) still carries its OWN trust / approval /
-// fan-out authority for remote (mobile/Wand) missions, duplicating the
-// daemon's fail-closed `daemon.mission.authorizeRemote` RPC
-// (`BurnBarRemoteMissionAuthorizationPolicy`, shipped in M2 / PR #1425 but
-// with ZERO callers — dead code, a latent authorization-bypass setup).
+// The GUI reduces its legacy trust and approval decision to the daemon's
+// verdict space, then sends the same decoded authorization inputs to
+// `daemon.mission.authorizeRemote`. Shadow mode only records divergence and
+// leaves the GUI policy unchanged. Enforce mode awaits the daemon response and
+// permits execution only for `.authorized`, after retaining local fail-closed
+// security guards and applying the daemon's capability ceiling.
 //
-// Phase M3 turns that dead RPC into a LIVE, OBSERVABLE ORACLE without changing
-// runtime behavior. At the GUI's mission-authorization decision point we:
+// The request carries a prompt summary and hash, never the sealed payload or
+// full prompt. Structured divergence telemetry remains available in every mode
+// that contacts the daemon, and `.off` remains the rollback path.
 //
-//   1. Reduce the GUI's own decision to a comparable verdict
-//      (`GUIMissionAuthorizationDecision`).
-//   2. Ask the daemon for its authoritative verdict over the same decoded
-//      inputs (never the sealed payload / full prompt — only a summary + hash).
-//   3. COMPARE the two and emit a structured divergence signal.
-//
-// This phase deliberately does NOT flip enforcement: the GUI's existing
-// decision still governs execution. Enforcement migrates in a later phase once
-// parity is proven from the divergence telemetry. Everything here is gated
-// behind `MissionRemoteAuthorizationShadow.mode`, defaulting to `.shadow`, so
-// the whole path is reversible with a single flag flip to `.off`.
-//
-// This file is DELIBERATELY named outside the `CLIAgentMissionRequestListener`
-// cluster prefix: the mission split-brain shrink-only ratchet
-// (scripts/debt/check-mission-splitbrain-budget.sh) freezes that cluster, and
-// new GUI mission-authority code that carries us TOWARD collapsing the
-// split-brain belongs in a fresh, un-baselined home.
+// This file remains outside the frozen `CLIAgentMissionRequestListener` cluster
+// so the split-brain shrink-only ratchet does not grow that legacy surface.
 
 /// The GUI's own authorization verdict, reduced to the daemon's verdict space
 /// so the two authorities are directly comparable. The GUI listener does not
@@ -56,15 +42,14 @@ enum MissionAuthorizationDivergenceKind: String, Equatable, Sendable {
     /// GUI and daemon reached the same verdict.
     case agree
     /// The daemon permits strictly LESS than the GUI (daemon would deny/pause
-    /// where the GUI would allow). This is the security-relevant direction:
-    /// once enforcement flips, these missions STOP running.
+    /// where the GUI would allow). This is security-relevant divergence.
     case daemonStricter = "daemon_stricter"
     /// The GUI permits strictly LESS than the daemon (GUI denies/pauses where
-    /// the daemon would allow). Flipping enforcement would LOOSEN these — must
-    /// be understood before any enforcement migration.
+    /// the daemon would allow). Local fail-closed security inputs can produce
+    /// this intentionally during enforce mode.
     case guiStricter = "gui_stricter"
     /// The daemon verdict could not be obtained (unreachable / RPC error).
-    /// Fail-SAFE: the GUI's existing decision governs, unchanged.
+    /// Shadow mode preserves the GUI decision; enforce mode denies.
     case daemonUnreachable = "daemon_unreachable"
 }
 
@@ -94,36 +79,60 @@ struct MissionAuthorizationDivergenceSignal: Equatable, Sendable {
     }
 }
 
-/// Pure comparator + request/verdict reducers behind the shadow path. Kept
-/// stateless and synchronous so every branch is table-testable.
+/// The compatibility verdict returned by the enforce reducer. Only an
+/// `.authorized` daemon verdict allows; `.requiresApproval`, `.denied`, and an
+/// unreachable daemon all deny.
+enum MissionAuthorizationEnforcementVerdict: String, Equatable, Sendable {
+    case allow
+    case deny
+}
+
+/// The trusted-decision result consumed by the listener. Enforce mode carries
+/// the complete authorized daemon response so the listener can apply its
+/// capability ceiling before any claim or launch.
+enum MissionAuthorizationTrustedDecisionOutcome: Equatable, Sendable {
+    /// Off/shadow mode permits the mission under the GUI's existing policy.
+    case proceed
+    /// Enforce mode received the daemon's complete authorized response. The
+    /// listener must apply its grant ceiling before any claim or launch.
+    case authorized(BurnBarRemoteMissionAuthorizeResponse)
+    /// The GUI wants to pause for pre-dispatch operator approval (off/shadow
+    /// only — never returned in enforce mode, where the daemon governs).
+    case pauseForApproval
+    /// The mission must be denied with the given user-visible message.
+    case deny(String)
+}
+
+/// Pure comparator and request/verdict reducers shared by shadow observation
+/// and enforce-mode authorization.
 enum MissionRemoteAuthorizationShadow {
 
-    /// Authorization mode, resolved from `OBB_MISSION_AUTHORIZE_SHADOW`:
-    ///   - `.enforce` (DEFAULT): the daemon's `daemon.mission.authorizeRemote`
-    ///     verdict is the SOLE authority. Split-brain M4.
-    ///   - `.shadow`: the M3 observe-only path — ask the daemon, telemeter
-    ///     divergence, but the GUI decision governs. (Rollback lever.)
-    ///   - `.off`: disable the daemon call entirely. Because M4 deleted the GUI's
-    ///     own decision code, `.off` means remote missions do NOT run (fail
-    ///     closed). (Deepest rollback lever short of `git revert`.)
+    /// Reversal flag. `.shadow` (default) observes and telemeters divergence
+    /// while the GUI decision remains authoritative; `.off` disables the daemon
+    /// call. `.enforce` permits only a full `.authorized` daemon response and
+    /// still retains local fail-closed security inputs. An unavailable daemon
+    /// always denies in enforce mode.
     enum Mode: String, Equatable, Sendable {
         case off
         case shadow
         case enforce
     }
 
-    /// Ships defaulting to `.enforce` (M4): the daemon is the single mission
-    /// authorization authority. `OBB_MISSION_AUTHORIZE_SHADOW=shadow` reverts to
-    /// M3 observe-only; `=off`/`0`/`false`/`disabled` disables the daemon call
-    /// (remote missions fail closed). `nonisolated(unsafe)` is safe here: this is
-    /// a set-once-at-launch reversal flag, resolved from the environment on first
-    /// access and only ever read afterward on the main actor or from tests.
+    /// Ships defaulting to enforce-mode for the M4 cutover. A runtime override
+    /// can force it `.shadow` for telemetry-only rollback or `.off` for a hard
+    /// fail-closed stop. Only the explicit string `"shadow"` selects observation;
+    /// boolean-like values remain fail-closed in `.enforce`. `nonisolated(unsafe)`
+    /// is safe here: this is a set-once-at-launch reversal flag, resolved from
+    /// the environment on first access and only ever read afterward on the main
+    /// actor (`observe` / `enforce`) or from tests.
     nonisolated(unsafe) static var mode: Mode = {
         switch ProcessInfo.processInfo.environment["OBB_MISSION_AUTHORIZE_SHADOW"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() {
         case "off", "0", "false", "disabled":
             return .off
+        case "enforce":
+            return .enforce
         case "shadow", "observe", "observe_only", "observe-only":
             return .shadow
         default:
@@ -158,9 +167,9 @@ enum MissionRemoteAuthorizationShadow {
 
     // MARK: Comparator (the unit-tested core)
 
-    /// Compare the GUI's own decision against the daemon's authoritative
-    /// verdict. A `nil` daemon verdict means the daemon was unreachable — the
-    /// GUI decision governs and the outcome is classified fail-safe.
+    /// Compare the GUI decision against the daemon response for telemetry. A
+    /// `nil` response is classified as unreachable; the active mode determines
+    /// whether that observation preserves the GUI decision or denies.
     static func compare(
         missionID: String,
         gui: GUIMissionAuthorizationDecision,
@@ -257,11 +266,10 @@ enum MissionRemoteAuthorizationShadow {
         guard let json, let payload = json.data(using: .utf8) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        // Best-effort: a malformed envelope is left nil here (the GUI's own
-        // persona-scope resolver already REFUSES malformed present scopes on
-        // the execution path, so shadow mode never widens authority by
-        // dropping it).
-        return try? decoder.decode(PersonaScopeEnvelope.self, from: payload) // try?-ok(best-effort decode for shadow telemetry; malformed envelope left nil, never widens authority)
+        // Best-effort request shaping. The local persona-scope resolver rejects
+        // every malformed present value before launch, including in enforce
+        // mode, so dropping an undecodable envelope here cannot widen access.
+        return try? decoder.decode(PersonaScopeEnvelope.self, from: payload) // try?-ok(request shaping; local resolver remains fail-closed)
     }
 
     // MARK: Divergence emission
@@ -288,6 +296,25 @@ enum MissionRemoteAuthorizationShadow {
             let sha = signal.promptSHA256
             logger.warning("mission_authorize_shadow DIVERGENCE kind=\(kind, privacy: .public) mission=\(mission, privacy: .public) gui=\(gui, privacy: .public) daemon=\(daemon, privacy: .public) daemonReason=\(reason, privacy: .public) sha=\(sha, privacy: .public)")
         }
+    }
+
+    // MARK: Enforce verdict (P-ARCH-2)
+
+    /// The authoritative enforcement verdict derived from a divergence signal.
+    /// Pure and synchronous so every branch is table-testable.
+    ///
+    /// In enforce mode the daemon's **actual verdict** governs — not the
+    /// divergence kind. The mission may proceed only when the daemon's verdict
+    /// is `.authorized`; `.requiresApproval` and `.denied` both stop the
+    /// mission (the daemon did not authorize execution). An unreachable daemon
+    /// (nil verdict) is fail-closed `.deny`.
+    static func enforce(
+        signal: MissionAuthorizationDivergenceSignal
+    ) -> MissionAuthorizationEnforcementVerdict {
+        guard let daemonVerdict = signal.daemonVerdict else {
+            return .deny
+        }
+        return daemonVerdict == .authorized ? .allow : .deny
     }
 
     // MARK: Shadow orchestration (called from the GUI decision point)
@@ -345,29 +372,98 @@ enum MissionRemoteAuthorizationShadow {
         ))
     }
 
-    // MARK: Enforcement (M4 — the daemon verdict governs)
+    // MARK: Enforce orchestration (P-ARCH-2 — called from the GUI decision point)
 
-    /// The daemon's authoritative outcome for a remote mission, as the GUI call
-    /// site consumes it under `.enforce`. Fail-closed by construction: the only
-    /// way to `.authorized` / `.requiresApproval` is a live daemon verdict; any
-    /// unreachability collapses to `.denied` with a `daemonUnreachable` reason.
+    /// Shared enforce-mode transport. It emits the existing divergence signal
+    /// and returns the complete daemon response. An unhealthy daemon or RPC
+    /// failure returns `nil`; callers treat every result other than
+    /// `.authorized` as a denial.
+    @MainActor
+    private static func requestDaemonAuthorization(
+        ctx: ShadowContext,
+        guiDecision: GUIMissionAuthorizationDecision,
+        executorTrustState: String,
+        manager: OpenBurnBarDaemonManager
+    ) async -> BurnBarRemoteMissionAuthorizeResponse? {
+        let request = makeRequest(ctx: ctx, executorTrustState: executorTrustState)
+        let promptSHA = request.promptSHA256
+
+        guard case .healthy = manager.status else {
+            emit(compare(
+                missionID: ctx.missionID,
+                gui: guiDecision,
+                daemon: nil,
+                promptSHA256: promptSHA,
+                unreachableDetail: "daemon not healthy"
+            ))
+            return nil
+        }
+
+        let socketURL = manager.paths.socketURL
+        let response: BurnBarRemoteMissionAuthorizeResponse?
+        var unreachableDetail: String?
+        do {
+            response = try await manager.daemonRPC {
+                try OpenBurnBarDaemonSocketClient.authorizeRemoteMission(request, at: socketURL)
+            }
+        } catch {
+            response = nil
+            unreachableDetail = error.localizedDescription
+        }
+
+        emit(compare(
+            missionID: ctx.missionID,
+            gui: guiDecision,
+            daemon: response,
+            promptSHA256: promptSHA,
+            unreachableDetail: unreachableDetail
+        ))
+        return response
+    }
+
+    @MainActor
+    static func enforce(
+        ctx: ShadowContext,
+        guiDecision: GUIMissionAuthorizationDecision,
+        executorTrustState: String,
+        manager: OpenBurnBarDaemonManager = .shared
+    ) async -> MissionAuthorizationEnforcementVerdict {
+        switch mode {
+        case .off:
+            return .allow
+        case .shadow:
+            await observe(
+                ctx: ctx,
+                guiDecision: guiDecision,
+                executorTrustState: executorTrustState,
+                manager: manager
+            )
+            return .allow
+        case .enforce:
+            let response = await requestDaemonAuthorization(
+                ctx: ctx,
+                guiDecision: guiDecision,
+                executorTrustState: executorTrustState,
+                manager: manager
+            )
+            return response?.verdict == .authorized ? .allow : .deny
+        }
+    }
+
+    /// Explicit daemon-authority result consumed by the M4 listener path.
+    /// Every outcome other than `.authorized` is non-executable; transport
+    /// failure remains distinct so the shared mission can stay pending for a
+    /// different healthy executor.
     enum AuthorizationOutcome: Equatable, Sendable {
         case authorized(grantCeiling: BurnBarRemoteMissionCapabilityGrantRequest?)
         case requiresApproval
         case denied(reason: BurnBarRemoteMissionDenialReason?, detail: String?)
         case daemonUnreachable(detail: String)
-
-        var isDaemonUnreachable: Bool {
-            if case .daemonUnreachable = self { return true }
-            return false
-        }
     }
 
-    /// ENFORCE-mode authorization. Asks the daemon for its authoritative verdict
-    /// over the decoded mission and returns it as an `AuthorizationOutcome` the
-    /// GUI call site obeys. FAILS CLOSED: an unhealthy daemon or a socket error
-    /// resolves to `.daemonUnreachable`. Never throws. Mirrors `observe`'s
-    /// daemon-reach logic so shadow and enforce share one daemon path.
+    /// Ask the daemon for the authoritative mission verdict. This is the
+    /// typed M4 entry point; it never throws and fails closed on an unhealthy
+    /// daemon or malformed RPC response.
     @MainActor
     static func authorize(
         ctx: ShadowContext,
@@ -375,44 +471,26 @@ enum MissionRemoteAuthorizationShadow {
         manager: OpenBurnBarDaemonManager = .shared
     ) async -> AuthorizationOutcome {
         let request = makeRequest(ctx: ctx, executorTrustState: executorTrustState)
-
         guard case .healthy = manager.status else {
-            logger.warning(
-                "mission_authorize enforce fail_closed mission=\(ctx.missionID, privacy: .public) reason=daemon_not_healthy sha=\(request.promptSHA256, privacy: .public)"
-            )
+            logger.warning("mission_authorize enforce fail_closed mission=\(ctx.missionID, privacy: .public) reason=daemon_not_healthy sha=\(request.promptSHA256, privacy: .public)")
             return .daemonUnreachable(detail: "daemon not healthy")
         }
 
-        let socketURL = manager.paths.socketURL
-        let response: BurnBarRemoteMissionAuthorizeResponse
         do {
-            response = try await manager.daemonRPC {
-                try OpenBurnBarDaemonSocketClient.authorizeRemoteMission(request, at: socketURL)
+            let response = try await manager.daemonRPC {
+                try OpenBurnBarDaemonSocketClient.authorizeRemoteMission(request, at: manager.paths.socketURL)
+            }
+            switch response.verdict {
+            case .authorized:
+                return .authorized(grantCeiling: response.grantCeiling)
+            case .requiresApproval:
+                return .requiresApproval
+            case .denied:
+                return .denied(reason: response.deniedReason, detail: response.detail)
             }
         } catch {
-            logger.warning(
-                "mission_authorize enforce fail_closed mission=\(ctx.missionID, privacy: .public) reason=rpc_error detail=\(error.localizedDescription, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"
-            )
+            logger.warning("mission_authorize enforce fail_closed mission=\(ctx.missionID, privacy: .public) reason=rpc_error detail=\(error.localizedDescription, privacy: .public) sha=\(request.promptSHA256, privacy: .public)")
             return .daemonUnreachable(detail: error.localizedDescription)
-        }
-
-        switch response.verdict {
-        case .authorized:
-            logger.info(
-                "mission_authorize enforce authorized mission=\(ctx.missionID, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"
-            )
-            return .authorized(grantCeiling: response.grantCeiling)
-        case .requiresApproval:
-            logger.info(
-                "mission_authorize enforce requires_approval mission=\(ctx.missionID, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"
-            )
-            return .requiresApproval
-        case .denied:
-            let reason = response.deniedReason?.rawValue ?? "none"
-            logger.warning(
-                "mission_authorize enforce denied mission=\(ctx.missionID, privacy: .public) reason=\(reason, privacy: .public) sha=\(request.promptSHA256, privacy: .public)"
-            )
-            return .denied(reason: response.deniedReason, detail: response.detail)
         }
     }
 
@@ -461,47 +539,7 @@ enum MissionRemoteAuthorizationShadow {
         let entitlementTier: String
         let workingDirectory: String?
         let fanOutCount: Int
-        /// GUI-resolved trusted Wand fan-out cap (server-signed Firestore
-        /// entitlement docs). Forwarded to the daemon, which honors it clamped to
-        /// a hard ceiling; `nil` fails closed to the free cap. Split-brain M4.
-        /// Defaulted so existing shadow call sites need no change.
-        let trustedFanOutCap: Int?
-
-        init(
-            missionID: String,
-            prompt: String,
-            runtime: String?,
-            modelID: String?,
-            commandsAllowed: Bool,
-            fileEditsAllowed: Bool,
-            originDeviceID: String,
-            originPlatform: String,
-            personaScopeJSON: String?,
-            approvalMode: String?,
-            approvalStatus: String,
-            approverDeviceID: String?,
-            entitlementTier: String,
-            workingDirectory: String?,
-            fanOutCount: Int,
-            trustedFanOutCap: Int? = nil
-        ) {
-            self.missionID = missionID
-            self.prompt = prompt
-            self.runtime = runtime
-            self.modelID = modelID
-            self.commandsAllowed = commandsAllowed
-            self.fileEditsAllowed = fileEditsAllowed
-            self.originDeviceID = originDeviceID
-            self.originPlatform = originPlatform
-            self.personaScopeJSON = personaScopeJSON
-            self.approvalMode = approvalMode
-            self.approvalStatus = approvalStatus
-            self.approverDeviceID = approverDeviceID
-            self.entitlementTier = entitlementTier
-            self.workingDirectory = workingDirectory
-            self.fanOutCount = fanOutCount
-            self.trustedFanOutCap = trustedFanOutCap
-        }
+        let trustedFanOutCap: Int? = nil
     }
 
     // MARK: Fire-and-forget observation helpers
@@ -545,5 +583,66 @@ enum MissionRemoteAuthorizationShadow {
                 isTerminalDenial: isTerminalDenial
             )
         fireAndForget(ctx: ctx, guiDecision: decision, executorTrustState: "trusted")
+    }
+
+    /// Resolve the trusted-path authorization decision. Encodes the full
+    /// outcome so the listener call site is a minimal switch — keeping the
+    /// split-brain frozen cluster from growing.
+    ///
+    /// In `.off`/`.shadow` mode: observes (fire-and-forget telemetry) and
+    /// returns the GUI's own decision (pause/persona-deny/proceed) — the GUI
+    /// governs unchanged. In `.enforce` mode: queries the daemon, emits
+    /// telemetry, and returns the authoritative outcome — the mission proceeds
+    /// only when the daemon's actual verdict is `.authorized`; `.requiresApproval`
+    /// and `.denied` both stop the mission before claim. An unreachable daemon
+    /// is fail-closed `.deny`. When the daemon authorizes, GUI-only pauses and
+    /// persona denials are bypassed (the guiStricter-loosen path).
+    @MainActor
+    static func resolveTrustedDecision(
+        ctx: ShadowContext,
+        isTerminalDenial: Bool,
+        personaScopeMalformed: Bool,
+        willPauseForApproval: Bool,
+        manager: OpenBurnBarDaemonManager = .shared
+    ) async -> MissionAuthorizationTrustedDecisionOutcome {
+        if mode == .enforce {
+            let guiDecision: GUIMissionAuthorizationDecision = personaScopeMalformed
+                ? .deny
+                : reduceGUIDecision(
+                    approvalStatus: ctx.approvalStatus,
+                    willPauseForApproval: willPauseForApproval,
+                    isTerminalDenial: isTerminalDenial
+                )
+            guard let response = await requestDaemonAuthorization(
+                ctx: ctx,
+                guiDecision: guiDecision,
+                executorTrustState: "trusted",
+                manager: manager
+            ), response.verdict == .authorized else {
+                return .deny("This remote mission was not authorized by the Mac daemon and will not run. Re-send the mission from your device.")
+            }
+            if personaScopeMalformed {
+                return .deny("The persona scope attached to this mission could not be read, so it was rejected instead of running with broader permissions. Re-send the mission from your device.")
+            }
+            if isTerminalDenial {
+                return .deny("Mac CLI assistants are off. Enable Mac CLI assistants in Settings -> Privacy & Indexing before this Mac can run remote agent missions.")
+            }
+            return .authorized(response)
+        }
+
+        // Off/shadow mode observes without changing the GUI's existing policy.
+        observeTrustedDecision(
+            ctx: ctx,
+            isTerminalDenial: isTerminalDenial,
+            personaScopeMalformed: personaScopeMalformed,
+            willPauseForApproval: willPauseForApproval
+        )
+        if willPauseForApproval {
+            return .pauseForApproval
+        }
+        if personaScopeMalformed {
+            return .deny("The persona scope attached to this mission could not be read, so it was rejected instead of running with broader permissions. Re-send the mission from your device.")
+        }
+        return .proceed
     }
 }

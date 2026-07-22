@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
 import importlib.util
+import hashlib
+import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 SCRIPT = Path(__file__).with_name("stage-swift-runtime.py")
@@ -43,6 +46,76 @@ class StageSwiftRuntimeTests(unittest.TestCase):
                 MODULE.find_case_insensitive("SWIFTCORE.dll", [directory]),
                 expected,
             )
+
+    def test_stage_copies_resource_bundle_and_hashes_manifest_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            engine = directory / "OpenBurnBarCoreCAbi.dll"
+            engine.write_bytes(b"engine")
+            extra = directory / "openburnbar_domain_ffi.dll"
+            extra.write_bytes(b"domain-core")
+            bundles = []
+            for bundle_name, resource_name in (
+                ("OpenBurnBarCore_OpenBurnBarCore.resources", "MiningPickIcon.svg"),
+                ("OpenBurnBarCore_OpenBurnBarKernel.resources", "secret-pattern-corpus.json"),
+            ):
+                bundle = directory / bundle_name
+                bundle.mkdir()
+                resource = bundle / resource_name
+                resource.write_bytes(b'{"schemaVersion":1}\n')
+                bundles.append((bundle, resource))
+            destination = directory / "stage"
+
+            with patch.object(
+                MODULE.subprocess,
+                "run",
+                return_value=type("Completed", (), {"stdout": "", "stderr": ""})(),
+            ):
+                manifest = MODULE.stage(engine, [extra], destination, [directory], "dumpbin")
+
+            for bundle, resource in bundles:
+                staged_resource = destination / bundle.name / resource.name
+                self.assertTrue(staged_resource.is_file())
+                manifest_entry = next(
+                    item for item in manifest["files"] if item["fileName"] == f"{bundle.name}/{resource.name}"
+                )
+                self.assertEqual(
+                    manifest_entry["sha256"],
+                    hashlib.sha256(resource.read_bytes()).hexdigest(),
+                )
+            self.assertEqual(manifest["extras"], [extra.name])
+            self.assertTrue((destination / extra.name).is_file())
+            persisted = json.loads((destination / "native-engine-manifest.json").read_text())
+            self.assertEqual(persisted, manifest)
+
+    def test_stage_fails_when_resource_bundle_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            engine = directory / "OpenBurnBarCoreCAbi.dll"
+            engine.write_bytes(b"engine")
+            with patch.object(
+                MODULE.subprocess,
+                "run",
+                return_value=type("Completed", (), {"stdout": "", "stderr": ""})(),
+            ):
+                with self.assertRaisesRegex(ValueError, "required Swift resource bundle"):
+                    MODULE.stage(engine, [], directory / "stage", [directory], "dumpbin")
+
+    def test_stage_fails_when_kernel_resource_bundle_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            engine = directory / "OpenBurnBarCoreCAbi.dll"
+            engine.write_bytes(b"engine")
+            core_bundle = directory / "OpenBurnBarCore_OpenBurnBarCore.resources"
+            core_bundle.mkdir()
+            (core_bundle / "MiningPickIcon.svg").write_bytes(b"<svg/>\n")
+            with patch.object(
+                MODULE.subprocess,
+                "run",
+                return_value=type("Completed", (), {"stdout": "", "stderr": ""})(),
+            ):
+                with self.assertRaisesRegex(ValueError, "OpenBurnBarKernel"):
+                    MODULE.stage(engine, [], directory / "stage", [directory], "dumpbin")
 
 
 if __name__ == "__main__":

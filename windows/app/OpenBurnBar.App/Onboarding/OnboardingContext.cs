@@ -31,6 +31,14 @@ public sealed class OnboardingContext
     /// <summary>Invoked by the Chat-engine step's Hermes "Setup wizard" button.</summary>
     public Action? ShowHermesSetup { get; init; }
 
+    /// <summary>
+    /// Injected HWND resolver for file pickers (the <c>Func&lt;IntPtr&gt;</c> pattern from
+    /// <c>DataControlCenterView.WindowHandleProvider</c>). The host window sets this so
+    /// step pages can call <c>WinRT.Interop.InitializeWithWindow.Initialize</c> with a
+    /// real owner handle instead of <c>IntPtr.Zero</c> (the dead-picker bug).
+    /// </summary>
+    public Func<IntPtr>? WindowHandleProvider { get; init; }
+
     /// <summary>Total discovered usage sessions, for the Complete summary. Swift:
     /// <c>dataStore.totalUsageSessionCount</c>.</summary>
     public int SessionCount { get; init; }

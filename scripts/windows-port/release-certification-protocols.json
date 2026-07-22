@@ -1,0 +1,118 @@
+{
+  "schema": "openburnbar.windows.release-certification-protocols.v1",
+  "profiles": {
+    "physical-performance": {
+      "performanceBudgetSchema": "openburnbar.windows.release-performance-budgets.v1",
+      "target": "Signed exact-candidate physical Windows performance and lifecycle",
+      "expected": "Every launch, interaction, resource, resilience, and soak assertion passes on the declared physical architecture, and every numeric measurement satisfies the active release-performance budget.",
+      "assertions": [
+        { "id": "launch-cold", "description": "Cold launch satisfies the active p95 budget with the required repeated samples." },
+        { "id": "launch-warm", "description": "Warm launch satisfies the active p95 budget with the required repeated samples." },
+        { "id": "surface-flyout", "description": "Tray and flyout input acknowledgement satisfies the active p95 budget." },
+        { "id": "surface-dashboard", "description": "Dashboard refresh satisfies the documented p95 SLO under a declared representative dataset." },
+        { "id": "surface-search", "description": "Local search satisfies the documented p95 SLO under a declared representative dataset." },
+        { "id": "surface-settings", "description": "Settings input acknowledgement satisfies the active p95 budget." },
+        { "id": "surface-chat", "description": "Local chat input acknowledgement satisfies the active p95 budget under a harmless fixture; provider latency is reported separately." },
+        { "id": "usage-scan", "description": "A declared representative incremental usage scan satisfies the active p95 budget without crash or hang." },
+        { "id": "resource-idle-cpu", "description": "Warm-idle normalized process CPU satisfies the active average budget for the prescribed duration." },
+        { "id": "resource-active-cpu", "description": "Normalized process CPU satisfies the active p95 budget during the declared workload." },
+        { "id": "resource-memory", "description": "Private memory satisfies the active steady-state budget." },
+        { "id": "resource-gpu", "description": "Process GPU utilization satisfies the active p95 budget and fallback behavior remains usable." },
+        { "id": "resource-disk", "description": "Warm-idle process disk writes satisfy the active rate budget." },
+        { "id": "frame-pacing", "description": "Frame-time p95 and dropped-frame rate satisfy both active budgets on animated and scrolling surfaces." },
+        { "id": "lifecycle-sleep-wake", "description": "Sleep and wake preserve a usable responsive app." },
+        { "id": "lifecycle-explorer-restart", "description": "Explorer restart restores tray and activation behavior." },
+        { "id": "soak", "description": "The 30-minute soak satisfies memory-growth, zero-crash, and zero-hang budgets." }
+      ]
+    },
+    "accessibility-display": {
+      "target": "Narrator, keyboard, UI Automation, display scaling, themes, and multi-monitor behavior",
+      "expected": "Every accessibility and display assertion passes in a signed-in physical Windows desktop session.",
+      "assertions": [
+        { "id": "uia-profile", "description": "The full UI Automation certification profile passes." },
+        { "id": "narrator", "description": "Narrator exposes useful names, roles, values, and state changes." },
+        { "id": "keyboard-navigation", "description": "All required workflows are operable without a pointing device." },
+        { "id": "focus-order", "description": "Keyboard focus order is logical and stable." },
+        { "id": "focus-visibility", "description": "Keyboard focus remains visibly identifiable on every surface." },
+        { "id": "announcements", "description": "Status, error, progress, and completion changes are announced." },
+        { "id": "dpi-100", "description": "All required surfaces pass at 100 percent scaling." },
+        { "id": "dpi-150", "description": "All required surfaces pass at 150 percent scaling." },
+        { "id": "dpi-200", "description": "All required surfaces pass at 200 percent scaling." },
+        { "id": "high-contrast", "description": "Required surfaces remain legible and operable in Windows high contrast." },
+        { "id": "reduced-motion", "description": "Reduced-motion settings remove nonessential movement without losing state." },
+        { "id": "reduced-transparency", "description": "Reduced-transparency settings preserve legibility and hierarchy." },
+        { "id": "window-narrow", "description": "Required surfaces remain usable at the prescribed narrow window size." },
+        { "id": "window-wide", "description": "Required surfaces remain usable at the prescribed wide window size." },
+        { "id": "multi-monitor-mixed-dpi", "description": "Moving between mixed-DPI monitors preserves scale, focus, and layout." }
+      ]
+    },
+    "staging-cloud": {
+      "target": "Authorized isolated staging OAuth, App Check, TPM, and CloudVault behavior",
+      "expected": "Every staging assertion passes against the named non-production project with no secret leakage.",
+      "assertions": [
+        { "id": "authorization-and-project-binding", "description": "Evidence names the explicit authorization and isolated staging project, never production." },
+        { "id": "oauth-pkce-success", "description": "OAuth PKCE sign-in and callback succeed." },
+        { "id": "oauth-callback-failures", "description": "Cancellation, malformed callback, and state mismatch fail safely." },
+        { "id": "token-refresh-expiry", "description": "Token refresh and expiry behavior recover or fail closed as designed." },
+        { "id": "token-revocation", "description": "Revoked credentials are rejected and cleaned up." },
+        { "id": "offline-recovery", "description": "Offline queueing and reconnect recovery preserve ordering and idempotency." },
+        { "id": "app-check-valid", "description": "A valid App Check token is accepted by the staging enforcement surface." },
+        { "id": "app-check-invalid", "description": "Missing, malformed, expired, and invalid App Check tokens are rejected." },
+        { "id": "physical-tpm-claim", "description": "The physical TPM claim is minted and accepted only for the attested device." },
+        { "id": "cloudvault-round-trip", "description": "CloudVault upload and download round trips preserve authenticated data." },
+        { "id": "cloudvault-conflict-replay", "description": "Conflict, duplicate, ordering, and replay cases resolve safely." },
+        { "id": "sign-out-cleanup", "description": "Sign-out removes local tokens, queued privileged work, and cloud session state." },
+        { "id": "secret-leak-scan", "description": "Config, logs, diagnostics, evidence, and child environments contain no secrets." }
+      ]
+    },
+    "media-computer-use-safety": {
+      "target": "Physical Windows media, transfer, privileged input, authorization, and emergency-stop safety",
+      "expected": "Every media and Computer Use safety assertion passes using harmless fixtures and authorized peers.",
+      "assertions": [
+        { "id": "capture-camera-microphone", "description": "Screen capture, camera, and microphone permissions grant and deny safely." },
+        { "id": "call-interruption", "description": "Call interruption and recovery preserve safe state." },
+        { "id": "share-interruption", "description": "Screen-share interruption and recovery preserve safe state." },
+        { "id": "transfer-interruption", "description": "File-transfer interruption, retry, and cancellation preserve integrity." },
+        { "id": "snapshot-handling", "description": "Snapshots follow retention, redaction, and cleanup policy." },
+        { "id": "motw-quarantine", "description": "Received files preserve Mark of the Web and quarantine policy." },
+        { "id": "protected-target-denial", "description": "Protected and secure-desktop targets deny automation." },
+        { "id": "exact-approval", "description": "Privileged input requires the exact current approval and cannot reuse stale approval." },
+        { "id": "trust-downgrade", "description": "Phone and runtime controls can downgrade trust but cannot silently elevate it." },
+        { "id": "panic-kill", "description": "The global panic path halts input within the release latency budget." },
+        { "id": "watchdog", "description": "Watchdog loss halts the session and leaves an audit record." },
+        { "id": "remote-kill-switch", "description": "The remote kill switch halts and prevents privileged execution." },
+        { "id": "audit-tamper", "description": "Audit-chain mutation, deletion, and terminal-entry tamper are detected." },
+        { "id": "phone-authorization", "description": "Paired-phone authorization succeeds only for the intended session and action." },
+        { "id": "replay-denial", "description": "Replayed phone, broker, media, and transfer authorization is rejected." }
+      ]
+    },
+    "store-update-lifecycle": {
+      "target": "Explicitly authorized private Store flight and update lifecycle",
+      "expected": "Every private-flight install, update, recovery, activation, feed, and coexistence assertion passes.",
+      "assertions": [
+        { "id": "authorization-and-private-flight", "description": "Evidence names explicit authorization and a non-public Partner Center flight." },
+        { "id": "clean-install", "description": "Private-flight clean install succeeds and launches responsively." },
+        { "id": "upgrade", "description": "Upgrade from the prescribed predecessor preserves supported state and launches." },
+        { "id": "repair", "description": "Package repair restores a usable signed installation." },
+        { "id": "rollback-recovery", "description": "The documented rollback or recovery path restores service safely." },
+        { "id": "uninstall-reinstall", "description": "Uninstall removes the package and reinstall returns a usable app." },
+        { "id": "activation", "description": "Launch, protocol, file, toast, and startup activation routes behave as declared." },
+        { "id": "single-instance", "description": "Repeated activation preserves single-instance routing." },
+        { "id": "feed-valid", "description": "A valid signed update feed is accepted and bound to its artifact." },
+        { "id": "feed-tampered", "description": "A tampered feed or artifact is rejected." },
+        { "id": "feed-downgrade", "description": "An unauthorized downgrade is rejected." },
+        { "id": "feed-offline", "description": "Offline feed behavior remains usable and fails safely." },
+        { "id": "store-direct-coexistence", "description": "Store and direct-download identities coexist or conflict exactly as documented." },
+        { "id": "winget-eligibility", "description": "The candidate's winget publication eligibility and installer contract are verified." }
+      ]
+    }
+  },
+  "gates": {
+    "physical-performance-x64": { "profile": "physical-performance", "architecture": "x64" },
+    "physical-performance-arm64": { "profile": "physical-performance", "architecture": "arm64" },
+    "accessibility-display": { "profile": "accessibility-display" },
+    "staging-cloud": { "profile": "staging-cloud" },
+    "media-computer-use-safety": { "profile": "media-computer-use-safety" },
+    "store-update-lifecycle": { "profile": "store-update-lifecycle" }
+  }
+}

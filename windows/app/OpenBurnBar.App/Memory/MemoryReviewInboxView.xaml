@@ -40,7 +40,7 @@
                     <FontIcon Glyph="&#xE8F1;" FontSize="11" Foreground="{StaticResource OBBAccentBrush}" />
                     <TextBlock Text="MEMORY REVIEW"
                                FontSize="11"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
                 <Border HorizontalAlignment="Right"
                         CornerRadius="{StaticResource PensieveRadiusPillCorner}"
@@ -58,12 +58,12 @@
             <TextBlock Text="Approve what to remember"
                        FontSize="18"
                        FontWeight="SemiBold"
-                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                       Foreground="{ThemeResource AuroraTextBrush}" />
 
             <TextBlock Text="Memories stay quarantined until you approve them — nothing is used in a chat before you say so."
                        FontSize="12"
                        TextWrapping="Wrap"
-                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                       Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
         </StackPanel>
 
         <!-- Filter chips -->
@@ -95,7 +95,7 @@
                 <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
                            FontSize="12"
                            TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                           Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
             </StackPanel>
         </Border>
 
@@ -116,18 +116,18 @@
                         Spacing="12"
                         Padding="40"
                         Visibility="{x:Bind ViewModel.ShowEmpty, Mode=OneWay, Converter={StaticResource BoolToVisibility}}">
-                <FontIcon Glyph="&#xE7B8;" FontSize="48" Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                <FontIcon Glyph="&#xE7B8;" FontSize="48" Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 <TextBlock Text="No memories to review"
                            HorizontalAlignment="Center"
                            FontSize="16"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Foreground="{ThemeResource AuroraTextBrush}" />
                 <TextBlock Text="When a chat turns up a durable fact or preference worth remembering, it lands here for your approval."
                            HorizontalAlignment="Center"
                            TextAlignment="Center"
                            MaxWidth="420"
                            TextWrapping="Wrap"
                            FontSize="13"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
             </StackPanel>
 
             <ListView x:Name="ItemsList"
@@ -157,10 +157,10 @@
                                                    Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
                                     </Border>
                                     <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
-                                        <FontIcon Glyph="&#xE9D9;" FontSize="9" Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                        <FontIcon Glyph="&#xE9D9;" FontSize="9" Foreground="{ThemeResource AuroraTextMutedBrush}" />
                                         <TextBlock Text="{x:Bind ConfidenceLabel}"
                                                    FontSize="11"
-                                                   Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                                   Foreground="{ThemeResource AuroraTextMutedBrush}" />
                                     </StackPanel>
                                 </StackPanel>
 
@@ -169,7 +169,7 @@
                                            MaxLines="3"
                                            TextTrimming="CharacterEllipsis"
                                            TextWrapping="Wrap"
-                                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                           Foreground="{ThemeResource AuroraTextBrush}" />
 
                                 <StackPanel Orientation="Horizontal"
                                             Spacing="8"
@@ -185,7 +185,7 @@
                                             Click="OnApproveClick"
                                             IsEnabled="{x:Bind CanApprove}"
                                             Style="{StaticResource LiquidGlassInteractiveStyle}"
-                                            Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                            Foreground="{ThemeResource AuroraTextBrush}" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>

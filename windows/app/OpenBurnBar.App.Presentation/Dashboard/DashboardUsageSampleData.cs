@@ -8,7 +8,7 @@ namespace OpenBurnBar.App.Presentation.Dashboard;
 public static class DashboardUsageSampleData
 {
     public static DashboardUsageSummary Summary() => new(
-        SpendThisMonthUsd: 128.74,
+        TotalCostUsd: 128.74,
         TotalTokens: 4_820_000,
         SessionCount: 37,
         HasData: true,

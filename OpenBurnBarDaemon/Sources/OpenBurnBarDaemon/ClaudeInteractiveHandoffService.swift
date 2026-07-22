@@ -4,7 +4,7 @@ import Darwin
 import Glibc
 #endif
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 // MARK: - ClaudeInteractiveHandoffService (Part B1)
 

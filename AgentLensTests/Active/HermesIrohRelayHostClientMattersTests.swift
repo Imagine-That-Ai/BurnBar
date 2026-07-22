@@ -24,6 +24,37 @@ final class HermesIrohRelayHostClientMattersTests: XCTestCase {
     private let uid = "uid-revoke"
     private let connectionID = "connection-revoke"
 
+    @MainActor
+    func test_defaultTransportWithoutNativeBackendDoesNotPublishLoopback() async {
+        let transport = HermesIrohRelayHostClient.defaultTransport(
+            backendFactory: { nil }
+        )
+
+        XCTAssertFalse(transport is LoopbackIrohRelayTransport)
+        do {
+            _ = try await transport.start()
+            XCTFail("A signed Mac without the native iroh module must fail fast.")
+        } catch let error as IrohRelayTransportError {
+            XCTAssertEqual(error, .backendUnavailable)
+        } catch {
+            XCTFail("Unexpected missing-backend error: \(error)")
+        }
+    }
+
+    @MainActor
+    func test_backendUnavailableIsTerminalForHostAcceptLoop() {
+        XCTAssertFalse(
+            HermesIrohRelayHostClient.shouldRebuildAfterAcceptError(
+                IrohRelayTransportError.backendUnavailable
+            )
+        )
+        XCTAssertFalse(
+            HermesIrohRelayHostClient.isRecoverablePeerAcceptError(
+                IrohRelayTransportError.backendUnavailable
+            )
+        )
+    }
+
     // MARK: - revokePairingRecord retry contract
 
     /// A transient directory fault must NOT strand a live pairing record: the

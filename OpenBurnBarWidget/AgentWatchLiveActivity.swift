@@ -1,7 +1,7 @@
 import ActivityKit
 import SwiftUI
 import WidgetKit
-import OpenBurnBarCore
+import OpenBurnBarUI
 
 struct AgentWatchLiveActivity: Widget {
     var body: some WidgetConfiguration {

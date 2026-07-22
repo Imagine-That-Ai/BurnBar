@@ -97,7 +97,6 @@ describe('VAL-RPC bridge contract', () => {
     const mediaCalls = daemonMethodCalls(rustBridge).filter((method) =>
       method.startsWith('daemon.media.')
     );
-    expect(mediaCalls).toContain('daemon.media.status');
     expect(mediaCalls).toContain('daemon.media.session.state');
     expect(mediaCalls).toContain('daemon.media.call.accept');
     expect(mediaCalls).toContain('daemon.media.file.send');

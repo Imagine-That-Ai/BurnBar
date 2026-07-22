@@ -78,14 +78,21 @@ budgets/raw-firestore-baseline.json
 budgets/singleton-baseline.json
 budgets/string-any-boundary-baseline.json
 budgets/swift-file-size-baseline.json
+budgets/port-file-size-baseline.json
 budgets/windows-tree-baseline.json
 budgets/core-ui-purity-baseline.json
 budgets/mission-splitbrain-baseline.json
+budgets/core-target-membership-baseline.json
+budgets/core-umbrella-imports-baseline.json
 budgets/linux-desktop.perf.json
+# macOS idle/occluded CPU regression tripwire (P-PERF-3): structural assertion
+# gate for the backdrop WebGL rAF pause on occlusion — no existing baseline raised.
+budgets/macos-idle-cpu.perf.json
 # migrator-parity: annotated schema divergences between the canonical Swift GRDB
 # migrator and the Windows/Linux mirrors (scripts/check-migrator-parity.mjs).
 # Exact-set matched both ways: new divergences AND stale entries fail CI.
 budgets/migrator-parity-baseline.json
+budgets/force-unwrap-baseline.json
 
 # --- File-level TypeScript suppressions (token-scoped) ---
 functions/src/types/legacy.ts | eslint-disable
@@ -98,6 +105,10 @@ website/src/scripts/pretextShrinkwrap.ts | ts-suppress
 # Allowlisted rather than annotated inline because crates/openburnbar-iroh/** changes trigger a full
 # AAR rebuild-parity gate; the justification lives here instead of churning the FFI source.
 crates/openburnbar-iroh/src/lib.rs | rust-allow
+
+# --- Generated UniFFI Swift bindings (token-scoped) ---
+# Regenerated and drift-checked from crates/openburnbar-domain-core; never hand-edited.
+OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift | swiftlint-disable
 
 # --- Vendored GRDB SQLCipher fork (token-scoped) ---
 # Upstream GRDB carries SwiftLint waivers for compatibility with its own lint profile. Keep exact
@@ -241,7 +252,7 @@ Source of truth: [`.swiftlint.yml`](../.swiftlint.yml).
 | `modifier_order` | warn | Soft because existing declarations predate the preferred order. New code should follow the configured order. |
 | `line_length`, `function_body_length`, `type_body_length`, `file_length` | ratchet thresholds | Thresholds are set above measured maxima so the gate blocks regression now; tighten as decomposition work lands. |
 | `identifier_name` | relaxed | Single-letter names are common in graphics, math, parsers, and coordinates. Prefer descriptive names outside those domains. |
-| `force_unwrapping` | not opted in | Measured brownfield debt was high enough to require semantic review. Enable only after the optionality tranche has tests. |
+| `force_unwrapping` | not opted in | Measured brownfield debt (215 sites) is frozen by `scripts/debt/check-force-unwrap-budget.sh` (shrink-only ratchet, `budgets/force-unwrap-baseline.json`). Enable the SwiftLint rule once the count reaches zero; the ratchet enforces the path. |
 | `discouraged_optional_collection` | not opted in | Optional collection semantics are API-facing in several models; burn down with compatibility tests before enabling. |
 | `implicitly_unwrapped_optional` | not opted in | UIKit/AppKit/SwiftUI lifecycle and IBOutlet-like surfaces need hand review before this can be made blocking. |
 | `no_extension_access_modifier` | not opted in | The repo convention is ACL on extensions in several public API files. Revisit only with an ADR-backed style migration. |

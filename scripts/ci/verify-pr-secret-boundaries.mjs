@@ -21,7 +21,7 @@ const REPO_ROOT = process.env.PR_SECRET_BOUNDARY_ROOT
   : join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const TRUSTED_PR_EXPR =
-  'github.event_name != \'pull_request\' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(\'["OWNER","MEMBER","COLLABORATOR"]\'), github.event.pull_request.author_association))';
+  '(github.event_name == \'schedule\' || github.event_name == \'workflow_dispatch\') || (github.event_name == \'pull_request\' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(\'["OWNER","MEMBER","COLLABORATOR"]\'), github.event.pull_request.author_association))';
 const MAIN_PUSH_OR_SCHEDULE_EXPR =
   "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')";
 
@@ -245,8 +245,8 @@ function validateQaWorkflow() {
     job,
     4,
     "RUN_PR_SAFE_QA",
-    "${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}",
-    "functional QA must run the non-secret PR-safe lane for pull requests and non-main manual dispatches",
+    "${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.ref != 'refs/heads/main' }}",
+    "functional QA must run the non-secret PR-safe lane for pull requests, merge groups, and non-main manual dispatches",
   );
   requireEnvEntry(
     file,

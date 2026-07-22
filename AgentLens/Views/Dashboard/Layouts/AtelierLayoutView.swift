@@ -36,7 +36,8 @@ extension DashboardView {
                     atelierMoreDrawer
                 }
                 .padding(DesignSystem.Spacing.xl)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .frame(maxWidth: DashboardLayoutMetrics.contentMaxWidth, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
             .scrollContentBackground(.hidden)
         }
@@ -84,6 +85,7 @@ extension DashboardView {
 
             AtelierSpendCurve(
                 usages: dashboardUsageWindow.usages,
+                usagesRevision: dataStore.usagesVersion,
                 range: dashboardDateRange
             )
 

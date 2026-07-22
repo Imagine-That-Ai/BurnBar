@@ -5,7 +5,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
+using OpenBurnBar.App.Diagnostics;
 using OpenBurnBar.App.Presentation.Chat;
+using OpenBurnBar.App.Theme;
 using OpenBurnBar.Pretext;
 
 namespace OpenBurnBar.App.Chat;
@@ -33,6 +35,7 @@ public sealed partial class StreamingBubble : UserControl
         InitializeComponent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        ActualThemeChanged += OnActualThemeChanged;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -44,8 +47,11 @@ public sealed partial class StreamingBubble : UserControl
         ChatPretextEngineHost.CurrentChanged += OnSharedEngineChanged;
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e) =>
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        _measureVersion++;
         ChatPretextEngineHost.CurrentChanged -= OnSharedEngineChanged;
+    }
 
     private void OnSharedEngineChanged(PretextEngine? engine)
     {
@@ -54,6 +60,8 @@ public sealed partial class StreamingBubble : UserControl
             Engine = engine;
         }
     }
+
+    private void OnActualThemeChanged(FrameworkElement sender, object args) => Refresh();
 
     /// The parsed run stream to render (from <see cref="HermesAtomParser.Parse"/>).
     public IReadOnlyList<HermesRichRun>? Runs
@@ -100,7 +108,8 @@ public sealed partial class StreamingBubble : UserControl
         BuildFallback(runs);
 
         var width = ActualWidth;
-        if (_engine is null || width <= FallbackWidthFloor)
+        PretextEngine? engine = _engine;
+        if (engine is null || width <= FallbackWidthFloor)
         {
             // No engine (or collapsed width): show the inline fallback only.
             LinesPanel.Children.Clear();
@@ -108,10 +117,14 @@ public sealed partial class StreamingBubble : UserControl
             return;
         }
 
-        _ = MeasureAsync(runs, width, ++_measureVersion);
+        _ = MeasureAsync(engine, runs, width, ++_measureVersion);
     }
 
-    private async Task MeasureAsync(IReadOnlyList<HermesRichRun> runs, double width, int version)
+    private async Task MeasureAsync(
+        PretextEngine engine,
+        IReadOnlyList<HermesRichRun> runs,
+        double width,
+        int version)
     {
         var items = new List<PretextRichInlineItem>(runs.Count);
         foreach (var run in runs)
@@ -125,18 +138,38 @@ public sealed partial class StreamingBubble : UserControl
             });
         }
 
-        PretextRichHandle handle;
+        PretextRichHandle? handle = null;
         IReadOnlyList<PretextRichLine> lines;
         try
         {
-            handle = await _engine!.PrepareRichInlineAsync(items).ConfigureAwait(true);
-            lines = await _engine!.LayoutRichInlineAsync(handle, width).ConfigureAwait(true);
-            await _engine!.ReleaseAsync(handle).ConfigureAwait(true);
+            handle = await engine.PrepareRichInlineAsync(items).ConfigureAwait(true);
+            lines = await engine.LayoutRichInlineAsync(handle.Value, width).ConfigureAwait(true);
         }
         catch (PretextException)
         {
             // Engine unavailable / bridge error: keep the inline fallback.
             return;
+        }
+        catch (Exception ex)
+        {
+            // The host can be torn down between a streaming refresh and dispatch.
+            // Observe every fire-and-forget measurement fault and retain fallback UI.
+            AppDiagnostics.LogException("chat.pretext.measure", ex);
+            return;
+        }
+        finally
+        {
+            if (handle is { } prepared)
+            {
+                try
+                {
+                    await engine.ReleaseAsync(prepared).ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    AppDiagnostics.LogException("chat.pretext.release", ex);
+                }
+            }
         }
 
         if (version != _measureVersion)
@@ -187,10 +220,10 @@ public sealed partial class StreamingBubble : UserControl
                 return chip;
 
             case HermesRichRunKind.Mention:
-                return Pill(fragment.Text, "PensieveColorBrassBrightBrush", mono: false);
+                return Pill(fragment.Text, "AuroraAccentBrush", mono: false);
 
             case HermesRichRunKind.Code:
-                return Pill(fragment.Text, "PensieveColorTextBaseBrush", mono: true);
+                return Pill(fragment.Text, "AuroraTextBrush", mono: true);
 
             default:
                 var text = new TextBlock
@@ -210,7 +243,7 @@ public sealed partial class StreamingBubble : UserControl
         }
     }
 
-    private static Border Pill(string text, string brushKey, bool mono)
+    private Border Pill(string text, string brushKey, bool mono)
     {
         var block = new TextBlock
         {
@@ -220,7 +253,7 @@ public sealed partial class StreamingBubble : UserControl
         };
         if (mono)
         {
-            block.FontFamily = new FontFamily("Cascadia Mono");
+            block.FontFamily = BrandMonoFont();
         }
         else
         {
@@ -232,7 +265,7 @@ public sealed partial class StreamingBubble : UserControl
             Child = block,
             Padding = new Thickness(5, 1, 5, 1),
             CornerRadius = new CornerRadius(5),
-            Background = Brush("PensieveColorGlassBgElevatedBrush"),
+            Background = Brush("AuroraGlassTintElevatedBrush"),
         };
     }
 
@@ -256,7 +289,7 @@ public sealed partial class StreamingBubble : UserControl
             }
             else if (run.Kind == HermesRichRunKind.Code)
             {
-                inline.FontFamily = new FontFamily("Cascadia Mono");
+                inline.FontFamily = BrandMonoFont();
             }
             else
             {
@@ -269,10 +302,10 @@ public sealed partial class StreamingBubble : UserControl
 
     private static string CanvasFont(HermesRichRun run) => run.Kind switch
     {
-        HermesRichRunKind.Code => "500 13px 'Cascadia Mono'",
-        HermesRichRunKind.Mention => "600 13px 'Segoe UI'",
-        HermesRichRunKind.Atom => "600 13px 'Segoe UI'",
-        _ => (run.Style.HasFlag(HermesInlineStyle.Bold) ? "600 " : "400 ") + "14px 'Segoe UI'",
+        HermesRichRunKind.Code => "500 13px 'JetBrains Mono', 'Cascadia Mono', monospace",
+        HermesRichRunKind.Mention => "600 13px 'Geist', 'Segoe UI', sans-serif",
+        HermesRichRunKind.Atom => "600 13px 'Geist', 'Segoe UI', sans-serif",
+        _ => (run.Style.HasFlag(HermesInlineStyle.Bold) ? "600 " : "400 ") + "14px 'Geist', 'Segoe UI', sans-serif",
     };
 
     private static double ExtraWidth(HermesRichRun run) => run.Kind switch
@@ -283,14 +316,19 @@ public sealed partial class StreamingBubble : UserControl
         _ => 0,
     };
 
-    private static Brush TextBrush() => Brush("PensieveColorTextBaseBrush");
+    private Brush TextBrush() => Brush("AuroraTextBrush");
 
-    private static Brush Brush(string key)
+    // AuroraMonoFont lives at the Typography.xaml dictionary root (theme-independent),
+    // so an Application-level lookup resolves it (see Theme/BrandFonts.cs).
+    private static FontFamily BrandMonoFont() => BrandFonts.Mono;
+
+    // The hidden XAML probes use real ThemeResource bindings. Reading their typed
+    // Background values keeps code-built fragments aligned with the current theme.
+    private Brush Brush(string key) => key switch
     {
-        if (Application.Current.Resources.TryGetValue(key, out var value) && value is Brush brush)
-        {
-            return brush;
-        }
-        return new SolidColorBrush(Microsoft.UI.Colors.White);
-    }
+        "AuroraTextBrush" => AuroraTextBrushProbe.Background,
+        "AuroraAccentBrush" => AuroraAccentBrushProbe.Background,
+        "AuroraGlassTintElevatedBrush" => AuroraGlassTintElevatedBrushProbe.Background,
+        _ => null,
+    } ?? new SolidColorBrush(Microsoft.UI.Colors.White);
 }

@@ -6,14 +6,29 @@ struct ProviderLogoView: View {
     let provider: AgentProvider
     let size: CGFloat
     let useFallbackColor: Bool
+    /// Overrides the color scheme used to decide the monochrome-logo backdrop.
+    /// Pass `.dark` when the logo sits on always-dark chrome (e.g. the command
+    /// deck's glass rail) even while the app is in a light appearance, so dark
+    /// glyphs still get their contrast disc. `nil` follows the environment.
+    let surfaceScheme: ColorScheme?
 
     @Environment(\.colorScheme) private var colorScheme
 
-    init(provider: AgentProvider, size: CGFloat = 24, useFallbackColor: Bool = true) {
+    init(
+        provider: AgentProvider,
+        size: CGFloat = 24,
+        useFallbackColor: Bool = true,
+        surfaceScheme: ColorScheme? = nil
+    ) {
         self.provider = provider
         self.size = size
         self.useFallbackColor = useFallbackColor
+        self.surfaceScheme = surfaceScheme
     }
+
+    /// The scheme that governs contrast treatment — the caller's declared
+    /// surface if given, otherwise the ambient appearance.
+    private var effectiveScheme: ColorScheme { surfaceScheme ?? colorScheme }
 
     var body: some View {
         ZStack {
@@ -37,13 +52,13 @@ struct ProviderLogoView: View {
 
     private var needsBackdropTreatment: Bool {
         guard bundledImage != nil else { return false }
-        return provider.needsMonochromeLogoBackdrop(colorScheme: colorScheme)
+        return provider.needsMonochromeLogoBackdrop(colorScheme: effectiveScheme)
     }
 
     @ViewBuilder
     private var logoBackdrop: some View {
         let fillStyle: AnyShapeStyle = {
-            if colorScheme == .dark {
+            if effectiveScheme == .dark {
                 return AnyShapeStyle(.white.opacity(0.92))
             } else {
                 return AnyShapeStyle(DesignSystem.Colors.primary(for: provider))
@@ -54,7 +69,7 @@ struct ProviderLogoView: View {
             .fill(fillStyle)
             .overlay(
                 RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
-                    .stroke(colorScheme == .dark ? Color.black.opacity(0.06) : Color.white.opacity(0.12), lineWidth: 0.5)
+                    .stroke(effectiveScheme == .dark ? Color.black.opacity(0.06) : Color.white.opacity(0.12), lineWidth: 0.5)
             )
     }
 

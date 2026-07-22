@@ -5,6 +5,8 @@ permissions:
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main]
   workflow_dispatch:
@@ -12,7 +14,7 @@ on:
 jobs:
   detect-public-macos-download-change:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     outputs:
       changed: ${{ steps.detect.outputs.changed }}
       gate_changed: ${{ steps.detect.outputs.gate_changed }}
@@ -25,7 +27,7 @@ jobs:
         name: Detect public macOS download config changes
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
@@ -36,7 +38,7 @@ jobs:
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             changed=true
             gate_changed=true
-          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+          elif [[ "$EVENT_NAME" == "pull_request" || "$EVENT_NAME" == "merge_group" ]]; then
             git diff --name-only "$BASE_SHA"...HEAD > "$changed_paths"
             if grep -qx 'website/src/data/site.ts' "$changed_paths"; then
               changed=true

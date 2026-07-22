@@ -2,7 +2,7 @@ import Foundation
 #if canImport(LocalAuthentication)
 import LocalAuthentication
 #endif
-import OpenBurnBarCore
+import OpenBurnBarEngine
 #if canImport(Security)
 import Security
 #endif

@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarInsights
 
 /// Wire-format regression suite for `BurnBarHostedInsightAdapter`.
 ///
@@ -46,6 +47,76 @@ final class BurnBarHostedAdapterWireTests: XCTestCase {
         let preview = try XCTUnwrap(payload["promptPreview"] as? String)
         XCTAssertEqual(preview.count, 280,
                        "promptPreview is the cheap routing field — keep it bounded so the callable body never balloons.")
+    }
+
+    func testCallablePayloadRedactsCallerConstructedPrivateActionMetadataWithoutChangingLocalRequest() throws {
+        let privateSummary = "PRIVATE-HOSTED-ACTION-3D8E: publish Project Nightjar acquisition"
+        let privateTitle = "PRIVATE-HOSTED-TITLE-B741: Project Nightjar acquisition"
+        var request = try makeRequest(prompt: "Summarize the safe aggregates.")
+        request.context.digest.operatingActions = [
+            InsightDigest.ActionDigest(
+                id: "caller-constructed-action",
+                kind: "release_\(privateTitle)",
+                projectID: nil,
+                occurredAt: Date(timeIntervalSince1970: 1_767_225_600),
+                summary: privateSummary
+            )
+        ]
+        request.context.digest.providers = [
+            InsightDigest.ProviderSnapshot(
+                id: "privacy-test-provider",
+                displayName: "Privacy Test Provider",
+                costUSD: 0.01,
+                totalTokens: 150,
+                sessionCount: 1,
+                topModels: ["privacy-test-model"],
+                topInferredTaskTitles: [privateTitle],
+                topKeyTools: []
+            )
+        ]
+        request.context.digest.models = [
+            InsightDigest.ModelSnapshot(
+                id: "privacy-test-model",
+                providerID: "privacy-test-provider",
+                costUSD: 0.01,
+                totalTokens: 150,
+                sessionCount: 1,
+                avgCostPerSession: 0.01,
+                cacheHitRate: 0,
+                topInferredTaskTitles: [privateTitle],
+                topProjects: []
+            )
+        ]
+
+        let data = try BurnBarHostedInsightAdapter.encodeCallablePayload(
+            request: request,
+            platform: .iOS,
+            modelID: "minimax-m2.7"
+        )
+        let encodedText = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(encodedText.contains(privateSummary))
+        XCTAssertFalse(encodedText.contains(privateTitle))
+
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let payload = try XCTUnwrap(root["data"] as? [String: Any])
+        let outboundRequest = try XCTUnwrap(payload["request"] as? [String: Any])
+        let context = try XCTUnwrap(outboundRequest["context"] as? [String: Any])
+        let digest = try XCTUnwrap(context["digest"] as? [String: Any])
+        let actions = try XCTUnwrap(digest["operatingActions"] as? [[String: Any]])
+        let action = try XCTUnwrap(actions.first)
+        XCTAssertEqual(action["kind"] as? String, "deployment")
+        XCTAssertEqual(action["summary"] as? String, "Deployment action")
+        XCTAssertNil(action["projectID"])
+
+        let providers = try XCTUnwrap(digest["providers"] as? [[String: Any]])
+        let models = try XCTUnwrap(digest["models"] as? [[String: Any]])
+        XCTAssertTrue(providers.allSatisfy { ($0["topInferredTaskTitles"] as? [String]) == [] })
+        XCTAssertTrue(models.allSatisfy { ($0["topInferredTaskTitles"] as? [String]) == [] })
+
+        XCTAssertEqual(request.context.digest.operatingActions.first?.kind, "release_\(privateTitle)")
+        XCTAssertEqual(request.context.digest.operatingActions.first?.summary, privateSummary)
+        XCTAssertEqual(request.context.digest.providers.first?.topInferredTaskTitles, [privateTitle])
+        XCTAssertEqual(request.context.digest.models.first?.topInferredTaskTitles, [privateTitle])
     }
 
     // MARK: - End-to-end response decode

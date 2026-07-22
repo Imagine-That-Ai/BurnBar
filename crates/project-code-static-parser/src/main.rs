@@ -31,6 +31,7 @@ struct ParseResponse {
     file_path: String,
     language: String,
     blob_sha: String,
+    sha_match: bool,
     ok: bool,
     has_parse_error: bool,
     symbols: Vec<ParsedSymbol>,
@@ -89,6 +90,7 @@ fn main() {
                 file_path: String::new(),
                 language: String::new(),
                 blob_sha: String::new(),
+                sha_match: false,
                 ok: false,
                 has_parse_error: false,
                 symbols: Vec::new(),
@@ -117,6 +119,7 @@ fn parse_line(raw: &str) -> ParseResponse {
             file_path: String::new(),
             language: String::new(),
             blob_sha: String::new(),
+            sha_match: false,
             ok: false,
             has_parse_error: false,
             symbols: Vec::new(),
@@ -138,6 +141,7 @@ fn parse_request(request: ParseRequest) -> ParseResponse {
             file_path: request.file_path,
             language: language_name,
             blob_sha: request.blob_sha,
+            sha_match,
             ok: true,
             has_parse_error: false,
             symbols,
@@ -151,6 +155,7 @@ fn parse_request(request: ParseRequest) -> ParseResponse {
             file_path: request.file_path,
             language: language_name,
             blob_sha: request.blob_sha,
+            sha_match,
             ok: false,
             has_parse_error: false,
             symbols: Vec::new(),
@@ -166,6 +171,7 @@ fn parse_request(request: ParseRequest) -> ParseResponse {
             file_path: request.file_path,
             language: language_name,
             blob_sha: request.blob_sha,
+            sha_match,
             ok: false,
             has_parse_error: false,
             symbols: Vec::new(),
@@ -179,6 +185,7 @@ fn parse_request(request: ParseRequest) -> ParseResponse {
             file_path: request.file_path,
             language: language_name,
             blob_sha: request.blob_sha,
+            sha_match,
             ok: false,
             has_parse_error: false,
             symbols: Vec::new(),
@@ -201,11 +208,13 @@ fn parse_request(request: ParseRequest) -> ParseResponse {
         sha_match,
         &mut symbols,
     );
+    dedupe_symbols(&mut symbols);
     ParseResponse {
         request_id: request.request_id,
         file_path: request.file_path,
         language: language_name,
         blob_sha: request.blob_sha,
+        sha_match,
         ok: true,
         has_parse_error: tree.root_node().has_error(),
         symbols,
@@ -216,10 +225,22 @@ fn parse_request(request: ParseRequest) -> ParseResponse {
 
 fn language_for(language: &str) -> Option<Language> {
     match language {
+        "c" => Some(tree_sitter_c::LANGUAGE.into()),
+        "csharp" => Some(tree_sitter_c_sharp::LANGUAGE.into()),
+        "cpp" => Some(tree_sitter_cpp::LANGUAGE.into()),
+        "go" => Some(tree_sitter_go::LANGUAGE.into()),
+        "java" => Some(tree_sitter_java::LANGUAGE.into()),
+        "javascript" => Some(tree_sitter_javascript::LANGUAGE.into()),
+        "json" => Some(tree_sitter_json::LANGUAGE.into()),
+        "kotlin" => Some(tree_sitter_kotlin_ng::LANGUAGE.into()),
+        "markdown" => Some(tree_sitter_md::LANGUAGE.into()),
+        "objc" => Some(tree_sitter_objc::LANGUAGE.into()),
         "python" => Some(tree_sitter_python::LANGUAGE.into()),
+        "rust" => Some(tree_sitter_rust::LANGUAGE.into()),
         "swift" => Some(tree_sitter_swift::LANGUAGE.into()),
         "typescript" => Some(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
         "tsx" => Some(tree_sitter_typescript::LANGUAGE_TSX.into()),
+        "yaml" => Some(tree_sitter_yaml::LANGUAGE.into()),
         _ => None,
     }
 }
@@ -227,10 +248,22 @@ fn language_for(language: &str) -> Option<Language> {
 fn normalize_language(language: Option<&str>, file_path: &str) -> String {
     let raw = language.unwrap_or_default().trim().to_ascii_lowercase();
     match raw.as_str() {
+        "c" => "c".to_string(),
+        "c#" | "cs" | "csharp" => "csharp".to_string(),
+        "cc" | "cpp" | "cxx" | "c++" => "cpp".to_string(),
+        "go" | "golang" => "go".to_string(),
+        "java" => "java".to_string(),
+        "js" | "javascript" | "jsx" => "javascript".to_string(),
+        "json" => "json".to_string(),
+        "kt" | "kotlin" => "kotlin".to_string(),
+        "md" | "markdown" => "markdown".to_string(),
+        "m" | "mm" | "objc" | "objective-c" => "objc".to_string(),
         "py" | "python" => "python".to_string(),
+        "rs" | "rust" => "rust".to_string(),
         "swift" => "swift".to_string(),
         "ts" | "typescript" => "typescript".to_string(),
         "tsx" => "tsx".to_string(),
+        "yaml" | "yml" => "yaml".to_string(),
         _ => match file_path
             .rsplit('.')
             .next()
@@ -238,10 +271,22 @@ fn normalize_language(language: Option<&str>, file_path: &str) -> String {
             .to_ascii_lowercase()
             .as_str()
         {
+            "c" | "h" => "c".to_string(),
+            "cs" => "csharp".to_string(),
+            "cc" | "cpp" | "cxx" | "hpp" => "cpp".to_string(),
+            "go" => "go".to_string(),
+            "java" => "java".to_string(),
+            "js" | "jsx" => "javascript".to_string(),
+            "json" => "json".to_string(),
+            "kt" => "kotlin".to_string(),
+            "md" => "markdown".to_string(),
+            "m" | "mm" => "objc".to_string(),
             "py" => "python".to_string(),
+            "rs" => "rust".to_string(),
             "swift" => "swift".to_string(),
             "ts" => "typescript".to_string(),
             "tsx" => "tsx".to_string(),
+            "yaml" | "yml" => "yaml".to_string(),
             _ => raw,
         },
     }
@@ -270,6 +315,7 @@ fn parse_lsp_references_request(
         file_path: request.file_path,
         language: language_name,
         blob_sha: request.blob_sha,
+        sha_match,
         ok,
         has_parse_error: false,
         symbols: Vec::new(),
@@ -522,7 +568,19 @@ fn validate_lsp_command(
     parts: Vec<String>,
     explicit_allowlist: Vec<String>,
 ) -> Option<Vec<String>> {
-    if !matches!(language, "python" | "swift" | "typescript" | "tsx") {
+    if !matches!(
+        language,
+        "csharp"
+            | "go"
+            | "java"
+            | "javascript"
+            | "kotlin"
+            | "python"
+            | "rust"
+            | "swift"
+            | "typescript"
+            | "tsx"
+    ) {
         return None;
     }
     if parts.is_empty() || parts.len() > 16 {
@@ -576,6 +634,12 @@ fn validate_lsp_command(
 
 fn builtin_lsp_executable_allowlist() -> Vec<String> {
     vec![
+        "csharp-ls".to_string(),
+        "gopls".to_string(),
+        "jdtls".to_string(),
+        "kotlin-language-server".to_string(),
+        "omnisharp".to_string(),
+        "rust-analyzer".to_string(),
         "sourcekit-lsp".to_string(),
         "typescript-language-server".to_string(),
         "pyright-langserver".to_string(),
@@ -894,6 +958,22 @@ fn collect_symbols(
     }
 }
 
+fn dedupe_symbols(symbols: &mut Vec<ParsedSymbol>) {
+    symbols.sort_by(|left, right| {
+        left.start_line
+            .cmp(&right.start_line)
+            .then(left.end_line.cmp(&right.end_line))
+            .then(left.name.cmp(&right.name))
+            .then(left.kind.cmp(&right.kind))
+    });
+    symbols.dedup_by(|left, right| {
+        left.name == right.name
+            && left.kind == right.kind
+            && left.start_line == right.start_line
+            && left.end_line == right.end_line
+    });
+}
+
 /// True when `text` hashes to the claimed git blob object id. An empty claim
 /// (caller supplied no blob_sha) is treated as unverifiable -> `false`.
 fn blob_sha_matches(text: &str, claimed_blob_sha: &str) -> bool {
@@ -978,6 +1058,96 @@ fn sha1_hex(data: &[u8]) -> String {
 fn symbol_name_and_kind(node: Node<'_>, source: &[u8], language: &str) -> Option<(String, String)> {
     let kind = node.kind();
     let normalized_kind = match language {
+        "c" => match kind {
+            "function_definition" => "function",
+            "struct_specifier" => "struct",
+            "union_specifier" => "union",
+            "enum_specifier" => "enum",
+            "type_definition" => "type",
+            "preproc_def" | "preproc_function_def" => "macro",
+            _ => return None,
+        }
+        .to_string(),
+        "csharp" => match kind {
+            "namespace_declaration" => "namespace",
+            "class_declaration" => "class",
+            "struct_declaration" => "struct",
+            "interface_declaration" => "interface",
+            "enum_declaration" => "enum",
+            "record_declaration" => "record",
+            "method_declaration" | "local_function_statement" => "function",
+            "property_declaration" => "property",
+            "field_declaration" => "field",
+            _ => return None,
+        }
+        .to_string(),
+        "cpp" => match kind {
+            "function_definition" => "function",
+            "class_specifier" => "class",
+            "namespace_definition" => "namespace",
+            "enum_specifier" => "enum",
+            "alias_declaration" => "type",
+            "field_declaration" => "field",
+            _ => return None,
+        }
+        .to_string(),
+        "go" => match kind {
+            "function_declaration" => "function",
+            "method_declaration" => "function",
+            "type_declaration" | "type_spec" => "type",
+            "const_declaration" | "const_spec" => "constant",
+            "var_declaration" | "var_spec" => "variable",
+            _ => return None,
+        }
+        .to_string(),
+        "java" => match kind {
+            "package_declaration" => "package",
+            "class_declaration" => "class",
+            "interface_declaration" => "interface",
+            "enum_declaration" => "enum",
+            "record_declaration" => "record",
+            "method_declaration" | "constructor_declaration" => "function",
+            "field_declaration" => "field",
+            _ => return None,
+        }
+        .to_string(),
+        "javascript" => match kind {
+            "function_declaration" => "function",
+            "class_declaration" => "class",
+            "method_definition" => "function",
+            "lexical_declaration" | "variable_declaration" => "variable",
+            _ => return None,
+        }
+        .to_string(),
+        "json" => match kind {
+            "pair" => "property",
+            "object" => "object",
+            _ => return None,
+        }
+        .to_string(),
+        "kotlin" => match kind {
+            "class_declaration" => "class",
+            "object_declaration" => "object",
+            "function_declaration" => "function",
+            "property_declaration" => "property",
+            "type_alias" => "type",
+            _ => return None,
+        }
+        .to_string(),
+        "markdown" => match kind {
+            "atx_heading" | "setext_heading" => "heading",
+            "link_reference_definition" => "reference",
+            _ => return None,
+        }
+        .to_string(),
+        "objc" => match kind {
+            "class_interface" | "class_implementation" => "class",
+            "protocol_declaration" => "protocol",
+            "method_declaration" | "method_definition" | "function_definition" => "function",
+            "property_declaration" => "property",
+            _ => return None,
+        }
+        .to_string(),
         "python" => match kind {
             "function_definition" => "function",
             "class_definition" => "class",
@@ -994,6 +1164,20 @@ fn symbol_name_and_kind(node: Node<'_>, source: &[u8], language: &str) -> Option
             "property_declaration" => "variable".to_string(),
             _ => return None,
         },
+        "rust" => match kind {
+            "function_item" => "function",
+            "struct_item" => "struct",
+            "enum_item" => "enum",
+            "trait_item" => "trait",
+            "impl_item" => "impl",
+            "mod_item" => "module",
+            "const_item" => "constant",
+            "static_item" => "variable",
+            "type_item" => "type",
+            "macro_definition" => "macro",
+            _ => return None,
+        }
+        .to_string(),
         "typescript" | "tsx" => match kind {
             "function_declaration" => "function",
             "method_definition" => "function",
@@ -1004,12 +1188,21 @@ fn symbol_name_and_kind(node: Node<'_>, source: &[u8], language: &str) -> Option
             _ => return None,
         }
         .to_string(),
+        "yaml" => match kind {
+            "block_mapping_pair" | "flow_pair" => "property",
+            "block_sequence_item" => "item",
+            _ => return None,
+        }
+        .to_string(),
         _ => return None,
     };
     let name_node = node
         .child_by_field_name("name")
+        .or_else(|| node.child_by_field_name("key"))
         .or_else(|| first_named_identifier(node, source));
-    let name = name_node.and_then(|candidate| text(candidate, source))?;
+    let name = name_node
+        .and_then(|candidate| text(candidate, source))
+        .or_else(|| first_named_text(node, source))?;
     Some((name, normalized_kind))
 }
 
@@ -1028,13 +1221,25 @@ fn first_named_identifier<'tree>(node: Node<'tree>, source: &[u8]) -> Option<Nod
     for child in node.children(&mut cursor) {
         if matches!(
             child.kind(),
-            "identifier" | "type_identifier" | "property_identifier"
+            "identifier" | "type_identifier" | "property_identifier" | "field_identifier"
         ) && text(child, source).is_some()
         {
             return Some(child);
         }
         if let Some(nested) = first_named_identifier(child, source) {
             return Some(nested);
+        }
+    }
+    None
+}
+
+fn first_named_text<'tree>(node: Node<'tree>, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.is_named() {
+            if let Some(value) = text(child, source) {
+                return Some(value);
+            }
         }
     }
     None
@@ -1102,6 +1307,171 @@ mod tests {
             .symbols
             .iter()
             .any(|symbol| symbol.name == "run" && symbol.kind == "function"));
+    }
+
+    #[test]
+    fn extracts_csharp_symbols() {
+        let response = parse_request(ParseRequest {
+            request_id: Some("csharp".to_string()),
+            file_path: "Runner.cs".to_string(),
+            language: None,
+            blob_sha: "blob-csharp".to_string(),
+            text: "namespace Demo { public class Runner { public void Start() {} } }".to_string(),
+            root_path: None,
+            operation: None,
+            position: None,
+        });
+
+        assert!(response.ok);
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Runner" && symbol.kind == "class"));
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Start" && symbol.kind == "function"));
+    }
+
+    #[test]
+    fn extracts_java_symbols() {
+        let response = parse_request(ParseRequest {
+            request_id: Some("java".to_string()),
+            file_path: "Runner.java".to_string(),
+            language: None,
+            blob_sha: "blob-java".to_string(),
+            text: "package demo; public class Runner { int value; public void start() {} }"
+                .to_string(),
+            root_path: None,
+            operation: None,
+            position: None,
+        });
+
+        assert!(response.ok);
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Runner" && symbol.kind == "class"));
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "start" && symbol.kind == "function"));
+    }
+
+    #[test]
+    fn extracts_go_symbols_without_parent_child_duplicates() {
+        let response = parse_request(ParseRequest {
+            request_id: Some("go".to_string()),
+            file_path: "runner.go".to_string(),
+            language: None,
+            blob_sha: "blob-go".to_string(),
+            text: "package main\ntype Runner struct{}\nfunc Launch() {}\nvar value = 1".to_string(),
+            root_path: None,
+            operation: None,
+            position: None,
+        });
+
+        assert!(response.ok);
+        assert_eq!(
+            response
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == "Runner")
+                .count(),
+            1
+        );
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Launch" && symbol.kind == "function"));
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "value" && symbol.kind == "variable"));
+    }
+
+    #[test]
+    fn extracts_kotlin_symbols() {
+        let response = parse_request(ParseRequest {
+            request_id: Some("kotlin".to_string()),
+            file_path: "Runner.kt".to_string(),
+            language: None,
+            blob_sha: "blob-kotlin".to_string(),
+            text: "class Runner { fun start() {} }\nval value = 1".to_string(),
+            root_path: None,
+            operation: None,
+            position: None,
+        });
+
+        assert!(response.ok);
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Runner" && symbol.kind == "class"));
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "start" && symbol.kind == "function"));
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "value" && symbol.kind == "property"));
+    }
+
+    #[test]
+    fn extracts_javascript_symbols() {
+        let response = parse_request(ParseRequest {
+            request_id: Some("javascript".to_string()),
+            file_path: "runner.js".to_string(),
+            language: None,
+            blob_sha: "blob-javascript".to_string(),
+            text: "class Runner { start() {} }\nfunction launch() {}\nconst value = 1;".to_string(),
+            root_path: None,
+            operation: None,
+            position: None,
+        });
+
+        assert!(response.ok);
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Runner" && symbol.kind == "class"));
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "launch" && symbol.kind == "function"));
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "value" && symbol.kind == "variable"));
+    }
+
+    #[test]
+    fn extracts_rust_symbols() {
+        let response = parse_request(ParseRequest {
+            request_id: Some("rust".to_string()),
+            file_path: "runner.rs".to_string(),
+            language: None,
+            blob_sha: "blob-rust".to_string(),
+            text: "struct Runner;\nimpl Runner { fn start(&self) {} }\nfn launch() {}".to_string(),
+            root_path: None,
+            operation: None,
+            position: None,
+        });
+
+        assert!(response.ok);
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Runner" && symbol.kind == "struct"));
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "start" && symbol.kind == "function"));
+        assert!(response
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "launch" && symbol.kind == "function"));
     }
 
     #[test]

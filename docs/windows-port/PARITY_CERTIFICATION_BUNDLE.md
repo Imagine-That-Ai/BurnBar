@@ -6,6 +6,10 @@
 **Windows tree:** `windows/` (WinUI shell, PAL, storage, cloudsync, tests, dist).
 **Related:** `docs/windows-port/HANDOFF.md`, `docs/windows-port/PHASE3_UI_PARITY_PLAN.md`, `docs/WINDOWS_PORT_MASTER_PLAN.md` §10.1.
 
+For the repeatable release procedure and current maintenance contract, use
+[`WINDOWS_PORT_OPERATIONS_RUNBOOK.md`](WINDOWS_PORT_OPERATIONS_RUNBOOK.md).
+This evidence bundle remains the detailed review record.
+
 > **How to use this doc.** Each row cites a **test**, **fixture**, **WPD/PR**, or **runbook** artifact. Screenshot cells awaiting Alberto’s **Win11 Pro validation pass** are marked `_(blocked — Win11 Pro pass pending)_` — never as invented image paths (Phase 0 ledger scanner rejects those). Cross-platform snapshot auto-gates are explicitly **not** claimed (`PHASE3_UI_PARITY_PLAN.md` §G3). Canonical production-parity status is [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml).
 
 ---
@@ -16,8 +20,8 @@
 > (ledger `finish_line: F2_True_1to1`). Canonical execution plan:
 > [`WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md`](WINDOWS_FULL_PARITY_MASTER_PLAN_2026-07-09.md).
 >
-> **Achieved 2026-07-09 under ledger laws:** **46 Real / 0 DeferredApproved / 0 Blocked /
-> 0 Substituted.** F1/F2 column cells below remain historical **exit-criteria** language
+> **F1 ledger result (2026-07-09):** **46 Real / 0 DeferredApproved / 0 Blocked /
+> 0 Substituted.** This is the scoped Ship Peer gate; F2/F1 column cells below remain historical **exit-criteria** language
 > from plan authoring; **current** production-parity status is only the ledger row + §1
 > Status column (all primary nav **Real**). Artifact Signing is proven by release
 > run 29160512069; Store/winget publication, required GH check configuration, and
@@ -49,7 +53,9 @@
 
 ## 0.2 Certification checkpoint - 2026-07-11
 
-The F2 implementation ledger remains complete at 46 Real rows. Signed x64 and
+The F1 implementation ledger remains complete at 46 Real rows. F2 True 1:1
+workstreams remain governed by WPD-0009 and are not implied by this scoped
+ledger result. Signed x64 and
 ARM64 candidate production, Authenticode verification, timestamps, checksums,
 Ed25519 feed generation, SBOM, OpenVEX, and Sigstore passed in release run
 [29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069).
@@ -174,10 +180,10 @@ These are **explicit** Tier-B/C substitutions or interim postures from the maste
 | D8 | **Elder Wand reachability** | Settings leaf + chat header | Command Palette auxiliary (not sidebar row) | Keeps Elder Wand out of primary Ctrl 1..9 / menu switcher; `NavCatalog.All` is 14 keys after IA-1 | `NavCatalog.Auxiliary` + `ElderWandPage` |
 | D9 | **Sign in with Apple / IAP** | Apple / StoreKit | MSA/Google/email; Stripe or Store IAP | Tier C (`WINDOWS_PORT_MASTER_PLAN.md` §2) | Substitute checkout flow tested |
 | D10 | **Notarization staple** | Stapled DMG | No Apple-style staple; Authenticode + Ed25519 feed pin | R19 honest gap | DLL-load hardening + pinned feed key tests |
-| D11 | **SendInput capability gate** | CGEvent | Advisory `SendInput`; driver path for non-bypassable | R17 | Documented; ViGEm for secure-desktop v1.1 |
+| D11 | **SendInput capability gate** | CGEvent | Advisory `SendInput` inside an exact-publisher authenticated broker; secure desktop/cross-integrity excluded | R17 and the Windows integrity boundary | Protected-target/kill/at-most-once tests plus signed broker runtime gate; a future non-bypassable path requires a purpose-built signed keyboard/mouse HID driver, not ViGEm |
 | D12 | **Pretext metrics** | WebKit | WebView2 + **same** `pretext.bundle.min.js` | R22 Chromium vs WebKit tolerance | `0005-pretext-webview2-metric-parity.md` corpus harness |
 | D13 | **project-code-static-parser** | Rust helper on Mac | Deferred Windows target (lexical fallback) | WPD-0003 | No Windows v1 regression vs documented fallback |
-| D14 | **Daemon (`OpenBurnBarDaemon`) — no monolithic port** | LaunchAgent daemon: HTTP gateway, provider router/executors, headless run/resume, Mission Control DAG execution, Pensieve watcher, planner, RPC server, companion CLI | Per-capability substitution in the WinUI app process + portable C# cores (`FirestoreMissionDispatchHost`, `ConPtyCliStream`, `TokenUsageWriteSeam`, `ComputerUse.Core`, toast seam); gateway / headless runs / local mission execution / Pensieve = named v1.1 deferrals with revive triggers | **WPD-0006** (34-row matrix); consistent with WPD-0007's no-service call; revive path = daemon Linux boundary build as a Windows Service | Each SUB-DONE row cites landed tests (bundle §1–§3); deferral revisit triggers named in WPD-0006; no daemon capability claimed as "parity" without a matrix row |
+| D14 | **Daemon (`OpenBurnBarDaemon`) — no monolithic port** | LaunchAgent daemon: HTTP gateway, provider router/executors, headless run/resume, Mission Control DAG execution, Pensieve watcher, planner, RPC server, companion CLI | Per-capability substitution in the WinUI app process + portable C# cores. All applicable WPD-0006 rows are evidenced SUB-DONE; process-only duties are structural N/A. | **WPD-0006** (34-row matrix); consistent with WPD-0007's no-service call; revive path = daemon Linux boundary build as a Windows Service | Each SUB-DONE row cites landed tests (bundle §1–§3); Windows-host and signed-release certification remain separate evidence gates |
 
 ---
 

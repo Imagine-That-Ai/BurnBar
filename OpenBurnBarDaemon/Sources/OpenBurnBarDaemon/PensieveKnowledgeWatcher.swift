@@ -1,6 +1,6 @@
 import Foundation
 import os
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 /// Default device commit-queue directory the daemon writes prepared Pensieve
 /// batches into. Byte-compatible with `defaultCommitQueue` in

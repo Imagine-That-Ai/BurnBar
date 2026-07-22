@@ -63,6 +63,7 @@ export const SURFACES = {
   windows: {
     label: "Windows port (OpenBurnBar.Storage)",
     provisioning: "windows/storage/OpenBurnBar.Storage/WindowsSqlCipherProvisioning.cs",
+    schema: "windows/storage/OpenBurnBar.Storage/WindowsSqlCipherProvisioning.Schema.cs",
     metadata: "windows/storage/OpenBurnBar.Storage/WindowsSqlCipherProvisioning.Metadata.cs",
   },
   linux: {
@@ -93,14 +94,38 @@ const CONSTRAINT_KEYWORDS = new Set([
 export function matchDelimiter(text, openIndex, open = "(", close = ")") {
   let depth = 0;
   let inString = null;
+  let inLineComment = false;
+  let inBlockComment = false;
   for (let i = openIndex; i < text.length; i += 1) {
     const ch = text[i];
+    const next = text[i + 1];
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i += 1;
+      }
+      continue;
+    }
     if (inString) {
       if (ch === "\\") {
         i += 1;
       } else if (ch === inString) {
         inString = null;
       }
+      continue;
+    }
+    if ((ch === "/" && next === "/") || (ch === "-" && next === "-")) {
+      inLineComment = true;
+      i += 1;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i += 1;
       continue;
     }
     if (ch === "'" || ch === '"') {
@@ -578,6 +603,7 @@ export function extractWindows(repoRoot, surface) {
     join(repoRoot, surface.provisioning),
     "utf8",
   );
+  const schemaText = readFileSync(join(repoRoot, surface.schema), "utf8");
   const metadataText = readFileSync(join(repoRoot, surface.metadata), "utf8");
 
   const endpointMatch = provisioningText.match(
@@ -605,7 +631,7 @@ export function extractWindows(repoRoot, surface) {
   );
 
   const schemaEntries = parseCSharpStringArray(
-    provisioningText,
+    schemaText,
     "SchemaStatements",
   );
   const state = emptySchemaState();
