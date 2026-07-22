@@ -252,7 +252,10 @@ known platform divergences.
 > protection are source-integrated, while signed installed, Linux migration,
 > and cross-device conflict receipts remain open. Provider-specific chat
 > backends, native PDF semantics, production credentials, and the seven
-> environment matrix remain release dependencies.
+> environment matrix remain release dependencies. Hosted `Linux PR Gate` run
+> `29897336589` on the exact code-containing head passed all **29/29** steps,
+> including Linux Swift/Rust behavior, IPC drift, package metadata, and the
+> matched macOS/Linux performance comparison.
 
 > **Live-environment update (2026-07-22):** A fresh physical iPad run at
 > `b96ea13e24` passed `iPadNavigationUITests/testiPadSettingsTabs_countAndNoDaemon`
