@@ -13,8 +13,8 @@ final class HermesRelayCryptoSealKeyAADTests: XCTestCase {
 
     // MARK: - Exact wire-format pins
 
-    func testMediaSealKeyAADPinsExactByteLayout() {
-        let aad = HermesRelayCrypto.mediaSealKeyAAD(
+    func testMediaSealKeyAADPinsExactByteLayout() throws {
+        let aad = try HermesRelayCrypto.mediaSealKeyAAD(
             uid: "uid-1",
             connectionID: "conn-1",
             viewerId: "viewer-1",
@@ -28,8 +28,8 @@ final class HermesRelayCryptoSealKeyAADTests: XCTestCase {
         )
     }
 
-    func testControlSealKeyAADPinsExactByteLayout() {
-        let aad = HermesRelayCrypto.controlSealKeyAAD(
+    func testControlSealKeyAADPinsExactByteLayout() throws {
+        let aad = try HermesRelayCrypto.controlSealKeyAAD(
             uid: "uid-1",
             connectionID: "conn-1",
             peerNodeId: "controller-peer",
@@ -45,45 +45,45 @@ final class HermesRelayCryptoSealKeyAADTests: XCTestCase {
 
     // MARK: - Domain separation
 
-    func testMediaAndControlSealKeyAADsDifferForIdenticalComponents() {
-        let media = HermesRelayCrypto.mediaSealKeyAAD(
+    func testMediaAndControlSealKeyAADsDifferForIdenticalComponents() throws {
+        let media = try HermesRelayCrypto.mediaSealKeyAAD(
             uid: "uid", connectionID: "conn", viewerId: "peer",
             senderDeviceID: "device", senderKeyID: "key", senderCounter: 1
         )
-        let control = HermesRelayCrypto.controlSealKeyAAD(
+        let control = try HermesRelayCrypto.controlSealKeyAAD(
             uid: "uid", connectionID: "conn", peerNodeId: "peer",
             senderDeviceID: "device", senderKeyID: "key", senderCounter: 1
         )
         XCTAssertNotEqual(media, control, "distinct domain tags must separate the two seal lanes")
     }
 
-    func testEveryComponentChangesTheControlSealKeyAAD() {
-        let base = HermesRelayCrypto.controlSealKeyAAD(
+    func testEveryComponentChangesTheControlSealKeyAAD() throws {
+        let base = try HermesRelayCrypto.controlSealKeyAAD(
             uid: "uid", connectionID: "conn", peerNodeId: "peer",
             senderDeviceID: "device", senderKeyID: "key", senderCounter: 1
         )
         let variants = [
-            HermesRelayCrypto.controlSealKeyAAD(
+            try HermesRelayCrypto.controlSealKeyAAD(
                 uid: "uid2", connectionID: "conn", peerNodeId: "peer",
                 senderDeviceID: "device", senderKeyID: "key", senderCounter: 1
             ),
-            HermesRelayCrypto.controlSealKeyAAD(
+            try HermesRelayCrypto.controlSealKeyAAD(
                 uid: "uid", connectionID: "conn2", peerNodeId: "peer",
                 senderDeviceID: "device", senderKeyID: "key", senderCounter: 1
             ),
-            HermesRelayCrypto.controlSealKeyAAD(
+            try HermesRelayCrypto.controlSealKeyAAD(
                 uid: "uid", connectionID: "conn", peerNodeId: "peer2",
                 senderDeviceID: "device", senderKeyID: "key", senderCounter: 1
             ),
-            HermesRelayCrypto.controlSealKeyAAD(
+            try HermesRelayCrypto.controlSealKeyAAD(
                 uid: "uid", connectionID: "conn", peerNodeId: "peer",
                 senderDeviceID: "device2", senderKeyID: "key", senderCounter: 1
             ),
-            HermesRelayCrypto.controlSealKeyAAD(
+            try HermesRelayCrypto.controlSealKeyAAD(
                 uid: "uid", connectionID: "conn", peerNodeId: "peer",
                 senderDeviceID: "device", senderKeyID: "key2", senderCounter: 1
             ),
-            HermesRelayCrypto.controlSealKeyAAD(
+            try HermesRelayCrypto.controlSealKeyAAD(
                 uid: "uid", connectionID: "conn", peerNodeId: "peer",
                 senderDeviceID: "device", senderKeyID: "key", senderCounter: 2
             )
@@ -94,33 +94,33 @@ final class HermesRelayCryptoSealKeyAADTests: XCTestCase {
         XCTAssertEqual(Set(variants).count, variants.count, "components must bind injectively")
     }
 
-    func testEveryComponentChangesTheMediaSealKeyAAD() {
-        let base = HermesRelayCrypto.mediaSealKeyAAD(
+    func testEveryComponentChangesTheMediaSealKeyAAD() throws {
+        let base = try HermesRelayCrypto.mediaSealKeyAAD(
             uid: "uid", connectionID: "conn", viewerId: "viewer",
             senderDeviceID: "device", senderKeyID: "key", senderCounter: 1
         )
         let variants = [
-            HermesRelayCrypto.mediaSealKeyAAD(
+            try HermesRelayCrypto.mediaSealKeyAAD(
                 uid: "uid2", connectionID: "conn", viewerId: "viewer",
                 senderDeviceID: "device", senderKeyID: "key", senderCounter: 1
             ),
-            HermesRelayCrypto.mediaSealKeyAAD(
+            try HermesRelayCrypto.mediaSealKeyAAD(
                 uid: "uid", connectionID: "conn2", viewerId: "viewer",
                 senderDeviceID: "device", senderKeyID: "key", senderCounter: 1
             ),
-            HermesRelayCrypto.mediaSealKeyAAD(
+            try HermesRelayCrypto.mediaSealKeyAAD(
                 uid: "uid", connectionID: "conn", viewerId: "viewer2",
                 senderDeviceID: "device", senderKeyID: "key", senderCounter: 1
             ),
-            HermesRelayCrypto.mediaSealKeyAAD(
+            try HermesRelayCrypto.mediaSealKeyAAD(
                 uid: "uid", connectionID: "conn", viewerId: "viewer",
                 senderDeviceID: "device2", senderKeyID: "key", senderCounter: 1
             ),
-            HermesRelayCrypto.mediaSealKeyAAD(
+            try HermesRelayCrypto.mediaSealKeyAAD(
                 uid: "uid", connectionID: "conn", viewerId: "viewer",
                 senderDeviceID: "device", senderKeyID: "key2", senderCounter: 1
             ),
-            HermesRelayCrypto.mediaSealKeyAAD(
+            try HermesRelayCrypto.mediaSealKeyAAD(
                 uid: "uid", connectionID: "conn", viewerId: "viewer",
                 senderDeviceID: "device", senderKeyID: "key", senderCounter: 2
             )
@@ -136,7 +136,7 @@ final class HermesRelayCryptoSealKeyAADTests: XCTestCase {
         let recipient = HermesRelayCrypto.generatePrivateKey()
         let sender = HermesRelayCrypto.generatePrivateKey()
         let keyData = try HermesRelayCrypto.generateSymmetricKeyData()
-        let aad = HermesRelayCrypto.controlSealKeyAAD(
+        let aad = try HermesRelayCrypto.controlSealKeyAAD(
             uid: "uid", connectionID: "conn", peerNodeId: "peer",
             senderDeviceID: "device", senderKeyID: "key", senderCounter: 5
         )
@@ -166,7 +166,7 @@ final class HermesRelayCryptoSealKeyAADTests: XCTestCase {
             keyData,
             recipientPublicKeyBase64: recipient.publicKeyBase64,
             senderPrivateKey: sender,
-            aad: HermesRelayCrypto.controlSealKeyAAD(
+            aad: try HermesRelayCrypto.controlSealKeyAAD(
                 uid: "uid", connectionID: "conn", peerNodeId: "peer",
                 senderDeviceID: "device", senderKeyID: "key", senderCounter: 5
             )
@@ -178,7 +178,7 @@ final class HermesRelayCryptoSealKeyAADTests: XCTestCase {
                 wrappedKey: wrap.wrappedKey,
                 privateKey: recipient,
                 pinnedSenderPublicKeyBase64: sender.publicKeyBase64,
-                aad: HermesRelayCrypto.mediaSealKeyAAD(
+                aad: try HermesRelayCrypto.mediaSealKeyAAD(
                     uid: "uid", connectionID: "conn", viewerId: "peer",
                     senderDeviceID: "device", senderKeyID: "key", senderCounter: 5
                 )
@@ -195,7 +195,7 @@ final class HermesRelayCryptoSealKeyAADTests: XCTestCase {
             keyData,
             recipientPublicKeyBase64: recipient.publicKeyBase64,
             senderPrivateKey: sender,
-            aad: HermesRelayCrypto.controlSealKeyAAD(
+            aad: try HermesRelayCrypto.controlSealKeyAAD(
                 uid: "uid", connectionID: "conn", peerNodeId: "controller-a",
                 senderDeviceID: "device", senderKeyID: "key", senderCounter: 5
             )
@@ -206,7 +206,7 @@ final class HermesRelayCryptoSealKeyAADTests: XCTestCase {
                 wrappedKey: wrap.wrappedKey,
                 privateKey: recipient,
                 pinnedSenderPublicKeyBase64: sender.publicKeyBase64,
-                aad: HermesRelayCrypto.controlSealKeyAAD(
+                aad: try HermesRelayCrypto.controlSealKeyAAD(
                     uid: "uid", connectionID: "conn", peerNodeId: "controller-b",
                     senderDeviceID: "device", senderKeyID: "key", senderCounter: 5
                 )

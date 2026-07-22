@@ -1,6 +1,6 @@
 #if os(Linux)
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import OpenBurnBarMedia
 
 public protocol MercuryLinuxMediaSealKeyOpening: Sendable {

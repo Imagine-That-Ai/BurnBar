@@ -188,10 +188,17 @@ final class FunctionsDataVaultService: DataVaultServicing {
     }
 
     func deleteDomainData(domainId: String) async throws -> (firestoreDocs: Int, storageObjects: Int) {
-        let result = try await functions.httpsCallable("deleteDomainData").call([
-            "domainId": domainId,
-            "confirm": true
-        ])
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
+            "deleteDomainData",
+            deviceId: deviceId,
+            actionKind: "data_domain_delete",
+            subjectId: domainId,
+            payload: [
+                "domainId": domainId,
+                "confirm": true
+            ]
+        )
         guard let dict = result.data as? [String: Any],
               let deleted = dict["deleted"] as? [String: Any] else {
             throw DataVaultError.malformedResponse

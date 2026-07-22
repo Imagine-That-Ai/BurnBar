@@ -20,18 +20,18 @@
 
             <TextBlock
                 Style="{StaticResource TitleTextBlockStyle}"
-                Foreground="{StaticResource PensieveColorTextBrightBrush}"
+                Foreground="{ThemeResource AuroraTextBrush}"
                 Text="General" />
             <TextBlock
                 Margin="0,0,0,8"
-                Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                Foreground="{ThemeResource AuroraTextMutedBrush}"
                 Text="Appearance, dashboard defaults, refresh, indexing, summaries." />
 
             <tk:SettingsCard x:Name="OperatorCard" Header="Setup Wizard" Description="Run the guided onboarding wizard">
                 <tk:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE8B7;" />
                 </tk:SettingsCard.HeaderIcon>
-                <Button Content="Run wizard" />
+                <Button Content="Run wizard" Click="RunWizard_Click" />
             </tk:SettingsCard>
 
             <tk:SettingsCard x:Name="AppearanceCard" Header="Appearance"
@@ -45,19 +45,21 @@
             <TextBlock
                 Margin="0,10,0,2"
                 Style="{StaticResource BodyStrongTextBlockStyle}"
-                Foreground="{StaticResource PensieveColorTextBaseBrush}"
+                Foreground="{ThemeResource AuroraTextSecondaryBrush}"
                 Text="Dashboard defaults" />
 
             <tk:SettingsCard x:Name="TimeRangeCard" Header="Default Time Range" Description="Window used by charts and totals">
-                <ComboBox SelectedIndex="1">
-                    <ComboBoxItem Content="Day" />
-                    <ComboBoxItem Content="Week" />
-                    <ComboBoxItem Content="Month" />
+                <ComboBox x:Name="TimeRangePicker" SelectionChanged="TimeRangePicker_SelectionChanged">
+                    <ComboBoxItem Content="Today" />
+                    <ComboBoxItem Content="Last 7 Days" />
+                    <ComboBoxItem Content="Last 30 Days" />
+                    <ComboBoxItem Content="This Month" />
+                    <ComboBoxItem Content="All Time" />
                 </ComboBox>
             </tk:SettingsCard>
 
             <tk:SettingsCard x:Name="UsageModeCard" Header="Usage Display" Description="Show USD spend or token totals (M / B)">
-                <ComboBox SelectedIndex="0">
+                <ComboBox x:Name="UsageModePicker" SelectionChanged="UsageModePicker_SelectionChanged">
                     <ComboBoxItem Content="USD spend" />
                     <ComboBoxItem Content="Token totals" />
                 </ComboBox>
@@ -65,21 +67,51 @@
 
             <tk:SettingsCard x:Name="RefreshCard" Header="Refresh Interval"
                              Description="How often OpenBurnBar scans for new sessions">
-                <ComboBox SelectedIndex="1">
+                <ComboBox x:Name="RefreshPicker" SelectionChanged="RefreshPicker_SelectionChanged">
+                    <ComboBoxItem Content="30 sec" />
                     <ComboBoxItem Content="1 min" />
                     <ComboBoxItem Content="5 min" />
+                    <ComboBoxItem Content="10 min" />
                     <ComboBoxItem Content="15 min" />
                 </ComboBox>
             </tk:SettingsCard>
 
             <tk:SettingsCard x:Name="IndexingCard" Header="Indexing &amp; Search"
                              Description="Local conversation indexing and embeddings">
-                <ToggleSwitch IsOn="True" />
+                <ToggleSwitch x:Name="IndexingToggle" Toggled="IndexingToggle_Toggled" />
+            </tk:SettingsCard>
+
+            <tk:SettingsCard x:Name="EmbeddingCard" Header="Embedding Provider"
+                             Description="Choose local deterministic vectors or protected OpenAI semantic indexing">
+                <StackPanel Spacing="8" MinWidth="260">
+                    <ComboBox x:Name="EmbeddingProviderPicker"
+                              SelectionChanged="EmbeddingProviderPicker_SelectionChanged">
+                        <ComboBoxItem Content="Local deterministic" />
+                        <ComboBoxItem Content="OpenAI" />
+                    </ComboBox>
+                    <ComboBox x:Name="EmbeddingModelPicker"
+                              SelectionChanged="EmbeddingModelPicker_SelectionChanged">
+                        <ComboBoxItem Content="text-embedding-3-small" />
+                        <ComboBoxItem Content="text-embedding-3-large" />
+                        <ComboBoxItem Content="text-embedding-ada-002" />
+                    </ComboBox>
+                    <PasswordBox x:Name="OpenAIKeyBox"
+                                 PlaceholderText="OpenAI API key (stored with DPAPI)" />
+                    <Button Click="SaveOpenAIKey_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE74E;" />
+                            <TextBlock Text="Save protected key" />
+                        </StackPanel>
+                    </Button>
+                    <TextBlock x:Name="EmbeddingStatus"
+                               TextWrapping="Wrap"
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
+                </StackPanel>
             </tk:SettingsCard>
 
             <tk:SettingsCard x:Name="SummariesCard" Header="Auto-Generate Session Summaries"
                              Description="Write a recap after every scan">
-                <ToggleSwitch />
+                <ToggleSwitch x:Name="SummariesToggle" Toggled="SummariesToggle_Toggled" />
             </tk:SettingsCard>
 
         </StackPanel>

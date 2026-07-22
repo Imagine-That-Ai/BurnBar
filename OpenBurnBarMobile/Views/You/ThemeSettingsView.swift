@@ -8,7 +8,7 @@ struct ThemeSettingsView: View {
     @AppStorage(AppSkin.storageKey) private var appSkin: AppSkin = .aurora
     @AppStorage(MobileBackdropKernel.storageKey) private var mobileBackdropKernel: String = MobileBackdropKernel.defaultKernel.rawValue
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
-    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
 
     @StateObject private var customization = AppCustomization.shared
     @State private var dashboard = DashboardStore()
@@ -225,7 +225,7 @@ struct ThemeSettingsView: View {
                     // the shared `substrateKey`, lighting up the strip above live.
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
-                            ForEach(SubstrateCatalog.styles(forKernel: mobileBackdropKernel)) { style in
+                            ForEach(OpenBurnBarUI.SubstrateCatalog.styles(forKernel: mobileBackdropKernel)) { style in
                                 MobileSubstrateCard(descriptor: style, isSelected: substrateID == style.id) {
                                     substrateID = style.id
                                 }

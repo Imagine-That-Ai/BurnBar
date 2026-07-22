@@ -38,6 +38,11 @@ permissions:
 
 on:
   workflow_call:
+    inputs:
+      candidate_commit:
+        description: Exact protected shared-Rust candidate commit to embed
+        required: false
+        type: string
   # Primary entry point until the lane becomes a required gate (PR-5).
   workflow_dispatch:
   # Wired so it becomes a real gate once this file is on the default branch.
@@ -45,6 +50,20 @@ on:
     branches: [main]
     paths:
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/**"
+      # Core-decomposition (docs/CORE_DECOMPOSITION_PROGRAM.md): engine-layer
+      # targets carved out of OpenBurnBarCore. Pin their source paths so the
+      # cross-platform Engine subset stays under this Windows gate as code moves
+      # out of the main target — coverage must not silently detach mid-program.
+      - "OpenBurnBarCore/Sources/OpenBurnBarSQLiteReader/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarQuota/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarHermes/**"
+      # OpenBurnBarEngine re-exports OpenBurnBarPretext (Package.swift), so a PR
+      # touching ONLY Pretext changes the Windows Engine build graph and must wake
+      # this gate too (Codex PR #1559 thread: Pretext was missing from the filter).
+      - "OpenBurnBarCore/Sources/OpenBurnBarPretext/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarEngine/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarWindowsParserPathParity/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/**"
@@ -57,6 +76,15 @@ on:
   pull_request:
     paths:
       - "OpenBurnBarCore/Sources/OpenBurnBarCore/**"
+      # Core-decomposition engine-layer targets (see the push block above).
+      - "OpenBurnBarCore/Sources/OpenBurnBarSQLiteReader/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarQuota/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarHermes/**"
+      # OpenBurnBarEngine re-exports OpenBurnBarPretext (see the push block above).
+      - "OpenBurnBarCore/Sources/OpenBurnBarPretext/**"
+      - "OpenBurnBarCore/Sources/OpenBurnBarEngine/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarWindowsParserPathParity/**"
       - "OpenBurnBarCore/Sources/OpenBurnBarG2ParserParity/**"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/**"
@@ -111,6 +139,11 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
+
+      - name: Install Rust toolchain for shared domain core
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
 
       # Python 3.10 — part of the documented Windows toolchain recipe
       # (PHASE1_CORE_SPLIT_PLAN.md §"Windows build recipe"); also backs SwiftPM's
@@ -260,25 +293,58 @@ jobs:
       - name: swift build --target OpenBurnBarCore
         run: swift build --package-path OpenBurnBarCore --target OpenBurnBarCore
 
+      # Compile the OpenBurnBarEngine umbrella target itself. Core deliberately
+      # does NOT depend on Engine (an Engine->Core edge would be circular), so the
+      # `--target OpenBurnBarCore` step above never builds Engine (Codex PR #1559
+      # thread: adding Engine to the path filter only WAKES this workflow; a PR
+      # editing only OpenBurnBarEngine.swift would otherwise pass the Windows lane
+      # without ever compiling the new Engine target). Engine re-exports the
+      # cross-platform leaves (Kernel/LogParsers/Quota/VectorKit/Hermes/Pretext),
+      # which prune to the Foundation(+swift-crypto) subset on this Windows host.
+      - name: swift build --target OpenBurnBarEngine
+        run: swift build --package-path OpenBurnBarCore --target OpenBurnBarEngine
+
       - name: Build and stage production C ABI engine
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ inputs.candidate_commit || github.sha }}
         run: |
           swift build --package-path OpenBurnBarCore -c release --product OpenBurnBarCoreCAbi
           $bin = swift build --package-path OpenBurnBarCore -c release --show-bin-path
           $engine = Join-Path $bin "OpenBurnBarCoreCAbi.dll"
           $stage = Join-Path $env:RUNNER_TEMP "openburnbar-native-engine-win-x64"
-          python scripts/windows-port/stage-swift-runtime.py --engine $engine --destination $stage --search-path $bin
-          "OPENBURNBAR_CORE_CABI_PATH=$engine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi --release
+          $domainCore = Resolve-Path "crates/openburnbar-domain-core/target/release/openburnbar_domain_ffi.dll"
+          python scripts/windows-port/stage-swift-runtime.py --engine $engine --extra $domainCore --destination $stage --search-path $bin
+          $manifest = Get-Content (Join-Path $stage "native-engine-manifest.json") -Raw | ConvertFrom-Json
+          if ($manifest.extras -notcontains "openburnbar_domain_ffi.dll") {
+            throw "Native engine manifest omits openburnbar_domain_ffi.dll"
+          }
+          $stagedEngine = Join-Path $stage "OpenBurnBarCoreCAbi.dll"
+          "OPENBURNBAR_CORE_CABI_PATH=$stagedEngine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "OPENBURNBAR_NATIVE_ENGINE_STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Run managed-to-Swift usage scan integration
         env:
           OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"
-        run: >-
-          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj
-          -c Release
-          --filter FullyQualifiedName~NativeUsageEngineIntegrationTests
-          --blame-hang
-          --blame-hang-timeout 5m
+        run: |
+          $smokeRoot = Join-Path $env:RUNNER_TEMP "openburnbar-staged-x64-parser-smoke"
+          Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
+          Copy-Item -Path (Join-Path $env:OPENBURNBAR_NATIVE_ENGINE_STAGE "*") -Destination $smokeRoot -Recurse -Force
+          $env:OPENBURNBAR_CORE_CABI_PATH = Join-Path $smokeRoot "OpenBurnBarCoreCAbi.dll"
+          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj `
+            -c Release `
+            --output $smokeRoot `
+            --filter FullyQualifiedName~NativeUsageEngineIntegrationTests `
+            --blame-hang `
+            --blame-hang-timeout 5m
+
+      - name: Load staged release domain core and run quota contract
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+        run: |
+          $env:PATH = "$env:OPENBURNBAR_NATIVE_ENGINE_STAGE;$env:PATH"
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj -c Release --filter FullyQualifiedName~RustMode_RecordedStatuslineSnapshot --runtime win-x64
 
       - name: Upload x64 native engine bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
@@ -322,7 +388,6 @@ jobs:
       - name: Run LLM-safe wrap vector contract (C3 / ARM64)
         run: swift test --package-path OpenBurnBarCore --filter LLMSafeWrapVectorTests
 
-
   # ──────────────────────────────────────────────────────────────────────────
   # ARM64 leg (aarch64-unknown-windows-msvc) on the free `windows-11-arm` runner.
   # Mirrors the x64 `build` job step-for-step, diverging only where the arch
@@ -355,6 +420,11 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
+
+      - name: Install Rust toolchain for shared domain core
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
 
       # Python backs SwiftPM's plugin/lldb tooling on Windows. The x64 leg pins
       # 3.10 per the recipe, but win-arm64 has no official CPython before 3.11, so
@@ -495,25 +565,53 @@ jobs:
       - name: swift build --target OpenBurnBarCore
         run: swift build --package-path OpenBurnBarCore --target OpenBurnBarCore
 
+      # Compile the OpenBurnBarEngine umbrella target itself, natively on aarch64
+      # (see the x64 leg's note — Core does not depend on Engine, so the Core
+      # build above never compiles it). Same Foundation(+swift-crypto) subset.
+      - name: swift build --target OpenBurnBarEngine (ARM64)
+        run: swift build --package-path OpenBurnBarCore --target OpenBurnBarEngine
+
       - name: Build and stage production C ABI engine (ARM64)
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ inputs.candidate_commit || github.sha }}
         run: |
           swift build --package-path OpenBurnBarCore -c release --product OpenBurnBarCoreCAbi
           $bin = swift build --package-path OpenBurnBarCore -c release --show-bin-path
           $engine = Join-Path $bin "OpenBurnBarCoreCAbi.dll"
           $stage = Join-Path $env:RUNNER_TEMP "openburnbar-native-engine-win-arm64"
-          python scripts/windows-port/stage-swift-runtime.py --engine $engine --destination $stage --search-path $bin
-          "OPENBURNBAR_CORE_CABI_PATH=$engine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi --release
+          $domainCore = Resolve-Path "crates/openburnbar-domain-core/target/release/openburnbar_domain_ffi.dll"
+          python scripts/windows-port/stage-swift-runtime.py --engine $engine --extra $domainCore --destination $stage --search-path $bin
+          $manifest = Get-Content (Join-Path $stage "native-engine-manifest.json") -Raw | ConvertFrom-Json
+          if ($manifest.extras -notcontains "openburnbar_domain_ffi.dll") {
+            throw "Native engine manifest omits openburnbar_domain_ffi.dll"
+          }
+          $stagedEngine = Join-Path $stage "OpenBurnBarCoreCAbi.dll"
+          "OPENBURNBAR_CORE_CABI_PATH=$stagedEngine" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "OPENBURNBAR_NATIVE_ENGINE_STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Run managed-to-Swift usage scan integration (ARM64)
         env:
           OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"
-        run: >-
-          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj
-          -c Release
-          --filter FullyQualifiedName~NativeUsageEngineIntegrationTests
-          --blame-hang
-          --blame-hang-timeout 5m
+        run: |
+          $smokeRoot = Join-Path $env:RUNNER_TEMP "openburnbar-staged-arm64-parser-smoke"
+          Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
+          Copy-Item -Path (Join-Path $env:OPENBURNBAR_NATIVE_ENGINE_STAGE "*") -Destination $smokeRoot -Recurse -Force
+          $env:OPENBURNBAR_CORE_CABI_PATH = Join-Path $smokeRoot "OpenBurnBarCoreCAbi.dll"
+          dotnet test windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj `
+            -c Release `
+            --output $smokeRoot `
+            --filter FullyQualifiedName~NativeUsageEngineIntegrationTests `
+            --blame-hang `
+            --blame-hang-timeout 5m
+
+      - name: Load staged release domain core and run quota contract (ARM64)
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+        run: |
+          $env:PATH = "$env:OPENBURNBAR_NATIVE_ENGINE_STAGE;$env:PATH"
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj -c Release --filter FullyQualifiedName~RustMode_RecordedStatuslineSnapshot --runtime win-arm64
 
       - name: Upload ARM64 native engine bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0

@@ -24,9 +24,8 @@ enum TimeRange: String, CaseIterable, Identifiable {
         }
     }
 
-    func dateRange() -> ClosedRange<Date>? {
+    func dateRange(now: Date = Date()) -> ClosedRange<Date>? {
         let calendar = Calendar.current
-        let now = Date()
 
         switch self {
         case .today:

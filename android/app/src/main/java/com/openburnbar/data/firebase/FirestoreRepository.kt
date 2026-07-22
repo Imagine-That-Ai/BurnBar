@@ -31,6 +31,7 @@ import java.time.Instant
 import java.time.format.DateTimeParseException
 import java.util.Date
 import java.util.concurrent.Executors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -279,6 +280,8 @@ class FirestoreRepository {
         val snapshot =
             try {
                 quotaCollection.get(Source.SERVER).await()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 quotaCollection.get(Source.DEFAULT).await()
             }
@@ -316,6 +319,8 @@ class FirestoreRepository {
         val snapshot =
             try {
                 providerAccountsCollection.get(Source.SERVER).await()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 providerAccountsCollection.get(Source.DEFAULT).await()
             }

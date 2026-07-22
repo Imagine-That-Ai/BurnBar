@@ -39,7 +39,7 @@
                 Background="#38000000"
                 Padding="10,5">
             <TextBlock x:Name="CaptionText"
-                       FontFamily="Cascadia Mono, Consolas"
+                       FontFamily="{StaticResource AuroraMonoFont}"
                        FontSize="11"
                        FontWeight="SemiBold"
                        Foreground="{StaticResource PensieveColorMercuryBrightBrush}" />

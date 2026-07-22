@@ -1,5 +1,6 @@
 using System;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenBurnBar.App.Dashboard;
@@ -79,6 +80,8 @@ public sealed partial class KernelSwitcherControl : UserControl
                     ? new SolidColorBrush(Color.FromArgb(0x28, 0xFA, 0x6B, 0x06))
                     : new SolidColorBrush(Colors.Transparent),
             };
+            AutomationProperties.SetAutomationId(btn, $"Shell.Kernel.{entry.Id}");
+            AutomationProperties.SetName(btn, entry.Label);
             var row = new Grid { ColumnSpacing = 8 };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });

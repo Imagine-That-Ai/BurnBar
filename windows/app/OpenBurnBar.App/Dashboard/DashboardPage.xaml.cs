@@ -8,6 +8,7 @@ using OpenBurnBar.App.Dashboard.EasterEgg;
 using OpenBurnBar.App.Dashboard.Layout;
 using OpenBurnBar.App.Dashboard.Layouts;
 using OpenBurnBar.App.Presentation.Dashboard;
+using OpenBurnBar.App.Settings.Winui;
 using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.UsageRuntime;
 using Windows.UI.ViewManagement;
@@ -17,7 +18,7 @@ namespace OpenBurnBar.App.Dashboard;
 /// <summary>
 /// Dashboard surface — macOS <c>DashboardView</c> parity:
 /// NavigationSplitView with Command sidebar (<c>DashboardSidebarView</c>) + concept detail.
-/// Owns WebGL2 kernel / Win2D swarm layers, layout switcher, and easter-egg overlay.
+/// Owns native kernel/substrate layers, the layout switcher, and easter-egg overlay.
 /// </summary>
 public sealed partial class DashboardPage : Page
 {
@@ -26,19 +27,21 @@ public sealed partial class DashboardPage : Page
     private readonly EasterEggCanvasHost? _egg;
     private readonly EasterEggController _controller = new();
     private readonly UISettings _uiSettings = new();
-    private readonly bool _webView2Capable;
+    private readonly bool _nativeKernelCapable;
     private bool _kernelEnabled;
     /// <summary>True only after an attempted kernel construction failed (not "never tried").</summary>
     private bool _kernelConstructionFailed;
     private DashboardCommandSnapshot _commandSnapshot = DashboardCommandSnapshot.Empty;
     private DashboardCommandSelection _commandSelection = DashboardCommandSelection.Overview();
+    private bool _compactDashboard;
+    private const double CompactDashboardBreakpoint = 900;
 
     public DashboardPage()
     {
         InitializeComponent();
 
-        _webView2Capable = NativeCapability.IsWebView2Enabled(out _);
-        // Sample/dev guest builds should show the living WebGL2 field without a
+        _nativeKernelCapable = NativeCapability.IsWin2DEnabled(out _);
+        // Sample/dev guest builds should show the living native kernel field without a
         // Settings dig — product default stays off when no preference is set
         // outside sample mode (macOS @AppStorage default false).
         if (RuntimeDataMode.SampleModeEnabled
@@ -60,6 +63,7 @@ public sealed partial class DashboardPage : Page
             try
             {
                 _backdrop = new DashboardBackdrop();
+                _backdrop.SetTheme(ActualTheme == ElementTheme.Light ? "light" : "dark");
                 BackdropHost.Children.Add(_backdrop.Control);
             }
             catch (Exception ex)
@@ -109,7 +113,9 @@ public sealed partial class DashboardPage : Page
         _commandSnapshot = RuntimeDataMode.SampleModeEnabled
             ? DashboardCommandSampleData.Snapshot()
             : App.Current.UsageRuntime is { } usageRuntime
-                ? UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(usageRuntime.State)
+                ? UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(
+                    usageRuntime.State,
+                    WindowsGeneralSettingsComposition.Load())
                 : DashboardCommandSnapshot.Empty;
         CommandSidebar.ApplySnapshot(_commandSnapshot);
         ApplyDetailChrome();
@@ -124,7 +130,9 @@ public sealed partial class DashboardPage : Page
 
         DispatcherQueue.TryEnqueue(() =>
         {
-            _commandSnapshot = UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(args.Current);
+            _commandSnapshot = UsageRuntimePresentationMapper.ToDashboardCommandSnapshot(
+                args.Current,
+                WindowsGeneralSettingsComposition.Load());
             CommandSidebar.ApplySnapshot(_commandSnapshot);
             ApplyDetailChrome();
             ShowLayout(Switcher.State.Selection);
@@ -135,6 +143,10 @@ public sealed partial class DashboardPage : Page
     {
         _commandSelection = selection;
         ApplyDetailChrome();
+        if (_compactDashboard)
+        {
+            CompactCommandFlyout.Hide();
+        }
     }
 
     private void OnCommandViewModeChanged(object? sender, DashboardCommandViewMode mode)
@@ -171,7 +183,7 @@ public sealed partial class DashboardPage : Page
 
     private void EnsureKernelHostStarted()
     {
-        if (!_webView2Capable || _kernel is not null || _kernelConstructionFailed)
+        if (!_nativeKernelCapable || _kernel is not null || _kernelConstructionFailed)
         {
             return;
         }
@@ -198,7 +210,7 @@ public sealed partial class DashboardPage : Page
 
     private void ApplyBackdropLayers()
     {
-        bool capable = _webView2Capable && _kernel is not null;
+        bool capable = _nativeKernelCapable && _kernel is not null;
         bool showKernel = KernelBackdropSelection.ShouldShowKernel(
             _kernelEnabled, capable, HostReady, HostFailed, _backdrop is not null);
         // Prefer Win2D whenever the kernel is not ready/active so layout switches
@@ -212,7 +224,7 @@ public sealed partial class DashboardPage : Page
 
         if (_backdrop is not null)
         {
-            _backdrop.Control.Paused = !showWin2D;
+            _backdrop.Paused = !showWin2D;
             _backdrop.Control.Visibility = showWin2D ? Visibility.Visible : Visibility.Collapsed;
         }
 
@@ -229,6 +241,50 @@ public sealed partial class DashboardPage : Page
 
     private void OnLayoutChanged(object? sender, DashboardLayout layout) => ShowLayout(layout);
 
+    private void OnDashboardSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        bool compact = e.NewSize.Width < CompactDashboardBreakpoint;
+        MoveCommandSidebar(compact, e.NewSize.Height);
+        SidebarColumn.MinWidth = compact ? 0 : 260;
+        SidebarColumn.MaxWidth = compact ? 0 : 320;
+        SidebarColumn.Width = compact ? new GridLength(0) : new GridLength(280);
+        SidebarDividerColumn.Width = compact ? new GridLength(0) : new GridLength(1);
+        SidebarDivider.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        CompactCommandButton.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        DetailSubtitle.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        DetailHost.Padding = compact ? new Thickness(10, 8, 10, 0) : new Thickness(16, 12, 16, 0);
+        Switcher.Width = compact ? 190 : double.NaN;
+        Switcher.MaxWidth = compact ? 190 : double.PositiveInfinity;
+    }
+
+    private void MoveCommandSidebar(bool compact, double availableHeight)
+    {
+        if (compact)
+        {
+            if (!_compactDashboard)
+            {
+                DesktopCommandHost.Content = null;
+                CompactCommandFlyout.Content = CommandSidebar;
+                _compactDashboard = true;
+            }
+
+            CommandSidebar.Width = 320;
+            CommandSidebar.MaxHeight = Math.Max(320, Math.Min(640, availableHeight - 96));
+            return;
+        }
+
+        if (_compactDashboard)
+        {
+            CompactCommandFlyout.Hide();
+            CompactCommandFlyout.Content = null;
+            DesktopCommandHost.Content = CommandSidebar;
+            _compactDashboard = false;
+        }
+
+        CommandSidebar.Width = double.NaN;
+        CommandSidebar.MaxHeight = double.PositiveInfinity;
+    }
+
     private void ShowLayout(DashboardLayout layout)
     {
         ContentHost.Content = CreateLayoutView(layout);
@@ -238,10 +294,10 @@ public sealed partial class DashboardPage : Page
         if (_backdrop is not null)
         {
             // Ensure the animated control is running after visibility toggles.
-            _backdrop.Control.Paused = false;
+            _backdrop.Paused = false;
         }
 
-        // When the WebGL2 kernel field is active, also switch its kernel so the
+        // When the native kernel field is active, also switch its kernel so the
         // background actually changes with the layout switcher (FamilyFor map).
         if (_kernelEnabled && _kernel is not null && !_kernel.IsFailed)
         {
@@ -262,7 +318,7 @@ public sealed partial class DashboardPage : Page
     }
 
     /// <summary>
-    /// Map each dashboard concept to a signature WebGL2 kernel id — mirrors
+    /// Map each dashboard concept to a signature kernel id — mirrors
     /// <c>DashboardBackdrop.FamilyFor</c> (Volumetric / Constellation / Mesh / Aurora / Flow).
     /// </summary>
     internal static string KernelForLayout(DashboardLayout layout) => layout switch
@@ -305,7 +361,9 @@ public sealed partial class DashboardPage : Page
 
     private void OnActualThemeChanged(FrameworkElement sender, object args)
     {
-        _kernel?.SetTheme(ActualTheme == ElementTheme.Light ? "light" : "dark");
+        string theme = ActualTheme == ElementTheme.Light ? "light" : "dark";
+        _kernel?.SetTheme(theme);
+        _backdrop?.SetTheme(theme);
     }
 
     private void OnGlassPreferencesChanged(object? sender, EventArgs e)

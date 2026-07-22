@@ -13,6 +13,11 @@ if command -v cargo-deny >/dev/null 2>&1; then
     echo "::error::cargo-deny failed" >&2
     failed=1
   fi
+  echo ">> cargo-deny (crates/openburnbar-domain-core)"
+  if ! (cd "$repo_root/crates/openburnbar-domain-core" && cargo deny check); then
+    echo "::error::cargo-deny failed for openburnbar-domain-core" >&2
+    failed=1
+  fi
 else
   echo "cargo-deny not installed — skipping Rust deny (install: cargo install cargo-deny)"
 fi

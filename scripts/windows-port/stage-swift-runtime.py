@@ -15,6 +15,10 @@ import sys
 
 
 DEPENDENCY_LINE = re.compile(r"^\s*([A-Za-z0-9_.+-]+\.dll)\s*$", re.IGNORECASE)
+REQUIRED_RESOURCE_BUNDLES = (
+    "OpenBurnBarCore_OpenBurnBarCore.resources",
+    "OpenBurnBarCore_OpenBurnBarKernel.resources",
+)
 SYSTEM_LIBRARIES = {
     "advapi32.dll",
     "bcrypt.dll",
@@ -88,16 +92,19 @@ def sha256(path: Path) -> str:
 
 def stage(
     engine: Path,
+    extras: list[Path],
     destination: Path,
     search_paths: list[Path],
     dumpbin: str,
 ) -> dict[str, object]:
-    if not engine.is_file():
-        raise ValueError(f"engine DLL does not exist: {engine}")
+    roots = [engine, *extras]
+    for root in roots:
+        if not root.is_file():
+            raise ValueError(f"root DLL does not exist: {root}")
 
     ordered_paths: list[Path] = []
     path_keys: set[str] = set()
-    for path in [engine.parent, *search_paths]:
+    for path in [*(root.parent for root in roots), *search_paths]:
         resolved = path.resolve()
         key = str(resolved).casefold()
         if key not in path_keys:
@@ -105,15 +112,15 @@ def stage(
             ordered_paths.append(resolved)
 
     destination.mkdir(parents=True, exist_ok=True)
-    queue = [engine.resolve()]
-    queued = {engine.name.casefold()}
-    staged: list[Path] = []
+    queue = [root.resolve() for root in roots]
+    queued = {root.name.casefold() for root in roots}
+    staged: list[tuple[Path, Path]] = []
 
     while queue:
         source = queue.pop(0)
         target = destination / source.name
         shutil.copy2(source, target)
-        staged.append(target)
+        staged.append((target, Path(source.name)))
 
         completed = subprocess.run(
             [dumpbin, "/DEPENDENTS", str(source)],
@@ -131,17 +138,32 @@ def stage(
             queued.add(key)
             queue.append(resolved)
 
+    for bundle_name in REQUIRED_RESOURCE_BUNDLES:
+        resource_bundle = engine.parent / bundle_name
+        if not resource_bundle.is_dir():
+            raise ValueError(f"required Swift resource bundle is missing: {resource_bundle}")
+
+        for source in sorted(resource_bundle.rglob("*"), key=lambda item: item.as_posix().casefold()):
+            if not source.is_file():
+                continue
+            relative = Path(resource_bundle.name) / source.relative_to(resource_bundle)
+            target = destination / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            staged.append((target, relative))
+
     files = [
         {
-            "fileName": path.name,
+            "fileName": relative.as_posix(),
             "sha256": sha256(path),
             "sizeBytes": path.stat().st_size,
         }
-        for path in sorted(staged, key=lambda item: item.name.casefold())
+        for path, relative in sorted(staged, key=lambda item: item[1].as_posix().casefold())
     ]
     manifest: dict[str, object] = {
         "schemaVersion": 1,
         "engine": engine.name,
+        "extras": [extra.name for extra in extras],
         "files": files,
     }
     (destination / "native-engine-manifest.json").write_text(
@@ -154,6 +176,7 @@ def stage(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--engine", required=True, type=Path)
+    parser.add_argument("--extra", action="append", default=[], type=Path)
     parser.add_argument("--destination", required=True, type=Path)
     parser.add_argument("--search-path", action="append", default=[], type=Path)
     parser.add_argument("--dumpbin", default=shutil.which("dumpbin") or "dumpbin")
@@ -166,6 +189,7 @@ def main() -> int:
     try:
         manifest = stage(
             args.engine,
+            args.extra,
             args.destination,
             [*args.search_path, *environment_paths],
             args.dumpbin,
@@ -173,7 +197,11 @@ def main() -> int:
     except (OSError, subprocess.CalledProcessError, ValueError) as error:
         print(f"stage-swift-runtime: {error}", file=sys.stderr)
         return 1
-    print(f"stage-swift-runtime: staged {len(manifest['files'])} DLLs to {args.destination}")
+    print(
+        "stage-swift-runtime: staged "
+        f"{len(manifest['files'])} files (including {', '.join(REQUIRED_RESOURCE_BUNDLES)}) "
+        f"to {args.destination}"
+    )
     return 0
 
 

@@ -1,6 +1,13 @@
 import XCTest
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
+// Core-decomposition: WarpQuotaAdapter (and its INTERNAL candidateLogFiles(in:fileManager:context:))
+// moved from the Core monolith into OpenBurnBarQuota. `@testable import OpenBurnBarCore` only
+// re-exports Quota's public API through the umbrella shim, so reaching the internal method needs a
+// direct `@testable import OpenBurnBarQuota` — the same AE-TESTABLE pattern the train applied to the
+// OpenBurnBarCoreTests Quota tests. The OpenBurnBar app target gains an explicit OpenBurnBarQuota
+// product dependency (project.yml) so the module is linkable + testable from this app test target.
+@testable import OpenBurnBarQuota
 
 /// Focused coverage for the previously error-swallowing `try?` site in
 /// `WarpQuotaAdapter.candidateLogFiles(in:fileManager:)`.

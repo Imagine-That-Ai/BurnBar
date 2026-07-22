@@ -1,7 +1,7 @@
 #if os(Linux)
 import Foundation
 import Glibc
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 

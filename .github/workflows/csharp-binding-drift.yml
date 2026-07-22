@@ -1,7 +1,7 @@
 name: C# binding drift (uniffi)
 
 # Codegen-drift gate for the committed uniffi C# bindings the Windows native
-# shim consumes (windows/native/ ↔ crates/{burnbar-remote,openburnbar-iroh}).
+# shim and domain-core adapters consume.
 # Rebuilds each cdylib, regenerates the binding with the PINNED
 # uniffi-bindgen-cs, and diffs against the committed generated source — so a
 # `#[uniffi::export]` surface change can never land without its regenerated
@@ -21,12 +21,14 @@ on:
     paths:
       - "crates/burnbar-remote/**"
       - "crates/openburnbar-iroh/**"
+      - "crates/openburnbar-domain-core/**"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
       - ".github/workflows/csharp-binding-drift.yml"
   pull_request:
     paths:
       - "crates/burnbar-remote/**"
       - "crates/openburnbar-iroh/**"
+      - "crates/openburnbar-domain-core/**"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
       - ".github/workflows/csharp-binding-drift.yml"
   workflow_dispatch:
@@ -62,7 +64,8 @@ jobs:
             ~/.cargo/git
             crates/burnbar-remote/target
             crates/openburnbar-iroh/target
-          key: csharp-binding-drift-${{ runner.os }}-${{ hashFiles('crates/burnbar-remote/Cargo.lock', 'crates/openburnbar-iroh/Cargo.lock') }}
+            crates/openburnbar-domain-core/target
+          key: csharp-binding-drift-${{ runner.os }}-${{ hashFiles('crates/burnbar-remote/Cargo.lock', 'crates/openburnbar-iroh/Cargo.lock', 'crates/openburnbar-domain-core/Cargo.lock') }}
           restore-keys: |
             csharp-binding-drift-${{ runner.os }}-
 

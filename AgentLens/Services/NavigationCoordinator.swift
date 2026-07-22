@@ -32,6 +32,7 @@ final class NavigationCoordinator {
     /// Dashboard route enum - mirrors DashboardMainRoute for external coordination
     enum DashboardRoute: Hashable {
         case overview
+        case charts
         case database
         case projects
         case sessionLogs

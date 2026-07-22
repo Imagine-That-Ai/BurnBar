@@ -60,9 +60,9 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         )
         let plaintext = try JSONEncoder().encode(payload)
 
-        let requestAAD = HermesRelayCrypto.requestAAD(uid: uid, connectionID: cid, requestID: rid)
-        let keyAAD = HermesRelayCrypto.keyAAD(uid: uid, connectionID: cid, requestID: rid)
-        let chunkAAD = HermesRelayCrypto.chunkAAD(
+        let requestAAD = try HermesRelayCrypto.requestAAD(uid: uid, connectionID: cid, requestID: rid)
+        let keyAAD = try HermesRelayCrypto.keyAAD(uid: uid, connectionID: cid, requestID: rid)
+        let chunkAAD = try HermesRelayCrypto.chunkAAD(
             uid: uid,
             connectionID: cid,
             requestID: rid,
@@ -190,10 +190,10 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         let eventPlaintext = Data(
             #"{"text":"open the BurnBar gateway","kind":"chat","destinationId":"burnbar:home","replayCounter":1}"#.utf8
         )
-        let gatewayEventAAD = HermesRelayCrypto.gatewayEventAAD(
+        let gatewayEventAAD = try HermesRelayCrypto.gatewayEventAAD(
             uid: uid, clientId: clientId, eventId: eventId
         )
-        let gatewayEventKeyAAD = HermesRelayCrypto.gatewayEventKeyAAD(
+        let gatewayEventKeyAAD = try HermesRelayCrypto.gatewayEventKeyAAD(
             uid: uid, clientId: clientId, eventId: eventId
         )
         let eventPayloadCiphertext = try HermesRelayCrypto.sealToBase64(
@@ -217,10 +217,10 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         let messagePlaintext = Data(
             #"{"text":"Hermes replied over the encrypted gateway.","destinationId":"burnbar:home"}"#.utf8
         )
-        let gatewayMessageAAD = HermesRelayCrypto.gatewayMessageAAD(
+        let gatewayMessageAAD = try HermesRelayCrypto.gatewayMessageAAD(
             uid: uid, clientId: clientId, messageId: messageId
         )
-        let gatewayMessageKeyAAD = HermesRelayCrypto.gatewayMessageKeyAAD(
+        let gatewayMessageKeyAAD = try HermesRelayCrypto.gatewayMessageKeyAAD(
             uid: uid, clientId: clientId, messageId: messageId
         )
         let messagePayloadCiphertext = try HermesRelayCrypto.sealToBase64(
@@ -242,10 +242,10 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
         let modelSwitchPlaintext = Data(
             #"{"modelId":"claude-opus-4-8","destinationId":"burnbar:home","replayCounter":2}"#.utf8
         )
-        let modelSwitchAAD = HermesRelayCrypto.gatewayEventAAD(
+        let modelSwitchAAD = try HermesRelayCrypto.gatewayEventAAD(
             uid: uid, clientId: clientId, eventId: modelSwitchEventId
         )
-        let modelSwitchKeyAAD = HermesRelayCrypto.gatewayEventKeyAAD(
+        let modelSwitchKeyAAD = try HermesRelayCrypto.gatewayEventKeyAAD(
             uid: uid, clientId: clientId, eventId: modelSwitchEventId
         )
         let modelSwitchPayloadCiphertext = try HermesRelayCrypto.sealToBase64(
@@ -268,13 +268,13 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
             #"{"fileName":"quarterly-report.pdf","contentType":"application/pdf","byteCount":20,"destinationId":"burnbar:home"}"#.utf8
         )
         let attachmentBodyPlaintext = Data("PDF-BYTES-1234567890".utf8)
-        let attachmentManifestAAD = HermesRelayCrypto.gatewayAttachmentManifestAAD(
+        let attachmentManifestAAD = try HermesRelayCrypto.gatewayAttachmentManifestAAD(
             uid: uid, clientId: clientId, attachmentId: attachmentId
         )
-        let attachmentBodyAAD = HermesRelayCrypto.gatewayAttachmentBodyAAD(
+        let attachmentBodyAAD = try HermesRelayCrypto.gatewayAttachmentBodyAAD(
             uid: uid, clientId: clientId, attachmentId: attachmentId
         )
-        let attachmentKeyAAD = HermesRelayCrypto.gatewayAttachmentKeyAAD(
+        let attachmentKeyAAD = try HermesRelayCrypto.gatewayAttachmentKeyAAD(
             uid: uid, clientId: clientId, attachmentId: attachmentId
         )
         let attachmentManifestCiphertext = try HermesRelayCrypto.sealToBase64(
@@ -432,19 +432,19 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
     /// caught before the vendored Python fixture can silently drift.
     func test_gatewayAADLabels_areTheLockedContract() {
         XCTAssertEqual(
-            String(data: HermesRelayCrypto.gatewayEventAAD(uid: "u", clientId: "c", eventId: "e"), encoding: .utf8),
+            String(data: try HermesRelayCrypto.gatewayEventAAD(uid: "u", clientId: "c", eventId: "e"), encoding: .utf8),
             "OpenBurnBar-HermesRelay-v1|gatewayEvent|u|c|e"
         )
         XCTAssertEqual(
-            String(data: HermesRelayCrypto.gatewayEventKeyAAD(uid: "u", clientId: "c", eventId: "e"), encoding: .utf8),
+            String(data: try HermesRelayCrypto.gatewayEventKeyAAD(uid: "u", clientId: "c", eventId: "e"), encoding: .utf8),
             "OpenBurnBar-HermesRelay-v1|gatewayEventKey|u|c|e"
         )
         XCTAssertEqual(
-            String(data: HermesRelayCrypto.gatewayMessageAAD(uid: "u", clientId: "c", messageId: "m"), encoding: .utf8),
+            String(data: try HermesRelayCrypto.gatewayMessageAAD(uid: "u", clientId: "c", messageId: "m"), encoding: .utf8),
             "OpenBurnBar-HermesRelay-v1|gatewayMessage|u|c|m"
         )
         XCTAssertEqual(
-            String(data: HermesRelayCrypto.gatewayMessageKeyAAD(uid: "u", clientId: "c", messageId: "m"), encoding: .utf8),
+            String(data: try HermesRelayCrypto.gatewayMessageKeyAAD(uid: "u", clientId: "c", messageId: "m"), encoding: .utf8),
             "OpenBurnBar-HermesRelay-v1|gatewayMessageKey|u|c|m"
         )
     }
@@ -517,17 +517,17 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
     }
 
     private func assertRelayVectorRoundTrips(_ vector: WireVector) throws {
-        XCTAssertEqual(vector.requestAAD, String(data: HermesRelayCrypto.requestAAD(
+        XCTAssertEqual(vector.requestAAD, String(data: try HermesRelayCrypto.requestAAD(
             uid: vector.uid,
             connectionID: vector.connectionId,
             requestID: vector.requestId
         ), encoding: .utf8))
-        XCTAssertEqual(vector.keyAAD, String(data: HermesRelayCrypto.keyAAD(
+        XCTAssertEqual(vector.keyAAD, String(data: try HermesRelayCrypto.keyAAD(
             uid: vector.uid,
             connectionID: vector.connectionId,
             requestID: vector.requestId
         ), encoding: .utf8))
-        XCTAssertEqual(vector.chunkAAD, String(data: HermesRelayCrypto.chunkAAD(
+        XCTAssertEqual(vector.chunkAAD, String(data: try HermesRelayCrypto.chunkAAD(
             uid: vector.uid,
             connectionID: vector.connectionId,
             requestID: vector.requestId,
@@ -617,28 +617,28 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
 
         try assertGatewayEventVectorRoundTrips(
             vector.event,
-            expectedPayloadAAD: HermesRelayCrypto.gatewayEventAAD(
+            expectedPayloadAAD: try HermesRelayCrypto.gatewayEventAAD(
                 uid: vector.event.uid, clientId: vector.event.clientId, eventId: vector.event.eventId
             ),
-            expectedKeyAAD: HermesRelayCrypto.gatewayEventKeyAAD(
+            expectedKeyAAD: try HermesRelayCrypto.gatewayEventKeyAAD(
                 uid: vector.event.uid, clientId: vector.event.clientId, eventId: vector.event.eventId
             )
         )
         try assertGatewayMessageVectorRoundTrips(
             vector.message,
-            expectedPayloadAAD: HermesRelayCrypto.gatewayMessageAAD(
+            expectedPayloadAAD: try HermesRelayCrypto.gatewayMessageAAD(
                 uid: vector.message.uid, clientId: vector.message.clientId, messageId: vector.message.messageId
             ),
-            expectedKeyAAD: HermesRelayCrypto.gatewayMessageKeyAAD(
+            expectedKeyAAD: try HermesRelayCrypto.gatewayMessageKeyAAD(
                 uid: vector.message.uid, clientId: vector.message.clientId, messageId: vector.message.messageId
             )
         )
         try assertGatewayEventVectorRoundTrips(
             vector.modelSwitch,
-            expectedPayloadAAD: HermesRelayCrypto.gatewayEventAAD(
+            expectedPayloadAAD: try HermesRelayCrypto.gatewayEventAAD(
                 uid: vector.modelSwitch.uid, clientId: vector.modelSwitch.clientId, eventId: vector.modelSwitch.eventId
             ),
-            expectedKeyAAD: HermesRelayCrypto.gatewayEventKeyAAD(
+            expectedKeyAAD: try HermesRelayCrypto.gatewayEventKeyAAD(
                 uid: vector.modelSwitch.uid, clientId: vector.modelSwitch.clientId, eventId: vector.modelSwitch.eventId
             )
         )
@@ -711,13 +711,13 @@ final class HermesRelayCrossPlatformVectorTests: XCTestCase {
     }
 
     private func assertGatewayAttachmentVectorRoundTrips(_ vector: GatewayAttachmentVector) throws {
-        let expectedManifestAAD = HermesRelayCrypto.gatewayAttachmentManifestAAD(
+        let expectedManifestAAD = try HermesRelayCrypto.gatewayAttachmentManifestAAD(
             uid: vector.uid, clientId: vector.clientId, attachmentId: vector.attachmentId
         )
-        let expectedBodyAAD = HermesRelayCrypto.gatewayAttachmentBodyAAD(
+        let expectedBodyAAD = try HermesRelayCrypto.gatewayAttachmentBodyAAD(
             uid: vector.uid, clientId: vector.clientId, attachmentId: vector.attachmentId
         )
-        let expectedKeyAAD = HermesRelayCrypto.gatewayAttachmentKeyAAD(
+        let expectedKeyAAD = try HermesRelayCrypto.gatewayAttachmentKeyAAD(
             uid: vector.uid, clientId: vector.clientId, attachmentId: vector.attachmentId
         )
         XCTAssertEqual(vector.manifestAAD, String(data: expectedManifestAAD, encoding: .utf8))

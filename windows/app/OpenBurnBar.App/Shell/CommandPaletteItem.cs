@@ -23,7 +23,8 @@ public sealed class CommandPaletteItem
         string title,
         string subtitle,
         string destinationKey,
-        string? shortcut = null)
+        string? shortcut = null,
+        string? sessionId = null)
     {
         Kind = kind;
         Glyph = glyph;
@@ -31,6 +32,7 @@ public sealed class CommandPaletteItem
         Subtitle = subtitle;
         DestinationKey = destinationKey;
         Shortcut = shortcut;
+        SessionId = sessionId;
     }
 
     public PaletteItemKind Kind { get; }
@@ -44,6 +46,9 @@ public sealed class CommandPaletteItem
 
     /// <summary>The <see cref="NavDestination.Key"/> to navigate to when activated.</summary>
     public string DestinationKey { get; }
+
+    /// <summary>Session record to select after navigating to the logs surface.</summary>
+    public string? SessionId { get; }
 
     /// <summary>Optional keyboard-shortcut hint (e.g. "Ctrl 1"); shown right-aligned.</summary>
     public string? Shortcut { get; }

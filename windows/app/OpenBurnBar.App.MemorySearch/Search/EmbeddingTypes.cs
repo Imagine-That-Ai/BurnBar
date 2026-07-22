@@ -11,10 +11,9 @@ namespace OpenBurnBar.App.MemorySearch.Search;
 //   AgentLens/Services/ProjectionPipeline/ProjectionPipelineCore.swift   (ProjectionIdentity.sha256Hex)
 //
 // The INJECTABLE NETWORK BOUNDARY is `EmbeddingAsync(string) -> Task<float[]>` on both
-// IChunkEmbeddingProvider and IQueryEmbeddingProvider — the real (network) OpenAI/BGE/NL
-// providers and the deterministic fake both satisfy it. The real network providers are the
-// bucket-B adapter; the deterministic provider (DeterministicEmbeddingProvider.cs) is the
-// reliable seam that carries CI coverage here.
+// IChunkEmbeddingProvider and IQueryEmbeddingProvider. OpenAIEmbeddingProvider is the
+// bounded OpenAI-compatible transport; DeterministicEmbeddingProvider remains the
+// offline fallback used by local indexing and CI.
 
 /// <summary>
 /// SHA-256 → lowercase hex string. Swift: <c>ProjectionIdentity.sha256Hex</c>

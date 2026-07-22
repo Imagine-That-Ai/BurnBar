@@ -22,17 +22,17 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Progress bar: a subtle track with an ember-gradient fill sized in code-behind. -->
+        <!-- Progress bar: a subtle track with an ember→amber gradient fill sized in code-behind. -->
         <Grid Grid.Row="0" Height="3">
-            <Border Background="{StaticResource OBBStrokeBrush}" />
+            <Border Background="{ThemeResource AuroraGlassStrokeBrush}" />
             <Border x:Name="ProgressFill"
                     HorizontalAlignment="Left"
                     Width="0"
                     CornerRadius="1.5">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                        <GradientStop Color="#FFFA6B06" Offset="0" />
-                        <GradientStop Color="#FFFDC42C" Offset="1" />
+                        <GradientStop Color="{StaticResource PensieveColorMacosEmber}" Offset="0" />
+                        <GradientStop Color="{StaticResource PensieveColorMacosAmber}" Offset="1" />
                     </LinearGradientBrush>
                 </Border.Background>
             </Border>

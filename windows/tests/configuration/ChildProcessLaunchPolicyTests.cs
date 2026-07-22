@@ -19,8 +19,16 @@ public sealed class ChildProcessLaunchPolicyTests
             "chat.conpty-cli",
             "chat.direct-cli",
             "cloud.oauth-browser",
+            "computer-use.kill-switch-watchdog",
+            "computer-use.playwright-bridge",
+            "computer-use.privileged-input-broker",
             "data.swift-engine-interim",
+            "gateway.provider-cli",
+            "project-code.language-server",
+            "project-code.static-parser",
             "quota.claude-statusline-forwarder",
+            "switcher.conpty-cli",
+            "usage.native-parser-worker",
         }, ids);
     }
 
@@ -95,6 +103,142 @@ public sealed class ChildProcessLaunchPolicyTests
     }
 
     [Fact]
+    public void GatewayMayReceiveOnlyExplicitProviderCredentials()
+    {
+        var source = new[]
+        {
+            new KeyValuePair<string, string?>("PATH", "/usr/bin"),
+            new KeyValuePair<string, string?>("OPENAI_API_KEY", "ambient-openai"),
+            new KeyValuePair<string, string?>("FACTORY_API_KEY", "ambient-factory"),
+        };
+        var required = new[]
+        {
+            new KeyValuePair<string, string?>("OPENAI_API_KEY", "explicit-openai"),
+            new KeyValuePair<string, string?>("FACTORY_API_KEY", "explicit-factory"),
+            new KeyValuePair<string, string?>("OPENBURNBAR_FACTORY_STRICT_STANDARD", "1"),
+        };
+
+        IReadOnlyDictionary<string, string> environment = ChildProcessEnvironment.CreateAllowlisted(
+            ChildProcessProfile.Gateway,
+            source,
+            required,
+            ChildProcessHost.Linux);
+
+        Assert.Equal("/usr/bin", environment["PATH"]);
+        Assert.Equal("explicit-openai", environment["OPENAI_API_KEY"]);
+        Assert.Equal("explicit-factory", environment["FACTORY_API_KEY"]);
+        Assert.Equal("1", environment["OPENBURNBAR_FACTORY_STRICT_STANDARD"]);
+    }
+
+    [Fact]
+    public void AmbientGatewayCredentialsRemainScrubbed()
+    {
+        var source = new[]
+        {
+            new KeyValuePair<string, string?>("PATH", "/usr/bin"),
+            new KeyValuePair<string, string?>("OPENAI_API_KEY", "ambient-openai"),
+            new KeyValuePair<string, string?>("FACTORY_API_KEY", "ambient-factory"),
+        };
+
+        IReadOnlyDictionary<string, string> environment = ChildProcessEnvironment.CreateAllowlisted(
+            ChildProcessProfile.Gateway,
+            source,
+            host: ChildProcessHost.Linux);
+
+        Assert.Equal("/usr/bin", environment["PATH"]);
+        Assert.False(environment.ContainsKey("OPENAI_API_KEY"));
+        Assert.False(environment.ContainsKey("FACTORY_API_KEY"));
+    }
+
+    [Fact]
+    public void SwitcherProfileAllowsOnlyReviewedConfigurationEnvironment()
+    {
+        var source = new[]
+        {
+            new KeyValuePair<string, string?>("PATH", @"C:\Windows\System32"),
+            new KeyValuePair<string, string?>("OPENAI_API_KEY", "ambient-secret"),
+        };
+        var required = new[]
+        {
+            new KeyValuePair<string, string?>("CODEX_HOME", @"C:\profiles\work"),
+            new KeyValuePair<string, string?>("TERM", "xterm-256color"),
+        };
+
+        IReadOnlyDictionary<string, string> environment = ChildProcessEnvironment.CreateAllowlisted(
+            ChildProcessProfile.Switcher,
+            source,
+            required,
+            ChildProcessHost.Windows);
+
+        Assert.Equal(@"C:\Windows\System32", environment["PATH"]);
+        Assert.Equal(@"C:\profiles\work", environment["CODEX_HOME"]);
+        Assert.Equal("xterm-256color", environment["TERM"]);
+        Assert.False(environment.ContainsKey("OPENAI_API_KEY"));
+    }
+
+    [Fact]
+    public void WatchdogProfileCarriesRuntimeStateButNoProductSecrets()
+    {
+        var source = new[]
+        {
+            new KeyValuePair<string, string?>("LOCALAPPDATA", @"C:\Users\a\AppData\Local"),
+            new KeyValuePair<string, string?>("PATH", @"C:\Windows\System32"),
+            new KeyValuePair<string, string?>("OPENAI_API_KEY", "ambient-secret"),
+            new KeyValuePair<string, string?>("OPENBURNBAR_SQLCIPHER_PASSPHRASE", "ambient-secret"),
+        };
+
+        IReadOnlyDictionary<string, string> environment = ChildProcessEnvironment.CreateAllowlisted(
+            ChildProcessProfile.Watchdog,
+            source,
+            host: ChildProcessHost.Windows);
+
+        Assert.Equal(@"C:\Users\a\AppData\Local", environment["LOCALAPPDATA"]);
+        Assert.Equal(@"C:\Windows\System32", environment["PATH"]);
+        Assert.False(environment.ContainsKey("OPENAI_API_KEY"));
+        Assert.False(environment.ContainsKey("OPENBURNBAR_SQLCIPHER_PASSPHRASE"));
+    }
+
+    [Fact]
+    public void PrivilegedInputProfileCarriesRuntimeStateButNoProductSecrets()
+    {
+        var source = new[]
+        {
+            new KeyValuePair<string, string?>("LOCALAPPDATA", @"C:\Users\a\AppData\Local"),
+            new KeyValuePair<string, string?>("PATH", @"C:\Windows\System32"),
+            new KeyValuePair<string, string?>("OPENAI_API_KEY", "ambient-secret"),
+            new KeyValuePair<string, string?>("FIREBASE_TOKEN", "ambient-secret"),
+        };
+
+        IReadOnlyDictionary<string, string> environment = ChildProcessEnvironment.CreateAllowlisted(
+            ChildProcessProfile.PrivilegedInput,
+            source,
+            host: ChildProcessHost.Windows);
+
+        Assert.Equal(@"C:\Users\a\AppData\Local", environment["LOCALAPPDATA"]);
+        Assert.Equal(@"C:\Windows\System32", environment["PATH"]);
+        Assert.False(environment.ContainsKey("OPENAI_API_KEY"));
+        Assert.False(environment.ContainsKey("FIREBASE_TOKEN"));
+    }
+
+    [Theory]
+    [InlineData(ChildProcessProfile.Chat, "OPENAI_API_KEY")]
+    [InlineData(ChildProcessProfile.Chat, "FACTORY_API_KEY")]
+    [InlineData(ChildProcessProfile.Gateway, "PROVIDER_TOKEN")]
+    [InlineData(ChildProcessProfile.Gateway, "OPENAI_REFRESH_TOKEN")]
+    public void RequiredSecretsOutsideNarrowGatewayAllowanceAreRejected(
+        ChildProcessProfile profile,
+        string name)
+    {
+        var required = new[] { new KeyValuePair<string, string?>(name, "secret") };
+
+        Assert.Throws<SecretStoreException>(() => ChildProcessEnvironment.CreateAllowlisted(
+            profile,
+            Array.Empty<KeyValuePair<string, string?>>(),
+            required,
+            ChildProcessHost.Linux));
+    }
+
+    [Fact]
     public void Product_source_launch_primitives_are_policy_owned()
     {
         string appRoot = FindAppRoot();
@@ -107,6 +251,7 @@ public sealed class ChildProcessLaunchPolicyTests
             ["OpenBurnBar.App/Chat/ChatProcessRunner.cs"] = "ChildProcessLaunchPolicy.CreateStartInfo",
             ["OpenBurnBar.App/Cli/ConPtyCliStream.cs"] = "ChildProcessLaunchPolicy.CreateEnvironment",
             ["OpenBurnBar.App/Data/SwiftEngineInterim.cs"] = "ChildProcessLaunchPolicy.CreateStartInfo",
+            ["OpenBurnBar.App/Gateway/WindowsProviderCliProcessRunner.cs"] = "ChildProcessLaunchPolicy.CreateStartInfo",
         };
         string[] needles =
         {

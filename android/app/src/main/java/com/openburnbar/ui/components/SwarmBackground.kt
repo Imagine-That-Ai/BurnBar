@@ -1,5 +1,3 @@
-// generated-by: scripts/generate-swarm-background (bitmap coordinate tables)
-
 package com.openburnbar.ui.components
 import android.content.Context
 import android.graphics.Bitmap

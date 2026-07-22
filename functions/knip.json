@@ -19,6 +19,7 @@
     "src/types/legacy/{connections,insights-digest,insights-spec,media,quota-usage}.ts": ["exports", "types"]
   },
   "ignoreDependencies": [
+    "@openburnbar/domain-core-wasm",
     "@openburnbar/entitlements",
     "@openburnbar/signal-envelope-contracts"
   ]

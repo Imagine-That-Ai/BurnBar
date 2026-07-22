@@ -33,7 +33,11 @@ def test_source_provenance_manifest_covers_agpl_signal_release_inputs() -> None:
         "docs/legal/agpl-release-review.evidence.template.json",
         "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md",
         "OpenBurnBarCore/Package.swift",
-        "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift",
+        # Core-decomposition: CloudVaultCrypto.swift moved from the Core monolith into
+        # OpenBurnBarKernel/SharedModels (git mv). The provenance manifest source
+        # (scripts/ci/write_burnbar_source_provenance.py) already tracks the Kernel path;
+        # this expected-set copy is updated to match after the train ← main merge.
+        "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
         "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SignalEnvelopeAAD.swift",
         "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift",
         "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift",

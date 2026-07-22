@@ -24,6 +24,7 @@ import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
 import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString, requireHexDigest } from "./shared.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
+import { checkKnowledgeSearchRateLimit } from "./publicRateLimit.js";
 
 const KNOWLEDGE_VECTOR_DIM = 384;
 const MAX_LIMIT = 50;
@@ -66,6 +67,7 @@ export const searchKnowledge = onCall(
       const uid = request.auth?.uid;
       if (!uid) throw new HttpsError("unauthenticated", "Sign in to search your knowledge.");
       enforceAuthAndAppCheck(request, uid);
+      await checkKnowledgeSearchRateLimit(uid);
       await assertActiveBurnBarCloudProEntitlement(uid);
 
       const queryVector = requireCloakedQueryVector(request.data?.queryVector);

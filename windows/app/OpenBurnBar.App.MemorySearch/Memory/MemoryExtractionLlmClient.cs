@@ -6,9 +6,9 @@ namespace OpenBurnBar.App.MemorySearch.Memory;
 // PORTED (seam) from AgentLens/Services/Memory/MemoryExtractionLLMClient.swift.
 //
 // This is THE injectable network boundary for memory extraction. The Swift struct never throws —
-// it returns null on any failure. The real implementation (HttpClient POST to an OpenAI-compatible
-// /chat/completions or Ollama /api/generate) is the bucket-B adapter; a fake returning canned JSON
-// makes the whole extraction pipeline testable without a network. All cooldown/retry/progress
+// it returns null on any failure. HttpMemoryExtractionLlmClient implements the bounded HttpClient
+// POST to an OpenAI-compatible /chat/completions or Ollama /api/generate; a fake returning canned
+// JSON makes the whole extraction pipeline testable without a network. All cooldown/retry/progress
 // bookkeeping lives in the CALLER (the transcript extractor), not in this seam.
 
 /// <summary>Result of an Ollama completion. Swift: the <c>(text:shouldCooldown:)</c> tuple.</summary>

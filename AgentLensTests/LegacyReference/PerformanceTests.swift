@@ -240,7 +240,7 @@ final class PerformanceTests: XCTestCase {
 
         measure(metrics: [XCTPerformanceMetric.wallClockTime]) {
             let pricing = ModelPricing.lookup(model: usage.model)
-            let cost = pricing.cost(
+            let cost = try pricing.cost(
                 inputTokens: usage.inputTokens,
                 outputTokens: usage.outputTokens,
                 cacheCreationTokens: usage.cacheCreationTokens,
@@ -258,7 +258,7 @@ final class PerformanceTests: XCTestCase {
             var totalCost: Double = 0
             for usage in usages {
                 let pricing = ModelPricing.lookup(model: usage.model)
-                totalCost += pricing.cost(
+                totalCost += try pricing.cost(
                     inputTokens: usage.inputTokens,
                     outputTokens: usage.outputTokens
                 )

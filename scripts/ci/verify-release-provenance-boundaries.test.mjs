@@ -183,7 +183,7 @@ jobs:
           }
           PY
           cosign attest-blob --yes
-  publish:
+  prepare-release-publication:
     needs:
       - release-preflight
       - release-swift-gate
@@ -195,14 +195,34 @@ jobs:
       - release-extension-gate
       - release-supply-chain-gate
       - build-and-release
+      - domain-core-ios-release-evidence
       - smoke-test
+      - apple-native-prepublication
     steps:
-      - name: Publish release assets
+      - name: Stage the complete general release asset set
         run: |
+          set -euo pipefail
           if ((\${#PROVENANCE_PATHS[@]} == 0)); then
             echo "::error::Release provenance bundles missing after artifact download."
             exit 1
           fi
+  domain-core-native-release-evidence:
+    needs:
+      - release-preflight
+      - domain-core-native-release-gate
+      - build-and-release
+      - apple-native-prepublication
+      - prepare-release-publication
+    if: \${{ needs.prepare-release-publication.result == 'success' && needs.apple-native-prepublication.result == 'success' }}
+    steps:
+      - name: Publish the complete verified release set from one draft state machine
+        run: |
+          set -euo pipefail
+          if ((\${#asset_args[@]} == 0)); then
+            echo "::error::No general release publication assets were retained."
+            exit 1
+          fi
+          node scripts/ci/publish-apple-android-release.mjs --manifest "$manifest"
 `;
 
 const GOOD_DEPLOY_PRODUCTION = fixture`
@@ -358,6 +378,16 @@ expect(
 );
 
 expect(
+  "flow-style packaging needs retain the release-preflight boundary",
+  GOOD_RELEASE.replace(
+    "  build-and-release:\n    needs: release-preflight",
+    "  build-and-release:\n    needs:\n      [\n        release-preflight,\n        domain-core-native-release-gate,\n      ]",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  0,
+);
+
+expect(
   "release workflow hold bypass input fails",
   GOOD_RELEASE.replace(
     "      tag:\n        required: true\n        type: string",
@@ -371,7 +401,7 @@ expect(
   "release workflow conditional product preflight fails",
   GOOD_RELEASE.replace(
     '      - name: BurnBar product release preflight\n        run: python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag "${{ steps.version.outputs.tag_name }}"',
-    '      - name: BurnBar product release preflight\n        if: ${{ inputs.release_hold_bypass_reason == \'\' }}\n        run: python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag "${{ steps.version.outputs.tag_name }}"',
+    "      - name: BurnBar product release preflight\n        if: ${{ inputs.release_hold_bypass_reason == '' }}\n        run: python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag \"${{ steps.version.outputs.tag_name }}\"",
   ),
   GOOD_SUPPLY_CHAIN,
   1,
@@ -759,7 +789,7 @@ expect(
 );
 
 expect(
-  "release publish missing provenance bundle fail-closed check fails",
+  "release publication preparation missing provenance bundle fail-closed check fails",
   GOOD_RELEASE.replace(
     "if ((${#PROVENANCE_PATHS[@]} == 0)); then",
     'if [[ -z "${PROVENANCE_PATHS[*]:-}" ]]; then',
@@ -769,17 +799,17 @@ expect(
 );
 
 expect(
-  "release publish Bash 4-only mapfile fails on macOS runner compatibility",
+  "release publication preparation Bash 4-only mapfile fails on macOS runner compatibility",
   GOOD_RELEASE.replace(
     "if ((${#PROVENANCE_PATHS[@]} == 0)); then",
-    "mapfile -t PROVENANCE_PATHS < <(find \"$RUNNER_TEMP\" -type f -name \"*.sigstore.json\" -print)\n          if ((${#PROVENANCE_PATHS[@]} == 0)); then",
+    'mapfile -t PROVENANCE_PATHS < <(find "$RUNNER_TEMP" -type f -name "*.sigstore.json" -print)\n          if ((${#PROVENANCE_PATHS[@]} == 0)); then',
   ),
   GOOD_SUPPLY_CHAIN,
   1,
 );
 
 expect(
-  "release publish neutered provenance bundle guard body fails",
+  "release publication preparation neutered provenance bundle guard body fails",
   GOOD_RELEASE.replace(
     'if ((${#PROVENANCE_PATHS[@]} == 0)); then\n            echo "::error::Release provenance bundles missing after artifact download."\n            exit 1\n          fi',
     'if ((${#PROVENANCE_PATHS[@]} == 0)); then\n            echo "warning: missing bundles"\n          fi',
@@ -787,7 +817,6 @@ expect(
   GOOD_SUPPLY_CHAIN,
   1,
 );
-
 
 expect(
   "release attestation env not bound to preflight outputs fails",
@@ -800,17 +829,54 @@ expect(
 );
 
 expect(
-  "release publish missing a validation lane need fails",
+  "release publication preparation missing a validation lane need fails",
   GOOD_RELEASE.replace("      - release-swift-gate\n", ""),
   GOOD_SUPPLY_CHAIN,
   1,
 );
 
 expect(
-  "release publish always() lane bypass fails",
+  "release publication preparation always() lane bypass fails",
   GOOD_RELEASE.replace(
-    "  publish:\n    needs:",
-    "  publish:\n    if: ${{ always() }}\n    needs:",
+    "  prepare-release-publication:\n    needs:",
+    "  prepare-release-publication:\n    if: ${{ always() }}\n    needs:",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "atomic publication missing preparation dependency fails",
+  GOOD_RELEASE.replace("      - prepare-release-publication\n", ""),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "atomic publication weakened success condition fails",
+  GOOD_RELEASE.replace(
+    "needs.prepare-release-publication.result == 'success' && needs.apple-native-prepublication.result == 'success'",
+    "needs.prepare-release-publication.result != 'cancelled'",
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "atomic publication empty retained release-set guard fails",
+  GOOD_RELEASE.replace(
+    "if ((${#asset_args[@]} == 0)); then",
+    'if [[ -z "${asset_args[*]:-}" ]]; then',
+  ),
+  GOOD_SUPPLY_CHAIN,
+  1,
+);
+
+expect(
+  "atomic publication command removal fails",
+  GOOD_RELEASE.replace(
+    'node scripts/ci/publish-apple-android-release.mjs --manifest "$manifest"',
+    'echo "publication skipped"',
   ),
   GOOD_SUPPLY_CHAIN,
   1,

@@ -31,6 +31,8 @@ def test_license_posture_workflow_runs_all_release_gates() -> None:
 
     assert "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2" in workflow
     assert "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5" in workflow
+    assert "dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1" in workflow
+    assert 'toolchain: "1.96.0"' in workflow
     assert "python scripts/ci/check_burnbar_license_posture.py" in workflow
     assert "python scripts/ci/check_libsignal_runtime_readiness.py" in workflow
     assert "python scripts/ci/write_burnbar_source_provenance.py --check" in workflow
@@ -38,6 +40,8 @@ def test_license_posture_workflow_runs_all_release_gates() -> None:
     # detection silently skips every gate) and must actually run the
     # compliance test suite.
     assert "submodules: recursive" in workflow
+    assert "python -m pip install pytest cryptography" in workflow
+    assert "./scripts/build-domain-core-python.sh" in workflow
     assert "python -m pytest tests/ -q" in workflow
     assert "python scripts/verify_burnbar_mit_pr_clean.py --base" in workflow
     assert "Detect BurnBar AGPL product tree" in workflow

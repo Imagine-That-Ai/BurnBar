@@ -7,7 +7,6 @@ import {
 } from '../runtimeCapabilities.js';
 import { useShellStore } from '../state/shellStore.js';
 import { AccountSurface } from './AccountSurface.js';
-import { DaemonDataSection } from './DaemonDataSection.js';
 import { OnboardingSurface } from './OnboardingSurface.js';
 import { OverviewSurface } from './OverviewSurface.js';
 import { PetSurface } from './PetSurface.js';
@@ -28,17 +27,6 @@ import { MercurySurface } from './media/MercurySurface.js';
 import { SmartHubSurface } from './smarthub/SmartHubSurface.js';
 import './capability-boundary.css';
 
-/**
- * Route → surface registry. Task-packet lanes extend this map by REPLACING a
- * generic daemon-data surface with a purpose-built one — never by editing
- * another lane's surface. Routes without a dedicated surface render the
- * shared DaemonDataSection with honest degraded states.
- */
-function makeDaemonSurface(route: ShellRoute, label: string): ComponentType {
-  return function DaemonSurface() {
-    return <DaemonDataSection route={route} label={label} />;
-  };
-}
 
 const SURFACES: Record<ShellRoute, ComponentType> = {
   overview: OverviewSurface,

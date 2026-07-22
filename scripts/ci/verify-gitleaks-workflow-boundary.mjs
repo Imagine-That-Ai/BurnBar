@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Verifies that PR secret scanning does not trust a head-branch gitleaks config.
+ * Verifies that PR secret scanning does not trust head-branch gitleaks policy.
  */
 
 import { readFileSync } from "node:fs";
@@ -30,6 +30,12 @@ export function findGitleaksWorkflowBoundaryViolations(workflowText) {
   requireIncludes(
     failures,
     runGitleaksStep,
+    'GITLEAKS_IGNORE_PATH=".gitleaksignore"',
+    "Run gitleaks must default to the checked-out ignore file for push-to-main scans",
+  );
+  requireIncludes(
+    failures,
+    runGitleaksStep,
     'if [[ "${EVENT_NAME}" != "push" ]]; then',
     "Run gitleaks must switch away from head config for PR/merge-group scans",
   );
@@ -42,8 +48,20 @@ export function findGitleaksWorkflowBoundaryViolations(workflowText) {
   requireIncludes(
     failures,
     runGitleaksStep,
+    'GITLEAKS_IGNORE_PATH="${RUNNER_TEMP}/gitleaks-base.ignore"',
+    "Run gitleaks must write a trusted base ignore file to RUNNER_TEMP",
+  );
+  requireIncludes(
+    failures,
+    runGitleaksStep,
     'git show "${BASE_SHA}:.gitleaks.toml" > "${GITLEAKS_CONFIG_PATH}"',
     "Run gitleaks must load .gitleaks.toml from BASE_SHA",
+  );
+  requireIncludes(
+    failures,
+    runGitleaksStep,
+    'git show "${BASE_SHA}:.gitleaksignore" > "${GITLEAKS_IGNORE_PATH}"',
+    "Run gitleaks must load .gitleaksignore from BASE_SHA",
   );
   requireIncludes(
     failures,
@@ -51,16 +69,41 @@ export function findGitleaksWorkflowBoundaryViolations(workflowText) {
     'Refusing to use head .gitleaks.toml',
     "Run gitleaks must fail closed when the trusted base config cannot be resolved",
   );
+  requireIncludes(
+    failures,
+    runGitleaksStep,
+    'Refusing to use head .gitleaksignore',
+    "Run gitleaks must fail closed when the trusted base ignore file cannot be resolved",
+  );
 
   const directHeadConfig = runGitleaksStep.match(/--config\s+\.gitleaks\.toml/u);
   if (directHeadConfig) {
     failures.push("Run gitleaks still passes --config .gitleaks.toml directly");
   }
 
+  const directHeadIgnore = runGitleaksStep.match(
+    /--gitleaks-ignore-path\s+\.gitleaksignore/u,
+  );
+  if (directHeadIgnore) {
+    failures.push(
+      "Run gitleaks still passes --gitleaks-ignore-path .gitleaksignore directly",
+    );
+  }
+
   const configReferences = countNeedle(runGitleaksStep, '--config "${GITLEAKS_CONFIG_PATH}"');
   if (configReferences !== 2) {
     failures.push(
       `Run gitleaks should use GITLEAKS_CONFIG_PATH in both scan branches (found ${configReferences})`,
+    );
+  }
+
+  const ignoreReferences = countNeedle(
+    runGitleaksStep,
+    '--gitleaks-ignore-path "${GITLEAKS_IGNORE_PATH}"',
+  );
+  if (ignoreReferences !== 2) {
+    failures.push(
+      `Run gitleaks should use GITLEAKS_IGNORE_PATH in both scan branches (found ${ignoreReferences})`,
     );
   }
 
@@ -138,7 +181,7 @@ export function main(argv = process.argv) {
   const workflowText = readFileSync(workflowPath, "utf8");
   const failures = findGitleaksWorkflowBoundaryViolations(workflowText);
   if (failures.length === 0) {
-    console.log("OK: security-pr gitleaks scan uses trusted base config for PR checks.");
+    console.log("OK: security-pr gitleaks scan uses trusted base policy for PR checks.");
     return 0;
   }
 

@@ -43,7 +43,7 @@ public enum ControlFrameSealSession {
             keyData,
             recipientPublicKeyBase64: recipientPublicKeyBase64,
             senderPrivateKey: senderPrivateKey,
-            aad: HermesRelayCrypto.controlSealKeyAAD(
+            aad: try HermesRelayCrypto.controlSealKeyAAD(
                 uid: uid,
                 connectionID: connectionID,
                 peerNodeId: peerNodeId,
@@ -84,7 +84,7 @@ public enum ControlFrameSealSession {
             wrappedKey: wrappedKey,
             privateKey: recipientPrivateKey,
             pinnedSenderPublicKeyBase64: pinnedSenderPublicKeyBase64,
-            aad: HermesRelayCrypto.controlSealKeyAAD(
+            aad: try HermesRelayCrypto.controlSealKeyAAD(
                 uid: uid,
                 connectionID: connectionID,
                 peerNodeId: peerNodeId,

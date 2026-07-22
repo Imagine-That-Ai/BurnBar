@@ -1,6 +1,12 @@
 import XCTest
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
+// Core-decomposition: AntigravityQuotaAdapter (and its INTERNAL referenceDate(from:) +
+// referenceDate{,OptIn}EnvironmentKey) moved from the Core monolith into OpenBurnBarQuota. The
+// umbrella shim only re-exports Quota's public API, so reaching the internal statics needs a direct
+// `@testable import OpenBurnBarQuota` — same AE-TESTABLE pattern as WarpQuotaAdapterMattersTests. The
+// OpenBurnBar app target already links OpenBurnBarQuota (added for that fix), so no project.yml change.
+@testable import OpenBurnBarQuota
 
 final class AntigravityQuotaAdapterTests: XCTestCase {
     /// Fixed reference clock so history window math does not depend on wall time.

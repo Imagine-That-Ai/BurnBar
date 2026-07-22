@@ -1,0 +1,65 @@
+<Project>
+  <Import Project="$(DomainCoreBuildProfileProps)"
+          Condition="'$(DomainCoreBuildProfileProps)' != '' and Exists('$(DomainCoreBuildProfileProps)')" />
+  <PropertyGroup>
+    <DomainCoreBuildProfile Condition="'$(DomainCoreBuildProfile)' == ''">developer</DomainCoreBuildProfile>
+    <DomainCoreBuildAuthority Condition="'$(DomainCoreBuildAuthority)' == ''">development</DomainCoreBuildAuthority>
+    <DomainCoreDistribution Condition="'$(DomainCoreDistribution)' == ''">development</DomainCoreDistribution>
+    <DomainCoreRolloutChannel Condition="'$(DomainCoreRolloutChannel)' == ''"></DomainCoreRolloutChannel>
+    <DomainCoreEvidenceEnabled Condition="'$(DomainCoreEvidenceEnabled)' == ''">false</DomainCoreEvidenceEnabled>
+    <DomainCoreCandidateCommit Condition="'$(DomainCoreCandidateCommit)' == ''"></DomainCoreCandidateCommit>
+    <DomainCoreExpectedVersion Condition="'$(DomainCoreExpectedVersion)' == ''"></DomainCoreExpectedVersion>
+    <DomainCoreExpectedAbiVersion Condition="'$(DomainCoreExpectedAbiVersion)' == ''"></DomainCoreExpectedAbiVersion>
+    <DomainCoreExpectedSourceSha256 Condition="'$(DomainCoreExpectedSourceSha256)' == ''"></DomainCoreExpectedSourceSha256>
+    <DomainCoreQuotaMode Condition="'$(DomainCoreQuotaMode)' == ''">legacy</DomainCoreQuotaMode>
+    <DomainCoreCloudVaultMode Condition="'$(DomainCoreCloudVaultMode)' == ''">legacy</DomainCoreCloudVaultMode>
+    <DomainCoreCloudVaultRewrapMode Condition="'$(DomainCoreCloudVaultRewrapMode)' == ''">legacy</DomainCoreCloudVaultRewrapMode>
+    <DomainCoreCloudVaultSearchMode Condition="'$(DomainCoreCloudVaultSearchMode)' == ''">legacy</DomainCoreCloudVaultSearchMode>
+    <DomainCoreHermesMode Condition="'$(DomainCoreHermesMode)' == ''">legacy</DomainCoreHermesMode>
+    <DomainCorePricingMode Condition="'$(DomainCorePricingMode)' == ''">legacy</DomainCorePricingMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.BuildProfile" Value="$(DomainCoreBuildProfile)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.BuildAuthority" Value="$(DomainCoreBuildAuthority)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Distribution" Value="$(DomainCoreDistribution)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.RolloutChannel" Value="$(DomainCoreRolloutChannel)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.EvidenceEnabled" Value="$(DomainCoreEvidenceEnabled)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.CandidateCommit" Value="$(DomainCoreCandidateCommit)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.ExpectedVersion" Value="$(DomainCoreExpectedVersion)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.ExpectedAbiVersion" Value="$(DomainCoreExpectedAbiVersion)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.ExpectedSourceSha256" Value="$(DomainCoreExpectedSourceSha256)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.quota" Value="$(DomainCoreQuotaMode)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.cloudVault" Value="$(DomainCoreCloudVaultMode)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.cloudVaultRewrap" Value="$(DomainCoreCloudVaultRewrapMode)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.cloudVaultSearch" Value="$(DomainCoreCloudVaultSearchMode)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.hermes" Value="$(DomainCoreHermesMode)" />
+    <AssemblyMetadata Include="OpenBurnBar.DomainCore.Mode.pricing" Value="$(DomainCorePricingMode)" />
+  </ItemGroup>
+
+  <!--
+    Central build props for every C# project under windows/.
+
+    Code Quality §SERIOUS-4 (Operation 9): the flagship OpenBurnBar.App.csproj was
+    the only project missing TreatWarningsAsErrors, and the ~94 projects under windows/
+    each set the same Nullable / LangVersion / TreatWarningsAsErrors block individually.
+    This file centralizes those strictness properties so every project inherits them
+    from a single source — and a new project added tomorrow is strict by default, not by
+    remembering to copy the block.
+
+    The first three values come from the proven OpenBurnBar.App.Presentation.csproj:31-40
+    block. Built-in SDK analyzers use the current toolchain's default rule set; new
+    recommended rules do not silently become build-breaking before the codebase adopts them.
+
+    Individual projects may still override (e.g. AllowUnsafeBlocks for the overlay PAL),
+    but the settings below are the repo-wide floor — no project should weaken them.
+  -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Default</AnalysisMode>
+  </PropertyGroup>
+
+</Project>

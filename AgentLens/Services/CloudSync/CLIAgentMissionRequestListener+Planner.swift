@@ -175,7 +175,6 @@ enum CLIAgentMissionRuntimePlanner {
         }
         return raw
     }
-
     static func directLaunchPlan(
         title: String,
         prompt: String,
@@ -184,7 +183,21 @@ enum CLIAgentMissionRuntimePlanner {
     ) -> CLIAgentMissionDirectLaunchPlan? {
         let hostPrompt = Self.prompt(title: title, prompt: prompt, backend: backend, data: data)
         let requestedModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let source = (data["source"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let missionKind = (data["missionKind"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let isInteractiveChat = source == "ios-chat" || source == "android-chat" || missionKind == "chat"
         switch backend.rawValue {
+        case ChatBackendID.codex.rawValue where !isInteractiveChat, ChatBackendID.claude.rawValue where !isInteractiveChat:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: backend.rawValue,
+                arguments: CLIArgumentBuilder.directMissionArguments(
+                    runtime: backend.rawValue,
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    capabilityGrant: capabilityGrant(for: backend, data: data)
+                ),
+                extraEnvironment: [:]
+            )
         case ChatBackendID.piAgent.rawValue:
             let modelCommand = """
             model_args=()
@@ -386,22 +399,12 @@ enum CLIAgentMissionRuntimePlanner {
         let requestedModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         let grant = capabilityGrant(for: backend, data: data)
         let workingDirectory = workingDirectoryPath(from: data).map { URL(fileURLWithPath: $0, isDirectory: true) }
-
         switch backend.rawValue {
-        case ChatBackendID.codex.rawValue:
+        case ChatBackendID.codex.rawValue, ChatBackendID.claude.rawValue:
             return CLIAgentMissionDirectLaunchPlan(
-                executableName: "codex",
-                arguments: CLIArgumentBuilder.codexArguments(
-                    prompt: hostPrompt,
-                    model: requestedModelID ?? "",
-                    capabilityGrant: grant
-                ),
-                extraEnvironment: [:]
-            )
-        case ChatBackendID.claude.rawValue:
-            return CLIAgentMissionDirectLaunchPlan(
-                executableName: "claude",
-                arguments: CLIArgumentBuilder.claudeArguments(
+                executableName: backend.rawValue,
+                arguments: CLIArgumentBuilder.directMissionArguments(
+                    runtime: backend.rawValue,
                     prompt: hostPrompt,
                     model: requestedModelID ?? "",
                     capabilityGrant: grant
@@ -473,7 +476,6 @@ enum CLIAgentMissionRuntimePlanner {
             return nil
         }
     }
-
     static func capabilityGrant(
         for backend: CLIAgentMissionBackend,
         data: [String: Any]
@@ -537,7 +539,6 @@ enum CLIAgentMissionRuntimePlanner {
         return NSString(string: rawPath).expandingTildeInPath
     }
 }
-
 @MainActor
 final class LiveCLIAgentMissionDeviceTrustChecker: CLIAgentMissionDeviceTrustChecking {
     let db: Firestore
@@ -624,7 +625,6 @@ final class LiveCLIAgentMissionDeviceTrustChecker: CLIAgentMissionDeviceTrustChe
         try await deviceRef.setData(payload, merge: true)
     }
 }
-
 //
 // Mac-side remote-control listener. iOS/iPadOS/Android publish pending
 // mission requests at:

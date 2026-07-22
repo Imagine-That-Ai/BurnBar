@@ -225,4 +225,58 @@ public sealed class AuditChainTests : IDisposable
         var ex = Assert.Throws<ComputerUseAuditLogger.AuditLoggerException>(() => logger.Append(badParent));
         Assert.Equal(ComputerUseAuditLogger.AuditLoggerError.ParentHashMismatch, ex.Reason);
     }
+
+    [Fact]
+    public void LoggerResumesValidatedChainAndAppendsNextEntry()
+    {
+        var (_, _, previousHead, _) = BuildChain(2);
+        var resumed = new ComputerUseAuditLogger("sess-1", _dir, "1.0.0");
+
+        resumed.ResumeExistingSession();
+        resumed.Append(new ComputerUseAuditEntry(
+            sessionId: "sess-1",
+            entryIndex: 2,
+            timestamp: Started.AddSeconds(2),
+            actionKind: "mac.input.key",
+            actionSummary: "key input",
+            actionDescriptorHashHex: "abc",
+            approvedBy: AuditApprovedBy.Mac,
+            parentEntryHashHex: resumed.HeadHashHex,
+            macAppVersion: "1.0.0"));
+
+        Assert.NotEqual(previousHead, resumed.HeadHashHex);
+        Assert.Equal(3, resumed.NextEntryIndex);
+    }
+
+    [Fact]
+    public void LoggerRefusesToResumeTamperedTerminalEntry()
+    {
+        var (_, _, _, logger) = BuildChain(2);
+        string chainPath = Path.Combine(logger.Directory, "chain.jsonl");
+        string tampered = File.ReadAllText(chainPath)
+            .Replace("sum-1", "SUM-1", StringComparison.Ordinal);
+        File.WriteAllText(chainPath, tampered);
+        var resumed = new ComputerUseAuditLogger("sess-1", _dir, "1.0.0");
+
+        ComputerUseAuditLogger.AuditLoggerException error = Assert.Throws<ComputerUseAuditLogger.AuditLoggerException>(
+            resumed.ResumeExistingSession);
+
+        Assert.Equal(ComputerUseAuditLogger.AuditLoggerError.ChainHeadCorrupted, error.Reason);
+    }
+
+    [Fact]
+    public void LoggerRefusesMalformedHeadIndexWithoutThrowingJsonTypeError()
+    {
+        var (_, _, _, logger) = BuildChain(1);
+        string headPath = Path.Combine(logger.Directory, "head.json");
+        string malformed = File.ReadAllText(headPath)
+            .Replace("\"index\":1", "\"index\":\"one\"", StringComparison.Ordinal);
+        File.WriteAllText(headPath, malformed);
+        var resumed = new ComputerUseAuditLogger("sess-1", _dir, "1.0.0");
+
+        ComputerUseAuditLogger.AuditLoggerException error = Assert.Throws<ComputerUseAuditLogger.AuditLoggerException>(
+            resumed.ResumeExistingSession);
+
+        Assert.Equal(ComputerUseAuditLogger.AuditLoggerError.ChainHeadCorrupted, error.Reason);
+    }
 }

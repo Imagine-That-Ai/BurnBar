@@ -1,3 +1,4 @@
+import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
 
@@ -128,6 +129,86 @@ final class AppLoggerSanitizationTests: XCTestCase {
         XCTAssertEqual(sanitized["Authorization"], "[REDACTED]")
     }
 
+    func testSilentlyOptional_returnsSuccessfulValueAndEvaluatesOnce() {
+        var invocationCount = 0
+        func produceValue() throws -> Int {
+            invocationCount += 1
+            return 42
+        }
+
+        let result = AppLogger.shared.silentlyOptional(
+            "test_optional_success",
+            try produceValue()
+        )
+
+        XCTAssertEqual(result, 42)
+        XCTAssertEqual(invocationCount, 1)
+    }
+
+    func testSilentlyOptional_returnsNilAfterFailureAndEvaluatesOnce() {
+        var invocationCount = 0
+        func fail() throws -> Int {
+            invocationCount += 1
+            throw AppLoggerTestError.expected
+        }
+
+        let result = AppLogger.shared.silentlyOptional(
+            "test_optional_failure",
+            try fail()
+        )
+
+        XCTAssertNil(result)
+        XCTAssertEqual(invocationCount, 1)
+    }
+
+    func testQuotaLogger_forwardsShadowComparisonToInjectedRecorder() {
+        let recorded = Locked<[DomainCoreQuotaShadowComparison]>([])
+        let logger = AppLoggerQuotaLogger { comparison in
+            recorded.withLock { $0.append(comparison) }
+        }
+        let comparison = DomainCoreQuotaShadowComparison(
+            operation: "claude_quota",
+            coreVersion: "0.3.0",
+            observedAt: Date(timeIntervalSince1970: 1_752_408_000),
+            outcome: .mismatch,
+            mismatchCategory: .resultMismatch,
+            legacyMicros: 120,
+            rustMicros: 80
+        )
+
+        logger.recordDomainCoreShadowComparison(comparison)
+
+        XCTAssertEqual(recorded.read(), [comparison])
+    }
+
+    func testMacPlatformCompositionInstallsShadowSinkIdempotentlyBeforeFirstQuotaComparison() {
+        let escapedComparisons = Locked<[DomainCoreShadowComparison]>([])
+        DomainCoreShadowComparisonCollector.configure { comparison in
+            escapedComparisons.withLock { $0.append(comparison) }
+        }
+        defer { DomainCoreShadowComparisonCollector.configure(nil) }
+
+        // The startup composition call must install one lifetime-owned app sink.
+        // No quota comparison has happened before this cross-domain record.
+        ProviderQuotaMacPlatform.installDomainCoreShadowEvidenceRecorder()
+        ProviderQuotaMacPlatform.installDomainCoreShadowEvidenceRecorder()
+        DomainCoreShadowComparisonCollector.record(.init(
+            domain: "cloudvault",
+            slice: "search",
+            operation: "query",
+            coreVersion: "0.3.0",
+            outcome: "match",
+            mismatchCategory: nil,
+            legacyMicros: 10,
+            rustMicros: 8
+        ))
+
+        XCTAssertTrue(
+            escapedComparisons.read().isEmpty,
+            "The macOS composition owner left the collector's pre-install sink active"
+        )
+    }
+
     #if canImport(Sentry)
     @MainActor
     func testResolveSentryDSN_fromInfoDictionary() throws {
@@ -184,4 +265,8 @@ final class AppLoggerSanitizationTests: XCTestCase {
         return (bundle, cleanup)
     }
     #endif
+}
+
+private enum AppLoggerTestError: Error {
+    case expected
 }

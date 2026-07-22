@@ -38,6 +38,11 @@ on:
         required: false
         type: boolean
         default: false
+      function_targets:
+        description: "Optional comma-separated Firebase targets (for example functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken). Empty deploys every function."
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   group: deploy-staging
@@ -140,6 +145,7 @@ jobs:
         run: |
           node scripts/ci/write-firebase-hosting-ci-config.mjs \
             --mode firestore \
+            --storage-bucket "${FIREBASE_PROJECT}.firebasestorage.app" \
             --output "$RUNNER_TEMP/firebase-firestore.ci.json" \
             --check
           bash scripts/ci/prepare-firebase-tools.sh
@@ -179,12 +185,14 @@ jobs:
             echo "::error::$FIREBASE_FIRESTORE_CI_CONFIG contains predeploy."
             exit 1
           fi
+          # Route firestore.rules through firebase-tools' proven release path
+          # (see deploy-firestore.yml) instead of the bespoke REST PATCH.
+          node scripts/ci/compact-firestore-rules-inplace.mjs firestore.rules
           "$FIREBASE_TOOLS_BIN" deploy \
-            --only firestore:indexes,storage \
+            --only firestore,storage \
             --project "$FIREBASE_PROJECT" \
             --config "$FIREBASE_FIRESTORE_CI_CONFIG" \
             --non-interactive
-          node scripts/ci/deploy-firebase-rules-releases.mjs "$FIREBASE_PROJECT"
 
       - name: Drift check deployed Firestore rules and indexes (staging)
         if: ${{ env.SHOULD_DEPLOY == 'true' }}
@@ -225,6 +233,7 @@ jobs:
     env:
       FIREBASE_PROJECT: ${{ vars.STAGING_FIREBASE_PROJECT || 'burnbar-staging' }}
       SHOULD_DEPLOY: ${{ github.event.inputs.dry_run != 'true' }}
+      FUNCTION_TARGETS: ${{ github.event.inputs.function_targets }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -246,6 +255,9 @@ jobs:
             --output "$RUNNER_TEMP/firebase-functions.ci.json" \
             --check
           bash scripts/ci/prepare-firebase-tools.sh
+          node scripts/ci/prepare-scoped-functions-deploy.mjs \
+            --targets "$FUNCTION_TARGETS" \
+            --functions-dir functions
 
       - name: Require staging functions runtime config
         run: |
@@ -253,6 +265,11 @@ jobs:
           if [[ ! -f functions/.env.burnbar-staging ]]; then
             echo "::error::Missing functions/.env.burnbar-staging."
             echo "::error::Copy functions/.env.burnbar-staging.example, fill the staging project's values, commit it, then re-run."
+            exit 1
+          fi
+          if [[ -n "${FUNCTION_TARGETS:-}" ]] &&
+             [[ ! "$FUNCTION_TARGETS" =~ ^functions:[A-Za-z][A-Za-z0-9_-]*(,functions:[A-Za-z][A-Za-z0-9_-]*)*$ ]]; then
+            echo "::error::function_targets must be a comma-separated list of explicit Firebase Functions targets."
             exit 1
           fi
 
@@ -278,6 +295,8 @@ jobs:
           set -euo pipefail
           ENV_FILE="functions/.env.${FIREBASE_PROJECT}"
           STAGING_CONFIG="functions/.env.burnbar-staging"
+          TEMP_ENV_FILE="$(mktemp "$RUNNER_TEMP/openburnbar-functions-env.XXXXXX")"
+          trap 'rm -f "$TEMP_ENV_FILE"' EXIT
 
           {
             cat "$STAGING_CONFIG"
@@ -288,7 +307,8 @@ jobs:
               echo "SENTRY_DSN=${SENTRY_DSN}"
               echo "SENTRY_ENVIRONMENT=staging"
             fi
-          } > "$ENV_FILE"
+          } > "$TEMP_ENV_FILE"
+          mv "$TEMP_ENV_FILE" "$ENV_FILE"
 
           if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
             echo "::error::No Google application credentials from WIF/OIDC auth. Staging deploy requires workload identity federation."
@@ -303,8 +323,13 @@ jobs:
             exit 1
           fi
 
+          deploy_scope="functions"
+          if [[ -n "${FUNCTION_TARGETS:-}" ]]; then
+            deploy_scope="$FUNCTION_TARGETS"
+          fi
+
           "$FIREBASE_TOOLS_BIN" deploy \
-            --only functions \
+            --only "$deploy_scope" \
             --project "$FIREBASE_PROJECT" \
             --config "$FIREBASE_FUNCTIONS_CI_CONFIG" \
             --non-interactive
@@ -317,6 +342,7 @@ jobs:
             echo "- Project: $FIREBASE_PROJECT"
             echo "- Dry run: ${{ github.event.inputs.dry_run }}"
             echo "- Deploy attempted: $SHOULD_DEPLOY"
+            echo "- Function targets: ${FUNCTION_TARGETS:-all}"
             echo "- FUNCTION_VERSION: staging-${{ github.sha }}"
           } >> "$GITHUB_STEP_SUMMARY"
 

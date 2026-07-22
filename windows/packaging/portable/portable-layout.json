@@ -3,7 +3,7 @@
   "schemaVersion": "1.0",
   "product": "OpenBurnBar",
   "packageId": "ImagineThat.OpenBurnBar",
-  "description": "Portable (no-installer) zip layout for OpenBurnBar. Unzip anywhere and run OpenBurnBar.App.exe; the .portable marker makes the app keep its data next to the executable instead of %LOCALAPPDATA%.",
+  "description": "Portable (no-installer) zip layout for OpenBurnBar. Unzip anywhere and run OpenBurnBar.App.exe; OpenBurnBar.Cli.exe provides the authenticated companion command surface. The .portable marker makes the app keep its data next to the executable instead of %LOCALAPPDATA%.",
   "version": "0.1.0",
   "note": "version is a placeholder seed (macOS MARKETING_VERSION is 1.0.28); New-PortableZip.ps1 -Version overrides it and the release pipeline supplies the shipping version.",
   "entryPoint": "OpenBurnBar.App.exe",
@@ -21,6 +21,7 @@
   },
   "include": [
     "OpenBurnBar.App.exe",
+    "OpenBurnBar.Cli.exe",
     "*.dll",
     "*.json",
     "*.pri",
@@ -44,7 +45,7 @@
     {
       "path": "README.txt",
       "kind": "readme",
-      "contents": "OpenBurnBar (portable)\n======================\n\n1. Unzip this folder anywhere you can write (a USB drive, a project folder, %LOCALAPPDATA%).\n2. Run OpenBurnBar.App.exe.\n3. The tray icon appears; click it for the flyout, or open the main window.\n\nThis build is UNSIGNED unless it came from an official release. Verify the .sha256\nsidecar against the value published on the GitHub release before running.\n\nUpdates: the app auto-updates from the Ed25519-pinned release feed (parity with the\nmacOS Sparkle feed); the feed key is pinned independent of any code-signing certificate.\n\nUninstall: quit the app (tray > Quit) and delete this folder. In portable mode all data\nlives in the Data\\ subfolder, so nothing is left behind on the machine.\n"
+      "contents": "OpenBurnBar (portable)\n======================\n\n1. Unzip this folder anywhere you can write (a USB drive, a project folder, %LOCALAPPDATA%).\n2. Run OpenBurnBar.App.exe.\n3. The tray icon appears; click it for the flyout, or open the main window.\n4. Run OpenBurnBar.Cli.exe --help for the authenticated companion commands.\n\nThis build is UNSIGNED unless it came from an official release. Verify the .sha256\nsidecar against the value published on the GitHub release before running.\n\nUpdates: the app auto-updates from the Ed25519-pinned release feed (parity with the\nmacOS Sparkle feed); the feed key is pinned independent of any code-signing certificate.\n\nUninstall: quit the app (tray > Quit) and delete this folder. In portable mode all data\nlives in the Data\\ subfolder, so nothing is left behind on the machine.\n"
     }
   ],
   "extraFilesFromRepo": [
