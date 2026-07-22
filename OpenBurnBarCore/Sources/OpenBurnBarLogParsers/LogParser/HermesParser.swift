@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarKernel
+import OpenBurnBarParserSupport
 import OpenBurnBarSQLiteReader
 
 // MARK: - Hermes Parser
