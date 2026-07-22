@@ -544,6 +544,35 @@ body.reduced-motion .provider-card-skeleton {
   overflow-wrap: anywhere;
 }
 
+.provider-account-selector {
+  display: grid;
+  gap: var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid color-mix(in srgb, var(--color-glass-line) 78%, transparent);
+}
+
+.provider-account-selector label {
+  color: var(--color-text-mute);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.provider-account-selector select {
+  width: min(100%, 24rem);
+  min-height: 2.25rem;
+}
+
+.provider-account-selector-note,
+.provider-account-selector-error {
+  color: var(--color-text-mute);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.provider-account-selector-error {
+  color: var(--color-seal-crimson);
+}
+
 .provider-model-list {
   display: grid;
   gap: var(--space-2);

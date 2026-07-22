@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fixtureProviderCatalog } from '../../daemonFixture.js';
 import type { ProviderCatalog } from '../../tauriBridge.js';
@@ -49,5 +49,23 @@ describe('ProviderModelWorkspace', () => {
 
     expect(screen.queryByText(secret)).toBeNull();
     expect(document.body.textContent).not.toContain(secret);
+  });
+
+  it('switches the active account through the typed callback without rendering secrets', async () => {
+    const onSelectAccount = vi.fn(async () => undefined);
+    render(
+      <ProviderModelWorkspace
+        providers={catalog()}
+        loading={false}
+        onRefresh={vi.fn()}
+        onSelectAccount={onSelectAccount}
+      />
+    );
+
+    const selector = screen.getByRole('combobox', { name: 'Active account' });
+    expect((selector as HTMLSelectElement).value).toBe('anthropic-team');
+    fireEvent.change(selector, { target: { value: 'anthropic-personal' } });
+    await waitFor(() => expect(onSelectAccount).toHaveBeenCalledWith('anthropic', 'anthropic-personal'));
+    expect(document.body.textContent).not.toContain('apiKey');
   });
 });

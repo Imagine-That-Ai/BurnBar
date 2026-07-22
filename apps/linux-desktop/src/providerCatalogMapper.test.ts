@@ -13,6 +13,7 @@ describe('mapProviderCatalog', () => {
               isEnabled: true,
               preferredModelIDs: ['gpt-5.5'],
               disabledAdvertisedModelIDs: [],
+              preferredCredentialSlotID: 'team',
               credentialSlots: [{ slotID: 'team', label: 'Team', isEnabled: true, status: 'ready' }]
             }
           ]
@@ -47,8 +48,12 @@ describe('mapProviderCatalog', () => {
       health: 'healthy',
       provenance: 'daemon catalog + local config',
       catalogAvailable: true,
+      preferredCredentialSlotID: 'team',
       failover: { mode: 'exactModelOnly', eligible: true }
     });
+    expect(mapped[0]?.credentialSlots).toEqual([
+      expect.objectContaining({ slotID: 'team', label: 'Team', isEnabled: true, status: 'ready' })
+    ]);
     expect(mapped[0]?.models[0]).toMatchObject({
       id: 'gpt-5.5',
       label: 'GPT-5.5',
