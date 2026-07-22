@@ -3,6 +3,10 @@ import XCTest
 
 final class ChatStreamingMessageMutationTests: XCTestCase {
 
+    private enum StreamTestError: Error {
+        case interrupted
+    }
+
     func testChatMessageRecord_contentIsMutable() {
         var record = ChatMessageRecord(role: .assistant, content: "Hello")
         record.content.append(", world")
@@ -143,5 +147,94 @@ final class ChatStreamingMessageMutationTests: XCTestCase {
         let trimmed = ChatMessageTextLimiter.presentation(for: over, expanded: false)
         XCTAssertEqual(trimmed.visibleText.count, ChatMessageTextLimiter.defaultVisibleCharacterLimit)
         XCTAssertEqual(trimmed.hiddenCharacterCount, 12)
+    }
+
+    @MainActor
+    func testConsumeChatStream_batchesText_andKeepsNewestUsageSnapshot() async throws {
+        let stream = AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
+            continuation.yield(.text("Hello"))
+            continuation.yield(.text(" world"))
+            continuation.yield(.reasoning("private"))
+            continuation.yield(.refusal("no"))
+            continuation.yield(.toolUse(name: "Read", detail: "file.swift"))
+            continuation.yield(.toolResult(name: "Read", detail: "ok"))
+            continuation.yield(.usage(CLIUsageSnapshot(
+                inputTokens: 1,
+                outputTokens: 2,
+                cacheCreationTokens: 0,
+                cacheReadTokens: 0,
+                reasoningTokens: 0
+            )))
+            continuation.yield(.usage(CLIUsageSnapshot(
+                inputTokens: 10,
+                outputTokens: 20,
+                cacheCreationTokens: 0,
+                cacheReadTokens: 0,
+                reasoningTokens: 0
+            )))
+            continuation.finish()
+        }
+        var commits: [(String, [ChatTranscriptPiece])] = []
+        var structuralEvents: [CLIChatStreamEvent] = []
+
+        let result = try await ChatSessionController.consumeChatStream(
+            stream,
+            commitInterval: .hours(1),
+            onCommit: { joined, pieces in commits.append((joined, pieces)) },
+            onStructuralEvent: { structuralEvents.append($0) }
+        )
+
+        XCTAssertEqual(result.joinedText, "Hello world")
+        XCTAssertEqual(result.pieces.map(\.kind), [.text, .reasoning, .refusal, .toolUse, .toolResult])
+        XCTAssertEqual(result.pieces[0].value, "Hello world")
+        XCTAssertEqual(result.pieces[1].value, "private")
+        XCTAssertEqual(result.usageSnapshot?.totalTokens, 30)
+        XCTAssertEqual(structuralEvents.count, 2)
+        XCTAssertEqual(commits.last?.0, "Hello world")
+        XCTAssertLessThanOrEqual(commits.count, 4, "usage events must not trigger transcript commits")
+    }
+
+    @MainActor
+    func testConsumeChatStream_flushesPartialText_beforeRethrowing() async {
+        let stream = AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
+            continuation.yield(.text("partial"))
+            continuation.yield(.reasoning("thinking"))
+            continuation.finish(throwing: StreamTestError.interrupted)
+        }
+        var commits: [(String, [ChatTranscriptPiece])] = []
+
+        do {
+            _ = try await ChatSessionController.consumeChatStream(
+                stream,
+                commitInterval: .hours(1),
+                onCommit: { joined, pieces in commits.append((joined, pieces)) }
+            )
+            XCTFail("expected the stream error")
+        } catch StreamTestError.interrupted {
+            XCTAssertEqual(commits.last?.0, "partial")
+            XCTAssertEqual(commits.last?.1.map(\.value), ["partial", "thinking"])
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    @MainActor
+    func testConsumeChatStream_throttlesLongTextRun_toBoundedCommits() async throws {
+        let stream = AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
+            for index in 0..<200 {
+                continuation.yield(.text("chunk-\(index);"))
+            }
+            continuation.finish()
+        }
+        var commitCount = 0
+        let result = try await ChatSessionController.consumeChatStream(
+            stream,
+            commitInterval: .hours(1),
+            onCommit: { _, _ in commitCount += 1 }
+        )
+
+        XCTAssertEqual(result.pieces.count, 1)
+        XCTAssertTrue(result.joinedText.hasPrefix("chunk-0;"))
+        XCTAssertEqual(commitCount, 2, "first visible delta plus one terminal flush")
     }
 }

@@ -8,6 +8,81 @@ import AppKit
 
 extension ChatSessionController {
 
+    struct ChatStreamConsumptionResult {
+        let pieces: [ChatTranscriptPiece]
+        let joinedText: String
+        let usageSnapshot: CLIUsageSnapshot?
+    }
+
+    /// Consumes one desktop chat stream while keeping transcript work bounded.
+    /// The callbacks make the performance-critical state machine testable
+    /// without booting a real CLI or HTTP gateway.
+    @MainActor
+    static func consumeChatStream(
+        _ stream: AsyncThrowingStream<CLIChatStreamEvent, Error>,
+        commitInterval: Duration = .milliseconds(80),
+        onCommit: @escaping (String, [ChatTranscriptPiece]) async -> Void,
+        onStructuralEvent: @escaping (CLIChatStreamEvent) async -> Void = { _ in }
+    ) async throws -> ChatStreamConsumptionResult {
+        var pieces: [ChatTranscriptPiece] = []
+        var usageSnapshot: CLIUsageSnapshot?
+        var joinedText = ""
+        var lastCommit = ContinuousClock.now - commitInterval
+
+        func commit() async {
+            await onCommit(joinedText, pieces)
+        }
+
+        do {
+            for try await event in stream {
+                var forceCommit = false
+                switch event {
+                case .text(let chunk):
+                    forceCommit = pieces.isEmpty
+                    appendStreamingText(chunk, to: &pieces)
+                    joinedText += chunk
+                case .reasoning(let chunk):
+                    forceCommit = pieces.isEmpty
+                    appendStreamingTranscriptChunk(chunk, kind: .reasoning, to: &pieces)
+                case .refusal(let chunk):
+                    forceCommit = pieces.isEmpty
+                    appendStreamingTranscriptChunk(chunk, kind: .refusal, to: &pieces)
+                case .toolUse(let name, let detail):
+                    pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
+                    forceCommit = true
+                    await onStructuralEvent(event)
+                case .toolResult(let name, let detail):
+                    pieces.append(ChatTranscriptPiece(kind: .toolResult, value: name, detail: detail))
+                    forceCommit = true
+                    await onStructuralEvent(event)
+                case .usage(let usage):
+                    if let previous = usageSnapshot {
+                        usageSnapshot = usage.totalTokens >= previous.totalTokens ? usage : previous
+                    } else {
+                        usageSnapshot = usage
+                    }
+                    continue
+                }
+
+                let now = ContinuousClock.now
+                if forceCommit || now - lastCommit >= commitInterval {
+                    lastCommit = now
+                    await commit()
+                }
+            }
+        } catch {
+            await commit()
+            throw error
+        }
+
+        await commit()
+        return ChatStreamConsumptionResult(
+            pieces: pieces,
+            joinedText: joinedText,
+            usageSnapshot: usageSnapshot
+        )
+    }
+
     /// Builds the pinned focus-session prompt section (empty when no context is selected).
     private func focusSessionSection(retrievalResults: [RetrievalResult]) -> String {
         guard let ctx = selectedContext else { return "" }
@@ -370,8 +445,6 @@ extension ChatSessionController {
             guard let self else { return }
             var didRouteThroughFusion = false
             do {
-                var pieces: [ChatTranscriptPiece] = []
-                var usageSnapshot: CLIUsageSnapshot?
                 let elderWandPlugins = await MainActor.run {
                     self.settingsManager.elderWandPluginsPayload()
                 }
@@ -521,61 +594,25 @@ extension ChatSessionController {
                         )
                     }
                 }
-                // remediation(chat-streaming-o2): the old loop did O(n) work
-                // per SSE event — `joinedText(from:)` re-concatenated every
-                // text piece, `pieces` was snapshotted, and a MainActor
-                // commit + `streamingTick` bump re-invalidated every
-                // transcript observer PER TOKEN, making a full stream O(n²).
-                // Now:
-                //   • the joined text is maintained incrementally (O(delta)),
-                //   • commits are throttled to ~80ms (the same cadence as the
-                //     iOS `HermesStreamingEngine`), with the first visible
-                //     delta and structural events (tool pills) committing
-                //     immediately so the bubble/pill still appears instantly,
-                //   • an unconditional flush runs after the loop — and before
-                //     rethrowing on a mid-stream error — so no staged text is
-                //     ever lost.
-                var joinedTextAccumulator = ""
-                let streamCommitInterval: Duration = .milliseconds(80)
-                var lastStreamCommit = ContinuousClock.now - streamCommitInterval
-
-                func commitStagedPieces() async {
-                    let joined = joinedTextAccumulator
-                    let snapshot = pieces
-                    await Task { @MainActor in
-                        if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
-                            // In-place mutation: assigning `content` and
-                            // `transcriptPieces` avoids allocating a fresh
-                            // `ChatMessageRecord` per commit. The
-                            // `streamingTick` bump remains the single
-                            // observation broadcast for views that mirror
-                            // the in-flight content without reading
-                            // `messages` directly (e.g.
-                            // `ProjectMemoryInsightController`).
-                            self.messages[idx].content = joined
-                            self.messages[idx].transcriptPieces = snapshot
-                            self.streamingTick &+= 1
-                        }
-                    }.value
-                }
-
-                do {
-                    for try await event in stream {
-                        var forceCommit = false
+                let consumption = try await Self.consumeChatStream(
+                    stream,
+                    onCommit: { [weak self] joined, snapshot in
+                        guard let self else { return }
+                        await Task { @MainActor in
+                            if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
+                                // In-place mutation keeps each commit bounded
+                                // while the streaming tick remains the single
+                                // observation broadcast for mirror views.
+                                self.messages[idx].content = joined
+                                self.messages[idx].transcriptPieces = snapshot
+                                self.streamingTick &+= 1
+                            }
+                        }.value
+                    },
+                    onStructuralEvent: { [weak self] event in
+                        guard let self else { return }
                         switch event {
-                        case .text(let chunk):
-                            forceCommit = pieces.isEmpty
-                            Self.appendStreamingText(chunk, to: &pieces)
-                            joinedTextAccumulator += chunk
-                        case .reasoning(let chunk):
-                            forceCommit = pieces.isEmpty
-                            Self.appendStreamingTranscriptChunk(chunk, kind: .reasoning, to: &pieces)
-                        case .refusal(let chunk):
-                            forceCommit = pieces.isEmpty
-                            Self.appendStreamingTranscriptChunk(chunk, kind: .refusal, to: &pieces)
-                        case .toolUse(let name, let detail):
-                            pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
-                            forceCommit = true
+                        case .toolUse(let name, _):
                             Task { @MainActor in
                                 Analytics.shared.track(.chatToolInvoked, [
                                     "tool_name": .string(AnalyticsBuckets.toolName(name)),
@@ -583,8 +620,6 @@ extension ChatSessionController {
                                 ])
                             }
                         case .toolResult(let name, let detail):
-                            pieces.append(ChatTranscriptPiece(kind: .toolResult, value: name, detail: detail))
-                            forceCommit = true
                             #if canImport(AppKit) && !DISTRIBUTION_MAS
                             if let detail {
                                 Task { @MainActor in
@@ -596,31 +631,12 @@ extension ChatSessionController {
                                 }
                             }
                             #endif
-                        case .usage(let usage):
-                            if let prev = usageSnapshot {
-                                usageSnapshot = usage.totalTokens >= prev.totalTokens ? usage : prev
-                            } else {
-                                usageSnapshot = usage
-                            }
-                            // Usage never changes the visible transcript —
-                            // skip the commit entirely.
-                            continue
-                        }
-                        let now = ContinuousClock.now
-                        if forceCommit || now - lastStreamCommit >= streamCommitInterval {
-                            lastStreamCommit = now
-                            await commitStagedPieces()
+                        default:
+                            break
                         }
                     }
-                } catch {
-                    // The commit throttle can hold back up to ~80ms of
-                    // streamed text; flush the staged pieces before
-                    // rethrowing so the partial bubble keeps everything
-                    // that arrived.
-                    await commitStagedPieces()
-                    throw error
-                }
-                await commitStagedPieces()
+                )
+                let usageSnapshot = consumption.usageSnapshot
                 await Task { @MainActor in
                     self.isStreaming = false
                     self.activeStreamMessageId = nil

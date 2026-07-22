@@ -75,6 +75,41 @@ final class ChatPanelComponentTests: XCTestCase {
         XCTAssertNoThrow(try view.inspect())
     }
 
+    func test_chatMessagesStream_rendersRowsWithStreamingLengthObservation() throws {
+        let controller = try makeMinimalChatController()
+        let settingsManager = makeSettingsManager()
+        settingsManager.conversationIndexingEnabled = false
+        controller.messages = [
+            ViewTestFixtures.makeUserMessage(content: "Question"),
+            ViewTestFixtures.makeAssistantMessage(content: "Answer")
+        ]
+        let view = ChatMessagesStream(
+            controller: controller,
+            settingsManager: settingsManager,
+            maxContentWidth: 760,
+            onJumpToConversation: { _ in }
+        )
+
+        XCTAssertNoThrow(try view.inspect())
+    }
+
+    func test_chatMessagesStream_rendersEmptySearchState() throws {
+        let controller = try makeMinimalChatController()
+        let settingsManager = makeSettingsManager()
+        controller.searchQuery = "missing"
+        controller.searchResults = []
+        controller.isSearching = false
+        let view = ChatMessagesStream(
+            controller: controller,
+            settingsManager: settingsManager,
+            maxContentWidth: 760,
+            onJumpToConversation: { _ in }
+        )
+
+        let sut = try view.inspect()
+        XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.contains("No indexed sessions matched") }))
+    }
+
     // MARK: - Helpers
 
     private func makeConversationRecord(id: String, provider: AgentProvider, title: String) -> ConversationRecord {
