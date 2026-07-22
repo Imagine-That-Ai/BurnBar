@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelModels
 
 // MARK: - CLI Agent Session Mirror
 //

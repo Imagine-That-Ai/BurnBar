@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelPlatform
 
 /// Stream 6 — Multi-device trust + safety-number UX.
 ///

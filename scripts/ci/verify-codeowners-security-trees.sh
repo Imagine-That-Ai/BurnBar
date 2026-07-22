@@ -35,7 +35,7 @@ REQUIRED_RULES = [
     "AgentLens/Services/CloudVaultCrypto.swift",
     "AgentLens/Services/DataStore/DatabaseEncryptionService.swift",
     "OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/",
-    "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/CloudVaultCrypto.swift",
     "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/DaemonLocalAuthProofVerifier.swift",
     "scripts/ci/",
     "scripts/ci/prepare-firebase-tools.sh",

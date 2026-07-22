@@ -3,6 +3,7 @@ import Foundation
 import XCTest
 @testable import OpenBurnBarCore
 @testable import OpenBurnBarKernel
+@testable import OpenBurnBarKernelCrypto
 
 final class CloudVaultCryptoTests: XCTestCase {
     func test_generateVaultKeyThrowsWhenSystemRandomFails() {
