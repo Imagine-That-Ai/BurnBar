@@ -31,6 +31,11 @@
 #                                      isolation-sensitive tests (default 2).
 #   OPENBURNBAR_APP_TEST_DERIVED_DATA_ROOT=...
 #                                      Override runnable derived-data root.
+#   OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR=...
+#                                      Reuse this exact prebuilt directory, then
+#                                      remove it on exit. Intended for CI steps
+#                                      that already built the app for a real-
+#                                      process gate on the same runner.
 #
 # Exit status:
 #   0  — at least one attempt completed all tests successfully.
@@ -237,8 +242,19 @@ mkdir -p "$cache_dir"
 mkdir -p "$artifact_root"
 mkdir -p "$derived_data_root"
 
-# Per-invocation state
-derived_data_dir="$(mktemp -d "$derived_data_root/openburnbar-app-tests.XXXXXX")"
+# Per-invocation state. An exact reuse directory lets a preceding CI build seed
+# the product and dependency objects; xcodebuild still compiles the test bundle
+# and evaluates the full test action before execution.
+create_derived_data_dir() {
+    if [[ -n "${OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR:-}" ]]; then
+        mkdir -p "$OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR"
+        printf '%s\n' "$OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR"
+    else
+        mktemp -d "$derived_data_root/openburnbar-app-tests.XXXXXX"
+    fi
+}
+
+derived_data_dir="$(create_derived_data_dir)"
 xcodebuild_log=""
 xcodebuild_args=()
 last_test_exit_code=0
@@ -503,7 +519,7 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
         if (( test_attempt % 2 == 1 )); then
             echo ">>> Refreshing derived data for attempt $test_attempt."
             cleanup_derived_data "$derived_data_dir"
-            derived_data_dir="$(mktemp -d "$derived_data_root/openburnbar-app-tests.XXXXXX")"
+            derived_data_dir="$(create_derived_data_dir)"
         else
             echo ">>> Reusing derived data for attempt $test_attempt (warm-cache retry)."
         fi

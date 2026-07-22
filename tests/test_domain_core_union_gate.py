@@ -166,9 +166,11 @@ class DomainCoreUnionGateTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/domain-core.yml").read_text(encoding="utf-8")
         self.assertEqual(
             workflow.count('"config/domain-core-android-ndk-version.txt"'),
-            2,
-            "push and pull-request path filters must both cover the canonical NDK pin",
+            1,
+            "the main-push path filter must cover the canonical NDK pin",
         )
+        pull_request = workflow.split("  pull_request:\n", 1)[1].split("  merge_group:\n", 1)[0]
+        self.assertNotIn("    paths:", pull_request, "pull requests must run the classifier without a workflow-level path filter")
 
     def test_repository_manifest_matches_source_with_canonical_sha256(self) -> None:
         _, manifest = GATE.load_manifest(ROOT)
