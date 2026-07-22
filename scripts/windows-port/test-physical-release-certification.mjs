@@ -28,8 +28,16 @@ const remoteConfigPublisher = readFileSync(
   "utf8",
 );
 const remoteConfigHttp = readFileSync(join(root, "remote-config-http.psm1"), "utf8");
+const remoteConfigSafetyObserver = readFileSync(
+  join(root, "test-staging-runtime-safety-fixture.ps1"),
+  "utf8",
+);
 const remoteConfigFixtureCatalog = JSON.parse(
   readFileSync(join(root, "remote-config-certification-fixtures.json"), "utf8"),
+);
+const packageManifest = readFileSync(
+  join(root, "../../windows/packaging/msix/Package.appxmanifest"),
+  "utf8",
 );
 const physicalRunbook = readFileSync(
   join(root, "../../docs/windows-port/evidence/windows-v1.0.37-release/PHYSICAL_X64_RUNBOOK.md"),
@@ -162,11 +170,22 @@ assert.equal(
   remoteConfigFixtureCatalog.fixtures.MalformedSystem.overrides.computer_use_system_enabled,
   "invalid-certification-value",
 );
+assert.equal(
+  remoteConfigFixtureCatalog.fixtures.MalformedSystem.valueTypeOverrides
+    .computer_use_system_enabled,
+  "STRING",
+);
 for (const fixture of Object.values(remoteConfigFixtureCatalog.fixtures)) {
   for (const parameter of Object.keys(fixture.overrides)) {
     assert.ok(
       remoteConfigFixtureCatalog.baseline.parameters[parameter],
       `Remote Config fixture overrides an unknown parameter: ${parameter}`,
+    );
+  }
+  for (const parameter of Object.keys(fixture.valueTypeOverrides ?? {})) {
+    assert.ok(
+      remoteConfigFixtureCatalog.baseline.parameters[parameter],
+      `Remote Config fixture changes the type of an unknown parameter: ${parameter}`,
     );
   }
 }
@@ -195,7 +214,33 @@ assert.match(remoteConfigPublisher, /parameters do not match the selected fixtur
 assert.match(remoteConfigPublisher, /restoreRequired = \(\$Fixture -ne 'Baseline'\)/);
 assert.match(remoteConfigPublisher, /read failed\. No mutation was attempted/);
 assert.match(remoteConfigPublisher, /publish failed\. Verify and restore Baseline/);
+assert.match(remoteConfigPublisher, /valueTypeOverrides/);
+assert.match(remoteConfigPublisher, /unsupported Remote Config valueType/);
+assert.match(remoteConfigPublisher, /\[switch\] \$ValidateOnly/);
+assert.match(remoteConfigPublisher, /payloadValidated = \$true/);
+assert.match(remoteConfigPublisher, /mutationAttempted = \$false/);
+assert.doesNotMatch(
+  remoteConfigPublisher,
+  /\$fixtureProperty\.Value\.overrides\.PSObject\.Properties\.Name/,
+);
 assert.doesNotMatch(remoteConfigPublisher, /Write-(Host|Output).*\$token/i);
+assert.match(remoteConfigSafetyObserver, /ValidateSet\('ComputerKill', 'MalformedSystem'\)/);
+assert.match(remoteConfigSafetyObserver, /ValidateSet\('burnbar-staging'\)/);
+assert.match(remoteConfigSafetyObserver, /privileged-input-remote-safety\.flag/);
+assert.match(remoteConfigSafetyObserver, /privileged-input-kill\.flag/);
+assert.match(remoteConfigSafetyObserver, /openburnbar-remote-safety-v1:allow-until:/);
+assert.match(remoteConfigSafetyObserver, /openburnbar-remote-safety-v1:blocked:remote_system_disabled/);
+assert.match(remoteConfigSafetyObserver, /computer-use\\\.panic/);
+assert.match(remoteConfigSafetyObserver, /runtime-safety/);
+assert.match(remoteConfigSafetyObserver, /Get-Process -Name 'OpenBurnBar\.App'/);
+assert.match(packageManifest, /Executable="OpenBurnBar\.App\.exe"/);
+assert.match(remoteConfigSafetyObserver, /computer-use\\\.panic-cleared/);
+assert.match(remoteConfigSafetyObserver, /operatorSessionStartedAt/);
+assert.match(remoteConfigSafetyObserver, /mainAppTerminationExpected = \$false/);
+assert.match(remoteConfigSafetyObserver, /finally \{/);
+assert.match(remoteConfigSafetyObserver, /-Fixture Baseline/);
+assert.match(remoteConfigSafetyObserver, /parametersVerified/);
+assert.doesNotMatch(remoteConfigSafetyObserver, /Remove-Item.*privileged-input-kill/i);
 assert.match(supplementalGenerator, /ParameterSetName = 'Initialize'/);
 assert.match(supplementalGenerator, /status = 'NOT_RUN'/);
 assert.match(supplementalGenerator, /validate-release-certification-evidence\.mjs/);

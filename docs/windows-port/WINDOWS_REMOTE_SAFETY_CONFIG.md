@@ -85,6 +85,31 @@ Use the exact signed candidate and capture redacted receipts for:
 Never print ID tokens, App Check tokens, TPM claims, OAuth codes, Remote Config
 API credentials, or callable authorization headers into the evidence bundle.
 
+The Computer Use kill switch revokes privileged execution; it does not terminate
+OpenBurnBar. A valid drill therefore requires the main app to remain alive and
+responsive while the remote-safety lease changes to
+`blocked:remote_system_disabled`, the durable panic latch contains
+`remote_config`, and the diagnostic log records both the matching safety refresh
+and `computer-use.panic` event within 60 seconds.
+
+On a physical Windows candidate, run the committed observer once per scenario:
+
+```powershell
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File `
+  .\scripts\windows-port\test-staging-runtime-safety-fixture.ps1 `
+  -Scenario ComputerKill `
+  -OutputPath C:\BurnBar-cert\staging-computer-kill.json `
+  -ConfirmStagingMutation
+```
+
+The observer requires a fresh authenticated allow lease and a clear panic latch,
+publishes only to `burnbar-staging`, and restores `Baseline` in `finally`. It
+does not clear the durable latch. Explicitly start a new Computer Use session in
+the signed app, verify that a fresh allow lease appears, then repeat with
+`-Scenario MalformedSystem` and a new output path. `MalformedSystem` temporarily
+uses a Remote Config `STRING` value type so Firebase accepts the deliberately
+invalid value; restoring `Baseline` returns that parameter to `BOOLEAN`.
+
 ## Deterministic checks
 
 ```bash
