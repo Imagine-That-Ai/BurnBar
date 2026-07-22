@@ -3,7 +3,7 @@
 This directory tracks the Linux desktop peer release work. The Linux lane is
 implemented as reviewable infrastructure, not a public availability claim.
 
-Current parity status as of 2026-07-09:
+Current parity status as of 2026-07-13:
 
 - A public signed aarch64 prerelease exists at `linux-v0.1.0`.
 - Full macOS parity is not complete. See
@@ -13,6 +13,13 @@ Current parity status as of 2026-07-09:
   [`LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`](LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md)
   for the independent executive summary, parity matrix, implementation plan,
   prioritized roadmap, and QA checklist.
+- The current source-remediation stack includes exact persisted chat threads
+  and older-message pagination (PR #1684), accessibility preference styling
+  and forced-colors contracts (PR #1683), a typed Browser Computer Use panel
+  (PR #1681), bounded database code inspection (PR #1680), native startup and
+  deep-link handoff (PR #1679), and the differential evidence oracle (PR #1682).
+  These are reviewable implementation slices; they do not replace the
+  current-head installed evidence required by `parity-ledger.json`.
 - For the CMUX-synthesized implementation plan, see
   [`FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md`](FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md).
 - The 2026-07-05 release notes below are historical context and should not be
