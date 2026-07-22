@@ -691,12 +691,22 @@ let openBurnBarKernelPlatformExcludes: [String] = []
 let openBurnBarKernelModelsExcludes: [String] = []
 let openBurnBarKernelCryptoExcludes: [String] = []
 let openBurnBarKernelContractsExcludes: [String] = []
+let openBurnBarKernelCryptoTestsExcludes: [String] = [
+    "CloudVaultCryptoTests.swift",
+    "EscrowDeviceSafetyCodeTests.swift",
+    "HermesRatchetCryptoTests.swift",
+    "HermesRelayCryptoSealKeyAADTests.swift"
+]
 // Phase-2 WS-B packet B1: off-Apple exclusions for OpenBurnBarKernelModelsTests.
 // CLITerminalSessionSupervisorTests exercises the Apple-only
 // OpenBurnBarKernelModels.CLITerminalSessionSupervisor, so it stays out of the Linux
 // graph — the same exclusion it carried in openBurnBarCoreTestExcludes before B1.
 let openBurnBarKernelModelsTestsExcludes = [
     "CLITerminalSessionSupervisorTests.swift"
+]
+let openBurnBarVectorKitTestsExcludes = [
+    "PensieveKnowledgeChunkerTests.swift",
+    "PensieveVectorCloakTests.swift"
 ]
 // UI/Insights/TextExpansion/LaunchServices are pruned WHOLE off-Apple (like
 // OpenBurnBarData) rather than file-excluded, so their exclude arrays exist only
@@ -818,9 +828,11 @@ let openBurnBarKernelPlatformExcludes: [String] = []
 let openBurnBarKernelModelsExcludes: [String] = []
 let openBurnBarKernelCryptoExcludes: [String] = []
 let openBurnBarKernelContractsExcludes: [String] = []
+let openBurnBarKernelCryptoTestsExcludes: [String] = []
 // Phase-2 WS-B packet B1: Apple-side (empty) default for OpenBurnBarKernelModelsTests'
 // off-Apple exclude seam. On Apple CLITerminalSessionSupervisorTests compiles.
 let openBurnBarKernelModelsTestsExcludes: [String] = []
+let openBurnBarVectorKitTestsExcludes: [String] = []
 let openBurnBarInsightsExcludes: [String] = []
 let openBurnBarUIExcludes: [String] = []
 let openBurnBarTextExpansionExcludes: [String] = []
@@ -1569,6 +1581,7 @@ let firstPartyTargetsBase: [Target] = [
             // BurnBarHpkeV3CrossPlatformVectorTests), but any file living inside a
             // SwiftPM target dir must be declared or SwiftPM fails with "unhandled
             // files"; `.process("Fixtures")` satisfies that rule.
+            exclude: openBurnBarKernelCryptoTestsExcludes,
             resources: [
                 .process("Fixtures")
             ],
@@ -1589,6 +1602,7 @@ let firstPartyTargetsBase: [Target] = [
             // link it. VectorKit already depends on it transitively (via the Kernel
             // umbrella), so this stays acyclic.
             dependencies: ["OpenBurnBarVectorKit", "OpenBurnBarKernelCrypto"] + swiftTestingAppleDependencies,
+            exclude: openBurnBarVectorKitTestsExcludes,
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]
