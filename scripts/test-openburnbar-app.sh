@@ -500,7 +500,6 @@ test_attempt=1
 final_exit_code=0
 final_outcome="failed"
 final_xcresult=""
-retry_requires_fresh_derived_data=0
 
 while [ "$test_attempt" -le "$max_test_attempts" ]; do
     if [ "$test_attempt" -gt 1 ]; then
@@ -509,20 +508,20 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
             local_idx=$((${#backoff_seconds[@]} - 1))
         fi
         wait_for=${backoff_seconds[$local_idx]}
+        # Even-numbered retries (2, 4, 6) keep the derived-data dir intact and
+        # rely on a longer sleep to clear the XCTest IPC race; odd-numbered
+        # retries (3, 5) refresh derived data from scratch. This alternation
+        # covers both classes of hang we've observed: the "stale runner state"
+        # variant (cleared by a fresh derived data dir) and the "macOS XCTest
+        # IPC race" variant (cleared by a longer cooldown alone).
         echo ">>> Retry attempt $test_attempt of $max_test_attempts after retryable XCTest/SwiftPM infrastructure failure. Sleeping ${wait_for}s."
         sleep "$wait_for"
-        if [ "$retry_requires_fresh_derived_data" -eq 1 ]; then
-            echo ">>> Refreshing derived data for attempt $test_attempt after a SwiftPM dependency failure."
+        if (( test_attempt % 2 == 1 )); then
+            echo ">>> Refreshing derived data for attempt $test_attempt."
             cleanup_derived_data "$derived_data_dir"
             derived_data_dir="$(create_derived_data_dir)"
-            retry_requires_fresh_derived_data=0
         else
-            # XCTest startup/execution hangs happen after the app and test
-            # bundle have built successfully. Throwing away that build on a
-            # cold macOS runner can consume most of the job timeout and makes
-            # later retries impossible to complete. Kill stale test hosts,
-            # retain the proven build products, and retry warm.
-            echo ">>> Reusing derived data for attempt $test_attempt (warm-cache XCTest retry)."
+            echo ">>> Reusing derived data for attempt $test_attempt (warm-cache retry)."
         fi
     fi
 
@@ -574,7 +573,6 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
     if is_known_hang "$xcodebuild_log"; then
         emit_attempt_event "$test_attempt" "$last_test_exit_code" "hang_retry" "$attempt_duration" "$attempt_xcresult"
         echo ">>> Detected known XCTest startup hang on attempt $test_attempt (exit $last_test_exit_code)."
-        retry_requires_fresh_derived_data=0
         test_attempt=$((test_attempt + 1))
         continue
     fi
@@ -582,7 +580,6 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
     if is_swiftpm_dependency_resolution_transient "$xcodebuild_log"; then
         emit_attempt_event "$test_attempt" "$last_test_exit_code" "swiftpm_dependency_retry" "$attempt_duration" "$attempt_xcresult"
         echo ">>> Detected transient SwiftPM dependency resolution failure on attempt $test_attempt (exit $last_test_exit_code)."
-        retry_requires_fresh_derived_data=1
         test_attempt=$((test_attempt + 1))
         continue
     fi
