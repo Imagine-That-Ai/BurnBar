@@ -178,6 +178,69 @@ describe('App shell', () => {
     expect(await screen.findByText('Step 2 of 8')).toBeTruthy();
   });
 
+  it('stores an onboarding provider credential through the daemon without caching the secret', async () => {
+    const initial = {
+      ...defaultLinuxOnboardingSnapshot(),
+      currentStepID: 'provider_paths' as const,
+      steps: defaultLinuxOnboardingSnapshot().steps.map((step) =>
+        step.id === 'provider_paths' ? { ...step, state: 'pending' as const } : { ...step, state: 'verified' as const }
+      )
+    };
+    const onboardingSnapshot = vi.fn().mockResolvedValue(initial);
+    const providerCatalog = vi.fn().mockResolvedValue([
+      { id: 'codex', label: 'Codex', accountLabel: 'No connected account', quotaBuckets: [] }
+    ]);
+    const providerCredentialSlotUpsert = vi.fn().mockResolvedValue({
+      providers: [{ providerID: 'codex', credentialSlots: [{ slotID: 'primary' }] }]
+    });
+    useShellStore.setState({
+      bridge: { onboardingSnapshot, providerCatalog, providerCredentialSlotUpsert } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+
+    render(<OnboardingSurface />);
+    expect(await screen.findByRole('heading', { name: 'Connect a provider' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-test-secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Store credential securely' }));
+
+    await waitFor(() => expect(providerCredentialSlotUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      providerID: 'codex',
+      label: 'Primary',
+      apiKey: 'sk-test-secret',
+      isEnabled: true
+    })));
+    expect(await screen.findByText(/Credential stored by the daemon/i)).toBeTruthy();
+    expect(localStorage.getItem('openburnbar.linux.onboarding.cache.v2') ?? '').not.toContain('sk-test-secret');
+  });
+
+  it('does not dispatch provider credential mutations from fixture mode', async () => {
+    const initial = {
+      ...defaultLinuxOnboardingSnapshot(),
+      currentStepID: 'provider_paths' as const,
+      steps: defaultLinuxOnboardingSnapshot().steps.map((step) =>
+        step.id === 'provider_paths' ? { ...step, state: 'pending' as const } : { ...step, state: 'verified' as const }
+      )
+    };
+    const providerCredentialSlotUpsert = vi.fn();
+    useShellStore.setState({
+      fixtureMode: true,
+      bridge: {
+        onboardingSnapshot: vi.fn().mockResolvedValue(initial),
+        providerCatalog: vi.fn().mockResolvedValue([{ id: 'codex', label: 'Codex', accountLabel: 'Fixture', quotaBuckets: [] }]),
+        providerCredentialSlotUpsert
+      } as unknown as LinuxShellBridge,
+      bridgeReady: true
+    });
+
+    render(<OnboardingSurface />);
+    expect(await screen.findByRole('heading', { name: 'Connect a provider' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'fixture-secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Store credential securely' }));
+    expect(providerCredentialSlotUpsert).not.toHaveBeenCalled();
+    expect(await screen.findByText(/unavailable in fixture mode/i)).toBeTruthy();
+  });
+
   it('gates text expansion behind consent and supports snippet CRUD', () => {
     const { container } = render(<App />);
     act(() => useShellStore.getState().setRoute('text-expansion'));

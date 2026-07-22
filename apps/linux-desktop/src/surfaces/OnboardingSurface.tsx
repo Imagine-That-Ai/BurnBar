@@ -8,6 +8,7 @@ import {
   type LinuxOnboardingPrivacyChoices,
   type LinuxOnboardingSnapshot
 } from '../onboardingStore.js';
+import type { ConfigSnapshot, ProviderCatalog } from '../tauriBridge.js';
 import { useShellStore } from '../state/shellStore.js';
 import './onboarding.css';
 
@@ -17,6 +18,84 @@ function isTerminal(state: LinuxOnboardingSnapshot['steps'][number]['state']): b
   return state === 'verified' || state === 'acknowledged' || state === 'skipped';
 }
 
+function ProviderSetup({
+  catalog,
+  onStore,
+  disabled,
+  status
+}: {
+  catalog: ProviderCatalog;
+  onStore: (providerID: string, label: string, apiKey: string) => Promise<void>;
+  disabled: boolean;
+  status: string | null;
+}) {
+  const [providerID, setProviderID] = useState(catalog[0]?.id ?? '');
+  const [label, setLabel] = useState('Primary');
+  const [apiKey, setApiKey] = useState('');
+  const selected = catalog.find((entry) => entry.id === providerID) ?? catalog[0];
+
+  useEffect(() => {
+    if (!catalog.some((entry) => entry.id === providerID)) setProviderID(catalog[0]?.id ?? '');
+  }, [catalog, providerID]);
+
+  if (catalog.length === 0) {
+    return (
+      <section className="onboarding-provider-setup" aria-labelledby="onboarding-provider-title">
+        <h4 id="onboarding-provider-title">Provider connection</h4>
+        <p className="muted">The daemon returned no provider catalog. Open Settings → Providers after setup to configure a native provider.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="onboarding-provider-setup" aria-labelledby="onboarding-provider-title">
+      <h4 id="onboarding-provider-title">Connect a provider</h4>
+      <p className="muted">The key is sent once to the daemon and stored in the native Secret Service. It is never cached in the web view.</p>
+      <label>
+        Provider
+        <select value={selected?.id ?? ''} onChange={(event) => setProviderID(event.currentTarget.value)} disabled={disabled}>
+          {catalog.map((entry) => (
+            <option key={entry.id} value={entry.id}>{entry.label}</option>
+          ))}
+        </select>
+      </label>
+      <p className="onboarding-provider-status muted" role="status">
+        {selected?.accountLabel || 'No connected account reported by the daemon.'}
+      </p>
+      <label>
+        Credential label
+        <input value={label} onChange={(event) => setLabel(event.currentTarget.value)} disabled={disabled} autoComplete="off" />
+      </label>
+      <label>
+        API key
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(event) => setApiKey(event.currentTarget.value)}
+          disabled={disabled}
+          autoComplete="new-password"
+          spellCheck={false}
+          aria-describedby="onboarding-provider-help"
+        />
+      </label>
+      <p id="onboarding-provider-help" className="muted">OAuth-only providers, portal consent, and unsupported provider auth remain available from their native Settings flow.</p>
+      <button
+        type="button"
+        className="onboarding-btn-ghost"
+        disabled={disabled || !selected || !apiKey.trim()}
+        onClick={() => {
+          if (!selected || !apiKey.trim()) return;
+          void onStore(selected.id, label.trim() || 'Primary', apiKey);
+          setApiKey('');
+        }}
+      >
+        Store credential securely
+      </button>
+      {status ? <p className="onboarding-provider-status" role="status">{status}</p> : null}
+    </section>
+  );
+}
+
 /** Daemon-authoritative Linux first-run and repair workflow. */
 export function OnboardingSurface() {
   const [snapshot, setSnapshot] = useState(readOnboarding);
@@ -24,10 +103,13 @@ export function OnboardingSurface() {
   const [authorityAttempt, setAuthorityAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [providerCatalog, setProviderCatalog] = useState<ProviderCatalog | null>(null);
+  const [providerStatus, setProviderStatus] = useState<string | null>(null);
   const [privacyChoices, setPrivacyChoices] = useState<LinuxOnboardingPrivacyChoices>(() =>
     snapshot.privacyChoices ?? { telemetryEnabled: false, cloudSyncEnabled: false }
   );
   const bridge = useShellStore((state) => state.bridge);
+  const fixtureMode = useShellStore((state) => state.fixtureMode);
   const bridgeReady = useShellStore((state) => state.bridgeReady);
   const setRoute = useShellStore((state) => state.setRoute);
 
@@ -62,6 +144,26 @@ export function OnboardingSurface() {
     };
   }, [bridge, authorityAttempt]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!bridge || snapshot.currentStepID !== 'provider_paths') {
+      setProviderCatalog(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void bridge.providerCatalog()
+      .then((catalog) => {
+        if (!cancelled) setProviderCatalog(catalog);
+      })
+      .catch(() => {
+        if (!cancelled) setProviderCatalog([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, snapshot.currentStepID]);
+
   const commit = (next: LinuxOnboardingSnapshot) => {
     cacheOnboarding(next);
     setSnapshot(next);
@@ -91,6 +193,33 @@ export function OnboardingSurface() {
       commit(await bridge.onboardingReset());
     } catch (resetError) {
       setError(resetError instanceof Error ? resetError.message : String(resetError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const storeProviderCredential = async (providerID: string, label: string, apiKey: string) => {
+    if (fixtureMode) {
+      setProviderStatus('Credential storage is unavailable in fixture mode. Start the packaged shell to use native Secret Service.');
+      return;
+    }
+    if (!bridge?.providerCredentialSlotUpsert) {
+      setProviderStatus('Native provider credential storage is unavailable in this shell. Open Settings → Providers.');
+      return;
+    }
+    setBusy(true);
+    setProviderStatus(null);
+    try {
+      const next: ConfigSnapshot = await bridge.providerCredentialSlotUpsert({
+        providerID,
+        label,
+        apiKey,
+        isEnabled: true
+      });
+      const stored = next.providers?.find((provider) => provider.providerID === providerID)?.credentialSlots.length ?? 0;
+      setProviderStatus(stored > 0 ? 'Credential stored by the daemon. Verify and continue to complete setup.' : 'Daemon accepted the credential; verify its provider status in Settings.');
+    } catch (storeError) {
+      setProviderStatus(storeError instanceof Error ? storeError.message : 'Credential storage failed.');
     } finally {
       setBusy(false);
     }
@@ -242,6 +371,14 @@ export function OnboardingSurface() {
                 Allow encrypted cloud sync after sign-in
               </label>
             </fieldset>
+          ) : null}
+          {step.id === 'provider_paths' && providerCatalog ? (
+            <ProviderSetup
+              catalog={providerCatalog}
+              onStore={storeProviderCredential}
+              disabled={busy}
+              status={providerStatus}
+            />
           ) : null}
         </div>
 
