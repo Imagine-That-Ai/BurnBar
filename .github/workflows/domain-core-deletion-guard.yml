@@ -79,7 +79,10 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request_target" ]]; then
             test "${{ github.event.pull_request.base.repo.full_name }}" = "$GITHUB_REPOSITORY"
             test "${{ github.event.pull_request.head.repo.full_name }}" = "$GITHUB_REPOSITORY"
-            test "${{ github.event.pull_request.base.ref }}" = "main"
+            if [[ "${{ github.event.pull_request.base.ref }}" != "main" ]]; then
+              echo "Stacked same-repository PR; the protected main merge-group will run the trusted deletion evaluation."
+              exit 0
+            fi
           else
             test "${{ github.event.merge_group.base_ref }}" = "refs/heads/main"
           fi
