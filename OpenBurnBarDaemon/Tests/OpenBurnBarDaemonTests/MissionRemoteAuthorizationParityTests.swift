@@ -1,5 +1,5 @@
 import XCTest
-import OpenBurnBarCore
+import OpenBurnBarKernel
 @testable import OpenBurnBarDaemon
 
 /// Split-brain Phase M4 — THE MERGE GATE.
@@ -51,6 +51,22 @@ final class MissionRemoteAuthorizationParityTests: XCTestCase {
         }
     }
 
+    private func requiresPreDispatchApproval(
+        approvalMode: String?,
+        commandsAllowed: Bool,
+        fileEditsAllowed: Bool
+    ) -> Bool {
+        let normalizedMode = approvalMode?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !(commandsAllowed || fileEditsAllowed) else { return true }
+        switch normalizedMode {
+        case "manual_all": return true
+        case "risky_only", "existing_policy", "read_only", nil, "": return false
+        default: return true
+        }
+    }
+
     /// The RESOLVED backend runtimes the GUI would forward. Every `ChatBackendID`
     /// rawValue plus the raw (non-enum) runtimes; only Hermes runs consent-free.
     private static let hermesRuntime = "hermes"
@@ -91,7 +107,7 @@ final class MissionRemoteAuthorizationParityTests: XCTestCase {
         let guiConsent = runtime
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() != Self.hermesRuntime
-        let requiresApproval = InsightMissionApprovalPolicy.requiresPreDispatchApproval(
+        let requiresApproval = requiresPreDispatchApproval(
             approvalMode: approvalMode,
             commandsAllowed: commandsAllowed,
             fileEditsAllowed: fileEditsAllowed

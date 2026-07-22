@@ -394,7 +394,7 @@ extension CLIAgentMissionRequestListener {
         // reuse that value instead of issuing a second entitlement read that
         // could transiently fail and incorrectly collapse a paid group to the
         // free-tier cap.
-        let fanOutCap = missionGroupContext?.tierCap ?? (try? await resolvedWandFanOutCap(uid: uid))
+        let fanOutCap = missionGroupContext?.tierCap ?? (try? await resolvedWandFanOutCap(uid: uid)) // try?-ok(fail-closed entitlement cap)
         let authorization = await MissionRemoteAuthorizationShadow.authorize(
             ctx: shadowCtx(
                 document.documentID,

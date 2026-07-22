@@ -50,6 +50,13 @@ is untouched by every slice.
 | `OpenBurnBarEngine` | yes | 1 file | `@_exported` {Kernel, LogParsers, Quota, VectorKit, Hermes, Pretext} — what daemon/CLI/parity link | those 6 leaves |
 | `OpenBurnBarCore` | yes (exists) | ~4 files | `@_exported` re-exports of everything (Apple-only ones pruned off-Apple) + `Engine/OBBCAbi*.swift` | all decomposition targets |
 
+**M4 contract budget note (2026-07-22):** M4 adds the server-signed
+`trustedFanOutCap` field and backward-compatible decoding to the root mission
+authorization contract in `OpenBurnBarKernel` (33 lines). The planned Kernel
+ceiling is therefore explicitly adjusted from 46,250 to 46,300 lines for this
+single wire-contract addition; the deny-gate remains in force for any further
+Kernel growth.
+
 **Invariants baked into the S0 manifest:**
 - Off-Apple pruning of UI/Insights/TextExpansion/LaunchServices uses the existing
   host-evaluated `#if os(Linux) || os(Windows)` seam (`buildApplePrunedDecompositionTargets`),

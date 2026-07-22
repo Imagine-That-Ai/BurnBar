@@ -124,7 +124,11 @@ const PLANNED_CEILINGS = {
   // ceiling covers profiles, candidate identity, evidence comparison, and the
   // generic shadow selector without allowing domain business logic to move in.
   OpenBurnBarDomainCoreRuntime: { maxFiles: 8, maxLines: 1000 },
-  OpenBurnBarKernel: { maxFiles: 185, maxLines: 46250 },
+  // M4 adds the server-signed trustedFanOutCap field to the root mission
+  // authorization contract. Keep the planned ceiling explicit and narrow:
+  // this 50-line allowance covers that one wire-contract addition; future
+  // Kernel growth still fails the deny-gate.
+  OpenBurnBarKernel: { maxFiles: 185, maxLines: 46300 },
   OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1000 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
   OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 11800 },

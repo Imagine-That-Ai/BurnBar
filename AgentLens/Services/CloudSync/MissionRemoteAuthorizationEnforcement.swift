@@ -1,6 +1,6 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OSLog
 
 // MARK: - Mission remote-authorization ENFORCEMENT writeback (split-brain M4)
