@@ -33,6 +33,12 @@ All targets live in `OpenBurnBarCore/Sources/<Target>/`. Edges point downward
 (acyclic). Privileged K2 closure {Kernel, Media, IrohRelay, FirestoreModels, crypto}
 is untouched by every slice.
 
+The current shipped Kernel is 46,301 LOC after the Elder/Pareto hardening wave.
+Until the next decomposition packets move that code back toward the ~37k
+end-state, the regrowth gate carries a temporary 46,500-LOC ceiling. The
+integrator must ratchet the ceiling down after those moves; this is not feature
+headroom.
+
 | Target | Product | Approx LOC (end) | Contents | Deps |
 |---|---|---|---|---|
 | `OpenBurnBarKernel` | yes (exists) | ~37k | root mission contracts (NOT `OpenBurnBarSearchContracts.swift` — VectorKit-bound, see P-03 re-slice), TraceContext, pure/crypto SharedModels, catalog-model SharedModels (`CLIRuntimeModelCatalog`/`WandModelRouter` — via P-04c, after P-02 lands the loader), MissionGroupContracts + MissionConsoleTypes (post-inversion), catalog loader + PII gate + their resources, Platform/ | FirestoreModels, crypto |

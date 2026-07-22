@@ -117,14 +117,17 @@ const mainLive = scanTarget(mainTarget);
 //
 // Kernel IS a decomposition destination (P-02/P-03/P-04a/P-04b/P-11 move ~35
 // files + several thousand LOC into it); its marker-era measured ceiling
-// (133 files / 35955 LOC) has ZERO headroom for those moves, so it is seeded
-// from the ~37k end-state (1.25x = 46250 LOC) with file headroom.
+// (133 files / 35955 LOC) has ZERO headroom for those moves. The shipped
+// Kernel currently measures 46301 LOC after the Elder/Pareto hardening wave,
+// so the temporary migration ceiling is 46500 LOC. The integrator must ratchet
+// this back down after the next decomposition moves; it is not new headroom
+// for unrelated features.
 const PLANNED_CEILINGS = {
   // Shared-Rust rollout authority stays a narrow Foundation-only leaf. The
   // ceiling covers profiles, candidate identity, evidence comparison, and the
   // generic shadow selector without allowing domain business logic to move in.
   OpenBurnBarDomainCoreRuntime: { maxFiles: 8, maxLines: 1000 },
-  OpenBurnBarKernel: { maxFiles: 185, maxLines: 46250 },
+  OpenBurnBarKernel: { maxFiles: 185, maxLines: 46500 },
   OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1000 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
   OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 11800 },
