@@ -129,23 +129,25 @@ internal static class WindowsStorageDevHost
     }
 
     /// <summary>
-    /// Reads <c>token_usage</c> aggregates from the provisioned SQLCipher store.
+    /// Reads consistently windowed <c>token_usage</c> aggregates from the
+    /// provisioned SQLCipher store.
     /// </summary>
-    public static DashboardUsageSummary LoadDashboardUsageSummary()
+    public static DashboardUsageSummary LoadDashboardUsageSummary(
+        DashboardUsageWindow window = DashboardUsageWindow.ThisMonth,
+        DateTimeOffset? now = null)
     {
         var (path, passphrase) = ResolveCredentials();
         using var store = OpenBurnBarStorage.OpenReadOnly(path!, passphrase!);
-        var connection = store.Connection;
-        double spend = TokenUsageReadSeam.SumCostCurrentUtcMonth(connection);
-        long tokens = TokenUsageReadSeam.SumTotalTokens(connection);
-        long sessions = TokenUsageReadSeam.CountDistinctSessions(connection);
-        bool hasData = spend > 0 || tokens > 0 || sessions > 0;
+        TokenUsageWindowTotals totals = TokenUsageReadSeam.LoadWindowTotals(
+            store.Connection,
+            window.StartUtc(now ?? DateTimeOffset.Now));
         return new DashboardUsageSummary(
-            spend,
-            tokens,
-            sessions,
-            hasData,
-            hasData ? DashboardUsageOrigin.Local : DashboardUsageOrigin.Empty);
+            totals.CostUsd,
+            totals.TotalTokens,
+            totals.SessionCount,
+            totals.HasData,
+            totals.HasData ? DashboardUsageOrigin.Local : DashboardUsageOrigin.Empty,
+            window);
     }
 
     private static (string Path, string Passphrase, string Provenance) ResolveOrProvisionCredentialsUnlocked()

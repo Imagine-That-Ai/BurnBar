@@ -116,6 +116,38 @@ public readonly struct WatchdogResponse
         return Encoding.UTF8.GetBytes(json);
     }
 
+    /// <summary>Parses a bounded response without relying on substring matches.</summary>
+    public static WatchdogResponse Parse(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length is 0 or > 4 * 1024)
+        {
+            return new WatchdogResponse(ok: false, detail: "invalid_response");
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(payload.ToArray());
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("ok", out JsonElement okElement)
+                || okElement.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
+                || !root.TryGetProperty("detail", out JsonElement detailElement)
+                || detailElement.ValueKind != JsonValueKind.String)
+            {
+                return new WatchdogResponse(ok: false, detail: "invalid_response");
+            }
+
+            string detail = detailElement.GetString() ?? string.Empty;
+            return detail.Length is > 0 and <= 128
+                ? new WatchdogResponse(okElement.GetBoolean(), detail)
+                : new WatchdogResponse(ok: false, detail: "invalid_response");
+        }
+        catch (JsonException)
+        {
+            return new WatchdogResponse(ok: false, detail: "invalid_response");
+        }
+    }
+
     private static string Escape(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
 }
 

@@ -11,6 +11,7 @@ using OpenBurnBar.App.Interop;
 using OpenBurnBar.App.Presentation.Dashboard;
 using OpenBurnBar.App.Presentation.Flyout;
 using OpenBurnBar.App.Shell;
+using OpenBurnBar.App.Settings.Winui;
 using OpenBurnBar.App.Theme;
 using OpenBurnBar.App.UsageRuntime;
 using Windows.Graphics;
@@ -107,7 +108,9 @@ public sealed partial class FlyoutWindow : Window
             {
                 FreshnessLabel = "Encrypted storage needs attention. Open Data & Privacy settings.",
             }
-            : UsageRuntimePresentationMapper.ToFlyoutSnapshot(_usageRuntime.State);
+            : UsageRuntimePresentationMapper.ToFlyoutSnapshot(
+                _usageRuntime.State,
+                WindowsGeneralSettingsComposition.Load());
     }
 
     private void ApplySnapshot(FlyoutTraySnapshot snap)
@@ -171,19 +174,43 @@ public sealed partial class FlyoutWindow : Window
     {
         Text = text,
         FontSize = 11,
-        Opacity = 0.55,
+        Foreground = Res("PensieveColorMacosTextMutedBrush"),
     };
+
+    // Root-level token lookup (theme-independent dark-canonical tokens; the flyout is
+    // dark-first like the macOS popover). Falls back to Transparent if a key is missing.
+    private static Brush Res(string key) =>
+        Application.Current.Resources.TryGetValue(key, out object? value) && value is Brush brush
+            ? brush
+            : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
     private static Border BuildQuotaRow(DashboardProviderSidebarRow row)
     {
-        var bar = new Border
+        // macOS/Linux quota bar: ember→amber fill on a sunken slate track.
+        var fill = new Border
         {
-            Height = 4,
-            CornerRadius = new CornerRadius(2),
-            Background = new SolidColorBrush(Color.FromArgb(0x44, 0xFA, 0x6B, 0x06)),
+            Height = 6,
+            CornerRadius = new CornerRadius(3),
             HorizontalAlignment = HorizontalAlignment.Left,
             Width = 80 + Math.Min(120, row.TotalCostUsd),
-            Margin = new Thickness(0, 4, 0, 0),
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(1, 0),
+                GradientStops =
+                {
+                    new GradientStop { Color = Color.FromArgb(0xFF, 0xFA, 0x50, 0x53), Offset = 0 },
+                    new GradientStop { Color = Color.FromArgb(0xFF, 0xFF, 0xA8, 0x00), Offset = 1 },
+                },
+            },
+        };
+        var track = new Border
+        {
+            Height = 6,
+            CornerRadius = new CornerRadius(3),
+            Background = Res("PensieveGlassTintSunkenBrush"),
+            Margin = new Thickness(0, 5, 0, 0),
+            Child = fill,
         };
         var stack = new StackPanel { Spacing = 2 };
         stack.Children.Add(new TextBlock
@@ -191,18 +218,19 @@ public sealed partial class FlyoutWindow : Window
             Text = row.DisplayName,
             FontSize = 12,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = Res("PensieveColorMacosTextBrush"),
         });
         stack.Children.Add(new TextBlock
         {
             Text = $"{row.MetricLabel} · {row.SessionCount} sessions",
             FontSize = 11,
-            Opacity = 0.6,
+            Foreground = Res("PensieveColorMacosTextMutedBrush"),
         });
-        stack.Children.Add(bar);
+        stack.Children.Add(track);
         return new Border
         {
             Child = stack,
-            Padding = new Thickness(0, 2, 0, 2),
+            Padding = new Thickness(0, 3, 0, 3),
         };
     }
 
@@ -219,12 +247,13 @@ public sealed partial class FlyoutWindow : Window
             Width = 32,
             Height = 32,
             CornerRadius = new CornerRadius(16),
-            Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFA, 0x6B, 0x06)),
+            Background = Res("PensieveGlassSelectionFillBrush"),
             Child = new TextBlock
             {
                 Text = initial.ToString(),
                 FontSize = 13,
                 FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = Res("PensieveColorMacosEmberBrush"),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             },
@@ -232,17 +261,17 @@ public sealed partial class FlyoutWindow : Window
         Grid.SetColumn(disc, 0);
 
         var labels = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
-        labels.Children.Add(new TextBlock { Text = row.DisplayName, FontSize = 13, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        labels.Children.Add(new TextBlock { Text = $"{row.SessionCount} sessions", FontSize = 11, Opacity = 0.55 });
+        labels.Children.Add(new TextBlock { Text = row.DisplayName, FontSize = 13, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = Res("PensieveColorMacosTextBrush") });
+        labels.Children.Add(new TextBlock { Text = $"{row.SessionCount} sessions", FontSize = 11, Foreground = Res("PensieveColorMacosTextMutedBrush") });
         Grid.SetColumn(labels, 1);
 
         var metric = new TextBlock
         {
             Text = row.MetricLabel,
             FontSize = 12,
-            FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            FontFamily = BrandFonts.Mono,
             VerticalAlignment = VerticalAlignment.Center,
-            Foreground = new SolidColorBrush(Color.FromArgb(0xFF, 0xFA, 0x6B, 0x06)),
+            Foreground = Res("PensieveColorMacosEmberBrush"),
         };
         Grid.SetColumn(metric, 2);
 
@@ -253,11 +282,11 @@ public sealed partial class FlyoutWindow : Window
         return new Border
         {
             Child = grid,
-            Padding = new Thickness(8, 6, 8, 6),
+            Padding = new Thickness(10, 7, 10, 7),
             CornerRadius = new CornerRadius(10),
             BorderThickness = new Thickness(1),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
-            Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)),
+            BorderBrush = Res("PensieveGlassStrokeBaseBrush"),
+            Background = Res("PensieveGlassTintElevatedBrush"),
         };
     }
 
@@ -269,12 +298,13 @@ public sealed partial class FlyoutWindow : Window
             Text = card.Title,
             FontSize = 12,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = Res("PensieveColorMacosTextBrush"),
         });
         stack.Children.Add(new TextBlock
         {
             Text = card.Detail,
             FontSize = 11,
-            Opacity = 0.65,
+            Foreground = Res("PensieveColorMacosTextSecondaryBrush"),
             TextWrapping = TextWrapping.Wrap,
         });
         return new Border
@@ -282,9 +312,9 @@ public sealed partial class FlyoutWindow : Window
             Child = stack,
             Padding = new Thickness(10, 8, 10, 8),
             CornerRadius = new CornerRadius(10),
-            Background = new SolidColorBrush(Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF)),
+            Background = Res("PensieveGlassTintElevatedBrush"),
             BorderThickness = new Thickness(1),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x28, 0xFF, 0xFF, 0xFF)),
+            BorderBrush = Res("PensieveGlassStrokeBaseBrush"),
         };
     }
 
@@ -358,7 +388,9 @@ public sealed partial class FlyoutWindow : Window
         {
             if (!RuntimeDataMode.SampleModeEnabled)
             {
-                ApplySnapshot(UsageRuntimePresentationMapper.ToFlyoutSnapshot(args.Current));
+                ApplySnapshot(UsageRuntimePresentationMapper.ToFlyoutSnapshot(
+                    args.Current,
+                    WindowsGeneralSettingsComposition.Load()));
             }
         });
     }

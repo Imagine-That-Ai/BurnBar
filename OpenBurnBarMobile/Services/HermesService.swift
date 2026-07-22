@@ -1123,7 +1123,10 @@ final class HermesService {
             sessionID: "cli-model-catalog-\(runtime.rawValue)",
             coordinator: self
         )
-        let data = try await relayTransport.sendUnary(payload, timeout: 20)
+        let data = try await relayTransport.sendUnary(
+            payload,
+            timeout: remoteRelayControlPlaneTimeout
+        )
         return try JSONDecoder().decode(CLIRuntimeModelCatalogResponse.self, from: data)
     }
 

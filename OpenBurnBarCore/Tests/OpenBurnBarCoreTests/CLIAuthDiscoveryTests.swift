@@ -1,5 +1,10 @@
 import XCTest
 @testable import OpenBurnBarCore
+// P-15b: CLILaunchAdapter's internal test seams (environmentProvider/homeDirectoryProvider)
+// moved to OpenBurnBarKernel; @testable reaches those internals (public CLILaunchAdapter
+// members flow via the @_exported umbrella).
+@testable import OpenBurnBarKernel
+@testable import OpenBurnBarLaunchServices
 
 final class CLIAuthDiscoveryTests: XCTestCase {
     override func tearDown() {

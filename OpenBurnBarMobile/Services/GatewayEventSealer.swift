@@ -189,9 +189,9 @@ enum GatewayEventSealer {
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: plaintext,
             keyData: key,
-            aad: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
+            aad: try HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
         )
-        let keyAAD = HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
+        let keyAAD = try HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
         var relayEnvelope: [String: Any] = [
             "payloadCiphertext": payloadCiphertext,
             "senderPublicKey": keypair.relayPublicKeyBase64
@@ -331,7 +331,7 @@ enum GatewayEventSealer {
         let envelope = try HermesRatchetCrypto.encrypt(
             plaintext: plaintext,
             state: &state,
-            associatedData: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
+            associatedData: try HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
         )
         try HermesGatewayRatchetSessionStore.save(state)
         try HermesGatewayRatchetSessionStore.saveCurrentChatSessionID(state.sessionID, uid: uid, clientId: targetClient.id)

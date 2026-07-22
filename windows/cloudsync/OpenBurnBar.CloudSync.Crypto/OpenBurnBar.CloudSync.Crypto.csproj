@@ -18,7 +18,7 @@
 
     Parity source (macOS, canonical):
       OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift
-      OpenBurnBarCore/Sources/OpenBurnBarKernel/Platform/PlatformSupport.swift  (PlatformCrypto)
+      OpenBurnBarCore/Sources/OpenBurnBarPlatformSupport/PlatformSupport.swift  (PlatformCrypto)
     Browser mirror:
       apps/console/lib/escrow.ts
     KAT vector (Apple CryptoKit origin, self-verified on emit):
@@ -54,6 +54,11 @@
 
   <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../app/OpenBurnBar.App.Configuration/OpenBurnBar.App.Configuration.csproj" />
+    <ProjectReference Include="../../../crates/openburnbar-domain-core/bindings/csharp/OpenBurnBarDomainCore.Ffi/OpenBurnBarDomainCore.Ffi.csproj" />
   </ItemGroup>
 
   <ItemGroup>

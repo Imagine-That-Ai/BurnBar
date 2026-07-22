@@ -1,0 +1,30 @@
+[package]
+name = "openburnbar-domain-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "UniFFI bindings for OpenBurnBar domain logic"
+
+[lib]
+name = "openburnbar_domain_ffi"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+openburnbar-domain-core = { path = "../domain-core", version = "0.1.0" }
+thiserror = "1"
+uniffi = { version = "=0.28.3", features = ["cli"] }
+zeroize = "1"
+
+[build-dependencies]
+cc = "=1.2.67"
+serde_json = "=1.0.150"
+sha2 = "=0.10.9"
+uniffi = { version = "=0.28.3", features = ["build"] }
+
+[dev-dependencies]
+proptest = { version = "1.7", default-features = false, features = ["std"] }
+serde_json = "1"
+
+[lints]
+workspace = true

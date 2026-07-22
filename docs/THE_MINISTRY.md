@@ -2,6 +2,10 @@
 
 The Ministry is the local MCP orchestration layer for fan-out droid workers. It lives in `tools/openburnbar-mcp` and exposes `ministry_*` tools from the `openburnbar-local` server. It does not modify the Swift router, Elder Wand/fusion ids, Firestore, or crypto paths.
 
+The dispatch-to-claim authority rules, persistence map, and explicit separation
+from Elder fusion are documented in
+[Elder Wand and Pareto Wand contracts](ELDER_AND_PARETO_WAND_CONTRACTS.md).
+
 ## Tools
 
 | Tool | Purpose |

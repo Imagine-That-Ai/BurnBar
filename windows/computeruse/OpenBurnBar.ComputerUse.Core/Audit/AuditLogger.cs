@@ -12,6 +12,8 @@
 
 using System;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
 using OpenBurnBar.ComputerUse.Core.Crypto;
 using OpenBurnBar.ComputerUse.Core.Gate;
 
@@ -20,6 +22,9 @@ namespace OpenBurnBar.ComputerUse.Core.Audit;
 /// <summary>Stateful, single-threaded audit-chain writer. Wrap calls in a serializer.</summary>
 public sealed class ComputerUseAuditLogger
 {
+    private const long MaximumManifestBytes = 256 * 1024;
+    private const long MaximumChainBytes = 32 * 1024 * 1024;
+    private const long MaximumHeadBytes = 64 * 1024;
     private readonly AuditHasher _hasher;
 
     public ComputerUseAuditLogger(
@@ -89,6 +94,62 @@ public sealed class ComputerUseAuditLogger
 
         HeadHashHex = _hasher.Hash(encoded);
         WriteHeadMarker();
+    }
+
+    /// <summary>
+    /// Restores an existing session only after the manifest, complete chain, and
+    /// terminal head marker agree. Any missing, redirected, or tampered state
+    /// fails closed before a new entry can be appended.
+    /// </summary>
+    public void ResumeExistingSession()
+    {
+        EnsureNotReparsePoint(new DirectoryInfo(Directory));
+        string manifestPath = Path.Combine(Directory, "manifest.json");
+        string chainPath = Path.Combine(Directory, "chain.jsonl");
+        string headPath = Path.Combine(Directory, "head.json");
+        EnsureNotReparsePoint(new FileInfo(manifestPath));
+        EnsureNotReparsePoint(new FileInfo(headPath));
+        if (File.Exists(chainPath))
+        {
+            EnsureNotReparsePoint(new FileInfo(chainPath));
+        }
+
+        byte[] manifest = ReadBounded(manifestPath, MaximumManifestBytes);
+        byte[] chain = File.Exists(chainPath)
+            ? ReadBounded(chainPath, MaximumChainBytes)
+            : Array.Empty<byte>();
+        using JsonDocument headDocument = JsonDocument.Parse(ReadBounded(headPath, MaximumHeadBytes));
+        JsonElement head = headDocument.RootElement;
+        if (head.ValueKind != JsonValueKind.Object
+            || !head.TryGetProperty("sessionId", out JsonElement sessionElement)
+            || sessionElement.ValueKind != JsonValueKind.String
+            || !string.Equals(sessionElement.GetString(), SessionId, StringComparison.Ordinal)
+            || !head.TryGetProperty("index", out JsonElement indexElement)
+            || indexElement.ValueKind != JsonValueKind.Number
+            || !indexElement.TryGetInt32(out int index)
+            || index < 0
+            || !head.TryGetProperty("hashHex", out JsonElement hashElement)
+            || hashElement.ValueKind != JsonValueKind.String
+            || hashElement.GetString() is not string expectedHead
+            || expectedHead.Length != 64
+            || !expectedHead.All(Uri.IsHexDigit))
+        {
+            throw new AuditLoggerException(AuditLoggerError.ChainHeadCorrupted);
+        }
+
+        string manifestHash = _hasher.Hash(manifest);
+        AuditChainValidationResult result = new ComputerUseAuditChain(_hasher).Validate(
+            chain,
+            manifestHash,
+            expectedHead,
+            requireExpectedHead: true);
+        if (!result.IsValid || result.EntryCount != index)
+        {
+            throw new AuditLoggerException(AuditLoggerError.ChainHeadCorrupted);
+        }
+
+        HeadHashHex = expectedHead.ToLowerInvariant();
+        NextEntryIndex = index;
     }
 
     /// <summary>Appends an entry and returns the resulting head hash.</summary>
@@ -177,5 +238,32 @@ public sealed class ComputerUseAuditLogger
         }
 
         return true;
+    }
+
+    private static void EnsureNotReparsePoint(FileSystemInfo info)
+    {
+        if (!info.Exists || (info.Attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new AuditLoggerException(AuditLoggerError.ChainHeadCorrupted);
+        }
+    }
+
+    private static byte[] ReadBounded(string path, long maximumBytes)
+    {
+        var info = new FileInfo(path);
+        EnsureNotReparsePoint(info);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        long length = stream.Length;
+        if (length < 0 || length > maximumBytes || length > int.MaxValue)
+        {
+            throw new AuditLoggerException(AuditLoggerError.ChainHeadCorrupted);
+        }
+        var bytes = new byte[(int)length];
+        stream.ReadExactly(bytes);
+        if (stream.ReadByte() != -1)
+        {
+            throw new AuditLoggerException(AuditLoggerError.ChainHeadCorrupted);
+        }
+        return bytes;
     }
 }

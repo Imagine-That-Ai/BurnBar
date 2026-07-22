@@ -36,7 +36,7 @@ What *this* document claims at high confidence:
 
 | Finish line | Name | Includes | Excludes (documented) |
 |---|---|---|---|
-| **F1 — Ship Peer (G5 default)** | Local peer desktop under accepted WPDs | Log ingest, quota, chat via in-app backends, CU desktop loop, pet, cloud sync, DCC, tray, signed install | WPD-0006 DEFER rows, WPD-0003 lexical-only until revived, Tier-C Apple-only |
+| **F1 — Ship Peer (G5 default)** | Local peer desktop under accepted WPDs | Log ingest, quota, chat via in-app backends, CU desktop loop, pet, cloud sync, DCC, tray, signed install | Remaining WPD-0006 DEFER rows, physical parser performance, Tier-C Apple-only |
 | **F2 — True 1:1** | Mac feature completeness | F1 **plus** local HTTP gateway + model proxy live, local mission execution, headless runs, Pensieve watcher, project-code static parser, browser CU, Elder Wand fusion orchestration | Only Tier-C structural N/A |
 
 **Gate language rule:** Never say “100% parity” without **F1** or **F2**. Ledger Real on F1 scope ≠ F2 complete.
@@ -121,17 +121,25 @@ What *this* document claims at high confidence:
 | **IA-2** | Database **system** mode first (schema/tables/FTS over SQLCipher seam) | Functional peer of Mac System mode |
 | **IA-3** | Database story/atlas | Visual/product depth |
 | **IA-4** | Projects list + open path from usage DB / folder paths | List-level peer |
-| **IA-5** | Projects memory + static parse depth | Requires WPD-0003 revive or explicit lexical-only badge |
+| **IA-5** | Projects memory + static parse depth | Closed by WPD-0003 revival, native x64/ARM64 parser evidence, and the encrypted source-free semantic store |
 
-**Do not** claim Projects Real at Mac depth while WPD-0003 remains deferred without UI disclosure.
+**Do not** claim physical parser performance from hosted architecture evidence;
+WPD-0003 is revived for implementation, while physical performance remains a
+release-certification gate.
 
 ---
 
-### L6 — Mission Control “surface Real” ≠ local execution
+### L6 — Mission Control “surface Real” ≠ local execution (closed for F2)
 
-**Loophole:** Mac can schedule/execute missions via daemon DAG; Windows F1 is **Firestore dispatch + console client** (WPD-0006 rows 13 SUB-DONE, 14 DEFER). Calling that “full Mission Control parity” is false.
+**Original loophole:** Mac can schedule/execute missions via daemon DAG while
+Windows F1 initially shipped only **Firestore dispatch + console client**.
+Calling that “full Mission Control parity” was false.
 
-**Fix:** Ledger/docs language: **Mission Control (dispatch client)**. Local execution = F2 / revisit trigger 1. Console UI can still be Real as a **dispatch console**.
+**Resolution:** WPD-0009 fired the F2 trigger and WPD-0006 row 14 is now
+`SUB-DONE`: the authenticated companion plane production-composes deterministic
+local DAG planning/execution, policy, rate limiting, metadata-only journaling,
+and resume/recovery. F1 remains accurately described as a dispatch client;
+local execution is the separately evidenced F2 capability.
 
 ---
 
@@ -186,9 +194,13 @@ No composite “% done” in ship claims.
 
 ### L11 — Elder Wand surface vs orchestration
 
-**Loophole:** Surface Real without fusion orchestrator (WPD-0006 row 32 DEFER) overclaims analysis product.
+**Loophole (resolved F2):** Surface Real without a fusion orchestrator would
+overclaim the analysis product. WPD-0006 row 32 is now SUB-DONE through the
+production gateway and companion pipeline.
 
-**Fix:** F1 = preset + judge config + persistence; F2 = multi-model fusion orchestration. UI copy must not promise fusion runs that cannot execute.
+**Fix:** F1 remains preset + judge config + persistence; F2 now composes the
+parallel panel, judge, synthesis, bounded web tools, and evidence in
+`docs/windows-port/evidence/f2/elder-wand-fusion.md`.
 
 ---
 
@@ -224,7 +236,17 @@ Windows is a **local log-reading peer** like Mac for:
 
 ### 2.2 F2 True 1:1
 
-F1 + revive WPD-0006 DEFER rows that Mac users treat as core (gateway + model proxy + headless/local mission execution + browser CU + project-code parser + Elder Wand fusion), via Linux-boundary Swift Service and/or C# substitutes, with revisit triggers fired intentionally—not by accident.
+F1 + revive WPD-0006 DEFER rows that Mac users treat as core. Gateway/model
+proxy, headless/local mission execution, Browser CU, the project-code parser,
+full Elder Wand fusion, and the connector/tooling plane are now promoted through
+C# substitutes and native Windows parser evidence.
+General Pensieve watching, Telegram, and gateway token-bucket limiting are
+closed by `docs/windows-port/evidence/f2/pensieve-knowledge-watcher.md`,
+`docs/windows-port/evidence/f2/telegram-bridge.md`, and
+`docs/windows-port/evidence/f2/gateway-rate-limiter.md`. Elder Wand is closed by
+`docs/windows-port/evidence/f2/elder-wand-fusion.md`.
+The connector plane is closed by
+`docs/windows-port/evidence/f2/connector-tooling-plane.md`.
 
 ---
 

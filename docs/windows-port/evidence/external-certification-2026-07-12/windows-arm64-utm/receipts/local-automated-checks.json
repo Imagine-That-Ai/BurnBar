@@ -1,0 +1,83 @@
+﻿{
+    "schema":  "openburnbar.windows.release-certification-receipt.v1",
+    "status":  "PASS",
+    "gate":  "local-automated-checks",
+    "target":  "Windows solution build and test",
+    "source":  {
+                   "commitSha":  "7c362298230e14bfd51dcdcbaf9476cd86cefa66",
+                   "dirtyTree":  false
+               },
+    "artifact":  {
+                     "name":  "OpenBurnBar-1.0.29-arm64.msix",
+                     "architecture":  "ARM64",
+                     "availability":  "recorded",
+                     "sha256":  "d8cd1423827e54b777a85cf58962b5c18ae6ae1118676b8255749894815c597e",
+                     "workflowRunId":  "29177583506",
+                     "workflowRunUrl":  "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29177583506",
+                     "signature":  {
+                                       "result":  "verified",
+                                       "identity":  "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+                                   }
+                 },
+    "device":  {
+                   "kind":  "windows-vm-or-hosted-runner",
+                   "manufacturer":  "QEMU",
+                   "model":  "QEMU Virtual Machine",
+                   "assetTag":  {
+
+                                },
+                   "architecture":  "ARM64",
+                   "osArchitecture":  "ARM 64-bit Processor",
+                   "osBuild":  "Microsoft Windows 11 Pro 10.0.26200 build 26200",
+                   "tpm":  "unavailable",
+                   "cpu":  "virt-10.0",
+                   "ramBytes":  8580235264,
+                   "gpu":  [
+                               "Red Hat VirtIO GPU DOD controller"
+                           ],
+                   "storage":  [
+                                   {
+                                       "model":  "QEMU NVMe Ctrl",
+                                       "mediaType":  "Fixed hard disk media",
+                                       "sizeBytes":  214745610240
+                                   }
+                               ],
+                   "processorArchitecture":  "AMD64",
+                   "capturedAtUtc":  "2026-07-12T08:16:17.5705241+00:00"
+               },
+    "protocol":  {
+                     "commands":  [
+                                      "dotnet restore windows\\OpenBurnBar.sln -p:Platform=ARM64",
+                                      "dotnet build windows\\OpenBurnBar.sln -c Release --no-restore -m:1 -p:Platform=ARM64",
+                                      "dotnet test windows\\OpenBurnBar.sln -c Release --no-build --nologo -m:1 -p:Platform=ARM64 --logger trx;LogFileName=physical-certification.trx"
+                                  ],
+                     "manualSteps":  [
+                                         "Automated proof is supporting evidence only; it is not physical certification."
+                                     ]
+                 },
+    "time":  {
+                 "startedAtUtc":  "2026-07-12T08:16:09.5872990+00:00",
+                 "endedAtUtc":  "2026-07-12T08:26:53.4674300+00:00",
+                 "durationSeconds":  644
+             },
+    "expected":  "Restore, Release build, and full solution test exit 0.",
+    "observed":  "All automated Windows solution steps exited 0.",
+    "exitCode":  0,
+    "evidence":  {
+                     "files":  [
+                                   {
+                                       "path":  "logs/dotnet-restore.log",
+                                       "sha256":  "d5223b9d464d5ad089181e04d3c0a70213e875c5e1305d3cc3c570682e034a70"
+                                   },
+                                   {
+                                       "path":  "logs/dotnet-build.log",
+                                       "sha256":  "6fb1aacd3bc462ccbed4bd3c4bc0613489dbc6dc8625ecaca116f1eaff84051e"
+                                   },
+                                   {
+                                       "path":  "logs/dotnet-test.log",
+                                       "sha256":  "2941f143a85bb17c751433e622b3d158f82f4f414fa7b9ee92a79a2a5b0422db"
+                                   }
+                               ]
+                 },
+    "blocker":  null
+}

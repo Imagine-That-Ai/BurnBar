@@ -25,12 +25,8 @@
                            TextWrapping="Wrap" />
             </StackPanel>
 
-            <Border
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                CornerRadius="8"
-                Padding="12"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1">
+            <Border Style="{StaticResource AuroraGlassCardStyle}"
+                    Padding="12">
                 <StackPanel Spacing="8">
                     <TextBlock Text="Mac database (optional)" FontWeight="SemiBold" FontSize="13" />
                     <TextBlock

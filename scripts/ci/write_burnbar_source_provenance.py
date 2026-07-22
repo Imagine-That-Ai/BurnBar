@@ -34,7 +34,7 @@ REQUIRED_SOURCE_PATHS = [
     "docs/legal/agpl-release-review.evidence.template.json",
     "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md",
     "OpenBurnBarCore/Package.swift",
-    "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
     "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SignalEnvelopeAAD.swift",
     "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalPreKeyGenerator.swift",
     "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift",

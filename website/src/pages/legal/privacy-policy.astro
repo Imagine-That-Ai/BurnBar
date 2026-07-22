@@ -1,7 +1,7 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { SITE } from "@data/site";
-const updated = "July 11, 2026";
+const updated = "July 17, 2026";
 ---
 
 <BaseLayout
@@ -25,8 +25,8 @@ const updated = "July 11, 2026";
       <p>
         OpenBurnBar is local-first by default. With no account and no opt-ins, no telemetry,
         analytics, crash reports, or usage data are transmitted from your device. Optional features
-        — Firebase cloud sync, iCloud session-log mirroring, BurnBar Cloud, BurnBar Cloud Pro,
-        Sentry diagnostics — each require explicit activation.
+        — Firebase cloud sync, Apple-platform iCloud session-log mirroring, BurnBar Cloud, BurnBar
+        Cloud Pro, Sentry diagnostics — each require explicit activation.
       </p>
 
       <h2>2. Information we collect</h2>
@@ -41,7 +41,7 @@ const updated = "July 11, 2026";
       <p>
         <strong>If you have an active BurnBar Cloud or BurnBar Cloud Pro subscription</strong>
         and enable the matching capability: chat message bodies, conversation metadata, session-log manifests
-        and chunks, and Cloud Pro phone-to-Mac relay traffic (encrypted end-to-end from OpenBurnBar's
+        and chunks, and Cloud Pro cross-device relay traffic (encrypted end-to-end from OpenBurnBar's
         perspective).
       </p>
       <p>
@@ -61,7 +61,7 @@ const updated = "July 11, 2026";
         <strong>If you enable diagnostics:</strong> anonymized crash reports may be sent to Sentry.
       </p>
 
-      <h2>3. Information we never collect</h2>
+      <h2>3. Information we never receive by default</h2>
       <ul>
         <li>Your API keys or credentials for local-only usage tracking.</li>
         <li>
@@ -72,10 +72,15 @@ const updated = "July 11, 2026";
           Personal identifying information beyond what your Apple or Google account provides for
           sign-in.
         </li>
-        <li>Any data from other applications.</li>
         <li>
-          Payment card numbers. Billing is handled entirely by Apple (App Store), Google Play, or
-          Stripe, depending on where you subscribe — we never receive card details.
+          Data from unrelated applications. Local usage tracking reads only supported coding-agent
+          logs that you make available on the device; those logs are not transmitted unless you
+          explicitly enable a matching backup or sync feature.
+        </li>
+        <li>
+          Payment card numbers. Billing is handled entirely by Apple App Store, Google Play, or
+          Stripe, depending on where you subscribe — we never receive card details. The Windows
+          Store package is free.
         </li>
       </ul>
 
@@ -101,6 +106,10 @@ const updated = "July 11, 2026";
           <strong>Google · Play Billing:</strong> subscription billing for purchases made on Android.
         </li>
         <li>
+          <strong>Microsoft · Microsoft Store:</strong> Windows package signing, acquisition, and updates.
+          The Store package is free and does not use Microsoft commerce for subscriptions.
+        </li>
+        <li>
           <strong>Stripe:</strong> subscription billing and checkout for purchases made on the web. Stripe
           receives your payment details directly; we receive only the subscription status.
         </li>
@@ -124,7 +133,8 @@ const updated = "July 11, 2026";
         <li>
           Delete all local data by removing the app and its support files at <code
             >~/Library/Application Support/OpenBurnBar/</code
-          >.
+          > on macOS or <code>%LOCALAPPDATA%\OpenBurnBar\</code> on Windows. Portable Windows builds keep
+          their data in the app folder's <code>Data\</code> directory.
         </li>
         <li>
           Delete cloud data by signing out and selecting <em>Delete my data</em> in <em
@@ -142,11 +152,12 @@ const updated = "July 11, 2026";
 
       <h2>8. Security</h2>
       <p>
-        Provider keys live in the macOS Keychain with device-local accessibility. Hosted
-        credentials, when used, live in Google Cloud Secret Manager. Firestore is gated by Firebase
-        Auth, owner-scoped rules, App Check, and a secret-field-name denylist. App Store receipts
-        are JWS-verified against pinned Apple root CAs. See the <a href="/security"
-          >security model page</a
+        Provider keys live in the macOS Keychain on Apple platforms and DPAPI-protected Windows
+        storage on Windows. Hosted credentials, when used, live in Google Cloud Secret Manager.
+        Firestore is gated by Firebase Auth, owner-scoped rules, App Check, and a secret-field-name
+        denylist. Apple App Store receipts are JWS-verified against pinned Apple root CAs; Microsoft
+        Store owns signing and updates for Store-distributed Windows packages. See the <a
+          href="/security">security model page</a
         > for the full threat model.
       </p>
 

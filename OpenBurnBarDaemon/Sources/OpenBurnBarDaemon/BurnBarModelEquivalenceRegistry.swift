@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarEngine
 
 public enum BurnBarModelEquivalenceTier: String, Codable, Hashable, Sendable {
     case exactCanonical = "exact_canonical"

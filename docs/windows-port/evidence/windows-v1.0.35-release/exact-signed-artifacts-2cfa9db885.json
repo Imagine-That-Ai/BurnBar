@@ -1,0 +1,199 @@
+{
+  "schema": "openburnbar.windows.exact-signed-release-evidence.v1",
+  "recordedAt": "2026-07-17T06:41:38Z",
+  "status": "SIGNED_EXACT_CANDIDATE_VERIFIED_NOT_PHYSICAL_CERTIFICATION",
+  "source": {
+    "pullRequest": 1832,
+    "mergeCommitSha": "2cfa9db885dafef7f1f451a9e05a8ee775351d44",
+    "protectedTag": "windows-v1.0.35",
+    "workflow": "OpenBurnBar Windows Release",
+    "workflowFile": ".github/workflows/openburnbar-release-windows.yml",
+    "workflowRunId": 29557726093,
+    "workflowRunAttempt": 1,
+    "workflowRunUrl": "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29557726093",
+    "event": "push",
+    "ref": "refs/tags/windows-v1.0.35",
+    "version": "1.0.35",
+    "allowUnsigned": false,
+    "conclusion": "success"
+  },
+  "workflowArtifacts": [
+    {
+      "name": "windows-release-v1.0.35",
+      "artifactId": 8398879348,
+      "apiDigest": "sha256:8d6dba18dbce4cc153d21482447d19f824c12beaf1a9af6c0f29af175b44b702",
+      "sizeBytes": 1348308538,
+      "expiresAt": "2026-07-24T06:25:39Z"
+    },
+    {
+      "name": "windows-provenance-v1.0.35",
+      "artifactId": 8398933170,
+      "apiDigest": "sha256:c4747bd563da998fa1b45660465828a18da3db4e0a4b132d82494d064a1fd9a3",
+      "sizeBytes": 745236,
+      "expiresAt": "2026-07-24T06:29:32Z"
+    },
+    {
+      "name": "openburnbar-native-engine-win-x64",
+      "artifactId": 8398480325,
+      "apiDigest": "sha256:0e5d39d356729f7d79c9b5eda712cc2efa38726e7bd46f13b33e0f0888b170a2",
+      "sizeBytes": 42477198,
+      "expiresAt": "2026-07-24T06:02:16Z"
+    },
+    {
+      "name": "openburnbar-native-engine-win-arm64",
+      "artifactId": 8398404624,
+      "apiDigest": "sha256:f6b41956aa90126fb76f1dc22fad79abd8869785411b3540d4b47260bd3da05d",
+      "sizeBytes": 42101630,
+      "expiresAt": "2026-07-24T05:57:50Z"
+    }
+  ],
+  "distributionObjects": [
+    {
+      "fileName": "OpenBurnBar-1.0.35-x64.msix",
+      "channel": "direct-download",
+      "architecture": "x64",
+      "sizeBytes": 233281064,
+      "sha256": "1d68c24f044a0247d49a5f2e4030a4d46844ce49c34016d3605f129bcd9a43e1"
+    },
+    {
+      "fileName": "OpenBurnBar-1.0.35-arm64.msix",
+      "channel": "direct-download",
+      "architecture": "ARM64",
+      "sizeBytes": 227562051,
+      "sha256": "c3ef5b12c06ede819965f301357ac8d84ef22c4a71631528d353092a425f11bf"
+    },
+    {
+      "fileName": "OpenBurnBar-1.0.35-win-x64.zip",
+      "channel": "direct-download",
+      "architecture": "x64",
+      "sizeBytes": 222331525,
+      "sha256": "bd851461b55da12a1b4d5470d26ccb5e8e6f2db7ea7e3a9a352b9ea7d47bf14e"
+    },
+    {
+      "fileName": "OpenBurnBar-1.0.35-win-arm64.zip",
+      "channel": "direct-download",
+      "architecture": "ARM64",
+      "sizeBytes": 216004903,
+      "sha256": "59ddf9ccc07f9c9535d1a49d6d9e824fe952be6d469965a3ca71906665bfc3c7"
+    },
+    {
+      "fileName": "OpenBurnBar-1.0.35-store-x64.msix",
+      "channel": "microsoft-store",
+      "architecture": "x64",
+      "sizeBytes": 233252966,
+      "sha256": "a5fe60b3b0816f4b59482031e9e139725741665db0e2fd2150054a0f3f804d64"
+    },
+    {
+      "fileName": "OpenBurnBar-1.0.35-store-arm64.msix",
+      "channel": "microsoft-store",
+      "architecture": "ARM64",
+      "sizeBytes": 227534083,
+      "sha256": "eafc14b7a9d6b408d7ce1cf9f82228228d878c2ae416670d70de94fe797ece2c"
+    }
+  ],
+  "authenticode": {
+    "workflowPortableBinaryVerification": "passed",
+    "workflowDirectMsixVerification": "passed",
+    "rfc3161TimestampRequirement": "passed",
+    "signerSubject": "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US",
+    "signedArtifactManifests": [
+      {
+        "fileName": "signed-artifact-x64.json",
+        "sha256": "ff8833b580f1cb95741d29ca3df98df286b1ed3975ca6d14217cce613d272d6f",
+        "signatureResult": "verified"
+      },
+      {
+        "fileName": "signed-artifact-arm64.json",
+        "sha256": "91a84044123d3bb0ac6fc24f5ef0e3ce6690e324e97514481ba802aa024cfa2d",
+        "signatureResult": "verified"
+      }
+    ]
+  },
+  "nativeLayouts": {
+    "portableX64": "passed",
+    "portableArm64": "passed",
+    "directMsixX64": "passed",
+    "directMsixArm64": "passed",
+    "storeMsixX64": "resource-bundles-present",
+    "storeMsixArm64": "resource-bundles-present",
+    "requiredResourceBundles": [
+      "OpenBurnBarCore_OpenBurnBarCore.resources",
+      "OpenBurnBarCore_OpenBurnBarKernel.resources"
+    ]
+  },
+  "storePackaging": {
+    "productId": "9PKMSDP99CJ6",
+    "packageIdentityName": "ImagineThatAiLLC.BurnBar",
+    "publisher": "CN=5AE4835A-8FC9-48CF-9453-81F465AD2216",
+    "submissionState": "unsigned",
+    "finalSigner": "Microsoft Store",
+    "submissionPerformed": false
+  },
+  "signedLifecycle": {
+    "receipt": "signed-x64-msix-lifecycle.json",
+    "receiptSha256": "a1aeab5220695606483e45a9420cef0bf959175f005685ccfa97236087709501",
+    "schema": "openburnbar.windows.signed-msix-lifecycle.v2",
+    "status": "passed",
+    "package": "OpenBurnBar-1.0.35-x64.msix",
+    "packageSha256": "1d68c24f044a0247d49a5f2e4030a4d46844ce49c34016d3605f129bcd9a43e1",
+    "expectedArchitecture": "X64",
+    "holdSeconds": 20,
+    "cleanInstallSustainedLaunch": "passed",
+    "uninstall": "passed",
+    "reinstallSustainedLaunch": "passed",
+    "crashEventCount": 0
+  },
+  "updateFeed": {
+    "fileName": "windows-update-feed-v1.0.35.json",
+    "sha256": "970e2685c176a57088478d05a9bc3da1ab7a65109d60de30f64ef3a98315d52c",
+    "entryCount": 2,
+    "architectures": [
+      "win-x64",
+      "win-arm64"
+    ],
+    "pinnedEd25519Verification": "passed",
+    "downloadedObjectBinding": "passed"
+  },
+  "supplyChain": {
+    "sbom": {
+      "fileName": "sbom-windows-v1.0.35.spdx.json",
+      "sha256": "426657aca140f3d3c2a9d992392dd2171887d61c341889240c5151ff399a0368",
+      "spdxVersion": "SPDX-2.3",
+      "packageCount": 925,
+      "relationshipCount": 7051
+    },
+    "openVex": {
+      "fileName": "openburnbar-windows-v1.0.35.vex.json",
+      "sha256": "69285226cc1e9671d169641a4b5aa1f2d555983fd6b4da1736455915cb7e5414",
+      "context": "https://openvex.dev/ns/v0.2.0",
+      "statementCount": 1
+    },
+    "sigstore": {
+      "attestationCount": 18,
+      "verification": "passed",
+      "predicateObjectBindings": 18,
+      "oidcIssuer": "https://token.actions.githubusercontent.com",
+      "certificateIdentity": "https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/openburnbar-release-windows.yml@refs/tags/windows-v1.0.35",
+      "workflowRepository": "Imagine-That-Ai/BurnBar",
+      "workflowRef": "refs/tags/windows-v1.0.35",
+      "workflowSha": "2cfa9db885dafef7f1f451a9e05a8ee775351d44",
+      "workflowTrigger": "push"
+    }
+  },
+  "independentVerification": {
+    "releaseArtifactApiDigest": "passed",
+    "provenanceArtifactApiDigest": "passed",
+    "releaseChecksums": "passed",
+    "portableNativeLayouts": "passed",
+    "directMsixNativeLayouts": "passed",
+    "storeIdentityAndUnsignedState": "passed",
+    "updateFeedSignatureAndObjects": "passed",
+    "sigstoreBundles": "passed"
+  },
+  "boundaries": [
+    "This receipt proves exact-candidate build, signing, package integrity, hosted x64 lifecycle, update-feed authentication, native-engine layout, Store package identity, and supply-chain provenance only.",
+    "Physical x64 performance, physical ARM64, manual accessibility/display, live staging cloud, media/Computer Use safety, and controlled Store/update lifecycle gates require separate fresh receipts.",
+    "Physical ARM64 remains an explicit beta limitation until qualifying hardware is available.",
+    "No Store submission, public update-feed publication, production change, or broad rollout occurred."
+  ]
+}

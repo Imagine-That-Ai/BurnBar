@@ -284,7 +284,7 @@ struct MobileSubstrateCard: View {
 /// screen — so tapping a card (which writes the shared `substrateKey`) swaps the
 /// material here instantly, no navigation required.
 struct SubstrateLivePreviewStrip: View {
-    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
     @AppStorage(MobileBackdropKernel.storageKey) private var mobileBackdropKernel: String = MobileBackdropKernel.defaultKernel.rawValue
     @Environment(\.colorScheme) private var colorScheme
     @State private var pulse = false
@@ -296,7 +296,7 @@ struct SubstrateLivePreviewStrip: View {
     /// that doesn't belong to the active kernel's family resolves to that
     /// family's Plain), so the caption always names what is on screen.
     private var resolved: SubstrateDescriptor {
-        SubstrateCatalog.resolved(forKernel: mobileBackdropKernel, selectedID: substrateID)
+        OpenBurnBarUI.SubstrateCatalog.resolved(forKernel: mobileBackdropKernel, selectedID: substrateID)
     }
 
     var body: some View {

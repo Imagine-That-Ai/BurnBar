@@ -653,26 +653,6 @@ export interface LinuxShellBridge {
     source?: ComputerUsePanicSource;
   }): Promise<ComputerUsePanicHaltResult>;
   integrationsStatus(): Promise<IntegrationsStatus>;
-  /** Wire: approval.respond */
-  toolApprovalRespond?(
-    approvalId: string,
-    decision: 'approve' | 'reject' | 'cancel',
-    note?: string
-  ): Promise<void>;
-  /**
-   * Wire: approve → daemon.memory.remember, reject → daemon.memory.forget,
-   * audit → daemon.memory.audit_trail.
-   */
-  memorySetStatus?(
-    action: 'approve' | 'reject' | 'audit' | 'remember' | 'forget',
-    payload: Record<string, unknown>
-  ): Promise<unknown>;
-  computerUseSessionStart?(params: Record<string, unknown>): Promise<unknown>;
-  computerUseInvoke?(params: Record<string, unknown>): Promise<unknown>;
-  computerUseApprovalPending?(params?: Record<string, unknown>): Promise<unknown>;
-  computerUseApprovalRespond?(params: Record<string, unknown>): Promise<unknown>;
-  computerUsePanicHalt?(params?: Record<string, unknown>): Promise<unknown>;
-  computerUseAuditExport?(params?: Record<string, unknown>): Promise<unknown>;
 }
 
 // ──────────────────── Raw-daemon → typed-shape mappers ────────────────────
@@ -996,7 +976,7 @@ function buildMix(
   }
   if (grand === 0) return [];
   return [...totals.entries()]
-    .map(([id, t], i) => ({
+    .map(([id, t]) => ({
       id,
       label: id.charAt(0).toUpperCase() + id.slice(1),
       pct: Math.round((t / grand) * 100)
@@ -1174,11 +1154,11 @@ function mapMemoryBoundaries(raw: RawJsonValue): MemoryBoundary[] {
 }
 
 function rpcReportResult(raw: RawJsonValue): RawJsonValue {
-  return Boolean(pick(raw, 'ok')) ? pick(raw, 'result') : undefined;
+  return pick(raw, 'ok') ? pick(raw, 'result') : undefined;
 }
 
 function rpcReportError(raw: RawJsonValue): string | undefined {
-  return Boolean(pick(raw, 'ok')) ? undefined : str(pick(raw, 'error')) || 'RPC failed';
+  return pick(raw, 'ok') ? undefined : str(pick(raw, 'error')) || 'RPC failed';
 }
 
 function mapMemoryReviewInbox(raw: RawJsonValue): MemoryReviewInbox {
@@ -2279,26 +2259,5 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('integrations_status');
       return mapIntegrationsStatus(raw);
     },
-    toolApprovalRespond: async (approvalId, decision, note) => {
-      await invoke<RawJsonValue>('tool_approval_respond', {
-        approvalId,
-        decision,
-        note: note ?? null
-      });
-    },
-    memorySetStatus: async (action, payload) => {
-      return invoke<RawJsonValue>('memory_set_status', { action, payload });
-    },
-    computerUseSessionStart: (params) =>
-      invoke<RawJsonValue>('computer_use_session_start', { params }),
-    computerUseInvoke: (params) => invoke<RawJsonValue>('computer_use_invoke', { params }),
-    computerUseApprovalPending: (params) =>
-      invoke<RawJsonValue>('computer_use_approval_pending', { params: params ?? null }),
-    computerUseApprovalRespond: (params) =>
-      invoke<RawJsonValue>('computer_use_approval_respond', { params }),
-    computerUsePanicHalt: (params) =>
-      invoke<RawJsonValue>('computer_use_panic_halt', { params: params ?? null }),
-    computerUseAuditExport: (params) =>
-      invoke<RawJsonValue>('computer_use_audit_export', { params: params ?? null })
   };
 }

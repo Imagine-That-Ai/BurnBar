@@ -1,0 +1,36 @@
+# Supply-chain policy for the shared domain-core workspace.
+
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+ignore = [
+  # UniFFI 0.28.3 transitively uses bincode 1.3.3. The generated binding ABI is
+  # pinned to this UniFFI release; remove this exception with that coordinated
+  # toolchain upgrade. cargo-audit derives the same accepted advisory from the
+  # repository-wide single-source script.
+  "RUSTSEC-2025-0141",
+  # UniFFI 0.28.3 also carries paste through its bindgen/core implementation.
+  # No safe release in the pinned UniFFI line removes it.
+  "RUSTSEC-2024-0436",
+]
+
+[licenses]
+allow = [
+  "MIT",
+  "AGPL-3.0-only",
+  "Apache-2.0",
+  # RustCrypto's constant-time `subtle` primitive uses this permissive license.
+  "BSD-3-Clause",
+  "MPL-2.0",
+  "Unicode-3.0",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

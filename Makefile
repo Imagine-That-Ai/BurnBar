@@ -91,6 +91,15 @@ build: bootstrap preflight
 		echo "    No $(DAEMON_CORE_DYLIB) produced; daemon is statically linked."; \
 	fi
 	chmod +x "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
+	@if otool -L "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)" | grep -q 'SQLCipher.framework'; then \
+		if [ ! -d "$(APP_BUNDLE)/Contents/Frameworks/SQLCipher.framework" ]; then \
+			echo "ERROR: $(DAEMON_BIN) links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2; \
+			exit 1; \
+		fi; \
+		if ! otool -l "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)" | grep -q '@executable_path/../Frameworks'; then \
+			install_name_tool -add_rpath "@executable_path/../Frameworks" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"; \
+		fi; \
+	fi
 	@echo "==> Embedding OpenBurnBarCore framework…"
 	mkdir -p "$(APP_BUNDLE)/Contents/Frameworks"
 	OPENBURNBAR_CORE_FRAMEWORK="$(DERIVED_DATA)/Build/Products/$(CONFIG)/PackageFrameworks/OpenBurnBarCore.framework"; \
@@ -162,6 +171,15 @@ build-signed: bootstrap preflight
 		echo "    No $(DAEMON_CORE_DYLIB) produced; daemon is statically linked."; \
 	fi
 	chmod +x "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
+	@if otool -L "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)" | grep -q 'SQLCipher.framework'; then \
+		if [ ! -d "$(APP_BUNDLE)/Contents/Frameworks/SQLCipher.framework" ]; then \
+			echo "ERROR: $(DAEMON_BIN) links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2; \
+			exit 1; \
+		fi; \
+		if ! otool -l "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)" | grep -q '@executable_path/../Frameworks'; then \
+			install_name_tool -add_rpath "@executable_path/../Frameworks" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"; \
+		fi; \
+	fi
 	@echo "==> Embedding OpenBurnBarCore framework…"
 	mkdir -p "$(APP_BUNDLE)/Contents/Frameworks"
 	OPENBURNBAR_CORE_FRAMEWORK="$(DERIVED_DATA)/Build/Products/$(CONFIG)/PackageFrameworks/OpenBurnBarCore.framework"; \
@@ -250,6 +268,7 @@ debt-check: ## Enforce debt budgets + refresh tech-debt metrics
 	@./scripts/debt/check-empty-catch-budget.sh
 	@./scripts/debt/check-try-optional-budget.sh
 	@./scripts/debt/check-swift-file-size-budget.sh
+	@./scripts/debt/check-force-unwrap-budget.sh
 	@python3 tools/error-debt/test_count_error_debt.py
 	@python3 tools/concurrency-debt/test_count_task_detached.py
 	@./scripts/ci/update-tech-debt-metrics.sh

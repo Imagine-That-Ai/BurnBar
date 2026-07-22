@@ -14,8 +14,9 @@
  * Some domains are NOT client-deletable through this generic callable because
  * deletion would orphan server-managed state or destroy the keys that make
  * recovery possible — those route through their dedicated revoke/erase callables
- * instead (see UNDELETABLE_DOMAINS). The registry encodes which domains expose a
- * `delete` action; we enforce that here.
+ * instead (see UNDELETABLE_DOMAINS). The registry encodes which domains expose
+ * a `delete` action; we enforce that here. Trusted-device step-up also guards
+ * this callable.
  */
 
 import { getStorage } from "firebase-admin/storage";
@@ -25,13 +26,9 @@ import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { wrapCallableHandler } from "../logging.js";
+import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 import { DATA_DOMAIN_PATHS } from "./dataExport.js";
-import {
-  appendAuditEvent,
-  appendAuditEventRequired,
-  auditActorLabel,
-  AUDIT_ACTIONS,
-} from "./auditLog.js";
+import { appendAuditEvent, appendAuditEventRequired, auditActorLabel, AUDIT_ACTIONS } from "./auditLog.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 /**
@@ -83,6 +80,11 @@ export const deleteDomainData = onCall(
       if (request.data?.confirm !== true) {
         throw new HttpsError("failed-precondition", "Set confirm: true to delete this domain's data.");
       }
+
+      await enforceHighRiskOwnerAction(request, uid, {
+        actionKind: "data_domain_delete",
+        subjectId: domainId,
+      });
 
       // Fail-closed intent: an irreversible deletion must leave a durable audit
       // record. If the intent cannot be persisted, refuse the action rather than

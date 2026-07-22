@@ -3,8 +3,8 @@ using System.Text.Json.Serialization;
 namespace OpenBurnBar.CloudSync.AppCheck.Attestation;
 
 /// <summary>
-/// A Windows platform attestation claim presented to the greenfield
-/// <c>mintWindowsAppCheckToken</c> callable (Phase 0 / AC-011, server half in
+/// A Windows platform attestation claim presented to the
+/// <c>mintWindowsAppCheckToken</c> callable (server half in
 /// <c>functions/src/callables/windowsAppCheck.ts</c>).
 /// </summary>
 /// <remarks>
@@ -16,12 +16,12 @@ namespace OpenBurnBar.CloudSync.AppCheck.Attestation;
 /// the wire contract.
 ///
 /// A Windows client cannot use Apple App Attest or Android Play Integrity, so it
-/// proves it is a genuine, unmodified app via a platform attestation (a TPM quote
-/// in the real design — AC-013) and exchanges that attestation for a Firebase App
+/// proves possession of a hardware-backed installation key via TPM key
+/// attestation and exchanges that lower-trust signal for a Firebase App
 /// Check token. In Phase 0 the only accepted <see cref="Kind"/> is
 /// <c>"mock"</c> (<see cref="MockAttestationProducer"/>); the real TPM producer
 /// (<c>OpenBurnBar.CloudSync.AppCheck.Windows.TpmAttestationProducer</c>) emits a
-/// different kind that AC-013's server verifier accepts.
+/// different kind that the Windows-hosted verifier accepts.
 /// </remarks>
 public sealed record WindowsAttestationClaim
 {
@@ -44,4 +44,12 @@ public sealed record WindowsAttestationClaim
     /// <summary>Attestation signature/MAC over the claim (lowercase hex).</summary>
     [JsonPropertyName("mac")]
     public required string Mac { get; init; }
+
+    /// <summary>Server challenge identifier. Required for production TPM claims.</summary>
+    [JsonPropertyName("challengeId")]
+    public string? ChallengeId { get; init; }
+
+    /// <summary>Base64 CNG public-key blob for the TPM-backed subject key.</summary>
+    [JsonPropertyName("subjectPublicKey")]
+    public string? SubjectPublicKey { get; init; }
 }

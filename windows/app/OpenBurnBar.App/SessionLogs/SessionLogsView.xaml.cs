@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -33,6 +34,28 @@ public sealed partial class SessionLogsView : UserControl
 
     /// <summary>Load the local log set. No-op until a model is bound.</summary>
     public Task LoadAsync() => ViewModel?.LoadAsync() ?? Task.CompletedTask;
+
+    /// <summary>Select a loaded record for a command-palette deep link.</summary>
+    public void SelectSession(string sessionId)
+    {
+        if (ViewModel is null || string.IsNullOrWhiteSpace(sessionId))
+        {
+            return;
+        }
+
+        SessionLogRecord? record = ViewModel.Groups
+            .SelectMany(group => group.Logs)
+            .FirstOrDefault(candidate => string.Equals(candidate.Id, sessionId, System.StringComparison.Ordinal));
+        if (record is null)
+        {
+            return;
+        }
+
+        ViewModel.SelectedId = record.Id;
+        LogsList.SelectedItem = record;
+        DetailPane.Record = record;
+        LogsList.ScrollIntoView(record);
+    }
 
     private async void OnSearchTextChanged(object sender, TextChangedEventArgs e)
     {

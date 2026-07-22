@@ -13,22 +13,22 @@ public sealed class SettingsTabViewModelCatalogTests
     {
         SettingsTab.Daemon, SettingsTab.Agents, SettingsTab.ModelProxy, SettingsTab.Alerts,
         SettingsTab.Notifications, SettingsTab.TextExpansion, SettingsTab.ComputerUse, SettingsTab.Pets,
-        SettingsTab.Account, SettingsTab.Cloud, SettingsTab.DevicesAndSync,
+        SettingsTab.Account, SettingsTab.Cloud, SettingsTab.DevicesAndSync, SettingsTab.Media,
     };
 
     [Fact]
     public void RealViewModelTabs_AreTheElevenThisWaveShips()
     {
         Assert.Equal(ExpectedRealTabs.OrderBy(t => t), SettingsTabViewModelCatalog.RealViewModelTabs.OrderBy(t => t));
-        Assert.Equal(11, SettingsTabViewModelCatalog.Descriptors.Count);
+        Assert.Equal(12, SettingsTabViewModelCatalog.Descriptors.Count);
     }
 
     [Fact]
-    public void Media_StaysAPlaceholder()
+    public void Media_IsARealDataGatedCapabilityProjection()
     {
-        // Media's Mercury core is deferred, so it is intentionally NOT made real here.
-        Assert.False(SettingsTabViewModelCatalog.HasRealViewModel(SettingsTab.Media));
-        Assert.Null(SettingsTabViewModelCatalog.Descriptor(SettingsTab.Media));
+        Assert.True(SettingsTabViewModelCatalog.HasRealViewModel(SettingsTab.Media));
+        Assert.Equal(nameof(MercuryMediaSettingsViewModel),
+            SettingsTabViewModelCatalog.Descriptor(SettingsTab.Media)!.ViewModelName);
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public sealed class SettingsTabViewModelCatalogTests
             SettingsTab.Daemon, SettingsTab.Agents, SettingsTab.ModelProxy, SettingsTab.Alerts,
             SettingsTab.Notifications, SettingsTab.TextExpansion, SettingsTab.ComputerUse, SettingsTab.Pets,
         };
-        var expectedGated = new[] { SettingsTab.Account, SettingsTab.Cloud, SettingsTab.DevicesAndSync };
+        var expectedGated = new[] { SettingsTab.Account, SettingsTab.Cloud, SettingsTab.DevicesAndSync, SettingsTab.Media };
 
         Assert.Equal(expectedLive.OrderBy(t => t), SettingsTabViewModelCatalog.LiveTabs.OrderBy(t => t));
         Assert.Equal(expectedGated.OrderBy(t => t), SettingsTabViewModelCatalog.DataGatedTabs.OrderBy(t => t));
@@ -104,12 +104,13 @@ public sealed class SettingsTabViewModelCatalogTests
         Assert.IsType<AccountSettingsViewModel>(SettingsTabViewModelCatalog.CreateSample(SettingsTab.Account));
         Assert.IsType<CloudSettingsViewModel>(SettingsTabViewModelCatalog.CreateSample(SettingsTab.Cloud));
         Assert.IsType<DevicesAndSyncSettingsViewModel>(SettingsTabViewModelCatalog.CreateSample(SettingsTab.DevicesAndSync));
+        Assert.IsType<MercuryMediaSettingsViewModel>(SettingsTabViewModelCatalog.CreateSample(SettingsTab.Media));
     }
 
     [Fact]
-    public void CreateSample_ThrowsForAPlaceholderTab()
+    public void CreateSample_StillThrowsForAnUnknownTab()
     {
         Assert.Throws<System.ArgumentOutOfRangeException>(() =>
-            SettingsTabViewModelCatalog.CreateSample(SettingsTab.Media));
+            SettingsTabViewModelCatalog.CreateSample((SettingsTab)999));
     }
 }

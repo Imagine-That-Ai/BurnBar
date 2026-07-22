@@ -1,0 +1,78 @@
+﻿{
+    "schema":  "openburnbar.windows.release-certification-receipt.v1",
+    "status":  "BLOCKED",
+    "gate":  "staging-cloud",
+    "target":  "staging-cloud",
+    "source":  {
+                   "commitSha":  "7c362298230e14bfd51dcdcbaf9476cd86cefa66",
+                   "dirtyTree":  false
+               },
+    "artifact":  {
+                     "name":  "OpenBurnBar-1.0.29-arm64.msix",
+                     "architecture":  "ARM64",
+                     "availability":  "recorded",
+                     "sha256":  "d8cd1423827e54b777a85cf58962b5c18ae6ae1118676b8255749894815c597e",
+                     "workflowRunId":  "29177583506",
+                     "workflowRunUrl":  "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29177583506",
+                     "signature":  {
+                                       "result":  "verified",
+                                       "identity":  "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+                                   }
+                 },
+    "device":  {
+                   "kind":  "windows-vm-or-hosted-runner",
+                   "manufacturer":  "QEMU",
+                   "model":  "QEMU Virtual Machine",
+                   "assetTag":  {
+
+                                },
+                   "architecture":  "ARM64",
+                   "osArchitecture":  "ARM 64-bit Processor",
+                   "osBuild":  "Microsoft Windows 11 Pro 10.0.26200 build 26200",
+                   "tpm":  "unavailable",
+                   "cpu":  "virt-10.0",
+                   "ramBytes":  8580235264,
+                   "gpu":  [
+                               "Red Hat VirtIO GPU DOD controller"
+                           ],
+                   "storage":  [
+                                   {
+                                       "model":  "QEMU NVMe Ctrl",
+                                       "mediaType":  "Fixed hard disk media",
+                                       "sizeBytes":  214745610240
+                                   }
+                               ],
+                   "processorArchitecture":  "AMD64",
+                   "capturedAtUtc":  "2026-07-12T08:16:17.5705241+00:00"
+               },
+    "protocol":  {
+                     "commands":  [
+
+                                  ],
+                     "manualSteps":  [
+                                         "Use staging only: OAuth loopback/PKCE, refresh/expiry/revocation/cancellation/malformed callback, offline recovery, App Check valid/invalid, physical TPM claim enforcement, CloudVault round trips, queue ordering/idempotency/conflict/replay, sign-out cleanup, and leak scans."
+                                     ]
+                 },
+    "time":  {
+                 "startedAtUtc":  "2026-07-12T08:16:09.5872990+00:00",
+                 "endedAtUtc":  "2026-07-12T08:29:28.5028192+00:00",
+                 "durationSeconds":  799
+             },
+    "expected":  "All gate-specific physical/live/store assertions pass with complete raw evidence.",
+    "observed":  "No defensible PASS evidence was available in this invocation.",
+    "exitCode":  null,
+    "evidence":  {
+                     "files":  [
+                                   {
+                                       "path":  "blockers/staging-cloud.md",
+                                       "sha256":  "627882ea88d0e7ee77d2057393653b1868a771840a8500d2ff0be78e6db0289a"
+                                   }
+                               ]
+                 },
+    "blocker":  {
+                    "id":  "PHYSICAL-WINDOWS-HARDWARE-MISSING",
+                    "owner":  "Alberto",
+                    "missing":  "This invocation did not assert a physical Windows device; VM/hosted evidence is not certification proof.",
+                    "recovery":  "Run on the named physical Windows device and provide hardware identity, artifact, and raw trace receipts."
+                }
+}

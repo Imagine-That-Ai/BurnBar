@@ -1,0 +1,231 @@
+{
+  "schema": "openburnbar.windows.release-performance-budgets.v1",
+  "status": "ACTIVE_RELEASE_GATE",
+  "revision": 1,
+  "effectiveAtUtc": "2026-07-17T00:00:00Z",
+  "owner": "OpenBurnBar release engineering",
+  "profile": "physical-performance",
+  "maximumSamplesPerMeasurement": 100000,
+  "basis": {
+    "documented": [
+      "docs/runbooks/slos.md defines local search p95 below 350 ms and dashboard refresh p95 below 5 seconds",
+      "docs/windows-port/evidence/physical-release-certification-2026-07-11/performance-budget-proposal.json recorded the remaining thresholds as the reviewable proposal"
+    ],
+    "decision": "The reviewed proposal is adopted as a fail-closed Windows beta release gate. Every declared value requires raw, hashed physical-device evidence and is independently re-evaluated by the receipt validator."
+  },
+  "calculationContract": {
+    "p95": "nearest-rank percentile: sort ascending and select index ceil(0.95 * sampleCount) - 1",
+    "average": "arithmetic mean of all samples",
+    "maximum": "largest sample",
+    "rate": "percentage of binary event samples equal to one",
+    "growth": "100 * (last sample - first sample) / first sample",
+    "count": "sum of non-negative integer event-count samples"
+  },
+  "measurements": [
+    {
+      "id": "cold-start-p95",
+      "assertionId": "launch-cold",
+      "metric": "clean-install cold first usable window",
+      "unit": "seconds",
+      "statistic": "p95",
+      "direction": "at_most",
+      "limit": 5,
+      "minimumSamples": 5,
+      "minimumDurationSeconds": 0
+    },
+    {
+      "id": "warm-start-p95",
+      "assertionId": "launch-warm",
+      "metric": "warm restart to usable window",
+      "unit": "seconds",
+      "statistic": "p95",
+      "direction": "at_most",
+      "limit": 2,
+      "minimumSamples": 10,
+      "minimumDurationSeconds": 0
+    },
+    {
+      "id": "tray-input-p95",
+      "assertionId": "surface-flyout",
+      "metric": "tray activation to rendered flyout and first input acknowledgement",
+      "unit": "milliseconds",
+      "statistic": "p95",
+      "direction": "at_most",
+      "limit": 100,
+      "minimumSamples": 10,
+      "minimumDurationSeconds": 0
+    },
+    {
+      "id": "dashboard-refresh-p95",
+      "assertionId": "surface-dashboard",
+      "metric": "dashboard refresh with a declared representative dataset",
+      "unit": "seconds",
+      "statistic": "p95",
+      "direction": "at_most",
+      "limit": 5,
+      "minimumSamples": 10,
+      "minimumDurationSeconds": 0
+    },
+    {
+      "id": "search-p95",
+      "assertionId": "surface-search",
+      "metric": "local search response with a declared representative dataset",
+      "unit": "milliseconds",
+      "statistic": "p95",
+      "direction": "at_most",
+      "limit": 350,
+      "minimumSamples": 10,
+      "minimumDurationSeconds": 0
+    },
+    {
+      "id": "settings-input-p95",
+      "assertionId": "surface-settings",
+      "metric": "settings navigation to first rendered input acknowledgement",
+      "unit": "milliseconds",
+      "statistic": "p95",
+      "direction": "at_most",
+      "limit": 100,
+      "minimumSamples": 10,
+      "minimumDurationSeconds": 0
+    },
+    {
+      "id": "chat-input-ack-p95",
+      "assertionId": "surface-chat",
+      "metric": "local chat composer submit to immediate UI acknowledgement, excluding provider latency",
+      "unit": "milliseconds",
+      "statistic": "p95",
+      "direction": "at_most",
+      "limit": 100,
+      "minimumSamples": 10,
+      "minimumDurationSeconds": 0
+    },
+    {
+      "id": "usage-scan-p95",
+      "assertionId": "usage-scan",
+      "metric": "representative incremental usage scan completion",
+      "unit": "seconds",
+      "statistic": "p95",
+      "direction": "at_most",
+      "limit": 30,
+      "minimumSamples": 5,
+      "minimumDurationSeconds": 0
+    },
+    {
+      "id": "idle-cpu-average",
+      "assertionId": "resource-idle-cpu",
+      "metric": "process CPU normalized to total logical-processor capacity after warm idle",
+      "unit": "percent",
+      "statistic": "average",
+      "direction": "at_most",
+      "limit": 3,
+      "minimumSamples": 300,
+      "minimumDurationSeconds": 300
+    },
+    {
+      "id": "active-cpu-p95",
+      "assertionId": "resource-active-cpu",
+      "metric": "process CPU normalized to total logical-processor capacity during the declared active workload",
+      "unit": "percent",
+      "statistic": "p95",
+      "direction": "at_most",
+      "limit": 75,
+      "minimumSamples": 60,
+      "minimumDurationSeconds": 60
+    },
+    {
+      "id": "steady-private-bytes",
+      "assertionId": "resource-memory",
+      "metric": "private bytes after warm idle",
+      "unit": "megabytes",
+      "statistic": "maximum",
+      "direction": "at_most",
+      "limit": 500,
+      "minimumSamples": 5,
+      "minimumDurationSeconds": 60
+    },
+    {
+      "id": "active-gpu-p95",
+      "assertionId": "resource-gpu",
+      "metric": "highest process GPU engine utilization during the declared active workload",
+      "unit": "percent",
+      "statistic": "p95",
+      "direction": "at_most",
+      "limit": 75,
+      "minimumSamples": 60,
+      "minimumDurationSeconds": 60
+    },
+    {
+      "id": "idle-disk-write-rate",
+      "assertionId": "resource-disk",
+      "metric": "process disk writes after warm idle",
+      "unit": "megabytes_per_minute",
+      "statistic": "average",
+      "direction": "at_most",
+      "limit": 5,
+      "minimumSamples": 300,
+      "minimumDurationSeconds": 300
+    },
+    {
+      "id": "frame-time-p95",
+      "assertionId": "frame-pacing",
+      "metric": "presented frame time across animated and scrolling routes",
+      "unit": "milliseconds",
+      "statistic": "p95",
+      "direction": "at_most",
+      "limit": 33.3,
+      "minimumSamples": 300,
+      "minimumDurationSeconds": 10
+    },
+    {
+      "id": "dropped-frame-rate",
+      "assertionId": "frame-pacing",
+      "metric": "dropped or stalled frames across the declared frame workload",
+      "unit": "percent",
+      "statistic": "rate",
+      "direction": "at_most",
+      "limit": 1,
+      "minimumSamples": 300,
+      "minimumDurationSeconds": 10
+    },
+    {
+      "id": "soak-working-set-growth",
+      "assertionId": "soak",
+      "metric": "private-bytes growth over the prescribed soak",
+      "unit": "percent",
+      "statistic": "growth",
+      "direction": "at_most",
+      "limit": 10,
+      "minimumSamples": 2,
+      "minimumDurationSeconds": 1800
+    },
+    {
+      "id": "soak-crashes",
+      "assertionId": "soak",
+      "metric": "WER, Application Error, .NET Runtime, or fatal WinUI events during the soak",
+      "unit": "count",
+      "statistic": "count",
+      "direction": "equal",
+      "limit": 0,
+      "minimumSamples": 1,
+      "minimumDurationSeconds": 1800
+    },
+    {
+      "id": "soak-hangs",
+      "assertionId": "soak",
+      "metric": "unresponsive or watchdog hang events during the soak",
+      "unit": "count",
+      "statistic": "count",
+      "direction": "equal",
+      "limit": 0,
+      "minimumSamples": 1,
+      "minimumDurationSeconds": 1800
+    }
+  ],
+  "requiredContext": [
+    "measurementTool",
+    "workload",
+    "power",
+    "display",
+    "sampling"
+  ]
+}

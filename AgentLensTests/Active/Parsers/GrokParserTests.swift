@@ -46,7 +46,7 @@ final class GrokParserTests: XCTestCase {
         XCTAssertEqual(usage.provider, .xAI)
         XCTAssertEqual(usage.model, "grok-build")
         XCTAssertEqual(usage.inputTokens + usage.outputTokens, 4200)
-        XCTAssertEqual(usage.provenanceConfidence, .exact)
+        XCTAssertEqual(usage.provenanceConfidence, .lowConfidenceEstimate)
 
         let conversation = try XCTUnwrap(result.conversations.first { $0.sessionId == usage.sessionId })
         XCTAssertEqual(conversation.messageCount, 4)

@@ -197,6 +197,12 @@ for root in roots:
 print(total)
 PY
 )"
+force_unwrap_total="n/a"
+if [[ -x "${repo_root}/scripts/debt/check-force-unwrap-budget.sh" ]]; then
+  force_unwrap_live_json="$("${repo_root}/scripts/debt/check-force-unwrap-budget.sh" --print-live)"
+  force_unwrap_total="$(node -e "console.log(JSON.parse(process.argv[1]).total)" "${force_unwrap_live_json}")"
+fi
+
 
 cat > "${metrics_doc}" <<EOF
 # Tech debt metrics snapshot
@@ -228,6 +234,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | \`import SwiftUI\` in Services/ | ${swiftui_services} | 0 | 0 |
 | Phase 1 security register open items (\`docs/governance/PHASE1_SECURITY_REGISTER.md\`) | ${phase1_security_open} | ≤ 3 | 0 |
 | Rust \`unwrap()\`/\`expect()\` in \`crates/{burnbar-remote,openburnbar-iroh}\` | ${rust_panic_debt} | 0 | 0 |
+| Force-unwrap sites (\`budgets/force-unwrap-baseline.json\`, shrink-only ratchet) | ${force_unwrap_total} | shrinking | 0 |
 
 ## Top service files (lines)
 

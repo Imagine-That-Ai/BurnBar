@@ -49,7 +49,7 @@ class CloudConversationSearchService(
         val keypair = AndroidCloudVaultDeviceKeypair.loadOrCreate()
         registerDevice(uid, keypair)
         val vaultKey = unlockVaultKey(uid, keypair) ?: return emptyList()
-        val tokenHashes = CloudVaultCrypto.tokenHashes(query, vaultKey, limit = 10)
+        val tokenHashes = CloudVaultCrypto.searchQueryTokenHashes(query, vaultKey, limit = 10)
         val semanticHashes = CloudVaultCrypto.semanticHashes(query, vaultKey, limit = 12)
         if (tokenHashes.isEmpty() && semanticHashes.isEmpty()) return emptyList()
 

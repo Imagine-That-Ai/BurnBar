@@ -15,11 +15,11 @@
             <TextBlock x:Name="TitleText"
                        FontSize="22"
                        FontWeight="SemiBold"
-                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                       Foreground="{ThemeResource AuroraTextBrush}" />
             <TextBlock x:Name="SubtitleText"
                        TextWrapping="Wrap"
                        FontSize="13"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
             <Border Style="{StaticResource LiquidGlassPillStyle}"
                     theme:LiquidGlass.Surface="True"
                     HorizontalAlignment="Left"
@@ -31,7 +31,7 @@
             <TextBlock x:Name="BodyText"
                        TextWrapping="Wrap"
                        FontSize="13"
-                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                       Foreground="{ThemeResource AuroraTextBrush}" />
             <InfoBar x:Name="SaveStatus"
                      IsOpen="False"
                      IsClosable="True"

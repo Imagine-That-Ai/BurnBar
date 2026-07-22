@@ -4,6 +4,46 @@ import OpenBurnBarCore
 @testable import OpenBurnBar
 @MainActor
 final class ChatSessionControllerSearchStateTests: XCTestCase {
+    func test_saveUsageIfNeeded_pricesAndPersistsAllTokenBuckets() async throws {
+        let dataStore = try makeDiscoveryInMemoryStore()
+        let controller = ChatSessionController(
+            dataStore: dataStore,
+            searchService: ControlledChatSessionSearchProvider(responses: [:]),
+            initialThreadID: "pricing-thread",
+            persistsViewState: false
+        )
+
+        await controller.saveUsageIfNeeded(
+            CLIUsageSnapshot(
+                inputTokens: 1_000_000,
+                outputTokens: 1_000_000,
+                cacheCreationTokens: 1_000_000,
+                cacheReadTokens: 1_000_000,
+                reasoningTokens: 1_000_000
+            ),
+            backend: .hermes,
+            requestModel: "gpt-4o",
+            responseMessageID: "response-1",
+            startedAt: Date(timeIntervalSince1970: 1_752_499_200),
+            endedAt: Date(timeIntervalSince1970: 1_752_499_201)
+        )
+
+        let persisted = try await dataStore.fetchAllUsage()
+        XCTAssertEqual(persisted.count, 1)
+        let usage = try XCTUnwrap(persisted.first)
+        XCTAssertEqual(usage.provider, .hermes)
+        XCTAssertEqual(usage.sessionId, "pricing-thread/response-1")
+        XCTAssertEqual(usage.model, "gpt-4o")
+        XCTAssertEqual(usage.inputTokens, 1_000_000)
+        XCTAssertEqual(usage.outputTokens, 1_000_000)
+        XCTAssertEqual(usage.cacheCreationTokens, 1_000_000)
+        XCTAssertEqual(usage.cacheReadTokens, 1_000_000)
+        XCTAssertEqual(usage.reasoningTokens, 1_000_000)
+        XCTAssertEqual(usage.costUSD, 16.25, accuracy: 0.000_001)
+        XCTAssertEqual(usage.usageSource, .inAppChat)
+        XCTAssertEqual(usage.provenanceMethod, .inAppChat)
+    }
+
     func test_performSearch_ignoresStaleOutOfOrderResults() async throws {
         let harness = try OpenBurnBarSearchIntegrationHarness(name: "chat-search-state-order")
         defer { harness.cleanup() }

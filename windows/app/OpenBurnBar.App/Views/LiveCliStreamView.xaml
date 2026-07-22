@@ -54,7 +54,7 @@
                 theme:LiquidGlass.Surface="True">
             <ListView x:Name="LinesList"
                       Padding="12,8"
-                      FontFamily="Cascadia Mono, Consolas, Courier New"
+                      FontFamily="{StaticResource AuroraMonoFont}"
                       FontSize="12.5"
                       SelectionMode="None"
                       IsItemClickEnabled="False"

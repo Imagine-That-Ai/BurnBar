@@ -121,14 +121,14 @@ public sealed partial class QuotaWorkspacePage : Page
             Text = "No quota snapshots yet",
             FontSize = 18,
             FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush)Application.Current.Resources["PensieveColorTextBrightBrush"],
+            Foreground = (Brush)Application.Current.Resources["PensieveColorMacosTextBrush"],
         };
 
         var detail = new TextBlock
         {
             Text = RuntimeDataMode.EmptyStateDetail("Firebase quota snapshots"),
             TextWrapping = TextWrapping.Wrap,
-            Foreground = (Brush)Application.Current.Resources["PensieveColorTextMuteBrush"],
+            Foreground = (Brush)Application.Current.Resources["PensieveColorMacosTextMutedBrush"],
         };
 
         var stack = new StackPanel { Spacing = 6 };
@@ -139,8 +139,8 @@ public sealed partial class QuotaWorkspacePage : Page
         {
             Padding = new Thickness(18),
             CornerRadius = (CornerRadius)Application.Current.Resources["PensieveRadiusLgCorner"],
-            Background = (Brush)Application.Current.Resources["PensieveColorGlassBgBrush"],
-            BorderBrush = (Brush)Application.Current.Resources["PensieveColorGlassLineBrush"],
+            Background = (Brush)Application.Current.Resources["PensieveGlassTintBaseBrush"],
+            BorderBrush = (Brush)Application.Current.Resources["PensieveGlassStrokeBaseBrush"],
             BorderThickness = new Thickness(1),
             Child = stack,
         };
@@ -162,7 +162,7 @@ public sealed partial class QuotaWorkspacePage : Page
             Text = account.Entry.DisplayName,
             FontSize = 18,
             FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush)Application.Current.Resources["PensieveColorTextBrightBrush"],
+            Foreground = (Brush)Application.Current.Resources["PensieveColorMacosTextBrush"],
         };
 
         var accountLabel = new TextBlock
@@ -193,8 +193,8 @@ public sealed partial class QuotaWorkspacePage : Page
         {
             Padding = new Thickness(16),
             CornerRadius = (CornerRadius)Application.Current.Resources["PensieveRadiusLgCorner"],
-            Background = (Brush)Application.Current.Resources["PensieveColorGlassBgBrush"],
-            BorderBrush = (Brush)Application.Current.Resources["PensieveColorGlassLineBrush"],
+            Background = (Brush)Application.Current.Resources["PensieveGlassTintBaseBrush"],
+            BorderBrush = (Brush)Application.Current.Resources["PensieveGlassStrokeBaseBrush"],
             BorderThickness = new Thickness(1),
             Child = row,
         };

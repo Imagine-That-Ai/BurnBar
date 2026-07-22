@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Pre-push guard: refuse to push preserve/* tags.
+#
+# V-47 (security audit 2026-06-16): local `preserve/*` stash tags carry real
+# secrets — Android upload-keystore passwords and IROH_SERVICES_API_SECRET — and
+# are intentionally LOCAL-ONLY. They are confirmed absent from origin. A single
+# stray `git push --tags` would leak them into public history. This hook is the
+# machine-side prevention (the CI tripwire preserve-tag-leak-tripwire.yml is the
+# after-the-fact alarm). Install with scripts/hooks/install-git-hooks.sh.
+#
+# git feeds the hook one line per ref on stdin:
+#   <local ref> <local sha> <remote ref> <remote sha>
+set -euo pipefail
+
+blocked=()
+# `|| [[ -n ... ]]` processes a final line even if it lacks a trailing newline.
+while read -r local_ref local_sha remote_ref remote_sha || [[ -n "${remote_ref:-}" ]]; do
+  # Deletions (local_sha all-zero) are always safe to allow.
+  if [[ "${local_sha}" =~ ^0+$ ]]; then
+    continue
+  fi
+  # Check BOTH local_ref and remote_ref: a push like
+  # `git push origin refs/tags/preserve/x:refs/tags/leaked` renames the remote
+  # ref, so checking only remote_ref would miss the preserve source.
+  for ref in "${local_ref}" "${remote_ref}"; do
+    case "${ref}" in
+      refs/tags/preserve/*)
+        blocked+=("${ref}")
+        ;;
+    esac
+  done
+done
+
+if ((${#blocked[@]} > 0)); then
+  echo "error: refusing to push secret-bearing preserve/* tag(s):" >&2
+  for ref in "${blocked[@]}"; do
+    echo "  - ${ref}" >&2
+  done
+  echo "" >&2
+  echo "preserve/* tags are local-only (V-47): they carry keystore passwords and" >&2
+  echo "IROH_SERVICES_API_SECRET. Do NOT push them. If you ran 'git push --tags'," >&2
+  echo "push explicit refs instead, e.g. 'git push origin v1.2.3'." >&2
+  exit 1
+fi
+
+exit 0

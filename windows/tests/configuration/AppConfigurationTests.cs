@@ -31,6 +31,31 @@ public sealed class AppConfigurationTests
     }
 
     [Fact]
+    public void Gateway_route_secret_names_are_stable_and_collision_resistant()
+    {
+        string first = AppSecretNames.GatewayRouteCredential("provider_account-a");
+        string second = AppSecretNames.GatewayRouteCredential("provider-account-a");
+
+        Assert.Equal(first, AppSecretNames.GatewayRouteCredential("provider_account-a"));
+        Assert.NotEqual(first, second);
+        Assert.DoesNotContain("provider_account-a", first, StringComparison.Ordinal);
+        Assert.EndsWith(".bearer-token", first, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Release_guard_rejects_plaintext_gateway_auth_token()
+    {
+        var exception = Assert.Throws<SecretStoreException>(() =>
+            ReleaseConfigurationGuard.ThrowIfPlaintextCredentialEnvironmentPresent(new[]
+            {
+                new KeyValuePair<string, string?>("OPENBURNBAR_GATEWAY_AUTH_TOKEN", "plaintext-canary"),
+            }));
+
+        Assert.Equal(SecretStoreFailureKind.WriteDenied, exception.Failure);
+        Assert.Equal("OPENBURNBAR_GATEWAY_AUTH_TOKEN", exception.SecretName);
+    }
+
+    [Fact]
     public void Sqlcipher_environment_is_rejected_by_release_guard_and_ignored_by_configuration()
     {
         string dir = Path.Combine(Path.GetTempPath(), "obb-config-test-" + Guid.NewGuid().ToString("N"));

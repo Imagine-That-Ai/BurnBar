@@ -201,11 +201,54 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         let fetchedEmbeddingChunkIDs = try await store.fetchChunkEmbeddings(embeddingVersionID: "version-1").map(\.chunkID)
         XCTAssertEqual(fetchedEmbeddingChunkIDs, ["chunk-1"])
 
-        let manyEmbeddings = (0..<1_100).map { index in
+        // chunk_embeddings.chunkID is a NOT NULL FK to search_chunks(id)
+        // (onDelete: .cascade), so every embedding needs a real parent chunk.
+        // Materialize the 1,100 parent chunks under their own document before
+        // inserting their embeddings; otherwise the bulk upsert trips
+        // "SQLite error 19: FOREIGN KEY constraint failed" the moment FK
+        // enforcement is on (GRDB default).
+        let manyDocument = SearchDocumentRecord(
+            id: "doc-many",
+            sourceKind: .conversation,
+            sourceID: "conv-many",
+            sourceVersionID: "v1",
+            provider: AgentProvider.claudeCode.rawValue,
+            projectName: "OpenBurnBar",
+            title: "Batch embedding fetch coverage",
+            subtitle: "P02",
+            bodyPreview: "Bulk chunk embeddings",
+            sourceUpdatedAt: now,
+            indexedAt: now,
+            contentHash: "hash-many",
+            createdAt: now,
+            updatedAt: now
+        )
+        try await store.upsertSearchDocument(manyDocument)
+        let manyChunks = (0..<1_100).map { index in
+            SearchChunkRecord(
+                id: String(format: "chunk-many-%04d", index),
+                documentID: "doc-many",
+                sourceKind: .conversation,
+                sourceID: "conv-many",
+                sourceVersionID: "v1",
+                ordinal: index,
+                startOffset: index * 32,
+                endOffset: index * 32 + 31,
+                text: "Bulk chunk \(index)",
+                createdAt: now,
+                updatedAt: now
+            )
+        }
+        try await store.replaceSearchChunks(
+            documentID: "doc-many",
+            title: manyDocument.title,
+            chunks: manyChunks
+        )
+        let manyEmbeddings = manyChunks.map { chunk in
             ChunkEmbeddingRecord(
-                chunkID: String(format: "chunk-many-%04d", index),
+                chunkID: chunk.id,
                 embeddingVersionID: "version-1",
-                vectorBlob: Data([UInt8(index % 255)]),
+                vectorBlob: Data([UInt8(chunk.ordinal % 255)]),
                 createdAt: now,
                 updatedAt: now
             )

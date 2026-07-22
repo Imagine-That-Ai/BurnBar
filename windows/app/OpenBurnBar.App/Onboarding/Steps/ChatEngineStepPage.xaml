@@ -28,7 +28,7 @@
             <StackPanel Spacing="14">
                 <Border theme:LiquidGlass.Surface="True"
                         CornerRadius="14"
-                        BorderBrush="{StaticResource OBBStrokeBrush}"
+                        BorderBrush="{ThemeResource AuroraGlassStrokeBrush}"
                         BorderThickness="1"
                         Padding="12">
                     <StackPanel x:Name="BackendRows" Spacing="8" />
