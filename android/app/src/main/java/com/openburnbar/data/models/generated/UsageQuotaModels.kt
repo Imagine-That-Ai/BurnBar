@@ -21,6 +21,11 @@ data class FirestoreUsageEventDoc(
     val sessionId: String? = null,
     val deviceId: String? = null,
     val sourceDeviceId: String? = null,
+    @get:PropertyName("executionSourceID") @set:PropertyName("executionSourceID")
+    var executionSourceId: String? = null,
+    val executionSourceName: String? = null,
+    val executionSourceKind: String? = null,
+    val executionSourceConfidence: String? = null,
     val inputTokens: Long? = null,
     val outputTokens: Long? = null,
     val cacheReadTokens: Long? = null,

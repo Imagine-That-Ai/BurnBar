@@ -17,6 +17,7 @@ typealias TokenUsage = OpenBurnBarCore.TokenUsage
 typealias UsageProvenanceMethod = OpenBurnBarCore.UsageProvenanceMethod
 typealias UsageProvenanceConfidence = OpenBurnBarCore.UsageProvenanceConfidence
 typealias UsageSource = OpenBurnBarCore.UsageSource
+typealias UsageExecutionSourceKind = OpenBurnBarCore.UsageExecutionSourceKind
 typealias EscrowDeviceTrustState = OpenBurnBarCore.EscrowDeviceTrustState
 
 // MARK: - Provider Support Level (Mac-only)
@@ -351,11 +352,73 @@ struct ModelSummary: Identifiable, Hashable {
     let totalOutputTokens: Int
     let sessionCount: Int
     let providerBreakdown: [ProviderUsage]
+    let executionSourceBreakdown: [ExecutionSourceUsage]
     /// Aggregate cache hit rate signal across all rows in this model summary.
     let cacheEfficiency: OpenBurnBarCore.CacheEfficiency
 
+    init(
+        modelName: String,
+        displayName: String,
+        totalCost: Double,
+        totalTokens: Int,
+        totalInputTokens: Int,
+        totalOutputTokens: Int,
+        sessionCount: Int,
+        providerBreakdown: [ProviderUsage],
+        executionSourceBreakdown: [ExecutionSourceUsage] = [],
+        cacheEfficiency: OpenBurnBarCore.CacheEfficiency
+    ) {
+        self.modelName = modelName
+        self.displayName = displayName
+        self.totalCost = totalCost
+        self.totalTokens = totalTokens
+        self.totalInputTokens = totalInputTokens
+        self.totalOutputTokens = totalOutputTokens
+        self.sessionCount = sessionCount
+        self.providerBreakdown = providerBreakdown
+        self.executionSourceBreakdown = executionSourceBreakdown
+        self.cacheEfficiency = cacheEfficiency
+    }
+
     var formattedCost: String {
         totalCost.formatAsCost()
+    }
+}
+
+// MARK: - Execution Source Usage (for model breakdown)
+
+struct ExecutionSourceUsage: Identifiable, Hashable {
+    var id: String { executionSourceID }
+    let executionSourceID: String
+    let name: String
+    let kind: UsageExecutionSourceKind
+    let confidence: UsageProvenanceConfidence
+    let sessionCount: Int
+    let totalTokens: Int
+    let cost: Double
+    let percentage: Double
+    let cacheEfficiency: OpenBurnBarCore.CacheEfficiency
+
+    static func aggregate(_ usages: [TokenUsage], totalCost: Double) -> [ExecutionSourceUsage] {
+        Dictionary(grouping: usages, by: \.executionSourceID)
+            .map { sourceID, rows in
+                let cost = rows.reduce(0) { $0 + $1.cost }
+                return ExecutionSourceUsage(
+                    executionSourceID: sourceID,
+                    name: rows.first(where: { $0.executionSourceName != "Unknown" })?.executionSourceName
+                        ?? rows.first?.executionSourceName
+                        ?? "Unknown",
+                    kind: rows.first(where: { $0.executionSourceKind != .unknown })?.executionSourceKind
+                        ?? .unknown,
+                    confidence: rows.map(\.executionSourceConfidence).max() ?? .unknown,
+                    sessionCount: rows.count,
+                    totalTokens: rows.reduce(0) { $0 + $1.totalTokens },
+                    cost: cost,
+                    percentage: totalCost > 0 ? (cost / totalCost) * 100 : 0,
+                    cacheEfficiency: CacheEfficiency.aggregate(rows)
+                )
+            }
+            .sorted { $0.cost > $1.cost }
     }
 }
 

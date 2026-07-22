@@ -404,6 +404,10 @@ extension UsageStore {
                 totalOutputTokens: totalOutputTokens,
                 sessionCount: modelUsages.count,
                 providerBreakdown: providerBreakdown,
+                executionSourceBreakdown: ExecutionSourceUsage.aggregate(
+                    modelUsages,
+                    totalCost: totalCost
+                ),
                 cacheEfficiency: CacheEfficiency.aggregate(modelUsages)
             )
         }.sorted { $0.totalCost > $1.totalCost }
