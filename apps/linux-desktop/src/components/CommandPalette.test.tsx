@@ -106,7 +106,7 @@ describe('CommandPalette', () => {
     opener.focus();
     fireEvent.click(opener);
     const input = await screen.findByRole('combobox', { name: 'Search routes and recent queries' });
-    await waitFor(() => expect(document.activeElement).toBe(input));
+    expect(document.activeElement).toBe(input);
 
     fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(screen.getAllByRole('option')[screen.getAllByRole('option').length - 1]);
