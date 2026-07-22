@@ -709,6 +709,33 @@ export type IntegrationStatus = {
 };
 export type IntegrationsStatus = { integrations: IntegrationStatus[] };
 
+/** Closed operation set for the existing Linux SmartHub/device CLI contract. */
+export type SmartHubOperation =
+  | 'discover'
+  | 'status'
+  | 'cast_status'
+  | 'homeassistant_status'
+  | 'parity';
+export type SmartHubDiscoveryResult = {
+  adapter: string;
+  serviceType: string;
+  instances: string[];
+  rawTranscript: string;
+};
+export type SmartHubStatusResult = {
+  adapter: string;
+  status: string;
+  blocker?: string;
+  details: Record<string, string>;
+};
+export type SmartHubCommandResult =
+  | { operation: 'discover'; payload: SmartHubDiscoveryResult[] }
+  | {
+      operation: 'status' | 'cast_status' | 'homeassistant_status';
+      payload: SmartHubStatusResult;
+    }
+  | { operation: 'parity'; payload: IntegrationsStatus };
+
 export type GatewayProxyMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
@@ -888,6 +915,7 @@ export interface LinuxShellBridge {
     source?: ComputerUsePanicSource;
   }): Promise<ComputerUsePanicHaltResult>;
   integrationsStatus(): Promise<IntegrationsStatus>;
+  smartHubCommand?(operation: SmartHubOperation): Promise<SmartHubCommandResult>;
 }
 
 // ──────────────────── Raw-daemon → typed-shape mappers ────────────────────
@@ -1956,6 +1984,71 @@ function normalizeIntegrationState(value: string): IntegrationState {
   }
 }
 
+function normalizeSmartHubOperation(value: RawJsonValue): SmartHubOperation {
+  if (
+    value === 'discover' ||
+    value === 'status' ||
+    value === 'cast_status' ||
+    value === 'homeassistant_status' ||
+    value === 'parity'
+  ) {
+    return value;
+  }
+  throw new Error('SmartHub operation is not allowlisted.');
+}
+
+function mapSmartHubStatus(raw: RawJsonValue): SmartHubStatusResult {
+  const source = requireObject(raw, 'SmartHub status payload');
+  const details: Record<string, string> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value !== 'string') {
+      throw new Error(`SmartHub status field ${key} must be a string.`);
+    }
+    details[key] = value;
+  }
+  return {
+    adapter: requireString(source.adapter, 'SmartHub status adapter'),
+    status: requireString(source.status, 'SmartHub status state'),
+    blocker: typeof source.blocker === 'string' && source.blocker.length > 0 ? source.blocker : undefined,
+    details
+  };
+}
+
+function mapSmartHubCommand(raw: RawJsonValue): SmartHubCommandResult {
+  const source = requireObject(raw, 'SmartHub command response');
+  const operation = normalizeSmartHubOperation(source.operation);
+  const payload = source.payload;
+  if (payload === undefined) throw new Error('SmartHub command payload is missing.');
+  if (operation === 'discover') {
+    if (!Array.isArray(payload)) throw new Error('SmartHub discovery payload must be an array.');
+    const rows = payload.map((item, index): SmartHubDiscoveryResult => {
+      const row = requireObject(item, `SmartHub discovery result ${index}`);
+      const instances = arr(row.instances).map((instance, instanceIndex) =>
+        requireString(instance, `SmartHub discovery result ${index} instance ${instanceIndex}`)
+      );
+      if (typeof row.rawTranscript !== 'string') {
+        throw new Error(`SmartHub discovery result ${index} rawTranscript must be a string.`);
+      }
+      return {
+        adapter: requireString(row.adapter, `SmartHub discovery result ${index} adapter`),
+        serviceType: requireString(row.serviceType, `SmartHub discovery result ${index} serviceType`),
+        instances,
+        rawTranscript: row.rawTranscript
+      };
+    });
+    return { operation, payload: rows };
+  }
+  if (operation === 'parity') {
+    if (!Array.isArray(payload)) throw new Error('SmartHub parity payload must be an array.');
+    return { operation, payload: mapIntegrationsStatus({ integrations: payload }) };
+  }
+  return { operation, payload: mapSmartHubStatus(payload) };
+}
+
+export function decodeSmartHubCommandResponse(raw: RawJsonValue): SmartHubCommandResult {
+  return mapSmartHubCommand(raw);
+}
+
 function mapIntegrationsStatus(raw: RawJsonValue): IntegrationsStatus {
   const payload = pick(raw, 'result', 'status', 'snapshot') ?? raw;
   const items = arr(pick(payload, 'integrations', 'items'));
@@ -2872,6 +2965,11 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     integrationsStatus: async () => {
       const raw = await invoke<RawJsonValue>('integrations_status');
       return mapIntegrationsStatus(raw);
+    },
+    // P28 — fixed-argv SmartHub/device CLI operations; never a generic shell.
+    smartHubCommand: async (operation) => {
+      const raw = await invoke<RawJsonValue>('smarthub_command', { operation });
+      return decodeSmartHubCommandResponse(raw);
     }
   };
 }
