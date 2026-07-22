@@ -1114,6 +1114,88 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertFalse(cursorPlan.arguments.isEmpty)
     }
 
+    func test_missionRuntimePlanner_refusesRestrictedJunieVisibleTerminalPlan() {
+        let readOnlyData: [String: Any] = [
+            "source": "ios",
+            "targetProject": "~/Documents/Windsurf/BurnBar",
+            "clientThreadID": "visible-junie-read-only",
+            "commandsAllowed": false,
+            "fileEditsAllowed": false,
+            "requestedModelID": "junie-default"
+        ]
+        XCTAssertFalse(CLIAgentJunieMissionPolicy.hasFullDesktopCapabilities(
+            CLIAgentMissionRuntimePlanner.capabilityGrant(for: CLIAgentMissionBackend(chatBackend: .junie), data: readOnlyData)
+        ))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+            title: "Restricted Junie mission",
+            prompt: "Inspect without edits or commands.",
+            backend: CLIAgentMissionBackend(chatBackend: .junie),
+            data: readOnlyData
+        ))
+
+        var editOnlyData = readOnlyData
+        editOnlyData["fileEditsAllowed"] = true
+        XCTAssertFalse(CLIAgentJunieMissionPolicy.hasFullDesktopCapabilities(
+            CLIAgentMissionRuntimePlanner.capabilityGrant(for: CLIAgentMissionBackend(chatBackend: .junie), data: editOnlyData)
+        ))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+            title: "Edit-only Junie mission",
+            prompt: "Edit without commands.",
+            backend: CLIAgentMissionBackend(chatBackend: .junie),
+            data: editOnlyData
+        ))
+    }
+
+    func test_missionRuntimePlanner_allowsJunieVisibleTerminalPlanOnlyWithFullDesktopCapabilities() throws {
+        let data: [String: Any] = [
+            "source": "ios",
+            "targetProject": "~/Documents/Windsurf/BurnBar",
+            "clientThreadID": "visible-junie-full",
+            "commandsAllowed": true,
+            "fileEditsAllowed": true,
+            "requestedModelID": "junie-default"
+        ]
+
+        XCTAssertTrue(CLIAgentJunieMissionPolicy.hasFullDesktopCapabilities(
+            CLIAgentMissionRuntimePlanner.capabilityGrant(for: CLIAgentMissionBackend(chatBackend: .junie), data: data)
+        ))
+        let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
+            title: "Full Junie mission",
+            prompt: "Run with explicit full desktop approval.",
+            backend: CLIAgentMissionBackend(chatBackend: .junie),
+            data: data
+        ))
+        XCTAssertEqual(plan.executableName, "junie")
+        XCTAssertTrue(plan.arguments.contains("--task"))
+        XCTAssertTrue(plan.arguments.contains("--model"))
+        XCTAssertTrue(plan.arguments.contains("junie-default"))
+    }
+
+    func test_junieMissionPolicy_directExecutionRefusalFailsClosed() throws {
+        let junie = CLIAgentMissionBackend(chatBackend: .junie)
+        let restricted: [String: Any] = ["commandsAllowed": true, "fileEditsAllowed": false]
+        let refusal = try XCTUnwrap(CLIAgentJunieMissionPolicy.directExecutionRefusal(
+            backend: junie,
+            grant: CLIAgentMissionRuntimePlanner.capabilityGrant(for: junie, data: restricted)
+        ))
+        XCTAssertEqual(refusal.status, "failed")
+        XCTAssertTrue(refusal.sessionID.hasPrefix("policy-junie-"))
+        XCTAssertEqual(refusal.errorMessage?.contains("command execution and file-edit approval"), true)
+
+        let full: [String: Any] = ["commandsAllowed": true, "fileEditsAllowed": true]
+        XCTAssertNil(CLIAgentJunieMissionPolicy.directExecutionRefusal(
+            backend: junie,
+            grant: CLIAgentMissionRuntimePlanner.capabilityGrant(for: junie, data: full)
+        ))
+
+        // Non-Junie backends are never refused by the Junie policy.
+        let codex = CLIAgentMissionBackend(chatBackend: .codex)
+        XCTAssertNil(CLIAgentJunieMissionPolicy.directExecutionRefusal(
+            backend: codex,
+            grant: CLIAgentMissionRuntimePlanner.capabilityGrant(for: codex, data: restricted)
+        ))
+    }
+
     func test_missionRuntimePlanner_buildsVisibleTerminalPlansForGrantBackedRuntimes() throws {
         let data: [String: Any] = [
             "source": "ios",
