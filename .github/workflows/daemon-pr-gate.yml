@@ -20,6 +20,7 @@ on:
   merge_group:
     branches: [main]
     types: [checks_requested]
+  workflow_dispatch:
 
 concurrency:
   group: daemon-pr-gate-${{ github.event_name }}-${{ github.ref }}
