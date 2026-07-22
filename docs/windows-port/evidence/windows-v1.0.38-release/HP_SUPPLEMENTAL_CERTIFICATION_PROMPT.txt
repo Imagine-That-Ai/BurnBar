@@ -14,8 +14,8 @@ Authoritative candidate identity:
 - Existing physical retry ZIP SHA-256: bf10318474556b1ea3f69b05831fa09dfc4f8b36ac9470fb113092ec4f7ed876
 
 Independent harness requirement:
-- Use exact clean harness commit 37d88056066d876570df4b2887f33df7af7ebe56.
-- That commit is the merge of PR #1867 and includes both the PR #1862 supplemental-harness corrections and the reviewed Remote Config gzip/ETag repair. GitHub and GitLab main both resolved to that exact commit when this handoff was updated.
+- Require PR https://github.com/Imagine-That-Ai/BurnBar/pull/1932 to be MERGED before using it for certification. It retains the corrected UIA work from PR #1862 and adds the fail-closed staging runtime-safety observer.
+- Resolve PR #1932's GitHub mergeCommit.oid and use that exact clean commit as the new independent harness commit.
 - Do not use the old harness commit 00d0751f1c671d99fe7ef8f4059e91d689a30f44 for the new baseline. It coupled valid semantic UIA evidence to an unreliable scheduled-task desktop bitmap.
 - The new harness keeps routed RenderTargetBitmap screenshots fail-closed, uses UI Automation for the semantic deny-region verdict, reports external desktop capture separately, and discovers visible WinUI windows by PID when Process.MainWindowHandle is zero.
 - The Remote Config publisher now requests gzip on both GET and PUT so Firebase returns the ETag required for exact optimistic concurrency. Never replace the returned ETag with If-Match: *.
@@ -51,13 +51,13 @@ Phase 1 - verify transfer and establish clean roots:
 1. Resolve the flash drive whose volume label is BURNBAR. The original signed handoff is BurnBar-cert\windows-v1.0.38-final-handoff. The physical retry evidence is in the latest windows-v1.0.38-development-handoff-* directory.
 2. Run the original VERIFY-TRANSFER.ps1 and require PASS. Independently hash the physical retry ZIP and require bf10318474556b1ea3f69b05831fa09dfc4f8b36ac9470fb113092ec4f7ed876. Test the ZIP and its internal SHA256SUMS.
 3. Create a new timestamped C:\BurnBar-cert\windows-v1.0.38-supplemental-* root. Never overwrite C:\BurnBar-cert\windows-v1.0.38 or an earlier run.
-4. Clone the repo twice into candidate and harness. Check candidate out detached at windows-v1.0.38 and require exact commit 48837746490b6468efa4dc06a476f305d496039c. Check the harness out detached at 37d88056066d876570df4b2887f33df7af7ebe56 and require both trees clean.
+4. Clone the repo twice into candidate and harness. Check candidate out detached at windows-v1.0.38 and require exact commit 48837746490b6468efa4dc06a476f305d496039c. Resolve PR #1932 mergeCommit.oid, check the harness out detached there, and require both trees clean.
 5. Copy the exact verified release/provenance handoff into the new root. Reverify the MSIX hash, signed-artifact manifest, package identity/version/architecture, Authenticode signer/timestamp, checksums, and supplied provenance before installation.
 
 Phase 2 - rerun the baseline with the corrected harness:
 1. Generate a fresh physical x64 attestation with new-physical-hardware-attestation.ps1. Use only live CIM fallback logic; never fabricate an identifier.
 2. Run run-physical-release-certification.ps1 with no SkipAutomatedTests and no SkipUiAutomation, candidate RepoRoot, exact artifact manifest, fresh attestation, Platform x64, and PhysicalHardware.
-3. Run validate-release-certification-evidence.mjs with --write-sums, --expected-commit 48837746490b6468efa4dc06a476f305d496039c, and --expected-harness-commit set to the PR #1862 merge commit.
+3. Run validate-release-certification-evidence.mjs with --write-sums, --expected-commit 48837746490b6468efa4dc06a476f305d496039c, and --expected-harness-commit set to the PR #1932 merge commit.
 4. Require all routed screenshots and UIA anchors to remain PASS. The semantic UIA verdict must PASS. If external capture is Skipped, retain its diagnostic status; do not relabel it as a screenshot PASS.
 
 Phase 3 - complete accessibility-display:
@@ -91,7 +91,7 @@ Phase 6 - complete media-computer-use-safety with harmless fixtures:
 2. Cover camera, microphone, screen capture grant/deny; call/share/transfer interruption, recovery, retry, and cancellation; snapshot retention/redaction/cleanup; and Mark of the Web/quarantine.
 3. Cover protected-target and secure-desktop denial; exact current approval and stale-approval rejection; phone/runtime trust downgrade with no silent elevation; global hotkey panic, phone three-finger panic, auth-gate panic, watchdog loss; audit terminal-entry tamper; intended-session phone authorization; and replay rejection.
 4. Use scripts\windows-port\publish-staging-remote-config-fixture.ps1 from the clean harness. It derives Baseline, ComputerKill, MediaKill, and MalformedSystem from one committed catalog and refuses every project except burnbar-staging.
-5. For every non-baseline Remote Config drill, publish Baseline in a finally block and verify the returned parameters. ComputerKill must halt within 60 seconds; MediaKill must deny admission; malformed system config must fail closed. App exit must revoke privileged input after the maximum 90-second lease.
+5. For the ComputerKill and MalformedSystem drills, use scripts\windows-port\test-staging-runtime-safety-fixture.ps1. Success means privileged Computer Use halts within 60 seconds while the main OpenBurnBar app remains alive and responsive; app termination is not the remote-kill contract. The observer must prove the blocked remote lease, durable remote_config panic latch, matching diagnostics, and verified Baseline restore. Explicitly start a fresh Computer Use session between drills because automation must not clear the durable latch. MediaKill must deny admission. App exit must revoke privileged input after the maximum 90-second lease.
 6. Finalize only if every media/Computer Use assertion has complete, sanitized evidence.
 
 Phase 7 - private Store/update lifecycle, conditional:
