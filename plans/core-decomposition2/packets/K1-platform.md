@@ -1,8 +1,32 @@
 # Packet K1: extract OpenBurnBarKernelPlatform (the leaf)
-STATE: DRAFT (scaffold landed in K0; run after K0 merges)
+STATE: CONVERGED (executed on branch core-decomp2/k1, base core-decomp2/k0-scaffold;
+  full V-list green — see "Converged reality" below).
 LANE: Kernel-diet  DEPENDS-ON: K0 (scaffold: target + product + marker + umbrella)
 BASELINE-TOUCHING: none (membership shrink of Kernel is non-fatal; integrator ratchets)
-BASE: origin/main (after K0 merges)
+BASE: core-decomp2/k0-scaffold (K0 not yet on main; branched from origin scaffold ref)
+
+## Converged reality (fill-in after execution)
+- Moved EXACTLY the 12 files + `git rm` ModuleMarker.swift. Diff vs base = 12×R100
+  (100% rename, 0/0 numstat — pure moves, zero content edits) + 1 delete. Zero
+  AE-IMPORT and zero AE-TESTABLE lines were needed: Platform is a true leaf (every
+  moved file imports only Foundation + `canImport`-gated system frameworks
+  CryptoKit/Security/OSLog/os/Darwin), and `swift test` compiled all test targets
+  green without any `@testable import OpenBurnBarKernelPlatform` — the moved symbols
+  reached by tests are PUBLIC and re-exported by the KernelUmbrella `@_exported`.
+- Live size: OpenBurnBarKernelPlatform = 12 files / 2430 LOC (ceiling 14 / 2900,
+  `planned:true` so `--update` never ratchets); OpenBurnBarKernel shrank 145→133 files.
+  Membership + ui-purity + umbrella-imports + no-suppressions + canon `--check` all pass
+  with NO `--update` (planned ceilings already encode the end state).
+- OP-NOTE (nested git-mv): the destination subdirs
+  `OpenBurnBarKernelPlatform/{Platform,SharedModels}/` do NOT exist at K0 (target held
+  only ModuleMarker.swift at root). `git mv <src> <dst-in-nonexistent-subdir>` fails
+  "No such file or directory". Fix: `mkdir -p` the two destination subdirs FIRST, then
+  the 6 nested `git mv`s succeed. The 6 root-level `git mv`s work without mkdir.
+- OP-NOTE (lockfile drift): `cd OpenBurnBarDaemon && swift build` re-resolves and
+  appends pins (sentry-cocoa, sqlcipher.swift) to `OpenBurnBarDaemon/Package.resolved`.
+  That drift is a build artifact, NOT part of this slice — revert it (`git stash push --
+  OpenBurnBarDaemon/Package.resolved && git stash drop`) so the packet diff stays the
+  12 renames + 1 delete only.
 
 Moves the 12 leaf host/runtime primitives from `OpenBurnBarKernel` into
 `OpenBurnBarKernelPlatform` and deletes that target's `ModuleMarker.swift` in the
