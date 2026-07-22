@@ -591,9 +591,9 @@ check("desired main branch protection requires only the umbrella gate", () => {
   assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
 });
 
-check("urgent PRs and merge-queue candidates use the bounded paid macOS pool", () => {
+check("only explicitly urgent PRs use the bounded paid macOS pool", () => {
   const expectedRunner =
-    "runs-on: ${{ (github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'ci-turbo')) && 'BurnBar-macos-26-xlarge' || 'macos-26' }}";
+    "runs-on: ${{ contains(github.event.pull_request.labels.*.name, 'ci-turbo') && 'BurnBar-macos-26-xlarge' || 'macos-26' }}";
   for (const [workflow, expectedCount] of [
     [APP_WORKFLOW, 2],
     [DAEMON_WORKFLOW, 2],

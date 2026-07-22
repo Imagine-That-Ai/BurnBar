@@ -43,7 +43,7 @@ jobs:
 
   app-build-test:
     name: AgentLens Rust + Swift build/test prerequisites
-    runs-on: ${{ (github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'ci-turbo')) && 'BurnBar-macos-26-xlarge' || 'macos-26' }}
+    runs-on: ${{ contains(github.event.pull_request.labels.*.name, 'ci-turbo') && 'BurnBar-macos-26-xlarge' || 'macos-26' }}
     # Cold cache + libsignal FFI + full xcodebuild of the app target on a hosted
     # runner needs headroom; observed cold macos-26 runs can approach 120
     # minutes before the 1,920-test suite and coverage upload finish.
@@ -166,7 +166,7 @@ jobs:
 
   mobile-build-gate:
     name: Mobile build + unit test
-    runs-on: ${{ (github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'ci-turbo')) && 'BurnBar-macos-26-xlarge' || 'macos-26' }}
+    runs-on: ${{ contains(github.event.pull_request.labels.*.name, 'ci-turbo') && 'BurnBar-macos-26-xlarge' || 'macos-26' }}
     # Compile + unit test execution: Signal FFI + full mobile app-and-tests
     # compile, THEN run the unit-test bundle on a booted simulator.
     # Observing-first: build-for-testing first (fail fast on compile errors),

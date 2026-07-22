@@ -40,10 +40,11 @@ in the key and the workflow still runs its drift check after restore.
 
 The `BurnBar-macos-26-xlarge` GitHub-hosted runner pool is ephemeral,
 BurnBar-only, and capped at five concurrent M2 runners. Expensive macOS 26 jobs
-use that pool for native `merge_group` candidates and pull requests carrying
-the `ci-turbo` label; ordinary pull requests stay on standard hosted runners.
+use that pool only for pull requests carrying the `ci-turbo` label; ordinary
+pull requests and merge-queue candidates stay on standard hosted runners until
+the paid pool has passed a controlled capacity probe.
 This keeps untrusted public pull-request code off persistent self-hosted Macs
-while spending only on approval-ready candidates or explicit urgent work.
+while spending only on explicit urgent work.
 
 Do not grant this public repository access to the shared self-hosted runner
 group. Increase the paid pool cap only after checking the organization macOS
