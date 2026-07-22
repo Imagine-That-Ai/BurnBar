@@ -2,6 +2,10 @@ import Foundation
 import OpenBurnBarEngine
 
 #if os(Linux)
+import Glibc
+#endif
+
+#if os(Linux)
 /// Linux's native notification bridge is deliberately small and explicit. The daemon does not
 /// search `PATH`, invoke a shell, or attach actions/deep links to a notification. `notify-send`
 /// talks to the user's freedesktop notification service through D-Bus.
@@ -9,6 +13,8 @@ struct LinuxLocalNotificationAdapter: Sendable {
     static let notifySendPath = "/usr/bin/notify-send"
     static let maximumTitleUTF8Bytes = 120
     static let maximumBodyUTF8Bytes = 2_048
+    static let commandTimeoutSeconds: TimeInterval = 5
+    static let commandTerminationGraceSeconds: TimeInterval = 0.25
 
     struct CommandResult: Sendable, Equatable {
         let exitCode: Int32
@@ -34,6 +40,7 @@ struct LinuxLocalNotificationAdapter: Sendable {
         case titleContainsControlCharacter
         case bodyContainsControlCharacter
         case launchFailed(String)
+        case commandTimedOut(timeoutSeconds: Int)
         case commandFailed(exitCode: Int32, stderr: String)
 
         var errorDescription: String? {
@@ -54,6 +61,8 @@ struct LinuxLocalNotificationAdapter: Sendable {
                 return "Linux local notification body contains an unsupported control character."
             case .launchFailed(let detail):
                 return "Linux local notification launch failed: " + detail
+            case .commandTimedOut(let timeoutSeconds):
+                return "Linux local notification command timed out after " + String(timeoutSeconds) + " seconds."
             case .commandFailed(let exitCode, let stderr):
                 let suffix = stderr.isEmpty ? "" : " (" + stderr + ")"
                 return "Linux local notification service rejected the notification (exit " + String(exitCode) + ")" + suffix + "."
@@ -102,6 +111,8 @@ struct LinuxLocalNotificationAdapter: Sendable {
         let result: CommandResult
         do {
             result = try runCommand(executablePath, arguments)
+        } catch let error as AdapterError {
+            throw error
         } catch {
             let detail = String(error.localizedDescription.prefix(512))
             throw AdapterError.launchFailed(detail)
@@ -157,12 +168,48 @@ struct LinuxLocalNotificationAdapter: Sendable {
     }
 
     private static func runProcess(path: String, arguments: [String]) throws -> CommandResult {
+        try runProcess(
+            path: path,
+            arguments: arguments,
+            timeout: commandTimeoutSeconds,
+            terminationGrace: commandTerminationGraceSeconds
+        )
+    }
+
+    static func runProcess(
+        path: String,
+        arguments: [String],
+        timeout: TimeInterval,
+        terminationGrace: TimeInterval = commandTerminationGraceSeconds
+    ) throws -> CommandResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
         let error = Pipe()
         process.standardError = error
         try process.run()
+
+        let deadline = Date().addingTimeInterval(max(0, timeout))
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: min(0.05, max(0.001, deadline.timeIntervalSinceNow)))
+        }
+        guard process.isRunning == false else {
+            process.terminate()
+            let terminationDeadline = Date().addingTimeInterval(max(0, terminationGrace))
+            while process.isRunning && Date() < terminationDeadline {
+                Thread.sleep(forTimeInterval: min(0.05, max(0.001, terminationDeadline.timeIntervalSinceNow)))
+            }
+            if process.isRunning {
+                #if os(Linux)
+                _ = kill(process.processIdentifier, SIGKILL)
+                #else
+                process.interrupt()
+                #endif
+            }
+            process.waitUntilExit()
+            throw AdapterError.commandTimedOut(timeoutSeconds: Int(ceil(max(0, timeout))))
+        }
+
         process.waitUntilExit()
         let stderr = String(
             data: error.fileHandleForReading.readDataToEndOfFile(),

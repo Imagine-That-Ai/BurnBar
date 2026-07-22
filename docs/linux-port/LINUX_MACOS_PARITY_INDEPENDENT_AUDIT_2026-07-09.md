@@ -23,6 +23,12 @@ and the IPC drift gate. The final native behavior suite includes the complete
 daemon manifest rather than the reduced list that had been accidentally staged
 during the earlier timeout repair.
 
+The Linux freedesktop notification bridge now bounds the `/usr/bin/notify-send`
+process, terminates a stalled invocation, and preserves a typed timeout instead
+of blocking the daemon actor indefinitely. The native test manifest includes a
+regression case for the stalled-process path. This closes a reliability gap in
+source and tests; it is not installed-environment certification.
+
 The malformed/incomplete HTTP frame test is deterministic now: the Linux raw
 request helper half-closes its write side after sending the intentionally short
 body, so the gateway returns its typed error immediately instead of waiting for

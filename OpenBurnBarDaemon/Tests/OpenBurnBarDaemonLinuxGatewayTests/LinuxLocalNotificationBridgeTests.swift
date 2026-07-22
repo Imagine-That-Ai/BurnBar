@@ -128,6 +128,17 @@ final class LinuxLocalNotificationBridgeTests: XCTestCase {
         }
     }
 
+    func testProcessRunnerTerminatesStalledNotifySendWithinBoundedTimeout() {
+        assertAdapterError(.commandTimedOut(timeoutSeconds: 1)) {
+            try LinuxLocalNotificationAdapter.runProcess(
+                path: "/usr/bin/sleep",
+                arguments: ["5"],
+                timeout: 0.01,
+                terminationGrace: 0.05
+            )
+        }
+    }
+
     private func assertAdapterError(
         _ expected: LinuxLocalNotificationAdapter.AdapterError,
         operation: () throws -> Void,
