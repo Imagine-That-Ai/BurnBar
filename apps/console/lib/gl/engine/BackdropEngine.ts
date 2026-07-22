@@ -57,6 +57,18 @@ export interface BackdropEngineOptions {
   swarmEmberOptions?: SwarmEmberKernelOptions;
   /** Notified with the kernel actually shown (may differ on GL fallback). */
   onResolve?: (id: KernelId) => void;
+  /**
+   * Deterministic host profile for performance certification. Production
+   * callers leave this unset so the engine follows the user's OS preference.
+   */
+  reducedMotionOverride?: boolean;
+}
+
+export interface BackdropRuntimeState {
+  hostVisible: boolean;
+  renderLoopScheduled: boolean;
+  reducedMotion: boolean;
+  resolvedKernel: KernelId;
 }
 
 function detectWebgl2(): { supported: boolean; caps: GlCapabilities } {
@@ -126,9 +138,10 @@ export class BackdropEngine {
     this.onResolve = opts.onResolve;
     this.activeId = opts.initialKernel ?? DEFAULT_KERNEL_ID;
 
-    this.reducedMotion =
+    this.reducedMotion = opts.reducedMotionOverride ?? (
       typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
 
     const rect = container.getBoundingClientRect();
     this.width = rect.width || window.innerWidth;
@@ -209,6 +222,17 @@ export class BackdropEngine {
 
   getResolvedKernel(): KernelId {
     return this.activeId;
+  }
+
+  /** Runtime truth used by native hosts to confirm that occlusion commands
+   *  reached the actual engine rather than merely reaching the WKWebView. */
+  getRuntimeState(): BackdropRuntimeState {
+    return {
+      hostVisible: this.hostVisible,
+      renderLoopScheduled: this.raf !== null,
+      reducedMotion: this.reducedMotion,
+      resolvedKernel: this.activeId,
+    };
   }
 
   /**

@@ -14,20 +14,22 @@ def test_required_guard_is_unconditional_and_runs_only_default_branch_code() -> 
     assert trigger_lines == [
         "pull_request_target:",
         "types: [opened, synchronize, reopened, ready_for_review]",
+        "merge_group:",
+        "types: [checks_requested]",
     ]
     assert "\n    if:" not in source
     for marker in (
         "Domain Core Trusted Deletion Guard",
-        "ref: ${{ github.event.pull_request.base.sha }}",
+        "ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}",
         "path: trusted",
-        "ref: ${{ github.event.pull_request.head.sha }}",
+        "ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}",
         "path: candidate",
         "persist-credentials: false",
         "TRUSTED_ROOT: ${{ github.workspace }}/trusted",
         "CANDIDATE_ROOT: ${{ github.workspace }}/candidate",
         'python3 "$TRUSTED_ROOT/scripts/ci/verify-domain-core-legacy-deletion.py"',
         '--repo-root "$CANDIDATE_ROOT"',
-        '--deletion-head "$HEAD_SHA"',
+        '--deletion-head "$PULL_REQUEST_HEAD"',
         "DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache",
     ):
         assert marker in source
@@ -51,10 +53,12 @@ def test_trusted_deletion_guard_uses_workspace_anchored_checkout_paths() -> None
 
 def test_domain_core_trusted_guard_is_required_and_pr_gate_is_pending() -> None:
     governance = json.loads((ROOT / "governance/branch-protection.main.json").read_text())
+    gate = json.loads((ROOT / "governance/burnbar-ci-gate.json").read_text())
     required = governance["required_status_checks"]["contexts"]
     pending = governance["_pending_required_status_checks"]["contexts"]
 
-    assert "Domain Core Trusted Deletion Guard" in required
+    assert required == ["BurnBar CI Gate"]
+    assert "Domain Core Trusted Deletion Guard" in gate["required_contexts"]
     assert "Domain Core Trusted Deletion Guard" not in pending
-    assert "Domain Core PR Gate" not in required
+    assert "Domain Core PR Gate" in gate["required_contexts"]
     assert "Domain Core PR Gate" in pending

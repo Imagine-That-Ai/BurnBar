@@ -73,6 +73,22 @@ final class WandModelRouterTests: XCTestCase {
         XCTAssertEqual(selected.map(\.providerDiversityRelaxed), [false, false])
     }
 
+    func test_capabilityRankingDoesNotTreatProxySubstringAsProTier() {
+        let rows = [
+            option("openburnbar-proxy-mini", tier: "small", providerID: "openai", source: .codexModelCatalog),
+            option("reliable-high", tier: "high", providerID: "anthropic", source: .codexModelCatalog)
+        ]
+
+        let selected = WandModelRouter.select(
+            selector: .highestCapability,
+            runtimes: [.codex],
+            catalogs: [.codex: rows],
+            requireProviderDiversity: false
+        )
+
+        XCTAssertEqual(selected.map(\.requestedModelID), ["reliable-high"])
+    }
+
     private func option(
         _ modelID: String,
         tier: String,

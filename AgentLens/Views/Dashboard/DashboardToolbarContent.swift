@@ -81,7 +81,7 @@ extension DashboardView {
             .accessibilityIdentifier(OBBAccessibilityID.dashboardRefreshButton)
 
             BurnRailSettingsButton {
-                showingSettings = true
+                presentSettings()
             }
             .accessibilityIdentifier(OBBAccessibilityID.dashboardSettingsButton)
 
@@ -350,7 +350,7 @@ extension DashboardView {
             .disabled(isScanning || aggregator == nil)
             .help(isScanning ? "Mining session logs…" : "Refresh token spend")
 
-            BurnRailSettingsButton { showingSettings = true }
+            BurnRailSettingsButton { presentSettings() }
 
             commandDeckOverflow
         }
@@ -399,8 +399,7 @@ extension DashboardView {
                     }
                 },
                 onSettingsItem: { itemID in
-                    SettingsDeepLinkRouting.route(to: itemID)
-                    showingSettings = true
+                    presentSettings(itemID: itemID)
                 },
                 onChatBackend: { backend in
                     chatController.setChatBackend(backend)
@@ -450,8 +449,7 @@ extension DashboardView {
             BurnRailAppearanceQuickMenu(
                 settingsManager: settingsManager,
                 onOpenAppearanceSettings: {
-                    SettingsDeepLinkRouting.route(to: "general.appearance.theme")
-                    showingSettings = true
+                    presentSettings(itemID: "general.appearance.theme")
                 },
                 scale: scale
             )
@@ -677,7 +675,7 @@ extension DashboardView {
 
                 Divider()
 
-                Button("Settings…") { showingSettings = true }
+                Button("Settings…") { presentSettings() }
                     .accessibilityIdentifier(OBBAccessibilityID.dashboardSettingsButton)
             }
         } label: {

@@ -12,6 +12,8 @@ name: Android ktlint (PR)
 
 on:
   pull_request:
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read

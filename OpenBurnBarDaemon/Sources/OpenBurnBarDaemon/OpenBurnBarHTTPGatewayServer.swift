@@ -38,6 +38,10 @@ public actor BurnBarHTTPGatewayServer {
 
     let modelHealthStore: BurnBarGatewayModelHealthStore
 
+    /// Shared across Elder Wand requests so panel members using one credential
+    /// cannot trigger avoidable provider concurrency limits.
+    let elderWandPanelExecutionGate = ElderWandPanelExecutionGate()
+
     /// Owns the expensive live model-catalog snapshot (+ optional TTL cache) and
     /// the advertisement-eligibility predicate, consumed by `/v1/models` and the
     /// routing path through one narrow interface. Replaces the inline catalog

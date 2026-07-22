@@ -103,6 +103,30 @@ public extension IrohRelayTransport {
     }
 }
 
+/// Fails fast when a consuming app was built without the optional native iroh
+/// module. This lets higher-level transports use their supported network
+/// fallback instead of publishing or dialing a process-local loopback peer.
+public final class UnavailableIrohRelayTransport: IrohRelayTransport, Sendable {
+    public init() {}
+
+    public func start() async throws -> IrohEndpointIdentity {
+        throw IrohRelayTransportError.backendUnavailable
+    }
+
+    public func connect(
+        to target: IrohDialTarget,
+        timeout: TimeInterval
+    ) async throws -> any IrohRelayStream {
+        throw IrohRelayTransportError.backendUnavailable
+    }
+
+    public func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {
+        throw IrohRelayTransportError.backendUnavailable
+    }
+
+    public func shutdown() async {}
+}
+
 private extension String {
     var nilIfEmpty: String? {
         isEmpty ? nil : self

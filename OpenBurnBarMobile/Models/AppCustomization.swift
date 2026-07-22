@@ -68,6 +68,10 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
         default:        return nil
         }
     }
+
+    var auroraAccessibilityIdentifier: String {
+        "auroraTab.\(asAuroraDestination?.id ?? id)"
+    }
 }
 
 /// Provides shared color palettes for matching Mac OS themes across platforms.

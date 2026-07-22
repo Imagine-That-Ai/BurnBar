@@ -402,6 +402,38 @@ final class RoutedClientWiringSentryTests: XCTestCase {
         XCTAssertNil(settings.routedClientWiring.lastRepairDate(targetRawValue: "claudeCode"))
     }
 
+    @MainActor
+    func test_fileWatcherRepairsInPlaceRewriteFromBackgroundQueue() async throws {
+        let wiring = makeWiring()
+        _ = try wiring.wire(
+            target: .codex,
+            gateway: RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: ""),
+            advertisedModels: Self.defaultAdvertisedModels
+        )
+        let url = tempHome.appendingPathComponent(".codex/config.toml")
+
+        settings.routedClientWiring.enroll(targetRawValue: RoutingClientWiringTarget.codex.rawValue)
+        sentry = makeSentry(fileSystemWatchersEnabled: true, debounceNanoseconds: 10_000_000)
+        sentry.start(settingsManager: settings)
+
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.truncate(atOffset: 0)
+        try handle.write(contentsOf: Data("model = \"native\"\n".utf8))
+        try handle.close()
+        XCTAssertFalse(makeWiring().isWired(target: .codex))
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while !makeWiring().isWired(target: .codex), clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+
+        XCTAssertTrue(
+            makeWiring().isWired(target: .codex),
+            "The background DispatchSource callback must hop to MainActor and repair the stripped block."
+        )
+    }
+
     // MARK: - Enrollment changes
 
     @MainActor
@@ -561,16 +593,18 @@ final class RoutedClientWiringSentryTests: XCTestCase {
 
     @MainActor
     private func makeSentry(
-        advertisedModels: [RoutingClientAdvertisedModel]? = nil
+        advertisedModels: [RoutingClientAdvertisedModel]? = nil,
+        fileSystemWatchersEnabled: Bool = false,
+        debounceNanoseconds: UInt64 = 1_000_000
     ) -> RoutedClientWiringSentry {
         let home = tempHome!
         return RoutedClientWiringSentry(
             configuration: RoutedClientWiringSentry.Configuration(
-                debounceNanoseconds: 1_000_000,
+                debounceNanoseconds: debounceNanoseconds,
                 periodicSweepSeconds: 0,
                 reopenBackoffNanoseconds: 1_000_000,
                 monitoredEvents: [.write, .extend, .rename, .delete, .attrib, .link],
-                fileSystemWatchersEnabled: false,
+                fileSystemWatchersEnabled: fileSystemWatchersEnabled,
                 lifecycleSweepsEnabled: false
             ),
             wiringFactory: {

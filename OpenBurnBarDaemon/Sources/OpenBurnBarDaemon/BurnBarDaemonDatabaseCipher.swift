@@ -82,10 +82,13 @@ enum BurnBarDaemonDatabaseCipher {
             kSecAttrService as String: keychainService,
             kSecAttrAccount as String: keychainKeyAccount,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
         ]
         var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let status = withKeychainUserInteractionDisabled {
+            SecItemCopyMatching(query as CFDictionary, &result)
+        }
         guard status == errSecSuccess, let data = result as? Data else {
             return nil
         }

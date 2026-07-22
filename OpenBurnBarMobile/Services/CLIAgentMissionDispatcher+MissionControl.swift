@@ -14,6 +14,41 @@ import os
 extension CLIAgentMissionDispatcher {
     // MARK: - Mission group observation
 
+    /// Subscribe to the newest mission group so a completed or in-flight Wand
+    /// run returns after the app is relaunched.
+    func observeLatestMissionGroup(
+        onUpdate: @escaping @MainActor (MissionGroupDocument) -> Void,
+        onError: @escaping @MainActor (String) -> Void
+    ) throws -> CLIAgentMissionObservation {
+        guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
+        guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
+        let localVaultKey: Data?
+        do {
+            localVaultKey = try CloudVaultKeyStore().loadKey(uid: uid)
+        } catch {
+            localVaultKey = nil
+        }
+        let query = firestoreProvider()
+            .collection("users").document(uid)
+            .collection("mission_groups")
+            .order(by: "createdAt", descending: true)
+            .limit(to: 1)
+        let registration = query.addSnapshotListener { snapshot, error in
+            if let error {
+                Task { @MainActor in onError(error.localizedDescription) }
+                return
+            }
+            guard let snapshot = snapshot?.documents.first else { return }
+            guard let doc = MissionGroupDocument(
+                documentID: snapshot.documentID,
+                data: snapshot.data(),
+                vaultKey: localVaultKey
+            ) else { return }
+            Task { @MainActor in onUpdate(doc) }
+        }
+        return CLIAgentMissionObservation(registrations: [registration])
+    }
+
     /// Subscribe to live updates of a mission group document. Returns an
     /// observation handle the caller stores for cancellation. Hits the
     /// `users/{uid}/mission_groups/{id}` doc.

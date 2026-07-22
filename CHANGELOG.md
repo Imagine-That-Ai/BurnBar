@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Elder Wand and Pareto Wand reliability
+
+- **Hardened Elder fusion across malformed, repeated, over-budget, and cancelled
+  calls**: duplicate panel IDs now execute once, judge output is validated before
+  synthesis, every requested tool call receives a protocol-valid response, and
+  cancellation stops before later paid stages.
+- **Made Pareto routing durable from dispatch through Mac claim**: active Wand
+  routing now fails closed when any selected runtime is missing, fan-out
+  parallelism matches Firestore bounds, concrete mobile/manual routes are no
+  longer replaced by the Mac default, and capability matching no longer reads
+  `proxy` as `pro`. Incomplete headless proof results no longer wrap one proven
+  model onto missing siblings.
+- **Made Ministry wand persistence atomic and diagnosable**: sanitization no
+  longer mutates caller data, concurrent saves use unique durable temp files,
+  read/write permission failures are structured, and freshly saved stores no
+  longer report timestamp-only rewrites.
+- **Made the signed Mac Elder workflow use one executable model contract**:
+  Wand settings and compatible chat engines now load the daemon's live catalog,
+  Automatic selection follows the gateway default, stale explicit choices fail
+  visibly, and exact advertised local Ollama IDs route without letting a local
+  provider shadow unrelated cloud models.
+- **Fixed signed-app startup and Wand settings navigation**: the packaged daemon
+  now carries its SQLCipher runtime before signing, background wiring repair no
+  longer crosses a main-actor boundary, and the dashboard opens Wand settings
+  on the requested page with the same live chat controller.
+- **Hardened production App Check readiness**: signed macOS builds select
+  DeviceCheck instead of trusting an inapplicable App Attest support probe, and
+  the production verifier now requires both enforcement and an uploaded
+  DeviceCheck key for the canonical Firebase app.
+- **Stopped database-encryption tests from touching a user's live Keychain**:
+  XCTest now uses an in-memory client plus a process-local account namespace.
+  Startup also preserves an existing encrypted database without creating a
+  replacement key when its original key is missing, and reports a specific
+  recovery error when the stored key is rejected.
+- **Stopped failed async database reads from crashing the app test host**: the
+  vendored GRDB queue now leaves read-only mode only after entering it, and
+  rolls back a failed commit before reusing the connection.
+
 ### Fixed - Incremental conversation indexing
 
 - **Stopped steady-state conversation indexing from re-reading the full log
@@ -25,7 +63,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lease every 60 seconds. The privileged input broker now checks an independent
   expiring remote interlock on every dispatch, and remote recovery cannot clear
   a manual or watchdog panic latch.
-
 ### Fixed - Windows physical x64 usage-scan memory
 
 - **Isolated native Swift parsing from the long-lived WinUI process**: usage

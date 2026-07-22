@@ -238,9 +238,9 @@ struct ChatGatewaySettingsView: View {
         .navigationTitle("AI Environments")
         .onAppear { cloudEntitlement.start() }
         .sheet(isPresented: $isShowingElderWand) {
-            // Settings has no live chat session, so the configurator renders
-            // its empty-state (the live picker needs a chat's advertised-model
-            // catalog). The chat-header entry point passes a real controller.
+            // This legacy sheet has no live chat controller, so it renders the
+            // guidance state. The Settings route and chat header pass the
+            // running controller and expose the advertised-model catalog.
             ElderWandConfiguratorView(controller: nil, settingsManager: settingsManager)
         }
     }
