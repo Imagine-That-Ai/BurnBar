@@ -2193,6 +2193,60 @@ fn database_watch_project(project_path: Option<String>) -> Result<serde_json::Va
     )
 }
 
+// ───────────────── P22: bounded code retrieval ─────────────────
+// Wire: daemon.code.search / daemon.code.context_pack.
+// Keep the shell read-only and bounded; index ownership and trust wrapping
+// remain in OpenBurnBarDaemon.
+fn bounded_code_query(query: String) -> Result<String, String> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Err("Code search query must not be empty.".to_string());
+    }
+    Ok(trimmed.chars().take(512).collect())
+}
+
+fn bounded_code_limit(limit: Option<u32>, default: u32) -> u32 {
+    limit.unwrap_or(default).clamp(1, 50)
+}
+
+fn bounded_context_bytes(max_bytes: Option<u32>) -> u32 {
+    max_bytes.unwrap_or(24_000).clamp(1_024, 24_000)
+}
+
+#[tauri::command]
+fn database_code_search(
+    query: String,
+    project_path: Option<String>,
+    limit: Option<u32>,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.code.search",
+        Some(serde_json::json!({
+            "query": bounded_code_query(query)?,
+            "projectPath": project_path,
+            "limit": bounded_code_limit(limit, 20)
+        })),
+    )
+}
+
+#[tauri::command]
+fn database_code_context_pack(
+    query: String,
+    project_path: Option<String>,
+    limit: Option<u32>,
+    max_bytes: Option<u32>,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.code.context_pack",
+        Some(serde_json::json!({
+            "query": bounded_code_query(query)?,
+            "projectPath": project_path,
+            "limit": bounded_code_limit(limit, 10),
+            "maxBytes": bounded_context_bytes(max_bytes)
+        })),
+    )
+}
+
 // ───────────────── P08: daemon-owned account authority ─────────────────
 #[tauri::command]
 fn account_status() -> Result<serde_json::Value, String> {
@@ -4597,6 +4651,8 @@ pub fn run() {
             database_workspace_status,
             database_index_project,
             database_watch_project,
+            database_code_search,
+            database_code_context_pack,
             account_status,
             account_begin_sign_in,
             account_cancel_sign_in,
@@ -6004,5 +6060,23 @@ mod tests {
             None
         );
         assert_eq!(validated_deep_link_route("openburnbar://unknown"), None);
+    }
+
+    #[test]
+    fn database_code_bounds_reject_blank_queries_and_clamp_reads() {
+        assert!(bounded_code_query("   ".to_string()).is_err());
+        assert_eq!(
+            bounded_code_query("  symbol  ".to_string()).unwrap(),
+            "symbol"
+        );
+        assert_eq!(
+            bounded_code_query("a".repeat(600)).unwrap().chars().count(),
+            512
+        );
+        assert_eq!(bounded_code_limit(Some(0), 20), 1);
+        assert_eq!(bounded_code_limit(Some(999), 20), 50);
+        assert_eq!(bounded_code_limit(None, 10), 10);
+        assert_eq!(bounded_context_bytes(Some(999_999)), 24_000);
+        assert_eq!(bounded_context_bytes(Some(1)), 1_024);
     }
 }

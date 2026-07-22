@@ -6,6 +6,7 @@ import { useDatabaseStore } from '../../state/databaseStore.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
 import { formatBytes } from '../system/systemFormat.js';
+import { CodeRetrievalPanel } from './CodeRetrievalPanel.js';
 import '../system/system.css';
 
 type DatabaseWorkspaceMode = 'story' | 'atlas' | 'system';
@@ -251,6 +252,7 @@ export function DatabaseSurface() {
               </tbody>
             </table>
           ) : null}
+          <CodeRetrievalPanel projectPath={workspace?.projectRoot} />
         </section>
       ) : null}
       {mode === 'system' ? (
@@ -412,6 +414,7 @@ export function DatabaseSurface() {
               ) : null}
             </section>
           </div>
+          <CodeRetrievalPanel projectPath={workspace?.projectRoot} compact />
         </section>
       ) : null}
     </>

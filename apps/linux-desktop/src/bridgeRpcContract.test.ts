@@ -78,6 +78,17 @@ describe('VAL-RPC bridge contract', () => {
     expect(tsBridge).toContain('memory_set_status');
   });
 
+  it('wires bounded database retrieval only to canonical code RPCs', () => {
+    expect(rustBridge).toContain('daemon.code.search');
+    expect(rustBridge).toContain('daemon.code.context_pack');
+    expect(rustBridge).toContain('fn database_code_search');
+    expect(rustBridge).toContain('fn database_code_context_pack');
+    expect(tsBridge).toContain("'database_code_search'");
+    expect(tsBridge).toContain("'database_code_context_pack'");
+    expect(canonicalRpc).toContain('id: "daemon.code.search"');
+    expect(canonicalRpc).toContain('id: "daemon.code.context_pack"');
+  });
+
   it('wires computer use wrappers to existing enum methods', () => {
     for (const method of [
       'daemon.computer_use.session.start',
