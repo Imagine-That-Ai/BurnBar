@@ -11,6 +11,7 @@
 import { FieldPath, type DocumentData, type Firestore } from "firebase-admin/firestore";
 import type { UsageRollupDoc, ProviderSummary, ProviderAccountSummary, ModelSummary, DeviceSummary } from "./types.js";
 import { isProviderAccountStorageScope, parseProvider, parseUsageEventDoc, recordOrUndefined } from "./guards.js";
+import { flushDomainCorePricingShadowEvidence } from "./pricing.js";
 import {
   COUNTER_SCHEMA_VERSION,
   ROLLUP_SCHEMA_VERSION,
@@ -398,26 +399,30 @@ export async function rebuildUserRollupCounters(
   let pages = 0;
   let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | undefined;
 
-  for (;;) {
-    let query: FirebaseFirestore.Query = usageRef.orderBy(FieldPath.documentId()).limit(pageSize);
-    if (lastDoc) query = query.startAfter(lastDoc);
-    const snapshot = await query.get();
-    if (snapshot.empty) break;
-    pages += 1;
+  try {
+    for (;;) {
+      let query: FirebaseFirestore.Query = usageRef.orderBy(FieldPath.documentId()).limit(pageSize);
+      if (lastDoc) query = query.startAfter(lastDoc);
+      const snapshot = await query.get();
+      if (snapshot.empty) break;
+      pages += 1;
 
-    for (const doc of snapshot.docs) {
-      usageDocsScanned += 1;
-      const event = parseUsageEventDoc(doc.data());
-      if (!event) continue;
-      const contribution = usageContribution(event, stableCounterKey(doc.id));
-      if (!contribution) continue;
-      const candidates = candidatesByLogicalKey.get(contribution.logicalKey) ?? {};
-      candidates[contribution.candidateKey] = contribution;
-      candidatesByLogicalKey.set(contribution.logicalKey, candidates);
+      for (const doc of snapshot.docs) {
+        usageDocsScanned += 1;
+        const event = parseUsageEventDoc(doc.data());
+        if (!event) continue;
+        const contribution = usageContribution(event, stableCounterKey(doc.id));
+        if (!contribution) continue;
+        const candidates = candidatesByLogicalKey.get(contribution.logicalKey) ?? {};
+        candidates[contribution.candidateKey] = contribution;
+        candidatesByLogicalKey.set(contribution.logicalKey, candidates);
+      }
+
+      lastDoc = snapshot.docs.at(-1);
+      if (snapshot.docs.length < pageSize || !lastDoc) break;
     }
-
-    lastDoc = snapshot.docs.at(-1);
-    if (snapshot.docs.length < pageSize || !lastDoc) break;
+  } finally {
+    await flushDomainCorePricingShadowEvidence();
   }
 
   const winners = [...candidatesByLogicalKey.entries()]

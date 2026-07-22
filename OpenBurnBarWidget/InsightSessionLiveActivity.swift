@@ -1,7 +1,6 @@
 import ActivityKit
 import WidgetKit
 import SwiftUI
-import OpenBurnBarCore
 
 /// Live Activity for an active agent session.
 ///

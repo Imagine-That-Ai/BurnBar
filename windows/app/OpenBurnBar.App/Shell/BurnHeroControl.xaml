@@ -18,13 +18,13 @@
                            FontSize="9"
                            FontWeight="Bold"
                            CharacterSpacing="100"
-                           Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 <TextBlock x:Name="ValueText"
                            Text="—"
                            FontSize="15"
                            FontWeight="Bold"
-                           FontFamily="Cascadia Mono, Consolas"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           FontFamily="{StaticResource AuroraMonoFont}"
+                           Foreground="{ThemeResource AuroraTextBrush}" />
             </StackPanel>
             <Canvas x:Name="SparkCanvas" Width="64" Height="22" VerticalAlignment="Center" />
             <!-- Honesty (H0): when the capsule renders DashboardUsageSampleData instead of a live
@@ -34,11 +34,11 @@
                     Visibility="Collapsed"
                     VerticalAlignment="Center"
                     CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                    Background="#1FC7CFDD"
+                    Background="{ThemeResource AuroraGlassTintElevatedBrush}"
                     Padding="8,3">
                 <TextBlock Text="Sample"
                            FontSize="10"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
             </Border>
         </StackPanel>
     </Border>

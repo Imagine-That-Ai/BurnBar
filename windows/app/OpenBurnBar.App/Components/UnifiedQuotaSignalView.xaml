@@ -34,7 +34,7 @@
                            FontSize="12"
                            FontWeight="SemiBold"
                            VerticalAlignment="Center"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Foreground="{ThemeResource AuroraTextBrush}" />
                 <Border x:Name="WindowPill"
                         Grid.Column="1"
                         Margin="6,0,0,0"
@@ -43,13 +43,13 @@
                         BorderThickness="0.5"
                         VerticalAlignment="Center"
                         Visibility="Collapsed">
-                    <TextBlock x:Name="WindowLabel" FontSize="10" FontFamily="Cascadia Mono, Consolas" />
+                    <TextBlock x:Name="WindowLabel" FontSize="10" FontFamily="{StaticResource AuroraMonoFont}" />
                 </Border>
                 <TextBlock x:Name="PercentCompact"
                            Grid.Column="3"
                            FontSize="13"
                            FontWeight="Bold"
-                           FontFamily="Cascadia Mono, Consolas"
+                           FontFamily="{StaticResource AuroraMonoFont}"
                            VerticalAlignment="Center"
                            Visibility="Collapsed" />
             </Grid>
@@ -63,12 +63,12 @@
                 <TextBlock x:Name="StatusLabel"
                            Grid.Column="0"
                            FontSize="10"
-                           FontFamily="Cascadia Mono, Consolas" />
+                           FontFamily="{StaticResource AuroraMonoFont}" />
                 <TextBlock x:Name="RemainingCompact"
                            Grid.Column="1"
                            FontSize="14"
                            FontWeight="Bold"
-                           FontFamily="Cascadia Mono, Consolas"
+                           FontFamily="{StaticResource AuroraMonoFont}"
                            Visibility="Collapsed" />
             </Grid>
 
@@ -76,7 +76,7 @@
             <TextBlock x:Name="StatusDetail"
                        FontSize="12"
                        TextWrapping="Wrap"
-                       Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                       Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
 
             <!-- Battery. -->
             <Grid x:Name="BatteryRow" ColumnSpacing="2">
@@ -112,12 +112,12 @@
                 <TextBlock x:Name="FullRemaining"
                            Grid.Column="0"
                            FontSize="10"
-                           FontFamily="Cascadia Mono, Consolas" />
+                           FontFamily="{StaticResource AuroraMonoFont}" />
                 <TextBlock x:Name="UsageText"
                            Grid.Column="2"
                            FontSize="10"
-                           FontFamily="Cascadia Mono, Consolas"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           FontFamily="{StaticResource AuroraMonoFont}"
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
             </Grid>
         </StackPanel>
     </Border>

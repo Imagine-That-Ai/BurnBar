@@ -286,8 +286,13 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                         operation: "Uploading encrypted blob (\(CloudBackupProgressSnapshot.formatBytes(Int64(sealedBodyData.count))))"
                     )
                     try await encryptedCloudClient.uploadEncryptedBody(data: sealedBodyData, ticket: uploadTicket)
-                    let chunks = Self.chunkUTF8String(markdown, maxBytes: Self.cloudSearchChunkMaxBytes)
                     let titleText = record.summaryTitle ?? record.inferredTaskTitle
+                    let searchMetadata = record.inferredTaskTitle + " " + privateProjectSearchText + " " + model
+                    let chunks = try CloudVaultCrypto.cloudSearchBodyChunks(
+                        markdown,
+                        metadata: searchMetadata,
+                        maxBytes: Self.cloudSearchChunkMaxBytes
+                    )
                     let sealedManifestTitle = try CloudVaultCrypto.sealText(
                         titleText,
                         keyData: vaultKey,
@@ -388,13 +393,14 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                                 field: "sealedSnippet"
                             )
                         )
+                        let searchText = chunk + " " + searchMetadata
                         let tokenHashes = try CloudVaultCrypto.searchIndexTokenHashes(
-                            for: chunk + " " + record.inferredTaskTitle + " " + privateProjectSearchText + " " + model,
+                            for: searchText,
                             keyData: vaultKey,
                             limit: Self.cloudSearchChunkTokenHashLimit
                         )
                         let semanticHashes = try CloudVaultCrypto.semanticHashes(
-                            for: chunk + " " + record.inferredTaskTitle + " " + privateProjectSearchText + " " + model,
+                            for: searchText,
                             keyData: vaultKey
                         )
                         cloudSearchChunks.append([
@@ -613,26 +619,6 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         let tags = Set(values.compactMap(normalizedPublicToolTag(_:)))
         let sortedTags = Array(tags).sorted()
         return Array(sortedTags[..<min(Self.cloudPublicToolTagLimit, sortedTags.count)])
-    }
-
-    static func chunkUTF8String(_ string: String, maxBytes: Int) -> [String] {
-        let data = Data(string.utf8)
-        guard data.count > maxBytes else { return [string] }
-
-        var chunks: [String] = []
-        var offset = 0
-        while offset < data.count {
-            var end = min(offset + maxBytes, data.count)
-            // Walk back until we find a valid UTF-8 boundary
-            while end > offset, String(data: data[offset..<end], encoding: .utf8) == nil {
-                end -= 1
-            }
-            if let chunk = String(data: data[offset..<end], encoding: .utf8) {
-                chunks.append(chunk)
-            }
-            offset = end
-        }
-        return chunks.isEmpty ? [string] : chunks
     }
 
     private static let chunkMetadataVersion = 1

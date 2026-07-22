@@ -1363,6 +1363,29 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  issueTrustedSignalIdentityRepairChallenge: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/signal_identity_public_keys/bob-id",
+      data: {
+        published: true,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   pollCliLink: [
     {
       path: "cli_link_sessions/bob-device-code",
@@ -1819,6 +1842,45 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     },
     {
       path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  repairTrustedSignalIdentity: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/signal_identity_public_keys/bob-id",
+      data: {
+        published: true,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/deviceId/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/challengeId/bob-challengeId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/identityKeyId/bob-id",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",
@@ -2317,6 +2379,16 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     },
     {
       path: "users/__BOB_UID__/bola_victim/eventId/bob-event",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  submitDomainCoreShadowSamples: [
+    {
+      path: "users/__BOB_UID__/bola_victim/sampleId/bob-sampleId",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",

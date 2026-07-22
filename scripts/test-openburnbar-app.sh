@@ -7,11 +7,13 @@
 #      so we never inherit a half-dead runner from a prior crash.
 #   2. Run xcodebuild test against the OpenBurnBarTests bundle with per-attempt
 #      isolated derived data and result bundles.
-#   3. Detect known XCTest startup hang families and retry with exponential
+#   3. Run process-global-state-sensitive tests in a fresh host and merge their
+#      result bundle into the canonical coverage evidence.
+#   4. Detect known XCTest startup hang families and retry with exponential
 #      backoff (4 attempts). Real test failures fail fast — no retry storms.
-#   4. Emit structured JSONL telemetry per attempt + a final summary so failures
+#   5. Emit structured JSONL telemetry per attempt + a final summary so failures
 #      are diagnosable without scrolling 5 MB of xcodebuild noise.
-#   5. Promote the successful attempt's xcresult to the canonical coverage path
+#   6. Promote the successful attempt's xcresult to the canonical coverage path
 #      when OPENBURNBAR_ENABLE_COVERAGE=YES.
 #
 # Environment knobs:
@@ -24,8 +26,16 @@
 #                                      take precedence over both env knobs.
 #                                      `AgentLensTests/...` is accepted as a
 #                                      stable alias for `OpenBurnBarTests/...`.
+#   OPENBURNBAR_APP_ISOLATED_TEST_ATTEMPTS=N
+#                                      Override fresh-host retry attempts for
+#                                      isolation-sensitive tests (default 2).
 #   OPENBURNBAR_APP_TEST_DERIVED_DATA_ROOT=...
 #                                      Override runnable derived-data root.
+#   OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR=...
+#                                      Reuse this exact prebuilt directory, then
+#                                      remove it on exit. Intended for CI steps
+#                                      that already built the app for a real-
+#                                      process gate on the same runner.
 #
 # Exit status:
 #   0  — at least one attempt completed all tests successfully.
@@ -68,6 +78,7 @@ maximum_test_execution_allowance="${OPENBURNBAR_APP_TEST_MAX_ALLOWANCE:-1200}"
 # after process cleanup + fresh derived data; if it hasn't cleared by attempt
 # 4, the failure is real.
 max_test_attempts="${OPENBURNBAR_APP_TEST_ATTEMPTS:-4}"
+max_isolated_test_attempts="${OPENBURNBAR_APP_ISOLATED_TEST_ATTEMPTS:-2}"
 
 # Test filter. Default to the active app test bundle. Callers can override
 # (e.g. for targeted snapshot re-records: -only-testing:OpenBurnBarTests/SomeClass).
@@ -98,6 +109,7 @@ Options:
                                May be repeated.
   -only-testing <target>       Same as above.
   --print-xcodebuild-filters   Print normalized filters and exit.
+  --print-xcodebuild-plan      Print the main/fresh-host filter plan and exit.
   -h, --help                  Show this help.
 
 Environment:
@@ -111,6 +123,7 @@ EOF
 
 cli_test_filters=()
 print_xcodebuild_filters=0
+print_xcodebuild_plan=0
 set_cli_test_filter() {
     local value="$1"
     if [[ -z "$value" ]]; then
@@ -141,6 +154,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --print-xcodebuild-filters)
             print_xcodebuild_filters=1
+            shift
+            ;;
+        --print-xcodebuild-plan)
+            print_xcodebuild_plan=1
             shift
             ;;
         *)
@@ -180,8 +197,44 @@ for raw_test_filter in "${raw_test_filters[@]}"; do
     test_filters+=("$test_filter")
 done
 
+isolated_test_filters=(
+    "OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
+    "OpenBurnBarTests/MediaSessionCoordinatorTests/testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry"
+    "OpenBurnBarTests/ProjectionChunkerTests"
+    "OpenBurnBarTests/ProjectionPipelineServiceTests"
+    "OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
+    "OpenBurnBarTests/ProjectionStoreLifecycleTests"
+)
+isolated_test_expected_count=121
+main_skip_test_filters=()
+run_isolated_test_phase=0
+if ((${#test_filters[@]} == 1)) && [[ "${test_filters[0]}" == "OpenBurnBarTests" ]]; then
+    # These tests pass together in a fresh host but are contaminated by
+    # process-global media/GRDB state after the 1,900-test monolithic run.
+    # Keep the complete projection surface mandatory in one clean XCTest
+    # process so newly added projection tests cannot inherit that state.
+    main_skip_test_filters=("${isolated_test_filters[@]}")
+    run_isolated_test_phase=1
+fi
+
 if [[ "$print_xcodebuild_filters" == "1" ]]; then
     printf '%s\n' "${test_filters[@]}"
+    exit 0
+fi
+
+if [[ "$print_xcodebuild_plan" == "1" ]]; then
+    for filter in "${test_filters[@]}"; do
+        printf 'main-only\t%s\n' "$filter"
+    done
+    if [[ "$run_isolated_test_phase" == "1" ]]; then
+        for filter in "${main_skip_test_filters[@]}"; do
+            printf 'main-skip\t%s\n' "$filter"
+        done
+        for filter in "${isolated_test_filters[@]}"; do
+            printf 'fresh-host-only\t%s\n' "$filter"
+        done
+        printf 'fresh-host-expected-count\t%s\n' "$isolated_test_expected_count"
+    fi
     exit 0
 fi
 
@@ -189,8 +242,19 @@ mkdir -p "$cache_dir"
 mkdir -p "$artifact_root"
 mkdir -p "$derived_data_root"
 
-# Per-invocation state
-derived_data_dir="$(mktemp -d "$derived_data_root/openburnbar-app-tests.XXXXXX")"
+# Per-invocation state. An exact reuse directory lets a preceding CI build seed
+# the product and dependency objects; xcodebuild still compiles the test bundle
+# and evaluates the full test action before execution.
+create_derived_data_dir() {
+    if [[ -n "${OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR:-}" ]]; then
+        mkdir -p "$OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR"
+        printf '%s\n' "$OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR"
+    else
+        mktemp -d "$derived_data_root/openburnbar-app-tests.XXXXXX"
+    fi
+}
+
+derived_data_dir="$(create_derived_data_dir)"
 xcodebuild_log=""
 xcodebuild_args=()
 last_test_exit_code=0
@@ -314,9 +378,10 @@ trap 'cleanup' EXIT
 
 populate_xcodebuild_args() {
     # Populates the global `xcodebuild_args` array in place.
-    # Args: derived_data attempt_xcresult
+    # Args: derived_data attempt_xcresult phase
     local dd="$1"
     local attempt_result="$2"
+    local phase="${3:-main}"
     xcodebuild_args=(
         -project "$repo_root/OpenBurnBar.xcodeproj"
         -scheme "OpenBurnBar"
@@ -333,9 +398,20 @@ populate_xcodebuild_args() {
         CODE_SIGNING_ALLOWED=NO
         CODE_SIGNING_REQUIRED=NO
     )
-    for filter in "${test_filters[@]}"; do
-        xcodebuild_args+=("-only-testing:$filter")
-    done
+    if [[ "$phase" == "isolated" ]]; then
+        for filter in "${isolated_test_filters[@]}"; do
+            xcodebuild_args+=("-only-testing:$filter")
+        done
+    else
+        for filter in "${test_filters[@]}"; do
+            xcodebuild_args+=("-only-testing:$filter")
+        done
+        if [[ "$run_isolated_test_phase" == "1" ]]; then
+            for filter in "${main_skip_test_filters[@]}"; do
+                xcodebuild_args+=("-skip-testing:$filter")
+            done
+        fi
+    fi
     if [[ "${OPENBURNBAR_ENABLE_COVERAGE:-}" == "YES" ]]; then
         xcodebuild_args+=(-enableCodeCoverage YES)
     fi
@@ -370,6 +446,33 @@ canonical_xcresult_path="$artifact_root/OpenBurnBar_TestCoverage.xcresult"
 if [[ "${OPENBURNBAR_ENABLE_COVERAGE:-}" == "YES" ]]; then
     rm -rf "$canonical_xcresult_path"
 fi
+
+validate_fresh_host_xcresult() {
+    local xcresult_path="$1"
+    local expected_count="$isolated_test_expected_count"
+
+    xcrun xcresulttool get test-results summary \
+        --path "$xcresult_path" \
+        --format json |
+        python3 -c '
+import json
+import sys
+
+expected = int(sys.argv[1])
+summary = json.load(sys.stdin)
+actual = int(summary.get("totalTestCount", 0))
+passed = int(summary.get("passedTests", 0))
+failed = int(summary.get("failedTests", 0))
+result = summary.get("result")
+if actual != expected or passed != expected or failed != 0 or result != "Passed":
+    print(
+        "error: fresh-host xcresult did not record the exact mandatory test set "
+        f"(expected={expected}, actual={actual}, passed={passed}, failed={failed}, result={result})",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+' "$expected_count"
+}
 
 # Truncate the per-invocation telemetry stream so each fresh run is self-
 # contained for diagnostics. Append-only within the run.
@@ -416,7 +519,7 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
         if (( test_attempt % 2 == 1 )); then
             echo ">>> Refreshing derived data for attempt $test_attempt."
             cleanup_derived_data "$derived_data_dir"
-            derived_data_dir="$(mktemp -d "$derived_data_root/openburnbar-app-tests.XXXXXX")"
+            derived_data_dir="$(create_derived_data_dir)"
         else
             echo ">>> Reusing derived data for attempt $test_attempt (warm-cache retry)."
         fi
@@ -428,7 +531,7 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
     xcodebuild_log="$(mktemp "$derived_data_root/openburnbar-app-tests-log-XXXXXX")"
 
     # Assemble args for this attempt (per-attempt derived data + result bundle).
-    populate_xcodebuild_args "$derived_data_dir" "$attempt_xcresult"
+    populate_xcodebuild_args "$derived_data_dir" "$attempt_xcresult" main
 
     attempt_start_epoch="$(date +%s)"
     set +e
@@ -496,8 +599,99 @@ if [ "$final_outcome" = "failed" ] && [ "$test_attempt" -gt "$max_test_attempts"
     final_exit_code="$last_test_exit_code"
     final_outcome="exhausted_retries"
     echo ">>> Exhausted $max_test_attempts attempts; running build-for-testing as compile safety net."
-    populate_xcodebuild_args "$derived_data_dir" "$derived_data_dir/safety-net.xcresult"
+    populate_xcodebuild_args "$derived_data_dir" "$derived_data_dir/safety-net.xcresult" main
     xcodebuild build-for-testing "${xcodebuild_args[@]}" || true
+fi
+
+# The default full-bundle run keeps state-sensitive tests out of the long-lived
+# host, then executes them against the same built products in a clean XCTest
+# process. Both phases must pass, and their result bundles are merged into the
+# canonical evidence artifact consumed by test-count and coverage gates.
+if [[ "$final_outcome" == "passed" && "$run_isolated_test_phase" == "1" ]]; then
+    main_xcresult="$final_xcresult"
+    isolated_attempt=1
+    isolated_passed=0
+    isolated_xcresult=""
+
+    while [[ "$isolated_attempt" -le "$max_isolated_test_attempts" ]]; do
+        if [[ "$isolated_attempt" -gt 1 ]]; then
+            echo ">>> Retrying fresh-host tests (attempt $isolated_attempt of $max_isolated_test_attempts)."
+            sleep 5
+        fi
+
+        preclean_stale_processes
+        isolated_xcresult="$derived_data_dir/OpenBurnBarTests-fresh-host-attempt-$isolated_attempt.xcresult"
+        if [[ -n "$xcodebuild_log" ]]; then
+            rm -f "$xcodebuild_log" 2>/dev/null || true
+        fi
+        xcodebuild_log="$(mktemp "$derived_data_root/openburnbar-app-isolated-log-XXXXXX")"
+        populate_xcodebuild_args "$derived_data_dir" "$isolated_xcresult" isolated
+
+        isolated_start_epoch="$(date +%s)"
+        set +e
+        xcodebuild test-without-building "${xcodebuild_args[@]}" 2>&1 | tee "$xcodebuild_log"
+        isolated_exit_code=${PIPESTATUS[0]}
+        set -e
+        isolated_end_epoch="$(date +%s)"
+        isolated_duration=$((isolated_end_epoch - isolated_start_epoch))
+
+        if openburnbar_app_test_has_terminal_concrete_xctest_failure "$xcodebuild_log"; then
+            emit_attempt_event "$isolated_attempt" "$isolated_exit_code" "isolated_test_failure" "$isolated_duration" "$isolated_xcresult"
+            final_exit_code="$isolated_exit_code"
+            if [[ "$final_exit_code" -eq 0 ]]; then
+                final_exit_code=65
+            fi
+            final_outcome="isolated_test_failure"
+            break
+        fi
+
+        if [[ "$isolated_exit_code" -eq 0 ]] || is_xcode_false_negative_pass "$xcodebuild_log"; then
+            if validate_fresh_host_xcresult "$isolated_xcresult"; then
+                emit_attempt_event "$isolated_attempt" "$isolated_exit_code" "isolated_passed" "$isolated_duration" "$isolated_xcresult"
+                isolated_passed=1
+                break
+            fi
+
+            emit_attempt_event "$isolated_attempt" 65 "isolated_evidence_failure" "$isolated_duration" "$isolated_xcresult"
+            final_exit_code=65
+            final_outcome="isolated_evidence_failure"
+            break
+        fi
+
+        if is_known_hang "$xcodebuild_log" || is_swiftpm_dependency_resolution_transient "$xcodebuild_log"; then
+            emit_attempt_event "$isolated_attempt" "$isolated_exit_code" "isolated_infrastructure_retry" "$isolated_duration" "$isolated_xcresult"
+            isolated_attempt=$((isolated_attempt + 1))
+            continue
+        fi
+
+        emit_attempt_event "$isolated_attempt" "$isolated_exit_code" "isolated_test_failure" "$isolated_duration" "$isolated_xcresult"
+        final_exit_code="$isolated_exit_code"
+        if [[ "$final_exit_code" -eq 0 ]]; then
+            final_exit_code=65
+        fi
+        final_outcome="isolated_test_failure"
+        break
+    done
+
+    if [[ "$isolated_passed" == "1" ]]; then
+        merged_xcresult="$derived_data_dir/OpenBurnBarTests-merged.xcresult"
+        rm -rf "$merged_xcresult"
+        if xcrun xcresulttool merge --output-path "$merged_xcresult" "$main_xcresult" "$isolated_xcresult"; then
+            final_xcresult="$merged_xcresult"
+            echo ">>> Main-suite and fresh-host xcresults merged at $merged_xcresult"
+        else
+            echo "error: failed to merge main-suite and fresh-host xcresults" >&2
+            final_exit_code=65
+            final_outcome="xcresult_merge_failure"
+        fi
+    elif [[ "$final_outcome" == "passed" ]]; then
+        echo "error: fresh-host test attempts exhausted without a passing result" >&2
+        final_exit_code="${isolated_exit_code:-65}"
+        if [[ "$final_exit_code" -eq 0 ]]; then
+            final_exit_code=65
+        fi
+        final_outcome="isolated_exhausted_retries"
+    fi
 fi
 
 # Promote the successful attempt's xcresult to the canonical coverage path so

@@ -62,6 +62,7 @@ public sealed partial class HermesSetupDialog : ContentDialog
         {
             (true, true) => "API server: enabled with a key",
             (true, false) => "API server: enabled, but no key yet",
+            (true, null) => "API server: enabled, but no key yet",
             (false, _) => "API server: not enabled",
             (null, _) => "API server: not checked yet",
         };

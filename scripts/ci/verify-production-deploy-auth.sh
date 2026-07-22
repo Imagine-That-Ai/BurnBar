@@ -31,7 +31,7 @@ LEGACY_SECRET_RE = re.compile(
     r"\b(?:GCP_SA_KEY|GOOGLE_PLAY_SERVICE_ACCOUNT_JSON|FIREBASE_TOKEN|credentials_json)\b"
 )
 POST_AUTH_FORBIDDEN_RE = re.compile(
-    r"(?im)(?:^|\s)(npm|npx)\s|npm\s+exec|npm\s+ci|npm\s+run|bash\s+scripts/|\./scripts/|uses:\s*\./"
+    r"(?im)(?:^|\s)(npm|npx)\s|npm\s+exec|npm\s+ci|npm\s+run|bash\s+scripts/|python(?:3(?:\.\d+)?)?\s+(?:\./)?scripts/|\./scripts/|uses:\s*\./"
 )
 DEPLOY_RE = re.compile(r"(?s)(\bfirebase\s+deploy\b|FIREBASE_TOOLS_BIN[^\n]*\bdeploy\b)")
 
@@ -436,10 +436,37 @@ def validate_cloud_run(text: str) -> None:
 def validate_production_functions(text: str) -> None:
     path = WORKFLOWS["deploy-production"]
     jobs = extract_jobs(text)
+    authorization_job = jobs.get("authorize-domain-core-rollback")
+    prepare_job = jobs.get("prepare-functions-deploy")
     deploy_job = jobs.get("deploy-functions")
+    if not prepare_job:
+        fail(f"{path} must define prepare-functions-deploy")
     if not deploy_job:
         fail(f"{path} must define deploy-functions")
+    if not authorization_job:
+        fail(f"{path} must define authorize-domain-core-rollback")
+    if not authorization_job or not prepare_job or not deploy_job:
         return
+
+    for marker in (
+        "inputs.domain_core_profile == 'public-production-rollback'",
+        "environment: domain-core-promotion",
+    ):
+        if marker not in authorization_job:
+            fail(f"{path} rollback authorization job is missing {marker!r}")
+    for marker in (
+        "needs: authorize-domain-core-rollback",
+        "needs.authorize-domain-core-rollback.result == 'success'",
+    ):
+        if marker not in prepare_job:
+            fail(f"{path} prepare-functions-deploy is missing rollback routing marker {marker!r}")
+    for marker in (
+        "default: public-production",
+        "- public-production",
+        "- public-production-rollback",
+    ):
+        if marker not in text:
+            fail(f"{path} signed profile input is missing {marker!r}")
 
     for marker in (
         "EVENT_NAME: ${{ github.event_name }}",
@@ -451,12 +478,43 @@ def validate_production_functions(text: str) -> None:
         'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"',
         'git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"',
         'git rev-list -n 1 "${tag_ref}^{commit}"',
+        'if [[ -n "${GITHUB_SHA:-}" && "$commit" != "$GITHUB_SHA" ]]; then',
         'git merge-base --is-ancestor "$commit" origin/main',
         'git checkout --detach "$commit"',
-        "OPENBURNBAR_SOURCE_COMMIT: ${{ steps.tag.outputs.commit }}",
+    ):
+        if marker not in prepare_job:
+            fail(f"{path} prepare-functions-deploy is missing release tag provenance guard marker {marker!r}")
+
+    for forbidden in (
+        "environment: production",
+        "id-token: write",
+        "secrets.",
+        "google-github-actions/auth@",
+    ):
+        if forbidden in prepare_job:
+            fail(f"{path} prepare-functions-deploy must not contain {forbidden!r}")
+
+    for marker in (
+        "needs: prepare-functions-deploy",
+        "environment: production",
+        "id-token: write",
+        "actions/download-artifact@",
+        "Verify immutable prepared deploy artifact",
+        "sha256sum --check --strict SHA256SUMS",
+        "find \"$stage\" -type l",
+        "find \"$stage\" -type f -links +1",
+        "chmod 0700 sentry-cli/node_modules/@sentry/cli/bin/sentry-cli",
+        "OPENBURNBAR_SOURCE_COMMIT: ${{ needs.prepare-functions-deploy.outputs.commit }}",
     ):
         if marker not in deploy_job:
-            fail(f"{path} deploy-functions is missing release tag provenance guard marker {marker!r}")
+            fail(f"{path} deploy-functions is missing immutable deploy boundary marker {marker!r}")
+
+    if "actions/checkout@" in deploy_job or "uses: ./" in deploy_job:
+        fail(f"{path} credentialed deploy-functions must not check out or invoke local actions")
+    if re.search(r"\bnpm\s+(?:ci|install|run|exec)\b", deploy_job):
+        fail(f"{path} credentialed deploy-functions must consume prepared tools without npm")
+    if "needs.prepare-functions-deploy.outputs.dry_run != 'true'" not in deploy_job:
+        fail(f"{path} deploy-functions must be skipped for dry runs")
 
     for marker in (
         "google-github-actions/setup-gcloud@",
@@ -466,8 +524,8 @@ def validate_production_functions(text: str) -> None:
         if marker not in deploy_job:
             fail(f"{path} deploy-functions is missing rules-first deploy guard marker {marker!r}")
 
-    if '"${{ inputs.tag }}"' in deploy_job or "'${{ inputs.tag }}'" in deploy_job:
-        fail(f"{path} deploy-functions must pass workflow_dispatch tag input through env, not interpolate it into shell")
+    if '"${{ inputs.tag }}"' in prepare_job or "'${{ inputs.tag }}'" in prepare_job:
+        fail(f"{path} prepare-functions-deploy must pass workflow_dispatch tag input through env, not interpolate it into shell")
     if "OPENBURNBAR_SOURCE_COMMIT: ${{ github.sha }}" in deploy_job:
         fail(f"{path} deploy-functions must publish the resolved release tag commit, not the workflow dispatch ref sha")
 

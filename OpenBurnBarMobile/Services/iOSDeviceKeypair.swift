@@ -40,24 +40,17 @@ final class iOSDeviceKeypair: DeviceKeypairProtocol {
     }
 
     func encrypt(_ plaintext: Data, for recipientPublicKey: Data, authenticating associatedData: Data) throws -> Data {
-        guard let recipientKey = try? P256.KeyAgreement.PublicKey(x963Representation: recipientPublicKey) else {
+        do {
+            return try CloudVaultCrypto.sealEscrowPayload(
+                plaintext,
+                recipientPublicKey: recipientPublicKey,
+                authenticating: associatedData
+            )
+        } catch CloudVaultCryptoError.invalidPublicKey {
             throw EscrowCryptoError.invalidPublicKey
-        }
-        // Ephemeral-static ECIES: generate ephemeral keypair, derive shared secret
-        let ephemeralKey = P256.KeyAgreement.PrivateKey()
-        let sharedSecret = try ephemeralKey.sharedSecretFromKeyAgreement(with: recipientKey)
-        let symmetricKey = sharedSecret.hkdfDerivedSymmetricKey(
-            using: SHA256.self,
-            salt: Data(),
-            sharedInfo: "OpenBurnBar-Escrow-v1".data(using: .utf8)!,
-            outputByteCount: 32
-        )
-        let sealed = try AES.GCM.seal(plaintext, using: symmetricKey, authenticating: associatedData)
-        guard let combined = sealed.combined else {
+        } catch {
             throw EscrowCryptoError.encryptionFailed
         }
-        // Prepend ephemeral public key: ephemeral_pub (65) || sealed_box
-        return ephemeralKey.publicKey.x963Representation + combined
     }
 
     func decrypt(_ ciphertext: Data) throws -> Data {
@@ -65,25 +58,7 @@ final class iOSDeviceKeypair: DeviceKeypairProtocol {
     }
 
     func decrypt(_ ciphertext: Data, authenticating associatedData: Data) throws -> Data {
-        // Format: ephemeralPublicKey (65 bytes) || AES.GCM sealed box
-        guard ciphertext.count > 65 else {
-            throw EscrowCryptoError.invalidCiphertext
-        }
-        let ephemeralPubKeyData = ciphertext.prefix(65)
-        let sealedBoxData = ciphertext.suffix(from: 65)
-
-        guard let ephemeralKey = try? P256.KeyAgreement.PublicKey(x963Representation: ephemeralPubKeyData) else {
-            throw EscrowCryptoError.invalidPublicKey
-        }
-        let sharedSecret = try privateKey.sharedSecretFromKeyAgreement(with: ephemeralKey)
-        let symmetricKey = sharedSecret.hkdfDerivedSymmetricKey(
-            using: SHA256.self,
-            salt: Data(),
-            sharedInfo: "OpenBurnBar-Escrow-v1".data(using: .utf8)!,
-            outputByteCount: 32
-        )
-        let sealedBox = try AES.GCM.SealedBox(combined: sealedBoxData)
-        return try AES.GCM.open(sealedBox, using: symmetricKey, authenticating: associatedData)
+        try decryptWithKey(ciphertext, privateKey: privateKey, authenticating: associatedData)
     }
 
     func rotateKey() throws {
@@ -188,24 +163,19 @@ final class iOSDeviceKeypair: DeviceKeypairProtocol {
         privateKey: P256.KeyAgreement.PrivateKey,
         authenticating associatedData: Data
     ) throws -> Data {
-        guard ciphertext.count > 65 else {
-            throw EscrowCryptoError.invalidCiphertext
-        }
-        let ephemeralPubKeyData = ciphertext.prefix(65)
-        let sealedBoxData = ciphertext.suffix(from: 65)
-
-        guard let ephemeralKey = try? P256.KeyAgreement.PublicKey(x963Representation: ephemeralPubKeyData) else {
+        do {
+            return try CloudVaultCrypto.openEscrowPayload(
+                ciphertext,
+                privateKey: privateKey,
+                authenticating: associatedData
+            )
+        } catch CloudVaultCryptoError.invalidPublicKey {
             throw EscrowCryptoError.invalidPublicKey
+        } catch CloudVaultCryptoError.invalidEnvelope {
+            throw EscrowCryptoError.invalidCiphertext
+        } catch {
+            throw EscrowCryptoError.decryptionFailed
         }
-        let sharedSecret = try privateKey.sharedSecretFromKeyAgreement(with: ephemeralKey)
-        let symmetricKey = sharedSecret.hkdfDerivedSymmetricKey(
-            using: SHA256.self,
-            salt: Data(),
-            sharedInfo: "OpenBurnBar-Escrow-v1".data(using: .utf8)!,
-            outputByteCount: 32
-        )
-        let sealedBox = try AES.GCM.SealedBox(combined: sealedBoxData)
-        return try AES.GCM.open(sealedBox, using: symmetricKey, authenticating: associatedData)
     }
 }
 

@@ -116,12 +116,12 @@ final class AnthropicUsageAPI: ProviderUsageAPI, Sendable {
 
         // Anthropic doesn't return cost directly — compute from pricing
         let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        guard let cost = AppLogger.shared.silentlyOptional("domain_core_pricing_cost", try pricing.cost(
             inputTokens: input,
             outputTokens: output,
             cacheCreationTokens: cacheCreation,
             cacheReadTokens: cachedInput
-        )
+        )) else { return [] }
 
         return [ProviderUsageRecord(
             providerName: "Anthropic",

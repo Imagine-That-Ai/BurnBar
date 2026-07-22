@@ -959,7 +959,7 @@ final class IrohRelayRequestHandler: Sendable {
         let ciphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: Data(data.utf8),
             keyData: keyData,
-            aad: HermesRelayCrypto.chunkAAD(
+            aad: try HermesRelayCrypto.chunkAAD(
                 uid: uid,
                 connectionID: connectionID,
                 requestID: requestID,

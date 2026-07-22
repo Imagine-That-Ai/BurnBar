@@ -36,6 +36,8 @@
                   Visibility="Collapsed"
                   MinWidth="150"
                   HorizontalAlignment="Left"
+                  AutomationProperties.AutomationId="Dashboard.LayoutSwitcher"
+                  AutomationProperties.Name="Dashboard layout"
                   SelectionChanged="OnMenuSelectionChanged" />
     </Grid>
 </UserControl>

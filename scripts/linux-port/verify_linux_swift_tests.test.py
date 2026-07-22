@@ -182,6 +182,16 @@ sleep 5
         self.assertIn("verify_linux_swift_tests.py execute", runner)
         self.assertIn('timeout --kill-after="${TERMINATION_GRACE_SECONDS}s"', runner)
 
+    def test_real_workflows_persist_linux_swift_evidence_on_the_host(self) -> None:
+        root = MODULE_PATH.parents[2]
+        for relative in (".github/workflows/linux-pr-gate.yml", ".github/workflows/linux-nightly.yml"):
+            workflow = (root / relative).read_text(encoding="utf-8")
+            self.assertIn('-v "$OPENBURNBAR_LINUX_EVIDENCE_OUT:/evidence"', workflow)
+            self.assertIn(
+                "--env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests",
+                workflow,
+            )
+
     def test_real_contract_rejects_excessive_per_test_timeout(self) -> None:
         root = MODULE_PATH.parents[2]
         manifest = copy.deepcopy(VERIFIER.load_manifest(root))

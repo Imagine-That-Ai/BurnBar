@@ -32,6 +32,7 @@ public sealed class ModelProxySettingsViewModelTests
 
     [Theory]
     [InlineData("127.0.0.1", true)]
+    [InlineData("127.42.0.8", true)]
     [InlineData("localhost", true)]
     [InlineData("::1", true)]
     [InlineData("0.0.0.0", false)]
@@ -72,6 +73,15 @@ public sealed class ModelProxySettingsViewModelTests
     }
 
     [Fact]
+    public void EndpointUrl_FormatsIpv6HostSafely()
+    {
+        var vm = new ModelProxySettingsViewModel { Host = "::1", Port = 8317 };
+
+        Assert.Equal("[::1]:8317", vm.Endpoint);
+        Assert.Equal("http://[::1]:8317/v1", vm.EndpointUrl);
+    }
+
+    [Fact]
     public void Mutations_PersistThroughTheStoreAndReload()
     {
         var store = new InMemoryGatewayEndpointStore();
@@ -92,6 +102,19 @@ public sealed class ModelProxySettingsViewModelTests
     public void IsHostValid_FalseForBlankHost()
     {
         var vm = new ModelProxySettingsViewModel { Host = "   " };
+        Assert.False(vm.IsHostValid);
+        Assert.Contains("valid hostname", vm.AuthTokenWarning);
+        Assert.Throws<System.InvalidOperationException>(() => vm.CopyEndpoint());
+    }
+
+    [Theory]
+    [InlineData("http://localhost")]
+    [InlineData("localhost/path")]
+    [InlineData("localhost\\path")]
+    public void IsHostValid_FalseForUriOrPathInput(string host)
+    {
+        var vm = new ModelProxySettingsViewModel { Host = host };
+
         Assert.False(vm.IsHostValid);
     }
 }

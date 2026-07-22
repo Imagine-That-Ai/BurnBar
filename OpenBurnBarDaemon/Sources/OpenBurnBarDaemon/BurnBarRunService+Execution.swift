@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 
 extension BurnBarRunService {
@@ -375,7 +375,7 @@ extension BurnBarRunService {
                     outputTokens: providerResult.outputTokens,
                     cacheCreationTokens: providerResult.cacheCreationTokens,
                     cacheReadTokens: providerResult.cacheReadTokens,
-                    cost: route.pricing.cost(
+                    cost: try route.pricing.cost(
                         inputTokens: providerResult.inputTokens,
                         outputTokens: providerResult.outputTokens,
                         cacheCreationTokens: providerResult.cacheCreationTokens,

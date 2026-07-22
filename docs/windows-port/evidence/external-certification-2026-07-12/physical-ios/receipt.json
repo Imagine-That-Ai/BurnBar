@@ -1,0 +1,63 @@
+{
+  "schema": "openburnbar.windows.external-certification.physical-ios-peer.v1",
+  "status": "PASS",
+  "capturedAtUtc": "2026-07-12T06:34:12Z",
+  "source": {
+    "commitSha": "7287c9fb501b1f842ccbe8263c0122764a57f020",
+    "dirtyTree": false
+  },
+  "device": {
+    "identifier": "AFB07C15-AD18-5EFA-AD1C-CADB4F286797",
+    "name": "Alberto’s iPhone 17Pro Max",
+    "osVersion": "27.0",
+    "osBuild": "24A5380h",
+    "developerMode": "enabled",
+    "marketingName": "iPhone 17 Pro Max",
+    "productType": "iPhone18,2",
+    "reality": "physical",
+    "architecture": "arm64e",
+    "transport": "wired",
+    "pairingState": "paired",
+    "tunnelState": "connected"
+  },
+  "scope": {
+    "gate": "media-computer-use-safety",
+    "claim": "Physical iPhone peer unit/integration surface only; this does not replace the missing physical Windows peer protocol.",
+    "filters": [
+      "AgentLiveStageWiringTests",
+      "AgentWatchLiveActivityManagerTests",
+      "AgentLiveStagePresenterTests",
+      "ScreenPrivacyGuardTests",
+      "ScreenShareAutoTypeFollowPolicyTests",
+      "ScreenShareSmartZoomReducerTests",
+      "ScreenSharePiPControllerTests",
+      "ScreenShareSmartTextDoubleTapTests",
+      "MediaInboxFileProtectionTests",
+      "MercuryTransferThumbnailCacheTests",
+      "ComputerUseProviderAccountSubjectIdTests",
+      "MediaAttachmentManifestStoreTests"
+    ]
+  },
+  "result": {
+    "outcome": "passed",
+    "attempts": 1,
+    "executed": 114,
+    "failures": 0,
+    "unexpectedFailures": 0
+  },
+  "evidence": {
+    "testSummary": {
+      "path": "physical-ios/test-summary.log",
+      "sha256": "304c6d5fa879d4ea994ff0fca6bebb3deeec0ec03ea2e3c93d0661e6764bc1ef"
+    },
+    "rawLog": {
+      "path": "/tmp/openburnbar-physical-iphone-media-cu-20260712.log",
+      "sha256": "fafde255d44056aef0f8dd78ca23de4beb5be8f8fcdc839df586b202daa8dcb1",
+      "committed": false
+    }
+  },
+  "boundaries": [
+    "114 selected tests passed with zero failures on the connected physical iPhone.",
+    "No physical Windows endpoint, live call, live screen share, live transfer, or panic/secure-desktop protocol is claimed by this receipt."
+  ]
+}

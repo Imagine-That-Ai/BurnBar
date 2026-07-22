@@ -187,6 +187,7 @@ final class OpenBurnBarRuntimeContext {
     let quotaService: ProviderQuotaService
     let daemonManager: OpenBurnBarDaemonManager
     let cursorConnectorManager: CursorConnectorManager
+    let memoryFootprintWatchdog = MemoryFootprintWatchdog()
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     var hermesRelayHostService: HermesRelayHostService?

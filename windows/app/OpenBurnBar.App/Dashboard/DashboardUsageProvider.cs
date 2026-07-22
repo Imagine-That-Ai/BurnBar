@@ -4,6 +4,8 @@ using System.Threading.Tasks;
 using OpenBurnBar.App.CloudSync;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.Dashboard;
+using OpenBurnBar.App.Settings.Winui;
+using OpenBurnBar.App.Settings.ViewModels;
 
 namespace OpenBurnBar.App.Dashboard;
 
@@ -18,13 +20,17 @@ namespace OpenBurnBar.App.Dashboard;
 /// </summary>
 internal static class DashboardUsageProvider
 {
-    public static Task<DashboardUsageSummary> LoadAsync(CancellationToken cancellationToken = default) =>
-        DashboardUsageSummarySource.ResolveAsync(
-            loadLocal: OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary,
-            loadCloud: LoadCloudAsync,
-            sample: DashboardUsageSampleData.Summary,
+    public static Task<DashboardUsageSummary> LoadAsync(CancellationToken cancellationToken = default)
+    {
+        GeneralSettingsSnapshot settings = WindowsGeneralSettingsComposition.Load();
+        DashboardUsageWindow window = WindowsGeneralSettingsComposition.DashboardWindow(settings.TimeRange);
+        return DashboardUsageSummarySource.ResolveAsync(
+            loadLocal: () => OpenBurnBar.App.Storage.WindowsStorageDevHost.LoadDashboardUsageSummary(window),
+            loadCloud: token => LoadCloudAsync(window, token),
+            sample: () => DashboardUsageSampleData.Summary() with { Window = window },
             sampleModeEnabled: RuntimeDataMode.SampleModeEnabled,
             cancellationToken: cancellationToken);
+    }
 
     /// <summary>
     /// Synchronous convenience for XAML <c>Loaded</c> handlers and the Insights
@@ -32,7 +38,9 @@ internal static class DashboardUsageProvider
     /// </summary>
     public static DashboardUsageSummary Load() => LoadAsync().GetAwaiter().GetResult();
 
-    private static async Task<DashboardUsageSummary?> LoadCloudAsync(CancellationToken cancellationToken)
+    private static async Task<DashboardUsageSummary?> LoadCloudAsync(
+        DashboardUsageWindow window,
+        CancellationToken cancellationToken)
     {
         CloudSyncCompositionRoot? root = WinAppCloudSyncHost.Root;
         if (root is null || string.IsNullOrWhiteSpace(root.FirebaseUid))
@@ -45,7 +53,7 @@ internal static class DashboardUsageProvider
         try
         {
             var store = new CloudSyncUsageSummaryStore(root.Gateway, root.FirebaseUid);
-            return await store.LoadSummaryAsync(cancellationToken).ConfigureAwait(false);
+            return await store.LoadSummaryAsync(window, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

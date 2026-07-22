@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- IA-2 Database System mode: tracked session browse over SQLCipher seam. -->
+<!-- IA-2 Database System mode: tracked session browse over SQLCipher seam.
+     Composition mirrors the Linux DatabaseSurface: hero header + status pill +
+     session rows as glass cards on the slate canvas. -->
 <Page
     x:Class="OpenBurnBar.App.Database.DatabasePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -10,22 +12,21 @@
     mc:Ignorable="d"
     Background="Transparent">
 
-    <Grid Padding="24" RowSpacing="16">
+    <Grid Padding="24,20,24,32" RowSpacing="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <!-- Hero header (Linux surface hero: Outfit display + muted subtitle). -->
         <StackPanel Grid.Row="0" Spacing="4">
             <TextBlock Text="Database"
-                       FontSize="22"
-                       FontWeight="SemiBold"
-                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                       Style="{StaticResource AuroraDisplayTextStyle}" />
             <TextBlock x:Name="StatusText"
-                       TextWrapping="Wrap"
-                       FontSize="13"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       Style="{StaticResource AuroraBodyTextStyle}"
+                       Foreground="{ThemeResource AuroraTextMutedBrush}"
+                       TextWrapping="Wrap" />
         </StackPanel>
 
         <Border Grid.Row="1"
@@ -34,27 +35,38 @@
                 HorizontalAlignment="Left"
                 Padding="10,4">
             <TextBlock Text="System mode · IA-2"
-                       FontSize="11"
-                       Opacity="0.75" />
+                       Style="{StaticResource AuroraTinyTextStyle}" />
         </Border>
 
         <ListView x:Name="SessionList"
                   Grid.Row="2"
                   SelectionMode="None"
                   IsItemClickEnabled="False">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="Margin" Value="0,0,0,8" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                </Style>
+            </ListView.ItemContainerStyle>
             <ListView.ItemTemplate>
                 <DataTemplate>
-                    <StackPanel Padding="0,8" Spacing="2">
-                        <TextBlock Text="{Binding InferredTaskTitle}"
-                                   FontWeight="SemiBold"
-                                   Foreground="{StaticResource PensieveColorTextBrightBrush}" />
-                        <TextBlock FontSize="12"
-                                   Foreground="{StaticResource PensieveColorTextMuteBrush}">
-                            <Run Text="{Binding ProviderDisplayName}" />
-                            <Run Text=" · " />
-                            <Run Text="{Binding ProjectName}" />
-                        </TextBlock>
-                    </StackPanel>
+                    <!-- Session row as a glass card (Linux SurfaceCard row). -->
+                    <Border Style="{StaticResource AuroraGlassCardStyle}"
+                            theme:LiquidGlass.Surface="True"
+                            Padding="12,10">
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="{Binding InferredTaskTitle}"
+                                       Style="{StaticResource AuroraHeadlineTextStyle}"
+                                       FontSize="13" />
+                            <TextBlock Style="{StaticResource AuroraMonoSmallTextStyle}">
+                                <Run Text="{Binding ProviderDisplayName}" />
+                                <Run Text=" · " />
+                                <Run Text="{Binding ProjectName}" />
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>

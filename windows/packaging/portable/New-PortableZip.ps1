@@ -51,6 +51,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path (Join-Path $PSScriptRoot '..') (Join-Path 'scripts' 'Assert-NativeEngineManifest.ps1'))
+
 if (-not (Test-Path -LiteralPath $LayoutPath)) {
     throw "Layout manifest not found: $LayoutPath"
 }
@@ -104,9 +106,18 @@ try {
     }
     Write-Host "  copied $copied file(s) from publish output (excludes applied)"
 
+    $nativeEngine = Join-Path $root 'OpenBurnBarCoreCAbi.dll'
+    if (Test-Path -LiteralPath $nativeEngine -PathType Leaf) {
+        Assert-OpenBurnBarNativeEngineManifest -Root $root
+    }
+
     $entry = Join-Path $root $layout.entryPoint
     if (-not (Test-Path -LiteralPath $entry)) {
         throw "Entry point '$($layout.entryPoint)' missing from staged output (is PublishDir a self-contained publish?)."
+    }
+    $companionCli = Join-Path $root 'OpenBurnBar.Cli.exe'
+    if (-not (Test-Path -LiteralPath $companionCli)) {
+        throw "Authenticated companion CLI 'OpenBurnBar.Cli.exe' is missing from staged output."
     }
 
     # Generated files (.portable marker, README.txt, ...).

@@ -16,12 +16,12 @@ process.on("exit", () => rmSync(root, { recursive: true, force: true }));
 const validReport = {
   statistics: {
     formats: Object.fromEntries(
-      ["swift", "kotlin", "typescript"].map((format) => [
+      ["swift", "kotlin", "typescript", "csharp", "rust"].map((format) => [
         format,
         { total: { sources: 1 } },
       ]),
     ),
-    total: { sources: 3, percentage: 2.5 },
+    total: { sources: 5, percentage: 2.5 },
   },
 };
 
@@ -31,7 +31,7 @@ function run(label, report, expectedExit) {
   let actualExit = 0;
   try {
     execFileSync("node", [script, path], {
-      env: { ...process.env, JSCPD_MIN_TOTAL_SOURCES: "3" },
+      env: { ...process.env, JSCPD_MIN_TOTAL_SOURCES: "5" },
       stdio: "pipe",
     });
   } catch (error) {
@@ -66,6 +66,31 @@ run(
       formats: {
         ...validReport.statistics.formats,
         kotlin: { total: { sources: 0 } },
+      },
+    },
+  },
+  1,
+);
+run(
+  "missing-csharp-format",
+  {
+    ...validReport,
+    statistics: {
+      ...validReport.statistics,
+      formats: { ...validReport.statistics.formats, csharp: undefined },
+    },
+  },
+  1,
+);
+run(
+  "zero-rust-sources",
+  {
+    ...validReport,
+    statistics: {
+      ...validReport.statistics,
+      formats: {
+        ...validReport.statistics.formats,
+        rust: { total: { sources: 0 } },
       },
     },
   },

@@ -12,11 +12,13 @@ namespace OpenBurnBar.App.Settings.Winui;
 /// <summary>Navigation payload shared by the Settings shell and its hosted pages.</summary>
 public sealed class SettingsPageContext
 {
-    public SettingsPageContext(SettingsRouter router, SettingsTab tab, Action<SettingsItem>? onResultChosen = null)
+    public SettingsPageContext(SettingsRouter router, SettingsTab tab, Action<SettingsItem>? onResultChosen = null,
+        Func<IntPtr>? windowHandleProvider = null)
     {
         Router = router;
         Tab = tab;
         OnResultChosen = onResultChosen;
+        WindowHandleProvider = windowHandleProvider;
     }
 
     /// <summary>The shell's single router — source of the pending anchor/focus a page consumes.</summary>
@@ -27,4 +29,12 @@ public sealed class SettingsPageContext
 
     /// <summary>Invoked by the results list when the user picks a match.</summary>
     public Action<SettingsItem>? OnResultChosen { get; }
+
+    /// <summary>
+    /// Injected HWND resolver for file pickers (the <c>Func&lt;IntPtr&gt;</c> pattern from
+    /// <c>DataControlCenterView.WindowHandleProvider</c>). The host sets this so leaf pages
+    /// can call <c>WinRT.Interop.InitializeWithWindow.Initialize</c> with a real owner handle
+    /// instead of <c>IntPtr.Zero</c> (the dead-picker bug).
+    /// </summary>
+    public Func<IntPtr>? WindowHandleProvider { get; }
 }

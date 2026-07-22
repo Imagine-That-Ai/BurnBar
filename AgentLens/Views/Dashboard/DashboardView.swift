@@ -5,6 +5,23 @@ import WebKit
 
 // MARK: - Dashboard View
 
+@MainActor
+@Observable
+final class DashboardSettingsPresentation {
+    var isPresented = false
+    private(set) var itemID: String?
+
+    func present(itemID: String? = nil) {
+        self.itemID = itemID
+        isPresented = true
+    }
+
+    func dismiss() {
+        isPresented = false
+        itemID = nil
+    }
+}
+
 struct DashboardView: View {
     @Bindable var dataStore: DataStore
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
@@ -25,7 +42,7 @@ struct DashboardView: View {
     @State var selectedTimeRange: TimeRange = .today
     @AppStorage("dashboardViewMode") var viewMode: DashboardViewMode = .agents
     @AppStorage("dashboardViewMode") var storedViewMode: DashboardViewMode = .agents
-    @State var showingSettings = false
+    @State var settingsPresentation = DashboardSettingsPresentation()
     @State var showProgressPanel = false
     @State var overviewAppeared = false
     @State private var overviewEmptyStateAppeared = false
@@ -40,6 +57,8 @@ struct DashboardView: View {
     @State var dashboardCanvasSize: CGSize = .zero
     @State private var overviewUsesStackedLanes = false
     @State private var overviewViewportHeight: CGFloat = 0
+    @State var burnRailDelta: Double?
+    @State var burnRailDeltaRequestID: String?
     private static let overviewScrollSpace = "dashboardOverviewScroll"
     @State var didAutoExpandEmptyTimeRange = false
     @State var showContextPackSheet = false
@@ -52,6 +71,9 @@ struct DashboardView: View {
     @State var pendingMemoryReviewCount: Int?
     @State var showCommandPalette = false
     @State var showHeroPopover = false
+    @State private var dashboardSplitVisibility: NavigationSplitViewVisibility = .all
+    @AppStorage("dashboard.statusRail.height") var storedDashboardStatusRailHeight = 52.0
+    @State var dashboardStatusRailResizeOrigin: Double?
 
     init(
         dataStore: DataStore,
@@ -93,7 +115,44 @@ struct DashboardView: View {
         )
     }
 
+    var showingSettings: Bool { settingsPresentation.isPresented }
+    var pendingSettingsItemID: String? { settingsPresentation.itemID }
+
+    func presentSettings(itemID: String? = nil) {
+        settingsPresentation.present(itemID: itemID)
+    }
+
     var isScanning: Bool { aggregator?.isRefreshing ?? false }
+
+    /// Changing the range invalidates the comparison query, not the cached
+    /// current-window summary. Keep the comparison result in view state so the
+    /// database worker can finish without blocking view construction.
+    var burnRailDeltaTaskID: String {
+        "\(selectedTimeRange.rawValue)|\(dataStore.usagesVersion)|\(settingsManager.usageDisplayMode.rawValue)"
+    }
+
+    func loadBurnRailDelta() async -> Double? {
+        guard let current = selectedTimeRange.dateRange() else { return nil }
+        let span = current.upperBound.timeIntervalSince(current.lowerBound)
+        guard span > 0 else { return nil }
+
+        let previous = current.lowerBound.addingTimeInterval(-span)...current.lowerBound
+        guard let previousTotals = await dataStore.usageTotals(in: previous) else { return nil }
+
+        let currentMetric: Double
+        let previousMetric: Double
+        switch settingsManager.usageDisplayMode {
+        case .currency:
+            currentMetric = dashboardUsageWindow.totalCost
+            previousMetric = previousTotals.cost
+        case .tokens:
+            currentMetric = Double(dashboardUsageWindow.totalTokens)
+            previousMetric = Double(previousTotals.tokens)
+        }
+
+        guard previousMetric > 0 else { return nil }
+        return ((currentMetric - previousMetric) / previousMetric) * 100.0
+    }
 
     var canRunRecount: Bool { aggregator != nil && !isScanning }
 
@@ -107,6 +166,16 @@ struct DashboardView: View {
         guard let agg = aggregator else { return }
         Analytics.shared.track(.dashboardRecountRun)
         Task { await agg.recountAll() }
+    }
+
+    var isDashboardSidebarVisible: Bool {
+        dashboardSplitVisibility != .detailOnly
+    }
+
+    func toggleDashboardSidebar() {
+        withAnimation(reduceMotion ? .easeOut(duration: 0.12) : DesignSystem.Animation.snappy) {
+            dashboardSplitVisibility = isDashboardSidebarVisible ? .detailOnly : .all
+        }
     }
 
     var canGoBack: Bool {
@@ -127,6 +196,26 @@ struct DashboardView: View {
         }
     }
 
+    /// Applies an externally requested route (deep links like
+    /// `openburnbar://charts` via `NavigationCoordinator`) and clears it so
+    /// the request fires exactly once.
+    func consumeCoordinatorDashboardRoute() {
+        guard let pending = navigationCoordinator.dashboardRoute else { return }
+        navigationCoordinator.dashboardRoute = nil
+        let route: DashboardMainRoute
+        switch pending {
+        case .overview: route = .overview
+        case .charts: route = .charts
+        case .database: route = .database
+        case .projects: route = .projects
+        case .sessionLogs: route = .sessionLogs
+        case .chat: route = .chat
+        }
+        withAnimation(DesignSystem.Animation.standard) {
+            navigate(to: route)
+        }
+    }
+
     var backButtonHelpText: String {
         if let previous = routeHistory.last {
             return "Back to \(routeTitle(previous))"
@@ -138,6 +227,7 @@ struct DashboardView: View {
         switch route {
         case .overview: return "Overview"
         case .insights: return "Insights"
+        case .charts: return "Charts"
         case .database: return "Database"
         case .projects: return "Projects"
         case .missions: return "Missions"
@@ -181,16 +271,32 @@ struct DashboardView: View {
 
     var body: some View {
         @Bindable var chatController = chatController
-        return NavigationSplitView {
-            sidebarView
-                .navigationSplitViewColumnWidth(min: 260, ideal: 280, max: 320)
-                .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
-        } detail: {
-            detailView
+        return VStack(spacing: 0) {
+            dashboardCommandDeck
+
+            NavigationSplitView(columnVisibility: $dashboardSplitVisibility) {
+                sidebarView
+                    .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 235)
+                    .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
+            } detail: {
+                detailView
+            }
+            .navigationSplitViewStyle(.balanced)
+            .toolbar(removing: .sidebarToggle)
+            .clipShape(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 22,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 22,
+                    style: .continuous
+                ),
+                style: FillStyle(antialiased: true)
+            )
         }
-        .navigationSplitViewStyle(.balanced)
         .background {
             DashboardBackdrop(moodBand: dataStore.moodBand)
+            DashboardSidebarToolbarItemRemover()
             GeometryReader { geo in
                 Color.clear
                     .onAppear {
@@ -208,6 +314,18 @@ struct DashboardView: View {
                 missionConsoleController = MissionConsoleWindowController.bind(to: operatingLayer)
             }
             Task { await refreshPendingMemoryReviewCount() }
+            consumeCoordinatorDashboardRoute()
+        }
+        .onChange(of: navigationCoordinator.dashboardRoute) { _, _ in
+            consumeCoordinatorDashboardRoute()
+        }
+        .task(id: burnRailDeltaTaskID) {
+            let requestID = burnRailDeltaTaskID
+            burnRailDelta = nil
+            let result = await loadBurnRailDelta()
+            guard !Task.isCancelled, requestID == burnRailDeltaTaskID else { return }
+            burnRailDeltaRequestID = requestID
+            burnRailDelta = result
         }
         .onChange(of: dataStore.totalUsageSessionCount) { _, _ in
             autoExpandTimeRangeIfNeeded()
@@ -288,7 +406,6 @@ struct DashboardView: View {
             .fixedSize()
             .padding(EdgeInsets(top: 24, leading: 20, bottom: 20, trailing: 20))
         }
-        .toolbar { toolbarContent }
         .accessibilityIdentifier(OBBAccessibilityID.dashboardRoot)
         .background {
             sectionShortcuts
@@ -311,16 +428,22 @@ struct DashboardView: View {
                 }
             )
         }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView(
-                settingsManager: settingsManager,
-                accountManager: accountManager,
-                cloudSyncService: cloudSyncService,
-                iCloudSessionMirrorService: iCloudSessionMirrorService,
-                dataStore: dataStore,
-                runtimeContext: runtimeContext
-            )
-        }
+        .sheet(
+            isPresented: $settingsPresentation.isPresented,
+            onDismiss: { settingsPresentation.dismiss() },
+            content: {
+                SettingsView(
+                    settingsManager: settingsManager,
+                    accountManager: accountManager,
+                    cloudSyncService: cloudSyncService,
+                    iCloudSessionMirrorService: iCloudSessionMirrorService,
+                    dataStore: dataStore,
+                    runtimeContext: runtimeContext,
+                    chatController: chatController,
+                    initialItemID: settingsPresentation.itemID
+                )
+            }
+        )
         .onAppear {
             if !settingsManager.conversationIndexingConsentShown {
                 showIndexingConsent = true
@@ -487,6 +610,14 @@ struct DashboardView: View {
                         chatController: chatController
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .charts:
+                    ChartsPageView(
+                        dataStore: dataStore,
+                        settingsManager: settingsManager,
+                        chatController: chatController,
+                        selectedTimeRange: $selectedTimeRange
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .database:
                     DatabaseWorkspaceView(
                         dataStore: dataStore,
@@ -562,7 +693,7 @@ struct DashboardView: View {
                         settingsManager: settingsManager,
                         onOpenConnections: {
                             UserDefaults.standard.set(SettingsTab.agents.rawValue, forKey: "settings.pendingTab")
-                            showingSettings = true
+                            presentSettings()
                         }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -723,33 +854,6 @@ struct DashboardView: View {
                 overviewView
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if dataStore.totalUsageSessionCount > 0 {
-                layoutSwitcherBar
-            }
-        }
-    }
-
-    private var layoutSwitcherBar: some View {
-        HStack {
-            DashboardLayoutSwitcher(selection: Binding(
-                get: { settingsManager.dashboardLayout },
-                set: { newValue in
-                    guard newValue != settingsManager.dashboardLayout else { return }
-                    settingsManager.dashboardLayout = newValue
-                    Analytics.shared.track(.settingsChanged, [
-                        "setting_key": "dashboard_layout",
-                        "new_value": .string(newValue.rawValue),
-                        "source": "overview_switcher"
-                    ])
-                }
-            ))
-            .accessibilityIdentifier(OBBAccessibilityID.dashboardLayoutSwitcher)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, DesignSystem.Spacing.xl)
-        .padding(.top, DesignSystem.Spacing.sm)
-        .padding(.bottom, DesignSystem.Spacing.xs)
     }
 
     @ViewBuilder

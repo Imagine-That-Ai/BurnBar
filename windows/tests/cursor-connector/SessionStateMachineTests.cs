@@ -28,6 +28,7 @@ public sealed class SessionStateMachineTests
     private static CursorConnectorSession NewSession(RecordingSessionSteps steps, out CursorConnectorConfig config, out ConnectorHealthSnapshot health)
     {
         config = CursorConnectorConfig.CreateDefault();
+        config.ProviderConfigs[0].Enabled = true;
         health = new ConnectorHealthSnapshot();
         return new CursorConnectorSession(steps, config, health, new FixedClock(Now));
     }
@@ -92,6 +93,42 @@ public sealed class SessionStateMachineTests
         Assert.DoesNotContain("StartTunnel", steps.Calls);
         // Rollback still runs (idempotent stops + restore).
         Assert.Contains("RestoreCursorSettings", steps.Calls);
+    }
+
+    [Fact]
+    public void Connect_InvalidProviderConfiguration_FailsClosedBeforeRuntimeValidation()
+    {
+        var steps = new RecordingSessionSteps();
+        var config = CursorConnectorConfig.CreateDefault();
+        var session = new CursorConnectorSession(steps, config, new ConnectorHealthSnapshot(), new FixedClock(Now));
+
+        var state = session.Connect();
+
+        Assert.Equal(ConnectorSessionState.Failed, state);
+        Assert.Equal("Enable at least one provider before connecting.", session.LastError);
+        Assert.DoesNotContain("ValidateConfiguration", steps.Calls);
+        Assert.DoesNotContain("EnsureSupportDirectory", steps.Calls);
+        Assert.DoesNotContain("StartSecretBroker", steps.Calls);
+        Assert.DoesNotContain("StartProxy", steps.Calls);
+        Assert.DoesNotContain("StartTunnel", steps.Calls);
+    }
+
+    [Fact]
+    public void Connect_EnabledProviderWithoutModels_FailsClosedBeforeRuntimeValidation()
+    {
+        var steps = new RecordingSessionSteps();
+        var config = CursorConnectorConfig.CreateDefault();
+        config.ProviderConfigs[0].Enabled = true;
+        config.ProviderConfigs[0].SelectedModels.Clear();
+        config.ProviderConfigs[0].CustomModels.Clear();
+        var session = new CursorConnectorSession(steps, config, new ConnectorHealthSnapshot(), new FixedClock(Now));
+
+        var state = session.Connect();
+
+        Assert.Equal(ConnectorSessionState.Failed, state);
+        Assert.Equal("Choose at least one supported model to expose to Cursor.", session.LastError);
+        Assert.DoesNotContain("ValidateConfiguration", steps.Calls);
+        Assert.DoesNotContain("StartSecretBroker", steps.Calls);
     }
 
     [Fact]

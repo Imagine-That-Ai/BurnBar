@@ -19,6 +19,10 @@ import type { GlyphField } from "../glyph/field/glyphField";
 import { detectGlCapabilities, type GlCapabilities } from "./gl/glCapabilities";
 import { resolvePalette } from "./palette";
 import type { SwarmEmberKernelOptions } from "./kernels/swarmEmberKernel";
+// Eager import: createSlot() is synchronous and must return a Kernel immediately,
+// so the options-override path for swarmEmber can't use a dynamic import(). The
+// registry's lazyKernel path handles the default (no-options) case; this value
+// import is only reached when swarmEmberOptions is set (linux-desktop dashboard).
 import { createSwarmEmberKernel } from "./kernels/swarmEmberKernel";
 import { DEFAULT_KERNEL_ID, getKernelDescriptor } from "./registry";
 import type {
@@ -53,6 +57,18 @@ export interface BackdropEngineOptions {
   swarmEmberOptions?: SwarmEmberKernelOptions;
   /** Notified with the kernel actually shown (may differ on GL fallback). */
   onResolve?: (id: KernelId) => void;
+  /**
+   * Deterministic host profile for performance certification. Production
+   * callers leave this unset so the engine follows the user's OS preference.
+   */
+  reducedMotionOverride?: boolean;
+}
+
+export interface BackdropRuntimeState {
+  hostVisible: boolean;
+  renderLoopScheduled: boolean;
+  reducedMotion: boolean;
+  resolvedKernel: KernelId;
 }
 
 function detectWebgl2(): { supported: boolean; caps: GlCapabilities } {
@@ -88,6 +104,9 @@ export class BackdropEngine {
 
   private visible = true;
   private pageVisible = true;
+  /** Native-host visibility (window occlusion/minimize/app-hide), driven by
+   *  the embedder via {@link setHostVisible}. Browsers never touch this. */
+  private hostVisible = true;
   private reducedMotion = false;
 
   private pointer = { x: 0, y: 0, active: false };
@@ -119,9 +138,10 @@ export class BackdropEngine {
     this.onResolve = opts.onResolve;
     this.activeId = opts.initialKernel ?? DEFAULT_KERNEL_ID;
 
-    this.reducedMotion =
+    this.reducedMotion = opts.reducedMotionOverride ?? (
       typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
 
     const rect = container.getBoundingClientRect();
     this.width = rect.width || window.innerWidth;
@@ -202,6 +222,39 @@ export class BackdropEngine {
 
   getResolvedKernel(): KernelId {
     return this.activeId;
+  }
+
+  /** Runtime truth used by native hosts to confirm that occlusion commands
+   *  reached the actual engine rather than merely reaching the WKWebView. */
+  getRuntimeState(): BackdropRuntimeState {
+    return {
+      hostVisible: this.hostVisible,
+      renderLoopScheduled: this.raf !== null,
+      reducedMotion: this.reducedMotion,
+      resolvedKernel: this.activeId,
+    };
+  }
+
+  /**
+   * Native embedders (the macOS/iOS WKWebView backdrop) call this when the
+   * hosting window's occlusion state changes. `document.hidden` never fires
+   * for a window that is merely covered by another window or minimized, so
+   * without this hook the rAF loop keeps burning GPU/CPU behind fully
+   * occluded windows. Fully stops the loop (not just early-returns) so an
+   * occluded backdrop costs ~0; restarting is seamless — same pattern as the
+   * reduced-motion toggle.
+   */
+  setHostVisible(hostVisible: boolean): void {
+    if (this.hostVisible === hostVisible) return;
+    this.hostVisible = hostVisible;
+    if (!hostVisible) {
+      if (this.raf !== null) {
+        cancelAnimationFrame(this.raf);
+        this.raf = null;
+      }
+    } else if (this.raf === null && !this.reducedMotion) {
+      this.startLoop();
+    }
   }
 
   /** A foreground glyph was dragged/thrown through the field — forward to the
@@ -331,7 +384,10 @@ export class BackdropEngine {
         depth: false,
         stencil: false,
         premultipliedAlpha: true,
-        powerPreference: "high-performance",
+        // Ambient backdrops don't need dGPU clocks: "low-power" renders the
+        // exact same frames on the efficiency GPU tier and saves real battery
+        // ("high-performance" forces higher clocks / the discrete GPU on Macs).
+        powerPreference: "low-power",
         preserveDrawingBuffer: false,
       });
       if (!ctx) {
@@ -381,7 +437,7 @@ export class BackdropEngine {
     this.lastNow = performance.now();
     const loop = (now: number) => {
       this.raf = requestAnimationFrame(loop);
-      if (!this.visible || !this.pageVisible) {
+      if (!this.visible || !this.pageVisible || !this.hostVisible) {
         this.lastNow = now;
         return;
       }
@@ -505,7 +561,7 @@ export class BackdropEngine {
    */
   private harvestObstacles(force = false): void {
     const now = typeof performance !== "undefined" ? performance.now() : 0;
-    if (!force && now - this.lastHarvest < 150) return;
+    if (!force && now - this.lastHarvest < 300) return;
     this.lastHarvest = now;
     const wantsObstacles = this.slots.some((s) => !s.outgoing && s.kernel.obstacles);
     if (!wantsObstacles) return;

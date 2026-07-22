@@ -1,3 +1,4 @@
+import DeviceCheck
 import FirebaseAppCheck
 import FirebaseCore
 import Foundation
@@ -6,13 +7,16 @@ import OpenBurnBarCore
 /// App Check provider factory that selects the appropriate attestation provider:
 /// - **Debug/internal builds**: Uses `AppCheckDebugProvider` only when the shared
 ///   debug App Check policy allows it and a token is present.
-/// - **macOS 11+ (Release)**: Uses `AppAttestProvider` for strong device attestation.
-/// - **Older macOS (Release fallback)**: Uses `DeviceCheckProvider`.
+/// - **Release builds**: Uses DeviceCheck on macOS and prefers App Attest with a
+///   DeviceCheck fallback on supported non-Mac Apple platforms. Returns no provider
+///   when the platform provider is unavailable so Firebase fails closed instead of
+///   silently using a debug provider.
 final class OpenBurnBarAppCheckProviderFactory: NSObject, AppCheckProviderFactory {
     enum ProviderSelection: String {
         case debug
         case appAttest
         case deviceCheck
+        case unsupported
     }
 
     func createProvider(with app: FirebaseApp) -> AppCheckProvider? {
@@ -32,6 +36,8 @@ final class OpenBurnBarAppCheckProviderFactory: NSObject, AppCheckProviderFactor
             return AppAttestProvider(app: app)
         case .deviceCheck:
             return DeviceCheckProvider(app: app)
+        case .unsupported:
+            return nil
         }
     }
 
@@ -39,7 +45,9 @@ final class OpenBurnBarAppCheckProviderFactory: NSObject, AppCheckProviderFactor
         firebasePlistPath: String?,
         infoDictionary: [String: Any]? = Bundle.main.infoDictionary,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        isDebugBuild: Bool = AppCheckDebugTokenEnvironment.isDebugBuild
+        isDebugBuild: Bool = AppCheckDebugTokenEnvironment.isDebugBuild,
+        appAttestIsSupported: Bool? = nil,
+        deviceCheckIsSupported: Bool? = nil
     ) -> ProviderSelection {
         let debugAllowed = AppCheckDebugTokenEnvironment.debugAppCheckAllowed(
             infoDictionary: infoDictionary,
@@ -53,14 +61,39 @@ final class OpenBurnBarAppCheckProviderFactory: NSObject, AppCheckProviderFactor
         if debugAllowed && (isDebugBuild || hasDebugToken) {
             return .debug
         }
-        return productionProviderSelection()
+        return productionProviderSelection(
+            appAttestIsSupported: appAttestIsSupported ?? runtimeAppAttestIsSupported,
+            deviceCheckIsSupported: deviceCheckIsSupported ?? DCDevice.current.isSupported
+        )
     }
 
-    private static func productionProviderSelection() -> ProviderSelection {
-        if #available(macOS 11.0, *) {
-            return .appAttest
-        } else {
+    static func productionProviderSelection(
+        appAttestIsSupported: Bool,
+        deviceCheckIsSupported: Bool
+    ) -> ProviderSelection {
+        #if os(macOS)
+        // Apple documents App Attest as unsupported on Mac. A provisioning
+        // profile can still make the support probe return true, but assertions
+        // then fail at runtime. DeviceCheck is the production Mac provider.
+        if deviceCheckIsSupported {
             return .deviceCheck
         }
+        return .unsupported
+        #else
+        if appAttestIsSupported {
+            return .appAttest
+        }
+        if deviceCheckIsSupported {
+            return .deviceCheck
+        }
+        return .unsupported
+        #endif
+    }
+
+    private static var runtimeAppAttestIsSupported: Bool {
+        if #available(macOS 11.0, *) {
+            return DCAppAttestService.shared.isSupported
+        }
+        return false
     }
 }

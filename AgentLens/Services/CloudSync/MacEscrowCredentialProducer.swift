@@ -1,5 +1,4 @@
 #if canImport(AppKit)
-import CryptoKit
 import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 import Foundation
@@ -28,27 +27,17 @@ enum MacEscrowSeal {
         recipientPublicKey: Data,
         associatedData: Data = Data()
     ) throws -> Data {
-        let recipientKey: P256.KeyAgreement.PublicKey
         do {
-            recipientKey = try P256.KeyAgreement.PublicKey(x963Representation: recipientPublicKey)
-        } catch {
+            return try CloudVaultCrypto.sealEscrowPayload(
+                plaintext,
+                recipientPublicKey: recipientPublicKey,
+                authenticating: associatedData
+            )
+        } catch CloudVaultCryptoError.invalidPublicKey {
             throw MacEscrowProducerError.invalidRecipientPublicKey
-        }
-
-        let ephemeralKey = P256.KeyAgreement.PrivateKey()
-        let sharedSecret = try ephemeralKey.sharedSecretFromKeyAgreement(with: recipientKey)
-        let symmetricKey = sharedSecret.hkdfDerivedSymmetricKey(
-            using: SHA256.self,
-            salt: Data(),
-            sharedInfo: Data("OpenBurnBar-Escrow-v1".utf8),
-            outputByteCount: 32
-        )
-        let sealed = try AES.GCM.seal(plaintext, using: symmetricKey, authenticating: associatedData)
-        guard let combined = sealed.combined else {
+        } catch {
             throw MacEscrowProducerError.encryptionFailed
         }
-        // ephemeral_pub (65) || sealed_box — matches iOSDeviceKeypair.decrypt.
-        return ephemeralKey.publicKey.x963Representation + combined
     }
 }
 

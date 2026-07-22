@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 
 struct BurnBarMissionControlProjectionFile: Codable, Sendable {

@@ -7,10 +7,15 @@ public enum ChildProcessProfile
 {
     BrowserActivation,
     Chat,
+    Switcher,
     Updater,
     Gateway,
     Mission,
     ComputerUse,
+    Watchdog,
+    PrivilegedInput,
+    ProjectTool,
+    UsageScanner,
     ReleaseTool,
     Diagnostics,
 }
@@ -73,6 +78,7 @@ public static class ChildProcessEnvironment
         "AUTH",
         "CANARY",
         "CREDENTIAL",
+        "FACTORY_API_KEY",
         "FIREBASE",
         "GOOGLE_SERVICES",
         "ID_TOKEN",
@@ -134,7 +140,7 @@ public static class ChildProcessEnvironment
                     continue;
                 }
 
-                if (IsForbidden(pair.Key))
+                if (IsForbidden(pair.Key) && !IsRequiredSecretAllowed(profile, pair.Key))
                 {
                     throw new SecretStoreException(
                         SecretStoreFailureKind.WriteDenied,
@@ -170,6 +176,11 @@ public static class ChildProcessEnvironment
         string normalized = name.Replace("-", "_", StringComparison.Ordinal).ToUpperInvariant();
         return ForbiddenNameFragments.Any(fragment => normalized.Contains(fragment, StringComparison.Ordinal));
     }
+
+    public static bool IsRequiredSecretAllowed(ChildProcessProfile profile, string name) =>
+        profile == ChildProcessProfile.Gateway
+        && (string.Equals(name, "OPENAI_API_KEY", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "FACTORY_API_KEY", StringComparison.OrdinalIgnoreCase));
 
     public static IReadOnlyList<string> AllowedEnvironmentVariableNames(
         ChildProcessProfile profile,
@@ -226,6 +237,28 @@ public static class ChildProcessEnvironment
         profile switch
         {
             ChildProcessProfile.ReleaseTool => new[] { "SWIFT_EXEC", "SDKROOT" },
+            ChildProcessProfile.Switcher => new[]
+            {
+                "AGY_CONFIG_HOME",
+                "ANTIGRAVITY_HOME",
+                "CLAUDE_CONFIG_DIR",
+                "CLAUDE_CONFIG_PATH",
+                "CODEX_CONFIG_PATH",
+                "CODEX_HOME",
+                "CURSOR_AGENT_CONFIG_PATH",
+                "CURSOR_AGENT_HOME",
+                "EDITOR",
+                "GEMINI_HOME",
+                "GIT_EDITOR",
+                "HG_EDITOR",
+                "LANG",
+                "LC_ALL",
+                "OPENCODE_CONFIG_PATH",
+                "PAGER",
+                "SSH_AUTH_SOCK",
+                "TERM",
+                "VISUAL",
+            },
             _ => Array.Empty<string>(),
         };
 }

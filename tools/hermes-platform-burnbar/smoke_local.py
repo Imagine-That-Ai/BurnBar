@@ -221,8 +221,22 @@ def install_plugin(hermes_repo: Path) -> None:
     source_dir = Path(__file__).resolve().parent
     target_dir = hermes_repo / "plugins" / "platforms" / "burnbar"
     target_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("adapter.py", "__init__.py", "plugin.yaml", "README.md", "smoke_local.py"):
+    for name in (
+        "adapter.py",
+        "domain_core_hermes.py",
+        "__init__.py",
+        "plugin.yaml",
+        "README.md",
+        "smoke_local.py",
+    ):
         shutil.copy2(source_dir / name, target_dir / name)
+    for name in ("legacy", "vendor"):
+        shutil.copytree(
+            source_dir / name,
+            target_dir / name,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
 
 
 def load_hermes_plugin(hermes_repo: Path):

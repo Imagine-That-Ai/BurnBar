@@ -21,6 +21,15 @@ extension UsageStore {
         }
     }
 
+    /// Fetches only the scalar totals needed by dashboard comparison telemetry.
+    /// The query stays on the database worker and does not decode or materialize
+    /// any usage rows, which keeps large windows off the main actor.
+    func fetchUsageTotals(in dateRange: ClosedRange<Date>?) async throws -> UsageTotals {
+        try await dbQueue.read { db in
+            try Self.fetchUsageTotals(db: db, dateRange: dateRange)
+        }
+    }
+
     func fetchUsageCostBreakdown(in dateRange: ClosedRange<Date>, limit: Int = 20) async throws -> UsageCostBreakdown {
         try await dbQueue.read { db in
             let aggregateRows = try Self.fetchUsageAggregateRows(db: db, dateRange: dateRange)

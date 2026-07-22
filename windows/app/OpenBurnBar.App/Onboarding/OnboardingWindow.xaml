@@ -11,5 +11,5 @@
       destination inside its NavigationView Frame; this window is the self-sufficient entry
       that works today. Glass window backdrop routes through the LiquidGlass chokepoint.
     -->
-    <Grid x:Name="RootHost" />
+    <Grid x:Name="RootHost" RequestedTheme="Dark" />
 </Window>

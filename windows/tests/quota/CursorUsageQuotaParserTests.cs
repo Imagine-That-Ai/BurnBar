@@ -1,3 +1,4 @@
+using System;
 using OpenBurnBar.App.Presentation.Quota;
 using Xunit;
 
@@ -9,6 +10,25 @@ namespace OpenBurnBar.App.Quota.Tests;
 /// </summary>
 public sealed class CursorUsageQuotaParserTests
 {
+    [Theory]
+    [InlineData((int)DomainCoreQuotaMigrationMode.Shadow)]
+    [InlineData((int)DomainCoreQuotaMigrationMode.Rust)]
+    public void Parse_RecordedUsageSummary_DomainCoreModesMatchCanonicalFixture(
+        int rawMode)
+    {
+        var mode = (DomainCoreQuotaMigrationMode)rawMode;
+        var input = QuotaFixtures.ReadInput("cursor-usage-summary-input.json");
+        var expected = QuotaFixtures.ReadExpected("cursor-usage-summary-expected.json");
+
+        var snapshot = CursorUsageQuotaParser.Parse(
+            input,
+            userEmail: null,
+            DateTimeOffset.FromUnixTimeSeconds(expected.NowUnix ?? 0),
+            mode);
+
+        QuotaFixtures.AssertMatches(snapshot, expected);
+    }
+
     [Fact]
     public void Parse_RecordedUsageSummary_MatchesExpectedValueForValue()
     {
@@ -65,5 +85,14 @@ public sealed class CursorUsageQuotaParserTests
         Assert.Equal(ProviderQuotaConfidence.Unavailable, snapshot.Confidence);
         Assert.Equal(ProviderQuotaSourceKind.Unavailable, snapshot.Source);
         Assert.False(snapshot.HasBuckets);
+
+        var rust = CursorUsageQuotaParser.Parse(
+            "}{ broken",
+            userEmail: null,
+            DateTimeOffset.FromUnixTimeSeconds(1783036800),
+            DomainCoreQuotaMigrationMode.Rust);
+        Assert.Equal(ProviderQuotaConfidence.Unavailable, rust.Confidence);
+        Assert.Equal(ProviderQuotaSourceKind.Unavailable, rust.Source);
+        Assert.False(rust.HasBuckets);
     }
 }

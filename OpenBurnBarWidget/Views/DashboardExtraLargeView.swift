@@ -1,6 +1,7 @@
 import SwiftUI
 import WidgetKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 struct DashboardExtraLargeView: View {
     let snap: BurnBarWidgetSnapshot?

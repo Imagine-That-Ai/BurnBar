@@ -13,6 +13,28 @@ import GRDB
 @MainActor
 final class OpenBurnBarDatabaseMattersTests: XCTestCase {
 
+    // MARK: - Async read interruption recovery
+
+    func test_databaseQueueAsyncRead_closedConnectionDoesNotUnbalanceReadOnlyState() async throws {
+        let queue = try DatabaseQueue()
+        try queue.close()
+
+        do {
+            _ = try await queue.read { db in
+                try Int.fetchOne(db, sql: "SELECT 1")
+            }
+            XCTFail("A closed database queue must reject the read.")
+        } catch let error as DatabaseError {
+            XCTAssertEqual(error.resultCode, .SQLITE_MISUSE)
+        }
+
+        let healthyQueue = try DatabaseQueue()
+        let value = try await healthyQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT 1")
+        }
+        XCTAssertEqual(value, 1, "The failed read must not poison subsequent database work.")
+    }
+
     // MARK: - encodeJSONStringArray (L1767 fix: throwing, no silent "[]")
 
     func test_encodeJSONStringArray_encodesNonEmptyArray_neverSilentlyEmpty() throws {

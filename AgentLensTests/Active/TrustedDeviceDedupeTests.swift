@@ -17,13 +17,15 @@ final class TrustedDeviceDedupeTests: XCTestCase {
         id: String,
         name: String = "iPhone",
         platform: String = "iOS",
-        trust: EscrowDeviceTrustState
+        trust: EscrowDeviceTrustState,
+        updatedAt: Date? = nil
     ) -> MacTrustedDevice {
         MacTrustedDevice(
             id: id,
             displayName: name,
             platform: platform,
-            trustState: trust
+            trustState: trust,
+            registrationUpdatedAt: updatedAt
         )
     }
 
@@ -57,5 +59,17 @@ final class TrustedDeviceDedupeTests: XCTestCase {
         ])
 
         XCTAssertEqual(rows.count, 2)
+    }
+
+    func test_duplicatePendingRegistrationsPreferNewestDevice() {
+        let stale = Date(timeIntervalSince1970: 1_700_000_000)
+        let attached = stale.addingTimeInterval(60)
+        let rows = DeviceTrustViewModel.deduplicatedDevices([
+            device(id: "5B143-stale-ipad", name: "iPad", platform: "iPadOS", trust: .pending, updatedAt: stale),
+            device(id: "6566-attached-ipad", name: "iPad", platform: "iPadOS", trust: .pending, updatedAt: attached)
+        ])
+
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.id, "6566-attached-ipad")
     }
 }

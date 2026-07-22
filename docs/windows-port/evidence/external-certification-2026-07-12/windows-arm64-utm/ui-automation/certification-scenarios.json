@@ -1,0 +1,92 @@
+[
+  {
+    "Key": "baseline",
+    "Title": "Default route smoke and screenshot pass",
+    "Category": "default",
+    "RouteKeys": [],
+    "AppearanceMode": null,
+    "ReduceTransparency": null,
+    "DpiScalePercent": null,
+    "RequiresScreenshots": true,
+    "RequiresUiAutomation": true,
+    "RequiresKeyboardOnly": false,
+    "RequiresNarratorProtocol": false,
+    "Acceptance": "Every selected route renders a non-uniform screenshot and exposes its route-root UIA automation id.",
+    "RunsRouteSmoke": true
+  },
+  {
+    "Key": "high-contrast",
+    "Title": "High contrast route roots",
+    "Category": "accessibility",
+    "RouteKeys": [
+      "dashboard",
+      "chat",
+      "settings",
+      "onboarding",
+      "dataControlCenter"
+    ],
+    "AppearanceMode": "highcontrast",
+    "ReduceTransparency": true,
+    "DpiScalePercent": null,
+    "RequiresScreenshots": true,
+    "RequiresUiAutomation": true,
+    "RequiresKeyboardOnly": false,
+    "RequiresNarratorProtocol": true,
+    "Acceptance": "Representative primary routes render through the real high-contrast theme path with solid chrome and route-root UIA anchors.",
+    "RunsRouteSmoke": true
+  },
+  {
+    "Key": "reduced-transparency",
+    "Title": "Reduced transparency route roots",
+    "Category": "accessibility",
+    "RouteKeys": [
+      "dashboard",
+      "quota",
+      "missionControl",
+      "memory"
+    ],
+    "AppearanceMode": "dark",
+    "ReduceTransparency": true,
+    "DpiScalePercent": null,
+    "RequiresScreenshots": true,
+    "RequiresUiAutomation": true,
+    "RequiresKeyboardOnly": false,
+    "RequiresNarratorProtocol": false,
+    "Acceptance": "Representative high-motion/glass surfaces render with transparency disabled through the production theme service.",
+    "RunsRouteSmoke": true
+  },
+  {
+    "Key": "dpi-100",
+    "Title": "100 percent DPI screenshot baseline",
+    "Category": "dpi",
+    "RouteKeys": [
+      "dashboard",
+      "settings",
+      "chat"
+    ],
+    "AppearanceMode": "dark",
+    "ReduceTransparency": null,
+    "DpiScalePercent": 100,
+    "RequiresScreenshots": true,
+    "RequiresUiAutomation": true,
+    "RequiresKeyboardOnly": false,
+    "RequiresNarratorProtocol": false,
+    "Acceptance": "CI captures non-uniform screenshots for dense routes at the hosted Windows default DPI.",
+    "RunsRouteSmoke": true
+  },
+  {
+    "Key": "keyboard-contract",
+    "Title": "Keyboard and input safety contract",
+    "Category": "keyboard",
+    "RouteKeys": [],
+    "AppearanceMode": null,
+    "ReduceTransparency": null,
+    "DpiScalePercent": null,
+    "RequiresScreenshots": false,
+    "RequiresUiAutomation": false,
+    "RequiresKeyboardOnly": true,
+    "RequiresNarratorProtocol": true,
+    "Acceptance": "The harness records the keyboard/input route contract and keeps non-bypassable actions token-gated.",
+    "RunsRouteSmoke": false
+  }
+]

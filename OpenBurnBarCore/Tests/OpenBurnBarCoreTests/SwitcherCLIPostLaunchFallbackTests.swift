@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarLaunchServices
 
 private struct PackageTestCLIFallbackPlanner: CLIFallbackPlanning {
     func orderedCandidates(

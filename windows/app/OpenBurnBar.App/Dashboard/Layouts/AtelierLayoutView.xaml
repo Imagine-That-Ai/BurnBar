@@ -38,7 +38,7 @@
                            FontSize="13"
                            FontWeight="SemiBold"
                            Margin="2,0,0,10"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Foreground="{ThemeResource AuroraTextBrush}" />
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="ProviderList" Spacing="6" />
                 </ScrollViewer>
@@ -55,8 +55,8 @@
                         HorizontalAlignment="Left"
                         Spacing="10"
                         MaxWidth="640">
-                <Border Background="#24FA5053" CornerRadius="999" Padding="10,5" HorizontalAlignment="Left">
-                    <TextBlock Text="WebGL kernel"
+                <Border Background="{ThemeResource AuroraGlassSelectionFillBrush}" CornerRadius="999" Padding="10,5" HorizontalAlignment="Left">
+                    <TextBlock Text="Live kernel"
                                FontSize="11"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource OBBAccentBrush}" />
@@ -65,13 +65,13 @@
                            FontSize="36"
                            FontWeight="Bold"
                            TextWrapping="Wrap"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Foreground="{ThemeResource AuroraTextBrush}" />
                 <TextBlock Text="Provider logos emerge from the kernel and dissolve back into it. Every layout is its own ecosystem — pick a concept, tune the glass."
                            FontSize="15"
                            Opacity="0.72"
                            TextWrapping="Wrap"
                            MaxWidth="460"
-                           Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                           Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
             </StackPanel>
 
             <StackPanel Grid.Row="1"

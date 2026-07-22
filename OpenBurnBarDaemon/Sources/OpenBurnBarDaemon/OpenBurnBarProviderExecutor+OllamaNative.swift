@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 
 // Ollama native chat API <-> OpenAI-compatible request/response/stream conversion.
