@@ -10,6 +10,8 @@ public enum CloudVaultCryptoError: LocalizedError, Sendable {
     case invalidPublicKey
     case keychainError(Int)
     case keychainDataMissing
+    case domainCoreUnavailable
+    case invalidSearchInput
 
     public var errorDescription: String? {
         switch self {
@@ -25,6 +27,10 @@ public enum CloudVaultCryptoError: LocalizedError, Sendable {
             return "Cloud vault Keychain operation failed with status \(status)."
         case .keychainDataMissing:
             return "The cloud vault key is missing from the Keychain."
+        case .domainCoreUnavailable:
+            return "The required CloudVault domain core is unavailable."
+        case .invalidSearchInput:
+            return "Cloud vault search input exceeds the supported indexing boundary."
         }
     }
 }
@@ -56,11 +62,40 @@ public struct CloudVaultAADContext: Codable, Hashable, Sendable {
     }
 
     public var stringValue: String {
-        "\(CloudVaultCrypto.aadContextPrefix)|\(uid)|\(collection)|\(docID)|\(field)|\(schemaVersion)|\(purpose)"
+        do {
+            return try CloudVaultDomainCoreAdapter.aadV2(
+                uid: uid,
+                collection: collection,
+                docID: docID,
+                field: field,
+                schemaVersion: schemaVersion,
+                purpose: purpose,
+                legacy: { CloudVaultLegacyCrypto.aadV2(
+                    uid: uid,
+                    collection: collection,
+                    docID: docID,
+                    field: field,
+                    schemaVersion: schemaVersion,
+                    purpose: purpose
+                ) }
+            )
+        } catch {
+            preconditionFailure("CloudVault AAD v2 construction failed")
+        }
     }
 
     public var legacyV1StringValue: String {
-        "\(CloudVaultCrypto.legacyAADContextPrefix)|\(uid)|\(collection)|\(docID)|\(field)"
+        do {
+            return try CloudVaultDomainCoreAdapter.aadV1(
+                uid: uid,
+                collection: collection,
+                docID: docID,
+                field: field,
+                legacy: { CloudVaultLegacyCrypto.aadV1(uid: uid, collection: collection, docID: docID, field: field) }
+            )
+        } catch {
+            preconditionFailure("CloudVault AAD v1 construction failed")
+        }
     }
 
     public var data: Data {
@@ -278,9 +313,21 @@ public enum CloudVaultCrypto {
         Data(try randomBytes(count: 32))
     }
 
+    static func generateDocumentRewrapNonce() throws -> Data {
+        Data(try randomBytes(count: 12))
+    }
+
     public static func vaultKeyID(for keyData: Data) throws -> String {
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return "v1_" + String(sha256Hex(keyData).prefix(32))
+        do {
+            return try CloudVaultDomainCoreAdapter.vaultKeyID(for: keyData) {
+                try CloudVaultLegacyCrypto.vaultKeyID(for: keyData)
+            }
+        } catch CloudVaultDomainCoreAdapterError.nativeUnavailable {
+            throw CloudVaultCryptoError.domainCoreUnavailable
+        } catch {
+            throw CloudVaultCryptoError.invalidKeyLength
+        }
     }
 
     public static func roamingProfileAADContext(uid: String) throws -> CloudVaultAADContext {
@@ -310,7 +357,7 @@ public enum CloudVaultCrypto {
         aadContext: CloudVaultAADContext? = nil
     ) throws -> CloudVaultSealedText {
         let plaintext = Data(text.utf8)
-        let sealed = try PlatformCrypto.sealAESGCMDetached(
+        let sealed = try sealAESGCMDetachedThroughDomainCore(
             plaintext: plaintext,
             keyData: keyData,
             authenticating: aadContext?.data ?? Data()
@@ -323,11 +370,7 @@ public enum CloudVaultCrypto {
         keyData: Data,
         aadContext: CloudVaultAADContext? = nil
     ) throws -> String {
-        let data = try open(envelope, keyData: keyData, aadContext: aadContext)
-        guard let text = String(data: data, encoding: .utf8) else {
-            throw CloudVaultCryptoError.invalidEnvelope
-        }
-        return text
+        try openTextThroughDomainCore(envelope, keyData: keyData, aadContext: aadContext)
     }
 
     public static func sealBlob(
@@ -336,7 +379,7 @@ public enum CloudVaultCrypto {
         keyVersion: Int = currentKeyVersion,
         aadContext: CloudVaultAADContext? = nil
     ) throws -> CloudVaultBlobEnvelope {
-        let sealed = try PlatformCrypto.sealAESGCMDetached(
+        let sealed = try sealAESGCMDetachedThroughDomainCore(
             plaintext: data,
             keyData: keyData,
             authenticating: aadContext?.data ?? Data()
@@ -346,7 +389,7 @@ public enum CloudVaultCrypto {
             keyVersion: keyVersion,
             plaintextHMAC: try blobPlaintextHMAC(data, keyData: keyData),
             integrityHashVersion: blobIntegrityHashVersion,
-            sealedBoxBase64: sealed.combined.base64EncodedString(),
+            sealedBoxBase64: try base64EncodeThroughDomainCore(sealed.combined),
             aad: aadContext?.stringValue ?? blobEnvelopeAADContext
         )
     }
@@ -359,25 +402,27 @@ public enum CloudVaultCrypto {
         guard envelope.algorithm == aesGCMAlgorithm else {
             throw CloudVaultCryptoError.invalidEnvelope
         }
-        guard let combined = Data(base64Encoded: envelope.sealedBoxBase64) else {
-            throw CloudVaultCryptoError.invalidEnvelope
-        }
+        let combined = try base64DecodeThroughDomainCore(envelope.sealedBoxBase64)
         let plaintext: Data
         switch envelope.schemaVersion {
         case 1:
-            plaintext = try PlatformCrypto.openAESGCM(combined: combined, keyData: keyData)
+            plaintext = try openAESGCMThroughDomainCore(combined: combined, keyData: keyData, authenticating: Data())
             guard let plaintextSHA256 = envelope.plaintextSHA256,
                   sha256Hex(plaintext) == plaintextSHA256 else {
                 throw CloudVaultCryptoError.invalidEnvelope
             }
         case currentBlobEnvelopeSchemaVersion:
             if envelope.aad == blobEnvelopeAADContext {
-                plaintext = try PlatformCrypto.openAESGCM(combined: combined, keyData: keyData)
+                plaintext = try openAESGCMThroughDomainCore(
+                    combined: combined,
+                    keyData: keyData,
+                    authenticating: Data()
+                )
             } else {
                 guard let aadContext else {
                     throw CloudVaultCryptoError.invalidEnvelope
                 }
-                plaintext = try PlatformCrypto.openAESGCM(
+                plaintext = try openAESGCMThroughDomainCore(
                     combined: combined,
                     keyData: keyData,
                     authenticating: try aadData(matching: envelope.aad, context: aadContext)
@@ -395,11 +440,11 @@ public enum CloudVaultCrypto {
     }
 
     public static func blobPlaintextHMAC(_ data: Data, keyData: Data) throws -> String {
-        try keyedHMACHex(data, keyData: keyData, purpose: "blob-integrity")
+        try domainCoreKeyedHash(data, keyData: keyData, purpose: .blobIntegrity, legacyPurpose: "blob-integrity")
     }
 
     public static func sessionBodyHash(_ data: Data, keyData: Data) throws -> String {
-        try keyedHMACHex(data, keyData: keyData, purpose: "session-body")
+        try domainCoreKeyedHash(data, keyData: keyData, purpose: .sessionBody, legacyPurpose: "session-body")
     }
 
     public static func sessionBodyHash(_ text: String, keyData: Data) throws -> String {
@@ -407,22 +452,50 @@ public enum CloudVaultCrypto {
     }
 
     public static func expectedSessionBodyHash(_ data: Data, keyData: Data, bodyHashVersion: Int) throws -> String {
-        switch bodyHashVersion {
-        case sessionBodyHashVersion:
-            return try sessionBodyHash(data, keyData: keyData)
-        case 0, 1:
-            return sha256Hex(data)
-        default:
+        do {
+            return try CloudVaultDomainCoreAdapter.expectedSessionBodyHash(
+                data,
+                keyData: keyData,
+                bodyHashVersion: bodyHashVersion
+            ) {
+                switch bodyHashVersion {
+                case sessionBodyHashVersion:
+                    return try CloudVaultLegacyCrypto.keyedHMACHex(
+                        data,
+                        keyData: keyData,
+                        purpose: "session-body"
+                    )
+                case 0, 1:
+                    return PlatformCrypto.sha256Hex(data)
+                default:
+                    throw CloudVaultCryptoError.invalidEnvelope
+                }
+            }
+        } catch let error as CloudVaultCryptoError {
+            throw error
+        } catch CloudVaultDomainCoreAdapterError.nativeUnavailable {
+            throw CloudVaultCryptoError.domainCoreUnavailable
+        } catch {
             throw CloudVaultCryptoError.invalidEnvelope
         }
     }
 
     public static func sessionChunkHash(_ chunk: String, keyData: Data) throws -> String {
-        try keyedHMACHex(Data(chunk.utf8), keyData: keyData, purpose: "session-chunk")
+        try domainCoreKeyedHash(
+            Data(chunk.utf8),
+            keyData: keyData,
+            purpose: .sessionChunk,
+            legacyPurpose: "session-chunk"
+        )
     }
 
     public static func projectMemoryContentHash(_ data: Data, keyData: Data) throws -> String {
-        try keyedHMACHex(data, keyData: keyData, purpose: "project-memory-content")
+        try domainCoreKeyedHash(
+            data,
+            keyData: keyData,
+            purpose: .projectMemoryContent,
+            legacyPurpose: "project-memory-content"
+        )
     }
 
     public static func expectedBlobIntegrityHash(_ data: Data, envelope: CloudVaultBlobEnvelope, keyData: Data) throws -> String {
@@ -445,7 +518,7 @@ public enum CloudVaultCrypto {
             sealedBoxBase64: "",
             aad: aadContext?.stringValue ?? sealedPayloadAADContext
         )
-        let combined = try PlatformCrypto.sealAESGCM(
+        let combined = try sealAESGCMThroughDomainCore(
             plaintext: data,
             keyData: keyData,
             authenticating: sealedPayloadAAD(for: draft, aadContext: aadContext)
@@ -454,7 +527,7 @@ public enum CloudVaultCrypto {
             schemaVersion: currentSealedPayloadSchemaVersion,
             keyVersion: keyVersion,
             vaultKeyID: vaultKeyID,
-            sealedBoxBase64: combined.base64EncodedString(),
+            sealedBoxBase64: try base64EncodeThroughDomainCore(combined),
             aad: draft.aad
         )
     }
@@ -465,16 +538,16 @@ public enum CloudVaultCrypto {
         aadContext: CloudVaultAADContext? = nil
     ) throws -> Data {
         guard envelope.algorithm == aesGCMAlgorithm,
-              envelope.vaultKeyID == (try vaultKeyID(for: keyData)),
-              let combined = Data(base64Encoded: envelope.sealedBoxBase64) else {
+              envelope.vaultKeyID == (try vaultKeyID(for: keyData)) else {
             throw CloudVaultCryptoError.invalidEnvelope
         }
+        let combined = try base64DecodeThroughDomainCore(envelope.sealedBoxBase64)
         switch envelope.schemaVersion {
         case 1:
-            return try PlatformCrypto.openAESGCM(combined: combined, keyData: keyData)
+            return try openAESGCMThroughDomainCore(combined: combined, keyData: keyData, authenticating: Data())
         case currentSealedPayloadSchemaVersion:
             if envelope.aad == sealedPayloadAADContext {
-                return try PlatformCrypto.openAESGCM(
+                return try openAESGCMThroughDomainCore(
                     combined: combined,
                     keyData: keyData,
                     authenticating: sealedPayloadAAD(for: envelope, aadContext: nil)
@@ -483,7 +556,7 @@ public enum CloudVaultCrypto {
             guard let aadContext else {
                 throw CloudVaultCryptoError.invalidEnvelope
             }
-            return try PlatformCrypto.openAESGCM(
+            return try openAESGCMThroughDomainCore(
                 combined: combined,
                 keyData: keyData,
                 authenticating: try aadData(matching: envelope.aad, context: aadContext)
@@ -588,6 +661,17 @@ public enum CloudVaultCrypto {
         decodeEnvelope(raw, as: CloudVaultBlobEnvelope.self)
     }
 
+    static func decodeBlobEnvelopeForDocumentRewrap(_ raw: [String: Any]) -> CloudVaultBlobEnvelope? {
+        var cryptographicMembers = raw
+        if cryptographicMembers["createdAt"] != nil {
+            // Firestore Timestamp is intentionally opaque to the crypto layer.
+            // Supply a decode-only placeholder; the caller reapplies the exact
+            // original object after resealing.
+            cryptographicMembers["createdAt"] = 0
+        }
+        return decodeBlobEnvelope(from: cryptographicMembers)
+    }
+
     public static func rewrapCloudVaultDocument(
         _ data: [String: Any],
         uid: String,
@@ -603,66 +687,30 @@ public enum CloudVaultCrypto {
             throw CloudVaultCryptoError.invalidEnvelope
         }
 
-        var updated = data
-        var changedFields: [String] = []
-
-        for field in data.keys.sorted() {
-            guard let rawMap = data[field] as? [String: Any] else { continue }
-            let context = try CloudVaultAADContext(uid: uid, collection: collection, docID: docID, field: field)
-
-            if let envelope = sealedPayload(from: rawMap) {
-                guard envelope.vaultKeyID != newVaultKeyID else { continue }
-                let plaintext = try openPayloadForRewrap(envelope, keyData: oldKeyData, aadContext: context)
-                let resealed = try sealPayload(
-                    plaintext,
-                    keyData: newKeyData,
-                    vaultKeyID: newVaultKeyID,
-                    aadContext: context
-                )
-                updated[field] = try firestoreDictionary(resealed)
-                applyVaultKeyCompanionUpdates(
-                    to: &updated,
-                    field: field,
-                    newVaultKeyID: newVaultKeyID
-                )
-                changedFields.append(field)
-                continue
-            }
-
-            if let envelope = decodeSealedText(from: rawMap) {
-                let plaintext = try openTextForRewrap(envelope, keyData: oldKeyData, aadContext: context)
-                let resealed = try sealText(
-                    plaintext,
-                    keyData: newKeyData,
-                    aadContext: context
-                )
-                updated[field] = try firestoreDictionary(resealed)
-                changedFields.append(field)
-                continue
-            }
-
-            if let envelope = decodeBlobEnvelope(from: rawMap) {
-                let plaintext = try openBlobForRewrap(envelope, keyData: oldKeyData, aadContext: context)
-                let resealed = try sealBlob(
-                    plaintext,
-                    keyData: newKeyData,
-                    aadContext: context
-                )
-                updated[field] = try firestoreDictionary(resealed)
-                changedFields.append(field)
-            }
+        return try CloudVaultDocumentRewrapDomainCoreAdapter.rewrap(
+            data: data,
+            uid: uid,
+            collection: collection,
+            docID: docID,
+            oldKeyData: oldKeyData,
+            newKeyData: newKeyData,
+            newVaultKeyID: newVaultKeyID,
+            vaultGeneration: vaultGeneration,
+            rotationJobID: rotationJobId
+        ) { noncePlan in
+            try CloudVaultLegacyDocumentRewrap.rewrapCloudVaultDocumentLegacy(
+                data,
+                uid: uid,
+                collection: collection,
+                docID: docID,
+                oldKeyData: oldKeyData,
+                newKeyData: newKeyData,
+                newVaultKeyID: newVaultKeyID,
+                vaultGeneration: vaultGeneration,
+                rotationJobID: rotationJobId,
+                noncePlan: noncePlan
+            )
         }
-
-        if changedFields.isEmpty == false {
-            if let vaultGeneration {
-                updated["vaultGeneration"] = vaultGeneration
-            }
-            if let rotationJobId {
-                updated["rewrapJobId"] = rotationJobId
-            }
-        }
-
-        return CloudVaultDocumentRewrapResult(data: updated, changedFields: changedFields)
     }
 
     public static func signalEnvelopeDictionary(_ envelope: CloudVaultSignalEnvelope) throws -> [String: Any] {
@@ -683,27 +731,36 @@ public enum CloudVaultCrypto {
     }
 
     public static func tokenHashes(for text: String, keyData: Data, limit: Int = 250) throws -> [String] {
-        let key = try searchKey(from: keyData)
-        let terms = normalizedTokens(from: text)
-        return tokenHashes(forTerms: terms, key: key, limit: limit)
+        try CloudVaultSearchDomainCoreAdapter.hashes(
+            operation: .token,
+            text: text,
+            keyData: keyData,
+            limit: limit
+        ) {
+            try CloudVaultLegacySearch.tokenHashes(for: text, keyData: keyData, limit: limit)
+        }
     }
 
     public static func searchIndexTokenHashes(for text: String, keyData: Data, limit: Int = 250) throws -> [String] {
-        let key = try searchKey(from: keyData)
-        let tokens = uniqueNormalizedTokens(from: text)
-        var terms = tokens
-        terms.append(contentsOf: searchIndexPrefixTerms(from: tokens))
-        terms.append(contentsOf: exactPhraseTerms(from: text))
-        return tokenHashes(forTerms: terms, key: key, limit: limit)
+        try CloudVaultSearchDomainCoreAdapter.hashes(
+            operation: .index,
+            text: text,
+            keyData: keyData,
+            limit: limit
+        ) {
+            try CloudVaultLegacySearch.searchIndexTokenHashes(for: text, keyData: keyData, limit: limit)
+        }
     }
 
     public static func searchQueryTokenHashes(for text: String, keyData: Data, limit: Int = 250) throws -> [String] {
-        let key = try searchKey(from: keyData)
-        let tokens = uniqueNormalizedTokens(from: text)
-        var terms = tokens
-        terms.append(contentsOf: tokens.compactMap(searchQueryPrefixTerm))
-        terms.append(contentsOf: exactPhraseTerms(from: text))
-        return tokenHashes(forTerms: terms, key: key, limit: limit)
+        try CloudVaultSearchDomainCoreAdapter.hashes(
+            operation: .query,
+            text: text,
+            keyData: keyData,
+            limit: limit
+        ) {
+            try CloudVaultLegacySearch.searchQueryTokenHashes(for: text, keyData: keyData, limit: limit)
+        }
     }
 
     /// Deterministic, opaque Firestore document id for a project-memory snapshot.
@@ -716,9 +773,11 @@ public enum CloudVaultCrypto {
     /// `[a-z0-9_-]` filter unchanged. Mirrors the `tokenHashes`/`searchKey`
     /// HKDF<SHA256> → HMAC<SHA256> → hex recipe.
     public static func projectMemoryDocID(forSlug slug: String, keyData: Data) throws -> String {
-        let key = try projectMemoryDocIDKey(from: keyData)
-        let mac = try PlatformCrypto.hmacSHA256(Data(slug.utf8), keyData: PlatformCrypto.symmetricKeyData(key))
-        return "pm_" + mac.prefix(16).map { String(format: "%02x", $0) }.joined()
+        try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.projectMemoryDocID(slug: slug, keyData: keyData) {
+                try CloudVaultOpaqueIdentifierLegacy.projectMemoryDocID(forSlug: slug, keyData: keyData)
+            }
+        }
     }
 
     /// Vault-keyed dedup hash for a Pensieve knowledge chunk's plaintext.
@@ -730,11 +789,11 @@ public enum CloudVaultCrypto {
     /// matching `requireHexDigest`. Derivation parity:
     /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "pensieve-dedup:content") → HMAC<SHA256>(plaintext)`.
     public static func pensieveDedupHash(_ plaintext: String, keyData: Data) throws -> String {
-        let key = try pensieveDedupKey(from: keyData, label: "content")
-        return try PlatformCrypto.hmacSHA256Hex(
-            Data(plaintext.utf8),
-            keyData: PlatformCrypto.symmetricKeyData(key)
-        )
+        try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.pensieveDedupHash(plaintext: plaintext, keyData: keyData) {
+                try CloudVaultOpaqueIdentifierLegacy.pensieveDedupHash(plaintext, keyData: keyData)
+            }
+        }
     }
 
     /// Vault-keyed HMAC of a Pensieve source slug — the opaque filter column that
@@ -742,11 +801,11 @@ public enum CloudVaultCrypto {
     /// Derivation parity:
     /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "pensieve-dedup:slug") → HMAC<SHA256>(slug)`.
     public static func pensieveSlugHmac(_ slug: String, keyData: Data) throws -> String {
-        let key = try pensieveDedupKey(from: keyData, label: "slug")
-        return try PlatformCrypto.hmacSHA256Hex(
-            Data(slug.utf8),
-            keyData: PlatformCrypto.symmetricKeyData(key)
-        )
+        try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.pensieveSlugHmac(slug: slug, keyData: keyData) {
+                try CloudVaultOpaqueIdentifierLegacy.pensieveSlugHmac(slug, keyData: keyData)
+            }
+        }
     }
 
     /// Deterministic, opaque Firestore document id for a subscription topic.
@@ -761,66 +820,19 @@ public enum CloudVaultCrypto {
     /// unchanged. Mirrors `pensieveSlugHmac`/`projectMemoryDocID`:
     /// `HKDF<SHA256>(vaultKey, salt: ∅, info: "subscription-topic") → HMAC<SHA256>("agentURI:topicID")`.
     public static func subscriptionDocID(agentURI: String, topicID: String, keyData: Data) throws -> String {
-        let key = try subscriptionDocIDKey(from: keyData)
-        let mac = try PlatformCrypto.hmacSHA256(
-            Data("\(agentURI):\(topicID)".utf8),
-            keyData: PlatformCrypto.symmetricKeyData(key)
-        )
-        return "sub_" + mac.prefix(16).map { String(format: "%02x", $0) }.joined()
-    }
-
-    private static func tokenHashes(forTerms terms: [String], key: PlatformSymmetricKey, limit: Int) -> [String] {
-        guard limit > 0 else { return [] }
-        var seen = Set<String>()
-        var hashes: [String] = []
-        let keyData = PlatformCrypto.symmetricKeyData(key)
-        for term in terms where seen.insert(term).inserted {
-            guard let mac = try? PlatformCrypto.hmacSHA256(Data(term.utf8), keyData: keyData) else { continue }
-            hashes.append(mac.prefix(16).map { String(format: "%02x", $0) }.joined())
-            if hashes.count >= limit { break }
-        }
-        return hashes
-    }
-
-    private static func uniqueNormalizedTokens(from text: String) -> [String] {
-        var seen = Set<String>()
-        var tokens: [String] = []
-        for token in normalizedTokens(from: text) where seen.insert(token).inserted {
-            tokens.append(token)
-        }
-        return tokens
-    }
-
-    private static func searchIndexPrefixTerms(from tokens: [String]) -> [String] {
-        tokens.flatMap { token -> [String] in
-            let characters = Array(token)
-            guard characters.count >= 4 else { return [] }
-            let maxPrefixLength = min(16, characters.count - 1)
-            guard maxPrefixLength >= 3 else { return [] }
-            return (3...maxPrefixLength).map { length in
-                "prefix:v1:" + String(characters.prefix(length))
+        try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.subscriptionDocID(
+                agentURI: agentURI,
+                topicID: topicID,
+                keyData: keyData
+            ) {
+                try CloudVaultOpaqueIdentifierLegacy.subscriptionDocID(
+                    agentURI: agentURI,
+                    topicID: topicID,
+                    keyData: keyData
+                )
             }
         }
-    }
-
-    private static func searchQueryPrefixTerm(from token: String) -> String? {
-        guard token.count >= 3 else { return nil }
-        return "prefix:v1:\(String(token.prefix(16)))"
-    }
-
-    private static func exactPhraseTerms(from text: String) -> [String] {
-        let tokens = exactPhraseTokens(from: text)
-        guard tokens.count >= 2 else { return [] }
-        var terms: [String] = []
-        for index in tokens.indices {
-            if index + 1 < tokens.count {
-                terms.append("phrase:v1:" + tokens[index...(index + 1)].joined(separator: "_"))
-            }
-            if index + 2 < tokens.count {
-                terms.append("phrase:v1:" + tokens[index...(index + 2)].joined(separator: "_"))
-            }
-        }
-        return terms
     }
 
     /// Produces keyed semantic-search buckets from plaintext before it is encrypted.
@@ -831,107 +843,108 @@ public enum CloudVaultCrypto {
     /// favors bounded, stable recall over model-specific vectors so every client
     /// can produce identical hashes offline.
     public static func semanticHashes(for text: String, keyData: Data, limit: Int = 24) throws -> [String] {
-        let tokens = exactPhraseTokens(from: text)
-        guard tokens.isEmpty == false, limit > 0 else { return [] }
-
-        let key = try semanticSearchKey(from: keyData)
-        let features = semanticFeatures(from: tokens)
-        guard features.isEmpty == false else { return [] }
-
-        let dimensions = 64
-        var accumulator = [Double](repeating: 0, count: dimensions)
-        let semanticKeyData = PlatformCrypto.symmetricKeyData(key)
-        for feature in features {
-            let mac = try PlatformCrypto.hmacSHA256(Data(feature.name.utf8), keyData: semanticKeyData)
-            let bytes = Array(mac)
-            let index = ((Int(bytes[0]) << 8) | Int(bytes[1])) % dimensions
-            let sign = (bytes[2] & 1) == 0 ? 1.0 : -1.0
-            accumulator[index] += sign * feature.weight
+        try CloudVaultSearchDomainCoreAdapter.hashes(
+            operation: .semantic,
+            text: text,
+            keyData: keyData,
+            limit: limit
+        ) {
+            try CloudVaultLegacySearch.semanticHashes(for: text, keyData: keyData, limit: limit)
         }
-
-        var hashes: [String] = []
-        var seen = Set<String>()
-        func appendBucket(_ bucket: String) {
-            guard hashes.count < limit else { return }
-            guard let mac = try? PlatformCrypto.hmacSHA256(Data(bucket.utf8), keyData: semanticKeyData) else { return }
-            let hash = mac.prefix(16).map { String(format: "%02x", $0) }.joined()
-            if seen.insert(hash).inserted {
-                hashes.append(hash)
-            }
-        }
-
-        let bandSize = 8
-        let bandCount = dimensions / bandSize
-        for band in 0..<bandCount {
-            var value = 0
-            for bit in 0..<bandSize {
-                let index = band * bandSize + bit
-                if accumulator[index] >= 0 {
-                    value |= (1 << bit)
-                }
-            }
-            appendBucket("simhash:v1:band:\(band):\(String(format: "%02x", value))")
-        }
-
-        for feature in features.prefix(max(0, limit - hashes.count)) {
-            appendBucket("feature:v1:\(feature.name)")
-        }
-
-        return hashes
     }
 
     public static func normalizedTokens(from text: String) -> [String] {
-        return text
-            .lowercased()
-            .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { $0.count >= 2 && searchStopwords.contains($0) == false }
+        CloudVaultLegacySearch.normalizedTokens(from: text)
+    }
+
+    public static func cloudSearchBodyChunks(
+        _ body: String,
+        metadata: String,
+        maxBytes: Int = 16_000,
+        maxExtractedTokens: Int = 4_096
+    ) throws -> [String] {
+        try CloudVaultLegacySearch.cloudSearchBodyChunks(
+            body,
+            metadata: metadata,
+            maxBytes: maxBytes,
+            maxExtractedTokens: maxExtractedTokens
+        )
+    }
+
+    internal static func exactPhraseTokensForContract(from text: String) -> [String] {
+        CloudVaultLegacySearch.exactPhraseTokens(from: text)
+    }
+
+    internal static func semanticFeatureNamesForContract(from text: String) -> [String] {
+        CloudVaultLegacySearch.semanticFeatureNames(from: text)
     }
 
     public static func wrapVaultKey(_ keyData: Data, recipientPublicKey: Data) throws -> Data {
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return try sealEscrowPayload(keyData, recipientPublicKey: recipientPublicKey)
+    }
+
+    public static func sealEscrowPayload(
+        _ plaintext: Data,
+        recipientPublicKey: Data,
+        authenticating aad: Data = Data()
+    ) throws -> Data {
+        try validateEscrowPublicKey(recipientPublicKey)
         guard let recipientKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: recipientPublicKey) else {
             throw CloudVaultCryptoError.invalidPublicKey
         }
         let ephemeralKey = PlatformCrypto.p256KeyAgreementPrivateKey()
         let sharedSecret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: ephemeralKey, publicKey: recipientKey)
-        let wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
-            sharedSecret: sharedSecret,
-            salt: Data(),
-            info: Data("OpenBurnBar-Escrow-v1".utf8),
-            outputByteCount: 32
+        let wrappingKeyData = try escrowWrappingKey(sharedSecret.withUnsafeBytes { Data($0) })
+        let combined = try sealAESGCMThroughDomainCore(
+            plaintext: plaintext,
+            keyData: wrappingKeyData,
+            authenticating: aad
         )
-        let combined = try PlatformCrypto.sealAESGCM(plaintext: keyData, key: wrappingKey)
-        return ephemeralKey.publicKey.x963Representation + combined
+        let ephemeralPublicKey = ephemeralKey.publicKey.x963Representation
+        return try runDomainCoreC1c(invalidError: .invalidEnvelope) {
+            try CloudVaultDomainCoreAdapter.escrowAssembleWire(
+                ephemeralPublicKey: ephemeralPublicKey,
+                aesGCMCombined: combined
+            ) { ephemeralPublicKey + combined }
+        }
     }
 
     public static func unwrapVaultKey(_ ciphertext: Data, privateKey: PlatformP256KeyAgreementPrivateKey) throws -> Data {
-        guard ciphertext.count > 65 else { throw CloudVaultCryptoError.invalidEnvelope }
-        let publicKeyData = ciphertext.prefix(65)
-        let sealedBoxData = ciphertext.suffix(from: 65)
-        guard let publicKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: Data(publicKeyData)) else {
-            throw CloudVaultCryptoError.invalidPublicKey
-        }
-        let sharedSecret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: privateKey, publicKey: publicKey)
-        let wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
-            sharedSecret: sharedSecret,
-            salt: Data(),
-            info: Data("OpenBurnBar-Escrow-v1".utf8),
-            outputByteCount: 32
-        )
-        let keyData = try PlatformCrypto.openAESGCM(combined: Data(sealedBoxData), key: wrappingKey)
+        let keyData = try openEscrowPayload(ciphertext, privateKey: privateKey)
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
         return keyData
     }
 
-    public static func deriveRecoveryWrappingKey(from recoveryKey: String) throws -> PlatformSymmetricKey {
-        let normalized = normalizedRecoveryKey(recoveryKey)
-        guard normalized.count >= 20 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return try PlatformCrypto.deriveHKDFSHA256Key(
-            inputKeyMaterial: Data(normalized.utf8),
-            salt: recoverySalt,
-            info: recoveryWrapInfo,
-            outputByteCount: 32
+    public static func openEscrowPayload(
+        _ ciphertext: Data,
+        privateKey: PlatformP256KeyAgreementPrivateKey,
+        authenticating aad: Data = Data()
+    ) throws -> Data {
+        let parts = try runDomainCoreC1c(invalidError: .invalidEnvelope) {
+            try CloudVaultDomainCoreAdapter.escrowSplitWire(ciphertext) {
+                try CloudVaultLegacyCrypto.escrowSplitWire(ciphertext)
+            }
+        }
+        guard let publicKey = try? PlatformCrypto.p256KeyAgreementPublicKey(
+            x963Representation: parts.ephemeralPublicKey
+        ) else { throw CloudVaultCryptoError.invalidPublicKey }
+        let sharedSecret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: privateKey, publicKey: publicKey)
+        let wrappingKeyData = try escrowWrappingKey(sharedSecret.withUnsafeBytes { Data($0) })
+        return try openAESGCMThroughDomainCore(
+            combined: parts.aesGCMCombined,
+            keyData: wrappingKeyData,
+            authenticating: aad
         )
+    }
+
+    public static func deriveRecoveryWrappingKey(from recoveryKey: String) throws -> PlatformSymmetricKey {
+        let keyData = try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.recoveryWrappingKey(recoveryKey: recoveryKey) {
+                PlatformCrypto.symmetricKeyData(try CloudVaultLegacyCrypto.recoveryWrappingKey(from: recoveryKey))
+            }
+        }
+        return try PlatformCrypto.symmetricKey(data: keyData)
     }
 
     public static func wrapVaultKeyWithRecovery(
@@ -939,11 +952,23 @@ public enum CloudVaultCrypto {
         recoveryKey: String
     ) throws -> (wrappedVaultKeyBase64: String, verificationHash: String) {
         guard vaultKey.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        let wrappingKey = try deriveRecoveryWrappingKey(from: recoveryKey)
-        let combined = try PlatformCrypto.sealAESGCM(plaintext: vaultKey, key: wrappingKey)
+        let nonce = Data(try randomBytes(count: 12))
+        let wrapped = try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.recoveryWrapVaultKey(
+                vaultKey: vaultKey,
+                recoveryKey: recoveryKey,
+                nonce: nonce
+            ) {
+                try CloudVaultLegacyCrypto.recoveryWrapVaultKey(
+                    vaultKey: vaultKey,
+                    recoveryKey: recoveryKey,
+                    nonce: nonce
+                )
+            }
+        }
         return (
-            wrappedVaultKeyBase64: combined.base64EncodedString(),
-            verificationHash: recoveryVerificationHash(forDerivedKey: wrappingKey)
+            wrappedVaultKeyBase64: try base64EncodeThroughDomainCore(wrapped.combined),
+            verificationHash: wrapped.verificationHash
         )
     }
 
@@ -951,39 +976,63 @@ public enum CloudVaultCrypto {
         wrappedVaultKeyBase64: String,
         recoveryKey: String
     ) throws -> Data {
-        guard let combined = Data(base64Encoded: wrappedVaultKeyBase64) else {
-            throw CloudVaultCryptoError.invalidEnvelope
+        let combined = try base64DecodeThroughDomainCore(wrappedVaultKeyBase64)
+        return try runDomainCoreC1c(invalidError: .invalidEnvelope) {
+            try CloudVaultDomainCoreAdapter.recoveryOpenVaultKey(combined: combined, recoveryKey: recoveryKey) {
+                try CloudVaultLegacyCrypto.recoveryOpenVaultKey(combined: combined, recoveryKey: recoveryKey)
+            }
         }
-        let keyData = try PlatformCrypto.openAESGCM(
-            combined: combined,
-            key: try deriveRecoveryWrappingKey(from: recoveryKey)
-        )
-        guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return keyData
     }
 
     public static func recoveryVerificationHash(for recoveryKey: String) throws -> String {
-        try recoveryVerificationHash(forDerivedKey: deriveRecoveryWrappingKey(from: recoveryKey))
+        try runDomainCoreC1c(invalidError: .invalidKeyLength) {
+            try CloudVaultDomainCoreAdapter.recoveryVerificationHash(recoveryKey: recoveryKey) {
+                try CloudVaultLegacyCrypto.recoveryVerificationHash(for: recoveryKey)
+            }
+        }
     }
 
     public static func sha256Hex(_ data: Data) -> String {
-        PlatformCrypto.sha256Hex(data)
+        do {
+            return try CloudVaultDomainCoreAdapter.sha256Hex(data) {
+                CloudVaultLegacyCrypto.sha256Hex(data)
+            }
+        } catch {
+            preconditionFailure("CloudVault SHA-256 failed")
+        }
     }
 
     public static func sha256Hex(_ text: String) -> String {
         sha256Hex(Data(text.utf8))
     }
 
-    private static func recoveryVerificationHash(forDerivedKey key: PlatformSymmetricKey) -> String {
-        key.withUnsafeBytes { bytes in
-            sha256Hex(Data(bytes))
+    private static func validateEscrowPublicKey(_ publicKey: Data) throws {
+        try runDomainCoreC1c(invalidError: .invalidPublicKey) {
+            try CloudVaultDomainCoreAdapter.validateP256X963PublicKey(publicKey) {
+                try CloudVaultLegacyCrypto.validateEscrowPublicKey(publicKey)
+            }
         }
     }
 
-    private static func normalizedRecoveryKey(_ recoveryKey: String) -> String {
-        recoveryKey
-            .uppercased()
-            .filter { $0.isLetter || $0.isNumber }
+    private static func escrowWrappingKey(_ sharedSecret: Data) throws -> Data {
+        try runDomainCoreC1c(invalidError: .invalidEnvelope) {
+            try CloudVaultDomainCoreAdapter.escrowWrappingKey(sharedSecret: sharedSecret) {
+                try CloudVaultLegacyCrypto.escrowWrappingKey(sharedSecret)
+            }
+        }
+    }
+
+    private static func runDomainCoreC1c<T>(
+        invalidError: CloudVaultCryptoError,
+        _ operation: () throws -> T
+    ) throws -> T {
+        do {
+            return try operation()
+        } catch CloudVaultDomainCoreAdapterError.nativeUnavailable {
+            throw CloudVaultCryptoError.domainCoreUnavailable
+        } catch is CloudVaultDomainCoreAdapterError {
+            throw invalidError
+        }
     }
 
     private static func symmetricKey(from data: Data) throws -> PlatformSymmetricKey {
@@ -991,15 +1040,27 @@ public enum CloudVaultCrypto {
         return try PlatformCrypto.symmetricKey(data: data)
     }
 
-    private static func keyedHMACHex(_ data: Data, keyData: Data, purpose: String) throws -> String {
-        guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        let key = try PlatformCrypto.deriveHKDFSHA256Key(
-            inputKeyMaterial: keyData,
-            salt: Data("OpenBurnBar-CloudVault-HMAC-Salt-v1".utf8),
-            info: Data("OpenBurnBar-CloudVault-HMAC-v1|\(purpose)".utf8),
-            outputByteCount: 32
-        )
-        return PlatformCrypto.hexString(try PlatformCrypto.hmacSHA256(data, keyData: PlatformCrypto.symmetricKeyData(key)))
+    private static func domainCoreKeyedHash(
+        _ data: Data,
+        keyData: Data,
+        purpose: CloudVaultDomainCoreAdapter.Purpose,
+        legacyPurpose: String
+    ) throws -> String {
+        do {
+            return try CloudVaultDomainCoreAdapter.keyedHashHex(
+                data,
+                keyData: keyData,
+                purpose: purpose
+            ) {
+                try CloudVaultLegacyCrypto.keyedHMACHex(data, keyData: keyData, purpose: legacyPurpose)
+            }
+        } catch let error as CloudVaultCryptoError {
+            throw error
+        } catch CloudVaultDomainCoreAdapterError.nativeUnavailable {
+            throw CloudVaultCryptoError.domainCoreUnavailable
+        } catch {
+            throw CloudVaultCryptoError.invalidKeyLength
+        }
     }
 
     private static func sealedPayloadAAD(for envelope: CloudVaultSealedPayload, aadContext: CloudVaultAADContext?) -> Data {
@@ -1014,19 +1075,25 @@ public enum CloudVaultCrypto {
         context: CloudVaultAADContext,
         rejectLegacyV1: Bool = CloudVaultV1AADRejectionFlag.isEnabled()
     ) throws -> Data {
-        if envelopeAAD == context.stringValue {
-            return context.data
-        }
-        if envelopeAAD == context.legacyV1StringValue {
-            // Post-backfill cutover: once enabled, the weaker v1 (global) AAD
-            // domain-separation path is removed and any envelope still carrying it
-            // is refused (fail closed) rather than silently downgraded.
-            if rejectLegacyV1 {
-                throw CloudVaultCryptoError.invalidEnvelope
+        do {
+            return try CloudVaultDomainCoreAdapter.resolveAAD(
+                envelopeAAD: envelopeAAD ?? "",
+                context: context,
+                rejectLegacyV1: rejectLegacyV1
+            ) {
+                try CloudVaultLegacyCrypto.resolveAAD(
+                    envelopeAAD: envelopeAAD,
+                    context: context,
+                    rejectLegacyV1: rejectLegacyV1
+                )
             }
-            return context.legacyV1Data
+        } catch let error as CloudVaultCryptoError {
+            throw error
+        } catch CloudVaultDomainCoreAdapterError.nativeUnavailable {
+            throw CloudVaultCryptoError.domainCoreUnavailable
+        } catch {
+            throw CloudVaultCryptoError.invalidEnvelope
         }
-        throw CloudVaultCryptoError.invalidEnvelope
     }
 
     /// Test seam over ``aadData(matching:context:rejectLegacyV1:)`` so the v1
@@ -1040,169 +1107,6 @@ public enum CloudVaultCrypto {
         try aadData(matching: envelopeAAD, context: context, rejectLegacyV1: rejectLegacyV1)
     }
 
-    private static func searchKey(from data: Data) throws -> PlatformSymmetricKey {
-        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return try PlatformCrypto.deriveHKDFSHA256Key(
-            inputKeyMaterial: data,
-            salt: Data("OpenBurnBar-CloudSearch-Salt-v1".utf8),
-            info: Data("OpenBurnBar-CloudSearch-TokenHash-v1".utf8),
-            outputByteCount: 32
-        )
-    }
-
-    private static func semanticSearchKey(from data: Data) throws -> PlatformSymmetricKey {
-        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return try PlatformCrypto.deriveHKDFSHA256Key(
-            inputKeyMaterial: data,
-            salt: Data("OpenBurnBar-CloudSearch-Semantic-Salt-v1".utf8),
-            info: Data("OpenBurnBar-CloudSearch-SemanticHash-v1".utf8),
-            outputByteCount: 32
-        )
-    }
-
-    private static func projectMemoryDocIDKey(from data: Data) throws -> PlatformSymmetricKey {
-        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return try PlatformCrypto.deriveHKDFSHA256Key(
-            inputKeyMaterial: data,
-            salt: Data("OpenBurnBar-DocID-Salt-v1".utf8),
-            info: Data("OpenBurnBar-ProjectMemory-DocID-v1".utf8),
-            outputByteCount: 32
-        )
-    }
-
-    /// Per-user Pensieve dedup subkey. Mirrors the TS device derivation the server
-    /// test pins (`knowledgeMemoryDedupHash.test.ts`): empty HKDF salt, info
-    /// `"pensieve-dedup:<label>"` where `label` is `content` or `slug`.
-    private static func pensieveDedupKey(from data: Data, label: String) throws -> PlatformSymmetricKey {
-        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return try PlatformCrypto.deriveHKDFSHA256Key(
-            inputKeyMaterial: data,
-            salt: Data(),
-            info: Data("pensieve-dedup:\(label)".utf8),
-            outputByteCount: 32
-        )
-    }
-
-    /// Per-user subscription-graph doc-id subkey. Empty HKDF salt, info
-    /// `"subscription-topic"` — the byte-for-byte derivation the Kotlin mirror
-    /// (`AgentSubscriptionTopicStore.documentID`) must reproduce so the same
-    /// `(agentURI, topicID, vaultKey)` yields an identical opaque doc id on iOS
-    /// and Android.
-    private static func subscriptionDocIDKey(from data: Data) throws -> PlatformSymmetricKey {
-        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
-        return try PlatformCrypto.deriveHKDFSHA256Key(
-            inputKeyMaterial: data,
-            salt: Data(),
-            info: Data("subscription-topic".utf8),
-            outputByteCount: 32
-        )
-    }
-
-    private struct SemanticFeature {
-        let name: String
-        let weight: Double
-    }
-
-    private static let searchStopwords: Set<String> = [
-        "the", "and", "for", "with", "that", "this", "from", "how", "what", "where",
-        "when", "why", "are", "was", "were", "you", "your", "have", "has", "had",
-        "into", "onto", "can", "could", "should", "would"
-    ]
-
-    private static func exactPhraseTokens(from text: String) -> [String] {
-        text
-            .lowercased()
-            .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { token in
-                (token.count >= 2 || token == "x") && searchStopwords.contains(token) == false
-            }
-    }
-
-    private static func semanticFeatures(from tokens: [String]) -> [SemanticFeature] {
-        var features: [SemanticFeature] = []
-        var seen = Set<String>()
-
-        func append(_ name: String, weight: Double) {
-            guard name.isEmpty == false, seen.insert(name).inserted else { return }
-            features.append(SemanticFeature(name: name, weight: weight))
-        }
-
-        for concept in semanticConcepts(from: tokens) {
-            append("concept:\(concept)", weight: 3.2)
-        }
-
-        for token in tokens {
-            append("token:\(token)", weight: 2.4)
-            let stem = simpleSemanticStem(token)
-            if stem != token {
-                append("stem:\(stem)", weight: 1.8)
-            }
-            if token.count >= 5 {
-                append("prefix:\(String(token.prefix(5)))", weight: 0.8)
-            }
-        }
-
-        if tokens.count >= 2 {
-            for index in 0..<(tokens.count - 1) {
-                append("bigram:\(tokens[index])_\(tokens[index + 1])", weight: 1.3)
-            }
-        }
-        return features
-    }
-
-    private static func semanticConcepts(from tokens: [String]) -> [String] {
-        var concepts: [String] = []
-        var seen = Set<String>()
-
-        func append(_ concept: String) {
-            guard seen.insert(concept).inserted else { return }
-            concepts.append(concept)
-        }
-
-        for token in tokens {
-            switch token {
-            case "x", "twitter", "tweets", "tweet", "xcom":
-                append("x-platform")
-                append("social-platform")
-            case "ads", "ad", "advertising", "advertise", "campaign", "campaigns", "marketing":
-                append("advertising")
-            case "api", "apis", "endpoint", "endpoints", "sdk", "webhook", "webhooks", "integration", "integrations":
-                append("api-integration")
-            case "oauth", "auth", "login", "signin", "token", "tokens", "credential", "credentials":
-                append("authentication")
-            case "billing", "invoice", "invoices", "pricing", "price", "cost", "spend", "quota", "usage":
-                append("billing-usage")
-            case "backup", "sync", "mirror", "cache", "restore", "download", "upload":
-                append("backup-sync")
-            default:
-                break
-            }
-        }
-
-        if concepts.contains("x-platform") && concepts.contains("advertising") {
-            append("x-ads")
-        }
-        if concepts.contains("advertising") && concepts.contains("api-integration") {
-            append("ads-api")
-        }
-        if concepts.contains("x-platform") && concepts.contains("api-integration") {
-            append("x-api")
-        }
-        return concepts
-    }
-
-    private static func simpleSemanticStem(_ token: String) -> String {
-        let suffixes = ["ization", "ations", "ation", "ments", "ment", "ingly", "edly", "ing", "ies", "ied", "ers", "er", "ed", "s"]
-        for suffix in suffixes where token.count > suffix.count + 3 && token.hasSuffix(suffix) {
-            let stem = String(token.dropLast(suffix.count))
-            if suffix == "ies" || suffix == "ied" {
-                return stem + "y"
-            }
-            return stem
-        }
-        return token
-    }
-
     private static func decodeEnvelope<T: Decodable>(_ raw: Any?, as type: T.Type) -> T? {
         guard let dict = raw as? [String: Any],
               JSONSerialization.isValidJSONObject(dict),
@@ -1212,65 +1116,27 @@ public enum CloudVaultCrypto {
         return try? JSONDecoder().decode(type, from: data)
     }
 
-    private static func openTextForRewrap(
-        _ envelope: CloudVaultSealedText,
-        keyData: Data,
-        aadContext: CloudVaultAADContext
-    ) throws -> String {
-        if (envelope.schemaVersion ?? 1) >= currentSealedTextSchemaVersion {
-            return try openText(envelope, keyData: keyData, aadContext: aadContext)
-        }
-        return try openText(envelope, keyData: keyData)
-    }
-
-    private static func openBlobForRewrap(
-        _ envelope: CloudVaultBlobEnvelope,
-        keyData: Data,
-        aadContext: CloudVaultAADContext
-    ) throws -> Data {
-        if envelope.schemaVersion >= currentBlobEnvelopeSchemaVersion,
-           envelope.aad != blobEnvelopeAADContext {
-            return try openBlob(envelope, keyData: keyData, aadContext: aadContext)
-        }
-        return try openBlob(envelope, keyData: keyData)
-    }
-
-    private static func openPayloadForRewrap(
-        _ envelope: CloudVaultSealedPayload,
-        keyData: Data,
-        aadContext: CloudVaultAADContext
-    ) throws -> Data {
-        if envelope.schemaVersion >= currentSealedPayloadSchemaVersion,
-           envelope.aad != sealedPayloadAADContext {
-            return try openPayload(envelope, keyData: keyData, aadContext: aadContext)
-        }
-        return try openPayload(envelope, keyData: keyData)
-    }
-
-    private static func applyVaultKeyCompanionUpdates(
-        to data: inout [String: Any],
-        field: String,
-        newVaultKeyID: String
-    ) {
-        switch field {
-        case "sealedPayload", "sealedReplyPayload":
-            if data["vaultKeyID"] != nil {
-                data["vaultKeyID"] = newVaultKeyID
-            }
-        case "sealedStatePayload":
-            if data["sealedStateVaultKeyID"] != nil {
-                data["sealedStateVaultKeyID"] = newVaultKeyID
-            }
-        default:
-            break
-        }
-    }
-
     private static func sealedText(
-        from sealed: (nonce: Data, ciphertext: Data, tag: Data, combined: Data),
+        from sealed: CloudVaultDomainCoreAdapter.AESGCMDetachedBox,
         keyVersion: Int,
         aadContext: CloudVaultAADContext?
     ) throws -> CloudVaultSealedText {
+        CloudVaultSealedText(
+            schemaVersion: aadContext == nil ? nil : currentSealedTextSchemaVersion,
+            algorithm: aesGCMAlgorithm,
+            keyVersion: keyVersion,
+            nonce: try base64EncodeThroughDomainCore(sealed.nonce),
+            ciphertext: try base64EncodeThroughDomainCore(sealed.ciphertext),
+            tag: try base64EncodeThroughDomainCore(sealed.tag),
+            aad: aadContext?.stringValue
+        )
+    }
+
+    private static func sealedText(
+        from sealed: PlatformAESGCMSealedBox,
+        keyVersion: Int,
+        aadContext: CloudVaultAADContext?
+    ) -> CloudVaultSealedText {
         CloudVaultSealedText(
             schemaVersion: aadContext == nil ? nil : currentSealedTextSchemaVersion,
             algorithm: aesGCMAlgorithm,
@@ -1282,36 +1148,139 @@ public enum CloudVaultCrypto {
         )
     }
 
-    private static func open(
+    private static func openTextThroughDomainCore(
         _ envelope: CloudVaultSealedText,
         keyData: Data,
         aadContext: CloudVaultAADContext?
-    ) throws -> Data {
-        guard envelope.algorithm == aesGCMAlgorithm,
-              let nonceData = Data(base64Encoded: envelope.nonce),
-              let ciphertext = Data(base64Encoded: envelope.ciphertext),
-              let tag = Data(base64Encoded: envelope.tag) else {
+    ) throws -> String {
+        guard envelope.algorithm == aesGCMAlgorithm else {
             throw CloudVaultCryptoError.invalidEnvelope
         }
+        let nonceData = try base64DecodeThroughDomainCore(envelope.nonce)
+        let ciphertext = try base64DecodeThroughDomainCore(envelope.ciphertext)
+        let tag = try base64DecodeThroughDomainCore(envelope.tag)
         let schemaVersion = envelope.schemaVersion ?? 1
-        if schemaVersion >= currentSealedTextSchemaVersion {
+        let aad: Data
+        switch schemaVersion {
+        case 1:
+            aad = Data()
+        case currentSealedTextSchemaVersion:
             guard let aadContext else {
                 throw CloudVaultCryptoError.invalidEnvelope
             }
-            return try PlatformCrypto.openAESGCMDetached(
+            aad = try aadData(matching: envelope.aad, context: aadContext)
+        default:
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
+        return try runDomainCoreAES {
+            try CloudVaultDomainCoreAdapter.openAESGCMTextDetached(
                 nonce: nonceData,
                 ciphertext: ciphertext,
                 tag: tag,
                 keyData: keyData,
-                authenticating: try aadData(matching: envelope.aad, context: aadContext)
-            )
+                authenticating: aad
+            ) {
+                try CloudVaultLegacyCrypto.openAESGCMTextDetached(
+                    nonce: nonceData,
+                    ciphertext: ciphertext,
+                    tag: tag,
+                    keyData: keyData,
+                    authenticating: aad
+                )
+            }
         }
-        return try PlatformCrypto.openAESGCMDetached(
-            nonce: nonceData,
-            ciphertext: ciphertext,
-            tag: tag,
-            keyData: keyData
-        )
+    }
+
+    private static func sealAESGCMDetachedThroughDomainCore(
+        plaintext: Data,
+        keyData: Data,
+        authenticating aad: Data
+    ) throws -> CloudVaultDomainCoreAdapter.AESGCMDetachedBox {
+        let nonce = Data(try randomBytes(count: 12))
+        return try runDomainCoreAES {
+            try CloudVaultDomainCoreAdapter.sealAESGCMDetached(
+                plaintext: plaintext,
+                keyData: keyData,
+                nonce: nonce,
+                authenticating: aad
+            ) {
+                try CloudVaultLegacyCrypto.sealAESGCMDetached(
+                    plaintext: plaintext,
+                    keyData: keyData,
+                    nonce: nonce,
+                    authenticating: aad
+                )
+            }
+        }
+    }
+
+    private static func sealAESGCMThroughDomainCore(
+        plaintext: Data,
+        keyData: Data,
+        authenticating aad: Data
+    ) throws -> Data {
+        let nonce = Data(try randomBytes(count: 12))
+        return try runDomainCoreAES {
+            try CloudVaultDomainCoreAdapter.sealAESGCMCombined(
+                plaintext: plaintext,
+                keyData: keyData,
+                nonce: nonce,
+                authenticating: aad
+            ) {
+                try CloudVaultLegacyCrypto.sealAESGCMCombined(
+                    plaintext: plaintext,
+                    keyData: keyData,
+                    nonce: nonce,
+                    authenticating: aad
+                )
+            }
+        }
+    }
+
+    private static func openAESGCMThroughDomainCore(
+        combined: Data,
+        keyData: Data,
+        authenticating aad: Data
+    ) throws -> Data {
+        try runDomainCoreAES {
+            try CloudVaultDomainCoreAdapter.openAESGCMCombined(
+                combined: combined,
+                keyData: keyData,
+                authenticating: aad
+            ) {
+                try CloudVaultLegacyCrypto.openAESGCMCombined(
+                    combined: combined,
+                    keyData: keyData,
+                    authenticating: aad
+                )
+            }
+        }
+    }
+
+    private static func base64EncodeThroughDomainCore(_ data: Data) throws -> String {
+        try runDomainCoreAES {
+            try CloudVaultDomainCoreAdapter.base64Encode(data) {
+                CloudVaultLegacyCrypto.base64Encode(data)
+            }
+        }
+    }
+
+    private static func base64DecodeThroughDomainCore(_ value: String) throws -> Data {
+        try runDomainCoreAES {
+            try CloudVaultDomainCoreAdapter.base64DecodeStrict(value) {
+                try CloudVaultLegacyCrypto.base64DecodeStrict(value)
+            }
+        }
+    }
+
+    private static func runDomainCoreAES<T>(_ operation: () throws -> T) throws -> T {
+        do {
+            return try operation()
+        } catch CloudVaultDomainCoreAdapterError.nativeUnavailable {
+            throw CloudVaultCryptoError.domainCoreUnavailable
+        } catch is CloudVaultDomainCoreAdapterError {
+            throw CloudVaultCryptoError.invalidEnvelope
+        }
     }
 }
 

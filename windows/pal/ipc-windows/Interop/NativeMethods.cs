@@ -49,6 +49,10 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool GetNamedPipeClientProcessId(SafePipeHandle Pipe, out uint ClientProcessId);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetNamedPipeServerProcessId(SafePipeHandle Pipe, out uint ServerProcessId);
+
     // ── SDDL -> security descriptor (advapi32) ─────────────────────────────────
     // R16 control: owner DACL — build the descriptor from an explicit SDDL string
     // so only the intended principals (SYSTEM, the interactive user) can open the
@@ -185,6 +189,16 @@ internal static class NativeMethods
     // PeerImageValidator, which pairs this with loaded-module validation.
     [DllImport("wintrust.dll", SetLastError = false)]
     internal static extern int WinVerifyTrust(IntPtr hwnd, ref Guid pgActionID, IntPtr pWVTData);
+
+    [DllImport("wintrust.dll", SetLastError = false)]
+    internal static extern IntPtr WTHelperProvDataFromStateData(IntPtr hStateData);
+
+    [DllImport("wintrust.dll", SetLastError = false)]
+    internal static extern IntPtr WTHelperGetProvSignerFromChain(
+        IntPtr pProvData,
+        uint idxSigner,
+        [MarshalAs(UnmanagedType.Bool)] bool fCounterSigner,
+        uint idxCounterSigner);
 
     // ── Generic (kernel32) ─────────────────────────────────────────────────────
     [DllImport("kernel32.dll")]

@@ -31,10 +31,19 @@ extension OpenBurnBarDatabase {
                 // Reading the shadow table directly avoids the virtual-table
                 // row materialization that decodes every chunk's full text.
                 if try db.tableExists("search_chunks_fts_content") {
+                    // Compute the text preference in the map itself. The older
+                    // SQLite bundled by Linux SQLCipher cannot resolve an outer
+                    // UPDATE-table column from a scalar subquery ORDER BY.
                     try db.execute(
                         sql: """
                         CREATE TEMP TABLE search_chunks_fts_rowid_map AS
-                        SELECT id AS ftsRowid, c0 AS chunkID, c3 AS chunkText FROM search_chunks_fts_content
+                        SELECT
+                            f.id AS ftsRowid,
+                            f.c0 AS chunkID,
+                            f.c3 AS chunkText,
+                            CASE WHEN f.c3 = c.text THEN 1 ELSE 0 END AS textMatches
+                        FROM search_chunks_fts_content AS f
+                        LEFT JOIN search_chunks AS c ON c.id = f.c0
                         """
                     )
                     try db.execute(
@@ -47,7 +56,7 @@ extension OpenBurnBarDatabase {
                             SELECT m.ftsRowid FROM search_chunks_fts_rowid_map AS m
                             WHERE m.chunkID = search_chunks.id
                             ORDER BY
-                                CASE WHEN m.chunkText = search_chunks.text THEN 0 ELSE 1 END,
+                                m.textMatches DESC,
                                 m.ftsRowid DESC
                             LIMIT 1
                         )
@@ -122,4 +131,5 @@ extension OpenBurnBarDatabase {
             }
         }
     }
+
 }

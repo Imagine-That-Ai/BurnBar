@@ -11,10 +11,8 @@ import com.openburnbar.data.assistants.SkillRunDeliveryMode
 import com.openburnbar.data.assistants.SkillRunEventImportance
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.cloud.CloudVaultCrypto
-import com.openburnbar.data.cloud.CloudVaultCryptoSearch
+import com.openburnbar.data.cloud.CloudVaultDomainCore
 import com.openburnbar.data.firebase.CloudVaultSealedTextCodec
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -354,11 +352,6 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
             instance ?: AgentSubscriptionTopicStore(context).also { instance = it }
         }
 
-        private const val SUBSCRIPTION_DOC_ID_INFO = "subscription-topic"
-        private const val SUBSCRIPTION_DOC_KEY_BYTES = 32
-        private const val SUBSCRIPTION_DOC_ID_BYTES = 16
-        private const val HEX_BYTE_MASK = 0xff
-
         /**
          * Opaque, vault-keyed Firestore doc id for a topic. Replaces the legacy
          * human-readable `agentURI:topicID` (with `/`,`:`→`_`) so the server can no
@@ -371,21 +364,9 @@ class AgentSubscriptionTopicStore private constructor(context: Context) {
          * HMAC<SHA256>("agentURI:topicID")`, then `"sub_"` + first 16 bytes as hex.
          */
         fun documentID(agentURI: String, topicID: String, vaultKey: ByteArray): String {
-            val docKey =
-                CloudVaultCryptoSearch.hkdfSha256(
-                    vaultKey,
-                    ByteArray(0),
-                    SUBSCRIPTION_DOC_ID_INFO.toByteArray(),
-                    SUBSCRIPTION_DOC_KEY_BYTES,
-                )
-            val mac = Mac.getInstance("HmacSHA256")
-            mac.init(SecretKeySpec(docKey, "HmacSHA256"))
-            val digest = mac.doFinal("$agentURI:$topicID".toByteArray(Charsets.UTF_8))
-            val hex =
-                digest.take(SUBSCRIPTION_DOC_ID_BYTES).joinToString("") {
-                    "%02x".format(it.toInt() and HEX_BYTE_MASK)
-                }
-            return "sub_$hex"
+            return CloudVaultDomainCore.subscriptionDocId(agentURI, topicID, vaultKey) {
+                AgentSubscriptionTopicDocumentIDLegacy.documentID(agentURI, topicID, vaultKey)
+            }
         }
 
         fun legacyCleartextDocumentIDs(agentURI: String, topicID: String): Set<String> {

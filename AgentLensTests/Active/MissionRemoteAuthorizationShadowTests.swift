@@ -1,451 +1,461 @@
+import Darwin
 import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
-/// Split-brain Phase M3: unit coverage for the SHADOW-mode comparator that
-/// pits the GUI's own mission-authorization decision against the daemon's
-/// authoritative `daemon.mission.authorizeRemote` verdict.
-///
-/// These tests pin the exact divergence classification (agree / GUI-stricter /
-/// daemon-stricter / daemon-unreachable-fail-safe) plus the GUI-decision
-/// reducer and the request builder, so parity can be reasoned about from
-/// telemetry BEFORE any enforcement migration.
+/// Regression coverage for the GUI-to-daemon mission authorization cutover.
+/// The fake below is a real newline-framed Unix-socket boundary: responses
+/// cross the same Codable/RPC path used in production rather than bypassing
+/// authorization with a callback that production never calls.
 final class MissionRemoteAuthorizationShadowTests: XCTestCase {
 
-    private func daemon(
-        _ verdict: BurnBarRemoteMissionAuthorizationVerdict,
-        reason: BurnBarRemoteMissionDenialReason? = nil
-    ) -> BurnBarRemoteMissionAuthorizeResponse {
-        BurnBarRemoteMissionAuthorizeResponse(verdict: verdict, deniedReason: reason)
+    private let daemonDenialMessage = "This remote mission was not authorized by the Mac daemon and will not run. Re-send the mission from your device."
+    private let personaDenialMessage = "The persona scope attached to this mission could not be read, so it was rejected instead of running with broader permissions. Re-send the mission from your device."
+    private let cliDisabledMessage = "Mac CLI assistants are off. Enable Mac CLI assistants in Settings -> Privacy & Indexing before this Mac can run remote agent missions."
+
+    private func context(approvalStatus: String = "approved") -> MissionRemoteAuthorizationShadow.ShadowContext {
+        MissionRemoteAuthorizationShadow.ShadowContext(
+            missionID: "mission-cutover-regression",
+            prompt: "Inspect the project without widening permissions",
+            runtime: "codex",
+            modelID: "gpt-test",
+            commandsAllowed: true,
+            fileEditsAllowed: true,
+            originDeviceID: "phone-1",
+            originPlatform: "ios",
+            personaScopeJSON: nil,
+            approvalMode: "manual_all",
+            approvalStatus: approvalStatus,
+            approverDeviceID: "phone-1",
+            entitlementTier: "none",
+            workingDirectory: "/tmp/project",
+            fanOutCount: 1
+        )
     }
 
-    private func context(
-        missionID: String = "m1",
-        prompt: String = "inspect the project",
-        approvalStatus: String = "pending"
-    ) -> MissionRemoteAuthorizationShadow.ShadowContext {
-        MissionRemoteAuthorizationShadow.ShadowContext(
-            missionID: missionID, prompt: prompt, runtime: "codex", modelID: "gpt-x",
-            commandsAllowed: true, fileEditsAllowed: false,
-            originDeviceID: "device-1", originPlatform: "macos",
-            personaScopeJSON: nil, approvalMode: "manual_all", approvalStatus: approvalStatus,
-            approverDeviceID: nil, entitlementTier: "pro", workingDirectory: nil, fanOutCount: 1
+    private func authorizedResponse(
+        commandsAllowed: Bool,
+        fileEditsAllowed: Bool
+    ) -> BurnBarRemoteMissionAuthorizeResponse {
+        BurnBarRemoteMissionAuthorizeResponse(
+            verdict: .authorized,
+            detail: "Daemon policy authorized the attenuated mission.",
+            grantCeiling: BurnBarRemoteMissionCapabilityGrantRequest(
+                commandsAllowed: commandsAllowed,
+                fileEditsAllowed: fileEditsAllowed,
+                additionalCapabilities: []
+            ),
+            backendDecision: BurnBarRemoteMissionBackendDecision(
+                runtimeID: "codex",
+                modelID: "gpt-test",
+                reason: "requested_runtime"
+            )
         )
     }
 
     @MainActor
-    private func restoreMode(after body: () async -> Void) async {
-        let previousMode = MissionRemoteAuthorizationShadow.mode
-        defer { MissionRemoteAuthorizationShadow.mode = previousMode }
-        await body()
+    private func withMode<T>(
+        _ mode: MissionRemoteAuthorizationShadow.Mode,
+        operation: () async throws -> T
+    ) async rethrows -> T {
+        let previous = MissionRemoteAuthorizationShadow.mode
+        MissionRemoteAuthorizationShadow.mode = mode
+        defer { MissionRemoteAuthorizationShadow.mode = previous }
+        return try await operation()
     }
 
-    // MARK: - Comparator table
+    @MainActor
+    private func healthyManager(socketURL: URL) -> OpenBurnBarDaemonManager {
+        let root = socketURL.deletingLastPathComponent()
+        let daemonDirectory = root.appendingPathComponent("daemon", isDirectory: true)
+        let paths = OpenBurnBarDaemonRuntimePaths(
+            supportDirectory: root,
+            daemonDirectory: daemonDirectory,
+            frameworksDirectory: root.appendingPathComponent("Frameworks", isDirectory: true),
+            installedBinaryURL: daemonDirectory.appendingPathComponent("OpenBurnBarDaemon"),
+            socketURL: socketURL,
+            logURL: daemonDirectory.appendingPathComponent("daemon.log"),
+            launchAgentPlistURL: root.appendingPathComponent("launch-agent.plist")
+        )
+        let manager = OpenBurnBarDaemonManager(paths: paths, dependencies: .live())
+        manager.status = .healthy(OpenBurnBarDaemonHealthSnapshot(response: BurnBarHealthResponse(
+            ok: true,
+            daemonVersion: "authorization-test",
+            protocolVersion: BurnBarProtocolVersion.current,
+            socketPath: socketURL.path
+        )))
+        return manager
+    }
 
-    func testComparatorAgreementAndDivergenceTable() {
-        struct Case {
-            let name: String
-            let gui: GUIMissionAuthorizationDecision
-            let daemon: BurnBarRemoteMissionAuthorizeResponse?
-            let expected: MissionAuthorizationDivergenceKind
-            let expectDivergent: Bool
+    @MainActor
+    func testEnforcePreservesTheCompleteAuthorizedResponseAndExactGrantCeiling() async throws {
+        let expected = authorizedResponse(commandsAllowed: false, fileEditsAllowed: true)
+        let daemon = try MissionAuthorizationFakeDaemon(reply: .response(expected))
+        defer { daemon.stop() }
+
+        let outcome = await withMode(.enforce) {
+            await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                ctx: context(),
+                isTerminalDenial: false,
+                personaScopeMalformed: false,
+                willPauseForApproval: false,
+                manager: healthyManager(socketURL: daemon.socketURL)
+            )
         }
 
-        let cases: [Case] = [
-            // --- agree (both authorities reach the same verdict) ---
-            .init(name: "allow == authorized", gui: .allow, daemon: daemon(.authorized), expected: .agree, expectDivergent: false),
-            .init(name: "requiresApproval == requires_approval", gui: .requiresApproval, daemon: daemon(.requiresApproval), expected: .agree, expectDivergent: false),
-            .init(name: "deny == denied", gui: .deny, daemon: daemon(.denied, reason: .untrustedDevice), expected: .agree, expectDivergent: false),
+        guard case .authorized(let actual) = outcome else {
+            XCTFail("A full daemon authorization must reach the listener unchanged; got \(outcome)")
+            return
+        }
+        XCTAssertEqual(actual, expected)
+        XCTAssertEqual(
+            actual.grantCeiling,
+            BurnBarRemoteMissionCapabilityGrantRequest(
+                commandsAllowed: false,
+                fileEditsAllowed: true,
+                additionalCapabilities: []
+            )
+        )
+    }
 
-            // --- daemon stricter (daemon permits LESS than the GUI) ---
-            .init(name: "GUI allow, daemon requiresApproval", gui: .allow, daemon: daemon(.requiresApproval), expected: .daemonStricter, expectDivergent: true),
-            .init(name: "GUI allow, daemon denied", gui: .allow, daemon: daemon(.denied, reason: .fanOutCapExceeded), expected: .daemonStricter, expectDivergent: true),
-            .init(name: "GUI requiresApproval, daemon denied", gui: .requiresApproval, daemon: daemon(.denied, reason: .unknownTrustState), expected: .daemonStricter, expectDivergent: true),
-
-            // --- GUI stricter (GUI permits LESS than the daemon) ---
-            .init(name: "GUI deny, daemon authorized", gui: .deny, daemon: daemon(.authorized), expected: .guiStricter, expectDivergent: true),
-            .init(name: "GUI deny, daemon requiresApproval", gui: .deny, daemon: daemon(.requiresApproval), expected: .guiStricter, expectDivergent: true),
-            .init(name: "GUI requiresApproval, daemon authorized", gui: .requiresApproval, daemon: daemon(.authorized), expected: .guiStricter, expectDivergent: true),
-
-            // --- daemon unreachable (fail-safe, GUI decision governs) ---
-            .init(name: "allow + unreachable", gui: .allow, daemon: nil, expected: .daemonUnreachable, expectDivergent: false),
-            .init(name: "deny + unreachable", gui: .deny, daemon: nil, expected: .daemonUnreachable, expectDivergent: false),
-            .init(name: "requiresApproval + unreachable", gui: .requiresApproval, daemon: nil, expected: .daemonUnreachable, expectDivergent: false)
+    @MainActor
+    func testEnforceRejectsEveryNonAuthorizingDaemonVerdict() async throws {
+        struct Row {
+            let name: String
+            let response: BurnBarRemoteMissionAuthorizeResponse
+        }
+        let rows = [
+            Row(
+                name: "approval still required",
+                response: BurnBarRemoteMissionAuthorizeResponse(
+                    verdict: .requiresApproval,
+                    detail: "Operator approval has not landed.",
+                    grantCeiling: BurnBarRemoteMissionCapabilityGrantRequest(
+                        commandsAllowed: true,
+                        fileEditsAllowed: false
+                    )
+                )
+            ),
+            Row(
+                name: "policy denied",
+                response: BurnBarRemoteMissionAuthorizeResponse(
+                    verdict: .denied,
+                    deniedReason: .approvalRejected,
+                    detail: "Approval was rejected."
+                )
+            )
         ]
 
-        for testCase in cases {
-            let signal = MissionRemoteAuthorizationShadow.compare(
-                missionID: "mission-\(testCase.name)",
-                gui: testCase.gui,
-                daemon: testCase.daemon,
-                promptSHA256: "abc123"
-            )
-            XCTAssertEqual(signal.kind, testCase.expected, "kind mismatch: \(testCase.name)")
-            XCTAssertEqual(signal.isDivergent, testCase.expectDivergent, "divergence flag mismatch: \(testCase.name)")
-            XCTAssertEqual(signal.guiDecision, testCase.gui, "gui preserved: \(testCase.name)")
-            XCTAssertEqual(signal.promptSHA256, "abc123", "sha preserved: \(testCase.name)")
-        }
-    }
-
-    func testUnreachablePreservesGUIDecisionAndDetail() {
-        let signal = MissionRemoteAuthorizationShadow.compare(
-            missionID: "m1",
-            gui: .allow,
-            daemon: nil,
-            promptSHA256: "deadbeef",
-            unreachableDetail: "socket closed"
-        )
-        XCTAssertEqual(signal.kind, .daemonUnreachable)
-        XCTAssertNil(signal.daemonVerdict)
-        XCTAssertNil(signal.daemonDeniedReason)
-        XCTAssertFalse(signal.isDivergent, "unreachable must be fail-safe, never a divergence")
-        XCTAssertEqual(signal.unreachableDetail, "socket closed")
-    }
-
-    func testUnreachableDefaultDetailWhenNoneProvided() {
-        let signal = MissionRemoteAuthorizationShadow.compare(
-            missionID: "m2", gui: .deny, daemon: nil, promptSHA256: "00"
-        )
-        XCTAssertEqual(signal.kind, .daemonUnreachable)
-        XCTAssertEqual(signal.unreachableDetail, "daemon verdict unavailable")
-    }
-
-    func testDaemonDeniedReasonCarriedIntoSignal() {
-        let signal = MissionRemoteAuthorizationShadow.compare(
-            missionID: "m3",
-            gui: .allow,
-            daemon: daemon(.denied, reason: .approvalRejected),
-            promptSHA256: "ff"
-        )
-        XCTAssertEqual(signal.kind, .daemonStricter)
-        XCTAssertEqual(signal.daemonVerdict, .denied)
-        XCTAssertEqual(signal.daemonDeniedReason, .approvalRejected)
-    }
-
-    // MARK: - GUI decision reducer
-
-    func testReduceGUIDecisionRejectedApprovalIsDeny() {
-        for status in ["rejected", "canceled", "cancelled", "REJECTED", " Cancelled "] {
-            let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-                approvalStatus: status,
-                willPauseForApproval: false
-            )
-            XCTAssertEqual(decision, .deny, "status=\(status) must reduce to deny")
-        }
-    }
-
-    func testReduceGUIDecisionPauseIsRequiresApproval() {
-        let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            approvalStatus: "pending",
-            willPauseForApproval: true
-        )
-        XCTAssertEqual(decision, .requiresApproval)
-    }
-
-    func testReduceGUIDecisionNoPauseIsAllow() {
-        let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            approvalStatus: "approved",
-            willPauseForApproval: false
-        )
-        XCTAssertEqual(decision, .allow)
-    }
-
-    func testReduceGUIDecisionMissingApprovalStatusNoPauseIsAllow() {
-        let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            approvalStatus: "",
-            willPauseForApproval: false
-        )
-        XCTAssertEqual(decision, .allow)
-    }
-
-    func testReduceGUIDecisionTerminalDenialIsDeny() {
-        // When Mac CLI assistants are disabled, shouldPauseForApproval
-        // returns true (the mission is already failed) but the shadow must
-        // report `.deny`, not `.requiresApproval`, so the GUI-vs-daemon
-        // divergence is visible in telemetry.
-        let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            approvalStatus: "approved",
-            willPauseForApproval: true,
-            isTerminalDenial: true
-        )
-        XCTAssertEqual(decision, .deny)
-    }
-
-    func testReduceGUIDecisionTerminalDenialOverridesApprovalPause() {
-        let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            approvalStatus: "",
-            willPauseForApproval: true,
-            isTerminalDenial: true
-        )
-        XCTAssertEqual(decision, .deny)
-    }
-
-    func testReduceGUIDecisionNoTerminalDenialFallsBackToApprovalLogic() {
-        let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            approvalStatus: "pending",
-            willPauseForApproval: true,
-            isTerminalDenial: false
-        )
-        XCTAssertEqual(decision, .requiresApproval)
-    }
-
-    func testReduceGUIDecisionDefaultsTerminalDenialToFalse() {
-        // Backward compat: isTerminalDenial defaults to false
-        let decision = MissionRemoteAuthorizationShadow.reduceGUIDecision(
-            approvalStatus: "pending",
-            willPauseForApproval: true
-        )
-        XCTAssertEqual(decision, .requiresApproval)
-    }
-
-    // MARK: - Request builder
-
-    func testMakeRequestCarriesSummaryAndHashNotFullPrompt() {
-        let longPrompt = String(repeating: "secret-payload ", count: 40)
-        let request = MissionRemoteAuthorizationShadow.makeRequest(
-            ctx: .init(
-                missionID: "req-1", prompt: longPrompt, runtime: "codex", modelID: "gpt-x",
-                commandsAllowed: true, fileEditsAllowed: false,
-                originDeviceID: "unknown", originPlatform: "ios",
-                personaScopeJSON: nil, approvalMode: "manual_all", approvalStatus: "pending",
-                approverDeviceID: nil, entitlementTier: "pro", workingDirectory: nil, fanOutCount: 3
-            ),
-            executorTrustState: "trusted"
-        )
-
-        XCTAssertEqual(request.missionID, "req-1")
-        XCTAssertEqual(request.executorTrustState, "trusted")
-        XCTAssertEqual(request.requestedRuntime, "codex")
-        XCTAssertEqual(request.requestedModelID, "gpt-x")
-        XCTAssertTrue(request.requestedGrant.commandsAllowed)
-        XCTAssertFalse(request.requestedGrant.fileEditsAllowed)
-        XCTAssertEqual(request.approvalMode, "manual_all")
-        XCTAssertEqual(request.approvalStatus, "pending")
-        XCTAssertEqual(request.entitlementTier, "pro")
-        XCTAssertEqual(request.originPlatform, "ios")
-        XCTAssertEqual(request.requestedFanOutCount, 3)
-
-        // The full prompt must NOT ride the socket; only a bounded summary + hash.
-        XCTAssertLessThanOrEqual(request.promptSummary.count, 161)
-        XCTAssertFalse(request.promptSummary.contains("\n"))
-        XCTAssertEqual(request.promptSHA256, MissionRemoteAuthorizationShadow.sha256Hex(longPrompt))
-        XCTAssertEqual(request.promptSHA256.count, 64)
-    }
-
-    func testMakeRequestFailsClosedOnMissingCapabilityFieldsAndDefaults() {
-        let request = MissionRemoteAuthorizationShadow.makeRequest(
-            ctx: .init(
-                missionID: "req-2", prompt: "hi", runtime: nil, modelID: nil,
-                commandsAllowed: false, fileEditsAllowed: false,
-                originDeviceID: "unknown", originPlatform: "unknown",
-                personaScopeJSON: nil, approvalMode: nil, approvalStatus: "",
-                approverDeviceID: nil, entitlementTier: "none", workingDirectory: nil, fanOutCount: 0
-            ),
-            executorTrustState: "untrusted"
-        )
-        // Absent capability keys are a non-grant.
-        XCTAssertFalse(request.requestedGrant.commandsAllowed)
-        XCTAssertFalse(request.requestedGrant.fileEditsAllowed)
-        // Missing entitlement tier fails closed to the free tier.
-        XCTAssertEqual(request.entitlementTier, "none")
-        // Fan-out is clamped to a positive count.
-        XCTAssertEqual(request.requestedFanOutCount, 1)
-        XCTAssertNil(request.requestedRuntime)
-        XCTAssertEqual(request.originPlatform, "unknown")
-        XCTAssertEqual(request.originDeviceID, "unknown")
-    }
-
-    func testMakeRequestDecodesPersonaScopeWhenPresent() throws {
-        let envelope = PersonaScopeEnvelope(
-            agentURI: "agent://burnbar/claude",
-            personaID: "tech-reviewer",
-            permitShell: false,
-            permitFileEdits: false
-        )
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let json = String(data: try encoder.encode(envelope), encoding: .utf8)!
-
-        let request = MissionRemoteAuthorizationShadow.makeRequest(
-            ctx: .init(
-                missionID: "req-3", prompt: "p", runtime: nil, modelID: nil,
-                commandsAllowed: false, fileEditsAllowed: false,
-                originDeviceID: "unknown", originPlatform: "unknown",
-                personaScopeJSON: json, approvalMode: nil, approvalStatus: "",
-                approverDeviceID: nil, entitlementTier: "none", workingDirectory: nil, fanOutCount: 1
-            ),
-            executorTrustState: "trusted"
-        )
-        XCTAssertEqual(request.personaScope?.permitShell, false)
-        XCTAssertEqual(request.personaScope?.permitFileEdits, false)
-        XCTAssertEqual(request.personaScope?.personaID, "tech-reviewer")
-    }
-
-    func testMakeRequestLeavesPersonaScopeNilOnMalformedJSON() {
-        let request = MissionRemoteAuthorizationShadow.makeRequest(
-            ctx: .init(
-                missionID: "req-4", prompt: "p", runtime: nil, modelID: nil,
-                commandsAllowed: false, fileEditsAllowed: false,
-                originDeviceID: "unknown", originPlatform: "unknown",
-                personaScopeJSON: "{not valid json", approvalMode: nil, approvalStatus: "",
-                approverDeviceID: nil, entitlementTier: "none", workingDirectory: nil, fanOutCount: 1
-            ),
-            executorTrustState: "trusted"
-        )
-        XCTAssertNil(request.personaScope)
-    }
-
-    // MARK: - Listener field mapping and observation plumbing
-
-    func testListenerShadowContextMapsFieldsAndFailsClosedForMissingValues() {
-        let populated = CLIAgentMissionRequestListener.makeShadowContext(
-            fields: .init(
-                requestedRuntime: "ollama", requestedModelID: "  llama3  ",
-                commandsAllowed: true, fileEditsAllowed: true,
-                originDeviceID: "device-9", createdBy: nil,
-                originPlatform: "ios", source: nil,
-                personaScopeJSON: "{\"personaID\":\"reviewer\"}",
-                approvalMode: "manual_all", approvalStatus: "pending",
-                approverDeviceID: "approver-1", entitlementTier: "pro",
-                workingDirectory: "/tmp/project"
-            ),
-            missionID: "mapped",
-            prompt: "prompt",
-            fanOutCount: 4
-        )
-        XCTAssertEqual(populated.missionID, "mapped")
-        XCTAssertEqual(populated.runtime, "ollama")
-        XCTAssertEqual(populated.modelID, "llama3")
-        XCTAssertTrue(populated.commandsAllowed)
-        XCTAssertTrue(populated.fileEditsAllowed)
-        XCTAssertEqual(populated.originDeviceID, "device-9")
-        XCTAssertEqual(populated.originPlatform, "ios")
-        XCTAssertEqual(populated.approvalMode, "manual_all")
-        XCTAssertEqual(populated.approverDeviceID, "approver-1")
-        XCTAssertEqual(populated.entitlementTier, "pro")
-        XCTAssertEqual(populated.workingDirectory, "/tmp/project")
-        XCTAssertEqual(populated.fanOutCount, 4)
-
-        let missing = CLIAgentMissionRequestListener.makeShadowContext(
-            fields: .init(
-                requestedRuntime: nil, requestedModelID: nil,
-                commandsAllowed: nil, fileEditsAllowed: nil,
-                originDeviceID: nil, createdBy: "creator-1",
-                originPlatform: nil, source: "mobile",
-                personaScopeJSON: nil, approvalMode: nil,
-                approvalStatus: "", approverDeviceID: nil,
-                entitlementTier: "  ", workingDirectory: nil
-            ),
-            missionID: "fallbacks",
-            prompt: "",
-            fanOutCount: 0
-        )
-        XCTAssertEqual(missing.runtime, "auto")
-        XCTAssertNil(missing.modelID)
-        XCTAssertFalse(missing.commandsAllowed)
-        XCTAssertFalse(missing.fileEditsAllowed)
-        XCTAssertEqual(missing.originDeviceID, "creator-1")
-        XCTAssertEqual(missing.originPlatform, "mobile")
-        XCTAssertNil(missing.personaScopeJSON)
-        XCTAssertNil(missing.approvalMode)
-        XCTAssertEqual(missing.approvalStatus, "")
-        XCTAssertNil(missing.approverDeviceID)
-        XCTAssertEqual(missing.entitlementTier, "none")
-        XCTAssertNil(missing.workingDirectory)
-    }
-
-    func testEmitHandlesEverySignalKind() {
-        MissionRemoteAuthorizationShadow.emit(MissionRemoteAuthorizationShadow.compare(
-            missionID: "agree", gui: .allow, daemon: daemon(.authorized), promptSHA256: "a"
-        ))
-        MissionRemoteAuthorizationShadow.emit(MissionRemoteAuthorizationShadow.compare(
-            missionID: "unreachable", gui: .deny, daemon: nil, promptSHA256: "b", unreachableDetail: "offline"
-        ))
-        MissionRemoteAuthorizationShadow.emit(MissionRemoteAuthorizationShadow.compare(
-            missionID: "daemon-stricter", gui: .allow, daemon: daemon(.denied), promptSHA256: "c"
-        ))
-        MissionRemoteAuthorizationShadow.emit(MissionRemoteAuthorizationShadow.compare(
-            missionID: "gui-stricter", gui: .deny, daemon: daemon(.authorized), promptSHA256: "d"
-        ))
-    }
-
-    @MainActor
-    func testObserveReturnsWithoutDaemonWhenShadowModeIsOff() async {
-        await restoreMode { @MainActor in
-            MissionRemoteAuthorizationShadow.mode = .off
-            await MissionRemoteAuthorizationShadow.observe(
-                ctx: context(), guiDecision: .allow, executorTrustState: "trusted"
-            )
+        for row in rows {
+            let daemon = try MissionAuthorizationFakeDaemon(reply: .response(row.response))
+            defer { daemon.stop() }
+            let outcome = await withMode(.enforce) {
+                await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                    ctx: context(),
+                    isTerminalDenial: false,
+                    personaScopeMalformed: false,
+                    willPauseForApproval: false,
+                    manager: healthyManager(socketURL: daemon.socketURL)
+                )
+            }
+            XCTAssertEqual(outcome, .deny(daemonDenialMessage), row.name)
         }
     }
 
     @MainActor
-    func testObserveClassifiesUnhealthyDaemonAsUnreachable() async {
-        await restoreMode { @MainActor in
-            MissionRemoteAuthorizationShadow.mode = .shadow
-            let manager = OpenBurnBarDaemonManager()
-            manager.status = .unhealthy("test daemon unavailable")
-            await MissionRemoteAuthorizationShadow.observe(
-                ctx: context(), guiDecision: .requiresApproval, executorTrustState: "trusted", manager: manager
-            )
-        }
-    }
+    func testEnforceFailsClosedWhenDaemonIsUnhealthy() async {
+        let manager = OpenBurnBarDaemonManager()
+        manager.status = .unhealthy("authorization service unavailable")
 
-    @MainActor
-    func testObserveClassifiesSocketFailureAsUnreachable() async {
-        await restoreMode { @MainActor in
-            MissionRemoteAuthorizationShadow.mode = .shadow
-            let root = FileManager.default.temporaryDirectory
-                .appendingPathComponent("MissionRemoteAuthorizationShadowTests-\(UUID().uuidString)", isDirectory: true)
-            let paths = OpenBurnBarDaemonRuntimePaths(
-                supportDirectory: root,
-                daemonDirectory: root.appendingPathComponent("daemon", isDirectory: true),
-                frameworksDirectory: root.appendingPathComponent("Frameworks", isDirectory: true),
-                installedBinaryURL: root.appendingPathComponent("daemon/OpenBurnBarDaemon"),
-                socketURL: root.appendingPathComponent("missing.sock"),
-                logURL: root.appendingPathComponent("daemon.log"),
-                launchAgentPlistURL: root.appendingPathComponent("launch-agent.plist")
-            )
-            let manager = OpenBurnBarDaemonManager(paths: paths, dependencies: .live())
-            let health = BurnBarHealthResponse(
-                ok: true,
-                daemonVersion: "test",
-                protocolVersion: BurnBarProtocolVersion.current,
-                socketPath: paths.socketURL.path
-            )
-            manager.status = .healthy(OpenBurnBarDaemonHealthSnapshot(response: health))
-            await MissionRemoteAuthorizationShadow.observe(
-                ctx: context(), guiDecision: .allow, executorTrustState: "trusted", manager: manager
-            )
-        }
-    }
-
-    @MainActor
-    func testFireAndForgetHelpersScheduleShadowObservations() async {
-        await restoreMode { @MainActor in
-            MissionRemoteAuthorizationShadow.mode = .off
-            let ctx = context(approvalStatus: "pending")
-            MissionRemoteAuthorizationShadow.observeDeny(ctx: ctx, executorTrustState: "untrusted")
-            MissionRemoteAuthorizationShadow.observeTrustedDecision(
-                ctx: ctx,
+        let outcome = await withMode(.enforce) {
+            await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                ctx: context(),
                 isTerminalDenial: false,
                 personaScopeMalformed: false,
-                willPauseForApproval: true
+                willPauseForApproval: false,
+                manager: manager
             )
-            MissionRemoteAuthorizationShadow.observeTrustedDecision(
-                ctx: ctx,
-                isTerminalDenial: true,
-                personaScopeMalformed: false,
-                willPauseForApproval: true
-            )
-            MissionRemoteAuthorizationShadow.observeTrustedDecision(
-                ctx: ctx,
+        }
+
+        XCTAssertEqual(outcome, .deny(daemonDenialMessage))
+    }
+
+    @MainActor
+    func testEnforceFailsClosedWhenAuthorizationRPCReturnsAnError() async throws {
+        let daemon = try MissionAuthorizationFakeDaemon(
+            reply: .rpcError(code: 503, message: "authorization policy unavailable")
+        )
+        defer { daemon.stop() }
+
+        let outcome = await withMode(.enforce) {
+            await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                ctx: context(),
                 isTerminalDenial: false,
-                personaScopeMalformed: true,
-                willPauseForApproval: false
+                personaScopeMalformed: false,
+                willPauseForApproval: false,
+                manager: healthyManager(socketURL: daemon.socketURL)
             )
-            for _ in 0..<3 {
+        }
+
+        XCTAssertEqual(outcome, .deny(daemonDenialMessage))
+    }
+
+    @MainActor
+    func testLocalFailClosedGuardsStillDenyAfterDaemonAuthorization() async throws {
+        struct Row {
+            let name: String
+            let terminalDenial: Bool
+            let personaMalformed: Bool
+            let expectedMessage: String
+        }
+        let rows = [
+            Row(
+                name: "malformed persona scope",
+                terminalDenial: false,
+                personaMalformed: true,
+                expectedMessage: personaDenialMessage
+            ),
+            Row(
+                name: "Mac CLI assistants disabled",
+                terminalDenial: true,
+                personaMalformed: false,
+                expectedMessage: cliDisabledMessage
+            )
+        ]
+
+        for row in rows {
+            let daemon = try MissionAuthorizationFakeDaemon(
+                reply: .response(authorizedResponse(commandsAllowed: true, fileEditsAllowed: true))
+            )
+            defer { daemon.stop() }
+            let outcome = await withMode(.enforce) {
+                await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                    ctx: context(),
+                    isTerminalDenial: row.terminalDenial,
+                    personaScopeMalformed: row.personaMalformed,
+                    willPauseForApproval: row.terminalDenial,
+                    manager: healthyManager(socketURL: daemon.socketURL)
+                )
+            }
+            XCTAssertEqual(outcome, .deny(row.expectedMessage), row.name)
+        }
+    }
+
+    @MainActor
+    func testOffAndShadowKeepTheExistingPauseDenyProceedOutcomes() async {
+        struct Row {
+            let mode: MissionRemoteAuthorizationShadow.Mode
+            let name: String
+            let malformed: Bool
+            let pauses: Bool
+            let expected: MissionAuthorizationTrustedDecisionOutcome
+        }
+        let rows: [Row] = [.off, .shadow].flatMap { mode in
+            [
+                Row(mode: mode, name: "pause", malformed: false, pauses: true, expected: .pauseForApproval),
+                Row(mode: mode, name: "persona denial", malformed: true, pauses: false, expected: .deny(personaDenialMessage)),
+                Row(mode: mode, name: "proceed", malformed: false, pauses: false, expected: .proceed)
+            ]
+        }
+
+        let sharedManager = OpenBurnBarDaemonManager.shared
+        let previousStatus = sharedManager.status
+        sharedManager.status = .unhealthy("isolated authorization regression test")
+        defer { sharedManager.status = previousStatus }
+
+        for row in rows {
+            let outcome = await withMode(row.mode) {
+                let result = await MissionRemoteAuthorizationShadow.resolveTrustedDecision(
+                    ctx: context(approvalStatus: row.pauses ? "pending" : "approved"),
+                    isTerminalDenial: false,
+                    personaScopeMalformed: row.malformed,
+                    willPauseForApproval: row.pauses
+                )
                 await Task.yield()
+                await Task.yield()
+                return result
+            }
+            XCTAssertEqual(outcome, row.expected, "\(row.mode.rawValue): \(row.name)")
+        }
+    }
+
+    func testApprovalDecisionClassifiesEveryMissionStateWithoutSideEffects() {
+        let codex = CLIAgentMissionBackend(chatBackend: .codex)
+        let hermes = CLIAgentMissionBackend(chatBackend: .hermes)
+
+        struct Row {
+            let name: String
+            let cliAllowed: Bool
+            let backend: CLIAgentMissionBackend
+            let data: [String: Any]
+            let expected: CLIAgentMissionApprovalDecision
+        }
+        let rows = [
+            Row(name: "rejected dominates disabled CLI", cliAllowed: false, backend: codex,
+                data: ["approvalStatus": "rejected"], expected: .cancel(approvalStatus: "rejected")),
+            Row(name: "US canceled spelling", cliAllowed: true, backend: hermes,
+                data: ["approvalStatus": "canceled"], expected: .cancel(approvalStatus: "canceled")),
+            Row(name: "UK cancelled spelling", cliAllowed: true, backend: hermes,
+                data: ["approvalStatus": "CANCELLED"], expected: .cancel(approvalStatus: "cancelled")),
+            Row(name: "disabled CLI rejects even approved Codex", cliAllowed: false, backend: codex,
+                data: ["approvalStatus": "approved"], expected: .cliAssistantDisabled),
+            Row(name: "approved Codex proceeds when enabled", cliAllowed: true, backend: codex,
+                data: ["approvalStatus": "approved"], expected: .proceed),
+            Row(name: "already waiting does not request twice", cliAllowed: true, backend: hermes,
+                data: ["status": "waiting_for_approval", "approvalStatus": "pending", "approvalMode": "manual_all"],
+                expected: .waitForApproval),
+            Row(name: "new approval is requested", cliAllowed: true, backend: hermes,
+                data: ["status": "pending", "approvalStatus": "pending", "approvalMode": "manual_all"],
+                expected: .requestApproval),
+            Row(name: "safe mission needs no approval", cliAllowed: true, backend: hermes,
+                data: ["status": "pending", "approvalStatus": "none", "approvalMode": "existing_policy",
+                       "commandsAllowed": false, "fileEditsAllowed": false],
+                expected: .proceed)
+        ]
+
+        for row in rows {
+            XCTAssertEqual(
+                CLIAgentMissionApprovalDecision.resolve(
+                    data: row.data,
+                    backend: row.backend,
+                    cliAssistantAllowed: row.cliAllowed
+                ),
+                row.expected,
+                row.name
+            )
+        }
+    }
+
+    func testPresentNonStringOrMalformedPersonaScopeIsRejected() {
+        let malformedValues: [Any] = [
+            7,
+            true,
+            ["permitShell": false],
+            ["not", "an", "object"],
+            "{not valid JSON"
+        ]
+
+        for value in malformedValues {
+            let resolution = CLIAgentMissionPersonaScopeResolution.resolve(
+                from: ["personaScopeJSON": value]
+            )
+            guard case .refused(let message) = resolution else {
+                XCTFail("Present malformed persona scope \(String(describing: value)) must fail closed; got \(resolution)")
+                continue
+            }
+            XCTAssertEqual(message, personaDenialMessage)
+        }
+    }
+}
+
+private final class MissionAuthorizationFakeDaemon: @unchecked Sendable {
+    enum Reply: Sendable {
+        case response(BurnBarRemoteMissionAuthorizeResponse)
+        case rpcError(code: Int, message: String)
+    }
+
+    let socketURL: URL
+
+    private let listenerDescriptor: Int32
+    private let reply: Reply
+    private let queue = DispatchQueue(label: "mission-authorization-fake-daemon")
+    private let lock = NSLock()
+    private var stopped = false
+
+    init(reply: Reply) throws {
+        self.reply = reply
+        let path = "/tmp/obb-mission-auth-\(UUID().uuidString.prefix(8)).sock"
+        socketURL = URL(fileURLWithPath: path)
+        listenerDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard listenerDescriptor != -1 else { throw POSIXError(.EIO) }
+
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
+        let pathBytes = Array(path.utf8)
+        guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
+            close(listenerDescriptor)
+            throw POSIXError(.ENAMETOOLONG)
+        }
+        withUnsafeMutableBytes(of: &address.sun_path) { bytes in
+            bytes.initializeMemory(as: UInt8.self, repeating: 0)
+            for (index, byte) in pathBytes.enumerated() {
+                bytes[index] = byte
+            }
+        }
+        let bindResult = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(listenerDescriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.stride))
+            }
+        }
+        guard bindResult == 0, listen(listenerDescriptor, 4) == 0 else {
+            close(listenerDescriptor)
+            throw POSIXError(.EIO)
+        }
+        queue.async { [weak self] in self?.acceptRequests() }
+    }
+
+    func stop() {
+        lock.withLock { stopped = true }
+        close(listenerDescriptor)
+        try? FileManager.default.removeItem(at: socketURL)
+    }
+
+    private func acceptRequests() {
+        while true {
+            let client = accept(listenerDescriptor, nil, nil)
+            if client == -1 {
+                if lock.withLock({ stopped }) || errno == EBADF { return }
+                continue
+            }
+            respond(to: client)
+        }
+    }
+
+    private func respond(to client: Int32) {
+        defer { close(client) }
+        var request = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while true {
+            let count = read(client, &buffer, buffer.count)
+            guard count > 0 else { return }
+            request.append(contentsOf: buffer.prefix(count))
+            if request.last == 0x0A { break }
+        }
+        while request.last == 0x0A || request.last == 0x0D { request.removeLast() }
+        guard
+            let object = try? JSONSerialization.jsonObject(with: request) as? [String: Any],
+            let requestID = object["id"] as? String,
+            object["method"] as? String == BurnBarRPCMethod.missionAuthorizeRemote.rawValue
+        else { return }
+
+        let responseData: Data
+        do {
+            switch reply {
+            case .response(let response):
+                responseData = try JSONEncoder().encode(
+                    BurnBarRPCResponseEnvelope(id: requestID, result: response)
+                )
+            case .rpcError(let code, let message):
+                responseData = try JSONEncoder().encode(
+                    BurnBarRPCResponseEnvelope<BurnBarRemoteMissionAuthorizeResponse>(
+                        id: requestID,
+                        error: BurnBarRPCError(code: code, message: message)
+                    )
+                )
+            }
+        } catch {
+            return
+        }
+
+        let payload = responseData + Data([0x0A])
+        payload.withUnsafeBytes { bytes in
+            guard let base = bytes.baseAddress else { return }
+            var offset = 0
+            while offset < bytes.count {
+                let written = write(client, base.advanced(by: offset), bytes.count - offset)
+                guard written > 0 else { return }
+                offset += written
             }
         }
     }

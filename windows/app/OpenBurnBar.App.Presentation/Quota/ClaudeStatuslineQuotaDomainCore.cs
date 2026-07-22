@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using OpenBurnBar.App.Configuration;
 using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
 using DomainQuotaBucket = uniffi.openburnbar_domain_ffi.QuotaBucket;
 using DomainQuotaParseStatus = uniffi.openburnbar_domain_ffi.QuotaParseStatus;
@@ -23,7 +24,7 @@ internal static class ClaudeStatuslineQuotaDomainCore
     internal static ProviderQuotaSnapshot Apply(string json, ProviderQuotaSnapshot legacy)
     {
         return Apply(json, () => legacy, legacy.FetchedAt, legacy.StatusMessage,
-            ResolveMode(Environment.GetEnvironmentVariable(ModeVariable)));
+            ResolveMode(DomainCoreBuildProfileResolver.Mode("quota", ModeVariable)));
     }
 
     internal static ProviderQuotaSnapshot Apply(
@@ -39,18 +40,28 @@ internal static class ClaudeStatuslineQuotaDomainCore
         Func<ProviderQuotaSnapshot> legacy,
         DateTimeOffset fetchedAt,
         string statusMessage,
-        DomainCoreQuotaMigrationMode? requestedMode = null)
+        DomainCoreQuotaMigrationMode? requestedMode = null,
+        Func<string, IReadOnlyList<ProviderQuotaBucket>?>? nativeParser = null)
     {
-        var mode = requestedMode ?? ResolveMode(Environment.GetEnvironmentVariable(ModeVariable));
+        var mode = requestedMode ?? ResolveMode(DomainCoreBuildProfileResolver.Mode("quota", ModeVariable));
         if (mode == DomainCoreQuotaMigrationMode.Legacy)
         {
             return legacy();
         }
+        if (mode == DomainCoreQuotaMigrationMode.Shadow)
+        {
+            return ApplyShadow(json, legacy);
+        }
 
-        if (!TryParseBuckets(json, out var rustBuckets))
+        var rustStarted = Stopwatch.GetTimestamp();
+        IReadOnlyList<ProviderQuotaBucket>? rustBuckets;
+        var nativeAvailable = nativeParser is null
+            ? TryParseBuckets(json, out rustBuckets)
+            : (rustBuckets = nativeParser(json)) is not null;
+        if (!nativeAvailable || rustBuckets is null)
         {
             Trace.TraceWarning("domain_core.claude_quota.native_unavailable mode={0}", mode);
-            return legacy();
+            throw new InvalidOperationException("Domain-core Claude quota is unavailable in explicit Rust mode.");
         }
 
         var rust = new ProviderQuotaSnapshot
@@ -63,22 +74,74 @@ internal static class ClaudeStatuslineQuotaDomainCore
             StatusMessage = statusMessage,
             Buckets = rustBuckets,
         };
+        var rustMicros = ElapsedMicros(rustStarted);
 
-        if (mode == DomainCoreQuotaMigrationMode.Shadow)
-        {
-            var legacySnapshot = legacy();
-            if (!Equivalent(legacySnapshot.Buckets, rustBuckets))
-            {
-                Trace.TraceWarning(
-                    "domain_core.claude_quota.shadow_mismatch core={0} legacy_count={1} rust_count={2}",
-                    DomainCore.DomainCoreVersion(),
-                    legacySnapshot.Buckets.Count,
-                    rustBuckets.Count);
-            }
-            return legacySnapshot;
-        }
-
+        _ = rustMicros;
         return rust;
+    }
+
+    private static ProviderQuotaSnapshot ApplyShadow(string json, Func<ProviderQuotaSnapshot> legacy)
+    {
+        var legacyStarted = Stopwatch.GetTimestamp();
+        var legacySnapshot = legacy();
+        var legacyMicros = ElapsedMicros(legacyStarted);
+        var rustStarted = Stopwatch.GetTimestamp();
+        IReadOnlyList<ProviderQuotaBucket> rustBuckets = ProviderQuotaSnapshot.NoBuckets;
+        string? mismatchCategory = null;
+        DomainCoreShadowLoadedIdentity? loadedIdentity = null;
+        if (!TryLoadShadowIdentity(out loadedIdentity))
+        {
+            mismatchCategory = "native_unavailable";
+        }
+        else
+        {
+            DomainCoreCandidateIdentity? expectedIdentity = DomainCoreQuotaShadowEvidence.CurrentSignedCandidateIdentity();
+            if (expectedIdentity is not null && !Matches(expectedIdentity, loadedIdentity))
+            {
+                mismatchCategory = "loaded_identity_mismatch";
+            }
+            else if (expectedIdentity is null && loadedIdentity.CoreAbiVersion != 3)
+            {
+                mismatchCategory = "native_unavailable";
+                loadedIdentity = null;
+            }
+            else
+            {
+                try
+                {
+                    var result = DomainCore.ParseClaudeStatuslineQuota(Encoding.UTF8.GetBytes(json));
+                    if (result.status == DomainQuotaParseStatus.Malformed)
+                    {
+                        mismatchCategory = "invalid_result";
+                    }
+                    else if (result.status == DomainQuotaParseStatus.Parsed)
+                    {
+                        rustBuckets = result.snapshot.buckets.Select(MapBucket).ToArray();
+                    }
+                    if (mismatchCategory is null && !Equivalent(legacySnapshot.Buckets, rustBuckets))
+                    {
+                        mismatchCategory = "result_mismatch";
+                    }
+                }
+                catch (Exception error) when (IsNativeUnavailable(error))
+                {
+                    mismatchCategory = loadedIdentity is null ? "native_unavailable" : "native_error";
+                }
+                catch
+                {
+                    mismatchCategory = "native_error";
+                }
+            }
+        }
+        var rustMicros = ElapsedMicros(rustStarted);
+        DomainCoreQuotaShadowEvidence.RecordComparison(
+            "claude_quota",
+            loadedIdentity,
+            mismatchCategory is null,
+            mismatchCategory,
+            legacyMicros,
+            rustMicros);
+        return legacySnapshot;
     }
 
     internal static DomainCoreQuotaMigrationMode ResolveMode(string? raw)
@@ -96,19 +159,30 @@ internal static class ClaudeStatuslineQuotaDomainCore
         buckets = ProviderQuotaSnapshot.NoBuckets;
         try
         {
-            if (DomainCore.DomainCoreAbiVersion() != 1)
+            if (DomainCore.DomainCoreAbiVersion() != 3)
             {
                 return false;
             }
 
             var result = DomainCore.ParseClaudeStatuslineQuota(Encoding.UTF8.GetBytes(json));
-            if (result.status != DomainQuotaParseStatus.Parsed)
+            switch (result.status)
             {
-                return true;
+                case DomainQuotaParseStatus.Parsed:
+                    buckets = result.snapshot.buckets.Select(MapBucket).ToArray();
+                    return true;
+                case DomainQuotaParseStatus.Empty:
+                    // Legitimate successful parse with no signal; buckets stays NoBuckets.
+                    return true;
+                case DomainQuotaParseStatus.Malformed:
+                    // Fail-closed: a malformed payload must not surface as a successful
+                    // Exact snapshot with empty buckets. Matches DomainCoreQuotaBridge.MapResult.
+                    return false;
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(result),
+                        result.status,
+                        "Unknown domain-core parse status.");
             }
-
-            buckets = result.snapshot.buckets.Select(MapBucket).ToArray();
-            return true;
         }
         catch (Exception error) when (
             error is DllNotFoundException
@@ -119,6 +193,34 @@ internal static class ClaudeStatuslineQuotaDomainCore
             return false;
         }
     }
+
+    private static bool IsNativeUnavailable(Exception error) =>
+        error is DllNotFoundException
+            or EntryPointNotFoundException
+            or BadImageFormatException
+            or TypeInitializationException;
+
+    private static bool TryLoadShadowIdentity(out DomainCoreShadowLoadedIdentity identity)
+    {
+        identity = null!;
+        try
+        {
+            identity = new(
+                DomainCore.DomainCoreVersion(),
+                DomainCore.DomainCoreAbiVersion(),
+                DomainCore.DomainCoreSourceFingerprint());
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool Matches(DomainCoreCandidateIdentity expected, DomainCoreShadowLoadedIdentity loaded) =>
+        loaded.CoreVersion == expected.ExpectedCoreVersion
+        && loaded.CoreAbiVersion == expected.ExpectedCoreAbiVersion
+        && loaded.CoreSourceSha256 == expected.ExpectedCoreSourceSha256;
 
     private static ProviderQuotaBucket MapBucket(DomainQuotaBucket bucket)
     {
@@ -187,4 +289,7 @@ internal static class ClaudeStatuslineQuotaDomainCore
     private static bool Close(long? left, long? right) =>
         left is null && right is null
         || left is long l && right is long r && Math.Abs(l - r) <= 1;
+
+    private static long ElapsedMicros(long started) =>
+        Math.Clamp((long)Stopwatch.GetElapsedTime(started).TotalMicroseconds, 0, 600_000_000);
 }

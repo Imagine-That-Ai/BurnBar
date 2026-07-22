@@ -5,6 +5,12 @@ Branch at scan: `windows/liquid-glass-kernel-reskin`
 Scope: Windows port parity with the shipping macOS OpenBurnBar product.
 Status: Consolidated plan after CMUX pane review, live ledger verification, code checks, and adversarial loophole loop.
 
+For ongoing releases and maintenance after implementation, use
+[`WINDOWS_PORT_OPERATIONS_RUNBOOK.md`](WINDOWS_PORT_OPERATIONS_RUNBOOK.md).
+It separates source parity from exact-candidate release certification and owns
+the recurring cost, staging, signing, physical-evidence, Store, and rollback
+procedures.
+
 ## 0. Source of Truth and Scope
 
 The status source of truth remains `docs/windows-port/WINDOWS_PARITY_LEDGER.yml`.
@@ -102,7 +108,7 @@ F2 means Windows reaches Mac feature completeness, including everything F1
 excludes:
 
 - local HTTP gateway and Model Proxy as live Windows capabilities;
-- provider router/executors and gateway metrics/degrade policy;
+- provider-specific executors and proactive local-provider discovery;
 - headless run service, local Mission Control DAG execution, planner, and policy engine;
 - Pensieve watcher and full project-code static parser;
 - browser Computer Use/Playwright path;
@@ -314,6 +320,8 @@ Tasks:
    Devices settings to real authenticated stores.
 6. Close C5 with live Windows-to-Mac CloudVault E2EE.
 7. Add Remote Config polling parity for kill switches and feature flags.
+   Source implementation: [`WINDOWS_REMOTE_SAFETY_CONFIG.md`](WINDOWS_REMOTE_SAFETY_CONFIG.md).
+   Release truth remains blocked until its signed staging toggle matrix passes.
 
 Exit criteria:
 
@@ -427,9 +435,11 @@ Primary goal: make the OS and ecosystem integrations real on Windows.
 
 Workstreams:
 
-1. Computer Use: SendInput, UIA, Windows Graphics Capture, ViGEm where needed,
-   audit chain, approval UI, panic kill, watchdog process, and evidence
-   recordings.
+1. Computer Use: signed isolated `SendInput` broker, UIA, Windows Graphics
+   Capture, audit chain, approval UI, panic kill, watchdog process, and evidence
+   recordings. Secure-desktop/cross-integrity injection is excluded unless a
+   purpose-built signed keyboard/mouse HID driver is separately certified;
+   ViGEm game-controller emulation is not such a driver.
 2. Mercury media: screen share, calls, file transfer, RFB, camera/mic capture,
    Media Foundation encoding, and permission UI.
 3. Cast, SmartHub, Home Assistant: mDNS/DNS-SD or Windows PAL, pairing/setup
@@ -490,14 +500,40 @@ F2 workstreams:
    multi-client story.
 2. Model catalog, health, route logging, cross-vendor degrade, and gateway
    metrics.
-3. Provider router and provider executors.
-4. Headless run service, resume/recovery, journal, and tool dispatch.
+3. Codex/Factory CLI executors and proactive local-model discovery are closed by
+   `docs/windows-port/evidence/f2/provider-cli-executors.md` and
+   `docs/windows-port/evidence/f2/proactive-local-model-discovery.md`. The production
+   authenticated gateway, provider-router scorecard, quota-drain core,
+   failure-driven model health, opt-in cross-vendor degrade policy, and durable
+   route/stream usage telemetry are closed, and OpenAI-compatible, Anthropic,
+   and Ollama-native HTTP transports are closed by
+   `docs/windows-port/evidence/f2/provider-router-scorecard.md` and
+   `docs/windows-port/evidence/f2/gateway-model-health.md` and
+   `docs/windows-port/evidence/f2/cross-vendor-degrade-policy.md` and
+   `docs/windows-port/evidence/f2/gateway-route-telemetry.md` and
+   `docs/windows-port/evidence/f2/ollama-native-provider-transport.md` and
+   `docs/windows-port/evidence/f2/provider-cli-executors.md` and
+   `docs/windows-port/evidence/f2/proactive-local-model-discovery.md`.
+4. Headless run service, resume/recovery, protected checkpoints,
+   metadata-only journal, approval, and companion tool dispatch are closed by
+   `docs/windows-port/evidence/f2/headless-run-recovery.md`; Windows-host
+   compile and lifecycle stress remain release evidence, not implementation.
 5. Local Mission Control execution: DAG scheduler, journal repository,
-   projection reducer, planner, policy engine, rate limiter.
-6. Pensieve watcher, project-code memory store, and full static parser.
+   projection reducer, planner, and policy engine. Gateway token-bucket limiting
+   is closed by `docs/windows-port/evidence/f2/gateway-rate-limiter.md`.
+6. Pensieve knowledge watcher. The live repo-docs/notes/session-end watcher and
+   sealed queue are closed by
+   `docs/windows-port/evidence/f2/pensieve-knowledge-watcher.md`. The separate
+   project-code memory store, embeddings, and full static parser are closed by
+   `docs/windows-port/evidence/f2/project-code-memory-store.md`,
+   `docs/windows-port/evidence/f2/live-lsp-parser-client.md`, and WPD-0003's
+   revival addendum.
 7. Browser Computer Use/Playwright lifecycle and browser target policy.
-8. Elder Wand fusion orchestrator and tool loop.
-9. Connector plane, companion CLI, and any revived RPC/client surface.
+8. Elder Wand fusion orchestrator and tool loop. Closed by
+   `docs/windows-port/evidence/f2/elder-wand-fusion.md`.
+9. Connector plane and any revived connector-specific broker/client surface.
+   The standalone authenticated companion CLI and daemon-client core are closed
+   by `docs/windows-port/evidence/f2/companion-cli-client.md`.
 
 F2 done when:
 
@@ -576,7 +612,7 @@ gate. The remaining uncertainty is not hidden; it is listed below.
 | U4 | merge cost from `windows/liquid-glass-kernel-reskin` to current `main` | rebase early and isolate theme work | theme cannot block data Real |
 | U5 | whether Alberto wants F2 in year-one launch | written F1/F2 decision | default F1 |
 | U6 | DCC high-risk action envelope complexity | H4 spike after OAuth/App Check | keep export/revoke partial until proven |
-| U7 | ViGEm/driver friction for Computer Use | H8 host pass | ship lower-privilege CU subset only if labeled |
+| U7 | Signed input-broker behavior on physical Windows | H8 protected-target, panic-latency, restart, and input-delivery host pass | keep physical Computer Use certification blocked until evidence passes |
 | U8 | Mac-only features not yet represented in ledger | periodic `AgentLens/Views` and service inventory | add rows, do not absorb silently |
 
 ## 18. First 48 Hours

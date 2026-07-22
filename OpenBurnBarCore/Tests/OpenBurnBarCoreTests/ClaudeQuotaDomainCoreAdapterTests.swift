@@ -45,9 +45,17 @@ final class ClaudeQuotaDomainCoreAdapterTests: XCTestCase {
         XCTAssertEqual(shadow, legacy)
         if ClaudeQuotaDomainCoreAdapter.isNativeAvailable {
             XCTAssertEqual(logger.messages, [])
+            XCTAssertEqual(logger.comparisons.count, 1)
+            XCTAssertEqual(logger.comparisons.first?.operation, "claude_quota")
+            XCTAssertEqual(logger.comparisons.first?.outcome, .match)
         } else {
             XCTAssertEqual(logger.messages.count, 1)
             XCTAssertTrue(logger.messages[0].contains("native_unavailable"))
+            XCTAssertEqual(logger.comparisons.count, 1)
+            XCTAssertEqual(logger.comparisons.first?.operation, "claude_quota")
+            XCTAssertEqual(logger.comparisons.first?.outcome, .mismatch)
+            XCTAssertEqual(logger.comparisons.first?.mismatchCategory, .nativeUnavailable)
+            XCTAssertEqual(logger.comparisons.first?.coreVersion, "0.0.0-unavailable")
         }
     }
 
@@ -74,6 +82,56 @@ final class ClaudeQuotaDomainCoreAdapterTests: XCTestCase {
                 environment: ["OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE": "surprise"]
             ),
             .legacy
+        )
+    }
+
+    func testShadowRustFailureReturnsLegacyAndEmitsOneCategorizedReceipt() throws {
+        enum SyntheticError: Error { case failed }
+        let input = try Data(contentsOf: fixtureURL("claude-statusline-input.json"))
+        let rateLimits = ClaudeRateLimits(from: input)
+        let expected = ClaudeQuotaLegacy.buckets(from: rateLimits)
+        let logger = RecordingQuotaLogger()
+        var order: [String] = []
+
+        let actual = ClaudeQuotaDomainCoreAdapter.buckets(
+            from: rateLimits,
+            environment: ["OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE": "shadow"],
+            quotaLogger: logger,
+            shadowLegacyProbe: {
+                order.append("legacy")
+                return expected
+            },
+            shadowRustProbe: {
+                order.append("rust")
+                throw SyntheticError.failed
+            }
+        )
+
+        XCTAssertEqual(actual, expected)
+        XCTAssertEqual(order, ["legacy", "rust"])
+        XCTAssertEqual(logger.comparisons.count, 1)
+        XCTAssertEqual(logger.comparisons.first?.outcome, .mismatch)
+        XCTAssertEqual(logger.comparisons.first?.mismatchCategory, .nativeError)
+    }
+
+    func testSharedShadowCategoryClassifiesEveryFailureMode() {
+        enum SyntheticError: Error { case failed }
+        XCTAssertNil(DomainCoreQuotaShadowCategory.classify(.success((1, false)), equivalent: { $0 == 1 }))
+        XCTAssertEqual(
+            DomainCoreQuotaShadowCategory.classify(.success((1, false)), equivalent: { $0 == 2 }),
+            .resultMismatch
+        )
+        XCTAssertEqual(
+            DomainCoreQuotaShadowCategory.classify(.success((1, true)), equivalent: { _ in true }),
+            .invalidResult
+        )
+        XCTAssertEqual(
+            DomainCoreQuotaShadowCategory.classify(.failure(DomainCoreQuotaShadowProbeError.nativeUnavailable), equivalent: { (_: Int) in true }),
+            .nativeUnavailable
+        )
+        XCTAssertEqual(
+            DomainCoreQuotaShadowCategory.classify(.failure(SyntheticError.failed), equivalent: { (_: Int) in true }),
+            .nativeError
         )
     }
 
@@ -136,13 +194,22 @@ private struct ExpectedBucket: Decodable {
 private final class RecordingQuotaLogger: QuotaLogger, @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [String] = []
+    private var comparisonStorage: [DomainCoreQuotaShadowComparison] = []
 
     var messages: [String] {
         lock.withLock { storage }
     }
 
+    var comparisons: [DomainCoreQuotaShadowComparison] {
+        lock.withLock { comparisonStorage }
+    }
+
     func log(_ message: String) {
         lock.withLock { storage.append(message) }
+    }
+
+    func recordDomainCoreShadowComparison(_ comparison: DomainCoreQuotaShadowComparison) {
+        lock.withLock { comparisonStorage.append(comparison) }
     }
 }
 

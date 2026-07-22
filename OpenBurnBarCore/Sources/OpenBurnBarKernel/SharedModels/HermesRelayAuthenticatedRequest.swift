@@ -92,6 +92,13 @@ public actor HermesRelayReplayCache {
     private struct SenderReplayState: Codable, Sendable, Equatable {
         var maxCounter: Int64
         var requestIDs: [String: Date]
+        /// Counters accepted by the sliding replay window. Optional so legacy
+        /// strict-high-water caches decode without reopening old counters.
+        var recentCounters: [String: Date]?
+        /// Lowest counter that may ever be admitted for this sender. A legacy
+        /// cache initializes this above its old high-water mark; a new cache
+        /// starts at zero.
+        var reorderFloor: Int64?
     }
 
     private struct PersistentState: Codable, Sendable, Equatable {
@@ -100,16 +107,19 @@ public actor HermesRelayReplayCache {
 
     private let persistenceURL: URL?
     private let requestIDTTL: TimeInterval
+    private let counterReorderingWindow: Int64
     private let now: @Sendable () -> Date
     private var senders: [String: SenderReplayState]
 
     public init(
         persistenceURL: URL? = nil,
         requestIDTTL: TimeInterval = 24 * 60 * 60,
+        counterReorderingWindow: Int64 = 64,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.persistenceURL = persistenceURL
         self.requestIDTTL = requestIDTTL
+        self.counterReorderingWindow = max(1, counterReorderingWindow)
         self.now = now
         if let persistenceURL,
            let data = try? Data(contentsOf: persistenceURL),
@@ -128,14 +138,47 @@ public actor HermesRelayReplayCache {
     ) throws {
         let key = scopeKey(uid: uid, connectionID: connectionID, sender: sender)
         let cutoff = now().addingTimeInterval(-requestIDTTL)
-        var state = senders[key] ?? SenderReplayState(maxCounter: -1, requestIDs: [:])
+        var state = senders[key] ?? SenderReplayState(
+            maxCounter: -1,
+            requestIDs: [:],
+            recentCounters: [:],
+            reorderFloor: 0
+        )
         state.requestIDs = state.requestIDs.filter { $0.value >= cutoff }
-        guard sender.counter > state.maxCounter,
+
+        // Legacy persisted states do not know which counters below maxCounter
+        // were already consumed. Fence them out permanently, then use a small
+        // standard anti-replay window for newly observed traffic. This permits
+        // concurrent, uniquely sealed requests (for example Codex + Claude
+        // catalog probes) to arrive out of order without accepting a replay.
+        let initialFloor: Int64
+        if let reorderFloor = state.reorderFloor {
+            initialFloor = reorderFloor
+        } else if state.maxCounter < 0 && state.requestIDs.isEmpty {
+            initialFloor = 0
+        } else {
+            initialFloor = state.maxCounter == Int64.max ? Int64.max : state.maxCounter + 1
+        }
+        var recentCounters = state.recentCounters ?? [:]
+        let counterKey = String(sender.counter)
+        guard sender.counter >= initialFloor,
+              recentCounters[counterKey] == nil,
               state.requestIDs[requestID] == nil else {
             throw HermesRelayAuthenticatedRequestError.rejected(.senderReplay)
         }
-        state.maxCounter = sender.counter
-        state.requestIDs[requestID] = now()
+
+        let acceptedAt = now()
+        state.maxCounter = max(state.maxCounter, sender.counter)
+        let slidingFloor = max(0, state.maxCounter - min(state.maxCounter, counterReorderingWindow - 1))
+        let effectiveFloor = max(initialFloor, slidingFloor)
+        state.reorderFloor = effectiveFloor
+        recentCounters = recentCounters.filter { key, _ in
+            guard let counter = Int64(key) else { return false }
+            return counter >= effectiveFloor
+        }
+        recentCounters[counterKey] = acceptedAt
+        state.recentCounters = recentCounters
+        state.requestIDs[requestID] = acceptedAt
         senders[key] = state
         try persist()
     }
@@ -227,7 +270,7 @@ public struct HermesRelayAuthenticatedRequestOpener: Sendable {
         }
         try await verifiedSignalIdentity(for: trustContext)
 
-        let keyAAD = HermesRelayCrypto.authenticatedKeyAAD(
+        let keyAAD = try HermesRelayCrypto.authenticatedKeyAAD(
             uid: uid,
             connectionID: connectionID,
             requestID: requestID,
@@ -255,7 +298,7 @@ public struct HermesRelayAuthenticatedRequestOpener: Sendable {
         let plaintext = try HermesRelayCrypto.openBase64(
             ciphertext: payloadCiphertext,
             keyData: keyData,
-            aad: HermesRelayCrypto.authenticatedRequestAAD(
+            aad: try HermesRelayCrypto.authenticatedRequestAAD(
                 uid: uid,
                 connectionID: connectionID,
                 requestID: requestID,

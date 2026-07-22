@@ -1,4 +1,9 @@
 import Foundation
+import OpenBurnBarDomainCoreRuntime
+
+#if canImport(OpenBurnBarDomainCoreFFI)
+import OpenBurnBarDomainCoreFFI
+#endif
 
 public enum HermesRatchetError: Error, Equatable {
     case invalidBase64(String)
@@ -12,6 +17,7 @@ public enum HermesRatchetError: Error, Equatable {
     case skippedKeyLimitExceeded
     case invalidEnvelope
     case authenticationFailed
+    case nativeUnavailable
 }
 
 public enum HermesRatchetRole: String, Codable, Sendable {
@@ -214,11 +220,8 @@ public enum HermesRatchetCrypto {
             messageNumber: state.sendMessageNumber,
             epoch: state.epoch
         )
-        let combined = try PlatformCrypto.sealAESGCM(
-            plaintext: plaintext,
-            keyData: derived.messageKey,
-            authenticating: envelopeAAD(header: header, associatedData: associatedData)
-        )
+        let aad = try envelopeAAD(header: header, associatedData: associatedData)
+        let combined = try seal(plaintext: plaintext, key: derived.messageKey, aad: aad)
         state.sendingChainKeyBase64 = derived.chainKey.base64EncodedString()
         state.sendMessageNumber += 1
         return HermesRatchetEnvelope(header: header, ciphertextBase64: combined.base64EncodedString())
@@ -333,11 +336,20 @@ public enum HermesRatchetCrypto {
             throw HermesRatchetError.invalidEnvelope
         }
         do {
-            return try PlatformCrypto.openAESGCM(
-                combined: combined,
-                keyData: messageKey,
-                authenticating: envelopeAAD(header: envelope.header, associatedData: associatedData)
-            )
+            let aad = try envelopeAAD(header: envelope.header, associatedData: associatedData)
+            return try domainCoreBytes(operation: "ratchet_open") {
+                try HermesRatchetLegacyCrypto.open(combined: combined, key: messageKey, aad: aad)
+            } rust: {
+                #if canImport(OpenBurnBarDomainCoreFFI)
+                try OpenBurnBarDomainCoreFFI.hermesOpenCombined(
+                    combined: combined,
+                    key: messageKey,
+                    aad: aad
+                )
+                #else
+                Data()
+                #endif
+            }
         } catch {
             throw HermesRatchetError.authenticationFailed
         }
@@ -358,34 +370,153 @@ public enum HermesRatchetCrypto {
     }
 
     private static func rootKDF(rootKey: Data, dhOutput: Data) throws -> (rootKey: Data, chainKey: Data) {
-        let data = try PlatformCrypto.deriveHKDFSHA256KeyData(
-            inputKeyMaterial: dhOutput,
-            salt: rootKey,
-            info: Data("OpenBurnBar-HermesRatchet-v1-root".utf8),
-            outputByteCount: 64
-        )
+        let info = Data("OpenBurnBar-HermesRatchet-v1-root".utf8)
+        let data = try domainCoreBytes(operation: "ratchet_root_kdf") {
+            try HermesRatchetLegacyCrypto.rootKDFBytes(rootKey: rootKey, dhOutput: dhOutput)
+        } rust: {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.hermesHkdfSha256(
+                inputKeyMaterial: dhOutput,
+                salt: rootKey,
+                info: info,
+                outputByteCount: 64
+            )
+            #else
+            Data()
+            #endif
+        }
         return (Data(data.prefix(32)), Data(data.suffix(32)))
     }
 
     private static func chainKDF(chainKey: Data) throws -> (chainKey: Data, messageKey: Data) {
-        let next = try PlatformCrypto.hmacSHA256(Data("OpenBurnBar-HermesRatchet-v1-chain".utf8), keyData: chainKey)
-        let message = try PlatformCrypto.hmacSHA256(Data("OpenBurnBar-HermesRatchet-v1-message".utf8), keyData: chainKey)
+        let chainLabel = Data("OpenBurnBar-HermesRatchet-v1-chain".utf8)
+        let messageLabel = Data("OpenBurnBar-HermesRatchet-v1-message".utf8)
+        let next = try domainCoreBytes(operation: "ratchet_chain_kdf") {
+            try HermesRatchetLegacyCrypto.nextChainKey(chainKey)
+        } rust: {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.hermesHmacSha256(key: chainKey, data: chainLabel)
+            #else
+            Data()
+            #endif
+        }
+        let message = try domainCoreBytes(operation: "ratchet_message_kdf") {
+            try HermesRatchetLegacyCrypto.messageKey(chainKey)
+        } rust: {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.hermesHmacSha256(key: chainKey, data: messageLabel)
+            #else
+            Data()
+            #endif
+        }
         return (next, message)
     }
 
-    private static func envelopeAAD(header: HermesRatchetHeader, associatedData: Data) -> Data {
-        var data = Data("OpenBurnBar-HermesRatchet-v1-AAD".utf8)
-        appendPart(&data, associatedData)
-        appendPart(&data, Data(header.algorithm.utf8))
-        appendPart(&data, Data(header.sessionID.utf8))
-        appendPart(&data, Data(header.senderDeviceID.utf8))
-        appendPart(&data, Data(header.receiverDeviceID.utf8))
-        appendPart(&data, Data(header.ratchetPublicKeyBase64.utf8))
-        appendInt(&data, header.version)
-        appendInt(&data, header.previousChainLength)
-        appendInt(&data, header.messageNumber)
-        appendInt(&data, header.epoch)
-        return data
+    private static func envelopeAAD(header: HermesRatchetHeader, associatedData: Data) throws -> Data {
+        let legacy = { HermesRatchetLegacyCrypto.envelopeAAD(header: header, associatedData: associatedData) }
+        return try domainCoreBytes(operation: "ratchet_aad", legacy: legacy) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.hermesRatchetEnvelopeAad(
+                associatedData: associatedData,
+                algorithm: header.algorithm,
+                sessionId: header.sessionID,
+                senderDeviceId: header.senderDeviceID,
+                receiverDeviceId: header.receiverDeviceID,
+                ratchetPublicKeyBase64: header.ratchetPublicKeyBase64,
+                version: UInt64(header.version),
+                previousChainLength: UInt64(header.previousChainLength),
+                messageNumber: UInt64(header.messageNumber),
+                epoch: UInt64(header.epoch)
+            )
+            #else
+            throw HermesRatchetError.nativeUnavailable
+            #endif
+        }
+    }
+
+    private static func seal(plaintext: Data, key: Data, aad: Data) throws -> Data {
+        try DomainCoreShadowRuntime.selectVerifiedLegacy(
+            domain: "hermes",
+            slice: "ratchet",
+            operation: "ratchet_seal",
+            mode: DomainCoreBuildMode(rawValue: domainCoreMode) ?? .legacy,
+            nativeStatus: HermesDomainCoreAdapter.nativeStatus,
+            coreVersion: HermesDomainCoreAdapter.currentCoreVersion,
+            legacy: {
+                try HermesRatchetLegacyCrypto.seal(plaintext: plaintext, key: key, aad: aad)
+            },
+            rustAuthority: {
+                #if canImport(OpenBurnBarDomainCoreFFI)
+                try OpenBurnBarDomainCoreFFI.hermesSealCombined(
+                    plaintext: plaintext,
+                    key: key,
+                    aad: aad,
+                    nonce: PlatformCrypto.secureRandomBytes(count: 12)
+                )
+                #else
+                throw HermesRatchetError.nativeUnavailable
+                #endif
+            },
+            verifyLegacyWithRust: { combined in
+                #if canImport(OpenBurnBarDomainCoreFFI)
+                try OpenBurnBarDomainCoreFFI.hermesOpenCombined(combined: combined, key: key, aad: aad) == plaintext
+                #else
+                throw HermesRatchetError.nativeUnavailable
+                #endif
+            },
+            nativeUnavailableError: HermesRatchetError.nativeUnavailable,
+            diagnostic: diagnostic
+        )
+    }
+
+    private static func domainCoreBytes(
+        operation: String,
+        legacy: () throws -> Data,
+        rust: () throws -> Data
+    ) throws -> Data {
+        let mode = domainCoreMode
+        return try selectDomainCoreBytes(
+            operation: operation,
+            mode: mode,
+            nativeStatus: HermesDomainCoreAdapter.nativeStatus,
+            coreVersion: HermesDomainCoreAdapter.currentCoreVersion,
+            legacy: legacy,
+            rust: rust,
+            record: DomainCoreShadowComparisonCollector.record
+        )
+    }
+
+    static func selectDomainCoreBytes(
+        operation: String,
+        mode: String,
+        nativeStatus: () -> DomainCoreRuntimeNativeStatus,
+        coreVersion: () -> String,
+        legacy: () throws -> Data,
+        rust: () throws -> Data,
+        record: (DomainCoreShadowComparison) -> Void
+    ) throws -> Data {
+        try DomainCoreShadowRuntime.select(
+            domain: "hermes",
+            slice: "ratchet",
+            operation: operation,
+            mode: DomainCoreBuildMode(rawValue: mode) ?? .legacy,
+            nativeStatus: nativeStatus,
+            coreVersion: coreVersion,
+            legacy: legacy,
+            rust: rust,
+            equivalent: ==,
+            nativeUnavailableError: HermesRatchetError.nativeUnavailable,
+            diagnostic: diagnostic,
+            recordComparison: record
+        )
+    }
+
+    private static var domainCoreMode: String {
+        DomainCoreBuildProfileResolver.mode(for: .hermes).rawValue
+    }
+
+    private static func diagnostic(_ operation: String, _ outcome: String) {
+        NSLog("domain_core.hermes.%@ %@", operation, outcome)
     }
 
     private static func skippedKeyID(ratchetPublicKeyBase64: String, messageNumber: Int) -> String {
@@ -444,13 +575,4 @@ public enum HermesRatchetCrypto {
         }
     }
 
-    private static func appendPart(_ data: inout Data, _ part: Data) {
-        appendInt(&data, part.count)
-        data.append(part)
-    }
-
-    private static func appendInt(_ data: inout Data, _ value: Int) {
-        var be = UInt64(value).bigEndian
-        withUnsafeBytes(of: &be) { data.append(contentsOf: $0) }
-    }
 }

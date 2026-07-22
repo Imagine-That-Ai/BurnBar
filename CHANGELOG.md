@@ -7,6 +7,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Elder Wand and Pareto Wand reliability
+
+- **Hardened Elder fusion across malformed, repeated, over-budget, and cancelled
+  calls**: duplicate panel IDs now execute once, judge output is validated before
+  synthesis, every requested tool call receives a protocol-valid response, and
+  cancellation stops before later paid stages.
+- **Made Pareto routing durable from dispatch through Mac claim**: active Wand
+  routing now fails closed when any selected runtime is missing, fan-out
+  parallelism matches Firestore bounds, concrete mobile/manual routes are no
+  longer replaced by the Mac default, and capability matching no longer reads
+  `proxy` as `pro`. Incomplete headless proof results no longer wrap one proven
+  model onto missing siblings.
+- **Made Ministry wand persistence atomic and diagnosable**: sanitization no
+  longer mutates caller data, concurrent saves use unique durable temp files,
+  read/write permission failures are structured, and freshly saved stores no
+  longer report timestamp-only rewrites.
+- **Made the signed Mac Elder workflow use one executable model contract**:
+  Wand settings and compatible chat engines now load the daemon's live catalog,
+  Automatic selection follows the gateway default, stale explicit choices fail
+  visibly, and exact advertised local Ollama IDs route without letting a local
+  provider shadow unrelated cloud models.
+- **Fixed signed-app startup and Wand settings navigation**: the packaged daemon
+  now carries its SQLCipher runtime before signing, background wiring repair no
+  longer crosses a main-actor boundary, and the dashboard opens Wand settings
+  on the requested page with the same live chat controller.
+- **Hardened production App Check readiness**: signed macOS builds select
+  DeviceCheck instead of trusting an inapplicable App Attest support probe, and
+  the production verifier now requires both enforcement and an uploaded
+  DeviceCheck key for the canonical Firebase app.
+- **Stopped database-encryption tests from touching a user's live Keychain**:
+  XCTest now uses an in-memory client plus a process-local account namespace.
+  Startup also preserves an existing encrypted database without creating a
+  replacement key when its original key is missing, and reports a specific
+  recovery error when the stored key is rejected.
+- **Stopped failed async database reads from crashing the app test host**: the
+  vendored GRDB queue now leaves read-only mode only after entering it, and
+  rolls back a failed commit before reusing the connection.
+
+### Fixed - Incremental conversation indexing
+
+- **Stopped steady-state conversation indexing from re-reading the full log
+  corpus every minute**: parser checkpoints now persist exact, content-free file
+  identities in a normalized SQLite manifest. Claude Code, Codex, Factory Droid,
+  Windsurf, and Hermes skip inputs already represented by the last successful
+  checkpoint while still admitting restored or copied transcripts whose
+  modification times predate the watermark. Byte-bounded passes persist only
+  safely committed identities and freeze the watermark until deferred inputs
+  are retried, so cold scans converge without gaps or silent truncation.
+### Added - Windows fleet safety parity
+
+- **Added fail-closed Remote Config polling for Windows Computer Use and
+  Mercury media**: an Auth plus TPM App Check-protected callable relays the
+  reviewed fleet booleans, while the desktop client validates a short server
+  lease every 60 seconds. The privileged input broker now checks an independent
+  expiring remote interlock on every dispatch, and remote recovery cannot clear
+  a manual or watchdog panic latch.
+### Fixed - Windows physical x64 usage-scan memory
+
+- **Isolated native Swift parsing from the long-lived WinUI process**: usage
+  scans now execute once in the signed companion CLI and exit, giving Windows a
+  deterministic native-heap reclamation boundary. The worker uses a reviewed
+  no-shell launch policy, bounded diagnostics, cancellation and timeout cleanup,
+  typed fail-closed errors, and a streamed internal protocol. Release CI proves
+  the real worker against the exact published x64 native-engine layout before
+  signing and locks the app composition root against an in-process regression.
+
+### Fixed - Windows Aurora physical validation
+
+- **Closed the physical-build and command-palette regressions found by the x64
+  screenshot run**: programmatic tab tooltips now use the WinUI attached-property
+  setter, the global brand font is inherited from a valid `Control`, and the
+  Aurora dialog style retains WinUI's required `ContentDialog` template so
+  `Ctrl+K` renders its controls instead of only the dimmed backdrop. Portable
+  source-contract tests lock all three framework requirements. Theme-aware
+  color aliases now feed gradient stops, code-painted glass plates re-resolve
+  for Light mode and reduced-transparency fallback, and Budget follows the
+  active Aurora canvas instead of mixing light text with a fixed dark plate.
+
+### Changed
+
+- **Droid wiki generation is local-only** — retired the failing unattended
+  Factory workflow after proving user-scoped API keys are rejected without an
+  active paid subscription. Committed `droid-wiki/` pages still reconcile to
+  mem0 through the post-commit hook and nightly mirror job.
+
+## [1.0.30] - 2026-07-17
+
+### Added — Shared Rust Console release evidence
+
+- Stable and Rust-authoritative Hosting deploys now consume the exact protected
+  Shared Rust candidate proof and rollback bytes. Live smoke verifies a
+  no-redirect deployment identity, normal evidence publishes immutably, and
+  explicit rollback is separately review-gated and every retained result binds
+  the exact deploy and evidence workflow attempts.
+- Protected Android bundles now embed the immutable release tag as their
+  `versionName`; native release verification rejects any filename/manifest
+  version split before publishing evidence.
+
+### Changed — Windows shell now renders the macOS Aurora liquid-glass design
+
+- **Full visual parity pass on the WinUI 3 app** (`windows/app/`): the shell now renders the
+  same Aurora "liquid glass" look as the macOS and Linux apps instead of the Pensieve
+  ink/brass recolor. The design-token pipeline gains an additive Aurora group
+  (`packages/design-tokens/tokens/aurora.tokens.json` — macOS dark/light ramps, liquid-glass
+  tint/stroke/sheen/shadow recipes, macOS type scale) emitted to CSS/Swift/Compose/WinUI from
+  the same DTCG source; the Windows theme is rebuilt on `ThemeDictionaries` (Light mode no
+  longer paints dark plates), the glass vocabulary carries the macOS card radius/hover
+  physics, and brand fonts (Outfit/Geist/JetBrains Mono/Fraunces, OFL) are bundled so type no
+  longer falls back to Segoe/Consolas. Tray flyout, command deck, chat bubbles, Settings,
+  onboarding, command palette, and dashboard all consume the new tokens; a CI gate
+  (`scripts/windows-port/check-xaml-token-discipline.sh`) blocks raw colors/fonts outside
+  `Theme/`. See `docs/windows-port/MAC_GLASS_PARITY_PASS.md` for the review map, validation
+  matrix, and Windows-host evidence checklist.
+
 ### Added — Liquid dashboard command deck
 
 - **A live, customizable command deck for the dashboard**: Added a dominant
@@ -40,6 +154,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Candidate-bound Shared Rust Functions releases** - production Functions
+  releases now verify the exact deterministic source run, protected signer run
+  and attempt, rollback bytes, selected compiled receipt, live source/version,
+  domain-core profile, and Sentry state before publishing immutable v2 release
+  evidence; manual legacy rollback uses a separately authorized and retained
+  proof path.
+- **Production Windows TPM App Check transport** - added authenticated
+  server-issued challenges, durable one-time replay protection, TPM-backed CNG
+  claim/public-key transport, a Windows `NCryptVerifyClaim` service, and
+  mandatory OAuth composition with no shipping mock-attestation fallback.
 - **Launch-readiness hardening** — added durable account-erasure barriers,
   resumable oldest-first reconciliation with poison-record quarantine, and
   privacy-safe retained audit receipts across Functions, Firestore, and Storage.
@@ -198,6 +322,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Recount cloud usage duplication** - makes Mac usage IDs deterministic across
   Recount reparses, removes stale same-device Firestore usage docs, and reports
   the full cloud-sync batch total to analytics.
+
+### Added - Windows 1.0.32 parity release
+
+- **Windows parity release line** - advances the Windows x64 and ARM64
+  direct-download candidates to the completed F1 product ledger and applicable
+  F2 source composition, including the local gateway, durable agent runs,
+  Computer Use, project-code memory, Elder Wand fusion, companion CLI,
+  Switcher, indexed search, connectors, and native release packaging.
+
+- **Signed native-engine packaging** - stages both the Core and Kernel SwiftPM
+  resource bundles beside the Windows native engine, hashes every resource in
+  its manifest, and executes the usage parser from the staged and published
+  layouts before Authenticode signing and portable/MSIX packaging.
+- **Physical certification integrity** - binds imported physical-device and
+  performance receipts to their raw hardware attestation and exact signed
+  artifact manifest hashes, rejecting virtual, stale, mismatched, or
+  substituted evidence.
+- **Windows artifact-profile validation** - accepts the UTF-8 BOM emitted by
+  MSBuild's `WriteLinesToFile` task while continuing to reject malformed or
+  mismatched signed domain-core profile receipts.
 
 ## [1.0.29] - 2026-07-05
 

@@ -36,7 +36,12 @@ if [[ -z "$changed_files" ]]; then
     exit 0
 fi
 
-production_changed="$(printf '%s\n' "$changed_files" | awk '/\/src\/main\// && $0 !~ /^android\/macrobenchmark\//')"
+production_changed="$(printf '%s\n' "$changed_files" | awk '
+  /\/src\/main\// &&
+  $0 !~ /^android\/macrobenchmark\// &&
+  $0 != "android/app/src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt" &&
+  $0 !~ /^android\/(burnbar-remote|openburnbar-domain-core|openburnbar-iroh-relay)\/src\/main\/java\/uniffi\//
+')"
 if [[ -z "$production_changed" ]]; then
     echo '{"diffCoverage":{"percent":100.0,"passed":true,"changedFiles":0,"surface":"android","method":"no_production_kotlin"}}'
     exit 0
@@ -78,6 +83,19 @@ changed = subprocess.check_output(
 changed = [c.strip() for c in changed if c.strip() and "/src/main/" in c]
 # android/macrobenchmark is on-device benchmark tooling (instrumented-only module, no JVM unit-test source set).
 changed = [c for c in changed if not c.startswith("android/macrobenchmark/")]
+# These three UniFFI trees are generated from Rust APIs and covered by binding drift/ABI gates.
+generated_uniffi_prefixes = (
+    "android/burnbar-remote/src/main/java/uniffi/",
+    "android/openburnbar-domain-core/src/main/java/uniffi/",
+    "android/openburnbar-iroh-relay/src/main/java/uniffi/",
+)
+changed = [c for c in changed if not c.startswith(generated_uniffi_prefixes)]
+# Style Dictionary owns this exact compile-time-constant file; token drift gates
+# validate the generator output, while JaCoCo cannot instrument const vals.
+generated_source_paths = {
+    "android/app/src/main/java/com/openburnbar/ui/tokens/PensieveTokens.kt",
+}
+changed = [c for c in changed if c not in generated_source_paths]
 if not changed:
     print(json.dumps({"diffCoverage": {"percent": 100.0, "passed": True, "surface": "android", "method": "no_production_kotlin"}}))
     raise SystemExit(0)
@@ -189,6 +207,19 @@ for rel_path in changed:
     identity = source_identity(rel_path)
     line_cov = coverage.get(identity)
     changed_lines = set(file_blocks.get(rel_path, []))
+    # A deletion-only diff (no added lines in the -U0 hunk) has zero
+    # executable lines to cover.  Report it as deletion_only and skip
+    # the JaCoCo lookup — there is nothing to instrument or attest.
+    if not changed_lines:
+        details.append({
+            "file": rel_path,
+            "executableLines": 0,
+            "coveredLines": 0,
+            "percent": 100.0,
+            "method": "deletion_only",
+            "sourceIdentity": identity,
+        })
+        continue
     if line_cov is None:
         missing_evidence.append(rel_path)
         details.append({
@@ -219,7 +250,10 @@ for rel_path in changed:
     details.append(entry)
 
 total_pct = 0.0 if total_exc <= 0 else round(total_hit * 100.0 / total_exc, 2)
-passed = not missing_evidence and total_exc > 0 and total_pct >= threshold
+# When every changed file is deletion-only (total_exc == 0) there are no
+# executable lines to gate; the run passes trivially as long as no file
+# is missing evidence.
+passed = not missing_evidence and (total_exc > 0 and total_pct >= threshold or total_exc == 0)
 print(json.dumps({
     "diffCoverage": {
         "percent": total_pct,

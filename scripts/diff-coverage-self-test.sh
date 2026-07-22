@@ -253,6 +253,7 @@ check "declaration-only no-evidence file passes with zero executable changed lin
 check "declaration-only verdict has zero changed executable lines" \
   "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
 
+
 # Missing lane evidence fails closed (no package lines json, no .build).
 rc=0
 OPENBURNBAR_COVERAGE_REPO_ROOT="$repo" DIFF_COVERAGE_SCOPE=packages \
@@ -383,6 +384,301 @@ extract_pkg() {
   OPENBURNBAR_COVERAGE_REPO_ROOT="$2" \
     "$scripts_dir/extract-package-coverage-lines.sh" "$1" > "$3"
 }
+
+# --- fixtures: Swift declaration-syntax false positives (no LLVM counters) -----
+#
+# LLVM emits no line counters for pure declaration syntax, so a no-evidence
+# file whose changed lines are ONLY declarations must contribute zero
+# executable lines (not fake-uncovered lines). These fixtures pin the exact
+# line shapes the classifier excludes and the negative controls it leaves
+# fail-closed. Every fixture uses a no-evidence file (no LCOV source record)
+# alongside a real-evidence companion, so the lane has valid evidence and the
+# no-evidence fallback — not the missing-lane path — classifies the file.
+
+# (1) Multiline func/init signatures and parameter lines with literal/default
+# values. The signature opener, the continuation parameter lines, the default
+# value expression lines, and the closing `) {` / `) -> Int {` tokens all emit
+# zero counters. The bodies are deliberately empty (`{ }`) so no executable
+# body statement is introduced. Pre-fix, the classifier only recognized
+# single-line stored properties and type shells, so a multiline signature's
+# parameter/default lines read as uncovered executable lines and the gate
+# failed a declaration-only change. Post-fix they are structural.
+make_multiline_sig_repo() {
+  local repo="$1"
+  mkdir -p "$repo/OpenBurnBarCore/Sources/DemoKit"
+  git -C "$repo" init -q -b main
+  git -C "$repo" config user.email selftest@openburnbar.invalid
+  git -C "$repo" config user.name "Diff Coverage Self-Test"
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Widget.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+EOF
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Decls.swift" <<'EOF'
+public struct Blank {
+}
+EOF
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm base
+  # New file: multiline init and func signatures with default-value parameters
+  # and empty bodies. None of these lines emit LLVM counters.
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Decls.swift" <<'EOF'
+public struct Decls {
+    public init(
+        _ value: Int,
+        label name: String = "default",
+        enabled: Bool = false
+    ) {
+    }
+    public func render(
+        at index: Int,
+        fallback: Int = 0
+    ) -> Int {
+    }
+}
+EOF
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm multiline-signature
+  git -C "$repo" rev-parse HEAD~1
+}
+repo_mlsig="$tmp_root/repo-multiline-sig"
+base_mlsig="$(make_multiline_sig_repo "$repo_mlsig")"
+lcov_mlsig="$tmp_root/fixture-multiline-sig.lcov"
+# Evidence names ONLY the untouched Widget.swift; Decls.swift is no_evidence.
+write_swift_lcov "$lcov_mlsig" "$repo_mlsig" \
+  "OpenBurnBarCore/Sources/DemoKit/Widget.swift" "DA:2,1" "DA:3,1"
+pkg_mlsig="$tmp_root/pkg-multiline-sig.json"
+extract_pkg "$lcov_mlsig" "$repo_mlsig" "$pkg_mlsig"
+verdict="$tmp_root/verdict-multiline-sig.json"
+rc="$(run_gate "$repo_mlsig" "$base_mlsig" packages 80 "$pkg_mlsig" "$verdict" "$tmp_root/err-multiline-sig.log")"
+check "multiline signature declarations pass with zero executable changed lines" "0" "$rc"
+check "multiline signature declarations contribute zero changed executable lines" \
+  "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "multiline signature file is excluded from the denominator (no gated files)" \
+  "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedFiles"]')"
+
+# (2) Simple static/stored literals and multiline bracket array/dictionary
+# stored-property initializers. A nil literal, a bool/number literal, and a
+# multiline `[ ... ]` / `[ ... : ... ]` initializer all emit zero counters.
+make_literal_init_repo() {
+  local repo="$1"
+  mkdir -p "$repo/OpenBurnBarCore/Sources/DemoKit"
+  git -C "$repo" init -q -b main
+  git -C "$repo" config user.email selftest@openburnbar.invalid
+  git -C "$repo" config user.name "Diff Coverage Self-Test"
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Widget.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+EOF
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Decls.swift" <<'EOF'
+public struct Blank {
+}
+EOF
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm base
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Decls.swift" <<'EOF'
+public struct Decls {
+    public static let maxSize: Int = 4096
+    public static let enabled: Bool = true
+    public static let optionalRef: String? = nil
+    public static let tiers: [String] = [
+        "alpha",
+        "beta",
+    ]
+    public static let labels: [String: Int] = [
+        "one": 1,
+        "two": 2,
+    ]
+}
+EOF
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm literal-initializers
+  git -C "$repo" rev-parse HEAD~1
+}
+repo_lit="$tmp_root/repo-literal-init"
+base_lit="$(make_literal_init_repo "$repo_lit")"
+lcov_lit="$tmp_root/fixture-literal-init.lcov"
+write_swift_lcov "$lcov_lit" "$repo_lit" \
+  "OpenBurnBarCore/Sources/DemoKit/Widget.swift" "DA:2,1" "DA:3,1"
+pkg_lit="$tmp_root/pkg-literal-init.json"
+extract_pkg "$lcov_lit" "$repo_lit" "$pkg_lit"
+verdict="$tmp_root/verdict-literal-init.json"
+rc="$(run_gate "$repo_lit" "$base_lit" packages 80 "$pkg_lit" "$verdict" "$tmp_root/err-literal-init.log")"
+check "static/stored literal initializers pass with zero executable changed lines" "0" "$rc"
+check "static/stored literal initializers contribute zero changed executable lines" \
+  "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "static/stored literal file is excluded from the denominator (no gated files)" \
+  "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedFiles"]')"
+
+# (3) Structural `do {` / `catch {` wrapper tokens are excluded, but unhit
+# catch-body statements are executable and stay in the denominator. This is a
+# MODIFICATION (not a new file) so the func signature is context, not added;
+# only the do/catch block is new. The `do {` and `} catch {` wrappers emit no
+# counters, yet the two `return` statements inside do/catch do, so leaving
+# them unhit fails the gate. This is the fail-closed half of the contract.
+make_docatch_repo() {
+  local repo="$1"
+  mkdir -p "$repo/OpenBurnBarCore/Sources/DemoKit"
+  git -C "$repo" init -q -b main
+  git -C "$repo" config user.email selftest@openburnbar.invalid
+  git -C "$repo" config user.name "Diff Coverage Self-Test"
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Widget.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+EOF
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Decls.swift" <<'EOF'
+public struct Decls {
+    public func load() -> Int {
+        return 0
+    }
+}
+EOF
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm base
+  # Replace the single return with a do/catch block. Only the do/catch lines
+  # are added; the func signature stays as context (not in the diff hunks).
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Decls.swift" <<'EOF'
+public struct Decls {
+    public func load() -> Int {
+        do {
+            return 1
+        } catch {
+            return 0
+        }
+    }
+}
+EOF
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm do-catch-wrappers
+  git -C "$repo" rev-parse HEAD~1
+}
+repo_dc="$tmp_root/repo-docatch"
+base_dc="$(make_docatch_repo "$repo_dc")"
+lcov_dc="$tmp_root/fixture-docatch.lcov"
+# Evidence covers Widget but NOT Decls, so Decls.swift is no_evidence. The
+# `do {` and `} catch {` wrappers are structural (excluded), the two `return`
+# lines are executable, and with no evidence both count uncovered.
+write_swift_lcov "$lcov_dc" "$repo_dc" \
+  "OpenBurnBarCore/Sources/DemoKit/Widget.swift" "DA:2,1" "DA:3,1"
+pkg_dc="$tmp_root/pkg-docatch.json"
+extract_pkg "$lcov_dc" "$repo_dc" "$pkg_dc"
+verdict="$tmp_root/verdict-docatch.json"
+rc="$(run_gate "$repo_dc" "$base_dc" packages 80 "$pkg_dc" "$verdict" "$tmp_root/err-docatch.log")"
+check "do/catch wrappers excluded but unhit do/catch bodies fail the gate" "1" "$rc"
+check "do/catch file gates exactly the two executable return lines" \
+  "2" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "do/catch file reports the unhit returns as no_evidence" \
+  "no_evidence" "$(json_get "$verdict" '[d for d in v["details"] if d["file"].endswith("Decls.swift")][0]["method"]')"
+check "do/catch no_evidence file has zero covered lines" \
+  "0" "$(json_get "$verdict" '[d for d in v["details"] if d["file"].endswith("Decls.swift")][0]["coveredLines"]')"
+
+# (4) Negative control: a `static let value = makeValue()` factory call emits a
+# counter (the initializer calls a function), so it must stay in the denominator
+# and fail closed when no evidence covers it. This proves the classifier does
+# not over-exclude callable initializer expressions.
+make_factory_repo() {
+  local repo="$1"
+  mkdir -p "$repo/OpenBurnBarCore/Sources/DemoKit"
+  git -C "$repo" init -q -b main
+  git -C "$repo" config user.email selftest@openburnbar.invalid
+  git -C "$repo" config user.name "Diff Coverage Self-Test"
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Widget.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+EOF
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Decls.swift" <<'EOF'
+public struct Blank {
+}
+EOF
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm base
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Decls.swift" <<'EOF'
+public struct Decls {
+    public static let value = makeValue()
+}
+EOF
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm factory-initializer
+  git -C "$repo" rev-parse HEAD~1
+}
+repo_fac="$tmp_root/repo-factory"
+base_fac="$(make_factory_repo "$repo_fac")"
+lcov_fac="$tmp_root/fixture-factory.lcov"
+write_swift_lcov "$lcov_fac" "$repo_fac" \
+  "OpenBurnBarCore/Sources/DemoKit/Widget.swift" "DA:2,1" "DA:3,1"
+pkg_fac="$tmp_root/pkg-factory.json"
+extract_pkg "$lcov_fac" "$repo_fac" "$pkg_fac"
+verdict="$tmp_root/verdict-factory.json"
+rc="$(run_gate "$repo_fac" "$base_fac" packages 80 "$pkg_fac" "$verdict" "$tmp_root/err-factory.log")"
+check "static let factory call stays gated (no over-exclusion)" "1" "$rc"
+check "static let factory call contributes one changed executable line" \
+  "1" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "static let factory call is reported as no_evidence (uncovered)" \
+  "no_evidence" "$(json_get "$verdict" '[d for d in v["details"] if d["file"].endswith("Decls.swift")][0]["method"]')"
+check "static let factory call has zero covered lines" \
+  "0" "$(json_get "$verdict" '[d for d in v["details"] if d["file"].endswith("Decls.swift")][0]["coveredLines"]')"
+
+# (5) Negative control: a closure initializer and its body emit counters and
+# stay fail-closed without evidence. The `= {` closure initializer line and
+# the `return` inside it are both executable; an unhit closure body must not
+# be misclassified as a stored-property literal.
+make_closure_init_repo() {
+  local repo="$1"
+  mkdir -p "$repo/OpenBurnBarCore/Sources/DemoKit"
+  git -C "$repo" init -q -b main
+  git -C "$repo" config user.email selftest@openburnbar.invalid
+  git -C "$repo" config user.name "Diff Coverage Self-Test"
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Widget.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+EOF
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Decls.swift" <<'EOF'
+public struct Blank {
+}
+EOF
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm base
+  cat > "$repo/OpenBurnBarCore/Sources/DemoKit/Decls.swift" <<'EOF'
+public struct Decls {
+    public static let provider: () -> Int = {
+        return 42
+    }
+}
+EOF
+  git -C "$repo" add -A
+  git -C "$repo" commit -qm closure-initializer
+  git -C "$repo" rev-parse HEAD~1
+}
+repo_clo="$tmp_root/repo-closure-init"
+base_clo="$(make_closure_init_repo "$repo_clo")"
+lcov_clo="$tmp_root/fixture-closure-init.lcov"
+write_swift_lcov "$lcov_clo" "$repo_clo" \
+  "OpenBurnBarCore/Sources/DemoKit/Widget.swift" "DA:2,1" "DA:3,1"
+pkg_clo="$tmp_root/pkg-closure-init.json"
+extract_pkg "$lcov_clo" "$repo_clo" "$pkg_clo"
+verdict="$tmp_root/verdict-closure-init.json"
+rc="$(run_gate "$repo_clo" "$base_clo" packages 80 "$pkg_clo" "$verdict" "$tmp_root/err-closure-init.log")"
+check "closure initializer stays gated (callable body is executable)" "1" "$rc"
+check "closure initializer contributes both the init line and body to the denominator" \
+  "2" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "closure initializer is reported as no_evidence (uncovered)" \
+  "no_evidence" "$(json_get "$verdict" '[d for d in v["details"] if d["file"].endswith("Decls.swift")][0]["method"]')"
+check "closure initializer has zero covered lines" \
+  "0" "$(json_get "$verdict" '[d for d in v["details"] if d["file"].endswith("Decls.swift")][0]["coveredLines"]')"
 
 move_pure="$(cat <<'EOF'
 public enum Helpers {
@@ -780,6 +1076,321 @@ check "app verdict uses line-level evidence" \
   "line_level(app)" "$(json_get "$verdict" 'v["details"][0]["method"]')"
 check "app scope excludes conditional-compilation directives from denominator" \
   "2" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+
+# The canonical Style Dictionary Swift output contains compile-time constants
+# and is validated by generator drift tests, so it cannot produce XCTest line
+# hits. Keep the waiver exact: an adjacent handwritten Swift token file must
+# remain fail-closed without its own evidence.
+repo_tokens="$tmp_root/repo-generated-design-tokens"
+mkdir -p "$repo_tokens/packages/design-tokens/dist/swift"
+git -C "$repo_tokens" init -q -b main
+git -C "$repo_tokens" config user.email selftest@openburnbar.invalid
+git -C "$repo_tokens" config user.name "Diff Coverage Self-Test"
+printf 'public enum Baseline {}\n' > "$repo_tokens/packages/design-tokens/dist/swift/Baseline.swift"
+git -C "$repo_tokens" add -A
+git -C "$repo_tokens" commit -qm base
+base_tokens="$(git -C "$repo_tokens" rev-parse HEAD)"
+cat > "$repo_tokens/packages/design-tokens/dist/swift/PensieveTokens.swift" <<'EOF'
+public enum PensieveTokens {
+    public static let accent = "#ff4f61"
+}
+EOF
+cat > "$repo_tokens/packages/design-tokens/dist/swift/HandwrittenTokens.swift" <<'EOF'
+public enum HandwrittenTokens {
+    public static func accent() -> String { "#ff4f61" }
+}
+EOF
+git -C "$repo_tokens" add -A
+git -C "$repo_tokens" commit -qm token-change
+tokens_summary="$tmp_root/generated-tokens-summary.json"
+tokens_lines="$tmp_root/generated-tokens-lines.json"
+printf '{"targets":[]}\n' > "$tokens_summary"
+printf '{"files":{}}\n' > "$tokens_lines"
+verdict="$tmp_root/verdict-generated-tokens.json"
+rc="$(run_app_gate "$repo_tokens" "$base_tokens" 80 "$tokens_summary" "$tokens_lines" "$verdict" "$tmp_root/err-generated-tokens.log")"
+check "canonical generated Swift tokens are explicitly waived" \
+  "packages/design-tokens/dist/swift/PensieveTokens.swift" \
+  "$(json_get "$verdict" 'v["waived"][0]["file"]')"
+check "adjacent handwritten Swift tokens remain coverage-gated" "1" "$rc"
+check "adjacent handwritten Swift tokens require line evidence" \
+  "no_evidence" "$(json_get "$verdict" 'v["details"][0]["method"]')"
+
+# --- fixture 13: TRUE whole-file `git mv` with a repointed import must charge
+# ONLY the changed line, not the relocated body (R-GH0; directly guards change 1
+# of the rename fix). This is the canonical god-module decomposition edit: a file
+# is `git mv`'d to a new module path and a single `import` line is added, staying
+# similar enough that git reports it as a rename (R). The moved body lines are
+# provided as MEASURED-and-UNHIT so any regression that charges them is visible as
+# a real coverage failure, not masked by the unmeasured-skip. Pre-fix, the gated
+# re-diff passed only the NEW path to `git diff --find-renames`, which cannot pair
+# the rename, so the ENTIRE relocated body read as brand-new-and-uncovered and the
+# gate FAILED (verified: pre-fix charges every body line; post-fix charges zero).
+# Full-pathspec --find-renames pairs the rename so only the added import (a
+# structural, non-executable line) remains, and the gate passes with nothing to
+# charge. This fixture FAILS on the pre-fix script and passes only with change 1.
+repo_mv="$tmp_root/repo-whole-file-mv"
+mkdir -p "$repo_mv/OpenBurnBarCore/Sources/DemoKit"
+git -C "$repo_mv" init -q -b main
+git -C "$repo_mv" config user.email selftest@openburnbar.invalid
+git -C "$repo_mv" config user.name "Diff Coverage Self-Test"
+{
+  echo "import Foundation"
+  echo "public enum RelocatedMod {"
+  for i in 1 2 3 4 5 6 7 8; do
+    echo "    public static func f$i(_ a: Int) -> Int {"
+    echo "        let r$i = a + $i"
+    echo "        return r$i"
+    echo "    }"
+  done
+  echo "}"
+} > "$repo_mv/OpenBurnBarCore/Sources/DemoKit/OldName.swift"
+git -C "$repo_mv" add -A
+git -C "$repo_mv" commit -qm base
+base_mv="$(git -C "$repo_mv" rev-parse HEAD)"
+# git mv to the new module home, then add exactly one repointed import line. The
+# file stays >50% similar, so git records this as a rename (R), the exact case
+# the pre-fix gated re-diff could not pair.
+git -C "$repo_mv" mv OpenBurnBarCore/Sources/DemoKit/OldName.swift \
+  OpenBurnBarCore/Sources/DemoKit/NewName.swift
+python3 - "$repo_mv/OpenBurnBarCore/Sources/DemoKit/NewName.swift" <<'PY'
+import sys
+p = sys.argv[1]
+with open(p, encoding="utf-8") as fh:
+    src = fh.read()
+with open(p, "w", encoding="utf-8") as fh:
+    fh.write(src.replace("import Foundation", "import Foundation\nimport Combine", 1))
+PY
+git -C "$repo_mv" add -A
+git -C "$repo_mv" commit -qm "git mv OldName -> NewName + repointed import"
+check "the whole-file relocation is recorded by git as a rename (R)" "R" \
+  "$(git -C "$repo_mv" diff --name-status --find-renames "$base_mv" HEAD \
+      -- '*.swift' | head -1 | cut -c1)"
+# Provide MEASURED-and-UNHIT evidence for every executable body line (3..35) so a
+# regression that re-charges the relocated body surfaces as an uncovered failure.
+mv_das=()
+for ln in $(seq 3 35); do mv_das+=("DA:$ln,0"); done
+lcov_mv="$tmp_root/fixture-whole-file-mv.lcov"
+write_swift_lcov "$lcov_mv" "$repo_mv" "OpenBurnBarCore/Sources/DemoKit/NewName.swift" \
+  "${mv_das[@]}"
+pkg_mv="$tmp_root/pkg-whole-file-mv.json"
+extract_pkg "$lcov_mv" "$repo_mv" "$pkg_mv"
+verdict="$tmp_root/verdict-whole-file-mv.json"
+rc="$(run_gate "$repo_mv" "$base_mv" packages 80 "$pkg_mv" "$verdict" "$tmp_root/err-whole-file-mv.log")"
+check "whole-file git-mv charges nothing but the repointed import (passes)" "0" "$rc"
+check "whole-file git-mv leaves the relocated body OUT of the denominator" \
+  "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "whole-file git-mv reports zero gated files (import is structural)" \
+  "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedFiles"]')"
+
+# --- fixture 14: move-then-edit SPLIT ACROSS TWO COMMITS in the range (R-GH0).
+# Commit 1 relocates a block Big.swift -> Helpers.swift byte-identically; commit 2
+# edits ONE relocated line at its new home (`* 9` -> `* 99`). The gate diffs the
+# NET base..HEAD, so the edited line's net text differs from its removed twin and
+# stays gated while the untouched relocated lines are credited. Proven both ways:
+# uncovered edited line fails; covered edited line passes. This guards that the
+# rename/move crediting reasons over the whole commit range, not a single commit.
+repo_me="$tmp_root/repo-move-then-edit"
+mkdir -p "$repo_me/OpenBurnBarCore/Sources/DemoKit"
+git -C "$repo_me" init -q -b main
+git -C "$repo_me" config user.email selftest@openburnbar.invalid
+git -C "$repo_me" config user.name "Diff Coverage Self-Test"
+cat > "$repo_me/OpenBurnBarCore/Sources/DemoKit/Big.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+
+public enum Mover {
+    public static func go(_ a: Int) -> Int {
+        let p = a + 3
+        let q = p * 9
+        return q
+    }
+}
+EOF
+cat > "$repo_me/OpenBurnBarCore/Sources/DemoKit/Helpers.swift" <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+}
+EOF
+git -C "$repo_me" add -A
+git -C "$repo_me" commit -qm base
+base_me="$(git -C "$repo_me" rev-parse HEAD)"
+cat > "$repo_me/OpenBurnBarCore/Sources/DemoKit/Big.swift" <<'EOF'
+public enum Widget {
+    public static func base() -> Int {
+        return 1
+    }
+}
+EOF
+cat > "$repo_me/OpenBurnBarCore/Sources/DemoKit/Helpers.swift" <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+}
+
+public enum Mover {
+    public static func go(_ a: Int) -> Int {
+        let p = a + 3
+        let q = p * 9
+        return q
+    }
+}
+EOF
+git -C "$repo_me" add -A
+git -C "$repo_me" commit -qm "commit1: byte-identical relocation"
+cat > "$repo_me/OpenBurnBarCore/Sources/DemoKit/Helpers.swift" <<'EOF'
+public enum Helpers {
+    public static func noop() -> Int {
+        return 0
+    }
+}
+
+public enum Mover {
+    public static func go(_ a: Int) -> Int {
+        let p = a + 3
+        let q = p * 99
+        return q
+    }
+}
+EOF
+git -C "$repo_me" add -A
+git -C "$repo_me" commit -qm "commit2: edit one relocated line"
+# Line 10 is the edited `let q = p * 99`; leave it UNHIT to prove it stays gated.
+lcov_me="$tmp_root/fixture-move-then-edit.lcov"
+write_swift_lcov "$lcov_me" "$repo_me" "OpenBurnBarCore/Sources/DemoKit/Helpers.swift" \
+  "DA:9,1" "DA:10,0" "DA:11,1"
+pkg_me="$tmp_root/pkg-move-then-edit.json"
+extract_pkg "$lcov_me" "$repo_me" "$pkg_me"
+verdict="$tmp_root/verdict-move-then-edit.json"
+rc="$(run_gate "$repo_me" "$base_me" packages 80 "$pkg_me" "$verdict" "$tmp_root/err-move-then-edit.log")"
+check "move-then-edit across two commits gates only the edited line" "1" "$rc"
+check "move-then-edit gates exactly one line (the net-edited literal)" \
+  "1" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "move-then-edit credits the untouched relocated lines (6 lines)" \
+  "6" "$(json_get "$verdict" 'v["pureMove"]["movedLines"]')"
+# Same range, but the edited line is now covered: the gate must pass.
+lcov_me_ok="$tmp_root/fixture-move-then-edit-ok.lcov"
+write_swift_lcov "$lcov_me_ok" "$repo_me" "OpenBurnBarCore/Sources/DemoKit/Helpers.swift" \
+  "DA:9,1" "DA:10,1" "DA:11,1"
+pkg_me_ok="$tmp_root/pkg-move-then-edit-ok.json"
+extract_pkg "$lcov_me_ok" "$repo_me" "$pkg_me_ok"
+verdict="$tmp_root/verdict-move-then-edit-ok.json"
+rc="$(run_gate "$repo_me" "$base_me" packages 80 "$pkg_me_ok" "$verdict" "$tmp_root/err-move-then-edit-ok.log")"
+check "move-then-edit passes when the single edited line is covered" "0" "$rc"
+
+# --- fixture 15: cross-PARTITION move crediting (R-GH0). A block relocates from
+# an app-partition file (AgentLens/, out of scope for the packages lane) INTO a
+# package-partition file (gated). The move pool draws from the FULL pathspec
+# across BOTH partitions, so the relocated block in the gated package file is
+# credited even though its removed twin lives in an out-of-scope source. This is
+# the god-module decomposition case (relocations cross module/lane boundaries);
+# it fails on the pre-fix bare `-U0` pool, which hid renamed/relocated content.
+repo_xp="$tmp_root/repo-cross-partition"
+mkdir -p "$repo_xp/OpenBurnBarCore/Sources/DemoKit" "$repo_xp/AgentLens/Services/Demo"
+git -C "$repo_xp" init -q -b main
+git -C "$repo_xp" config user.email selftest@openburnbar.invalid
+git -C "$repo_xp" config user.name "Diff Coverage Self-Test"
+cat > "$repo_xp/AgentLens/Services/Demo/AppSide.swift" <<'EOF'
+enum AppSide {
+    static func helper(_ a: Int) -> Int {
+        let m = a + 11
+        let n = m * 4
+        return n
+    }
+}
+EOF
+cat > "$repo_xp/OpenBurnBarCore/Sources/DemoKit/PkgSide.swift" <<'EOF'
+public enum PkgSide {
+    public static func existing() -> Int {
+        return 0
+    }
+}
+EOF
+git -C "$repo_xp" add -A
+git -C "$repo_xp" commit -qm base
+base_xp="$(git -C "$repo_xp" rev-parse HEAD)"
+cat > "$repo_xp/AgentLens/Services/Demo/AppSide.swift" <<'EOF'
+enum AppSide {
+}
+EOF
+cat > "$repo_xp/OpenBurnBarCore/Sources/DemoKit/PkgSide.swift" <<'EOF'
+public enum PkgSide {
+    public static func existing() -> Int {
+        return 0
+    }
+    static func helper(_ a: Int) -> Int {
+        let m = a + 11
+        let n = m * 4
+        return n
+    }
+}
+EOF
+git -C "$repo_xp" add -A
+git -C "$repo_xp" commit -qm "cross-partition relocation app -> package"
+# Evidence names only the pre-existing PkgSide.existing line; the relocated helper
+# body ships with zero new package tests and must still pass via the safe-harbor.
+lcov_xp="$tmp_root/fixture-cross-partition.lcov"
+write_swift_lcov "$lcov_xp" "$repo_xp" "OpenBurnBarCore/Sources/DemoKit/PkgSide.swift" "DA:3,1"
+pkg_xp="$tmp_root/pkg-cross-partition.json"
+extract_pkg "$lcov_xp" "$repo_xp" "$pkg_xp"
+verdict="$tmp_root/verdict-cross-partition.json"
+rc="$(run_gate "$repo_xp" "$base_xp" packages 80 "$pkg_xp" "$verdict" "$tmp_root/err-cross-partition.log")"
+check "cross-partition move (app -> package) is credited and passes with no new tests" "0" "$rc"
+check "cross-partition move credits the relocated body (5 lines)" \
+  "5" "$(json_get "$verdict" 'v["pureMove"]["movedLines"]')"
+check "cross-partition move leaves nothing in the coverage denominator" \
+  "0" "$(json_get "$verdict" 'v["diffCoverage"]["changedLines"]')"
+check "cross-partition source file is reported out of scope, never silently dropped" \
+  "AgentLens/Services/Demo/AppSide.swift" \
+  "$(json_get "$verdict" 'v["outOfScope"][0]["file"]')"
+
+# --- fixture 16: literal array and executable initializers regression test ----------
+# Base file should lack properties; changed file adds a pure literal array and
+# three executable initializers: a call, a transform, and an arithmetic expression.
+# LCOV should name an unrelated covered file so the changed file is no_evidence.
+# Assert exactly 3 executable changed lines and failure rc=1; pure literal stays excluded.
+repo_litexec="$tmp_root/repo-litexec"
+mkdir -p "$repo_litexec/OpenBurnBarCore/Sources/DemoKit"
+git -C "$repo_litexec" init -q -b main
+git -C "$repo_litexec" config user.email selftest@openburnbar.invalid
+git -C "$repo_litexec" config user.name "Diff Coverage Self-Test"
+cat > "$repo_litexec/OpenBurnBarCore/Sources/DemoKit/LiteralExec.swift" <<'EOF'
+public enum LiteralExec {
+}
+EOF
+git -C "$repo_litexec" add -A
+git -C "$repo_litexec" commit -qm base
+base_litexec="$(git -C "$repo_litexec" rev-parse HEAD)"
+cat > "$repo_litexec/OpenBurnBarCore/Sources/DemoKit/LiteralExec.swift" <<'EOF'
+public enum LiteralExec {
+    static let pureArray = [1, -2, 3]
+    static let execArray1 = [makeValue()]
+    static let execArray2 = [1].map(transform)
+    static let execArray3 = [1 + 2]
+}
+EOF
+git -C "$repo_litexec" add -A
+git -C "$repo_litexec" commit -qm "add literal and executable arrays"
+# LCOV evidence names ONLY Unrelated.swift, so LiteralExec.swift is no_evidence
+lcov_litexec="$tmp_root/fixture-litexec.lcov"
+write_swift_lcov "$lcov_litexec" "$repo_litexec" \
+  "OpenBurnBarCore/Sources/DemoKit/Unrelated.swift" "DA:2,1" "DA:3,1"
+pkg_litexec="$tmp_root/pkg-litexec.json"
+extract_pkg "$lcov_litexec" "$repo_litexec" "$pkg_litexec"
+verdict_litexec="$tmp_root/verdict-litexec.json"
+rc="$(run_gate "$repo_litexec" "$base_litexec" packages 80 "$pkg_litexec" "$verdict_litexec" "$tmp_root/err-litexec.log")"
+check "literal+exec arrays fail with exactly 3 executable changed lines" "1" "$rc"
+check "literal+exec arrays count only executable lines in denominator" \
+  "3" "$(json_get "$verdict_litexec" 'v["diffCoverage"]["changedLines"]')"
+check "literal+exec arrays file is reported as no_evidence" \
+  "no_evidence" "$(json_get "$verdict_litexec" '[d for d in v["details"] if d["file"].endswith("LiteralExec.swift")][0]["method"]')"
+check "literal+exec arrays have zero covered lines" \
+  "0" "$(json_get "$verdict_litexec" '[d for d in v["details"] if d["file"].endswith("LiteralExec.swift")][0]["coveredLines"]')"
 
 # -----------------------------------------------------------------------------
 

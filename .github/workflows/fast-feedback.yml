@@ -12,7 +12,7 @@ name: Fast Feedback (<5 min)
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -26,9 +26,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  classify:
+    uses: ./.github/workflows/ci-impact.yml
+
   # ── Functions: lint + typecheck + unit tests ──────────────────────────────
   functions-fast:
     name: Functions (lint + types + unit tests)
+    needs: classify
+    if: needs.classify.outputs.functions == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -89,6 +94,8 @@ jobs:
   # ── Extension: lint + typecheck + unit tests ─────────────────────────────
   extension-fast:
     name: Extension (lint + types + unit tests)
+    needs: classify
+    if: needs.classify.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -242,6 +249,8 @@ jobs:
   # ── Website: typecheck + lint ─────────────────────────────────────────────
   website-fast:
     name: Website (types + lint + format)
+    needs: classify
+    if: needs.classify.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -281,6 +290,7 @@ jobs:
             packages/libsignal-bridge/package-lock.json
             packages/libsignal-protocol/package-lock.json
             packages/signal-envelope-contracts/package-lock.json
+            apps/linux-desktop/package-lock.json
 
       - name: Install TypeScript package dependencies
         run: |
@@ -291,7 +301,8 @@ jobs:
             tools/openburnbar-mcp-remote \
             packages/libsignal-bridge \
             packages/libsignal-protocol \
-            packages/signal-envelope-contracts
+            packages/signal-envelope-contracts \
+            apps/linux-desktop
           do
             echo "::group::npm ci --prefix ${dir}"
             npm ci --prefix "${dir}"
@@ -306,12 +317,16 @@ jobs:
             services/hosted-mcp \
             tools/openburnbar-mcp-remote \
             packages/libsignal-protocol \
-            packages/signal-envelope-contracts
+            packages/signal-envelope-contracts \
+            apps/linux-desktop
           do
             echo "::group::npm run lint --prefix ${dir}"
             npm run lint --prefix "${dir}"
             echo "::endgroup::"
           done
+
+      - name: Linux desktop TypeScript typecheck floor
+        run: npm run typecheck --prefix apps/linux-desktop
 
   # ── Shell scripts: syntax validation ────────────────────────────────────
   sqlite-schema-doc:
@@ -377,7 +392,9 @@ jobs:
   sqlcipher-codec-policy:
     name: SQLCipher codec policy
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    # Checkout can consume nearly two minutes during GitHub fetch degradation;
+    # leave enough time for the required policy check to run afterward.
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -681,6 +698,8 @@ jobs:
   # ── Web console (app.burnbar.ai): lint + types + tests + static build ──────
   console-web:
     name: Console (lint + types + tests + build)
+    needs: classify
+    if: needs.classify.outputs.console == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -691,6 +710,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/console/package-lock.json
+
+      - name: Resolve signed console domain-core candidate
+        run: |
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format github-env-web >> "$GITHUB_ENV"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --format json --output apps/console/public/domain-core-build-profile.json
 
       - name: Install console dependencies
         run: npm ci --prefix apps/console
@@ -708,6 +732,9 @@ jobs:
 
       - name: Static build (next export)
         run: npm run build --prefix apps/console
+
+      - name: Verify signed console runtime artifact
+        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --expected-candidate-commit "$GITHUB_SHA" --console-dir apps/console/out
 
   # ── Version consistency ────────────────────────────────────────────────────
   version-consistency:
@@ -799,7 +826,7 @@ jobs:
           fi
           git diff --name-only "$base" "$head" > /tmp/fast-feedback-changed-paths.txt
           cat /tmp/fast-feedback-changed-paths.txt
-          if grep -Eq '^(crates/(openburnbar-iroh|project-code-static-parser)/|\.github/workflows/fast-feedback\.yml$|\.cargo/config(\.toml)?$|\.?rustfmt\.toml$|clippy\.toml$|rust-toolchain(\.toml)?$|Cargo\.(toml|lock)$)' /tmp/fast-feedback-changed-paths.txt; then
+          if grep -Eq '^(crates/(openburnbar-iroh|openburnbar-domain-core|project-code-static-parser)/|\.github/workflows/fast-feedback\.yml$|\.cargo/config(\.toml)?$|\.?rustfmt\.toml$|clippy\.toml$|rust-toolchain(\.toml)?$|Cargo\.(toml|lock)$)' /tmp/fast-feedback-changed-paths.txt; then
             echo "rust_changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust_changed=false" >> "$GITHUB_OUTPUT"
@@ -809,7 +836,7 @@ jobs:
   rust-deny-fast:
     name: Rust (fmt + clippy + cargo-deny)
     needs: fast-feedback-path-filter
-    if: needs.fast-feedback-path-filter.outputs.rust_changed == 'true'
+    if: always() && (needs.fast-feedback-path-filter.result != 'success' || needs.fast-feedback-path-filter.outputs.rust_changed != 'false')
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -828,6 +855,7 @@ jobs:
         with:
           workspaces: |
             crates/openburnbar-iroh -> target
+            crates/openburnbar-domain-core -> target
             crates/project-code-static-parser -> target
 
       - name: cargo fmt check (openburnbar-iroh)
@@ -835,6 +863,9 @@ jobs:
 
       - name: cargo fmt check (project-code-static-parser)
         run: cargo fmt --manifest-path crates/project-code-static-parser/Cargo.toml --check
+
+      - name: cargo fmt check (openburnbar-domain-core)
+        run: cargo fmt --manifest-path crates/openburnbar-domain-core/Cargo.toml --all --check
 
       - name: cargo clippy deny warnings (openburnbar-iroh)
         run: |
@@ -846,6 +877,13 @@ jobs:
       - name: cargo clippy deny warnings (project-code-static-parser)
         run: |
           cargo clippy --manifest-path crates/project-code-static-parser/Cargo.toml --all-targets -- \
+            -D warnings \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used
+
+      - name: cargo clippy deny warnings (openburnbar-domain-core)
+        run: |
+          cargo clippy --manifest-path crates/openburnbar-domain-core/Cargo.toml --workspace --all-targets -- \
             -D warnings \
             -D clippy::unwrap_used \
             -D clippy::expect_used
@@ -874,9 +912,14 @@ jobs:
       - name: cargo deny check (openburnbar-iroh)
         run: cd crates/openburnbar-iroh && cargo deny check
 
+      - name: cargo deny check (openburnbar-domain-core)
+        run: cd crates/openburnbar-domain-core && cargo deny check
+
   # ── Security vitest + iroh bindgen gate ───────────────────────────────────
   functions-security-fast:
     name: Functions (security vitest)
+    needs: classify
+    if: needs.classify.outputs.functions == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1169,6 +1212,8 @@ jobs:
   # Each is self-contained (no emulator/secrets) and exits non-zero on a regression.
   functions-correctness:
     name: Functions (money + compliance harnesses)
+    needs: classify
+    if: needs.classify.outputs.functions == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
@@ -1249,6 +1294,9 @@ jobs:
       - name: Rust panic debt budget (unwrap/expect)
         run: ./scripts/debt/check-rust-panic-budget.sh
 
+      - name: Force-unwrap debt budget (shrink-only ratchet)
+        run: ./scripts/debt/check-force-unwrap-budget.sh
+
       - name: Swift file-size debt budget (shrink-only)
         run: ./scripts/debt/check-swift-file-size-budget.sh
 
@@ -1301,6 +1349,7 @@ jobs:
   fast-feedback-gate:
     name: Fast Feedback Gate
     needs:
+      - classify
       - fast-feedback-path-filter
       - functions-fast
       - extension-fast
@@ -1331,16 +1380,42 @@ jobs:
     if: always()
     steps:
       - name: Check all fast jobs passed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          RUST_CHANGED: ${{ needs.fast-feedback-path-filter.outputs.rust_changed }}
+          FUNCTIONS_REQUIRED: ${{ needs.classify.outputs.functions }}
+          WEB_REQUIRED: ${{ needs.classify.outputs.web }}
+          CONSOLE_REQUIRED: ${{ needs.classify.outputs.console }}
         run: |
-          results='${{ toJSON(needs) }}'
-          failed=$(echo "$results" | python3 -c "
-          import json, sys
+          set -euo pipefail
+          failed=$(printf '%s\n' "$NEEDS_JSON" | python3 -c "
+          import json, os, sys
           data = json.load(sys.stdin)
-          failed = [k for k, v in data.items() if v.get('result') not in ('success', 'skipped')]
-          print('\n'.join(failed))
+          detector_result = data.get('fast-feedback-path-filter', {}).get('result')
+          rust_changed = os.environ.get('RUST_CHANGED', '')
+          selected = {
+              'functions-fast': os.environ.get('FUNCTIONS_REQUIRED') == 'true',
+              'functions-security-fast': os.environ.get('FUNCTIONS_REQUIRED') == 'true',
+              'functions-correctness': os.environ.get('FUNCTIONS_REQUIRED') == 'true',
+              'extension-fast': os.environ.get('WEB_REQUIRED') == 'true',
+              'website-fast': os.environ.get('WEB_REQUIRED') == 'true',
+              'console-web': os.environ.get('CONSOLE_REQUIRED') == 'true',
+          }
+          failed = []
+          for name, value in data.items():
+              result = value.get('result')
+              if result == 'success':
+                  continue
+              if (name == 'rust-deny-fast' and result == 'skipped'
+                      and detector_result == 'success' and rust_changed == 'false'):
+                  continue
+              if name in selected and result == 'skipped' and not selected[name]:
+                  continue
+              failed.append(name + ' (result=' + str(result or 'missing') + ')')
+          print('\\n'.join(failed))
           ")
           if [[ -n "$failed" ]]; then
-            echo "::error::The following fast feedback jobs failed:"
+            echo "::error::The following fast feedback jobs did not succeed:"
             echo "$failed"
             exit 1
           fi

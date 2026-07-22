@@ -55,6 +55,8 @@
     <Compile Include="ProviderDisplayTests.cs" />
     <Compile Include="FlowLayoutMathTests.cs" />
     <Compile Include="HermesSetupModelTests.cs" />
+    <Compile Include="WindowHandleProviderInheritanceTests.cs" />
+    <Compile Include="DirectoryBuildPropsInheritanceTests.cs" />
   </ItemGroup>
 
 </Project>

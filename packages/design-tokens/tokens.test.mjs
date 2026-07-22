@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -83,6 +83,62 @@ test("WinUI XAML emits every color as #AARRGGBB (WinUI cannot parse rgba())", ()
   assert.ok(winuiXaml.includes('x:Key="PensieveColorGlassLine">#14FFFFFF<'), "glass.line alpha fold drifted");
   // Opaque #rrggbb gains an explicit #FF alpha; brass.core is the brand accent.
   assert.ok(winuiXaml.includes('x:Key="PensieveColorBrassCore">#FFFA6B06<'), "brass.core opaque alpha missing");
+});
+
+test("aurora.tokens.json (macOS Aurora + liquid glass) lands on every platform", () => {
+  // CSS custom properties (kebab-case).
+  for (const v of [
+    "--color-macos-ember: #fa5053",
+    "--color-macos-bg: #0d1117",
+    "--color-aurora-light-bg: #f3e8e6",
+    "--glass-tint-elevated: rgba(31, 38, 48, 0.55)",
+    "--glass-stroke-frost: rgba(255, 255, 255, 0.12)",
+    "--glass-inner-light: rgba(255, 255, 255, 0.12)",
+    "--type-size-body: 14px",
+    "--radius-xl: 22px",
+  ]) {
+    assert.ok(css.includes(v), `CSS missing aurora token: ${v}`);
+  }
+  // WinUI XAML: alpha folds + type sizes as x:Double + radius convenience shapes.
+  assert.ok(winuiXaml.includes('x:Key="PensieveColorMacosEmber">#FFFA5053<'), "macos.ember missing from XAML");
+  assert.ok(winuiXaml.includes('x:Key="PensieveGlassTintElevated">#8C1F2630<'), "glass.tint.elevated alpha fold drifted");
+  assert.ok(winuiXaml.includes('x:Key="PensieveGlassTintBase">#7A161B22<'), "glass.tint.base alpha fold drifted");
+  assert.ok(winuiXaml.includes('x:Key="PensieveGlassSelectionFill">#14FA5053<'), "glass.selection.fill alpha fold drifted");
+  assert.ok(winuiXaml.includes('x:Key="PensieveColorAuroraLightEmber">#FFF45B69<'), "auroraLight.ember missing from XAML");
+  assert.ok(winuiXaml.includes('x:Key="PensieveTypeSizeBody">14<'), "type.size.body must emit as x:Double");
+  assert.ok(winuiXaml.includes('x:Key="PensieveRadiusXlCorner">22<'), "radius.xl must emit a CornerRadius");
+  assert.ok(winuiXaml.includes('x:Key="PensieveSpaceXxsThickness">2<'), "space.xxs must emit a Thickness");
+  // Swift + C# constants (verbatim rgba strings, same as CSS).
+  assert.ok(swift.includes('colorMacosEmber: String = "#fa5053"'), "Swift missing macos.ember");
+  assert.ok(swift.includes('glassTintElevated: String = "rgba(31, 38, 48, 0.55)"'), "Swift missing glass.tint.elevated");
+  assert.ok(winuiCs.includes('public const string ColorMacosEmber = "#fa5053";'), "C# missing macos.ember");
+  // Shell accent now resolves to the macOS Aurora ember (design oracle), not Pensieve brass.
+  assert.ok(winuiXaml.includes('x:Key="OBBAccentColor">#FFFA5053<'), "OBBAccentColor must be macOS ember");
+  assert.ok(
+    winuiXaml.includes('x:Key="OBBMonoFontFamily">ms-appx:///Assets/Fonts/jetbrains-mono.ttf#JetBrains Mono,'),
+    "legacy shell mono resources must resolve the bundled JetBrains Mono font",
+  );
+});
+
+test("Windows brand fonts are packaged and referenced by their ms-appx family URIs", () => {
+  const appRoot = join(HERE, "..", "..", "windows", "app", "OpenBurnBar.App");
+  const typography = readFileSync(join(appRoot, "Theme", "Typography.xaml"), "utf8");
+  const project = readFileSync(join(appRoot, "OpenBurnBar.App.csproj"), "utf8");
+  const fonts = [
+    ["outfit.ttf", "Outfit"],
+    ["geist.ttf", "Geist"],
+    ["jetbrains-mono.ttf", "JetBrains Mono"],
+    ["fraunces.ttf", "Fraunces"],
+  ];
+
+  assert.ok(project.includes('Content Include="Assets\\Fonts\\*.ttf"'), "WinUI project must package the font assets");
+  for (const [file, family] of fonts) {
+    assert.ok(existsSync(join(appRoot, "Assets", "Fonts", file)), `missing packaged font: ${file}`);
+    assert.ok(
+      typography.includes(`ms-appx:///Assets/Fonts/${file}#${family}`),
+      `Typography.xaml does not bind ${file} to ${family}`,
+    );
+  }
 });
 
 test("WinUI XAML preserves the shell semantic OBB* keys + demonstrates every WinUI type", () => {

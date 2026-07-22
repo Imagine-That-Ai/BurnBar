@@ -10,6 +10,18 @@ let buildLinuxSecurityOnly = ProcessInfo.processInfo.environment["OPENBURNBAR_LI
 let disableBurnBarRemoteXCFramework = ProcessInfo.processInfo.environment[
     "OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK"
 ] == "1"
+// Domain-core consumer linkage: when the focused domain-core test job links the
+// pre-built OpenBurnBarDomainCore.xcframework (a Rust staticlib) alongside the
+// locally-built libsignal-ffi (also a Rust staticlib), both archives embed Rust
+// runtime objects whose `_rust_eh_personality` collides at link time. Setting
+// OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE=1 makes `hasLibSignalSwiftPackage`
+// false — mirroring `disableBurnBarRemoteXCFramework` — so the local LibSignalClient
+// Swift package and its libsignal_ffi.a are pruned from the package graph. The
+// SignalCore/SignalSessionTransport targets compile with their existing
+// unavailable stubs and the full-app CI gates still exercise real libsignal.
+let disableLibSignalSwiftPackage = ProcessInfo.processInfo.environment[
+    "OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE"
+] == "1"
 #if os(Windows)
 let buildOnWindows = true
 #else
@@ -77,7 +89,7 @@ let hasLegacySignalFfiXCFramework = FileManager.default.fileExists(
         .standardizedFileURL
         .path
 )
-let hasLibSignalSwiftPackage = FileManager.default.fileExists(
+let hasLibSignalSwiftPackage = !disableLibSignalSwiftPackage && FileManager.default.fileExists(
     atPath: packageRoot
         .appendingPathComponent("../Vendor/libsignal/swift/Package.swift")
         .standardizedFileURL
@@ -143,6 +155,10 @@ var packageProductsBase: [Product] = [
     .library(
         name: "OpenBurnBarKernelContracts",
         targets: ["OpenBurnBarKernelContracts"]
+    ),
+    .library(
+        name: "OpenBurnBarDomainCoreRuntime",
+        targets: ["OpenBurnBarDomainCoreRuntime"]
     ),
     // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): the cross-platform
     // (Apple + Linux + Windows) engine-layer targets carved out of the
@@ -455,6 +471,17 @@ let signalSessionTransportTestFallbackExcludes: [String] = hasLibSignalSwiftPack
     "OBBSignalSessionOverIrohTests.swift"
 ]
 
+// LinuxCoreFoundationTests calls `OpenBurnBarSignalAtRest.sealPayload`/`openPayload`
+// which exist only in the full LibSignalClient-backed implementation, not in the
+// unavailable fallback stub. Exclude that file ONLY when libsignal is explicitly
+// pruned via OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE=1 (the focused macOS
+// domain-core consumer mode). On Linux/Windows, where `hasLibSignalSwiftPackage`
+// is always false, the file compiles against the fallback stub and MUST run —
+// it is part of the Linux core-foundation test floor.
+let linuxCoreFoundationSignalTestExcludes: [String] = disableLibSignalSwiftPackage ? [
+    "LinuxCoreFoundationTests.swift"
+] : []
+
 let signalBinaryTargets: [Target] = {
     var targets: [Target] = []
     if hasSignalFfiIOSXCFramework {
@@ -519,7 +546,7 @@ let swiftTestingPackageDependencies: [Package.Dependency] = [
 #endif
 let swiftCryptoDependency: Target.Dependency = .product(name: "Crypto", package: "swift-crypto")
 // Windows-port Tier-A seam (PHASE1_CORE_SPLIT_PLAN.md, PR-2): OpenBurnBarCore's
-// crypto is centralized in `Platform/PlatformSupport.swift`, which resolves to
+// crypto is centralized in `OpenBurnBarPlatformSupport/PlatformSupport.swift`, which resolves to
 // CryptoKit on Apple via `#if canImport(CryptoKit)` and to swift-crypto's
 // `Crypto` module only in the `#else` (non-Apple) branch. Gate Core's
 // swift-crypto product to Windows/Linux so the **Apple** link/product graph
@@ -735,14 +762,27 @@ let computerUseCoreTestExcludes = [
 ]
 let legacyLinuxTestSources: [String]? = ["LinuxEmptyTests.swift"]
 #if os(Linux)
-let openBurnBarCoreOffAppleTestSources: [String]? = ["LLMSafeWrapVectorTests.swift"]
+let openBurnBarCoreOffAppleTestSources: [String]? = [
+    "LiftedParserBoundaryTests.swift",
+    "LLMSafeWrapVectorTests.swift",
+    "ParserAutoReleasePoolTests.swift",
+    "ParserParseOptionsTests.swift",
+    "ParserResourceGovernorTests.swift"
+]
 let openBurnBarCorePlaceholderExcludes = ["LinuxEmptyTests.swift"]
 let computerUseCoreOffAppleTestSources: [String]? = [
     "LinuxSecretStorageTests.swift",
     "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
 ]
 #else
-let openBurnBarCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift", "LLMSafeWrapVectorTests.swift"]
+let openBurnBarCoreOffAppleTestSources: [String]? = [
+    "LiftedParserBoundaryTests.swift",
+    "LinuxEmptyTests.swift",
+    "LLMSafeWrapVectorTests.swift",
+    "ParserAutoReleasePoolTests.swift",
+    "ParserParseOptionsTests.swift",
+    "ParserResourceGovernorTests.swift"
+]
 let openBurnBarCorePlaceholderExcludes: [String] = []
 let computerUseCoreOffAppleTestSources: [String]? = ["LinuxEmptyTests.swift"]
 #endif
@@ -762,7 +802,11 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
         let relativePath = String(url.path.dropFirst(targetURL.path.count + 1))
         return [
             "LinuxEmptyTests.swift",
+            "LiftedParserBoundaryTests.swift",
             "LLMSafeWrapVectorTests.swift",
+            "ParserAutoReleasePoolTests.swift",
+            "ParserParseOptionsTests.swift",
+            "ParserResourceGovernorTests.swift",
             "LinuxSecretStorageTests.swift",
             "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
         ].contains(relativePath)
@@ -954,6 +998,19 @@ let firstPartyTargetsBase: [Target] = [
                 .brew(["zlib"])
             ]
         ),
+        // Cross-platform crypto, logging, and Foundation concurrency shims.
+        // Kernel re-exports this lower-level leaf so moving these primitives
+        // does not expand the public import surface.
+        .target(
+            name: "OpenBurnBarPlatformSupport",
+            dependencies: [swiftCryptoNonAppleDependency]
+        ),
+        // Shared-Rust rollout policy and evidence primitives. This leaf stays
+        // Foundation-only so Kernel, Quota, LogParsers, and platform shells can
+        // share one fail-closed authority contract without regrowing Kernel.
+        .target(
+            name: "OpenBurnBarDomainCoreRuntime"
+        ),
         // Phase-1 K1 kernel (see the OpenBurnBarKernel product comment above).
         // remediation(typespec-strangler): the generated Firestore canon stays
         // linked into the production graph — the `import OpenBurnBarFirestoreModels`
@@ -964,6 +1021,8 @@ let firstPartyTargetsBase: [Target] = [
         .target(
             name: "OpenBurnBarKernel",
             dependencies: [
+                "OpenBurnBarPlatformSupport",
+                "OpenBurnBarDomainCoreRuntime",
                 "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency,
                 // Phase-2 WS-K (Kernel diet, docs/CORE_DECOMPOSITION_PROGRAM.md): the
@@ -977,7 +1036,7 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarKernelModels",
                 "OpenBurnBarKernelCrypto",
                 "OpenBurnBarKernelContracts"
-            ],
+            ] + domainCoreDependencies,
             resources: [.process("Resources")]
         ),
         // Phase-2 WS-K (Kernel diet): the 4 sub-targets of OpenBurnBarKernel. At S0
@@ -1038,8 +1097,13 @@ let firstPartyTargetsBase: [Target] = [
             exclude: openBurnBarSQLiteReaderExcludes
         ),
         .target(
+            name: "OpenBurnBarParserSupport",
+            dependencies: ["OpenBurnBarKernel"]
+        ),
+        .target(
             name: "OpenBurnBarLogParsers",
-            dependencies: ["OpenBurnBarKernel", "OpenBurnBarSQLiteReader"],
+            dependencies: ["OpenBurnBarKernel", "OpenBurnBarSQLiteReader", "OpenBurnBarParserSupport"]
+                + domainCoreDependencies,
             exclude: openBurnBarLogParsersExcludes
         ),
         .target(
@@ -1068,7 +1132,10 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "OpenBurnBarVectorKit",
-            dependencies: ["OpenBurnBarKernel"],
+            dependencies: [
+                "OpenBurnBarKernel",
+                "OpenBurnBarDomainCoreRuntime"
+            ] + domainCoreDependencies,
             exclude: openBurnBarVectorKitExcludes
         ),
         .target(
@@ -1280,6 +1347,7 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarSignalSessionTransport",
                 swiftCryptoDependency
             ] + swiftTestingAppleDependencies,
+            exclude: linuxCoreFoundationSignalTestExcludes,
             resources: [
                 .process("Fixtures")
             ],
@@ -1287,8 +1355,14 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .testTarget(
             name: "OpenBurnBarCoreTests",
+            // Native-required migration tests must import the generated binding
+            // directly so an absent or stale ABI cannot compile into a skipped assertion.
             dependencies: [
                 "OpenBurnBarCore",
+                "OpenBurnBarDomainCoreRuntime",
+                "OpenBurnBarKernel",
+                "OpenBurnBarLogParsers",
+                "OpenBurnBarSQLiteReader",
                 "OpenBurnBarFirestoreModels",
                 "OpenBurnBarLinuxSecurity",
                 // P-13 AE-TESTABLE: `ZAIQuotaAdapterTests` reaches the INTERNAL
@@ -1305,7 +1379,7 @@ let firstPartyTargetsBase: [Target] = [
                 // linkable in the test host. Acyclic: OpenBurnBarCoreCAbi depends only on
                 // OpenBurnBarCore, and a test target adding it introduces no product cycle.
                 "OpenBurnBarCoreCAbi"
-            ] + swiftTestingAppleDependencies,
+            ] + domainCoreDependencies + swiftTestingAppleDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes
                 + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests"),

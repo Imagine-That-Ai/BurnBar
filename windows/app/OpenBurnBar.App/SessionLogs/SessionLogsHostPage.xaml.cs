@@ -24,5 +24,10 @@ public sealed partial class SessionLogsHostPage : Page
         var viewModel = new SessionLogsViewModel(source);
         LogsView.SetModel(viewModel);
         await LogsView.LoadAsync();
+
+        if (e.Parameter is SessionLogsNavigationRequest request)
+        {
+            LogsView.SelectSession(request.SessionId);
+        }
     }
 }

@@ -14,6 +14,7 @@ using System.IO.Pipes;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenBurnBar.Pal.Ipc;
+using OpenBurnBar.Pal.Ipc.Windows.Interop;
 
 namespace OpenBurnBar.Pal.Ipc.Windows;
 
@@ -25,6 +26,7 @@ public sealed class NamedPipePeerAuthConnector
     private readonly string _pipeName;
     private readonly Func<INonceSigner> _selfSignerFactory;
     private readonly Func<INonceVerifier> _peerVerifierFactory;
+    private readonly PeerImageValidator? _serverImageValidator;
 
     /// <param name="pipeName">The daemon pipe name (without the <c>\\.\pipe\</c> prefix).</param>
     /// <param name="selfSignerFactory">This side's transcript signer (CNG in production).</param>
@@ -32,11 +34,13 @@ public sealed class NamedPipePeerAuthConnector
     public NamedPipePeerAuthConnector(
         string pipeName,
         Func<INonceSigner> selfSignerFactory,
-        Func<INonceVerifier> peerVerifierFactory)
+        Func<INonceVerifier> peerVerifierFactory,
+        PeerImageValidator? serverImageValidator = null)
     {
         _pipeName = pipeName ?? throw new ArgumentNullException(nameof(pipeName));
         _selfSignerFactory = selfSignerFactory ?? throw new ArgumentNullException(nameof(selfSignerFactory));
         _peerVerifierFactory = peerVerifierFactory ?? throw new ArgumentNullException(nameof(peerVerifierFactory));
+        _serverImageValidator = serverImageValidator;
     }
 
     /// <summary>
@@ -59,6 +63,19 @@ public sealed class NamedPipePeerAuthConnector
             await pipe.ConnectAsync(connectTimeoutMs, cancellationToken).ConfigureAwait(false);
             pipe.ReadMode = PipeTransmissionMode.Message;
 
+            if (_serverImageValidator is not null)
+            {
+                if (!NativeMethods.GetNamedPipeServerProcessId(pipe.SafePipeHandle, out uint serverPid))
+                {
+                    throw new InvalidOperationException("Cannot resolve the watchdog pipe server identity.");
+                }
+                PeerImageVerdict image = _serverImageValidator.Validate(serverPid);
+                if (!image.Trusted)
+                {
+                    throw new InvalidOperationException("The watchdog pipe server image is not first-party trusted.");
+                }
+            }
+
             if (!await RunMutualHandshakeAsync(pipe, cancellationToken).ConfigureAwait(false))
             {
                 throw new InvalidOperationException("Daemon handshake failed; refusing the connection.");
@@ -77,18 +94,26 @@ public sealed class NamedPipePeerAuthConnector
     {
         INonceSigner signer = _selfSignerFactory();
         INonceVerifier peerVerifier = _peerVerifierFactory();
-        var endpoint = new MutualHandshakeEndpoint(HandshakeRole.Initiator, signer, peerVerifier);
+        try
+        {
+            var endpoint = new MutualHandshakeEndpoint(HandshakeRole.Initiator, signer, peerVerifier);
 
-        // Mirror the listener: the daemon challenges first (direction A), we answer;
-        // then we challenge (direction B) and verify the daemon's answer.
-        NonceChallenge daemonChallenge = await HandshakeWire.ReadChallengeAsync(pipe, ct).ConfigureAwait(false);
-        SignedNonceResponse ourAnswer = endpoint.Responder.Respond(daemonChallenge);
-        await HandshakeWire.WriteResponseAsync(pipe, ourAnswer, ct).ConfigureAwait(false);
+            // Mirror the listener: the daemon challenges first (direction A), we answer;
+            // then we challenge (direction B) and verify the daemon's answer.
+            NonceChallenge daemonChallenge = await HandshakeWire.ReadChallengeAsync(pipe, ct).ConfigureAwait(false);
+            SignedNonceResponse ourAnswer = endpoint.Responder.Respond(daemonChallenge);
+            await HandshakeWire.WriteResponseAsync(pipe, ourAnswer, ct).ConfigureAwait(false);
 
-        NonceChallenge ourChallenge = endpoint.Verifier.IssueChallenge();
-        await HandshakeWire.WriteChallengeAsync(pipe, ourChallenge, ct).ConfigureAwait(false);
-        SignedNonceResponse daemonAnswer = await HandshakeWire.ReadResponseAsync(pipe, ct).ConfigureAwait(false);
+            NonceChallenge ourChallenge = endpoint.Verifier.IssueChallenge();
+            await HandshakeWire.WriteChallengeAsync(pipe, ourChallenge, ct).ConfigureAwait(false);
+            SignedNonceResponse daemonAnswer = await HandshakeWire.ReadResponseAsync(pipe, ct).ConfigureAwait(false);
 
-        return endpoint.Verifier.Verify(daemonAnswer) == HandshakeVerdict.Accepted;
+            return endpoint.Verifier.Verify(daemonAnswer) == HandshakeVerdict.Accepted;
+        }
+        finally
+        {
+            (signer as IDisposable)?.Dispose();
+            (peerVerifier as IDisposable)?.Dispose();
+        }
     }
 }

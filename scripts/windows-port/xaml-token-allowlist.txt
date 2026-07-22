@@ -1,0 +1,46 @@
+# XAML token-discipline allowlist — documented exceptions for
+# scripts/windows-port/check-xaml-token-discipline.sh (mirrors the
+# inline `reason:` convention of docs/LINT_RATIONALE.md / check-no-suppressions.sh).
+#
+# Format: <repo-relative XAML path> <UPPERCASE #AARRGGBB | FontFamily>  # reason
+# Only add an entry when a bespoke art color genuinely has no design-token
+# equivalent; prefer extending packages/design-tokens/tokens/aurora.tokens.json.
+
+# ── Gold/amber translucent art (only amber tokens are opaque #FFA800 — no translucent gold token yet)
+windows/app/OpenBurnBar.App/Components/UnifiedSkeletonView.xaml #14FDC42C  # gold shimmer hue — no translucent-gold token
+windows/app/OpenBurnBar.App/Memory/MemoryConsentDialog.xaml #40FDC42C  # gold gradient stop — no translucent-gold token
+windows/app/OpenBurnBar.App/Memory/MemoryReviewInboxView.xaml #29FDC42C  # gold pill — no translucent-gold token
+windows/app/OpenBurnBar.App/Memory/MemoryReviewInboxView.xaml #66FDC42C  # gold pill — no translucent-gold token
+windows/app/OpenBurnBar.App/Memory/MemoryReviewInboxView.xaml #1AFDBA2C  # gold banner — no translucent-gold token
+windows/app/OpenBurnBar.App/Memory/MemoryReviewInboxView.xaml #4DFDBA2C  # gold banner — no translucent-gold token
+windows/app/OpenBurnBar.App/Memory/MemoryReviewInboxView.xaml #24FDC42C  # gold pill — no translucent-gold token
+windows/app/OpenBurnBar.App/MissionControl/MissionSituationRoomView.xaml #1AE8A93C  # approval card gold — no translucent-gold token
+windows/app/OpenBurnBar.App/MissionControl/MissionSituationRoomView.xaml #59E8A93C  # approval card gold — no translucent-gold token
+windows/app/OpenBurnBar.App/SessionLogs/SessionLogDetailPane.xaml #24FDC42C  # gold pill — no translucent-gold token
+windows/app/OpenBurnBar.App/SessionLogs/SessionLogDetailPane.xaml #59FDC42C  # gold pill — no translucent-gold token
+
+# ── Bespoke hairline/gradient art (subscription hero, dashboard vignette)
+windows/app/OpenBurnBar.App/Quota/SubscriptionConstellationHero.xaml #00A8B0BE  # mercury hairline gradient stop (transparent end)
+windows/app/OpenBurnBar.App/Quota/SubscriptionConstellationHero.xaml #BFA8B0BE  # mercury hairline art — bespoke
+windows/app/OpenBurnBar.App/Quota/SubscriptionConstellationHero.xaml #D9C6A15A  # brass hairline art — bespoke
+windows/app/OpenBurnBar.App/Dashboard/DashboardPage.xaml #1A070A12  # scrim vignette mid-stop — mapping to sunken token would flatten the vignette
+
+# ── Info-blue tool block (no blue token in the Aurora ramp)
+windows/app/OpenBurnBar.App/SessionLogs/SessionLogDetailPane.xaml #146AB0FF  # tool-call blue — no info-blue token
+windows/app/OpenBurnBar.App/SessionLogs/SessionLogDetailPane.xaml #336AB0FF  # tool-call blue — no info-blue token
+
+# ── On-gradient near-white text (user chat bubble over ember→amber gradient)
+windows/app/OpenBurnBar.App/Chat/ChatSurfaceView.xaml #D9FFFFFF  # 85% white secondary text on accent gradient — no on-accent token
+
+# ── Data Control Center = Pensieve brand world (ink + brass + mercury) — bespoke
+#    translucent Pensieve plates/washes with no exact Pensieve token equivalent
+windows/app/OpenBurnBar.App/DataControlCenter/DataControlCenterView.xaml #E612121A  # Pensieve pane plate — bespoke alpha
+windows/app/OpenBurnBar.App/DataControlCenter/DataControlCenterView.xaml #1AFDC42C  # Pensieve gold wash — no translucent-gold token
+windows/app/OpenBurnBar.App/DataControlCenter/DataControlCenterView.xaml #9912121A  # Pensieve pane plate — bespoke alpha
+windows/app/OpenBurnBar.App/DataControlCenter/DomainInspectorView.xaml #1FC7CFDD  # mercury frost line — bespoke alpha
+windows/app/OpenBurnBar.App/DataControlCenter/DomainInspectorView.xaml #1F8B94A8  # mercury veil — bespoke alpha
+windows/app/OpenBurnBar.App/DataControlCenter/MercuryBasinView.xaml #8CF4F6FB  # mercury bright wash — bespoke alpha
+windows/app/OpenBurnBar.App/DataControlCenter/MercuryBasinView.xaml #4C8B94A8  # mercury deep wash — bespoke alpha
+windows/app/OpenBurnBar.App/DataControlCenter/MercuryBasinView.xaml #38000000  # basin shadow — bespoke alpha
+windows/app/OpenBurnBar.App/DataControlCenter/YoursVsServerFlip.xaml #1FC7CFDD  # mercury frost line — bespoke alpha
+windows/app/OpenBurnBar.App/DataControlCenter/YoursVsServerFlip.xaml #33C7CFDD  # mercury frost line — bespoke alpha

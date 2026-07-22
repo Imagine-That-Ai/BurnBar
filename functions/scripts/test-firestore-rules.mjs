@@ -264,7 +264,7 @@ function sealedMissionEvent(ownerUid, requestId, overrides = {}) {
 function sealedMissionStatePatch(ownerUid, id, overrides = {}) {
   return {
     contentSealed: true,
-    sealedStatePayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVkLXN0YXRl", cloudVaultAAD(ownerUid, "cli_agent_mission_requests", id, "sealedPayload")),
+    sealedStatePayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVkLXN0YXRl", cloudVaultAAD(ownerUid, "cli_agent_mission_requests", id, "sealedStatePayload")),
     sealedStateSchemaVersion: 1,
     sealedStateVaultKeyID: TEST_VAULT_KEY_ID,
     ...overrides,
@@ -1226,6 +1226,61 @@ test("Wand mission groups enforce Free, Cloud, Cloud Pro, and Ultra fan-out caps
   await assertMissionGroupCap("wand-ultra", 16, 17);
 });
 
+test("Wand dispatch accepts established presentation modes and platform group sources", async () => {
+  const uid = "wand-wire-contracts";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+
+  const paretoChildID = "005CA603-3B30-407F-8EA6-D95B55D0AC41";
+  await assertSucceeds(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/${paretoChildID}`),
+      sealedMissionBase(uid, paretoChildID, {
+        missionKind: "diligence",
+        requestedRuntime: "claude",
+        requestedModelID: "claude-opus-4-1",
+        source: "ios-insights",
+        sourceSurface: "ios-insights",
+        deliveryMode: "action_only",
+        presentationMode: "native_chat",
+        groupID: "grp-E7225885-439B-4D05-9F88-68412DF019F8",
+        siblingIndex: 0,
+        siblingCount: 2,
+        isGroupChild: true,
+        schemaVersion: 3,
+      })
+    )
+  );
+
+  for (const presentationMode of ["native_chat", "mac_visible_cli", "mac_interactive_cli"]) {
+    const id = `mission-${presentationMode}`;
+    await assertSucceeds(
+      setDoc(doc(db, `users/${uid}/cli_agent_mission_requests/${id}`), sealedMissionBase(uid, id, {
+        presentationMode,
+      }))
+    );
+  }
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/mission-unknown-mode`),
+      sealedMissionBase(uid, "mission-unknown-mode", { presentationMode: "unknown_mode" })
+    )
+  );
+
+  for (const source of ["ios-hermes-square", "android-hermes-square", "mac-wand"]) {
+    const id = `group-${source}`;
+    await assertSucceeds(
+      setDoc(doc(db, `users/${uid}/mission_groups/${id}`), sealedMissionGroup(uid, id, 1, { source }))
+    );
+  }
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/mission_groups/group-unknown-source`),
+      sealedMissionGroup(uid, "group-unknown-source", 1, { source: "unknown-wand" })
+    )
+  );
+});
+
 test("no subscription tier bypasses server-owned computer-use authority writes", async () => {
   const cloudUid = "cloud-only-control";
   await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -1765,6 +1820,23 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       requestedRuntime: "codex",
       approvalMode: "read_only",
     }))
+  );
+  await assertFails(
+    setDoc(
+      doc(phoneDb, lifecyclePath),
+      sealedMissionStatePatch("ivy", "mission-lifecycle", {
+        sealedStatePayload: sealedPayload(
+          TEST_VAULT_KEY_ID,
+          "c2VhbGVkLXN0YXRl",
+          cloudVaultAAD("ivy", "cli_agent_mission_requests", "mission-lifecycle", "sealedPayload")
+        ),
+        status: "accepted",
+        claimedBy: "mac-1",
+        selectedRuntime: "codex",
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    )
   );
   await assertSucceeds(
     setDoc(doc(phoneDb, `${lifecyclePath}/events/000001`), sealedMissionEvent("ivy", "mission-lifecycle"))
@@ -2679,6 +2751,22 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
       {
         trustState: "trusted",
         approvedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        appVersion: "1.0.2",
+        publicKeyFingerprint: "escrow-fingerprint",
+        keyVersion: 1,
+        approvedByDeviceId: "approving-mac",
+        trustChainVersion: 1,
+        trustChainAlgorithm: "signal-identity-xeddsa-v1",
+        trustChainSignature: "A".repeat(88),
+        targetSignalIdentityKeyId: "device_1",
+        targetSignalIdentityPublicKeyFingerprint: "B".repeat(44),
+        approvedBySignalIdentityKeyId: "approving-mac_1",
+        approvedBySignalIdentityPublicKeyFingerprint: "C".repeat(44),
+        signalIdentityRepairVersion: 1,
+        signalIdentityRepairAlgorithm: "escrow-possession-challenge-v1",
+        signalIdentityReapprovalRequired: false,
+        signalIdentityRepairedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       },
       { merge: true }
@@ -2689,11 +2777,38 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
     setDoc(
       doc(db, "users/pro-user/escrow_devices/device"),
       {
+        deviceId: "device",
         deviceName: "Phone renamed",
+        platform: "iOS",
+        publicKeyFingerprint: "escrow-fingerprint",
+        keyVersion: 1,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
     )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, "users/pro-user/escrow_devices/device"),
+      {
+        signalIdentityReapprovalRequired: true,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(doc(db, "users/pro-user/escrow_devices/forged-repair"), {
+      deviceId: "forged-repair",
+      platform: "iPadOS",
+      deviceName: "Forged iPad",
+      trustState: "pending",
+      signalIdentityRepairVersion: 1,
+      signalIdentityRepairAlgorithm: "escrow-possession-challenge-v1",
+      signalIdentityReapprovalRequired: false,
+      signalIdentityRepairedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
   );
   await assertFails(
     setDoc(

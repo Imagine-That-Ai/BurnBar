@@ -1,3 +1,4 @@
+import DeviceCheck
 import XCTest
 @testable import OpenBurnBar
 import OpenBurnBarCore
@@ -36,15 +37,13 @@ final class OpenBurnBarAppCheckProviderFactoryTests: XCTestCase {
                 AppCheckDebugTokenEnvironment.firebaseDebugTokenKey: "env-token",
                 AppCheckDebugTokenEnvironment.firaDebugTokenKey: "env-token"
             ],
-            isDebugBuild: false
+            isDebugBuild: false,
+            appAttestIsSupported: false,
+            deviceCheckIsSupported: true
         )
 
         XCTAssertNotEqual(selection, .debug)
-        if #available(macOS 11.0, *) {
-            XCTAssertEqual(selection, .appAttest)
-        } else {
-            XCTAssertEqual(selection, .deviceCheck)
-        }
+        XCTAssertEqual(selection, .deviceCheck)
     }
 
     func testReleaseWithBuiltInternalFlagAndTokenSelectsDebugProvider() throws {
@@ -62,6 +61,47 @@ final class OpenBurnBarAppCheckProviderFactoryTests: XCTestCase {
             ),
             .debug
         )
+    }
+
+    func testMacProductionIgnoresMisleadingAppAttestSupportAndUsesDeviceCheck() {
+        XCTAssertEqual(
+            OpenBurnBarAppCheckProviderFactory.productionProviderSelection(
+                appAttestIsSupported: true,
+                deviceCheckIsSupported: true
+            ),
+            .deviceCheck
+        )
+    }
+
+    func testProductionFallsBackToDeviceCheckWhenAppAttestIsUnsupported() {
+        XCTAssertEqual(
+            OpenBurnBarAppCheckProviderFactory.productionProviderSelection(
+                appAttestIsSupported: false,
+                deviceCheckIsSupported: true
+            ),
+            .deviceCheck
+        )
+    }
+
+    func testProductionFailsClosedWhenNoAttestationProviderIsSupported() {
+        XCTAssertEqual(
+            OpenBurnBarAppCheckProviderFactory.productionProviderSelection(
+                appAttestIsSupported: false,
+                deviceCheckIsSupported: false
+            ),
+            .unsupported
+        )
+    }
+
+    func testMacProductionSelectionUsesRuntimeDeviceCheckAvailability() {
+        let selection = OpenBurnBarAppCheckProviderFactory.providerSelection(
+            firebasePlistPath: nil,
+            infoDictionary: [:],
+            environment: [:],
+            isDebugBuild: false
+        )
+
+        XCTAssertEqual(selection, DCDevice.current.isSupported ? .deviceCheck : .unsupported)
     }
 
     private func writeGooglePlist(_ values: [String: String]) throws -> URL {

@@ -45,19 +45,32 @@ internal sealed class SemanticProbeRunner
             IntPtr hwnd = await WaitForMainWindowAsync(process, cancellationToken).ConfigureAwait(false);
             ShowWindow(hwnd, 9);
             SetForegroundWindow(hwnd);
-            await Task.Delay(650, cancellationToken).ConfigureAwait(false);
-
-            string screenshotPath = Path.Combine(_outputDirectory, "semantic", "main-window.png");
-            WindowBitmapCapture.Capture(hwnd, screenshotPath);
+            await Task.Delay(3_000, cancellationToken).ConfigureAwait(false);
 
             UiElementInfo info = new UiaInspector().InspectWindow(hwnd);
             bool expectedProcess = string.Equals(info.ProcessImageName, "OpenBurnBar.App.exe", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(info.ProcessImageName, "OpenBurnBar.App", StringComparison.OrdinalIgnoreCase);
             bool denied = info.IsPasswordField || info.IsSecureDesktop || info.IsCredentialPrompt;
             var verdict = expectedProcess && !denied ? HarnessVerdict.Pass : HarnessVerdict.Fail;
-            string? message = verdict == HarnessVerdict.Pass
+            string message = verdict == HarnessVerdict.Pass
                 ? "OpenBurnBar main window is inspectable and not classified as a deny region."
                 : $"Unexpected OpenBurnBar window probe result. process={info.ProcessImageName ?? "<null>"} denied={denied}";
+
+            string? screenshotPath = Path.Combine(_outputDirectory, "semantic", "main-window.png");
+            var externalCaptureVerdict = HarnessVerdict.Pass;
+            string? externalCaptureMessage = null;
+            try
+            {
+                WindowBitmapCapture.Capture(hwnd, screenshotPath);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or ExternalException or UnauthorizedAccessException)
+            {
+                screenshotPath = null;
+                externalCaptureVerdict = HarnessVerdict.Skipped;
+                externalCaptureMessage = ex.Message;
+                message += " External desktop capture was unavailable; routed RenderTargetBitmap evidence remains the fail-closed visual-content check.";
+            }
+
             return new SemanticProbeEvidence(
                 verdict,
                 info.ProcessImageName,
@@ -66,7 +79,11 @@ internal sealed class SemanticProbeRunner
                 info.IsSecureDesktop,
                 info.IsCredentialPrompt,
                 screenshotPath,
-                message);
+                message)
+            {
+                ExternalCaptureVerdict = externalCaptureVerdict,
+                ExternalCaptureMessage = externalCaptureMessage,
+            };
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or Win32Exception or COMException)
         {
@@ -121,6 +138,12 @@ internal sealed class SemanticProbeRunner
                 return process.MainWindowHandle;
             }
 
+            IntPtr enumeratedWindow = TopLevelWindowFinder.FindLargestVisibleWindow(process.Id);
+            if (enumeratedWindow != IntPtr.Zero)
+            {
+                return enumeratedWindow;
+            }
+
             await Task.Delay(250, timeout.Token).ConfigureAwait(false);
         }
 
@@ -137,7 +160,11 @@ internal sealed class SemanticProbeRunner
             IsSecureDesktop: false,
             IsCredentialPrompt: false,
             ScreenshotPath: null,
-            Message: message);
+            Message: message)
+        {
+            ExternalCaptureVerdict = HarnessVerdict.Skipped,
+            ExternalCaptureMessage = "External capture was not attempted because the semantic probe failed before window inspection.",
+        };
 
     private static void TryKill(Process process)
     {

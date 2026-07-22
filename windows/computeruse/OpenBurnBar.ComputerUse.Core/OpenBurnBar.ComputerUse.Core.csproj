@@ -61,4 +61,8 @@
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenBurnBar.ComputerUse.Tests" />
+  </ItemGroup>
+
 </Project>

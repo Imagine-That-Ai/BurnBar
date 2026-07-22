@@ -8,6 +8,7 @@ import java.time.Duration
 import java.time.Instant
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -200,6 +201,135 @@ class InsightDigestBuilderTest {
         assertEquals(List(24) { 0 }, digest.hourly)
         assertEquals(InsightTaxonomy.DEFAULT, digest.glossary)
         assertTrue(encodedBytes(digest) <= InsightDigest.MAX_ENCODED_BYTES)
+    }
+
+    @Test
+    fun `build hashes cleartext project display names and inferred task titles out of the digest`() {
+        val input =
+            InsightDigestBuildInput(
+                filter = InsightFilter(window = InsightTimeWindow.Last7d),
+                totals = InsightDigest.Totals(sessionCount = 10),
+                providers =
+                listOf(
+                    InsightDigest.ProviderSnapshot(
+                        id = "provider-01",
+                        displayName = "Provider 1",
+                        costUSD = 20.0,
+                        totalTokens = 5000L,
+                        sessionCount = 10,
+                        topInferredTaskTitles = listOf("Debug authentication flow", "Fix payment bug"),
+                    ),
+                ),
+                models =
+                listOf(
+                    InsightDigest.ModelSnapshot(
+                        id = "model-01",
+                        providerID = "provider-01",
+                        costUSD = 15.0,
+                        totalTokens = 3000L,
+                        sessionCount = 8,
+                        topInferredTaskTitles = listOf("Refactor API layer"),
+                    ),
+                ),
+                projects =
+                listOf(
+                    InsightDigest.ProjectSnapshot(
+                        id = "project-secret",
+                        displayName = "my-secret-project",
+                        costUSD = 10.0,
+                        totalTokens = 1000L,
+                        sessionCount = 5,
+                    ),
+                ),
+                daily = emptyList(),
+                quotaSnapshots = emptyList(),
+                modelBenchmarks = emptyList(),
+                anomalies = emptyList(),
+            )
+
+        val digest = InsightDigestBuilder.build(input)
+        val json = Json.encodeToString(InsightDigest.serializer(), digest)
+
+        assertFalse(
+            "encoded digest must not contain cleartext project display name 'my-secret-project'",
+            json.contains("my-secret-project"),
+        )
+        assertFalse(
+            "encoded digest must not contain cleartext inferred task title 'Debug authentication flow'",
+            json.contains("Debug authentication flow"),
+        )
+        assertFalse(
+            "encoded digest must not contain cleartext inferred task title 'Fix payment bug'",
+            json.contains("Fix payment bug"),
+        )
+        assertFalse(
+            "encoded digest must not contain cleartext inferred task title 'Refactor API layer'",
+            json.contains("Refactor API layer"),
+        )
+    }
+
+    @Test
+    fun `build replaces project ids and display names with opaque ordinal tokens not guessable hashes`() {
+        val input =
+            InsightDigestBuildInput(
+                filter = InsightFilter(window = InsightTimeWindow.Last7d),
+                totals = InsightDigest.Totals(sessionCount = 10),
+                providers = emptyList(),
+                models =
+                listOf(
+                    InsightDigest.ModelSnapshot(
+                        id = "model-01",
+                        providerID = "provider-01",
+                        costUSD = 15.0,
+                        totalTokens = 3000L,
+                        sessionCount = 8,
+                        topProjects = listOf("alpha-secret-hash", "beta-secret-hash"),
+                    ),
+                ),
+                projects =
+                listOf(
+                    InsightDigest.ProjectSnapshot(
+                        id = "alpha-secret-hash",
+                        displayName = "my-alpha-project",
+                        costUSD = 10.0,
+                        totalTokens = 1000L,
+                        sessionCount = 5,
+                    ),
+                    InsightDigest.ProjectSnapshot(
+                        id = "beta-secret-hash",
+                        displayName = "my-beta-project",
+                        costUSD = 5.0,
+                        totalTokens = 500L,
+                        sessionCount = 3,
+                    ),
+                ),
+                daily = emptyList(),
+                quotaSnapshots = emptyList(),
+                modelBenchmarks = emptyList(),
+                anomalies = emptyList(),
+            )
+
+        val digest = InsightDigestBuilder.build(input)
+        val json = Json.encodeToString(InsightDigest.serializer(), digest)
+
+        // 1. Cleartext display names must be absent.
+        assertFalse("encoded digest must not contain cleartext project display name 'my-alpha-project'", json.contains("my-alpha-project"))
+        assertFalse("encoded digest must not contain cleartext project display name 'my-beta-project'", json.contains("my-beta-project"))
+        // 2. Legacy hash values must be absent (replaced with ordinal tokens).
+        assertFalse("encoded digest must not contain legacy project id 'alpha-secret-hash'", json.contains("alpha-secret-hash"))
+        assertFalse("encoded digest must not contain legacy project id 'beta-secret-hash'", json.contains("beta-secret-hash"))
+        // 3. Projects remain distinguishable: at least 2 distinct ordinal IDs.
+        val projectIDs = digest.projects.map { it.id }.toSet()
+        assertTrue("Project aggregates were not distinguishable — only ${projectIDs.size} unique ID(s)", projectIDs.size >= 2)
+        for (id in projectIDs) {
+            assertTrue("Project ID is not an opaque ordinal token: $id", id.startsWith("project_"))
+        }
+        // 4. Model topProjects must also use ordinal tokens, not legacy hashes.
+        for (model in digest.models) {
+            for (pid in model.topProjects) {
+                assertTrue("Model topProject ID is not an opaque ordinal token: $pid", pid.startsWith("project_"))
+            }
+        }
     }
 
     private fun windowSpan(window: InsightTimeWindow): Duration {

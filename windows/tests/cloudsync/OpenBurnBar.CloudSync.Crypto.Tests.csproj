@@ -48,6 +48,30 @@
 
   <ItemGroup>
     <None Include="Fixtures/cloudvault-kat-vectors.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../tests/fixtures/domain-core/cloudvault/v1/cloudvault-deterministic-kat.json"
+          Link="Fixtures/cloudvault-deterministic-kat.json"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../tests/fixtures/domain-core/cloudvault/v1/opaque-identifiers-kat.json"
+          Link="Fixtures/opaque-identifiers-kat.json"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../crates/openburnbar-domain-core/union-abi-manifest.json"
+          Link="Fixtures/domain-core-union-abi-manifest.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../../crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.dylib"
+          Link="libopenburnbar_domain_ffi.dylib"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('../../../crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.dylib')" />
+    <None Include="../../../crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so"
+          Link="libopenburnbar_domain_ffi.so"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('../../../crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so')" />
+    <None Include="../../../crates/openburnbar-domain-core/target/debug/openburnbar_domain_ffi.dll"
+          Link="openburnbar_domain_ffi.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('../../../crates/openburnbar-domain-core/target/debug/openburnbar_domain_ffi.dll')" />
   </ItemGroup>
 
 </Project>

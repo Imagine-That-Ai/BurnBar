@@ -123,11 +123,44 @@ internal sealed class CountingAttestationProducer : IAttestationProducer
     }
 
     public string Kind => _inner.Kind;
+    public bool RequiresServerChallenge => _inner.RequiresServerChallenge;
 
     public async ValueTask<WindowsAttestationClaim> ProduceAsync(
-        string appId, long nowMillis, CancellationToken cancellationToken = default)
+        string appId,
+        long nowMillis,
+        AttestationChallenge? challenge = null,
+        CancellationToken cancellationToken = default)
     {
         ProduceCount++;
-        return await _inner.ProduceAsync(appId, nowMillis, cancellationToken).ConfigureAwait(false);
+        return await _inner.ProduceAsync(appId, nowMillis, challenge, cancellationToken).ConfigureAwait(false);
+    }
+}
+
+internal sealed class ChallengeRequiredAttestationProducer : IAttestationProducer
+{
+    public string Kind => "tpm";
+    public bool RequiresServerChallenge => true;
+    public AttestationChallenge? LastChallenge { get; private set; }
+    public long? LastNowMillis { get; private set; }
+
+    public ValueTask<WindowsAttestationClaim> ProduceAsync(
+        string appId,
+        long nowMillis,
+        AttestationChallenge? challenge = null,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastChallenge = challenge ?? throw new InvalidOperationException("challenge required");
+        LastNowMillis = nowMillis;
+        return ValueTask.FromResult(new WindowsAttestationClaim
+        {
+            Kind = Kind,
+            AppId = appId,
+            Nonce = challenge.Nonce,
+            IssuedAtMs = nowMillis,
+            Mac = Convert.ToBase64String(new byte[64]),
+            ChallengeId = challenge.ChallengeId,
+            SubjectPublicKey = Convert.ToBase64String(new byte[72]),
+        });
     }
 }

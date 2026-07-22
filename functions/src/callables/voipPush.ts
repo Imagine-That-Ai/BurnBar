@@ -18,6 +18,7 @@ import {
   VOIP_OUTBOUND_TTL_MS,
 } from "../voipPush.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
+import { checkVoIPCallRateLimit } from "./publicRateLimit.js";
 
 function pushQueueTimestamps(nowMillis: number = Date.now()): { createdAt: Timestamp; expireAt: Timestamp } {
   return {
@@ -35,6 +36,7 @@ export const triggerVoIPCall = onCall(
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Sign-in required.");
     }
+    await checkVoIPCallRateLimit(request.auth.uid);
     const data = parseTriggerRequest(request.data);
     if (!data) {
       throw new HttpsError("invalid-argument", "Missing required call fields.");

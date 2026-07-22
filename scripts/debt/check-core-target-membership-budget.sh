@@ -45,6 +45,7 @@ const mainTarget = "OpenBurnBarCore";
 // C targets (CSQLite/Czlib/COpenBurnBarSecretService) and binary-target Generated
 // dirs are not Swift-source targets and are skipped.
 const siblingTargets = [
+  "OpenBurnBarDomainCoreRuntime",
   "OpenBurnBarKernel",
   // Phase-2 WS-K (Kernel diet, docs/CORE_DECOMPOSITION_PROGRAM.md): the 4
   // sub-targets carved from OpenBurnBarKernel. Each has a PLANNED end-state
@@ -54,6 +55,7 @@ const siblingTargets = [
   "OpenBurnBarKernelModels",
   "OpenBurnBarKernelCrypto",
   "OpenBurnBarKernelContracts",
+  "OpenBurnBarParserSupport",
   "OpenBurnBarSQLiteReader",
   "OpenBurnBarLogParsers",
   "OpenBurnBarQuota",
@@ -125,12 +127,19 @@ const mainLive = scanTarget(mainTarget);
 // moved ~35 files + several thousand LOC into it), seeded from the ~37k
 // end-state (1.25x = 46250 LOC) with file headroom. Phase-2 WS-K (Kernel diet)
 // now SPLITS the Kernel into 4 sub-targets. At K0 (scaffold) NO files have moved
-// out of the Kernel yet, so its ceiling STAYS 185/46250 (the umbrella file
-// KernelUmbrella.swift is +1 file, well under). The FINAL WS-K move packet
+// out of the Kernel yet, so its temporary ceiling is 185/46280: the mandatory
+// 26-line KernelUmbrella.swift sits on top of main's 46250-line floor. The FINAL
+// WS-K move packet
 // reduces OpenBurnBarKernel to the umbrella file only and drops this ceiling to
 // 3 files / 200 LOC in that same PR.
 const PLANNED_CEILINGS = {
-  OpenBurnBarKernel: { maxFiles: 185, maxLines: 46250 },
+  // Shared-Rust rollout authority stays a narrow Foundation-only leaf. The
+  // ceiling covers profiles, candidate identity, evidence comparison, and the
+  // generic shadow selector without allowing domain business logic to move in.
+  OpenBurnBarDomainCoreRuntime: { maxFiles: 8, maxLines: 1000 },
+  // K0's required KernelUmbrella.swift is 26 LOC; the four move packets remove
+  // it from this ceiling as they drain the old target.
+  OpenBurnBarKernel: { maxFiles: 185, maxLines: 46280 },
   // Phase-2 WS-K (Kernel diet, docs/CORE_DECOMPOSITION_PROGRAM.md): the 4 Kernel
   // sub-targets, seeded at ~1.12x their measured K0-mapping end-state size
   // (Platform 12f/2430L, Models 90f/23785L, Crypto 12f/5172L, Contracts
@@ -147,8 +156,9 @@ const PLANNED_CEILINGS = {
   OpenBurnBarKernelModels: { maxFiles: 95, maxLines: 24600 },
   OpenBurnBarKernelCrypto: { maxFiles: 14, maxLines: 5900 },
   OpenBurnBarKernelContracts: { maxFiles: 34, maxLines: 13100 },
+  OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1000 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
-  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 11700 },
+  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 11800 },
   OpenBurnBarQuota: { maxFiles: 55, maxLines: 13000 },
   // VectorKit gains OpenBurnBarSearchContracts.swift (P-03 re-slice / FIX 4) on
   // top of the vector indexes + SearchPlanner + Pensieve, so its ceiling covers

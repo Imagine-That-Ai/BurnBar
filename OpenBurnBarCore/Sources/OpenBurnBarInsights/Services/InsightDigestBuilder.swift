@@ -4,10 +4,13 @@ import OpenBurnBarKernel
 /// Builds the privacy-bounded `InsightDigest` that gets shipped to a model.
 ///
 /// **Privacy contract** (also enforced by `InsightDigestPrivacyTests`):
-///
 ///   • Device names hashed to `device_xxxx` (stable across builds).
-///   • Project names hashed to `project_xxxx` for export. A user-visible
-///     mapping is returned as `displayName` (last path component, only).
+///   • Project names hashed to `project_xxxx` for export — `displayName`
+///     uses the same hashed ID, never the cleartext folder name.
+///   • Inferred task titles are omitted from the hosted digest entirely —
+///     32-bit hashes with a public salt remain dictionary-guessable.
+///   • Operating-action `kind` and `summary` contain only a closed category
+///     derived from the action type; raw operator-authored text stays local.
 ///   • Encoded payload is trimmed to 24 KB by dropping long-tail entries
 ///     (per-day per-provider extras, low-rank providers/models/projects).
 ///   • No keyFiles or full message text ever appears.
@@ -68,11 +71,16 @@ public struct InsightDigestBuilder: Sendable {
             cacheCreationTokens: usages.reduce(0) { $0 + $1.cacheCreationTokens },
             sessionCount: Set(usages.map { "\($0.provider)|\($0.sessionID)" }).count
         )
+        // 3. Build per-digest opaque project token map (not the fixed-salt
+        //    hashedProjectID — that is dictionary-guessable). Ordinals are
+        //    assigned after a stable alphabetical ordering of raw names so
+        //    the same project always maps to the same token within a digest.
+        let projectTokenMap = Self.buildProjectTokenMap(usages: usages)
 
-        // 3. Provider / model / project / device snapshots.
+        // 4. Provider / model / project / device snapshots.
         let providers = makeProviderSnapshots(usages: usages, sessions: sessions, limit: maxProviders)
-        let models = makeModelSnapshots(usages: usages, sessions: sessions, limit: maxModels)
-        let projects = makeProjectSnapshots(usages: usages, limit: maxProjects)
+        let models = makeModelSnapshots(usages: usages, limit: maxModels, projectTokenMap: projectTokenMap)
+        let projects = makeProjectSnapshots(usages: usages, limit: maxProjects, projectTokenMap: projectTokenMap)
         let devices = makeDeviceSnapshots(usages: usages, limit: maxDevices)
 
         // 4. Time-series.
@@ -96,7 +104,7 @@ public struct InsightDigestBuilder: Sendable {
         }
 
         // 7. Operating actions / summary runs.
-        let actions = makeActionDigests(actions: snapshot.operatingActions, limit: maxActions)
+        let actions = makeActionDigests(actions: snapshot.operatingActions, limit: maxActions, projectTokenMap: projectTokenMap)
         let summaryRuns = makeSummaryRunDigests(runs: snapshot.summaryRuns, limit: maxSummaryRuns)
         let benchmarks = makeModelBenchmarkSummaries(
             benchmarks: snapshot.modelBenchmarks,
@@ -182,7 +190,6 @@ public struct InsightDigestBuilder: Sendable {
         var tokens: Int = 0
         var sessions: Set<String> = []
         var topModels: [String: Int] = [:]
-        var titles: [String: Int] = [:]
         var tools: [String: Int] = [:]
     }
 
@@ -193,7 +200,6 @@ public struct InsightDigestBuilder: Sendable {
         var tokens: Int = 0
         var cacheTokens: Int = 0
         var sessions: Set<String> = []
-        var titles: [String: Int] = [:]
         var projects: [String: Int] = [:]
     }
 
@@ -210,12 +216,9 @@ public struct InsightDigestBuilder: Sendable {
             perProvider[u.provider] = entry
         }
         for s in sessions {
-            if let title = s.inferredTaskTitle, !title.isEmpty {
-                var entry = perProvider[s.provider] ?? ProviderAccumulator()
-                entry.titles[title, default: 0] += 1
-                for tool in s.keyTools { entry.tools[tool, default: 0] += 1 }
-                perProvider[s.provider] = entry
-            }
+            var entry = perProvider[s.provider] ?? ProviderAccumulator()
+            for tool in s.keyTools { entry.tools[tool, default: 0] += 1 }
+            perProvider[s.provider] = entry
         }
         return perProvider
             .sorted {
@@ -226,9 +229,6 @@ public struct InsightDigestBuilder: Sendable {
                 let topModels = Array(value.topModels
                     .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
                     .prefix(3).map(\.key))
-                let topTitles = Array(value.titles
-                    .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
-                    .prefix(5).map(\.key))
                 let topTools = Array(value.tools
                     .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
                     .prefix(5).map(\.key))
@@ -239,15 +239,15 @@ public struct InsightDigestBuilder: Sendable {
                     totalTokens: value.tokens,
                     sessionCount: value.sessions.count,
                     topModels: topModels,
-                    topInferredTaskTitles: topTitles,
+                    topInferredTaskTitles: [],
                     topKeyTools: topTools
                 )
             }
     }
 
     private func makeModelSnapshots(usages: [InsightUsageRow],
-                                    sessions: [InsightSessionRow],
-                                    limit: Int) -> [InsightDigest.ModelSnapshot] {
+                                    limit: Int,
+                                    projectTokenMap: [String: String]) -> [InsightDigest.ModelSnapshot] {
         var perModel: [String: ModelAccumulator] = [:]
         for u in usages {
             var entry = perModel[u.model] ?? ModelAccumulator(provider: u.provider)
@@ -255,18 +255,8 @@ public struct InsightDigestBuilder: Sendable {
             entry.tokens += u.totalTokens
             entry.cacheTokens += u.cacheReadTokens
             entry.sessions.insert(u.sessionID)
-            if let p = u.projectName { entry.projects[hashedProjectID(p), default: 0] += 1 }
+            if let p = u.projectName, let token = projectTokenMap[p] { entry.projects[token, default: 0] += 1 }
             perModel[u.model] = entry
-        }
-        // Sessions don't carry model, so we count titles per provider/model
-        // approximately by joining via sessionID.
-        let sessionByID = Dictionary(uniqueKeysWithValues: sessions.map { ($0.sessionID, $0) })
-        for u in usages {
-            if let s = sessionByID[u.sessionID], let title = s.inferredTaskTitle, !title.isEmpty {
-                var entry = perModel[u.model] ?? ModelAccumulator(provider: u.provider)
-                entry.titles[title, default: 0] += 1
-                perModel[u.model] = entry
-            }
         }
         return perModel
             .sorted {
@@ -274,12 +264,9 @@ public struct InsightDigestBuilder: Sendable {
             }
             .prefix(limit)
             .map { key, value in
+                let cacheRate = value.tokens > 0 ? Double(value.cacheTokens) / Double(value.tokens) : 0
                 let sessionCount = max(1, value.sessions.count)
                 let avgCost = value.cost / Double(sessionCount)
-                let cacheRate = value.tokens > 0 ? Double(value.cacheTokens) / Double(value.tokens) : 0
-                let topTitles = Array(value.titles
-                    .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
-                    .prefix(5).map(\.key))
                 let topProjects = Array(value.projects
                     .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
                     .prefix(3).map(\.key))
@@ -291,18 +278,17 @@ public struct InsightDigestBuilder: Sendable {
                     sessionCount: value.sessions.count,
                     avgCostPerSession: avgCost,
                     cacheHitRate: cacheRate,
-                    topInferredTaskTitles: topTitles,
+                    topInferredTaskTitles: [],
                     topProjects: topProjects
                 )
             }
     }
 
-    private func makeProjectSnapshots(usages: [InsightUsageRow], limit: Int) -> [InsightDigest.ProjectSnapshot] {
-        var perProject: [String: (display: String, cost: Double, tokens: Int, sessions: Set<String>)] = [:]
+    private func makeProjectSnapshots(usages: [InsightUsageRow], limit: Int, projectTokenMap: [String: String]) -> [InsightDigest.ProjectSnapshot] {
+        var perProject: [String: (cost: Double, tokens: Int, sessions: Set<String>)] = [:]
         for u in usages {
-            guard let p = u.projectName, !p.isEmpty else { continue }
-            let id = hashedProjectID(p)
-            var entry = perProject[id] ?? (lastPathComponent(of: p), 0, 0, [])
+            guard let p = u.projectName, !p.isEmpty, let id = projectTokenMap[p] else { continue }
+            var entry = perProject[id] ?? (0, 0, [])
             entry.cost += u.costUSD
             entry.tokens += u.totalTokens
             entry.sessions.insert(u.sessionID)
@@ -316,7 +302,7 @@ public struct InsightDigestBuilder: Sendable {
             .map { key, value in
                 InsightDigest.ProjectSnapshot(
                     id: key,
-                    displayName: value.display,
+                    displayName: key,
                     costUSD: value.cost,
                     totalTokens: value.tokens,
                     sessionCount: value.sessions.count
@@ -509,19 +495,63 @@ public struct InsightDigestBuilder: Sendable {
         taxonomy.focuses.contains(desired) ? desired : (taxonomy.focuses.first ?? "code")
     }
 
-    private func makeActionDigests(actions: [InsightOperatingAction], limit: Int) -> [InsightDigest.ActionDigest] {
+    /// Maps an untrusted source action type to the only values allowed in a
+    /// hosted digest. Matching affects classification only; no source text is
+    /// copied into either returned field.
+    static func hostedActionFields(for rawKind: String) -> (kind: String, summary: String) {
+        let normalized = rawKind.lowercased()
+        if normalized.contains("approval") || normalized.contains("approve")
+            || normalized.contains("permission") || normalized.contains("grant")
+            || normalized.contains("revoke") {
+            return ("approval", "Approval action")
+        }
+        if normalized.contains("rollback") || normalized.contains("revert")
+            || normalized.contains("restore") {
+            return ("rollback", "Rollback action")
+        }
+        if normalized.contains("deploy") || normalized.contains("release")
+            || normalized.contains("publish") {
+            return ("deployment", "Deployment action")
+        }
+        if normalized.contains("delete") || normalized.contains("export")
+            || normalized.contains("privacy") || normalized.contains("data_") {
+            return ("data_control", "Data-control action")
+        }
+        if normalized.contains("browser") || normalized.contains("computer")
+            || normalized.contains("click") || normalized.contains("input")
+            || normalized.contains("clipboard") || normalized.contains("panic") {
+            return ("computer_use", "Computer-use action")
+        }
+        if normalized.contains("model") || normalized.contains("inference")
+            || normalized.contains("completion") {
+            return ("model", "Model action")
+        }
+        if normalized.contains("tool") || normalized.contains("search")
+            || normalized.contains("read") || normalized.contains("write")
+            || normalized.contains("edit") || normalized.contains("command")
+            || normalized.contains("cache") {
+            return ("tool", "Tool action")
+        }
+        if normalized.contains("mission") || normalized.contains("agent")
+            || normalized.contains("session") || normalized.contains("workflow") {
+            return ("workflow", "Workflow action")
+        }
+        return ("other", "Other action")
+    }
+
+    private func makeActionDigests(actions: [InsightOperatingAction], limit: Int, projectTokenMap: [String: String]) -> [InsightDigest.ActionDigest] {
         actions
             .sorted { $0.occurredAt > $1.occurredAt }
             .prefix(limit)
             .map {
-                let pid = $0.projectName.map(hashedProjectID(_:))
-                let snippet = String($0.summary.prefix(160))
+                let pid = $0.projectName.flatMap { projectTokenMap[$0] }
+                let hostedFields = Self.hostedActionFields(for: $0.actionKind)
                 return InsightDigest.ActionDigest(
                     id: $0.id,
-                    kind: $0.actionKind,
+                    kind: hostedFields.kind,
                     projectID: pid,
                     occurredAt: $0.occurredAt,
-                    summary: snippet
+                    summary: hostedFields.summary
                 )
             }
     }
@@ -701,6 +731,22 @@ public struct InsightDigestBuilder: Sendable {
 
     // MARK: - Privacy helpers
 
+    /// Build a per-digest opaque ordinal token map: raw project names →
+    /// `project_1`, `project_2`, … assigned after a stable alphabetical
+    /// ordering. Unlike `hashedProjectID` (a fixed-salt 32-bit hash), these
+    /// tokens are non-guessable — they carry no information about the original
+    /// folder name. They are stable within a single digest but differ across
+    /// digests with different project sets.
+    static func buildProjectTokenMap(usages: [InsightUsageRow]) -> [String: String] {
+        let uniqueProjects = Set(usages.compactMap { $0.projectName }.filter { !$0.isEmpty })
+        return uniqueProjects
+            .sorted()
+            .enumerated()
+            .reduce(into: [String: String]()) { map, pair in
+                map[pair.element] = "project_\(pair.offset + 1)"
+            }
+    }
+
     public func hashedProjectID(_ raw: String) -> String {
         "project_" + Self.shortHash(raw, salt: "project")
     }
@@ -713,11 +759,6 @@ public struct InsightDigestBuilder: Sendable {
         // Show last 4 of the hash suffix so the user can recognize their devices.
         let suffix = String(hashedID.suffix(4)).uppercased()
         return "Device · \(suffix)"
-    }
-
-    private func lastPathComponent(of path: String) -> String {
-        let component = (path as NSString).lastPathComponent
-        return component.isEmpty ? path : component
     }
 
     private static func shortHash(_ raw: String, salt: String) -> String {

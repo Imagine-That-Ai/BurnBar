@@ -58,6 +58,12 @@ public static class DashboardUsageSummarySource
             return sample() with { Origin = DashboardUsageOrigin.Sample };
         }
 
-        return new DashboardUsageSummary(0, 0, 0, HasData: false, DashboardUsageOrigin.Empty);
+        return new DashboardUsageSummary(
+            0,
+            0,
+            0,
+            false,
+            DashboardUsageOrigin.Empty,
+            local.Window);
     }
 }

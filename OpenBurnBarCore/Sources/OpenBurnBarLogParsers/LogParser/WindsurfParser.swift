@@ -52,46 +52,82 @@ public final class WindsurfParser: LogParser, Sendable {
     // MARK: - Parse
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fm)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
+        let globalPath = ((globalStorageOverride ?? Self.globalStoragePath) as NSString).expandingTildeInPath
+        let stateDBURL = URL(fileURLWithPath: (globalPath as NSString).appendingPathComponent("state.vscdb"))
+        let stateDBWasCached = Self.stateDBCache.withLock { $0.entriesByDBPath[stateDBURL.path] != nil }
+        let canReadStateDB: Bool
+        if stateDBWasCached {
+            canReadStateDB = true
+        } else if fm.fileExists(atPath: stateDBURL.path) {
+            canReadStateDB = try gate.shouldRead(stateDBURL)
+        } else {
+            canReadStateDB = false
+        }
+
         let cascadeDir = ((cascadeDirectoryOverride ?? Self.cascadeDirectory) as NSString).expandingTildeInPath
         if fm.fileExists(atPath: cascadeDir) {
-            let allFiles = (try? fm.contentsOfDirectory(atPath: cascadeDir)) ?? [] // try?-ok(dir read, empty fallback)
+            let allFiles = (try? fm.contentsOfDirectory(atPath: cascadeDir)) ?? []
             let pbFiles = allFiles
                 .filter { $0.hasSuffix(".pb") }
                 .map { (cascadeDir as NSString).appendingPathComponent($0) }
 
             for pbFile in pbFiles {
+                try options.resourceGovernor?.checkpoint()
+                options.metrics?.recordCandidate()
+                options.metrics?.recordMetadataStat()
                 let sessionId = (pbFile as NSString).deletingPathExtension
                     .components(separatedBy: "/").last ?? UUID().uuidString
 
-                let attrs = try? fm.attributesOfItem(atPath: pbFile) // try?-ok(file attrs, nil fallback)
-                let created = (attrs?[.creationDate] as? Date) ?? Date()
-                let modified = (attrs?[.modificationDate] as? Date) ?? created
-                let fileSize = (attrs?[.size] as? Int) ?? 0
+                guard let attrs = try? fm.attributesOfItem(atPath: pbFile) else {
+                    options.resourceGovernor?.recordDeferredFile()
+                    options.metrics?.recordDeferred(.metadataUnavailable)
+                    continue
+                }
+                let discoveredFile = ParserDiscoveredFile.capture(
+                    for: URL(fileURLWithPath: pbFile),
+                    attributes: attrs
+                )
+                let isNewlyDiscovered = options.fileDiscoveryTracker?.record(discoveredFile) ?? false
+                let created = (attrs[.creationDate] as? Date) ?? Date()
+                let modified = (attrs[.modificationDate] as? Date) ?? created
+                let fileSize = (attrs[.size] as? Int) ?? 0
 
                 guard fileSize > 100 else { continue }
+                if let cutoff = options.minimumFileModificationDate,
+                   modified < cutoff,
+                   !isNewlyDiscovered {
+                    continue
+                }
+                options.fileDiscoveryTracker?.recordAdmitted(discoveredFile)
 
-                let model = extractModelFromStateDB(sessionId: sessionId) ?? "unknown"
+                let model = canReadStateDB ? (extractModelFromStateDB(sessionId: sessionId) ?? "unknown") : "unknown"
 
                 let estimatedTotalTokens = Int(Double(fileSize) / Self.estimatedBytesPerToken)
                 let inputTokens = Int(Double(estimatedTotalTokens) * Self.inputOutputRatio / (Self.inputOutputRatio + 1.0))
                 let outputTokens = estimatedTotalTokens - inputTokens
 
                 let pricing = ModelPricing.lookup(model: model)
-                let cost = pricing.cost(
+                let cost = try pricing.cost(
                     inputTokens: inputTokens,
                     outputTokens: outputTokens,
                     cacheCreationTokens: 0,
                     cacheReadTokens: 0
                 )
 
+                let projectName = canReadStateDB ? (extractWorkspaceName(sessionId: sessionId) ?? sessionId) : sessionId
                 let usage = TokenUsage(
                     provider: provider,
                     sessionId: sessionId,
-                    projectName: extractWorkspaceName(sessionId: sessionId) ?? sessionId,
+                    projectName: projectName,
                     model: model,
                     inputTokens: inputTokens,
                     outputTokens: outputTokens,
@@ -106,27 +142,30 @@ public final class WindsurfParser: LogParser, Sendable {
                 )
                 usages.append(usage)
 
-                let conversation = ConversationRecord(
-                    id: ConversationRecord.stableId(provider: provider, sessionId: sessionId),
-                    provider: provider,
-                    sessionId: sessionId,
-                    projectName: usage.projectName,
-                    startTime: created,
-                    endTime: modified,
-                    messageCount: 0,
-                    userWordCount: 0,
-                    assistantWordCount: 0,
-                    keyFiles: [],
-                    keyCommands: [],
-                    keyTools: [],
-                    inferredTaskTitle: extractSessionTitle(sessionId: sessionId) ?? "Windsurf Cascade Session",
-                    lastAssistantMessage: "",
-                    fullText: "",
-                    indexedAt: Date(),
-                    fileModifiedAt: modified,
-                    summary: nil
-                )
-                conversations.append(conversation)
+                if options.includeConversationBodies,
+                   options.fileDiscoveryTracker == nil || isNewlyDiscovered {
+                    let title = canReadStateDB ? (extractSessionTitle(sessionId: sessionId) ?? "Windsurf Cascade Session") : "Windsurf Cascade Session"
+                    conversations.append(ConversationRecord(
+                        id: ConversationRecord.stableId(provider: provider, sessionId: sessionId),
+                        provider: provider,
+                        sessionId: sessionId,
+                        projectName: usage.projectName,
+                        startTime: created,
+                        endTime: modified,
+                        messageCount: 0,
+                        userWordCount: 0,
+                        assistantWordCount: 0,
+                        keyFiles: [],
+                        keyCommands: [],
+                        keyTools: [],
+                        inferredTaskTitle: title,
+                        lastAssistantMessage: "",
+                        fullText: "",
+                        indexedAt: Date(),
+                        fileModifiedAt: modified,
+                        summary: nil
+                    ))
+                }
             }
         }
 

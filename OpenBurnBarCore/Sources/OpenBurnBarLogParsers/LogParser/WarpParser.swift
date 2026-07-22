@@ -31,6 +31,10 @@ public final class WarpParser: LogParser, Sendable {
     }
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         guard fileManager.fileExists(atPath: logDirectory.path) else {
             return ParseResult(usages: [], conversations: [])
         }
@@ -40,24 +44,27 @@ public final class WarpParser: LogParser, Sendable {
             return ParseResult(usages: [], conversations: [])
         }
 
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var seenUsageKeys = Set<String>()
         var seenConversationIDs = Set<String>()
 
         for file in logFiles {
-            guard let data = try? Data(contentsOf: file), // try?-ok(skip unreadable log)
+            guard try gate.shouldRead(file),
+                  let data = try? Data(contentsOf: file),
                   let content = String(data: data, encoding: .utf8) else {
                 continue
             }
-            let fileModifiedAt = (try? fileManager.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(optional file metadata)
+            let fileModifiedAt = (try? fileManager.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
             for object in Self.extractBodyJSONObjects(from: content) {
-                let records = parseBodyObject(object, sourceFile: file, fileModifiedAt: fileModifiedAt)
+                let records = try parseBodyObject(object, sourceFile: file, fileModifiedAt: fileModifiedAt)
                 for usage in records.usages {
                     let key = "\(usage.sessionId)|\(usage.model)|\(usage.startTime.timeIntervalSince1970)|\(usage.totalTokens)"
                     guard seenUsageKeys.insert(key).inserted else { continue }
                     usages.append(usage)
                 }
+                guard options.includeConversationBodies else { continue }
                 for conversation in records.conversations {
                     guard seenConversationIDs.insert(conversation.id).inserted else { continue }
                     conversations.append(conversation)
@@ -99,20 +106,20 @@ public final class WarpParser: LogParser, Sendable {
         _ object: [String: Any],
         sourceFile: URL,
         fileModifiedAt: Date?
-    ) -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
+    ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
         if let batch = object["batch"] as? [[String: Any]] {
             for item in batch {
-                let parsed = parseEventDictionary(item, sourceFile: sourceFile, fileModifiedAt: fileModifiedAt)
+                let parsed = try parseEventDictionary(item, sourceFile: sourceFile, fileModifiedAt: fileModifiedAt)
                 usages.append(contentsOf: parsed.usages)
                 conversations.append(contentsOf: parsed.conversations)
             }
             return (usages, conversations)
         }
 
-        let parsed = parseEventDictionary(object, sourceFile: sourceFile, fileModifiedAt: fileModifiedAt)
+        let parsed = try parseEventDictionary(object, sourceFile: sourceFile, fileModifiedAt: fileModifiedAt)
         usages.append(contentsOf: parsed.usages)
         conversations.append(contentsOf: parsed.conversations)
         return (usages, conversations)
@@ -122,9 +129,9 @@ public final class WarpParser: LogParser, Sendable {
         _ event: [String: Any],
         sourceFile: URL,
         fileModifiedAt: Date?
-    ) -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
+    ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
         let context = WarpParseContext.from(event)
-        let exactUsages = collectExactUsages(in: event, context: context)
+        let exactUsages = try collectExactUsages(in: event, context: context)
 
         if !exactUsages.isEmpty {
             let conversations = exactUsages.compactMap { usage in
@@ -147,7 +154,7 @@ public final class WarpParser: LogParser, Sendable {
             return ([], [])
         }
 
-        let usage = makeEstimatedUsage(context: context, sourceFile: sourceFile)
+        let usage = try makeEstimatedUsage(context: context, sourceFile: sourceFile)
         let conversation = makeConversation(
             sessionId: usage.sessionId,
             projectName: usage.projectName,
@@ -166,9 +173,9 @@ public final class WarpParser: LogParser, Sendable {
     private func collectExactUsages(
         in dictionary: [String: Any],
         context: WarpParseContext
-    ) -> [TokenUsage] {
+    ) throws -> [TokenUsage] {
         var records: [TokenUsage] = []
-        collectExactUsages(in: dictionary, context: context, records: &records)
+        try collectExactUsages(in: dictionary, context: context, records: &records)
         return records
     }
 
@@ -176,7 +183,7 @@ public final class WarpParser: LogParser, Sendable {
         in dictionary: [String: Any],
         context: WarpParseContext,
         records: inout [TokenUsage]
-    ) {
+    ) throws {
         let mergedContext = context.merging(WarpParseContext.from(dictionary))
 
         if let usageDictionary = Self.usageDictionary(from: dictionary) {
@@ -186,7 +193,7 @@ public final class WarpParser: LogParser, Sendable {
                 outputHint: mergedContext.assistantText.count
             )
             if extracted.hasNoExplicitBuckets == false {
-                records.append(makeExactUsage(from: extracted, context: mergedContext, source: dictionary))
+                records.append(try makeExactUsage(from: extracted, context: mergedContext, source: dictionary))
             }
         } else if Self.containsUsageKeys(dictionary) {
             let extracted = TokenExtractionUtility.extractUsageTokens(
@@ -195,16 +202,16 @@ public final class WarpParser: LogParser, Sendable {
                 outputHint: mergedContext.assistantText.count
             )
             if extracted.hasNoExplicitBuckets == false {
-                records.append(makeExactUsage(from: extracted, context: mergedContext, source: dictionary))
+                records.append(try makeExactUsage(from: extracted, context: mergedContext, source: dictionary))
             }
         }
 
         for value in dictionary.values {
             if let nested = value as? [String: Any] {
-                collectExactUsages(in: nested, context: mergedContext, records: &records)
+                try collectExactUsages(in: nested, context: mergedContext, records: &records)
             } else if let array = value as? [[String: Any]] {
                 for item in array {
-                    collectExactUsages(in: item, context: mergedContext, records: &records)
+                    try collectExactUsages(in: item, context: mergedContext, records: &records)
                 }
             }
         }
@@ -214,7 +221,7 @@ public final class WarpParser: LogParser, Sendable {
         from extracted: ExtractedTokenUsage,
         context: WarpParseContext,
         source: [String: Any]
-    ) -> TokenUsage {
+    ) throws -> TokenUsage {
         let timestamp = context.timestamp ?? Date()
         let model = context.model ?? "warp"
         let sessionId = context.sessionId ?? Self.stableHash([
@@ -226,7 +233,7 @@ public final class WarpParser: LogParser, Sendable {
             String(extracted.cacheRead)
         ].joined(separator: "|"))
         let confidence: UsageProvenanceConfidence = extracted.hasExplicitPrimaryBucket ? .exact : .derivedExact
-        let cost = ModelPricing.lookup(model: model).cost(
+        let cost = try ModelPricing.lookup(model: model).cost(
             inputTokens: extracted.input,
             outputTokens: extracted.output,
             cacheCreationTokens: extracted.cacheCreation,
@@ -252,7 +259,7 @@ public final class WarpParser: LogParser, Sendable {
         )
     }
 
-    private func makeEstimatedUsage(context: WarpParseContext, sourceFile: URL) -> TokenUsage {
+    private func makeEstimatedUsage(context: WarpParseContext, sourceFile: URL) throws -> TokenUsage {
         let timestamp = context.timestamp ?? Date()
         let userChars = context.userText.count
         let assistantChars = context.assistantText.count
@@ -267,7 +274,7 @@ public final class WarpParser: LogParser, Sendable {
             context.userText,
             context.assistantText
         ].joined(separator: "|"))
-        let cost = ModelPricing.lookup(model: model).cost(inputTokens: inputTokens, outputTokens: outputTokens)
+        let cost = try ModelPricing.lookup(model: model).cost(inputTokens: inputTokens, outputTokens: outputTokens)
 
         return TokenUsage(
             provider: .warp,

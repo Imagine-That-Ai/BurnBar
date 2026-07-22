@@ -15,7 +15,12 @@ public final class ClineFormatParser: LogParser, Sendable {
     }
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fm)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var seenTaskIds = Set<String>()
@@ -25,13 +30,13 @@ public final class ClineFormatParser: LogParser, Sendable {
             guard fm.fileExists(atPath: expanded) else { continue }
 
             let tasksURL = URL(fileURLWithPath: expanded)
-            guard let taskDirs = try? fm.contentsOfDirectory( // try?-ok(skip unreadable dir)
+            guard let taskDirs = try? fm.contentsOfDirectory(
                 at: tasksURL,
                 includingPropertiesForKeys: [.isDirectoryKey]
             ) else { continue }
 
             let dirs = taskDirs.filter {
-                (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true // try?-ok(filter non-dirs)
+                (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
             }
 
             for taskDir in dirs {
@@ -40,14 +45,11 @@ public final class ClineFormatParser: LogParser, Sendable {
                 seenTaskIds.insert(taskId)
 
                 let historyFile = taskDir.appendingPathComponent("api_conversation_history.json")
-                guard fm.fileExists(atPath: historyFile.path) else { continue }
+                guard fm.fileExists(atPath: historyFile.path), try gate.shouldRead(historyFile) else { continue }
 
-                if let pair = parseTask(
-                    taskId: taskId,
-                    historyFile: historyFile
-                ), let usage = pair.usage {
+                if let pair = try parseTask(taskId: taskId, historyFile: historyFile), let usage = pair.usage {
                     usages.append(usage)
-                    if let conv = pair.conversation {
+                    if options.includeConversationBodies, let conv = pair.conversation {
                         conversations.append(conv)
                     }
                 }
@@ -62,7 +64,7 @@ public final class ClineFormatParser: LogParser, Sendable {
     private func parseTask(
         taskId: String,
         historyFile: URL
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let data = try? Data(contentsOf: historyFile), // try?-ok(skip unreadable log)
               let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { // try?-ok(malformed log skip)
             return nil
@@ -160,7 +162,7 @@ public final class ClineFormatParser: LogParser, Sendable {
 
         let model = models.first ?? "unknown"
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,

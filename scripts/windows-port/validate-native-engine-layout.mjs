@@ -4,7 +4,10 @@ import { lstatSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const REQUIRED_RESOURCE_BUNDLE = "OpenBurnBarCore_OpenBurnBarCore.resources";
+export const REQUIRED_RESOURCE_BUNDLES = [
+  "OpenBurnBarCore_OpenBurnBarCore.resources",
+  "OpenBurnBarCore_OpenBurnBarKernel.resources",
+];
 const REQUIRED_ENGINE = "OpenBurnBarCoreCAbi.dll";
 
 function snapshotFile(path) {
@@ -59,7 +62,7 @@ export function validateNativeEngineLayout(layoutDirectory) {
 
   const seen = new Set();
   let engineEntry = false;
-  let resourceEntry = false;
+  const resourceEntries = new Set();
   for (const [index, entry] of manifest.files.entries()) {
     const label = `manifest files[${index}]`;
     const pathValue = normalizedRelativePath(entry?.fileName);
@@ -88,21 +91,23 @@ export function validateNativeEngineLayout(layoutDirectory) {
       errors.push(`${label} sizeBytes mismatch: ${pathValue}`);
     }
     if (pathValue === REQUIRED_ENGINE) engineEntry = true;
-    if (pathValue.startsWith(`${REQUIRED_RESOURCE_BUNDLE}/`)) resourceEntry = true;
+    for (const bundle of REQUIRED_RESOURCE_BUNDLES) {
+      if (pathValue.startsWith(`${bundle}/`)) resourceEntries.add(bundle);
+    }
   }
 
-  const resourceDirectory = join(root, REQUIRED_RESOURCE_BUNDLE);
-  let resourceDirectoryPresent = false;
-  try {
-    resourceDirectoryPresent = lstatSync(resourceDirectory).isDirectory();
-  } catch {
-    resourceDirectoryPresent = false;
-  }
-  if (!resourceDirectoryPresent) {
-    errors.push(`${REQUIRED_RESOURCE_BUNDLE} directory is missing`);
-  }
   if (!engineEntry) errors.push(`${REQUIRED_ENGINE} is absent from the manifest`);
-  if (!resourceEntry) errors.push(`${REQUIRED_RESOURCE_BUNDLE} has no manifest entry`);
+  for (const bundle of REQUIRED_RESOURCE_BUNDLES) {
+    const resourceDirectory = join(root, bundle);
+    let resourceDirectoryPresent = false;
+    try {
+      resourceDirectoryPresent = lstatSync(resourceDirectory).isDirectory();
+    } catch {
+      resourceDirectoryPresent = false;
+    }
+    if (!resourceDirectoryPresent) errors.push(`${bundle} directory is missing`);
+    if (!resourceEntries.has(bundle)) errors.push(`${bundle} has no manifest entry`);
+  }
   return { ok: errors.length === 0, errors };
 }
 
@@ -117,5 +122,8 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     for (const error of result.errors) console.error(`FAIL: ${error}`);
     process.exit(1);
   }
-  console.log(`PASS: native engine published layout is complete (${relative(resolve(layoutDirectory), join(resolve(layoutDirectory), REQUIRED_RESOURCE_BUNDLE))})`);
+  const bundles = REQUIRED_RESOURCE_BUNDLES
+    .map((bundle) => relative(resolve(layoutDirectory), join(resolve(layoutDirectory), bundle)))
+    .join(", ");
+  console.log(`PASS: native engine published layout is complete (${bundles})`);
 }

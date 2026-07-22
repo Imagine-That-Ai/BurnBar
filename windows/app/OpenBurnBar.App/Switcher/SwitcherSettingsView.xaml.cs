@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenBurnBar.App.Cli;
 using OpenBurnBar.App.Presentation.Switcher;
 
 namespace OpenBurnBar.App.Switcher;
@@ -20,17 +21,21 @@ namespace OpenBurnBar.App.Switcher;
 /// </summary>
 public sealed partial class SwitcherSettingsView : UserControl
 {
+    private ISwitcherProfileStore? _profileStore;
+
     public SwitcherSettingsView()
     {
         InitializeComponent();
+        Unloaded += (_, _) => LiveShell.Detach();
     }
 
     public SwitcherSettingsViewModel? ViewModel { get; private set; }
 
     /// <summary>Bind a view-model and refresh compiled bindings. Caller invokes <see cref="SwitcherSettingsViewModel.Load"/>.</summary>
-    public void SetModel(SwitcherSettingsViewModel viewModel)
+    public void SetModel(SwitcherSettingsViewModel viewModel, ISwitcherProfileStore profileStore)
     {
-        ViewModel = viewModel;
+        ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
+        _profileStore = profileStore ?? throw new ArgumentNullException(nameof(profileStore));
         Bindings.Update();
     }
 
@@ -47,6 +52,36 @@ public sealed partial class SwitcherSettingsView : UserControl
         if (ViewModel is { } vm && RowFrom(sender) is { } row)
         {
             vm.MakePrimary(row.Profile, row.Group);
+        }
+    }
+
+    private void OnLaunchShell(object sender, RoutedEventArgs e)
+    {
+        ShellErrorBar.IsOpen = false;
+        if (_profileStore is null || RowFrom(sender) is not { } row)
+        {
+            return;
+        }
+
+        try
+        {
+            SwitcherShellLaunchPlan plan = SwitcherShellLaunchPlanner.CreateForProfile(
+                _profileStore,
+                row.Profile.Id,
+                sourceEnvironment: Environment.GetEnvironmentVariables()
+                    .Cast<System.Collections.DictionaryEntry>()
+                    .ToDictionary(
+                        entry => (string)entry.Key,
+                        entry => entry.Value?.ToString(),
+                        StringComparer.OrdinalIgnoreCase));
+            LiveShell.Visibility = Visibility.Visible;
+            LiveShell.Attach(ConPtyCliStream.Create(plan), autoStart: true);
+        }
+        catch (Exception ex)
+        {
+            OpenBurnBar.App.Diagnostics.AppDiagnostics.LogException("switcher.shell.launch", ex);
+            ShellErrorBar.Message = ex.Message;
+            ShellErrorBar.IsOpen = true;
         }
     }
 

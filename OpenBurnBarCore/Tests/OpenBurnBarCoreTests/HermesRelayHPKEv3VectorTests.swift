@@ -248,8 +248,8 @@ final class HermesRelayHPKEv3VectorTests: XCTestCase {
             recipientPriv: agentPriv, recipientPubB64: agentPubB64,
             senderPriv: phoneRelayPriv, senderPubB64: phonePubB64,
             contentKey: eventSymKey,
-            keyAAD: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: eventId),
-            payloadAAD: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventId),
+            keyAAD: try HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: eventId),
+            payloadAAD: try HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: eventId),
             plaintext: eventPlaintext
         ))
 
@@ -262,8 +262,8 @@ final class HermesRelayHPKEv3VectorTests: XCTestCase {
             recipientPriv: phonePriv, recipientPubB64: phonePubB64,
             senderPriv: agentRelayPriv, senderPubB64: agentPubB64,
             contentKey: messageSymKey,
-            keyAAD: HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
-            payloadAAD: HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId),
+            keyAAD: try HermesRelayCrypto.gatewayMessageKeyAAD(uid: uid, clientId: clientId, messageId: messageId),
+            payloadAAD: try HermesRelayCrypto.gatewayMessageAAD(uid: uid, clientId: clientId, messageId: messageId),
             plaintext: messagePlaintext
         ))
 
@@ -276,8 +276,8 @@ final class HermesRelayHPKEv3VectorTests: XCTestCase {
             recipientPriv: agentPriv, recipientPubB64: agentPubB64,
             senderPriv: phoneRelayPriv, senderPubB64: phonePubB64,
             contentKey: modelSwitchSymKey,
-            keyAAD: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: modelSwitchEventId),
-            payloadAAD: HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: modelSwitchEventId),
+            keyAAD: try HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: modelSwitchEventId),
+            payloadAAD: try HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: clientId, eventId: modelSwitchEventId),
             plaintext: modelSwitchPlaintext
         ))
 
@@ -287,7 +287,7 @@ final class HermesRelayHPKEv3VectorTests: XCTestCase {
         // manifest + body-key positives therefore share enc/wrappedKey/contentKey
         // and differ only in the payload slot they open.
         let attachmentBodyKey = deterministicSymmetricKey(tweak: 0x44)
-        let attachmentKeyAAD = HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        let attachmentKeyAAD = try HermesRelayCrypto.gatewayAttachmentKeyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         let attachmentWrap = try HermesRelayCrypto.sealKeyV3(
             attachmentBodyKey,
             recipientPublicKeyBase64: phonePubB64,
@@ -295,7 +295,7 @@ final class HermesRelayHPKEv3VectorTests: XCTestCase {
             aad: attachmentKeyAAD
         )
         let manifestPlaintext = #"{"fileName":"quarterly-report.pdf","contentType":"application/pdf","byteCount":20,"destinationId":"burnbar:home"}"#
-        let manifestAAD = HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        let manifestAAD = try HermesRelayCrypto.gatewayAttachmentManifestAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         positives.append(try makePositive(
             name: "attachmentManifest", direction: "agent->phone",
             uid: uid, clientId: clientId, id: attachmentId,
@@ -306,7 +306,7 @@ final class HermesRelayHPKEv3VectorTests: XCTestCase {
             payloadAAD: manifestAAD, plaintext: manifestPlaintext
         ))
         let bodyPlaintext = "PDF-BYTES-1234567890"
-        let bodyAAD = HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
+        let bodyAAD = try HermesRelayCrypto.gatewayAttachmentBodyAAD(uid: uid, clientId: clientId, attachmentId: attachmentId)
         positives.append(try makePositive(
             name: "attachmentBodyKey", direction: "agent->phone",
             uid: uid, clientId: clientId, id: attachmentId,
@@ -338,7 +338,7 @@ final class HermesRelayHPKEv3VectorTests: XCTestCase {
                 recipientPrivateKey: event.recipientPrivateKey,
                 pinnedSenderPublicKey: phonePubB64,
                 keyAAD: String(
-                    data: HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: "e-tampered"),
+                    data: try HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: clientId, eventId: "e-tampered"),
                     encoding: .utf8
                 )!,
                 enc: event.enc,

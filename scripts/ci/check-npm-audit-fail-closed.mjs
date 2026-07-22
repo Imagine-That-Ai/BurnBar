@@ -13,14 +13,24 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const AUDIT_DIRS = [
-  "functions",
+  ".",
+  "apps/console",
+  "apps/linux-desktop",
   "extensions/openburnbar",
-  "services/hermes-realtime-relay",
-  "services/hosted-mcp",
-  "tools/openburnbar-mcp-remote",
+  "firestore-rules-tests",
+  "functions",
+  "packages/design-tokens",
+  "packages/entitlements",
   "packages/libsignal-bridge",
   "packages/libsignal-protocol",
   "packages/signal-envelope-contracts",
+  "quota-runner",
+  "services/hermes-realtime-relay",
+  "services/hosted-mcp",
+  "tools/app-store-connect",
+  "tools/openburnbar-mcp-remote",
+  "tools/schema-sync",
+  "website",
 ];
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -104,15 +114,10 @@ export function classifyAuditResult({ dir, status, stdout, stderr, error }) {
 
 function auditDirectory(repoRoot, dir) {
   const absoluteDir = join(repoRoot, dir);
-  if (
-    !existsSync(join(absoluteDir, "package.json")) ||
-    !existsSync(join(absoluteDir, "package-lock.json"))
-  ) {
+  if (!existsSync(join(absoluteDir, "package-lock.json"))) {
     return {
       ok: false,
-      messages: [
-        `Configured npm audit directory is missing package.json or package-lock.json: ${dir}`,
-      ],
+      messages: [`Configured npm audit directory is missing package-lock.json: ${dir}`],
     };
   }
 

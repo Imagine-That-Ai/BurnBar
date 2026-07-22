@@ -5,6 +5,59 @@ import OpenBurnBarCore
 @MainActor
 final class MissionGroupObserverTests: XCTestCase {
 
+    func test_startLatestRestoresPersistedGroupAndChildren() throws {
+        let dispatcher = FakeMissionGroupDispatcher()
+        let observer = MissionGroupObserver(dispatcher: dispatcher)
+        let group = Self.makeGroup(phase: .queued)
+
+        observer.startLatest()
+        XCTAssertEqual(dispatcher.latestObservationCount, 1)
+        dispatcher.emitLatestGroup(group)
+        dispatcher.emitChild(try Self.makeSnapshot(id: "child-1", runtime: "codex"), id: "child-1")
+        dispatcher.emitChild(try Self.makeSnapshot(id: "child-2", runtime: "claude"), id: "child-2")
+
+        XCTAssertEqual(observer.displayGroup?.id, group.id)
+        XCTAssertEqual(observer.displayGroup?.title, group.title)
+        XCTAssertEqual(observer.displayGroup?.phase, .awaitingMerge)
+        XCTAssertEqual(observer.childTiles(fallbackActiveTiles: []).map(\.id), group.childMissionIDs)
+    }
+
+    func test_displayGroupWaitsForEveryChildBeforeShowingReadyToMerge() throws {
+        let dispatcher = FakeMissionGroupDispatcher()
+        let observer = MissionGroupObserver(dispatcher: dispatcher)
+        let group = Self.makeGroup(phase: .queued)
+        observer.start(groupID: group.id)
+        dispatcher.emitGroup(group)
+
+        dispatcher.emitChild(
+            try Self.makeSnapshot(id: "child-1", runtime: "codex", status: "running"),
+            id: "child-1"
+        )
+        XCTAssertEqual(observer.displayGroup?.phase, .fanningOut)
+
+        dispatcher.emitChild(try Self.makeSnapshot(id: "child-1", runtime: "codex"), id: "child-1")
+        XCTAssertEqual(observer.displayGroup?.phase, .fanningOut)
+
+        dispatcher.emitChild(try Self.makeSnapshot(id: "child-2", runtime: "claude"), id: "child-2")
+        XCTAssertEqual(observer.displayGroup?.phase, .awaitingMerge)
+    }
+
+    func test_childTilesKeepTerminalResultsAfterActiveMissionTilesDisappear() throws {
+        let dispatcher = FakeMissionGroupDispatcher()
+        let observer = MissionGroupObserver(dispatcher: dispatcher)
+        let group = Self.makeGroup(phase: .queued)
+        observer.start(groupID: group.id)
+        dispatcher.emitGroup(group)
+        dispatcher.emitChild(try Self.makeSnapshot(id: "child-1", runtime: "codex"), id: "child-1")
+        dispatcher.emitChild(try Self.makeSnapshot(id: "child-2", runtime: "claude"), id: "child-2")
+
+        let tiles = observer.childTiles(fallbackActiveTiles: [])
+
+        XCTAssertEqual(tiles.map(\.phase), [.completed, .completed])
+        XCTAssertEqual(tiles.map(\.lastEventSnippet), ["codex final answer.", "claude final answer."])
+        XCTAssertEqual(tiles.map(\.runtimeDisplayLabel), ["Codex", "Claude"])
+    }
+
     func test_applySynthesizeFetchesMissingChildSnapshotsBeforeDispatch() async throws {
         let dispatcher = FakeMissionGroupDispatcher()
         let observer = MissionGroupObserver(dispatcher: dispatcher)
@@ -68,7 +121,7 @@ final class MissionGroupObserverTests: XCTestCase {
         XCTAssertNil(observer.inlineError)
     }
 
-    private static func makeGroup() -> MissionGroupDocument {
+    private static func makeGroup(phase: MissionGroupPhase = .awaitingMerge) -> MissionGroupDocument {
         MissionGroupDocument(
             id: "grp-1",
             title: "Audit fan-out",
@@ -79,7 +132,7 @@ final class MissionGroupObserverTests: XCTestCase {
             runtimeTokens: ["codex", "claude"],
             parallelismLimit: 2,
             mergeStrategy: .synthesize,
-            phase: .awaitingMerge,
+            phase: phase,
             createdAt: ISO8601DateFormatter().date(from: "2026-06-02T12:00:00Z")!,
             updatedAt: ISO8601DateFormatter().date(from: "2026-06-02T12:05:00Z")!
         )
@@ -134,9 +187,20 @@ private final class FakeMissionGroupDispatcher: MissionGroupDispatching {
     var dispatchDelayNanos: UInt64 = 0
     var mergeWinnerIDs: [String] = []
     var mergeFailuresRemaining = 0
+    var latestObservationCount = 0
 
     private var groupUpdate: (@MainActor (MissionGroupDocument) -> Void)?
+    private var latestGroupUpdate: (@MainActor (MissionGroupDocument) -> Void)?
     private var childUpdates: [String: (@MainActor (CLIAgentMissionSnapshot) -> Void)] = [:]
+
+    func observeLatestMissionGroup(
+        onUpdate: @escaping @MainActor (MissionGroupDocument) -> Void,
+        onError: @escaping @MainActor (String) -> Void
+    ) throws -> CLIAgentMissionObservation {
+        latestObservationCount += 1
+        latestGroupUpdate = onUpdate
+        return CLIAgentMissionObservation(registrations: [])
+    }
 
     func observeMissionGroup(
         groupID: String,
@@ -189,6 +253,10 @@ private final class FakeMissionGroupDispatcher: MissionGroupDispatching {
 
     func emitGroup(_ group: MissionGroupDocument) {
         groupUpdate?(group)
+    }
+
+    func emitLatestGroup(_ group: MissionGroupDocument) {
+        latestGroupUpdate?(group)
     }
 
     func emitChild(_ snapshot: CLIAgentMissionSnapshot, id: String) {

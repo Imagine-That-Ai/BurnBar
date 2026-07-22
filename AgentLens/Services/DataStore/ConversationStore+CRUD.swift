@@ -246,6 +246,35 @@ extension ConversationStore {
             }
         }
 
+        /// Returns the set of IDs (from `ids`) that already exist in the
+        /// conversations table. Used by incremental indexing to detect
+        /// newly discovered sessions whose `fileModifiedAt` may be older
+        /// than the checkpoint watermark — those must be indexed regardless
+        /// of mtime since the DB row doesn't exist yet.
+        ///
+        /// P-PERF-2: chunked to stay below SQLite's parameter limit.
+        func fetchExistingConversationIDs(ids: [String]) async throws -> Set<String> {
+            guard ids.isEmpty == false else { return [] }
+            let uniqueIDs = Array(Set(ids))
+            var existing: Set<String> = []
+            existing.reserveCapacity(uniqueIDs.count)
+            let chunkSize = 500
+            for chunkStart in stride(from: 0, to: uniqueIDs.count, by: chunkSize) {
+                let chunkEnd = min(chunkStart + chunkSize, uniqueIDs.count)
+                let chunk = Array(uniqueIDs[chunkStart..<chunkEnd])
+                let placeholders = OpenBurnBarDatabase.sqlPlaceholders(count: chunk.count)
+                let found = try await dbQueue.read { db in
+                    try String.fetchAll(
+                        db,
+                        sql: "SELECT id FROM conversations WHERE id IN (\(placeholders)) AND deletedAt IS NULL",
+                        arguments: StatementArguments(chunk)
+                    )
+                }
+                existing.formUnion(found)
+            }
+            return existing
+        }
+
         func fetchAllSessionLogs(limit: Int = 1000) async throws -> [OpenBurnBarCore.ConversationRecord] {
             try await dbQueue.read { db in
                 let rows = try Row.fetchAll(

@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text.Json;
+using DomainAnthropicCredentialShape = uniffi.openburnbar_domain_ffi.AnthropicCredentialShape;
+using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
 
 namespace OpenBurnBar.App.Presentation.Quota;
 
@@ -129,7 +132,32 @@ public static class AnthropicRateLimitHeaderParser
         DateTimeOffset now,
         CredentialShape shape = CredentialShape.OauthBearer)
     {
-        return BuildSnapshot(ParseHeaders(headers), now, shape);
+        return Parse(headers, now, shape, requestedMode: null);
+    }
+
+    internal static ProviderQuotaSnapshot? Parse(
+        IReadOnlyDictionary<string, string> headers,
+        DateTimeOffset now,
+        CredentialShape shape,
+        DomainCoreQuotaMigrationMode? requestedMode)
+    {
+        var domainShape = shape switch
+        {
+            CredentialShape.OauthBearer => DomainAnthropicCredentialShape.OauthBearer,
+            CredentialShape.ConsoleApiKey => DomainAnthropicCredentialShape.ConsoleApiKey,
+            _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "Unknown Anthropic credential shape."),
+        };
+        return DomainCoreQuotaBridge.Apply(
+            "anthropic_quota",
+            () => DomainCore.ParseAnthropicRateLimitHeaders(
+                JsonSerializer.SerializeToUtf8Bytes(headers),
+                now.ToUnixTimeSeconds(),
+                domainShape),
+            () => BuildSnapshot(ParseHeaders(headers), now, shape),
+            now,
+            ManagementUrl,
+            mapMalformedSnapshot: false,
+            requestedMode);
     }
 
     /// <summary>

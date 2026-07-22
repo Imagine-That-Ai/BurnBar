@@ -7,13 +7,12 @@ import XCTest
 // `@testable import OpenBurnBarCore` stays for AgentProvider (Kernel-re-exported).
 import OpenBurnBarCoreCAbi
 @testable import OpenBurnBarCore
-// Merge (train ← origin/main) AE-TESTABLE: main's newer privacy-probe helpers
-// (`injectLegacyCodexConversation`) build `CodexCacheEntry` / `CodexConversationCacheEntry`
-// and use `ParserDiskCacheStore<CodexCacheEntry>`, all of which the train moved from the Core
-// monolith into OpenBurnBarLogParsers. Their memberwise initializers are implicitly `internal`,
-// so `@testable import OpenBurnBarCore` (public-only umbrella re-export) can't reach them —
-// `@testable import OpenBurnBarLogParsers` exposes the internal inits. Same pattern the train
-// applied to `GrokParserTests`; OpenBurnBarLogParsers is transitively linkable via the Core dep.
+// 2026-07-16 resource fix: `CodexCacheEntry` can no longer represent a
+// conversation body (entries are {signature, tokenUsage, scanState} at
+// schemaVersion 2), so the legacy privacy probe (`injectLegacyCodexConversation`)
+// now builds its pre-fix schemaVersion-1 fixture with schema-agnostic plist
+// surgery instead of the old typed initializers. `@testable import
+// OpenBurnBarLogParsers` stays for parser-internal helpers used elsewhere.
 @testable import OpenBurnBarLogParsers
 
 final class OBBCAbiUsageScanExportTests: XCTestCase {
@@ -328,34 +327,40 @@ final class OBBCAbiUsageScanExportTests: XCTestCase {
         )
     }
 
-    /// Simulates a legacy (pre-privacy-fix) codex cache that still carries a
-    /// persisted conversation body, so a scan must strip it in place.
+    /// Simulates a REAL legacy (pre-2026-07-16, schemaVersion-1) codex cache
+    /// that still carries a persisted conversation body. Current entries
+    /// (schemaVersion 2) cannot represent a conversation by construction, so
+    /// the fixture is built with schema-agnostic plist surgery: the next scan
+    /// must drop the stale-schema cache wholesale and re-persist a body-free
+    /// v2 cache — an in-place upgrade strip.
     private func injectLegacyCodexConversation(cacheURL: URL) throws {
-        let store = ParserDiskCacheStore<CodexCacheEntry>(
-            cacheURL: cacheURL,
-            schemaVersion: 1,
-            logLabel: "OBBCAbiUsageScanExportTests"
+        let data = try Data(contentsOf: cacheURL)
+        var root = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
         )
-        var cache = store.load()
-        XCTAssertFalse(cache.fileEntries.isEmpty, "expected a warmed codex parser cache to seed")
-        for (key, entry) in cache.fileEntries {
-            cache.fileEntries[key] = CodexCacheEntry(
-                signature: entry.signature,
-                tokenUsage: entry.tokenUsage,
-                conversation: CodexConversationCacheEntry(
-                    title: "legacy",
-                    markdown: "LEGACY-CODEX-CONVERSATION-BODY",
-                    messageCount: 1,
-                    userWordCount: 1,
-                    assistantWordCount: 1,
-                    keyFiles: [],
-                    keyCommands: [],
-                    keyTools: [],
-                    lastAssistantMessage: "LEGACY-CODEX-CONVERSATION-BODY"
-                )
-            )
+        var entries = try XCTUnwrap(root["fileEntries"] as? [String: Any])
+        XCTAssertFalse(entries.isEmpty, "expected a warmed codex parser cache to seed")
+        for (key, value) in entries {
+            var entry = try XCTUnwrap(value as? [String: Any])
+            entry["conversation"] = [
+                "title": "legacy",
+                "markdown": "LEGACY-CODEX-CONVERSATION-BODY",
+                "messageCount": 1,
+                "userWordCount": 1,
+                "assistantWordCount": 1,
+                "keyFiles": [String](),
+                "keyCommands": [String](),
+                "keyTools": [String](),
+                "lastAssistantMessage": "LEGACY-CODEX-CONVERSATION-BODY"
+            ] as [String: Any]
+            entries[key] = entry
         }
-        store.persist(cache)
+        root["fileEntries"] = entries
+        // Stamp the pre-fix schema version — that is what real legacy caches
+        // look like, and what forces the wholesale drop + rewrite.
+        root["schemaVersion"] = 1
+        let rewritten = try PropertyListSerialization.data(fromPropertyList: root, format: .binary, options: 0)
+        try rewritten.write(to: cacheURL, options: .atomic)
     }
 
     /// Drops the persisted `usage` payload from every entry of a parser cache

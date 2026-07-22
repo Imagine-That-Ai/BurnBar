@@ -13,10 +13,32 @@ public final class GooseParser: LogParser, Sendable {
     /// `sessions.db` and/or legacy `*.jsonl`). Keeps tests hermetic and lets
     /// callers point at a non-default Goose data root. `nil` uses the standard
     /// discovery order (env override + known install locations).
-    private let sessionDirectoryOverride: String?
+    private let sessionDirectoriesOverride: [String]?
+    typealias PricingCost = @Sendable (
+        _ model: String,
+        _ inputTokens: Int,
+        _ outputTokens: Int,
+        _ cacheCreationTokens: Int,
+        _ cacheReadTokens: Int
+    ) throws -> Double
+
+    private let pricingCost: PricingCost
+
+    private struct LegacyContentReadError: Error {
+        let underlying: Error
+    }
 
     public init(sessionDirectoryOverride: String? = nil) {
-        self.sessionDirectoryOverride = sessionDirectoryOverride
+        self.sessionDirectoriesOverride = sessionDirectoryOverride.map { [$0] }
+        self.pricingCost = Self.defaultPricingCost
+    }
+
+    init(
+        sessionDirectoriesOverride: [String],
+        pricingCost: @escaping PricingCost = GooseParser.defaultPricingCost
+    ) {
+        self.sessionDirectoriesOverride = sessionDirectoriesOverride
+        self.pricingCost = pricingCost
     }
 
     private static let sqliteDateFormats: [DateFormatter] = {
@@ -36,7 +58,12 @@ public final class GooseParser: LogParser, Sendable {
     }()
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fm)
         let sessionDirectories = resolvedSessionDirectories()
 
         var databasePaths: [String] = []
@@ -51,12 +78,24 @@ public final class GooseParser: LogParser, Sendable {
             var usagesBySessionId: [String: TokenUsage] = [:]
             var conversationsById: [String: ConversationRecord] = [:]
             for dbPath in databasePaths {
-                let result = try parseSQLiteDatabase(dbPath: dbPath)
-                for usage in result.usages {
-                    usagesBySessionId[usage.sessionId] = usage
-                }
-                for conversation in result.conversations {
-                    conversationsById[conversation.id] = conversation
+                let dbURL = URL(fileURLWithPath: dbPath)
+                guard try gate.shouldRead(dbURL) else { continue }
+                do {
+                    let result = try parseSQLiteDatabase(dbPath: dbPath)
+                    for usage in result.usages {
+                        usagesBySessionId[usage.sessionId] = usage
+                    }
+                    if options.includeConversationBodies {
+                        for conversation in result.conversations {
+                            conversationsById[conversation.id] = conversation
+                        }
+                    }
+                } catch let error as SQLiteError {
+                    gate.recordContentReadFailure(for: dbURL)
+                    ParserDiagnostics.silentFailure(
+                        "goose_sqlite_unreadable path=\(dbPath)",
+                        error: error
+                    )
                 }
             }
             return ParseResult(
@@ -70,18 +109,27 @@ public final class GooseParser: LogParser, Sendable {
 
         for sessionsPath in sessionDirectories where fm.fileExists(atPath: sessionsPath) {
             let sessionsURL = URL(fileURLWithPath: sessionsPath)
-            let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))?.filter { // try?-ok(dir read, empty fallback)
+            let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))?.filter {
                 $0.pathExtension == "jsonl"
             } ?? []
 
             for file in jsonlFiles {
+                guard try gate.shouldRead(file) else { continue }
                 let sessionId = file.deletingPathExtension().lastPathComponent
-                if let pair = parseJsonlSession(file: file, sessionId: sessionId),
-                   let usage = pair.usage {
-                    usages.append(usage)
-                    if let conv = pair.conversation {
-                        conversations.append(conv)
+                do {
+                    if let pair = try parseJsonlSession(file: file, sessionId: sessionId),
+                       let usage = pair.usage {
+                        usages.append(usage)
+                        if options.includeConversationBodies, let conv = pair.conversation {
+                            conversations.append(conv)
+                        }
                     }
+                } catch let error as LegacyContentReadError {
+                    gate.recordContentReadFailure(for: file)
+                    ParserDiagnostics.silentFailure(
+                        "goose_jsonl_unreadable path=\(file.path)",
+                        error: error.underlying
+                    )
                 }
             }
         }
@@ -190,12 +238,12 @@ public final class GooseParser: LogParser, Sendable {
             let startTime = timestamp(from: row, column: "created_at") ?? Date()
             let endTime = timestamp(from: row, column: "updated_at") ?? startTime
 
-            let pricing = ModelPricing.lookup(model: model)
-            let cost = pricing.cost(
-                inputTokens: inputTokens,
-                outputTokens: outputTokens,
-                cacheCreationTokens: cacheWriteTokens,
-                cacheReadTokens: cacheReadTokens
+            let cost = try pricingCost(
+                model,
+                inputTokens,
+                outputTokens,
+                cacheWriteTokens,
+                cacheReadTokens
             )
 
             usages.append(
@@ -234,6 +282,21 @@ public final class GooseParser: LogParser, Sendable {
         }
 
         return ParseResult(usages: usages, conversations: conversations)
+    }
+
+    private static func defaultPricingCost(
+        model: String,
+        inputTokens: Int,
+        outputTokens: Int,
+        cacheCreationTokens: Int,
+        cacheReadTokens: Int
+    ) throws -> Double {
+        try ModelPricing.lookup(model: model).cost(
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens
+        )
     }
 
     // MARK: - SQLite Transcript Extraction
@@ -437,8 +500,14 @@ public final class GooseParser: LogParser, Sendable {
     }
 
     private func resolvedSessionDirectories() -> [String] {
-        if let override = sessionDirectoryOverride?.trimmingCharacters(in: .whitespacesAndNewlines), !override.isEmpty {
-            return [(override as NSString).expandingTildeInPath]
+        if let overrides = sessionDirectoriesOverride {
+            var seen: Set<String> = []
+            return overrides.compactMap { override in
+                let trimmed = override.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                let expanded = (trimmed as NSString).expandingTildeInPath
+                return seen.insert(expanded).inserted ? expanded : nil
+            }
         }
 
         var candidates: [String] = []
@@ -464,9 +533,20 @@ public final class GooseParser: LogParser, Sendable {
     private func parseJsonlSession(
         file: URL,
         sessionId: String
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(file open, guard nil)
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+        let handle: FileHandle
+        do {
+            handle = try FileHandle(forReadingFrom: file)
+        } catch {
+            throw LegacyContentReadError(underlying: error)
+        }
         defer { try? handle.close() } // try?-ok(handle teardown)
+        do {
+            _ = try handle.read(upToCount: 1)
+            try handle.seek(toOffset: 0)
+        } catch {
+            throw LegacyContentReadError(underlying: error)
+        }
 
         let mtime = (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(mtime read, nil ok)
 
@@ -560,7 +640,7 @@ public final class GooseParser: LogParser, Sendable {
         guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else { return nil }
 
         let pricing = ModelPricing.lookup(model: model)
-        let cost = pricing.cost(
+        let cost = try pricing.cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,

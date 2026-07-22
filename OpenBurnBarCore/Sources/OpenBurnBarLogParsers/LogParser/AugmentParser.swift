@@ -10,7 +10,12 @@ public final class AugmentParser: LogParser, Sendable {
     public let provider: AgentProvider = .augment
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fm)
         let roots = candidateRoots().filter { fm.fileExists(atPath: $0.path) }
         guard !roots.isEmpty else {
             return ParseResult(usages: [], conversations: [])
@@ -21,15 +26,16 @@ public final class AugmentParser: LogParser, Sendable {
 
         for root in roots {
             for file in recursiveJSONFiles(in: root) {
+                guard try gate.shouldRead(file) else { continue }
                 let sessionId = sessionIdentifier(for: file, root: root)
-                let pair = file.pathExtension == "jsonl"
+                let pair = try (file.pathExtension == "jsonl"
                     ? parseJSONL(file: file, sessionId: sessionId)
-                    : parseJSON(file: file, sessionId: sessionId)
+                    : parseJSON(file: file, sessionId: sessionId))
 
                 if let usage = pair?.usage {
                     usagesBySessionId[usage.sessionId] = usage
                 }
-                if let conversation = pair?.conversation {
+                if options.includeConversationBodies, let conversation = pair?.conversation {
                     conversationsBySessionId[conversation.sessionId] = conversation
                 }
             }
@@ -90,7 +96,7 @@ public final class AugmentParser: LogParser, Sendable {
     private func parseJSONL(
         file: URL,
         sessionId: String
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(log open guard-return-nil)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
@@ -103,13 +109,13 @@ public final class AugmentParser: LogParser, Sendable {
             summary.consume(json)
         }
 
-        return buildPair(sessionId: sessionId, summary: summary, file: file)
+        return try buildPair(sessionId: sessionId, summary: summary, file: file)
     }
 
     private func parseJSON(
         file: URL,
         sessionId: String
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let data = try? Data(contentsOf: file), // try?-ok(log read guard-return-nil)
               let json = try? JSONSerialization.jsonObject(with: data) else { // try?-ok(malformed JSON guard-return-nil)
             return nil
@@ -125,14 +131,14 @@ public final class AugmentParser: LogParser, Sendable {
             summary.consume(json)
         }
 
-        return buildPair(sessionId: sessionId, summary: summary, file: file)
+        return try buildPair(sessionId: sessionId, summary: summary, file: file)
     }
 
     private func buildPair(
         sessionId: String,
         summary: AugmentSummary,
         file: URL
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard summary.hasUsage || summary.hasConversation else { return nil }
 
         let model = TokenExtractionUtility.normalizeModelName(summary.model ?? "augment")
@@ -141,7 +147,7 @@ public final class AugmentParser: LogParser, Sendable {
         let usage: TokenUsage?
         if summary.hasUsage {
             let pricing = ModelPricing.lookup(model: model)
-            let cost = pricing.cost(
+            let cost = try pricing.cost(
                 inputTokens: summary.inputTokens,
                 outputTokens: summary.outputTokens,
                 cacheCreationTokens: summary.cacheCreationTokens,

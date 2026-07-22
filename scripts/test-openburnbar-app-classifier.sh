@@ -34,6 +34,17 @@ assert_false() {
     fi
 }
 
+assert_equals() {
+    local label="$1"
+    local expected="$2"
+    local actual="$3"
+    if [[ "$actual" != "$expected" ]]; then
+        echo "FAIL: $label" >&2
+        printf 'expected:\n%s\nactual:\n%s\n' "$expected" "$actual" >&2
+        exit 1
+    fi
+}
+
 false_negative_log="$(write_fixture false-negative <<'LOG'
 Test Suite 'Selected tests' started at 2026-06-03 17:02:02.338.
 Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
@@ -286,11 +297,11 @@ assert_false "concrete XCTest failure is not accepted as a false-negative pass" 
 assert_true "concrete XCTest failure remains terminal after false-negative guard" openburnbar_app_test_has_terminal_concrete_xctest_failure "$concrete_failure_log"
 assert_true "earlier Xcode retry failure is accepted only when final Selected tests summary is green" is_xcode_false_negative_pass "$recovered_retry_log"
 assert_false "final failing-tests section is not hidden by a stale green summary" is_xcode_false_negative_pass "$final_failing_tests_log"
-assert_true "final green bundle and Selected tests summaries override a stale failing-tests footer" is_xcode_false_negative_pass "$final_green_bundle_with_stale_footer_log"
-assert_true "final green bundle and Selected tests summaries override stale earlier failures plus stale failing footer" is_xcode_false_negative_pass "$xcode_exit65_final_green_after_stale_failures_log"
-assert_false "stale earlier failures plus final green summaries are not terminal concrete failure" openburnbar_app_test_has_terminal_concrete_xctest_failure "$xcode_exit65_final_green_after_stale_failures_log"
-assert_true "runner-restart stale failing footer is accepted when final Selected tests run is green" is_xcode_false_negative_pass "$restarted_final_green_with_stale_footer_log"
-assert_false "runner-restart stale failing footer is not terminal concrete failure when final run is green" openburnbar_app_test_has_terminal_concrete_xctest_failure "$restarted_final_green_with_stale_footer_log"
+assert_false "final failing-tests footer is not hidden by green bundle and Selected tests summaries" is_xcode_false_negative_pass "$final_green_bundle_with_stale_footer_log"
+assert_false "earlier failures plus final failing-tests footer are not hidden by green summaries" is_xcode_false_negative_pass "$xcode_exit65_final_green_after_stale_failures_log"
+assert_true "earlier failures plus final failing-tests footer remain terminal" openburnbar_app_test_has_terminal_concrete_xctest_failure "$xcode_exit65_final_green_after_stale_failures_log"
+assert_false "runner restart does not erase a final failing-tests footer" is_xcode_false_negative_pass "$restarted_final_green_with_stale_footer_log"
+assert_true "runner-restart failing-tests footer remains terminal" openburnbar_app_test_has_terminal_concrete_xctest_failure "$restarted_final_green_with_stale_footer_log"
 assert_false "runner-restart final-run assertion failure is not hidden" is_xcode_false_negative_pass "$restarted_final_run_failure_log"
 assert_true "runner-restart final-run assertion failure remains terminal concrete failure" openburnbar_app_test_has_terminal_concrete_xctest_failure "$restarted_final_run_failure_log"
 assert_true "runner crash without concrete XCTest failure is retryable" is_known_hang "$hang_log"
@@ -314,5 +325,49 @@ assert_false "SwiftPM timeout does not hide concrete XCTest failure" is_swiftpm_
 assert_true "SwiftPM cache race plus Signal FFI mapping miss is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_cache_and_signal_ffi_mapping_log"
 assert_true "Xcode SwiftPM package graph internal crash is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_xcode_internal_package_graph_crash_log"
 assert_false "unknown failure is not a SwiftPM dependency transient" is_swiftpm_dependency_resolution_transient "$unknown_failure_log"
+
+media_admission_isolated_filter="OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
+media_retry_isolated_filter="OpenBurnBarTests/MediaSessionCoordinatorTests/testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry"
+projection_chunker_isolated_filter="OpenBurnBarTests/ProjectionChunkerTests"
+projection_service_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceTests"
+projection_matters_isolated_filter="OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
+projection_lifecycle_isolated_filter="OpenBurnBarTests/ProjectionStoreLifecycleTests"
+default_plan="$(
+    env -u OPENBURNBAR_APP_TEST_FILTER -u OPENBURNBAR_APP_TEST_FILTERS \
+        "$repo_root/scripts/test-openburnbar-app.sh" --print-xcodebuild-plan
+)"
+assert_equals "default app test plan preserves all sensitive tests in a fresh host" \
+    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_admission_isolated_filter"$'\nmain-skip\t'"$media_retry_isolated_filter"$'\nmain-skip\t'"$projection_chunker_isolated_filter"$'\nmain-skip\t'"$projection_service_isolated_filter"$'\nmain-skip\t'"$projection_matters_isolated_filter"$'\nmain-skip\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-only\t'"$media_admission_isolated_filter"$'\nfresh-host-only\t'"$media_retry_isolated_filter"$'\nfresh-host-only\t'"$projection_chunker_isolated_filter"$'\nfresh-host-only\t'"$projection_service_isolated_filter"$'\nfresh-host-only\t'"$projection_matters_isolated_filter"$'\nfresh-host-only\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-expected-count\t121' \
+    "$default_plan"
+
+projection_test_count=0
+for projection_test_file in "$repo_root"/AgentLensTests/Active/Projection*Tests.swift; do
+    projection_test_class="$(
+        sed -nE 's/.*final class (Projection[^ :]+Tests).*/\1/p' "$projection_test_file" | head -1
+    )"
+    if [[ -z "$projection_test_class" ]]; then
+        echo "FAIL: no projection XCTest class found in $projection_test_file" >&2
+        exit 1
+    fi
+    assert_true "projection test class $projection_test_class stays in the fresh-host plan" \
+        grep -Fqx $'fresh-host-only\tOpenBurnBarTests/'"$projection_test_class" <<<"$default_plan"
+    projection_test_count=$((
+        projection_test_count + $(grep -Ec '^    func test[^ (]*\(' "$projection_test_file")
+    ))
+done
+declared_fresh_host_count="$(awk -F '\t' '$1 == "fresh-host-expected-count" { print $2 }' <<<"$default_plan")"
+assert_equals "fresh-host count covers every projection test plus the isolated media tests" \
+    "$((projection_test_count + 2))" \
+    "$declared_fresh_host_count"
+
+custom_plan="$(
+    env -u OPENBURNBAR_APP_TEST_FILTER -u OPENBURNBAR_APP_TEST_FILTERS \
+        "$repo_root/scripts/test-openburnbar-app.sh" \
+        -only-testing:OpenBurnBarTests/MediaSessionCoordinatorTests \
+        --print-xcodebuild-plan
+)"
+assert_equals "focused app tests remain a single-host plan" \
+    $'main-only\tOpenBurnBarTests/MediaSessionCoordinatorTests' \
+    "$custom_plan"
 
 echo "OpenBurnBar app-test classifier fixtures passed."

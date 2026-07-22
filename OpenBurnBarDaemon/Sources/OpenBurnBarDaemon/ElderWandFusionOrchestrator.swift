@@ -6,9 +6,10 @@ import OpenBurnBarEngine
 // OpenRouter "Fusion"-compatible model-fusion router. Runs entirely inside the
 // daemon gateway (`BurnBarHTTPGatewayServer`):
 //
-//   1. PANEL   — 1...8 analysis models answer the originating prompt IN PARALLEL
-//                (`withThrowingTaskGroup`), each on its own resolved route, each
-//                with the server-side web tool-loop (`web_search` + `web_fetch`).
+//   1. PANEL   — 1...8 analysis models answer the originating prompt in parallel
+//                across independent credentials. Members sharing one credential
+//                are serialized to avoid provider concurrency limits. Each uses
+//                the server-side web tool-loop (`web_search` + `web_fetch`).
 //                Graceful degradation: a failed panel member is dropped; the
 //                request fails only if ZERO members succeed.
 //   2. JUDGE   — embeds the N panel answers verbatim and COMPARES them into a
@@ -44,6 +45,7 @@ struct ElderWandFusionOrchestrator: Sendable {
     let tools: [ElderWandTool]
     let recursionMarkerKey: String
     let recursionMarkerValue: String
+    let panelExecutionGate: ElderWandPanelExecutionGate
     let logger: BurnBarDaemonLogger
 
     init(
@@ -53,6 +55,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         tools: [ElderWandTool],
         recursionMarkerKey: String,
         recursionMarkerValue: String,
+        panelExecutionGate: ElderWandPanelExecutionGate = ElderWandPanelExecutionGate(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "elder-wand-fusion")
     ) {
         self.resolveRoute = resolveRoute
@@ -61,6 +64,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         self.tools = tools
         self.recursionMarkerKey = recursionMarkerKey
         self.recursionMarkerValue = recursionMarkerValue
+        self.panelExecutionGate = panelExecutionGate
         self.logger = logger
     }
 
@@ -78,12 +82,15 @@ struct ElderWandFusionOrchestrator: Sendable {
         originatingModel: String,
         wantsStream: Bool
     ) async -> ElderWandFusionResult {
+        guard !Task.isCancelled else { return Self.cancelledResult() }
         let parentRequestID = "elderwand-\(UUID().uuidString)"
 
         // Stage 1 — decode config.
+        var seenPanelModels = Set<String>()
         let panelModels = (plugin.analysisModels ?? [])
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+            .filter { seenPanelModels.insert($0).inserted }
         guard !panelModels.isEmpty else {
             return .failed(.init(
                 status: 400,
@@ -93,6 +100,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         let boundedPanel = Array(panelModels.prefix(ElderWandPreset.analysisPanelRange.upperBound))
         let judgeModel = plugin.model?.trimmingCharacters(in: .whitespacesAndNewlines)
         let maxToolCalls = Self.clampToolCalls(plugin.maxToolCalls)
+        let maxTokens = Self.extractMaxTokens(from: bodyData)
 
         // Extract the originating conversation so panel models answer the real
         // prompt. `messagesJSON` (the serialized `messages` array) is `Sendable`
@@ -118,9 +126,11 @@ struct ElderWandFusionOrchestrator: Sendable {
             models: boundedPanel,
             originatingMessagesJSON: originatingMessagesJSON,
             maxToolCalls: maxToolCalls,
+            maxTokens: maxTokens,
             loop: loop,
             parentRequestID: parentRequestID
         )
+        guard !Task.isCancelled else { return Self.cancelledResult() }
         guard !panelAnswers.isEmpty else {
             return .failed(.init(
                 status: 502,
@@ -134,9 +144,11 @@ struct ElderWandFusionOrchestrator: Sendable {
             originatingPrompt: originatingPrompt,
             panelAnswers: panelAnswers,
             maxToolCalls: maxToolCalls,
+            maxTokens: maxTokens,
             loop: loop,
             parentRequestID: parentRequestID
         )
+        guard !Task.isCancelled else { return Self.cancelledResult() }
 
         // The panel + judge receipt line items, in pipeline order, carried into
         // the streaming result so the gateway can emit the full itemized session
@@ -149,6 +161,7 @@ struct ElderWandFusionOrchestrator: Sendable {
             originatingMessagesJSON: originatingMessagesJSON,
             verdict: judged.verdict,
             wantsStream: wantsStream,
+            maxTokens: maxTokens,
             parentRequestID: parentRequestID,
             priorLineItems: priorLineItems
         )
@@ -168,6 +181,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         models: [String],
         originatingMessagesJSON: Data,
         maxToolCalls: Int,
+        maxTokens: Int?,
         loop: ElderWandToolLoop,
         parentRequestID: String
     ) async -> [PanelAnswer] {
@@ -179,6 +193,7 @@ struct ElderWandFusionOrchestrator: Sendable {
                         index: index,
                         originatingMessagesJSON: originatingMessagesJSON,
                         maxToolCalls: maxToolCalls,
+                        maxTokens: maxTokens,
                         loop: loop,
                         parentRequestID: parentRequestID
                     )
@@ -203,6 +218,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         index: Int,
         originatingMessagesJSON: Data,
         maxToolCalls: Int,
+        maxTokens: Int?,
         loop: ElderWandToolLoop,
         parentRequestID: String
     ) async -> PanelAnswer? {
@@ -217,13 +233,16 @@ struct ElderWandFusionOrchestrator: Sendable {
             return nil
         }
         do {
-            let result = try await loop.run(
-                model: route.wireModelSlug,
-                systemPrompt: Self.panelSystemPrompt,
-                userMessagesJSON: originatingMessagesJSON,
-                maxToolCalls: maxToolCalls,
-                chat: { body in try await self.bufferedCompletion(body, route) }
-            )
+            let result = try await panelExecutionGate.perform(route: route.route) {
+                try await loop.run(
+                    model: route.wireModelSlug,
+                    systemPrompt: Self.panelSystemPrompt,
+                    userMessagesJSON: originatingMessagesJSON,
+                    maxToolCalls: maxToolCalls,
+                    maxTokens: maxTokens,
+                    chat: { body in try await self.bufferedCompletion(body, route) }
+                )
+            }
             let signature = Self.signature(parentRequestID, "panel", model, index)
             await recordSubCall(.success(
                 stage: .panel(index: index),
@@ -239,6 +258,8 @@ struct ElderWandFusionOrchestrator: Sendable {
                 text: text,
                 spend: Self.lineItem(stage: .panel(index: index), route: route, requestSignature: signature, usage: result.usage)
             )
+        } catch is CancellationError {
+            return nil
         } catch {
             logger.warning("elder_wand_panel_failed", metadata: ["model": model, "error": "\(error)"])
             await recordSubCall(.failure(
@@ -259,6 +280,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         originatingPrompt: String,
         panelAnswers: [PanelAnswer],
         maxToolCalls: Int,
+        maxTokens: Int?,
         loop: ElderWandToolLoop,
         parentRequestID: String
     ) async -> (verdict: String, spend: FusionSubCallSpend?) {
@@ -293,6 +315,7 @@ struct ElderWandFusionOrchestrator: Sendable {
                 systemPrompt: Self.judgeSystemPrompt,
                 userMessagesJSON: judgeMessagesJSON,
                 maxToolCalls: maxToolCalls,
+                maxTokens: maxTokens,
                 chat: { body in try await self.bufferedCompletion(body, route) }
             )
             let signature = Self.signature(parentRequestID, "judge", judgeSlug, 0)
@@ -305,7 +328,13 @@ struct ElderWandFusionOrchestrator: Sendable {
             ))
             let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             let spend = Self.lineItem(stage: .judge, route: route, requestSignature: signature, usage: result.usage)
-            return (text.isEmpty ? Self.fallbackVerdict(panelBlock: panelBlock) : text, spend)
+            guard let verdict = Self.validatedJudgeVerdict(text) else {
+                logger.warning("elder_wand_judge_invalid_verdict", metadata: ["model": judgeSlug])
+                return (Self.fallbackVerdict(panelBlock: panelBlock), spend)
+            }
+            return (verdict, spend)
+        } catch is CancellationError {
+            return (Self.fallbackVerdict(panelBlock: panelBlock), nil)
         } catch {
             logger.warning("elder_wand_judge_failed", metadata: ["model": judgeSlug, "error": "\(error)"])
             await recordSubCall(.failure(
@@ -326,9 +355,11 @@ struct ElderWandFusionOrchestrator: Sendable {
         originatingMessagesJSON: Data,
         verdict: String,
         wantsStream: Bool,
+        maxTokens: Int?,
         parentRequestID: String,
         priorLineItems: [FusionSubCallSpend]
     ) async -> ElderWandFusionResult {
+        guard !Task.isCancelled else { return Self.cancelledResult() }
         guard let route = await resolveRoute(originatingModel) else {
             return .failed(.init(
                 status: 503,
@@ -358,6 +389,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         ])
 
         let requestSignature = Self.signature(parentRequestID, "synthesis", originatingModel, 0)
+        guard !Task.isCancelled else { return Self.cancelledResult() }
 
         if wantsStream {
             // Stream the synthesis answer. The gateway runs the relay over its
@@ -366,7 +398,8 @@ struct ElderWandFusionOrchestrator: Sendable {
             let body = Self.encodeChatBody(
                 model: route.wireModelSlug,
                 messages: synthesisMessages,
-                stream: true
+                stream: true,
+                maxTokens: maxTokens
             )
             return .streaming(.init(
                 route: route,
@@ -381,7 +414,8 @@ struct ElderWandFusionOrchestrator: Sendable {
         let body = Self.encodeChatBody(
             model: route.wireModelSlug,
             messages: synthesisMessages,
-            stream: false
+            stream: false,
+            maxTokens: maxTokens
         )
         do {
             let response = try await bufferedCompletion(body, route)
@@ -397,6 +431,8 @@ struct ElderWandFusionOrchestrator: Sendable {
                 contentType: response.contentType,
                 body: response.body
             ))
+        } catch is CancellationError {
+            return Self.cancelledResult()
         } catch {
             logger.error("elder_wand_synthesis_failed", metadata: ["model": originatingModel, "error": "\(error)"])
             await recordSubCall(.failure(
@@ -418,6 +454,32 @@ struct ElderWandFusionOrchestrator: Sendable {
     static func clampToolCalls(_ raw: Int?) -> Int {
         let value = raw ?? ElderWandPreset.defaultMaxToolCalls
         return min(max(value, ElderWandPreset.maxToolCallsRange.lowerBound), ElderWandPreset.maxToolCallsRange.upperBound)
+    }
+
+    private static func extractMaxTokens(from bodyData: Data) -> Int? {
+        guard let object = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] else {
+            return nil
+        }
+        for key in ["max_tokens", "max_completion_tokens", "max_output_tokens"] {
+            guard let rawValue = object[key],
+                  !(rawValue is Bool),
+                  let number = rawValue as? NSNumber else {
+                continue
+            }
+            let value = number.doubleValue
+            guard value.isFinite,
+                  value.rounded(.towardZero) == value,
+                  value >= 1,
+                  value <= Double(Int.max) else {
+                continue
+            }
+            return Int(value)
+        }
+        return nil
+    }
+
+    private static func cancelledResult() -> ElderWandFusionResult {
+        .failed(.init(status: 499, message: "The Elder Wand request was cancelled."))
     }
 
     /// The originating `messages` array re-serialized (`Sendable`) plus the last
@@ -470,13 +532,17 @@ struct ElderWandFusionOrchestrator: Sendable {
     static func encodeChatBody(
         model: String,
         messages: [[String: Any]],
-        stream: Bool
+        stream: Bool,
+        maxTokens: Int?
     ) -> Data {
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
             "stream": stream,
             "messages": messages
         ]
+        if let maxTokens {
+            body["max_tokens"] = maxTokens
+        }
         return (try? JSONSerialization.data(withJSONObject: body, options: [])) ?? Data("{}".utf8)
     }
 
@@ -495,7 +561,7 @@ struct ElderWandFusionOrchestrator: Sendable {
         usage: BurnBarProviderProxyUsage?
     ) -> FusionSubCallSpend? {
         guard let usage else { return nil }
-        let cost = route.route.pricing.cost(
+        let cost = try route.route.pricing.cost(
             inputTokens: usage.inputTokens,
             outputTokens: usage.outputTokens,
             cacheCreationTokens: usage.cacheCreationTokens,
@@ -521,6 +587,23 @@ struct ElderWandFusionOrchestrator: Sendable {
 
         \(panelBlock)
         """
+    }
+
+    static func validatedJudgeVerdict(_ text: String) -> String? {
+        let requiredFields: Set<String> = [
+            "consensus",
+            "contradictions",
+            "partial_coverage",
+            "unique_insights",
+            "blind_spots"
+        ]
+        guard let data = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Set(object.keys) == requiredFields,
+              object.values.allSatisfy({ $0 is String }) else {
+            return nil
+        }
+        return text
     }
 
     // MARK: - Prompts
