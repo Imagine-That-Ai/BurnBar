@@ -591,9 +591,7 @@ check("desired main branch protection requires only the umbrella gate", () => {
   assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
 });
 
-check("only explicitly urgent PRs use the bounded paid macOS pool", () => {
-  const expectedRunner =
-    "runs-on: ${{ contains(github.event.pull_request.labels.*.name, 'ci-turbo') && 'BurnBar-macos-26-xlarge' || 'macos-26' }}";
+check("macOS gates stay on free standard hosted runners", () => {
   for (const [workflow, expectedCount] of [
     [APP_WORKFLOW, 2],
     [DAEMON_WORKFLOW, 2],
@@ -601,11 +599,8 @@ check("only explicitly urgent PRs use the bounded paid macOS pool", () => {
     [NATIVE_WORKFLOW, 2],
   ]) {
     const source = readFileSync(join(REPO_ROOT, workflow), "utf8");
-    assert.equal(
-      source.split(expectedRunner).length - 1,
-      expectedCount,
-      `${workflow} paid runner routing count`,
-    );
+    assert.equal(source.split("runs-on: macos-26").length - 1, expectedCount);
+    assert.doesNotMatch(source, /ci-turbo|BurnBar-macos-26-xlarge/);
   }
 });
 

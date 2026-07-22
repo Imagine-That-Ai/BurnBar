@@ -16,7 +16,7 @@ export const LANES = [
 ];
 
 const FULL_PATTERNS = [
-  /(^|\/)(Package\.swift|Package\.resolved|Cargo\.toml|Cargo\.lock|build\.gradle(?:\.kts)?|settings\.gradle(?:\.kts)?|gradle\.properties|package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/,
+  /(^|\/)(Package\.swift|Package\.resolved|Cargo\.toml|Cargo\.lock|build\.gradle(?:\.kts)?|settings\.gradle(?:\.kts)?|gradle\.properties|package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|[^/]+\.csproj|[^/]+\.slnx?|Directory\.Build\.(?:props|targets)|global\.json|packages\.lock\.json)$/,
   /^(OpenBurnBar\.xcodeproj|OpenBurnBar\.xcworkspace|tools\/schema-sync|Vendor\/|scripts\/lib\/|scripts\/release\/|scripts\/security\/)/,
   /^(governance\/|security\/|\.github\/CODEOWNERS|\.github\/dependabot\.yml)/,
   /^\.github\/workflows\/(?:burnbar-ci-gate|ci-impact|deploy-|release|security|codeql|dependency|secret|osv)/,
@@ -28,6 +28,7 @@ const SAFE_NO_PRODUCT_PATTERNS = [
   /^(docs\/|droid-wiki\/|plans\/|\.github\/(?:ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)|CHANGELOG\.md$|README\.md$|AGENTS\.md$|CLAUDE\.md$)/,
   /^\.github\/workflows\//,
   /^(tests\/|scripts\/ci\/).*\.(?:py|mjs|js|sh|json|ya?ml)$/,
+  /^windows\/tests\//,
 ];
 
 const LANE_PATTERNS = {
@@ -79,7 +80,14 @@ const SHARED_SWIFT = [
 const DOMAIN_CORE_TRANSITIVE = [
   /domain[-_]?core/i,
   /^AgentLens\/Services\/ProviderQuota\//,
-  /^OpenBurnBarCore\/Sources\/OpenBurnBarCore\/Services\/LogParser\/(?:ModelPricing|DomainCorePricingAdapter)\.swift$/,
+  /^OpenBurnBarCore\/Sources\/OpenBurnBarCore\/(?:ProviderQuota\/|Services\/LogParser\/(?:ModelPricing|DomainCorePricingAdapter)\.swift$)/,
+  /^AgentLens\/Services\/(?:ProviderUsageAPI\/.*UsageAPI|UsageAggregatorParsers.*|CursorConnector\/CursorConnectorManager)\.swift$/,
+  /^AgentLens\/Views\/Chat\/ChatSessionController\+Retrieval\.swift$/,
+  /^windows\/(?:app\/OpenBurnBar\.App\.Presentation\/Quota\/|app\/OpenBurnBar\.App\.CloudSync\/(?:DomainCoreShadowEvidenceUploader|WinAppCloudSyncHost)\.cs$|app\/OpenBurnBar\.App\.CloudSync\/(?:Pensieve\/|Legacy\/PensieveVectorLegacy\.cs$)|tests\/(?:quota|cloudsync)\/|app\/OpenBurnBar\.App\.Configuration\/DomainCoreBuildProfileResolver\.cs$|tests\/configuration\/DomainCoreBuildProfileResolverTests\.cs$|cloudsync\/OpenBurnBar\.CloudSync\.Crypto\/|tests\/cloudsync-app\/PensieveVectorCloakTests\.cs$)/,
+  /^android\/app\/src\/(?:main|test)\/java\/com\/openburnbar\/data\/(?:cloud\/CloudVault|hermes\/)/,
+  /^apps\/console\/(?:lib\/(?:escrow|recall|legacy\/pensieveVectorLegacy)\.ts$|test\/(?:escrow|domainCoreCloudVault).*\.test\.ts$|vendor\/openburnbar-domain-core-wasm\/)/,
+  /^tools\/openburnbar-mcp-remote\/(?:src\/(?:embed|domainCoreCloudVault|legacy\/pensieveVectorLegacy)\.ts$|vendor\/openburnbar-domain-core-wasm\/)/,
+  /^functions\/src\/(?:health|index|pricing|rollupCounters|insightsHostedAnswer)\.ts$/,
 ];
 
 function allLanes(value) {

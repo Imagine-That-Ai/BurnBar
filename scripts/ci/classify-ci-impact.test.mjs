@@ -15,6 +15,11 @@ test("isolated tests select only their owning product", () => {
   const functions = classifyPaths(["functions/src/billing.test.ts"]);
   assert.equal(functions.functions, true);
   assert.equal(functions.macos, false);
+  const windows = classifyPaths([
+    "windows/tests/managed-runtime/ManagedRuntimeTests.cs",
+  ]);
+  assert.equal(windows.full, false);
+  for (const lane of LANES) assert.equal(windows[lane], false);
 });
 
 test("shared Swift sources select every Swift consumer", () => {
@@ -30,6 +35,9 @@ test("domain-core transitive consumers select the Rust lane", () => {
     "functions/src/domainCorePricing.ts",
     "AgentLens/Services/ProviderQuota/ProviderQuotaMacBridge.swift",
     "android/openburnbar-domain-core/src/main/Test.kt",
+    "windows/tests/quota/ProviderQuotaTests.cs",
+    "apps/console/lib/escrow.ts",
+    "functions/src/health.ts",
   ]) {
     assert.equal(classifyPaths([path]).rust, true, path);
   }
@@ -41,6 +49,7 @@ test("dependency manifests and security or release workflows force full CI", () 
     "android/build.gradle.kts",
     ".github/workflows/deploy-production.yml",
     "governance/branch-protection.main.json",
+    "windows/tests/managed-runtime/OpenBurnBar.App.ManagedAgentRuntime.Tests.csproj",
   ]) {
     const result = classifyPaths([path]);
     assert.equal(result.full, true, path);

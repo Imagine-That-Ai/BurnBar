@@ -117,7 +117,7 @@ jobs:
     name: SwiftPM build + test (Core + Daemon)
     needs: detect-native-changes
     if: needs.detect-native-changes.outputs.native == 'true'
-    runs-on: ${{ contains(github.event.pull_request.labels.*.name, 'ci-turbo') && 'BurnBar-macos-26-xlarge' || 'macos-26' }}
+    runs-on: macos-26
     # `swift test` on both packages compiles the libsignal Swift FFI on a cold
     # cache; the Swift Core lane uses 40 min for the same work.
     timeout-minutes: 40
@@ -212,7 +212,7 @@ jobs:
     name: XcodeGen pbxproj drift
     needs: detect-native-changes
     if: needs.detect-native-changes.outputs.native == 'true'
-    runs-on: ${{ contains(github.event.pull_request.labels.*.name, 'ci-turbo') && 'BurnBar-macos-26-xlarge' || 'macos-26' }}
+    runs-on: macos-26
     timeout-minutes: 15
     steps:
       - name: Check out repository

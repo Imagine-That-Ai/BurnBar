@@ -14,6 +14,9 @@ Rust/domain-core, daemon, Functions, website/extension, and console lanes.
 The classifier is deterministic and defaults to full CI for an empty or
 unresolvable diff, an unknown path, shared build infrastructure, dependency
 manifests, security policy, release/deploy code, and its own gate configuration.
+Plain Windows test sources are owned by the Windows gates and do not rebuild
+Apple products; .NET project/solution manifests still force full validation,
+and Windows consumers of domain-core still select the Rust lane.
 
 Workflows use job-level conditions. Do not add workflow-level `paths` filters to
 an always-required workflow: GitHub leaves its required context pending when the
@@ -36,19 +39,12 @@ SwiftPM uses `.spm-cache-new` plus the SwiftPM download cache, Gradle uses
 Generated outputs may be cached only when their generator inputs are included
 in the key and the workflow still runs its drift check after restore.
 
-## Paid merge-queue acceleration
+## Runner policy
 
-The `BurnBar-macos-26-xlarge` GitHub-hosted runner pool is ephemeral,
-BurnBar-only, and capped at five concurrent M2 runners. Expensive macOS 26 jobs
-use that pool only for pull requests carrying the `ci-turbo` label; ordinary
-pull requests and merge-queue candidates stay on standard hosted runners until
-the paid pool has passed a controlled capacity probe.
-This keeps untrusted public pull-request code off persistent self-hosted Macs
-while spending only on explicit urgent work.
-
-Do not grant this public repository access to the shared self-hosted runner
-group. Increase the paid pool cap only after checking the organization macOS
-concurrency limit and recent queue demand.
+BurnBar uses standard GitHub-hosted runners. The public repository must not be
+granted access to the shared persistent self-hosted runner group, and workflows
+must not route labels to paid larger-runner pools. Throughput comes from narrow
+path classification, caching, and concurrent merge-queue candidate builds.
 
 ## Changing ownership
 
