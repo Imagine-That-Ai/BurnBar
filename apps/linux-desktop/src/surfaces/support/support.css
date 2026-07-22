@@ -2,6 +2,10 @@
   margin-top: var(--space-3);
 }
 
+.p09-runtime-grid {
+  margin-top: var(--space-3);
+}
+
 .p09-updates-lede {
   margin: 0 0 var(--space-4);
   color: var(--color-text-base);
@@ -81,6 +85,41 @@
 
 .p09-export-success {
   margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.p09-export-success p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.p09-export-preview {
+  margin: var(--space-3) 0 0;
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-text-mute);
+}
+
+.p09-export-preview div {
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.p09-export-preview dt {
+  color: var(--color-text-mute);
+}
+
+.p09-export-preview dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.p09-preview-unavailable {
+  margin: var(--space-3) 0 0;
 }
 
 .p09-perf-table td:last-child {

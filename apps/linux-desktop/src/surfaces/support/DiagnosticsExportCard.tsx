@@ -1,12 +1,12 @@
 import { Banner } from '../../components/Banner.js';
+import { useShellStore } from '../../state/shellStore.js';
 import { useSupportStore } from '../../state/supportStore.js';
 
 const INCLUDED = [
+  'Shell and daemon versions',
   'Daemon health summary and protocol version',
-  'Redacted config paths (no secrets)',
-  'Perf sample names and timings from this session',
-  'Desktop session hints (XDG session type)',
-  'Tray degradation flag'
+  'Package channel and runtime facts',
+  'Export schema and owner-only file permissions'
 ];
 
 const EXCLUDED = [
@@ -19,8 +19,15 @@ const EXCLUDED = [
 export function DiagnosticsExportCard() {
   const exportState = useSupportStore((s) => s.exportState);
   const exportPath = useSupportStore((s) => s.exportPath);
+  const exportPreview = useSupportStore((s) => s.exportPreview);
   const exportError = useSupportStore((s) => s.exportError);
+  const copyState = useSupportStore((s) => s.copyState);
+  const copyError = useSupportStore((s) => s.copyError);
   const exportDiagnostics = useSupportStore((s) => s.exportDiagnostics);
+  const copyDiagnosticsPath = useSupportStore((s) => s.copyDiagnosticsPath);
+  const fixtureMode = useShellStore((s) => s.fixtureMode);
+  const included = exportPreview?.included ?? INCLUDED;
+  const excluded = exportPreview?.excluded ?? EXCLUDED;
 
   return (
     <section className="p09-diagnostics-card" aria-labelledby="p09-diagnostics-heading">
@@ -34,7 +41,7 @@ export function DiagnosticsExportCard() {
           <strong>Included</strong>
         </p>
         <ul className="p09-manifest-list">
-          {INCLUDED.map((item) => (
+          {included.map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>
@@ -42,10 +49,24 @@ export function DiagnosticsExportCard() {
           <strong>Excluded</strong>
         </p>
         <ul className="p09-manifest-list p09-manifest-excluded">
-          {EXCLUDED.map((item) => (
+          {excluded.map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>
+        {exportPreview ? (
+          <dl className="p09-export-preview" aria-label="Export privacy preview">
+            <div>
+              <dt>Preview</dt>
+              <dd>{fixtureMode ? 'Fixture metadata; no file written' : 'Native export metadata'}</dd>
+            </div>
+            <div><dt>Bytes</dt><dd className="mono">{exportPreview.byteCount.toLocaleString()}</dd></div>
+            <div><dt>File mode</dt><dd className="mono">{exportPreview.fileMode}</dd></div>
+          </dl>
+        ) : (
+          <p className="muted p09-preview-unavailable">
+            Export preview metadata will appear after the packaged shell writes a bundle.
+          </p>
+        )}
       </div>
       <div className="actions">
         <button
@@ -60,11 +81,28 @@ export function DiagnosticsExportCard() {
       <div className="p09-export-status" aria-live="polite" aria-atomic="true">
         {exportState === 'exporting' ? <p>Export in progress…</p> : null}
         {exportState === 'success' && exportPath ? (
-          <p className="p09-export-success">
-            <strong>Export written:</strong> <span className="mono">{exportPath}</span>
-          </p>
+          <div className="p09-export-success">
+            <p><strong>Export written:</strong> <span className="mono">{exportPath}</span></p>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => void copyDiagnosticsPath()}
+              disabled={copyState === 'copying'}
+              aria-label="Copy diagnostics path"
+            >
+              {copyState === 'copying' ? 'Copying…' : 'Copy path'}
+            </button>
+            <p className="muted" aria-live="polite">
+              {copyState === 'success' ? 'Diagnostics path copied.' : null}
+            </p>
+          </div>
         ) : null}
       </div>
+      {copyState === 'failed' && copyError ? (
+        <Banner tone="degraded" role="alert">
+          {copyError}
+        </Banner>
+      ) : null}
       {exportState === 'failed' && exportError ? (
         <Banner tone="degraded" role="alert">
           {exportError}
