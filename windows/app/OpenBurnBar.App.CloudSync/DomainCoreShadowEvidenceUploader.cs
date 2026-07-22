@@ -21,7 +21,10 @@ internal static class DomainCoreShadowEvidenceUploader
                     new { samples },
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (response.Accepted + response.Duplicates != samples.Count)
+            if (!DomainCoreQuotaShadowEvidence.ValidAcknowledgementCounts(
+                    response.Accepted,
+                    response.Duplicates,
+                    samples.Count))
             {
                 throw new InvalidDataException("Domain-core shadow sample acknowledgement count is invalid.");
             }
@@ -31,7 +34,9 @@ internal static class DomainCoreShadowEvidenceUploader
                 comparison.Domain,
                 comparison.Slice,
                 comparison.Operation,
-                comparison.CoreVersion,
+                comparison.LoadedCoreVersion,
+                comparison.LoadedCoreAbiVersion,
+                comparison.LoadedCoreSourceSha256,
                 comparison.Outcome == "match",
                 comparison.MismatchCategory,
                 comparison.LegacyMicros,
