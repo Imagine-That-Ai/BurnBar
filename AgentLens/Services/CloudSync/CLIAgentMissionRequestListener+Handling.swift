@@ -263,10 +263,7 @@ extension CLIAgentMissionRequestListener {
             return
         }
         var data = mergePrivateMissionPayload(privatePayload, into: rawData)
-        // Build the authorization context from current data at call time (reads
-        // post-wand-routing values). `runtimeOverride` forwards the RESOLVED
-        // backend runtime (consent parity); `trustedFanOutCap` forwards the
-        // GUI-resolved server-signed cap. Split-brain M4.
+        // Build authorization context from post-wand-routing values.
         func shadowCtx(
             _ id: String,
             _ p: String,
@@ -297,10 +294,6 @@ extension CLIAgentMissionRequestListener {
             missionGroupContext = try await validateMissionGroupClaimIfNeeded(
                 data: data, uid: uid, requestID: document.documentID)
         } catch {
-            // Group-claim STRUCTURAL validation failure (malformed / inconsistent
-            // Wand group document) — a transport-side document-integrity refusal
-            // before any authorization decision. The daemon authorization runs
-            // only on structurally valid, decoded missions below.
             logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
             // cov:ignore-start -- live Firestore mission-listener denial telemetry; reducer behavior is unit-tested.
             MissionRemoteAuthorizationShadow.observeDeny(
@@ -325,10 +318,6 @@ extension CLIAgentMissionRequestListener {
             ((data["events"] as? [Any])?.count ?? 1)
         )
 
-        // Split-brain M4: PREPARE the trusted-executor escrow record (device
-        // claim + pending-Mac registration) but forward its RAW trust state to
-        // the daemon instead of gating on the GUI's own trusted/untrusted
-        // projection — the daemon is the sole allow/approve/deny authority.
         let trustResult = await deviceTrustChecker.prepareAndValidateTrustedExecutor(
             uid: uid,
             deviceID: accountManager.deviceId
@@ -361,8 +350,6 @@ extension CLIAgentMissionRequestListener {
             await fail(document: document, message: error.localizedDescription)
             return
         }
-        // Persona scope: a malformed present scope is an execution-side
-        // fail-closed refusal, independent of the daemon's verdict.
         let personaScopeIsMalformed: Bool = {
             guard data["personaScopeJSON"] != nil else { return false }
             return CLIAgentMissionPersonaScopeResolution.resolve(from: data).isRefused
@@ -377,10 +364,6 @@ extension CLIAgentMissionRequestListener {
             return
         }
 
-        // The DECISION is the daemon's. Forward the RESOLVED backend runtime and
-        // the GUI-resolved server-signed fan-out cap. Rollback lever
-        // `OBB_MISSION_AUTHORIZE_SHADOW`: `.enforce` (default) obeys the daemon;
-        // `shadow`/`off` disable enforcement → FAIL CLOSED (decision code gone).
         guard MissionRemoteAuthorizationShadow.mode == .enforce else {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused: daemon mission authorization is not enforced (OBB_MISSION_AUTHORIZE_SHADOW=\(MissionRemoteAuthorizationShadow.mode.rawValue, privacy: .public)); remote missions fail closed")
             await fail(
@@ -390,10 +373,6 @@ extension CLIAgentMissionRequestListener {
             )
             return
         }
-        // Group validation already read and checked the server-signed tier cap;
-        // reuse that value instead of issuing a second entitlement read that
-        // could transiently fail and incorrectly collapse a paid group to the
-        // free-tier cap.
         var fanOutCap = missionGroupContext?.tierCap
         if fanOutCap == nil {
             fanOutCap = try? await resolvedWandFanOutCap(uid: uid) // try?-ok(fail-closed entitlement cap)
