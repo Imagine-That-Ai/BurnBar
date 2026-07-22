@@ -3,6 +3,8 @@
  * Generated scaffold; implements cross-user denial at callable trust boundary.
  */
 
+import { createHash } from "node:crypto";
+
 import { describe, it, vi } from "vitest";
 import { callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callableBolaHarness.js";
 
@@ -51,6 +53,10 @@ export const BOLA_MANIFEST = {
   publishAgentGrantAuthority: ["publishAgentGrantAuthority rejects cross-user object access"],
   queueAgentCapabilityGrantRequest: ["queueAgentCapabilityGrantRequest rejects cross-user object access"],
   respondMissionApproval: ["respondMissionApproval rejects cross-user object access"],
+  issueTrustedSignalIdentityRepairChallenge: [
+    "issueTrustedSignalIdentityRepairChallenge rejects cross-user object access",
+  ],
+  repairTrustedSignalIdentity: ["repairTrustedSignalIdentity rejects cross-user object access"],
 } as const;
 
 describe("BOLA — computerUse", () => {
@@ -204,6 +210,42 @@ describe("BOLA — computerUse", () => {
       exportedName: "respondMissionApproval",
       run,
       expectedCode: "not-found",
+      expectedOutcome: "throws",
+    });
+  });
+
+  it("issueTrustedSignalIdentityRepairChallenge rejects cross-user object access", async () => {
+    const mod = await import("../../callables/signalIdentityRepair.js");
+    const run = callableRunner(mod.issueTrustedSignalIdentityRepairChallenge);
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "issueTrustedSignalIdentityRepairChallenge",
+      run,
+      payload: { deviceId: "bob-device" },
+      expectedCode: "permission-denied",
+      expectedOutcome: "throws",
+    });
+  });
+
+  it("repairTrustedSignalIdentity rejects cross-user object access", async () => {
+    const mod = await import("../../callables/signalIdentityRepair.js");
+    const run = callableRunner(mod.repairTrustedSignalIdentity);
+    const signalPublicKey = Buffer.concat([Buffer.from([0x05]), Buffer.alloc(32, 0x42)]);
+
+    await tier2CallableProof(bolaStore, {
+      exportedName: "repairTrustedSignalIdentity",
+      run,
+      payload: {
+        deviceId: "bob-device",
+        challengeId: "bob-challenge",
+        challengePlaintextBase64: Buffer.alloc(32, 0x24).toString("base64"),
+        identityKeyId: "bob-device_1",
+        publicKeyData: signalPublicKey.toString("base64"),
+        publicKeyFingerprint: createHash("sha256").update(signalPublicKey).digest("base64"),
+        keyVersion: 1,
+        nonce: "bola-test-nonce",
+      },
+      expectedCode: "failed-precondition",
       expectedOutcome: "throws",
     });
   });

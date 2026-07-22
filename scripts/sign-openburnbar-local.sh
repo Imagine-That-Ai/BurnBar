@@ -109,7 +109,7 @@ assert_peer_signature() {
   fi
 }
 
-sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"
+sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.app"
 sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"
 sign_path \
   "$APP_BUNDLE/Contents/Helpers/OpenBurnBarPrivilegedInputExecution" \
@@ -156,7 +156,7 @@ fi
 
 /usr/bin/codesign --verify --strict --verbose=2 "$APP_BUNDLE"
 assert_peer_signature "$APP_BUNDLE" "com.openburnbar.app"
-assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "com.openburnbar.daemon"
+assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "com.openburnbar.app"
 assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "com.openburnbar.cli"
 assert_peer_signature \
   "$APP_BUNDLE/Contents/Helpers/OpenBurnBarPrivilegedInputExecution" \
@@ -165,4 +165,5 @@ assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarVirtualHIDBridge"
 assert_peer_signature \
   "$APP_BUNDLE/Contents/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog" \
   "com.openburnbar.privileged-input-killswitch-watchdog"
+bash scripts/ci/verify-daemon-release-signing.sh "$APP_BUNDLE" "$TEAM_ID"
 echo "Signed $APP_BUNDLE with $IDENTITY (team $TEAM_ID, bundle $BUNDLE_ID)."

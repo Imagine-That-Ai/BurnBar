@@ -578,6 +578,12 @@ test("protected Functions inventory covers every pricing execution entry and bot
 test("promotion-contracts executes native release workflow contract tests", () => {
   const job = workflowJob(core, "promotion-contracts");
 
+  const timeout = job.match(/^    timeout-minutes: (\d+)$/mu);
+  assert.ok(timeout, "promotion-contracts must declare a timeout");
+  assert.ok(
+    Number.parseInt(timeout[1], 10) >= 15,
+    "promotion-contracts timeout must tolerate both full-history checkouts",
+  );
   assert.match(
     job,
     /node --test \\\n(?:            [^\n]+ \\\n)*            scripts\/ci\/verify-domain-core-native-release-workflows\.test\.mjs \\/u,

@@ -82,27 +82,18 @@ final class CLIAgentMissionDispatcher {
             vaultKey: resolvedKey.keyData,
             vaultKeyID: resolvedKey.vaultKeyID
         )
-        // BEST-EFFORT at-rest Signal seal; legacy sealedPayload (already in payload) is the
-        // FLOOR. On any failure log and write legacy-only rather than abort the dispatch.
-        do {
-            if let signalEnvelope = try await CLIAgentMissionCloudSealer.signalEnvelopeIfEnabled(
-                from: payload,
-                uid: uid,
-                firestore: db,
-                collection: "cli_agent_mission_requests",
-                docId: id,
-                resolvedKey: resolvedKey
-            ) {
-                payload["signalEnvelope"] = signalEnvelope
-            }
-        } catch {
-            cliMissionSignalLogger.error("Signal at-rest seal failed; writing CLI mission legacy-only: \(String(describing: error), privacy: .public)")
-        }
+        // Firestore rules reserve Signal envelopes for a validating Admin/callable
+        // path. Direct clients always send the path-bound CloudVault seal only.
+        payload.removeValue(forKey: "signalEnvelope")
         let requestRef = db
             .collection("users").document(uid)
             .collection("cli_agent_mission_requests").document(id)
         let batch = db.batch()
-        batch.setData(payload, forDocument: requestRef, merge: false)
+        batch.setData(
+            payload,
+            forDocument: requestRef,
+            merge: false
+        )
         batch.setData(
             try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
                 label: isChatRequest ? "Chat" : "Mission",

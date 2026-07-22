@@ -82,6 +82,7 @@ extension BurnBarHTTPGatewayServer {
                         )
                     }
                 )
+                await recordElderWandRouteSuccess(streaming.route)
                 await recordElderWandRouteLog(
                     stageLabel: "synthesis",
                     route: streaming.route.route,
@@ -123,6 +124,7 @@ extension BurnBarHTTPGatewayServer {
                     executionSource: executionSource
                 )
             } catch {
+                await recordElderWandRouteFailure(streaming.route, error: error)
                 logger.error("elder_wand_synthesis_stream_failed", metadata: ["error": "\(error)"])
                 await recordElderWandRouteLog(
                     stageLabel: "synthesis",
@@ -157,11 +159,9 @@ extension BurnBarHTTPGatewayServer {
             }
         }
         do {
-            let response = try await proxyChatCompletions(
+            let response = try await executeElderWandBufferedCompletion(
                 body: bufferedBody,
-                route: streaming.route.route,
-                formatFamily: streaming.route.formatFamily,
-                variant: nil
+                resolved: streaming.route
             )
             let idempotencyKey = elderWandIdempotencyKey(
                 requestSignature: streaming.requestSignature,
@@ -207,19 +207,113 @@ extension BurnBarHTTPGatewayServer {
                 await self.resolveElderWandRoute(modelSlug: modelSlug)
             },
             bufferedCompletion: { [self] body, resolved in
-                try await self.proxyChatCompletions(
-                    body: body,
-                    route: resolved.route,
-                    formatFamily: resolved.formatFamily,
-                    variant: nil
-                )
+                try await self.executeElderWandBufferedCompletion(body: body, resolved: resolved)
             },
             recordSubCall: { [self] record in
                 await self.recordElderWandSubCall(record, executionSource: executionSource)
             },
             tools: tools,
             recursionMarkerKey: Self.fusionRecursionMarkerKey,
-            recursionMarkerValue: Self.fusionRecursionMarkerValue
+            recursionMarkerValue: Self.fusionRecursionMarkerValue,
+            panelExecutionGate: elderWandPanelExecutionGate
+        )
+    }
+
+    /// Elder Wand calls execute below the normal endpoint route pipeline, so
+    /// mirror that pipeline's route/model health bookkeeping around every
+    /// buffered panel, judge, and synthesis attempt.
+    private func executeElderWandBufferedCompletion(
+        body: Data,
+        resolved: ElderWandResolvedRoute
+    ) async throws -> BurnBarProviderProxyResponse {
+        do {
+            let response = try await proxyChatCompletions(
+                body: body,
+                route: resolved.route,
+                formatFamily: resolved.formatFamily,
+                variant: nil
+            )
+            await recordElderWandRouteSuccess(resolved)
+            return response
+        } catch {
+            await recordElderWandRouteFailure(resolved, error: error)
+            guard shouldRetryRotatedCurrentClaudeCredential(error, route: resolved),
+                  let refreshed = await refreshedCurrentClaudeElderWandRoute(replacing: resolved) else {
+                throw error
+            }
+
+            do {
+                let response = try await proxyChatCompletions(
+                    body: body,
+                    route: refreshed.route,
+                    formatFamily: refreshed.formatFamily,
+                    variant: nil
+                )
+                await recordElderWandRouteSuccess(refreshed)
+                return response
+            } catch {
+                await recordElderWandRouteFailure(refreshed, error: error)
+                throw error
+            }
+        }
+    }
+
+    private func shouldRetryRotatedCurrentClaudeCredential(
+        _ error: Error,
+        route: ElderWandResolvedRoute
+    ) -> Bool {
+        guard route.route.providerID.caseInsensitiveCompare("anthropic") == .orderedSame,
+              route.route.credentialSlotID?
+                .caseInsensitiveCompare("current-claude-code-login") == .orderedSame,
+              let providerError = error as? BurnBarProviderExecutorError,
+              let statusCode = providerError.upstreamStatusAndBody?.statusCode else {
+            return false
+        }
+        return statusCode == 401 || statusCode == 403
+    }
+
+    private func refreshedCurrentClaudeElderWandRoute(
+        replacing stale: ElderWandResolvedRoute
+    ) async -> ElderWandResolvedRoute? {
+        guard let refreshed = await resolveElderWandRoute(modelSlug: stale.wireModelSlug),
+              refreshed.formatFamily == stale.formatFamily,
+              refreshed.route.providerID.caseInsensitiveCompare(stale.route.providerID) == .orderedSame,
+              refreshed.route.credentialSlotID?
+                .caseInsensitiveCompare(stale.route.credentialSlotID ?? "") == .orderedSame,
+              refreshed.route.canonicalModelID == stale.route.canonicalModelID,
+              refreshed.route.resolvedModelID == stale.route.resolvedModelID,
+              refreshed.route.apiKey != stale.route.apiKey else {
+            return nil
+        }
+        return refreshed
+    }
+
+    private func recordElderWandRouteSuccess(_ resolved: ElderWandResolvedRoute) async {
+        await modelHealthStore.recordSuccess(
+            modelID: resolved.route.requestedModel,
+            formatFamily: resolved.formatFamily,
+            route: resolved.route
+        )
+        await elderWandHealthRouter().markRouteSuccess(resolved.route)
+    }
+
+    private func recordElderWandRouteFailure(
+        _ resolved: ElderWandResolvedRoute,
+        error: Error
+    ) async {
+        await modelHealthStore.recordFailure(
+            modelID: resolved.route.requestedModel,
+            formatFamily: resolved.formatFamily,
+            route: resolved.route,
+            error: error
+        )
+        await elderWandHealthRouter().markRouteFailure(resolved.route, error: error)
+    }
+
+    private func elderWandHealthRouter() -> BurnBarProviderRouter {
+        BurnBarProviderRouter(
+            configStore: configStore,
+            logger: BurnBarDaemonLogger(category: "elder-wand-health-router")
         )
     }
 

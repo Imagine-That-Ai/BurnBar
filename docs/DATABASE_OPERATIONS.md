@@ -12,6 +12,10 @@ The canonical database is:
 
 Encryption at rest is enabled by default. The SQLCipher passphrase is held by the app's key-management path, not by this runbook or the rollback shell script. A stock `sqlite3` process cannot read an encrypted database and must not be used as an integrity or migration check.
 
+The production Keychain account is reserved for the installed app. XCTest and UI-test processes must use an injected in-memory Keychain client or their process-local `.xctest.<pid>` account. Tests must never create, read, or delete the production database-key item.
+
+When an encrypted database already exists, startup may only open it with an existing Keychain key. A missing key must not cause a replacement key to be generated. A missing or rejected key leaves the database bytes in place and enters recovery mode with a specific error.
+
 The database normally runs in WAL mode. `openburnbar.sqlite`, `openburnbar.sqlite-wal`, and `openburnbar.sqlite-shm` are one storage unit while a writer is active. Never copy only the main file from a live database.
 
 ## Migration Architecture
@@ -143,6 +147,16 @@ This is a byte-preservation bundle, not a logical SQLite backup. It deliberately
 The app first attempts automatic restoration from the keyed pre-migration backup. If startup still cannot open, key, validate, or migrate the database, it enters recovery mode and does not start dashboard refresh, cloud sync, daemon attach, cursor attach, or periodic parsing.
 
 Use recovery mode to copy diagnostics and preserve the support directory before taking further action. **Archive and Reset** moves the database and sidecars to `StartupRecovery/<timestamp>/` before creating a clean database.
+
+### Missing or Rejected Encryption Key
+
+If recovery mode says the encryption key is missing or rejected, stop retrying until the original key or a recovery bundle is available. The encrypted file is intentionally preserved; generating another key cannot unlock it. First quit the app and make a quiesced inspection bundle. Then use one of these supported paths:
+
+1. Restore the original Keychain item and retry.
+2. Import the matching passphrase-wrapped recovery bundle and retry.
+3. After confirming the preserved archive is sufficient, use **Archive and Reset** to rebuild local data with the current persisted key.
+
+Do not delete the database, disable encryption, or run a plaintext SQLite repair against it. Database backups require the same original key, so restoring only an older encrypted file does not solve a lost-key incident.
 
 ### Operator Restore
 
