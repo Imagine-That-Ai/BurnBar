@@ -13,8 +13,9 @@ param(
     [ValidateSet('Baseline', 'ComputerKill', 'MediaKill', 'MalformedSystem')]
     [string] $Fixture,
 
-    [Parameter(Mandatory = $true)]
     [switch] $ConfirmStagingMutation,
+
+    [switch] $ValidateOnly,
 
     [ValidateSet('burnbar-staging')]
     [string] $ProjectId = 'burnbar-staging'
@@ -25,17 +26,12 @@ $ErrorActionPreference = 'Stop'
 $httpModulePath = Join-Path $PSScriptRoot 'remote-config-http.psm1'
 Import-Module -Name $httpModulePath -Force -Scope Local
 
-if (-not $ConfirmStagingMutation) {
+if (-not $ValidateOnly -and -not $ConfirmStagingMutation) {
     throw 'Pass -ConfirmStagingMutation after confirming this is the isolated staging project.'
 }
 if ($ProjectId -cne 'burnbar-staging') {
     throw 'This helper is hard-bound to burnbar-staging and refuses every other project.'
 }
-$gcloud = Get-Command gcloud -ErrorAction SilentlyContinue
-if ($null -eq $gcloud) {
-    throw 'gcloud is required and must be authenticated as an approved staging operator.'
-}
-
 $resolvedCatalogPath = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot 'remote-config-certification-fixtures.json')).Path
 $catalogBytes = [System.IO.File]::ReadAllBytes($resolvedCatalogPath)
 $catalogHash = [Convert]::ToHexString(
@@ -61,10 +57,63 @@ foreach ($override in $fixtureProperty.Value.overrides.PSObject.Properties) {
     }
     $parameter.Value.defaultValue.value = [string]$override.Value
 }
+$valueTypeOverrides = $fixtureProperty.Value.PSObject.Properties['valueTypeOverrides']
+if ($null -ne $valueTypeOverrides) {
+    foreach ($override in $valueTypeOverrides.Value.PSObject.Properties) {
+        $parameter = $payloadObject.parameters.PSObject.Properties[[string]$override.Name]
+        if ($null -eq $parameter) {
+            throw "Fixture $Fixture changes the type of an unknown Remote Config parameter: $($override.Name)"
+        }
+        $valueType = [string]$override.Value
+        if (@('BOOLEAN', 'STRING') -cnotcontains $valueType) {
+            throw "Fixture $Fixture uses an unsupported Remote Config valueType: $valueType"
+        }
+        $parameter.Value.valueType = $valueType
+    }
+}
 $payload = $payloadObject | ConvertTo-Json -Depth 64
 $payloadHash = [Convert]::ToHexString(
     [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($payload))
 ).ToLowerInvariant()
+
+if ($ValidateOnly) {
+    $valueTypeOverrideNames = if ($null -eq $valueTypeOverrides) {
+        @()
+    } else {
+        @($valueTypeOverrides.Value.PSObject.Properties | ForEach-Object { [string]$_.Name })
+    }
+    $overrideNames = @(
+        @($fixtureProperty.Value.overrides.PSObject.Properties |
+            ForEach-Object { [string]$_.Name }) + $valueTypeOverrideNames |
+            Sort-Object -Unique
+    )
+    $overriddenParameters = @($overrideNames | ForEach-Object {
+        $parameter = $payloadObject.parameters.PSObject.Properties[[string]$_].Value
+        $value = [string]$parameter.defaultValue.value
+        [pscustomobject]@{
+            name = [string]$_
+            valueType = [string]$parameter.valueType
+            valueSha256 = [Convert]::ToHexString(
+                [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($value))
+            ).ToLowerInvariant()
+        }
+    })
+    [pscustomobject]@{
+        project = $ProjectId
+        fixture = $Fixture
+        catalogSha256 = $catalogHash
+        fixturePayloadSha256 = $payloadHash
+        payloadValidated = $true
+        overriddenParameters = $overriddenParameters
+        mutationAttempted = $false
+    } | ConvertTo-Json -Depth 6
+    return
+}
+
+$gcloud = Get-Command gcloud -ErrorAction SilentlyContinue
+if ($null -eq $gcloud) {
+    throw 'gcloud is required and must be authenticated as an approved staging operator.'
+}
 
 $activeProject = [string](& $gcloud.Source config get-value project 2>$null | Select-Object -First 1)
 $activeProject = $activeProject.Trim()
