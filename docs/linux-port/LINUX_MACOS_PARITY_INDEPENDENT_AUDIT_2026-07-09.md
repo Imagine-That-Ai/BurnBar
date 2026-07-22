@@ -2527,19 +2527,26 @@ credential escrow, and live two-device execution remain required.
 
 ### GAP-012A - Complete Projects
 
-- **Difference:** macOS treats projects as registered domain objects with exact
-  session associations and detail. Linux renders read-only cards derived from
-  session data and fuzzy title matching, with no create/register/edit/delete flow.
-- **Why it matters:** grouping can be wrong, users cannot correct it, and project
-  context cannot reliably drive search, insights, missions, or chat.
-- **Recommended solution:** add daemon-owned project CRUD, exact stable IDs,
-  explicit session reassignment, detail/history, and migration from inferred rows.
+- **Difference:** The Linux source path now matches the macOS project lifecycle:
+  registered project objects have exact stable identities, detail/history views,
+  create/edit, typed delete, and explicit session reassignment through the
+  daemon-owned controller RPCs. The remaining difference is operational proof:
+  the current-head signed installed candidate, migration/large-history behavior
+  on Linux, and cross-device conflict behavior have not all been certified.
+- **Why it matters:** project identity drives search, insights, missions, and chat;
+  without installed and migration receipts, a source-level implementation can
+  still regress in packaging, persistence, or recovery without detection.
+- **Recommended solution:** certify the existing lifecycle on the signed Linux
+  candidate, run the 10k-session migration and restart/reload scenarios in the
+  Linux guest, and add cloud/local conflict receipts before claiming parity.
 - **Priority:** **Medium**.
-- **Implementation notes:** never use display titles as identity; define deletion
-  and orphan behavior; share the domain schema with macOS; paginate large projects.
-- **QA verification:** create/edit/delete/register/reassign/reload; duplicate
-  names, moved repositories, orphan sessions, cloud/local conflict, 10k sessions,
-  and migration from current fuzzy associations.
+- **Implementation notes:** retain daemon-owned stable IDs and tombstones; keep
+  delete/reassign typed and idempotent; preserve orphan history for reassignment;
+  paginate large projects; never use display titles as identity.
+- **QA verification:** on the exact signed candidate, create/edit/delete/register/
+  reassign/reload; duplicate names, moved repositories, orphan sessions,
+  daemon restart, cloud/local conflict, 10k sessions, and migration from legacy
+  inferred associations. Bind every receipt to the candidate hash and runtime.
 
 ### GAP-012B - Complete Missions
 

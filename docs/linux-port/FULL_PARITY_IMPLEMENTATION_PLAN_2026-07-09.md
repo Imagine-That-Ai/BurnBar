@@ -242,6 +242,18 @@ known platform divergences.
 > P-27, and P-29 defects; live signed keyring/IBus, desktop notification, and
 > seven-environment receipts remain explicit dependencies.
 
+> **Continuation update (2026-07-22, chat image policy and project audit):**
+> `fc30202f6b` aligns the shared daemon attachment policy with the Linux Tauri
+> gateway's already model-authorized native image path for PNG, JPEG, and WebP.
+> Explicit and inferred MIME handling is bounded and fail-closed; focused Swift,
+> Rust, and frontend tests pass **4/4**, **4/4**, and **3/3**. `a9865315ca`
+> records the evidence and corrects the Projects gap language: project CRUD,
+> exact identity, typed delete/reassign, tombstones, migration, and replay
+> protection are source-integrated, while signed installed, Linux migration,
+> and cross-device conflict receipts remain open. Provider-specific chat
+> backends, native PDF semantics, production credentials, and the seven
+> environment matrix remain release dependencies.
+
 ## Executive Verdict
 
 Linux is not at full macOS parity.
