@@ -1,10 +1,55 @@
 # Packet K5: Kernel-diet warts (cleanups the split exposes)
-STATE: DRAFT  LANE: Kernel-diet  DEPENDS-ON: K1–K4 (each wart lands after its target exists)
-BASELINE-TOUCHING: W4 touches nothing baselined; W1 may shrink a manifest edge.
-BASE: origin/main (after the relevant K packet merges)
+STATE: CONVERGED (shipped as one stacked commit)  LANE: Kernel-diet  DEPENDS-ON: K1–K4
+BASELINE-TOUCHING: W4 touches nothing baselined; W1 shrinks LogParsers (−1 file), grows
+KernelPlatform to exactly 14/14 files (gate is `>`, so it PASSES). No baseline JSON edit
+needed (all ceilings hold with headroom except KernelPlatform files which sit at ceiling).
+BASE: origin/core-decomp2/k4 (stacked; PR base core-decomp2/k4).
 
-Four independent cleanups the K0 investigation surfaced. Each is its own small commit/
-PR — they do NOT block K1–K4. Ordering notes per wart.
+Four independent cleanups the K0 investigation surfaced. All four landed in ONE packet
+commit (K5 is a single stacked PR, not four). Ordering notes per wart.
+
+## CONVERGED REALITY (what actually shipped)
+- W1: MOVED `BufferedLineSequence.swift` + extracted the `readAllUTF8Lines()` `FileHandle`
+  extension (into new `OpenBurnBarKernelPlatform/FileHandle+UTF8Lines.swift`) DOWN to
+  KernelPlatform. Dropped `import OpenBurnBarLogParsers` from `AiderQuotaAdapter.swift`
+  (its only LogParsers symbol was `readAllUTF8Lines`, now reached via the Kernel umbrella
+  `@_exported import OpenBurnBarKernelPlatform`; Quota does not declare KernelPlatform, so
+  no new import is AE-IMPORT-valid — the umbrella covers it). **The `Quota→LogParsers`
+  edge is KEPT** — the W1 premise "AiderQuotaAdapter is the SOLE consumer" was FALSE:
+  `WarpQuotaAdapter.swift` also calls `WarpParser.extractBodyJSONObjects(from:)` and
+  `TimestampNormalizationUtility.date(fromEpoch:)`, both LogParsers-only types. The card's
+  own W1 self-guard ("no other Quota file may reference any LogParsers-only type → keep the
+  edge, document why") therefore mandates keeping it. Manifest comment updated to record
+  this. NOTE on the grep gate: after the move `readAllUTF8Lines` is a KernelPlatform
+  primitive, so its CALL still legitimately appears in `AiderQuotaAdapter.swift`; the
+  "grep must return ZERO" literal is unsatisfiable-by-design once the method relocates (the
+  call must remain) — the edge decision correctly rests on the WarpParser finding, not the
+  call-site grep. `BufferedLineSequence` type: ZERO refs in Quota (clean).
+- W2: VERIFIED no-op. `OpenBurnBarKernelModels/SharedModels/RGBA.swift` imports only
+  Foundation (no SwiftUI); the SwiftUI `Color` bridge lives in `OpenBurnBarUI/SharedModels/
+  RGBA.swift` + `OpenBurnBarUI/Views/SwarmCanvasView+Color.swift`. KernelModels ∈ pureTargets
+  so the ui-purity gate mechanically enforces zero SwiftUI. No code change.
+- W3: VERIFIED KEEP the documented shim. The `extension FileManager: @retroactive
+  @unchecked Sendable {}` shim lives in `KernelPlatform/Platform/PlatformSupport.swift`.
+  `ProviderQuotaAdapterContext.fileManager` is `public let fileManager: FileManager` (a
+  public-API type), and the adapters call an OPEN FileManager surface (`fileExists`,
+  `createDirectory`, `enumerator`, `urls`, `homeDirectoryForCurrentUser`,
+  `contentsOfDirectory`, plus direct `FileManager` params e.g. `WarpQuotaAdapter
+  .candidateLogFiles(in:fileManager:)`). A purpose-built `Sendable` wrapper is NOT mechanical
+  and would change public API + weaken nothing — per the card, KEEP the shim. No code change.
+  (Note: a purpose-built `Sendable` file abstraction — `SendableFileSystem` — already exists
+  in KernelPlatform for NEW call-sites; the legacy FileManager-typed context stays on the shim.)
+- W4: RENAMED `SwitcherCLILAunchService` → `SwitcherCLILaunchService` (git mv of the file
+  too), added `@available(*, deprecated, renamed:) public typealias SwitcherCLILAunchService`
+  for external callers, and repointed EVERY in-tree consumer: 2 AgentLens views
+  (`DashboardQuickSwitchView`, `PopoverQuickSwitchView`), 4 `AgentLensTests/Active/*` files
+  (incl. the renamed `SwitcherCLILaunchServiceTests` class), 1 `OpenBurnBarCoreTests/
+  SwitcherCLIPostLaunchFallbackTests.swift`, and 2 K1/K2 provenance comments
+  (`KernelModels/CLILaunchAdapter.swift`, `KernelPlatform/Platform/CLILaunchRedactor.swift`,
+  which named the old filename). The card enumerated only the 2 views + 1 Core test; the
+  4 AgentLensTests files were additional consumers found by re-grep and repointed too. The
+  2 AgentLens views were PROVEN to compile via a full headless `xcodebuild` of the macOS
+  `OpenBurnBar` app scheme (BUILD SUCCEEDED) — not CI-deferred.
 
 ## W1 — move BufferedLineSequence + readAllUTF8Lines to KernelPlatform, drop the Quota→LogParsers edge
 K0 finding: `BufferedLineSequence.swift` (LogParser/) + `FileHandle.readAllUTF8Lines()`

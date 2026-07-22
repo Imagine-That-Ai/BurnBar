@@ -1570,15 +1570,15 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
 // MARK: - In-Memory Store Tests
 
-final class SwitcherCLILAunchServiceTests: XCTestCase {
+final class SwitcherCLILaunchServiceTests: XCTestCase {
 
-    private var service: SwitcherCLILAunchService!
+    private var service: SwitcherCLILaunchService!
     private var store: InMemorySwitcherProfileStoreAdapter!
 
     override func setUp() {
         super.setUp()
         store = InMemorySwitcherProfileStoreAdapter()
-        service = SwitcherCLILAunchService(profileStore: store)
+        service = SwitcherCLILaunchService(profileStore: store)
     }
 
     override func tearDown() {
@@ -1668,7 +1668,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         store.addProfile(fallback)
         store.setActiveProfileID(primary.id)
 
-        service = SwitcherCLILAunchService(
+        service = SwitcherCLILaunchService(
             profileStore: store,
             fallbackPlanner: TestCLIFallbackPlanner(exhaustedProfileIDs: [primary.id])
         )
@@ -1730,7 +1730,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         store.addProfile(fallback)
         store.setActiveProfileID(primary.id)
 
-        service = SwitcherCLILAunchService(
+        service = SwitcherCLILaunchService(
             profileStore: store,
             fallbackPlanner: TestCLIFallbackPlanner(exhaustedProfileIDs: [])
         )
@@ -1789,7 +1789,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         store.addProfile(fallback)
         store.setActiveProfileID(primary.id)
 
-        service = SwitcherCLILAunchService(
+        service = SwitcherCLILaunchService(
             profileStore: store,
             fallbackPlanner: TestCLIFallbackPlanner(exhaustedProfileIDs: [])
         )

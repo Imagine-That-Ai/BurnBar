@@ -11,7 +11,7 @@ import OpenBurnBarKernel
 // Quota adapters (P-13) can resolve executables + build launch environments without
 // linking this Apple-only, AppKit-adjacent target. What remains here is the
 // launch-coordinator / process-invoker / profile-store-coupled orchestration
-// (`CLILaunchCoordinator`, `CLILaunchInvoker`, `SwitcherCLILAunchService`,
+// (`CLILaunchCoordinator`, `CLILaunchInvoker`, `SwitcherCLILaunchService`,
 // `CLIFallback*`, `CLILaunchOutcome`, `CLILaunchRedactor`); it reaches `CLILaunchAdapter`
 // and `CLILaunchError` through this target's declared `OpenBurnBarKernel` dependency.
 #if os(macOS)
@@ -350,7 +350,7 @@ public enum CLILaunchServiceEvent: Equatable, Sendable {
 /// - No shell interpolation in argument construction
 /// - Typed errors for all failure modes
 /// - Serialized launches via coordinator
-public final class SwitcherCLILAunchService: Sendable {
+public final class SwitcherCLILaunchService: Sendable {
     private let profileStore: SwitcherProfileStoreAdapter
     private let coordinator: CLILaunchCoordinator
     private let fallbackPlanner: any CLIFallbackPlanning
@@ -831,5 +831,13 @@ public struct CLILaunchOutcome: Equatable, Sendable {
 // core-decomposition P-18 so the daemon repoint reaches it via Engine without
 // linking this Apple-only, AppKit-adjacent LaunchServices target. It is pure
 // Foundation (no Kernel/LaunchServices symbol) — a wholesale relocation.
+
+// Phase-2 WS-K W4 (docs/CORE_DECOMPOSITION_PROGRAM.md): the type was renamed from the
+// long-standing typo `SwitcherCLILAunchService` (capital-A "LAunch") to
+// `SwitcherCLILaunchService`. This deprecated alias keeps any out-of-tree / external
+// caller of the old spelling compiling (belt-and-suspenders — every in-tree consumer
+// was repointed in this same change).
+@available(*, deprecated, renamed: "SwitcherCLILaunchService")
+public typealias SwitcherCLILAunchService = SwitcherCLILaunchService
 
 #endif
