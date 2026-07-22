@@ -217,6 +217,14 @@ public final class MercuryLinuxCaptureEngine: @unchecked Sendable {
         onFrame: @escaping @Sendable (MediaFrame) -> Void,
         onStopped: @escaping @Sendable (String) -> Void = { _ in }
     ) throws {
+        if case .portal(let grant) = request.source {
+            guard grant.isLive else {
+                throw MercuryLinuxCaptureError.portalConsentNotLive
+            }
+            guard grant.pipeWireFD >= 0 else {
+                throw MercuryLinuxCaptureError.invalidPipeWireFD(grant.pipeWireFD)
+            }
+        }
         #if OPENBURNBAR_MEDIA_CAPTURE_LINKED
         lock.lock()
         defer { lock.unlock() }
@@ -224,12 +232,6 @@ public final class MercuryLinuxCaptureEngine: @unchecked Sendable {
         let pipelineStarter: (UnsafeMutableRawPointer) -> UnsafeMutableRawPointer?
         switch request.source {
         case .portal(let grant):
-            guard grant.isLive else {
-                throw MercuryLinuxCaptureError.portalConsentNotLive
-            }
-            guard grant.pipeWireFD >= 0 else {
-                throw MercuryLinuxCaptureError.invalidPipeWireFD(grant.pipeWireFD)
-            }
             pipelineStarter = { context in
                 media_capture_start(
                     grant.pipeWireFD,
@@ -455,6 +457,14 @@ public final class MercuryLinuxAudioCaptureEngine: @unchecked Sendable {
         onFrame: @escaping @Sendable (MediaFrame) -> Void,
         onStopped: @escaping @Sendable (String) -> Void = { _ in }
     ) throws {
+        if case .portal(let grant) = request.source {
+            guard grant.isLive else {
+                throw MercuryLinuxAudioCaptureError.portalConsentNotLive
+            }
+            guard grant.pipeWireFD >= 0 else {
+                throw MercuryLinuxAudioCaptureError.invalidPipeWireFD(grant.pipeWireFD)
+            }
+        }
         #if OPENBURNBAR_MEDIA_CAPTURE_LINKED
         lock.lock()
         defer { lock.unlock() }
@@ -462,12 +472,6 @@ public final class MercuryLinuxAudioCaptureEngine: @unchecked Sendable {
         let pipelineStarter: (UnsafeMutableRawPointer) -> UnsafeMutableRawPointer?
         switch request.source {
         case .portal(let grant):
-            guard grant.isLive else {
-                throw MercuryLinuxAudioCaptureError.portalConsentNotLive
-            }
-            guard grant.pipeWireFD >= 0 else {
-                throw MercuryLinuxAudioCaptureError.invalidPipeWireFD(grant.pipeWireFD)
-            }
             pipelineStarter = { context in
                 media_audio_capture_start(
                     grant.pipeWireFD,
