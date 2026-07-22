@@ -2,6 +2,8 @@
 
 OpenBurnBar ships the **Firebase App Check** SDK and installs a provider **before** Firebase is configured (see `OpenBurnBarMobile/App/AppDelegate.swift`, `AgentLens/App/AgentLensApp.swift`, and Android `BurnBarApplication`). That alone does **not** protect Firebase backends: you must **enforce** App Check for **Cloud Firestore** and **Firebase Storage** in the Firebase project used by your Firebase config file.
 
+On macOS, Apple reports App Attest as unsupported. The Mac provider factory checks runtime support and uses Firebase's DeviceCheck provider; it fails closed when neither production provider is available. iPhone and iPad builds prefer App Attest and fall back to DeviceCheck. Do not add the App Attest entitlement to a macOS provisioning profile as a substitute for runtime support.
+
 Without enforcement, a caller who obtains a **valid Firebase Auth ID token** (e.g. from another signed-in context) can still use Firebase product APIs against your project, because your checked-in Firestore/Storage rules express **authentication, owner scoping, client-write limits, and server-only private paths**—not app attestation.
 
 **Primary control:** [Enable App Check enforcement](https://firebase.google.com/docs/app-check/enable-enforcement) for **Cloud Firestore** and **Firebase Storage** in the Firebase console. Those services then reject traffic that is not accompanied by a valid App Check attestation, before (or in addition to) your security rules.
@@ -14,7 +16,7 @@ Without enforcement, a caller who obtains a **valid Firebase Auth ID token** (e.
 
 1. **Firebase Console** → your project → **Build** (or **Security**) → **App Check**.
 2. Register the **macOS** app with bundle ID `com.openburnbar.app` if needed.
-3. For **Device attestation** on Apple platforms, use **App Check with App Attest** and/or **DeviceCheck** as configured for your distribution. A Firebase provider row is not enough: DeviceCheck must show a `keyId` and `privateKeySet=true` in the Firebase App Check API, and App Attest requires the Apple Bundle ID/provisioning profile to carry the App Attest entitlement before the app ships that provider.
+3. For **Device attestation** on Apple platforms, configure DeviceCheck for the Mac app and App Attest with DeviceCheck fallback for iPhone/iPad. A Firebase provider row is not enough: DeviceCheck must show a `keyId` and `privateKeySet=true` in the Firebase App Check API. The macOS runtime must select DeviceCheck because App Attest reports unsupported on Mac.
 4. **CI and local Apple debug:** Register a [debug provider](https://firebase.google.com/docs/app-check/ios/debug-provider) token in App Check for simulator/CI/physical Debug runs. Public release CI must carry only `FIREBASE_PLIST_BASE64`; `scripts/ci/inject-firebase-config.sh` strips `FirebaseAppCheckDebugToken` / `FIRAAppCheckDebugToken` from decoded plists by default, and public Apple release lanes run `scripts/ci/verify-apple-appcheck-release-env.sh` before build/injection so debug App Check env vars or contaminated release plists fail closed. Internal CI that truly needs the debug provider must set `OPENBURNBAR_USE_DEBUG_APP_CHECK=YES` and provide `FIREBASE_APP_CHECK_DEBUG_TOKEN`, which is exported for Debug test runtime and injected only into explicit built-product plist paths. Non-Debug runtime authorization comes from the built `OpenBurnBarUseDebugAppCheck` Info.plist flag, not from process environment. Local Debug builds may still use a token in the **gitignored** `GoogleService-Info.plist` (see [GoogleService-Info.plist.example](../AgentLens/Resources/GoogleService-Info.plist.example), [RELEASE_MACOS.md](RELEASE_MACOS.md) and `scripts/ci/inject-firebase-config.sh`). **Never commit** the real token in the repo.
 5. **Internal iPhone/iPad TestFlight:** If Apple DeviceCheck/App Attest is not fully configured yet, build with `OPENBURNBAR_USE_DEBUG_APP_CHECK=YES` and provide `FIREBASE_APP_CHECK_DEBUG_TOKEN` from Secret Manager. The Xcode build injects that token into the built app bundle only, not the source plist, so Firestore and Storage App Check enforcement can remain on for internal testers.
 6. **Android debug and release:** The Android app installs the Firebase App Check debug provider in Debug builds and the Play Integrity provider in Release builds. For a physical Android device running a local Debug build, copy the debug token printed by Firebase App Check logs into Firebase Console → App Check → Android app `com.openburnbar` → Manage debug tokens. For Firebase App Distribution or sideloaded release-style APKs, build with `OPENBURNBAR_USE_DEBUG_APP_CHECK=true` and `OPENBURNBAR_APP_CHECK_DEBUG_TOKEN` from Secret Manager. For Play Store production builds, leave both unset and use Play Integrity.
@@ -28,9 +30,13 @@ Without enforcement, a caller who obtains a **valid Firebase Auth ID token** (e.
 configuration through the Firebase App Check API (`evaluateFirebaseAppCheckEnforcement`)
 and fails launch unless the required Firebase services report `ENFORCED`. The
 dedicated operator gate `scripts/ops/verify-firestore-app-check-enforcement.sh`
-checks `firestore.googleapis.com` and `firebasestorage.googleapis.com` by default;
-set `FIREBASE_APP_CHECK_SERVICES` only for scoped investigations. The evaluator is
-covered by `scripts/test-commercial-launch-gate-appcheck.mjs`. Set
+checks `firestore.googleapis.com` and `firebasestorage.googleapis.com` by default.
+For the canonical `burnbar` project it also fails unless the Apple DeviceCheck
+provider reports both a `keyId` and `privateKeySet=true`; other projects can opt in
+with `FIREBASE_APP_CHECK_DEVICECHECK_APP_ID`. Set `FIREBASE_APP_CHECK_SERVICES`
+only for scoped investigations. The service evaluator is covered by
+`scripts/test-commercial-launch-gate-appcheck.mjs`, and the provider regression is
+covered by `scripts/ops/verify-firestore-app-check-enforcement.test.sh`. Set
 `OPENBURNBAR_SKIP_LIVE_APP_CHECK_GATE=1` only for offline dry-runs that cannot call
 `gcloud` (never for production launch).
 

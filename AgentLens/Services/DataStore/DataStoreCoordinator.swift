@@ -227,9 +227,24 @@ final class DataStoreCoordinator {
             throw DatabaseEncryptionError.cipherUnavailable
         }
 
-        let encryptionKey = try DatabaseEncryptionService.getOrCreatePersistedKey()
         let fileExists = FileManager.default.fileExists(atPath: path)
-        if fileExists, DatabaseEncryptionService.isEncryptedDatabaseFile(at: path) == false {
+        let existingDatabaseIsEncrypted = fileExists
+            && DatabaseEncryptionService.isEncryptedDatabaseFile(at: path)
+        let encryptionKey: String
+        if existingDatabaseIsEncrypted {
+            guard let existingKey = DatabaseEncryptionService.getKey() else {
+                AppLogger.dataStore.error(
+                    "encrypted_database_key_missing",
+                    metadata: ["path": path, "action": "preserved_without_replacement_key"]
+                )
+                throw DatabaseEncryptionError.existingEncryptedDatabaseKeyMissing(path: path)
+            }
+            encryptionKey = existingKey
+        } else {
+            encryptionKey = try DatabaseEncryptionService.getOrCreatePersistedKey()
+        }
+
+        if fileExists, existingDatabaseIsEncrypted == false {
             let migrated: Bool
             do {
                 migrated = try DatabaseEncryptionService.migratePlaintextDatabaseIfNeeded(
@@ -253,8 +268,23 @@ final class DataStoreCoordinator {
         var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
         installStartupPragmas(on: &config)
         installDebugQueryTracer(on: &config)
+        let pool: DatabasePool
+        do {
+            pool = try openDatabasePool(path: path, configuration: config)
+        } catch {
+            guard existingDatabaseIsEncrypted,
+                  DatabaseEncryptionService.isEncryptedDatabaseKeyRejection(error)
+            else {
+                throw error
+            }
+            AppLogger.dataStore.error(
+                "encrypted_database_key_rejected",
+                metadata: ["path": path, "action": "preserved_without_database_mutation"]
+            )
+            throw DatabaseEncryptionError.existingEncryptedDatabaseKeyRejected(path: path)
+        }
         return DatabaseOpenResult(
-            pool: try openDatabasePool(path: path, configuration: config),
+            pool: pool,
             migrationBackupConfigurationBuilder: {
                 try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
             }

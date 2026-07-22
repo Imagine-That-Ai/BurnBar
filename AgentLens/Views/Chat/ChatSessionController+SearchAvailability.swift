@@ -9,6 +9,18 @@ import AppKit
 extension ChatSessionController {
 
     func validateChatBackendAvailability() async -> Bool {
+        if isElderWandActive {
+            await probeBurnBarGatewayAvailability()
+            if let routingError = selectedModelRoutingError(for: chatBackend) {
+                await appendAndPersistAssistantError(
+                    routingError,
+                    logContext: "Elder Wand gateway unavailable"
+                )
+                return false
+            }
+            return true
+        }
+
         switch chatBackend {
         case .hermes:
             // Re-resolve the bearer fallback every send: a Settings token

@@ -139,6 +139,14 @@ final class OpenBurnBarMobileTests: XCTestCase {
 
     // MARK: - Shared Model Compatibility
 
+    func testIPadSidebarUsesCompactAuroraTabAccessibilityContract() {
+        XCTAssertEqual(AppDestination.pulse.auroraAccessibilityIdentifier, "auroraTab.pulse")
+        XCTAssertEqual(AppDestination.burn.auroraAccessibilityIdentifier, "auroraTab.burn")
+        XCTAssertEqual(AppDestination.streams.auroraAccessibilityIdentifier, "auroraTab.streams")
+        XCTAssertEqual(AppDestination.agents.auroraAccessibilityIdentifier, "auroraTab.hermes")
+        XCTAssertEqual(AppDestination.you.auroraAccessibilityIdentifier, "auroraTab.you")
+    }
+
     func testRecoveryContactEnvelopeUsesBackendSealedShareContract() throws {
         let sealedShare = Data(repeating: 0x42, count: 48).base64EncodedString()
         let payload = try RecoveryContactEnvelope.payload(

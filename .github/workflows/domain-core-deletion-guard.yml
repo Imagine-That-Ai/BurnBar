@@ -5,13 +5,15 @@ name: Domain Core trusted deletion guard
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
   pull-requests: read
 
 concurrency:
-  group: domain-core-deletion-guard-${{ github.event.pull_request.number }}
+  group: domain-core-deletion-guard-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,7 +25,7 @@ jobs:
       - name: Check out trusted default-branch evaluator
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           path: trusted
           persist-credentials: false
           fetch-depth: 0
@@ -31,26 +33,56 @@ jobs:
       - name: Check out candidate as data only
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           path: candidate
           persist-credentials: false
           fetch-depth: 0
+
+      - name: Resolve protected candidate metadata
+        id: candidate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pr_number="${PR_NUMBER:-}"
+          pr_head_sha="${PR_HEAD_SHA:-}"
+          if [[ "$EVENT_NAME" == "merge_group" ]]; then
+            pr_number="$(printf '%s' "$MERGE_HEAD_REF" | sed -nE 's#^(refs/heads/)?gh-readonly-queue/main/pr-([0-9]+)-.*#\2#p')"
+            if [[ -z "$pr_number" ]]; then
+              echo "::error::Could not resolve PR number from merge queue ref: $MERGE_HEAD_REF"
+              exit 1
+            fi
+            pr_head_sha="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number" --jq .head.sha)"
+          fi
+          test -n "$pr_number"
+          test -n "$pr_head_sha"
+          echo "pull_request=$pr_number" >> "$GITHUB_OUTPUT"
+          echo "pull_request_head=$pr_head_sha" >> "$GITHUB_OUTPUT"
 
       - name: Evaluate candidate with trusted default-branch code
         env:
           DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache
           GH_TOKEN: ${{ github.token }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PULL_REQUEST: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          PULL_REQUEST: ${{ steps.candidate.outputs.pull_request }}
+          PULL_REQUEST_HEAD: ${{ steps.candidate.outputs.pull_request_head }}
           TRUSTED_ROOT: ${{ github.workspace }}/trusted
           CANDIDATE_ROOT: ${{ github.workspace }}/candidate
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "Imagine-That-Ai/BurnBar"
-          test "${{ github.event.pull_request.base.repo.full_name }}" = "$GITHUB_REPOSITORY"
-          test "${{ github.event.pull_request.head.repo.full_name }}" = "$GITHUB_REPOSITORY"
-          test "${{ github.event.pull_request.base.ref }}" = "main"
+          if [[ "${{ github.event_name }}" == "pull_request_target" ]]; then
+            test "${{ github.event.pull_request.base.repo.full_name }}" = "$GITHUB_REPOSITORY"
+            test "${{ github.event.pull_request.head.repo.full_name }}" = "$GITHUB_REPOSITORY"
+            test "${{ github.event.pull_request.base.ref }}" = "main"
+          else
+            test "${{ github.event.merge_group.base_ref }}" = "refs/heads/main"
+          fi
           test "$(git -C "$TRUSTED_ROOT" rev-parse HEAD)" = "$BASE_SHA"
           test "$(git -C "$CANDIDATE_ROOT" rev-parse HEAD)" = "$HEAD_SHA"
           python3 "$TRUSTED_ROOT/scripts/ci/verify-domain-core-legacy-deletion.py" \
@@ -59,4 +91,4 @@ jobs:
             --trusted-root "$TRUSTED_ROOT" \
             --verify-signed-evidence \
             --deletion-pull-request "$PULL_REQUEST" \
-            --deletion-head "$HEAD_SHA"
+            --deletion-head "$PULL_REQUEST_HEAD"

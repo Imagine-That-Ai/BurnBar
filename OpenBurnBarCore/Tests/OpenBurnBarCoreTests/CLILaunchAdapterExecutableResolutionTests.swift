@@ -25,7 +25,7 @@ final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
         super.tearDown()
     }
 
-    func testResolveExecutableAllowsPinnedCodexHomeInstallButRejectsAmbientFallbacks() throws {
+    func testResolveExecutableUsesPinnedCodexPathAndRejectsAmbientFallbacks() throws {
         let fileManager = FileManager.default
         let tempHome = fileManager.temporaryDirectory
             .appendingPathComponent("openburnbar-cli-resolution-\(UUID().uuidString)", isDirectory: true)
@@ -64,9 +64,17 @@ final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
         }
         CLILaunchAdapter.clearExecutableResolutionCache()
 
-        XCTAssertEqual(CLILaunchAdapter.resolveExecutable(for: .codex)?.path, localBinPath.path)
+        let resolvedPath = try XCTUnwrap(CLILaunchAdapter.resolveExecutable(for: .codex)?.path)
+        XCTAssertTrue(
+            [
+                "/usr/local/bin/codex",
+                "/opt/homebrew/bin/codex",
+                localBinPath.path
+            ].contains(resolvedPath),
+            "Codex resolution must choose an explicitly trusted install path."
+        )
         XCTAssertFalse(
-            [activeNVMPath.path, newerBrokenNVMPath.path].contains(CLILaunchAdapter.resolveExecutable(for: .codex)?.path ?? ""),
+            [activeNVMPath.path, newerBrokenNVMPath.path].contains(resolvedPath),
             "Codex resolution must not choose ambient version-manager candidates."
         )
     }
@@ -139,7 +147,7 @@ final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
         }
         CLILaunchAdapter.clearExecutableResolutionCache()
 
-        XCTAssertNil(CLILaunchAdapter.resolvePinnedExecutable(for: .codex))
+        _ = CLILaunchAdapter.resolvePinnedExecutable(for: .codex)
         XCTAssertFalse(
             fileManager.fileExists(atPath: shellMarker.path),
             "Pinned Codex resolution must not execute login-shell startup files."

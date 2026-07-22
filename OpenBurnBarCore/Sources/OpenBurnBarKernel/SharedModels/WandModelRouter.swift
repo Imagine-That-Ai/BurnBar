@@ -120,24 +120,17 @@ public enum WandModelRouter {
     private static func capabilityScore(_ option: CLIRuntimeModelOption) -> Int {
         let haystack = "\(option.tier) \(option.modelID) \(option.displayName)"
             .lowercased()
-        if haystack.contains("flagship")
-            || haystack.contains("opus")
-            || haystack.contains("pro")
-            || haystack.contains("max")
-            || haystack.contains("xhigh") {
+        let tokens = Set(haystack.split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        if !tokens.isDisjoint(with: ["flagship", "opus", "pro", "max", "xhigh"]) {
             return 4
         }
-        if haystack.contains("high") || haystack.contains("sonnet") {
+        if !tokens.isDisjoint(with: ["high", "sonnet"]) {
             return 3
         }
-        if haystack.contains("mid") || haystack.contains("standard") {
+        if !tokens.isDisjoint(with: ["mid", "standard"]) {
             return 2
         }
-        if haystack.contains("small")
-            || haystack.contains("mini")
-            || haystack.contains("nano")
-            || haystack.contains("flash")
-            || haystack.contains("haiku") {
+        if !tokens.isDisjoint(with: ["small", "mini", "nano", "flash", "haiku"]) {
             return 1
         }
         return 2
