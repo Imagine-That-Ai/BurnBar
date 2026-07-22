@@ -500,7 +500,7 @@ final class CloudTotalAggregationTests: XCTestCase {
             // NSNumber (which bridges to Double via `as? Double`), so the
             // fixture stores NSNumber for fidelity with the live gateway.
             ("doc-int-cost", NSNumber(value: 3), -60 * 86_400),
-            ("doc-too-old", 99.0, -120 * 86_400), // outside the 90-day window
+            ("doc-too-old", 99.0, -120 * 86_400) // outside the 90-day window
         ]
         for (id, cost, offset) in costs {
             fakeGateway.setDocumentData([
