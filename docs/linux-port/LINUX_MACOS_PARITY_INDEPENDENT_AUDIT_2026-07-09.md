@@ -13,6 +13,32 @@
 | Latest VM proof | The exact `5571e65f85` Ubuntu 24.04 GNOME/X11 ARM64 DEB is 152,137,340 bytes with SHA-256 `5c3218d60fc188df6102c683628e9b0dcae77d80167b724dcad4fdb8df01483`. The clean guest build preserves all 12,456 tracked source blobs; all 163 regular package files match their installed bytes; desktop, daemon, CLI, iroh, linkage, daemon service, and CLI health checks pass; and no stale `/usr/local` product process is present. Live QA exposed and fixed a startup race where `main.tsx` and `App.tsx` could drain the same initial deep link. After `5571e65f85`, three of three true cold starts with `openburnbar://providers?provider=codex` selected Codex and passed AT-SPI at 189 nodes / 108 named / 91 actionable with zero failures. Receipt: [`evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-exact-native-2026-07-20.json). Screenshot: [`evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-provider-deep-link.png`](evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-provider-deep-link.png). The receipt remains explicitly non-certifying because the installed manifest is the unsigned `{}` placeholder, production cloud identifiers are absent, and the remaining environment/device matrix is open. |
 | Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
+## Latest verification checkpoint — 2026-07-22
+
+The integration branch's hosted Linux gate is green at commit
+`4fb5bffe6f558797f5a029dab6ad061624ee7165`. All 29 job steps passed, including
+the full Linux Swift/Rust behavior manifest, desktop typecheck/unit/build,
+release and package contract checks, matched macOS/Linux performance comparison,
+and the IPC drift gate. The final native behavior suite includes the complete
+daemon manifest rather than the reduced list that had been accidentally staged
+during the earlier timeout repair.
+
+The malformed/incomplete HTTP frame test is deterministic now: the Linux raw
+request helper half-closes its write side after sending the intentionally short
+body, so the gateway returns its typed error immediately instead of waiting for
+the receive timeout. The focused Docker Linux reproduction passed in 0.015 s.
+
+A physical iPad navigation smoke also passed one test with zero failures. This
+is deliberately recorded as focused evidence only. The strict P16 trust-cycle
+receipt was not fabricated because no signed current-candidate binding,
+coordination request, or Firebase/App Check configuration was available. The
+live UTM Ubuntu 24.04 ARM64 guest built the exact product-source daemon and CLI,
+passed both help probes, and returned healthy native AF_UNIX status; those
+binaries remain unsigned and do not replace installed-package certification.
+
+Machine-readable receipt:
+`evidence/mission-002-reanchor/continuation-2026-07-22.json`.
+
 ## Integration closeout — 2026-07-21
 
 ### Live UTM session re-open — 2026-07-21 (Grok)
