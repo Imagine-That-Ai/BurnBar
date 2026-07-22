@@ -14,10 +14,11 @@ Authoritative candidate identity:
 - Existing physical retry ZIP SHA-256: bf10318474556b1ea3f69b05831fa09dfc4f8b36ac9470fb113092ec4f7ed876
 
 Independent harness requirement:
-- Require PR https://github.com/Imagine-That-Ai/BurnBar/pull/1862 to be MERGED before using it for certification.
-- Resolve its GitHub mergeCommit.oid and use that exact clean commit as the new independent harness commit.
+- Use exact clean harness commit 37d88056066d876570df4b2887f33df7af7ebe56.
+- That commit is the merge of PR #1867 and includes both the PR #1862 supplemental-harness corrections and the reviewed Remote Config gzip/ETag repair. GitHub and GitLab main both resolved to that exact commit when this handoff was updated.
 - Do not use the old harness commit 00d0751f1c671d99fe7ef8f4059e91d689a30f44 for the new baseline. It coupled valid semantic UIA evidence to an unreliable scheduled-task desktop bitmap.
 - The new harness keeps routed RenderTargetBitmap screenshots fail-closed, uses UI Automation for the semantic deny-region verdict, reports external desktop capture separately, and discovers visible WinUI windows by PID when Process.MainWindowHandle is zero.
+- The Remote Config publisher now requests gzip on both GET and PUT so Firebase returns the ETag required for exact optimistic concurrency. Never replace the returned ETag with If-Match: *.
 
 Known verified starting point:
 - Artifact hash/source/signature/timestamp: PASS.
@@ -50,7 +51,7 @@ Phase 1 - verify transfer and establish clean roots:
 1. Resolve the flash drive whose volume label is BURNBAR. The original signed handoff is BurnBar-cert\windows-v1.0.38-final-handoff. The physical retry evidence is in the latest windows-v1.0.38-development-handoff-* directory.
 2. Run the original VERIFY-TRANSFER.ps1 and require PASS. Independently hash the physical retry ZIP and require bf10318474556b1ea3f69b05831fa09dfc4f8b36ac9470fb113092ec4f7ed876. Test the ZIP and its internal SHA256SUMS.
 3. Create a new timestamped C:\BurnBar-cert\windows-v1.0.38-supplemental-* root. Never overwrite C:\BurnBar-cert\windows-v1.0.38 or an earlier run.
-4. Clone the repo twice into candidate and harness. Check candidate out detached at windows-v1.0.38 and require exact commit 48837746490b6468efa4dc06a476f305d496039c. Resolve PR #1862 mergeCommit.oid, check the harness out detached there, and require both trees clean.
+4. Clone the repo twice into candidate and harness. Check candidate out detached at windows-v1.0.38 and require exact commit 48837746490b6468efa4dc06a476f305d496039c. Check the harness out detached at 37d88056066d876570df4b2887f33df7af7ebe56 and require both trees clean.
 5. Copy the exact verified release/provenance handoff into the new root. Reverify the MSIX hash, signed-artifact manifest, package identity/version/architecture, Authenticode signer/timestamp, checksums, and supplied provenance before installation.
 
 Phase 2 - rerun the baseline with the corrected harness:
@@ -79,10 +80,11 @@ Phase 4 - complete physical-performance-x64:
 Phase 5 - complete staging-cloud against burnbar-staging only:
 1. Verify the exact staging deployment receipts bind all four scoped Functions and the Azure TPM verifier to candidate commit 48837746490b6468efa4dc06a476f305d496039c.
 2. Enable the approved staging public-client environment without printing values. Always restore it in finally and verify no staging environment remains afterward.
-3. Complete OAuth PKCE success, cancellation, malformed callback/state mismatch, refresh/expiry, revocation, offline queue/reconnect, and sign-out cleanup in the signed app.
-4. Prove a physical TPM claim obtains valid staging App Check and an enforced callable accepts it. Missing, malformed, expired, wrong-app, and invalid claims/tokens must be rejected.
-5. Prove CloudVault authenticated upload/download, conflict, duplicate, ordering, replay, cleanup, and sign-out behavior using harmless staging-only records.
-6. Run a secret leak scan over config, logs, diagnostics, evidence, and child environments before finalization.
+3. Before any mutation, run publish-staging-remote-config-fixture.ps1 from the exact harness with -Fixture Baseline -ConfirmStagingMutation. Require a non-empty Firebase ETag from the gzip GET, exact If-Match reuse on PUT, and successful Baseline verification. If Firebase still returns no ETag, stop this gate and retain the sanitized response metadata; never use If-Match: *.
+4. Complete OAuth PKCE success, cancellation, malformed callback/state mismatch, refresh/expiry, revocation, offline queue/reconnect, and sign-out cleanup in the signed app.
+5. Prove a physical TPM claim obtains valid staging App Check and an enforced callable accepts it. Missing, malformed, expired, wrong-app, and invalid claims/tokens must be rejected.
+6. Prove CloudVault authenticated upload/download, conflict, duplicate, ordering, replay, cleanup, and sign-out behavior using harmless staging-only records.
+7. Run a secret leak scan over config, logs, diagnostics, evidence, and child environments before finalization.
 
 Phase 6 - complete media-computer-use-safety with harmless fixtures:
 1. Use the connected iPhone only after Alberto unlocks it and confirms trust/pairing. Device inventory alone is not PASS evidence.
