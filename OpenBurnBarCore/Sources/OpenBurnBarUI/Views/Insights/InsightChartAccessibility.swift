@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarInsights
 #if canImport(Accessibility)
 import Accessibility
 #endif
