@@ -52,6 +52,9 @@ internal SSD.
 ## Bring-up order
 
 1. Land the trusted workflow on `main`.
+   For a pull request, retarget it to `main` before validation and push a
+   normal synchronize commit; the trusted deletion guard intentionally refuses
+   to evaluate a stacked or stale base.
 2. Create `burnbar-turbo-ephemeral` with public-repository access enabled only
    for BurnBar and workflow access pinned to
    `Imagine-That-Ai/BurnBar/.github/workflows/burnbar-turbo.yml@main`.
