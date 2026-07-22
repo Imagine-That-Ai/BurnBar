@@ -132,14 +132,14 @@ dpkg-query -W -f='libkf5wallet-dev=${Version}\n' libkf5wallet-dev
 test -f /usr/lib/aarch64-linux-gnu/cmake/KF5Wallet/KF5WalletConfig.cmake
 
 echo "== package-signing-tools =="
-dpkg-deb --version | head -n 1
-dpkg-buildpackage --version | head -n 1
+dpkg-deb --version | sed -n '1p'
+dpkg-buildpackage --version | sed -n '1p'
 fakeroot --version
 rpmbuild --version
-mksquashfs -version | head -n 1
-gpg --version | head -n 1
+mksquashfs -version | sed -n '1p'
+gpg --version | sed -n '1p'
 patchelf --version
-file --version | head -n 1
+file --version | sed -n '1p'
 
 echo "== package-version-manifest =="
 echo "swift=official-swift-docker ${SWIFT_VERSION:-unknown} ${SWIFT_PLATFORM:-unknown} ${SWIFT_SIGNING_KEY:-unknown-signing-key}"
