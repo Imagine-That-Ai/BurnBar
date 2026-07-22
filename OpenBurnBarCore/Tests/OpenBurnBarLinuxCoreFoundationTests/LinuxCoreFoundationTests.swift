@@ -13,7 +13,7 @@ import OpenBurnBarSignalCore
 import OpenBurnBarSignalSessionTransport
 
 final class LinuxCoreFoundationTests: XCTestCase {
-    func testCloudVaultSignalFallbackExportsCoreContractsOnLinux() throws {
+    func testCloudVaultSignalFallbackExportsCoreContractsAndFailsClosedForSignalAtRestOnLinux() throws {
         let vaultKey = try CloudVaultCrypto.generateVaultKey()
         XCTAssertEqual(vaultKey.count, 32)
 
@@ -41,30 +41,18 @@ final class LinuxCoreFoundationTests: XCTestCase {
             docId: "doc-1",
             field: "body"
         )
-        let plaintext = Data("signal at-rest fallback round trip".utf8)
-        let envelope = try OpenBurnBarSignalAtRest.sealPayload(
-            plaintext,
+        XCTAssertThrowsError(try OpenBurnBarSignalAtRest.sealPayload(
+            Data("signal at-rest fallback is disabled".utf8),
             recipients: [identity.atRestRecipient()],
             binding: binding,
             senderIdentityKeyId: identity.identityKeyId,
             senderIdentityPrivateKey: identity.privateKeyData
-        )
-
-        XCTAssertEqual(envelope.keyDelivery.wraps.count, 1)
-        XCTAssertEqual(envelope.binding, binding)
-        XCTAssertEqual(
-            try OpenBurnBarSignalAtRest.openPayload(
-                envelope,
-                recipientIdentityKeyId: identity.identityKeyId,
-                recipientIdentityPrivateKey: identity.privateKeyData,
-                expectedBinding: binding,
-                trustedSenderPublicKeys: [identity.identityKeyId: identity.publicKeyData]
-            ),
-            plaintext
-        )
+        )) { error in
+            XCTAssertEqual(error as? OpenBurnBarSignalCoreError, .libSignalUnavailable)
+        }
     }
 
-    func testSignalFallbackWrapCannotBeOpenedWithPublicRecipientMaterial() throws {
+    func testSignalFallbackWrapFailsClosedWithoutLibSignal() throws {
         let identity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "linux-device-public-wrap")
         let binding = SignalEnvelopeAAD.Binding(
             uid: "uid-linux",
@@ -75,29 +63,13 @@ final class LinuxCoreFoundationTests: XCTestCase {
             mode: .atRest,
             formatVersion: 1
         )
-        let plaintext = Data("fallback content key".utf8)
-        let sealed = try OpenBurnBarSignalAtRest.atRestSeal(
-            plaintext,
+        XCTAssertThrowsError(try OpenBurnBarSignalAtRest.atRestSeal(
+            Data("fallback content key".utf8),
             recipientIdentityPublicKey: identity.publicKeyData,
             binding: binding
-        )
-
-        let oldPublicOnlyKey = SymmetricKey(data: Data(SHA256.hash(data: identity.publicKeyData)))
-        XCTAssertThrowsError(
-            try AES.GCM.open(
-                AES.GCM.SealedBox(combined: sealed),
-                using: oldPublicOnlyKey,
-                authenticating: Data(try signalEnvelopeBindingToAAD(binding).utf8)
-            )
-        )
-        XCTAssertEqual(
-            try OpenBurnBarSignalAtRest.atRestOpen(
-                sealed,
-                recipientIdentityPrivateKey: identity.privateKeyData,
-                binding: binding
-            ),
-            plaintext
-        )
+        )) { error in
+            XCTAssertEqual(error as? OpenBurnBarSignalCoreError, .libSignalUnavailable)
+        }
     }
 
     func testMediaAndComputerUseAeadSeamsRoundTripOnLinux() throws {
