@@ -1,1 +1,1 @@
-@_exported import OpenBurnBarPlatformSupport
+@_exported import OpenBurnBarKernelPlatform
