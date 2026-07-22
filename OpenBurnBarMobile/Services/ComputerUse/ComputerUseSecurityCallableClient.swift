@@ -269,8 +269,11 @@ enum ComputerUseSecurityCallableClient {
         return user.uid
     }
 
-    private static func requireSignedInUser() throws -> User {
+    private static func requireSignedInUser(expectedUID: String? = nil) throws -> User {
         guard let user = signedInUser, user.isAnonymous == false else {
+            throw ClientError.notAuthenticated
+        }
+        if let expectedUID, user.uid != expectedUID {
             throw ClientError.notAuthenticated
         }
         return user
