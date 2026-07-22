@@ -11,7 +11,7 @@ SIGNER_WORKFLOW = ROOT / ".github/workflows/domain-core-promotion-proof.yml"
 TRUSTED_GUARD_WORKFLOW = ROOT / ".github/workflows/domain-core-deletion-guard.yml"
 
 
-def _workflow_trigger_paths(source: str, event: str) -> set[str]:
+def _workflow_trigger_paths(source: str, event: str) -> set[str] | None:
     """Return the quoted path filters for one top-level workflow event."""
     lines = source.splitlines()
     start = lines.index(f"  {event}:")
@@ -26,6 +26,8 @@ def _workflow_trigger_paths(source: str, event: str) -> set[str]:
         len(lines),
     )
     event_lines = lines[start:end]
+    if "    paths:" not in event_lines:
+        return None
     paths_start = event_lines.index("    paths:")
     paths: set[str] = set()
     for line in event_lines[paths_start + 1 :]:
@@ -66,7 +68,9 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
         }
 
         for event in ("push", "pull_request"):
-            self.assertLessEqual(governed_families, _workflow_trigger_paths(source, event), event)
+            paths = _workflow_trigger_paths(source, event)
+            if paths is not None:
+                self.assertLessEqual(governed_families, paths, event)
 
     def test_protected_signer_publishes_official_provenance_bundle(self) -> None:
         source = SIGNER_WORKFLOW.read_text()

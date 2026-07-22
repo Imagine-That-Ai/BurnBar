@@ -9,6 +9,8 @@
 //
 // This module selects the canonical candidate commit:
 //   - pull_request       → payload.pull_request.head.sha (the real PR head)
+//   - merge_group        → payload.merge_group.head_sha, cross-checked against
+//                          GITHUB_SHA (the exact synthetic queue candidate)
 //   - push / dispatch     → GITHUB_SHA (the exact pushed/dispatched commit)
 //
 // Every returned SHA is re-validated as a full lowercase 40-hex Git SHA-1.
@@ -39,8 +41,8 @@ export function validateCandidateCommit(sha) {
  * @param {object}  input
  * @param {string}  input.event       GitHub event name (pull_request, push, workflow_dispatch, …).
  * @param {object}  [input.payload]   Parsed GitHub webhook payload.
- *                                     Required for pull_request events
- *                                     (must contain payload.pull_request.head.sha).
+ *                                     Required for pull_request and merge_group
+ *                                     events.
  * @param {string}  [input.fallbackSha] GITHUB_SHA — the exact commit for push/dispatch.
  * @returns {string} A validated lowercase 40-hex Git SHA-1.
  * @throws  {Error}  On missing coordinates, malformed SHAs, or unsupported events.
@@ -65,6 +67,26 @@ export function selectCanonicalCandidateCommit({ event, payload, fallbackSha }) 
       throw new Error("pull_request head.sha is not a string");
     }
     return validateCandidateCommit(headSha);
+  }
+
+  if (event === "merge_group") {
+    if (!payload || typeof payload !== "object") {
+      throw new Error(
+        "merge_group event requires a payload with merge_group.head_sha",
+      );
+    }
+    const mergeGroup = payload.merge_group;
+    if (!mergeGroup || typeof mergeGroup !== "object") {
+      throw new Error("merge_group payload is missing the merge_group object");
+    }
+    const headSha = validateCandidateCommit(mergeGroup.head_sha);
+    const githubSha = validateCandidateCommit(fallbackSha);
+    if (headSha !== githubSha) {
+      throw new Error(
+        "merge_group head_sha does not match fallbackSha (GITHUB_SHA)",
+      );
+    }
+    return headSha;
   }
 
   if (event === "push" || event === "workflow_dispatch") {

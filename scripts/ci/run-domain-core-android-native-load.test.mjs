@@ -135,6 +135,55 @@ test("push and workflow_dispatch select the exact GITHUB_SHA", () => {
   }
 });
 
+test("merge_group selects the exact synthetic queue candidate and cross-checks GITHUB_SHA", () => {
+  const selected = selectCanonicalCandidateCommit({
+    event: "merge_group",
+    payload: { merge_group: { head_sha: MERGE_SHA } },
+    fallbackSha: MERGE_SHA,
+  });
+  assert.equal(selected, MERGE_SHA);
+
+  assert.throws(
+    () => selectCanonicalCandidateCommit({
+      event: "merge_group",
+      payload: { merge_group: { head_sha: MERGE_SHA } },
+      fallbackSha: PR_HEAD,
+    }),
+    /does not match fallbackSha/u,
+  );
+});
+
+test("missing or malformed merge_group coordinates fail closed", () => {
+  const cases = [
+    { payload: null, fallbackSha: MERGE_SHA, message: /requires a payload/u },
+    {
+      payload: {},
+      fallbackSha: MERGE_SHA,
+      message: /missing the merge_group object/u,
+    },
+    {
+      payload: { merge_group: {} },
+      fallbackSha: MERGE_SHA,
+      message: /full lowercase 40-character/u,
+    },
+    {
+      payload: { merge_group: { head_sha: MERGE_SHA } },
+      fallbackSha: undefined,
+      message: /full lowercase 40-character/u,
+    },
+  ];
+  for (const { payload, fallbackSha, message } of cases) {
+    assert.throws(
+      () => selectCanonicalCandidateCommit({
+        event: "merge_group",
+        payload,
+        fallbackSha,
+      }),
+      message,
+    );
+  }
+});
+
 test("missing or malformed pull_request coordinates fail closed", () => {
   const validPayload = { pull_request: { head: { sha: PR_HEAD } } };
   const cases = [
