@@ -294,6 +294,17 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Swift P-256 key-agreement typealias name is a type declaration, not committed key material"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''PlatformP256KeyAgreementPrivateKey''',
+]
+paths = [
+  '''OpenBurnBarCore/Sources/OpenBurnBarKernelPlatform/Platform/PlatformSupport\.swift''',
+]
+
+[[allowlists]]
 description = "ElderWand Windows preset storage key is a local-storage identifier, not credential material"
 condition = "AND"
 regexTarget = "match"
