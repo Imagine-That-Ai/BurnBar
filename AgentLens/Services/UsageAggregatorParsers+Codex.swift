@@ -169,13 +169,13 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
         guard let handle = FileHandle(forReadingAtPath: path) else { return false }
         defer { try? handle.close() } // try?-ok(read-only teardown)
 
-        guard let prefix = try? handle.read(upToCount: 256 * 1024),
+        guard let prefix = try? handle.read(upToCount: 256 * 1024), // try?-ok(unreadable rollout is not a subagent match)
               !prefix.isEmpty else { return false }
 
         let text = String(decoding: prefix, as: UTF8.self)
         for line in text.split(separator: "\n", maxSplits: 15, omittingEmptySubsequences: true) {
             guard let data = String(line).data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(malformed metadata is ignored)
                   json["type"] as? String == "session_meta",
                   let payload = json["payload"] as? [String: Any],
                   let source = payload["source"] as? [String: Any] else { continue }

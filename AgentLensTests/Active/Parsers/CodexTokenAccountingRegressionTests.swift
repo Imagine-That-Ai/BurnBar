@@ -165,7 +165,7 @@ final class CodexTokenAccountingRegressionTests: XCTestCase {
                 createdAt: cutoff + 1,
                 updatedAt: cutoff + 60,
                 cwd: "/tmp/OpenBurnBar"
-            ),
+            )
         ])
         try harness.setCodexThreadSource(threadID: "child", source: "subagent")
 
@@ -186,16 +186,16 @@ final class CodexTokenAccountingRegressionTests: XCTestCase {
         {"timestamp":"2026-07-13T12:00:01Z","type":"session_meta","payload":{"id":"old-child","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent","depth":1}}}}}
         """.write(to: childURL, atomically: true, encoding: .utf8)
 
-        var threads: [(id: String, model: String, tokensUsed: Int, rolloutPath: String, createdAt: Int64, updatedAt: Int64, cwd: String)] = [
+        var threads = [
             (
                 id: "old-child",
                 model: "openai/gpt-5.2-codex",
                 tokensUsed: 176,
                 rolloutPath: childURL.path,
-                createdAt: 1,
-                updatedAt: 1,
+                createdAt: Int64(1),
+                updatedAt: Int64(1),
                 cwd: "/tmp/OpenBurnBar"
-            ),
+            )
         ]
         for index in 0..<500 {
             threads.append((
@@ -245,7 +245,7 @@ final class CodexTokenAccountingRegressionTests: XCTestCase {
                 createdAt: 200,
                 updatedAt: 201,
                 cwd: "/tmp/OpenBurnBar"
-            ),
+            )
         ])
 
         let governor = OpenBurnBarCore.ParserResourceGovernor(

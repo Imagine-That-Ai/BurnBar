@@ -177,7 +177,7 @@
           "cacheCreationTokens" : 0,
           "cacheReadTokens" : 40,
           "costNanoUSD" : 441000,
-          "estimatorVersion" : "",
+          "estimatorVersion" : "codex-daily-cumulative-v1",
           "inputTokens" : 120,
           "model" : "openai/gpt-5.2-codex",
           "outputTokens" : 16,
@@ -186,7 +186,7 @@
           "provenanceMethod" : "provider_log",
           "provider" : "Codex",
           "reasoningTokens" : 0,
-          "sessionId" : "codex-contract-001",
+          "sessionId" : "codex-contract-001#day-1766556000",
           "totalTokens" : 176,
           "usageSource" : "provider_log"
         }
@@ -203,7 +203,7 @@
           "cacheCreationTokens" : 0,
           "cacheReadTokens" : 40,
           "costNanoUSD" : 441000,
-          "estimatorVersion" : "",
+          "estimatorVersion" : "codex-daily-cumulative-v1",
           "inputTokens" : 120,
           "model" : "openai/gpt-5.2-codex",
           "outputTokens" : 16,
@@ -212,7 +212,7 @@
           "provenanceMethod" : "provider_log",
           "provider" : "Codex",
           "reasoningTokens" : 0,
-          "sessionId" : "codex-contract-002",
+          "sessionId" : "codex-contract-002#day-1766556000",
           "totalTokens" : 176,
           "usageSource" : "provider_log"
         }
@@ -229,7 +229,7 @@
           "cacheCreationTokens" : 0,
           "cacheReadTokens" : 40,
           "costNanoUSD" : 441000,
-          "estimatorVersion" : "",
+          "estimatorVersion" : "codex-daily-cumulative-v1",
           "inputTokens" : 120,
           "model" : "openai/gpt-5.2-codex",
           "outputTokens" : 16,
@@ -238,7 +238,7 @@
           "provenanceMethod" : "provider_log",
           "provider" : "Codex",
           "reasoningTokens" : 0,
-          "sessionId" : "codex-contract-003",
+          "sessionId" : "codex-contract-003#day-1766556000",
           "totalTokens" : 176,
           "usageSource" : "provider_log"
         }
