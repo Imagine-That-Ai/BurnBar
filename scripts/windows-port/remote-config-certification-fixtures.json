@@ -76,6 +76,9 @@
       "description": "Supply an invalid system-enable value to prove fail-closed parsing.",
       "overrides": {
         "computer_use_system_enabled": "invalid-certification-value"
+      },
+      "valueTypeOverrides": {
+        "computer_use_system_enabled": "STRING"
       }
     }
   }
