@@ -63,6 +63,20 @@ final class DashboardViewIntegrationTests: XCTestCase {
         XCTAssertFalse(view.showingSettings)
     }
 
+    func test_wandSettingsPresentationStagesRouteBeforeOpeningSheet() throws {
+        let view = try makeDashboardView()
+
+        view.presentSettings(itemID: SettingsAnchor.analysisConfigurator)
+
+        XCTAssertEqual(view.pendingSettingsItemID, SettingsAnchor.analysisConfigurator)
+        XCTAssertTrue(view.showingSettings)
+
+        view.settingsPresentation.dismiss()
+
+        XCTAssertNil(view.pendingSettingsItemID)
+        XCTAssertFalse(view.showingSettings)
+    }
+
     func test_routeTitleMapping() throws {
         let view = try makeDashboardView()
         XCTAssertEqual(view.routeTitle(.overview), "Overview")

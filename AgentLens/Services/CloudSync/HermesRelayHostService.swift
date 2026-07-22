@@ -272,8 +272,22 @@ final class HermesRelayHostService {
             return
         }
 
-        await publishRelayConnection(uid: uid)
-        ensureRequestListener(uid: uid)
+        await Self.establishRelayAvailability(
+            ensureRequestListener: { self.ensureRequestListener(uid: uid) },
+            publishConnection: { await self.publishRelayConnection(uid: uid) }
+        )
+    }
+
+    /// Firestore is the recovery lane when iroh is unavailable. Install its
+    /// request listener before the potentially slow realtime health check so a
+    /// transient listener restart cannot leave valid requests pending until
+    /// they expire.
+    static func establishRelayAvailability(
+        ensureRequestListener: () -> Void,
+        publishConnection: () async -> Void
+    ) async {
+        ensureRequestListener()
+        await publishConnection()
     }
 
     private func publishRelayOffline(uid: String) async {

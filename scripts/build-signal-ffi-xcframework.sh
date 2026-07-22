@@ -231,6 +231,10 @@ for dylib in "${out_dir}/lib${safe_crate_name}"*.dylib; do
 done
 EOF
   chmod +x "${RUSTC_WRAPPER_SCRIPT}"
+  # Files created under Documents can inherit macOS provenance metadata that
+  # makes Cargo's direct wrapper exec fail with `Interrupted system call`.
+  # This is a generated local build tool, so remove that inherited marker.
+  /usr/bin/xattr -d com.apple.provenance "${RUSTC_WRAPPER_SCRIPT}" 2>/dev/null || true
 }
 
 ensure_rust_target() {
