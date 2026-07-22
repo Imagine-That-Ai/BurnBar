@@ -1,22 +1,25 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import {
-  lstatSync,
-  readFileSync,
-  readdirSync,
-} from "node:fs";
+import { lstatSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { gzipSync } from "node:zlib";
 
+import { readRegularFileSync } from "../lib/atomic-regular-file.mjs";
+import {
+  firebaseHostingApiUrl,
+  firebaseHostingReleaseName,
+  firebaseHostingUploadUrl,
+  firebaseHostingVersionName,
+} from "../lib/firebase-hosting-rest-url.mjs";
+
 const args = process.argv.slice(2);
-const apiOrigin = "https://firebasehosting.googleapis.com/v1beta1";
-const allowedUploadHosts = new Set(["upload-firebasehosting.googleapis.com"]);
 
 let project = "burnbar";
 let configPath = "";
 let firebasercPath = "";
 let message = "";
 let dryRun = false;
+let resultPath = "";
 
 function usage() {
   console.error(
@@ -43,6 +46,8 @@ for (let index = 0; index < args.length; index += 1) {
     message = args[++index] ?? "";
   } else if (arg === "--dry-run") {
     dryRun = true;
+  } else if (arg === "--result") {
+    resultPath = resolve(args[++index] ?? "");
   } else if (arg === "--help" || arg === "-h") {
     usage();
     process.exit(0);
@@ -66,7 +71,12 @@ if (!dryRun && !accessToken) {
 
 function readJson(path) {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    return JSON.parse(
+      readRegularFileSync(path, {
+        encoding: "utf8",
+        label: "Hosting configuration",
+      }),
+    );
   } catch (error) {
     throw new Error(`Failed to parse ${path}: ${error.message}`);
   }
@@ -88,19 +98,37 @@ function assertFirebaseIdentifier(value, label) {
 function resolveSiteForTarget(firebaserc, target) {
   assertFirebaseIdentifier(target, "hosting target");
   const sites = firebaserc.targets?.[project]?.hosting?.[target];
-  if (!Array.isArray(sites) || sites.length !== 1 || typeof sites[0] !== "string") {
-    throw new Error(`Firebase hosting target ${target} must map to exactly one site in .firebaserc`);
+  if (
+    !Array.isArray(sites) ||
+    sites.length !== 1 ||
+    typeof sites[0] !== "string"
+  ) {
+    throw new Error(
+      `Firebase hosting target ${target} must map to exactly one site in .firebaserc`,
+    );
   }
-  assertFirebaseIdentifier(sites[0], `Firebase hosting site for target ${target}`);
+  assertFirebaseIdentifier(
+    sites[0],
+    `Firebase hosting site for target ${target}`,
+  );
+  const expected = { marketing: "burnbar", console: "burnbar-console" }[target];
+  if (expected === undefined || sites[0] !== expected) {
+    throw new Error(
+      `Firebase hosting target ${target} must map exactly to production site ${expected ?? "<unsupported>"}`,
+    );
+  }
   return sites[0];
 }
 
 function extractPattern(type, source) {
-  const hasGlob = Object.hasOwn(source, "glob") || Object.hasOwn(source, "source");
+  const hasGlob =
+    Object.hasOwn(source, "glob") || Object.hasOwn(source, "source");
   const glob = source.glob ?? source.source;
   const regex = source.regex;
   if (hasGlob && regex) {
-    throw new Error(`Cannot specify a ${type} pattern with both a glob/source and regex`);
+    throw new Error(
+      `Cannot specify a ${type} pattern with both a glob/source and regex`,
+    );
   }
   if (hasGlob && typeof glob === "string") return { glob };
   if (typeof regex === "string") return { regex };
@@ -112,7 +140,9 @@ function convertHeaders(headers = []) {
     const headerMap = {};
     for (const header of entry.headers ?? []) {
       if (typeof header.key !== "string" || typeof header.value !== "string") {
-        throw new Error("Hosting header entries must contain string key/value pairs");
+        throw new Error(
+          "Hosting header entries must contain string key/value pairs",
+        );
       }
       headerMap[header.key] = header.value;
     }
@@ -148,11 +178,15 @@ function convertRewrites(rewrites = []) {
     }
     if (entry.function && typeof entry.function === "object") {
       if (entry.function.pinTag) {
-        throw new Error("Hosting REST deploy does not support function pinTag rewrites");
+        throw new Error(
+          "Hosting REST deploy does not support function pinTag rewrites",
+        );
       }
       const functionId = entry.function.functionId;
       if (typeof functionId !== "string") {
-        throw new Error("Hosting function rewrites must contain function.functionId");
+        throw new Error(
+          "Hosting function rewrites must contain function.functionId",
+        );
       }
       const rewrite = { ...target, function: functionId };
       if (typeof entry.function.region === "string") {
@@ -162,7 +196,9 @@ function convertRewrites(rewrites = []) {
     }
     if (entry.run && typeof entry.run === "object") {
       if (entry.run.pinTag) {
-        throw new Error("Hosting REST deploy does not support Cloud Run pinTag rewrites");
+        throw new Error(
+          "Hosting REST deploy does not support Cloud Run pinTag rewrites",
+        );
       }
       if (typeof entry.run.serviceId !== "string") {
         throw new Error("Hosting run rewrites must contain run.serviceId");
@@ -178,7 +214,9 @@ function convertRewrites(rewrites = []) {
     if (entry.dynamicLinks === true) {
       return { ...target, dynamicLinks: true };
     }
-    throw new Error("Hosting rewrite must specify destination, function, run, or dynamicLinks");
+    throw new Error(
+      "Hosting rewrite must specify destination, function, run, or dynamicLinks",
+    );
   });
 }
 
@@ -201,7 +239,8 @@ function listFiles(root) {
     for (const name of readdirSync(dir)) {
       const path = join(dir, name);
       const stat = lstatSync(path);
-      if (stat.isSymbolicLink()) throw new Error(`Refusing to deploy symlink: ${path}`);
+      if (stat.isSymbolicLink())
+        throw new Error(`Refusing to deploy symlink: ${path}`);
       if (stat.isDirectory()) {
         visit(path);
       } else if (stat.isFile()) {
@@ -221,24 +260,16 @@ function fileRecord(publicDir, path) {
   if (!relativePath || relativePath.startsWith("../")) {
     throw new Error(`Invalid file path outside public dir: ${path}`);
   }
-  const gzipped = gzipSync(readFileSync(path), { level: 9 });
+  const gzipped = gzipSync(
+    readRegularFileSync(path, { label: "Hosting artifact" }),
+    { level: 9 },
+  );
   const hash = createHash("sha256").update(gzipped).digest("hex");
   return {
     hash,
     path: `/${relativePath}`,
     gzipped,
   };
-}
-
-function urlFor(path) {
-  if (/^https?:\/\//u.test(path)) {
-    const url = new URL(path);
-    if (url.protocol !== "https:" || !allowedUploadHosts.has(url.hostname)) {
-      throw new Error(`Refusing non-Firebase Hosting upload URL: ${url.origin}`);
-    }
-    return url;
-  }
-  return new URL(`${apiOrigin.replace(/\/$/u, "")}/${path.replace(/^\//u, "")}`);
 }
 
 async function request(method, path, body) {
@@ -250,7 +281,7 @@ async function request(method, path, body) {
     headers["Content-Type"] = "application/json";
     requestBody = JSON.stringify(body);
   }
-  const url = urlFor(path);
+  const url = firebaseHostingApiUrl(method, path);
   const response = await fetch(url, {
     method,
     headers,
@@ -258,14 +289,16 @@ async function request(method, path, body) {
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`${method} ${url.pathname} failed (${response.status}): ${text}`);
+    throw new Error(
+      `${method} ${url.pathname} failed (${response.status}): ${text}`,
+    );
   }
   if (response.status === 204) return {};
   return response.json();
 }
 
-async function uploadHash(uploadUrl, hash, gzipped) {
-  const url = urlFor(`${uploadUrl.replace(/\/$/u, "")}/${hash}`);
+async function uploadHash(uploadUrl, site, hash, gzipped) {
+  const url = firebaseHostingUploadUrl(uploadUrl, site, hash);
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -312,29 +345,38 @@ function batch(entries, size) {
 
 async function deployOne(entry, firebaserc) {
   const target = entry.target;
-  if (typeof target !== "string") throw new Error("Hosting entry is missing target");
-  if (typeof entry.public !== "string") throw new Error(`Hosting target ${target} is missing public`);
+  if (typeof target !== "string")
+    throw new Error("Hosting entry is missing target");
+  if (typeof entry.public !== "string")
+    throw new Error(`Hosting target ${target} is missing public`);
 
   const site = resolveSiteForTarget(firebaserc, target);
   const publicDir = resolve(artifactRoot, entry.public);
-  const records = listFiles(publicDir).map((path) => fileRecord(publicDir, path));
-  const files = Object.fromEntries(records.map((record) => [record.path, record.hash]));
+  const records = listFiles(publicDir).map((path) =>
+    fileRecord(publicDir, path),
+  );
+  const files = Object.fromEntries(
+    records.map((record) => [record.path, record.hash]),
+  );
   const hashToRecord = new Map(records.map((record) => [record.hash, record]));
   const convertedConfig = convertHostingConfig(entry);
 
   console.log(`hosting[${site}] target=${target} files=${records.length}`);
 
   if (dryRun) {
-    return { site, target, fileCount: records.length, uploadCount: 0, dryRun: true };
+    return {
+      site,
+      target,
+      fileCount: records.length,
+      uploadCount: 0,
+      dryRun: true,
+    };
   }
 
   const created = await request("POST", `/projects/-/sites/${site}/versions`, {
     status: "CREATED",
   });
-  const versionName = created.name;
-  if (typeof versionName !== "string") {
-    throw new Error(`Hosting API did not return a version name for site ${site}`);
-  }
+  const versionName = firebaseHostingVersionName(created.name, site);
 
   let uploadUrl = "";
   const uploadHashes = new Set();
@@ -342,12 +384,16 @@ async function deployOne(entry, firebaserc) {
     const populated = await request("POST", `/${versionName}:populateFiles`, {
       files: Object.fromEntries(fileBatch),
     });
-    if (typeof populated.uploadUrl === "string") uploadUrl = populated.uploadUrl;
-    for (const hash of populated.uploadRequiredHashes ?? []) uploadHashes.add(hash);
+    if (typeof populated.uploadUrl === "string")
+      uploadUrl = populated.uploadUrl;
+    for (const hash of populated.uploadRequiredHashes ?? [])
+      uploadHashes.add(hash);
   }
 
   if (uploadHashes.size > 0 && !uploadUrl) {
-    throw new Error(`Hosting API requested uploads for ${site} but did not return uploadUrl`);
+    throw new Error(
+      `Hosting API requested uploads for ${site} but did not return uploadUrl`,
+    );
   }
 
   const uploads = [...uploadHashes].map((hash) => {
@@ -355,8 +401,10 @@ async function deployOne(entry, firebaserc) {
     if (!record) throw new Error(`Hosting API requested unknown hash ${hash}`);
     return record;
   });
-  await runConcurrent(uploads, Number(process.env.FIREBASE_HOSTING_UPLOAD_CONCURRENCY ?? 20), (record) =>
-    uploadHash(uploadUrl, record.hash, record.gzipped),
+  await runConcurrent(
+    uploads,
+    Number(process.env.FIREBASE_HOSTING_UPLOAD_CONCURRENCY ?? 20),
+    (record) => uploadHash(uploadUrl, site, record.hash, record.gzipped),
   );
 
   const versionId = versionName.split("/").at(-1);
@@ -369,29 +417,72 @@ async function deployOne(entry, firebaserc) {
     },
   );
 
-  await request(
+  const release = await request(
     "POST",
     `/projects/-/sites/${site}/channels/live/releases?versionName=${encodeURIComponent(versionName)}`,
     message ? { message } : {},
   );
+  const releaseName = firebaseHostingReleaseName(release.name, site);
 
-  console.log(`hosting[${site}] released ${versionName} uploads=${uploads.length}`);
-  return { site, target, fileCount: records.length, uploadCount: uploads.length, versionName };
+  console.log(
+    `hosting[${site}] released ${versionName} uploads=${uploads.length}`,
+  );
+  return {
+    site,
+    target,
+    fileCount: records.length,
+    uploadCount: uploads.length,
+    versionName,
+    releaseName,
+  };
 }
 
 const config = readJson(configPath);
 const firebaserc = readJson(firebasercPath);
+const expectedHostingTargets = {
+  burnbar: {
+    hosting: { marketing: ["burnbar"], console: ["burnbar-console"] },
+  },
+  "burnbar-staging": {
+    hosting: {
+      marketing: ["burnbar-staging"],
+      console: ["burnbar-staging-console"],
+    },
+  },
+};
+if (
+  firebaserc.projects?.default !== project ||
+  firebaserc.projects?.staging !== "burnbar-staging" ||
+  JSON.stringify(firebaserc.targets) !== JSON.stringify(expectedHostingTargets)
+) {
+  throw new Error(
+    ".firebaserc must contain the exact reviewed production and staging Hosting target maps",
+  );
+}
 if (!Array.isArray(config.hosting)) {
   throw new Error("firebase-hosting.ci.json must contain a hosting array");
 }
 
 const results = [];
-for (const entry of config.hosting.map((value, index) => requirePlainObject(value, `hosting[${index}]`))) {
+for (const entry of config.hosting.map((value, index) =>
+  requirePlainObject(value, `hosting[${index}]`),
+)) {
   results.push(await deployOne(entry, firebaserc));
 }
 
 if (dryRun) {
   console.log(`DRY_RUN: ${JSON.stringify({ project, results })}`);
 } else {
+  if (!resultPath)
+    throw new Error("--result is required for non-dry-run Hosting deploys");
+  writeFileSync(
+    resultPath,
+    `${JSON.stringify({ schemaVersion: 1, project, sites: results }, null, 2)}\n`,
+    {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    },
+  );
   console.log(`Released ${results.length} Firebase Hosting site(s).`);
 }

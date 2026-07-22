@@ -1229,6 +1229,28 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "getWindowsRuntimeSafetyConfig",
+    trigger: "callable",
+    authMethod: "Firebase Auth plus Windows TPM-backed App Check",
+    appCheck: "required",
+    tenantSource: "request.auth.uid; response contains global safety flags only",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler requires Auth and App Check, accepts no object ids, and returns only bounded global Remote Config booleans",
+    handlerModule: "callables/windowsRuntimeSafetyConfig.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["getWindowsRuntimeSafetyConfig"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
     exportedName: "grantMediaGrandfather",
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",
@@ -1364,6 +1386,52 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
+  },
+  {
+    exportedName: "issueTrustedSignalIdentityRepairChallenge",
+    trigger: "callable",
+    authMethod: "Firebase Auth with callable-level ownership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["deviceId"],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and reads only that user's trusted device and pinned escrow public key",
+    handlerModule: "callables/signalIdentityRepair.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
+        test: "issueTrustedSignalIdentityRepairChallenge rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["issueTrustedSignalIdentityRepairChallenge"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
+    exportedName: "issueWindowsAppCheckChallenge",
+    trigger: "callable",
+    authMethod: "Firebase Auth; server-nonce bootstrap for Windows TPM attestation",
+    appCheck: "not-required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and accepts only the exact server-configured, allowlisted Windows app id",
+    handlerModule: "callables/windowsAppCheck.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["issueWindowsAppCheckChallenge"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+    publicJustification:
+      "Bootstrap that precedes custom App Check minting, so it cannot require App Check. It returns a short-lived nonce only after Firebase Auth and exact server-configured app-id binding.",
   },
   {
     exportedName: "latestRouterRundown",
@@ -2323,6 +2391,28 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
         covers: ["registerPasskey"],
         expectedOutcome: "throws",
         expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
+    exportedName: "repairTrustedSignalIdentity",
+    trigger: "callable",
+    authMethod: "Firebase Auth with callable-level ownership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: ["deviceId", "challengeId", "identityKeyId"],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and transactionally consumes only that user's one-time challenge, trusted device, escrow key, and Signal identity",
+    handlerModule: "callables/signalIdentityRepair.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
+        test: "repairTrustedSignalIdentity rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["repairTrustedSignalIdentity"],
+        expectedOutcome: "throws",
+        expectedCode: "failed-precondition",
       },
     ],
     highRiskComputerUse: false,

@@ -10,10 +10,7 @@ enum CloudVaultDomainCoreMigrationMode: String, Sendable {
     case rust
 
     static func resolve(environment: [String: String]) -> Self {
-        guard let raw = environment["OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE"]?.lowercased() else {
-            return .legacy
-        }
-        return Self(rawValue: raw) ?? .legacy
+        Self(rawValue: DomainCoreBuildProfileResolver.mode(for: .cloudVault, environment: environment).rawValue) ?? .legacy
     }
 }
 
@@ -222,6 +219,95 @@ enum CloudVaultDomainCoreAdapter {
                 data: data,
                 key: keyData,
                 purpose: purpose.ffiValue
+            )
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func projectMemoryDocID(
+        slug: String,
+        keyData: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> String
+    ) throws -> String {
+        try select(
+            operation: "project_memory_doc_id",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultProjectMemoryDocId(slug: slug, key: keyData)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func pensieveDedupHash(
+        plaintext: String,
+        keyData: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> String
+    ) throws -> String {
+        try select(
+            operation: "pensieve_dedup_hash",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultPensieveDedupHash(plaintext: plaintext, key: keyData)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func pensieveSlugHmac(
+        slug: String,
+        keyData: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> String
+    ) throws -> String {
+        try select(
+            operation: "pensieve_slug_hmac",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultPensieveSlugHmac(slug: slug, key: keyData)
+            #else
+            throw CloudVaultDomainCoreAdapterError.nativeUnavailable
+            #endif
+        }
+    }
+
+    static func subscriptionDocID(
+        agentURI: String,
+        topicID: String,
+        keyData: Data,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        logger: any CloudVaultDomainCoreLogging = PlatformCloudVaultDomainCoreLogger(),
+        legacy: () throws -> String
+    ) throws -> String {
+        try select(
+            operation: "subscription_doc_id",
+            environment: environment,
+            logger: logger,
+            legacy: legacy
+        ) {
+            #if canImport(OpenBurnBarDomainCoreFFI)
+            try OpenBurnBarDomainCoreFFI.cloudVaultSubscriptionDocId(
+                agentUri: agentURI,
+                topicId: topicID,
+                key: keyData
             )
             #else
             throw CloudVaultDomainCoreAdapterError.nativeUnavailable
@@ -666,7 +752,9 @@ enum CloudVaultDomainCoreAdapter {
         let mode = CloudVaultDomainCoreMigrationMode.resolve(environment: environment)
         guard mode != .legacy else { return try legacy() }
 
+        let legacyStarted = Date.timeIntervalSinceReferenceDate
         let legacyValue: T? = try mode == .shadow ? legacy() : nil
+        let legacyMicros = mode == .shadow ? elapsedMicros(since: legacyStarted) : 0
 
         #if canImport(OpenBurnBarDomainCoreFFI)
         guard DomainCoreNativeProbe.abiVersion() == 3 else {
@@ -674,33 +762,112 @@ enum CloudVaultDomainCoreAdapter {
             if mode == .rust || requiresNative(environment) {
                 throw CloudVaultDomainCoreAdapterError.nativeUnavailable
             }
-            return try legacyValue ?? legacy()
+            let fallback = try legacyValue ?? legacy()
+            recordComparison(
+                operation: operation,
+                matches: false,
+                category: "native_unavailable",
+                coreVersion: "0.0.0-native-unavailable",
+                legacyMicros: legacyValue == nil ? elapsedMicros(since: legacyStarted) : legacyMicros,
+                rustMicros: 0
+            )
+            return fallback
         }
 
         let rustValue: T
+        let rustStarted = Date.timeIntervalSinceReferenceDate
         do {
             rustValue = try rust()
         } catch {
             logger.log("domain_core.cloudvault operation=\(operation) version=3 category=rust_error")
-            if mode == .shadow, let legacyValue { return legacyValue }
+            if mode == .shadow, let legacyValue {
+                recordComparison(
+                    operation: operation,
+                    matches: false,
+                    category: "native_error",
+                    coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),
+                    legacyMicros: legacyMicros,
+                    rustMicros: elapsedMicros(since: rustStarted)
+                )
+                return legacyValue
+            }
             throw map(error)
         }
 
         guard mode == .shadow else { return rustValue }
         guard let legacyValue else { return try legacy() }
-        if legacyValue != rustValue {
+        let rustMicros = elapsedMicros(since: rustStarted)
+        let matches = legacyValue == rustValue
+        if !matches {
             logger.log(
                 "domain_core.cloudvault operation=\(operation) version=3 category=value_mismatch legacy_count=1 rust_count=1"
             )
         }
+        recordComparison(
+            operation: operation,
+            matches: matches,
+            category: matches ? nil : "result_mismatch",
+            coreVersion: OpenBurnBarDomainCoreFFI.domainCoreVersion(),
+            legacyMicros: legacyMicros,
+            rustMicros: rustMicros
+        )
         return legacyValue
         #else
         logger.log("domain_core.cloudvault operation=\(operation) version=3 category=native_unavailable")
         if mode == .rust || requiresNative(environment) {
             throw CloudVaultDomainCoreAdapterError.nativeUnavailable
         }
-        return try legacyValue ?? legacy()
+        let fallback = try legacyValue ?? legacy()
+        recordComparison(
+            operation: operation,
+            matches: false,
+            category: "native_unavailable",
+            coreVersion: "0.0.0-native-unavailable",
+            legacyMicros: legacyValue == nil ? elapsedMicros(since: legacyStarted) : legacyMicros,
+            rustMicros: 0
+        )
+        return fallback
         #endif
+    }
+
+    private static func elapsedMicros(since started: TimeInterval) -> UInt64 {
+        let micros = max(0, (Date.timeIntervalSinceReferenceDate - started) * 1_000_000)
+        return UInt64(min(600_000_000, micros.rounded()))
+    }
+
+    private static func recordComparison(
+        operation: String,
+        matches: Bool,
+        category: String?,
+        coreVersion: String,
+        legacyMicros: UInt64,
+        rustMicros: UInt64
+    ) {
+        let slice: String
+        switch operation {
+        case "project_memory_doc_id", "pensieve_dedup_hash", "pensieve_slug_hmac", "subscription_doc_id":
+            slice = "opaque-identifiers"
+        default:
+            slice = if operation.contains("escrow") {
+                "escrow"
+            } else if operation.contains("recovery") {
+                "recovery"
+            } else if operation.contains("aes") || operation.contains("seal") || operation.contains("open") {
+                "aes"
+            } else {
+                "foundation"
+            }
+        }
+        DomainCoreShadowComparisonCollector.record(.init(
+            domain: "cloudvault",
+            slice: slice,
+            operation: operation,
+            coreVersion: coreVersion,
+            outcome: matches ? "match" : "mismatch",
+            mismatchCategory: category,
+            legacyMicros: legacyMicros,
+            rustMicros: rustMicros
+        ))
     }
 
     private static func requiresNative(_ environment: [String: String]) -> Bool {

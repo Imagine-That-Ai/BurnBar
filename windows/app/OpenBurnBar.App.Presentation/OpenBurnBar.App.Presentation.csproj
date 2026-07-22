@@ -3,7 +3,7 @@
   <!--
     Portable presentation layer for the OpenBurnBar WinUI port (Phase 3 · W7).
 
-    This is the DEPENDENCY-FREE half of the SessionLogs + Memory surfaces: the
+    This is the WINUI-FREE half of the SessionLogs + Memory surfaces: the
     view-models, the ported record types, the pure grouping/filter passes, and the
     transcript parser. It has NO WinUI / Windows dependency on purpose — the SAME
     managed assembly is:
@@ -40,8 +40,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="OpenBurnBar.App.Presentation.Tests" />
     <ProjectReference Include="..\..\..\crates\openburnbar-domain-core\bindings\csharp\OpenBurnBarDomainCore.Ffi\OpenBurnBarDomainCore.Ffi.csproj" />
     <ProjectReference Include="..\..\storage\OpenBurnBar.Storage\OpenBurnBar.Storage.csproj" />
+    <ProjectReference Include="..\OpenBurnBar.App.Configuration\OpenBurnBar.App.Configuration.csproj" />
+    <ProjectReference Include="..\OpenBurnBar.App.ManagedAgentRuntime\OpenBurnBar.App.ManagedAgentRuntime.csproj" />
+    <ProjectReference Include="..\OpenBurnBar.App.UsageRuntime\OpenBurnBar.App.UsageRuntime.csproj" />
   </ItemGroup>
 
   <ItemGroup>

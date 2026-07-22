@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -12,16 +12,52 @@ if (!packageDirectory) {
 const modulePath = path.join(packageDirectory, "openburnbar_domain_core.js");
 const wasmPath = path.join(packageDirectory, "openburnbar_domain_core_bg.wasm");
 const domainCore = await import(pathToFileURL(modulePath).href);
-const wasmBytes = await readFile(wasmPath);
-domainCore.initSync({ module: wasmBytes });
+if (typeof domainCore.initSync === "function") {
+  const wasmBytes = await readFile(wasmPath);
+  domainCore.initSync({ module: wasmBytes });
+} else {
+  assert.ok(
+    domainCore.__wasm ?? domainCore.default?.__wasm,
+    "CommonJS Wasm package must initialize its bundled module",
+  );
+}
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
+const unionManifestPath = path.resolve(
+  testDirectory,
+  "../../union-abi-manifest.json",
+);
+const unionManifest = JSON.parse(await readFile(unionManifestPath, "utf8"));
+assert.equal(domainCore.domainCoreAbiVersion(), 3);
+assert.equal(domainCore.domainCoreVersion(), "0.1.0");
+assert.match(unionManifest.sourceSha256, /^[0-9a-f]{64}$/);
+assert.equal(
+  domainCore.domainCoreSourceFingerprint(),
+  unionManifest.sourceSha256,
+);
+if (process.env.DOMAIN_CORE_OBSERVED_IDENTITY_REPORT) {
+  const identity = {
+    candidateCommit: process.env.GITHUB_SHA,
+    coreVersion: domainCore.domainCoreVersion(),
+    abiVersion: domainCore.domainCoreAbiVersion(),
+    sourceSha256: domainCore.domainCoreSourceFingerprint(),
+  };
+  await writeFile(
+    process.env.DOMAIN_CORE_OBSERVED_IDENTITY_REPORT,
+    `${JSON.stringify(identity)}\n`,
+    { mode: 0o600 },
+  );
+}
+
 const fixturePath = path.resolve(
   testDirectory,
   "../../../../tests/fixtures/domain-core/cloudvault/v1/cloudvault-deterministic-kat.json",
 );
 const fixture = JSON.parse(await readFile(fixturePath, "utf8"));
-assert.equal(fixture.schema, "openburnbar.domain-core.cloudvault.deterministic.v1");
+assert.equal(
+  fixture.schema,
+  "openburnbar.domain-core.cloudvault.deterministic.v1",
+);
 const rewrapFixturePath = path.resolve(
   testDirectory,
   "../../../../tests/fixtures/domain-core/cloudvault/v1/cloudvault-document-rewrap-contract.json",
@@ -54,18 +90,25 @@ for (const vector of fixture.aad) {
 }
 
 for (const vector of fixture.sha256) {
-  assert.equal(domainCore.cloudVaultSha256Hex(Buffer.from(vector.dataHex, "hex")), vector.hex);
+  assert.equal(
+    domainCore.cloudVaultSha256Hex(Buffer.from(vector.dataHex, "hex")),
+    vector.hex,
+  );
 }
 
 for (const vector of fixture.vaultKeyID) {
-  assert.equal(domainCore.cloudVaultKeyId(Buffer.from(vector.keyHex, "hex")), vector.value);
+  assert.equal(
+    domainCore.cloudVaultKeyId(Buffer.from(vector.keyHex, "hex")),
+    vector.value,
+  );
 }
 
 const purposeByLabel = {
   "blob-integrity": domainCore.CloudVaultHashPurpose.BlobIntegrity,
   "session-body": domainCore.CloudVaultHashPurpose.SessionBody,
   "session-chunk": domainCore.CloudVaultHashPurpose.SessionChunk,
-  "project-memory-content": domainCore.CloudVaultHashPurpose.ProjectMemoryContent,
+  "project-memory-content":
+    domainCore.CloudVaultHashPurpose.ProjectMemoryContent,
 };
 for (const vector of fixture.keyedHashes) {
   assert.equal(
@@ -95,8 +138,16 @@ for (const vector of fixture.aesGcm) {
   const nonce = Buffer.from(vector.nonceHex, "hex");
   const plaintext = Buffer.from(vector.plaintextHex, "hex");
   const aad = Buffer.from(vector.aadHex, "hex");
-  const combined = domainCore.cloudVaultAesGcmSealCombined(plaintext, key, nonce, aad);
-  assert.equal(domainCore.cloudVaultBase64Encode(combined), vector.combinedBase64);
+  const combined = domainCore.cloudVaultAesGcmSealCombined(
+    plaintext,
+    key,
+    nonce,
+    aad,
+  );
+  assert.equal(
+    domainCore.cloudVaultBase64Encode(combined),
+    vector.combinedBase64,
+  );
   assert.deepEqual(
     Array.from(domainCore.cloudVaultAesGcmOpenCombined(combined, key, aad)),
     Array.from(plaintext),
@@ -113,7 +164,9 @@ assert.equal(
   recovery.normalizedKey,
 );
 assert.equal(
-  Buffer.from(domainCore.cloudVaultRecoveryWrappingKey(recovery.formattedKey)).toString("hex"),
+  Buffer.from(
+    domainCore.cloudVaultRecoveryWrappingKey(recovery.formattedKey),
+  ).toString("hex"),
   recovery.wrappingKeyHex,
 );
 assert.equal(
@@ -125,7 +178,9 @@ assert.equal(
   recovery.unicodeNormalizedKey,
 );
 assert.equal(
-  Buffer.from(domainCore.cloudVaultRecoveryWrappingKey(recovery.unicodeFormattedKey)).toString("hex"),
+  Buffer.from(
+    domainCore.cloudVaultRecoveryWrappingKey(recovery.unicodeFormattedKey),
+  ).toString("hex"),
   recovery.unicodeWrappingKeyHex,
 );
 const recoveryWrapped = domainCore.cloudVaultRecoveryWrapVaultKey(
@@ -133,11 +188,17 @@ const recoveryWrapped = domainCore.cloudVaultRecoveryWrapVaultKey(
   recovery.formattedKey,
   Buffer.from(recovery.nonceHex, "hex"),
 );
-assert.equal(Buffer.from(recoveryWrapped.combined).toString("hex"), recovery.combinedHex);
+assert.equal(
+  Buffer.from(recoveryWrapped.combined).toString("hex"),
+  recovery.combinedHex,
+);
 assert.equal(recoveryWrapped.verificationHash, recovery.verificationHash);
 assert.equal(
   Buffer.from(
-    domainCore.cloudVaultRecoveryOpenVaultKey(recoveryWrapped.combined, recovery.formattedKey),
+    domainCore.cloudVaultRecoveryOpenVaultKey(
+      recoveryWrapped.combined,
+      recovery.formattedKey,
+    ),
   ).toString("hex"),
   recovery.vaultKeyHex,
 );
@@ -149,7 +210,9 @@ const sharedSecret = Buffer.from(escrow.sharedSecretHex, "hex");
 const escrowNonce = Buffer.from(escrow.nonceHex, "hex");
 domainCore.cloudVaultValidateP256X963PublicKey(publicKey);
 assert.equal(
-  Buffer.from(domainCore.cloudVaultEscrowWrappingKey(sharedSecret)).toString("hex"),
+  Buffer.from(domainCore.cloudVaultEscrowWrappingKey(sharedSecret)).toString(
+    "hex",
+  ),
   escrow.wrappingKeyHex,
 );
 const escrowWire = domainCore.cloudVaultEscrowSeal(
@@ -160,13 +223,23 @@ const escrowWire = domainCore.cloudVaultEscrowSeal(
 );
 assert.equal(Buffer.from(escrowWire).toString("hex"), escrow.wireHex);
 assert.equal(
-  Buffer.from(domainCore.cloudVaultEscrowOpen(escrowWire, sharedSecret)).toString("hex"),
+  Buffer.from(
+    domainCore.cloudVaultEscrowOpen(escrowWire, sharedSecret),
+  ).toString("hex"),
   escrow.plaintextHex,
 );
 const escrowParts = domainCore.cloudVaultEscrowSplitWire(escrowWire);
-assert.equal(Buffer.from(escrowParts.ephemeralPublicKey).toString("hex"), escrow.ephemeralPublicKeyHex);
+assert.equal(
+  Buffer.from(escrowParts.ephemeralPublicKey).toString("hex"),
+  escrow.ephemeralPublicKeyHex,
+);
 assert.deepEqual(
-  Array.from(domainCore.cloudVaultEscrowAssembleWire(publicKey, escrowParts.aesGcmCombined)),
+  Array.from(
+    domainCore.cloudVaultEscrowAssembleWire(
+      publicKey,
+      escrowParts.aesGcmCombined,
+    ),
+  ),
   Array.from(escrowWire),
 );
 escrowParts.free();
@@ -187,10 +260,24 @@ assert.throws(
   /invalid_key_length/,
 );
 assert.throws(
-  () => domainCore.cloudVaultAadV2("user|alice", "cloudSessions", "doc_123", "title", 2),
+  () =>
+    domainCore.cloudVaultAadV2(
+      "user|alice",
+      "cloudSessions",
+      "doc_123",
+      "title",
+      2,
+    ),
   /invalid_aad_part/,
 );
-for (const invalidSchemaVersion of [-1, 1, 2.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 32]) {
+for (const invalidSchemaVersion of [
+  -1,
+  1,
+  2.5,
+  Number.NaN,
+  Number.POSITIVE_INFINITY,
+  2 ** 32,
+]) {
   assert.throws(
     () =>
       domainCore.cloudVaultAadV2(
@@ -213,10 +300,11 @@ assert.throws(
   /unsupported_hash_version/,
 );
 assert.throws(
-  () => domainCore.cloudVaultRecoveryOpenVaultKey(
-    Buffer.from(recovery.combinedHex, "hex"),
-    "ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ",
-  ),
+  () =>
+    domainCore.cloudVaultRecoveryOpenVaultKey(
+      Buffer.from(recovery.combinedHex, "hex"),
+      "ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ",
+    ),
   /authentication_failed/,
 );
 assert.throws(
@@ -273,7 +361,10 @@ for (const vector of pricingFixture.costVectors) {
   );
 }
 for (const vector of pricingFixture.legacyKimiVectors) {
-  assert.equal(domainCore.isLegacyKimiWireEvent(vector.provider, vector.model), vector.isLegacy);
+  assert.equal(
+    domainCore.isLegacyKimiWireEvent(vector.provider, vector.model),
+    vector.isLegacy,
+  );
   if (vector.expected) {
     const result = domainCore.priceLegacyKimiWireEvent(
       BigInt(vector.buckets.inputTokens),
@@ -282,7 +373,10 @@ for (const vector of pricingFixture.legacyKimiVectors) {
       BigInt(vector.buckets.cacheReadTokens),
     );
     assert.equal(domainCore.legacyKimiWireModel(), vector.expected.model);
-    assert.deepEqual(Array.from(result), [BigInt(vector.expected.totalTokens), BigInt(vector.expected.costNanoUsd)]);
+    assert.deepEqual(Array.from(result), [
+      BigInt(vector.expected.totalTokens),
+      BigInt(vector.expected.costNanoUsd),
+    ]);
   }
 }
 

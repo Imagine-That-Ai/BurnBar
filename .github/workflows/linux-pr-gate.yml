@@ -122,6 +122,12 @@ jobs:
       - name: Install Linux desktop dependencies
         run: npm ci --prefix apps/linux-desktop
 
+      # Promoted from observing-first to required: the linux-fast job is
+      # already required, so removing continue-on-error makes tsc regressions
+      # fail the gate. Promotion verified green on PR #1784.
+      - name: Linux desktop TypeScript typecheck
+        run: npm run typecheck --prefix apps/linux-desktop
+
       - name: Linux desktop unit tests
         run: npm test --prefix apps/linux-desktop
 

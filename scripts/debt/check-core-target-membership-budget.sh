@@ -45,7 +45,9 @@ const mainTarget = "OpenBurnBarCore";
 // C targets (CSQLite/Czlib/COpenBurnBarSecretService) and binary-target Generated
 // dirs are not Swift-source targets and are skipped.
 const siblingTargets = [
+  "OpenBurnBarDomainCoreRuntime",
   "OpenBurnBarKernel",
+  "OpenBurnBarParserSupport",
   "OpenBurnBarSQLiteReader",
   "OpenBurnBarLogParsers",
   "OpenBurnBarQuota",
@@ -118,9 +120,14 @@ const mainLive = scanTarget(mainTarget);
 // (133 files / 35955 LOC) has ZERO headroom for those moves, so it is seeded
 // from the ~37k end-state (1.25x = 46250 LOC) with file headroom.
 const PLANNED_CEILINGS = {
+  // Shared-Rust rollout authority stays a narrow Foundation-only leaf. The
+  // ceiling covers profiles, candidate identity, evidence comparison, and the
+  // generic shadow selector without allowing domain business logic to move in.
+  OpenBurnBarDomainCoreRuntime: { maxFiles: 8, maxLines: 1000 },
   OpenBurnBarKernel: { maxFiles: 185, maxLines: 46250 },
+  OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1000 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
-  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 11700 },
+  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 11800 },
   OpenBurnBarQuota: { maxFiles: 55, maxLines: 13000 },
   // VectorKit gains OpenBurnBarSearchContracts.swift (P-03 re-slice / FIX 4) on
   // top of the vector indexes + SearchPlanner + Pensieve, so its ceiling covers

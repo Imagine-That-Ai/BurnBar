@@ -19,12 +19,25 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
+      - "scripts/ci/verify-burnbar-turbo-workflow.test.mjs"
+      - "scripts/ci/burnbar-turbo-runner-host.sh"
+      - "scripts/ci/burnbar-turbo-runner-guest.sh"
+      - "scripts/ci/burnbar-turbo-runner-host.test.mjs"
+      - "scripts/ci/verify-merge-queue-workflows.mjs"
+      - "scripts/ci/verify-merge-queue-workflows.test.mjs"
       - "scripts/ci/verify-curl-bearer-token-boundary.sh"
       - "scripts/ci/verify-curl-bearer-token-boundary.test.sh"
       - "scripts/lib/curl-bearer.sh"
       - "scripts/lib/curl-bearer.test.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.test.sh"
+      - "scripts/lib/resolve-repo-path.sh"
+      - "scripts/lib/resolve-repo-path.test.sh"
+      - "scripts/ci/verify-signing-profile-certificate.py"
+      - "scripts/ci/verify-signing-profile-certificate.sh"
+      - "scripts/ci/verify-signing-profile-certificate.test.py"
+      - "scripts/ci/verify-daemon-release-signing.sh"
+      - "scripts/ci/verify-daemon-release-signing.test.sh"
       - "scripts/hooks/pre-push"
       - "scripts/hooks/pre-push.test.sh"
       - "scripts/ci/verify-release-provenance-boundaries.mjs"
@@ -38,6 +51,13 @@ on:
       - "scripts/generate-macos-appcast.test.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
+      - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
+      - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/prepare-scoped-functions-deploy.mjs"
+      - "scripts/ci/prepare-scoped-functions-deploy.test.mjs"
+      - "functions/staging-deploy-targets.json"
+      - "scripts/ci/write-firebase-hosting-ci-config.mjs"
+      - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
       - "scripts/ci/verify-ops-plane-workflow-boundary.mjs"
@@ -58,12 +78,23 @@ on:
       - "scripts/ci/verify-jscpd-report.test.mjs"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ci/verify-release-tag-safety.mjs"
+      - "scripts/ci/verify-release-tag-safety.test.mjs"
+      - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
+      - "scripts/ci/release-dry-run-attestation.mjs"
+      - "scripts/ci/release-dry-run-attestation.test.mjs"
       - "scripts/ops/run-firestore-restore-drill.sh"
       - "scripts/ops/run-firestore-restore-drill.test.sh"
+      - "scripts/ops/verify-firestore-app-check-enforcement.sh"
+      - "scripts/ops/verify-firestore-app-check-enforcement.test.sh"
+      - "scripts/test-openburnbar-mobile.sh"
+      - "scripts/ci/test-openburnbar-mobile.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
       - "scripts/ci/verify-libsignal-submodule-delta.sh"
+      - "scripts/ci/verify-scanner-governance.test.mjs"
+      - "scripts/ci/verify-codeowners-security-trees.test.sh"
       - "third_party/hermes-agent/manifest.json"
       - "third_party/libsignal/manifest.json"
       - "tools/qa/run-functional-qa.sh"
@@ -83,12 +114,23 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
+      - "scripts/ci/verify-burnbar-turbo-workflow.test.mjs"
+      - "scripts/ci/burnbar-turbo-runner-host.sh"
+      - "scripts/ci/burnbar-turbo-runner-guest.sh"
+      - "scripts/ci/burnbar-turbo-runner-host.test.mjs"
       - "scripts/ci/verify-curl-bearer-token-boundary.sh"
       - "scripts/ci/verify-curl-bearer-token-boundary.test.sh"
       - "scripts/lib/curl-bearer.sh"
       - "scripts/lib/curl-bearer.test.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.test.sh"
+      - "scripts/lib/resolve-repo-path.sh"
+      - "scripts/lib/resolve-repo-path.test.sh"
+      - "scripts/ci/verify-signing-profile-certificate.py"
+      - "scripts/ci/verify-signing-profile-certificate.sh"
+      - "scripts/ci/verify-signing-profile-certificate.test.py"
+      - "scripts/ci/verify-daemon-release-signing.sh"
+      - "scripts/ci/verify-daemon-release-signing.test.sh"
       - "scripts/hooks/pre-push"
       - "scripts/hooks/pre-push.test.sh"
       - "scripts/ci/verify-release-provenance-boundaries.mjs"
@@ -102,6 +144,13 @@ on:
       - "scripts/generate-macos-appcast.test.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.mjs"
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
+      - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
+      - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/prepare-scoped-functions-deploy.mjs"
+      - "scripts/ci/prepare-scoped-functions-deploy.test.mjs"
+      - "functions/staging-deploy-targets.json"
+      - "scripts/ci/write-firebase-hosting-ci-config.mjs"
+      - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
       - "scripts/ci/verify-ops-plane-workflow-boundary.mjs"
@@ -122,12 +171,23 @@ on:
       - "scripts/ci/verify-jscpd-report.test.mjs"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ci/verify-release-tag-safety.mjs"
+      - "scripts/ci/verify-release-tag-safety.test.mjs"
+      - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
+      - "scripts/ci/release-dry-run-attestation.mjs"
+      - "scripts/ci/release-dry-run-attestation.test.mjs"
       - "scripts/ops/run-firestore-restore-drill.sh"
       - "scripts/ops/run-firestore-restore-drill.test.sh"
+      - "scripts/ops/verify-firestore-app-check-enforcement.sh"
+      - "scripts/ops/verify-firestore-app-check-enforcement.test.sh"
+      - "scripts/test-openburnbar-mobile.sh"
+      - "scripts/ci/test-openburnbar-mobile.test.sh"
       - "scripts/ci/verify-signal-rule0.sh"
       - "scripts/ci/verify-signal-rule0.test.sh"
       - "scripts/ci/verify-vendored-agent-source.sh"
       - "scripts/ci/verify-libsignal-submodule-delta.sh"
+      - "scripts/ci/verify-scanner-governance.test.mjs"
+      - "scripts/ci/verify-codeowners-security-trees.test.sh"
       - "third_party/hermes-agent/manifest.json"
       - "third_party/libsignal/manifest.json"
       - "tools/qa/run-functional-qa.sh"
@@ -156,8 +216,16 @@ jobs:
         run: |
           "$HOME/go/bin/actionlint" -color
 
+      - name: Verify merge queue required-check coverage
+        run: |
+          node scripts/ci/verify-merge-queue-workflows.mjs
+          node scripts/ci/verify-merge-queue-workflows.test.mjs
+
       - name: Verify GitHub Actions pins
         run: node scripts/ci/verify-github-action-pins.mjs
+
+      - name: Self-test Firebase CI config generation
+        run: node scripts/ci/write-firebase-hosting-ci-config.test.mjs
 
       - name: Self-test QA artifact redaction
         run: node scripts/ci/redact-qa-artifacts.test.mjs
@@ -165,11 +233,17 @@ jobs:
       - name: Self-test App Check smoke fail-closed gate
         run: bash scripts/ci/app-check-smoke.test.sh
 
+      - name: Self-test Apple DeviceCheck production gate
+        run: bash scripts/ops/verify-firestore-app-check-enforcement.test.sh
+
+      - name: Self-test mobile test destination selection
+        run: bash scripts/ci/test-openburnbar-mobile.test.sh
+
       - name: Self-test duplicate-code report verifier
         run: node scripts/ci/verify-jscpd-report.test.mjs
 
-      - name: Self-test overdue P0 escalation policy
-        run: node --test .github/actions/ops-failure-issue/escalation.test.cjs
+      - name: Self-test ops failure issue (escalation + paging)
+        run: node --test .github/actions/ops-failure-issue/escalation.test.cjs .github/actions/ops-failure-issue/paging-wiring.test.cjs .github/actions/ops-failure-issue/paging-payload.test.cjs
 
       - name: Self-test release attestation verifier
         run: bash scripts/ci/verify-release-attestations.test.sh
@@ -211,6 +285,14 @@ jobs:
       - name: Verify PR secret boundaries
         run: node scripts/ci/verify-pr-secret-boundaries.mjs
 
+      - name: Verify BurnBar turbo runner boundary
+        run: |
+          bash -n scripts/ci/burnbar-turbo-runner-host.sh
+          bash -n scripts/ci/burnbar-turbo-runner-guest.sh
+          node --test \
+            scripts/ci/verify-burnbar-turbo-workflow.test.mjs \
+            scripts/ci/burnbar-turbo-runner-host.test.mjs
+
       - name: Self-test curl bearer-token argv boundary
         run: bash scripts/ci/verify-curl-bearer-token-boundary.test.sh
 
@@ -222,6 +304,12 @@ jobs:
 
       - name: Self-test Signal FFI XCFramework prepare boundary
         run: bash scripts/lib/prepare-signal-ffi-xcframework.test.sh
+
+      - name: Self-test macOS release output path resolution
+        run: bash scripts/lib/resolve-repo-path.test.sh
+
+      - name: Self-test macOS signing profile certificate matcher
+        run: python3 scripts/ci/verify-signing-profile-certificate.test.py
 
       - name: Self-test release provenance boundaries
         run: node scripts/ci/verify-release-provenance-boundaries.test.mjs
@@ -247,6 +335,15 @@ jobs:
       - name: Verify hosting deploy boundary
         run: node scripts/ci/verify-hosting-deploy-boundary.mjs
 
+      - name: Self-test staging Functions deploy boundary
+        run: node scripts/ci/verify-staging-functions-deploy-boundary.test.mjs
+
+      - name: Verify staging Functions deploy boundary
+        run: node scripts/ci/verify-staging-functions-deploy-boundary.mjs
+
+      - name: Self-test scoped staging Functions entrypoint
+        run: node scripts/ci/prepare-scoped-functions-deploy.test.mjs
+
       - name: Self-test native build workflow secret boundary
         run: node scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs
 
@@ -258,6 +355,18 @@ jobs:
 
       - name: Verify ops-plane workflow boundary
         run: node scripts/ci/verify-ops-plane-workflow-boundary.mjs
+
+      - name: Self-test release tag safety
+        run: node scripts/ci/verify-release-tag-safety.test.mjs
+
+      - name: Functional test release tag safety
+        run: node scripts/ci/verify-release-tag-safety.functional.test.mjs
+
+      - name: Verify release tag safety
+        run: node scripts/ci/verify-release-tag-safety.mjs
+
+      - name: Self-test release dry-run attestation
+        run: node scripts/ci/release-dry-run-attestation.test.mjs
 
       - name: Self-test PR harness aggregate gates
         run: node scripts/ci/verify-pr-harness-aggregate-gates.test.mjs
@@ -288,3 +397,9 @@ jobs:
 
       - name: Verify gitleaks workflow boundary
         run: node scripts/ci/verify-gitleaks-workflow-boundary.mjs
+
+      - name: Self-test scanner governance regression suite
+        run: node scripts/ci/verify-scanner-governance.test.mjs
+
+      - name: Self-test CODEOWNERS security trees verifier
+        run: bash scripts/ci/verify-codeowners-security-trees.test.sh

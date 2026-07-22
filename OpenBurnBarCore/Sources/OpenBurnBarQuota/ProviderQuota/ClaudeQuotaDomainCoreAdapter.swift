@@ -16,10 +16,7 @@ enum DomainCoreQuotaMigrationMode: String, Sendable {
     case rust
 
     static func resolve(environment: [String: String]) -> Self {
-        guard let raw = environment["OPENBURNBAR_DOMAIN_CORE_QUOTA_MODE"]?.lowercased() else {
-            return .legacy
-        }
-        return Self(rawValue: raw) ?? .legacy
+        Self(rawValue: DomainCoreBuildProfileResolver.mode(for: .quota, environment: environment).rawValue) ?? .legacy
     }
 }
 
@@ -32,14 +29,6 @@ enum ClaudeQuotaDomainCoreAdapter {
         #endif
     }
 
-    private static let windowCandidates: [(key: String, label: String, kind: ProviderQuotaWindowKind)] = [
-        ("five_hour", "5-hour window", .rollingHours),
-        ("seven_day", "7-day window", .rollingDays),
-        ("seven_day_sonnet", "7-day Sonnet window", .rollingDays),
-        ("seven_day_opus", "7-day Opus window", .rollingDays),
-        ("seven_day_oauth_apps", "7-day OAuth Apps window", .rollingDays)
-    ]
-
     static func buckets(
         from rateLimits: ClaudeRateLimits,
         environment: [String: String],
@@ -48,12 +37,12 @@ enum ClaudeQuotaDomainCoreAdapter {
         shadowRustProbe: (() throws -> ([ProviderQuotaBucket], Bool))? = nil
     ) -> [ProviderQuotaBucket] {
         let mode = DomainCoreQuotaMigrationMode.resolve(environment: environment)
-        guard mode != .legacy else { return legacyBuckets(from: rateLimits) }
+        guard mode != .legacy else { return ClaudeQuotaLegacy.buckets(from: rateLimits) }
 
         #if canImport(OpenBurnBarDomainCoreFFI)
         if mode == .shadow {
             let legacyMeasurement = DomainCoreQuotaShadowTiming.measure {
-                shadowLegacyProbe?() ?? legacyBuckets(from: rateLimits)
+                shadowLegacyProbe?() ?? ClaudeQuotaLegacy.buckets(from: rateLimits)
             }
             let rustMeasurement = DomainCoreQuotaShadowTiming.measureResult {
                 if let shadowRustProbe { return try shadowRustProbe() }
@@ -94,7 +83,7 @@ enum ClaudeQuotaDomainCoreAdapter {
         }
         guard let payload = try? JSONSerialization.data(withJSONObject: rateLimits.rawDictionary) else {
             quotaLogger.log("domain_core.claude_quota.payload_encode_failed")
-            return mode == .shadow ? legacyBuckets(from: rateLimits) : []
+            return mode == .shadow ? ClaudeQuotaLegacy.buckets(from: rateLimits) : []
         }
 
         let result = OpenBurnBarDomainCoreFFI.parseClaudeStatuslineQuota(payload: payload)
@@ -102,7 +91,7 @@ enum ClaudeQuotaDomainCoreAdapter {
         #else
         if mode == .shadow {
             let legacyMeasurement = DomainCoreQuotaShadowTiming.measure {
-                shadowLegacyProbe?() ?? legacyBuckets(from: rateLimits)
+                shadowLegacyProbe?() ?? ClaudeQuotaLegacy.buckets(from: rateLimits)
             }
             let rustMeasurement = DomainCoreQuotaShadowTiming.measureResult {
                 guard let shadowRustProbe else {
@@ -136,27 +125,6 @@ enum ClaudeQuotaDomainCoreAdapter {
         quotaLogger.log("domain_core.claude_quota.native_unavailable mode=\(mode.rawValue)")
         return []
         #endif
-    }
-
-    static func legacyBuckets(from rateLimits: ClaudeRateLimits) -> [ProviderQuotaBucket] {
-        windowCandidates.compactMap { key, label, windowKind in
-            guard let window = rateLimits.window(named: key) else { return nil }
-            guard window.usedPercentage != nil || window.remainingPercentage != nil else {
-                return nil
-            }
-            return ProviderQuotaBucket(
-                key: "claude-\(FlexibleQuotaBucketNormalizer.sanitizeKey(key))",
-                label: label,
-                windowKind: windowKind,
-                usedValue: window.usedPercentage,
-                limitValue: 100,
-                remainingValue: window.remainingPercentage,
-                usedPercent: window.usedPercentage,
-                resetsAt: window.resetsAt,
-                unit: .percent,
-                isEstimated: false
-            )
-        }
     }
 
     #if canImport(OpenBurnBarDomainCoreFFI)

@@ -43,9 +43,13 @@ public sealed class MockAttestationProducer : IAttestationProducer
     public string Kind => MockAttestationMac.Kind;
 
     /// <inheritdoc />
+    public bool RequiresServerChallenge => false;
+
+    /// <inheritdoc />
     public ValueTask<WindowsAttestationClaim> ProduceAsync(
         string appId,
         long nowMillis,
+        AttestationChallenge? challenge = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(appId))
@@ -54,7 +58,7 @@ public sealed class MockAttestationProducer : IAttestationProducer
         }
         cancellationToken.ThrowIfCancellationRequested();
 
-        var nonce = _nonceSource.NextNonce();
+        var nonce = challenge?.Nonce ?? _nonceSource.NextNonce();
         var mac = MockAttestationMac.Sign(appId, nonce, nowMillis, _sharedSecret);
 
         var claim = new WindowsAttestationClaim
@@ -64,6 +68,7 @@ public sealed class MockAttestationProducer : IAttestationProducer
             Nonce = nonce,
             IssuedAtMs = nowMillis,
             Mac = mac,
+            ChallengeId = challenge?.ChallengeId,
         };
         return new ValueTask<WindowsAttestationClaim>(claim);
     }

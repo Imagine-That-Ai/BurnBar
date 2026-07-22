@@ -78,6 +78,7 @@ import {
   INSIGHTS_HOSTED_DEFAULT_INPUT_PRICE_PER_MTOKEN,
   INSIGHTS_HOSTED_DEFAULT_OUTPUT_PRICE_PER_MTOKEN,
   estimateTokenCost,
+  flushDomainCorePricingShadowEvidence,
 } from "./pricing.js";
 import { resilientFetch } from "./resilienceHelpers.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
@@ -568,19 +569,24 @@ export const insightsHostedAnswer = onCall(
         "INSIGHTS_HOSTED_FALLBACK_OUTPUT_PRICE_PER_MTOKEN",
         INSIGHTS_HOSTED_DEFAULT_OUTPUT_PRICE_PER_MTOKEN,
       );
-      const estimatedCostUSD = estimateTokenCost(
-        {
-          inputPerMToken: inputPrice,
-          outputPerMToken: outputPrice,
-          cacheReadPerMToken: 0,
-        },
-        {
-          inputTokens,
-          outputTokens,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-        },
-      );
+      let estimatedCostUSD: number;
+      try {
+        estimatedCostUSD = estimateTokenCost(
+          {
+            inputPerMToken: inputPrice,
+            outputPerMToken: outputPrice,
+            cacheReadPerMToken: 0,
+          },
+          {
+            inputTokens,
+            outputTokens,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+          },
+        );
+      } finally {
+        await flushDomainCorePricingShadowEvidence();
+      }
 
       return {
         envelope,

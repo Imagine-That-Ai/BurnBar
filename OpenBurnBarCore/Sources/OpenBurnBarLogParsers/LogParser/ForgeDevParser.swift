@@ -25,7 +25,12 @@ public final class ForgeDevParser: LogParser, Sendable {
     }()
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fm)
         let databasePaths = discoverDatabasePaths()
 
         if !databasePaths.isEmpty {
@@ -34,6 +39,7 @@ public final class ForgeDevParser: LogParser, Sendable {
             var parsedReadableDatabase = false
 
             for dbPath in databasePaths {
+                guard try gate.shouldRead(URL(fileURLWithPath: dbPath)) else { continue }
                 let result: ParseResult
                 do {
                     result = try parseDatabase(at: dbPath)
@@ -48,8 +54,10 @@ public final class ForgeDevParser: LogParser, Sendable {
                 for usage in result.usages {
                     usagesBySessionId[usage.sessionId] = usage
                 }
-                for conversation in result.conversations {
-                    conversationsBySessionId[conversation.sessionId] = conversation
+                if options.includeConversationBodies {
+                    for conversation in result.conversations {
+                        conversationsBySessionId[conversation.sessionId] = conversation
+                    }
                 }
             }
 
@@ -70,16 +78,17 @@ public final class ForgeDevParser: LogParser, Sendable {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
-        let contents = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? [] // try?-ok(dir listing fallback)
+        let contents = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         let jsonlFiles = contents.filter { $0.pathExtension == "jsonl" }
-        let projectDirs = contents.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(isDirectory defaults false)
+        let projectDirs = contents.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
         for jsonlFile in jsonlFiles {
+            guard try gate.shouldRead(jsonlFile) else { continue }
             let sessionId = jsonlFile.deletingPathExtension().lastPathComponent
             if let pair = try parseJsonlSession(file: jsonlFile, sessionId: sessionId, projectName: sessionId),
                let usage = pair.usage {
                 usages.append(usage)
-                if let conversation = pair.conversation {
+                if options.includeConversationBodies, let conversation = pair.conversation {
                     conversations.append(conversation)
                 }
             }
@@ -87,13 +96,14 @@ public final class ForgeDevParser: LogParser, Sendable {
 
         for projectDir in projectDirs {
             let projectName = projectDir.lastPathComponent
-            let files = (try? fm.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)) ?? [] // try?-ok(dir listing fallback)
+            let files = (try? fm.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)) ?? []
             for file in files where file.pathExtension == "jsonl" {
+                guard try gate.shouldRead(file) else { continue }
                 let sessionId = file.deletingPathExtension().lastPathComponent
                 if let pair = try parseJsonlSession(file: file, sessionId: sessionId, projectName: projectName),
                    let usage = pair.usage {
                     usages.append(usage)
-                    if let conversation = pair.conversation {
+                    if options.includeConversationBodies, let conversation = pair.conversation {
                         conversations.append(conversation)
                     }
                 }

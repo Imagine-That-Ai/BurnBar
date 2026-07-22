@@ -14,6 +14,8 @@
 import { createHash, createHmac, hkdfSync } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { runFakeFirestoreTransaction } from "./fakeFirestoreTransaction.js";
+
 vi.mock("firebase-functions/logger", () => ({
   info: vi.fn(),
   error: vi.fn(),
@@ -158,6 +160,7 @@ function makeDb() {
       delete: (ref: { __path: string }) => void stored.delete(ref.__path),
       commit: async () => undefined,
     }),
+    runTransaction: runFakeFirestoreTransaction,
   };
 }
 

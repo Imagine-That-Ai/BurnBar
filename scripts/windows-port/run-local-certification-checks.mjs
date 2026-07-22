@@ -126,6 +126,18 @@ const commands = [
     timeoutMs: 120000,
   },
   {
+    name: "domain-core-native-build",
+    file: "cargo",
+    args: [
+      "build",
+      "--manifest-path",
+      "crates/openburnbar-domain-core/Cargo.toml",
+      "-p",
+      "openburnbar-domain-ffi",
+    ],
+    timeoutMs: 900000,
+  },
+  {
     name: "windows-solution-aggregate",
     file: "dotnet",
     args: [
@@ -139,6 +151,7 @@ const commands = [
       runtimePlatform === "win32" ? "600s" : "60s",
     ],
     timeoutMs: 900000,
+    env: { OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1" },
   },
 ];
 
@@ -174,6 +187,7 @@ for (const project of testProjects) {
       isColdNativeSpike ? (windowsNativeColdSpike ? "600s" : "180s") : "60s",
     ],
     timeoutMs: isColdNativeSpike ? (windowsNativeColdSpike ? 900000 : 360000) : 180000,
+    env: { OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1" },
   });
 }
 
@@ -184,7 +198,11 @@ function runCommand(spec) {
     encoding: "utf8",
     timeout: spec.timeoutMs,
     maxBuffer: 32 * 1024 * 1024,
-    env: { ...process.env, PYTHONUTF8: process.env.PYTHONUTF8 ?? "1" },
+    env: {
+      ...process.env,
+      PYTHONUTF8: process.env.PYTHONUTF8 ?? "1",
+      ...(spec.env ?? {}),
+    },
   });
   const endedAt = new Date();
   const timedOut = result.error?.code === "ETIMEDOUT" || result.signal === "SIGTERM";

@@ -42,15 +42,20 @@ final class JunieParser: LogParser, Sendable {
     private let cacheURL: URL
     private let cacheStore: ParserDiskCacheStore<JunieCacheEntry>
     private let sessionsDirectoryOverride: URL?
+    private let fileHandleForReading: @Sendable (URL) throws -> FileHandle
 
     init(
         fileManager: FileManager = .default,
         appPaths: OpenBurnBarAppPaths = .live(),
-        sessionsDirectoryOverride: URL? = nil
+        sessionsDirectoryOverride: URL? = nil,
+        fileHandleForReading: @escaping @Sendable (URL) throws -> FileHandle = { url in
+            try FileHandle(forReadingFrom: url)
+        }
     ) {
         self.fileManager = fileManager
         self.appPaths = appPaths
         self.sessionsDirectoryOverride = sessionsDirectoryOverride
+        self.fileHandleForReading = fileHandleForReading
         self.cacheURL = appPaths.junieParserCacheURL
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
@@ -73,16 +78,83 @@ final class JunieParser: LogParser, Sendable {
             return ParseResult(usages: [], conversations: [])
         }
 
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var parseCache = cacheStore.load()
         var activePaths = Set<String>()
         var cacheMutated = false
 
-        let indexProjects = sessionIndexProjects(sessionsURL: sessionsURL)
+        let indexURL = sessionsURL.appendingPathComponent("index.jsonl")
+        let indexExists = fileManager.fileExists(atPath: indexURL.path)
+        let currentIndexSignature = indexExists ? FileSignature(for: indexURL, using: fileManager) : nil
+        var indexProjects: [String: String]?
+        var indexReadAttempted = false
+        var indexObserved = false
 
-        let sessionDirs = (try? fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) // try?-ok(unreadable sessions root yields empty result)
-            .map { $0.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } } // try?-ok(non-dir filtered out)
+        func loadIndexIfAdmitted(allowDependencyFallback: Bool) throws -> Bool {
+            if indexProjects != nil { return true }
+            guard indexExists, !indexReadAttempted else { return false }
+
+            let deferredBefore = options.resourceGovernor?.deferredFileCount
+            var readGate = gate
+            var admitted = try gate.shouldRead(indexURL)
+            indexObserved = true
+
+            let admissionRecordedDeferral = deferredBefore.map {
+                options.resourceGovernor?.deferredFileCount != $0
+            } ?? false
+            if !admitted, allowDependencyFallback, !admissionRecordedDeferral {
+                var dependencyOptions = options
+                dependencyOptions.minimumFileModificationDate = nil
+                dependencyOptions.fileDiscoveryTracker = nil
+                readGate = ParserFileReadGate(options: dependencyOptions, fileManager: fileManager)
+                admitted = try readGate.shouldRead([indexURL], candidateAlreadyRecorded: true)
+            }
+
+            guard admitted else {
+                if admissionRecordedDeferral
+                    || deferredBefore.map({ options.resourceGovernor?.deferredFileCount != $0 }) == true {
+                    indexReadAttempted = true
+                }
+                return false
+            }
+
+            indexReadAttempted = true
+            do {
+                indexProjects = try sessionIndexProjects(indexURL: indexURL)
+                return true
+            } catch {
+                readGate.recordContentReadFailure(for: indexURL)
+                return false
+            }
+        }
+
+        func sessionAdmissionFiles(_ sessionFiles: [URL]) -> (files: [URL], includesIndex: Bool) {
+            let includesIndex = indexExists && indexProjects == nil && !indexReadAttempted
+            return (
+                includesIndex ? sessionFiles + [indexURL] : sessionFiles,
+                includesIndex
+            )
+        }
+
+        func loadPreAdmittedIndexIfNeeded(_ includesIndex: Bool) -> Bool {
+            guard includesIndex else { return true }
+            indexObserved = true
+            indexReadAttempted = true
+            do {
+                indexProjects = try sessionIndexProjects(indexURL: indexURL)
+                return true
+            } catch {
+                gate.recordContentReadFailure(for: indexURL)
+                return false
+            }
+        }
+
+        // try?-ok(absent or unreadable session root yields no sessions)
+        let sessionDirs = (try? fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey]))
+            // try?-ok(unreadable directory metadata excludes that entry)
+            .map { $0.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } }
             ?? []
 
         for sessionDir in sessionDirs {
@@ -93,21 +165,149 @@ final class JunieParser: LogParser, Sendable {
 
             let cacheKey = eventsFile.standardizedFileURL.path
             activePaths.insert(cacheKey)
+            options.metrics?.recordCandidate()
 
             let signature = compositeSignature(eventsFile: eventsFile, stateFile: stateFile)
-            if let signature, let cached = parseCache.fileEntries[cacheKey], cached.signature == signature {
-                let cached = updateCacheEntry(
-                    cached,
-                    signature: signature,
-                    sessionId: sessionId,
-                    eventsFile: eventsFile,
-                    stateFile: stateFile,
-                    indexProjectPath: indexProjects[sessionId],
-                    includeConversationBodies: options.includeConversationBodies,
-                    parseCache: &parseCache,
-                    cacheKey: cacheKey,
-                    cacheMutated: &cacheMutated
-                )
+            var sessionFiles = [eventsFile]
+            if fileManager.fileExists(atPath: stateFile.path) { sessionFiles.append(stateFile) }
+
+            let cached = signature.flatMap { signature in
+                parseCache.fileEntries[cacheKey].flatMap { $0.signature == signature ? $0 : nil }
+            }
+
+            if var cached, let signature {
+                let indexChanged = cached.indexSignature != currentIndexSignature
+                if indexChanged, try loadIndexIfAdmitted(allowDependencyFallback: false) {
+                    cached = refreshingIndexAttribution(
+                        cached,
+                        projectPath: indexProjects?[sessionId],
+                        indexSignature: currentIndexSignature
+                    )
+                    if parseCache.fileEntries[cacheKey] != cached {
+                        parseCache.fileEntries[cacheKey] = cached
+                        cacheMutated = true
+                    }
+                } else if indexExists, !indexObserved {
+                    try recordObservedFiles([indexURL], options: options, candidateAlreadyRecorded: false)
+                    indexObserved = true
+                }
+
+                if options.includeConversationBodies, cached.conversation == nil {
+                    let admission = sessionAdmissionFiles(sessionFiles)
+                    let sessionAdmitted = try gate.shouldRead(
+                        admission.files,
+                        candidateAlreadyRecorded: true
+                    )
+                    guard sessionAdmitted else {
+                        appendEntry(
+                            usage: cached.usage,
+                            conversation: nil,
+                            includeConversation: false,
+                            usages: &usages,
+                            conversations: &conversations
+                        )
+                        continue
+                    }
+                    guard loadPreAdmittedIndexIfNeeded(admission.includesIndex) else {
+                        gate.discardAdmission(for: sessionFiles)
+                        appendEntry(
+                            usage: cached.usage,
+                            conversation: nil,
+                            includeConversation: false,
+                            usages: &usages,
+                            conversations: &conversations
+                        )
+                        continue
+                    }
+
+                    let state: SessionStateMetadata
+                    do {
+                        state = try readStateMetadata(from: stateFile)
+                    } catch {
+                        gate.recordContentReadFailure(for: sessionFiles)
+                        appendEntry(
+                            usage: cached.usage,
+                            conversation: nil,
+                            includeConversation: false,
+                            usages: &usages,
+                            conversations: &conversations
+                        )
+                        continue
+                    }
+                    var indexProjectPath = indexProjects?[sessionId]
+                    if indexProjectPath == nil, state.projectPath == nil, indexExists {
+                        let deferredBefore = options.resourceGovernor?.deferredFileCount
+                        guard try loadIndexIfAdmitted(allowDependencyFallback: true),
+                              let loadedProjectPath = indexProjects?[sessionId] else {
+                            gate.discardAdmission(for: sessionFiles)
+                            recordMissingAttributionDeferralIfNeeded(previousDeferredCount: deferredBefore, options: options)
+                            appendEntry(
+                                usage: cached.usage,
+                                conversation: nil,
+                                includeConversation: false,
+                                usages: &usages,
+                                conversations: &conversations
+                            )
+                            continue
+                        }
+                        indexProjectPath = loadedProjectPath
+                    }
+
+                    do {
+                        let parsed = try parseSession(
+                            sessionId: sessionId,
+                            eventsFile: eventsFile,
+                            state: state,
+                            indexProjectPath: indexProjectPath
+                        )
+                        var refreshed = JunieCacheEntry(
+                            signature: signature,
+                            indexSignature: indexProjects != nil ? currentIndexSignature : cached.indexSignature,
+                            usage: cached.usage ?? parsed?.usage,
+                            conversation: parsed?.conversation
+                        )
+                        if indexProjects != nil {
+                            refreshed = refreshingIndexAttribution(
+                                refreshed,
+                                projectPath: indexProjects?[sessionId],
+                                indexSignature: currentIndexSignature
+                            )
+                        }
+                        if refreshed != cached {
+                            parseCache.fileEntries[cacheKey] = refreshed
+                            cacheMutated = true
+                        }
+                        appendEntry(
+                            usage: refreshed.usage,
+                            conversation: refreshed.conversation,
+                            includeConversation: true,
+                            usages: &usages,
+                            conversations: &conversations
+                        )
+                    } catch {
+                        gate.recordContentReadFailure(for: sessionFiles)
+                        appendEntry(
+                            usage: cached.usage,
+                            conversation: nil,
+                            includeConversation: false,
+                            usages: &usages,
+                            conversations: &conversations
+                        )
+                    }
+                    continue
+                }
+
+                try recordObservedFiles(sessionFiles, options: options, candidateAlreadyRecorded: true)
+                if !options.includeConversationBodies, cached.conversation != nil {
+                    cached = JunieCacheEntry(
+                        signature: cached.signature,
+                        indexSignature: cached.indexSignature,
+                        usage: cached.usage,
+                        conversation: nil
+                    )
+                    parseCache.fileEntries[cacheKey] = cached
+                    cacheMutated = true
+                }
                 appendEntry(
                     usage: cached.usage,
                     conversation: cached.conversation,
@@ -115,13 +315,56 @@ final class JunieParser: LogParser, Sendable {
                     usages: &usages,
                     conversations: &conversations
                 )
-            } else {
-                // try?-ok(best-effort session parse)
-                let parsed = try? parseSession(
+                continue
+            }
+
+            let admission = sessionAdmissionFiles(sessionFiles)
+            let sessionAdmitted = try gate.shouldRead(
+                admission.files,
+                candidateAlreadyRecorded: true
+            )
+            guard sessionAdmitted else {
+                if let cached = parseCache.fileEntries[cacheKey] {
+                    appendEntry(
+                        usage: cached.usage,
+                        conversation: nil,
+                        includeConversation: false,
+                        usages: &usages,
+                        conversations: &conversations
+                    )
+                }
+                continue
+            }
+            guard loadPreAdmittedIndexIfNeeded(admission.includesIndex) else {
+                gate.discardAdmission(for: sessionFiles)
+                continue
+            }
+
+            let state: SessionStateMetadata
+            do {
+                state = try readStateMetadata(from: stateFile)
+            } catch {
+                gate.recordContentReadFailure(for: sessionFiles)
+                continue
+            }
+            var indexProjectPath = indexProjects?[sessionId]
+            if indexProjectPath == nil, state.projectPath == nil, indexExists {
+                let deferredBefore = options.resourceGovernor?.deferredFileCount
+                guard try loadIndexIfAdmitted(allowDependencyFallback: true),
+                      let loadedProjectPath = indexProjects?[sessionId] else {
+                    gate.discardAdmission(for: sessionFiles)
+                    recordMissingAttributionDeferralIfNeeded(previousDeferredCount: deferredBefore, options: options)
+                    continue
+                }
+                indexProjectPath = loadedProjectPath
+            }
+
+            do {
+                let parsed = try parseSession(
                     sessionId: sessionId,
                     eventsFile: eventsFile,
-                    stateFile: stateFile,
-                    indexProjectPath: indexProjects[sessionId]
+                    state: state,
+                    indexProjectPath: indexProjectPath
                 )
                 appendEntry(
                     usage: parsed?.usage,
@@ -133,12 +376,19 @@ final class JunieParser: LogParser, Sendable {
                 if let signature {
                     parseCache.fileEntries[cacheKey] = JunieCacheEntry(
                         signature: signature,
+                        indexSignature: currentIndexSignature,
                         usage: parsed?.usage,
                         conversation: options.includeConversationBodies ? parsed?.conversation : nil
                     )
                     cacheMutated = true
                 }
+            } catch {
+                gate.recordContentReadFailure(for: sessionFiles)
             }
+        }
+
+        if indexExists, !indexObserved {
+            try recordObservedFiles([indexURL], options: options, candidateAlreadyRecorded: false)
         }
 
         let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
@@ -162,9 +412,8 @@ final class JunieParser: LogParser, Sendable {
     /// Index records are the durable source for the session ↔ project
     /// association (the `processes/*.json` latches only exist while a
     /// session is alive).
-    private func sessionIndexProjects(sessionsURL: URL) -> [String: String] {
-        let indexURL = sessionsURL.appendingPathComponent("index.jsonl")
-        guard let handle = try? FileHandle(forReadingFrom: indexURL) else { return [:] } // try?-ok(missing index falls back to state.json)
+    private func sessionIndexProjects(indexURL: URL) throws -> [String: String] {
+        let handle = try fileHandleForReading(indexURL)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
         var projects: [String: String] = [:]
@@ -196,54 +445,67 @@ final class JunieParser: LogParser, Sendable {
             input > 0 || output > 0 || cacheCreation > 0 || cacheRead > 0 || reasoning > 0
         }
     }
+    private struct SessionStateMetadata {
+        var tokenData = SessionTokenData()
+        var projectPath: String?
+        var providedUsageTotals = false
+        var usedExplicitUsage = false
+    }
+
+    private func readStateMetadata(from stateFile: URL) throws -> SessionStateMetadata {
+        var state = SessionStateMetadata()
+        guard fileManager.fileExists(atPath: stateFile.path) else { return state }
+        let handle = try fileHandleForReading(stateFile)
+        defer { try? handle.close() } // try?-ok(handle teardown)
+        let data = try handle.readToEnd() ?? Data()
+        guard let json = Self.decodeJSONObject(from: data) else {
+            return state
+        }
+
+        if let model = firstString(in: json, keys: ["model", "modelId", "model_id", "modelForLaunch", "selectedModel", "llmModel"]) {
+            state.tokenData.model = TokenExtractionUtility.normalizeModelName(model)
+        }
+        state.projectPath = firstString(
+            in: json,
+            keys: ["projectPath", "project_path", "projectDir", "cwd", "workingDirectory"]
+        )
+        if let usageDict = firstDictionary(in: json, keys: ["usage", "tokenUsage", "token_usage", "llmUsage", "totalUsage"]) {
+            let extracted = TokenExtractionUtility.extractUsageTokens(usageDict)
+            if Self.hasExplicitUsageBuckets(extracted) {
+                state.tokenData.input = extracted.input
+                state.tokenData.output = extracted.output
+                state.tokenData.cacheCreation = extracted.cacheCreation
+                state.tokenData.cacheRead = extracted.cacheRead
+                state.tokenData.reasoning = extracted.reasoningTokens
+                state.providedUsageTotals = true
+                state.usedExplicitUsage = true
+            }
+        }
+        return state
+    }
 
     private func parseSession(
         sessionId: String,
         eventsFile: URL,
-        stateFile: URL,
+        state: SessionStateMetadata,
         indexProjectPath: String?
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
-        var tokenData = SessionTokenData()
-        var usedExplicitUsage = false
+        var tokenData = state.tokenData
+        var usedExplicitUsage = state.usedExplicitUsage
         var userCharCount = 0
         var assistantCharCount = 0
         var assistantReasoningCharCount = 0
         var userMessageCount = 0
         var assistantMessageCount = 0
         var inlineModel: String?
-        var projectPath = indexProjectPath
-        var stateJSONProvidedTotals = false
-
-        // state.json carries the latest agent state; harvest the model and
-        // project path defensively. Some env values inside are encrypted
-        // (EnvEncryptionService) — those are opaque strings we never touch.
-        if let data = try? Data(contentsOf: stateFile), // try?-ok(missing state skipped)
-           let json = Self.decodeJSONObject(from: data) { // try?-ok(malformed state skipped)
-            if let model = firstString(in: json, keys: ["model", "modelId", "model_id", "modelForLaunch", "selectedModel", "llmModel"]) {
-                tokenData.model = TokenExtractionUtility.normalizeModelName(model)
-            }
-            if projectPath == nil {
-                projectPath = firstString(in: json, keys: ["projectPath", "project_path", "projectDir", "cwd", "workingDirectory"])
-            }
-            if let usageDict = firstDictionary(in: json, keys: ["usage", "tokenUsage", "token_usage", "llmUsage", "totalUsage"]) {
-                let extracted = TokenExtractionUtility.extractUsageTokens(usageDict)
-                if Self.hasExplicitUsageBuckets(extracted) {
-                    tokenData.input = extracted.input
-                    tokenData.output = extracted.output
-                    tokenData.cacheCreation = extracted.cacheCreation
-                    tokenData.cacheRead = extracted.cacheRead
-                    tokenData.reasoning = extracted.reasoningTokens
-                    usedExplicitUsage = true
-                    stateJSONProvidedTotals = true
-                }
-            }
-        }
+        let projectPath = indexProjectPath ?? state.projectPath
+        let stateJSONProvidedTotals = state.providedUsageTotals
 
         let mtime = modificationDate(of: eventsFile)
         let conv = ClaudeConversationAccumulator()
 
-        if let handle = try? FileHandle(forReadingFrom: eventsFile) { // try?-ok(unreadable log skipped)
-            defer { try? handle.close() } // try?-ok(handle teardown)
+        let handle = try fileHandleForReading(eventsFile)
+        defer { try? handle.close() } // try?-ok(handle teardown)
             for line in handle.readAllUTF8Lines() {
                 guard let data = line.data(using: .utf8),
                       let json = Self.decodeJSONObject(from: data) else { // try?-ok(bad log line skipped)
@@ -336,7 +598,6 @@ final class JunieParser: LogParser, Sendable {
                     }
                 }
             }
-        }
 
         conv.finalizeArrays()
 
@@ -513,52 +774,148 @@ final class JunieParser: LogParser, Sendable {
         }
     }
 
-    private func updateCacheEntry(
+    private func recordObservedFiles(
+        _ files: [URL],
+        options: LogParseOptions,
+        candidateAlreadyRecorded: Bool
+    ) throws {
+        guard let tracker = options.fileDiscoveryTracker else { return }
+        try options.resourceGovernor?.checkpoint()
+        if !candidateAlreadyRecorded {
+            options.metrics?.recordCandidate()
+        }
+        for file in files {
+            options.metrics?.recordMetadataStat()
+            let attributes = try fileManager.attributesOfItem(atPath: file.path)
+            _ = tracker.record(discoveredFile(for: file, attributes: attributes))
+        }
+    }
+
+    private func discoveredFile(
+        for file: URL,
+        attributes: [FileAttributeKey: Any]?
+    ) -> ParserDiscoveredFile {
+        ParserDiscoveredFile(
+            path: file.standardizedFileURL.path,
+            fileSizeBytes: (attributes?[.size] as? NSNumber)?.int64Value,
+            modificationDate: normalizedCheckpointDate(attributes?[.modificationDate] as? Date),
+            creationDate: normalizedCheckpointDate(attributes?[.creationDate] as? Date),
+            fileSystemNumber: (attributes?[.systemNumber] as? NSNumber)?.uint64Value,
+            fileNumber: (attributes?[.systemFileNumber] as? NSNumber)?.uint64Value
+        )
+    }
+
+    private func normalizedCheckpointDate(_ date: Date?) -> Date? {
+        guard let date else { return nil }
+        let milliseconds = (date.timeIntervalSince1970 * 1_000).rounded()
+        return Date(timeIntervalSince1970: milliseconds / 1_000)
+    }
+
+    private func recordMissingAttributionDeferralIfNeeded(
+        previousDeferredCount: Int?,
+        options: LogParseOptions
+    ) {
+        if let previousDeferredCount,
+           options.resourceGovernor?.deferredFileCount != previousDeferredCount {
+            return
+        }
+        options.resourceGovernor?.recordDeferredFile()
+        options.metrics?.recordDeferred(.metadataUnavailable)
+    }
+
+    private func refreshingIndexAttribution(
         _ cached: JunieCacheEntry,
-        signature: CompositeFileSignature<FileSignature>,
-        sessionId: String,
-        eventsFile: URL,
-        stateFile: URL,
-        indexProjectPath: String?,
-        includeConversationBodies: Bool,
-        parseCache: inout ParserDiskCache<JunieCacheEntry>,
-        cacheKey: String,
-        cacheMutated: inout Bool
+        projectPath: String?,
+        indexSignature: FileSignature?
     ) -> JunieCacheEntry {
-        if !includeConversationBodies {
-            guard cached.conversation != nil else { return cached }
-            let stripped = JunieCacheEntry(
+        guard let projectPath else {
+            return JunieCacheEntry(
                 signature: cached.signature,
+                indexSignature: indexSignature,
                 usage: cached.usage,
-                conversation: nil
+                conversation: cached.conversation
             )
-            parseCache.fileEntries[cacheKey] = stripped
-            cacheMutated = true
-            return stripped
         }
 
-        guard cached.conversation == nil else { return cached }
-        let parsed = try? parseSession( // try?-ok(best-effort conversation cache rewarm)
-            sessionId: sessionId,
-            eventsFile: eventsFile,
-            stateFile: stateFile,
-            indexProjectPath: indexProjectPath
+        let projectName = displayProjectName(projectPath)
+        return JunieCacheEntry(
+            signature: cached.signature,
+            indexSignature: indexSignature,
+            usage: cached.usage.map { usage in
+                TokenUsage(
+                    id: usage.id,
+                    provider: usage.provider,
+                    sessionId: usage.sessionId,
+                    projectName: projectName,
+                    model: usage.model,
+                    inputTokens: usage.inputTokens,
+                    outputTokens: usage.outputTokens,
+                    cacheCreationTokens: usage.cacheCreationTokens,
+                    cacheReadTokens: usage.cacheReadTokens,
+                    reasoningTokens: usage.reasoningTokens,
+                    costUSD: usage.costUSD,
+                    startTime: usage.startTime,
+                    endTime: usage.endTime,
+                    createdAt: usage.createdAt,
+                    usageSource: usage.usageSource,
+                    deviceId: usage.deviceId,
+                    sourceDeviceId: usage.sourceDeviceId,
+                    sourceDeviceName: usage.sourceDeviceName,
+                    isRemote: usage.isRemote,
+                    providerID: usage.providerID,
+                    providerAccountID: usage.providerAccountID,
+                    providerAccountLabel: usage.providerAccountLabel,
+                    providerAccountSource: usage.providerAccountSource,
+                    currency: usage.currency,
+                    recordedAt: usage.recordedAt,
+                    eventKind: usage.eventKind,
+                    idempotencyKey: usage.idempotencyKey,
+                    provenanceMethod: usage.provenanceMethod,
+                    provenanceConfidence: usage.provenanceConfidence,
+                    estimatorVersion: usage.estimatorVersion,
+                    parentRequestID: usage.parentRequestID
+                )
+            },
+            conversation: cached.conversation.map { conversation in
+                ConversationRecord(
+                    id: conversation.id,
+                    provider: conversation.provider,
+                    sessionId: conversation.sessionId,
+                    projectName: projectName,
+                    startTime: conversation.startTime,
+                    endTime: conversation.endTime,
+                    messageCount: conversation.messageCount,
+                    userWordCount: conversation.userWordCount,
+                    assistantWordCount: conversation.assistantWordCount,
+                    keyFiles: conversation.keyFiles,
+                    keyCommands: conversation.keyCommands,
+                    keyTools: conversation.keyTools,
+                    inferredTaskTitle: conversation.inferredTaskTitle,
+                    lastAssistantMessage: conversation.lastAssistantMessage,
+                    fullText: conversation.fullText,
+                    indexedAt: conversation.indexedAt,
+                    workingDirectory: projectPath,
+                    fileModifiedAt: conversation.fileModifiedAt,
+                    summary: conversation.summary,
+                    summaryTitle: conversation.summaryTitle,
+                    summaryUpdatedAt: conversation.summaryUpdatedAt,
+                    summaryProvider: conversation.summaryProvider,
+                    summaryModel: conversation.summaryModel,
+                    sourceType: conversation.sourceType,
+                    sourceDeviceId: conversation.sourceDeviceId,
+                    sourceDeviceName: conversation.sourceDeviceName,
+                    isRemote: conversation.isRemote,
+                    deletedAt: conversation.deletedAt,
+                    version: conversation.version
+                )
+            }
         )
-        let refreshed = JunieCacheEntry(
-            signature: signature,
-            usage: cached.usage ?? parsed?.usage,
-            conversation: parsed?.conversation
-        )
-        if refreshed != cached {
-            parseCache.fileEntries[cacheKey] = refreshed
-            cacheMutated = true
-        }
-        return refreshed
     }
 }
 
 private struct JunieCacheEntry: Codable, Equatable {
     let signature: CompositeFileSignature<FileSignature>
+    let indexSignature: FileSignature?
     let usage: TokenUsage?
     let conversation: ConversationRecord?
 }

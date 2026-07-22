@@ -99,8 +99,18 @@ struct DashboardBackdrop: View {
         DashboardLiveBackdropVisibility.exposesContentBackdrop(
             appearanceSkin: settingsManager.appearanceSkin,
             useWebsiteBackground: settingsManager.useWebsiteBackground,
-            useKernelBackdrop: useKernelBackdrop
+            useKernelBackdrop: shouldUseKernelBackdrop
         )
+    }
+
+    /// CI launches with an ephemeral preferences home. Mount the actual
+    /// backdrop deterministically instead of relying on `@AppStorage` to
+    /// consume the argument domain before this view is first constructed.
+    private var shouldUseKernelBackdrop: Bool {
+        useKernelBackdrop || OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
+            isPerformanceGateLaunch: OpenBurnBarRuntime.isPerformanceGateLaunch,
+            arguments: ProcessInfo.processInfo.arguments
+        ) != nil
     }
 
     private var substrate: SwarmSubstrate {
@@ -147,7 +157,7 @@ struct DashboardBackdrop: View {
                 WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
             } else if dynamicBackdropEnabled {
                 Group {
-                    if useKernelBackdrop {
+                    if shouldUseKernelBackdrop {
                         // Full-window WebGL2 kernel field (the bottom-most
                         // backdrop layer). Reuses the same clear-surface
                         // plumbing as the swarm, so dashboard content composites

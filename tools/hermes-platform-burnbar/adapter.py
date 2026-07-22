@@ -65,7 +65,6 @@ try:
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
     CRYPTOGRAPHY_PRIMITIVES_AVAILABLE = True
 except ImportError:  # pragma: no cover - same environment that disables relay crypto.
@@ -74,10 +73,14 @@ except ImportError:  # pragma: no cover - same environment that disables relay c
     serialization = None  # type: ignore[assignment]
     ec = None  # type: ignore[assignment]
     Ed25519PrivateKey = None  # type: ignore[assignment]
-    HKDF = None  # type: ignore[assignment]
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter, MessageEvent, MessageType, SendResult
+
+try:
+    from .domain_core_hermes import HermesDomainAdapter
+except ImportError:
+    from domain_core_hermes import HermesDomainAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -169,9 +172,9 @@ RATCHET_PEER_SIGNED_PREKEY_PUBLIC_KEY_ENV = "BURNBAR_RATCHET_PEER_SIGNED_PREKEY_
 RATCHET_PEER_SIGNED_PREKEY_ID_ENV = "BURNBAR_RATCHET_PEER_SIGNED_PREKEY_ID"
 RATCHET_PEER_SIGNED_PREKEY_SIGNATURE_ENV = "BURNBAR_RATCHET_PEER_SIGNED_PREKEY_SIGNATURE"
 RATCHET_SESSION_KEYCHAIN_SERVICE = "com.openburnbar.hermes-gateway-ratchet-session"
-RATCHET_PREKEY_KDF_DOMAIN = b"OpenBurnBar-HermesRatchet-v1-prekey-x3dh-p256"
 RATCHET_SESSION_ID_DOMAIN = b"OpenBurnBar-HermesRatchet-v1-session"
 RATCHET_CHAT_LANE = "chat"
+_HERMES_DOMAIN = HermesDomainAdapter.from_environment()
 # Env var recording that this link negotiated E2E at pairing time.
 RELAY_E2E_ENV = "BURNBAR_RELAY_E2E"
 
@@ -599,28 +602,19 @@ def _ratchet_prekey_shared_secret(
     responder_signed_prekey_public_key_base64: str,
     initiator_initial_ratchet_public_key_base64: str,
 ) -> bytes:
-    if HKDF is None:
-        raise RuntimeError("cryptography HKDF is unavailable")
-    info = bytearray(RATCHET_PREKEY_KDF_DOMAIN)
-    for part in (uid, client_id, RATCHET_CHAT_LANE, initiator_role):
-        _append_ratchet_part(info, part.encode("utf-8"))
-    for key in (
-        initiator_identity_public_key_base64,
-        responder_identity_public_key_base64,
-        initiator_signed_prekey_public_key_base64,
-        responder_signed_prekey_public_key_base64,
-        initiator_initial_ratchet_public_key_base64,
-    ):
-        raw = base64.b64decode(key)
-        if len(raw) != 65:
-            raise ValueError("ratchet transcript public key must be 65 bytes")
-        _append_ratchet_part(info, raw)
-    return HKDF(
-        algorithm=hashes.SHA256(),  # type: ignore[union-attr]
-        length=32,
-        salt=RATCHET_PREKEY_KDF_DOMAIN,
-        info=bytes(info),
-    ).derive(dh1 + dh2 + dh3)
+    return _HERMES_DOMAIN.ratchet_prekey_shared_secret(
+        dh1=dh1,
+        dh2=dh2,
+        dh3=dh3,
+        uid=uid,
+        client_id=client_id,
+        initiator_role=initiator_role,
+        initiator_identity_public_key_base64=initiator_identity_public_key_base64,
+        responder_identity_public_key_base64=responder_identity_public_key_base64,
+        initiator_signed_prekey_public_key_base64=initiator_signed_prekey_public_key_base64,
+        responder_signed_prekey_public_key_base64=responder_signed_prekey_public_key_base64,
+        initiator_initial_ratchet_public_key_base64=initiator_initial_ratchet_public_key_base64,
+    )
 
 
 def _ratchet_initiator_shared_secret(

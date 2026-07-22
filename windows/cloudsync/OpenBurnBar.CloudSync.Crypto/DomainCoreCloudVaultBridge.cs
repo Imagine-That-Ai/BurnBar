@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
+using OpenBurnBar.App.Configuration;
 using DomainAadContext = uniffi.openburnbar_domain_ffi.CloudVaultAadContextInput;
 using DomainCloudVaultException = uniffi.openburnbar_domain_ffi.CloudVaultFfiException;
 using DomainHashPurpose = uniffi.openburnbar_domain_ffi.CloudVaultHashPurpose;
@@ -16,9 +17,30 @@ namespace OpenBurnBar.CloudSync.Crypto
         Rust,
     }
 
+    public sealed record DomainCoreCloudVaultShadowComparison(
+        string Domain,
+        string Slice,
+        string Consumer,
+        string Operation,
+        string? LoadedCoreVersion,
+        uint? LoadedCoreAbiVersion,
+        string? LoadedCoreSourceSha256,
+        string Outcome,
+        string? MismatchCategory,
+        long LegacyMicros,
+        long RustMicros);
+
+    public static class DomainCoreCloudVaultShadowEvidence
+    {
+        public static void Configure(Action<DomainCoreCloudVaultShadowComparison>? sink) =>
+            DomainCoreCloudVaultBridge.ComparisonSink = sink;
+    }
+
     internal static class DomainCoreCloudVaultBridge
     {
         private const string ModeVariable = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE";
+
+        internal static Action<DomainCoreCloudVaultShadowComparison>? ComparisonSink { get; set; }
 
         internal static string AadV2(
             string uid,
@@ -94,6 +116,20 @@ namespace OpenBurnBar.CloudSync.Crypto
             Apply(
                 "cloudvault_keyed_hash",
                 () => DomainCore.CloudVaultKeyedHashHex(data, key, purpose),
+                legacy,
+                StringComparer.Ordinal.Equals);
+
+        internal static string PensieveDedupHash(string plaintext, byte[] key, Func<string> legacy) =>
+            Apply(
+                "pensieve_dedup_hash",
+                () => DomainCore.CloudVaultPensieveDedupHash(plaintext, key),
+                legacy,
+                StringComparer.Ordinal.Equals);
+
+        internal static string PensieveSlugHmac(string slug, byte[] key, Func<string> legacy) =>
+            Apply(
+                "pensieve_slug_hmac",
+                () => DomainCore.CloudVaultPensieveSlugHmac(slug, key),
                 legacy,
                 StringComparer.Ordinal.Equals);
 
@@ -289,7 +325,7 @@ namespace OpenBurnBar.CloudSync.Crypto
             Func<T> legacy,
             Func<T, T, bool> equivalent)
         {
-            var mode = ResolveMode(Environment.GetEnvironmentVariable(ModeVariable));
+            var mode = ResolveMode(DomainCoreBuildProfileResolver.Mode("cloudVault", ModeVariable));
             if (mode == DomainCoreCloudVaultMigrationMode.Legacy)
             {
                 return legacy();
@@ -307,30 +343,161 @@ namespace OpenBurnBar.CloudSync.Crypto
                 return rustOutcome!.GetOrThrow();
             }
 
+            long legacyStarted = Stopwatch.GetTimestamp();
             var legacyOutcome = Capture(legacy);
-            try
+            long legacyMicros = ElapsedMicros(legacyStarted);
+            long rustStarted = Stopwatch.GetTimestamp();
+            LoadedCoreIdentity? loadedIdentity = null;
+            if (!TryLoadShadowIdentity(out loadedIdentity))
             {
-                if (!TryInvoke(rust, out var rustOutcome))
+                Trace.TraceWarning("domain_core.{0}.native_unavailable mode={1}", operation, mode);
+                RecordComparison(operation, null, false, "native_unavailable", legacyMicros, ElapsedMicros(rustStarted));
+            }
+            else
+            {
+                DomainCoreCandidateIdentity? expectedIdentity = CurrentSignedCandidateIdentity();
+                if (expectedIdentity is not null && !Matches(expectedIdentity, loadedIdentity))
+                {
+                    Trace.TraceWarning("domain_core.{0}.loaded_identity_mismatch mode={1}", operation, mode);
+                    RecordComparison(
+                        operation,
+                        loadedIdentity,
+                        false,
+                        "loaded_identity_mismatch",
+                        legacyMicros,
+                        ElapsedMicros(rustStarted));
+                }
+                else if (expectedIdentity is null && loadedIdentity.CoreAbiVersion != 3)
                 {
                     Trace.TraceWarning("domain_core.{0}.native_unavailable mode={1}", operation, mode);
-                }
-                else if (!Equivalent(rustOutcome!, legacyOutcome, equivalent))
-                {
-                    Trace.TraceWarning(
-                        "domain_core.{0}.shadow_mismatch core={1} mismatch_count=1 legacy_category={2} rust_category={3}",
+                    RecordComparison(
                         operation,
-                        DomainCore.DomainCoreVersion(),
-                        legacyOutcome.Category,
-                        rustOutcome!.Category);
+                        null,
+                        false,
+                        "native_unavailable",
+                        legacyMicros,
+                        ElapsedMicros(rustStarted));
                 }
-            }
-            catch (Exception)
-            {
-                Trace.TraceWarning("domain_core.{0}.rust_error mode={1}", operation, mode);
+                else
+                {
+                    try
+                    {
+                        var rustOutcome = Capture(rust);
+                        bool matches = Equivalent(rustOutcome!, legacyOutcome, equivalent);
+                        if (!matches)
+                        {
+                            Trace.TraceWarning(
+                                "domain_core.{0}.shadow_mismatch core={1} mismatch_count=1 legacy_category={2} rust_category={3}",
+                                operation,
+                                loadedIdentity.CoreVersion,
+                                legacyOutcome.Category,
+                                rustOutcome!.Category);
+                        }
+                        RecordComparison(
+                            operation,
+                            loadedIdentity,
+                            matches,
+                            matches ? null : "result_mismatch",
+                            legacyMicros,
+                            ElapsedMicros(rustStarted));
+                    }
+                    catch (Exception error) when (IsNativeLoadFailure(error))
+                    {
+                        string category = loadedIdentity is null ? "native_unavailable" : "native_error";
+                        Trace.TraceWarning("domain_core.{0}.{1} mode={2}", operation, category, mode);
+                        RecordComparison(
+                            operation,
+                            loadedIdentity,
+                            false,
+                            category,
+                            legacyMicros,
+                            ElapsedMicros(rustStarted));
+                    }
+                    catch (Exception)
+                    {
+                        Trace.TraceWarning("domain_core.{0}.rust_error mode={1}", operation, mode);
+                        RecordComparison(
+                            operation,
+                            loadedIdentity,
+                            false,
+                            "native_error",
+                            legacyMicros,
+                            ElapsedMicros(rustStarted));
+                    }
+                }
             }
 
             return legacyOutcome.GetOrThrow();
         }
+
+        private static long ElapsedMicros(long started) => Math.Clamp(
+            (long)(Stopwatch.GetElapsedTime(started).TotalMilliseconds * 1_000),
+            0,
+            600_000_000);
+
+        private static void RecordComparison(
+            string operation,
+            LoadedCoreIdentity? loadedIdentity,
+            bool equivalent,
+            string? mismatchCategory,
+            long legacyMicros,
+            long rustMicros)
+        {
+            if (ComparisonSink is null) return;
+            string slice = operation is "pensieve_dedup_hash" or "pensieve_slug_hmac" ? "opaque-identifiers"
+                : operation.StartsWith("pensieve_", StringComparison.Ordinal) ? "pensieve-vectors"
+                : operation.Contains("escrow", StringComparison.Ordinal) ? "escrow"
+                : operation.Contains("recovery", StringComparison.Ordinal) ? "recovery"
+                : operation.Contains("aes", StringComparison.Ordinal)
+                    || operation.Contains("seal", StringComparison.Ordinal)
+                    || operation.Contains("open", StringComparison.Ordinal) ? "aes"
+                : "foundation";
+            ComparisonSink(new DomainCoreCloudVaultShadowComparison(
+                "cloudvault",
+                slice,
+                "windows",
+                operation,
+                loadedIdentity?.CoreVersion,
+                loadedIdentity?.CoreAbiVersion,
+                loadedIdentity?.CoreSourceSha256,
+                equivalent ? "match" : "mismatch",
+                mismatchCategory,
+                legacyMicros,
+                rustMicros));
+        }
+
+        private static DomainCoreCandidateIdentity? CurrentSignedCandidateIdentity()
+        {
+            var profile = DomainCoreBuildProfileResolver.Current();
+            return profile.IsValid
+                && profile.ArtifactAuthority == "signed"
+                && profile.EvidenceEnabled
+                && profile.RolloutChannel is "internal" or "beta"
+                ? profile.CandidateIdentity
+                : null;
+        }
+
+        private static bool TryLoadShadowIdentity(out LoadedCoreIdentity identity)
+        {
+            identity = null!;
+            try
+            {
+                identity = new(
+                    DomainCore.DomainCoreVersion(),
+                    DomainCore.DomainCoreAbiVersion(),
+                    DomainCore.DomainCoreSourceFingerprint());
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool Matches(DomainCoreCandidateIdentity expected, LoadedCoreIdentity loaded) =>
+            loaded.CoreVersion == expected.ExpectedCoreVersion
+            && loaded.CoreAbiVersion == expected.ExpectedCoreAbiVersion
+            && loaded.CoreSourceSha256 == expected.ExpectedCoreSourceSha256;
 
         private static bool TryInvoke<T>(Func<T> operation, out Outcome<T>? outcome)
         {
@@ -456,5 +623,10 @@ namespace OpenBurnBar.CloudSync.Crypto
                 return Value!;
             }
         }
+
+        private sealed record LoadedCoreIdentity(
+            string CoreVersion,
+            uint CoreAbiVersion,
+            string CoreSourceSha256);
     }
 }

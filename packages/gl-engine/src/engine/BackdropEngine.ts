@@ -24,6 +24,10 @@ import {
   type BackdropReadabilityProfile,
 } from "./readability";
 import type { SwarmEmberKernelOptions } from "./kernels/swarmEmberKernel";
+// Eager import: createSlot() is synchronous and must return a Kernel immediately,
+// so the options-override path for swarmEmber can't use a dynamic import(). The
+// registry's lazyKernel path handles the default (no-options) case; this value
+// import is only reached when swarmEmberOptions is set (linux-desktop dashboard).
 import { createSwarmEmberKernel } from "./kernels/swarmEmberKernel";
 import { DEFAULT_KERNEL_ID, getKernelDescriptor } from "./registry";
 import type {
@@ -68,6 +72,18 @@ export interface BackdropEngineOptions {
   onReadability?: (profile: BackdropReadabilityProfile) => void;
   /** Viewport-space bounds for text-bearing areas that expose the canvas. */
   readabilityRegions?: () => readonly DOMRectReadOnly[];
+  /**
+   * Deterministic host profile for performance certification. Production
+   * callers leave this unset so the engine follows the user's OS preference.
+   */
+  reducedMotionOverride?: boolean;
+}
+
+export interface BackdropRuntimeState {
+  hostVisible: boolean;
+  renderLoopScheduled: boolean;
+  reducedMotion: boolean;
+  resolvedKernel: KernelId;
 }
 
 function detectWebgl2(): { supported: boolean; caps: GlCapabilities } {
@@ -120,6 +136,8 @@ export class BackdropEngine {
 
   private visible = true;
   private pageVisible = true;
+  /** Native-host visibility (window occlusion/minimize/app-hide), driven by
+   *  the embedder via {@link setHostVisible}. Browsers never touch this. */
   private hostVisible = true;
   private reducedMotion = false;
 
@@ -155,9 +173,10 @@ export class BackdropEngine {
     this.readabilityRegions = opts.readabilityRegions;
     this.activeId = opts.initialKernel ?? DEFAULT_KERNEL_ID;
 
-    this.reducedMotion =
+    this.reducedMotion = opts.reducedMotionOverride ?? (
       typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
 
     const rect = container.getBoundingClientRect();
     this.width = rect.width || window.innerWidth;
@@ -253,8 +272,26 @@ export class BackdropEngine {
     return this.activeId;
   }
 
-  /** Native hosts use this because WKWebView's document visibility does not
-   * track window occlusion, minimization, or application hiding. */
+  /** Runtime truth used by native hosts to confirm that occlusion commands
+   *  reached the actual engine rather than merely reaching the WKWebView. */
+  getRuntimeState(): BackdropRuntimeState {
+    return {
+      hostVisible: this.hostVisible,
+      renderLoopScheduled: this.raf !== null,
+      reducedMotion: this.reducedMotion,
+      resolvedKernel: this.activeId,
+    };
+  }
+
+  /**
+   * Native embedders (the macOS/iOS WKWebView backdrop) call this when the
+   * hosting window's occlusion state changes. `document.hidden` never fires
+   * for a window that is merely covered by another window or minimized, so
+   * without this hook the rAF loop keeps burning GPU/CPU behind fully
+   * occluded windows. Fully stops the loop (not just early-returns) so an
+   * occluded backdrop costs ~0; restarting is seamless — same pattern as the
+   * reduced-motion toggle.
+   */
   setHostVisible(hostVisible: boolean): void {
     if (this.hostVisible === hostVisible) return;
     this.hostVisible = hostVisible;
@@ -417,7 +454,10 @@ export class BackdropEngine {
         depth: false,
         stencil: false,
         premultipliedAlpha: true,
-        powerPreference: "high-performance",
+        // Ambient backdrops don't need dGPU clocks: "low-power" renders the
+        // exact same frames on the efficiency GPU tier and saves real battery
+        // ("high-performance" forces higher clocks / the discrete GPU on Macs).
+        powerPreference: "low-power",
         preserveDrawingBuffer: false,
       });
       if (!ctx) {
@@ -857,7 +897,7 @@ export class BackdropEngine {
    */
   private harvestObstacles(force = false): void {
     const now = typeof performance !== "undefined" ? performance.now() : 0;
-    if (!force && now - this.lastHarvest < 150) return;
+    if (!force && now - this.lastHarvest < 300) return;
     this.lastHarvest = now;
     const wantsObstacles = this.slots.some((s) => !s.outgoing && s.kernel.obstacles);
     if (!wantsObstacles) return;

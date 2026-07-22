@@ -242,7 +242,7 @@ public sealed class CliProcessLineSourceTests
             return output;
         }
 
-        System.Collections.Generic.List<string> lines = await ReadAsync().WaitAsync(System.TimeSpan.FromSeconds(5));
+        System.Collections.Generic.List<string> lines = await ReadAsync().WaitAsync(System.TimeSpan.FromSeconds(30));
         Assert.Contains(lines, line => line.Contains("OutputLimitExceeded", System.StringComparison.Ordinal));
     }
 

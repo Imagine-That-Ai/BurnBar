@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:theme="using:OpenBurnBar.App.Theme"
+    Style="{StaticResource AuroraGlassDialogStyle}"
     Title="Prepare Hermes"
     PrimaryButtonText="Continue"
     SecondaryButtonText="Back"

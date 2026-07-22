@@ -5,15 +5,19 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { refreshNativeEngineManifest, REQUIRED_RESOURCE_BUNDLE } from "./refresh-native-engine-manifest.mjs";
+import { refreshNativeEngineManifest, REQUIRED_RESOURCE_BUNDLES } from "./refresh-native-engine-manifest.mjs";
 import { validateNativeEngineLayout } from "./validate-native-engine-layout.mjs";
 
 function createFixture() {
   const root = mkdtempSync(join(tmpdir(), "obb-native-manifest-"));
-  const bundle = join(root, REQUIRED_RESOURCE_BUNDLE);
-  mkdirSync(bundle);
   writeFileSync(join(root, "OpenBurnBarCoreCAbi.dll"), "signed engine bytes");
-  writeFileSync(join(bundle, "catalog.json"), '{"schemaVersion":1}\n');
+  const resources = REQUIRED_RESOURCE_BUNDLES.map((bundleName, index) => {
+    const bundle = join(root, bundleName);
+    mkdirSync(bundle);
+    const fileName = index === 0 ? "MiningPickIcon.svg" : "secret-pattern-corpus.json";
+    writeFileSync(join(bundle, fileName), '{"schemaVersion":1}\n');
+    return { bundleName, fileName };
+  });
   writeFileSync(
     join(root, "native-engine-manifest.json"),
     JSON.stringify({
@@ -21,7 +25,11 @@ function createFixture() {
       engine: "OpenBurnBarCoreCAbi.dll",
       files: [
         { fileName: "OpenBurnBarCoreCAbi.dll", sha256: "0".repeat(64), sizeBytes: 1 },
-        { fileName: `${REQUIRED_RESOURCE_BUNDLE}/catalog.json`, sha256: "0".repeat(64), sizeBytes: 1 },
+        ...resources.map(({ bundleName, fileName }) => ({
+          fileName: `${bundleName}/${fileName}`,
+          sha256: "0".repeat(64),
+          sizeBytes: 1,
+        })),
       ],
     }),
   );

@@ -89,6 +89,7 @@ function verify() {
     "__getKernel",
     "__getReadability",
     "backdropReadability",
+    "__getBackdropState",
     "__kernels",
     "__backdropReady",
   ]) {

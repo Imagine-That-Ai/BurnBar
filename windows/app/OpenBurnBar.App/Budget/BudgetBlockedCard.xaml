@@ -37,28 +37,28 @@
                     <TextBlock Text="Budget limit reached"
                                FontWeight="SemiBold"
                                FontSize="15"
-                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                               Foreground="{ThemeResource AuroraTextBrush}" />
                     <TextBlock x:Name="RuleLabelText"
                                FontSize="12"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
 
                 <StackPanel Spacing="4">
                     <StackPanel Orientation="Horizontal" Spacing="4">
                         <TextBlock x:Name="UsedText"
-                                   FontFamily="Cascadia Mono, Consolas"
+                                   FontFamily="{StaticResource AuroraMonoFont}"
                                    FontWeight="SemiBold" />
                         <TextBlock Text="of" FontSize="12" VerticalAlignment="Center"
-                                   Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                                   Foreground="{ThemeResource AuroraTextMutedBrush}" />
                         <TextBlock x:Name="LimitText"
-                                   FontFamily="Cascadia Mono, Consolas"
-                                   Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                   FontFamily="{StaticResource AuroraMonoFont}"
+                                   Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                         <TextBlock x:Name="PeriodText" FontSize="11" VerticalAlignment="Center"
-                                   Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                                   Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     </StackPanel>
                     <TextBlock x:Name="ResetText"
                                FontSize="11"
-                               Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">

@@ -23,8 +23,10 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
 
         Assert.Equal(new[]
         {
-            "channel", "consumer", "coreVersion", "domain", "legacyMicros", "mismatchCategory",
-            "observedAt", "operation", "outcome", "rustMicros", "sampleId", "schemaVersion",
+            "candidateCommit", "channel", "consumer", "domain", "expectedCoreAbiVersion",
+            "expectedCoreSourceSha256", "expectedCoreVersion", "legacyMicros", "loadedCoreAbiVersion",
+            "loadedCoreSourceSha256", "loadedCoreVersion", "mismatchCategory", "observedAt", "operation",
+            "outcome", "rustMicros", "sampleId", "schemaVersion", "slice",
         }, keys);
         Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("mismatchCategory").ValueKind);
         Assert.DoesNotContain("uid", json, StringComparison.OrdinalIgnoreCase);
@@ -32,11 +34,138 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
         Assert.DoesNotContain("deviceId", json, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData("claude_quota", "claude")]
+    [InlineData("codex_quota", "codex")]
+    [InlineData("cursor_quota", "cursor")]
+    [InlineData("anthropic_quota", "anthropic")]
+    [InlineData("cloudvault_aad_v1", "foundation")]
+    [InlineData("cloudvault_aad_v2", "foundation")]
+    [InlineData("cloudvault_resolve_aad", "foundation")]
+    [InlineData("cloudvault_sha256", "foundation")]
+    [InlineData("cloudvault_key_id", "foundation")]
+    [InlineData("cloudvault_keyed_hash", "foundation")]
+    [InlineData("cloudvault_base64_encode", "foundation")]
+    [InlineData("cloudvault_base64_decode", "foundation")]
+    [InlineData("cloudvault_validate_p256_public_key", "foundation")]
+    [InlineData("cloudvault_aes_seal_detached", "aes")]
+    [InlineData("cloudvault_aes_seal_combined", "aes")]
+    [InlineData("cloudvault_aes_open_detached", "aes")]
+    [InlineData("cloudvault_aes_open_text", "aes")]
+    [InlineData("cloudvault_aes_open_combined", "aes")]
+    [InlineData("cloudvault_recovery_wrapping_key", "recovery")]
+    [InlineData("cloudvault_recovery_verification_hash", "recovery")]
+    [InlineData("cloudvault_recovery_wrap_vault_key", "recovery")]
+    [InlineData("cloudvault_recovery_open_vault_key", "recovery")]
+    [InlineData("cloudvault_escrow_seal", "escrow")]
+    [InlineData("cloudvault_escrow_open", "escrow")]
+    [InlineData("cloudvault_escrow_split_wire", "escrow")]
+    [InlineData("pensieve_dedup_hash", "opaque-identifiers")]
+    [InlineData("pensieve_slug_hmac", "opaque-identifiers")]
+    [InlineData("pensieve_vector_cloak", "pensieve-vectors")]
+    [InlineData("pensieve_l2_normalize", "pensieve-vectors")]
+    [InlineData("pensieve_deterministic_embed", "pensieve-vectors")]
+    [InlineData("pensieve_deterministic_embed_and_cloak", "pensieve-vectors")]
+    public void OperationCoverage_UsesServerApprovedSlice(string operation, string slice)
+    {
+        Assert.Equal(slice, DomainCoreQuotaShadowEvidence.SliceForOperation(operation));
+    }
+
+    [Fact]
+    public void LoadedIdentityValidation_EnforcesV3OutcomeRules()
+    {
+        DomainCoreShadowEvidenceIdentity expected = Identity();
+        var matching = new DomainCoreShadowLoadedIdentity("0.3.0", 3, new string('c', 64));
+        var different = matching with { CoreSourceSha256 = new string('d', 64) };
+
+        Assert.True(DomainCoreQuotaShadowEvidence.ValidLoadedIdentity(expected, matching, true, null));
+        Assert.True(DomainCoreQuotaShadowEvidence.ValidLoadedIdentity(expected, matching, false, "result_mismatch"));
+        Assert.True(DomainCoreQuotaShadowEvidence.ValidLoadedIdentity(expected, matching, false, "invalid_result"));
+        Assert.True(DomainCoreQuotaShadowEvidence.ValidLoadedIdentity(expected, matching, false, "native_error"));
+        Assert.True(DomainCoreQuotaShadowEvidence.ValidLoadedIdentity(expected, null, false, "native_unavailable"));
+        Assert.True(DomainCoreQuotaShadowEvidence.ValidLoadedIdentity(expected, different, false, "loaded_identity_mismatch"));
+
+        Assert.False(DomainCoreQuotaShadowEvidence.ValidLoadedIdentity(expected, null, true, null));
+        Assert.False(DomainCoreQuotaShadowEvidence.ValidLoadedIdentity(expected, null, false, "native_error"));
+        Assert.False(DomainCoreQuotaShadowEvidence.ValidLoadedIdentity(expected, matching, false, "native_unavailable"));
+        Assert.False(DomainCoreQuotaShadowEvidence.ValidLoadedIdentity(expected, different, false, "native_error"));
+        Assert.False(DomainCoreQuotaShadowEvidence.ValidLoadedIdentity(expected, matching, false, "loaded_identity_mismatch"));
+        Assert.False(DomainCoreQuotaShadowEvidence.ValidLoadedIdentity(
+            expected,
+            matching with { CoreVersion = "00.3.0" },
+            false,
+            "loaded_identity_mismatch"));
+    }
+
+    [Theory]
+    [InlineData(1, 0, 1, true)]
+    [InlineData(0, 1, 1, true)]
+    [InlineData(-1, 2, 1, false)]
+    [InlineData(2, -1, 1, false)]
+    [InlineData(2, 0, 1, false)]
+    [InlineData(int.MaxValue, 1, int.MaxValue, false)]
+    public void AcknowledgementValidation_FailsClosed(
+        int accepted,
+        int duplicates,
+        int batchSize,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            DomainCoreQuotaShadowEvidence.ValidAcknowledgementCounts(accepted, duplicates, batchSize));
+    }
+
+    [Fact]
+    public void SpoolInitializationFailure_DisablesEvidenceWithoutEscaping()
+    {
+        Directory.CreateDirectory(_directory);
+        string fileInsteadOfDirectory = Path.Combine(_directory, "not-a-directory");
+        File.WriteAllText(fileInsteadOfDirectory, "occupied");
+
+        DomainCoreQuotaShadowEvidenceSpool? spool = DomainCoreQuotaShadowEvidence.CreateSpoolBestEffort(
+            fileInsteadOfDirectory,
+            Identity());
+
+        Assert.Null(spool);
+    }
+
+    [Fact]
+    public void PersistFailure_DoesNotEscapeOrDiscardExistingEvidence()
+    {
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, Identity());
+        spool.Append(Sample(1));
+        string activePath = Assert.Single(Directory.EnumerateFiles(_directory, "active.jsonl", SearchOption.AllDirectories));
+
+        bool persisted;
+        using (var locked = new FileStream(activePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            persisted = DomainCoreQuotaShadowEvidence.PersistBestEffort(spool, Sample(2), schedule: null);
+        }
+
+        Assert.False(persisted);
+        Assert.Equal(1, spool.PendingSampleCount());
+    }
+
+    [Fact]
+    public void SchedulingFailure_DoesNotEscapeAndKeepsPersistedEvidence()
+    {
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, Identity());
+
+        bool persisted = DomainCoreQuotaShadowEvidence.PersistBestEffort(
+            spool,
+            Sample(1),
+            () => throw new IOException("scheduler unavailable"));
+
+        Assert.False(persisted);
+        Assert.Equal(1, spool.PendingSampleCount());
+    }
+
     [Fact]
     public void Rotation_BoundsReadyFilesAndDropsOldestWholeBatch()
     {
         var spool = new DomainCoreQuotaShadowEvidenceSpool(
             _directory,
+            Identity(),
             maxFileBytes: 4096,
             maxReadyFiles: 2,
             maxSamplesPerFile: 1);
@@ -47,14 +176,14 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
         DomainCoreQuotaShadowEvidenceSpool.ReadyBatch batch = Assert.IsType<DomainCoreQuotaShadowEvidenceSpool.ReadyBatch>(spool.NextBatch());
 
         Assert.Equal(2, spool.PendingSampleCount());
-        Assert.Equal(2, Directory.EnumerateFiles(_directory, "ready-*.jsonl").Count());
+        Assert.Equal(2, Directory.EnumerateFiles(_directory, "ready-*.jsonl", SearchOption.AllDirectories).Count());
         Assert.Equal("00000000-0000-4000-8000-000000000002", batch.Samples.Single().SampleId);
     }
 
     [Fact]
     public void FailedUploadCanRetrySameBatchUntilAcknowledged()
     {
-        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory);
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, Identity());
         spool.Append(Sample(1));
 
         DomainCoreQuotaShadowEvidenceSpool.ReadyBatch first = Assert.IsType<DomainCoreQuotaShadowEvidenceSpool.ReadyBatch>(spool.NextBatch());
@@ -68,9 +197,65 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
     }
 
     [Fact]
+    public void ExpiredHeadIsDroppedWithoutBlockingFreshEvidence()
+    {
+        var now = new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero);
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(
+            _directory,
+            Identity(),
+            maxSamplesPerFile: 1);
+        spool.Append(Sample(1, now.AddDays(-32)));
+        spool.Append(Sample(2, now));
+
+        DomainCoreQuotaShadowEvidenceSpool.ReadyBatch batch = Assert.IsType<DomainCoreQuotaShadowEvidenceSpool.ReadyBatch>(
+            spool.NextBatch(now: now));
+
+        Assert.Equal("00000000-0000-4000-8000-000000000002", Assert.Single(batch.Samples).SampleId);
+        spool.Acknowledge(batch.Token);
+        Assert.Null(spool.NextBatch(now: now));
+    }
+
+    [Fact]
+    public void InvalidStoredRecordIsDiscardedWithoutBlockingValidRecordInSameFile()
+    {
+        var now = new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero);
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, Identity());
+        spool.Append(Sample(1, now));
+        _ = Assert.IsType<DomainCoreQuotaShadowEvidenceSpool.ReadyBatch>(spool.NextBatch(now: now));
+        string readyPath = Assert.Single(Directory.EnumerateFiles(_directory, "ready-*.jsonl", SearchOption.AllDirectories));
+        string valid = JsonSerializer.Serialize(Sample(2, now));
+        File.WriteAllText(
+            readyPath,
+            "{\"schemaVersion\":3,\"candidateCommit\":\"" + new string('a', 40) + "\"}\n" + valid + "\n");
+
+        DomainCoreQuotaShadowEvidenceSpool.ReadyBatch batch = Assert.IsType<DomainCoreQuotaShadowEvidenceSpool.ReadyBatch>(
+            spool.NextBatch(sealActive: false, now: now));
+
+        Assert.Equal("00000000-0000-4000-8000-000000000002", Assert.Single(batch.Samples).SampleId);
+    }
+
+    [Fact]
+    public void TransientReadFailureKeepsUnacknowledgedFileForRetry()
+    {
+        var now = new DateTimeOffset(2026, 7, 14, 12, 0, 0, TimeSpan.Zero);
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, Identity());
+        spool.Append(Sample(1, now));
+        _ = Assert.IsType<DomainCoreQuotaShadowEvidenceSpool.ReadyBatch>(spool.NextBatch(now: now));
+        string readyPath = Assert.Single(Directory.EnumerateFiles(_directory, "ready-*.jsonl", SearchOption.AllDirectories));
+
+        using (var locked = new FileStream(readyPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            Assert.Throws<IOException>(() => spool.NextBatch(sealActive: false, now: now));
+            Assert.True(File.Exists(readyPath));
+        }
+
+        Assert.NotNull(spool.NextBatch(sealActive: false, now: now));
+    }
+
+    [Fact]
     public async Task RapidSamplesCoalesceIntoOneBoundedDelayedUpload()
     {
-        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory);
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, Identity());
         var batchSizes = new List<int>();
         var delays = new Queue<TaskCompletionSource>();
         var delayStarted = new SemaphoreSlim(0);
@@ -121,18 +306,183 @@ public sealed class DomainCoreQuotaShadowEvidenceTests : IDisposable
         Assert.Equal(0, spool.PendingSampleCount());
     }
 
+    [Fact]
+    public void CandidateTransitionDropsPriorCandidateNamespace()
+    {
+        var first = new DomainCoreQuotaShadowEvidenceSpool(_directory, Identity(), maxSamplesPerFile: 1);
+        first.Append(Sample(1));
+        Assert.Equal(1, first.PendingSampleCount());
+
+        var secondIdentity = Identity() with
+        {
+            CandidateCommit = new string('b', 40),
+            ExpectedCoreSourceSha256 = new string('d', 64),
+        };
+        var second = new DomainCoreQuotaShadowEvidenceSpool(_directory, secondIdentity, maxSamplesPerFile: 1);
+
+        Assert.Equal(0, second.PendingSampleCount());
+        string candidateDirectory = Assert.Single(Directory.EnumerateDirectories(_directory, "v3-*"));
+        Assert.Matches("^v3-[0-9a-f]{64}$", Path.GetFileName(candidateDirectory));
+    }
+
+    [Fact]
+    public void ConstructorDropsLegacyV1AndV2RootFilesWithoutRelabelingThem()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "active.jsonl"), "{\"schemaVersion\":1}\n");
+        File.WriteAllText(Path.Combine(_directory, "ready-0000000000000000001-old.jsonl"), "{\"schemaVersion\":2}\n");
+
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, Identity());
+
+        Assert.Equal(0, spool.PendingSampleCount());
+        Assert.False(File.Exists(Path.Combine(_directory, "active.jsonl")));
+        Assert.Empty(Directory.EnumerateFiles(_directory, "ready-*.jsonl"));
+    }
+
+    [Fact]
+    public void DisabledProfileCleanupDiscardsDurableEvidence()
+    {
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, Identity());
+        spool.Append(Sample(1));
+
+        spool.DiscardAll();
+
+        Assert.Equal(0, spool.PendingSampleCount());
+    }
+
+    [Theory]
+    [InlineData("pensieve_vector_cloak")]
+    [InlineData("pensieve_l2_normalize")]
+    [InlineData("pensieve_deterministic_embed")]
+    [InlineData("pensieve_deterministic_embed_and_cloak")]
+    public void PensieveVectorOperationsSpoolAsValidV3Samples(string operation)
+    {
+        var identity = Identity();
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, identity);
+        var sample = new DomainCoreShadowSampleV3
+        {
+            SampleId = "00000000-0000-4000-8000-000000000001",
+            Domain = "cloudvault",
+            Channel = "internal",
+            Slice = "pensieve-vectors",
+            Operation = operation,
+            CandidateCommit = identity.CandidateCommit,
+            ExpectedCoreVersion = identity.ExpectedCoreVersion,
+            ExpectedCoreAbiVersion = identity.ExpectedCoreAbiVersion,
+            ExpectedCoreSourceSha256 = identity.ExpectedCoreSourceSha256,
+            LoadedCoreVersion = identity.ExpectedCoreVersion,
+            LoadedCoreAbiVersion = identity.ExpectedCoreAbiVersion,
+            LoadedCoreSourceSha256 = identity.ExpectedCoreSourceSha256,
+            ObservedAt = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
+            Outcome = "match",
+            MismatchCategory = null,
+            LegacyMicros = 120,
+            RustMicros = 80,
+        };
+
+        spool.Append(sample);
+        Assert.Equal(1, spool.PendingSampleCount());
+
+        var batch = Assert.IsType<DomainCoreQuotaShadowEvidenceSpool.ReadyBatch>(spool.NextBatch());
+        Assert.Equal(operation, Assert.Single(batch.Samples).Operation);
+        Assert.Equal("pensieve-vectors", Assert.Single(batch.Samples).Slice);
+    }
+
+    [Fact]
+    public void PensieveVectorOperationsRejectUnknownOperation()
+    {
+        var identity = Identity();
+        var spool = new DomainCoreQuotaShadowEvidenceSpool(_directory, identity);
+        var sample = new DomainCoreShadowSampleV3
+        {
+            SampleId = "00000000-0000-4000-8000-000000000001",
+            Domain = "cloudvault",
+            Channel = "internal",
+            Slice = "pensieve-vectors",
+            Operation = "pensieve_unknown_operation",
+            CandidateCommit = identity.CandidateCommit,
+            ExpectedCoreVersion = identity.ExpectedCoreVersion,
+            ExpectedCoreAbiVersion = identity.ExpectedCoreAbiVersion,
+            ExpectedCoreSourceSha256 = identity.ExpectedCoreSourceSha256,
+            LoadedCoreVersion = identity.ExpectedCoreVersion,
+            LoadedCoreAbiVersion = identity.ExpectedCoreAbiVersion,
+            LoadedCoreSourceSha256 = identity.ExpectedCoreSourceSha256,
+            ObservedAt = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
+            Outcome = "match",
+            MismatchCategory = null,
+            LegacyMicros = 120,
+            RustMicros = 80,
+        };
+
+        spool.Append(sample);
+        Assert.Equal(1, spool.PendingSampleCount());
+        // Unknown operation is accepted by Append (identity matches) but rejected
+        // by ValidStoredSample during NextBatch because SliceForOperation returns
+        // null for an operation not in the OperationSlices allowlist.
+        Assert.Null(spool.NextBatch());
+        Assert.Equal(0, spool.PendingSampleCount());
+    }
+
+    // The legacy short aliases (cloak, l2_normalize, embed, embed_and_cloak) are not
+    // canonical pensieve operation IDs and must never resolve to a slice — Windows
+    // has no compat shim. A null slice means the shadow record is dropped before
+    // persistence, the correct behavior post-cutover.
+    [Theory]
+    [InlineData("cloak")]
+    [InlineData("l2_normalize")]
+    [InlineData("embed")]
+    [InlineData("embed_and_cloak")]
+    public void ShortAliasOperationsAreNotAdmittedToAnySlice(string operation)
+    {
+        Assert.Null(DomainCoreQuotaShadowEvidence.SliceForOperation(operation));
+    }
+
+    // A short-alias operation has no slice binding, so a stored sample carrying it
+    // must be rejected by ValidStoredSample even when the slice field claims
+    // pensieve-vectors. This is the cross-surface guard: Apple producers that still
+    // emit a short alias cannot land evidence on Windows.
+    [Theory]
+    [InlineData("cloak")]
+    [InlineData("l2_normalize")]
+    [InlineData("embed")]
+    [InlineData("embed_and_cloak")]
+    public void ValidStoredSampleRejectsShortAliasPensieveRecords(string operation)
+    {
+        DomainCoreShadowEvidenceIdentity identity = Identity();
+        var sample = Sample(1) with
+        {
+            Slice = "pensieve-vectors",
+            Operation = operation,
+        };
+        Assert.False(DomainCoreQuotaShadowEvidence.ValidStoredSample(identity, sample, DateTimeOffset.UtcNow));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
     }
 
-    private static DomainCoreQuotaShadowSampleV1 Sample(int suffix) => new()
+    private static DomainCoreShadowEvidenceIdentity Identity() => new(
+        "internal",
+        new string('a', 40),
+        "0.3.0",
+        3,
+        new string('c', 64));
+
+    private static DomainCoreShadowSampleV3 Sample(int suffix, DateTimeOffset? observedAt = null) => new()
     {
         SampleId = $"00000000-0000-4000-8000-{suffix:D12}",
         Channel = "internal",
+        Slice = "claude",
         Operation = "claude_quota",
-        CoreVersion = "0.3.0",
-        ObservedAt = "2026-07-13T12:00:00.000Z",
+        CandidateCommit = new string('a', 40),
+        ExpectedCoreVersion = "0.3.0",
+        ExpectedCoreAbiVersion = 3,
+        ExpectedCoreSourceSha256 = new string('c', 64),
+        LoadedCoreVersion = "0.3.0",
+        LoadedCoreAbiVersion = 3,
+        LoadedCoreSourceSha256 = new string('c', 64),
+        ObservedAt = (observedAt ?? DateTimeOffset.UtcNow).ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
         Outcome = "match",
         MismatchCategory = null,
         LegacyMicros = 120,

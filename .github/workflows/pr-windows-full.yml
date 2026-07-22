@@ -62,7 +62,14 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
-          fetch-depth: 0
+          # PR checkouts use GitHub's synthetic merge commit. Depth 2 includes
+          # that merge commit plus its base/head parents — all this detector
+          # needs, matching pr-windows-fast.yml / pr-windows-dist.yml. A full
+          # `fetch-depth: 0` clone is unnecessary here and, on large PRs, the
+          # full-history checkout overran this job's 3-minute timeout and
+          # self-cancelled, spuriously failing the required "PR Windows Full
+          # Gate" (a re-run cleared it — phase-one finding).
+          fetch-depth: 2
 
       - name: Determine whether full Windows paths changed
         id: filter
@@ -78,11 +85,22 @@ jobs:
 
           if git cat-file -e "HEAD^1^{commit}" 2>/dev/null && \
              git cat-file -e "HEAD^2^{commit}" 2>/dev/null; then
-            changed="$(git diff --name-only HEAD^1 HEAD)"
+            # Synthetic merge commit present (normal PR / merge_group): its two
+            # parents ARE base (HEAD^1) and head (HEAD^2), both fetched at
+            # depth 2. Diff them directly — the pr-windows-fast.yml house form.
+            changed="$(git diff --name-only HEAD^1 HEAD^2)"
           elif git cat-file -e "${base}^{commit}" 2>/dev/null && \
                git cat-file -e "${head}^{commit}" 2>/dev/null; then
-            merge_base="$(git merge-base "${base}" "${head}")"
-            changed="$(git diff --name-only "${merge_base}" "${head}")"
+            # Fallback: no merge commit, but explicit base/head SHAs resolve.
+            # A shallow (depth-2) clone may not reach their common ancestor; if
+            # merge-base can't be computed, stay fail-safe and run the suite.
+            if merge_base="$(git merge-base "${base}" "${head}" 2>/dev/null)"; then
+              changed="$(git diff --name-only "${merge_base}" "${head}")"
+            else
+              echo "windows=true" >> "$GITHUB_OUTPUT"
+              echo "merge-base unresolved at shallow depth for ${EVENT_NAME}; running Windows full suite to stay fail-safe."
+              exit 0
+            fi
           else
             echo "windows=true" >> "$GITHUB_OUTPUT"
             echo "Could not resolve merge commit or base/head commits for ${EVENT_NAME}; running Windows full suite to stay fail-safe."
@@ -167,6 +185,29 @@ jobs:
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-full-x64.trx" --results-directory TestResults-x64
+
+      - name: Set up Node.js for live Playwright bridge proof
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: "20"
+
+      - name: Live Windows Playwright bridge lifecycle
+        run: |
+          $ErrorActionPreference = "Stop"
+          $browsersPath = Join-Path $PWD ".playwright-browsers"
+          $nodeRoot = Join-Path $PWD ".playwright-node"
+          $env:PLAYWRIGHT_BROWSERS_PATH = $browsersPath
+          npm install --prefix $nodeRoot --no-save --package-lock=false playwright@1.49.1
+          node (Join-Path $nodeRoot "node_modules/playwright/cli.js") install chromium
+
+          $env:OPENBURNBAR_BROWSER_CU_INTEGRATION_NODE = (Get-Command node).Source
+          $env:OPENBURNBAR_BROWSER_CU_INTEGRATION_BRIDGE = (Resolve-Path "OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js").Path
+          $env:OPENBURNBAR_BROWSER_CU_INTEGRATION_NODE_PATH = (Resolve-Path (Join-Path $nodeRoot "node_modules")).Path
+          $env:OPENBURNBAR_BROWSER_CU_INTEGRATION_BROWSERS_PATH = (Resolve-Path $browsersPath).Path
+          dotnet test windows/tests/computeruse/OpenBurnBar.ComputerUse.Tests.csproj `
+            --configuration Debug `
+            --no-build `
+            --filter "FullyQualifiedName~ProcessDriver_LivePlaywrightBridge_NavigatesEvaluatesAndCloses"
 
       # Publish the TRX results so a red fixture is inspectable in the Actions UI.
       - name: Upload test results

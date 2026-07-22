@@ -48,6 +48,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
             return ParseResult(usages: [], conversations: [])
         }
 
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var parseCache = cacheStore.load()
@@ -55,11 +56,10 @@ public final class FactoryDroidParser: LogParser, Sendable {
         var cacheMutated = false
 
         let projectDirs = try fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])
-            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(non-dir filtered out)
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
         for projectDir in projectDirs {
             let projectName = decodeProjectName(projectDir.lastPathComponent)
-
             let files = try fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)
                 .filter { $0.pathExtension == "jsonl" || $0.pathExtension == "json" }
 
@@ -69,42 +69,101 @@ public final class FactoryDroidParser: LogParser, Sendable {
                 let metadataFile = projectDir.appendingPathComponent("\(baseName).metadata.json")
                 let cacheKey = cachePath(for: jsonlFile)
                 activePaths.insert(cacheKey)
+                options.metrics?.recordCandidate()
+                options.metrics?.recordMetadataStat(count: 3)
 
-                if let signature = compositeSignature(
+                let signature = compositeSignature(
                     jsonlFile: jsonlFile,
                     settingsFile: settingsFile,
                     metadataFile: metadataFile
-                ), let cached = parseCache.fileEntries[cacheKey], cached.signature == signature {
-                    let cached = updateCacheEntry(
+                )
+                let cached = signature.flatMap { signature in
+                    parseCache.fileEntries[cacheKey].flatMap { $0.signature == signature ? $0 : nil }
+                }
+
+                if options.fileDiscoveryTracker == nil,
+                   let boundary = options.minimumFileModificationDate {
+                    guard let signature else {
+                        options.resourceGovernor?.recordDeferredFile()
+                        options.metrics?.recordDeferred(.metadataUnavailable)
+                        continue
+                    }
+                    let latestModification = max(
+                        signature.primary.modifiedAt,
+                        max(signature.settings?.modifiedAt ?? 0, signature.metadata?.modifiedAt ?? 0)
+                    )
+                    guard Date(timeIntervalSince1970: latestModification) >= boundary else { continue }
+                }
+
+                if let cached, let signature, !options.includeConversationBodies {
+                    let scrubbed = updateCacheEntry(
                         cached,
                         signature: signature,
                         jsonlFile: jsonlFile,
-                        settingsFile: settingsFile,
+                        settingsFile: fileManager.fileExists(atPath: settingsFile.path) ? settingsFile : nil,
                         sessionId: baseName,
                         projectName: projectName,
-                        includeConversationBodies: options.includeConversationBodies,
+                        includeConversationBodies: false,
                         parseCache: &parseCache,
                         cacheKey: cacheKey,
                         cacheMutated: &cacheMutated
                     )
-                    appendCached(
+                    appendCached(scrubbed, includeConversation: false, usages: &usages, conversations: &conversations)
+                    continue
+                }
+
+                let hasSettings = fileManager.fileExists(atPath: settingsFile.path)
+                let hasMetadata = fileManager.fileExists(atPath: metadataFile.path)
+                guard hasSettings || hasMetadata else {
+                    if let cached {
+                        appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
+                    }
+                    continue
+                }
+                var sessionFiles = [jsonlFile]
+                if hasSettings {
+                    sessionFiles.append(settingsFile)
+                }
+                if hasMetadata {
+                    sessionFiles.append(metadataFile)
+                }
+                guard try gate.shouldRead(sessionFiles, candidateAlreadyRecorded: true) else {
+                    if let cached {
+                        appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
+                    }
+                    continue
+                }
+
+                if let cached, let signature {
+                    let refreshed = updateCacheEntry(
                         cached,
-                        includeConversation: options.includeConversationBodies,
-                        usages: &usages,
-                        conversations: &conversations
+                        signature: signature,
+                        jsonlFile: jsonlFile,
+                        settingsFile: hasSettings ? settingsFile : nil,
+                        sessionId: baseName,
+                        projectName: projectName,
+                        includeConversationBodies: true,
+                        parseCache: &parseCache,
+                        cacheKey: cacheKey,
+                        cacheMutated: &cacheMutated
                     )
+                    if refreshed.conversation == nil {
+                        options.resourceGovernor?.recordDeferredFile()
+                        options.metrics?.recordDeferred(.contentReadFailed)
+                        recordDeferredSessionFiles(sessionFiles, options: options)
+                    }
+                    appendCached(refreshed, includeConversation: true, usages: &usages, conversations: &conversations)
                 } else {
-                    let parsed: (usage: TokenUsage?, conversation: ConversationRecord?)?
-                    if fileManager.fileExists(atPath: settingsFile.path) {
-                        // try?-ok(best-effort session parse)
-                        parsed = try? parseSession(
-                            sessionId: baseName,
-                            jsonlFile: jsonlFile,
-                            settingsFile: settingsFile,
-                            projectName: projectName
-                        )
-                    } else {
-                        parsed = nil
+                    let parsed = try? parseSession(
+                        sessionId: baseName,
+                        jsonlFile: jsonlFile,
+                        settingsFile: hasSettings ? settingsFile : nil,
+                        projectName: projectName
+                    )
+                    if parsed == nil {
+                        options.resourceGovernor?.recordDeferredFile()
+                        options.metrics?.recordDeferred(.contentReadFailed)
+                        recordDeferredSessionFiles(sessionFiles, options: options)
                     }
                     appendParsed(
                         parsed,
@@ -113,11 +172,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
                         conversations: &conversations
                     )
 
-                    if let signature = compositeSignature(
-                        jsonlFile: jsonlFile,
-                        settingsFile: settingsFile,
-                        metadataFile: metadataFile
-                    ) {
+                    if let signature {
                         parseCache.fileEntries[cacheKey] = FactoryDroidCacheEntry(
                             signature: signature,
                             usage: parsed?.usage,
@@ -408,11 +463,26 @@ public final class FactoryDroidParser: LogParser, Sendable {
         }
     }
 
+    private func recordDeferredSessionFiles(
+        _ files: [URL],
+        options: LogParseOptions
+    ) {
+        guard let tracker = options.fileDiscoveryTracker else { return }
+        for file in files {
+            tracker.recordDeferred(
+                ParserDiscoveredFile.capture(
+                    for: file,
+                    attributes: try? fileManager.attributesOfItem(atPath: file.path)
+                )
+            )
+        }
+    }
+
     private func updateCacheEntry(
         _ cached: FactoryDroidCacheEntry,
         signature: CompositeFileSignature<FileSignature>,
         jsonlFile: URL,
-        settingsFile: URL,
+        settingsFile: URL?,
         sessionId: String,
         projectName: String,
         includeConversationBodies: Bool,

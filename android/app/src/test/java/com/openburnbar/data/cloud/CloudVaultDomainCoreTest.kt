@@ -93,7 +93,28 @@ class CloudVaultDomainCoreTest {
             assertThrows(IllegalArgumentException::class.java) { CloudVaultCrypto.sessionBodyHash(byteArrayOf(1), key) }
             assertThrows(IllegalArgumentException::class.java) { CloudVaultCrypto.sessionChunkHash("x", key) }
             assertThrows(IllegalArgumentException::class.java) { CloudVaultCrypto.projectMemoryContentHash(byteArrayOf(1), key) }
+            assertThrows(IllegalArgumentException::class.java) {
+                CloudVaultDomainCore.subscriptionDocId("agent://burnbar/scout", "updates", key) { "legacy" }
+            }
         }
+    }
+
+    @Test
+    fun subscriptionDocumentIDDispatchKeepsLegacyPathAddressable() {
+        CloudVaultDomainCore.modeOverride = CloudVaultDomainCoreMode.LEGACY
+        var legacyCalls = 0
+
+        val result = CloudVaultDomainCore.subscriptionDocId(
+            "agent://burnbar/research-scout",
+            "agent-updates",
+            ByteArray(32) { 0x5a.toByte() },
+        ) {
+            legacyCalls += 1
+            "sub_legacy"
+        }
+
+        assertEquals("sub_legacy", result)
+        assertEquals(1, legacyCalls)
     }
 
     @Test
@@ -112,7 +133,9 @@ class CloudVaultDomainCoreTest {
     @Test
     fun shadowReturnsLegacyAndReportsOnlySanitizedDimensions() {
         val diagnostics = mutableListOf<CloudVaultDomainCoreDiagnostic>()
+        val comparisons = mutableListOf<CloudVaultShadowComparison>()
         CloudVaultDomainCore.diagnosticOverride = diagnostics::add
+        CloudVaultDomainCore.comparisonOverride = comparisons::add
         var legacyCalls = 0
         var rustCalls = 0
 
@@ -136,6 +159,12 @@ class CloudVaultDomainCoreTest {
             listOf(CloudVaultDomainCoreDiagnostic("session_body", 3, "mismatch", 1)),
             diagnostics,
         )
+        assertEquals(1, comparisons.size)
+        assertEquals("cloudvault", comparisons.single().domain)
+        assertEquals("foundation", comparisons.single().slice)
+        assertEquals("android", comparisons.single().consumer)
+        assertEquals("result_mismatch", comparisons.single().mismatchCategory)
+        assertEquals("mismatch", comparisons.single().outcome)
     }
 
     @Test

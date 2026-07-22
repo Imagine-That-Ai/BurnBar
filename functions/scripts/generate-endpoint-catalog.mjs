@@ -111,7 +111,8 @@ const CATALOG_OVERRIDES = {
   },
   mintLinuxAppCheckToken: {
     trigger: "callable",
-    authMethod: "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
+    authMethod:
+      "Firebase Auth; lower-trust Linux attestation-gated App Check token mint (no App Check on the bootstrap path)",
     appCheck: "not-required",
     publicJustification:
       "Bootstrap that MINTS a lower-trust Linux App Check token, so it cannot itself require one (chicken-and-egg). Gated by a Linux platform attestation verifier instead; under production config no mock verifier is registered so only a real Linux verifier can mint.",
@@ -147,6 +148,84 @@ const CATALOG_OVERRIDES = {
         test: "rejects unauthenticated callable access",
         kind: "auth-only",
         covers: ["mintWindowsAppCheckToken"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  issueWindowsAppCheckChallenge: {
+    trigger: "callable",
+    authMethod: "Firebase Auth; server-nonce bootstrap for Windows TPM attestation",
+    appCheck: "not-required",
+    publicJustification:
+      "Bootstrap that precedes custom App Check minting, so it cannot require App Check. It returns a short-lived nonce only after Firebase Auth and exact server-configured app-id binding.",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    handlerModule: "callables/windowsAppCheck.ts",
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and accepts only the exact server-configured, allowlisted Windows app id",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["issueWindowsAppCheckChallenge"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  issueTrustedSignalIdentityRepairChallenge: {
+    objectIdsFromClient: ["deviceId"],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and reads only that user's trusted device and pinned escrow public key",
+    handlerModule: "callables/signalIdentityRepair.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
+        test: "issueTrustedSignalIdentityRepairChallenge rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["issueTrustedSignalIdentityRepairChallenge"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  repairTrustedSignalIdentity: {
+    objectIdsFromClient: ["deviceId", "challengeId", "identityKeyId"],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and transactionally consumes only that user's one-time challenge, trusted device, escrow key, and Signal identity",
+    handlerModule: "callables/signalIdentityRepair.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
+        test: "repairTrustedSignalIdentity rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["repairTrustedSignalIdentity"],
+        expectedOutcome: "throws",
+        expectedCode: "failed-precondition",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  getWindowsRuntimeSafetyConfig: {
+    trigger: "callable",
+    authMethod: "Firebase Auth plus Windows TPM-backed App Check",
+    appCheck: "required",
+    tenantSource: "request.auth.uid; response contains global safety flags only",
+    objectIdsFromClient: [],
+    handlerModule: "callables/windowsRuntimeSafetyConfig.ts",
+    ownershipCheck:
+      "handler requires Auth and App Check, accepts no object ids, and returns only bounded global Remote Config booleans",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["getWindowsRuntimeSafetyConfig"],
         expectedOutcome: "throws",
         expectedCode: "unauthenticated",
       },

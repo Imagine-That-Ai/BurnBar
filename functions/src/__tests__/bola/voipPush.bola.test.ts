@@ -1,11 +1,12 @@
 /**
  * BOLA negative coverage — triggerVoIPCall must not fan out to another user's device.
  */
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ALICE_UID, BOB_UID, callableRequest, callableRunner, seedDoc } from "./callableBolaHarness.js";
+import { ALICE_UID, BOB_UID, callableRequest, callableRunner, pathKeyedFirestore, seedDoc } from "./callableBolaHarness.js";
 
 const store: Map<string, Record<string, unknown>> = vi.hoisted(() => new Map());
+const rateLimitStore: Map<string, Record<string, unknown>> = vi.hoisted(() => new Map());
 const outboundWrites: Array<{ collection: string; payload: Record<string, unknown> }> = vi.hoisted(() => []);
 const userDocWrites: Array<{ path: string; payload: Record<string, unknown> }> = vi.hoisted(() => []);
 
@@ -55,6 +56,7 @@ vi.mock("firebase-admin/firestore", () => ({
     fromMillis: (ms: number) => ({ toMillis: () => ms }),
   },
 }));
+vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(rateLimitStore) }));
 vi.mock("../../voipPush.js", async () => {
   const actual = await vi.importActual<typeof import("../../voipPush.js")>("../../voipPush.js");
   return {
@@ -68,6 +70,7 @@ export const BOLA_MANIFEST = {
 } as const;
 
 describe("BOLA — voipPush", () => {
+  beforeEach(() => { rateLimitStore.clear(); });
   it("triggerVoIPCall rejects cross-user object access", async () => {
     store.clear();
     outboundWrites.length = 0;

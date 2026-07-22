@@ -1,10 +1,16 @@
 import Foundation
-import CryptoKit
 import GRDB
 import OpenBurnBarCore
 
-// Codex + OpenClaw log parsers and their cache entry types.
-// Extracted from UsageAggregatorParsers.swift (god-file decomposition) — same module, verbatim.
+// Codex + OpenClaw log parsers.
+// Extracted from UsageAggregatorParsers.swift (god-file decomposition).
+//
+// 2026-07-16 resource-exhaustion fix: all Codex rollout-file scanning —
+// incremental token extraction, conversation parsing, budgets, memory
+// checkpoints, and the on-disk cache shape — now lives in Core's
+// `CodexSessionLogScanner` and is shared byte-for-byte with the Windows-port
+// `OpenBurnBarCore.CodexParser`. This class only fetches `threads` rows via
+// GRDB (materialized, connection closed) and delegates.
 
 /// Reads token usage from Codex's SQLite store and JSONL session files.
 /// Prefers exact token breakdowns from JSONL `token_count` events over the aggregate `tokens_used` in SQLite.
@@ -14,7 +20,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
     private let appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
     private let cacheURL: URL
     private let homeDirectoryURL: URL
-    private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<CodexCacheEntry>
+    private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<OpenBurnBarCore.CodexCacheEntry>
 
     init(
         fileManager: FileManager = .default,
@@ -28,7 +34,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
         self.cacheStore = OpenBurnBarCore.ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            schemaVersion: 2,
             logLabel: "CodexParser"
         )
         ParserSupportDirectoryWarmUp.prepare(fileManager: fileManager, appPaths: appPaths)
@@ -48,28 +54,26 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
-        let parsed = try parseCodexDatabase(
-            dbPath: dbPath,
-            includeConversationBodies: options.includeConversationBodies
+        // Rows first, connection closed, then file scanning — never hold a
+        // read snapshot on Codex's live database across multi-second file
+        // work (a pinned snapshot starves Codex's own WAL checkpoints).
+        let threadRows = try fetchThreadRows(dbPath: dbPath)
+        let parsed = try OpenBurnBarCore.CodexSessionLogScanner.processThreadRows(
+            threadRows,
+            options: options,
+            fileManager: fileManager,
+            cacheStore: cacheStore
         )
         return OpenBurnBarCore.ParseResult(usages: parsed.usages, conversations: parsed.conversations)
     }
 
-    private func parseCodexDatabase(
-        dbPath: String,
-        includeConversationBodies: Bool
-    ) throws -> (usages: [TokenUsage], conversations: [OpenBurnBarCore.ConversationRecord]) {
-        var usages: [TokenUsage] = []
-        var conversations: [OpenBurnBarCore.ConversationRecord] = []
-        var sessionCache = cacheStore.load()
-        var activePaths = Set<String>()
-        var cacheMutated = false
-
+    private func fetchThreadRows(dbPath: String) throws -> [OpenBurnBarCore.CodexThreadRow] {
         var config = Configuration()
         config.readonly = true
         let db = try DatabaseQueue(path: dbPath, configuration: config)
+        defer { try? db.close() } // try?-ok(read-only teardown)
 
-        try db.read { db in
+        return try db.read { db in
             // Check if rollout_path column exists
             let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(threads)")
             let columnNames = Set(columns.compactMap { $0["name"] as? String })
@@ -99,6 +103,8 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
             }
 
             let rows = try Row.fetchAll(db, sql: sql)
+            var threadRows: [OpenBurnBarCore.CodexThreadRow] = []
+            threadRows.reserveCapacity(rows.count)
 
             for row in rows {
                 guard let threadId: String = row["id"],
@@ -106,368 +112,24 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                       let updatedAt: Int64 = row["updated_at"] else {
                     continue
                 }
-
-                let model: String = row["model"] ?? "unknown"
-                let rawTitle: String = row["title"] ?? ""
                 let cwd: String = row["cwd"] ?? "~"
-                let projectName = (cwd as NSString).lastPathComponent
-                let startTime = Date(timeIntervalSince1970: Double(createdAt))
-                let endTime = Date(timeIntervalSince1970: Double(updatedAt))
                 let rolloutPath: String? = hasRolloutPath ? (row["rollout_path"] as? String) : nil
-                let expandedRolloutPath = rolloutPath.map { ($0 as NSString).expandingTildeInPath }
-
-                // Try to get exact token breakdown from JSONL session file
-                var inputTokens: Int = 0
-                var outputTokens: Int = 0
-                var cacheReadTokens: Int = 0
-                var foundExact = false
-
-                var parsedConversation: CodexConversationCacheEntry?
-                var shouldEmitConversation = includeConversationBodies && expandedRolloutPath == nil
-
-                if let expandedPath = expandedRolloutPath {
-                    let cacheKey = URL(fileURLWithPath: expandedPath).standardizedFileURL.path
-                    activePaths.insert(cacheKey)
-
-                    if let signature = OpenBurnBarCore.FileSignature(for: URL(fileURLWithPath: expandedPath)),
-                       let cached = sessionCache.fileEntries[cacheKey],
-                       cached.signature == signature {
-                        let cachedTokenUsage = cached.tokenUsage
-                        if let tokenUsage = cached.tokenUsage {
-                            inputTokens = tokenUsage.input
-                            outputTokens = tokenUsage.output
-                            cacheReadTokens = tokenUsage.cacheRead
-                            foundExact = true
-                        }
-                        if includeConversationBodies {
-                            parsedConversation = cached.conversation
-                                ?? parseCodexConversationJSONL(path: expandedPath, fallbackTitle: rawTitle)
-                            shouldEmitConversation = parsedConversation != nil
-                            if parsedConversation != cached.conversation {
-                                sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
-                                    signature: signature,
-                                    tokenUsage: cachedTokenUsage,
-                                    conversation: parsedConversation
-                                )
-                                cacheMutated = true
-                            }
-                        } else {
-                            parsedConversation = nil
-                            shouldEmitConversation = false
-                            if cached.conversation != nil {
-                                sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
-                                    signature: signature,
-                                    tokenUsage: cachedTokenUsage,
-                                    conversation: nil
-                                )
-                                cacheMutated = true
-                            }
-                        }
-                    } else {
-                        let cached = sessionCache.fileEntries[cacheKey]
-                        let parsed = parseCodexSessionJSONL(path: expandedPath)
-                        if let parsed {
-                            inputTokens = parsed.input
-                            outputTokens = parsed.output
-                            cacheReadTokens = parsed.cacheRead
-                            foundExact = true
-                        }
-                        parsedConversation = includeConversationBodies
-                            ? parseCodexConversationJSONL(path: expandedPath, fallbackTitle: rawTitle)
-                            : nil
-                        shouldEmitConversation = includeConversationBodies && parsedConversation != nil
-
-                        if let signature = OpenBurnBarCore.FileSignature(for: URL(fileURLWithPath: expandedPath)) {
-                            sessionCache.fileEntries[cacheKey] = CodexCacheEntry(
-                                signature: signature,
-                                tokenUsage: parsed.map {
-                                    CodexTokenUsage(
-                                        input: $0.input,
-                                        output: $0.output,
-                                        cacheRead: $0.cacheRead
-                                    )
-                                },
-                                conversation: parsedConversation
-                            )
-                            cacheMutated = true
-                        } else if cached != nil {
-                            sessionCache.fileEntries.removeValue(forKey: cacheKey)
-                            cacheMutated = true
-                        }
-                    }
-                }
-
-                if !foundExact {
-                    let tokensUsed: Int = row["tokens_used"] ?? 0
-                    // Better than 50/50: Codex sessions are heavily input-weighted (~95/5)
-                    inputTokens = Int(Double(tokensUsed) * 0.95)
-                    outputTokens = max(tokensUsed - inputTokens, 0)
-                }
-
-                if inputTokens > 0 || outputTokens > 0 {
-                    let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
-                    let cost = try pricing.cost(
-                        inputTokens: inputTokens,
-                        outputTokens: outputTokens,
-                        cacheReadTokens: cacheReadTokens
+                threadRows.append(
+                    OpenBurnBarCore.CodexThreadRow(
+                        threadId: threadId,
+                        model: row["model"] ?? "unknown",
+                        rawTitle: row["title"] ?? "",
+                        projectName: (cwd as NSString).lastPathComponent,
+                        tokensUsed: row["tokens_used"] ?? 0,
+                        startTime: Date(timeIntervalSince1970: Double(createdAt)),
+                        endTime: Date(timeIntervalSince1970: Double(updatedAt)),
+                        expandedRolloutPath: rolloutPath.map { ($0 as NSString).expandingTildeInPath }
                     )
-
-                    let usage = TokenUsage(
-                        provider: .codex,
-                        sessionId: threadId,
-                        projectName: projectName,
-                        model: model,
-                        inputTokens: inputTokens,
-                        outputTokens: outputTokens,
-                        cacheCreationTokens: 0,
-                        cacheReadTokens: cacheReadTokens,
-                        costUSD: cost,
-                        startTime: startTime,
-                        endTime: endTime,
-                        provenanceMethod: foundExact ? .providerLog : .heuristicEstimate,
-                        provenanceConfidence: foundExact ? .exact : .lowConfidenceEstimate,
-                        estimatorVersion: foundExact ? "" : "tokens-used-split-v1"
-                    )
-                    usages.append(usage)
-                }
-
-                if shouldEmitConversation {
-                    let inferredTitle = parsedConversation?.title
-                        ?? rawTitle.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-                        ?? threadId
-                    let fullText = parsedConversation?.markdown
-                        ?? rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let conversation = OpenBurnBarCore.ConversationRecord(
-                        id: OpenBurnBarCore.ConversationRecord.stableId(provider: .codex, sessionId: threadId),
-                        provider: .codex,
-                        sessionId: threadId,
-                        projectName: projectName,
-                        startTime: startTime,
-                        endTime: endTime,
-                        messageCount: parsedConversation?.messageCount ?? (fullText.isEmpty ? 0 : 1),
-                        userWordCount: parsedConversation?.userWordCount ?? rawTitle.split(separator: " ").count,
-                        assistantWordCount: parsedConversation?.assistantWordCount ?? 0,
-                        keyFiles: parsedConversation?.keyFiles ?? [],
-                        keyCommands: parsedConversation?.keyCommands ?? [],
-                        keyTools: parsedConversation?.keyTools ?? [],
-                        inferredTaskTitle: inferredTitle,
-                        lastAssistantMessage: parsedConversation?.lastAssistantMessage ?? "",
-                        fullText: fullText,
-                        indexedAt: Date(),
-                        fileModifiedAt: expandedRolloutPath.flatMap { modificationDate(of: URL(fileURLWithPath: $0)) },
-                        summary: nil
-                    )
-                    conversations.append(conversation)
-                }
+                )
             }
+            return threadRows
         }
-
-        let stalePaths = Set(sessionCache.fileEntries.keys).subtracting(activePaths)
-        if !stalePaths.isEmpty {
-            for stalePath in stalePaths {
-                sessionCache.fileEntries.removeValue(forKey: stalePath)
-            }
-            cacheMutated = true
-        }
-
-        if cacheMutated {
-            cacheStore.persist(sessionCache)
-        }
-
-        return (usages, conversations)
     }
-
-    /// Parse a Codex session JSONL file to extract exact token breakdowns.
-    /// Codex rollout logs usually wrap `token_count` in an `event_msg` envelope and
-    /// report cumulative totals where cached input is a subset of input.
-    ///
-    /// VAL-TOKEN-002: Uses exact token breakdown from JSONL when present, skips delta
-    /// accumulation to avoid double-counting.
-    /// VAL-TOKEN-010: When both cumulative totals and delta events are present, cumulative
-    /// totals take precedence and delta events are ignored to prevent additive double-counting.
-    private func parseCodexSessionJSONL(path: String) -> (input: Int, output: Int, cacheRead: Int)? {
-        guard fileManager.fileExists(atPath: path),
-              let handle = FileHandle(forReadingAtPath: path) else {
-            return nil
-        }
-        defer { try? handle.close() } // try?-ok(handle teardown)
-
-        var inputTokens = 0
-        var outputTokens = 0
-        var cacheReadTokens = 0
-        var foundCumulative = false
-        var foundDelta = false
-
-        for line in handle.readAllUTF8Lines() {
-            guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
-                continue
-            }
-
-            guard let info = OpenBurnBarCore.TokenExtractionUtility.codexTokenCountInfo(from: json) else {
-                continue
-            }
-
-            // VAL-TOKEN-010: Cumulative totals take precedence over delta events.
-            // If we've already found cumulative totals, skip processing delta events.
-            if let extracted = OpenBurnBarCore.TokenExtractionUtility.codexCumulativeTotalsFromTokenCountInfo(info) {
-                // Codex reports `input_tokens` inclusive of `cached_input_tokens`.
-                // Subtract the cached portion so the non-cached input and cached
-                // buckets stay disjoint (VAL-TOKEN-002 / matches delta path below).
-                let nonCachedInput = max(extracted.input - extracted.cacheRead, 0)
-                if foundDelta {
-                    inputTokens = nonCachedInput
-                    outputTokens = extracted.output
-                    cacheReadTokens = extracted.cacheRead
-                    foundDelta = false
-                } else {
-                    inputTokens = nonCachedInput
-                    outputTokens = extracted.output
-                    cacheReadTokens = extracted.cacheRead
-                }
-                foundCumulative = true
-                continue
-            }
-
-            // VAL-TOKEN-002: Only process delta events if no cumulative totals found yet.
-            // This prevents double-counting when both cumulative and delta events exist.
-            if !foundCumulative,
-               let lastUsage = info["last_token_usage"] as? [String: Any] {
-                let deltaInput = lastUsage["input_tokens"] as? Int ?? 0
-                let deltaCacheRead = lastUsage["cached_input_tokens"] as? Int
-                    ?? lastUsage["cache_read_input_tokens"] as? Int
-                    ?? 0
-                inputTokens += max(deltaInput - deltaCacheRead, 0)
-                outputTokens += lastUsage["output_tokens"] as? Int ?? 0
-                cacheReadTokens += deltaCacheRead
-                foundDelta = true
-            }
-        }
-
-        // Return cumulative if found, otherwise return delta-accumulated if found
-        if foundCumulative {
-            return (input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens)
-        }
-        return foundDelta ? (input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens) : nil
-    }
-
-    private func parseCodexConversationJSONL(path: String, fallbackTitle: String) -> CodexConversationCacheEntry? {
-        guard fileManager.fileExists(atPath: path),
-              let handle = FileHandle(forReadingAtPath: path) else {
-            return nil
-        }
-        defer { try? handle.close() } // try?-ok(handle teardown)
-
-        var turns: [(role: String, text: String)] = []
-        var keyFiles = Set<String>()
-        var keyCommands = Set<String>()
-        var keyTools = Set<String>()
-
-        for line in handle.readAllUTF8Lines() {
-            guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
-                continue
-            }
-            if let extracted = Self.extractCodexMessage(from: json) {
-                turns.append(extracted)
-            }
-            if let tool = Self.extractCodexTool(from: json) {
-                keyTools.insert(tool.name)
-                if let detail = tool.detail {
-                    if tool.name.lowercased().contains("bash") || tool.name.lowercased().contains("exec") {
-                        keyCommands.insert(detail)
-                    } else if detail.contains("/") || detail.contains(".swift") || detail.contains(".ts") || detail.contains(".kt") {
-                        keyFiles.insert(detail)
-                    }
-                }
-            }
-        }
-
-        guard !turns.isEmpty else { return nil }
-
-        let markdown = turns.map { turn -> String in
-            let header = turn.role == "assistant" ? "## Assistant" : "## You"
-            return "\(header)\n\n\(turn.text)"
-        }.joined(separator: "\n\n")
-        let title = turns.first(where: { $0.role == "user" })?.text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .nonEmpty
-            ?? fallbackTitle.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-            ?? "Codex session"
-        let lastAssistant = turns.last(where: { $0.role == "assistant" })?.text ?? ""
-        let userWords = turns
-            .filter { $0.role == "user" }
-            .reduce(0) { $0 + $1.text.split(separator: " ").count }
-        let assistantWords = turns
-            .filter { $0.role == "assistant" }
-            .reduce(0) { $0 + $1.text.split(separator: " ").count }
-
-        return CodexConversationCacheEntry(
-            title: String(title.prefix(160)),
-            markdown: markdown,
-            messageCount: turns.count,
-            userWordCount: userWords,
-            assistantWordCount: assistantWords,
-            keyFiles: Array(Array(keyFiles).sorted().prefix(12)),
-            keyCommands: Array(Array(keyCommands).sorted().prefix(12)),
-            keyTools: Array(Array(keyTools).sorted().prefix(12)),
-            lastAssistantMessage: String(lastAssistant.prefix(500))
-        )
-    }
-
-    private static func extractCodexMessage(from json: [String: Any]) -> (role: String, text: String)? {
-        let item = (json["item"] as? [String: Any])
-            ?? (json["payload"] as? [String: Any])?["item"] as? [String: Any]
-            ?? (json["msg"] as? [String: Any])?["item"] as? [String: Any]
-        guard let item,
-              let role = item["role"] as? String,
-              role == "user" || role == "assistant" else {
-            return nil
-        }
-        let text = extractText(from: item["content"])
-            ?? extractText(from: item["message"])
-            ?? (item["text"] as? String)
-        guard let cleaned = text?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !cleaned.isEmpty else {
-            return nil
-        }
-        return (role, cleaned)
-    }
-
-    private static func extractText(from raw: Any?) -> String? {
-        if let string = raw as? String { return string }
-        if let pieces = raw as? [[String: Any]] {
-            let text = pieces.compactMap { piece -> String? in
-                if let text = piece["text"] as? String { return text }
-                if let text = piece["content"] as? String { return text }
-                return nil
-            }.joined(separator: "\n")
-            return text.isEmpty ? nil : text
-        }
-        return nil
-    }
-
-    private static func extractCodexTool(from json: [String: Any]) -> (name: String, detail: String?)? {
-        let item = (json["item"] as? [String: Any])
-            ?? (json["payload"] as? [String: Any])?["item"] as? [String: Any]
-            ?? (json["msg"] as? [String: Any])?["item"] as? [String: Any]
-        guard let item else { return nil }
-        let name = (item["name"] as? String)
-            ?? (item["tool_name"] as? String)
-            ?? (item["type"] as? String)
-        guard let name, !name.isEmpty else { return nil }
-        let detail = (item["command"] as? String)
-            ?? (item["path"] as? String)
-            ?? (item["file_path"] as? String)
-            ?? (item["query"] as? String)
-            ?? (item["pattern"] as? String)
-        return (name, detail)
-    }
-
-    private func modificationDate(of url: URL) -> Date? {
-        (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date // try?-ok(optional mtime)
-    }
-
 }
 
 /// Parses OpenClaw JSON/JSONL session history from `~/.openclaw/sessions`.
@@ -489,18 +151,21 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
         self.sessionsDirectory = sessionsDirectory
     }
 
-    func parse() async throws -> OpenBurnBarCore.ParseResult {
+    func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
         guard fileManager.fileExists(atPath: sessionsDirectory.path) else {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
+        let gate = OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fileManager)
         let files = sessionFiles(in: sessionsDirectory)
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
         var usages: [TokenUsage] = []
 
         for file in files {
-            guard let parsed = parseSession(file: file) else { continue }
-            conversations.append(parsed.conversation)
+            guard try gate.shouldRead(file), let parsed = parseSession(file: file) else { continue }
+            if options.includeConversationBodies {
+                conversations.append(parsed.conversation)
+            }
             if let usage = parsed.usage {
                 usages.append(usage)
             }
@@ -532,16 +197,6 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
     }
 
     private func parseSession(file: URL) -> (usage: TokenUsage?, conversation: OpenBurnBarCore.ConversationRecord)? {
-        let data: Data
-        if file.pathExtension.lowercased() == "jsonl" || file.pathExtension.lowercased() == "log" {
-            guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(log open, skip if absent)
-            defer { try? handle.close() } // try?-ok(handle teardown)
-            data = handle.readDataToEndOfFile()
-        } else {
-            guard let fileData = try? Data(contentsOf: file) else { return nil } // try?-ok(session read, skip if absent)
-            data = fileData
-        }
-
         var turns: [(role: String, text: String, timestamp: Date?)] = []
         var inputTokens = 0
         var outputTokens = 0
@@ -550,7 +205,7 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
         var startTime: Date?
         var endTime: Date?
 
-        for object in Self.sessionObjects(from: data) {
+        Self.enumerateSessionObjects(from: file, fileManager: fileManager) { object in
             let timestamp = Self.timestamp(in: object)
             if startTime == nil { startTime = timestamp }
             endTime = timestamp ?? endTime
@@ -637,22 +292,43 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
         return (usage, conversation)
     }
 
-    private static func sessionObjects(from data: Data) -> [[String: Any]] {
-        let jsonLineObjects = String(data: data, encoding: .utf8)?
-            .components(separatedBy: .newlines)
-            .compactMap { line -> [String: Any]? in
-                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty, let lineData = trimmed.data(using: .utf8) else { return nil }
-                return try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] // try?-ok(per-line decode, skip)
-            } ?? []
-        if !jsonLineObjects.isEmpty {
-            return jsonLineObjects
+    /// Streams session objects to `handler` without materializing whole files.
+    ///
+    /// JSONL-style content is decoded line by line (buffered reads, one
+    /// `parserAutoReleasePool` per line — the JSON object graphs are
+    /// autoreleased on Darwin and parse loops run in contexts that never
+    /// drain). Only when a file yields no line objects does the legacy
+    /// whole-file JSON fallback run.
+    private static func enumerateSessionObjects(
+        from file: URL,
+        fileManager: FileManager,
+        handler: ([String: Any]) -> Void
+    ) {
+        var yieldedLineObject = false
+        if let handle = try? FileHandle(forReadingFrom: file) { // try?-ok(unreadable file falls back below)
+            defer { try? handle.close() } // try?-ok(handle teardown)
+            for line in handle.readAllUTF8Lines() {
+                parserAutoReleasePool {
+                    guard let lineData = line.data(using: .utf8),
+                          let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else { // try?-ok(per-line decode, skip)
+                        return
+                    }
+                    yieldedLineObject = true
+                    handler(object)
+                }
+            }
         }
+        guard !yieldedLineObject else { return }
 
-        guard let root = try? JSONSerialization.jsonObject(with: data) else { // try?-ok(whole-file decode, empty fallback)
-            return []
+        // Whole-file fallback: single-document JSON sessions (arrays or
+        // nested `messages`/`turns`/… containers).
+        guard let data = try? Data(contentsOf: file) else { return } // try?-ok(session read, skip if absent)
+        parserAutoReleasePool {
+            guard let root = try? JSONSerialization.jsonObject(with: data) else { return } // try?-ok(whole-file decode, empty fallback)
+            for object in flattenSessionObjects(root) {
+                handler(object)
+            }
         }
-        return flattenSessionObjects(root)
     }
 
     private static func flattenSessionObjects(_ value: Any) -> [[String: Any]] {
@@ -712,28 +388,4 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
         }
         return nil
     }
-}
-
-struct CodexTokenUsage: Codable, Equatable {
-    let input: Int
-    let output: Int
-    let cacheRead: Int
-}
-
-struct CodexConversationCacheEntry: Codable, Equatable {
-    let title: String
-    let markdown: String
-    let messageCount: Int
-    let userWordCount: Int
-    let assistantWordCount: Int
-    let keyFiles: [String]
-    let keyCommands: [String]
-    let keyTools: [String]
-    let lastAssistantMessage: String
-}
-
-struct CodexCacheEntry: Codable, Equatable {
-    let signature: OpenBurnBarCore.FileSignature
-    let tokenUsage: CodexTokenUsage?
-    let conversation: CodexConversationCacheEntry?
 }

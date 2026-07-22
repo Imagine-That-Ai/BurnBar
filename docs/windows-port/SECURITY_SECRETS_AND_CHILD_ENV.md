@@ -74,11 +74,14 @@ Covered production paths include:
 - Chat CLI launch.
 - Win32 ConPTY chat sessions.
 - Swift parser helper launch.
+- Project-code language-server launch.
+- Project-code static-parser launch.
 - Windows update signing helper fallback.
 - Generated Claude statusline wrapper.
 
-New process spawns must call `ChildProcessEnvironment.Apply(...)` or pass
-`ChildProcessEnvironment.CreateAllowlisted(...)` to the lower-level process API.
+New process spawns must use `ChildProcessLaunchPolicy.CreateStartInfo(...)` and
+`ChildProcessLaunchPolicy.Start(...)`, or use the environment helper directly
+only when a reviewed lower-level API owns process creation.
 
 ## Evidence Requirements
 

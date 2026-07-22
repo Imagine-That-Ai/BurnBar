@@ -2,8 +2,8 @@
 
 **Machine source of truth:** [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml)
 **Scanner:** [`scripts/ci/verify-windows-parity-ledger.py`](../../scripts/ci/verify-windows-parity-ledger.py)
-**Updated:** 2026-07-09 (F2 True 1:1 closed — 46 Real / 0 Deferred / 0 Blocked)
-**Finish line:** **F2 True 1:1** is the named **100% parity** endpoint (`finish_line: F2_True_1to1`). Achieved under ledger laws: all 46 rows **Real**, zero DeferredApproved / Blocked / Substituted. Operational host steps (Authenticode private key, required GH check flip, physical TPM claim) remain outside the in-repo ledger gate.
+**Updated:** 2026-07-13 (F1 ledger green — 50 Real / 0 Deferred / 0 Blocked)
+**Finish line:** **F2 True 1:1** remains the named **100% parity** endpoint (`finish_line: F2_True_1to1`). The current 50-row result is the scoped F1 Ship Peer ledger gate; WPD-0009 still requires F2 production composition and evidence before claiming full macOS parity. Operational host steps (Authenticode private key, required GH check flip, physical TPM claim) remain outside the in-repo ledger gate.
 
 ## Why this exists
 

@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { FieldValue, type DocumentData, type Firestore } from "firebase-admin/firestore";
 import type { UsageEventDoc, UsageRollupDoc } from "./types.js";
 import { coerceFirestoreDate, isRecord, recordOrUndefined, stripUndefinedObject } from "./guards.js";
-import { priceLegacyKimiEvent } from "./pricing.js";
+import { flushDomainCorePricingShadowEvidence, priceLegacyKimiEvent } from "./pricing.js";
 
 export const ROLLUP_SCHEMA_VERSION = 3;
 export const COUNTER_SCHEMA_VERSION = 1;
@@ -481,8 +481,14 @@ export async function applyUsageCounterDelta(
   after: UsageEventDoc | undefined,
 ): Promise<void> {
   const candidateKey = stableCounterKey(usageDoc);
-  const oldContribution = usageContribution(before, candidateKey);
-  const newContribution = usageContribution(after, candidateKey);
+  let oldContribution: UsageCounterCandidate | undefined;
+  let newContribution: UsageCounterCandidate | undefined;
+  try {
+    oldContribution = usageContribution(before, candidateKey);
+    newContribution = usageContribution(after, candidateKey);
+  } finally {
+    await flushDomainCorePricingShadowEvidence();
+  }
   const affectedKeys = new Set<string>();
   if (oldContribution) affectedKeys.add(oldContribution.logicalKey);
   if (newContribution) affectedKeys.add(newContribution.logicalKey);

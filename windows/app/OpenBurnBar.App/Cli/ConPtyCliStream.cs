@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Configuration;
+using OpenBurnBar.App.Presentation.Switcher;
 using OpenBurnBar.Pal.Ipc.Windows;
 
 namespace OpenBurnBar.App.Cli;
@@ -22,6 +23,8 @@ public sealed class ConPtyCliStream : ICliStream
     private readonly short _columns;
     private readonly short _rows;
     private readonly string? _workingDirectory;
+    private readonly IReadOnlyDictionary<string, string?>? _requiredEnvironment;
+    private readonly ChildProcessProfile _processProfile;
 
     /// <param name="commandLine">Full command line passed to <c>CreateProcessW</c> (e.g. <c>claude --print ""</c>).</param>
     /// <param name="columns">Initial pseudoconsole width.</param>
@@ -31,13 +34,29 @@ public sealed class ConPtyCliStream : ICliStream
         string commandLine,
         short columns = 120,
         short rows = 30,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        IReadOnlyDictionary<string, string?>? requiredEnvironment = null,
+        ChildProcessProfile processProfile = ChildProcessProfile.Chat)
     {
         ArgumentException.ThrowIfNullOrEmpty(commandLine);
         _commandLine = commandLine;
         _columns = columns;
         _rows = rows;
         _workingDirectory = workingDirectory;
+        _requiredEnvironment = requiredEnvironment;
+        _processProfile = processProfile;
+    }
+
+    public static ConPtyCliStream Create(SwitcherShellLaunchPlan plan, short columns = 120, short rows = 30)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        return new ConPtyCliStream(
+            WindowsCreateProcessCommandLine.Build(plan.ExecutableName, plan.Arguments),
+            columns,
+            rows,
+            plan.WorkingDirectory,
+            plan.RequiredEnvironment,
+            ChildProcessProfile.Switcher);
     }
 
     public async IAsyncEnumerable<CliStreamEvent> ReadAsync(
@@ -56,7 +75,7 @@ public sealed class ConPtyCliStream : ICliStream
             _columns,
             _rows,
             _workingDirectory,
-            ChildProcessLaunchPolicy.CreateEnvironment(ChildProcessProfile.Chat));
+            ChildProcessLaunchPolicy.CreateEnvironment(_processProfile, required: _requiredEnvironment));
         yield return new CliStreamEvent(
             CliStreamEventKind.System,
             $"session pid {session.ProcessId} started\n");
@@ -128,4 +147,5 @@ public sealed class ConPtyCliStream : ICliStream
 
         return new CliStreamEvent(CliStreamEventKind.Stdout, text);
     }
+
 }

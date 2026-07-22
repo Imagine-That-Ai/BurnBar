@@ -14,7 +14,12 @@ public final class GeminiCLIParser: LogParser, Sendable {
     }
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fm = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fm)
         let basePath = logDirectoryOverride ?? ("~/.gemini/tmp" as NSString).expandingTildeInPath
 
         guard fm.fileExists(atPath: basePath) else {
@@ -25,8 +30,8 @@ public final class GeminiCLIParser: LogParser, Sendable {
         var conversations: [ConversationRecord] = []
 
         let baseURL = URL(fileURLWithPath: basePath)
-        let projectDirs = (try? fm.contentsOfDirectory(at: baseURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter { // try?-ok(dir read, empty fallback)
-            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true // try?-ok(nil-safe filter)
+        let projectDirs = (try? fm.contentsOfDirectory(at: baseURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter {
+            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         } ?? []
 
         for projectDir in projectDirs {
@@ -35,24 +40,37 @@ public final class GeminiCLIParser: LogParser, Sendable {
 
             guard fm.fileExists(atPath: chatsDir.path) else { continue }
 
-            let chatFiles = (try? fm.contentsOfDirectory(at: chatsDir, includingPropertiesForKeys: nil))?.filter { // try?-ok(dir read, empty fallback)
+            let chatFiles = (try? fm.contentsOfDirectory(at: chatsDir, includingPropertiesForKeys: nil))?.filter {
                 let name = $0.lastPathComponent
                 return name.hasPrefix("session-") && ($0.pathExtension == "json" || $0.pathExtension == "jsonl")
             } ?? []
 
             for chatFile in chatFiles {
+                guard try gate.shouldRead(chatFile) else { continue }
                 let sessionId = chatFile.deletingPathExtension().lastPathComponent
 
                 let pair: (usage: TokenUsage?, conversation: ConversationRecord?)?
                 if chatFile.pathExtension == "jsonl" {
-                    pair = try parseJsonlSession(file: chatFile, sessionId: sessionId, projectName: projectName)
+                    pair = try parseJsonlSession(
+                        file: chatFile,
+                        sessionId: sessionId,
+                        projectName: projectName,
+                        includeConversationBodies: options.includeConversationBodies
+                    )
                 } else {
-                    pair = try parseJsonSession(file: chatFile, sessionId: sessionId, projectName: projectName)
+                    pair = try parseJsonSession(
+                        file: chatFile,
+                        sessionId: sessionId,
+                        projectName: projectName,
+                        includeConversationBodies: options.includeConversationBodies
+                    )
                 }
 
                 if let pair, let usage = pair.usage {
                     usages.append(usage)
-                    if let conv = pair.conversation { conversations.append(conv) }
+                    if options.includeConversationBodies, let conv = pair.conversation {
+                        conversations.append(conv)
+                    }
                 }
             }
         }
@@ -65,7 +83,8 @@ public final class GeminiCLIParser: LogParser, Sendable {
     private func parseJsonlSession(
         file: URL,
         sessionId: String,
-        projectName: String
+        projectName: String,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(open file, guard nil)
         defer { try? handle.close() } // try?-ok(handle teardown)
@@ -81,7 +100,13 @@ public final class GeminiCLIParser: LogParser, Sendable {
             ingestLine(json, into: &acc)
         }
 
-        return try buildResult(acc: acc, sessionId: sessionId, projectName: projectName, mtime: mtime)
+        return try buildResult(
+            acc: acc,
+            sessionId: sessionId,
+            projectName: projectName,
+            mtime: mtime,
+            includeConversationBodies: includeConversationBodies
+        )
     }
 
     // MARK: - JSON Session Parsing
@@ -89,7 +114,8 @@ public final class GeminiCLIParser: LogParser, Sendable {
     private func parseJsonSession(
         file: URL,
         sessionId: String,
-        projectName: String
+        projectName: String,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let data = try? Data(contentsOf: file) else { return nil } // try?-ok(file read, guard nil)
 
@@ -110,7 +136,13 @@ public final class GeminiCLIParser: LogParser, Sendable {
             }
         }
 
-        return try buildResult(acc: acc, sessionId: sessionId, projectName: projectName, mtime: mtime)
+        return try buildResult(
+            acc: acc,
+            sessionId: sessionId,
+            projectName: projectName,
+            mtime: mtime,
+            includeConversationBodies: includeConversationBodies
+        )
     }
 
     // MARK: - Shared Ingestion
@@ -223,7 +255,8 @@ public final class GeminiCLIParser: LogParser, Sendable {
         acc: GeminiSessionAccumulator,
         sessionId: String,
         projectName: String,
-        mtime: Date?
+        mtime: Date?,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         var inputTokens = acc.inputTokens
         var outputTokens = acc.outputTokens
@@ -273,26 +306,28 @@ public final class GeminiCLIParser: LogParser, Sendable {
             provenanceConfidence: .exact
         )
 
-        let conversation = ConversationRecord(
-            id: ConversationRecord.stableId(provider: .geminiCLI, sessionId: sessionId),
-            provider: .geminiCLI,
-            sessionId: sessionId,
-            projectName: projectName,
-            startTime: startTime,
-            endTime: endTime,
-            messageCount: acc.messageCount,
-            userWordCount: acc.userWords,
-            assistantWordCount: acc.assistantWords,
-            keyFiles: [],
-            keyCommands: [],
-            keyTools: [],
-            inferredTaskTitle: acc.firstUserText ?? projectName,
-            lastAssistantMessage: acc.lastAssistantText,
-            fullText: acc.fullText,
-            indexedAt: Date(),
-            fileModifiedAt: mtime,
-            summary: nil
-        )
+        let conversation = includeConversationBodies
+            ? ConversationRecord(
+                id: ConversationRecord.stableId(provider: .geminiCLI, sessionId: sessionId),
+                provider: .geminiCLI,
+                sessionId: sessionId,
+                projectName: projectName,
+                startTime: startTime,
+                endTime: endTime,
+                messageCount: acc.messageCount,
+                userWordCount: acc.userWords,
+                assistantWordCount: acc.assistantWords,
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: acc.firstUserText ?? projectName,
+                lastAssistantMessage: acc.lastAssistantText,
+                fullText: acc.fullText,
+                indexedAt: Date(),
+                fileModifiedAt: mtime,
+                summary: nil
+            )
+            : nil
 
         return (usage, conversation)
     }

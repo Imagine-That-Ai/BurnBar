@@ -15,7 +15,12 @@ public final class KimiParser: LogParser, Sendable {
     }
 
     public func parse() async throws -> ParseResult {
+        try await parse(options: .default)
+    }
+
+    public func parse(options: LogParseOptions) async throws -> ParseResult {
         let fileManager = FileManager.default
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         let sessionsPath = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
 
@@ -27,13 +32,12 @@ public final class KimiParser: LogParser, Sendable {
         var conversations: [ConversationRecord] = []
 
         let workspaceDirs = try fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])
-            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(skip non-directory entries)
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
         for workspaceDir in workspaceDirs {
             let workspaceId = workspaceDir.lastPathComponent
-
             let sessionDirs = try fileManager.contentsOfDirectory(at: workspaceDir, includingPropertiesForKeys: [.isDirectoryKey])
-                .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } // try?-ok(skip non-directory entries)
+                .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
             for sessionDir in sessionDirs {
                 let sessionId = sessionDir.lastPathComponent
@@ -41,15 +45,21 @@ public final class KimiParser: LogParser, Sendable {
                 let wireFile = sessionDir.appendingPathComponent("wire.jsonl")
 
                 guard fileManager.fileExists(atPath: contextFile.path) else { continue }
+                var sessionFiles = [contextFile]
+                if fileManager.fileExists(atPath: wireFile.path) {
+                    sessionFiles.append(wireFile)
+                }
+                guard try gate.shouldRead(sessionFiles) else { continue }
 
                 if let pair = try parseSession(
                     sessionId: sessionId,
                     contextFile: contextFile,
-                    wireFile: fileManager.fileExists(atPath: wireFile.path) ? wireFile : nil,
-                    projectName: workspaceId
+                    wireFile: sessionFiles.count == 2 ? wireFile : nil,
+                    projectName: workspaceId,
+                    includeConversationBodies: options.includeConversationBodies
                 ), let usage = pair.usage {
                     usages.append(usage)
-                    if let conv = pair.conversation {
+                    if options.includeConversationBodies, let conv = pair.conversation {
                         conversations.append(conv)
                     }
                 }
@@ -63,7 +73,8 @@ public final class KimiParser: LogParser, Sendable {
         sessionId: String,
         contextFile: URL,
         wireFile: URL?,
-        projectName: String
+        projectName: String,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         let mtime = (try? FileManager.default.attributesOfItem(atPath: contextFile.path)[.modificationDate]) as? Date // try?-ok(optional mtime, has fallback)
 
@@ -198,26 +209,28 @@ public final class KimiParser: LogParser, Sendable {
             estimatorVersion: wireTokens != nil ? "" : TokenExtractionUtility.currentEstimatorVersion
         )
 
-        let conversation = ConversationRecord(
-            id: ConversationRecord.stableId(provider: .kimi, sessionId: sessionId),
-            provider: .kimi,
-            sessionId: sessionId,
-            projectName: projectName,
-            startTime: firstTimestamp ?? mtime ?? usage.startTime,
-            endTime: lastTimestamp ?? mtime ?? usage.endTime,
-            messageCount: messageCount,
-            userWordCount: userWords,
-            assistantWordCount: assistantWords,
-            keyFiles: [],
-            keyCommands: [],
-            keyTools: [],
-            inferredTaskTitle: firstUser ?? projectName,
-            lastAssistantMessage: lastAssistant,
-            fullText: fullText,
-            indexedAt: Date(),
-            fileModifiedAt: mtime,
-            summary: nil
-        )
+        let conversation = includeConversationBodies
+            ? ConversationRecord(
+                id: ConversationRecord.stableId(provider: .kimi, sessionId: sessionId),
+                provider: .kimi,
+                sessionId: sessionId,
+                projectName: projectName,
+                startTime: firstTimestamp ?? mtime ?? usage.startTime,
+                endTime: lastTimestamp ?? mtime ?? usage.endTime,
+                messageCount: messageCount,
+                userWordCount: userWords,
+                assistantWordCount: assistantWords,
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: firstUser ?? projectName,
+                lastAssistantMessage: lastAssistant,
+                fullText: fullText,
+                indexedAt: Date(),
+                fileModifiedAt: mtime,
+                summary: nil
+            )
+            : nil
 
         return (usage, conversation)
     }

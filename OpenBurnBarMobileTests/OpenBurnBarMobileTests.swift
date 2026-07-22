@@ -119,17 +119,33 @@ private final class DataVaultRecoveryFakeService: DataVaultServicing {
 
 @MainActor
 final class OpenBurnBarMobileTests: XCTestCase {
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         HermesGatewayRelayKeypair.configurePrivateKeyStorageForTesting(InMemoryGatewayPrivateKeyStorage())
+        // AssistantPendingThread.shared is a process-wide singleton; tests
+        // that stash/consume pending thread IDs (lines 219, 267) mutate it
+        // directly. Reset every assistant slot before AND after each test so
+        // no cross-test leak can change a downstream test's assertion.
+        AssistantPendingThread.shared.clear(.hermes)
+        AssistantPendingThread.shared.clear(.pi)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         HermesGatewayRelayKeypair.resetPrivateKeyStorageForTesting()
-        super.tearDown()
+        AssistantPendingThread.shared.clear(.hermes)
+        AssistantPendingThread.shared.clear(.pi)
+        try await super.tearDown()
     }
 
     // MARK: - Shared Model Compatibility
+
+    func testIPadSidebarUsesCompactAuroraTabAccessibilityContract() {
+        XCTAssertEqual(AppDestination.pulse.auroraAccessibilityIdentifier, "auroraTab.pulse")
+        XCTAssertEqual(AppDestination.burn.auroraAccessibilityIdentifier, "auroraTab.burn")
+        XCTAssertEqual(AppDestination.streams.auroraAccessibilityIdentifier, "auroraTab.streams")
+        XCTAssertEqual(AppDestination.agents.auroraAccessibilityIdentifier, "auroraTab.hermes")
+        XCTAssertEqual(AppDestination.you.auroraAccessibilityIdentifier, "auroraTab.you")
+    }
 
     func testRecoveryContactEnvelopeUsesBackendSealedShareContract() throws {
         let sealedShare = Data(repeating: 0x42, count: 48).base64EncodedString()

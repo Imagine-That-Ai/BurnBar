@@ -26,7 +26,7 @@
 
             <StackPanel Spacing="4">
                 <TextBlock Text="Target" FontSize="12"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 <ComboBox x:Name="TargetKindCombo" HorizontalAlignment="Stretch"
                           SelectionChanged="OnTargetKindChanged">
                     <ComboBoxItem Content="Browser" />
@@ -36,9 +36,9 @@
 
             <StackPanel Spacing="4">
                 <TextBlock Text="Profile Name (optional)" FontSize="12"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 <TextBox x:Name="NameBox" PlaceholderText="Display name" TextChanged="OnNameChanged" />
-                <TextBlock x:Name="DuplicateErrorText" FontSize="11" Foreground="#F85149"
+                <TextBlock x:Name="DuplicateErrorText" FontSize="11" Foreground="{ThemeResource AuroraErrorBrush}"
                            Visibility="Collapsed" />
             </StackPanel>
 
@@ -46,7 +46,7 @@
             <StackPanel x:Name="BrowserPanel" Spacing="8">
                 <StackPanel Spacing="4">
                     <TextBlock Text="Browser" FontSize="12"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     <ComboBox x:Name="BrowserTypeCombo" HorizontalAlignment="Stretch"
                               SelectionChanged="OnBrowserTypeChanged">
                         <ComboBoxItem Content="Google Chrome" />
@@ -55,13 +55,13 @@
                 </StackPanel>
                 <StackPanel Spacing="4">
                     <TextBlock Text="Profile Identifier" FontSize="12"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     <TextBox x:Name="ProfileIdentifierBox"
                              PlaceholderText="e.g. Profile 1, Default"
                              TextChanged="OnProfileIdentifierChanged" />
                     <TextBlock Text="For Chrome: the profile folder name. For Safari: the WebKit profile container."
                                FontSize="11" TextWrapping="Wrap"
-                               Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
             </StackPanel>
 
@@ -69,34 +69,34 @@
             <StackPanel x:Name="CliPanel" Spacing="8">
                 <StackPanel Spacing="4">
                     <TextBlock Text="CLI" FontSize="12"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     <ComboBox x:Name="CliTypeCombo" HorizontalAlignment="Stretch"
                               SelectionChanged="OnCliTypeChanged" />
                 </StackPanel>
                 <StackPanel Spacing="4">
                     <TextBlock Text="Working Directory (optional)" FontSize="12"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     <TextBox x:Name="WorkingDirBox" TextChanged="OnWorkingDirChanged" />
                 </StackPanel>
                 <StackPanel Spacing="4">
                     <TextBlock Text="Additional Arguments (optional)" FontSize="12"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     <TextBox x:Name="ArgsBox" PlaceholderText="--verbose --no-color"
                              TextChanged="OnArgsChanged" />
                     <TextBlock Text="Space-separated list of arguments."
-                               FontSize="11" Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                               FontSize="11" Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
                 <StackPanel Spacing="4">
                     <TextBlock Text="Environment Variables to Pass (optional)" FontSize="12"
-                               Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                               Foreground="{ThemeResource AuroraTextMutedBrush}" />
                     <TextBox x:Name="EnvBox" PlaceholderText="HOME, PATH"
                              TextChanged="OnEnvChanged" />
                     <TextBlock Text="Comma-separated names. Values are NOT stored."
-                               FontSize="11" Foreground="{StaticResource PensieveColorTextDimBrush}" />
+                               FontSize="11" Foreground="{ThemeResource AuroraTextMutedBrush}" />
                 </StackPanel>
             </StackPanel>
 
-            <TextBlock x:Name="ValidationErrorText" FontSize="11" Foreground="#F85149"
+            <TextBlock x:Name="ValidationErrorText" FontSize="11" Foreground="{ThemeResource AuroraErrorBrush}"
                        TextWrapping="Wrap" Visibility="Collapsed" />
         </StackPanel>
     </ScrollViewer>

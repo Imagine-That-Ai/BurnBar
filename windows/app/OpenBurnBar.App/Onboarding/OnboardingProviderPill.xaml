@@ -33,7 +33,7 @@
 
         <Ellipse x:Name="DetectedDot"
                  Width="6" Height="6"
-                 Fill="#FF22C55E"
+                 Fill="{ThemeResource AuroraSuccessBrush}"
                  HorizontalAlignment="Right"
                  VerticalAlignment="Top"
                  Margin="0,2,2,0"

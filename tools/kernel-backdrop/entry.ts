@@ -27,6 +27,13 @@ interface KernelBridgeMeta {
   substrate: KernelSubstrate;
 }
 
+interface KernelBackdropRuntimeState {
+  hostVisible: boolean;
+  renderLoopScheduled: boolean;
+  reducedMotion: boolean;
+  resolvedKernel: KernelId;
+}
+
 declare global {
   interface Window {
     /** WebKit native-message bridge, absent in ordinary browsers. */
@@ -41,6 +48,8 @@ declare global {
     __setTheme?: (theme: string) => void;
     /** The kernel actually shown (may differ from requested on GL fallback). */
     __getKernel?: () => KernelId;
+    /** Actual engine visibility and render-loop state for native handshakes. */
+    __getBackdropState?: () => KernelBackdropRuntimeState;
     /** Import-free registry metadata for native pickers. */
     __kernels?: KernelBridgeMeta[];
     /** Last measured foreground profile for diagnostics and native polling. */
@@ -72,6 +81,14 @@ function initialKernel(): KernelId {
   return isKernelId(PREFERRED_DEFAULT) ? PREFERRED_DEFAULT : KERNELS[0]!.id;
 }
 
+function performanceMotionOverride(): boolean | undefined {
+  try {
+    return new URLSearchParams(location.search).get("motion") === "full" ? false : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function mount(): void {
   let host = document.getElementById("host");
   if (!host) {
@@ -93,6 +110,7 @@ function mount(): void {
       readability = profile;
       window.webkit?.messageHandlers?.backdropReadability?.postMessage(profile);
     },
+    reducedMotionOverride: performanceMotionOverride(),
   });
 
   window.__setKernel = (id: string): boolean => {
@@ -105,6 +123,7 @@ function mount(): void {
   };
   window.__getKernel = (): KernelId => engine.getResolvedKernel();
   window.__getReadability = (): BackdropReadabilityProfile | null => readability;
+  window.__getBackdropState = (): KernelBackdropRuntimeState => engine.getRuntimeState();
   window.__setBackdropActive = (active: boolean): void => {
     engine.setHostVisible(active === true);
   };

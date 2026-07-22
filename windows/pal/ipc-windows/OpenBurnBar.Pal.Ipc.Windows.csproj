@@ -30,6 +30,7 @@
     <AssemblyName>OpenBurnBar.Pal.Ipc.Windows</AssemblyName>
     <!-- Keep the scaffold honest: warnings are errors here too. -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <DefineConstants Condition="'$(Configuration)' == 'Release'">$(DefineConstants);RELEASE_HARDENED</DefineConstants>
     <!-- This assembly is Windows-only; the [assembly: SupportedOSPlatform("windows")]
          attribute in Interop/NativeMethods.cs satisfies CA1416 while still letting
          the scaffold compile on the macOS authoring host. -->

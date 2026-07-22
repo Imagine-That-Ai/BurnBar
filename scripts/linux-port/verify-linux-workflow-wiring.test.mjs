@@ -17,7 +17,8 @@ function valid() {
       'matched-performance-contract.test.mjs',
       'perf-budget-contract.test.mjs',
       'linux-parity-macos-performance-pr',
-      'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests'
+      'OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests',
+      'npm run typecheck --prefix apps/linux-desktop'
     ].join('\n'),
     nightly: [
       'OPENBURNBAR_LINUX_EVIDENCE_OUT',
@@ -305,4 +306,23 @@ test('Linux Swift evidence must route through the host-mounted evidence tree', (
     assert.equal(result.passed, false, field);
     assert.ok(result.failures.some((failure) => failure.includes('Linux Swift evidence routing')), field);
   }
+});
+
+test('removing the TypeScript typecheck gate from the PR workflow fails', () => {
+  const input = valid();
+  input.pr = input.pr.replace('npm run typecheck --prefix apps/linux-desktop', '');
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.ok(result.failures.some((f) => f.includes('TypeScript typecheck gate')));
+});
+
+test('TypeScript typecheck gate may not continue on error', () => {
+  const input = valid();
+  input.pr = input.pr.replace(
+    'npm run typecheck --prefix apps/linux-desktop',
+    '- name: Linux desktop TypeScript typecheck\n        run: npm run typecheck --prefix apps/linux-desktop\n        continue-on-error: true'
+  );
+  const result = verifyLinuxWorkflowWiring(input);
+  assert.equal(result.passed, false);
+  assert.ok(result.failures.some((f) => f.includes('typecheck gate may not continue on error')));
 });

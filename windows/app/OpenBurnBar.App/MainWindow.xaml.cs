@@ -2,22 +2,33 @@ using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Interop;
+using OpenBurnBar.App.ManagedAgentRuntime.Gateway;
+using OpenBurnBar.App.SharedUi;
 using OpenBurnBar.App.Shell;
 using OpenBurnBar.App.Theme;
+using OpenBurnBar.App.UsageRuntime;
 
 namespace OpenBurnBar.App;
 
 /// <summary>
 /// The full OpenBurnBar window (opened from the tray). Liquid-Glass backed via
-/// <see cref="LiquidGlass.ApplyWindowBackdrop"/>, with a custom draggable title bar
-/// hosting the <see cref="AppShell"/> NavigationView app frame — the Windows analog
-/// of the macOS NavigationSplitView. The appearance follows the shared <see cref="ThemeService"/>.
+/// <see cref="LiquidGlass.ApplyWindowBackdrop"/>. Content: the shared Linux desktop UI in a
+/// WebView2 (<see cref="SharedUiHost"/>) so Windows and Linux render the identical frontend —
+/// set <c>OPENBURNBAR_XAML_SHELL=1</c> to fall back to the native XAML <see cref="AppShell"/>.
+/// The appearance follows the shared <see cref="ThemeService"/>.
 /// </summary>
 public sealed partial class MainWindow : Window
 {
     private readonly ThemeService _theme;
+    private readonly AppShell? _xamlShell;
+    private readonly SharedUiHost? _sharedUiHost;
 
-    public MainWindow(ThemeService theme)
+    public MainWindow(
+        ThemeService theme,
+        IUsageRuntime? usageRuntime = null,
+        LocalHttpGatewayHost? gateway = null,
+        string? gatewayToken = null,
+        bool forceXamlShell = false)
     {
         _theme = theme;
         InitializeComponent();
@@ -29,20 +40,41 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBar);
 
+        if (forceXamlShell ||
+            string.Equals(Environment.GetEnvironmentVariable("OPENBURNBAR_XAML_SHELL"), "1", StringComparison.Ordinal))
+        {
+            _xamlShell = new AppShell();
+            ContentHost.Children.Add(_xamlShell);
+            _xamlShell.BindTheme(theme);
+            _xamlShell.BindUsageRuntime(usageRuntime);
+        }
+        else
+        {
+            _sharedUiHost = new SharedUiHost(theme, usageRuntime, gateway, gatewayToken);
+            ContentHost.Children.Add(_sharedUiHost);
+        }
+
         // Glass window backdrop + blend scrim through the single Liquid Glass chokepoint.
         ApplyGlassChrome();
         LiquidGlassEnvironment.PreferencesChanged += OnGlassPreferencesChanged;
 
-        // Wire the shell's Appearance flyout to the shared theme service, then let the theme
-        // service own this window's element theme + backdrop (Mica vs solid).
-        ShellControl.BindTheme(theme);
         theme.Register(this);
 
         Closed += OnClosed;
     }
 
-    /// <summary>The NavigationView app frame, exposed so the app can drive palette navigation.</summary>
-    public AppShell Shell => ShellControl;
+    /// <summary>The native XAML app frame when OPENBURNBAR_XAML_SHELL=1; null under the shared UI.</summary>
+    public AppShell? Shell => _xamlShell;
+
+    public void Navigate(string routeKey, string? sessionId = null)
+    {
+        if (_xamlShell is not null)
+        {
+            _xamlShell.Navigate(routeKey, sessionId);
+            return;
+        }
+        _sharedUiHost?.Navigate(routeKey);
+    }
 
     private void ApplyGlassChrome()
     {

@@ -43,7 +43,13 @@ public sealed partial class OnboardingPage : Page
         model.PreselectDetectedProviders();
         model.SeedChatBackends(ChatBackendMetadata.AllCases, ChatBackendId.Codex);
 
-        Start(new OnboardingContext(model));
+        // Wire the main-window HWND so step-page file pickers get a real owner
+        // even when onboarding is opened from the shell NavigationView (not the
+        // standalone OnboardingWindow). Mirrors the DataSourceSettingsPage fallback.
+        Start(new OnboardingContext(model)
+        {
+            WindowHandleProvider = () => App.Current.MainWindowHandle,
+        });
     }
 
     private OnboardingWizardModel? Model => _context?.Model;

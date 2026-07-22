@@ -295,6 +295,11 @@ function selfTest() {
       live.ruleset = null;
       live.classic = null;
     },
+    "strict-status-checks-toggled": (live) => {
+      const rule = live.ruleset.rules.find((r) => r.type === "required_status_checks");
+      rule.parameters.strict_required_status_checks_policy =
+        !desiredJson.required_status_checks.strict === true;
+    },
   };
   for (const [label, mutate] of Object.entries(mutations)) {
     const live = matchingLive();

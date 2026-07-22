@@ -653,26 +653,6 @@ export interface LinuxShellBridge {
     source?: ComputerUsePanicSource;
   }): Promise<ComputerUsePanicHaltResult>;
   integrationsStatus(): Promise<IntegrationsStatus>;
-  /** Wire: approval.respond */
-  toolApprovalRespond?(
-    approvalId: string,
-    decision: 'approve' | 'reject' | 'cancel',
-    note?: string
-  ): Promise<void>;
-  /**
-   * Wire: approve → daemon.memory.remember, reject → daemon.memory.forget,
-   * audit → daemon.memory.audit_trail.
-   */
-  memorySetStatus?(
-    action: 'approve' | 'reject' | 'audit' | 'remember' | 'forget',
-    payload: Record<string, unknown>
-  ): Promise<unknown>;
-  computerUseSessionStart?(params: Record<string, unknown>): Promise<unknown>;
-  computerUseInvoke?(params: Record<string, unknown>): Promise<unknown>;
-  computerUseApprovalPending?(params?: Record<string, unknown>): Promise<unknown>;
-  computerUseApprovalRespond?(params: Record<string, unknown>): Promise<unknown>;
-  computerUsePanicHalt?(params?: Record<string, unknown>): Promise<unknown>;
-  computerUseAuditExport?(params?: Record<string, unknown>): Promise<unknown>;
 }
 
 // ──────────────────── Raw-daemon → typed-shape mappers ────────────────────
@@ -996,7 +976,7 @@ function buildMix(
   }
   if (grand === 0) return [];
   return [...totals.entries()]
-    .map(([id, t], i) => ({
+    .map(([id, t]) => ({
       id,
       label: id.charAt(0).toUpperCase() + id.slice(1),
       pct: Math.round((t / grand) * 100)
@@ -1174,11 +1154,11 @@ function mapMemoryBoundaries(raw: RawJsonValue): MemoryBoundary[] {
 }
 
 function rpcReportResult(raw: RawJsonValue): RawJsonValue {
-  return Boolean(pick(raw, 'ok')) ? pick(raw, 'result') : undefined;
+  return pick(raw, 'ok') ? pick(raw, 'result') : undefined;
 }
 
 function rpcReportError(raw: RawJsonValue): string | undefined {
-  return Boolean(pick(raw, 'ok')) ? undefined : str(pick(raw, 'error')) || 'RPC failed';
+  return pick(raw, 'ok') ? undefined : str(pick(raw, 'error')) || 'RPC failed';
 }
 
 function mapMemoryReviewInbox(raw: RawJsonValue): MemoryReviewInbox {

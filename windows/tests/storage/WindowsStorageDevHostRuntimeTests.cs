@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Microsoft.Data.Sqlite;
 using OpenBurnBar.App.Configuration;
+using OpenBurnBar.App.Presentation.Dashboard;
 using OpenBurnBar.App.Storage;
 using OpenBurnBar.Storage;
 using Xunit;
@@ -12,6 +15,8 @@ namespace OpenBurnBar.App.Storage.Tests;
 public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
 {
     private const string SampleEnv = "OPENBURNBAR_SAMPLE_MODE";
+    private const string ExpectedV56Endpoint = "v56_parser_checkpoint_file_manifest";
+    private const long ExpectedV56MigrationCount = 57;
 
     public void Dispose()
     {
@@ -36,8 +41,8 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
         Assert.True(File.Exists(profile.DatabasePath + ".key-provenance.json"));
         Assert.True(SqlCipherConnection.FileIsEncrypted(profile.DatabasePath));
         Assert.Equal("protected-generated:openburnbar.windows.sqlcipher.passphrase", report.KeyProvenance);
-        Assert.Equal(WindowsSqlCipherProvisioner.CurrentMigrationEndpoint, report.SchemaEndpoint);
-        Assert.Equal(WindowsSqlCipherProvisioner.CurrentMigrationCount, report.MigrationCount);
+        Assert.Equal(ExpectedV56Endpoint, report.SchemaEndpoint);
+        Assert.Equal(ExpectedV56MigrationCount, report.MigrationCount);
         Assert.Equal(WindowsSqlCipherProvisioner.CurrentUserVersion, report.UserVersion);
         Assert.Contains("\"state\": \"complete\"", File.ReadAllText(report.JournalPath), StringComparison.Ordinal);
         Assert.Contains("\"keyProvenance\": \"protected-generated:openburnbar.windows.sqlcipher.passphrase\"", File.ReadAllText(report.JournalPath), StringComparison.Ordinal);
@@ -51,30 +56,121 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
         using var connection = SqlCipherConnection.Open(profile.DatabasePath, passphrase!);
         SqlCipherConnection.AssertPinnedParams(connection, out string cipherVersion);
         Assert.Equal(report.CipherVersion, cipherVersion);
-        Assert.Equal(WindowsSqlCipherProvisioner.CurrentMigrationEndpoint, SqlCipherConnection.ReadMigrationEndpoint(connection));
-        Assert.Equal(WindowsSqlCipherProvisioner.CurrentMigrationCount, SqlCipherConnection.ReadMigrationCount(connection));
-        Assert.Equal(WindowsSqlCipherProvisioner.CurrentUserVersion, SqlCipherConnection.ReadUserVersion(connection));
+        Assert.Equal(ExpectedV56Endpoint, SqlCipherConnection.ReadMigrationEndpoint(connection));
+        Assert.Equal(ExpectedV56MigrationCount, SqlCipherConnection.ReadMigrationCount(connection));
+        AssertV56CheckpointSchema(connection);
+        using (var insertManifest = connection.CreateCommand())
+        {
+            insertManifest.CommandText = """
+                INSERT INTO parser_checkpoint_files (
+                    provider, path, fileSizeBytes, modificationDate, creationDate,
+                    fileSystemNumber, fileNumber
+                ) VALUES ($provider, $path, $size, $modified, $created, $filesystem, $file)
+                """;
+            insertManifest.Parameters.AddWithValue("$provider", "codex");
+            insertManifest.Parameters.AddWithValue("$path", "C:\\Users\\Test\\.codex\\rollout.jsonl");
+            insertManifest.Parameters.AddWithValue("$size", 4096);
+            insertManifest.Parameters.AddWithValue("$modified", "2026-07-18 12:00:00.123");
+            insertManifest.Parameters.AddWithValue("$created", "2026-07-18 11:00:00.456");
+            insertManifest.Parameters.AddWithValue("$filesystem", "18446744073709551615");
+            insertManifest.Parameters.AddWithValue("$file", "9223372036854775808");
+            Assert.Equal(1, insertManifest.ExecuteNonQuery());
+        }
+        using (var readManifest = connection.CreateCommand())
+        {
+            readManifest.CommandText = """
+                SELECT fileSizeBytes, modificationDate, creationDate, fileSystemNumber, fileNumber
+                FROM parser_checkpoint_files
+                WHERE provider = 'codex' AND path = 'C:\Users\Test\.codex\rollout.jsonl'
+                """;
+            using var reader = readManifest.ExecuteReader();
+            Assert.True(reader.Read());
+            Assert.Equal(4096L, reader.GetInt64(0));
+            Assert.Equal("2026-07-18 12:00:00.123", reader.GetString(1));
+            Assert.Equal("2026-07-18 11:00:00.456", reader.GetString(2));
+            Assert.Equal("18446744073709551615", reader.GetString(3));
+            Assert.Equal("9223372036854775808", reader.GetString(4));
+        }
+        using (var duplicateManifest = connection.CreateCommand())
+        {
+            duplicateManifest.CommandText = """
+                INSERT INTO parser_checkpoint_files (provider, path)
+                VALUES ('codex', 'C:\Users\Test\.codex\rollout.jsonl')
+                """;
+            SqliteException error = Assert.Throws<SqliteException>(() => duplicateManifest.ExecuteNonQuery());
+            Assert.Equal(19, error.SqliteErrorCode);
+        }
         WriteEvidence("fresh-install", profile.DatabasePath, report, null);
     }
 
     [Fact]
-    public void CleanProfile_Restart_IsIdempotent_AndKeepsTheSameDatabaseAndKey()
+    public void CleanProfile_Reopen_PreservesCheckpointDataAndExactV56Marker()
     {
         using var profile = TestProfile.Create();
 
         WindowsStorageProvisioningReport first = WindowsStorageDevHost.InitializeRuntime().Report!;
         string firstConfig = File.ReadAllText(profile.Configuration.ConfigFilePath);
         string firstJournal = File.ReadAllText(first.JournalPath);
+        var (_, passphrase) = WindowsStorageDevHost.ResolveCredentials();
+        using (var connection = SqlCipherConnection.Open(profile.DatabasePath, passphrase!))
+        {
+            using var seed = connection.CreateCommand();
+            seed.CommandText = """
+                INSERT INTO parser_checkpoints (
+                    provider, checkpointToken, lastProcessedFilePath, lastProcessedAt, version
+                ) VALUES (
+                    'codex', 'watermark-17', 'C:\Users\Test\.codex\rollout.jsonl',
+                    '2026-07-18 12:00:00.123', 3
+                );
+                INSERT INTO parser_checkpoint_files (
+                    provider, path, fileSizeBytes, modificationDate, creationDate,
+                    fileSystemNumber, fileNumber
+                ) VALUES (
+                    'codex', 'C:\Users\Test\.codex\rollout.jsonl', 4096,
+                    '2026-07-18 12:00:00.123', '2026-07-18 11:00:00.456',
+                    '18446744073709551615', '9223372036854775808'
+                );
+                """;
+            Assert.Equal(2, seed.ExecuteNonQuery());
+        }
 
         WindowsStorageProvisioningReport second = WindowsStorageDevHost.InitializeRuntime().Report!;
 
         Assert.False(second.Created);
         Assert.Equal(first.DatabasePath, second.DatabasePath);
-        Assert.Equal(first.SchemaEndpoint, second.SchemaEndpoint);
-        Assert.Equal(first.MigrationCount, second.MigrationCount);
+        Assert.Equal(ExpectedV56Endpoint, second.SchemaEndpoint);
+        Assert.Equal(ExpectedV56MigrationCount, second.MigrationCount);
         Assert.Equal(firstConfig, File.ReadAllText(profile.Configuration.ConfigFilePath));
         Assert.Contains("\"state\": \"complete\"", firstJournal, StringComparison.Ordinal);
         Assert.Contains("\"state\": \"complete\"", File.ReadAllText(second.JournalPath), StringComparison.Ordinal);
+        using (var reopened = SqlCipherConnection.Open(profile.DatabasePath, passphrase!))
+        {
+            Assert.Equal(ExpectedV56Endpoint, SqlCipherConnection.ReadMigrationEndpoint(reopened));
+            Assert.Equal(ExpectedV56MigrationCount, SqlCipherConnection.ReadMigrationCount(reopened));
+            AssertV56CheckpointSchema(reopened);
+            using var read = reopened.CreateCommand();
+            read.CommandText = """
+                SELECT c.checkpointToken, c.lastProcessedFilePath, c.lastProcessedAt, c.version,
+                       f.fileSizeBytes, f.modificationDate, f.creationDate,
+                       f.fileSystemNumber, f.fileNumber
+                FROM parser_checkpoints AS c
+                JOIN parser_checkpoint_files AS f ON f.provider = c.provider
+                WHERE c.provider = 'codex'
+                  AND f.path = 'C:\Users\Test\.codex\rollout.jsonl'
+                """;
+            using var reader = read.ExecuteReader();
+            Assert.True(reader.Read());
+            Assert.Equal("watermark-17", reader.GetString(0));
+            Assert.Equal("C:\\Users\\Test\\.codex\\rollout.jsonl", reader.GetString(1));
+            Assert.Equal("2026-07-18 12:00:00.123", reader.GetString(2));
+            Assert.Equal(3L, reader.GetInt64(3));
+            Assert.Equal(4096L, reader.GetInt64(4));
+            Assert.Equal("2026-07-18 12:00:00.123", reader.GetString(5));
+            Assert.Equal("2026-07-18 11:00:00.456", reader.GetString(6));
+            Assert.Equal("18446744073709551615", reader.GetString(7));
+            Assert.Equal("9223372036854775808", reader.GetString(8));
+            Assert.False(reader.Read());
+        }
         WriteEvidence("restart-idempotency", profile.DatabasePath, second, null);
     }
 
@@ -101,6 +197,21 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
                 StartTime = "2026-07-09 12:00:00.000",
                 EndTime = "2026-07-09 12:00:01.000",
                 CreatedAt = "2026-07-09 12:00:01.000",
+            });
+            TokenUsageWriteSeam.WriteTokenUsage(connection, new TokenUsageRecord
+            {
+                Id = "usage-old",
+                Provider = "claude",
+                SessionId = "session-old",
+                ProjectName = "Archive",
+                Model = "claude-sonnet-4",
+                InputTokens = 4,
+                OutputTokens = 6,
+                TotalTokens = 10,
+                Cost = 0.50,
+                StartTime = "2026-05-01 12:00:00.000",
+                EndTime = "2026-05-01 12:00:01.000",
+                CreatedAt = "2026-05-01 12:00:01.000",
             });
 
             BudgetRuleWriteSeam.UpsertRule(connection, new BudgetRuleRow(
@@ -142,13 +253,23 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
             Assert.Single(BudgetRuleWriteSeam.FetchAllRules(connection, includeDisabled: true));
             Assert.Single(SwitcherProfileWriteSeam.FetchAllProfiles(connection));
             Assert.Equal("[]", ElderWandPresetWriteSeam.ReadString(connection, "elderWand.presets.v1"));
-            Assert.Equal(30, TokenUsageReadSeam.SumTotalTokens(connection));
+            Assert.Equal(40, TokenUsageReadSeam.SumTotalTokens(connection));
         }
 
-        var summary = WindowsStorageDevHost.LoadDashboardUsageSummary();
+        var summary = WindowsStorageDevHost.LoadDashboardUsageSummary(
+            DashboardUsageWindow.ThisMonth,
+            new DateTimeOffset(2026, 7, 15, 12, 0, 0, TimeSpan.Zero));
         Assert.True(summary.HasData);
         Assert.Equal(30, summary.TotalTokens);
         Assert.Equal(1, summary.SessionCount);
+        Assert.Equal(0.12, summary.TotalCostUsd, 3);
+
+        var allTime = WindowsStorageDevHost.LoadDashboardUsageSummary(
+            DashboardUsageWindow.AllTime,
+            new DateTimeOffset(2026, 7, 15, 12, 0, 0, TimeSpan.Zero));
+        Assert.Equal(40, allTime.TotalTokens);
+        Assert.Equal(2, allTime.SessionCount);
+        Assert.Equal(0.62, allTime.TotalCostUsd, 3);
         WriteEvidence("generated-db-write-seams", profile.DatabasePath, WindowsStorageDevHost.Status.Report, null);
     }
 
@@ -187,10 +308,11 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
     }
 
     [Fact]
-    public void CorruptDatabase_ProducesDistinctRecoveryState_AndArchiveResetCreatesANewValidDatabase()
+    public void CorruptDatabase_ProducesDistinctRecoveryState_AndArchiveResetCreatesExactV56Schema()
     {
         using var profile = TestProfile.Create();
         WindowsStorageDevHost.InitializeRuntime();
+        var (_, passphrase) = WindowsStorageDevHost.ResolveCredentials();
         File.WriteAllText(profile.DatabasePath, "not a SQLCipher database");
 
         WindowsStorageRuntimeStatus status = WindowsStorageDevHost.InitializeRuntime();
@@ -203,7 +325,12 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
         Assert.True(Directory.Exists(archive.ArchiveDirectory));
         Assert.True(File.Exists(archive.ArchivedDatabasePath));
         Assert.True(SqlCipherConnection.FileIsEncrypted(profile.DatabasePath));
-        Assert.Equal(WindowsSqlCipherProvisioner.CurrentMigrationEndpoint, archive.NewDatabase.SchemaEndpoint);
+        Assert.Equal(ExpectedV56Endpoint, archive.NewDatabase.SchemaEndpoint);
+        Assert.Equal(ExpectedV56MigrationCount, archive.NewDatabase.MigrationCount);
+        using var reset = SqlCipherConnection.Open(profile.DatabasePath, passphrase!);
+        Assert.Equal(ExpectedV56Endpoint, SqlCipherConnection.ReadMigrationEndpoint(reset));
+        Assert.Equal(ExpectedV56MigrationCount, SqlCipherConnection.ReadMigrationCount(reset));
+        AssertV56CheckpointSchema(reset);
         WriteEvidence("corrupt-archive-reset", profile.DatabasePath, archive.NewDatabase, status.RecoveryState);
     }
 
@@ -267,6 +394,89 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
         using var reopened = SqlCipherConnection.Open(profile.DatabasePath, passphrase!);
         Assert.Equal("v999_future_schema", SqlCipherConnection.ReadMigrationEndpoint(reopened));
         WriteEvidence("unsupported-schema-recovery", profile.DatabasePath, null, status.RecoveryState);
+    }
+
+    [Fact]
+    public void AcceptedOlderEndpoint_MissingLaterColumn_NeverGetsFalselyStampedAsV56()
+    {
+        using var profile = TestProfile.Create();
+        WindowsStorageDevHost.InitializeRuntime();
+        var (_, passphrase) = WindowsStorageDevHost.ResolveCredentials();
+        using (var connection = SqlCipherConnection.Open(profile.DatabasePath, passphrase!))
+        {
+            using var regressToV48 = connection.CreateCommand();
+            regressToV48.CommandText = """
+                ALTER TABLE token_usage DROP COLUMN parentRequestID;
+                DELETE FROM grdb_migrations
+                WHERE rowid > (
+                    SELECT rowid FROM grdb_migrations
+                    WHERE identifier = 'v48_conversation_fts_orphan_repair'
+                );
+                """;
+            regressToV48.ExecuteNonQuery();
+            Assert.Equal("v48_conversation_fts_orphan_repair", SqlCipherConnection.ReadMigrationEndpoint(connection));
+            Assert.Equal(48, SqlCipherConnection.ReadMigrationCount(connection));
+            Assert.DoesNotContain(ReadTableInfo(connection, "token_usage"), column => column.Name == "parentRequestID");
+        }
+
+        WindowsStorageRuntimeStatus status = WindowsStorageDevHost.InitializeRuntime();
+
+        using var reopened = SqlCipherConnection.Open(profile.DatabasePath, passphrase!);
+        if (!status.IsReady)
+        {
+            AssertRecovery(status, WindowsStorageFailureKind.UnsupportedSchema);
+            Assert.Equal("v48_conversation_fts_orphan_repair", SqlCipherConnection.ReadMigrationEndpoint(reopened));
+            Assert.Equal(48, SqlCipherConnection.ReadMigrationCount(reopened));
+            return;
+        }
+
+        Assert.Equal(ExpectedV56Endpoint, status.Report!.SchemaEndpoint);
+        Assert.Equal(ExpectedV56MigrationCount, status.Report.MigrationCount);
+        Assert.Equal(ExpectedV56Endpoint, SqlCipherConnection.ReadMigrationEndpoint(reopened));
+        Assert.Equal(ExpectedV56MigrationCount, SqlCipherConnection.ReadMigrationCount(reopened));
+        Assert.Contains(ReadTableInfo(reopened, "token_usage"), column =>
+            column == ("parentRequestID", "TEXT", 0, 0));
+    }
+
+    private static void AssertV56CheckpointSchema(SqliteConnection connection)
+    {
+        (string Name, string Type, int NotNull, int PrimaryKeyPosition)[] expectedCheckpoints =
+        [
+            ("provider", "TEXT", 0, 1),
+            ("checkpointToken", "TEXT", 1, 0),
+            ("lastProcessedFilePath", "TEXT", 0, 0),
+            ("lastProcessedAt", "DATETIME", 1, 0),
+            ("version", "INTEGER", 1, 0),
+        ];
+        (string Name, string Type, int NotNull, int PrimaryKeyPosition)[] expectedManifest =
+        [
+            ("provider", "TEXT", 1, 1),
+            ("path", "TEXT", 1, 2),
+            ("fileSizeBytes", "INTEGER", 0, 0),
+            ("modificationDate", "DATETIME", 0, 0),
+            ("creationDate", "DATETIME", 0, 0),
+            ("fileSystemNumber", "TEXT", 0, 0),
+            ("fileNumber", "TEXT", 0, 0),
+        ];
+
+        Assert.Equal(expectedCheckpoints, ReadTableInfo(connection, "parser_checkpoints"));
+        Assert.Equal(expectedManifest, ReadTableInfo(connection, "parser_checkpoint_files"));
+    }
+
+    private static (string Name, string Type, int NotNull, int PrimaryKeyPosition)[] ReadTableInfo(
+        SqliteConnection connection,
+        string tableName)
+    {
+        var columns = new List<(string Name, string Type, int NotNull, int PrimaryKeyPosition)>();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"PRAGMA table_info({tableName})";
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            columns.Add((reader.GetString(1), reader.GetString(2), reader.GetInt32(3), reader.GetInt32(5)));
+        }
+
+        return columns.ToArray();
     }
 
     private static void AssertRecovery(WindowsStorageRuntimeStatus status, WindowsStorageFailureKind expected)

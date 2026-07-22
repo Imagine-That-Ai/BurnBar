@@ -1,10 +1,8 @@
 use openburnbar_domain_core::quota as core;
 use openburnbar_domain_core::{
-    cloudvault, cloudvault_rewrap, cloudvault_search, hermes, pricing, quota,
+    cloudvault, cloudvault_rewrap, cloudvault_search, hermes, pensieve_vectors, pricing, quota,
 };
 use zeroize::{Zeroize, Zeroizing};
-
-pub const DOMAIN_CORE_ABI_VERSION: u32 = 3;
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
 pub enum CloudVaultHashPurpose {
@@ -231,6 +229,20 @@ pub enum CloudVaultFfiError {
     InvalidRewrapKeyRotation,
 }
 
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum PensieveVectorFfiError {
+    #[error("Pensieve vault keys must be exactly 32 bytes")]
+    InvalidKeyLength,
+    #[error("Pensieve vectors must contain between 1 and 4096 finite coordinates")]
+    InvalidVector,
+    #[error("Pensieve model versions must be non-empty bounded printable strings")]
+    InvalidModelVersion,
+    #[error("Pensieve embedding text must not exceed 1048576 UTF-8 bytes")]
+    TextTooLarge,
+    #[error("Pensieve vector key derivation failed")]
+    DerivationFailure,
+}
+
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
 pub enum HermesAadKind {
     Request,
@@ -247,6 +259,21 @@ pub enum HermesAadKind {
     GatewayAttachmentKey,
     GatewayAttachmentManifest,
     GatewayAttachmentBody,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct HermesRatchetPrekeyRequest {
+    pub dh1: Vec<u8>,
+    pub dh2: Vec<u8>,
+    pub dh3: Vec<u8>,
+    pub uid: String,
+    pub client_id: String,
+    pub initiator_role: String,
+    pub initiator_identity_public_key_base64: String,
+    pub responder_identity_public_key_base64: String,
+    pub initiator_signed_prekey_public_key_base64: String,
+    pub responder_signed_prekey_public_key_base64: String,
+    pub initiator_initial_ratchet_public_key_base64: String,
 }
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -271,6 +298,8 @@ pub enum HermesFfiError {
     InputTooLarge,
     #[error("Hermes P-256 keys must be exact on-curve 65-byte X9.63 points")]
     InvalidP256PublicKey,
+    #[error("Hermes ratchet ECDH outputs must each be exactly 32 bytes")]
+    InvalidRatchetSharedSecretLength,
 }
 
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
@@ -355,14 +384,31 @@ pub struct QuotaParseResult {
     pub snapshot: QuotaSnapshot,
 }
 
+const _: [(); 3] = [(); openburnbar_domain_core::DOMAIN_CORE_ABI_VERSION as usize];
+
 #[uniffi::export]
 pub fn domain_core_abi_version() -> u32 {
-    DOMAIN_CORE_ABI_VERSION
+    openburnbar_domain_core::DOMAIN_CORE_ABI_VERSION
 }
 
 #[uniffi::export]
 pub fn domain_core_version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()
+}
+
+#[cfg(not(any(target_vendor = "apple", target_os = "windows")))]
+static DOMAIN_CORE_IDENTITY_WIRE: &str = env!("OPENBURNBAR_DOMAIN_CORE_IDENTITY_WIRE");
+
+#[uniffi::export]
+pub fn domain_core_candidate_commit() -> String {
+    #[cfg(not(any(target_vendor = "apple", target_os = "windows")))]
+    std::hint::black_box(DOMAIN_CORE_IDENTITY_WIRE);
+    env!("OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT").to_owned()
+}
+
+#[uniffi::export]
+pub fn domain_core_source_fingerprint() -> String {
+    env!("OPENBURNBAR_DOMAIN_CORE_SOURCE_FINGERPRINT").to_owned()
 }
 
 #[uniffi::export]
@@ -471,6 +517,108 @@ pub fn cloud_vault_expected_session_body_hash(
 }
 
 #[uniffi::export]
+pub fn cloud_vault_project_memory_doc_id(
+    mut slug: String,
+    mut key: Vec<u8>,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::project_memory_doc_id(&slug, &key).map_err(Into::into);
+    slug.zeroize();
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_pensieve_dedup_hash(
+    mut plaintext: String,
+    mut key: Vec<u8>,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::pensieve_dedup_hash(&plaintext, &key).map_err(Into::into);
+    plaintext.zeroize();
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_pensieve_slug_hmac(
+    mut slug: String,
+    mut key: Vec<u8>,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::pensieve_slug_hmac(&slug, &key).map_err(Into::into);
+    slug.zeroize();
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn cloud_vault_subscription_doc_id(
+    mut agent_uri: String,
+    mut topic_id: String,
+    mut key: Vec<u8>,
+) -> Result<String, CloudVaultFfiError> {
+    let result = cloudvault::subscription_doc_id(&agent_uri, &topic_id, &key).map_err(Into::into);
+    agent_uri.zeroize();
+    topic_id.zeroize();
+    key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn pensieve_l2_normalize(mut vector: Vec<f64>) -> Result<Vec<f64>, PensieveVectorFfiError> {
+    let result = pensieve_vectors::l2_normalize(&vector).map_err(Into::into);
+    vector.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn pensieve_vector_cloak(
+    mut vector: Vec<f64>,
+    mut vault_key: Vec<u8>,
+    model_version: String,
+) -> Result<Vec<f64>, PensieveVectorFfiError> {
+    let result = pensieve_vectors::cloak(&vector, &vault_key, &model_version).map_err(Into::into);
+    vector.zeroize();
+    vault_key.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn pensieve_deterministic_embed(
+    mut text: String,
+    dimensions: u32,
+    is_query: bool,
+) -> Result<Vec<f64>, PensieveVectorFfiError> {
+    let dimensions =
+        usize::try_from(dimensions).map_err(|_| PensieveVectorFfiError::InvalidVector)?;
+    let result =
+        pensieve_vectors::deterministic_embed(&text, dimensions, is_query).map_err(Into::into);
+    text.zeroize();
+    result
+}
+
+#[uniffi::export]
+pub fn pensieve_deterministic_embed_and_cloak(
+    mut text: String,
+    dimensions: u32,
+    is_query: bool,
+    mut vault_key: Vec<u8>,
+    model_version: String,
+) -> Result<Vec<f64>, PensieveVectorFfiError> {
+    let dimensions =
+        usize::try_from(dimensions).map_err(|_| PensieveVectorFfiError::InvalidVector)?;
+    let result = pensieve_vectors::deterministic_embed_and_cloak(
+        &text,
+        dimensions,
+        is_query,
+        &vault_key,
+        &model_version,
+    )
+    .map_err(Into::into);
+    text.zeroize();
+    vault_key.zeroize();
+    result
+}
+
+#[uniffi::export]
 pub fn hermes_relay_aad(
     kind: HermesAadKind,
     arguments: Vec<String>,
@@ -558,6 +706,34 @@ pub fn hermes_ratchet_envelope_aad(
         epoch,
     )
     .map_err(Into::into)
+}
+
+#[uniffi::export]
+pub fn hermes_ratchet_prekey_shared_secret(
+    mut request: HermesRatchetPrekeyRequest,
+) -> Result<Vec<u8>, HermesFfiError> {
+    let result = hermes::ratchet_prekey_shared_secret(hermes::RatchetPrekeyRequest {
+        dh1: &request.dh1,
+        dh2: &request.dh2,
+        dh3: &request.dh3,
+        uid: &request.uid,
+        client_id: &request.client_id,
+        initiator_role: &request.initiator_role,
+        initiator_identity_public_key_base64: &request.initiator_identity_public_key_base64,
+        responder_identity_public_key_base64: &request.responder_identity_public_key_base64,
+        initiator_signed_prekey_public_key_base64: &request
+            .initiator_signed_prekey_public_key_base64,
+        responder_signed_prekey_public_key_base64: &request
+            .responder_signed_prekey_public_key_base64,
+        initiator_initial_ratchet_public_key_base64: &request
+            .initiator_initial_ratchet_public_key_base64,
+    })
+    .map(|secret| secret.to_vec())
+    .map_err(Into::into);
+    request.dh1.zeroize();
+    request.dh2.zeroize();
+    request.dh3.zeroize();
+    result
 }
 
 #[uniffi::export]
@@ -930,6 +1106,9 @@ impl From<hermes::HermesError> for HermesFfiError {
             hermes::HermesError::InvalidAadComponent => Self::InvalidAadComponent,
             hermes::HermesError::InputTooLarge => Self::InputTooLarge,
             hermes::HermesError::InvalidP256PublicKey => Self::InvalidP256PublicKey,
+            hermes::HermesError::InvalidRatchetSharedSecretLength => {
+                Self::InvalidRatchetSharedSecretLength
+            }
         }
     }
 }
@@ -959,6 +1138,18 @@ impl From<pricing::PricingError> for PricingFfiError {
     fn from(value: pricing::PricingError) -> Self {
         match value {
             pricing::PricingError::ArithmeticOverflow => Self::ArithmeticOverflow,
+        }
+    }
+}
+
+impl From<pensieve_vectors::PensieveVectorError> for PensieveVectorFfiError {
+    fn from(value: pensieve_vectors::PensieveVectorError) -> Self {
+        match value {
+            pensieve_vectors::PensieveVectorError::InvalidKeyLength => Self::InvalidKeyLength,
+            pensieve_vectors::PensieveVectorError::InvalidVector => Self::InvalidVector,
+            pensieve_vectors::PensieveVectorError::InvalidModelVersion => Self::InvalidModelVersion,
+            pensieve_vectors::PensieveVectorError::TextTooLarge => Self::TextTooLarge,
+            pensieve_vectors::PensieveVectorError::DerivationFailure => Self::DerivationFailure,
         }
     }
 }
@@ -1499,8 +1690,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ffi_surface_reports_reviewed_source_fingerprint() -> Result<(), serde_json::Error> {
+        let manifest: serde_json::Value =
+            serde_json::from_str(include_str!("../../union-abi-manifest.json"))?;
+
+        let loaded = domain_core_source_fingerprint();
+        assert_eq!(loaded.len(), 64);
+        assert_eq!(
+            Some(loaded.as_str()),
+            manifest
+                .get("sourceSha256")
+                .and_then(serde_json::Value::as_str)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ffi_surface_uses_shared_domain_core_abi_authority() {
+        assert_eq!(
+            domain_core_abi_version(),
+            openburnbar_domain_core::DOMAIN_CORE_ABI_VERSION
+        );
+    }
+
+    #[test]
+    fn ffi_pensieve_l2_normalize_preserves_the_public_contract(
+    ) -> Result<(), PensieveVectorFfiError> {
+        assert_eq!(pensieve_l2_normalize(vec![3.0, 4.0])?, vec![0.6, 0.8]);
+        assert_eq!(pensieve_l2_normalize(Vec::new())?, Vec::<f64>::new());
+        Ok(())
+    }
+
+    #[test]
     fn ffi_surface_reports_version_and_parses_without_throwing() -> Result<(), CloudVaultFfiError> {
-        assert_eq!(domain_core_abi_version(), 3);
         assert_eq!(domain_core_version(), "0.1.0");
         let result =
             parse_claude_statusline_quota(br#"{"five_hour":{"used_percentage":42}}"#.to_vec());
@@ -1660,6 +1882,67 @@ mod tests {
         assert!(matches!(
             hermes_open_combined(tampered_hermes, key, aad),
             Err(HermesFfiError::AuthenticationFailed)
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn opaque_identifier_ffi_matches_wire_vectors() -> Result<(), Box<dyn std::error::Error>> {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../tests/fixtures/domain-core/cloudvault/v1/opaque-identifiers-kat.json"
+        ))?;
+        let key = decode_hex(
+            fixture["vaultKeyHex"]
+                .as_str()
+                .ok_or_else(|| std::io::Error::other("fixture key must be a string"))?,
+        );
+        assert_eq!(
+            cloud_vault_project_memory_doc_id(
+                fixture["projectMemory"]["slug"]
+                    .as_str()
+                    .ok_or_else(|| std::io::Error::other("fixture slug must be a string"))?
+                    .to_owned(),
+                key.clone(),
+            )?,
+            fixture["projectMemory"]["documentID"]
+        );
+        assert_eq!(
+            cloud_vault_pensieve_dedup_hash(
+                fixture["pensieve"]["plaintext"]
+                    .as_str()
+                    .ok_or_else(|| std::io::Error::other("fixture plaintext must be a string"))?
+                    .to_owned(),
+                key.clone(),
+            )?,
+            fixture["pensieve"]["dedupHash"]
+        );
+        assert_eq!(
+            cloud_vault_pensieve_slug_hmac(
+                fixture["pensieve"]["slug"]
+                    .as_str()
+                    .ok_or_else(|| std::io::Error::other("fixture slug must be a string"))?
+                    .to_owned(),
+                key.clone(),
+            )?,
+            fixture["pensieve"]["slugHmac"]
+        );
+        assert_eq!(
+            cloud_vault_subscription_doc_id(
+                fixture["subscription"]["agentURI"]
+                    .as_str()
+                    .ok_or_else(|| std::io::Error::other("fixture agentURI must be a string"))?
+                    .to_owned(),
+                fixture["subscription"]["topicID"]
+                    .as_str()
+                    .ok_or_else(|| std::io::Error::other("fixture topicID must be a string"))?
+                    .to_owned(),
+                key,
+            )?,
+            fixture["subscription"]["documentID"]
+        );
+        assert!(matches!(
+            cloud_vault_project_memory_doc_id("slug".to_owned(), vec![0; 31]),
+            Err(CloudVaultFfiError::InvalidKeyLength)
         ));
         Ok(())
     }

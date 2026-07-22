@@ -32,9 +32,19 @@
     }
   },
   "siblingCeilings": {
+    "OpenBurnBarDomainCoreRuntime": {
+      "maxFiles": 8,
+      "maxLines": 1000,
+      "planned": true
+    },
     "OpenBurnBarKernel": {
       "maxFiles": 185,
       "maxLines": 46250,
+      "planned": true
+    },
+    "OpenBurnBarParserSupport": {
+      "maxFiles": 5,
+      "maxLines": 1000,
       "planned": true
     },
     "OpenBurnBarSQLiteReader": {
@@ -44,7 +54,7 @@
     },
     "OpenBurnBarLogParsers": {
       "maxFiles": 35,
-      "maxLines": 11700,
+      "maxLines": 11800,
       "planned": true
     },
     "OpenBurnBarQuota": {

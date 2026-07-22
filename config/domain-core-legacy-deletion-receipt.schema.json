@@ -1,0 +1,539 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.com/schemas/domain-core-legacy-deletion-receipt-v2.json",
+  "title": "OpenBurnBar shared Rust authority transition receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "rowId",
+    "authorityGeneration",
+    "transition",
+    "status",
+    "evidence",
+    "approvedBy",
+    "approvedAt",
+    "commit"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "rowId": { "$ref": "#/$defs/rowId" },
+    "authorityGeneration": { "type": "integer", "minimum": 1 },
+    "transition": {
+      "enum": ["promotion", "stable_release", "rollback", "deletion_review"]
+    },
+    "status": { "const": "active" },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/httpsUri" }
+    },
+    "approvedBy": {
+      "type": "string",
+      "pattern": "^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+    },
+    "approvedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "commit": { "$ref": "#/$defs/commit" },
+    "promotionAttestation": { "$ref": "#/$defs/promotionAttestation" },
+    "release": { "$ref": "#/$defs/release" },
+    "rollback": { "$ref": "#/$defs/rollback" },
+    "deletionReview": { "$ref": "#/$defs/deletionReview" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "transition": { "const": "promotion" } },
+        "required": ["transition"]
+      },
+      "then": {
+        "required": ["promotionAttestation"],
+        "not": {
+          "anyOf": [
+            { "required": ["release"] },
+            { "required": ["rollback"] },
+            { "required": ["deletionReview"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "transition": { "const": "stable_release" } },
+        "required": ["transition"]
+      },
+      "then": {
+        "required": ["release"],
+        "not": {
+          "anyOf": [
+            { "required": ["promotionAttestation"] },
+            { "required": ["rollback"] },
+            { "required": ["deletionReview"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "transition": { "const": "rollback" } },
+        "required": ["transition"]
+      },
+      "then": {
+        "required": ["rollback"],
+        "not": {
+          "anyOf": [
+            { "required": ["promotionAttestation"] },
+            { "required": ["release"] },
+            { "required": ["deletionReview"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "transition": { "const": "deletion_review" } },
+        "required": ["transition"]
+      },
+      "then": {
+        "required": ["deletionReview"],
+        "not": {
+          "anyOf": [
+            { "required": ["promotionAttestation"] },
+            { "required": ["release"] },
+            { "required": ["rollback"] }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "rowId": {
+      "enum": [
+        "quota.claude_statusline",
+        "quota.codex_usage",
+        "quota.cursor_usage",
+        "quota.anthropic_headers",
+        "cloudvault.portable_primitives",
+        "cloudvault.document_rewrap",
+        "cloudvault.search",
+        "hermes.relay_crypto",
+        "hermes.ratchet_transforms",
+        "pricing.token_cost",
+        "pricing.kimi_historical"
+      ]
+    },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$"
+    },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "httpsUri": {
+      "type": "string",
+      "pattern": "^https://(?![^/?#]*@)[^/?#]+(?:/[^?#]*)?$"
+    },
+    "promotionAttestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "supersedes"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^config/domain-core-promotion-attestations/(?:quota|cloudvault|cloudvault-rewrap|cloudvault-search|hermes|pricing)/[1-9][0-9]*\\.json$"
+        },
+        "sha256": { "$ref": "#/$defs/digest" },
+        "supersedes": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["transition", "path", "sha256"],
+              "properties": {
+                "transition": { "enum": ["rollback", "stable_release"] },
+                "path": {
+                  "type": "string",
+                  "pattern": "^config/domain-core-legacy-deletion-receipts/[a-z][a-z0-9_.]*/[1-9][0-9]*/(?:rollback|stable_release)\\.json$"
+                },
+                "sha256": { "$ref": "#/$defs/digest" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promotionReceiptSha256",
+        "publicProfileSha256",
+        "candidate",
+        "activation",
+        "consumerReleases",
+        "rollbackArtifact"
+      ],
+      "properties": {
+        "promotionReceiptSha256": { "$ref": "#/$defs/digest" },
+        "publicProfileSha256": { "$ref": "#/$defs/digest" },
+        "candidate": { "$ref": "#/$defs/candidate" },
+        "activation": { "$ref": "#/$defs/activation" },
+        "consumerReleases": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/consumerRelease" }
+        },
+        "rollbackArtifact": { "$ref": "#/$defs/rollbackArtifact" }
+      }
+    },
+    "consumerRelease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "consumer",
+        "artifactKind",
+        "target",
+        "version",
+        "tag",
+        "commit",
+        "publishedAt",
+        "artifactUri",
+        "artifactSha256",
+        "publicProfileSha256",
+        "candidate",
+        "activation",
+        "provenancePath",
+        "provenanceSha256"
+      ],
+      "properties": {
+        "consumer": {
+          "enum": [
+            "apple",
+            "ios",
+            "linux",
+            "android",
+            "windows",
+            "console",
+            "functions"
+          ]
+        },
+        "artifactKind": {
+          "enum": [
+            "macos-dmg",
+            "ios-app-store-archive",
+            "linux-release-bundle",
+            "android-aab",
+            "windows-release-bundle",
+            "console-deployment-receipt",
+            "functions-deployment-receipt"
+          ]
+        },
+        "target": {
+          "enum": [
+            "macos-arm64",
+            "ios-universal",
+            "linux-x64-arm64",
+            "android-universal",
+            "windows-x64-arm64",
+            "firebase-hosting-production",
+            "firebase-functions-production"
+          ]
+        },
+        "version": { "$ref": "#/$defs/version" },
+        "tag": {
+          "type": "string",
+          "pattern": "^(?:(?:windows|linux)-)?v\\d+\\.\\d+\\.\\d+(?:\\+[0-9A-Za-z.-]+)?$"
+        },
+        "commit": { "$ref": "#/$defs/commit" },
+        "publishedAt": { "$ref": "#/$defs/timestamp" },
+        "artifactUri": { "$ref": "#/$defs/httpsUri" },
+        "artifactSha256": { "$ref": "#/$defs/digest" },
+        "publicProfileSha256": { "$ref": "#/$defs/digest" },
+        "candidate": { "$ref": "#/$defs/candidate" },
+        "activation": { "$ref": "#/$defs/activation" },
+        "provenancePath": {
+          "type": "string",
+          "pattern": "^config/domain-core-release-provenance/[a-z][a-z0-9_.]*/[1-9][0-9]*/(?:apple|ios|linux|android|windows|console|functions)\\.json$"
+        },
+        "provenanceSha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateCommit",
+        "coreVersion",
+        "abiVersion",
+        "sourceSha256"
+      ],
+      "properties": {
+        "candidateCommit": { "$ref": "#/$defs/commit" },
+        "coreVersion": { "$ref": "#/$defs/version" },
+        "abiVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "sourceSha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateCommit",
+        "activationCommit",
+        "coreVersion",
+        "abiVersion",
+        "sourceSha256",
+        "changedPathsSha256"
+      ],
+      "properties": {
+        "candidateCommit": { "$ref": "#/$defs/commit" },
+        "activationCommit": { "$ref": "#/$defs/commit" },
+        "coreVersion": { "$ref": "#/$defs/version" },
+        "abiVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "sourceSha256": { "$ref": "#/$defs/digest" },
+        "changedPathsSha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "rollbackArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactKind",
+        "target",
+        "version",
+        "tag",
+        "commit",
+        "publishedAt",
+        "artifactUri",
+        "artifactSha256",
+        "candidate",
+        "activation",
+        "retentionPolicy",
+        "provenancePath",
+        "provenanceSha256"
+      ],
+      "properties": {
+        "artifactKind": { "const": "legacy-rollback-bundle" },
+        "target": { "const": "all-supported-consumers" },
+        "version": { "$ref": "#/$defs/version" },
+        "tag": {
+          "type": "string",
+          "pattern": "^v\\d+\\.\\d+\\.\\d+(?:\\+[0-9A-Za-z.-]+)?$"
+        },
+        "commit": { "$ref": "#/$defs/commit" },
+        "publishedAt": { "$ref": "#/$defs/timestamp" },
+        "artifactUri": { "$ref": "#/$defs/httpsUri" },
+        "artifactSha256": { "$ref": "#/$defs/digest" },
+        "candidate": { "$ref": "#/$defs/candidate" },
+        "activation": { "$ref": "#/$defs/activation" },
+        "retentionPolicy": { "const": "retain_until_legacy_deletion_complete" },
+        "provenancePath": {
+          "type": "string",
+          "pattern": "^config/domain-core-release-provenance/[a-z][a-z0-9_.]*/[1-9][0-9]*/rollback\\.json$"
+        },
+        "provenanceSha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "rollbackCompletionRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "workflowPath",
+        "runId",
+        "runAttempt",
+        "event",
+        "ref",
+        "headSha"
+      ],
+      "properties": {
+        "repository": { "const": "Imagine-That-Ai/BurnBar" },
+        "workflowPath": {
+          "enum": [
+            ".github/workflows/domain-core.yml",
+            ".github/workflows/release.yml",
+            ".github/workflows/domain-core-ios-release-evidence.yml",
+            ".github/workflows/linux-release.yml",
+            ".github/workflows/openburnbar-release-windows.yml",
+            ".github/workflows/deploy-hosting.yml",
+            ".github/workflows/deploy-production.yml"
+          ]
+        },
+        "runId": { "type": "integer", "minimum": 1 },
+        "runAttempt": { "type": "integer", "minimum": 1 },
+        "event": { "enum": ["push", "workflow_dispatch", "workflow_call"] },
+        "ref": { "type": "string", "pattern": "^refs/(?:heads/main|tags/(?:v|linux-v|windows-v).+)$" },
+        "headSha": { "$ref": "#/$defs/commit" },
+        "jobSetSha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "rollbackCompletion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "consumer",
+        "domain",
+        "artifactPath",
+        "artifactSha256",
+        "provenancePath",
+        "provenanceSha256",
+        "rollbackProfileSha256",
+        "release",
+        "signer",
+        "actionRun",
+        "deployedArtifactSha256",
+        "healthArtifactSha256",
+        "completedAt"
+      ],
+      "properties": {
+        "consumer": { "enum": ["apple", "ios", "linux", "android", "windows", "console", "functions"] },
+        "domain": { "enum": ["quota", "cloudVault", "cloudVaultRewrap", "cloudVaultSearch", "hermes", "pricing"] },
+        "artifactPath": {
+          "type": "string",
+          "pattern": "^config/domain-core-rollback-completions/[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+/[1-9][0-9]*/(?:apple|ios|linux|android|windows|console|functions)\\.json$"
+        },
+        "artifactSha256": { "$ref": "#/$defs/digest" },
+        "provenancePath": {
+          "type": "string",
+          "pattern": "^config/domain-core-rollback-completions/[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+/[1-9][0-9]*/(?:apple|ios|linux|android|windows|console|functions)\\.sigstore\\.json$"
+        },
+        "provenanceSha256": { "$ref": "#/$defs/digest" },
+        "rollbackProfileSha256": { "$ref": "#/$defs/digest" },
+        "release": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "tag", "commit"],
+          "properties": {
+            "version": { "$ref": "#/$defs/version" },
+            "tag": { "type": "string", "pattern": "^(?:v|linux-v|windows-v)\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$" },
+            "commit": { "$ref": "#/$defs/commit" }
+          }
+        },
+        "signer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["workflowPath", "runId", "runAttempt", "runInvocationUri"],
+          "properties": {
+            "workflowPath": { "type": "string", "pattern": "^\\.github/workflows/[A-Za-z0-9._-]+\\.yml$" },
+            "runId": { "type": "integer", "minimum": 1 },
+            "runAttempt": { "type": "integer", "minimum": 1 },
+            "runInvocationUri": { "$ref": "#/$defs/httpsUri" }
+          }
+        },
+        "actionRun": { "$ref": "#/$defs/rollbackCompletionRun" },
+        "deployedArtifactSha256": { "$ref": "#/$defs/digest" },
+        "healthArtifactSha256": { "oneOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }] },
+        "completedAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stableReceiptSha256",
+        "issueUri",
+        "activatedAt",
+        "candidate",
+        "activation",
+        "authority",
+        "retainedRollbackArtifact",
+        "approverAuthority",
+        "completionEvidence"
+      ],
+      "properties": {
+        "stableReceiptSha256": { "$ref": "#/$defs/digest" },
+        "issueUri": { "type": "string", "pattern": "^https://github\\.com/Imagine-That-Ai/BurnBar/issues/[1-9][0-9]*$" },
+        "activatedAt": { "$ref": "#/$defs/timestamp" },
+        "candidate": { "$ref": "#/$defs/candidate" },
+        "activation": { "$ref": "#/$defs/activation" },
+        "authority": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["candidateBundleSha256", "sourceRun", "promotionSigner"],
+          "properties": {
+            "candidateBundleSha256": { "$ref": "#/$defs/digest" },
+            "sourceRun": { "$ref": "#/$defs/rollbackCompletionRun" },
+            "promotionSigner": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["workflowPath", "runId", "runAttempt", "trustedMainCommit", "provenanceSha256"],
+              "properties": {
+                "workflowPath": { "const": ".github/workflows/domain-core-promotion-proof.yml" },
+                "runId": { "type": "integer", "minimum": 1 },
+                "runAttempt": { "type": "integer", "minimum": 1 },
+                "trustedMainCommit": { "$ref": "#/$defs/commit" },
+                "provenanceSha256": { "$ref": "#/$defs/digest" }
+              }
+            }
+          }
+        },
+        "retainedRollbackArtifact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["artifactUri", "artifactSha256", "provenanceSha256", "retentionPolicy"],
+          "properties": {
+            "artifactUri": { "$ref": "#/$defs/httpsUri" },
+            "artifactSha256": { "$ref": "#/$defs/digest" },
+            "provenanceSha256": { "$ref": "#/$defs/digest" },
+            "retentionPolicy": { "const": "retain_until_legacy_deletion_complete" }
+          }
+        },
+        "approverAuthority": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reviewClass", "catalogSha256", "trustedMainCommit"],
+          "properties": {
+            "reviewClass": { "enum": ["domain_owner", "security_crypto"] },
+            "catalogSha256": { "$ref": "#/$defs/digest" },
+            "trustedMainCommit": { "$ref": "#/$defs/commit" }
+          }
+        },
+        "completionEvidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/rollbackCompletion" }
+        }
+      }
+    },
+    "deletionReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stableReceiptSha256",
+        "reviewUri",
+        "reviewedCommit",
+        "reviewer",
+        "reviewClass",
+        "outcome",
+        "planPath",
+        "planSha256"
+      ],
+      "properties": {
+        "stableReceiptSha256": { "$ref": "#/$defs/digest" },
+        "reviewUri": { "$ref": "#/$defs/httpsUri" },
+        "reviewedCommit": { "$ref": "#/$defs/commit" },
+        "reviewer": {
+          "type": "string",
+          "pattern": "^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+        },
+        "reviewClass": { "enum": ["domain_owner", "security_crypto"] },
+        "outcome": { "const": "approved" },
+        "planPath": {
+          "type": "string",
+          "pattern": "^config/domain-core-deletion-plans/[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+/[1-9][0-9]*\\.json$"
+        },
+        "planSha256": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

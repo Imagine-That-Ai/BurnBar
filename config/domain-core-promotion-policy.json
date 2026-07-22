@@ -1,12 +1,194 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 3,
+  "authority": "unsigned-candidate-evaluation",
+  "promotionAuthority": false,
+  "protectedAttestationRequired": true,
+  "workflow": {
+    "repository": "Imagine-That-Ai/BurnBar",
+    "workflowPath": ".github/workflows/domain-core.yml",
+    "workflowName": "Shared Rust domain core",
+    "allowedEvents": ["push"],
+    "requiredRef": "refs/heads/main",
+    "requiredJobIds": [
+      "promotion-contracts",
+      "rust-and-csharp",
+      "windows-native",
+      "linux-arm64-native",
+      "wasm",
+      "functions-pricing",
+      "android",
+      "apple",
+      "apple-native-smoke",
+      "swift-consumer-contracts",
+      "console-consumer-contracts",
+      "python-mcp-cloudvault-contracts",
+      "python-hermes-contracts",
+      "rollback-drill"
+    ]
+  },
+  "requiredSuites": [
+    { "id": "promotion-contracts", "jobId": "promotion-contracts" },
+    { "id": "rust-workspace", "jobId": "rust-and-csharp" },
+    { "id": "rust-fuzz-smoke", "jobId": "rust-and-csharp" },
+    { "id": "rust-performance-smoke", "jobId": "rust-and-csharp" },
+    { "id": "csharp-quota-native", "jobId": "rust-and-csharp" },
+    { "id": "csharp-cloudvault-native", "jobId": "rust-and-csharp" },
+    { "id": "windows-native-x64", "jobId": "windows-native" },
+    { "id": "windows-native-arm64", "jobId": "windows-native" },
+    { "id": "linux-arm64-native", "jobId": "linux-arm64-native" },
+    { "id": "wasm-browser-kat", "jobId": "wasm" },
+    { "id": "wasm-node-kat", "jobId": "wasm" },
+    { "id": "remote-mcp-cloudvault-contracts", "jobId": "wasm" },
+    { "id": "functions-pricing-contracts", "jobId": "functions-pricing" },
+    { "id": "android-native-load", "jobId": "android" },
+    { "id": "android-consumer-contracts", "jobId": "android" },
+    { "id": "swift-artifact-provenance", "jobId": "apple" },
+    { "id": "swift-native-load", "jobId": "apple-native-smoke" },
+    { "id": "swift-consumer-contracts", "jobId": "swift-consumer-contracts" },
+    { "id": "console-consumer-contracts", "jobId": "console-consumer-contracts" },
+    { "id": "python-mcp-cloudvault-contracts", "jobId": "python-mcp-cloudvault-contracts" },
+    { "id": "python-hermes-contracts", "jobId": "python-hermes-contracts" },
+    { "id": "rollback-drill", "jobId": "rollback-drill" }
+  ],
+  "requiredArtifacts": [
+    {
+      "id": "swift-xcframework",
+      "consumer": "swift",
+      "jobId": "apple-native-smoke",
+      "requiredLoadSuiteIds": ["swift-native-load"]
+    },
+    {
+      "id": "kotlin-aar",
+      "consumer": "kotlin",
+      "jobId": "android",
+      "requiredLoadSuiteIds": ["android-native-load"]
+    },
+    {
+      "id": "csharp-native",
+      "consumer": "csharp",
+      "jobId": "rust-and-csharp",
+      "requiredLoadSuiteIds": ["csharp-quota-native", "csharp-cloudvault-native"]
+    },
+    {
+      "id": "browser-wasm",
+      "consumer": "browser-wasm",
+      "jobId": "wasm",
+      "requiredLoadSuiteIds": ["wasm-browser-kat", "console-consumer-contracts"]
+    },
+    {
+      "id": "node-wasm",
+      "consumer": "node-wasm",
+      "jobId": "wasm",
+      "requiredLoadSuiteIds": ["wasm-node-kat", "functions-pricing-contracts", "remote-mcp-cloudvault-contracts"]
+    },
+    {
+      "id": "windows-native-x64-binary",
+      "consumer": "csharp",
+      "jobId": "windows-native",
+      "requiredLoadSuiteIds": ["windows-native-x64"]
+    },
+    {
+      "id": "windows-native-arm64-binary",
+      "consumer": "csharp",
+      "jobId": "windows-native",
+      "requiredLoadSuiteIds": ["windows-native-arm64"]
+    },
+    {
+      "id": "linux-arm64-native-binary",
+      "consumer": "csharp",
+      "jobId": "linux-arm64-native",
+      "requiredLoadSuiteIds": ["linux-arm64-native"]
+    },
+    {
+      "id": "python-mcp-native",
+      "consumer": "python",
+      "jobId": "python-mcp-cloudvault-contracts",
+      "requiredLoadSuiteIds": ["python-mcp-cloudvault-contracts"]
+    },
+    {
+      "id": "python-hermes-native",
+      "consumer": "python",
+      "jobId": "python-hermes-contracts",
+      "requiredLoadSuiteIds": ["python-hermes-contracts"]
+    }
+  ],
+  "requiredBenchmarks": [
+    { "id": "complete-payload-ffi", "jobId": "rust-and-csharp" }
+  ],
+  "maximumPairedRegressionBasisPoints": 500,
+  "rollbackRequired": true,
+  "rollback": { "jobId": "rollback-drill", "suiteId": "rollback-drill" },
+  "oneStableReleaseBeforeDeletion": true,
+  "stableReleaseRollbackArtifactRequired": true,
   "domains": {
     "quota": {
-      "requiredConsumers": ["apple", "windows"],
-      "allowedChannels": ["internal", "beta"],
-      "minimumCoverageSeconds": 1209600,
-      "minimumSamples": 10000,
-      "maximumP95RegressionBasisPoints": 500
+      "requiredCoverage": [
+        { "slice": "claude", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "claude", "consumer": "windows", "suiteId": "csharp-quota-native" },
+        { "slice": "codex", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "codex", "consumer": "windows", "suiteId": "csharp-quota-native" },
+        { "slice": "cursor", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "cursor", "consumer": "windows", "suiteId": "csharp-quota-native" },
+        { "slice": "anthropic", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "anthropic", "consumer": "windows", "suiteId": "csharp-quota-native" }
+      ]
+    },
+    "cloudvault": {
+      "requiredCoverage": [
+        { "slice": "foundation", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "foundation", "consumer": "android", "suiteId": "android-consumer-contracts" },
+        { "slice": "foundation", "consumer": "windows", "suiteId": "csharp-cloudvault-native" },
+        { "slice": "foundation", "consumer": "console", "suiteId": "console-consumer-contracts" },
+        { "slice": "foundation", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" },
+        { "slice": "foundation", "consumer": "local-mcp", "suiteId": "python-mcp-cloudvault-contracts" },
+        { "slice": "aes", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "aes", "consumer": "android", "suiteId": "android-consumer-contracts" },
+        { "slice": "aes", "consumer": "windows", "suiteId": "csharp-cloudvault-native" },
+        { "slice": "aes", "consumer": "console", "suiteId": "console-consumer-contracts" },
+        { "slice": "aes", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" },
+        { "slice": "aes", "consumer": "local-mcp", "suiteId": "python-mcp-cloudvault-contracts" },
+        { "slice": "recovery", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "recovery", "consumer": "android", "suiteId": "android-consumer-contracts" },
+        { "slice": "recovery", "consumer": "windows", "suiteId": "csharp-cloudvault-native" },
+        { "slice": "escrow", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "escrow", "consumer": "android", "suiteId": "android-consumer-contracts" },
+        { "slice": "escrow", "consumer": "windows", "suiteId": "csharp-cloudvault-native" },
+        { "slice": "escrow", "consumer": "console", "suiteId": "console-consumer-contracts" },
+        { "slice": "document-rewrap", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "document-rewrap", "consumer": "android", "suiteId": "android-consumer-contracts" },
+        { "slice": "search", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "search", "consumer": "android", "suiteId": "android-consumer-contracts" },
+        { "slice": "opaque-identifiers", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "opaque-identifiers", "consumer": "android", "suiteId": "android-consumer-contracts" },
+        { "slice": "search", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" },
+        { "slice": "opaque-identifiers", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" },
+        { "slice": "search", "consumer": "local-mcp", "suiteId": "python-mcp-cloudvault-contracts" },
+        { "slice": "opaque-identifiers", "consumer": "local-mcp", "suiteId": "python-mcp-cloudvault-contracts" },
+        { "slice": "pensieve-vectors", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "pensieve-vectors", "consumer": "windows", "suiteId": "csharp-cloudvault-native" },
+        { "slice": "pensieve-vectors", "consumer": "console", "suiteId": "console-consumer-contracts" },
+        { "slice": "pensieve-vectors", "consumer": "remote-mcp", "suiteId": "remote-mcp-cloudvault-contracts" }
+      ]
+    },
+    "hermes": {
+      "requiredCoverage": [
+        { "slice": "aad", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "aad", "consumer": "android", "suiteId": "android-consumer-contracts" },
+        { "slice": "payload-keywrap", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "payload-keywrap", "consumer": "android", "suiteId": "android-consumer-contracts" },
+        { "slice": "hpke-info", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "hpke-info", "consumer": "android", "suiteId": "android-consumer-contracts" },
+        { "slice": "ratchet", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "ratchet", "consumer": "android", "suiteId": "android-consumer-contracts" },
+        { "slice": "ratchet", "consumer": "hermes-python", "suiteId": "python-hermes-contracts" }
+      ]
+    },
+    "pricing": {
+      "requiredCoverage": [
+        { "slice": "token-cost", "consumer": "apple", "suiteId": "swift-consumer-contracts" },
+        { "slice": "token-cost", "consumer": "functions", "suiteId": "functions-pricing-contracts" },
+        { "slice": "legacy-kimi", "consumer": "functions", "suiteId": "functions-pricing-contracts" }
+      ]
     }
   }
 }

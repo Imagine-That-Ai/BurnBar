@@ -53,13 +53,17 @@ public sealed class ModelParityTests
     public void All_fourteen_model_domains_are_represented_by_vectors()
     {
         // Sanity: the vector corpus covers every one of the 14 Firestore model
-        // FILES (35 struct types) so no domain silently loses coverage.
+        // FILES (36 struct types) so no domain silently loses coverage.
+        // The 36th type, FirestoreCapabilityToken, is a non-Firestore model
+        // (it lives in OpenBurnBarComputerUseCore, not OpenBurnBarFirestoreModels)
+        // but is mirrored in the CloudSync C# models for PDP capability-token
+        // wire parity, so its byte-for-byte round-trip is exercised here.
         var covered = Fixtures.ModelVectorFiles()
             .Select(f => StripMinSuffix(Path.GetFileNameWithoutExtension(f)))
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(35, covered.Count);
+        Assert.Equal(36, covered.Count);
         foreach (string typeName in covered)
         {
             Assert.NotNull(ModelsAssembly.GetType($"OpenBurnBar.CloudSync.Models.{typeName}"));

@@ -6,18 +6,28 @@ namespace OpenBurnBar.App.Shell;
 
 internal sealed class RouteSmokeOptions
 {
-    private RouteSmokeOptions(string routeKey, string outputDirectory, int timeoutMilliseconds, int holdMilliseconds)
+    private RouteSmokeOptions(
+        string routeKey,
+        string outputDirectory,
+        int timeoutMilliseconds,
+        int holdMilliseconds,
+        int? windowWidth,
+        int? windowHeight)
     {
         RouteKey = routeKey;
         OutputDirectory = outputDirectory;
         TimeoutMilliseconds = timeoutMilliseconds;
         HoldMilliseconds = holdMilliseconds;
+        WindowWidth = windowWidth;
+        WindowHeight = windowHeight;
     }
 
     public string RouteKey { get; }
     public string OutputDirectory { get; }
     public int TimeoutMilliseconds { get; }
     public int HoldMilliseconds { get; }
+    public int? WindowWidth { get; }
+    public int? WindowHeight { get; }
 
     public static RouteSmokeOptions? Parse(string? arguments)
     {
@@ -31,6 +41,8 @@ internal sealed class RouteSmokeOptions
         string? output = null;
         int timeout = 8000;
         int hold = 0;
+        int? windowWidth = null;
+        int? windowHeight = null;
         for (var i = 0; i < parts.Count; i++)
         {
             string token = parts[i];
@@ -56,6 +68,20 @@ internal sealed class RouteSmokeOptions
             {
                 hold = Math.Min(parsedHold, 60_000);
             }
+            else if (string.Equals(token, "--route-smoke-window-width", StringComparison.OrdinalIgnoreCase)
+                && i + 1 < parts.Count
+                && int.TryParse(parts[++i], out int parsedWidth)
+                && parsedWidth > 0)
+            {
+                windowWidth = Math.Clamp(parsedWidth, 480, 3840);
+            }
+            else if (string.Equals(token, "--route-smoke-window-height", StringComparison.OrdinalIgnoreCase)
+                && i + 1 < parts.Count
+                && int.TryParse(parts[++i], out int parsedHeight)
+                && parsedHeight > 0)
+            {
+                windowHeight = Math.Clamp(parsedHeight, 480, 2160);
+            }
         }
 
         if (string.IsNullOrWhiteSpace(route))
@@ -66,7 +92,7 @@ internal sealed class RouteSmokeOptions
         output = string.IsNullOrWhiteSpace(output)
             ? Path.Combine(Path.GetTempPath(), "openburnbar-route-smoke")
             : output;
-        return new RouteSmokeOptions(route.Trim(), output, timeout, hold);
+        return new RouteSmokeOptions(route.Trim(), output, timeout, hold, windowWidth, windowHeight);
     }
 
 }

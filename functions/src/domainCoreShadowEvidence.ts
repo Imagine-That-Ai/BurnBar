@@ -1,63 +1,89 @@
+import { randomUUID } from "node:crypto";
 import { HttpsError } from "firebase-functions/v2/https";
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 
+import {
+  DOMAIN_CORE_SHADOW_OPERATION_SLICES,
+  domainCoreShadowOperationConsumers,
+} from "./domainCoreShadowContracts.js";
 import { isRecord } from "./guards.js";
 
-const DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION = 1;
+export {
+  DOMAIN_CORE_SHADOW_OPERATION_SLICES,
+  domainCoreShadowOperationConsumers,
+} from "./domainCoreShadowContracts.js";
+
+const DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION = 3;
+const DOMAIN_CORE_SHADOW_SAMPLE_DRAIN_SCHEMA_VERSION = 2;
+const DOMAIN_CORE_SHADOW_SAMPLE_LEGACY_SCHEMA_VERSION = 1;
 const DOMAIN_CORE_SHADOW_MAX_BATCH = 100;
 export const DOMAIN_CORE_SHADOW_RETENTION_MS = 60 * 24 * 60 * 60 * 1000;
 const DOMAIN_CORE_SHADOW_MAX_AGE_MS = 31 * 24 * 60 * 60 * 1000;
 const DOMAIN_CORE_SHADOW_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const DOMAIN_CORE_SHADOW_COLLECTION = "domain_core_shadow_samples";
+const DOMAIN_CORE_SHADOW_CLAIM_CONSUMERS = new Set([
+  "apple",
+  "windows",
+  "android",
+  "console",
+  "functions",
+  "local-mcp",
+  "remote-mcp",
+]);
 
-const SAMPLE_KEYS = [
-  "channel",
-  "consumer",
-  "coreVersion",
-  "domain",
-  "legacyMicros",
-  "mismatchCategory",
-  "observedAt",
-  "operation",
-  "outcome",
-  "rustMicros",
-  "sampleId",
-  "schemaVersion",
-] as const;
+const SAMPLE_V1_KEYS =
+  "channel consumer coreVersion domain legacyMicros mismatchCategory observedAt operation outcome rustMicros sampleId schemaVersion".split(
+    " ",
+  );
+const SAMPLE_V2_KEYS = [...SAMPLE_V1_KEYS, "slice"] as const;
+const SAMPLE_V3_KEYS =
+  "candidateCommit channel consumer domain expectedCoreAbiVersion expectedCoreSourceSha256 expectedCoreVersion legacyMicros loadedCoreAbiVersion loadedCoreSourceSha256 loadedCoreVersion mismatchCategory observedAt operation outcome rustMicros sampleId schemaVersion slice".split(
+    " ",
+  );
 const REQUEST_KEYS = ["samples"] as const;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const CORE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u;
+const CANONICAL_CORE_VERSION =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/u;
+const GIT_COMMIT = /^[0-9a-f]{40}$/u;
+const SHA256 = /^[0-9a-f]{64}$/u;
 const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 
 type DomainCoreShadowConsumer = "apple" | "windows";
+type DomainCoreShadowConsumerV2 =
+  | "apple"
+  | "android"
+  | "windows"
+  | "console"
+  | "functions"
+  | "local-mcp"
+  | "remote-mcp";
 type DomainCoreShadowChannel = "internal" | "beta";
 type DomainCoreShadowOperation = "claude_quota" | "codex_quota" | "cursor_quota" | "anthropic_quota";
 type DomainCoreShadowOutcome = "match" | "mismatch";
 type DomainCoreShadowMismatchCategory = "result_mismatch" | "native_unavailable" | "native_error" | "invalid_result";
+type DomainCoreShadowMismatchCategoryV3 = DomainCoreShadowMismatchCategory | "loaded_identity_mismatch";
 
-interface DomainCoreShadowSampleV1 {
-  schemaVersion: 1;
+interface DomainCoreShadowSampleCommon {
   sampleId: string;
-  domain: "quota";
-  consumer: DomainCoreShadowConsumer;
   channel: DomainCoreShadowChannel;
-  operation: DomainCoreShadowOperation;
-  coreVersion: string;
   observedAt: string;
   outcome: DomainCoreShadowOutcome;
-  mismatchCategory: DomainCoreShadowMismatchCategory | null;
   legacyMicros: number;
   rustMicros: number;
 }
 
-interface DomainCoreShadowDocumentReference {
-  path: string;
+interface DomainCoreShadowSampleV1 extends DomainCoreShadowSampleCommon {
+  schemaVersion: 1;
+  domain: "quota";
+  consumer: DomainCoreShadowConsumer;
+  operation: DomainCoreShadowOperation;
+  coreVersion: string;
+  mismatchCategory: DomainCoreShadowMismatchCategory | null;
 }
 
-interface DomainCoreShadowDocumentSnapshot {
-  exists: boolean;
-  data(): unknown;
-}
+type DomainCoreShadowDocumentReference = { path: string };
+type DomainCoreShadowDocumentSnapshot = { exists: boolean; data(): unknown };
 
 interface DomainCoreShadowTransaction {
   get(reference: DomainCoreShadowDocumentReference): Promise<DomainCoreShadowDocumentSnapshot>;
@@ -69,6 +95,36 @@ interface DomainCoreShadowStore {
   runTransaction<T>(update: (transaction: DomainCoreShadowTransaction) => Promise<T>): Promise<T>;
 }
 
+interface DomainCoreShadowSampleV2 extends DomainCoreShadowSampleCommon {
+  schemaVersion: 2;
+  domain: "quota" | "cloudvault" | "hermes" | "pricing";
+  slice: string;
+  consumer: DomainCoreShadowConsumerV2;
+  operation: string;
+  coreVersion: string;
+  mismatchCategory: DomainCoreShadowMismatchCategory | null;
+}
+
+interface DomainCoreShadowSampleV3 extends DomainCoreShadowSampleCommon {
+  schemaVersion: 3;
+  domain: DomainCoreShadowSampleV2["domain"];
+  slice: string;
+  consumer: DomainCoreShadowConsumerV2;
+  operation: string;
+  candidateCommit: string;
+  expectedCoreVersion: string;
+  expectedCoreAbiVersion: number;
+  expectedCoreSourceSha256: string;
+  loadedCoreVersion: string | null;
+  loadedCoreAbiVersion: number | null;
+  loadedCoreSourceSha256: string | null;
+  mismatchCategory: DomainCoreShadowMismatchCategoryV3 | null;
+}
+
+type DomainCoreShadowSample = DomainCoreShadowSampleV1 | DomainCoreShadowSampleV2 | DomainCoreShadowSampleV3;
+
+type DomainCoreShadowComparisonV3 = Omit<DomainCoreShadowSampleV3, "schemaVersion" | "sampleId" | "observedAt">;
+
 function exactKeys(record: Record<string, unknown>, expected: readonly string[], label: string): void {
   const actual = Object.keys(record).sort();
   const wanted = [...expected].sort();
@@ -79,6 +135,34 @@ function exactKeys(record: Record<string, unknown>, expected: readonly string[],
 
 function boundedMicros(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > 600_000_000) {
+    throw new HttpsError("invalid-argument", `${label} is invalid.`);
+  }
+  return value;
+}
+
+function coreAbiVersion(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || value > 0xffff_ffff) {
+    throw new HttpsError("invalid-argument", `${label} is invalid.`);
+  }
+  return value;
+}
+
+function coreVersion(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length > 64 || !CORE_VERSION.test(value)) {
+    throw new HttpsError("invalid-argument", `${label} is invalid.`);
+  }
+  return value;
+}
+
+function canonicalCoreVersion(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length > 64 || !CANONICAL_CORE_VERSION.test(value)) {
+    throw new HttpsError("invalid-argument", `${label} is invalid.`);
+  }
+  return value;
+}
+
+function sourceSha256(value: unknown, label: string): string {
+  if (typeof value !== "string" || !SHA256.test(value)) {
     throw new HttpsError("invalid-argument", `${label} is invalid.`);
   }
   return value;
@@ -124,60 +208,240 @@ function parseOutcome(
   outcome: unknown,
   mismatchCategory: unknown,
   index: number,
-): { outcome: DomainCoreShadowOutcome; mismatchCategory: DomainCoreShadowMismatchCategory | null } {
+  allowLoadedIdentityMismatch: boolean,
+): { outcome: DomainCoreShadowOutcome; mismatchCategory: DomainCoreShadowMismatchCategoryV3 | null } {
   if (outcome !== "match" && outcome !== "mismatch") {
     throw new HttpsError("invalid-argument", `samples[${index}].outcome is invalid.`);
   }
   if (outcome === "match" && mismatchCategory === null) {
     return { outcome, mismatchCategory };
   }
-  if (outcome === "mismatch" && isMismatchCategory(mismatchCategory)) {
+  if (
+    outcome === "mismatch" &&
+    (isMismatchCategory(mismatchCategory) ||
+      (allowLoadedIdentityMismatch && mismatchCategory === "loaded_identity_mismatch"))
+  ) {
     return { outcome, mismatchCategory };
   }
   throw new HttpsError("invalid-argument", `samples[${index}].mismatchCategory is inconsistent.`);
 }
 
-function parseSample(raw: unknown, nowMillis: number, index: number): DomainCoreShadowSampleV1 {
+function isV2Domain(value: unknown): value is DomainCoreShadowSampleV2["domain"] {
+  return value === "quota" || value === "cloudvault" || value === "hermes" || value === "pricing";
+}
+
+function isV2Consumer(value: unknown): value is DomainCoreShadowConsumerV2 {
+  return typeof value === "string" && DOMAIN_CORE_SHADOW_CLAIM_CONSUMERS.has(value);
+}
+
+function parseV3Identity(
+  raw: Record<string, unknown>,
+  index: number,
+  outcome: { outcome: DomainCoreShadowOutcome; mismatchCategory: DomainCoreShadowMismatchCategoryV3 | null },
+): Pick<
+  DomainCoreShadowSampleV3,
+  | "candidateCommit"
+  | "expectedCoreVersion"
+  | "expectedCoreAbiVersion"
+  | "expectedCoreSourceSha256"
+  | "loadedCoreVersion"
+  | "loadedCoreAbiVersion"
+  | "loadedCoreSourceSha256"
+> {
+  if (typeof raw.candidateCommit !== "string" || !GIT_COMMIT.test(raw.candidateCommit)) {
+    throw new HttpsError("invalid-argument", `samples[${index}].candidateCommit is invalid.`);
+  }
+  const expectedCoreVersion = canonicalCoreVersion(raw.expectedCoreVersion, `samples[${index}].expectedCoreVersion`);
+  const expectedCoreAbiVersion = coreAbiVersion(raw.expectedCoreAbiVersion, `samples[${index}].expectedCoreAbiVersion`);
+  const expectedCoreSourceSha256 = sourceSha256(
+    raw.expectedCoreSourceSha256,
+    `samples[${index}].expectedCoreSourceSha256`,
+  );
+  const loadedValues = [raw.loadedCoreVersion, raw.loadedCoreAbiVersion, raw.loadedCoreSourceSha256];
+  const loadedIsNull = loadedValues.every((value) => value === null);
+  const loadedIsPresent = loadedValues.every((value) => value !== null);
+  if (!loadedIsNull && !loadedIsPresent) {
+    throw new HttpsError("invalid-argument", `samples[${index}] has a partial loaded core identity.`);
+  }
+  const loadedCoreVersion = loadedIsNull
+    ? null
+    : canonicalCoreVersion(raw.loadedCoreVersion, `samples[${index}].loadedCoreVersion`);
+  const loadedCoreAbiVersion = loadedIsNull
+    ? null
+    : coreAbiVersion(raw.loadedCoreAbiVersion, `samples[${index}].loadedCoreAbiVersion`);
+  const loadedCoreSourceSha256 = loadedIsNull
+    ? null
+    : sourceSha256(raw.loadedCoreSourceSha256, `samples[${index}].loadedCoreSourceSha256`);
+  const loadedMatchesExpected =
+    loadedCoreVersion !== null &&
+    loadedCoreVersion === expectedCoreVersion &&
+    loadedCoreAbiVersion === expectedCoreAbiVersion &&
+    loadedCoreSourceSha256 === expectedCoreSourceSha256;
+  const requiresLoadedIdentity =
+    outcome.outcome === "match" ||
+    outcome.mismatchCategory === "result_mismatch" ||
+    outcome.mismatchCategory === "invalid_result" ||
+    outcome.mismatchCategory === "native_error";
+  if (requiresLoadedIdentity && !loadedMatchesExpected) {
+    throw new HttpsError("invalid-argument", `samples[${index}] comparison did not load its expected core identity.`);
+  }
+  if (outcome.mismatchCategory === "native_unavailable" && loadedCoreVersion !== null) {
+    throw new HttpsError("invalid-argument", `samples[${index}] native-unavailable evidence has a loaded identity.`);
+  }
+  if (
+    outcome.mismatchCategory === "loaded_identity_mismatch" &&
+    (loadedCoreVersion === null || loadedMatchesExpected)
+  ) {
+    throw new HttpsError("invalid-argument", `samples[${index}] loaded core identity is not mismatched.`);
+  }
+  return {
+    candidateCommit: raw.candidateCommit,
+    expectedCoreVersion,
+    expectedCoreAbiVersion,
+    expectedCoreSourceSha256,
+    loadedCoreVersion,
+    loadedCoreAbiVersion,
+    loadedCoreSourceSha256,
+  };
+}
+
+function parseCoveredIdentity(
+  raw: Record<string, unknown>,
+  index: number,
+): Pick<DomainCoreShadowSampleV2, "domain" | "slice" | "consumer" | "operation"> {
+  const domain = raw.domain;
+  const slice = raw.slice;
+  const consumer = raw.consumer;
+  const operation = raw.operation;
+  if (
+    !isV2Domain(domain) ||
+    typeof slice !== "string" ||
+    !isV2Consumer(consumer) ||
+    typeof operation !== "string" ||
+    !domainCoreShadowOperationConsumers(domain, slice, operation).includes(consumer)
+  ) {
+    throw new HttpsError("invalid-argument", `samples[${index}] has an invalid domain, slice, or consumer.`);
+  }
+  const expectedSlice = DOMAIN_CORE_SHADOW_OPERATION_SLICES[domain]?.[operation];
+  const mustValidateOperation = raw.schemaVersion === 3 || (raw.schemaVersion === 2 && domain === "quota");
+  if (mustValidateOperation && expectedSlice !== slice) {
+    throw new HttpsError("invalid-argument", `samples[${index}] has an inconsistent operation and slice.`);
+  }
+  return { domain, slice, consumer, operation };
+}
+
+function parseSample(raw: unknown, nowMillis: number, index: number): DomainCoreShadowSample {
   if (!isRecord(raw)) throw new HttpsError("invalid-argument", `samples[${index}] must be an object.`);
-  exactKeys(raw, SAMPLE_KEYS, `samples[${index}]`);
-  if (raw.schemaVersion !== DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION || raw.domain !== "quota") {
+  if (raw.schemaVersion === DOMAIN_CORE_SHADOW_SAMPLE_LEGACY_SCHEMA_VERSION) {
+    exactKeys(raw, SAMPLE_V1_KEYS, `samples[${index}]`);
+  } else if (raw.schemaVersion === DOMAIN_CORE_SHADOW_SAMPLE_DRAIN_SCHEMA_VERSION) {
+    exactKeys(raw, SAMPLE_V2_KEYS, `samples[${index}]`);
+  } else if (raw.schemaVersion === DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION) {
+    exactKeys(raw, SAMPLE_V3_KEYS, `samples[${index}]`);
+  } else {
     throw new HttpsError("invalid-argument", `samples[${index}] has an unsupported schema or domain.`);
   }
   if (typeof raw.sampleId !== "string" || !UUID_V4.test(raw.sampleId)) {
     throw new HttpsError("invalid-argument", `samples[${index}].sampleId is invalid.`);
   }
-  if (!isConsumer(raw.consumer)) {
-    throw new HttpsError("invalid-argument", `samples[${index}].consumer is invalid.`);
-  }
   if (!isChannel(raw.channel)) {
     throw new HttpsError("permission-denied", "Shadow evidence is accepted only from internal or beta channels.");
   }
-  if (!isOperation(raw.operation)) {
+  if (typeof raw.operation !== "string" || !/^[a-z][a-z0-9_.-]{0,63}$/u.test(raw.operation)) {
     throw new HttpsError("invalid-argument", `samples[${index}].operation is invalid.`);
   }
-  if (typeof raw.coreVersion !== "string" || raw.coreVersion.length > 64 || !CORE_VERSION.test(raw.coreVersion)) {
-    throw new HttpsError("invalid-argument", `samples[${index}].coreVersion is invalid.`);
-  }
+  const parsedCoreVersion =
+    raw.schemaVersion === DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION
+      ? undefined
+      : coreVersion(raw.coreVersion, `samples[${index}].coreVersion`);
   const observedAt = parseObservedAt(raw.observedAt, nowMillis, index);
-  const outcome = parseOutcome(raw.outcome, raw.mismatchCategory, index);
+  const outcome = parseOutcome(
+    raw.outcome,
+    raw.mismatchCategory,
+    index,
+    raw.schemaVersion === DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION,
+  );
 
-  return {
-    schemaVersion: 1,
+  const common = {
     sampleId: raw.sampleId,
-    domain: "quota",
-    consumer: raw.consumer,
     channel: raw.channel,
-    operation: raw.operation,
-    coreVersion: raw.coreVersion,
     observedAt: observedAt.iso,
     outcome: outcome.outcome,
     mismatchCategory: outcome.mismatchCategory,
     legacyMicros: boundedMicros(raw.legacyMicros, `samples[${index}].legacyMicros`),
     rustMicros: boundedMicros(raw.rustMicros, `samples[${index}].rustMicros`),
   };
+  if (raw.schemaVersion === DOMAIN_CORE_SHADOW_SAMPLE_LEGACY_SCHEMA_VERSION) {
+    if (parsedCoreVersion === undefined) throw new Error("V1 shadow sample lost its core version.");
+    if (raw.domain !== "quota" || !isConsumer(raw.consumer) || !isOperation(raw.operation)) {
+      throw new HttpsError("invalid-argument", `samples[${index}] has an unsupported v1 identity.`);
+    }
+    const mismatchCategory = common.mismatchCategory;
+    if (mismatchCategory === "loaded_identity_mismatch") {
+      throw new HttpsError("invalid-argument", `samples[${index}] has an unsupported v1 mismatch category.`);
+    }
+    return {
+      schemaVersion: 1,
+      domain: "quota",
+      consumer: raw.consumer,
+      operation: raw.operation,
+      ...common,
+      coreVersion: parsedCoreVersion,
+      mismatchCategory,
+    };
+  }
+  const covered = parseCoveredIdentity(raw, index);
+  if (raw.schemaVersion === DOMAIN_CORE_SHADOW_SAMPLE_SCHEMA_VERSION) {
+    const identity = parseV3Identity(raw, index, outcome);
+    return {
+      schemaVersion: 3,
+      ...covered,
+      ...identity,
+      sampleId: common.sampleId,
+      channel: common.channel,
+      observedAt: common.observedAt,
+      outcome: common.outcome,
+      mismatchCategory: common.mismatchCategory,
+      legacyMicros: common.legacyMicros,
+      rustMicros: common.rustMicros,
+    };
+  }
+  if (parsedCoreVersion === undefined) throw new Error("V2 shadow sample lost its core version.");
+  const mismatchCategory = common.mismatchCategory;
+  if (mismatchCategory === "loaded_identity_mismatch") {
+    throw new HttpsError("invalid-argument", `samples[${index}] has an unsupported v2 mismatch category.`);
+  }
+  return {
+    schemaVersion: 2,
+    ...covered,
+    ...common,
+    coreVersion: parsedCoreVersion,
+    mismatchCategory,
+  };
 }
 
-export function parseDomainCoreShadowSampleRequest(raw: unknown, nowMillis = Date.now()): DomainCoreShadowSampleV1[] {
+export function buildDomainCoreShadowSampleV3(
+  comparison: DomainCoreShadowComparisonV3,
+  options: { nowMillis?: number; sampleId?: string } = {},
+): DomainCoreShadowSampleV3 {
+  const nowMillis = options.nowMillis ?? Date.now();
+  const parsed = parseSample(
+    {
+      schemaVersion: 3,
+      sampleId: options.sampleId ?? randomUUID(),
+      observedAt: new Date(nowMillis).toISOString(),
+      ...comparison,
+    },
+    nowMillis,
+    0,
+  );
+  if (parsed.schemaVersion !== 3) {
+    throw new Error("V3 shadow sample builder returned an unexpected schema.");
+  }
+  return parsed;
+}
+
+export function parseDomainCoreShadowSampleRequest(raw: unknown, nowMillis = Date.now()): DomainCoreShadowSample[] {
   if (!isRecord(raw)) throw new HttpsError("invalid-argument", "Request data must be an object.");
   exactKeys(raw, REQUEST_KEYS, "request data");
   if (!Array.isArray(raw.samples) || raw.samples.length === 0 || raw.samples.length > DOMAIN_CORE_SHADOW_MAX_BATCH) {
@@ -192,49 +456,102 @@ export function parseDomainCoreShadowSampleRequest(raw: unknown, nowMillis = Dat
 
 export function enforceDomainCoreShadowChannelClaim(
   token: Record<string, unknown>,
-  samples: DomainCoreShadowSampleV1[],
+  samples: DomainCoreShadowSample[],
 ): void {
   const claimedChannel = token.domainCoreShadowChannel;
+  const claimedConsumers = token.domainCoreShadowConsumers;
   if (
     (claimedChannel !== "internal" && claimedChannel !== "beta") ||
-    samples.some((sample) => sample.channel !== claimedChannel)
+    !Array.isArray(claimedConsumers) ||
+    claimedConsumers.some(
+      (consumer) => typeof consumer !== "string" || !DOMAIN_CORE_SHADOW_CLAIM_CONSUMERS.has(consumer),
+    ) ||
+    samples.some((sample) => sample.channel !== claimedChannel || !claimedConsumers.includes(sample.consumer))
   ) {
     throw new HttpsError(
       "permission-denied",
-      "This account is not enrolled for the submitted shadow-evidence channel.",
+      "This account is not enrolled for the submitted shadow-evidence channel and consumer.",
     );
+  }
+  const v3Samples = samples.filter((sample): sample is DomainCoreShadowSampleV3 => sample.schemaVersion === 3);
+  if (v3Samples.length === 0) return;
+  const candidateCommit = token.domainCoreShadowCandidateCommit;
+  const expectedCoreVersion = token.domainCoreShadowCoreVersion;
+  const expectedCoreAbiVersion = token.domainCoreShadowCoreAbiVersion;
+  const expectedCoreSourceSha256 = token.domainCoreShadowCoreSourceSha256;
+  if (
+    typeof candidateCommit !== "string" ||
+    !GIT_COMMIT.test(candidateCommit) ||
+    typeof expectedCoreVersion !== "string" ||
+    !CANONICAL_CORE_VERSION.test(expectedCoreVersion) ||
+    typeof expectedCoreAbiVersion !== "number" ||
+    !Number.isSafeInteger(expectedCoreAbiVersion) ||
+    expectedCoreAbiVersion < 1 ||
+    expectedCoreAbiVersion > 0xffff_ffff ||
+    typeof expectedCoreSourceSha256 !== "string" ||
+    !SHA256.test(expectedCoreSourceSha256) ||
+    v3Samples.some(
+      (sample) =>
+        sample.candidateCommit !== candidateCommit ||
+        sample.expectedCoreVersion !== expectedCoreVersion ||
+        sample.expectedCoreAbiVersion !== expectedCoreAbiVersion ||
+        sample.expectedCoreSourceSha256 !== expectedCoreSourceSha256,
+    )
+  ) {
+    throw new HttpsError("permission-denied", "This account is not enrolled for the submitted domain-core candidate.");
   }
 }
 
-export function storedDomainCoreShadowSample(sample: DomainCoreShadowSampleV1, nowMillis: number) {
+export function storedDomainCoreShadowSample(sample: DomainCoreShadowSample, nowMillis: number) {
   return {
     schemaVersion: sample.schemaVersion,
     sampleId: sample.sampleId,
     domain: sample.domain,
+    ...(sample.schemaVersion !== 1 ? { slice: sample.slice } : {}),
     consumer: sample.consumer,
     channel: sample.channel,
     operation: sample.operation,
-    coreVersion: sample.coreVersion,
+    ...(sample.schemaVersion === 3
+      ? {
+          candidateCommit: sample.candidateCommit,
+          expectedCoreVersion: sample.expectedCoreVersion,
+          expectedCoreAbiVersion: sample.expectedCoreAbiVersion,
+          expectedCoreSourceSha256: sample.expectedCoreSourceSha256,
+          loadedCoreVersion: sample.loadedCoreVersion,
+          loadedCoreAbiVersion: sample.loadedCoreAbiVersion,
+          loadedCoreSourceSha256: sample.loadedCoreSourceSha256,
+        }
+      : { coreVersion: sample.coreVersion }),
     observedAt: Timestamp.fromDate(new Date(sample.observedAt)),
     outcome: sample.outcome,
     mismatchCategory: sample.mismatchCategory,
     legacyMicros: sample.legacyMicros,
     rustMicros: sample.rustMicros,
+    promotionEligible: sample.schemaVersion === 3,
     receivedAt: Timestamp.fromMillis(nowMillis),
     expireAt: Timestamp.fromMillis(nowMillis + DOMAIN_CORE_SHADOW_RETENTION_MS),
   };
 }
 
-export function storedDomainCoreShadowSampleMatches(stored: unknown, sample: DomainCoreShadowSampleV1): boolean {
+export function storedDomainCoreShadowSampleMatches(stored: unknown, sample: DomainCoreShadowSample): boolean {
   if (!isRecord(stored) || !(stored.observedAt instanceof Timestamp)) return false;
   return (
     stored.schemaVersion === sample.schemaVersion &&
     stored.sampleId === sample.sampleId &&
     stored.domain === sample.domain &&
+    (sample.schemaVersion === 1 || stored.slice === sample.slice) &&
     stored.consumer === sample.consumer &&
     stored.channel === sample.channel &&
     stored.operation === sample.operation &&
-    stored.coreVersion === sample.coreVersion &&
+    (sample.schemaVersion === 3
+      ? stored.candidateCommit === sample.candidateCommit &&
+        stored.expectedCoreVersion === sample.expectedCoreVersion &&
+        stored.expectedCoreAbiVersion === sample.expectedCoreAbiVersion &&
+        stored.expectedCoreSourceSha256 === sample.expectedCoreSourceSha256 &&
+        stored.loadedCoreVersion === sample.loadedCoreVersion &&
+        stored.loadedCoreAbiVersion === sample.loadedCoreAbiVersion &&
+        stored.loadedCoreSourceSha256 === sample.loadedCoreSourceSha256
+      : stored.coreVersion === sample.coreVersion) &&
     stored.observedAt.toMillis() === Date.parse(sample.observedAt) &&
     stored.outcome === sample.outcome &&
     stored.mismatchCategory === sample.mismatchCategory &&
@@ -263,7 +580,7 @@ export function domainCoreShadowStore(firestore: Firestore): DomainCoreShadowSto
 
 export async function persistDomainCoreShadowSamples(
   firestore: DomainCoreShadowStore,
-  samples: DomainCoreShadowSampleV1[],
+  samples: DomainCoreShadowSample[],
   nowMillis: number,
 ): Promise<{ accepted: number; duplicates: number }> {
   return firestore.runTransaction(async (transaction) => {

@@ -104,7 +104,7 @@ public sealed class SignedInSurfaceDataFlowTests
         // signed-in cloud usage available -> Cloud wins.
         DashboardUsageSummary summary = await DashboardUsageSummarySource.ResolveAsync(
             loadLocal: () => new DashboardUsageSummary(0, 0, 0, false),
-            loadCloud: store.LoadSummaryAsync,
+            loadCloud: token => store.LoadSummaryAsync(cancellationToken: token),
             sample: DashboardUsageSampleData.Summary,
             sampleModeEnabled: false);
 
@@ -153,7 +153,7 @@ public sealed class SignedInSurfaceDataFlowTests
 
         DashboardUsageSummary summary = await DashboardUsageSummarySource.ResolveAsync(
             loadLocal: () => new DashboardUsageSummary(0, 0, 0, false),
-            loadCloud: store.LoadSummaryAsync,
+            loadCloud: token => store.LoadSummaryAsync(cancellationToken: token),
             sample: DashboardUsageSampleData.Summary,
             sampleModeEnabled: false);
 

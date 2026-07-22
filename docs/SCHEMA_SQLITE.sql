@@ -14,7 +14,7 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
--- Schema hash: b0bdaa99b4e384307a25fb1f06bf7ee01372aab7f8c79bf6c2fabe4b282fd61a
+-- Schema hash: d7e37392aa12f99869fdec1dd60279352c8661eceed035d7ab511bbd5b132d7d
 
 -- ── GRDB migrations tracking ──────────────────────────────────────────────────
 
@@ -91,6 +91,32 @@ CREATE TABLE chat_threads (
 );
 
 CREATE INDEX chat_threads_updated_idx ON chat_threads(updatedAt DESC);
+
+-- ── Parser Checkpoints (v29+, file manifest v56+) ────────────────────────────
+-- The compact provider watermark advances only after successful indexing.
+-- Exact per-path identities let bounded scans skip unchanged inputs without
+-- storing transcript content in the checkpoint token.
+
+CREATE TABLE parser_checkpoints (
+  provider              TEXT     NOT NULL PRIMARY KEY,
+  checkpointToken       TEXT     NOT NULL,
+  lastProcessedFilePath TEXT,
+  lastProcessedAt       DATETIME NOT NULL,
+  version               INTEGER  NOT NULL DEFAULT 1
+);
+
+CREATE INDEX parser_checkpoints_provider_idx ON parser_checkpoints(provider);
+
+CREATE TABLE parser_checkpoint_files (
+  provider           TEXT NOT NULL,
+  path               TEXT NOT NULL,
+  fileSizeBytes      INTEGER,
+  modificationDate  DATETIME,
+  creationDate      DATETIME,
+  fileSystemNumber  TEXT,
+  fileNumber        TEXT,
+  PRIMARY KEY (provider, path)
+);
 
 -- ── Source Artifacts (v15+) ──────────────────────────────────────────────────
 -- Indexed conversation chunks and skill/agent docs for local search.
