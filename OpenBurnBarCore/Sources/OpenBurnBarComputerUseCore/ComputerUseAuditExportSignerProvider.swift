@@ -18,7 +18,7 @@ public protocol ComputerUseAuditExportKeyStoring: Sendable {
     func set(_ data: Data, service: String, account: String) throws
 }
 
-public struct ComputerUseAuditExportSecurityKeyStore: ComputerUseAuditExportKeyStoring {
+struct ComputerUseAuditExportSecurityKeyStore: ComputerUseAuditExportKeyStoring {
     public init() {}
     public func data(service: String, account: String) throws -> Data? {
         #if os(macOS)
@@ -87,7 +87,7 @@ public struct ComputerUseAuditExportSecurityKeyStore: ComputerUseAuditExportKeyS
     }
 }
 
-public enum ComputerUseAuditExportSignerStoreError: Error, Equatable {
+enum ComputerUseAuditExportSignerStoreError: Error, Equatable {
     case keychainStatus(OSStatus)
     case invalidStoredKey
     case keychainUnavailable
