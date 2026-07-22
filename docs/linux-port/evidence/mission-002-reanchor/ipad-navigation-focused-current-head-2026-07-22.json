@@ -5,8 +5,8 @@
   "sourceHead": "bbcea9c2f79f64e1b34418bb94a57c6ed6023a2d",
   "device": {
     "name": "Alberto's iPad",
-    "coreDeviceIdentifier": "00008132-001158191E9A401C",
-    "destination": "platform=iOS,id=00008132-001158191E9A401C"
+    "coreDeviceIdentifier": "<IOS_DEVICE_ID>",
+    "destination": "platform=iOS,id=<IOS_DEVICE_ID>"
   },
   "suite": {
     "selector": "OpenBurnBarMobileTests/iPadNavigationUITests/testiPadSettingsTabs_countAndNoDaemon",
@@ -18,7 +18,7 @@
     "telemetry": ".tmp/ipad-live/focused-current-head/artifacts/test-openburnbar-mobile-attempts.jsonl",
     "resultBundleRetained": false
   },
-  "command": "OPENBURNBAR_IOS_DESTINATION='platform=iOS,id=00008132-001158191E9A401C' OPENBURNBAR_MOBILE_TEST_FILTER='OpenBurnBarMobileTests/iPadNavigationUITests/testiPadSettingsTabs_countAndNoDaemon' OPENBURNBAR_MOBILE_TEST_ATTEMPTS=1 OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT=.tmp/ipad-live/focused-current-head ./scripts/test-openburnbar-mobile.sh",
+  "command": "OPENBURNBAR_IOS_DESTINATION='platform=iOS,id=<IOS_DEVICE_ID>' OPENBURNBAR_MOBILE_TEST_FILTER='OpenBurnBarMobileTests/iPadNavigationUITests/testiPadSettingsTabs_countAndNoDaemon' OPENBURNBAR_MOBILE_TEST_ATTEMPTS=1 OPENBURNBAR_MOBILE_TEST_SCRATCH_ROOT=.tmp/ipad-live/focused-current-head ./scripts/test-openburnbar-mobile.sh",
   "scope": "focused Settings/navigation smoke only; it does not exercise the signed P16 Linux/iPad trust-cycle, Firebase/App Check, or Computer Use/Mercury transport",
   "certification": {
     "strictParity": false,
