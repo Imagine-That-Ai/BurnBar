@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarUI
 import SwiftUI
 
 enum BackdropForegroundTone: String, Sendable {
