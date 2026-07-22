@@ -66,6 +66,7 @@ class DomainCoreReleaseEvidenceWorkflowTests(unittest.TestCase):
             "predicate-path: ${{ steps.evidence.outputs.predicate }}",
             'consumer: "functions"',
             'signerWorkflow: ".github/workflows/domain-core-functions-release-evidence.yml"',
+            'releaseAvailability: "published"',
             "artifactPath,",
             'bundles: [{ domain: "pricing", assetName, bundlePath, predicatePath }]',
             "scripts/ci/publish-domain-core-release-evidence.mjs",

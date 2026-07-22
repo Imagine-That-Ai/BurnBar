@@ -154,10 +154,24 @@ python3 scripts/ops/create-domain-core-promotion-receipt.py \
    publisher designed for every release producer: it verifies every local
    bundle, preflights all existing assets before mutation, uploads every bundle
    before its artifact, handles concurrent identical uploads, and freshly
-   downloads and verifies the final release state. Apple,
-   Android, and Windows still do not publish every canonical asset and exact
-   custom attestation required by this contract. Do not create a stable receipt
-   from an Actions artifact or unsigned deployment summary.
+   downloads and verifies the final release state. Stable Apple
+   releases publish `OpenBurnBar-<version>-macOS.dmg` as an arm64 notarized and
+   stapled artifact with separate quota, CloudVault, rewrap, search, Hermes,
+   and pricing predicates. Stable Android releases publish the signed
+   `OpenBurnBar-<version>-Android.aab` with CloudVault, rewrap, search, and
+   Hermes predicates after verifying the embedded public profile and all four
+   native ABIs. Both native producers adapt their evidence plans into the same
+   shared publisher manifest used by Functions and Console. Their custom bundles
+   publish before the immutable DMG/AAB, and reruns verify existing release
+   bytes and bundles without replacing them.
+   Stable Windows releases build
+   `OpenBurnBar-<version>-windows-release.zip` deterministically from the signed
+   x64 and ARM64 packages plus the exact checksums, feed, appcast, and latest
+   metadata. Quota and CloudVault predicates bind that canonical artifact and
+   use the same shared publisher. The workflow creates the exact normal release
+   only when absent and refuses draft, prerelease, wrong-tag, or non-identical
+   existing assets. Do not create a stable receipt from an Actions artifact or
+   unsigned deployment summary.
 7. Commit active `stable_release` receipts and advance the observed rows to
    `rust_authoritative_with_rollback`. The stable receipt must identify the
    actually published release commit and hash the promotion receipt and public
