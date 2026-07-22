@@ -23,7 +23,8 @@ public typealias PlatformP256SigningMaterial =
     P256.Signing.PrivateKey
 public typealias PlatformP256SigningPublicKey = P256.Signing.PublicKey
 public typealias PlatformP256SigningSignature = P256.Signing.ECDSASignature
-public typealias PlatformP256KeyAgreementPrivateKey = P256.KeyAgreement.PrivateKey
+public typealias PlatformP256KeyAgreementPrivateKey =
+    P256.KeyAgreement.PrivateKey
 public typealias PlatformP256KeyAgreementPublicKey = P256.KeyAgreement.PublicKey
 public typealias PlatformCurve25519AgreementMaterial =
     Curve25519.KeyAgreement.PrivateKey
