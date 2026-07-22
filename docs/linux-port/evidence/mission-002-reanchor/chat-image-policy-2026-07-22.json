@@ -1,0 +1,37 @@
+{
+  "capturedAt": "2026-07-22T06:36:10Z",
+  "sourceCommit": "fc30202f6b54f7136c4a10da5071b4c677527a52",
+  "scope": "linux-chat-image-attachment-policy",
+  "implementation": {
+    "sharedPolicy": "BurnBarChatAttachmentPolicy",
+    "mimeTypes": [
+      "image/png",
+      "image/jpeg",
+      "image/webp"
+    ],
+    "behavior": "Model-authorized image references can be persisted by the daemon and encoded by the Tauri gateway as bounded data URLs."
+  },
+  "tests": [
+    {
+      "command": "swift test --package-path OpenBurnBarCore --filter BurnBarChatAttachmentPolicyTests",
+      "result": "passed",
+      "tests": 4
+    },
+    {
+      "command": "cargo test --manifest-path apps/linux-desktop/src-tauri/Cargo.toml --lib chat_attachment_gateway -- --nocapture",
+      "result": "passed",
+      "tests": 4
+    },
+    {
+      "command": "npm test -- --run src/surfaces/chat/chatAttachment.test.ts",
+      "result": "passed",
+      "tests": 3
+    }
+  ],
+  "certification": {
+    "kind": "source-and-focused-tests-only",
+    "installedCandidate": false,
+    "strictProductParity": false,
+    "notes": "Provider-specific backend behavior, provider-native PDF semantics, and signed installed Linux certification remain open."
+  }
+}

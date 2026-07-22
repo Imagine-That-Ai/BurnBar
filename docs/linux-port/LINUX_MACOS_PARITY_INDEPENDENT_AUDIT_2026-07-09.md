@@ -34,6 +34,15 @@ Exact-head hosted verification for this change is run `29894925872`, Linux job
 suite and IPC drift gate. Machine-readable evidence:
 `evidence/mission-002-reanchor/notification-timeout-2026-07-22.json`.
 
+The Linux chat image path is now source-complete for model-authorized PNG,
+JPEG, and WebP inputs. `BurnBarChatAttachmentPolicy` accepts and canonicalizes
+the same image MIME types that the Tauri gateway stores, capability-checks, and
+encodes as bounded data URLs; the shared policy regression covers extension
+inference, explicit MIME values, and rejection of unsupported audio. This
+removes the prior daemon-side rejection that made the implemented gateway
+image path unusable after message persistence. Provider-specific backend
+coverage, PDF input semantics, and installed-candidate proof remain open.
+
 The malformed/incomplete HTTP frame test is deterministic now: the Linux raw
 request helper half-closes its write side after sending the intentionally short
 body, so the gateway returns its typed error immediately instead of waiting for
@@ -2427,15 +2436,18 @@ the intended `0700`/`0600` ownership boundary (`50a0684e75`).
   desktop grants, resume/export, and pop-out. Linux now has real encrypted
   thread persistence/search/pagination, exact model/thinking-level selection,
   daemon-owned bounded single-use attachment refs, citations, approvals, and
-  bounded unloaded-history/export/resume/pop-out behavior. Remaining backend
-  breadth, binary attachment parity, and installed proof remain incomplete.
+  bounded unloaded-history/export/resume/pop-out behavior. Model-authorized
+  PNG/JPEG/WebP image inputs now pass the shared daemon policy and the Tauri
+  gateway's native capability path. Remaining backend breadth, provider-native
+  PDF semantics, and installed proof remain incomplete.
 - **Why it matters:** chat is a primary workflow; presenting a file or model
   control without a real transport still creates false confidence and data-loss
   risk. `44a5864b0d` requires a daemon catalog routing capability before a
   backend is advertised, and `7017227ac8` verifies that a missing catalog fails
   closed before any durable append or gateway call.
 - **Recommended solution:** extend the implemented attachment ref store into
-  provider-native binary/image handling, finish the remaining backend adapters,
+  provider-native PDF/binary handling where the selected model declares it,
+  finish the remaining backend adapters,
   and certify the existing citation/approval/history/pop-out contracts against
   an installed daemon; retain the typed model catalog and fail closed until each
   capability is live.
