@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelCrypto
 
 /// Cross-language byte-parity gate for the v4 Signal-envelope binding -> AAD
 /// canonicalizer. The fixture

@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelCrypto
 
 /// Type-only coverage for the additive, flag-OFF at-rest ``CloudVaultSignalEnvelope``.
 ///

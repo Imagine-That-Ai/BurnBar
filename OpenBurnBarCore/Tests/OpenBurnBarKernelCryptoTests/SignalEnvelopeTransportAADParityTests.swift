@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelCrypto
 
 /// Phase 2.5 G6 — cross-language byte-parity gate for the v4 Signal-envelope
 /// binding -> AAD canonicalizer in TRANSPORT mode (scope=gateway, clientId/slotId).

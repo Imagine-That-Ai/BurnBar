@@ -1,5 +1,6 @@
 import XCTest
-@testable import OpenBurnBarCore
+import OpenBurnBarKernelModels
+@testable import OpenBurnBarKernelCrypto
 
 final class PiAgentRelayContractTests: XCTestCase {
     func testConnectionAndRelayRecordsCodableRoundTrip() throws {

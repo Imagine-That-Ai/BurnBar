@@ -1,6 +1,6 @@
 import CryptoKit
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarKernelCrypto
 
 /// Pins the F7 (`mediaSealKeyAAD`) and F10 (`controlSealKeyAAD`) AAD
 /// constructions added to `HermesRelayCrypto`. These two wraps share the

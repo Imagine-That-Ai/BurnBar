@@ -1,8 +1,7 @@
 import CryptoKit
 import Foundation
 import XCTest
-@testable import OpenBurnBarCore
-@testable import OpenBurnBarKernel
+import OpenBurnBarKernelModels
 @testable import OpenBurnBarKernelCrypto
 
 final class CloudVaultCryptoTests: XCTestCase {
