@@ -13,6 +13,7 @@ import OpenBurnBarSignalCore
 import OpenBurnBarSignalSessionTransport
 
 final class LinuxCoreFoundationTests: XCTestCase {
+#if !canImport(LibSignalClient)
     func testCloudVaultSignalFallbackExportsCoreContractsAndFailsClosedForSignalAtRestOnLinux() throws {
         let vaultKey = try CloudVaultCrypto.generateVaultKey()
         XCTAssertEqual(vaultKey.count, 32)
@@ -71,6 +72,7 @@ final class LinuxCoreFoundationTests: XCTestCase {
             XCTAssertEqual(error as? OpenBurnBarSignalCoreError, .libSignalUnavailable)
         }
     }
+#endif
 
     func testMediaAndComputerUseAeadSeamsRoundTripOnLinux() throws {
         let media = MediaFrameAEAD()
