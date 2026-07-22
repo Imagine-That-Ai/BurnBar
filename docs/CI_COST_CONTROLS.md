@@ -38,6 +38,9 @@ SwiftPM uses `.spm-cache-new` plus the SwiftPM download cache, Gradle uses
 `setup-java`'s Gradle cache, and Rust workflows use lockfile-aware Rust caches.
 Generated outputs may be cached only when their generator inputs are included
 in the key and the workflow still runs its drift check after restore.
+The macOS app test driver reuses the exact DerivedData produced by the preceding
+real-process CPU build on the same runner, so the test action compiles the test
+bundle without rebuilding the entire product and dependency graph from scratch.
 
 ## Runner policy
 

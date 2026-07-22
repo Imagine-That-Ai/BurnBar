@@ -133,7 +133,10 @@ jobs:
         # This is the build that was missing as a PR gate: it compiles every
         # app-target file (AgentLens/**, app-linked OpenBurnBarCore/**, CloudSync,
         # the memory subsystem) and runs the app XCTest suite.
-        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
+        run: >-
+          OPENBURNBAR_ENABLE_COVERAGE=YES
+          OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="$GITHUB_WORKSPACE/.derived-data/macos-idle-occlusion-gate"
+          ./scripts/test-openburnbar-app.sh
 
       - name: Guard against zero-test false greens
         run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"

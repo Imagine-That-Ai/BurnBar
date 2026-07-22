@@ -391,6 +391,7 @@ const rafStep = appBuildSteps.get("macOS rAF pause prerequisite (P-PERF-3)");
 const buildStep = appBuildSteps.get("Build AgentLens app for real-process CPU gate");
 const realGateStep = appBuildSteps.get("Enforce real macOS idle/occluded CPU budget (P-PERF-3)");
 const evidenceStep = appBuildSteps.get("Upload macOS idle/occlusion CPU evidence");
+const appTestStep = appBuildSteps.get("Build + test the AgentLens app target");
 
 check("P-PERF-3 runs the deterministic rAF test before building the real OpenBurnBar app", () => {
   assert.ok(rafStep && buildStep && realGateStep && evidenceStep, "missing P-PERF-3 workflow step");
@@ -422,6 +423,23 @@ check("P-PERF-3 always uploads required evidence and fails when evidence is abse
   assert.match(evidenceStep, /^          path: \$\{\{ runner\.temp \}\}\/macos-idle-occlusion-evidence\/result\.json$/mu);
   assert.match(evidenceStep, /^          if-no-files-found: error$/mu);
   assert.equal(optionalStepField(evidenceStep, "continue-on-error"), undefined);
+});
+
+check("app tests reuse the real-process build instead of compiling the product twice", () => {
+  assert.ok(buildStep && appTestStep, "missing real-process build or app test step");
+  const build = stepRun(buildStep);
+  const test = stepRun(appTestStep);
+  assert.match(build, /PERF_DERIVED_DATA="\$GITHUB_WORKSPACE\/\.derived-data\/macos-idle-occlusion-gate"/u);
+  assert.match(
+    test,
+    /OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="\$GITHUB_WORKSPACE\/\.derived-data\/macos-idle-occlusion-gate"/u,
+  );
+  const driver = readFileSync(
+    join(REPO_ROOT, "scripts/test-openburnbar-app.sh"),
+    "utf8",
+  );
+  assert.match(driver, /OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR/u);
+  assert.match(driver, /derived_data_dir="\$\(create_derived_data_dir\)"/u);
 });
 
 const fastWorkflow = readFileSync(join(REPO_ROOT, FAST_WORKFLOW), "utf8");
