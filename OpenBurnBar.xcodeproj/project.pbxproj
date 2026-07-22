@@ -78,6 +78,7 @@
 		06635CD83F64B01F57A6A166 /* DashboardChatWorkspaceViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E496C2FA6470E996FEE4EE3 /* DashboardChatWorkspaceViewTests.swift */; };
 		0667EE2E6928406AF68D10FC /* MissionControlSummaryEnricher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16AEF6A108A570219352C8B8 /* MissionControlSummaryEnricher.swift */; };
 		06694DA345B7E23F7364CDE2 /* ChatViewModePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BCE7E10379BB46AB332910 /* ChatViewModePicker.swift */; };
+		06A9CB7DEED46B35FC7B78F1 /* ElderWandPanelExecutionGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 627713509F26B54C247E3C41 /* ElderWandPanelExecutionGate.swift */; };
 		06BD94A65969C4D6E07F0412 /* SwitcherOnboardingScanAddStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0692176EF8971C89C1E3B07F /* SwitcherOnboardingScanAddStep.swift */; };
 		06C2B65704F33B2A667AFDF9 /* OpenBurnBarAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 64BAB7251FF83CBC4440E656 /* OpenBurnBarAnalytics */; };
 		06E0A7DBA1C4ED8362720156 /* AgentLensApp+Bootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E6FC908E81726ADCB1702B2 /* AgentLensApp+Bootstrap.swift */; };
@@ -1763,6 +1764,7 @@
 		BF8D90CE9919D1D14EB29E3C /* MacFileTransferSecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C28EA46B37EF03CA472F3786 /* MacFileTransferSecurityTests.swift */; };
 		BFACBC507A03ACF26E1DEC30 /* ScreenShareAutoTypeFollowPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33713FE44657CCC7A722445F /* ScreenShareAutoTypeFollowPolicy.swift */; };
 		BFB9D0E0666D87F93AFD3FB8 /* AccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50807A31E3BE193806C5EB4B /* AccountView.swift */; };
+		BFD22C6B5070B1150348A276 /* ElderWandPanelExecutionGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2404076DF172297172A1916C /* ElderWandPanelExecutionGateTests.swift */; };
 		BFE2EAD4A654CFE385EE27C1 /* DatabaseWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EE96DD93EBCD6CC572E976C /* DatabaseWorkspaceView.swift */; };
 		BFED0B0164239DD7FBB5EA2C /* AgentsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D55C56DBED0079D80FA695F5 /* AgentsSettingsView.swift */; };
 		BFFD998D4A576F71D3EF6E33 /* BurnBarCustomModelLiveCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B57EBB251CFEF15BA51BC050 /* BurnBarCustomModelLiveCatalogTests.swift */; };
@@ -2819,6 +2821,7 @@
 		23A42C81844E1A67A846693F /* SmartDisplayRepairCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartDisplayRepairCoordinator.swift; sourceTree = "<group>"; };
 		23C99BD6B26BBB8FCE446288 /* PerPartnerSavePreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerPartnerSavePreferencesView.swift; sourceTree = "<group>"; };
 		23EAB103998B96617E725BC8 /* CLIAgentMissionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAgentMissionModels.swift; sourceTree = "<group>"; };
+		2404076DF172297172A1916C /* ElderWandPanelExecutionGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElderWandPanelExecutionGateTests.swift; sourceTree = "<group>"; };
 		241471F4F618C437DED85746 /* DashboardExtraLargeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardExtraLargeView.swift; sourceTree = "<group>"; };
 		243E6231BD08E77DA7091538 /* MiniMaxQuotaAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniMaxQuotaAdapterTests.swift; sourceTree = "<group>"; };
 		244075B8CB63E6E933F6F4C7 /* AsciiCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsciiCanvasView.swift; sourceTree = "<group>"; };
@@ -3381,6 +3384,7 @@
 		6236396CAAF8F0490D468C5B /* RemoteUnlockSessionContextFileProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteUnlockSessionContextFileProvider.swift; sourceTree = "<group>"; };
 		624CDD3C01183974AFBADEEB /* PetAttachmentDropDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PetAttachmentDropDelegate.swift; sourceTree = "<group>"; };
 		625083C1E894E548388218AB /* ChatSessionControllerMemoryExtraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSessionControllerMemoryExtraction.swift; sourceTree = "<group>"; };
+		627713509F26B54C247E3C41 /* ElderWandPanelExecutionGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElderWandPanelExecutionGate.swift; sourceTree = "<group>"; };
 		627F804B656BB5E3847C91EA /* MacCloudStoreLegalLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacCloudStoreLegalLinks.swift; sourceTree = "<group>"; };
 		6298D624C07677202C7A39C9 /* QuotaRefreshActorCredentialReadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaRefreshActorCredentialReadTests.swift; sourceTree = "<group>"; };
 		62F1BE378527A4C4731FDD71 /* CloudSyncCircuitBreakerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncCircuitBreakerTests.swift; sourceTree = "<group>"; };
@@ -6473,6 +6477,7 @@
 				99C7CBBD802415F1CA862411 /* DaemonPhoneKeyPinStore.swift */,
 				BBFAC26AA8053162E8DB8AAE /* DaemonSelfCodeSignatureVerifier.swift */,
 				F29A0D03998227D39D035BA9 /* ElderWandFusionOrchestrator.swift */,
+				627713509F26B54C247E3C41 /* ElderWandPanelExecutionGate.swift */,
 				FDE7FCF0E75A202ABCA2276C /* ElderWandToolLoop.swift */,
 				224DC0BFF9E883321268C80F /* ElderWandWebTools.swift */,
 				8B650A2E551C10D2EB1B576A /* FactoryDroidProviderExecutor.swift */,
@@ -6862,6 +6867,7 @@
 				002990FDBB95CC493926AB28 /* ConstantTimeCompareTests.swift */,
 				5D717E7139C6A5A307ED15BE /* DaemonLocalAuthProofVerifierTests.swift */,
 				09CE26322D1ECCF3984D5FFB /* DaemonSelfCodeSignatureVerifierTests.swift */,
+				2404076DF172297172A1916C /* ElderWandPanelExecutionGateTests.swift */,
 				5F1CA9ADAD3E698DBCEA9BC1 /* ElderWandFusionOrchestratorTests.swift */,
 				4F6FC93C22823C157DC47591 /* FactoryDroidProviderExecutorTests.swift */,
 				B2FE0B3B52A5DAB034AAD317 /* GatewayModelCatalogSourceTests.swift */,
@@ -10013,6 +10019,7 @@
 				F6C97ACF1563C509B206EA79 /* DaemonPhoneKeyPinStore.swift in Sources */,
 				97F2C3409656DB050205C8B8 /* DaemonSelfCodeSignatureVerifier.swift in Sources */,
 				11466A4C0737BB2437978E83 /* ElderWandFusionOrchestrator.swift in Sources */,
+				06A9CB7DEED46B35FC7B78F1 /* ElderWandPanelExecutionGate.swift in Sources */,
 				9FC2DD128B8E599EFFBF6FC7 /* ElderWandToolLoop.swift in Sources */,
 				A1D344EEF2E08AE5803F9F44 /* ElderWandWebTools.swift in Sources */,
 				F1BDDFE1F96497262B9ED616 /* EventKitBridge.swift in Sources */,
@@ -10289,6 +10296,7 @@
 				051912C1DA37F63D9ADC724B /* ConstantTimeCompareTests.swift in Sources */,
 				FB6EFE3FFA7F57D79831ECFE /* DaemonLocalAuthProofVerifierTests.swift in Sources */,
 				EAF1F27599BCF67666C8DD8B /* DaemonSelfCodeSignatureVerifierTests.swift in Sources */,
+				BFD22C6B5070B1150348A276 /* ElderWandPanelExecutionGateTests.swift in Sources */,
 				E15A9B579C4CA6BE924C18A7 /* ElderWandFusionOrchestratorTests.swift in Sources */,
 				FF006B3F529BC5E703BA75A6 /* FactoryDroidProviderExecutorTests.swift in Sources */,
 				AF7E936B48F5FC89090EFBF4 /* GatewayModelCatalogSourceTests.swift in Sources */,
