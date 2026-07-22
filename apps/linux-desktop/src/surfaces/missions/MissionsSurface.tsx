@@ -38,6 +38,7 @@ export function MissionsSurface() {
   const approvalById = useMissionsStore((s) => s.approvalById);
   const questionById = useMissionsStore((s) => s.questionById);
   const cancelById = useMissionsStore((s) => s.cancelById);
+  const resumeById = useMissionsStore((s) => s.resumeById);
   const detailById = useMissionsStore((s) => s.detailById);
   const detailLoadingById = useMissionsStore((s) => s.detailLoadingById);
   const detailErrorById = useMissionsStore((s) => s.detailErrorById);
@@ -49,6 +50,7 @@ export function MissionsSurface() {
   const decide = useMissionsStore((s) => s.decide);
   const answerQuestion = useMissionsStore((s) => s.answerQuestion);
   const cancelMission = useMissionsStore((s) => s.cancel);
+  const resumeMission = useMissionsStore((s) => s.resume);
   const [liveMessage, setLiveMessage] = useState('');
   const [stateFilter, setStateFilter] = useState<MissionStateFilterKey>('all');
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
@@ -151,6 +153,14 @@ export function MissionsSurface() {
     [answerQuestion]
   );
 
+  const runResume = useCallback(
+    async (missionId: string, title: string) => {
+      const ok = await resumeMission(missionId);
+      if (ok) setLiveMessage(`Resumed: ${title}`);
+    },
+    [resumeMission]
+  );
+
   const missionsForProject = useMemo(
     () => missions.filter((m) => missionMatchesProject(m, projectFilter)),
     [missions, projectFilter]
@@ -184,8 +194,10 @@ export function MissionsSurface() {
       healthLoading={healthLoadingById[mission.id] ?? false}
       healthError={healthErrorById[mission.id]}
       cancelState={cancelById[mission.id]}
+      resumeState={resumeById[mission.id]}
       onInspect={(id) => void inspect(id)}
       onCancel={fixtureMode ? undefined : (id, note) => void runCancellation(id, note)}
+      onResume={fixtureMode ? undefined : (id, title) => void runResume(id, title)}
     />
   );
 

@@ -276,6 +276,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('mission_health', { missionId: id });
       return mapMissionHealth(raw);
     },
+    missionResume: async (id) => {
+      const raw = await invoke<RawJsonValue>('mission_resume', { missionId: id });
+      return mapMissionDetail(raw);
+    },
     questionAnswer: async (input) => {
       const raw = await invoke<RawJsonValue>('question_answer', {
         questionId: input.questionId,

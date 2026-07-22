@@ -449,6 +449,7 @@ pub fn run() {
             mission_list,
             mission_get,
             mission_health,
+            mission_resume,
             question_list,
             question_answer,
             mission_create,

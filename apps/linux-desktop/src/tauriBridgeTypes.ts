@@ -1640,6 +1640,8 @@ export interface LinuxShellBridge {
   missionList(): Promise<MissionListResult>;
   missionGet(id: string): Promise<MissionDetail | null>;
   missionHealth?(id: string): Promise<MissionHealthResult>;
+  /** Dispatches a fresh daemon-owned packet from the latest mission checkpoint. */
+  missionResume?(id: string): Promise<MissionDetail | null>;
   questionAnswer?(input: QuestionAnswerInput): Promise<PendingQuestion>;
   missionApprovalDecision(id: string, decision: ApprovalDecision): Promise<void>;
   missionCancel(id: string, note?: string): Promise<MissionDetail | null>;

@@ -1294,6 +1294,22 @@
         assert!(MissionApprovalDecision::parse("APPROVE").is_err());
     }
 
+    #[test]
+    fn mission_resume_wire_is_bounded_and_daemon_gated() {
+        assert!(mission_resume_wire("  ").is_err());
+        assert!(mission_resume_wire(&"m".repeat(257)).is_err());
+        let (method, params) = mission_resume_wire("m-1").expect("valid mission id");
+        assert_eq!(method, "daemon.mission.packet.dispatch");
+        assert_eq!(params["missionID"], "m-1");
+        assert_eq!(params["actor"], "linux-shell");
+        assert_eq!(params["packet"]["missionID"], "m-1");
+        assert_eq!(params["packet"]["workerName"], "linux-shell");
+        assert_eq!(params["packet"]["status"], "queued");
+        assert_eq!(params["packet"]["metadata"]["action"], "resume");
+        assert_eq!(params["packet"]["metadata"]["source"], "linux-shell");
+        assert!(params["packet"]["id"].as_str().unwrap().starts_with("linux-resume-"));
+    }
+
     // Pins the REAL `daemon.mission.list` wire shape: the daemon returns
     // BurnBarMissionListResponse { missions: [BurnBarMissionSnapshot] } where
     // each snapshot carries `id` (bare string), `status` ("awaiting_approval"

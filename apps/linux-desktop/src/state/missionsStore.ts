@@ -21,6 +21,7 @@ export type MissionsState = {
   approvalById: Record<string, ApprovalDecisionState>;
   questionById: Record<string, ApprovalDecisionState>;
   cancelById: Record<string, ApprovalDecisionState>;
+  resumeById: Record<string, ApprovalDecisionState>;
   detailById: Record<string, MissionDetail>;
   detailLoadingById: Record<string, boolean>;
   detailErrorById: Record<string, string | null>;
@@ -35,6 +36,7 @@ export type MissionsState = {
   decide(approvalId: string, decision: ApprovalDecision): Promise<void>;
   answerQuestion(id: string, answer: string, selectedOptionId?: string): Promise<boolean>;
   cancel(id: string, note?: string): Promise<boolean>;
+  resume(id: string): Promise<boolean>;
   create(input: MissionCreateInput): Promise<boolean>;
   resetApprovals(): void;
 };
@@ -46,6 +48,7 @@ export const useMissionsStore = create<MissionsState>()((set, get) => ({
   approvalById: {},
   questionById: {},
   cancelById: {},
+  resumeById: {},
   detailById: {},
   detailLoadingById: {},
   detailErrorById: {},
@@ -271,6 +274,35 @@ export const useMissionsStore = create<MissionsState>()((set, get) => ({
         cancelById: {
           ...s.cancelById,
           [id]: { pending: false, error: e instanceof Error ? e.message : 'Mission cancellation failed' }
+        }
+      }));
+      return false;
+    }
+  },
+
+  async resume(id) {
+    const { bridge, fixtureMode } = useShellStore.getState();
+    if (fixtureMode || !bridge || typeof bridge.missionResume !== 'function') {
+      set((s) => ({
+        resumeById: {
+          ...s.resumeById,
+          [id]: { pending: false, error: 'Mission dispatch requires the packaged Linux shell.' }
+        }
+      }));
+      return false;
+    }
+    set((s) => ({ resumeById: { ...s.resumeById, [id]: { pending: true, error: null } } }));
+    try {
+      const mission = await bridge.missionResume(id);
+      if (!mission) throw new Error('Mission dispatch did not return a daemon snapshot.');
+      await get().load();
+      set((s) => ({ resumeById: { ...s.resumeById, [id]: { pending: false, error: null } } }));
+      return true;
+    } catch (e) {
+      set((s) => ({
+        resumeById: {
+          ...s.resumeById,
+          [id]: { pending: false, error: e instanceof Error ? e.message : 'Mission resume failed' }
         }
       }));
       return false;

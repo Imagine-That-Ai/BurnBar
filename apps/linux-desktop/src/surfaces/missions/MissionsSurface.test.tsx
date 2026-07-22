@@ -21,6 +21,7 @@ function resetStores(): void {
     error: null,
     approvalById: {},
     questionById: {},
+    resumeById: {},
     creating: false,
     createError: null
   });
@@ -515,5 +516,32 @@ describe('MissionsSurface', () => {
       await Promise.resolve();
     });
     expect(missionCancel).toHaveBeenCalledWith('m-cancel', 'Cancelled from Linux mission control.');
+  });
+
+  it('dispatches a daemon-owned packet when a live mission can resume', async () => {
+    const mission: MissionListResult['missions'][number] = {
+      id: 'm-resume',
+      title: 'Resume mission',
+      state: 'blocked',
+      updatedAt: new Date().toISOString(),
+      laneCount: 1,
+      summary: 'Recover from the latest checkpoint.'
+    };
+    const list: MissionListResult = { missions: [mission], pendingApprovals: [] };
+    const missionResume = vi.fn().mockResolvedValue({ ...mission, state: 'dispatching' });
+    const bridge = { missionList: vi.fn().mockResolvedValue(list), missionResume } as unknown as LinuxShellBridge;
+    useShellStore.setState({ fixtureMode: false, bridge });
+    stubLoad(() => useMissionsStore.setState({ data: list, loading: false, error: null }));
+    useMissionsStore.setState({ data: list, loading: false, error: null });
+
+    renderMissions();
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(missionResume).toHaveBeenCalledWith('m-resume');
+    expect(document.querySelector('[aria-live="assertive"]')?.textContent).toContain('Resumed: Resume mission');
   });
 });

@@ -273,6 +273,50 @@ fn mission_health(mission_id: String) -> Result<serde_json::Value, String> {
     )
 }
 
+// ───────────────── P20: mission resume/dispatch ─────────────────
+// Wire: daemon.mission.packet.dispatch
+//
+// Linux does not invent execution state in the renderer. A resume action
+// submits a fresh, daemon-owned packet and lets the daemon enforce approval,
+// terminal-state, enterprise-policy, and runtime-readiness gates before any
+// side effect. The readiness gate is intentionally fail-closed when the
+// packaged daemon is not configured for execution.
+fn mission_resume_wire(mission_id: &str) -> Result<(&'static str, serde_json::Value), String> {
+    let mission_id = mission_id.trim();
+    if mission_id.is_empty() || mission_id.len() > 256 {
+        return Err("Mission id must contain between 1 and 256 bytes.".to_string());
+    }
+    let packet_id = format!("linux-resume-{}", uuid::Uuid::new_v4());
+    Ok((
+        "daemon.mission.packet.dispatch",
+        serde_json::json!({
+            "missionID": mission_id,
+            "actor": "linux-shell",
+            "packet": {
+                "id": packet_id,
+                "missionID": mission_id,
+                "workerName": "linux-shell",
+                "objective": "Resume the mission from its latest daemon checkpoint.",
+                "status": "queued",
+                "runID": null,
+                "dispatchedAt": null,
+                "completedAt": null,
+                "metadata": {
+                    "source": "linux-shell",
+                    "surface": "missions",
+                    "action": "resume"
+                }
+            }
+        }),
+    ))
+}
+
+#[tauri::command]
+fn mission_resume(mission_id: String) -> Result<serde_json::Value, String> {
+    let (method, params) = mission_resume_wire(&mission_id)?;
+    call_daemon_method(method, Some(params))
+}
+
 // ───────────────── P20: pending controller questions ─────────────────
 // Wire: daemon.question.list / daemon.question.answer
 #[tauri::command]

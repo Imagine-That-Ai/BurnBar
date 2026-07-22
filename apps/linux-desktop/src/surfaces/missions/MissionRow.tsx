@@ -31,8 +31,10 @@ export function MissionRow({
   healthLoading = false,
   healthError,
   cancelState,
+  resumeState,
   onInspect,
-  onCancel
+  onCancel,
+  onResume
 }: {
   mission: MissionRowMission;
   pendingApprovals: PendingApproval[];
@@ -44,8 +46,10 @@ export function MissionRow({
   healthLoading?: boolean;
   healthError?: string | null;
   cancelState?: ApprovalDecisionState;
+  resumeState?: ApprovalDecisionState;
   onInspect?: (missionId: string) => void;
   onCancel?: (missionId: string, note?: string) => void;
+  onResume?: (missionId: string, title: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -68,20 +72,20 @@ export function MissionRow({
     if (lifecycle === 'planned') {
       return {
         label: 'Start mission',
-        hint: 'Available when the daemon exposes mission dispatch from the Linux shell.'
+        hint: 'Dispatches a daemon-owned packet after approval and runtime readiness checks.'
       };
     }
     if (lifecycle === 'blocked' || lifecycle === 'partial') {
       return {
         label: 'Resume',
-        hint: 'Resume and takeover run on the controller runtime — use a paired macOS device or daemon CLI.'
+        hint: 'Dispatches a fresh daemon-owned packet after approval and runtime readiness checks.'
       };
     }
     return null;
   })();
 
   const dispatchUnavailable =
-    primaryAction !== null && primaryAction.label !== 'Review approval';
+    primaryAction !== null && primaryAction.label !== 'Review approval' && !onResume;
 
   return (
     <li
@@ -262,11 +266,14 @@ export function MissionRow({
                 <button
                   type="button"
                   className="missions-gate-btn missions-gate-btn--primary"
-                  disabled={dispatchUnavailable}
+                  disabled={dispatchUnavailable || resumeState?.pending}
                   title={primaryAction.hint}
                   aria-describedby={dispatchUnavailable ? `${detailsId}-dispatch-hint` : undefined}
+                  onClick={() => {
+                    if (onResume) onResume(mission.id, mission.title);
+                  }}
                 >
-                  {primaryAction.label}
+                  {resumeState?.pending ? 'Dispatching…' : primaryAction.label}
                 </button>
                 {dispatchUnavailable ? (
                   <p className="missions-gate-dispatch-hint muted" id={`${detailsId}-dispatch-hint`}>
@@ -285,6 +292,9 @@ export function MissionRow({
             >
               Inspect logs
             </button>
+            {resumeState?.error ? (
+              <p className="missions-detail-unavailable" role="alert">{resumeState.error}</p>
+            ) : null}
           </div>
           <button
             type="button"
