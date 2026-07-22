@@ -89,7 +89,10 @@ Every selected PR should end as:
 
 Cursor/Bugbot/Cloud Agent can fix.
 Codex approves.
-GitHub branch protection decides mergeability.
+GitHub branch protection decides mergeability. The single required
+`BurnBar CI Gate` context fails closed over component checks while the
+deterministic path classifier avoids unrelated native rebuilds; see
+[`CI_COST_CONTROLS.md`](CI_COST_CONTROLS.md).
 
 When agents react to each other, leave a Cross-agent receipt in the PR:
 - saw
