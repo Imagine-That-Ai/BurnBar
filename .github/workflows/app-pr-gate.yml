@@ -28,7 +28,7 @@ permissions:
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -38,6 +38,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  classify:
+    uses: ./.github/workflows/ci-impact.yml
+
   app-build-test:
     name: AgentLens Rust + Swift build/test prerequisites
     runs-on: macos-26
@@ -45,7 +48,8 @@ jobs:
     # runner needs headroom; observed cold macos-26 runs can approach 120
     # minutes before the 1,920-test suite and coverage upload finish.
     timeout-minutes: 150
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: classify
+    if: needs.classify.outputs.macos == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -59,9 +63,10 @@ jobs:
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
           path: |
-            .spm-cache
+            .spm-cache-new
             .build
             .derived-data
+            ~/.cache/org.swift.swiftpm
           key: ${{ runner.os }}-app-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-app-spm-
@@ -128,7 +133,10 @@ jobs:
         # This is the build that was missing as a PR gate: it compiles every
         # app-target file (AgentLens/**, app-linked OpenBurnBarCore/**, CloudSync,
         # the memory subsystem) and runs the app XCTest suite.
-        run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-app.sh
+        run: >-
+          OPENBURNBAR_ENABLE_COVERAGE=YES
+          OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="$GITHUB_WORKSPACE/.derived-data/macos-idle-occlusion-gate"
+          ./scripts/test-openburnbar-app.sh
 
       - name: Guard against zero-test false greens
         run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"
@@ -172,7 +180,8 @@ jobs:
     # mobile suite) so test execution is fast after the build completes.
     # The 120-min cap covers a cold SPM cache + FFI build + focused tests.
     timeout-minutes: 120
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: classify
+    if: needs.classify.outputs.mobile == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -188,6 +197,7 @@ jobs:
           path: |
             .spm-cache-new
             .derived-data
+            ~/.cache/org.swift.swiftpm
           key: ${{ runner.os }}-mobile-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-mobile-spm-
@@ -273,6 +283,7 @@ jobs:
   app-pr-gate:
     name: App build + test (AgentLens)
     needs:
+      - classify
       - app-build-test
       - mobile-build-gate
     runs-on: ubuntu-latest
@@ -283,13 +294,20 @@ jobs:
         env:
           AGENTLENS_RESULT: ${{ needs.app-build-test.result }}
           MOBILE_RESULT: ${{ needs.mobile-build-gate.result }}
+          CLASSIFIER_RESULT: ${{ needs.classify.result }}
+          MACOS_REQUIRED: ${{ needs.classify.outputs.macos }}
+          MOBILE_REQUIRED: ${{ needs.classify.outputs.mobile }}
         run: |
           set -euo pipefail
-          printf 'app-build-test=%s\nmobile-build-gate=%s\n' \
-            "$AGENTLENS_RESULT" "$MOBILE_RESULT"
-          for result in "$AGENTLENS_RESULT" "$MOBILE_RESULT"; do
-            if [[ "$result" != "success" ]]; then
-              echo "::error::App Rust/Swift prerequisite did not succeed (result=${result:-missing})."
-              exit 1
+          [[ "$CLASSIFIER_RESULT" == "success" ]] || { echo "::error::Impact classifier failed."; exit 1; }
+          require_or_skip() {
+            local required="$1" result="$2" lane="$3"
+            if [[ "$required" == "true" && "$result" != "success" ]]; then
+              echo "::error::$lane was required but ended $result."; exit 1
             fi
-          done
+            if [[ "$required" == "false" && "$result" != "skipped" ]]; then
+              echo "::error::$lane was not selected but ended $result."; exit 1
+            fi
+          }
+          require_or_skip "$MACOS_REQUIRED" "$AGENTLENS_RESULT" macOS
+          require_or_skip "$MOBILE_REQUIRED" "$MOBILE_RESULT" mobile

@@ -177,8 +177,8 @@ expect(
   (root) =>
     mutate(root, ".github/workflows/code-quality.yml", (text) =>
       text.replace(
-        'github.event_name != \'pull_request\' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(\'["OWNER","MEMBER","COLLABORATOR"]\'), github.event.pull_request.author_association))',
-        "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
+        '(github.event_name == \'schedule\' || github.event_name == \'workflow_dispatch\') || (github.event_name == \'pull_request\' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON(\'["OWNER","MEMBER","COLLABORATOR"]\'), github.event.pull_request.author_association))',
+        "github.event_name == 'merge_group' || github.event.pull_request.head.repo.full_name == github.repository",
       ),
     ),
   1,
