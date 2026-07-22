@@ -244,7 +244,7 @@ final class CloudSyncCoordinator {
         }
     }
 
-    /// Fetch sum of cost across all devices for this user (last 90 days).
+    /// Fetch the 90-day cloud total from the usage rollup document.
     func fetchCloudTotal() async {
         await downloadSync.fetchCloudTotal()
         await MainActor.run {
@@ -458,7 +458,7 @@ final class CloudSyncCoordinator {
         await MainActor.run {
             lastSyncDate = downloadSync.lastSyncDate
             lastSyncError = downloadSync.lastSyncError
+            cloudTotalCost = downloadSync.cloudTotalCost
         }
-        await fetchCloudTotal()
     }
 }

@@ -307,6 +307,15 @@ export const KERNELS: KernelDescriptor[] = [
       lazyKernel("boids", "Boids", "2d", () =>
         import("./kernels/boidsKernel").then((m) => m.createBoidsKernel)),
   },
+  {
+    id: "swarmEmber",
+    label: "Swarm Ember",
+    blurb: "Ember particles murmurate, then spell token glyphs and dissolve.",
+    substrate: "2d",
+    create: () =>
+      lazyKernel("swarmEmber", "Swarm Ember", "2d", () =>
+        import("./kernels/swarmEmberKernel").then((m) => () => m.createSwarmEmberKernel({ enableSwarmSparkles: false }))),
+  },
   ];
 
 export const DEFAULT_KERNEL_ID: KernelId = "constellation";

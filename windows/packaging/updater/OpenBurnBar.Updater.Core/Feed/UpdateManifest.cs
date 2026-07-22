@@ -36,10 +36,18 @@ public sealed record UpdateManifest
     /// appcast custom <c>sparkle:sha256</c>).</summary>
     public string? Sha256 { get; init; }
 
-    /// <summary>Base64 Ed25519 signature over the artifact BYTES
-    /// (appcast enclosure <c>sparkle:edSignature</c>, JSON
-    /// <c>edSignature</c>) — the value the PINNED key must verify.</summary>
+    /// <summary>Base64 Ed25519 signature over the RAW ARTIFACT BYTES (appcast
+    /// enclosure <c>sparkle:edSignature</c>, JSON <c>edSignature</c>) — exactly
+    /// Sparkle's semantics, verified natively by WinSparkle AND re-verified by
+    /// the Core verifier against the PINNED key.</summary>
     public string? EdSignatureBase64 { get; init; }
+
+    /// <summary>Base64 Ed25519 signature over the CANONICAL UPDATE DESCRIPTOR
+    /// (appcast enclosure <c>sparkle:edDescriptorSignature</c>, JSON
+    /// <c>descriptorSignature</c>) — binds the advertised metadata (version,
+    /// URL, length, SHA-256, critical, channel, …) to the pinned key so a feed
+    /// attacker cannot rebind a signed artifact to different metadata.</summary>
+    public string? DescriptorSignatureBase64 { get; init; }
 
     /// <summary>Whether this is a critical update (Sparkle
     /// <c>&lt;sparkle:criticalUpdate&gt;</c>) that re-prompts after "Later".</summary>
@@ -48,6 +56,9 @@ public sealed record UpdateManifest
     /// <summary>Minimum OS version this build supports
     /// (<c>sparkle:minimumSystemVersion</c>), e.g. "10.0.19041".</summary>
     public string? MinimumSystemVersion { get; init; }
+
+    /// <summary>The distribution channel bound by JSON feeds; appcast feeds default to direct-download.</summary>
+    public string Channel { get; init; } = "direct-download";
 
     /// <summary>URL of the human-readable release notes
     /// (<c>sparkle:releaseNotesLink</c>).</summary>

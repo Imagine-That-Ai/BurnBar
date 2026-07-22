@@ -20,7 +20,6 @@ export function ChatSurface() {
   const selectedThreadId = useChatStore((s) => s.selectedThreadId);
   const messages = useChatStore((s) => s.messages);
   const messagesLoading = useChatStore((s) => s.messagesLoading);
-  const config = useChatStore((s) => s.config);
   const backend = useChatStore((s) => s.backend);
   const modelLabel = useChatStore((s) => s.modelLabel);
   const streaming = useChatStore((s) => s.streaming);

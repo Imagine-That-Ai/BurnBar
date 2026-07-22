@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
+source scripts/lib/resolve-repo-path.sh
 
 bash scripts/ci/verify-apple-appcheck-release-env.sh
 
@@ -37,7 +38,11 @@ PY
 version_info="$(read_project_version)"
 version="${OPENBURNBAR_MAC_VERSION:-$(printf "%s\n" "$version_info" | sed -n "1p")}"
 build="${OPENBURNBAR_MAC_BUILD:-$(printf "%s\n" "$version_info" | sed -n "2p")}"
-release_dir="${OPENBURNBAR_WEBSITE_RELEASE_DIR:-build/macos-website-${version}-${build}}"
+release_dir="$(
+  resolve_repo_path \
+    "$repo_root" \
+    "${OPENBURNBAR_WEBSITE_RELEASE_DIR:-build/macos-website-${version}-${build}}"
+)"
 derived_data="$release_dir/DerivedData"
 app_path="$derived_data/Build/Products/$configuration/OpenBurnBar.app"
 dmg_name="OpenBurnBar-${version}-macOS.dmg"
@@ -162,17 +167,26 @@ if [[ -f "$daemon_core_dylib" ]]; then
 fi
 daemon_resource_bundle="$app_path/Contents/Resources/OpenBurnBarCore_OpenBurnBarCore.bundle"
 daemon_helper_resource_bundle="$helpers_dir/OpenBurnBarCore_OpenBurnBarCore.bundle"
+# Core-decomposition P-02: the Kernel target gained its own resource bundle
+# (catalog.json + secret-pattern-corpus.json). Stage it IN ADDITION to the Core bundle.
+daemon_kernel_resource_bundle="$app_path/Contents/Resources/OpenBurnBarCore_OpenBurnBarKernel.bundle"
+daemon_helper_kernel_resource_bundle="$helpers_dir/OpenBurnBarCore_OpenBurnBarKernel.bundle"
 project_code_memory_dir="$app_path/Contents/Resources/ProjectCodeMemory"
 if [[ ! -d "$daemon_resource_bundle" ]]; then
   echo "ERROR: OpenBurnBarDaemon resource bundle missing at $daemon_resource_bundle" >&2
+  exit 1
+fi
+if [[ ! -d "$daemon_kernel_resource_bundle" ]]; then
+  echo "ERROR: OpenBurnBarDaemon Kernel resource bundle missing at $daemon_kernel_resource_bundle" >&2
   exit 1
 fi
 if [[ ! -d "$project_code_memory_dir" ]]; then
   echo "ERROR: OpenBurnBarDaemon Project Code Memory resources missing at $project_code_memory_dir" >&2
   exit 1
 fi
-rm -rf "$daemon_helper_resource_bundle" "$helpers_dir/ProjectCodeMemory"
+rm -rf "$daemon_helper_resource_bundle" "$daemon_helper_kernel_resource_bundle" "$helpers_dir/ProjectCodeMemory"
 cp -R "$daemon_resource_bundle" "$daemon_helper_resource_bundle"
+cp -R "$daemon_kernel_resource_bundle" "$daemon_helper_kernel_resource_bundle"
 if otool -L "$helpers_dir/OpenBurnBarDaemon" | grep -q 'SQLCipher.framework'; then
   if [[ ! -d "$frameworks_dir/SQLCipher.framework" ]]; then
     echo "ERROR: OpenBurnBarDaemon links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2
@@ -333,6 +347,9 @@ PLIST
     --entitlements "$privileged_input_signing_entitlements" \
     --sign "$identity" \
     "$helper_app"
+  bash scripts/ci/verify-signing-profile-certificate.sh \
+    "$helper_app" \
+    "$privileged_input_profile"
   codesign --verify --deep --strict --verbose=2 "$helper_app"
   assert_peer_signature "$helper_app" "com.openburnbar.privileged-input-execution"
 }
@@ -354,9 +371,13 @@ if [[ -d "$helpers_dir" ]]; then
   )
 fi
 sign_one "$helpers_dir/libOpenBurnBarCore.dylib"
-sign_one "$helpers_dir/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"
+sign_one "$helpers_dir/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.app"
 sign_one "$helpers_dir/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"
 sign_one "$helpers_dir/OpenBurnBarVirtualHIDBridge" "runtime,library" "com.openburnbar.virtual-hid-bridge"
+sign_one \
+  "$helpers_dir/OpenBurnBarPrivilegedInputKillSwitchWatchdog" \
+  "runtime,library" \
+  "com.openburnbar.privileged-input-killswitch-watchdog"
 sign_one_with_entitlements \
   "$helpers_dir/OpenBurnBarPrivilegedInputExecution" \
   "$privileged_input_signing_entitlements" \
@@ -371,12 +392,18 @@ codesign --force --timestamp --options runtime,library \
   --entitlements "$app_signing_entitlements" \
   --sign "$identity" \
   "$app_path"
+bash scripts/ci/verify-signing-profile-certificate.sh "$app_path" "$app_profile"
 codesign --verify --deep --strict --verbose=2 "$app_path"
 assert_peer_signature "$app_path" "com.openburnbar.app"
-assert_peer_signature "$helpers_dir/OpenBurnBarDaemon" "com.openburnbar.daemon"
+assert_peer_signature "$helpers_dir/OpenBurnBarDaemon" "com.openburnbar.app"
 assert_peer_signature "$helpers_dir/OpenBurnBarCLI" "com.openburnbar.cli"
 assert_peer_signature "$helpers_dir/OpenBurnBarVirtualHIDBridge" "com.openburnbar.virtual-hid-bridge"
 assert_peer_signature "$helpers_dir/OpenBurnBarPrivilegedInputExecution" "com.openburnbar.privileged-input-execution"
+assert_peer_signature \
+  "$helpers_dir/OpenBurnBarPrivilegedInputKillSwitchWatchdog" \
+  "com.openburnbar.privileged-input-killswitch-watchdog"
+
+bash scripts/ci/verify-daemon-release-signing.sh "$app_path" "$app_profile_team_id"
 
 actual_entitlements="$release_dir/direct-entitlements.plist"
 codesign -d --entitlements :- "$app_path" > "$actual_entitlements" 2>/dev/null
@@ -496,7 +523,7 @@ if [[ "${OPENBURNBAR_SKIP_NOTARY:-0}" != "1" ]]; then
 fi
 
 cd "$(dirname "$app_path")"
-ditto -c -k --keepParent "$(basename "$app_path")" "$repo_root/$zip_path"
+ditto -c -k --keepParent "$(basename "$app_path")" "$zip_path"
 cd "$repo_root"
 
 bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$dmg_path" "$zip_path"

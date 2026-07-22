@@ -1,5 +1,5 @@
 import XCTest
-import OpenBurnBarCore
+import OpenBurnBarEngine
 @testable import OpenBurnBarDaemon
 
 final class BurnBarDaemonServerTestsPRLifecycle: XCTestCase {

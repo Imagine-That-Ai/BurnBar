@@ -3,18 +3,57 @@ import XCTest
 
 @testable import OpenBurnBar
 
+private final class InMemoryDatabaseEncryptionKeychain {
+    private let lock = NSLock()
+    private var storedData: Data?
+
+    lazy var client = DatabaseEncryptionKeychainClient(
+        copyMatching: { [weak self] _ in
+            guard let self else { return (errSecItemNotFound, nil) }
+            return self.copyMatching()
+        },
+        add: { [weak self] query in
+            guard let self else { return errSecNotAvailable }
+            return self.add(query)
+        },
+        delete: { [weak self] _ in
+            guard let self else { return errSecNotAvailable }
+            return self.delete()
+        }
+    )
+
+    private func copyMatching() -> (status: OSStatus, result: AnyObject?) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let storedData else { return (errSecItemNotFound, nil) }
+        return (errSecSuccess, storedData as AnyObject)
+    }
+
+    private func add(_ query: [String: Any]) -> OSStatus {
+        lock.lock()
+        defer { lock.unlock() }
+        guard storedData == nil else { return errSecDuplicateItem }
+        guard let data = query[kSecValueData as String] as? Data else { return errSecParam }
+        storedData = data
+        return errSecSuccess
+    }
+
+    private func delete() -> OSStatus {
+        lock.lock()
+        defer { lock.unlock() }
+        storedData = nil
+        return errSecSuccess
+    }
+}
+
 /// Verifies the GRDB+SQLCipher SPM build applies the SQLCipher passphrase and reports `cipher_version`,
 /// and validates the SOTA key recovery design (Keychain-only + explicit passphrase bundle).
 final class DatabaseEncryptionServiceTests: XCTestCase {
-    override func setUp() {
-        super.setUp()
-        // Ensure a clean state for each test
-        DatabaseEncryptionService.deleteKey()
-    }
-
-    override func tearDown() {
-        DatabaseEncryptionService.deleteKey()
-        super.tearDown()
+    override func invokeTest() {
+        let keychain = InMemoryDatabaseEncryptionKeychain()
+        DatabaseEncryptionService.withKeychainClientForTesting(keychain.client) {
+            super.invokeTest()
+        }
     }
 
     /// Opens the app target's GRDB module and reads `PRAGMA cipher_version`.
@@ -372,6 +411,54 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         XCTAssertEqual(first, second, "Repeated calls must return the same persisted key")
     }
 
+    func testXCTestKeychainAccountIsIsolatedFromProduction() {
+        let productionAccount = DatabaseEncryptionService.resolvedKeyIdentifierAccount(
+            environment: [:],
+            processIdentifier: 42
+        )
+        let testAccount = DatabaseEncryptionService.resolvedKeyIdentifierAccount(
+            environment: ["XCTestConfigurationFilePath": "/tmp/OpenBurnBarTests.xctestconfiguration"],
+            processIdentifier: 42
+        )
+
+        XCTAssertEqual(productionAccount, "database-encryption-key-v1")
+        XCTAssertEqual(testAccount, "database-encryption-key-v1.xctest.42")
+        XCTAssertNotEqual(testAccount, productionAccount)
+
+        let runningTestAccount = DatabaseEncryptionService.resolvedKeyIdentifierAccount(
+            environment: ProcessInfo.processInfo.environment,
+            processIdentifier: ProcessInfo.processInfo.processIdentifier
+        )
+        XCTAssertEqual(
+            runningTestAccount,
+            "database-encryption-key-v1.xctest.\(ProcessInfo.processInfo.processIdentifier)",
+            "The real XCTest host must never resolve the production database-key account."
+        )
+    }
+
+    func testExistingEncryptedDatabaseKeyFailuresProduceActionableRecoveryCopy() {
+        let path = "/tmp/preserved-openburnbar.sqlite"
+        let missing = DatabaseEncryptionError.existingEncryptedDatabaseKeyMissing(path: path)
+        let rejected = DatabaseEncryptionError.existingEncryptedDatabaseKeyRejected(path: path)
+
+        XCTAssertEqual(
+            missing.localizedDescription,
+            "The encryption key for this database is missing. OpenBurnBar preserved the database."
+        )
+        XCTAssertEqual(
+            rejected.localizedDescription,
+            "The stored encryption key cannot open this database. OpenBurnBar preserved the database."
+        )
+        XCTAssertEqual(
+            missing.recoverySuggestion,
+            "Restore the original key from a recovery bundle, or archive and reset to rebuild local data."
+        )
+
+        let failure = DataStoreStartupFailure.make(error: missing)
+        XCTAssertEqual(failure.errorSummary, missing.localizedDescription)
+        XCTAssertTrue(failure.technicalDetails.contains(path))
+    }
+
     #if DEBUG
     func testGetOrCreatePersistedKey_throwsTypedErrorWhenKeychainAddFails() {
         let failingKeychain = DatabaseEncryptionKeychainClient(
@@ -439,6 +526,112 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
             )
         }
     }
+
+    @MainActor
+    func testCoordinatorDoesNotCreateReplacementKeyForEncryptedDatabaseWhenKeyIsMissing() throws {
+        let path = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("obb-encrypted-missing-key-\(UUID().uuidString).sqlite")
+        defer {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(atPath: path + suffix)
+            }
+        }
+
+        let originalKey = Data("missing-key-regression".utf8).base64EncodedString()
+        let originalConfig = try DatabaseEncryptionService.makeConfiguration(encryptionKey: originalKey)
+        let original = try DatabasePool(path: path, configuration: originalConfig)
+        try original.write { db in
+            try db.execute(sql: "CREATE TABLE protected_value (value TEXT NOT NULL)")
+            try db.execute(sql: "INSERT INTO protected_value (value) VALUES ('preserved')")
+        }
+        try original.close()
+        let bytesBeforeOpen = try Data(contentsOf: URL(fileURLWithPath: path))
+
+        var addCalls = 0
+        let missingKeychain = DatabaseEncryptionKeychainClient(
+            copyMatching: { _ in (errSecItemNotFound, nil) },
+            add: { _ in
+                addCalls += 1
+                return errSecSuccess
+            },
+            delete: { _ in errSecSuccess }
+        )
+
+        XCTAssertThrowsError(
+            try DatabaseEncryptionService.withKeychainClientForTesting(missingKeychain) {
+                try DataStoreCoordinator.makeDatabasePoolForTesting(path: path)
+            }
+        ) { error in
+            guard case DatabaseEncryptionError.existingEncryptedDatabaseKeyMissing(let failedPath) = error else {
+                return XCTFail("Expected existingEncryptedDatabaseKeyMissing, got \(error)")
+            }
+            XCTAssertEqual(failedPath, path)
+        }
+
+        XCTAssertEqual(addCalls, 0, "Startup must not create a replacement key for an encrypted database.")
+        XCTAssertEqual(
+            try Data(contentsOf: URL(fileURLWithPath: path)),
+            bytesBeforeOpen,
+            "A missing-key startup attempt must leave the encrypted database byte-for-byte unchanged."
+        )
+    }
+
+    @MainActor
+    func testCoordinatorRejectsWrongKeyWithoutChangingEncryptedDatabase() throws {
+        let path = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("obb-encrypted-wrong-key-\(UUID().uuidString).sqlite")
+        defer {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(atPath: path + suffix)
+            }
+        }
+
+        let originalKey = Data("correct-key-regression".utf8).base64EncodedString()
+        let wrongKey = Data("incorrect-key-regression".utf8).base64EncodedString()
+        let originalConfig = try DatabaseEncryptionService.makeConfiguration(encryptionKey: originalKey)
+        let original = try DatabasePool(path: path, configuration: originalConfig)
+        try original.write { db in
+            try db.execute(sql: "CREATE TABLE protected_value (value TEXT NOT NULL)")
+            try db.execute(sql: "INSERT INTO protected_value (value) VALUES ('preserved')")
+        }
+        try original.close()
+        let bytesBeforeOpen = try Data(contentsOf: URL(fileURLWithPath: path))
+
+        var addCalls = 0
+        let wrongKeychain = DatabaseEncryptionKeychainClient(
+            copyMatching: { _ in (errSecSuccess, Data(wrongKey.utf8) as AnyObject) },
+            add: { _ in
+                addCalls += 1
+                return errSecSuccess
+            },
+            delete: { _ in errSecSuccess }
+        )
+
+        XCTAssertThrowsError(
+            try DatabaseEncryptionService.withKeychainClientForTesting(wrongKeychain) {
+                try DataStoreCoordinator.makeDatabasePoolForTesting(path: path)
+            }
+        ) { error in
+            guard case DatabaseEncryptionError.existingEncryptedDatabaseKeyRejected(let failedPath) = error else {
+                return XCTFail("Expected existingEncryptedDatabaseKeyRejected, got \(error)")
+            }
+            XCTAssertEqual(failedPath, path)
+        }
+
+        XCTAssertEqual(addCalls, 0)
+        XCTAssertEqual(
+            try Data(contentsOf: URL(fileURLWithPath: path)),
+            bytesBeforeOpen,
+            "A wrong-key startup attempt must leave the encrypted database byte-for-byte unchanged."
+        )
+
+        let reopened = try DatabasePool(path: path, configuration: originalConfig)
+        let value = try reopened.read { db in
+            try String.fetchOne(db, sql: "SELECT value FROM protected_value")
+        }
+        XCTAssertEqual(value, "preserved")
+        try reopened.close()
+    }
     #endif
 
     func testReleaseGateRequiresActiveSQLCipherWhenEnabled() throws {
@@ -483,5 +676,153 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
         }
         XCTAssertEqual(count, 0, "Database should be readable with recovered key")
         try recoveredPool.close()
+    }
+
+    // MARK: - Orphaned Migration Artifact Sweep
+
+    /// A migration process that dies mid-export (SIGKILL, force quit, shutdown)
+    /// strands its `<db>.sqlcipher-migrating-<UUID>` temp database (plus
+    /// `-wal`/`-shm`/`-journal` sidecars) forever — one real machine accumulated
+    /// 9.4 GB of them. The sweep must delete every artifact matching the prefix.
+    func testOrphanSweep_deletesOrphanTempDatabasesAndSidecars() throws {
+        let directory = try makeOrphanSweepDirectory()
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        let dbPath = (directory as NSString).appendingPathComponent("openburnbar.sqlite")
+
+        let orphanA = dbPath + ".sqlcipher-migrating-" + UUID().uuidString
+        let orphanB = dbPath + ".sqlcipher-migrating-" + UUID().uuidString
+        let orphanPaths = [orphanA, orphanA + "-journal", orphanA + "-wal", orphanA + "-shm", orphanB]
+        for orphanPath in orphanPaths {
+            try Data("orphaned migration payload".utf8).write(to: URL(fileURLWithPath: orphanPath))
+        }
+
+        DatabaseEncryptionService.removeOrphanedMigrationArtifacts(forDatabaseAt: dbPath)
+
+        for orphanPath in orphanPaths {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: orphanPath),
+                "Sweep must delete orphaned migration artifact at \(orphanPath)"
+            )
+        }
+    }
+
+    /// The sweep must be strictly name-scoped: the live database, its own
+    /// `-wal`/`-shm` sidecars, another database's migration temp files, and
+    /// near-miss names must all survive untouched.
+    func testOrphanSweep_leavesLiveDatabaseAndUnrelatedFilesUntouched() throws {
+        let directory = try makeOrphanSweepDirectory()
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        let dbPath = (directory as NSString).appendingPathComponent("openburnbar.sqlite")
+
+        let liveDatabaseContent = Data("live database bytes".utf8)
+        try liveDatabaseContent.write(to: URL(fileURLWithPath: dbPath))
+        let keeperPaths = [
+            dbPath + "-wal",
+            dbPath + "-shm",
+            // Another database's orphan: prefix must match THIS db's file name only.
+            (directory as NSString).appendingPathComponent("other.sqlite.sqlcipher-migrating-\(UUID().uuidString)"),
+            // Near-misses: wrong leading character / missing trailing dash.
+            (directory as NSString).appendingPathComponent("xopenburnbar.sqlite.sqlcipher-migrating-\(UUID().uuidString)"),
+            dbPath + ".sqlcipher-migratingNOT",
+            dbPath + ".backup"
+        ]
+        for keeperPath in keeperPaths {
+            try Data("keep me".utf8).write(to: URL(fileURLWithPath: keeperPath))
+        }
+        let orphanPath = dbPath + ".sqlcipher-migrating-" + UUID().uuidString
+        try Data("orphaned migration payload".utf8).write(to: URL(fileURLWithPath: orphanPath))
+
+        DatabaseEncryptionService.removeOrphanedMigrationArtifacts(forDatabaseAt: dbPath)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: orphanPath), "Sweep must delete the orphan")
+        XCTAssertEqual(
+            try Data(contentsOf: URL(fileURLWithPath: dbPath)),
+            liveDatabaseContent,
+            "Sweep must never touch the live database"
+        )
+        for keeperPath in keeperPaths {
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: keeperPath),
+                "Sweep must not delete unrelated file at \(keeperPath)"
+            )
+        }
+    }
+
+    /// A database path whose parent directory does not exist (first launch before
+    /// the app-support directory is provisioned) must be a silent no-op.
+    func testOrphanSweep_toleratesMissingDirectory() {
+        let missingPath = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("obb-sweep-missing-\(UUID().uuidString)/nested/openburnbar.sqlite")
+        DatabaseEncryptionService.removeOrphanedMigrationArtifacts(forDatabaseAt: missingPath)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missingPath))
+    }
+
+    /// Entering the migration check must reclaim orphans even when no migration
+    /// runs (here: the primary database file does not exist yet).
+    func testMigratePlaintextDatabaseIfNeeded_sweepsOrphansAtEntry() throws {
+        let directory = try makeOrphanSweepDirectory()
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        let dbPath = (directory as NSString).appendingPathComponent("openburnbar.sqlite")
+        let orphanPath = dbPath + ".sqlcipher-migrating-" + UUID().uuidString
+        try Data("orphaned migration payload".utf8).write(to: URL(fileURLWithPath: orphanPath))
+
+        let migrated = try DatabaseEncryptionService.migratePlaintextDatabaseIfNeeded(
+            at: dbPath,
+            encryptionKey: String(repeating: "a", count: 64)
+        )
+
+        XCTAssertFalse(migrated, "No primary database file exists, so no migration should run")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: orphanPath),
+            "Checking migration must sweep orphaned temp databases from prior crashed migrations"
+        )
+    }
+
+    /// The orphan sweep's size lookup (`attributesOfItem`) can fail when a
+    /// stranded migration temp file is removed between the directory enumeration
+    /// and the per-entry stat (a TOCTOU race against another reaper, or a
+    /// filesystem that declines to report size). Cleanup must fail OPEN: a
+    /// size-lookup failure must NOT abort removal of the orphan — the strand is
+    /// reclaimed exactly as it would be when the size is known, and no error is
+    /// propagated. Exercises the `do { attributes… } catch` branch in
+    /// `removeOrphanedMigrationArtifacts`.
+    func testOrphanSweep_removesOrphanEvenWhenSizeLookupFails() throws {
+        let directory = try makeOrphanSweepDirectory()
+        defer { try? FileManager.default.removeItem(atPath: directory) }
+        let dbPath = (directory as NSString).appendingPathComponent("openburnbar.sqlite")
+
+        // A real orphan matching the prefix so the sweep reaches the size-lookup.
+        let orphanPath = dbPath + ".sqlcipher-migrating-" + UUID().uuidString
+        try Data("orphaned migration payload".utf8).write(to: URL(fileURLWithPath: orphanPath))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: orphanPath), "Precondition: orphan must exist")
+
+        // Inject a size lookup that always fails, simulating the TOCTOU/stat-failure
+        // branch deterministically (the real path is only reachable via a
+        // non-deterministic race). The default lookup is restored on exit.
+        var sizeLookupWasCalled = false
+        try DatabaseEncryptionService.withOrphanSizeLookupForTesting(
+            { _, _ in
+                sizeLookupWasCalled = true
+                throw CocoaError(.fileReadNoSuchFile)
+            },
+            {
+                DatabaseEncryptionService.removeOrphanedMigrationArtifacts(forDatabaseAt: dbPath)
+            }
+        )
+
+        // The failing size lookup must have been consulted (proves the branch ran)
+        // and — the real contract — the orphan must STILL be removed despite it.
+        XCTAssertTrue(sizeLookupWasCalled, "Sweep must consult the size lookup for a matching orphan")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: orphanPath),
+            "Sweep must delete the orphan even when its size lookup fails (fail-open cleanup)"
+        )
+    }
+
+    private func makeOrphanSweepDirectory() throws -> String {
+        let directory = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("obb-orphan-sweep-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        return directory
     }
 }

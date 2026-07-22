@@ -11,6 +11,7 @@ import AppKit
 /// Shows connected providers' 5h + weekly bars inline — no horizontal scroll.
 /// Clicking a row with routing detail expands the inline cockpit.
 struct QuotaPopoverBar: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Bindable var quotaService: ProviderQuotaService
     @Bindable var settingsManager: SettingsManager
     let dataStore: DataStore
@@ -228,19 +229,9 @@ struct QuotaPopoverBar: View {
         .padding(.top, DesignSystem.Spacing.sm)
         .padding(.bottom, DesignSystem.Spacing.xs)
         .background(
-            HStack(spacing: 0) {
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [DesignSystem.Colors.blaze, DesignSystem.Colors.amber.opacity(0.6)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(width: 3)
-                Spacer()
-            }
-            .background(DesignSystem.Colors.surface.opacity(0.45))
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.022) : Color.black.opacity(0.014))
+                .padding(.horizontal, DesignSystem.Spacing.xs)
         )
         .task {
             await refreshProviderState()

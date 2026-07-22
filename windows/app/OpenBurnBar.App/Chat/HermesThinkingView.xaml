@@ -3,8 +3,8 @@
   Windows render of AgentLens/Views/Chat/HermesThinkingView.swift — three mercury
   droplets that pool and separate while Hermes is streaming but no text has
   arrived yet. The macOS view uses per-droplet keyframe phase math; here a single
-  staggered Storyboard drives opacity + scale, tinted with the landed Pensieve
-  mercury tokens so the motion reads identically against the glass shell.
+  staggered Storyboard drives opacity + scale, tinted with the Aurora whimsy
+  shimmer so the motion reads identically against the glass shell.
 -->
 <UserControl
     x:Class="OpenBurnBar.App.Chat.HermesThinkingView"
@@ -36,10 +36,10 @@
 
     <StackPanel Orientation="Horizontal" Spacing="5" Padding="16,10" VerticalAlignment="Center">
         <Ellipse x:Name="Dot0" Width="8" Height="8" Opacity="0.4"
-                 Fill="{StaticResource PensieveColorMercuryBrightBrush}" />
+                 Fill="{ThemeResource AuroraWhimsyBrush}" />
         <Ellipse x:Name="Dot1" Width="8" Height="8" Opacity="0.4"
-                 Fill="{StaticResource PensieveColorMercuryCoreBrush}" />
+                 Fill="{ThemeResource AuroraWhimsyBrush}" />
         <Ellipse x:Name="Dot2" Width="8" Height="8" Opacity="0.4"
-                 Fill="{StaticResource PensieveColorMercuryDeepBrush}" />
+                 Fill="{ThemeResource AuroraWhimsyBrush}" />
     </StackPanel>
 </UserControl>

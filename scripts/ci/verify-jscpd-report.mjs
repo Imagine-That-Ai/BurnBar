@@ -10,7 +10,7 @@ const minimumTotalSources = Number.parseInt(
   process.env.JSCPD_MIN_TOTAL_SOURCES ?? "100",
   10,
 );
-const requiredFormats = ["swift", "kotlin", "typescript"];
+const requiredFormats = ["swift", "kotlin", "typescript", "csharp", "rust"];
 
 function fail(message) {
   console.error(`jscpd report verification failed: ${message}`);

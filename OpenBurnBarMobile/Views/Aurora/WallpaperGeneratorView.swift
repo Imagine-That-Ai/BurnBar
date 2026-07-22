@@ -72,7 +72,7 @@ struct WallpaperGeneratorView: View {
     @State private var tapHintOpacity: Double = 1.0
     @AppStorage("burnbar.wallpaper.providerGlyphs") private var providerGlyphSelectionRaw = SwarmProviderGlyphSelection.allSentinel
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
-    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
     @AppStorage(MobileBackdropKernel.storageKey) private var backdropKernel: String = MobileBackdropKernel.defaultKernel.rawValue
     @State private var currentMode: SwarmFormationMode = .swarm
 

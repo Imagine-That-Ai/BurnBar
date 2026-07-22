@@ -106,6 +106,8 @@ final class OpenBurnBarDatabase: Sendable {
         registerDataMigrationsV21toV40(on: &migrator)
         registerDataMigrationsV41toV51(on: &migrator)
         registerChatMemoryAuthorityMigration(on: &migrator)
+        registerSearchChunksFTSRowidMigration(on: &migrator)
+        registerParserCheckpointFileManifestMigration(on: &migrator)
         return migrator
     }
 }

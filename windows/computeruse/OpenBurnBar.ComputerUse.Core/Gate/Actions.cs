@@ -131,15 +131,15 @@ public sealed class BrowserAction : ComputerUseAction
         var host = context?.Host() ?? "browser";
         return ActionKind switch
         {
-            Kind.Click when Selector is not null => $"Click {Quoted(Selector)} on {host}",
+            Kind.Click when Selector is not null => $"Click a target on {host}",
             Kind.Click when PositionX is { } x && PositionY is { } y => $"Click at ({x}, {y}) on {host}",
             Kind.Click => $"Click on {host}",
-            Kind.Fill => $"Type {Quoted(Text ?? "<text>")} into {Quoted(Selector ?? "<field>")} on {host}",
-            Kind.Goto => $"Navigate to {Url ?? "?"}",
+            Kind.Fill => $"Fill a field on {host}",
+            Kind.Goto => "Navigate the browser",
             Kind.Key => $"Press {Key ?? "?"} on {host}",
-            Kind.Select => $"Select {Quoted(Value ?? "<value>")} in {Quoted(Selector ?? "<field>")} on {host}",
+            Kind.Select => $"Select an option on {host}",
             Kind.Screenshot => $"Screenshot the page on {host}",
-            Kind.Extract => $"Extract content of {Quoted(Selector ?? "<root>")} from {host}",
+            Kind.Extract => $"Extract content from {host}",
             _ => $"Browser action on {host}",
         };
     }
@@ -243,7 +243,7 @@ public sealed class MacInputAction : ComputerUseAction
         {
             Kind.Click when DisplayX is { } x && DisplayY is { } y => $"Click at ({x}, {y}) in {app}",
             Kind.Click => $"Click in {app}",
-            Kind.Type => $"Type {Quoted(Text ?? "<text>")} in {app}",
+            Kind.Type => $"Type text in {app}",
             Kind.Key => $"Press {Key ?? "?"} in {app}",
             Kind.Shortcut => $"Send shortcut {Combo()} in {app}",
             Kind.DragDrop => $"Drag from ({Coord(DisplayX, DisplayY)}) to ({Coord(DragEndX, DragEndY)}) in {app}",
@@ -466,11 +466,11 @@ public sealed class PhoneControlIntent : ComputerUseAction
             Kind.DragStart => $"Phone drag start at ({FormatNormalized(NormalizedX)}, {FormatNormalized(NormalizedY)})",
             Kind.DragMove => $"Phone drag move to ({FormatNormalized(NormalizedX)}, {FormatNormalized(NormalizedY)})",
             Kind.DragEnd => $"Phone drag end at ({FormatNormalized(NormalizedX)}, {FormatNormalized(NormalizedY)})",
-            Kind.Type => $"Phone type {Quoted(Text ?? "<text>")} in {app}",
+            Kind.Type => $"Phone type text in {app}",
             Kind.Shortcut => $"Phone shortcut {Combo()} in {app}",
             Kind.Scroll => $"Phone scroll on {app}",
             Kind.Panic => "Phone panic halt",
-            Kind.ContextTarget => $"Phone context handoff for instruction {Quoted(Text ?? string.Empty)} on {app}",
+            Kind.ContextTarget => $"Phone context handoff on {app}",
             _ => $"Phone intent on {app}",
         };
     }

@@ -247,6 +247,31 @@ extension OpenBurnBarDaemonManager {
             )
         }
 
+        // Core-decomposition P-02: stage the OpenBurnBarKernel resource bundle
+        // (catalog.json + secret-pattern-corpus.json now live in OpenBurnBarKernel)
+        // IN ADDITION to the Core bundle above, so the daemon's Bundle.module lookups
+        // for the moved Kernel resources resolve at runtime. The Core bundle keeps
+        // shipping its remaining resources (the MiningPickIcon SVGs), so both bundles
+        // must be staged.
+        let installedKernelBundleURL = paths.daemonDirectory
+            .appendingPathComponent(Self.kernelResourceBundleName)
+        if let sourceKernelBundleURL = OpenBurnBarDaemonBinaryResolver.resolveKernelResourceBundle(
+            nearBinaryURL: sourceBinaryURL,
+            appBundleURL: Bundle.main.bundleURL,
+            fileManager: dependencies.fileManager
+        ), sourceKernelBundleURL.standardizedFileURL != installedKernelBundleURL.standardizedFileURL {
+            if dependencies.fileManager.fileExists(atPath: installedKernelBundleURL.path) {
+                try dependencies.fileManager.removeItem(at: installedKernelBundleURL)
+            }
+            try dependencies.fileManager.copyItem(at: sourceKernelBundleURL, to: installedKernelBundleURL)
+        }
+
+        guard dependencies.fileManager.fileExists(atPath: installedKernelBundleURL.path) else {
+            throw OpenBurnBarDaemonManagerError.daemonResourceBundleUnavailable(
+                expectedPath: installedKernelBundleURL.path
+            )
+        }
+
         let installedProjectCodeMemoryDirectory = paths.daemonDirectory
             .appendingPathComponent(Self.projectCodeMemoryResourceDirectoryName, isDirectory: true)
         let installedSecretCorpusURL = installedProjectCodeMemoryDirectory

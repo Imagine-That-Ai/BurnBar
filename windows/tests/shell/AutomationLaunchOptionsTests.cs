@@ -7,6 +7,7 @@ using Xunit;
 
 namespace OpenBurnBar.App.Shell.Tests;
 
+[Collection(ShellEnvironmentCollection.Name)]
 public sealed class AutomationLaunchOptionsTests : IDisposable
 {
     private readonly string _dir;

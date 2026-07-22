@@ -1,0 +1,4 @@
+vendor/openburnbar-domain-core-python/*.dylib
+vendor/openburnbar-domain-core-python/*.so
+vendor/openburnbar-domain-core-python/*.dll
+vendor/openburnbar-domain-core-python/openburnbar-domain-core-package-receipt.json

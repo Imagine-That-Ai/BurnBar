@@ -549,6 +549,24 @@ enum OpenBurnBarDaemonSocketClient {
         ) as BurnBarMissionMutationResponse
     }
 
+    /// daemon.mission.authorizeRemote — the daemon's authoritative verdict over
+    /// a remote (mobile/Wand) mission. Called in SHADOW mode by the GUI mission
+    /// listener (split-brain Phase M3): the GUI compares this verdict against
+    /// its own decision and telemeters divergence without yet changing runtime
+    /// behavior.
+    static func authorizeRemoteMission(
+        _ request: BurnBarRemoteMissionAuthorizeRequest,
+        at socketURL: URL
+    ) throws -> BurnBarRemoteMissionAuthorizeResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .missionAuthorizeRemote,
+                params: request
+            ),
+            socketURL: socketURL
+        ) as BurnBarRemoteMissionAuthorizeResponse
+    }
+
     static func recordControllerReviewRun(
         _ run: BurnBarReviewRunSnapshot,
         at socketURL: URL

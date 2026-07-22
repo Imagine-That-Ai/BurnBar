@@ -114,6 +114,185 @@ final class UsageRefreshPipelineTests: XCTestCase {
         }
     }
 
+    func test_parseStageCanSkipConversationBodiesForFastUsageImport() async throws {
+        let store = try makeInMemoryDataStore()
+        let recorder = ParseOptionsRecorder()
+        let pipeline = UsageRefreshPipeline(
+            parsers: [.factory: RecordingParser(recorder: recorder)],
+            dataStore: store,
+            orchestrator: RefreshOrchestrator(
+                dataStore: store,
+                settingsManager: SettingsManager.shared,
+                quotaService: ProviderQuotaService(
+                    appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                    homeDirectoryURL: FileManager.default.temporaryDirectory,
+                    refreshProviders: []
+                )
+            ),
+            existingUsages: [],
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: true,
+                snapshotAPIs: []
+            )
+        )
+
+        let parsed = try await pipeline.parse(
+            from: pipeline.discover(),
+            includeConversationBodies: false
+        )
+
+        let recordedOptions = await recorder.snapshot()
+        XCTAssertEqual(recordedOptions, [false])
+        XCTAssertTrue(parsed.allConversations.isEmpty)
+    }
+
+    func test_parseStageForwardsMinimumFileModificationDate() async throws {
+        let store = try makeInMemoryDataStore()
+        let recorder = ParseOptionsRecorder()
+        let cutoff = Date(timeIntervalSince1970: 1_800_000_000)
+        let pipeline = UsageRefreshPipeline(
+            parsers: [.factory: RecordingParser(recorder: recorder)],
+            dataStore: store,
+            orchestrator: RefreshOrchestrator(
+                dataStore: store,
+                settingsManager: SettingsManager.shared,
+                quotaService: ProviderQuotaService(
+                    appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                    homeDirectoryURL: FileManager.default.temporaryDirectory,
+                    refreshProviders: []
+                )
+            ),
+            existingUsages: [],
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: false,
+                snapshotAPIs: []
+            )
+        )
+
+        _ = try await pipeline.parse(
+            from: pipeline.discover(),
+            minimumFileModificationDate: cutoff
+        )
+
+        let recordedDates = await recorder.minimumDateSnapshot()
+        XCTAssertEqual(recordedDates, [cutoff])
+    }
+
+    func test_conversationIndexingUsesSeparateBodyEnabledPass() async throws {
+        let store = try makeInMemoryDataStore()
+        let recorder = ParseOptionsRecorder()
+        let orchestrator = RefreshOrchestrator(
+            dataStore: store,
+            settingsManager: SettingsManager.shared,
+            quotaService: ProviderQuotaService(
+                appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                homeDirectoryURL: FileManager.default.temporaryDirectory,
+                refreshProviders: []
+            )
+        )
+
+        let result = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: RecordingParser(recorder: recorder)],
+            dataStore: store,
+            orchestrator: orchestrator,
+            indexingEnabled: true
+        )
+
+        let recordedOptions = await recorder.snapshot()
+        XCTAssertEqual(recordedOptions, [true])
+        XCTAssertEqual(result.indexedConversationChanges, 0)
+        XCTAssertTrue(result.errors.isEmpty)
+    }
+
+    func test_conversationIndexingCapturesProviderFailures() async throws {
+        let store = try makeInMemoryDataStore()
+        let result = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: FailingParser()],
+            dataStore: store,
+            orchestrator: RefreshOrchestrator(
+                dataStore: store,
+                settingsManager: SettingsManager.shared,
+                quotaService: ProviderQuotaService(
+                    appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                    homeDirectoryURL: FileManager.default.temporaryDirectory,
+                    refreshProviders: []
+                )
+            ),
+            indexingEnabled: true
+        )
+
+        XCTAssertEqual(result.errors[.factory], "simulated parser failure")
+        XCTAssertGreaterThanOrEqual(result.duration, 0)
+    }
+
+    func test_conversationIndexingStopsCleanlyOnCancellation() async throws {
+        let store = try makeInMemoryDataStore()
+        let result = await RefreshBackgroundWork.runConversationIndexing(
+            parsers: [.factory: CancellingParser()],
+            dataStore: store,
+            orchestrator: RefreshOrchestrator(
+                dataStore: store,
+                settingsManager: SettingsManager.shared,
+                quotaService: ProviderQuotaService(
+                    appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                    homeDirectoryURL: FileManager.default.temporaryDirectory,
+                    refreshProviders: []
+                )
+            ),
+            indexingEnabled: true
+        )
+
+        XCTAssertTrue(result.errors.isEmpty)
+        XCTAssertEqual(result.indexedConversationChanges, 0)
+        XCTAssertEqual(result.duration, 0)
+    }
+
+    func test_fullRefreshKeepsConversationBodiesOffForegroundPass() async throws {
+        let store = try makeInMemoryDataStore()
+        let recorder = ParseOptionsRecorder()
+        let orchestrator = RefreshOrchestrator(
+            dataStore: store,
+            settingsManager: SettingsManager.shared,
+            quotaService: ProviderQuotaService(
+                appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                homeDirectoryURL: FileManager.default.temporaryDirectory,
+                refreshProviders: []
+            )
+        )
+
+        _ = try await RefreshBackgroundWork.runFullRefresh(
+            parsers: [.factory: RecordingParser(recorder: recorder)],
+            dataStore: store,
+            orchestrator: orchestrator,
+            existingUsages: [],
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: true,
+                snapshotAPIs: []
+            )
+        )
+
+        let recordedOptions = await recorder.snapshot()
+        XCTAssertEqual(recordedOptions, [false])
+    }
+
+    func test_singleProviderRefreshKeepsConversationBodiesOffForegroundPass() async throws {
+        let store = try makeInMemoryDataStore()
+        let recorder = ParseOptionsRecorder()
+
+        _ = await RefreshBackgroundWork.runSingleProviderRefresh(
+            provider: .factory,
+            parser: RecordingParser(recorder: recorder),
+            dataStore: store,
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: true,
+                snapshotAPIs: []
+            )
+        )
+
+        let recordedOptions = await recorder.snapshot()
+        XCTAssertEqual(recordedOptions, [false])
+    }
+
     private func makeInMemoryDataStore() throws -> DataStore {
         let queue = try DatabaseQueue()
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -123,7 +302,7 @@ final class UsageRefreshPipelineTests: XCTestCase {
 private struct EmptyParser: LogParser {
     let provider: AgentProvider
 
-    func parse() async throws -> ParseResult {
+    func parse(options _: LogParseOptions) async throws -> ParseResult {
         ParseResult(usages: [], conversations: [])
     }
 }
@@ -131,7 +310,7 @@ private struct EmptyParser: LogParser {
 private struct FailingParser: LogParser {
     let provider: AgentProvider = .factory
 
-    func parse() async throws -> ParseResult {
+    func parse(options _: LogParseOptions) async throws -> ParseResult {
         throw OpenBurnBarError.parse("simulated", message: "simulated parser failure")
     }
 }
@@ -139,7 +318,39 @@ private struct FailingParser: LogParser {
 private struct CancellingParser: LogParser {
     let provider: AgentProvider = .factory
 
-    func parse() async throws -> ParseResult {
+    func parse(options _: LogParseOptions) async throws -> ParseResult {
         throw CancellationError()
+    }
+}
+
+private actor ParseOptionsRecorder {
+    private var values: [Bool] = []
+    private var minimumDates: [Date?] = []
+
+    func record(_ options: LogParseOptions) {
+        values.append(options.includeConversationBodies)
+        minimumDates.append(options.minimumFileModificationDate)
+    }
+
+    func snapshot() -> [Bool] {
+        values
+    }
+
+    func minimumDateSnapshot() -> [Date?] {
+        minimumDates
+    }
+}
+
+private struct RecordingParser: LogParser {
+    let provider: AgentProvider = .factory
+    let recorder: ParseOptionsRecorder
+
+    func parse() async throws -> ParseResult {
+        ParseResult(usages: [], conversations: [])
+    }
+
+    func parse(options: LogParseOptions) async throws -> ParseResult {
+        await recorder.record(options)
+        return ParseResult(usages: [], conversations: [])
     }
 }

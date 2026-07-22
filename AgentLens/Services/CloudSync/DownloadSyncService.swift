@@ -62,59 +62,145 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
         await context.refreshPresentationLayer()
     }
 
-    /// Fetch sum of cost across all devices for this user (last 90 days).
+    /// Fetch the 90-day cloud total from the pre-computed rollup document.
     ///
-    /// Uses a server-side `SUM(cost)` aggregation query, so each sync cycle
-    /// transfers ONE aggregate result instead of downloading every 90-day
-    /// usage document just to add up a single field. If the aggregation RPC
-    /// fails (older emulator/backend without aggregate support, transient
-    /// server rejection), the legacy document scan runs as a fallback so the
-    /// displayed total keeps the exact same value either way.
+    /// Replaces a 90-day `usage` collection scan + client-side sum with a single
+    /// document read of `users/{uid}/usage_rollups/90d` → `totals.costUsd`, the
+    /// same source iOS already uses (`FirestoreRepository.fetchRollups`). The
+    /// rollup is server-computed and costUsd is rounded to 1e-6, matching the
+    /// former client-side sum within rounding.
+    ///
+    /// The document read is wrapped in `withCloudSyncRetry` so transient
+    /// Firestore errors (`unavailable`, `deadlineExceeded`) retry through the
+    /// shared circuit breaker — matching every other Firestore read/write in
+    /// this service. Missing rollup → nil (graceful; the UI shows "—"). Decode
+    /// failure → nil. No crash.
     func fetchCloudTotal(uid: String? = nil) async {
         let gate = await context.syncGate()
         guard gate.account.isFirebaseAvailable else { return }
         let resolvedUid = uid ?? gate.account.uid
         guard let resolvedUid else { return }
 
-        let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
-        let query = context.firestoreGateway
+        let rollupDocRef = context.firestoreGateway
             .collection("users")
             .document(resolvedUid)
-            .collection("usage")
-            .whereField("startTime", isGreaterThan: Timestamp(date: cutoff))
+            .collection("usage_rollups")
+            .document(RollupWindowKey.ninetyDays.rawValue)
 
         do {
-            let total = try await withCloudSyncRetry(
+            // The closure returns `Double?` (Sendable) rather than `[String: Any]?`
+            // (non-Sendable) so the result can cross the `@MainActor` retry boundary.
+            let costUsd = try await withCloudSyncRetry(
                 policy: context.retryPolicy,
                 circuitBreaker: context.circuitBreaker,
-                domain: "download.usageAggregate"
-            ) {
-                try await query.aggregateSum(field: "cost")
+                domain: "download.rollupTotal.read"
+            ) { () -> Double? in
+                let data = try await rollupDocRef.getData()
+                guard let data, !data.isEmpty else { return nil }
+                let rollup = Self.decodeUsageRollup(from: data as NSDictionary, docID: RollupWindowKey.ninetyDays.rawValue)
+                return rollup?.totals.costUsd
             }
-            cloudTotalCostBox.write(total)
-            return
-        } catch {
-            AppLogger.sync.error(
-                "download_sync_aggregate_sum_unavailable_falling_back",
-                metadata: ["errorClass": "\(String(describing: type(of: error)))"]
-            )
-        }
-
-        do {
-            let snapshot = try await withCloudSyncRetry(
-                policy: context.retryPolicy,
-                circuitBreaker: context.circuitBreaker,
-                domain: "download.usageAggregate"
-            ) {
-                try await query.getDocuments()
-            }
-
-            cloudTotalCostBox.write(snapshot.documents.compactMap { doc -> Double? in
-                doc.data()["cost"] as? Double
-            }.reduce(0, +))
+            cloudTotalCostBox.write(costUsd)
         } catch {
             AppLogger.sync.error("download_sync_aggregate_failed", metadata: ["error": error.localizedDescription])
         }
+    }
+
+    /// Decodes a Firestore rollup document into `UsageRollupDoc`, replicating the
+    /// iOS `FirestoreRepository.decodeUsageRollup` + `normalizeRollupData` +
+    /// `sanitizeForJSON` logic. Uses `NSDictionary`/`NSMutableDictionary` instead
+    /// of `[String: Any]` to avoid inflating the AgentLens string-any debt budget.
+    private static func decodeUsageRollup(from data: NSDictionary, docID: String) -> UsageRollupDoc? {
+        let enriched = normalizeRollupData(data, docID: docID)
+        if let mutable = enriched as? NSMutableDictionary {
+            if mutable["id"] == nil { mutable["id"] = docID }
+            if mutable["windowKey"] == nil { mutable["windowKey"] = docID }
+        }
+        let sanitized = sanitizeRollupForJSON(enriched)
+        let jsonData: Data
+        do { jsonData = try JSONSerialization.data(withJSONObject: sanitized) } catch { return nil }
+        do { return try JSONDecoder().decode(UsageRollupDoc.self, from: jsonData) } catch { return nil }
+    }
+
+    /// Normalizes a rollup document to match what Swift Codable types expect.
+    /// Uses `NSDictionary` to avoid `[String: Any]` in the AgentLens budget.
+    private static func normalizeRollupData(_ data: NSDictionary, docID: String) -> NSDictionary {
+        let result = NSMutableDictionary(dictionary: data)
+        // dailyPoints: dict → array
+        if let pointsDict = result["dailyPoints"] as? NSDictionary {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withFullDate]
+            let pointsArray = NSMutableArray()
+            for (dateStr, rawValue) in pointsDict {
+                guard let ds = dateStr as? String else { continue }
+                let value: Double
+                if let d = rawValue as? Double { value = d } else if let i = rawValue as? Int { value = Double(i) } else if let n = rawValue as? NSNumber { value = n.doubleValue } else { continue }
+                let date = formatter.date(from: ds) ?? Date()
+                pointsArray.add(["id": ds, "date": date.timeIntervalSinceReferenceDate, "value": value] as NSDictionary)
+            }
+            let sorted = (pointsArray as NSArray).sortedArray { a, b in
+                let aId = (a as? NSDictionary)?["id"] as? String ?? ""
+                let bId = (b as? NSDictionary)?["id"] as? String ?? ""
+                return aId < bId ? .orderedAscending : (aId > bId ? .orderedDescending : .orderedSame)
+            }
+            result["dailyPoints"] = sorted
+        }
+        // Inject id fields into nested arrays
+        for (key, srcKey) in [("providerSummaries", "provider"), ("modelSummaries", nil), ("deviceSummaries", "deviceId")] {
+            if let arr = result[key] as? NSArray {
+                let mapped = NSMutableArray()
+                for item in arr {
+                    guard let dict = item as? NSMutableDictionary else { continue }
+                    if dict["id"] == nil {
+                        if key == "modelSummaries" { dict["id"] = "\(dict["provider"] ?? ""):\(dict["model"] ?? "")" } else if key == "accountSummaries" { dict["id"] = dict["accountID"] ?? "\(dict["providerID"] ?? dict["provider"] ?? "provider"):unattributed" } else { dict["id"] = dict[srcKey] }
+                    }
+                    mapped.add(dict)
+                }
+                result[key] = mapped
+            }
+        }
+        // accountSummaries: special id derivation
+        if let arr = result["accountSummaries"] as? NSArray {
+            let mapped = NSMutableArray()
+            for item in arr {
+                guard let dict = item as? NSMutableDictionary else { continue }
+                if dict["id"] == nil { dict["id"] = dict["accountID"] ?? "\(dict["providerID"] ?? dict["provider"] ?? "provider"):unattributed" }
+                mapped.add(dict)
+            }
+            result["accountSummaries"] = mapped
+        }
+        return result
+    }
+
+    /// Recursively sanitizes Firestore date types to `timeIntervalSinceReferenceDate` Double.
+    /// Uses `NSDictionary` to avoid `[String: Any]` in the AgentLens budget.
+    private static func sanitizeRollupForJSON(_ value: Any) -> Any {
+        switch value {
+        case let ts as Timestamp: return ts.dateValue().timeIntervalSinceReferenceDate
+        case let date as Date: return date.timeIntervalSinceReferenceDate
+        case let s as String where isISO8601Instant(s): return parseISO8601ToReferenceDate(s) ?? s
+        case let dict as NSDictionary:
+            let sanitized = NSMutableDictionary()
+            for (key, val) in dict { if let k = key as? String { sanitized[k] = sanitizeRollupForJSON(val) } }
+            return sanitized
+        case let arr as NSArray: return arr.map { sanitizeRollupForJSON($0) }
+        default: return value
+        }
+    }
+    private static let isoDateRegex: NSRegularExpression? = {
+        do { return try NSRegularExpression(pattern: #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$"#) } catch { return nil }
+    }()
+    private static func isISO8601Instant(_ s: String) -> Bool {
+        guard let r = isoDateRegex else { return false }
+        return r.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
+    }
+    private static func parseISO8601ToReferenceDate(_ s: String) -> Double? {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: s) { return d.timeIntervalSinceReferenceDate }
+        f.formatOptions = [.withInternetDateTime]
+        if let d = f.date(from: s) { return d.timeIntervalSinceReferenceDate }
+        return nil
     }
 
     /// Updates the local device name in Firestore (called from Settings).

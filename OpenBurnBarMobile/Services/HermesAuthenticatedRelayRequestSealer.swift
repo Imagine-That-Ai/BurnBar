@@ -58,7 +58,7 @@ enum MobileHermesAuthenticatedRelayRequestSealer {
             body: bodyString
         )
         let plaintext = try JSONEncoder().encode(encryptedPayload)
-        let keyAAD = HermesRelayCrypto.authenticatedKeyAAD(
+        let keyAAD = try HermesRelayCrypto.authenticatedKeyAAD(
             uid: uid,
             connectionID: payload.connectionID,
             requestID: requestID,
@@ -77,7 +77,7 @@ enum MobileHermesAuthenticatedRelayRequestSealer {
         let payloadCiphertext = try HermesRelayCrypto.sealToBase64(
             plaintext: plaintext,
             keyData: keyData,
-            aad: HermesRelayCrypto.authenticatedRequestAAD(
+            aad: try HermesRelayCrypto.authenticatedRequestAAD(
                 uid: uid,
                 connectionID: payload.connectionID,
                 requestID: requestID,

@@ -18,13 +18,44 @@ ledger row(s) to `Real` and remove the corresponding deferral line.
 | Local HTTP gateway multi-client | Live Windows Service or accepted in-process multi-client gateway with evidence |
 | Model catalog / health / route logging / degrade metrics | Live gateway metrics surface on Windows with tests |
 | Provider router + provider executors | Production router path on Windows with golden tests |
-| Headless run service + journal + recovery | Live run service evidence |
 | Local Mission Control DAG/planner/policy | Local execution path (not dispatch-only) with evidence |
-| Pensieve watcher + project-code memory store | Live watcher + store on Windows |
-| Full project-code static parser | WPD-0003 revive + parser evidence |
+| Pensieve knowledge watcher | Live repo-docs/notes/session-end watcher + sealed queue on Windows |
 | Browser Computer Use / Playwright | Host browser CU lifecycle evidence |
 | Elder Wand fusion orchestrator | Fusion tool loop live (presets-only is F1) |
-| Connector plane / companion CLI / daemon-client core | Live connector/CLI client evidence |
+
+Closed under this decision:
+
+- Headless run service + protected checkpoints + metadata journal + recovery,
+  approval, and leased tool dispatch: promoted by
+  `docs/windows-port/evidence/f2/headless-run-recovery.md`.
+- Standalone companion CLI + authenticated daemon-client core: promoted by
+  `docs/windows-port/evidence/f2/companion-cli-client.md`.
+- Connector plane, protected secret store, tooling proxy, workspace broker, and
+  context selector: promoted by
+  `docs/windows-port/evidence/f2/connector-tooling-plane.md`. The authenticated
+  companion plane is the concrete external consumer.
+- Project-code memory store, embeddings, and full static parser: promoted by
+  `docs/windows-port/evidence/f2/project-code-memory-store.md`,
+  `docs/windows-port/evidence/f2/live-lsp-parser-client.md`, and the WPD-0003
+  revival addendum.
+- Pensieve knowledge watcher: promoted by
+  `docs/windows-port/evidence/f2/pensieve-knowledge-watcher.md`. The WinUI
+  lifecycle owns recursive repo-docs/notes and settled-session watching, shared
+  TS/Swift embed-and-cloak parity, protected vault-key resolution, and atomic
+  sealed queue output without cloud credentials or transcript ingestion.
+- Elder Wand fusion: promoted by
+  `docs/windows-port/evidence/f2/elder-wand-fusion.md`. The production gateway
+  and companion command share the parallel panel, comparison judge,
+  originating-model synthesis, bounded web-tool loop, recursion guard,
+  metadata-only journal, and per-route telemetry.
+- Gateway rate limiter: promoted by
+  `docs/windows-port/evidence/f2/gateway-rate-limiter.md`. The production host
+  now enforces the macOS token-bucket contract and the shared stricter
+  unauthenticated-loopback ceiling before provider execution.
+- Telegram notification bridge: promoted by
+  `docs/windows-port/evidence/f2/telegram-bridge.md`. Protected live settings,
+  bounded send/getUpdates transport, durable offsets, due followups, inbound
+  commands, and real daily/weekly review launches are app-lifecycle composed.
 
 ## Product language
 

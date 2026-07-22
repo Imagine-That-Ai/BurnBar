@@ -215,7 +215,15 @@ def test_release_workflow_prepares_signal_ffi_before_xcode_release_build():
 
     assert prepare_start < lockfile_index < resolve_index < app_build_index
     assert "SIGNAL_FFI_BUILD_PROFILE: release" in prepare_step
-    assert 'SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin"' in prepare_step
+    targets = re.search(r'SIGNAL_FFI_BUILD_TARGETS: "([^"]+)"', prepare_step)
+    assert targets is not None
+    assert targets.group(1).split() == [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
+        "x86_64-apple-ios",
+    ]
     assert 'CARGO_BUILD_JOBS: "2"' in prepare_step
     assert "bash scripts/lib/prepare-signal-ffi-xcframework.sh" in prepare_step
 
@@ -364,8 +372,10 @@ def test_release_workflow_parallelizes_independent_publish_gates():
     ):
         assert lane_job in body
 
-    publish_start = body.index("  publish:")
+    prepare_publication_start = body.index("  prepare-release-publication:")
+    publish_start = body.index("  domain-core-native-release-evidence:")
     verify_start = body.index("  verify-live-update-feed:")
+    prepare_publication_job = body[prepare_publication_start:publish_start]
     publish_job = body[publish_start:verify_start]
     for lane in (
         "release-preflight",
@@ -380,7 +390,10 @@ def test_release_workflow_parallelizes_independent_publish_gates():
         "build-and-release",
         "smoke-test",
     ):
-        assert f"      - {lane}\n" in publish_job
+        assert f"      - {lane}\n" in prepare_publication_job
+    assert "name: Atomically publish verified Apple and Android release set" in publish_job
+    assert "      - prepare-release-publication\n" in publish_job
+    assert "Publish the complete verified release set from one draft state machine" in publish_job
 
 
 def test_app_test_wrapper_supports_multiple_normalized_filters():
@@ -411,16 +424,33 @@ def test_app_test_wrapper_supports_multiple_normalized_filters():
 
 def test_firestore_deploy_matches_firebase_tools_release_patch_shape():
     body = (ROOT / ".github/workflows/deploy-firestore.yml").read_text(encoding="utf-8")
-    deployer = (ROOT / "scripts/ci/deploy-firebase-rules-releases.mjs").read_text(encoding="utf-8")
-    assert "--only firestore:indexes,storage" in body
-    assert "firestore:rules" not in body
-    assert "deploy-firebase-rules-releases.mjs" in body
-    assert 'updateMask: "rulesetName"' not in deployer
-    assert "supplying updateMask currently causes" in deployer
-    assert "rulesSourceForDeploy" in deployer
+    # The bespoke REST rules-release helper (deploy-firebase-rules-releases.mjs)
+    # 400'd on every push for ~3 weeks and was removed in favor of firebase-tools'
+    # proven release path. Assert the new shape, not the deleted helper.
+    assert "--only firestore,storage" in body
+    assert "--only firestore:indexes,storage" not in body
+    assert "node scripts/ci/deploy-firebase-rules-releases.mjs" not in body
+    assert "compact-firestore-rules-inplace.mjs firestore.rules" in body
 
-    drift_checker = (ROOT / "scripts/ci/check-firestore-deploy-drift.mjs").read_text(encoding="utf-8")
+    # rulesSourceForDeploy moved into the shared firebase-rules-source.mjs module
+    # so both the in-place compactor and the drift check agree on what gets
+    # shipped.
+    rules_source = (
+        ROOT / "scripts/ci/firebase-rules-source.mjs"
+    ).read_text(encoding="utf-8")
+    assert "rulesSourceForDeploy" in rules_source
+
+    drift_checker = (
+        ROOT / "scripts/ci/check-firestore-deploy-drift.mjs"
+    ).read_text(encoding="utf-8")
     assert "rulesSourceForDeploy" in drift_checker
+
+    # Secondary Storage bucket coverage: the old helper enumerated every
+    # firebase.storage/ release and propagated rules to each.  firebase deploy
+    # --only storage only covers the default bucket, so the workflow must run a
+    # propagation step for secondary buckets (or the drift gate would catch
+    # them).
+    assert "propagate-storage-rules-secondary-buckets.mjs" in body
 
 
 def test_release_uses_keyless_provenance_when_legacy_gpg_is_absent():
@@ -526,15 +556,19 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert 'bash scripts/ci/smoke-openburnbar-release-dmg.sh "$DMG_PATH"' in workflow
     assert "swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarCLI" in workflow
     assert '--identifier "$identifier"' in workflow
-    assert 'sign_one "$HELPERS_DIR/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"' in workflow
+    assert 'sign_one "$HELPERS_DIR/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.app"' in workflow
     assert 'sign_one "$HELPERS_DIR/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"' in workflow
     assert "com.openburnbar.privileged-input-execution" in workflow
     assert "com.openburnbar.virtual-hid-bridge" in workflow
     assert "--options runtime,library" in workflow
     assert "codesign --force --timestamp --deep --options runtime,library" not in workflow
     assert "assert_peer_signature" in workflow
-    assert 'assert_peer_signature "$HELPERS_DIR/OpenBurnBarDaemon" "com.openburnbar.daemon"' in workflow
+    assert 'assert_peer_signature "$HELPERS_DIR/OpenBurnBarDaemon" "com.openburnbar.app"' in workflow
     assert 'assert_peer_signature "$HELPERS_DIR/OpenBurnBarCLI" "com.openburnbar.cli"' in workflow
+    assert (
+        'bash scripts/ci/verify-daemon-release-signing.sh "$APP_PATH" "$APP_PROFILE_TEAM_ID"'
+        in workflow
+    )
     assert (
         'assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" '
         '"com.openburnbar.privileged-input-execution"'
@@ -598,11 +632,70 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     assert "Library/Application Support/OpenBurnBar/openburnbar-daemon.sock" not in workflow
 
 
+def test_local_source_builds_package_daemon_sqlcipher_runtime_before_signing():
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    rpath_command = (
+        'install_name_tool -add_rpath "@executable_path/../Frameworks" '
+        '"$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"'
+    )
+    framework_guard = (
+        "links SQLCipher.framework but the app bundle is missing "
+        "Contents/Frameworks/SQLCipher.framework"
+    )
+
+    build_section = makefile.split("build: bootstrap preflight", 1)[1].split(
+        "build-signed: bootstrap preflight", 1
+    )[0]
+    signed_section = makefile.split("build-signed: bootstrap preflight", 1)[1].split(
+        "release-mas: preflight", 1
+    )[0]
+
+    assert rpath_command in build_section
+    assert framework_guard in build_section
+    assert rpath_command in signed_section
+    assert framework_guard in signed_section
+    assert signed_section.index(rpath_command) < signed_section.index("scripts/sign-openburnbar-local.sh")
+
+
+def test_macos_release_does_not_require_unsupported_app_attest_entitlement():
+    import plistlib
+
+    local = plistlib.loads((ROOT / "AgentLens/Resources/OpenBurnBar.entitlements").read_bytes())
+    direct = plistlib.loads((ROOT / "AgentLens/Resources/OpenBurnBarRelease.entitlements").read_bytes())
+    app_store = plistlib.loads((ROOT / "AgentLens/Resources/OpenBurnBarMAS.entitlements").read_bytes())
+    website_release = (ROOT / "scripts/build-macos-website-release.sh").read_text(encoding="utf-8")
+    release_workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    key = "com.apple.developer.devicecheck.appattest-environment"
+    assert key not in local
+    assert key not in direct
+    assert key not in app_store
+
+    for release_surface in (website_release, release_workflow):
+        assert key not in release_surface
+
+
+def test_signal_ffi_builder_clears_provenance_from_generated_rustc_wrapper():
+    builder = (ROOT / "scripts/build-signal-ffi-xcframework.sh").read_text(encoding="utf-8")
+    wrapper_function = builder.split("write_rustc_wrapper() {", 1)[1].split(
+        "\n}\n\nensure_rust_target()", 1
+    )[0]
+
+    chmod = 'chmod +x "${RUSTC_WRAPPER_SCRIPT}"'
+    clear_provenance = (
+        '/usr/bin/xattr -d com.apple.provenance "${RUSTC_WRAPPER_SCRIPT}" '
+        "2>/dev/null || true"
+    )
+    assert chmod in wrapper_function
+    assert clear_provenance in wrapper_function
+    assert wrapper_function.index(chmod) < wrapper_function.index(clear_provenance)
+
+
 def test_local_app_signing_uses_same_privileged_peer_policy_as_release():
     script = (ROOT / "scripts/sign-openburnbar-local.sh").read_text(encoding="utf-8")
 
     assert (
-        'sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.daemon"'
+        'sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "runtime,library" "com.openburnbar.app"'
         in script
     )
     assert 'sign_path "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "runtime,library" "com.openburnbar.cli"' in script
@@ -612,8 +705,12 @@ def test_local_app_signing_uses_same_privileged_peer_policy_as_release():
     assert "--options runtime,library" in script
     assert "assert_peer_signature" in script
     assert 'assert_peer_signature "$APP_BUNDLE" "com.openburnbar.app"' in script
-    assert 'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "com.openburnbar.daemon"' in script
+    assert 'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" "com.openburnbar.app"' in script
     assert 'assert_peer_signature "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" "com.openburnbar.cli"' in script
+    assert (
+        'bash scripts/ci/verify-daemon-release-signing.sh "$APP_BUNDLE" "$TEAM_ID"'
+        in script
+    )
     assert (
         "assert_peer_signature \\\n"
         '  "$APP_BUNDLE/Contents/Helpers/OpenBurnBarPrivilegedInputExecution" \\\n'

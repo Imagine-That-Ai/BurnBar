@@ -30,6 +30,8 @@ const appFiles = [
   "OpenBurnBarDatabase+MigrationsV21toV40.swift",
   "OpenBurnBarDatabase+MigrationsV41toV51.swift",
   "OpenBurnBarDatabase+MemoryMigrations.swift",
+  "OpenBurnBarDatabase+MigrationV55.swift",
+  "OpenBurnBarDatabase+MigrationV56.swift",
 ];
 const sharedFiles = [
   "OpenBurnBarDatabase.swift",
@@ -37,6 +39,8 @@ const sharedFiles = [
   "OpenBurnBarDatabase+DataMigrationsV21toV40.swift",
   "OpenBurnBarDatabase+DataMigrationsV41toV51.swift",
   "OpenBurnBarDatabase+MemoryMigrations.swift",
+  "OpenBurnBarDatabase+DataMigrationV55.swift",
+  "OpenBurnBarDatabase+DataMigrationV56.swift",
 ];
 
 function copyFiles(sourceDirectory, destinationDirectory, files) {
@@ -58,14 +62,9 @@ function fixture(t) {
     sharedFiles
   );
   copyFiles(
-    path.join(repoRoot, "OpenBurnBarCore", "Sources", "OpenBurnBarCore"),
-    path.join(root, "OpenBurnBarCore", "Sources", "OpenBurnBarCore"),
-    ["SwitcherProfile.swift"]
-  );
-  copyFiles(
     path.join(repoRoot, "OpenBurnBarCore", "Sources", "OpenBurnBarKernel", "SharedModels"),
     path.join(root, "OpenBurnBarCore", "Sources", "OpenBurnBarKernel", "SharedModels"),
-    ["AgentProvider.swift"]
+    ["SwitcherProfile.swift", "AgentProvider.swift"]
   );
   copyFiles(path.join(repoRoot, "scripts"), path.join(root, "scripts"), ["rollback-migration.sh"]);
   copyFiles(path.join(repoRoot, "docs"), path.join(root, "docs"), ["DATABASE_OPERATIONS.md"]);
@@ -109,7 +108,7 @@ test("extracts only complete migration contracts", () => {
 });
 
 test("current migration surfaces, catalog, and generated documentation agree", () => {
-  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 55);
+  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 57);
 });
 
 test("registration reorder fails closed", (t) => {
@@ -160,7 +159,7 @@ test("app enum mapping mutation invalidates the migration dependency fingerprint
   const root = fixture(t);
   mutate(
     root,
-    "OpenBurnBarCore/Sources/OpenBurnBarCore/SwitcherProfile.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SwitcherProfile.swift",
     "case .junie: return .junie",
     "case .junie: return .codex"
   );

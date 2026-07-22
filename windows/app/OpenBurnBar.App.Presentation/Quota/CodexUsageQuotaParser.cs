@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
+using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
 
 namespace OpenBurnBar.App.Presentation.Quota;
 
@@ -39,6 +40,26 @@ public static class CodexUsageQuotaParser
     /// <c>invalidResponse</c> and the adapter falls through).
     /// </summary>
     public static ProviderQuotaSnapshot? Parse(string json, DateTimeOffset now)
+    {
+        return Parse(json, now, requestedMode: null);
+    }
+
+    internal static ProviderQuotaSnapshot? Parse(
+        string json,
+        DateTimeOffset now,
+        DomainCoreQuotaMigrationMode? requestedMode)
+    {
+        return DomainCoreQuotaBridge.Apply(
+            "codex_quota",
+            () => DomainCore.ParseCodexUsageQuota(Encoding.UTF8.GetBytes(json), now.ToUnixTimeSeconds()),
+            () => ParseLegacy(json, now),
+            now,
+            ManagementUrl,
+            mapMalformedSnapshot: false,
+            requestedMode);
+    }
+
+    private static ProviderQuotaSnapshot? ParseLegacy(string json, DateTimeOffset now)
     {
         var root = QuotaJson.TryParse(json);
         if (root is not JsonElement payload || payload.ValueKind != JsonValueKind.Object)

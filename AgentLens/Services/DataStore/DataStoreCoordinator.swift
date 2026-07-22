@@ -55,6 +55,7 @@ final class DataStoreCoordinator {
     var debugRefreshGenerationForTesting: Int { refreshGeneration }
     #endif
     private var lastAppliedFingerprint: UsageContentFingerprint?
+    private var lastAppliedSnapshotFingerprint: DashboardUsageSnapshotFingerprint?
     private var nextWindowBoundary: Date = .distantPast
     /// Usage-table write marker observed by the most recent
     /// `reloadUsagesIfChanged()` reload (see `UsageTableWriteMarker`). `nil`
@@ -148,6 +149,17 @@ final class DataStoreCoordinator {
         usageViewModel.windowSummary(for: timeRange)
     }
 
+    /// Fetches scalar totals on the database actor for lightweight dashboard
+    /// comparisons. Callers should prefer this over `usageWindowSummary(in:)`
+    /// when they only need cost or token totals for an arbitrary window.
+    func usageTotals(in dateRange: ClosedRange<Date>?) async -> UsageTotals? {
+        do {
+            return try await actor.fetchUsageTotals(in: dateRange)
+        } catch {
+            return nil
+        }
+    }
+
     var totalUsageSessionCount: Int {
         usageViewModel.windowSummary(for: .allTime).sessionCount
     }
@@ -222,9 +234,24 @@ final class DataStoreCoordinator {
             throw DatabaseEncryptionError.cipherUnavailable
         }
 
-        let encryptionKey = try DatabaseEncryptionService.getOrCreatePersistedKey()
         let fileExists = FileManager.default.fileExists(atPath: path)
-        if fileExists, DatabaseEncryptionService.isEncryptedDatabaseFile(at: path) == false {
+        let existingDatabaseIsEncrypted = fileExists
+            && DatabaseEncryptionService.isEncryptedDatabaseFile(at: path)
+        let encryptionKey: String
+        if existingDatabaseIsEncrypted {
+            guard let existingKey = DatabaseEncryptionService.getKey() else {
+                AppLogger.dataStore.error(
+                    "encrypted_database_key_missing",
+                    metadata: ["path": path, "action": "preserved_without_replacement_key"]
+                )
+                throw DatabaseEncryptionError.existingEncryptedDatabaseKeyMissing(path: path)
+            }
+            encryptionKey = existingKey
+        } else {
+            encryptionKey = try DatabaseEncryptionService.getOrCreatePersistedKey()
+        }
+
+        if fileExists, existingDatabaseIsEncrypted == false {
             let migrated: Bool
             do {
                 migrated = try DatabaseEncryptionService.migratePlaintextDatabaseIfNeeded(
@@ -248,8 +275,23 @@ final class DataStoreCoordinator {
         var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
         installStartupPragmas(on: &config)
         installDebugQueryTracer(on: &config)
+        let pool: DatabasePool
+        do {
+            pool = try openDatabasePool(path: path, configuration: config)
+        } catch {
+            guard existingDatabaseIsEncrypted,
+                  DatabaseEncryptionService.isEncryptedDatabaseKeyRejection(error)
+            else {
+                throw error
+            }
+            AppLogger.dataStore.error(
+                "encrypted_database_key_rejected",
+                metadata: ["path": path, "action": "preserved_without_database_mutation"]
+            )
+            throw DatabaseEncryptionError.existingEncryptedDatabaseKeyRejected(path: path)
+        }
         return DatabaseOpenResult(
-            pool: try openDatabasePool(path: path, configuration: config),
+            pool: pool,
             migrationBackupConfigurationBuilder: {
                 try DatabaseEncryptionService.makeConfiguration(encryptionKey: encryptionKey)
             }
@@ -390,6 +432,7 @@ final class DataStoreCoordinator {
 
     func replaceUsages(_ newUsages: [TokenUsage]) {
         guard applyGateAdmits(newUsages) else { return }
+        lastAppliedSnapshotFingerprint = nil
         let sortedUsages = newUsages.sorted { $0.startTime > $1.startTime }
         usages = sortedUsages
         usageViewModel.replaceUsages(sortedUsages)
@@ -398,7 +441,11 @@ final class DataStoreCoordinator {
     }
 
     func replaceUsageSnapshot(_ snapshot: DashboardUsageSnapshot) {
-        guard applyGateAdmits(snapshot.loadedUsages) else { return }
+        let snapshotFingerprint = DashboardUsageSnapshotFingerprint(snapshot: snapshot)
+        let aggregateChanged = snapshotFingerprint != lastAppliedSnapshotFingerprint
+        let rowsChanged = applyGateAdmits(snapshot.loadedUsages)
+        guard aggregateChanged || rowsChanged else { return }
+        lastAppliedSnapshotFingerprint = snapshotFingerprint
         let sortedUsages = snapshot.loadedUsages.sorted { $0.startTime > $1.startTime }
         usages = sortedUsages
         usageViewModel.replaceUsageSnapshot(snapshot)

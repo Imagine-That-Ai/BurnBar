@@ -1,0 +1,104 @@
+name: Project Code Static Parser (Windows / MSVC)
+
+# WPD-0003 revival lane. The parser is a standalone stdin/stdout executable,
+# so it gets a native x64 test run plus an ARM64 build-only leg before release
+# packaging consumes either RID-specific binary.
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/project-code-static-parser/**"
+      - ".github/workflows/build-project-code-static-parser-windows.yml"
+  pull_request:
+    paths:
+      - "crates/project-code-static-parser/**"
+      - ".github/workflows/build-project-code-static-parser-windows.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: project-code-static-parser-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.94.0"
+          components: rustfmt
+          targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
+
+      - name: Cache Cargo registry and parser target
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            crates/project-code-static-parser/target
+          key: project-code-static-parser-windows-${{ runner.os }}-${{ hashFiles('crates/project-code-static-parser/Cargo.toml', 'crates/project-code-static-parser/Cargo.lock') }}
+          restore-keys: |
+            project-code-static-parser-windows-${{ runner.os }}-
+
+      - name: Format check
+        run: cargo fmt --manifest-path crates/project-code-static-parser/Cargo.toml --check
+
+      - name: Test parser on native x64
+        run: cargo test --manifest-path crates/project-code-static-parser/Cargo.toml
+
+      - name: Build parser for x64
+        run: cargo build --manifest-path crates/project-code-static-parser/Cargo.toml --release --target x86_64-pc-windows-msvc
+
+      - name: Smoke-test x64 JSONL protocol
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $binary = "crates/project-code-static-parser/target/x86_64-pc-windows-msvc/release/project-code-static-parser.exe"
+          $request = '{"requestId":"windows-x64-smoke","filePath":"Runner.cs","language":"csharp","blobSha":"wrong","text":"public class Runner { public void Start() {} }"}'
+          $response = $request | & $binary | ConvertFrom-Json
+          if (-not $response.ok) { throw "parser smoke request failed" }
+          if ($response.language -ne "csharp") { throw "language normalization failed" }
+          if (-not ($response.symbols | Where-Object { $_.name -eq "Runner" -and $_.kind -eq "class" })) { throw "C# class symbol missing" }
+          if (-not ($response.symbols | Where-Object { $_.name -eq "Start" -and $_.kind -eq "function" })) { throw "C# method symbol missing" }
+
+          $extended = @(
+            @{ path = "native.c"; language = "c"; text = "struct Native { int value; };" },
+            @{ path = "widget.cpp"; language = "cpp"; text = "namespace demo { class Widget {}; }" },
+            @{ path = "Widget.m"; language = "objc"; text = "@interface Widget : NSObject`n@end" },
+            @{ path = "config.json"; language = "json"; text = '{"name":"BurnBar"}' },
+            @{ path = "README.md"; language = "markdown"; text = "# BurnBar`n" },
+            @{ path = "config.yaml"; language = "yaml"; text = "name: BurnBar" }
+          )
+          foreach ($case in $extended) {
+            $request = @{ requestId = "windows-extended-$($case.language)"; filePath = $case.path; language = $case.language; blobSha = "wrong"; text = $case.text } | ConvertTo-Json -Compress
+            $response = $request | & $binary | ConvertFrom-Json
+            if (-not $response.ok) { throw "parser smoke request failed for $($case.language)" }
+            if ($response.language -ne $case.language) { throw "language normalization failed for $($case.language)" }
+            if (-not $response.symbols -or $response.symbols.Count -lt 1) { throw "symbol extraction missing for $($case.language)" }
+          }
+
+      - name: Build parser for ARM64 (build-only)
+        run: cargo build --manifest-path crates/project-code-static-parser/Cargo.toml --release --target aarch64-pc-windows-msvc
+
+      - name: Upload parser binaries
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: project-code-static-parser-windows
+          path: |
+            crates/project-code-static-parser/target/x86_64-pc-windows-msvc/release/project-code-static-parser.exe
+            crates/project-code-static-parser/target/aarch64-pc-windows-msvc/release/project-code-static-parser.exe
+          if-no-files-found: error
+          retention-days: 14

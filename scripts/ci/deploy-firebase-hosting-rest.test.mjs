@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,18 +23,30 @@ function makeArtifact(config) {
   roots.push(root);
   mkdirSync(join(root, "website", "dist"), { recursive: true });
   mkdirSync(join(root, "apps", "console", "out"), { recursive: true });
-  writeFileSync(join(root, "website", "dist", "index.html"), "<h1>BurnBar</h1>\n");
-  writeFileSync(join(root, "apps", "console", "out", "index.html"), "<h1>Console</h1>\n");
+  writeFileSync(
+    join(root, "website", "dist", "index.html"),
+    "<h1>BurnBar</h1>\n",
+  );
+  writeFileSync(
+    join(root, "apps", "console", "out", "index.html"),
+    "<h1>Console</h1>\n",
+  );
   writeFileSync(
     join(root, ".firebaserc"),
     JSON.stringify(
       {
-        projects: { default: "burnbar" },
+        projects: { default: "burnbar", staging: "burnbar-staging" },
         targets: {
           burnbar: {
             hosting: {
               marketing: ["burnbar"],
               console: ["burnbar-console"],
+            },
+          },
+          "burnbar-staging": {
+            hosting: {
+              marketing: ["burnbar-staging"],
+              console: ["burnbar-staging-console"],
             },
           },
         },
@@ -37,7 +55,10 @@ function makeArtifact(config) {
       2,
     ),
   );
-  writeFileSync(join(root, "firebase-hosting.ci.json"), JSON.stringify(config, null, 2));
+  writeFileSync(
+    join(root, "firebase-hosting.ci.json"),
+    JSON.stringify(config, null, 2),
+  );
   return root;
 }
 
@@ -66,11 +87,16 @@ const goodConfig = {
       cleanUrls: true,
       trailingSlash: false,
       headers: [{ source: "**", headers: [{ key: "X-Test", value: "ok" }] }],
-      redirects: [{ source: "/docs", destination: "https://example.com", type: 301 }],
+      redirects: [
+        { source: "/docs", destination: "https://example.com", type: 301 },
+      ],
       rewrites: [
         {
           source: "/api/**",
-          function: { functionId: "latestRouterRundown", region: "us-central1" },
+          function: {
+            functionId: "latestRouterRundown",
+            region: "us-central1",
+          },
         },
         { source: "**", destination: "/404.html" },
       ],
@@ -106,6 +132,20 @@ try {
   if (!stderr.includes("pinTag") && !stdout.includes("pinTag")) {
     throw error;
   }
+}
+
+const wrongTargetRoot = makeArtifact(goodConfig);
+const wrongFirebaserc = join(wrongTargetRoot, ".firebaserc");
+const wrongTargets = JSON.parse(readFileSync(wrongFirebaserc, "utf8"));
+wrongTargets.targets.burnbar.hosting.console = ["attacker-controlled-site"];
+writeFileSync(wrongFirebaserc, JSON.stringify(wrongTargets));
+try {
+  run(wrongTargetRoot);
+  throw new Error("mismatched production Hosting target unexpectedly passed");
+} catch (error) {
+  const stderr = error.stderr?.toString("utf8") ?? "";
+  if (!stderr.includes("exact reviewed production and staging Hosting target maps"))
+    throw error;
 }
 
 console.log("PASS: Firebase Hosting REST deployer dry-run fixtures passed.");

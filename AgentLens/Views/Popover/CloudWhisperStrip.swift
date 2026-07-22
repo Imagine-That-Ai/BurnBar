@@ -14,6 +14,7 @@ import OpenBurnBarCore
 // the Settings window straight to `SettingsTab.cloud`.
 
 struct CloudWhisperStrip: View {
+    @Environment(\.colorScheme) private var colorScheme
     let onOpen: () -> Void
 
     @StateObject private var entitlement = MacCloudEntitlementStore.shared
@@ -78,7 +79,7 @@ struct CloudWhisperStrip: View {
         .padding(.vertical, 8)
         .background(stripBackdrop)
         .overlay(
-            RoundedRectangle(cornerRadius: 0, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(
                     LinearGradient(
                         colors: [
@@ -93,6 +94,7 @@ struct CloudWhisperStrip: View {
                     lineWidth: 0.6
                 )
         )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     // MARK: - Upsell row (free)
@@ -140,20 +142,13 @@ struct CloudWhisperStrip: View {
 
     @ViewBuilder
     private var stripBackdrop: some View {
-        // Inline branch: on 26+ the brand wash rides on real Liquid Glass (no
-        // material underneath); pre-26 keeps the material + gradient stack.
-        // The 22pt icon chip above stays on material — chips inside a glass
-        // plate keep material/tint, never a second glass layer.
-        if #available(macOS 26, *) {
-            Rectangle()
-                .fill(stripGradient)
-                .liquidGlassEffect(.regular, in: .rect)
-        } else {
-            ZStack {
-                Rectangle().fill(.ultraThinMaterial)
-                Rectangle().fill(stripGradient)
-            }
-        }
+        // This strip lives inside the popover's root glass plate. A second
+        // glass/material layer cannot sample through its parent cleanly, so
+        // keep it as a light adaptive tint that lets the outer plate read.
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(colorScheme == .dark ? Color.white.opacity(0.025) : Color.black.opacity(0.018))
+            .overlay(stripGradient.clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous)))
+            .padding(.horizontal, 6)
     }
 
     private var stripGradient: LinearGradient {

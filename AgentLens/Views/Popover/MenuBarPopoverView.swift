@@ -5,6 +5,8 @@ import AppKit
 
 struct MenuBarPopoverView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let dataStore: DataStore
     var aggregator: UsageAggregator?
     var quotaService: ProviderQuotaService?
@@ -43,6 +45,7 @@ struct MenuBarPopoverView: View {
     @AppStorage("popoverTraySectionOrder") private var storedPopoverTraySectionOrder = ""
     @AppStorage("popoverTraySectionHeights") private var storedPopoverTraySectionHeightsJSON = "{}"
     @AppStorage("hasResetScrambledPopoverLayoutV2") private var hasResetScrambledPopoverLayoutV2 = false
+    @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
 
     private static let minTraySectionHeight: CGFloat = 80
     private static let maxTraySectionHeight: CGFloat = 720
@@ -191,7 +194,7 @@ struct MenuBarPopoverView: View {
                     UpdateBannerCard(compact: true, horizontalInset: DesignSystem.Spacing.sm, topInset: DesignSystem.Spacing.xs)
                         .frame(width: popoverWidth)
                     #endif
-                    Divider().background(DesignSystem.Colors.border)
+                    popoverDivider
 
                     QuotaPopoverBar(
                         quotaService: quotaService ?? ProviderQuotaService.shared,
@@ -203,7 +206,7 @@ struct MenuBarPopoverView: View {
                             onOpenSettings()
                         }
                     )
-                    Divider().background(DesignSystem.Colors.border)
+                    popoverDivider
 
                     ScrollView(.vertical, showsIndicators: true) {
                         trayContent
@@ -213,16 +216,24 @@ struct MenuBarPopoverView: View {
                     .contentShape(Rectangle())
                     .clipped()
 
-                    Divider().background(DesignSystem.Colors.border)
+                    popoverDivider
                     cloudWhisperStrip
-                    Divider().background(DesignSystem.Colors.border)
+                    popoverDivider
                     actionBar
                 }
             }
         }
         .frame(width: popoverWidth)
         .frame(height: popoverViewportHeight)
-        .background(DesignSystem.Colors.background)
+        .background(popoverRootSurface)
+        .clipShape(
+            RoundedRectangle(cornerRadius: 22, style: .continuous),
+            style: FillStyle(antialiased: true)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(popoverEdgeColor, lineWidth: 0.75)
+        }
         .accessibilityIdentifier(OBBAccessibilityID.popoverRoot)
         .overlay(alignment: .bottomTrailing) {
             resizeHandle
@@ -273,6 +284,60 @@ struct MenuBarPopoverView: View {
         }
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(settingsManager)
+    }
+
+    @ViewBuilder
+    private var popoverRootSurface: some View {
+        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        if reduceTransparency {
+            shape.fill(DesignSystem.Colors.background)
+        } else if #available(macOS 26.0, *) {
+            // The transparent panel hosts this hierarchy in an
+            // NSGlassEffectView. Keep the SwiftUI root clear so there is one
+            // glass pass at the window boundary, where desktop refraction is
+            // available, instead of stacking a second smoky glass layer.
+            shape.fill(.clear)
+        } else {
+            let transparency = LiquidGlassTransparency.effective(
+                rawGlassTransparency,
+                reduceTransparency: reduceTransparency
+            )
+            ZStack {
+                shape.fill(.ultraThinMaterial)
+                    .opacity(LiquidGlassTransparency.fallbackPlateOpacity(transparency))
+                shape.fill(.thickMaterial)
+                    .opacity(LiquidGlassTransparency.frostScrimOpacity(transparency))
+            }
+        }
+    }
+
+    private var popoverEdgeColor: Color {
+        colorScheme == .dark
+            ? Color.white.opacity(0.18)
+            : Color.black.opacity(0.14)
+    }
+
+    private var popoverEmbeddedSurface: Color {
+        let opacity = isClearPopoverGlass ? 0.010 : 0.025
+        return colorScheme == .dark
+            ? Color.white.opacity(opacity)
+            : Color.black.opacity(opacity * 0.72)
+    }
+
+    private var isClearPopoverGlass: Bool {
+        LiquidGlassTransparency.usesClearGlass(
+            LiquidGlassTransparency.effective(
+                rawGlassTransparency,
+                reduceTransparency: reduceTransparency
+            )
+        )
+    }
+
+    private var popoverDivider: some View {
+        Rectangle()
+            .fill(colorScheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.09))
+            .frame(height: 0.5)
+            .padding(.horizontal, 12)
     }
 
     // MARK: - Tray Layout
@@ -595,53 +660,68 @@ struct MenuBarPopoverView: View {
     // MARK: - Header
 
     private var headerView: some View {
-        GlassCard {
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                AppLogoView(size: 28)
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            AppLogoView(size: 28)
 
-                Text("OpenBurnBar")
-                    .font(DesignSystem.Typography.headline)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            Text("OpenBurnBar")
+                .font(DesignSystem.Typography.headline)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                Spacer()
+            Spacer()
 
-                GlassIconButton(isLoading: isCastingSmartHub, action: castSmartHubFromTray) {
-                    Image(systemName: "airplayvideo")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
-                .popoverTooltip(smartHubCastTooltip)
-
-                GlassIconButton(action: runRecount) {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
-                .disabled(isScanning || aggregator == nil)
-                .popoverTooltip("Rebuild usage totals from saved sessions (clears derived numbers, then tallies again).")
-
-                GlassIconButton(isLoading: isScanning, action: runScan) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
-                .popoverTooltip("Import new and updated sessions from your agent log folders.")
-
-                GlassIconButton {
-                    dismiss()
-                    onOpenSettings()
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
-                .popoverTooltip("Open settings")
+            GlassIconButton(isLoading: isCastingSmartHub, action: castSmartHubFromTray) {
+                Image(systemName: "airplayvideo")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
-            .padding(.horizontal, DesignSystem.Spacing.lg)
-            .padding(.vertical, DesignSystem.Spacing.md)
+            .popoverTooltip(smartHubCastTooltip)
+
+            GlassIconButton(action: runRecount) {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+            .disabled(isScanning || aggregator == nil)
+            .popoverTooltip("Rebuild usage totals from saved sessions (clears derived numbers, then tallies again).")
+
+            GlassIconButton(isLoading: isScanning, action: runScan) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+            .popoverTooltip("Import new and updated sessions from your agent log folders.")
+
+            GlassIconButton {
+                withAnimation(DesignSystem.Animation.snappy) {
+                    rawGlassTransparency = isClearPopoverGlass ? 0 : 1
+                }
+            } label: {
+                Image(systemName: isClearPopoverGlass ? "drop.fill" : "drop")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(
+                        isClearPopoverGlass
+                            ? DesignSystem.Colors.whimsy
+                            : DesignSystem.Colors.textSecondary
+                    )
+            }
+            .popoverTooltip(isClearPopoverGlass ? "Use frosted glass" : "Use clear liquid glass")
+            .accessibilityLabel(isClearPopoverGlass ? "Use frosted glass" : "Use clear liquid glass")
+
+            GlassIconButton {
+                dismiss()
+                onOpenSettings()
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+            .popoverTooltip("Open settings")
         }
+        .padding(.horizontal, DesignSystem.Spacing.lg)
+        .padding(.vertical, DesignSystem.Spacing.md)
         .background(
-            DesignSystem.Colors.success.opacity(showScanFlash ? 0.08 : 0)
+            popoverEmbeddedSurface
+                .overlay(DesignSystem.Colors.success.opacity(showScanFlash ? 0.08 : 0))
         )
     }
 
@@ -709,7 +789,7 @@ struct MenuBarPopoverView: View {
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
             .padding(.vertical, DesignSystem.Spacing.sm)
-            .background(DesignSystem.Colors.surface.opacity(0.5))
+            .background(popoverEmbeddedSurface)
         }
     }
 
@@ -762,6 +842,13 @@ struct MenuBarPopoverView: View {
                 Spacer()
             }
 
+            MiniSparkline(
+                data: menuBarSparklineSeries,
+                width: max(popoverWidth - (DesignSystem.Spacing.lg * 2), 240),
+                height: 54
+            )
+            .popoverTooltip("7-day spending trend")
+
             HStack(spacing: DesignSystem.Spacing.xl) {
                 PeriodCost(
                     label: "This Week",
@@ -773,12 +860,7 @@ struct MenuBarPopoverView: View {
                     value: settingsManager.formatUsageMetric(cost: dataStore.totalCostThisMonth, tokens: dataStore.totalTokensThisMonth)
                 )
                 .popoverTooltip("Rolling 30-day total")
-            }
-
-            HStack {
                 Spacer()
-                MiniSparkline(data: menuBarSparklineSeries)
-                    .popoverTooltip("7-day spending trend")
             }
         }
         .padding(DesignSystem.Spacing.lg)
@@ -946,7 +1028,7 @@ private struct ProviderListRow: View {
     private var theme: ProviderTheme { ProviderTheme.theme(for: summary.provider) }
 
     var body: some View {
-        GlassCard(interactive: true) {
+        GlassCard(interactive: true, embedded: true) {
             HStack(spacing: DesignSystem.Spacing.md) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 7.5, style: .continuous)
@@ -1019,6 +1101,7 @@ private struct InteractiveGlassCardGesture: ViewModifier {
 /// Frosted glass card with real material blur, warm tint, and luminous border.
 struct GlassCard<Content: View>: View {
     var interactive: Bool = false
+    var embedded: Bool = false
     @ViewBuilder let content: () -> Content
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -1029,9 +1112,11 @@ struct GlassCard<Content: View>: View {
 
     init(
         interactive: Bool = false,
+        embedded: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.interactive = interactive
+        self.embedded = embedded
         self.content = content
     }
 
@@ -1085,12 +1170,13 @@ struct GlassCard<Content: View>: View {
     }
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
         content()
             .padding(DesignSystem.Spacing.xs)
             .background { backgroundLayer }
-            .clipShape(.rect(cornerRadius: DesignSystem.Radius.md))
+            .clipShape(shape, style: FillStyle(antialiased: true))
             .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
+                shape
                     .strokeBorder(
                         glassEdgeGradient,
                         lineWidth: 0.75
@@ -1107,7 +1193,13 @@ struct GlassCard<Content: View>: View {
     @ViewBuilder
     private var backgroundLayer: some View {
         let shape = RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-        if reduceTransparency {
+        if embedded {
+            shape.fill(
+                colorScheme == .dark
+                    ? Color.white.opacity(isHovered ? 0.085 : 0.055)
+                    : Color.black.opacity(isHovered ? 0.065 : 0.035)
+            )
+        } else if reduceTransparency {
             shape.fill(DesignSystem.Colors.surface)
         } else if #available(macOS 26, *) {
             // Native Liquid Glass samples the content BEHIND it — a material

@@ -56,6 +56,15 @@ public static class AppearanceModeExtensions
     /// </summary>
     public static bool AllowsBackdrop(this AppearanceMode mode) => mode != AppearanceMode.HighContrast;
 
+    /// <summary>
+    /// Visibility of the high-contrast swatch overlay in AppearanceModeControl: visible only
+    /// for <see cref="AppearanceMode.HighContrast"/>. Returns <see cref="Visibility"/> directly
+    /// because x:Bind function bindings type-check the return type against the target property
+    /// (WMC1121) — a bool + converter does not compile through a function bind.
+    /// </summary>
+    public static Visibility HighContrastOverlayVisibility(AppearanceMode mode) =>
+        mode == AppearanceMode.HighContrast ? Visibility.Visible : Visibility.Collapsed;
+
     /// <summary>Round-trips the persisted string form (case-insensitive, defaults to <see cref="AppearanceMode.System"/>).</summary>
     public static AppearanceMode ParseOrSystem(string? raw) => raw?.Trim().ToLowerInvariant() switch
     {

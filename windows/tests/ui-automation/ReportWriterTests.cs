@@ -89,7 +89,21 @@ public sealed class ReportWriterTests : IDisposable
         Assert.Contains(scenarios, scenario => scenario.Key == "high-contrast" && scenario.AppearanceMode == "highcontrast" && scenario.ReduceTransparency == true);
         Assert.Contains(scenarios, scenario => scenario.Key == "reduced-transparency" && scenario.ReduceTransparency == true);
         Assert.Contains(scenarios, scenario => scenario.Key == "dpi-100" && scenario.DpiScalePercent == 100 && scenario.RunsRouteSmoke);
+        Assert.Contains(scenarios, scenario => scenario.Key == "compact-640" && scenario.WindowWidth == 640 && scenario.WindowHeight == 720 && scenario.RunsRouteSmoke);
         Assert.Contains(scenarios, scenario => scenario.Key == "keyboard-contract" && scenario.RequiresKeyboardOnly && scenario.RequiresNarratorProtocol && !scenario.RunsRouteSmoke);
+    }
+
+    [Fact]
+    public void CompactScenario_FailsClosedWhenTheRequestedWindowSizeWasNotApplied()
+    {
+        UiCertificationScenario compact = Assert.Single(
+            CertificationScenarioCatalog.Select("accessibility"),
+            scenario => scenario.Key == "compact-640");
+
+        Assert.True(compact.MatchesRequestedWindowSize(640, 720));
+        Assert.True(compact.MatchesRequestedWindowSize(639, 721));
+        Assert.False(compact.MatchesRequestedWindowSize(1040, 720));
+        Assert.False(compact.MatchesRequestedWindowSize(640, 800));
     }
 
     [Fact]
@@ -163,6 +177,40 @@ public sealed class ReportWriterTests : IDisposable
             });
 
         Assert.Equal(HarnessVerdict.Fail, summary.Verdict);
+    }
+
+    [Fact]
+    public void SummaryVerdict_PassesWhenSemanticUiaPassesAndExternalCaptureIsUnavailable()
+    {
+        UiHarnessRunSummary original = CreateSummary(HarnessVerdict.Pass, null);
+        SemanticProbeEvidence semantic = original.SemanticProbe! with
+        {
+            ExternalCaptureVerdict = HarnessVerdict.Skipped,
+            ExternalCaptureMessage = "Composition capture unavailable in scheduled task.",
+        };
+        UiHarnessRunSummary summary = original with { SemanticProbe = semantic };
+
+        Assert.Equal(HarnessVerdict.Pass, summary.Verdict);
+    }
+
+    [Fact]
+    public void HtmlReportWriter_ReportsExternalCaptureSeparatelyFromSemanticVerdict()
+    {
+        UiHarnessRunSummary original = CreateSummary(HarnessVerdict.Pass, null);
+        SemanticProbeEvidence semantic = original.SemanticProbe! with
+        {
+            ExternalCaptureVerdict = HarnessVerdict.Skipped,
+            ExternalCaptureMessage = "Composition capture unavailable in scheduled task.",
+        };
+        UiHarnessRunSummary summary = original with { SemanticProbe = semantic };
+        string path = Path.Combine(_dir, "index.html");
+
+        HtmlReportWriter.Write(path, summary, new ArtifactRedactor());
+
+        string html = File.ReadAllText(path);
+        Assert.Contains("External capture", html);
+        Assert.Contains("Skipped", html);
+        Assert.Contains("Composition capture unavailable in scheduled task.", html);
     }
 
     private static UiHarnessRunSummary CreateSummary(

@@ -125,7 +125,9 @@ internal object HermesRelayCryptoHpkeV3 {
         return aeadOpen(hpkeKey, baseNonce, aad, wrappedKey)
     }
 
-    private fun info(aad: ByteArray): ByteArray = INFO_PREFIX.toByteArray(Charsets.UTF_8) + aad
+    private fun info(aad: ByteArray): ByteArray = HermesDomainCoreAdapter.hpkeV3Info(aad) {
+        INFO_PREFIX.toByteArray(Charsets.UTF_8) + aad
+    }
 
     // --- RFC 9180 §4.1 DHKEM(P-256, HKDF-SHA256) Auth mode ---
 

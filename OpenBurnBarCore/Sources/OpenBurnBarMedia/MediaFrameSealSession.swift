@@ -34,7 +34,7 @@ public enum MediaFrameSealSession {
             keyData,
             recipientPublicKeyBase64: recipientPublicKeyBase64,
             senderPrivateKey: senderPrivateKey,
-            aad: HermesRelayCrypto.mediaSealKeyAAD(
+            aad: try HermesRelayCrypto.mediaSealKeyAAD(
                 uid: uid,
                 connectionID: connectionID,
                 viewerId: viewerId,
@@ -74,7 +74,7 @@ public enum MediaFrameSealSession {
             wrappedKey: wrappedKey,
             privateKey: recipientPrivateKey,
             pinnedSenderPublicKeyBase64: pinnedSenderPublicKeyBase64,
-            aad: HermesRelayCrypto.mediaSealKeyAAD(
+            aad: try HermesRelayCrypto.mediaSealKeyAAD(
                 uid: uid,
                 connectionID: connectionID,
                 viewerId: viewerId,

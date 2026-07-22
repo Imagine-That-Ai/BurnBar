@@ -61,7 +61,8 @@ export type KernelId =
   // ── CUBELOVE voxel world: cubes forged from light in a flat canvas. ──
   // ── CUBELOVE premium: WebGPU sparse-voxel path tracer (Quarry `voxel` is its fallback). ──
   // ── Boids murmuration: classic Reynolds flocking birds on the 2D substrate. ──
-  | "boids";
+  | "boids"
+  | "swarmEmber";
 
 /** RGB triple, channels in 0–255. */
 export type RGB = [number, number, number];

@@ -121,7 +121,7 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
 
         let migrations = try database.migrationRows()
         XCTAssertEqual(migrations, OpenBurnBarLocalDatabase.migrationIdentifiers)
-        XCTAssertEqual(migrations.last, "v54_provider_quota_snapshots")
+        XCTAssertEqual(migrations.last, "v56_parser_checkpoint_file_manifest")
         XCTAssertTrue(migrations.contains("v35_provider_accounts"))
         XCTAssertTrue(migrations.contains("v50_project_code_memory_schema"))
 
@@ -133,7 +133,10 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
         XCTAssertTrue(schemaSQL.contains("CREATE TABLE provider_accounts"))
         XCTAssertTrue(schemaSQL.contains("CREATE TABLE provider_quota_snapshots"))
         XCTAssertTrue(schemaSQL.contains("CREATE VIRTUAL TABLE search_chunks_fts"))
-        XCTAssertTrue(schemaSQL.contains("-- Schema hash: \(schemaHash)"))
+        XCTAssertTrue(
+            schemaSQL.contains("-- Schema hash: \(schemaHash)"),
+            "docs/SCHEMA_SQLITE.sql schema hash is stale; expected \(schemaHash)"
+        )
     }
 
     public func testWALBackupRestoreFailureInjectionAndConcurrentReadWrite() throws {
@@ -166,7 +169,7 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
 
         let database = try openDatabase(path: dbPath, passphrase: passphrase)
         defer { try? database.close() }
-        XCTAssertEqual(try database.migrationRows().last, "v54_provider_quota_snapshots")
+        XCTAssertEqual(try database.migrationRows().last, "v56_parser_checkpoint_file_manifest")
         XCTAssertEqual(try database.count(sql: "SELECT COUNT(*) FROM provider_accounts WHERE id = 'legacy-provider-account'"), 1)
         XCTAssertEqual(try database.verifyPragmaString("integrity_check"), "ok")
 

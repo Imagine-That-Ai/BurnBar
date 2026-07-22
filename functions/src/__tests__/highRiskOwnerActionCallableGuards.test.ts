@@ -36,6 +36,7 @@ const EXPECTED_GUARDS: Array<{
     actionKind: "hosted_quota_account_connect",
   },
   { exportedName: "exportUserData", file: "dataExport.ts", actionKind: "data_export" },
+  { exportedName: "deleteDomainData", file: "dataDeletion.ts", actionKind: "data_domain_delete" },
   { exportedName: "deleteUserCloudData", file: "providerAccounts.ts", actionKind: "user_cloud_data_delete" },
   { exportedName: "revokeAllAccess", file: "panic.ts", actionKind: "revoke_all_access" },
   {

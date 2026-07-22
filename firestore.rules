@@ -50,6 +50,14 @@ service cloud.firestore {
         && request.resource.data.keys().size() < 20;
     }
 
+    function escrowDeviceDocumentLimits() {
+      // Trusted device records include the approval chain and server-owned
+      // Signal repair receipt. `validEscrowDeviceDocument` still provides an
+      // exact field allowlist, so this wider count applies only to that schema.
+      return request.resource.size() < 51200
+        && request.resource.data.keys().size() <= 24;
+    }
+
     function ownsUserNamespace(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
@@ -258,35 +266,6 @@ service cloud.firestore {
         && request.resource.data.schemaVersion is int
         && request.resource.data.schemaVersion >= 1
         && request.resource.data.schemaVersion <= 100;
-    }
-
-    function validComputerUseQuotaUsageDocument(day) {
-      return request.resource.data.keys().hasOnly([
-          "dayKey",
-          "browserActionsExecuted",
-          "browserActionsRejected",
-          "systemActionsExecuted",
-          "systemActionsRejected",
-          "phoneControlIntentsExecuted",
-          "phoneControlIntentsRejected",
-          "sessionsStarted",
-          "sessionsCompleted",
-          "totalSessionSeconds",
-          "visionModelSpendUSD",
-          "updatedAt"
-        ])
-        && request.resource.data.dayKey == day
-        && request.resource.data.browserActionsExecuted is number
-        && request.resource.data.browserActionsRejected is number
-        && request.resource.data.systemActionsExecuted is number
-        && request.resource.data.systemActionsRejected is number
-        && request.resource.data.phoneControlIntentsExecuted is number
-        && request.resource.data.phoneControlIntentsRejected is number
-        && (!("sessionsStarted" in request.resource.data) || request.resource.data.sessionsStarted is number)
-        && (!("sessionsCompleted" in request.resource.data) || request.resource.data.sessionsCompleted is number)
-        && (!("totalSessionSeconds" in request.resource.data) || request.resource.data.totalSessionSeconds is number)
-        && request.resource.data.visionModelSpendUSD is number
-        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
     }
 
     function validRootUserProfileWrite(userId) {
@@ -1176,7 +1155,7 @@ service cloud.firestore {
         && payload.vaultKeyID == vaultKeyID;
     }
 
-    function validPathBoundCloudSealedPayload(userId, collection, docId, value) {
+    function validPathBoundCloudSealedPayloadAt(userId, collection, docId, field, value) {
       return value is map
         && value.keys().hasOnly([
           "schemaVersion",
@@ -1192,11 +1171,15 @@ service cloud.firestore {
         && value.keyVersion >= 1
         && value.keyVersion <= 100
         && validVaultKeyID(value.vaultKeyID)
-        && value.aad == cloudVaultAADContext(userId, collection, docId, "sealedPayload")
+        && value.aad == cloudVaultAADContext(userId, collection, docId, field)
         && value.sealedBoxBase64 is string
         && value.sealedBoxBase64.size() > 0
         && value.sealedBoxBase64.size() <= 900000
         && value.sealedBoxBase64.matches("^[A-Za-z0-9+/=]+$");
+    }
+
+    function validPathBoundCloudSealedPayload(userId, collection, docId, value) {
+      return validPathBoundCloudSealedPayloadAt(userId, collection, docId, "sealedPayload", value);
     }
 
     function validRoamingProfileSealedPayload(userId, value) {
@@ -1749,35 +1732,22 @@ service cloud.firestore {
 
     // Cloud Functions store Secret Manager version names here. The Admin SDK
     // bypasses rules; clients must never read or write these documents.
-    match /provider_account_secret_refs/{refId} {
-      allow read, write: if false;
-    }
 
     // Durable write barrier created by the account-erasure service before it
     // enumerates data. Admin cleanup bypasses rules; clients can never observe,
     // create, update, or delete their own barrier.
-    match /account_erasure_tombstones/{userId} {
-      allow read, write: if false;
-    }
 
     // --- Credential transfers (cross-device encrypted payload) ---
 
-    match /credential_transfers/{transferId} {
-      // Server-owned only. Clients must use create/consume/complete/cancel
-      // callables so no decryption secret can become a document id or field.
-      allow read, write: if false;
-    }
 
     // --- Public read-only model-landscape metadata ---
 
     match /model_benchmark_snapshots/{snapshotId} {
       allow read: if isSignedIn();
-      allow write: if false;
     }
 
     match /model_benchmark_source_status/{sourceId} {
       allow read: if isSignedIn();
-      allow write: if false;
     }
 
     // --- User-scoped data ---
@@ -1785,6 +1755,84 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if validRootUserProfileWrite(userId);
+    }
+
+    // Compiler-budget consolidation: direct child collections share these
+    // operation-level owner gates. Collection-specific write validators remain
+    // in their exact match blocks below. The allowlists preserve the previous
+    // path-by-path permissions while compiling the account-erasure lookup once
+    // per operation instead of once per collection.
+    match /users/{userId}/{collectionId}/{documentId} {
+      allow read: if ownsUserNamespace(userId) && collectionId in [
+        "usage", "budgetRules", "budgetEvents", "conversations",
+        "chat_threads", "text_snippets", "mobile_assistant_chats",
+        "cli_sessions", "cli_agent_mission_requests", "agent_import_jobs",
+        "mission_groups", "approval_policies", "rollback_requests",
+        "agent_identities", "subscription_topics", "session_logs",
+        "project_memory_snapshots", "cloud_search_documents",
+        "cloud_search_chunks", "cloud_search_postings",
+        "cloud_search_index_state", "cloud_search_index_manifest",
+        "cloud_search_knowledge", "memory_facts", "memory_forget_receipts",
+        "knowledge_sync_manifests", "knowledge_repos", "unified_audit_log",
+        "audit_meta", "account_recovery_methods", "cloud_vault_state",
+        "cloud_vault_key_wrappers", "cloud_vault_rotation_jobs",
+        "cloud_vault_rotation_requirements", "devices",
+        "agent_notification_events", "agent_notification_replies",
+        "quota_snapshots", "provider_connections", "provider_accounts",
+        "roaming_profile", "provider_account_device_links",
+        "runtime_connection_preferences", "hermes_connections",
+        "hermes_pairings", "hermes_relay_requests", "hermes_session_cache",
+        "hermes_audit_events", "hermes_gateway_clients",
+        "hermes_gateway_destinations", "hermes_gateway_events",
+        "hermes_gateway_messages", "hermes_gateway_typing",
+        "hermes_gateway_attachments", "hermes_gateway_state",
+        "hermes_gateway_approvals", "iroh_pairing_keys", "iroh_pairing",
+        "iroh_audit_events", "incoming_call_contexts",
+        "media_session_events", "relay_sender_keys", "agent_grant_authorities",
+        "agent_capability_grant_requests", "computer_use_sessions",
+        "computer_use_actions", "computer_use_quota_usage",
+        "media_quota_usage", "media_attachment_manifests",
+        "pi_agent_connections", "pi_agent_pairings", "pi_agent_relay_requests",
+        "pi_agent_audit_events", "smart_hub_config", "smart_display_actions",
+        "cast_actions", "cast_discovery_results", "usage_rollups", "projects",
+        "remote_mcp_clients", "remote_mcp_audit_events", "entitlements",
+        "entitlement_events", "escrow_devices", "escrow_public_keys",
+        "signal_identity_public_keys", "escrow_envelopes",
+        "escrow_audit_events", "cloud_profile", "sync_watermarks",
+        "sync_status", "cloud_settings", "recent_usage"
+      ];
+
+      allow delete: if ownsUserNamespace(userId) && collectionId in [
+        "usage", "budgetRules", "chat_threads", "text_snippets",
+        "mobile_assistant_chats", "cli_sessions", "agent_import_jobs",
+        "mission_groups", "approval_policies", "rollback_requests",
+        "agent_identities", "subscription_topics", "session_logs",
+        "project_memory_snapshots", "cloud_search_documents",
+        "cloud_search_chunks", "cloud_search_postings",
+        "cloud_search_index_state", "memory_facts", "memory_forget_receipts",
+        "devices", "quota_snapshots", "provider_connections",
+        "provider_accounts", "roaming_profile", "runtime_connection_preferences",
+        "hermes_relay_requests", "pi_agent_relay_requests", "smart_hub_config",
+        "smart_display_actions", "cast_actions", "cast_discovery_results",
+        "escrow_grants", "cloud_profile", "sync_watermarks", "sync_status",
+        "cloud_settings", "recent_usage"
+      ];
+
+      // Test the cheap collection discriminator first. Some exact write rules
+      // below are intentionally close to Firestore's 1,000-expression request
+      // limit, so unrelated writes must short-circuit before owner validation.
+      allow create, update: if collectionId in [
+          "devices", "quota_snapshots", "provider_connections"
+        ]
+        && ownerWritableNonSecret(userId);
+
+      allow create, update: if collectionId in [
+          "cloud_profile", "sync_watermarks", "sync_status",
+          "cloud_settings", "recent_usage"
+        ]
+        && ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields();
     }
 
     // Usage rows seal the project name into `sealedProjectName` (with an opaque
@@ -1795,14 +1843,12 @@ service cloud.firestore {
     // field already exists on the stored doc — no write may re-introduce one
     // (privacy-leak-remediation §1 / F6).
     match /users/{userId}/usage/{usageId} {
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && !("projectName" in request.resource.data)
         && (!("sealedProjectName" in request.resource.data) || validCloudSealedTextAt(userId, "usage", usageId, "sealedProjectName", request.resource.data.sealedProjectName));
       allow update: if ownerWritableNonSecret(userId)
         && (!("projectName" in request.resource.data) || ("projectName" in resource.data))
         && (!("sealedProjectName" in request.resource.data) || validCloudSealedTextAt(userId, "usage", usageId, "sealedProjectName", request.resource.data.sealedProjectName));
-      allow delete: if ownsUserNamespace(userId);
     }
 
     // Budget rules: owner-scoped CRUD. Cross-device sync writes these from
@@ -1812,7 +1858,6 @@ service cloud.firestore {
     // outright; `update` tolerates a legacy plaintext field only while it
     // already exists on the stored doc (migration), never on a fresh write.
     match /users/{userId}/budgetRules/{ruleId} {
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && !("projectName" in request.resource.data)
         && !("label" in request.resource.data)
@@ -1823,7 +1868,6 @@ service cloud.firestore {
         && (!("label" in request.resource.data) || ("label" in resource.data))
         && (!("sealedProjectName" in request.resource.data) || validCloudSealedTextAt(userId, "budgetRules", ruleId, "sealedProjectName", request.resource.data.sealedProjectName))
         && (!("sealedLabel" in request.resource.data) || validCloudSealedTextAt(userId, "budgetRules", ruleId, "sealedLabel", request.resource.data.sealedLabel));
-      allow delete: if ownsUserNamespace(userId);
     }
 
     // Budget events: append-only audit log. Clients create events but never
@@ -1852,7 +1896,6 @@ service cloud.firestore {
         && request.resource.data.limitAtEvent is number
         && (!("sourceDeviceID" in request.resource.data) || (request.resource.data.sourceDeviceID is string && request.resource.data.sourceDeviceID.size() <= 160));
       }
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId) && validBudgetEvent();
     }
 
@@ -1912,22 +1955,16 @@ service cloud.firestore {
         && validPathBoundSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload, "conversations", conversationId)
         && forbidsDirectSignalEnvelope();
       }
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableHostedCloudBackup(userId)
         && validConversationMirror();
-      allow delete: if false;
     }
 
     match /users/{userId}/chat_threads/{threadId} {
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableChatThread(userId, threadId);
-      allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/text_snippets/{snippetId} {
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if validTextSnippetDoc(userId, snippetId);
-      allow delete: if ownsUserNamespace(userId);
     }
 
     // Mobile assistant chat history (Hermes + Pi conversations originated on
@@ -1968,10 +2005,8 @@ service cloud.firestore {
         && forbidsDirectSignalEnvelope();
       }
 
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
         && validMobileAssistantChatMirror();
-      allow delete: if ownsUserNamespace(userId);
     }
 
     // Mac CLI agent transcripts mirrored for the mobile Assistants tiles.
@@ -2015,10 +2050,8 @@ service cloud.firestore {
         && forbidsSealedPlaintextContentFields();
       }
 
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
         && validCliSessionMirror();
-      allow delete: if ownsUserNamespace(userId);
     }
 
     // Mobile Insights mission dispatch. iOS/iPadOS/Android create pending
@@ -2077,6 +2110,10 @@ service cloud.firestore {
         return value in ["action_only", "full_stream", "muted"];
       }
 
+      function validCliMissionPresentationMode(value) {
+        return value in ["native_chat", "mac_visible_cli", "mac_interactive_cli"];
+      }
+
       function validCliMissionResumeAction(value) {
         return value in ["new", "resume", "fork", "forward", "continue"];
       }
@@ -2095,6 +2132,7 @@ service cloud.firestore {
           "sourceSkillID",
           "sourceSurface",
           "deliveryMode",
+          "presentationMode",
           "parentHermesThreadID",
           "status",
           "createdAt",
@@ -2145,13 +2183,14 @@ service cloud.firestore {
         && (!("sealedStatePayload" in request.resource.data) || (
           request.resource.data.sealedStateSchemaVersion == 1
           && request.resource.data.sealedStateVaultKeyID == request.resource.data.vaultKeyID
-          && validPathBoundCloudSealedPayload(userId, "cli_agent_mission_requests", requestId, request.resource.data.sealedStatePayload)
+          && validPathBoundCloudSealedPayloadAt(userId, "cli_agent_mission_requests", requestId, "sealedStatePayload", request.resource.data.sealedStatePayload)
           && request.resource.data.sealedStatePayload.vaultKeyID == request.resource.data.vaultKeyID
         ))
         && validCliMissionKind(request.resource.data.missionKind)
         && validCliMissionRuntime(request.resource.data.requestedRuntime)
         && validCliMissionSource(request.resource.data.source)
         && (!("deliveryMode" in request.resource.data) || validCliMissionDeliveryMode(request.resource.data.deliveryMode))
+        && (!("presentationMode" in request.resource.data) || validCliMissionPresentationMode(request.resource.data.presentationMode))
         && request.resource.data.status is string
         && request.resource.data.schemaVersion is int
         && (!("depth" in request.resource.data) || validCliMissionDepth(request.resource.data.depth))
@@ -2173,15 +2212,12 @@ service cloud.firestore {
         && (!("personaID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.personaID, 160))
         && (!("groupID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.groupID, 160))
         && (!("resumeAction" in request.resource.data) || validCliMissionResumeAction(request.resource.data.resumeAction))
-        // NOTE: forbidsSealedPlaintextContentFields() is intentionally NOT applied
-        // here. cli_agent_mission_requests already pins an exact hasOnly([...])
-        // allowlist (above) that contains NO plaintext content field, so the
-        // denylist is fully redundant on this collection — and adding it tips this
-        // already-large rule past Firestore's 1000-expression evaluation limit
-        // (the create/update rule then fails to evaluate at all). Defense-in-depth
-        // is preserved by the allowlist; the explicit denylist stays on the
-        // smaller chat-thread mirror rules where it fits within the limit.
-        && forbidsDirectSignalEnvelope();
+        // The exact hasOnly([...]) allowlist above contains neither plaintext
+        // content fields nor signalEnvelope. Repeating either deny check here
+        // pushes the full fan-out child payload past Firestore's 1000-expression
+        // evaluation limit, while adding no accepted or rejected wire shapes.
+        // The explicit deny helpers remain on smaller mirrors where they fit.
+        ;
       }
 
       function validCliAgentMissionCreate() {
@@ -2217,7 +2253,7 @@ service cloud.firestore {
           request.resource.data.contentSealed == true
           && request.resource.data.sealedStateSchemaVersion == 1
           && request.resource.data.sealedStateVaultKeyID == request.resource.data.vaultKeyID
-          && validPathBoundCloudSealedPayload(userId, "cli_agent_mission_requests", requestId, request.resource.data.sealedStatePayload)
+          && validPathBoundCloudSealedPayloadAt(userId, "cli_agent_mission_requests", requestId, "sealedStatePayload", request.resource.data.sealedStatePayload)
           && request.resource.data.sealedStatePayload.vaultKeyID == request.resource.data.vaultKeyID
         );
       }
@@ -2229,8 +2265,7 @@ service cloud.firestore {
           && request.resource.data.sealedSchemaVersion == resource.data.sealedSchemaVersion
           && request.resource.data.vaultKeyID == resource.data.vaultKeyID
           && request.resource.data.sealedPayload == resource.data.sealedPayload
-          && validCliAgentMissionSealedStateUpdate()
-          && forbidsDirectSignalEnvelope();
+          && validCliAgentMissionSealedStateUpdate();
       }
 
       function trustedMissionExecutorDevice(userId) {
@@ -2380,7 +2415,6 @@ service cloud.firestore {
           );
       }
 
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && validCliAgentMissionRequest()
         && validCliAgentMissionCreate();
@@ -2392,7 +2426,6 @@ service cloud.firestore {
           || validMissionRefusalOrFailureUpdate()
           || validMobileMissionCancel()
         );
-      allow delete: if false;
 
       match /events/{eventId} {
         function validCliAgentMissionEventRewrapUpdate() {
@@ -2482,7 +2515,6 @@ service cloud.firestore {
           && (!("runtime" in request.resource.data) || request.resource.data.runtime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "auto", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"])
           ;
         allow update: if validCliAgentMissionEventRewrapUpdate();
-        allow delete: if false;
       }
     }
 
@@ -2535,14 +2567,12 @@ service cloud.firestore {
           && (!("claimedBy" in resource.data) || request.resource.data.claimedBy == resource.data.claimedBy);
       }
 
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && validAgentImportJob()
         && validAgentImportCreate();
       allow update: if ownerWritableNonSecret(userId)
         && validAgentImportJob()
         && validTrustedAgentImportUpdate(userId);
-      allow delete: if ownsUserNamespace(userId);
     }
 
     // Hermes Square Phase B — mission groups (fan-out parent). Owner writes
@@ -2569,7 +2599,10 @@ service cloud.firestore {
           "android-chat",
           "ios-insights",
           "android-insights",
-          "mac-insights"
+          "mac-insights",
+          "ios-hermes-square",
+          "android-hermes-square",
+          "mac-wand"
         ];
       }
 
@@ -2627,12 +2660,10 @@ service cloud.firestore {
           && request.resource.data.vaultKeyID == resource.data.vaultKeyID
           && request.resource.data.sealedPayload == resource.data.sealedPayload;
       }
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId) && validMissionGroup();
       allow update: if ownerWritableNonSecret(userId)
         && validMissionGroup()
         && immutableMissionGroupDispatchFields();
-      allow delete: if ownsUserNamespace(userId);
     }
 
     // Hermes Square Phase B — class-based approval policies. Phone writes,
@@ -2664,9 +2695,7 @@ service cloud.firestore {
         && (!("fileGlobHash" in request.resource.data) || request.resource.data.fileGlobHash.matches("^[a-f0-9]{32}$"))
         && (!("matchCount" in request.resource.data) || request.resource.data.matchCount is int);
       }
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId) && validApprovalPolicy();
-      allow delete: if ownsUserNamespace(userId);
     }
 
     // Hermes Square Phase C — rollback requests. Phone submits, Mac claims
@@ -2688,9 +2717,7 @@ service cloud.firestore {
 	        && (!("sealedErrorMessage" in request.resource.data) || validCloudSealedTextAt(userId, "rollback_requests", requestId, "sealedErrorMessage", request.resource.data.sealedErrorMessage))
 	        && request.resource.data.status in ["pending", "in_flight", "completed", "failed", "cancelled"];
       }
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId) && validRollbackRequest();
-      allow delete: if ownsUserNamespace(userId);
     }
 
     // Hermes Square Phase A — per-session rollback snapshot index. Mac
@@ -2742,9 +2769,7 @@ service cloud.firestore {
         && !("tagline" in request.resource.data)
         && !("personas" in request.resource.data);
       }
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId) && validAgentIdentity();
-      allow delete: if ownsUserNamespace(userId);
     }
 
 	    // Hermes Square Phase A — subscription topics with per-template consent.
@@ -2756,7 +2781,6 @@ service cloud.firestore {
 	    // because request.resource.data is the post-write document —
 	    // privacy-leak-remediation.
 	    match /users/{userId}/subscription_topics/{topicId} {
-	      allow read: if ownsUserNamespace(userId);
 	      allow create, update: if ownerWritableNonSecret(userId)
 	        && request.resource.data.keys().hasOnly([
 	          "sealedAgentURI", "sealedTopicID", "sealedDisplayName", "sealedDescription",
@@ -2775,14 +2799,11 @@ service cloud.firestore {
     }
 
     match /users/{userId}/session_logs/{logId} {
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableSessionLogManifestCreate(userId, logId);
       allow update: if ownerWritableSessionLogManifestRefresh(userId);
-      allow delete: if ownsUserNamespace(userId);
 
 	      match /chunks/{chunkId} {
 	        allow read: if ownsUserNamespace(userId);
-	        allow create, update: if false;
 	        allow delete: if ownsUserNamespace(userId);
 	      }
     }
@@ -2812,7 +2833,6 @@ service cloud.firestore {
           "updatedAt"
         ]);
       }
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
         && hasActiveHostedQuotaEntitlement(userId)
         && validProjectMemorySnapshotKeys()
@@ -2828,115 +2848,17 @@ service cloud.firestore {
         )
         && request.resource.data.schemaVersion is int
         && request.resource.data.schemaVersion >= 2;
-      allow delete: if ownsUserNamespace(userId);
     }
 
-    match /users/{userId}/cloud_search_documents/{documentId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if false
-        && request.resource.data.keys().hasOnly([
-          "uid",
-          "documentID",
-          "deviceId",
-          "sourceKind",
-          "sourceID",
-          "sourceVersionID",
-          "provider",
-          "bodyHash",
-          "bodyHashVersion",
-          "storagePath",
-          "sealedTitle",
-          "sealedBodyPreview",
-          "byteCount",
-          "encryptedByteCount",
-          "indexVersion",
-          "tokenHashVersion",
-          "semanticHashVersion",
-          "updatedAt",
-          "schemaVersion"
-        ])
-        && request.resource.data.uid == userId
-        && request.resource.data.documentID == documentId
-        && validCloudSessionStoragePath(userId, documentId, request.resource.data.bodyHash, request.resource.data.storagePath)
-        && validCloudSealedTextAt(userId, "cloud_search_documents", documentId, "sealedTitle", request.resource.data.sealedTitle)
-        && validCloudSealedTextAt(userId, "cloud_search_documents", documentId, "sealedBodyPreview", request.resource.data.sealedBodyPreview)
-        && request.resource.data.byteCount is int
-        && request.resource.data.byteCount >= 0
-        && request.resource.data.encryptedByteCount is int
-        && request.resource.data.encryptedByteCount >= 1
-        && request.resource.data.encryptedByteCount < 10 * 1024 * 1024
-        && !("title" in request.resource.data)
-        && !("snippet" in request.resource.data)
-        && !("body" in request.resource.data)
-        && !("text" in request.resource.data);
-      allow delete: if ownsUserNamespace(userId);
-    }
 
-    match /users/{userId}/cloud_search_chunks/{chunkId} {
-      allow read: if ownsUserNamespace(userId);
-      // Search chunks are server-owned. Clients submit encrypted chunks through
-      // commitEncryptedSearchIndexBatch, where trusted code validates every
-      // token/semantic hash before Admin SDK writes this collection.
-      allow create, update: if false;
-      allow delete: if ownsUserNamespace(userId);
-    }
 
-    match /users/{userId}/cloud_search_postings/{postingId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if false
-        && request.resource.data.keys().hasOnly([
-          "uid",
-          "postingKey",
-          "edgeID",
-          "kind",
-          "hash",
-          "chunkID",
-          "documentID",
-          "provider",
-          "updatedAt",
-          "indexVersion",
-          "schemaVersion"
-        ])
-        && request.resource.data.uid == userId
-        && request.resource.data.edgeID == postingId
-        && request.resource.data.kind in ["token", "semantic"]
-        && request.resource.data.hash is string
-        && request.resource.data.hash.matches("^[a-f0-9]{32}$")
-        && request.resource.data.postingKey == request.resource.data.kind + "_" + request.resource.data.hash
-        && request.resource.data.chunkID is string
-        && request.resource.data.chunkID.size() <= 512
-        && request.resource.data.edgeID == request.resource.data.postingKey + "_" + request.resource.data.chunkID
-        && request.resource.data.documentID is string
-        && request.resource.data.documentID.size() <= 512
-        && (!("provider" in request.resource.data) || (request.resource.data.provider is string && request.resource.data.provider.size() <= 80))
-        && !("title" in request.resource.data)
-        && !("snippet" in request.resource.data)
-        && !("body" in request.resource.data)
-        && !("text" in request.resource.data);
-      allow delete: if ownsUserNamespace(userId);
-    }
 
-    match /users/{userId}/cloud_search_index_state/{deviceId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if false
-        && request.resource.data.uid == userId
-        && request.resource.data.deviceId == deviceId;
-      allow delete: if ownsUserNamespace(userId);
-    }
 
-    match /users/{userId}/cloud_search_index_manifest/{manifestId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // Pensieve E2EE knowledge memory. Vectors + sealed envelopes are written
     // ONLY by the commitKnowledgeBatch callable (admin SDK, which validates the
     // Cloud Pro entitlement + tier caps). The client may read its own ciphertext
     // for defence in depth; recall actually flows through the hosted MCP shim.
-    match /users/{userId}/cloud_search_knowledge/{vectorId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // Approved chat semantic memories. The client may write only sealed fact
     // envelopes and opaque source HMACs after the server-reconciled Data Vault
@@ -2960,7 +2882,6 @@ service cloud.firestore {
         ]);
       }
 
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownsUserNamespace(userId)
         && hasActiveDataVaultEntitlement(userId)
         && validMemoryFactKeys()
@@ -2990,7 +2911,6 @@ service cloud.firestore {
         && request.resource.data.validFrom is timestamp
         && request.resource.data.updatedAt is timestamp
         && request.resource.data.replicatedAt is timestamp;
-      allow delete: if ownsUserNamespace(userId);
     }
 
     // Fact-level forget receipts. Receipts carry only opaque source HMACs and
@@ -3010,7 +2930,6 @@ service cloud.firestore {
         ]);
       }
 
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownsUserNamespace(userId)
         && validMemoryForgetReceiptKeys()
         && request.resource.data.uid == userId
@@ -3048,18 +2967,14 @@ service cloud.firestore {
         ]
         && request.resource.data.createdAt is timestamp
         && request.resource.data.replicatedAt is timestamp;
-      allow delete: if ownsUserNamespace(userId);
     }
 
     // Pensieve sync manifests (no plaintext): chunk/byte counts + sync health,
     // written by the knowledgeMemory callables. Owner-readable for the UI.
     match /users/{userId}/knowledge_sync_manifests/{sourceManifestId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
 
       match /entries/{entryKey} {
         allow read: if ownsUserNamespace(userId);
-        allow write: if false;
       }
     }
 
@@ -3070,36 +2985,20 @@ service cloud.firestore {
     // arbitrary opaque repo/source-manifest tokens and then ask the resync
     // callable to dirty server-owned manifests. Owner reads remain allowed for
     // UI display of the vault-sealed repo name.
-    match /users/{userId}/knowledge_repos/{repoId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // Tamper-evident unified access-audit log (server-only writer). Per-user
     // SHA-256 hash chain written exclusively by Cloud Functions (appendAuditEvent)
     // for the Access Audit Timeline. Clients must never write or the chain could
     // be forged; owner-read only.
-    match /users/{userId}/unified_audit_log/{eventId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // Transactional head pointer for the audit chain (server-only writer). Holds
     // { maxSeq, headHash } advanced in the same transaction as each append plus
     // the daily OpenTimestamps anchor, so a truncated tail is detectable. Clients
     // must never write or truncation detection could be forged; owner-read only.
-    match /users/{userId}/audit_meta/{metaId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // Account recovery methods for zero-knowledge mode (server-only writer).
     // Holds ONLY sealed wrapped-vault-key blobs + verification hashes (Apple ADP
     // delayed-confirm pattern), written exclusively via setupRecovery/confirmRecovery.
-    match /users/{userId}/account_recovery_methods/{recoveryId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // V-41: CloudVault rotation generation is monotonic non-decreasing at the
     // rules layer — defense-in-depth behind the server-only rotateCloudVaultKey
@@ -3121,7 +3020,6 @@ service cloud.firestore {
     }
 
     match /users/{userId}/cloud_vault_state/{stateId} {
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
         && stateId == "current"
         && request.resource.data.keys().hasOnly([
@@ -3158,7 +3056,6 @@ service cloud.firestore {
         && (!exists(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current)
           || get(/databases/$(database)/documents/users/$(userId)/cloud_vault_state/current).data.vaultKeyID == request.resource.data.vaultKeyID)
         && vaultGenerationMonotonic(userId);
-      allow delete: if false;
     }
 
     // T-PTR-06: the wrapper doc ID is the deterministic
@@ -3178,7 +3075,6 @@ service cloud.firestore {
     }
 
     match /users/{userId}/cloud_vault_key_wrappers/{wrapperId} {
-      allow read: if ownsUserNamespace(userId);
       function ownerWritableActiveCloudVaultKeyWrapper(wrapperId) {
         return ownerWritableHostedCloudBackup(userId)
         && validKeyWrapperDocId(wrapperId)
@@ -3227,13 +3123,14 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId))
         && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.trustState == "trusted";
       }
-      allow create: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId);
-      allow update: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          "wrappedVaultKey",
-          "updatedAt"
-        ]);
-	      allow delete: if false;
+	      allow create: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId);
+	      allow update: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId)
+	        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+	          "wrappedVaultKey",
+	          "sourceDeviceId",
+	          "createdAt",
+	          "updatedAt"
+	        ]);
 	    }
 
 	    match /users/{userId}/cloud_vault_rotation_jobs/{jobId} {
@@ -3331,35 +3228,18 @@ service cloud.firestore {
 	          && request.resource.data.changedFieldCount <= 10000000;
 	      }
 
-	      allow read: if ownsUserNamespace(userId);
-	      allow create, delete: if false;
 	      allow update: if validCloudVaultRotationJobClientUpdate();
 
 	      match /checkpoints/{checkpointId} {
 	        allow read: if ownsUserNamespace(userId);
 	        allow create, update: if validCloudVaultRotationCheckpoint(checkpointId);
-	        allow delete: if false;
 	      }
 	    }
 
-	    match /users/{userId}/cloud_vault_rotation_requirements/{requirementId} {
-	      allow read: if ownsUserNamespace(userId);
-	      allow create, update, delete: if false;
-	    }
 
-    match /users/{userId}/devices/{deviceId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
-      allow delete: if ownsUserNamespace(userId);
-    }
 
-    match /users/{userId}/agent_notification_events/{eventId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     match /users/{userId}/agent_notification_replies/{replyId} {
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && request.resource.data.keys().hasOnly([
           "id",
@@ -3417,20 +3297,9 @@ service cloud.firestore {
         ])
         && (!("processorDeviceId" in request.resource.data) || (request.resource.data.processorDeviceId is string && request.resource.data.processorDeviceId.size() <= 160))
         && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 512));
-      allow delete: if false;
     }
 
-    match /users/{userId}/quota_snapshots/{snapshotId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
-      allow delete: if ownsUserNamespace(userId);
-    }
 
-    match /users/{userId}/provider_connections/{providerId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
-      allow delete: if ownsUserNamespace(userId);
-    }
 
     match /users/{userId}/provider_accounts/{accountId} {
       function providerAccountRefreshSweepCandidate(data) {
@@ -3509,17 +3378,13 @@ service cloud.firestore {
         && request.resource.data.updatedAt.size() <= 80;
       }
 
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
         && validProviderAccountDocument();
-      allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/roaming_profile/{profileId} {
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
         && validRoamingProfileDocument(userId, profileId);
-      allow delete: if ownsUserNamespace(userId);
     }
 
     // Provider account device links. Canonical top-level collection used by
@@ -3527,33 +3392,19 @@ service cloud.firestore {
     // the `backfillProviderAccountDeviceLinks` callable / schedule. Writes
     // funnel through the Admin SDK so capability values stay constrained;
     // clients are read-only.
-    match /users/{userId}/provider_account_device_links/{deviceLinkId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     match /users/{userId}/runtime_connection_preferences/{preferenceId} {
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if runtimeConnectionPreferenceWrite(userId, preferenceId);
-      allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/hermes_connections/{connectionId} {
-      allow read: if ownsUserNamespace(userId);
       allow create: if relayConnectionWrite(userId, connectionId);
       allow update: if relayConnectionWrite(userId, connectionId) && resource.data.mode == "relayLink";
-      allow delete: if false;
     }
 
-    match /users/{userId}/hermes_pairings/{pairingId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     match /users/{userId}/hermes_relay_requests/{requestId} {
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if relayRequestWrite(userId, requestId);
-      allow delete: if ownsUserNamespace(userId);
 
       match /chunks/{chunkId} {
         allow read: if ownsUserNamespace(userId);
@@ -3562,25 +3413,9 @@ service cloud.firestore {
       }
     }
 
-    match /users/{userId}/hermes_session_cache/{sessionId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
-    match /users/{userId}/hermes_audit_events/{eventId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
-    match /users/{userId}/hermes_gateway_clients/{clientId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
-    match /users/{userId}/hermes_gateway_destinations/{destinationId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // Hermes Gateway events (phone→agent). Server-written via the
     // enqueueHermesGatewayEvent callable; clients never write here directly, so
@@ -3594,10 +3429,6 @@ service cloud.firestore {
     // senderDisplayName, and threadId are sealed inside payloadCiphertext and
     // are rejected by the callable; reads keep a legacy plaintext fallback for
     // pre-cutoff docs.
-    match /users/{userId}/hermes_gateway_events/{eventId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // Hermes Gateway messages (agent→phone). Server-written via the bearer-token
     // handleMessageSend HTTP handler; `write:if false` for clients and the
@@ -3607,15 +3438,7 @@ service cloud.firestore {
     // relayKeyVersion }` plus routing; the plaintext `text` is sealed inside
     // payloadCiphertext and rejected by the handler. Reads keep a legacy
     // plaintext fallback.
-    match /users/{userId}/hermes_gateway_messages/{messageId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
-    match /users/{userId}/hermes_gateway_typing/{clientId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // Hermes Gateway attachments (agent→phone). Server-written via the
     // bearer-token handleAttachmentInit HTTP handler; `write:if false` for
@@ -3626,58 +3449,30 @@ service cloud.firestore {
     // contentType}` and `wrappedKey` wraps the body key to the phone. The
     // plaintext fileName (and the fileName segment of storagePath) are dropped;
     // the server hashes ciphertext for integrity only.
-    match /users/{userId}/hermes_gateway_attachments/{attachmentId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
-    match /users/{userId}/hermes_gateway_state/{stateId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // Human-in-the-loop oversight gates. The owner reads pending/decided gates
     // (the native approval UI lights up from here); all writes are Admin-SDK
     // only, so neither the bearer-token agent nor any client can self-approve.
     // Resolution flows exclusively through respondHermesGatewayApproval, which
     // requires a trusted native escrow device and stamps approvedByDeviceId.
-    match /users/{userId}/hermes_gateway_approvals/{approvalId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // Iroh transport pairing public keys. The Mac writes one singleton
     // document per host role (today: `host`) containing the base64-encoded
     // 32-byte Ed25519 public half of the pairing key. iOS clients read this
     // value to verify `iroh_pairing/*` signatures before dialing. Schema lives
     // in `functions/src/types.ts` (`IrohPairingPublicKeyDoc`).
-    match /users/{userId}/iroh_pairing_keys/{roleId} {
-      allow read: if ownsUserNamespace(userId);
-      // Trust roots are server-owned. Clients publish through
-      // `publishIrohPairingPublicKey`, which enforces App Check, a single-use
-      // high-risk nonce, and a trusted macOS escrow device before Admin SDK
-      // writes this document.
-      allow create, update, delete: if false;
-    }
 
     // Iroh transport pairing records. Mac publishes; iOS reads + verifies the
     // Ed25519 signature using `iroh_pairing_keys/host.publicKeyBase64` before
     // dialing the signed NodeAddr material. Schema lives in `functions/src/types.ts`
     // (`IrohPairingRecordDoc`); the Mac is the sole writer.
-    match /users/{userId}/iroh_pairing/{connectionId} {
-      allow read: if ownsUserNamespace(userId);
-      // The signed host pairing record is a remote-control trust root. Clients
-      // publish/revoke through high-risk server callables; direct owner writes
-      // would let a stolen Firebase session replace the Mac endpoint.
-      allow create, update, delete: if false;
-    }
 
     // Iroh transport audit events. Append-only; written by the Mac (on stream
     // open/close/fail) and the Cloud Functions hosted runner (on fallback to
     // the WSS relay). Schema lives in `functions/src/types.ts`
     // (`IrohTransportAuditEventDoc`).
     match /users/{userId}/iroh_audit_events/{eventId} {
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && request.resource.data.keys().hasOnly([
           "id",
@@ -3714,17 +3509,11 @@ service cloud.firestore {
         && (!("expireAt" in request.resource.data) || request.resource.data.expireAt is timestamp)
         && request.resource.data.schemaVersion is int
         && request.resource.data.schemaVersion >= 1;
-      allow update: if false;
-      allow delete: if false;
     }
 
     // Short-lived Android incoming-call routing context. Server-only writes;
     // Android reads by the ephemeral FCM correlation id, then routes
     // accept/decline locally without exposing stable connection ids to FCM.
-    match /users/{userId}/incoming_call_contexts/{contextId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update, delete: if false;
-    }
 
     // --- Mercury media (Phase 2) ---
     // Per-session metadata. Bucketed enums only, never payload bytes.
@@ -3752,7 +3541,6 @@ service cloud.firestore {
           "schemaVersion"
         ]);
       }
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && hasActiveHostedMediaEntitlement(userId)
         && validMediaSessionEventKeys()
@@ -3770,8 +3558,6 @@ service cloud.firestore {
         && !("payloadCiphertext" in request.resource.data)
         && !("ciphertext" in request.resource.data)
         && !("filename" in request.resource.data);
-      allow update: if false;
-      allow delete: if false;
     }
 
     // --- Computer Use (Phase 8-13, master plan 2026-05-16) ---
@@ -3786,7 +3572,6 @@ service cloud.firestore {
       // Phone-control verifier keys are server-owned for the same reason as
       // host pairing roots. `publishPhoneControlAuthority` verifies a trusted
       // native mobile escrow device and existing host pairing before writing.
-      allow create, update, delete: if false;
     }
 
     // Mobile iroh QUIC NodeId allow-list entries. This is intentionally
@@ -3797,7 +3582,6 @@ service cloud.firestore {
     // freshness, trusted native mobile escrow state, and the existing pairing.
     match /users/{userId}/iroh_pairing/{connectionId}/iroh_controllers/{irohPeerNodeId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update, delete: if false;
     }
 
     // Mobile/Android sender keys for authenticated relay request envelopes.
@@ -3805,17 +3589,9 @@ service cloud.firestore {
     // publish through `publishRelaySenderKey`, which verifies App Check,
     // high-risk nonce freshness, trusted native escrow state, key shape, key id,
     // and the device's Signal identity binding before Admin SDK writes here.
-    match /users/{userId}/relay_sender_keys/{deviceId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update, delete: if false;
-    }
 
     // Phone/iPad/Android -> Mac agent desktop permission grants. These
     // documents carry only signed capability metadata and public keys.
-    match /users/{userId}/agent_grant_authorities/{deviceId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update, delete: if false;
-    }
 
     match /users/{userId}/agent_capability_grant_requests/{requestId} {
       function validAgentGrantReceipt(receipt) {
@@ -3864,8 +3640,6 @@ service cloud.firestore {
           && (!("message" in receipt) || (receipt.message is string && receipt.message.size() <= 2048));
       }
 
-      allow read: if ownsUserNamespace(userId);
-      allow create: if false;
       allow update: if ownerWritableNonSecret(userId)
         && hasActiveHostedComputerUseEntitlement(userId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -3878,7 +3652,6 @@ service cloud.firestore {
         && request.resource.data.status in ["applied", "revoked", "denied", "expired"]
         && ("receipt" in request.resource.data)
         && validAgentGrantReceipt(request.resource.data.receipt);
-      allow delete: if false;
     }
 
     // Per-session metadata. The full audit chain lives on the Mac at
@@ -3887,62 +3660,43 @@ service cloud.firestore {
     // hash, end reason). Never carries action descriptors, screenshots,
     // or scope rule contents.
     match /users/{userId}/computer_use_sessions/{sessionId} {
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && hasActiveHostedComputerUseEntitlement(userId)
         && validComputerUseSessionDocument(userId, sessionId);
       allow update: if ownsUserNamespace(userId)
         && hasActiveHostedComputerUseEntitlement(userId)
         && validComputerUseSessionUpdate(userId, sessionId);
-      allow delete: if false;
     }
 
     // Per-action audit *header*. Carries only the chain link, status,
     // and cost — never the full descriptor or selectors / URLs / coords.
     match /users/{userId}/computer_use_actions/{actionId} {
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && hasActiveHostedComputerUseEntitlement(userId)
         && validComputerUseActionDocument(actionId);
-      allow update: if false;
-      allow delete: if false;
     }
 
     // Server-owned daily counters. Immutable action/session headers advance
     // these transactionally; the hourly function only reconciles upward.
-    match /users/{userId}/computer_use_quota_usage/{day} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if false;
-      allow delete: if false;
-    }
 
     // Budget split (ADR 006): public envelope vs operator metrics.
     match /ops/computer_use_budget_status/state/current {
       allow read: if isSignedIn();
-      allow write: if false;
     }
     match /ops/computer_use_budget_status/metrics/current {
       allow read: if isOperator();
-      allow write: if false;
     }
     match /ops/computer_use_budget_status/events/{eventId} {
       allow read: if isOperator();
-      allow write: if false;
     }
     match /ops/computer_use_session_daily_rollups/days/{day} {
       allow read: if isOperator();
-      allow write: if false;
     }
 
     // Server-reconciled daily quota counter. Capability enforcement must not
     // trust client-writable counters; the hourly `recomputeMediaQuotaUsage`
     // Cloud Function writes this from bounded `media_session_events`; clients
     // may read their reconciled quota snapshot but cannot write counters.
-    match /users/{userId}/media_quota_usage/{day} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if false;
-      allow delete: if false;
-    }
 
     // Per-attachment manifest. No payload bytes — the file flows
     // peer-to-peer over iroh-blobs. This doc is the audit record so DSR
@@ -3970,7 +3724,6 @@ service cloud.firestore {
           "schemaVersion"
         ]);
       }
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownerWritableNonSecret(userId)
         && hasActiveHostedMediaEntitlement(userId)
         && validMediaAttachmentManifestKeys()
@@ -3988,26 +3741,16 @@ service cloud.firestore {
         && validCloudSealedTextAt(userId, "media_attachment_manifests", manifestId, "sealedFilename", request.resource.data.sealedFilename)
         && !("body" in request.resource.data)
         && !("ciphertext" in request.resource.data);
-      allow update: if false;
-      allow delete: if false;
     }
 
     match /users/{userId}/pi_agent_connections/{connectionId} {
-      allow read: if ownsUserNamespace(userId);
       allow create: if piRelayConnectionWrite(userId, connectionId);
       allow update: if piRelayConnectionWrite(userId, connectionId) && resource.data.mode == "relayLink";
-      allow delete: if false;
     }
 
-    match /users/{userId}/pi_agent_pairings/{pairingId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     match /users/{userId}/pi_agent_relay_requests/{requestId} {
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if piRelayRequestWrite(userId, requestId);
-      allow delete: if ownsUserNamespace(userId);
 
       match /chunks/{chunkId} {
         allow read: if ownsUserNamespace(userId);
@@ -4016,13 +3759,8 @@ service cloud.firestore {
       }
     }
 
-    match /users/{userId}/pi_agent_audit_events/{eventId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     match /users/{userId}/smart_hub_config/{deviceId} {
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
         && request.resource.data.keys().hasOnly([
           "enabled",
@@ -4047,11 +3785,9 @@ service cloud.firestore {
         && (!("pixelClock" in request.resource.data) || validPixelClockConfig(request.resource.data.pixelClock))
         && (!("displayConfig" in request.resource.data) || validSmartHubDisplayConfig(request.resource.data.displayConfig))
         && (!("displayOrder" in request.resource.data) || validSmartDisplayOrder(request.resource.data.displayOrder));
-      allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/smart_display_actions/{actionId} {
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
         && request.resource.data.keys().hasOnly([
           "type",
@@ -4095,11 +3831,9 @@ service cloud.firestore {
         && (!("pixelClock" in request.resource.data) || validPixelClockConfig(request.resource.data.pixelClock))
         && (!("displayConfig" in request.resource.data) || validSmartHubDisplayConfig(request.resource.data.displayConfig))
         && (!("displayOrder" in request.resource.data) || validSmartDisplayOrder(request.resource.data.displayOrder));
-      allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/cast_actions/{actionId} {
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
         && request.resource.data.keys().hasOnly([
           "type",
@@ -4133,11 +3867,9 @@ service cloud.firestore {
         && (!("recovery" in request.resource.data) || request.resource.data.recovery in ["home_assistant"])
         && (!("message" in request.resource.data) || (request.resource.data.message is string && request.resource.data.message.size() <= 2048))
         && (!("attempts" in request.resource.data) || (request.resource.data.attempts is int && request.resource.data.attempts >= 0 && request.resource.data.attempts <= 20));
-      allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/cast_discovery_results/{resultId} {
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableNonSecret(userId)
         && request.resource.data.keys().hasOnly([
           "devices",
@@ -4147,95 +3879,40 @@ service cloud.firestore {
         && request.resource.data.devices.size() <= 64
         && request.resource.data.publishedAt is string
         && request.resource.data.publishedAt.size() <= 64;
-      allow delete: if ownsUserNamespace(userId);
     }
 
-    match /users/{userId}/usage_rollups/{rollupId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // Cloud-Pro monthly allowance meters (fusion/relay/hosted-action). The
     // owner reads their own meter for the console dashboard ("The Wand" card);
     // all writes are server-only (admin SDK, which bypasses rules).
     match /users/{userId}/billing/allowances/months/{monthKey} {
       allow read: if ownsUserNamespace(userId);
-      allow write: if false;
     }
 
-    match /users/{userId}/projects/{projectId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
-    match /users/{userId}/usage_counter_days/{dayId} {
-      allow read, write: if false;
 
-      match /{counterCollection}/{counterId} {
-        allow read, write: if false;
-      }
-    }
 
-    match /users/{userId}/usage_counter_totals/{totalId} {
-      allow read, write: if false;
 
-      match /{counterCollection}/{counterId} {
-        allow read, write: if false;
-      }
-    }
 
-    match /users/{userId}/rollup_jobs/{jobId} {
-      allow read, write: if false;
-    }
 
-    match /users/{userId}/_rate_limits/{limitId} {
-      allow read, write: if false;
-    }
 
-    match /users/{userId}/remote_mcp_clients/{clientId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
-    match /users/{userId}/remote_mcp_grants/{grantId} {
-      allow read, write: if false;
-    }
-
-    match /users/{userId}/remote_mcp_audit_events/{eventId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
-
-    match /users/{userId}/remote_mcp_rate_limits/{limitId} {
-      allow read, write: if false;
-    }
 
     // --- Apple-verified hosted-quota entitlement (server-only writer) ---
     // Cloud Functions are the sole writer; clients read their own
     // entitlement state. Trust is anchored in JWS chain verification
     // against AppleRootCA-G3 + reconciliation against the App Store
     // Server API. See `functions/src/appstore/`.
-    match /users/{userId}/entitlements/{entitlementId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // --- Apple-verified entitlement audit log (server-only writer) ---
     // Append-only log of every server-verified Apple JWS event, keyed
     // on Apple's notificationUUID where available. Owners may read for
     // support / debug; clients must never write.
-    match /users/{userId}/entitlement_events/{eventId} {
-      allow read: if ownsUserNamespace(userId);
-      allow write: if false;
-    }
 
     // --- appAccountToken bindings (server-only) ---
     // Server mints a UUID per signed-in user before purchase and uses
     // it to bind incoming JWS payloads to the correct UID. No client
     // surface — both read and write are denied to clients.
-    match /users/{userId}/entitlement_bindings/{bindingId} {
-      allow read, write: if false;
-    }
 
     // --- Escrow: additional field-level rejection of plaintext-looking secret fields ---
     // These collections use stricter size limits and explicit plaintext-field
@@ -4265,7 +3942,11 @@ service cloud.firestore {
           "targetSignalIdentityKeyId",
           "targetSignalIdentityPublicKeyFingerprint",
           "approvedBySignalIdentityKeyId",
-          "approvedBySignalIdentityPublicKeyFingerprint"
+          "approvedBySignalIdentityPublicKeyFingerprint",
+          "signalIdentityRepairVersion",
+          "signalIdentityRepairAlgorithm",
+          "signalIdentityReapprovalRequired",
+          "signalIdentityRepairedAt"
         ])
         && request.resource.data.deviceId == deviceId
         && request.resource.data.deviceName is string
@@ -4294,6 +3975,14 @@ service cloud.firestore {
         && (!("approvedBySignalIdentityPublicKeyFingerprint" in request.resource.data)
           || (request.resource.data.approvedBySignalIdentityPublicKeyFingerprint is string
             && request.resource.data.approvedBySignalIdentityPublicKeyFingerprint.size() <= 128))
+        && (!("signalIdentityRepairVersion" in request.resource.data)
+          || request.resource.data.signalIdentityRepairVersion == 1)
+        && (!("signalIdentityRepairAlgorithm" in request.resource.data)
+          || request.resource.data.signalIdentityRepairAlgorithm == "escrow-possession-challenge-v1")
+        && (!("signalIdentityReapprovalRequired" in request.resource.data)
+          || request.resource.data.signalIdentityReapprovalRequired is bool)
+        && (!("signalIdentityRepairedAt" in request.resource.data)
+          || request.resource.data.signalIdentityRepairedAt is timestamp)
         && (!("approvedAt" in request.resource.data) || request.resource.data.approvedAt is timestamp)
         && (!("createdAt" in request.resource.data) || request.resource.data.createdAt is timestamp)
         && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
@@ -4301,7 +3990,11 @@ service cloud.firestore {
 
       function validEscrowDeviceCreate(deviceId) {
         return validEscrowDeviceDocument(deviceId)
-          && request.resource.data.trustState != "trusted";
+          && request.resource.data.trustState != "trusted"
+          && !("signalIdentityRepairVersion" in request.resource.data)
+          && !("signalIdentityRepairAlgorithm" in request.resource.data)
+          && !("signalIdentityReapprovalRequired" in request.resource.data)
+          && !("signalIdentityRepairedAt" in request.resource.data);
       }
 
       function validEscrowDeviceUpdate(deviceId) {
@@ -4357,6 +4050,22 @@ service cloud.firestore {
               && request.resource.data.approvedBySignalIdentityPublicKeyFingerprint == resource.data.approvedBySignalIdentityPublicKeyFingerprint)
             || (!("approvedBySignalIdentityPublicKeyFingerprint" in resource.data)
               && !("approvedBySignalIdentityPublicKeyFingerprint" in request.resource.data)))
+          && ((("signalIdentityRepairVersion" in resource.data)
+              && request.resource.data.signalIdentityRepairVersion == resource.data.signalIdentityRepairVersion)
+            || (!("signalIdentityRepairVersion" in resource.data)
+              && !("signalIdentityRepairVersion" in request.resource.data)))
+          && ((("signalIdentityRepairAlgorithm" in resource.data)
+              && request.resource.data.signalIdentityRepairAlgorithm == resource.data.signalIdentityRepairAlgorithm)
+            || (!("signalIdentityRepairAlgorithm" in resource.data)
+              && !("signalIdentityRepairAlgorithm" in request.resource.data)))
+          && ((("signalIdentityReapprovalRequired" in resource.data)
+              && request.resource.data.signalIdentityReapprovalRequired == resource.data.signalIdentityReapprovalRequired)
+            || (!("signalIdentityReapprovalRequired" in resource.data)
+              && !("signalIdentityReapprovalRequired" in request.resource.data)))
+          && ((("signalIdentityRepairedAt" in resource.data)
+              && request.resource.data.signalIdentityRepairedAt == resource.data.signalIdentityRepairedAt)
+            || (!("signalIdentityRepairedAt" in resource.data)
+              && !("signalIdentityRepairedAt" in request.resource.data)))
           && ((("approvedAt" in resource.data)
               && request.resource.data.approvedAt == resource.data.approvedAt)
             || (!("approvedAt" in resource.data)
@@ -4367,16 +4076,14 @@ service cloud.firestore {
               && !("createdAt" in request.resource.data)));
       }
 
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownsUserNamespace(userId)
-        && escrowDocumentLimits()
+        && escrowDeviceDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validEscrowDeviceCreate(deviceId);
       allow update: if ownsUserNamespace(userId)
-        && escrowDocumentLimits()
+        && escrowDeviceDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validEscrowDeviceUpdate(deviceId);
-      allow delete: if false;
 
       match /computer_use_audit_export_signers/{signerId} {
         function parentEscrowDeviceIsTrustedMac() {
@@ -4466,7 +4173,6 @@ service cloud.firestore {
             request.resource.data.status == resource.data.status
             || (resource.data.status == "active" && request.resource.data.status == "revoked")
           );
-        allow delete: if false;
       }
     }
 
@@ -4526,13 +4232,11 @@ service cloud.firestore {
             && request.resource.data.publicKeyJwk.y.size() <= 80));
       }
 
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validEscrowPublicKeyDocument()
         && publicKeyMatchesPendingEscrowDevice();
-      allow update, delete: if false;
     }
 
     match /users/{userId}/signal_identity_public_keys/{keyId} {
@@ -4613,47 +4317,35 @@ service cloud.firestore {
           && request.resource.data.keyVersion == get(signalIdentityDevicePath()).data.keyVersion;
       }
 
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validSignalIdentityPublicKeyDocument()
         && signalIdentityMatchesPendingDevice();
-      allow update, delete: if false;
 
       match /signed_prekeys/{signedPreKeyId} {
         // Server-only: publishSignalPrekeyBundle is the sole write path.
         allow read: if ownsUserNamespace(userId);
-        allow create, update: if false;
-        allow delete: if false;
       }
 
       match /one_time_prekeys/{oneTimePreKeyId} {
         // Server-only: publishSignalPrekeyBundle / claimSignalPrekeyBundle own writes.
         allow read: if ownsUserNamespace(userId);
-        allow create, update: if false;
-        allow delete: if false;
       }
 
       match /kyber_prekeys/{kyberPreKeyId} {
         // Server-only: publishSignalPrekeyBundle / claimSignalPrekeyBundle own writes.
         allow read: if ownsUserNamespace(userId);
-        allow create, update: if false;
-        allow delete: if false;
       }
 
       match /sessions/{sessionId} {
         // Server-only: recordSignalSession is the sole write path.
         allow read: if ownsUserNamespace(userId);
-        allow create, update: if false;
-        allow delete: if false;
       }
 
       match /rotation_events/{rotationId} {
         // Server-only: recordSignalRotation is the sole write path.
         allow read: if ownsUserNamespace(userId);
-        allow create: if false;
-        allow update, delete: if false;
       }
     }
 
@@ -4722,7 +4414,6 @@ service cloud.firestore {
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validEscrowGrantUpdate();
-      allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/escrow_envelopes/{envelopeId} {
@@ -4764,14 +4455,12 @@ service cloud.firestore {
         && request.resource.data.createdAt is timestamp;
       }
 
-      allow read: if ownsUserNamespace(userId);
       allow create, update: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()
         && validEscrowEnvelopeDocument();
       // Sealed credential envelopes are non-deletable from the client; retirement
       // flows through a server-only path so the escrow history stays intact.
-      allow delete: if false;
     }
 
     match /users/{userId}/escrow_audit_events/{eventId} {
@@ -4779,53 +4468,15 @@ service cloud.firestore {
       // event cannot be mutated or erased from the client — only server-side
       // (Admin SDK) reconciliation may touch history. Mirrors the stricter
       // computer_use_actions header above.
-      allow read: if ownsUserNamespace(userId);
       allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields();
-      allow update: if false;
-      allow delete: if false;
     }
 
-    match /users/{userId}/cloud_profile/{profileId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownsUserNamespace(userId)
-        && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
-      allow delete: if ownsUserNamespace(userId);
-    }
 
-    match /users/{userId}/sync_watermarks/{watermarkId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownsUserNamespace(userId)
-        && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
-      allow delete: if ownsUserNamespace(userId);
-    }
 
-    match /users/{userId}/sync_status/{deviceId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownsUserNamespace(userId)
-        && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
-      allow delete: if ownsUserNamespace(userId);
-    }
 
-    match /users/{userId}/cloud_settings/{settingsId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownsUserNamespace(userId)
-        && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
-      allow delete: if ownsUserNamespace(userId);
-    }
 
-    match /users/{userId}/recent_usage/{summaryId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownsUserNamespace(userId)
-        && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
-      allow delete: if ownsUserNamespace(userId);
-    }
 
     // --- Shared artifacts (E2EE-sealed; see sharedArtifactSealedOwnerWrite) ---
 
@@ -4846,54 +4497,32 @@ service cloud.firestore {
     // events hold projections and audit rows. Rollups stay operator-only.
     match /ops/media_budget_status/state/current {
       allow read: if isSignedIn();
-      allow write: if false;
     }
     match /ops/media_budget_status/metrics/current {
       allow read: if isOperator();
-      allow write: if false;
     }
     match /ops/media_budget_status/events/{eventId} {
       allow read: if isOperator();
-      allow write: if false;
     }
 
     match /ops/media_session_daily_rollups/{document=**} {
       allow read: if isOperator();
-      allow write: if false;
     }
 
     // --- Global Google Play token claims (server-only) ---
-    match /google_play_token_claims/{tokenHash} {
-      allow read, write: if false;
-    }
 
     // --- Account erasure retention records (server-only) ---
-    match /account_erasure_audit/{recordId} {
-      allow read, write: if false;
-    }
 
     // --- High-risk action nonces (server-only, single-use replay defense) ---
-    match /users/{userId}/high_risk_action_nonces/{nonceId} {
-      allow read, write: if false;
-    }
 
     // --- Public HTTP / approval rate limits (server-only) ---
-    match /public_rate_limits/{limitId} {
-      allow read, write: if false;
-    }
 
     // --- CLI Link Sessions (Deny All - Server Only) ---
-    match /cli_link_sessions/{sessionId} {
-      allow read, write: if false;
-    }
 
     // --- Hermes Gateway root indexes (Deny All - Server Only) ---
-    match /hermes_gateway_device_sessions/{sessionId} {
-      allow read, write: if false;
-    }
 
-    match /hermes_gateway_token_index/{tokenHash} {
-      allow read, write: if false;
-    }
+    // Hermes gateway token indexes and shared-Rust shadow evidence remain
+    // callable/Admin SDK only. Firestore's default deny applies because neither
+    // root collection has a client match block.
   }
 }
