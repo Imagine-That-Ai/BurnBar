@@ -57,7 +57,9 @@ function requireByteIdenticalCopies(label, copies) {
 
 const BUDGET_COPIES = [
   "tests/fixtures/budget-enforcement/budget-enforcement-vectors.json",
-  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/budget-enforcement-vectors.json",
+  // Phase-2 WS-B packet B1 moved BudgetGateContractVectorTests (and this fixture)
+  // from OpenBurnBarCoreTests to OpenBurnBarKernelModelsTests.
+  "OpenBurnBarCore/Tests/OpenBurnBarKernelModelsTests/Fixtures/budget-enforcement-vectors.json",
   "android/app/src/test/resources/budget-enforcement/budget-enforcement-vectors.json",
 ];
 

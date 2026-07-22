@@ -36,7 +36,7 @@ type FixtureFile = {
 
 const fixturePath = resolve(
   __dirname,
-  "../../../OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/quota-refresh-policy-fixtures.json",
+  "../../../OpenBurnBarCore/Tests/OpenBurnBarKernelModelsTests/Fixtures/quota-refresh-policy-fixtures.json",
 );
 const fixture: FixtureFile = JSON.parse(readFileSync(fixturePath, "utf8"));
 

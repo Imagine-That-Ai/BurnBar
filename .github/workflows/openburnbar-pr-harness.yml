@@ -838,7 +838,10 @@ jobs:
           fi
           protoc --version
       - name: Hermes core Swift tests
-        run: OPENBURNBAR_CORE_SWIFT_FILTER=OpenBurnBarCoreTests/Hermes OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 ./scripts/test-openburnbar-swift.sh
+        # Phase-2 WS-B packet B1 moved Hermes* test classes out of OpenBurnBarCoreTests into
+        # OpenBurnBarKernelModelsTests, so the filter is target-agnostic (`Hermes` matches the
+        # Hermes classes in whichever OpenBurnBarCore test target now owns them).
+        run: OPENBURNBAR_CORE_SWIFT_FILTER=Hermes OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 ./scripts/test-openburnbar-swift.sh
       - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
         with:
           java-version: "21"
