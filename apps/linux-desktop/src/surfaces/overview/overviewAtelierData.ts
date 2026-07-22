@@ -126,7 +126,6 @@ export function buildSpendCurveModel(
   if (fixtureMode && insights?.weekly?.length) {
     const weekly = insights.weekly;
     const mix = insights.providerMix;
-    const totalCost = weekly.reduce((s, w) => s + w.costUsd, 0) || 680.94;
     const start = new Date('2026-05-31T00:00:00Z');
     const end = new Date('2026-06-28T23:59:59Z');
     const n = weekly.length;
@@ -140,7 +139,7 @@ export function buildSpendCurveModel(
       ...(otherPct > 0 ? [{ id: 'other', label: 'Other', pct: otherPct }] : [])
     ];
 
-    let cumulativeByDate: number[] = new Array(n).fill(0);
+    const cumulativeByDate: number[] = new Array(n).fill(0);
     const bands: SpendCurveBand[] = [];
 
     for (const def of bandDefs) {
@@ -193,7 +192,7 @@ export function buildSpendCurveModel(
   const ranked = [...mix].sort((a, b) => b.pct - a.pct).slice(0, 5);
   const otherPct = 100 - ranked.reduce((s, m) => s + m.pct, 0);
 
-  let cumulativeByDate: number[] = new Array(n).fill(0);
+  const cumulativeByDate: number[] = new Array(n).fill(0);
   const bandDefs = [
     ...ranked.map((m) => ({ id: m.id, label: m.label, pct: m.pct })),
     ...(otherPct > 0.5 ? [{ id: 'other', label: 'Other', pct: otherPct }] : [])

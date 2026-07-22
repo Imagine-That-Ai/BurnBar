@@ -26,7 +26,34 @@ public sealed class FeedRoundTripTests
         Assert.Equal(descriptor.Length, manifest.Length);
         Assert.Equal(descriptor.Sha256, manifest.Sha256);
         Assert.Equal(descriptor.EdSignatureBase64, manifest.EdSignatureBase64);
+        Assert.Equal(descriptor.DescriptorSignatureBase64, manifest.DescriptorSignatureBase64);
+        Assert.Equal(descriptor.Channel, manifest.Channel);
         Assert.Equal(descriptor.MinimumSystemVersion, manifest.MinimumSystemVersion);
+    }
+
+    [Theory]
+    [InlineData(FeedFormat.Appcast)]
+    [InlineData(FeedFormat.Json)]
+    public void NonDefaultChannelRoundTripsAndStillPinVerifies(FeedFormat format)
+    {
+        // The descriptor signature binds the channel, so a non-default channel
+        // MUST survive write -> read or the generator's self-verification (and
+        // every client) would reject its own feed.
+        var keyPair = Ed25519UpdateKeyPair.Generate();
+        var descriptor = FeedTestData.Descriptor(
+            keyPair, FeedTestData.Artifact, channel: "beta");
+
+        var feed = FeedTestData.Write(format, descriptor);
+        var manifest = format == FeedFormat.Appcast
+            ? AppcastFeedReader.TryParse(feed)
+            : JsonFeedReader.TryParse(feed);
+
+        Assert.NotNull(manifest);
+        Assert.Equal("beta", manifest!.Channel);
+
+        var verifier = new OpenBurnBar.Updater.Core.Verification.UpdateFeedVerifier(keyPair.Verifier());
+        var verification = verifier.VerifyArtifact(manifest, FeedTestData.Artifact);
+        Assert.True(verification.Verified);
     }
 
     [Fact]
@@ -46,6 +73,8 @@ public sealed class FeedRoundTripTests
         Assert.Equal(fromXml.Length, fromJson.Length);
         Assert.Equal(fromXml.Sha256, fromJson.Sha256);
         Assert.Equal(fromXml.EdSignatureBase64, fromJson.EdSignatureBase64);
+        Assert.Equal(fromXml.DescriptorSignatureBase64, fromJson.DescriptorSignatureBase64);
+        Assert.Equal(fromXml.Channel, fromJson.Channel);
         Assert.Equal(fromXml.Critical, fromJson.Critical);
     }
 

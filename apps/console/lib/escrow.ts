@@ -19,6 +19,15 @@
  *  sealed text v2             = { schemaVersion:2, algorithm, keyVersion, nonce, ciphertext, tag, aad }
  */
 
+import {
+  applyCloudVaultDomainCore,
+  applyCloudVaultDomainCoreSync,
+  cloudVaultDomainCoreMode,
+  domainCoreCloudVault,
+  isCloudVaultDomainCoreInitialized,
+  prepareCloudVaultDomainCore,
+} from "./domainCoreCloudVault";
+
 export const AESGCM_ALGORITHM = "AES-256-GCM";
 export const CURRENT_KEY_VERSION = 1;
 export const CLOUD_VAULT_AAD_CONTEXT_PREFIX = "OpenBurnBar-CloudVault-aad-v2";
@@ -32,6 +41,7 @@ const CLOUD_VAULT_HMAC_INFO_PREFIX = "OpenBurnBar-CloudVault-HMAC-v1";
 const P256_X963_PUBKEY_LEN = 65; // 0x04 ‖ X(32) ‖ Y(32)
 const GCM_NONCE_LEN = 12;
 const GCM_TAG_LEN = 16;
+const browserKeyProofs = new WeakMap<CryptoKey, string>();
 
 const subtle = (): SubtleCrypto => {
   const c = globalThis.crypto;
@@ -105,23 +115,47 @@ export interface OpenBlobOptions {
 export interface SealTextOptions {
   keyVersion?: number;
   aadContext?: CloudVaultAADInput;
+  rawVaultKey?: Uint8Array;
 }
 
 export interface OpenTextOptions {
   aadContext?: CloudVaultAADInput;
+  rawVaultKey?: Uint8Array;
 }
 
 // ── base64 / hex helpers (browser-safe, no Node Buffer) ─────────────────────
-export function bytesToBase64(bytes: Uint8Array): string {
+function legacyBytesToBase64(bytes: Uint8Array): string {
   let bin = "";
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
   return btoa(bin);
 }
-export function base64ToBytes(b64: string): Uint8Array {
+
+function legacyBase64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
+}
+
+function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+export function bytesToBase64(bytes: Uint8Array): string {
+  return applyCloudVaultDomainCoreSync(
+    "base64_encode",
+    () => legacyBytesToBase64(bytes),
+    () => domainCoreCloudVault.base64Encode(bytes),
+  );
+}
+
+export function base64ToBytes(b64: string): Uint8Array {
+  return applyCloudVaultDomainCoreSync(
+    "base64_decode",
+    () => legacyBase64ToBytes(b64),
+    () => domainCoreCloudVault.base64DecodeStrict(b64),
+    equalBytes,
+  );
 }
 function bytesToHex(bytes: Uint8Array): string {
   let hex = "";
@@ -138,9 +172,17 @@ function concat(...parts: Uint8Array[]): Uint8Array {
   }
   return out;
 }
-async function sha256Hex(data: Uint8Array): Promise<string> {
+async function legacySha256Hex(data: Uint8Array): Promise<string> {
   const digest = await subtle().digest("SHA-256", bufferOf(data));
   return bytesToHex(new Uint8Array(digest));
+}
+
+async function sha256Hex(data: Uint8Array): Promise<string> {
+  return applyCloudVaultDomainCore(
+    "sha256",
+    () => legacySha256Hex(data),
+    () => domainCoreCloudVault.sha256Hex(data),
+  );
 }
 
 /**
@@ -171,6 +213,96 @@ function aesGcmParams(nonce: Uint8Array, aad?: string): AesGcmParams {
   return params;
 }
 
+async function sealAesGcmCombined(
+  plaintext: Uint8Array,
+  key: CryptoKey,
+  nonce: Uint8Array,
+  aad?: string,
+  rawKey?: Uint8Array,
+): Promise<Uint8Array> {
+  const legacy = async (): Promise<Uint8Array> => {
+    const ciphertextAndTag = new Uint8Array(
+      await subtle().encrypt(aesGcmParams(nonce, aad), key, bufferOf(plaintext)),
+    );
+    return concat(nonce, ciphertextAndTag);
+  };
+  if (!rawKey) return legacy();
+  const validatedKey = vaultKeyBytes(rawKey);
+  if (cloudVaultDomainCoreMode() !== "legacy" && isCloudVaultDomainCoreInitialized()) {
+    await verifyBrowserKeyAssociation(key, validatedKey);
+  }
+  return applyCloudVaultDomainCore(
+    "aes_seal_combined",
+    legacy,
+    () =>
+      domainCoreCloudVault.aesSealCombined(
+        plaintext,
+        validatedKey,
+        nonce,
+        new TextEncoder().encode(aad ?? ""),
+      ),
+    equalBytes,
+  );
+}
+
+async function openAesGcmCombined(
+  combined: Uint8Array,
+  key: CryptoKey,
+  aad?: string,
+  rawKey?: Uint8Array,
+): Promise<Uint8Array> {
+  const nonce = combined.subarray(0, GCM_NONCE_LEN);
+  const ciphertextAndTag = combined.subarray(GCM_NONCE_LEN);
+  const legacy = async (): Promise<Uint8Array> =>
+    new Uint8Array(
+      await subtle().decrypt(aesGcmParams(nonce, aad), key, bufferOf(ciphertextAndTag)),
+    );
+  if (!rawKey) return legacy();
+  const validatedKey = vaultKeyBytes(rawKey);
+  if (cloudVaultDomainCoreMode() !== "legacy" && isCloudVaultDomainCoreInitialized()) {
+    await verifyBrowserKeyAssociation(key, validatedKey);
+  }
+  return applyCloudVaultDomainCore(
+    "aes_open_combined",
+    legacy,
+    () =>
+      domainCoreCloudVault.aesOpenCombined(
+        combined,
+        validatedKey,
+        new TextEncoder().encode(aad ?? ""),
+      ),
+    equalBytes,
+  );
+}
+
+async function verifyBrowserKeyAssociation(key: CryptoKey, rawKey: Uint8Array): Promise<void> {
+  const fingerprint = await legacySha256Hex(rawKey);
+  if (browserKeyProofs.get(key) === fingerprint) return;
+
+  const nonce = new Uint8Array(GCM_NONCE_LEN);
+  const aad = new TextEncoder().encode("OpenBurnBar-CloudVault-Browser-Key-Proof-v1");
+  const webCrypto = new Uint8Array(
+    await subtle().encrypt(
+      { name: "AES-GCM", iv: ivOf(nonce), additionalData: ivOf(aad), tagLength: 128 },
+      key,
+      new Uint8Array(0),
+    ),
+  );
+  const rust = domainCoreCloudVault.aesSealCombined(
+    new Uint8Array(0),
+    rawKey,
+    nonce,
+    aad,
+  );
+  if (!equalBytes(concat(nonce, webCrypto), rust)) {
+    throw new EscrowError(
+      "invalid_key_length",
+      "Raw vault-key bytes do not match the non-extractable browser key.",
+    );
+  }
+  browserKeyProofs.set(key, fingerprint);
+}
+
 function assertCloudVaultAADPart(name: string, value: string): string {
   const hasControlOrSeparator = Array.from(value).some((char) => {
     const codePoint = char.codePointAt(0);
@@ -199,7 +331,7 @@ function assertCloudVaultAADString(value: string): string {
   return value;
 }
 
-export function cloudVaultAADContext(context: CloudVaultAADContext): string {
+function legacyCloudVaultAADContext(context: CloudVaultAADContext): string {
   const uid = assertCloudVaultAADPart("uid", context.uid);
   const collection = assertCloudVaultAADPart("collection", context.collection);
   const docID = assertCloudVaultAADPart("docID", context.docID);
@@ -212,10 +344,41 @@ export function cloudVaultAADContext(context: CloudVaultAADContext): string {
   return `${CLOUD_VAULT_AAD_CONTEXT_PREFIX}|${uid}|${collection}|${docID}|${field}|${schemaVersion}|${purpose}`;
 }
 
-function aadString(input: CloudVaultAADInput | undefined): string | undefined {
+function rustCloudVaultAADContext(context: CloudVaultAADContext): string {
+  const schemaVersion = context.schemaVersion ?? 2;
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 2) {
+    throw new EscrowError("invalid_envelope", "Invalid CloudVault AAD schema version.");
+  }
+  return domainCoreCloudVault.aadV2(
+    context.uid,
+    context.collection,
+    context.docID,
+    context.field,
+    schemaVersion,
+    context.purpose,
+  );
+}
+
+export function cloudVaultAADContext(context: CloudVaultAADContext): string {
+  return applyCloudVaultDomainCoreSync(
+    "aad_v2",
+    () => legacyCloudVaultAADContext(context),
+    () => rustCloudVaultAADContext(context),
+  );
+}
+
+async function cloudVaultAADContextAsync(context: CloudVaultAADContext): Promise<string> {
+  return applyCloudVaultDomainCore(
+    "aad_v2",
+    () => legacyCloudVaultAADContext(context),
+    () => rustCloudVaultAADContext(context),
+  );
+}
+
+async function aadString(input: CloudVaultAADInput | undefined): Promise<string | undefined> {
   if (!input) return undefined;
   if (typeof input === "string") return assertCloudVaultAADString(input);
-  return cloudVaultAADContext(input);
+  return cloudVaultAADContextAsync(input);
 }
 
 function vaultKeyBytes(raw: Uint8Array | undefined): Uint8Array {
@@ -225,35 +388,39 @@ function vaultKeyBytes(raw: Uint8Array | undefined): Uint8Array {
   return raw;
 }
 
-function normalizeSealBlobOptions(input: number | SealBlobOptions | undefined): {
+async function normalizeSealBlobOptions(input: number | SealBlobOptions | undefined): Promise<{
   keyVersion: number;
   aad?: string;
   rawVaultKey?: Uint8Array;
-} {
+}> {
   if (typeof input === "number") return { keyVersion: input };
   return {
     keyVersion: input?.keyVersion ?? CURRENT_KEY_VERSION,
-    aad: aadString(input?.aadContext),
+    aad: await aadString(input?.aadContext),
     rawVaultKey: input?.rawVaultKey,
   };
 }
 
-function normalizeSealTextOptions(input: number | SealTextOptions | undefined): {
+async function normalizeSealTextOptions(input: number | SealTextOptions | undefined): Promise<{
   keyVersion: number;
   aad?: string;
-} {
+  rawVaultKey?: Uint8Array;
+}> {
   if (typeof input === "number") return { keyVersion: input };
   return {
     keyVersion: input?.keyVersion ?? CURRENT_KEY_VERSION,
-    aad: aadString(input?.aadContext),
+    aad: await aadString(input?.aadContext),
+    rawVaultKey: input?.rawVaultKey,
   };
 }
 
-function aadFromOpenOptions(input: CloudVaultAADInput | OpenBlobOptions | OpenTextOptions | undefined): string | undefined {
+async function aadFromOpenOptions(
+  input: CloudVaultAADInput | OpenBlobOptions | OpenTextOptions | undefined,
+): Promise<string | undefined> {
   if (!input) return undefined;
-  if (typeof input === "string") return aadString(input);
-  if ("uid" in input) return aadString(input);
-  return aadString(input.aadContext);
+  if (typeof input === "string") return await aadString(input);
+  if ("uid" in input) return await aadString(input);
+  return await aadString(input.aadContext);
 }
 
 // ── HKDF-SHA256 matching CryptoKit's hkdfDerivedSymmetricKey ────────────────
@@ -291,7 +458,7 @@ async function hkdfCloudVaultHmacKey(rawVaultKey: Uint8Array, purpose: string): 
   );
 }
 
-async function keyedHmacHex(data: Uint8Array, rawVaultKey: Uint8Array, purpose: string): Promise<string> {
+async function legacyKeyedHmacHex(data: Uint8Array, rawVaultKey: Uint8Array, purpose: string): Promise<string> {
   const key = await hkdfCloudVaultHmacKey(rawVaultKey, purpose);
   const signature = await subtle().sign("HMAC", key, bufferOf(data));
   return bytesToHex(new Uint8Array(signature));
@@ -302,7 +469,16 @@ export function cloudVaultBlobAADContext(): string {
 }
 
 export async function blobPlaintextHMAC(data: Uint8Array, rawVaultKey: Uint8Array): Promise<string> {
-  return keyedHmacHex(data, rawVaultKey, "blob-integrity");
+  return applyCloudVaultDomainCore(
+    "keyed_hash_blob_integrity",
+    () => legacyKeyedHmacHex(data, rawVaultKey, "blob-integrity"),
+    () =>
+      domainCoreCloudVault.keyedHashHex(
+        data,
+        vaultKeyBytes(rawVaultKey),
+        domainCoreCloudVault.hashPurpose.BlobIntegrity,
+      ),
+  );
 }
 
 // ── Device key pair (P-256, non-extractable, IndexedDB-persisted) ───────────
@@ -397,6 +573,30 @@ async function importPeerPublicX963(x963: Uint8Array): Promise<CryptoKey> {
   return subtle().importKey("raw", bufferOf(x963), { name: "ECDH", namedCurve: "P-256" }, false, []);
 }
 
+interface EscrowWireParts {
+  ephemeralPublicKey: Uint8Array;
+  aesGcmCombined: Uint8Array;
+}
+
+function legacySplitEscrowWire(wrapped: Uint8Array): EscrowWireParts {
+  if (wrapped.length <= P256_X963_PUBKEY_LEN) {
+    throw new EscrowError("invalid_envelope", "Wrapped vault key is too short.");
+  }
+  const ephemeralPublicKey = wrapped.subarray(0, P256_X963_PUBKEY_LEN);
+  const aesGcmCombined = wrapped.subarray(P256_X963_PUBKEY_LEN);
+  if (aesGcmCombined.length <= GCM_NONCE_LEN + GCM_TAG_LEN) {
+    throw new EscrowError("invalid_envelope", "Wrapped sealed box is too short.");
+  }
+  return { ephemeralPublicKey, aesGcmCombined };
+}
+
+function equalEscrowWireParts(left: EscrowWireParts, right: EscrowWireParts): boolean {
+  return (
+    equalBytes(left.ephemeralPublicKey, right.ephemeralPublicKey) &&
+    equalBytes(left.aesGcmCombined, right.aesGcmCombined)
+  );
+}
+
 /**
  * Wrap a 32-byte vault key for a recipient's X9.63 public key. Output bytes match
  * Swift wrapVaultKey exactly: ephemeralPub.x963 (65) ‖ AES-GCM combined.
@@ -415,20 +615,29 @@ export async function wrapVaultKey(
     ["deriveBits"],
   );
   const shared = await deriveSharedSecret(ephemeral.privateKey, recipient);
-  const wrappingKey = await hkdfEscrowKey(shared);
-
   const nonce = globalThis.crypto.getRandomValues(new Uint8Array(GCM_NONCE_LEN));
-  const sealed = new Uint8Array(
-    await subtle().encrypt(
-      { name: "AES-GCM", iv: ivOf(nonce), tagLength: GCM_TAG_LEN * 8 },
-      wrappingKey,
-      bufferOf(vaultKey),
-    ),
-  );
-  // WebCrypto returns ciphertext‖tag; CryptoKit `.combined` is nonce‖ciphertext‖tag.
-  const combined = concat(nonce, sealed);
   const ephemeralPub = new Uint8Array(await subtle().exportKey("raw", ephemeral.publicKey));
-  return concat(ephemeralPub, combined);
+  const sharedBytes = new Uint8Array(shared);
+  try {
+    return await applyCloudVaultDomainCore(
+      "escrow_seal",
+      async () => {
+        const wrappingKey = await hkdfEscrowKey(shared);
+        const sealed = new Uint8Array(
+          await subtle().encrypt(
+            { name: "AES-GCM", iv: ivOf(nonce), tagLength: GCM_TAG_LEN * 8 },
+            wrappingKey,
+            bufferOf(vaultKey),
+          ),
+        );
+        return concat(ephemeralPub, nonce, sealed);
+      },
+      () => domainCoreCloudVault.escrowSeal(vaultKey, ephemeralPub, sharedBytes, nonce),
+      equalBytes,
+    );
+  } finally {
+    sharedBytes.fill(0);
+  }
 }
 
 /**
@@ -441,31 +650,43 @@ export async function unwrapVaultKeyBytes(
   wrapped: Uint8Array,
   devicePrivateKey: CryptoKey,
 ): Promise<Uint8Array> {
-  if (wrapped.length <= P256_X963_PUBKEY_LEN) {
-    throw new EscrowError("invalid_envelope", "Wrapped vault key is too short.");
+  let parts: { ephemeralPublicKey: Uint8Array; aesGcmCombined: Uint8Array };
+  try {
+    parts = await applyCloudVaultDomainCore(
+      "escrow_split_wire",
+      () => legacySplitEscrowWire(wrapped),
+      () => domainCoreCloudVault.escrowSplitWire(wrapped),
+      equalEscrowWireParts,
+    );
+  } catch {
+    throw new EscrowError("invalid_envelope", "Invalid wrapped vault-key envelope.");
   }
-  const ephemeralPub = wrapped.subarray(0, P256_X963_PUBKEY_LEN);
-  const combined = wrapped.subarray(P256_X963_PUBKEY_LEN);
-  if (combined.length <= GCM_NONCE_LEN + GCM_TAG_LEN) {
-    throw new EscrowError("invalid_envelope", "Wrapped sealed box is too short.");
-  }
-  const peer = await importPeerPublicX963(ephemeralPub);
+  const peer = await importPeerPublicX963(parts.ephemeralPublicKey);
   const shared = await deriveSharedSecret(devicePrivateKey, peer);
-  const wrappingKey = await hkdfEscrowKey(shared);
-
-  const nonce = combined.subarray(0, GCM_NONCE_LEN);
-  const ctAndTag = combined.subarray(GCM_NONCE_LEN);
+  const sharedBytes = new Uint8Array(shared);
   let raw: Uint8Array;
   try {
-    raw = new Uint8Array(
-      await subtle().decrypt(
-        { name: "AES-GCM", iv: ivOf(nonce), tagLength: GCM_TAG_LEN * 8 },
-        wrappingKey,
-        bufferOf(ctAndTag),
-      ),
+    raw = await applyCloudVaultDomainCore(
+      "escrow_open",
+      async () => {
+        const wrappingKey = await hkdfEscrowKey(shared);
+        const nonce = parts.aesGcmCombined.subarray(0, GCM_NONCE_LEN);
+        const ctAndTag = parts.aesGcmCombined.subarray(GCM_NONCE_LEN);
+        return new Uint8Array(
+          await subtle().decrypt(
+            { name: "AES-GCM", iv: ivOf(nonce), tagLength: GCM_TAG_LEN * 8 },
+            wrappingKey,
+            bufferOf(ctAndTag),
+          ),
+        );
+      },
+      () => domainCoreCloudVault.escrowOpen(wrapped, sharedBytes),
+      equalBytes,
     );
   } catch {
     throw new EscrowError("invalid_envelope", "Failed to unwrap vault key (auth tag mismatch).");
+  } finally {
+    sharedBytes.fill(0);
   }
   if (raw.length !== 32) {
     throw new EscrowError("invalid_key_length", "Unwrapped vault key must be 32 bytes.");
@@ -500,7 +721,8 @@ export async function sealBlob(
   vaultKey: CryptoKey,
   options?: number | SealBlobOptions,
 ): Promise<CloudVaultBlobEnvelope> {
-  const { keyVersion, aad, rawVaultKey } = normalizeSealBlobOptions(options);
+  await prepareCloudVaultDomainCore();
+  const { keyVersion, aad, rawVaultKey } = await normalizeSealBlobOptions(options);
   if (aad && !rawVaultKey) {
     throw new EscrowError(
       "invalid_key_length",
@@ -508,14 +730,9 @@ export async function sealBlob(
     );
   }
   const nonce = globalThis.crypto.getRandomValues(new Uint8Array(GCM_NONCE_LEN));
-  const sealed = new Uint8Array(
-    await subtle().encrypt(
-      aesGcmParams(nonce, aad),
-      vaultKey,
-      bufferOf(data),
-    ),
+  const combined = bytesToBase64(
+    await sealAesGcmCombined(data, vaultKey, nonce, aad, rawVaultKey),
   );
-  const combined = bytesToBase64(concat(nonce, sealed));
   if (rawVaultKey) {
     return {
       schemaVersion: CURRENT_BLOB_ENVELOPE_SCHEMA_VERSION,
@@ -543,6 +760,7 @@ export async function openBlob(
   vaultKey: CryptoKey,
   options?: OpenBlobOptions,
 ): Promise<Uint8Array> {
+  await prepareCloudVaultDomainCore();
   if (envelope.algorithm !== AESGCM_ALGORITHM) {
     throw new EscrowError("invalid_envelope", "Unsupported blob algorithm.");
   }
@@ -550,9 +768,10 @@ export async function openBlob(
   if (combined.length <= GCM_NONCE_LEN + GCM_TAG_LEN) {
     throw new EscrowError("invalid_envelope", "Sealed blob is too short.");
   }
-  const nonce = combined.subarray(0, GCM_NONCE_LEN);
-  const ctAndTag = combined.subarray(GCM_NONCE_LEN);
   const schemaVersion = envelope.schemaVersion ?? 1;
+  if (schemaVersion !== 1 && schemaVersion !== CURRENT_BLOB_ENVELOPE_SCHEMA_VERSION) {
+    throw new EscrowError("invalid_envelope", "Unsupported CloudVault blob schema.");
+  }
   let additionalData: string | undefined;
   let rawVaultKey: Uint8Array | undefined;
   if (schemaVersion >= CURRENT_BLOB_ENVELOPE_SCHEMA_VERSION) {
@@ -560,7 +779,7 @@ export async function openBlob(
     if (envelope.aad === LEGACY_BLOB_AAD_CONTEXT) {
       additionalData = undefined;
     } else {
-      const expectedAAD = aadFromOpenOptions(options);
+      const expectedAAD = await aadFromOpenOptions(options);
       if (!expectedAAD || envelope.aad !== expectedAAD) {
         throw new EscrowError("invalid_envelope", "Invalid CloudVault blob AAD context.");
       }
@@ -569,13 +788,7 @@ export async function openBlob(
   }
   let plaintext: Uint8Array;
   try {
-    plaintext = new Uint8Array(
-      await subtle().decrypt(
-        aesGcmParams(nonce, additionalData),
-        vaultKey,
-        bufferOf(ctAndTag),
-      ),
-    );
+    plaintext = await openAesGcmCombined(combined, vaultKey, additionalData, rawVaultKey);
   } catch {
     throw new EscrowError("invalid_envelope", "Failed to open sealed blob (auth tag mismatch).");
   }
@@ -602,16 +815,12 @@ export async function sealText(
   vaultKey: CryptoKey,
   options?: number | SealTextOptions,
 ): Promise<CloudVaultSealedText> {
-  const { keyVersion, aad } = normalizeSealTextOptions(options);
+  await prepareCloudVaultDomainCore();
+  const { keyVersion, aad, rawVaultKey } = await normalizeSealTextOptions(options);
   const data = new TextEncoder().encode(text);
   const nonce = globalThis.crypto.getRandomValues(new Uint8Array(GCM_NONCE_LEN));
-  const sealed = new Uint8Array(
-    await subtle().encrypt(
-      aesGcmParams(nonce, aad),
-      vaultKey,
-      bufferOf(data),
-    ),
-  );
+  const combined = await sealAesGcmCombined(data, vaultKey, nonce, aad, rawVaultKey);
+  const sealed = combined.subarray(GCM_NONCE_LEN);
   // CryptoKit exposes nonce/ciphertext/tag separately; WebCrypto returns ct‖tag.
   const ciphertext = sealed.subarray(0, sealed.length - GCM_TAG_LEN);
   const tag = sealed.subarray(sealed.length - GCM_TAG_LEN);
@@ -634,14 +843,19 @@ export async function openText(
   vaultKey: CryptoKey,
   options?: CloudVaultAADInput | OpenTextOptions,
 ): Promise<string> {
+  await prepareCloudVaultDomainCore();
   if (envelope.algorithm !== AESGCM_ALGORITHM) {
     throw new EscrowError("invalid_envelope", "Unsupported sealed-text algorithm.");
   }
   const nonce = base64ToBytes(envelope.nonce);
   const ctAndTag = concat(base64ToBytes(envelope.ciphertext), base64ToBytes(envelope.tag));
+  const schemaVersion = envelope.schemaVersion ?? 1;
+  if (schemaVersion !== 1 && schemaVersion !== CURRENT_SEALED_TEXT_SCHEMA_VERSION) {
+    throw new EscrowError("invalid_envelope", "Unsupported CloudVault sealed-text schema.");
+  }
   let additionalData: string | undefined;
   if ((envelope.schemaVersion ?? 1) >= CURRENT_SEALED_TEXT_SCHEMA_VERSION) {
-    const expectedAAD = aadFromOpenOptions(options);
+    const expectedAAD = await aadFromOpenOptions(options);
     if (!expectedAAD || envelope.aad !== expectedAAD) {
       throw new EscrowError("invalid_envelope", "Invalid CloudVault sealed-text AAD context.");
     }
@@ -649,17 +863,24 @@ export async function openText(
   }
   let plaintext: Uint8Array;
   try {
-    plaintext = new Uint8Array(
-      await subtle().decrypt(
-        aesGcmParams(nonce, additionalData),
-        vaultKey,
-        bufferOf(ctAndTag),
-      ),
+    const rawVaultKey =
+      options && typeof options !== "string" && !("uid" in options)
+        ? options.rawVaultKey
+        : undefined;
+    plaintext = await openAesGcmCombined(
+      concat(nonce, ctAndTag),
+      vaultKey,
+      additionalData,
+      rawVaultKey,
     );
   } catch {
     throw new EscrowError("invalid_envelope", "Failed to open sealed text (auth tag mismatch).");
   }
-  return new TextDecoder().decode(plaintext);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(plaintext);
+  } catch {
+    throw new EscrowError("invalid_envelope", "Sealed text is not valid UTF-8.");
+  }
 }
 
 // ── WebAuthn PRF binding ────────────────────────────────────────────────────

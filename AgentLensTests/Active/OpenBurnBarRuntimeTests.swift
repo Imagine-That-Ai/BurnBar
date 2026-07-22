@@ -99,6 +99,83 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
         ))
     }
 
+    func test_performanceGateLaunch_requiresPerformanceAndUITestMarkers() {
+        let performanceGate = ["OPENBURNBAR_PERFORMANCE_GATE": "1"]
+
+        XCTAssertFalse(OpenBurnBarRuntime.isPerformanceGateLaunch(
+            environment: performanceGate,
+            arguments: []
+        ))
+        XCTAssertFalse(OpenBurnBarRuntime.isPerformanceGateLaunch(
+            environment: ["OPENBURNBAR_UITEST": "1"],
+            arguments: []
+        ))
+        XCTAssertTrue(OpenBurnBarRuntime.isPerformanceGateLaunch(
+            environment: performanceGate.merging(["OPENBURNBAR_UITEST": "1"]) { _, new in new },
+            arguments: []
+        ))
+        XCTAssertTrue(OpenBurnBarRuntime.isPerformanceGateLaunch(
+            environment: performanceGate,
+            arguments: ["--uitest"]
+        ))
+    }
+
+    func test_performanceGateNotificationObject_mapsPIDToDecimalString() {
+        XCTAssertEqual(
+            OpenBurnBarRuntime.performanceGateBackdropStateNotification.rawValue,
+            "com.openburnbar.performance-gate.backdrop-state"
+        )
+        let expectedMappings: [(processIdentifier: Int32, notificationObject: String)] = [
+            (1, "1"),
+            (42_424, "42424"),
+            (Int32.max, "2147483647")
+        ]
+
+        for mapping in expectedMappings {
+            XCTAssertEqual(
+                OpenBurnBarRuntime.performanceGateNotificationObject(
+                    processIdentifier: mapping.processIdentifier
+                ),
+                mapping.notificationObject
+            )
+        }
+    }
+
+    func test_performanceGateLaunch_suppressesUnrelatedBackgroundServices() {
+        XCTAssertFalse(
+            OpenBurnBarRuntime.shouldStartBackgroundApplicationServices(
+                isPerformanceGateLaunch: true
+            )
+        )
+        XCTAssertTrue(
+            OpenBurnBarRuntime.shouldStartBackgroundApplicationServices(
+                isPerformanceGateLaunch: false
+            )
+        )
+    }
+
+    func test_performanceGateBackdropKernelOverride_readsValidatedLaunchArgument() {
+        XCTAssertEqual(
+            OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
+                isPerformanceGateLaunch: true,
+                arguments: ["OpenBurnBar", "--uitest", "-backdropKernel", "boids"]
+            ),
+            "boids"
+        )
+        XCTAssertNil(OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
+            isPerformanceGateLaunch: false,
+            arguments: ["OpenBurnBar", "-backdropKernel", "boids"]
+        ))
+        XCTAssertNil(OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
+            isPerformanceGateLaunch: true,
+            arguments: ["OpenBurnBar", "-backdropKernel"]
+        ))
+        XCTAssertNil(OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
+            isPerformanceGateLaunch: true,
+            arguments: ["OpenBurnBar", "-backdropKernel", "   "]
+        ))
+    }
+
     func test_shouldDisableAutomaticTerminationForHarness_honorsE2EEnvironment() {
         XCTAssertTrue(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForHarness(
             environment: ["OPENBURNBAR_FORCE_LIVE_SCENE": "1"]

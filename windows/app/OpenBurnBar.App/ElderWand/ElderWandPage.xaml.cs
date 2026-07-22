@@ -1,4 +1,3 @@
-using System;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Configuration;
@@ -12,7 +11,8 @@ namespace OpenBurnBar.App.ElderWand;
 /// destination in <see cref="OpenBurnBar.App.Shell.SurfacePageResolver"/> and reachable via the
 /// Command Palette (NavCatalog.Auxiliary) — deliberately NOT a sidebar row, matching the macOS
 /// gated Settings-leaf / chat-header reachability. Presets persist through the configured store;
-/// provider-group demo data is shown only when <c>OPENBURNBAR_SAMPLE_MODE=1</c>.
+/// provider-group demo data is shown only when <c>OPENBURNBAR_SAMPLE_MODE=1</c>; normal mode
+/// projects the live gateway route graph into the configurator's provider groups.
 /// </summary>
 public sealed partial class ElderWandPage : Page
 {
@@ -28,6 +28,8 @@ public sealed partial class ElderWandPage : Page
 
         ConfiguratorView.Configure(
             new ElderWandSettingsModel(WindowsStorageDevHost.CreateElderWandPersistence()),
-            RuntimeDataMode.SampleModeEnabled ? ElderWandSampleData.DevHostGroups() : Array.Empty<ElderWandProviderGroup>());
+            RuntimeDataMode.SampleModeEnabled
+                ? ElderWandSampleData.DevHostGroups()
+                : App.Current.ElderWandProviderGroups());
     }
 }

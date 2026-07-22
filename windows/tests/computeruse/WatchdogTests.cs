@@ -109,4 +109,27 @@ public sealed class WatchdogTests
         Assert.Equal(WatchdogCommandKind.Activate, command.Kind);
         Assert.Equal("why", command.Reason);
     }
+
+    [Fact]
+    public void ResponseRoundTripUsesStructuredFields()
+    {
+        WatchdogResponse parsed = WatchdogResponse.Parse(
+            new WatchdogResponse(ok: true, detail: "idle").Encode());
+
+        Assert.True(parsed.Ok);
+        Assert.Equal("idle", parsed.Detail);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not-json")]
+    [InlineData("{\"ok\":\"true\",\"detail\":\"idle\"}")]
+    [InlineData("{\"ok\":true}")]
+    public void MalformedResponsesFailClosed(string payload)
+    {
+        WatchdogResponse parsed = WatchdogResponse.Parse(Encoding.UTF8.GetBytes(payload));
+
+        Assert.False(parsed.Ok);
+        Assert.Equal("invalid_response", parsed.Detail);
+    }
 }

@@ -9,6 +9,107 @@ namespace OpenBurnBar.ComputerUse.Tests;
 
 public sealed class KillSwitchTests
 {
+    [Fact]
+    public void LayeredFlag_InterlockBlocksWithoutMutatingPrimary()
+    {
+        var primary = new InMemoryKillSwitchFlag();
+        var remote = new InMemoryKillSwitchFlag();
+        var layered = new LayeredKillSwitchFlag(primary, remote);
+
+        remote.Activate("remote_config");
+        Assert.True(layered.IsActive);
+
+        layered.Clear();
+        Assert.False(primary.IsActive);
+        Assert.True(remote.IsActive);
+        Assert.True(layered.IsActive);
+    }
+
+    [Fact]
+    public void LayeredFlag_UnexpectedInterlockFailureFailsClosed()
+    {
+        var layered = new LayeredKillSwitchFlag(new InMemoryKillSwitchFlag(), new ThrowingKillSwitchFlag());
+
+        Assert.True(layered.IsActive);
+    }
+
+    [Fact]
+    public void FileFlag_TryActivateIfInactivePreservesExistingPanic()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "openburnbar-kill-" + Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(root, "kill.flag");
+        try
+        {
+            var flag = new FileKillSwitchFlag(path);
+            flag.Activate("manual_panic");
+
+            Assert.False(flag.TryActivateIfInactive("remote_config_unresolved"));
+            Assert.Equal("manual_panic", File.ReadAllText(path));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RemoteSafetyLease_MissingMalformedAndExpiredFailClosed()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "openburnbar-lease-" + Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(root, "remote.flag");
+        var now = DateTimeOffset.FromUnixTimeSeconds(1_750_000_000);
+        try
+        {
+            var flag = new RemoteSafetyLeaseKillSwitchFlag(path, new FixedTimeProvider(now));
+            Assert.True(flag.IsActive);
+
+            Directory.CreateDirectory(root);
+            File.WriteAllText(path, "malformed");
+            Assert.True(flag.IsActive);
+
+            flag.AuthorizeUntil(now.AddSeconds(90));
+            Assert.False(flag.IsActive);
+
+            var expired = new RemoteSafetyLeaseKillSwitchFlag(path, new FixedTimeProvider(now.AddSeconds(90)));
+            Assert.True(expired.IsActive);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RemoteSafetyLease_ClearNeverCreatesUnboundedAuthorization()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "openburnbar-lease-" + Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(root, "remote.flag");
+        try
+        {
+            var flag = new RemoteSafetyLeaseKillSwitchFlag(path);
+            flag.Clear();
+            Assert.True(flag.IsActive);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    private sealed class ThrowingKillSwitchFlag : IKillSwitchFlag
+    {
+        public bool IsActive => throw new InvalidOperationException("interlock read failed");
+
+        public void Activate(string? reason = null) => throw new NotSupportedException();
+
+        public void Clear() => throw new NotSupportedException();
+    }
+
     private static (KillSwitchStateMachine machine, InMemoryKillSwitchFlag flag, List<ComputerUsePanicSource> halts)
         Build()
     {

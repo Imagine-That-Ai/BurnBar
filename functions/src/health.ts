@@ -12,11 +12,16 @@
  * Usage: curl https://us-central1-<project>.cloudfunctions.net/healthCheck
  */
 
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import { logInfo, logError } from "./logging.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 import { sourceMetadata } from "./sourceMetadata.js";
+import { domainCoreDeploymentIdentity } from "./domainCoreBuildProfile.js";
+import { loadedDomainCorePricingIdentity } from "./domainCorePricing.js";
 import { sentryStatus } from "./sentry.js";
 import { setPublicJsonSecurityHeaders } from "./publicHttpSecurityHeaders.js";
 import {
@@ -26,6 +31,67 @@ import {
 } from "./callables/publicRateLimit.js";
 
 const FUNCTION_VERSION = process.env.FUNCTION_VERSION ?? "unknown";
+const MANIFEST_FILE_NAME = "domain-core-runtime-artifact-manifest.json";
+const manifestPath = resolve(__dirname, MANIFEST_FILE_NAME);
+
+/**
+ * Build the domain-core deployment identity served by the health endpoints.
+ *
+ * This is computed lazily on the first request (and memoized) rather than at
+ * module top level so that importing this module — and therefore building or
+ * booting the Functions emulator — never fails before the release-only runtime
+ * artifact manifest or the domain-core WASM exists. Source/dev builds and
+ * fresh checkouts have neither artifact; only the production deploy pipeline
+ * installs both into `functions/lib`.
+ *
+ * When an artifact is absent the corresponding field reports an explicit
+ * `null` (never a fabricated digest or identity). A production release deploy
+ * always has both artifacts present, so the served digests are real and the
+ * post-deploy health gate fails closed on any absence or mismatch — there is
+ * no silent fake fallback path.
+ */
+let cachedDomainCoreDeploymentIdentity: Record<string, unknown> | undefined;
+
+function domainCoreDeploymentIdentityForHealth(): Record<string, unknown> {
+  if (cachedDomainCoreDeploymentIdentity) return cachedDomainCoreDeploymentIdentity;
+
+  const identity: Record<string, unknown> = {
+    ...(domainCoreDeploymentIdentity() ?? {}),
+    runtime: {
+      service: process.env.K_SERVICE ?? null,
+      revision: process.env.K_REVISION ?? null,
+      configuration: process.env.K_CONFIGURATION ?? null,
+      functionTarget: process.env.FUNCTION_TARGET ?? null,
+    },
+  };
+
+  // loadedCore: real intrinsic/byte identity of the loaded domain-core WASM.
+  // Absent (null) when the WASM package is unavailable — e.g. a source build
+  // without the vendored package linked. Never fabricated.
+  try {
+    identity.loadedCore = loadedDomainCorePricingIdentity();
+  } catch {
+    identity.loadedCore = null;
+  }
+
+  // artifactManifest: sha256 of the immutable runtime artifact manifest
+  // installed by the release pipeline. Absent (null) when the manifest file
+  // does not exist — e.g. dev imports/builds/emulators before a release. The
+  // post-deploy gate compares this to the expected digest and fails closed on
+  // null; no fabricated hash is ever reported.
+  if (existsSync(manifestPath)) {
+    const manifestBytes = readFileSync(manifestPath);
+    identity.artifactManifest = {
+      fileName: MANIFEST_FILE_NAME,
+      sha256: createHash("sha256").update(manifestBytes).digest("hex"),
+    };
+  } else {
+    identity.artifactManifest = null;
+  }
+
+  cachedDomainCoreDeploymentIdentity = identity;
+  return identity;
+}
 
 /**
  * Probe Firestore with a hard timeout. Returns the probe latency in ms.
@@ -45,7 +111,7 @@ async function probeFirestore(timeoutMs = 3000): Promise<number> {
     await Promise.race([db.collection("_health").doc("probe").get(), timeoutPromise]);
     return Date.now() - startMs;
   } finally {
-    if (timer !== undefined) clearTimeout(timer);
+    clearTimeout(timer);
   }
 }
 
@@ -63,7 +129,12 @@ export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, inv
     res.status(500).json({ error: "internal" });
     return;
   }
-  res.status(200).json({ status: "alive", timestamp: new Date().toISOString(), ...sourceMetadata() });
+  res.status(200).json({
+    status: "alive",
+    timestamp: new Date().toISOString(),
+    domainCore: domainCoreDeploymentIdentityForHealth(),
+    ...sourceMetadata(),
+  });
 });
 
 /**
@@ -96,6 +167,7 @@ export const healthReady = onRequest(
         status: "ready",
         timestamp: new Date().toISOString(),
         version: FUNCTION_VERSION,
+        domainCore: domainCoreDeploymentIdentityForHealth(),
         latency_ms: latencyMs,
         checks: { firestore: "ok" },
         sentry,
@@ -107,6 +179,7 @@ export const healthReady = onRequest(
         status: "degraded",
         timestamp: new Date().toISOString(),
         version: FUNCTION_VERSION,
+        domainCore: domainCoreDeploymentIdentityForHealth(),
         checks: { firestore: "error" },
         sentry,
         error: "Firestore connectivity check failed",
@@ -157,6 +230,7 @@ export const healthCheck = onRequest(
       status: allHealthy ? "ok" : "degraded",
       timestamp: new Date().toISOString(),
       version: FUNCTION_VERSION,
+      domainCore: domainCoreDeploymentIdentityForHealth(),
       uptime_ms: Math.round(process.uptime() * 1000),
       checks: { firestore: firestoreStatus },
       ...(latencyMs > 0 && { latency_ms: latencyMs }),

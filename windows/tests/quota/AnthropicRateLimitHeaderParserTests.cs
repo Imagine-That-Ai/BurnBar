@@ -11,6 +11,27 @@ namespace OpenBurnBar.App.Quota.Tests;
 /// </summary>
 public sealed class AnthropicRateLimitHeaderParserTests
 {
+    [Theory]
+    [InlineData((int)DomainCoreQuotaMigrationMode.Shadow)]
+    [InlineData((int)DomainCoreQuotaMigrationMode.Rust)]
+    public void Parse_RecordedHeaders_DomainCoreModesMatchCanonicalFixture(
+        int rawMode)
+    {
+        var mode = (DomainCoreQuotaMigrationMode)rawMode;
+        var headers = QuotaFixtures.ReadHeaderInput("anthropic-ratelimit-headers-input.json");
+        var expected = QuotaFixtures.ReadExpected("anthropic-ratelimit-headers-expected.json");
+        var now = DateTimeOffset.FromUnixTimeSeconds(expected.NowUnix!.Value);
+
+        var snapshot = AnthropicRateLimitHeaderParser.Parse(
+            headers,
+            now,
+            AnthropicRateLimitHeaderParser.CredentialShape.OauthBearer,
+            mode);
+
+        Assert.NotNull(snapshot);
+        QuotaFixtures.AssertMatches(snapshot!, expected);
+    }
+
     [Fact]
     public void Parse_RecordedHeaders_MatchesExpectedValueForValue()
     {
@@ -82,5 +103,10 @@ public sealed class AnthropicRateLimitHeaderParserTests
             new Dictionary<string, string> { ["content-type"] = "application/json" }, now);
 
         Assert.Null(snapshot);
+        Assert.Null(AnthropicRateLimitHeaderParser.Parse(
+            new Dictionary<string, string> { ["content-type"] = "application/json" },
+            now,
+            AnthropicRateLimitHeaderParser.CredentialShape.OauthBearer,
+            DomainCoreQuotaMigrationMode.Rust));
     }
 }

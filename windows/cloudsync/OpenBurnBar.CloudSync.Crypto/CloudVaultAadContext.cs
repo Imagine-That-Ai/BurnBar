@@ -35,26 +35,37 @@ namespace OpenBurnBar.CloudSync.Crypto
             int schemaVersion = 2,
             string? purpose = null)
         {
-            Uid = ValidatedPart(uid, nameof(uid));
-            Collection = ValidatedPart(collection, nameof(collection));
-            DocId = ValidatedPart(docId, nameof(docId));
-            var validatedField = ValidatedPart(field, nameof(field));
-            Field = validatedField;
-            if (schemaVersion < 2)
-            {
-                throw CloudVaultCryptoException.InvalidEnvelope();
-            }
+            var resolvedPurpose = purpose ?? field;
+            var stringValue = DomainCoreCloudVaultBridge.AadV2(
+                uid,
+                collection,
+                docId,
+                field,
+                schemaVersion,
+                resolvedPurpose,
+                () => LegacyV2(uid, collection, docId, field, schemaVersion, resolvedPurpose));
+            var legacyV1StringValue = DomainCoreCloudVaultBridge.AadV1(
+                uid,
+                collection,
+                docId,
+                field,
+                () => LegacyV1(uid, collection, docId, field));
+
+            Uid = uid;
+            Collection = collection;
+            DocId = docId;
+            Field = field;
             SchemaVersion = schemaVersion;
-            Purpose = ValidatedPart(purpose ?? validatedField, nameof(purpose));
+            Purpose = resolvedPurpose;
+            StringValue = stringValue;
+            LegacyV1StringValue = legacyV1StringValue;
         }
 
         /// <summary>The v2 AAD string; the AEAD authenticates exactly these bytes.</summary>
-        public string StringValue =>
-            $"{ContextPrefix}|{Uid}|{Collection}|{DocId}|{Field}|{SchemaVersion}|{Purpose}";
+        public string StringValue { get; }
 
         /// <summary>The weaker legacy v1 AAD string (no schemaVersion/purpose).</summary>
-        public string LegacyV1StringValue =>
-            $"{LegacyContextPrefix}|{Uid}|{Collection}|{DocId}|{Field}";
+        public string LegacyV1StringValue { get; }
 
         public byte[] Data => Encoding.UTF8.GetBytes(StringValue);
 
@@ -75,6 +86,29 @@ namespace OpenBurnBar.CloudSync.Crypto
             }
             return value;
         }
+
+        private static string LegacyV2(
+            string uid,
+            string collection,
+            string docId,
+            string field,
+            int schemaVersion,
+            string purpose)
+        {
+            var validatedUid = ValidatedPart(uid, nameof(uid));
+            var validatedCollection = ValidatedPart(collection, nameof(collection));
+            var validatedDocId = ValidatedPart(docId, nameof(docId));
+            var validatedField = ValidatedPart(field, nameof(field));
+            if (schemaVersion < 2)
+            {
+                throw CloudVaultCryptoException.InvalidEnvelope();
+            }
+            var validatedPurpose = ValidatedPart(purpose, nameof(purpose));
+            return $"{ContextPrefix}|{validatedUid}|{validatedCollection}|{validatedDocId}|{validatedField}|{schemaVersion}|{validatedPurpose}";
+        }
+
+        private static string LegacyV1(string uid, string collection, string docId, string field) =>
+            $"{LegacyContextPrefix}|{ValidatedPart(uid, nameof(uid))}|{ValidatedPart(collection, nameof(collection))}|{ValidatedPart(docId, nameof(docId))}|{ValidatedPart(field, nameof(field))}";
     }
 
     /// <summary>

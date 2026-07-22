@@ -61,4 +61,21 @@ internal static class DistTestSupport
 
         throw new DirectoryNotFoundException("Could not locate windows/dist/props from the test binary directory.");
     }
+
+    public static string RepositoryRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "windows", "OpenBurnBar.sln"))
+                && File.Exists(Path.Combine(dir.FullName, "AGENTS.md")))
+            {
+                return dir.FullName;
+            }
+
+            dir = dir.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate the repository root from the test binary directory.");
+    }
 }

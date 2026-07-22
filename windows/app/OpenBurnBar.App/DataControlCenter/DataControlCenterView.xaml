@@ -276,11 +276,11 @@
                                             </StackPanel>
                                         </Border>
                                         <TextBlock Grid.Column="2" Text="{x:Bind Count}" VerticalAlignment="Center"
-                                                   FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                   FontFamily="{StaticResource AuroraMonoFont}" FontSize="12"
                                                    Foreground="{StaticResource PensieveColorTextBaseBrush}" />
                                         <TextBlock Grid.Column="3" Text="{x:Bind Bytes, Converter={StaticResource BytesToString}}"
                                                    VerticalAlignment="Center"
-                                                   FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                   FontFamily="{StaticResource AuroraMonoFont}" FontSize="12"
                                                    Foreground="{StaticResource PensieveColorTextBaseBrush}" />
                                         <TextBlock Grid.Column="4" Text="{x:Bind Retention, Converter={StaticResource RetentionLabel}}"
                                                    VerticalAlignment="Center" FontSize="11" TextTrimming="CharacterEllipsis"

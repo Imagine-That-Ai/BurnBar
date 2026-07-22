@@ -22,7 +22,7 @@
         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
             <FontIcon x:Name="Icon" FontFamily="Segoe MDL2 Assets" FontSize="9" />
             <TextBlock x:Name="AmountText"
-                       FontFamily="Cascadia Mono, Consolas"
+                       FontFamily="{StaticResource AuroraMonoFont}"
                        FontSize="10"
                        FontWeight="SemiBold" />
         </StackPanel>

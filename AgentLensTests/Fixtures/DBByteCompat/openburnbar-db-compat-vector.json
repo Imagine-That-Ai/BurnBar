@@ -45,8 +45,8 @@
       ]
     }
   ],
-  "migrationCount" : 55,
-  "schemaEndpoint" : "v54_provider_quota_snapshots",
-  "schemaHashSHA256" : "57bb8d6b970e37e42f0c21960d602774dd36018b597f2c5f68b0a3b641431d7d",
+  "migrationCount" : 57,
+  "schemaEndpoint" : "v56_parser_checkpoint_file_manifest",
+  "schemaHashSHA256" : "193559c5f43cc57f249279afe9e334ff5df9bbe2d81c7fb9a90743a6c26c2950",
   "sqlcipherPin" : "SQLCipher.swift 4.16.0 (Vendor/GRDB-SQLCipher)"
 }

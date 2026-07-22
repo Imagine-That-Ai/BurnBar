@@ -69,12 +69,18 @@ final class ClaudeCodeParserIntegrationTests: XCTestCase {
 
     func test_claudeCodeParser_scrubsCachedConversationsWhenIndexingDisabled() async throws {
         let privatePrompt = "private claude prompt \(UUID().uuidString)"
-        let sessionContent = ParserTestFixtures.claudeCodeSession(userMessage: privatePrompt)
+        let privateAssistant = "secret claude reply \(UUID().uuidString)"
+        let privateSummary = "legacy claude summary \(UUID().uuidString)"
+        let sessionContent = ParserTestFixtures.claudeCodeSession(
+            userMessage: privatePrompt,
+            assistantMessage: privateAssistant
+        )
         let projectsRoot = harness.rootURL.appendingPathComponent(".claude/projects", isDirectory: true)
-        _ = try harness.createClaudeCodeProject(
+        let projectDir = try harness.createClaudeCodeProject(
             projectName: "-Users-test-Documents-TestProject",
             sessions: [("session-privacy", sessionContent)]
         )
+        let sessionFile = projectDir.appendingPathComponent("session-privacy.jsonl")
 
         let appPaths = OpenBurnBar.OpenBurnBarAppPaths(
             applicationSupportRoot: harness.rootURL.appendingPathComponent("support", isDirectory: true)
@@ -86,18 +92,129 @@ final class ClaudeCodeParserIntegrationTests: XCTestCase {
         )
         let cacheURL = appPaths.claudeCodeParserCacheURL
 
+        // Body-enabled parsing is transient: it returns the conversation in
+        // memory but must NEVER persist raw prompt or assistant content to the
+        // on-disk cache file.
         let indexed = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
-        XCTAssertEqual(indexed.conversations.count, 1)
-        XCTAssertTrue(try cache(cacheURL, containsRawString: privatePrompt))
+        XCTAssertEqual(indexed.conversations.count, 1, "body-enabled parse returns the conversation in memory")
+        XCTAssertFalse(try cache(cacheURL, containsRawString: privatePrompt),
+                       "raw prompt content must never be persisted to the parser cache")
+        XCTAssertFalse(try cache(cacheURL, containsRawString: privateAssistant),
+                       "raw assistant content must never be persisted to the parser cache")
+
+        // Simulate a REAL legacy (pre-privacy-fix, schemaVersion-2) cache
+        // that still carries a persisted conversation body. The reworked
+        // parser (schemaVersion 3, conversation-free entries by construction)
+        // must drop the stale-schema cache wholesale on the next parse and
+        // re-persist a body-free v3 cache — an in-place upgrade scrub.
+        try injectLegacyCachedConversation(
+            cacheURL: cacheURL,
+            sessionFile: sessionFile,
+            sessionId: "session-privacy",
+            projectName: "~/Documents/TestProject",
+            privatePrompt: privatePrompt,
+            privateAssistant: privateAssistant,
+            privateSummary: privateSummary
+        )
+        XCTAssertTrue(try cache(cacheURL, containsRawString: privatePrompt),
+                      "legacy cache fixture must contain the private prompt before scrub")
+        XCTAssertTrue(try cache(cacheURL, containsRawString: privateSummary),
+                      "legacy cache fixture must contain the private summary before scrub")
 
         let redacted = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
-        XCTAssertEqual(redacted.usages.count, 1)
-        XCTAssertTrue(redacted.conversations.isEmpty)
-        XCTAssertFalse(try cache(cacheURL, containsRawString: privatePrompt))
+        XCTAssertEqual(redacted.usages.count, 1, "usage-only parse preserves token usage")
+        XCTAssertTrue(redacted.conversations.isEmpty, "usage-only parse returns no conversations")
+
+        XCTAssertFalse(try cache(cacheURL, containsRawString: privatePrompt),
+                       "scrubbed cache must not contain the private prompt")
+        XCTAssertFalse(try cache(cacheURL, containsRawString: privateAssistant),
+                       "scrubbed cache must not contain the private assistant reply")
+        XCTAssertFalse(try cache(cacheURL, containsRawString: privateSummary),
+                       "scrubbed cache must not retain conversation-only summary metadata")
+
+        // And the rewritten cache is the upgraded, conversation-free shape.
+        let upgradedRoot = try XCTUnwrap(
+            PropertyListSerialization.propertyList(
+                from: Data(contentsOf: cacheURL), options: [], format: nil
+            ) as? [String: Any]
+        )
+        XCTAssertEqual(upgradedRoot["schemaVersion"] as? Int, 3)
+        let upgradedEntries = try XCTUnwrap(upgradedRoot["fileEntries"] as? [String: Any])
+        for (key, value) in upgradedEntries {
+            let entry = try XCTUnwrap(value as? [String: Any], key)
+            XCTAssertNil(entry["conversation"], "upgraded cache entries must not hold conversations (\(key))")
+        }
     }
 
     private func cache(_ url: URL, containsRawString string: String) throws -> Bool {
-        try Data(contentsOf: url).range(of: Data(string.utf8)) != nil
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        return try Data(contentsOf: url).range(of: Data(string.utf8)) != nil
+    }
+
+    /// Simulates a REAL legacy (pre-2026-07-16, schemaVersion-2) Claude
+    /// parser cache: v2 entries carried an optional `conversation` body.
+    /// The reworked parser is at schemaVersion 3 (whose entry type cannot
+    /// represent a conversation), so `ParserDiskCacheStore.load()` drops a
+    /// v2 cache wholesale, re-scans, and re-persists a body-free v3 cache —
+    /// that upgrade path is what the caller asserts. Uses schema-agnostic
+    /// plist surgery because `ClaudeCodeCacheEntry` is parser-private.
+    private func injectLegacyCachedConversation(
+        cacheURL: URL,
+        sessionFile: URL,
+        sessionId: String,
+        projectName: String,
+        privatePrompt: String,
+        privateAssistant: String,
+        privateSummary: String
+    ) throws {
+        let data = try Data(contentsOf: cacheURL)
+        var root = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
+        )
+        var entries = try XCTUnwrap(root["fileEntries"] as? [String: Any])
+        let cacheKey = sessionFile.standardizedFileURL.path
+        var entry = try XCTUnwrap(entries[cacheKey] as? [String: Any],
+                                  "warmed cache must contain an entry for the session file")
+
+        let legacyConversation: [String: Any] = [
+            "id": "Claude Code:session-privacy",
+            "provider": "Claude Code",
+            "sessionId": sessionId,
+            "projectName": projectName,
+            "startTime": Date(),
+            "endTime": Date(),
+            "messageCount": 2,
+            "userWordCount": 3,
+            "assistantWordCount": 3,
+            "keyFiles": [],
+            "keyCommands": [],
+            "keyTools": [],
+            "inferredTaskTitle": privatePrompt,
+            "lastAssistantMessage": privateAssistant,
+            "fullText": "\(privatePrompt)\n\(privateAssistant)",
+            "indexedAt": Date(),
+            "workingDirectory": projectName,
+            "fileModifiedAt": Date(),
+            "summary": privateSummary,
+            "summaryTitle": "",
+            "summaryUpdatedAt": Date(),
+            "summaryProvider": "",
+            "summaryModel": "",
+            "sourceType": "provider_log",
+            "sourceDeviceId": "",
+            "sourceDeviceName": "",
+            "isRemote": false,
+            "deletedAt": Date(),
+            "version": 1
+        ]
+        entry["conversation"] = legacyConversation
+        entries[cacheKey] = entry
+        root["fileEntries"] = entries
+        // Stamp the pre-fix schema version: this is what real legacy caches
+        // on disk look like, and what forces the wholesale drop + rewrite.
+        root["schemaVersion"] = 2
+        let rewritten = try PropertyListSerialization.data(fromPropertyList: root, format: .binary, options: 0)
+        try rewritten.write(to: cacheURL, options: .atomic)
     }
 
     func test_claudeCodeParser_decodesProjectPath() async throws {

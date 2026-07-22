@@ -141,12 +141,12 @@ public enum HermesRelayCrypto {
         }
     }
 
-    public static func requestAAD(uid: String, connectionID: String, requestID: String) -> Data {
-        aad(["request", uid, connectionID, requestID])
+    public static func requestAAD(uid: String, connectionID: String, requestID: String) throws -> Data {
+        try aad(["request", uid, connectionID, requestID])
     }
 
-    public static func keyAAD(uid: String, connectionID: String, requestID: String) -> Data {
-        aad(["key", uid, connectionID, requestID])
+    public static func keyAAD(uid: String, connectionID: String, requestID: String) throws -> Data {
+        try aad(["key", uid, connectionID, requestID])
     }
 
     public static func authenticatedRequestAAD(
@@ -158,8 +158,8 @@ public enum HermesRelayCrypto {
         senderPeerNodeID: String,
         senderCounter: Int64,
         keyID: String
-    ) -> Data {
-        aad([
+    ) throws -> Data {
+        try aad([
             "request-v3",
             uid,
             connectionID,
@@ -181,8 +181,8 @@ public enum HermesRelayCrypto {
         senderPeerNodeID: String,
         senderCounter: Int64,
         keyID: String
-    ) -> Data {
-        aad([
+    ) throws -> Data {
+        try aad([
             "key-v3",
             uid,
             connectionID,
@@ -201,8 +201,8 @@ public enum HermesRelayCrypto {
         requestID: String,
         sequence: Int,
         kind: String
-    ) -> Data {
-        aad(["chunk", uid, connectionID, requestID, String(sequence), kind])
+    ) throws -> Data {
+        try aad(["chunk", uid, connectionID, requestID, String(sequence), kind])
     }
 
     /// F7 — AAD for wrapping the per-mirror media-frame-AEAD session key the
@@ -217,8 +217,8 @@ public enum HermesRelayCrypto {
         senderDeviceID: String,
         senderKeyID: String,
         senderCounter: Int64
-    ) -> Data {
-        aad(["mediaSealKey", uid, connectionID, viewerId, senderDeviceID, senderKeyID, String(senderCounter)])
+    ) throws -> Data {
+        try aad(["mediaSealKey", uid, connectionID, viewerId, senderDeviceID, senderKeyID, String(senderCounter)])
     }
 
     /// F10 — AAD for wrapping the control-frame-seal session key the phone
@@ -234,8 +234,8 @@ public enum HermesRelayCrypto {
         senderDeviceID: String,
         senderKeyID: String,
         senderCounter: Int64
-    ) -> Data {
-        aad(["controlSealKey", uid, connectionID, peerNodeId, senderDeviceID, senderKeyID, String(senderCounter)])
+    ) throws -> Data {
+        try aad(["controlSealKey", uid, connectionID, peerNodeId, senderDeviceID, senderKeyID, String(senderCounter)])
     }
 
     // MARK: Hermes Gateway AAD namespacing
@@ -250,24 +250,24 @@ public enum HermesRelayCrypto {
     /// AAD for the sealed payload of a phone→agent gateway event
     /// (`hermes_gateway_events`), binding owner + client + the client-generated
     /// event id so a ciphertext cannot be moved across users/clients/events.
-    public static func gatewayEventAAD(uid: String, clientId: String, eventId: String) -> Data {
-        aad(["gatewayEvent", uid, clientId, eventId])
+    public static func gatewayEventAAD(uid: String, clientId: String, eventId: String) throws -> Data {
+        try aad(["gatewayEvent", uid, clientId, eventId])
     }
 
     /// AAD for wrapping the per-event symmetric key to the agent's relay pubkey.
-    public static func gatewayEventKeyAAD(uid: String, clientId: String, eventId: String) -> Data {
-        aad(["gatewayEventKey", uid, clientId, eventId])
+    public static func gatewayEventKeyAAD(uid: String, clientId: String, eventId: String) throws -> Data {
+        try aad(["gatewayEventKey", uid, clientId, eventId])
     }
 
     /// AAD for the sealed payload of an agent→phone gateway message
     /// (`hermes_gateway_messages`), bound to owner + client + message id.
-    public static func gatewayMessageAAD(uid: String, clientId: String, messageId: String) -> Data {
-        aad(["gatewayMessage", uid, clientId, messageId])
+    public static func gatewayMessageAAD(uid: String, clientId: String, messageId: String) throws -> Data {
+        try aad(["gatewayMessage", uid, clientId, messageId])
     }
 
     /// AAD for unwrapping the per-message symmetric key with the phone's relay key.
-    public static func gatewayMessageKeyAAD(uid: String, clientId: String, messageId: String) -> Data {
-        aad(["gatewayMessageKey", uid, clientId, messageId])
+    public static func gatewayMessageKeyAAD(uid: String, clientId: String, messageId: String) throws -> Data {
+        try aad(["gatewayMessageKey", uid, clientId, messageId])
     }
 
     // MARK: Gateway attachment AAD namespacing
@@ -284,40 +284,44 @@ public enum HermesRelayCrypto {
     // can open what the agent sealed.
 
     /// AAD for the sealed attachment *manifest* (`{fileName, byteCount, contentType}`).
-    public static func gatewayAttachmentManifestAAD(uid: String, clientId: String, attachmentId: String) -> Data {
-        aad(["gatewayAttachmentManifest", uid, clientId, attachmentId])
+    public static func gatewayAttachmentManifestAAD(uid: String, clientId: String, attachmentId: String) throws -> Data {
+        try aad(["gatewayAttachmentManifest", uid, clientId, attachmentId])
     }
 
     /// AAD for the sealed attachment *body* (the raw file bytes).
-    public static func gatewayAttachmentBodyAAD(uid: String, clientId: String, attachmentId: String) -> Data {
-        aad(["gatewayAttachmentBody", uid, clientId, attachmentId])
+    public static func gatewayAttachmentBodyAAD(uid: String, clientId: String, attachmentId: String) throws -> Data {
+        try aad(["gatewayAttachmentBody", uid, clientId, attachmentId])
     }
 
     /// AAD for wrapping/unwrapping the per-attachment body key to the phone's relay pubkey.
-    public static func gatewayAttachmentKeyAAD(uid: String, clientId: String, attachmentId: String) -> Data {
-        aad(["gatewayAttachmentKey", uid, clientId, attachmentId])
+    public static func gatewayAttachmentKeyAAD(uid: String, clientId: String, attachmentId: String) throws -> Data {
+        try aad(["gatewayAttachmentKey", uid, clientId, attachmentId])
     }
 
     public static func sealToBase64(plaintext: Data, keyData: Data, aad: Data) throws -> String {
         guard keyData.count == symmetricKeyByteCount else {
             throw HermesRelayCryptoError.invalidSymmetricKey
         }
-        let combined = try PlatformCrypto.sealAESGCM(
+        return try HermesDomainCoreAdapter.seal(
             plaintext: plaintext,
-            keyData: keyData,
-            authenticating: aad
-        )
-        return combined.base64EncodedString()
+            key: keyData,
+            aad: aad
+        ) {
+            try HermesRelayLegacyCrypto.sealToBase64(plaintext: plaintext, keyData: keyData, aad: aad)
+        }
     }
 
     public static func openBase64(ciphertext: String, keyData: Data, aad: Data) throws -> Data {
         guard keyData.count == symmetricKeyByteCount else {
             throw HermesRelayCryptoError.invalidSymmetricKey
         }
-        guard let data = Data(base64Encoded: ciphertext) else {
-            throw HermesRelayCryptoError.invalidCiphertext
+        return try HermesDomainCoreAdapter.open(
+            ciphertext: ciphertext,
+            key: keyData,
+            aad: aad
+        ) {
+            try HermesRelayLegacyCrypto.openBase64(ciphertext: ciphertext, keyData: keyData, aad: aad)
         }
-        return try PlatformCrypto.openAESGCM(combined: data, keyData: keyData, authenticating: aad)
     }
 
     /// Wrap a symmetric key to a recipient.
@@ -359,14 +363,22 @@ public enum HermesRelayCrypto {
             )
         } else {
             // v1 ephemeral-static (realtime relay) — unchanged byte layout.
-            wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
-                sharedSecret: dh1,
-                salt: Data(),
-                info: keyWrapSharedInfo(aad: aad),
-                outputByteCount: symmetricKeyByteCount
+            wrappingKey = try deriveWrappingKey(
+                inputKeyMaterial: dh1.withUnsafeBytes { Data($0) },
+                info: try keyWrapSharedInfo(aad: aad)
             )
         }
-        let combined = try PlatformCrypto.sealAESGCM(plaintext: keyData, key: wrappingKey, authenticating: aad)
+        let combined = try HermesDomainCoreAdapter.sealCombined(
+            plaintext: keyData,
+            key: PlatformCrypto.symmetricKeyData(wrappingKey),
+            aad: aad
+        ) {
+            try HermesRelayLegacyCrypto.sealCombined(
+                plaintext: keyData,
+                key: wrappingKey,
+                aad: aad
+            )
+        }
         return (enc + combined).base64EncodedString()
     }
 
@@ -410,18 +422,22 @@ public enum HermesRelayCrypto {
                 aad: aad
             )
         } else {
-            wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
-                sharedSecret: dh1,
-                salt: Data(),
-                info: keyWrapSharedInfo(aad: aad),
-                outputByteCount: symmetricKeyByteCount
+            wrappingKey = try deriveWrappingKey(
+                inputKeyMaterial: dh1.withUnsafeBytes { Data($0) },
+                info: try keyWrapSharedInfo(aad: aad)
             )
         }
-        return try PlatformCrypto.openAESGCM(
+        return try HermesDomainCoreAdapter.openCombined(
             combined: Data(sealedBoxData),
-            key: wrappingKey,
-            authenticating: aad
-        )
+            key: PlatformCrypto.symmetricKeyData(wrappingKey),
+            aad: aad
+        ) {
+            try HermesRelayLegacyCrypto.openCombined(
+                combined: Data(sealedBoxData),
+                key: wrappingKey,
+                aad: aad
+            )
+        }
     }
 
     /// v2 authenticated wrapping-key derivation (HPKE-AuthEncap-shaped):
@@ -438,16 +454,22 @@ public enum HermesRelayCrypto {
         var ikm = Data()
         dh1.withUnsafeBytes { ikm.append(contentsOf: $0) }
         dh2.withUnsafeBytes { ikm.append(contentsOf: $0) }
-        var info = Data("OpenBurnBar-HermesRelay-KeyWrap-v2|".utf8)
-        info.append(aad)
-        info.append(enc)
-        info.append(recipientPublicKey)
-        info.append(senderPublicKey)
-        return try PlatformCrypto.deriveHKDFSHA256Key(
+        let info = try HermesDomainCoreAdapter.keyWrapInfoV2(
+            aad: aad,
+            enc: enc,
+            recipient: recipientPublicKey,
+            sender: senderPublicKey
+        ) {
+            HermesRelayLegacyCrypto.keyWrapInfoV2(
+                aad: aad,
+                enc: enc,
+                recipientPublicKey: recipientPublicKey,
+                senderPublicKey: senderPublicKey
+            )
+        }
+        return try deriveWrappingKey(
             inputKeyMaterial: ikm,
-            salt: Data(),
-            info: info,
-            outputByteCount: symmetricKeyByteCount
+            info: info
         )
     }
 
@@ -497,7 +519,7 @@ public enum HermesRelayCrypto {
         let sealed = try PlatformCrypto.hpkeSealP256SHA256AESGCM256(
             plaintext: keyData,
             recipientPublicKey: recipientKey,
-            info: hpkeV3Info(aad: aad),
+            info: try hpkeV3Info(aad: aad),
             aad: aad,
             authenticatedBy: senderPrivateKey.key
         )
@@ -527,7 +549,7 @@ public enum HermesRelayCrypto {
             let opened = try PlatformCrypto.hpkeOpenP256SHA256AESGCM256(
                 ciphertext: wrappedKey,
                 recipientPrivateKey: privateKey.key,
-                info: hpkeV3Info(aad: aad),
+                info: try hpkeV3Info(aad: aad),
                 encapsulatedKey: enc,
                 authenticatedBy: senderKey,
                 aad: aad
@@ -572,157 +594,75 @@ public enum HermesRelayCrypto {
 
     /// HPKE `info` for v3 = `"OpenBurnBar-HermesRelay-HPKE-v3|" ‖ key_aad`.
     /// Mirrors Python `_hpke_info` / `_HPKE_INFO_PREFIX`.
-    private static func hpkeV3Info(aad: Data) -> Data {
-        var info = Data("OpenBurnBar-HermesRelay-HPKE-v3|".utf8)
-        info.append(aad)
-        return info
+    private static func hpkeV3Info(aad: Data) throws -> Data {
+        try HermesDomainCoreAdapter.hpkeV3Info(aad: aad) {
+            HermesRelayLegacyCrypto.hpkeV3Info(aad: aad)
+        }
     }
 
-    private static func aad(_ parts: [String]) -> Data {
-        "OpenBurnBar-HermesRelay-v1|\(parts.joined(separator: "|"))".data(using: .utf8)!
-    }
-
-    private static func keyWrapSharedInfo(aad: Data) -> Data {
-        var info = Data("OpenBurnBar-HermesRelay-KeyWrap-v1|".utf8)
-        info.append(aad)
-        return info
-    }
-}
-
-public struct PiAgentRelayPrivateKey: @unchecked Sendable, Equatable { // AUDIT sendable-allowlist: swift-crypto-key-material
-    fileprivate let key: PlatformP256KeyAgreementPrivateKey
-
-    public init(rawRepresentation: Data) throws {
-        self.key = try PlatformCrypto.p256KeyAgreementPrivateKey(rawRepresentation: rawRepresentation)
-    }
-
-    fileprivate init(_ key: PlatformP256KeyAgreementPrivateKey) {
-        self.key = key
-    }
-
-    public var rawRepresentation: Data {
-        key.rawRepresentation
-    }
-
-    public var publicKeyBase64: String {
-        key.publicKey.x963Representation.base64EncodedString()
-    }
-
-    public static func == (lhs: PiAgentRelayPrivateKey, rhs: PiAgentRelayPrivateKey) -> Bool {
-        lhs.rawRepresentation == rhs.rawRepresentation
-    }
-}
-
-public struct PiAgentRelayEncryptedRequestPayload: Codable, Sendable, Equatable {
-    public var path: String?
-    public var sessionId: String?
-    public var body: String?
-
-    public init(path: String? = nil, sessionId: String? = nil, body: String? = nil) {
-        self.path = path
-        self.sessionId = sessionId
-        self.body = body
-    }
-}
-
-public enum PiAgentRelayCrypto {
-    public static let algorithm = HermesRelayCrypto.algorithm
-    public static let keyVersion = HermesRelayCrypto.keyVersion
-    public static let symmetricKeyByteCount = HermesRelayCrypto.symmetricKeyByteCount
-
-    public static func generatePrivateKey() -> PiAgentRelayPrivateKey {
-        PiAgentRelayPrivateKey(PlatformCrypto.p256KeyAgreementPrivateKey())
-    }
-
-    public static func generateSymmetricKeyData() throws -> Data {
-        try HermesRelayCrypto.generateSymmetricKeyData()
-    }
-
-    public static func requestAAD(uid: String, connectionID: String, requestID: String) -> Data {
-        aad(["request", uid, connectionID, requestID])
-    }
-
-    public static func keyAAD(uid: String, connectionID: String, requestID: String) -> Data {
-        aad(["key", uid, connectionID, requestID])
-    }
-
-    public static func chunkAAD(
-        uid: String,
-        connectionID: String,
-        requestID: String,
-        sequence: Int,
-        kind: String
-    ) -> Data {
-        aad(["chunk", uid, connectionID, requestID, String(sequence), kind])
-    }
-
-    public static func sealToBase64(plaintext: Data, keyData: Data, aad: Data) throws -> String {
-        try HermesRelayCrypto.sealToBase64(plaintext: plaintext, keyData: keyData, aad: aad)
-    }
-
-    public static func openBase64(ciphertext: String, keyData: Data, aad: Data) throws -> Data {
-        try HermesRelayCrypto.openBase64(ciphertext: ciphertext, keyData: keyData, aad: aad)
-    }
-
-    public static func wrapSymmetricKey(
-        _ keyData: Data,
-        recipientPublicKeyBase64: String,
-        aad: Data
+    public static func gatewayRelaySafetyCode(
+        agentPublicKeyX963: Data,
+        phonePublicKeyX963: Data
     ) throws -> String {
-        guard keyData.count == symmetricKeyByteCount else {
-            throw HermesRelayCryptoError.invalidSymmetricKey
+        try HermesDomainCoreAdapter.safetyCode(agent: agentPublicKeyX963, phone: phonePublicKeyX963) {
+            let ordered = [agentPublicKeyX963, phonePublicKeyX963].sorted {
+                $0.lexicographicallyPrecedes($1)
+            }
+            let digest = PlatformCrypto.sha256(ordered[0] + ordered[1])
+            return stride(from: 0, to: 16, by: 2)
+                .map { String(format: "%02X%02X", digest[$0], digest[$0 + 1]) }
+                .joined(separator: " ")
         }
-        guard let publicKeyData = Data(base64Encoded: recipientPublicKeyBase64),
-              let recipientKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: publicKeyData) else {
-            throw HermesRelayCryptoError.invalidPublicKey
+    }
+
+    private static func aad(_ parts: [String]) throws -> Data {
+        let legacy = { HermesRelayLegacyCrypto.aad(parts) }
+        guard let label = parts.first, let kind = aadKind(label) else { return legacy() }
+        return try HermesDomainCoreAdapter.aad(
+            kind: kind,
+            arguments: Array(parts.dropFirst()),
+            legacy: legacy
+        )
+    }
+
+    private static func aadKind(_ label: String) -> HermesAadKindAdapter? {
+        switch label {
+        case "request": .request
+        case "key": .key
+        case "request-v3": .authenticatedRequest
+        case "key-v3": .authenticatedKey
+        case "chunk": .chunk
+        case "mediaSealKey": .mediaSealKey
+        case "controlSealKey": .controlSealKey
+        case "gatewayEvent": .gatewayEvent
+        case "gatewayEventKey": .gatewayEventKey
+        case "gatewayMessage": .gatewayMessage
+        case "gatewayMessageKey": .gatewayMessageKey
+        case "gatewayAttachmentKey": .gatewayAttachmentKey
+        case "gatewayAttachmentManifest": .gatewayAttachmentManifest
+        case "gatewayAttachmentBody": .gatewayAttachmentBody
+        default: nil
         }
-        let ephemeralKey = PlatformCrypto.p256KeyAgreementPrivateKey()
-        let sharedSecret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: ephemeralKey, publicKey: recipientKey)
-        let wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
-            sharedSecret: sharedSecret,
+    }
+
+    private static func keyWrapSharedInfo(aad: Data) throws -> Data {
+        try HermesDomainCoreAdapter.keyWrapInfoV1(aad: aad) {
+            HermesRelayLegacyCrypto.keyWrapInfo(aad: aad)
+        }
+    }
+
+    private static func deriveWrappingKey(
+        inputKeyMaterial: Data,
+        info: Data
+    ) throws -> PlatformSymmetricKey {
+        let bytes = try HermesDomainCoreAdapter.hkdf(
+            inputKeyMaterial: inputKeyMaterial,
             salt: Data(),
-            info: keyWrapSharedInfo(aad: aad),
+            info: info,
             outputByteCount: symmetricKeyByteCount
-        )
-        let combined = try PlatformCrypto.sealAESGCM(plaintext: keyData, key: wrappingKey, authenticating: aad)
-        return (ephemeralKey.publicKey.x963Representation + combined).base64EncodedString()
-    }
-
-    public static func unwrapSymmetricKey(
-        _ wrappedKeyBase64: String,
-        privateKey: PiAgentRelayPrivateKey,
-        aad: Data
-    ) throws -> Data {
-        guard let envelope = Data(base64Encoded: wrappedKeyBase64),
-              envelope.count > 65 else {
-            throw HermesRelayCryptoError.invalidCiphertext
+        ) {
+            try HermesRelayLegacyCrypto.deriveWrappingKey(inputKeyMaterial: inputKeyMaterial, info: info)
         }
-        let ephemeralPublicKeyData = envelope.prefix(65)
-        let sealedBoxData = envelope.suffix(from: 65)
-        guard let ephemeralPublicKey = try? PlatformCrypto.p256KeyAgreementPublicKey(x963Representation: Data(ephemeralPublicKeyData)) else {
-            throw HermesRelayCryptoError.invalidPublicKey
-        }
-        let sharedSecret = try PlatformCrypto.p256KeyAgreementSharedSecret(privateKey: privateKey.key, publicKey: ephemeralPublicKey)
-        let wrappingKey = try PlatformCrypto.deriveHKDFSHA256Key(
-            sharedSecret: sharedSecret,
-            salt: Data(),
-            info: keyWrapSharedInfo(aad: aad),
-            outputByteCount: symmetricKeyByteCount
-        )
-        return try PlatformCrypto.openAESGCM(
-            combined: Data(sealedBoxData),
-            key: wrappingKey,
-            authenticating: aad
-        )
-    }
-
-    private static func aad(_ parts: [String]) -> Data {
-        "OpenBurnBar-PiAgentRelay-v1|\(parts.joined(separator: "|"))".data(using: .utf8)!
-    }
-
-    private static func keyWrapSharedInfo(aad: Data) -> Data {
-        var info = Data("OpenBurnBar-PiAgentRelay-KeyWrap-v1|".utf8)
-        info.append(aad)
-        return info
+        return try PlatformCrypto.symmetricKey(data: bytes)
     }
 }

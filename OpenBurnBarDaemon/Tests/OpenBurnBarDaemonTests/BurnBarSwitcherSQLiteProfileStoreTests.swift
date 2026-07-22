@@ -1,6 +1,6 @@
 import XCTest
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarEngine
 @testable import OpenBurnBarDaemon
 
 /// Regression coverage for the shared-DB hazard between the BurnBar app and the

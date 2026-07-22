@@ -8,10 +8,15 @@
  *
  * Closes codex-gpt-5 FINDING-005 / kimi FINDING-012.
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { endpointAuthorizationCatalog } from "../security/endpointAuthorizationCatalog.generated.js";
 import { RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS } from "../callables/publicRateLimit.js";
+
+// Tests run from functions/, so the source tree is at src/.
+const SRC_DIR = resolve(process.cwd(), "src");
 
 const RATE_LIMITED_NAMES = new Set(RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS);
 
@@ -56,4 +61,31 @@ describe("public endpoint rate-limit inventory", () => {
       expect(catalogNames.has(name)).toBe(true);
     }
   });
+});
+
+describe("per-uid rate limit call-site coverage", () => {
+  /**
+   * onCall callables that must enforce a per-uid rate limit. Each entry
+   * asserts the callable imports its checker from publicRateLimit.js AND
+   * actually calls it, so a regression that drops the wiring fails the build
+   * rather than silently re-opening the abuse vector.
+   */
+  const CALLABLES_REQUIRING_UID_RATE_LIMIT: Array<{ exportedName: string; checker: string; module: string }> = [
+    { exportedName: "triggerVoIPCall", checker: "checkVoIPCallRateLimit", module: "callables/voipPush.ts" },
+    { exportedName: "searchKnowledge", checker: "checkKnowledgeSearchRateLimit", module: "callables/knowledgeSearch.ts" },
+    { exportedName: "submitAgentNotificationReply", checker: "checkAgentNotificationReplyRateLimit", module: "callables/agentNotifications.ts" },
+    { exportedName: "insightsHostedAnswer", checker: "checkHostedInsightsAnswerRateLimit", module: "insightsHostedAnswer.ts" },
+  ];
+
+  for (const entry of CALLABLES_REQUIRING_UID_RATE_LIMIT) {
+    it(`${entry.exportedName} imports and calls ${entry.checker}`, () => {
+      const source = readFileSync(resolve(SRC_DIR, entry.module), "utf8");
+
+      const importPattern = new RegExp(`import.*${entry.checker}.*from.*publicRateLimit`);
+      expect(importPattern.test(source), `${entry.module} must import ${entry.checker} from publicRateLimit`).toBe(true);
+
+      const callPattern = new RegExp(`(?:await\\s+)?${entry.checker}\\(`);
+      expect(callPattern.test(source), `${entry.module} must call ${entry.checker}`).toBe(true);
+    });
+  }
 });

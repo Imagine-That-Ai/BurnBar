@@ -12,6 +12,7 @@ use burnbar_remote_core::{
     SessionId, SessionMode, TimestampMicros, WorkspaceId,
 };
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+#[cfg(not(target_os = "windows"))]
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -980,12 +981,15 @@ fn append_audit_event(path: &Path, event: AuditEvent) -> Result<(), Authorizatio
 #[cfg(target_os = "windows")]
 struct WindowsAuditFileLock {
     path: PathBuf,
-    _file: File,
+    file: Option<File>,
 }
 
 #[cfg(target_os = "windows")]
 impl Drop for WindowsAuditFileLock {
     fn drop(&mut self) {
+        // Windows cannot unlink an open file. Close our handle before removing
+        // the sentinel so the next concurrent appender cannot inherit a stale lock.
+        drop(self.file.take());
         let _ = fs::remove_file(&self.path);
     }
 }
@@ -1007,10 +1011,17 @@ fn lock_windows_audit_file(audit_path: &Path) -> Result<WindowsAuditFileLock, Au
             Ok(file) => {
                 return Ok(WindowsAuditFileLock {
                     path: lock_path,
-                    _file: file,
+                    file: Some(file),
                 });
             }
-            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    ErrorKind::AlreadyExists | ErrorKind::PermissionDenied
+                ) =>
+            {
+                // Windows reports an open create-new sentinel as either
+                // AlreadyExists or PermissionDenied depending on share mode.
                 std::thread::sleep(Duration::from_millis(10));
             }
             Err(error) => return Err(AuthorizationError::AuditChain(error.to_string())),

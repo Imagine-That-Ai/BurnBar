@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import Foundation
 
 /// Canonical mapping of socket RPC methods to daemon handler domains.

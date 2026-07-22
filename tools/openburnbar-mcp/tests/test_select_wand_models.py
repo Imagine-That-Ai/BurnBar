@@ -65,3 +65,36 @@ def test_public_payload_json_drops_secret_like_public_values() -> None:
         "provider": "opencode",
         "source": "factory.customModels",
     }
+
+
+def test_partial_selection_does_not_wrap_missing_sibling_to_first_candidate() -> None:
+    payload = {
+        "status": "ok",
+        "requestedCount": 2,
+        "selectedCount": 1,
+        "reason": "insufficient_proven_candidates",
+        "selected": [{"arg": "proven-model", "provider": "openai"}],
+    }
+
+    first = _public_payload(payload, sibling_index=0)
+    missing = _public_payload(payload, sibling_index=1)
+
+    assert first["selectedForIndex"] is None
+    assert missing["selectedForIndex"] is None
+
+
+def test_complete_capped_selection_can_wrap_additional_siblings() -> None:
+    payload = {
+        "status": "ok",
+        "requestedCount": 2,
+        "selectedCount": 2,
+        "reason": None,
+        "selected": [
+            {"arg": "model-a", "provider": "openai"},
+            {"arg": "model-b", "provider": "anthropic"},
+        ],
+    }
+
+    wrapped = _public_payload(payload, sibling_index=3)
+
+    assert wrapped["selectedForIndex"] == {"arg": "model-b", "provider": "anthropic"}

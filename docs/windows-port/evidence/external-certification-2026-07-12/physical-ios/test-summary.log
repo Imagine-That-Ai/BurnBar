@@ -1,0 +1,21 @@
+Test Suite 'ScreenPrivacyGuardTests' passed at 2026-07-12 01:24:51.068.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+Test Suite 'ScreenShareAutoTypeFollowPolicyTests' started at 2026-07-12 01:24:51.068.
+Test Suite 'ScreenShareAutoTypeFollowPolicyTests' passed at 2026-07-12 01:24:51.071.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+Test Suite 'ScreenSharePiPControllerTests' started at 2026-07-12 01:24:51.071.
+Test Suite 'ScreenSharePiPControllerTests' passed at 2026-07-12 01:24:51.074.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'ScreenShareSmartTextDoubleTapTests' started at 2026-07-12 01:24:51.075.
+Test Suite 'ScreenShareSmartTextDoubleTapTests' passed at 2026-07-12 01:24:51.088.
+	 Executed 25 tests, with 0 failures (0 unexpected) in 0.009 (0.013) seconds
+Test Suite 'ScreenShareSmartZoomReducerTests' started at 2026-07-12 01:24:51.088.
+Test Suite 'ScreenShareSmartZoomReducerTests' passed at 2026-07-12 01:24:51.099.
+	 Executed 20 tests, with 0 failures (0 unexpected) in 0.007 (0.011) seconds
+Test Suite 'OpenBurnBarMobileTests.xctest' passed at 2026-07-12 01:24:51.099.
+	 Executed 114 tests, with 0 failures (0 unexpected) in 1.378 (1.413) seconds
+Test Suite 'Selected tests' passed at 2026-07-12 01:24:51.099.
+	 Executed 114 tests, with 0 failures (0 unexpected) in 1.378 (1.413) seconds
+Test session results, code coverage, and logs:
+** TEST SUCCEEDED **
+>>> Mobile test summary: outcome=passed attempts=1 exit=0

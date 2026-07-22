@@ -23,8 +23,11 @@ view-models for the placeholder tabs whose feature cores exist on `main`.
 | Account | `AccountSettingsViewModel` | `AccountSettingsView.swift` | OAuth credential gate (#1304) | Data-gated |
 | Cloud | `CloudSettingsViewModel` | `CloudStoreSettingsView.swift` | CloudSyncSettings + OAuth gate | Data-gated |
 | Devices & Sync | `DevicesAndSyncSettingsViewModel` | `DevicesAndSyncSettingsView.swift` | Device-trust host + OAuth gate | Data-gated |
+| Media & Sharing | `MercuryMediaSettingsViewModel` | Mercury media capability gate + `MediaSettingsView.swift` | Mercury entitlement/budget/quota gate | Data-gated |
 
-`Media` stays a placeholder (its Mercury core is deferred).
+The Media model is a real, fail-closed capability projection. Live capture,
+encoding, transport, and account entitlement remain explicit host/data gates;
+the model never reports a session as ready without those inputs.
 
 ## Conventions
 

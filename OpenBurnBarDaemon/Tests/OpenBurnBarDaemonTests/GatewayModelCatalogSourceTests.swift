@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 @testable import OpenBurnBarDaemon
 import Foundation
 import XCTest
@@ -174,5 +174,46 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
             formatFamily: .anthropic
         )
         XCTAssertNil(failure)
+    }
+
+    func test_retiredModelFailurePersistsAcrossStoreReload() async throws {
+        let healthURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-retired-model-health-\(UUID().uuidString).json")
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let route = BurnBarProviderRoute(
+            providerID: "ollama",
+            providerDisplayName: "Ollama Cloud",
+            credentialSlotID: "primary",
+            credentialSlotLabel: "Primary Ollama account",
+            baseURL: "https://ollama.com/api",
+            requestedModel: "retired-model",
+            resolvedModelID: "retired-model",
+            canonicalModelID: "retired-model",
+            apiKey: "ollama-test-key",
+            pricing: BurnBarModelPricing(inputPerMToken: 0, outputPerMToken: 0, cacheReadPerMToken: 0),
+            formatFamily: .openaiCompat
+        )
+        let store = BurnBarGatewayModelHealthStore(fileURL: healthURL, clock: { now })
+
+        await store.recordFailure(
+            modelID: "retired-model:cloud",
+            formatFamily: .openaiCompat,
+            route: route,
+            error: BurnBarProviderExecutorError.upstreamError(
+                410,
+                #"{"error":"retired-model was retired"}"#
+            )
+        )
+
+        let reloadedStore = BurnBarGatewayModelHealthStore(fileURL: healthURL, clock: { now })
+        let failure = await reloadedStore.activeFailure(
+            modelID: "retired-model:cloud",
+            providerID: "ollama",
+            accountID: "primary",
+            formatFamily: .openaiCompat
+        )
+        XCTAssertEqual(failure?.statusCode, 410)
+        XCTAssertEqual(failure?.blockedUntil, now.addingTimeInterval(24 * 60 * 60))
+        XCTAssertEqual(failure?.message.contains("retired-model was retired"), true)
     }
 }

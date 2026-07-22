@@ -1,6 +1,10 @@
 import XCTest
 import SwiftUI
 @testable import OpenBurnBarCore
+// P-16a (Core→OpenBurnBarUI, K4 Substrate): substrate system moved to OpenBurnBarUI.
+// @testable to reach substrate internals; `SubstrateCatalog` sites are qualified to
+// `OpenBurnBarUI.SubstrateCatalog` to skip the Kernel off-Apple stub Core re-exports.
+@testable import OpenBurnBarUI
 
 #if canImport(AppKit)
 import AppKit
@@ -19,7 +23,7 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
         guard let id = ProcessInfo.processInfo.environment["SUBSTRATE_PREVIEW_ID"] else {
             throw XCTSkip("set SUBSTRATE_PREVIEW_ID")
         }
-        guard let d = SubstrateCatalog.byID[id] ?? SubstrateCatalog.substrateList.first(where: { $0.id == id }) else {
+        guard let d = OpenBurnBarUI.SubstrateCatalog.byID[id] ?? OpenBurnBarUI.SubstrateCatalog.substrateList.first(where: { $0.id == id }) else {
             XCTFail("unknown substrate id \(id)")
             return
         }
@@ -54,7 +58,7 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
         let size = CGSize(width: 1512, height: 982)
         let dots = Self.realisticSwarmCloud(in: size, count: 1000)
         var rendered = 0
-        for d in SubstrateCatalog.substrateList where d.id != SubstrateCatalog.plainID {
+        for d in OpenBurnBarUI.SubstrateCatalog.substrateList where d.id != OpenBurnBarUI.SubstrateCatalog.plainID {
             let substrate = d.make()
             // The real Atelier backdrop is a FREE SWARM: isShapeMode=false,
             // formed=false, inShape=false. Render that exact regime so the
@@ -106,7 +110,7 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
 
         // one bespoke per family + the shared plain, both polarities
         var rendered = 0
-        for d in SubstrateCatalog.substrateList where d.id != SubstrateCatalog.plainID {
+        for d in OpenBurnBarUI.SubstrateCatalog.substrateList where d.id != OpenBurnBarUI.SubstrateCatalog.plainID {
             for dark in [true, false] {
                 let substrate = d.make()
                 let frame = Self.frame(dots: dots, size: size, dark: dark)
@@ -175,7 +179,7 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
         let size = CGSize(width: 1512, height: 982)
         let dots = Self.syntheticCloud(in: size)   // a recognizable formed mark
         var rendered = 0
-        for d in SubstrateCatalog.substrateList where d.id != SubstrateCatalog.plainID {
+        for d in OpenBurnBarUI.SubstrateCatalog.substrateList where d.id != OpenBurnBarUI.SubstrateCatalog.plainID {
             let substrate = d.make()
             // Big particles (sizePx ≈ 6) + dense shape-mode = the wallpaper condition.
             let frame = Self.frame(dots: dots, size: size, dark: true, shapeMode: true, sizePx: 6.0)

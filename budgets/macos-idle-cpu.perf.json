@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "reason": "Mechanical tripwire for macOS idle/occluded CPU recurrence (Perf §alarming-3). The 128–195% idle-CPU class has recurred twice (caught only socially); this gate asserts the backdrop/animation pause guard behavior so a future regression cannot merge silently.",
+  "gate": {
+    "type": "behavioral-assertion",
+    "scope": "macOS backdrop WebGL render-loop occlusion pause (KernelBackdropView → window.__setBackdropActive → setHostVisible → cancelAnimationFrame)",
+    "tripwireClass": "macos-idle-occlusion-gate",
+    "testTarget": "scripts/ci/macos-idle-occlusion-gate.test.mjs",
+    "swiftSeam": "AgentLens/Views/Dashboard/Components/KernelBackdropView.swift (OcclusionVisibilityPolicy)",
+    "swiftSeamTest": "AgentLensTests/Active/MacOSIdleOcclusionGateTests.swift",
+    "assertions": [
+      "JS bundle __setBackdropActive(false) cancels pending requestAnimationFrame and stops scheduling while hidden",
+      "JS bundle __setBackdropActive(true) resumes the rAF loop (new rAF scheduled)",
+      "JS bundle with cancelAnimationFrame gutted is caught (rAF not cancelled on occlusion)",
+      "Swift OcclusionVisibilityPolicy returns inactive for no-window and occluded states, active for visible",
+      "Fresh real OpenBurnBar process acknowledges the configured kernel and actual render-loop state before every CPU sample"
+    ]
+  },
+  "measurementLimitations": {
+    "actualCpuMeasurementInfeasible": false,
+    "reason": "The gate builds and launches a fresh DEBUG OpenBurnBar process, drives deterministic visible/minimized transitions through the performance-gate channel, requires acknowledgement from the embedded WKWebView engine, and samples cumulative process CPU with proc_pidinfo. Window minimization is the deterministic fully occluded path; partial overlap is not simulated.",
+    "localVerification": "The same scripts/ci/macos-idle-occlusion-gate.mjs command can be run against the fresh derived-data app on a real Mac; CI retains the versioned machine, process, transition, sample, and robust-statistic evidence."
+  },
+  "seededValues": {
+    "idleCpuPercentObserved": "128–195% on recurrence (socially caught, not CI-gated)",
+    "idleCpuPercentTarget": "<5% when occluded (backdrop rAF stopped)",
+    "existingBaselineIncreased": false,
+    "note": "This is a NEW budget for a NEW gate; no existing baseline was raised."
+  },
+  "trendPolicy": {
+    "name": "occlusion-pause-behavioral-ratchet",
+    "rule": "The behavioral tripwire must pass on every PR. If the occlusion guard is removed or weakened, the tripwire fails. The tripwire may only be relaxed with A5 (Alberto) sign-off and a written rationale in the PR body."
+  }
+}

@@ -78,7 +78,7 @@ public sealed class CloudSyncInsightSourceRuntimeTests
         {
             ClearSampleMode();
             var live = new DashboardUsageSummary(
-                SpendThisMonthUsd: 12.5,
+                TotalCostUsd: 12.5,
                 TotalTokens: 9001,
                 SessionCount: 3,
                 HasData: true,
@@ -162,7 +162,7 @@ public sealed class CloudSyncInsightSourceRuntimeTests
         {
             EnableSampleMode();
             var live = new DashboardUsageSummary(
-                SpendThisMonthUsd: 4.2,
+                TotalCostUsd: 4.2,
                 TotalTokens: 100,
                 SessionCount: 2,
                 HasData: true,
@@ -287,7 +287,7 @@ public sealed class CloudSyncInsightSourceRuntimeTests
             Assert.Contains(emptyCanvas.Widgets, w => w.Kind == InsightWidgetKind.KpiTile && w.Data is EmptyData);
 
             var live = new DashboardUsageSummary(
-                SpendThisMonthUsd: 42.5,
+                TotalCostUsd: 42.5,
                 TotalTokens: 1000,
                 SessionCount: 7,
                 HasData: true,

@@ -13,6 +13,9 @@ final class AppCommandRouter {
     static let shared = AppCommandRouter()
 
     var openDashboard: (() -> Void)?
+    /// Opens the dashboard directly on the Charts analytics page
+    /// (`openburnbar://charts`).
+    var openCharts: (() -> Void)?
     var openConversationSearch: (() -> Void)?
     var openChatPanel: (() -> Void)?
     var openSettings: (() -> Void)?
@@ -36,6 +39,9 @@ final class AppCommandRouter {
         switch target {
         case "dashboard":
             openDashboard?()
+            return true
+        case "charts":
+            openCharts?()
             return true
         case "search", "chat":
             openConversationSearch?()

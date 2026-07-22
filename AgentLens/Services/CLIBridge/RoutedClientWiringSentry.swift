@@ -32,7 +32,7 @@ final class RoutedClientWiringSentry {
 
     // MARK: - Configuration
 
-    struct Configuration {
+    struct Configuration: Sendable {
         /// Debounce window for FS event bursts. Atomic rename-replace writes
         /// emit several events back-to-back; we wait this long after the last
         /// one before re-checking the file.
@@ -61,14 +61,14 @@ final class RoutedClientWiringSentry {
 
     // MARK: - State
 
-    private let configuration: Configuration
+    private nonisolated let configuration: Configuration
     private let wiringFactory: () -> RoutingClientWiring
     private let advertisedModelsProvider: @MainActor @Sendable (
         _ gateway: RoutingClientGateway,
         _ target: RoutingClientWiringTarget
     ) async -> [RoutingClientAdvertisedModel]
     private let logger: AppLogger
-    private let queue: DispatchQueue
+    private nonisolated let queue: DispatchQueue
 
     private weak var settingsManager: SettingsManager?
 
@@ -259,7 +259,10 @@ final class RoutedClientWiringSentry {
         ])
     }
 
-    private func makeWatcher(at url: URL, target: RoutingClientWiringTarget) -> Watcher? {
+    /// Dispatch invokes file-system handlers on `queue`, not the main actor.
+    /// Keeping this factory nonisolated prevents Swift from attaching the
+    /// enclosing type's `@MainActor` precondition to the handler closure.
+    private nonisolated func makeWatcher(at url: URL, target: RoutingClientWiringTarget) -> Watcher? {
         let descriptor = url.withUnsafeFileSystemRepresentation { path -> Int32 in
             guard let path else { return -1 }
             return open(path, O_EVTONLY)

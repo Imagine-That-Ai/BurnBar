@@ -1,0 +1,348 @@
+{
+  "description": "Annotated, exact-set schema divergence baseline for scripts/check-migrator-parity.mjs. Every entry is an intentional, explained divergence between the canonical Swift migrator endpoint schema (OpenBurnBarCore/Sources/OpenBurnBarData) and a mirror surface. New divergences and stale entries both fail CI; keep reasons real.",
+  "updateCommand": "node scripts/check-migrator-parity.mjs --update-baseline",
+  "migrationEndpoint": "v56_parser_checkpoint_file_manifest",
+  "migrationCount": 57,
+  "divergences": [
+    {
+      "key": "windows:missing-table:agent_memories",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table agent_memories belongs to chat-memory authority (v51-v53), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:artifact_permissions",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table artifact_permissions belongs to cross-device sync + artifact registry (v15-v17/v22/v30/v33), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:audit_events",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table audit_events belongs to cross-device sync + artifact registry (v15-v17/v22/v30/v33), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:backfill_cursors",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table backfill_cursors belongs to cross-device sync + artifact registry (v15-v17/v22/v30/v33), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:chunk_embeddings",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table chunk_embeddings belongs to local-search substrate (v14/v21/v31/v34), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:code_artifacts",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table code_artifacts belongs to project code memory (v50), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:code_call_edges",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table code_call_edges belongs to project code memory (v50), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:code_diagnostics_cache",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table code_diagnostics_cache belongs to project code memory (v50), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:code_index_checkpoints",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table code_index_checkpoints belongs to project code memory (v50), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:code_references",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table code_references belongs to project code memory (v50), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:code_symbols",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table code_symbols belongs to project code memory (v50), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:controller_runtime_cache",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table controller_runtime_cache belongs to parser checkpoints / operating history / controller cache (v25/v26/v29), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:devices",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table devices belongs to cross-device sync + artifact registry (v15-v17/v22/v30/v33), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:embedding_models",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table embedding_models belongs to local-search substrate (v14/v21/v31/v34), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:embedding_versions",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table embedding_versions belongs to local-search substrate (v14/v21/v31/v34), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:memory_audit",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table memory_audit belongs to chat-memory authority (v51-v53), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:memory_body_snapshots",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table memory_body_snapshots belongs to chat-memory authority (v51-v53), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:memory_embedding_refs",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table memory_embedding_refs belongs to chat-memory authority (v51-v53), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:memory_extraction_jobs",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table memory_extraction_jobs belongs to chat-memory authority (v51-v53), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:memory_fact_tombstones",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table memory_fact_tombstones belongs to chat-memory authority (v51-v53), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:memory_provenance",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table memory_provenance belongs to chat-memory authority (v51-v53), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:memory_source_tombstones",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table memory_source_tombstones belongs to chat-memory authority (v51-v53), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:operating_action_history",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table operating_action_history belongs to parser checkpoints / operating history / controller cache (v25/v26/v29), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:pcm_file_manifest",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table pcm_file_manifest belongs to project code memory (v50), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:pcm_project_aliases",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table pcm_project_aliases belongs to project code memory (v50), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:pcm_projects",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table pcm_projects belongs to project code memory (v50), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:project_memory_snapshots",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table project_memory_snapshots belongs to summaries/memory snapshots (v4/v18/v39), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:projection_jobs",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table projection_jobs belongs to local-search substrate (v14/v21/v31/v34), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:provider_accounts",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table provider_accounts belongs to provider accounts (v35), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:provider_quota_snapshots",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table provider_quota_snapshots belongs to provider quota snapshots (v54), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it. The journal still marks v54 applied so a transferred-back DB is not misread as pre-v54; Windows must create this table before it ships quota snapshot writes."
+    },
+    {
+      "key": "windows:missing-table:remote_sync_watermarks",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table remote_sync_watermarks belongs to cross-device sync + artifact registry (v15-v17/v22/v30/v33), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:retrieval_health",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table retrieval_health belongs to local-search substrate (v14/v21/v31/v34), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:search_chunks",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table search_chunks belongs to local-search substrate (v14/v21/v31/v34), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:search_chunks_fts",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table search_chunks_fts belongs to local-search substrate (v14/v21/v31/v34), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:search_documents",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table search_documents belongs to local-search substrate (v14/v21/v31/v34), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:search_documents_fts",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table search_documents_fts belongs to local-search substrate (v14/v21/v31/v34), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:shared_artifact_sync_state",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table shared_artifact_sync_state belongs to cross-device sync + artifact registry (v15-v17/v22/v30/v33), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:source_artifacts",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table source_artifacts belongs to cross-device sync + artifact registry (v15-v17/v22/v30/v33), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:summary_runs",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table summary_runs belongs to summaries/memory snapshots (v4/v18/v39), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:text_expansion_snippets",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table text_expansion_snippets belongs to text expansion snippets (v43), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it. NOTE: TextExpansionSnippetWriteSeam.cs already reads/writes this table, so it only works on Mac-transferred databases; a fresh Windows-provisioned DB lacks it. Port the CREATE TABLE (+ text_expansion_snippets_trigger_active_idx) when the seam ships to fresh installs."
+    },
+    {
+      "key": "windows:missing-table:vector_index_snapshots",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table vector_index_snapshots belongs to local-search substrate (v14/v21/v31/v34), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:extra-table:app_state",
+      "reason": "Windows-only key/value store used by SqlCipherElderWandPersistence (Elder Wand presets) and ElderWandPresetWriteSeam. No Mac counterpart in the migrator; Mac keeps this state outside the GRDB store. Windows-only additive table, invisible to Mac readers."
+    },
+    {
+      "key": "windows:extra-table:chat_retrieval_events",
+      "reason": "Windows-only diagnostics table (chat_retrieval_events) written by the Windows chat pipeline (ChatConversationStore). Additive-only: Mac ignores unknown tables when opening a transferred DB. Fold into the Swift migrator if/when Mac grows the same telemetry."
+    },
+    {
+      "key": "windows:extra-table:chat_stream_failures",
+      "reason": "Windows-only diagnostics table (chat_stream_failures) written by the Windows chat pipeline (ChatConversationStore). Additive-only: Mac ignores unknown tables when opening a transferred DB. Fold into the Swift migrator if/when Mac grows the same telemetry."
+    },
+    {
+      "key": "windows:table:chat_messages:extra-columns:backend,errorKind,errorMessage,isStreaming,metadata,modelUsed,retrievalStateJSON",
+      "reason": "Windows chat pipeline stores additional per-chat_message fields (backend/error/streaming metadata) that Mac keeps in transcriptPiecesJSON/attachments or in memory. Additive-only columns on a Windows-created DB; Mac decoders ignore unknown columns."
+    },
+    {
+      "key": "windows:table:chat_threads:extra-columns:backend,projectPath,sessionId,title",
+      "reason": "Windows chat pipeline stores additional per-chat_thread fields (backend/error/streaming metadata) that Mac keeps in transcriptPiecesJSON/attachments or in memory. Additive-only columns on a Windows-created DB; Mac decoders ignore unknown columns."
+    },
+    {
+      "key": "windows:table:conversations:missing-columns:assistantWordCount,conversationSyncedAt,endTime,fileModifiedAt,isRemote,keyCommands,keyFiles,keyTools,lastAssistantMessage,logSyncedAt,sourceDeviceId,sourceDeviceName,sourceType,startTime,summary,summaryAttemptedAt,summaryModel,summaryProvider,summaryTitle,summaryUpdatedAt,userWordCount,version",
+      "reason": "Windows provisions the conversation-transfer subset only: the sync/summary/word-count/key-* columns are Mac-side derived metadata the Windows read seams never touch. A Mac-transferred DB carries the full column set; fresh Windows DBs stay Windows-local until the sync engine is ported, so no Mac reader ever sees the narrow shape."
+    },
+    {
+      "key": "windows:table:token_usage:missing-columns:syncedAt",
+      "reason": "token_usage.syncedAt is Mac cloud-sync bookkeeping (v22 cross-device sync); the Windows port has no sync engine yet and its write seams never populate it. Add the column with the sync engine port."
+    },
+    {
+      "key": "windows:missing-index:budget_events_kind_idx",
+      "reason": "Mac performance/lookup index budget_events_kind_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:budget_events_rule_idx",
+      "reason": "Mac performance/lookup index budget_events_rule_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:budget_events_synced_idx",
+      "reason": "Mac performance/lookup index budget_events_synced_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:budget_rules_project_idx",
+      "reason": "Mac performance/lookup index budget_rules_project_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:budget_rules_provider_account_idx",
+      "reason": "Mac performance/lookup index budget_rules_provider_account_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:budget_rules_scope_idx",
+      "reason": "Mac performance/lookup index budget_rules_scope_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:budget_rules_synced_idx",
+      "reason": "Mac performance/lookup index budget_rules_synced_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:chat_threads_on_updatedAt",
+      "reason": "Mac performance/lookup index chat_threads_on_updatedAt is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:conversations_deleted_idx",
+      "reason": "Mac performance/lookup index conversations_deleted_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:conversations_on_provider",
+      "reason": "Mac performance/lookup index conversations_on_provider is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:conversations_on_sessionId",
+      "reason": "Mac performance/lookup index conversations_on_sessionId is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:switcher_profiles_deterministic_order_idx",
+      "reason": "Mac performance/lookup index switcher_profiles_deterministic_order_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:switcher_profiles_on_sortKey",
+      "reason": "Mac performance/lookup index switcher_profiles_on_sortKey is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:switcher_profiles_on_targetKind",
+      "reason": "Mac performance/lookup index switcher_profiles_on_targetKind is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:token_usage_account_time_idx",
+      "reason": "Mac performance/lookup index token_usage_account_time_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:token_usage_on_provider",
+      "reason": "Mac performance/lookup index token_usage_on_provider is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:token_usage_on_sessionId",
+      "reason": "Mac performance/lookup index token_usage_on_sessionId is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:token_usage_on_startTime",
+      "reason": "Mac performance/lookup index token_usage_on_startTime is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:token_usage_parent_request_idx",
+      "reason": "Mac performance/lookup index token_usage_parent_request_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:token_usage_provider_account_idx",
+      "reason": "Mac performance/lookup index token_usage_provider_account_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:token_usage_provider_id_time_idx",
+      "reason": "Mac performance/lookup index token_usage_provider_id_time_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:token_usage_provider_model_time_idx",
+      "reason": "Mac performance/lookup index token_usage_provider_model_time_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:token_usage_provider_time_idx",
+      "reason": "Mac performance/lookup index token_usage_provider_time_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:token_usage_sync_pending_idx",
+      "reason": "Mac performance/lookup index token_usage_sync_pending_idx is not mirrored by Windows fresh-install provisioning; Windows query volume on these tables is far lower (no background reindex/sync loops). Indexes are additive and can be created when the corresponding Windows query paths land; absence affects performance only, never correctness or data compatibility."
+    },
+    {
+      "key": "windows:missing-index:token_usage_unique_session_model_device_account_idx",
+      "reason": "REAL NAMING DRIFT, semantically patched: Windows creates the same COALESCE(sourceDeviceId,'') + COALESCE(providerAccountID,'') unique index but under the v12-era name token_usage_unique_session_model_idx (see windows:extra-index entry). Uniqueness semantics match the Mac v28 endpoint; the NAME does not, so schema-hash byte-compat over a fresh Windows DB would fail. Rename on Windows next time the provisioner schema is revved."
+    },
+    {
+      "key": "windows:extra-index:budget_events_rule_time_idx",
+      "reason": "Windows-authored performance index budget_events_rule_time_idx with no Mac counterpart of the same name (Mac either uses a GRDB .indexed() auto-name or has no index here). Additive-only; harmless to Mac readers, but rename to the Mac name if the same index ships in the Swift migrator."
+    },
+    {
+      "key": "windows:extra-index:budget_rules_enabled_idx",
+      "reason": "Windows-authored performance index budget_rules_enabled_idx with no Mac counterpart of the same name (Mac either uses a GRDB .indexed() auto-name or has no index here). Additive-only; harmless to Mac readers, but rename to the Mac name if the same index ships in the Swift migrator."
+    },
+    {
+      "key": "windows:extra-index:chat_messages_timestamp_idx",
+      "reason": "Windows-authored performance index chat_messages_timestamp_idx with no Mac counterpart of the same name (Mac either uses a GRDB .indexed() auto-name or has no index here). Additive-only; harmless to Mac readers, but rename to the Mac name if the same index ships in the Swift migrator."
+    },
+    {
+      "key": "windows:extra-index:chat_retrieval_events_message_idx",
+      "reason": "Windows-authored performance index chat_retrieval_events_message_idx with no Mac counterpart of the same name (Mac either uses a GRDB .indexed() auto-name or has no index here). Additive-only; harmless to Mac readers, but rename to the Mac name if the same index ships in the Swift migrator."
+    },
+    {
+      "key": "windows:extra-index:chat_stream_failures_thread_idx",
+      "reason": "Windows-authored performance index chat_stream_failures_thread_idx with no Mac counterpart of the same name (Mac either uses a GRDB .indexed() auto-name or has no index here). Additive-only; harmless to Mac readers, but rename to the Mac name if the same index ships in the Swift migrator."
+    },
+    {
+      "key": "windows:extra-index:chat_threads_updated_idx",
+      "reason": "Windows-authored performance index chat_threads_updated_idx with no Mac counterpart of the same name (Mac either uses a GRDB .indexed() auto-name or has no index here). Additive-only; harmless to Mac readers, but rename to the Mac name if the same index ships in the Swift migrator."
+    },
+    {
+      "key": "windows:extra-index:conversations_indexed_at_idx",
+      "reason": "Windows-authored performance index conversations_indexed_at_idx with no Mac counterpart of the same name (Mac either uses a GRDB .indexed() auto-name or has no index here). Additive-only; harmless to Mac readers, but rename to the Mac name if the same index ships in the Swift migrator."
+    },
+    {
+      "key": "windows:extra-index:switcher_active_provider_idx",
+      "reason": "Windows-authored performance index switcher_active_provider_idx with no Mac counterpart of the same name (Mac either uses a GRDB .indexed() auto-name or has no index here). Additive-only; harmless to Mac readers, but rename to the Mac name if the same index ships in the Swift migrator."
+    },
+    {
+      "key": "windows:extra-index:switcher_profiles_sort_idx",
+      "reason": "Windows-authored performance index switcher_profiles_sort_idx with no Mac counterpart of the same name (Mac either uses a GRDB .indexed() auto-name or has no index here). Additive-only; harmless to Mac readers, but rename to the Mac name if the same index ships in the Swift migrator."
+    },
+    {
+      "key": "windows:extra-index:token_usage_created_at_idx",
+      "reason": "Windows-authored performance index token_usage_created_at_idx with no Mac counterpart of the same name (Mac either uses a GRDB .indexed() auto-name or has no index here). Additive-only; harmless to Mac readers, but rename to the Mac name if the same index ships in the Swift migrator."
+    },
+    {
+      "key": "windows:extra-index:token_usage_session_idx",
+      "reason": "Windows-authored performance index token_usage_session_idx with no Mac counterpart of the same name (Mac either uses a GRDB .indexed() auto-name or has no index here). Additive-only; harmless to Mac readers, but rename to the Mac name if the same index ships in the Swift migrator."
+    },
+    {
+      "key": "windows:extra-index:token_usage_unique_session_model_idx",
+      "reason": "Counterpart of the token_usage_unique_session_model_device_account_idx naming drift: same unique COALESCE expression as the Mac v28 endpoint index but under the old v12 name. See the missing-index entry for the remediation path."
+    }
+  ]
+}

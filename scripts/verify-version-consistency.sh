@@ -19,6 +19,19 @@ elif [[ -n "$requested_version" ]]; then
   echo "PASS: requested release version"
 fi
 
+# Windows has an independent release tag/version line. A Windows release must
+# match the Win32 identity exactly without falsely advancing the macOS, mobile,
+# daemon, extension, or public legal-release metadata.
+requested_windows_version="${OPENBURNBAR_EXPECTED_WINDOWS_VERSION:-}"
+if [[ -n "$requested_windows_version" ]]; then
+  if ! [[ "$requested_windows_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "FAIL: requested Windows release version '$requested_windows_version' is not X.Y.Z" >&2
+    fail=1
+  else
+    echo "Requested Windows release version: $requested_windows_version"
+  fi
+fi
+
 check() {
   local file="$1"
   local pattern="$2"
@@ -47,16 +60,29 @@ homebrew_version="$(sed -nE 's/^[[:space:]]*version "([^"]+)".*/\1/p' "$homebrew
 homebrew_sha="$(sed -nE 's/^[[:space:]]*sha256 "([^"]+)".*/\1/p' "$homebrew_file" | head -1 || true)"
 placeholder_sha="0000000000000000000000000000000000000000000000000000000000000000"
 require_current_homebrew="${OPENBURNBAR_REQUIRE_CURRENT_HOMEBREW_CASK:-0}"
-if [[ "${GITHUB_REF_TYPE:-}" == "tag" || "${GITHUB_REF:-}" =~ refs/tags/ ]]; then
+tag_name=""
+if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+  tag_name="${GITHUB_REF_NAME:-}"
+elif [[ "${GITHUB_REF:-}" =~ ^refs/tags/(.+)$ ]]; then
+  tag_name="${BASH_REMATCH[1]}"
+fi
+# A Windows release tag must not block on the macOS-only Homebrew cask. The
+# Windows gate below enforces the Windows app identity independently; the
+# macOS release workflow still requires the cask on ordinary v* tags.
+if [[ -n "$tag_name" && "$tag_name" != windows-v* ]]; then
   require_current_homebrew=1
 fi
 if [[ -z "$homebrew_version" ]]; then
   echo "FAIL: Homebrew cask — version not found in $homebrew_file" >&2
   fail=1
 elif [[ "$homebrew_version" == "$expected_version" && "$homebrew_sha" == "$placeholder_sha" ]]; then
-  echo "FAIL: Homebrew cask — version '$expected_version' still has placeholder sha256 in $homebrew_file" >&2
-  echo "      Run scripts/update-homebrew.sh $expected_version after the notarized DMG exists." >&2
-  fail=1
+  if [[ "$require_current_homebrew" == "1" ]]; then
+    echo "FAIL: Homebrew cask — version '$expected_version' still has placeholder sha256 in $homebrew_file" >&2
+    echo "      Run scripts/update-homebrew.sh $expected_version after the notarized DMG exists." >&2
+    fail=1
+  else
+    echo "PASS: Homebrew cask deferred (version '$expected_version' has no DMG checksum until the macOS release exists)"
+  fi
 elif [[ "$homebrew_version" != "$expected_version" ]]; then
   if [[ "$require_current_homebrew" == "1" ]]; then
     echo "FAIL: Homebrew cask — expected '$expected_version', found '$homebrew_version' in $homebrew_file" >&2
@@ -75,13 +101,15 @@ check "$repo_root/SECURITY.md" '.*repo metadata \(`([^`]+)`.*' "SECURITY.md supp
 # ── Windows direct-download channel (deferred until the Windows release ships) ──
 # The WinUI app identity version lives in windows/app/OpenBurnBar.App/app.manifest
 # (assemblyIdentity version="A.B.C.D"). It is compared on its first three components against
-# the macOS marketing version. Like the Homebrew cask, it is DEFERRED (pass with a notice)
+# the requested Windows release version when supplied, otherwise the macOS marketing version.
+# Like the Homebrew cask, it is DEFERRED (pass with a notice)
 # until the Windows channel actually ships — the Windows app needs the W0 Authenticode cert +
-# a Windows build host first — and becomes REQUIRED at tag time or when
+# a Windows build host first — and becomes REQUIRED for windows-v* tags or when
 # OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION=1.
 windows_manifest="$repo_root/windows/app/OpenBurnBar.App/app.manifest"
 require_current_windows="${OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION:-0}"
-if [[ "${GITHUB_REF_TYPE:-}" == "tag" || "${GITHUB_REF:-}" =~ refs/tags/ ]]; then
+windows_expected_version="${requested_windows_version:-$expected_version}"
+if [[ "$tag_name" == windows-v* ]]; then
   require_current_windows=1
 fi
 if [[ ! -f "$windows_manifest" ]]; then
@@ -95,14 +123,14 @@ else
   if [[ -z "$windows_version_core" ]]; then
     echo "FAIL: Windows app manifest — assemblyIdentity version not found in $windows_manifest" >&2
     fail=1
-  elif [[ "$windows_version_core" == "$expected_version" ]]; then
+  elif [[ "$windows_version_core" == "$windows_expected_version" ]]; then
     echo "PASS: Windows app manifest"
   elif [[ "$require_current_windows" == "1" ]]; then
-    echo "FAIL: Windows app manifest — expected '$expected_version', found '$windows_version_core' in $windows_manifest" >&2
-    echo "      Bump the assemblyIdentity version to ${expected_version}.0 when cutting the Windows release." >&2
+    echo "FAIL: Windows app manifest — expected '$windows_expected_version', found '$windows_version_core' in $windows_manifest" >&2
+    echo "      Bump the assemblyIdentity version to ${windows_expected_version}.0 when cutting the Windows release." >&2
     fail=1
   else
-    echo "PASS: Windows app manifest deferred (currently '$windows_version_core'; bump to v$expected_version when the Windows channel ships)"
+    echo "PASS: Windows app manifest deferred (currently '$windows_version_core'; align with v$windows_expected_version when cutting that Windows release)"
   fi
 fi
 

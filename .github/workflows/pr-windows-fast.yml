@@ -6,6 +6,7 @@ name: PR Windows Fast Gate
 # change.
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
@@ -72,7 +73,7 @@ jobs:
           echo "${changed}"
 
           if echo "${changed}" | grep -Eq \
-            '^(windows/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh|docs/windows-port/|scripts/ci/verify-windows-parity-ledger|scripts/windows-port/)'; then
+            '^(windows/|crates/openburnbar-domain-core/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh|docs/windows-port/|scripts/ci/verify-windows-parity-ledger|scripts/windows-port/)'; then
             echo "windows=true" >> "$GITHUB_OUTPUT"
             echo "Windows surface changed: running the skeleton, x64, and parity ledger lanes."
           else
@@ -141,6 +142,11 @@ jobs:
             8.0.x
             10.0.x
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.96.0"
+
       - name: Verify Windows solution
         run: |
           if (-not (Test-Path "windows/OpenBurnBar.sln")) {
@@ -150,17 +156,92 @@ jobs:
 
       - name: Parse physical certification PowerShell
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path "scripts/windows-port/run-physical-release-certification.ps1"),
-            [ref]$tokens,
-            [ref]$errors) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            throw "Physical certification PowerShell has parse errors."
+          $scripts = @(
+            "scripts/windows-port/new-physical-hardware-attestation.ps1",
+            "scripts/windows-port/new-release-certification-supplemental-receipt.ps1",
+            "scripts/windows-port/publish-staging-remote-config-fixture.ps1",
+            "scripts/windows-port/remote-config-http.psm1",
+            "scripts/windows-port/test-staging-runtime-safety-fixture.ps1",
+            "scripts/windows-port/run-ui-automation.ps1",
+            "scripts/windows-port/run-physical-release-certification.ps1"
+          )
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $script),
+              [ref]$tokens,
+              [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$script`: $($_.Message)" }
+              throw "Physical certification PowerShell has parse errors: $script"
+            }
+            Write-Host "PowerShell parse OK: $script"
           }
-          Write-Host "Physical certification PowerShell parsed successfully."
+
+      - name: Test Remote Config unquoted ETag handling
+        run: |
+          Import-Module "./scripts/windows-port/remote-config-http.psm1" -Force
+          $response = [System.Net.Http.HttpResponseMessage]::new(
+            [System.Net.HttpStatusCode]::OK
+          )
+          try {
+            if (-not $response.Headers.TryAddWithoutValidation(
+              "ETag",
+              "etag-1079930549647-1")) {
+              throw "Unable to construct the Firebase ETag regression fixture."
+            }
+            if ($null -ne $response.Headers.ETag) {
+              throw "Regression fixture unexpectedly parsed as an RFC-compliant typed ETag."
+            }
+            $actual = Get-RemoteConfigETag $response
+            if ($actual -cne "etag-1079930549647-1") {
+              throw "Unquoted Firebase ETag was not preserved: '$actual'."
+            }
+            Write-Host "Remote Config unquoted ETag parser PASS."
+          }
+
+          finally {
+            $response.Dispose()
+          }
+
+      - name: Validate staging Remote Config certification fixtures
+        run: |
+          $publisher = "scripts/windows-port/publish-staging-remote-config-fixture.ps1"
+          foreach ($fixture in @("Baseline", "ComputerKill", "MediaKill", "MalformedSystem")) {
+            $result = & $publisher -Fixture $fixture -ValidateOnly | ConvertFrom-Json
+            if (-not $result.payloadValidated -or $result.mutationAttempted) {
+              throw "Fixture validation was not side-effect free: $fixture"
+            }
+          }
+          $malformed = & $publisher -Fixture MalformedSystem -ValidateOnly | ConvertFrom-Json
+          $system = @($malformed.overriddenParameters | Where-Object { $_.name -ceq "computer_use_system_enabled" })
+          if ($system.Count -ne 1 -or
+              $system[0].valueType -cne "STRING" -or
+              $system[0].valueSha256 -cne "20e6695ec9d873ae768f6ceffd4500ba2ffc6bc7e123389cf143d7caae21ae69") {
+            throw "MalformedSystem must publish its invalid value as STRING."
+          }
+
+      - name: Smoke supplemental certification templates
+        run: |
+          $catalog = Get-Content -Raw "scripts/windows-port/release-certification-protocols.json" | ConvertFrom-Json
+          $outputRoot = Join-Path $env:RUNNER_TEMP ("certification-protocol-" + [Guid]::NewGuid().ToString("N"))
+          $tool = Resolve-Path "scripts/windows-port/new-release-certification-supplemental-receipt.ps1"
+          foreach ($gateProperty in $catalog.gates.PSObject.Properties) {
+            $gate = [string]$gateProperty.Name
+            $resultsPath = Join-Path $outputRoot ($gate + ".json")
+            & $tool -Gate $gate -ResultsPath $resultsPath -Initialize
+            $results = Get-Content -Raw $resultsPath | ConvertFrom-Json
+            $profileName = [string]$gateProperty.Value.profile
+            $profile = $catalog.profiles.PSObject.Properties[$profileName].Value
+            if ($results.schema -ne "openburnbar.windows.release-certification-protocol-results.v1" -or
+                $results.gate -ne $gate -or
+                @($results.assertions).Count -ne @($profile.assertions).Count -or
+                @($results.assertions | Where-Object { $_.status -ne "NOT_RUN" }).Count -ne 0) {
+              throw "Supplemental certification template smoke failed: $gate"
+            }
+            Write-Host "Supplemental template OK: $gate ($(@($results.assertions).Count) assertions)"
+          }
 
       - name: Restore Windows solution
         run: dotnet restore windows/OpenBurnBar.sln
@@ -176,10 +257,40 @@ jobs:
             throw "NuGet vulnerability audit found vulnerable packages."
           }
 
+      - name: Build native shared domain core
+        run: cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
+
       - name: Build Windows solution
         run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=x64
 
+      - name: Verify usage-scan worker staging
+        run: |
+          $appOutputRoot = "windows/app/OpenBurnBar.App/bin/x64/Debug"
+          $workers = @(
+            Get-ChildItem -Path $appOutputRoot -Recurse -File -Filter "OpenBurnBar.Cli.exe"
+          )
+          if ($workers.Count -eq 0) {
+            throw "The normal Windows app build did not stage OpenBurnBar.Cli.exe."
+          }
+          $requiredWorkerFiles = @(
+            "OpenBurnBar.Cli.exe",
+            "OpenBurnBar.Cli.dll",
+            "OpenBurnBar.Cli.deps.json",
+            "OpenBurnBar.Cli.runtimeconfig.json"
+          )
+          foreach ($worker in $workers) {
+            foreach ($requiredWorkerFile in $requiredWorkerFiles) {
+              $candidate = Join-Path $worker.DirectoryName $requiredWorkerFile
+              if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                throw "The normal Windows app build is missing usage-scan worker artifact: $candidate"
+              }
+            }
+            Write-Host "Usage-scan worker staged beside app output: $($worker.DirectoryName)"
+          }
+
       - name: Run Windows test suite
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
         run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-pr-x64.trx" --results-directory TestResults-x64
 
       - name: Upload Windows test results
@@ -209,10 +320,14 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: XAML token discipline (Aurora/macOS parity — no raw colors or fonts outside Theme/)
+        run: bash scripts/windows-port/check-xaml-token-discipline.sh
+
       - name: Validate physical certification harness contract
         run: |
           node scripts/windows-port/test-validate-release-certification-evidence.mjs
           node scripts/windows-port/test-physical-release-certification.mjs
+          node scripts/windows-port/test-stage-exact-candidate-rehearsal.mjs
 
       - name: Install PyYAML for ledger scanner
         run: python3 -m pip install --user 'pyyaml>=6,<7'

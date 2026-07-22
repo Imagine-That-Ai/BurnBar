@@ -9,6 +9,7 @@ import {
   sanitizeHermesCapabilities,
   validateHermesEndpointURL,
 } from "../lib/hermes.js";
+import { assertConsolidatedServerOnlyCollection } from "../../scripts/lib/firestore-rules-contract.mjs";
 
 function assertHttpsError(fn, code) {
   assert.throws(fn, (err) => err?.code === code);
@@ -48,7 +49,10 @@ assert.equal(validateHermesEndpointURL(undefined, "relayLink"), undefined);
 assertHttpsError(() => validateHermesEndpointURL(undefined, "directURL"), "invalid-argument");
 assertHttpsError(() => validateHermesEndpointURL("http://8.8.8.8:8642", "directURL"), "invalid-argument");
 assertHttpsError(() => validateHermesEndpointURL("https://token@example.com", "directURL"), "invalid-argument");
-assertHttpsError(() => validateHermesEndpointURL("https://hermes.example.com?api_key=secret", "directURL"), "invalid-argument");
+assertHttpsError(
+  () => validateHermesEndpointURL("https://hermes.example.com?api_key=secret", "directURL"),
+  "invalid-argument",
+);
 assertHttpsError(() => validateHermesEndpointURL("ftp://hermes.example.com", "directURL"), "invalid-argument");
 
 assert.equal(parseHermesPlatform("ios"), "ios");
@@ -56,39 +60,50 @@ assert.equal(parseHermesPlatform("ipados"), "ipados");
 assert.equal(parseHermesPlatform(undefined), undefined);
 assertHttpsError(() => parseHermesPlatform("desktop"), "invalid-argument");
 
-const noisyCapabilities = [" chat_completions ", "", 123, "x".repeat(65), ...Array.from({ length: 40 }, (_, i) => `cap_${i}`)];
+const noisyCapabilities = [
+  " chat_completions ",
+  "",
+  123,
+  "x".repeat(65),
+  ...Array.from({ length: 40 }, (_, i) => `cap_${i}`),
+];
 const capabilities = sanitizeHermesCapabilities(noisyCapabilities);
 assert.equal(capabilities[0], "chat_completions");
 assert.equal(capabilities.includes(""), false);
-assert.equal(capabilities.some((item) => item.length > 64), false);
+assert.equal(
+  capabilities.some((item) => item.length > 64),
+  false,
+);
 assert.equal(capabilities.length, 32);
 
-assert.equal(isHermesConnectionDoc({
-  id: "hermes_1",
-  displayName: "Hermes",
-  mode: "directURL",
-  status: "online",
-  capabilities: ["chat_completions"],
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  schemaVersion: 1,
-}), true);
+assert.equal(
+  isHermesConnectionDoc({
+    id: "hermes_1",
+    displayName: "Hermes",
+    mode: "directURL",
+    status: "online",
+    capabilities: ["chat_completions"],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    schemaVersion: 1,
+  }),
+  true,
+);
 assert.equal(isHermesConnectionDoc({ id: "partial", status: "revoked" }), false);
 
 const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8");
 for (const collection of ["hermes_pairings", "hermes_session_cache", "hermes_audit_events"]) {
-  const start = rules.indexOf(`match /users/{userId}/${collection}/`);
-  assert.notEqual(start, -1, `${collection} rules block must exist`);
-  const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
-  assert.match(block, /allow write: if false;/, `${collection} must be server-only for writes`);
-  assert.doesNotMatch(block, /ownerWritableNonSecret/, `${collection} must not use client-writable helper`);
+  assertConsolidatedServerOnlyCollection(rules, collection);
 }
 {
   const start = rules.indexOf("match /users/{userId}/hermes_connections/");
   assert.notEqual(start, -1, "hermes_connections rules block must exist");
   const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
   assert.match(block, /allow create: if relayConnectionWrite\(userId, connectionId\);/);
-  assert.match(block, /allow update: if relayConnectionWrite\(userId, connectionId\) && resource\.data\.mode == "relayLink";/);
+  assert.match(
+    block,
+    /allow update: if relayConnectionWrite\(userId, connectionId\) && resource\.data\.mode == "relayLink";/,
+  );
   assert.match(rules, /function hasActiveHostedQuotaEntitlement\(userId\)/);
   assert.match(rules, /"com\.openburnbar\.hostedQuotaSync\.cloud\.monthly"/);
   assert.match(rules, /"com\.openburnbar\.pro\.monthly"/);
@@ -96,7 +111,10 @@ for (const collection of ["hermes_pairings", "hermes_session_cache", "hermes_aud
   assert.match(rules, /entitlement\.expireAt > request\.time/);
   assert.match(rules, /request\.resource\.data\.mode == "relayLink"/);
   assert.match(rules, /request\.resource\.data\.id == connectionId/);
-  assert.match(rules, /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"advertisedModel"[\s\S]*"relayPublicKey"[\s\S]*"relayEncryption"[\s\S]*"realtimeRelayURL"[\s\S]*"realtimeRelayLastSeenAt"[\s\S]*"realtimeRelayProtocolVersion"[\s\S]*\]\)/);
+  assert.match(
+    rules,
+    /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"advertisedModel"[\s\S]*"relayPublicKey"[\s\S]*"relayEncryption"[\s\S]*"realtimeRelayURL"[\s\S]*"realtimeRelayLastSeenAt"[\s\S]*"realtimeRelayProtocolVersion"[\s\S]*\]\)/,
+  );
   assert.match(rules, /request\.resource\.data\.relayEncryption == "p256-hkdf-sha256-aesgcm"/);
   assert.match(rules, /validRealtimeRelayURL\(request\.resource\.data\.realtimeRelayURL\)/);
   assert.match(rules, /function validRealtimeRelayURL\(value\) \{[\s\S]*value\.matches\("\^wss:\/\/\[a-z0-9\]/);
@@ -104,14 +122,21 @@ for (const collection of ["hermes_pairings", "hermes_session_cache", "hermes_aud
   assert.match(rules, /request\.resource\.data\.realtimeRelayStatus in \["online", "offline", "degraded"\]/);
   assert.match(rules, /request\.resource\.data\.realtimeRelayLastSeenAt is string/);
   assert.match(rules, /request\.resource\.data\.realtimeRelayProtocolVersion is int/);
-  assert.doesNotMatch(block, /ownerWritableNonSecret\(userId\);/, "direct Hermes URLs must not become broadly client-writable");
+  assert.doesNotMatch(
+    block,
+    /ownerWritableNonSecret\(userId\);/,
+    "direct Hermes URLs must not become broadly client-writable",
+  );
 }
 for (const collection of ["hermes_relay_requests"]) {
   const start = rules.indexOf(`match /users/{userId}/${collection}/`);
   assert.notEqual(start, -1, `${collection} rules block must exist`);
   const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
   assert.match(block, /allow create, update: if relayRequestWrite\(userId, requestId\);/);
-  assert.match(rules, /function relayRequestWrite\(userId, requestId\) \{[\s\S]*hasActiveHostedQuotaEntitlement\(userId\)/);
+  assert.match(
+    rules,
+    /function relayRequestWrite\(userId, requestId\) \{[\s\S]*hasActiveHostedQuotaEntitlement\(userId\)/,
+  );
   assert.match(rules, /request\.resource\.data\.id == requestId/);
   assert.match(
     rules,
@@ -128,7 +153,10 @@ for (const collection of ["hermes_relay_requests"]) {
   assert.notEqual(start, -1, "smart_hub_config rules block must exist");
   const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
   assert.match(block, /allow create, update: if ownerWritableNonSecret\(userId\)/);
-  assert.match(block, /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"dashboardURL"[\s\S]*"voiceRefreshURL"[\s\S]*"pixelClock"[\s\S]*"schemaVersion"[\s\S]*\]\)/);
+  assert.match(
+    block,
+    /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"dashboardURL"[\s\S]*"voiceRefreshURL"[\s\S]*"pixelClock"[\s\S]*"schemaVersion"[\s\S]*\]\)/,
+  );
   assert.match(block, /request\.resource\.data\.enabled is bool/);
   assert.match(block, /request\.resource\.data\.schemaVersion is int/);
   assert.match(block, /validPixelClockConfig\(request\.resource\.data\.pixelClock\)/);
@@ -161,7 +189,10 @@ for (const collection of ["hermes_relay_requests"]) {
   assert.match(block, /pixelClock\.palette in \["emberWhimsy", "mercury", "traffic", "monochrome", "rainbow"\]/);
   assert.match(block, /pixelClock\.brightness >= 0[\s\S]*pixelClock\.brightness <= 255/);
   assert.match(block, /pixelClock\.providerIDs\.size\(\) <= 24/);
-  assert.match(block, /pixelClock\.lastProbeStatus in \["unknown", "awtrixReady", "stockUlanziFirmware", "unreachable", "unsupported", "error"\]/);
+  assert.match(
+    block,
+    /pixelClock\.lastProbeStatus in \["unknown", "awtrixReady", "stockUlanziFirmware", "unreachable", "unsupported", "error"\]/,
+  );
 }
 {
   const start = rules.indexOf("function validSmartHubDisplayConfig(displayConfig)");
@@ -174,11 +205,23 @@ for (const collection of ["hermes_relay_requests"]) {
   assert.notEqual(start, -1, "relayRequestWrite helper must exist");
   const block = rules.slice(start, rules.indexOf("function relayChunkWrite(userId, requestId, chunkId)", start));
   assert.match(block, /request\.resource\.data\.schemaVersion >= 2/);
-  assert.match(block, /!\("path" in request\.resource\.data\)[\s\S]*!\("sessionId" in request\.resource\.data\)[\s\S]*!\("body" in request\.resource\.data\)[\s\S]*!\("error" in request\.resource\.data\)/);
-  assert.match(block, /request\.resource\.data\.payloadCiphertext is string[\s\S]*request\.resource\.data\.wrappedKey is string[\s\S]*request\.resource\.data\.relayEncryption == "hpke-auth-p256-hkdfsha256-aes256gcm"/);
+  assert.match(
+    block,
+    /!\("path" in request\.resource\.data\)[\s\S]*!\("sessionId" in request\.resource\.data\)[\s\S]*!\("body" in request\.resource\.data\)[\s\S]*!\("error" in request\.resource\.data\)/,
+  );
+  assert.match(
+    block,
+    /request\.resource\.data\.payloadCiphertext is string[\s\S]*request\.resource\.data\.wrappedKey is string[\s\S]*request\.resource\.data\.relayEncryption == "hpke-auth-p256-hkdfsha256-aes256gcm"/,
+  );
   assert.match(block, /request\.resource\.data\.relayKeyVersion == 3/);
-  assert.match(block, /request\.resource\.data\.senderPublicKey is string[\s\S]*request\.resource\.data\.senderDeviceId is string[\s\S]*request\.resource\.data\.senderPeerNodeId is string/);
-  assert.match(block, /request\.resource\.data\.senderCounter is int[\s\S]*request\.resource\.data\.senderCounter >= 0/);
+  assert.match(
+    block,
+    /request\.resource\.data\.senderPublicKey is string[\s\S]*request\.resource\.data\.senderDeviceId is string[\s\S]*request\.resource\.data\.senderPeerNodeId is string/,
+  );
+  assert.match(
+    block,
+    /request\.resource\.data\.senderCounter is int[\s\S]*request\.resource\.data\.senderCounter >= 0/,
+  );
   assert.match(block, /request\.resource\.data\.keyId\.matches\("\^relay-v3-\[a-f0-9\]\{24\}\$"\)/);
   assert.doesNotMatch(block, /request\.resource\.data\.schemaVersion < 2/);
 }
@@ -186,11 +229,17 @@ for (const collection of ["hermes_relay_requests"]) {
   const start = rules.indexOf("function piRelayRequestWrite(userId, requestId)");
   assert.notEqual(start, -1, "piRelayRequestWrite helper must exist");
   const block = rules.slice(start, rules.indexOf("function piRelayChunkWrite(userId, requestId, chunkId)", start));
-  assert.match(block, /request\.resource\.data\.schemaVersion >= 2[\s\S]*request\.resource\.data\.payloadCiphertext is string[\s\S]*request\.resource\.data\.wrappedKey is string/);
+  assert.match(
+    block,
+    /request\.resource\.data\.schemaVersion >= 2[\s\S]*request\.resource\.data\.payloadCiphertext is string[\s\S]*request\.resource\.data\.wrappedKey is string/,
+  );
   assert.doesNotMatch(block, /"body"|"data"|"ciphertext"/);
   assert.doesNotMatch(block, /request\.resource\.data\.schemaVersion < 2/);
 }
-assert.match(readFileSync(new URL("../src/callables/hermes.ts", import.meta.url), "utf8"), /current\.status === "revoked"/);
+assert.match(
+  readFileSync(new URL("../src/callables/hermes.ts", import.meta.url), "utf8"),
+  /current\.status === "revoked"/,
+);
 {
   const indexSource = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
   const hermesSource = readFileSync(new URL("../src/callables/hermes.ts", import.meta.url), "utf8");

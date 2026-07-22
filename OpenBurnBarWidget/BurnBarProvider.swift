@@ -1,5 +1,5 @@
 import WidgetKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 struct BurnBarProvider: TimelineProvider {
     func placeholder(in context: Context) -> BurnBarEntry {

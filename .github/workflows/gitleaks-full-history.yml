@@ -1,0 +1,56 @@
+name: Gitleaks Full History Scan
+
+# Weekly full-history secret scan. The PR-time gate (security-pr.yml) only
+# scans the diff range (BASE_SHA..HEAD), so a secret that slipped in via an
+# older commit before gitleaks was enforced would stay buried. This scheduled
+# scan covers the entire git history so legacy secrets are eventually caught.
+#
+# Uses --log-opts="--all" so secrets reachable only from release tags or
+# non-default branches are also scanned, not just the default branch's walk.
+#
+# Lands observing-first (Rule 8): not added to branch protection required
+# checks until Alberto verifies a green run and adds it via A2.
+
+permissions:
+  contents: read
+  security-events: write
+
+on:
+  schedule:
+    # Sunday 03:17 UTC — off-hour to dodge GitHub cron contention.
+    - cron: "17 3 * * 0"
+  workflow_dispatch:
+
+concurrency:
+  group: gitleaks-full-history
+  cancel-in-progress: false
+
+jobs:
+  full-history-scan:
+    name: Full History Secret Detection (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: go install github.com/zricethezav/gitleaks/v8@v8.28.0
+
+      - name: Verify gitleaks allowlist boundary
+        run: node scripts/ci/verify-gitleaks-allowlist-boundary.mjs
+
+      - name: Verify gitleaks workflow boundary
+        run: node scripts/ci/verify-gitleaks-workflow-boundary.mjs
+
+      - name: Run gitleaks full-history scan (all refs)
+        run: |
+          "$HOME/go/bin/gitleaks" detect \
+            --config .gitleaks.toml \
+            --gitleaks-ignore-path .gitleaksignore \
+            --source . \
+            --redact \
+            --verbose \
+            --log-opts="--all"

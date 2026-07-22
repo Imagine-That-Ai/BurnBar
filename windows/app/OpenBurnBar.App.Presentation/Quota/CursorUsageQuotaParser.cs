@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
+using DomainCore = uniffi.openburnbar_domain_ffi.OpenburnbarDomainFfiMethods;
 
 namespace OpenBurnBar.App.Presentation.Quota;
 
@@ -38,13 +40,37 @@ public static class CursorUsageQuotaParser
     /// </summary>
     public static ProviderQuotaSnapshot Parse(string json, string? userEmail = null)
     {
+        return Parse(json, userEmail, DateTimeOffset.UtcNow, requestedMode: null);
+    }
+
+    internal static ProviderQuotaSnapshot Parse(
+        string json,
+        string? userEmail,
+        DateTimeOffset fetchedAt,
+        DomainCoreQuotaMigrationMode? requestedMode)
+    {
+        return DomainCoreQuotaBridge.Apply(
+            "cursor_quota",
+            () => DomainCore.ParseCursorUsageQuota(Encoding.UTF8.GetBytes(json), userEmail),
+            () => ParseLegacy(json, userEmail, fetchedAt),
+            fetchedAt,
+            ManagementUrl,
+            mapMalformedSnapshot: true,
+            requestedMode)!;
+    }
+
+    private static ProviderQuotaSnapshot ParseLegacy(
+        string json,
+        string? userEmail,
+        DateTimeOffset fetchedAt)
+    {
         var root = QuotaJson.TryParse(json);
         if (root is not JsonElement summary || summary.ValueKind != JsonValueKind.Object)
         {
             return new ProviderQuotaSnapshot
             {
                 Provider = ProviderToken,
-                FetchedAt = DateTimeOffset.UtcNow,
+                FetchedAt = fetchedAt,
                 Source = ProviderQuotaSourceKind.Unavailable,
                 Confidence = ProviderQuotaConfidence.Unavailable,
                 ManagementUrl = ManagementUrl,
@@ -152,7 +178,7 @@ public static class CursorUsageQuotaParser
         return new ProviderQuotaSnapshot
         {
             Provider = ProviderToken,
-            FetchedAt = DateTimeOffset.UtcNow,
+            FetchedAt = fetchedAt,
             Source = ProviderQuotaSourceKind.OfficialApi,
             Confidence = ProviderQuotaConfidence.Exact,
             ManagementUrl = ManagementUrl,

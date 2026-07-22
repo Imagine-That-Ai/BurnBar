@@ -13,7 +13,9 @@
  * crypto itself; IndexedDB-backed key persistence is exercised separately under
  * the jsdom-ish path is skipped here (covered by build-time type checks).
  */
-import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { beforeAll, describe, it, expect } from "vitest";
 import {
   sealBlob,
   openBlob,
@@ -31,6 +33,29 @@ import {
   CURRENT_SEALED_TEXT_SCHEMA_VERSION,
   cloudVaultAADContext,
 } from "../lib/escrow";
+import { initializeCloudVaultDomainCoreForTests } from "../lib/domainCoreCloudVault";
+
+beforeAll(() => {
+  const wasmURL = new URL(
+    "../vendor/openburnbar-domain-core-wasm/openburnbar_domain_core_bg.wasm",
+    import.meta.url,
+  );
+  const manifestURL = new URL(
+    "../../../crates/openburnbar-domain-core/union-abi-manifest.json",
+    import.meta.url,
+  );
+  const expected = JSON.parse(
+    readFileSync(fileURLToPath(manifestURL), "utf8"),
+  ) as {
+    coreVersion: string;
+    abiVersion: number;
+    sourceSha256: string;
+  };
+  initializeCloudVaultDomainCoreForTests(
+    readFileSync(fileURLToPath(wasmURL)),
+    expected,
+  );
+});
 
 const subtle = globalThis.crypto.subtle;
 
@@ -127,6 +152,16 @@ describe("AES-256-GCM blob envelope", () => {
     });
   });
 
+  it("rejects a future blob schema instead of interpreting it as v2", async () => {
+    const raw = randomBytes(32);
+    const key = await importVaultKey(raw);
+    const env = await sealBlob(new TextEncoder().encode("future"), key, { rawVaultKey: raw });
+    env.schemaVersion = CURRENT_BLOB_ENVELOPE_SCHEMA_VERSION + 1;
+    await expect(openBlob(env, key, { rawVaultKey: raw })).rejects.toMatchObject({
+      code: "invalid_envelope",
+    });
+  });
+
   it("fails to open with the wrong key", async () => {
     const key = await importVaultKey(randomBytes(32));
     const wrong = await importVaultKey(randomBytes(32));
@@ -181,6 +216,35 @@ describe("AES-256-GCM sealed text (Swift facet layout)", () => {
     const env = await sealText("hi", key);
     env.algorithm = "ROT13";
     await expect(openText(env, key)).rejects.toBeInstanceOf(EscrowError);
+  });
+
+  it("rejects future schemas instead of interpreting them as v2", async () => {
+    const key = await importVaultKey(randomBytes(32));
+    const env = await sealText("hi", key);
+    env.schemaVersion = CURRENT_SEALED_TEXT_SCHEMA_VERSION + 1;
+    await expect(openText(env, key)).rejects.toMatchObject({ code: "invalid_envelope" });
+  });
+
+  it("rejects authenticated plaintext that is not valid UTF-8", async () => {
+    const key = await importVaultKey(randomBytes(32));
+    const nonce = randomBytes(12);
+    const invalidUtf8 = Uint8Array.of(0xc3, 0x28);
+    const sealed = new Uint8Array(
+      await subtle.encrypt(
+        { name: "AES-GCM", iv: nonce.buffer as ArrayBuffer, tagLength: 128 },
+        key,
+        invalidUtf8,
+      ),
+    );
+    const envelope = {
+      algorithm: AESGCM_ALGORITHM,
+      keyVersion: 1,
+      nonce: bytesToBase64(nonce),
+      ciphertext: bytesToBase64(sealed.subarray(0, sealed.length - 16)),
+      tag: bytesToBase64(sealed.subarray(sealed.length - 16)),
+    };
+
+    await expect(openText(envelope, key)).rejects.toMatchObject({ code: "invalid_envelope" });
   });
 });
 

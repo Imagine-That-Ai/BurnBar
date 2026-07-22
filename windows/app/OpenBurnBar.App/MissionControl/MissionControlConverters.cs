@@ -103,7 +103,7 @@ public sealed partial class MissionCostElevatedBrushConverter : IValueConverter
         bool elevated = value is bool b && b;
         return elevated
             ? MissionPalette.Brush(MissionPalette.Ember)
-            : (Application.Current.Resources["PensieveColorTextBrightBrush"] as Brush)
+            : (Application.Current.Resources["PensieveColorMacosTextBrush"] as Brush)
                 ?? MissionPalette.Brush(MissionPalette.Muted);
     }
 
@@ -120,7 +120,7 @@ public sealed partial class MissionProblemBrushConverter : IValueConverter
         bool problem = value is bool b && b;
         return problem
             ? MissionPalette.Brush(MissionPalette.Ember)
-            : (Application.Current.Resources["PensieveColorMercuryCoreBrush"] as Brush)
+            : (Application.Current.Resources["PensieveColorMacosHermesMercuryBrush"] as Brush)
                 ?? MissionPalette.Brush(MissionPalette.Muted);
     }
 

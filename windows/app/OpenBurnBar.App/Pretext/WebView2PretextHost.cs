@@ -36,6 +36,7 @@ namespace OpenBurnBar.App.Pretext;
 public sealed class WebView2PretextHost : IPretextWebHost, IDisposable
 {
     private const string VirtualHost = "pretext.openburnbar.invalid";
+    private static readonly string[] BundledFontFiles = { "geist.ttf", "jetbrains-mono.ttf" };
 
     private readonly WebView2 _webView;
     private readonly DispatcherQueue _dispatcher;
@@ -86,6 +87,7 @@ public sealed class WebView2PretextHost : IPretextWebHost, IDisposable
             // real origin (required for module/script loading semantics).
             var indexPath = PretextShellResources.ExtractTo(_resourceDirectory);
             _ = indexPath; // navigation targets the virtual host, not the raw path.
+            StageBundledFonts();
 
             await _webView.EnsureCoreWebView2Async();
             _core = _webView.CoreWebView2;
@@ -129,6 +131,24 @@ public sealed class WebView2PretextHost : IPretextWebHost, IDisposable
         settings.IsBuiltInErrorPageEnabled = false;
         // JavaScript stays enabled — the layout engine runs in the page.
         settings.IsScriptEnabled = true;
+    }
+
+    private void StageBundledFonts()
+    {
+        string sourceDirectory = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts");
+        string destinationDirectory = Path.Combine(_resourceDirectory, "fonts");
+        Directory.CreateDirectory(destinationDirectory);
+
+        foreach (string fileName in BundledFontFiles)
+        {
+            string source = Path.Combine(sourceDirectory, fileName);
+            if (!File.Exists(source))
+            {
+                throw new FileNotFoundException($"Bundled Pretext font is missing: {source}", source);
+            }
+
+            File.Copy(source, Path.Combine(destinationDirectory, fileName), overwrite: true);
+        }
     }
 
     private static InvalidOperationException PretextUnavailable() =>

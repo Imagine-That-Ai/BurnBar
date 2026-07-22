@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarKernel
 
 // MARK: - Hermes Square Phase A Tests
 //

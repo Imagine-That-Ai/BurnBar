@@ -19,7 +19,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
-    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
@@ -30,11 +30,13 @@
     <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelCatalog.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelBackdropBridge.cs" />
     <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelBackdropSelection.cs" />
+    <Compile Include="../../app/OpenBurnBar.App/Dashboard/KernelSubstrateSelection.cs" />
     <Compile Include="LiquidGlassTransparencyTests.cs" />
     <Compile Include="LiquidGlassPreferenceStoreTests.cs" />
     <Compile Include="KernelBackdropBridgeTests.cs" />
     <Compile Include="KernelBackdropSelectionTests.cs" />
     <Compile Include="KernelCatalogTests.cs" />
+    <Compile Include="KernelSubstrateSelectionTests.cs" />
   </ItemGroup>
 
 </Project>

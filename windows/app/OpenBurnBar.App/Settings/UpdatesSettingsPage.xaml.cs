@@ -51,9 +51,13 @@ public sealed partial class UpdatesSettingsPage : Page, ISettingsAnchorTarget
             VersionText.Text = status.Version;
             ChannelText.Text = status.Channel;
             AutomaticChecksToggle.IsOn = status.AutomaticChecksEnabled;
+            AutomaticChecksToggle.IsEnabled = status.AutomaticChecksAvailable;
             UpdaterStatusText.Text = overrideMessage ?? status.Message;
-            AppcastText.Text = $"{status.AppcastUrl} | pin={(status.ProductionPinInjected ? "production" : "development")} | native={(status.NativeHostAvailable ? "available" : "unavailable")}";
-            CheckNowButton.IsEnabled = status.HostConfigured;
+            AppcastText.Text = status.ManagedByStore
+                ? "Updates are delivered and signed by Microsoft Store."
+                : $"{status.AppcastUrl} | pin={(status.ProductionPinInjected ? "production" : "development")} | native={(status.NativeHostAvailable ? "available" : "unavailable")}";
+            CheckNowButton.Content = status.ManagedByStore ? "Open Store Updates" : "Check Now";
+            CheckNowButton.IsEnabled = status.CheckActionAvailable;
         }
         finally
         {

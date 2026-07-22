@@ -44,17 +44,17 @@
                        FontSize="18"
                        FontWeight="SemiBold"
                        VerticalAlignment="Center"
-                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                       Foreground="{ThemeResource AuroraTextBrush}" />
             <Border x:Name="SampleChip"
                     Grid.Column="2"
                     Visibility="Collapsed"
                     VerticalAlignment="Center"
                     CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                    Background="#1FC7CFDD"
+                    Background="{ThemeResource AuroraGlassStrokeFrostBrush}"
                     Padding="8,3">
                 <TextBlock Text="Sample data preview"
                            FontSize="10"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
             </Border>
         </Grid>
 

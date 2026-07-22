@@ -64,7 +64,7 @@ import {
   resolveGatewayGrant,
   resolveGatewayWriteBody,
 } from "./hermesGatewayResolve.js";
-import { checkHermesGatewayBearerRateLimit } from "./publicRateLimit.js";
+import { checkHermesGatewayBearerRateLimit, checkPublicHttpEndpointRateLimit, clientIpFromHttpRequest, isPublicRateLimitExceeded } from "./publicRateLimit.js";
 import { handleDevicePoll, handleDeviceStart } from "./hermesGatewayDeviceRoutes.js";
 import {
   handleArmApproval,
@@ -596,13 +596,60 @@ async function routeGatewayRequest(path: string, req: HttpRequest, res: HttpResp
  * exact path production runs AND the seam tests drive directly (the wrapped
  * `burnBarHermesGateway` only adds CORS/trace middleware around this).
  */
+/**
+ * Known gateway paths and their accepted methods. Used to short-circuit
+ * wrong-method / unknown-path requests with 405 / 404 BEFORE the endpoint-level
+ * rate limiter touches Firestore, preserving the pre-fix invariant that method
+ * guards run before any DB access.
+ */
+const GATEWAY_ROUTE_METHODS: Record<string, Set<string>> = {
+  "/device/start": new Set(["POST"]),
+  "/device/poll": new Set(["POST"]),
+  "/destinations": new Set(["GET"]),
+  "/events": new Set(["GET"]),
+  "/messages": new Set(["POST"]),
+  "/typing": new Set(["POST"]),
+  "/runtime": new Set(["POST"]),
+  "/state": new Set(["GET"]),
+  "/approvals": new Set(["GET", "POST"]),
+  "/attachments/init": new Set(["POST"]),
+  "/attachments/finalize": new Set(["POST"]),
+};
+
 export async function dispatchHermesGatewayRequest(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method === "OPTIONS") {
     res.status(204).send("");
     return;
   }
+  const path = gatewayPath(req) ?? "";
+  // Cheap path/method validation before any Firestore access — preserves the
+  // invariant that wrong-method requests return 405 and unknown paths return 404
+  // without hitting the rate limiter's Firestore transaction.
+  const allowedMethods = GATEWAY_ROUTE_METHODS[path];
+  if (!allowedMethods) {
+    sendJSON(res, 404, { error: "not_found" });
+    return;
+  }
+  if (!req.method || !allowedMethods.has(req.method)) {
+    sendJSON(res, 405, { error: "method_not_allowed" });
+    return;
+  }
   try {
-    const handled = await routeGatewayRequest(gatewayPath(req), req, res);
+    // Endpoint-level per-IP rate limit (defense-in-depth before bearer token
+    // resolution). The `burnBarHermesGateway` limit (120/min per IP) caps abuse
+    // of the public HTTP surface for ALL routes, including those that only have
+    // bearer auth (no per-uid limiter). Only fires for valid (path, method)
+    // pairs so wrong-method requests never touch Firestore.
+    try {
+      await checkPublicHttpEndpointRateLimit("burnBarHermesGateway", clientIpFromHttpRequest(req));
+    } catch (err) {
+      if (isPublicRateLimitExceeded(err)) {
+        sendJSON(res, 429, { error: "too_many_requests" });
+        return;
+      }
+      throw err;
+    }
+    const handled = await routeGatewayRequest(path, req, res);
     if (!handled) sendJSON(res, 404, { error: "not_found" });
   } catch (err) {
     writeGatewayDispatchError(res, err);

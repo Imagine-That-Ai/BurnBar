@@ -1,0 +1,95 @@
+{
+  "schema": "openburnbar.domain-core.pricing.v2",
+  "costVectors": [
+    {
+      "rates": {
+        "inputNanoUsdPerMToken": 3000000000,
+        "outputNanoUsdPerMToken": 15000000000,
+        "cacheCreationNanoUsdPerMToken": null,
+        "cacheReadNanoUsdPerMToken": 500000000
+      },
+      "buckets": {
+        "inputTokens": 1000000,
+        "outputTokens": 2000000,
+        "cacheCreationTokens": 500000,
+        "cacheReadTokens": 250000
+      },
+      "expectedCostNanoUsd": 34625000000
+    },
+    {
+      "rates": {
+        "inputNanoUsdPerMToken": 600000000,
+        "outputNanoUsdPerMToken": 2500000000,
+        "cacheCreationNanoUsdPerMToken": 600000000,
+        "cacheReadNanoUsdPerMToken": 150000000
+      },
+      "buckets": {
+        "inputTokens": 700,
+        "outputTokens": 300,
+        "cacheCreationTokens": 200,
+        "cacheReadTokens": 100
+      },
+      "expectedCostNanoUsd": 1305000
+    },
+    {
+      "rates": {
+        "inputNanoUsdPerMToken": 255000000,
+        "outputNanoUsdPerMToken": 1000000000,
+        "cacheCreationNanoUsdPerMToken": null,
+        "cacheReadNanoUsdPerMToken": 0
+      },
+      "buckets": {
+        "inputTokens": 1234,
+        "outputTokens": 567,
+        "cacheCreationTokens": 0,
+        "cacheReadTokens": 0
+      },
+      "expectedCostNanoUsd": 881670
+    },
+    {
+      "rates": {
+        "inputNanoUsdPerMToken": 1,
+        "outputNanoUsdPerMToken": 1,
+        "cacheCreationNanoUsdPerMToken": null,
+        "cacheReadNanoUsdPerMToken": 1
+      },
+      "buckets": {
+        "inputTokens": 250000,
+        "outputTokens": 250000,
+        "cacheCreationTokens": 0,
+        "cacheReadTokens": 0
+      },
+      "expectedCostNanoUsd": 1
+    }
+  ],
+  "legacyKimiVectors": [
+    {
+      "provider": "KIMI",
+      "model": "chatcmpl-abc123",
+      "buckets": {
+        "inputTokens": 1000,
+        "outputTokens": 300,
+        "cacheCreationTokens": 200,
+        "cacheReadTokens": 100
+      },
+      "isLegacy": true,
+      "expected": {
+        "model": "kimi-for-coding",
+        "totalTokens": 1300,
+        "costNanoUsd": 1305000
+      }
+    },
+    {
+      "provider": "kimi",
+      "model": "kimi-k2",
+      "buckets": {
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "cacheCreationTokens": 0,
+        "cacheReadTokens": 0
+      },
+      "isLegacy": false,
+      "expected": null
+    }
+  ]
+}

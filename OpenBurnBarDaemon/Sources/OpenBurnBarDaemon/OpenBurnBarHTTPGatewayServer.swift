@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import CryptoKit
 import Foundation
 import Network
@@ -37,6 +37,10 @@ public actor BurnBarHTTPGatewayServer {
     let crossVendorDegradePolicy: BurnBarCrossVendorDegradePolicy
 
     let modelHealthStore: BurnBarGatewayModelHealthStore
+
+    /// Shared across Elder Wand requests so panel members using one credential
+    /// cannot trigger avoidable provider concurrency limits.
+    let elderWandPanelExecutionGate = ElderWandPanelExecutionGate()
 
     /// Owns the expensive live model-catalog snapshot (+ optional TTL cache) and
     /// the advertisement-eligibility predicate, consumed by `/v1/models` and the

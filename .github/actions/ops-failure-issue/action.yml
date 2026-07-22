@@ -1,4 +1,4 @@
-name: Ops failure issue (per-lane, comment + auto-close)
+name: Ops failure issue (per-lane, comment + auto-close, P0 paging)
 description: >-
   Shared standing-failure issue manager for the scheduled/deploy alerting lanes.
   Replaces the copy-pasted title-prefix dedupe that masked outages (tech-debt
@@ -7,7 +7,10 @@ description: >-
   label instead of silently skipping. On a green run it COMMENTS and CLOSES the
   same lane's open issue, re-arming the alarm. Per-lane dedupe keys (a
   `lane:<name>` label) guarantee a standing red in one lane can never suppress a
-  new red in a different lane.
+  new red in a different lane. On a genuine P0 ops failure it pages
+  out-of-band via an optional Slack Incoming Webhook; dedupe is the persistent
+  `paged:ops` label so a flapping lane pages once and retries only if the
+  webhook was missing or failed.
 
 inputs:
   mode:
@@ -45,6 +48,16 @@ inputs:
     description: Token with issues:write.
     required: false
     default: ${{ github.token }}
+  paging-slack-webhook:
+    description: >-
+      Optional Slack Incoming Webhook URL for out-of-band paging on a genuine
+      P0 ops failure. If unset, paging is silently skipped — issue
+      creation/closure behavior is unaffected. This is a dedicated ops-paging
+      secret (NOT SLACK_SECURITY_WEBHOOK, which is the security-review lane's
+      alert channel and is not monitored for ops failures). Alberto must
+      configure this as the repo secret OPS_PAGING_SLACK_WEBHOOK (A6).
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -58,13 +71,16 @@ runs:
         OPS_SUMMARY: ${{ inputs.summary }}
         OPS_DETAILS: ${{ inputs.details }}
         OPS_LABELS: ${{ inputs.labels }}
+        OPS_PAGING_SLACK_WEBHOOK: ${{ inputs.paging-slack-webhook }}
       with:
         github-token: ${{ inputs.github-token }}
         script: |
           const {
             BLOCKER_LABEL,
             ESCALATED_LABEL,
+            PAGED_LABEL,
             evaluateP0Escalation,
+            shouldPageP0,
           } = require(`${process.env.GITHUB_WORKSPACE || require('node:process').cwd()}/.github/actions/ops-failure-issue/escalation.cjs`);
           const mode = process.env.OPS_MODE;
           const rawLane = process.env.OPS_LANE;
@@ -163,6 +179,7 @@ runs:
             ['area: infra', 'CI/CD, build, deployment infrastructure.'],
             [BLOCKER_LABEL, 'Named owner or external blocker exempts a known red from automatic age escalation.'],
             [ESCALATED_LABEL, 'P0 remained open beyond the 72-hour recovery SLO and was escalated.'],
+            [PAGED_LABEL, 'P0 ops failure was paged out-of-band via Slack. Suppresses repeat paging on recurring/flapping failures.'],
           ]);
           const labelColor = (name) => {
             if (name.startsWith('lane:')) return 'd0e0ff';
@@ -172,6 +189,7 @@ runs:
             if (name === 'P2 - Medium') return 'f4c430';
             if (name === 'P3 - Low') return '0075ca';
             if (name === ESCALATED_LABEL) return 'd73a4a';
+            if (name === PAGED_LABEL) return 'd73a4a';
             if (name === BLOCKER_LABEL) return '5319e7';
             if (name.startsWith('area:')) return 'd0e0ff';
             return 'ededed';
@@ -230,7 +248,7 @@ runs:
             `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
             `/actions/runs/${context.runId}`;
 
-          await ensureIssueLabels([laneLabel, BLOCKER_LABEL, ESCALATED_LABEL]);
+          await ensureIssueLabels([laneLabel, BLOCKER_LABEL, ESCALATED_LABEL, PAGED_LABEL]);
 
           // Find this lane's open issue by the per-lane label ONLY, paginating
           // fully so a backlog of other-lane issues can never hide it.
@@ -248,6 +266,50 @@ runs:
               .find((n) => n && n.startsWith(COUNT_PREFIX));
             const n = current ? parseInt(current.slice(COUNT_PREFIX.length), 10) || 1 : 1;
             return { previous: current, next: `${COUNT_PREFIX}${n + 1}` };
+          };
+
+          // P-OPS-4: page a P0 ops failure to Slack if eligible.
+          // Dedupe is the persistent `paged:ops` label: only page if the
+          // issue is P0, open, unblocked, and not already paged. Only add
+          // `paged:ops` after a successful POST — a missing or failed
+          // webhook leaves the issue unpaged so a later run can retry.
+          const pageP0IfEligible = async (issueNumber, issueLabels) => {
+            const paging = shouldPageP0({ mode, labels: issueLabels });
+            if (!paging.shouldPage) {
+              if (paging.reason === 'p0-unpaged') return; // unreachable guard
+              core.info(`Lane '${lane}': issue #${issueNumber} not paged (${paging.reason}).`);
+              return;
+            }
+            const webhook = process.env.OPS_PAGING_SLACK_WEBHOOK;
+            if (!webhook) {
+              core.warning(`Lane '${lane}': P0 issue #${issueNumber} eligible for paging but OPS_PAGING_SLACK_WEBHOOK is not configured (A6 blocker). Issue behavior unaffected; will retry on next failure.`);
+              return;
+            }
+            const repoSlug = `${context.repo.owner}/${context.repo.repo}`;
+            const issueUrl = `${context.serverUrl}/${repoSlug}/issues/${issueNumber}`;
+            const slackText = `🚨 *P0 ops failure* — ${oneLine(repoSlug, 'repo')} lane \`${lane}\`: ${summary}\nIssue: ${issueUrl}\nRun: ${runUrl}`;
+            try {
+              const pageResponse = await fetch(webhook, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: slackText }),
+                signal: AbortSignal.timeout(10000),
+              });
+              if (!pageResponse.ok) {
+                core.warning(`Lane '${lane}': Slack webhook returned HTTP ${pageResponse.status} for issue #${issueNumber}. Not paged — will retry on next failure.`);
+                return;
+              }
+              await ensureIssueLabels([PAGED_LABEL]);
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: [PAGED_LABEL],
+              });
+              core.notice(`Lane '${lane}': paged P0 issue #${issueNumber} to Slack out-of-band.`);
+            } catch (pageError) {
+              core.warning(`Lane '${lane}': Slack webhook POST failed for issue #${issueNumber}: ${oneLine(pageError.message, 'error')}. Not paged — will retry on next failure.`);
+            }
           };
 
           if (mode === 'open') {
@@ -294,6 +356,7 @@ runs:
                 core.warning(`Lane '${lane}': escalated overdue P0 issue #${issue.number} at ${escalation.ageHours} hours.`);
               }
               core.notice(`Lane '${lane}': commented on standing issue #${issue.number} (${next}).`);
+              await pageP0IfEligible(issue.number, issue.labels);
               return;
             }
             const title = `${titlePrefix} (${context.runId})`;
@@ -314,7 +377,9 @@ runs:
               body,
               labels: [...allLabels, `${COUNT_PREFIX}1`],
             });
-            core.notice(`Lane '${lane}': opened issue #${created.data.number}.`);
+            const issueNumber = created.data.number;
+            core.notice(`Lane '${lane}': opened issue #${issueNumber}.`);
+            await pageP0IfEligible(issueNumber, [...allLabels, `${COUNT_PREFIX}1`]);
             return;
           }
 

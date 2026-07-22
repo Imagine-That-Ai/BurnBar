@@ -27,6 +27,8 @@ All product-owned Windows child launches route through
 | `chat.conpty-cli` | `ConPtyCliStream` | `Chat` |
 | `cloud.oauth-browser` | `SystemBrowserLauncher` | `BrowserActivation` |
 | `data.swift-engine-interim` | `SwiftEngineInterim` | `ReleaseTool` |
+| `project-code.language-server` | `LanguageServerProjectCodeParserClient` | `ProjectTool` |
+| `project-code.static-parser` | `JsonLinesProjectCodeStaticParserClient` | `ProjectTool` |
 | `quota.claude-statusline-forwarder` | `ClaudeStatuslineHookInstaller` | `Chat` |
 
 The policy sets `UseShellExecute=false`, clears the child environment, copies

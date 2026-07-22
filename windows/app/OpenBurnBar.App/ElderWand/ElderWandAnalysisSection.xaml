@@ -33,19 +33,19 @@
                 <TextBlock Text="Analysis Panel"
                            FontSize="15"
                            FontWeight="SemiBold"
-                           Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                           Foreground="{ThemeResource AuroraTextBrush}" />
                 <TextBlock Text="These models answer in parallel."
                            FontSize="11"
-                           Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                           Foreground="{ThemeResource AuroraTextMutedBrush}" />
             </StackPanel>
             <Border HorizontalAlignment="Right"
                     VerticalAlignment="Center"
                     CornerRadius="{StaticResource PensieveRadiusPillCorner}"
-                    Background="#1FFA5053"
+                    Background="{ThemeResource AuroraGlassSelectionFillBrush}"
                     Padding="8,2">
                 <TextBlock Text="{x:Bind Editor.AnalysisPanelCounterText, Mode=OneWay}"
                            FontSize="12"
-                           Foreground="#FFFA5053" />
+                           Foreground="{ThemeResource AuroraAccentBrush}" />
             </Border>
         </Grid>
 
@@ -56,7 +56,7 @@
             <TextBlock Text="No live models advertised yet. Refresh the chat gateway to populate the panel."
                        FontSize="12"
                        TextWrapping="Wrap"
-                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
         </Border>
 
         <!-- Provider-grouped chip cloud -->
@@ -68,7 +68,7 @@
                         <TextBlock Text="{x:Bind ProviderName}"
                                    FontSize="12"
                                    FontWeight="SemiBold"
-                                   Foreground="{StaticResource PensieveColorTextBaseBrush}" />
+                                   Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
                         <ItemsControl ItemsSource="{x:Bind Chips}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -96,10 +96,10 @@
                                                     </Grid>
                                                     <TextBlock Text="{x:Bind Title}"
                                                                FontSize="12"
-                                                               Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                                               Foreground="{ThemeResource AuroraTextBrush}" />
                                                     <FontIcon Glyph="&#xE708;"
                                                               FontSize="9"
-                                                              Foreground="{StaticResource PensieveColorTextMuteBrush}"
+                                                              Foreground="{ThemeResource AuroraTextMutedBrush}"
                                                               Visibility="{x:Bind IsRouteAsleep, Converter={StaticResource BoolToVisibility}}" />
                                                 </StackPanel>
                                             </Border>

@@ -16,6 +16,11 @@ import OpenBurnBarCore
 
 @MainActor
 protocol MissionGroupDispatching: AnyObject {
+    func observeLatestMissionGroup(
+        onUpdate: @escaping @MainActor (MissionGroupDocument) -> Void,
+        onError: @escaping @MainActor (String) -> Void
+    ) throws -> CLIAgentMissionObservation
+
     func observeMissionGroup(
         groupID: String,
         onUpdate: @escaping @MainActor (MissionGroupDocument) -> Void,
@@ -61,8 +66,27 @@ final class MissionGroupObserver {
         self.dispatcher = dispatcher
     }
 
+    func startLatest() {
+        stop()
+        inlineError = nil
+        do {
+            groupObservation = try dispatcher.observeLatestMissionGroup(
+                onUpdate: { [weak self] doc in
+                    self?.group = doc
+                    self?.ensureChildObservations(for: doc)
+                },
+                onError: { [weak self] message in
+                    self?.inlineError = message
+                }
+            )
+        } catch {
+            inlineError = error.localizedDescription
+        }
+    }
+
     func start(groupID: String) {
         stop()
+        inlineError = nil
         do {
             groupObservation = try dispatcher.observeMissionGroup(
                 groupID: groupID,
@@ -95,8 +119,71 @@ final class MissionGroupObserver {
     /// it locally so the UI is snappy.
     var derivedPhase: MissionGroupPhase {
         guard let group else { return .queued }
+        if group.phase.isTerminal || group.phase == .awaitingMerge {
+            return group.phase
+        }
         let statuses = group.childMissionIDs.compactMap { childSnapshots[$0]?.status }
+        guard statuses.count == group.childMissionIDs.count else {
+            return statuses.isEmpty ? group.phase : .fanningOut
+        }
         return MissionGroupPhaseReducer.reduce(childStatuses: statuses, current: group.phase)
+    }
+
+    var displayGroup: MissionGroupDocument? {
+        guard let group else { return nil }
+        return MissionGroupDocument(
+            id: group.id,
+            title: group.title,
+            prompt: group.prompt,
+            missionKind: group.missionKind,
+            targetProject: group.targetProject,
+            childMissionIDs: group.childMissionIDs,
+            runtimeTokens: group.runtimeTokens,
+            parallelismLimit: group.parallelismLimit,
+            mergeStrategy: group.mergeStrategy,
+            phase: derivedPhase,
+            winnerMissionID: group.winnerMissionID,
+            forecast: group.forecast,
+            createdAt: group.createdAt,
+            updatedAt: group.updatedAt,
+            synthesisSummary: group.synthesisSummary
+        )
+    }
+
+    func childTiles(
+        fallbackActiveTiles: [MissionConsoleActiveTile],
+        now: Date = Date()
+    ) -> [MissionConsoleActiveTile] {
+        guard let group else { return [] }
+        let fallbackByID = Dictionary(uniqueKeysWithValues: fallbackActiveTiles.map { ($0.id, $0) })
+
+        return group.childMissionIDs.enumerated().map { index, missionID in
+            if let snapshot = childSnapshots[missionID] {
+                return childTile(from: snapshot, group: group)
+            }
+            if let fallback = fallbackByID[missionID] {
+                return fallback
+            }
+
+            let runtimeToken = index < group.runtimeTokens.count ? group.runtimeTokens[index] : nil
+            let isStale = now.timeIntervalSince(group.createdAt) > 120
+            return MissionConsoleActiveTile(
+                id: missionID,
+                title: "\(group.title) · \(runtimeToken ?? "?")",
+                runtimeID: runtimeToken,
+                runtimeDisplayLabel: (runtimeToken ?? "auto").capitalized,
+                phase: isStale ? .macOffline : .queued,
+                phaseDetail: isStale
+                    ? "Paired Mac hasn't claimed this child. Wake your Mac and reopen BurnBar."
+                    : "Queued in group",
+                currentToolName: nil,
+                lastEventSnippet: nil,
+                startedAt: group.createdAt,
+                burnSoFarUSD: 0,
+                progressFraction: isStale ? nil : 0.05,
+                approvalPending: false
+            )
+        }
     }
 
     /// Live-rolled child snapshot count by phase. Used by the
@@ -126,6 +213,53 @@ final class MissionGroupObserver {
             ) {
                 childObservations[child] = obs
             }
+        }
+    }
+
+    private func childTile(
+        from snapshot: CLIAgentMissionSnapshot,
+        group: MissionGroupDocument
+    ) -> MissionConsoleActiveTile {
+        let phase = childPhase(for: snapshot)
+        return MissionConsoleActiveTile(
+            id: snapshot.id,
+            title: snapshot.title,
+            runtimeID: snapshot.selectedRuntime ?? snapshot.requestedRuntime,
+            runtimeDisplayLabel: snapshot.runtimeLabel,
+            phase: phase,
+            phaseDetail: snapshot.errorMessage ?? snapshot.displayLiveSummary,
+            currentToolName: snapshot.activeToolName,
+            lastEventSnippet: snapshot.events.last?.message ?? snapshot.resultPreview,
+            startedAt: snapshot.createdAt ?? group.createdAt,
+            burnSoFarUSD: 0,
+            progressFraction: childProgress(for: phase),
+            approvalPending: snapshot.isWaitingForApproval
+        )
+    }
+
+    private func childPhase(for snapshot: CLIAgentMissionSnapshot) -> MissionConsoleActiveTile.Phase {
+        switch snapshot.displayStatus.lowercased() {
+        case "completed": return .completed
+        case "failed", "agent_launch_failed", "unauthorized": return .failed
+        case "canceled", "cancelled": return .cancelled
+        case "mac_offline": return .macOffline
+        case "pending", "queued": return .queued
+        case "waiting_for_approval": return .awaitingApproval
+        case "running": return snapshot.activeToolName == nil ? .running : .tooling
+        default:
+            return snapshot.events.last?.kind == "llm_response" ? .streaming : .running
+        }
+    }
+
+    private func childProgress(for phase: MissionConsoleActiveTile.Phase) -> Double? {
+        switch phase {
+        case .queued: return 0.05
+        case .starting: return 0.15
+        case .running, .tooling, .streaming: return 0.5
+        case .awaitingApproval: return 0.55
+        case .completing: return 0.9
+        case .completed: return 1.0
+        case .failed, .blocked, .cancelled, .macOffline: return nil
         }
     }
 
