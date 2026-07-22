@@ -869,6 +869,9 @@ export function SettingsDetailPane({
       case 'agents':
         content = <AgentsDetail config={config} />;
         break;
+      case 'model-proxy':
+        content = <AgentsDetail config={config} />;
+        break;
       case 'account':
         content = (
           <SettingGroup title="Account" sectionHeader hideTitle>
@@ -918,6 +921,38 @@ export function SettingsDetailPane({
         break;
       case 'media':
         content = <MediaDetail />;
+        break;
+      case 'computer-use':
+        content = (
+          <SettingGroup title="Computer Use" sectionHeader hideTitle>
+            <p className="muted settings-tab-lede">
+              Browser automation remains approval-gated by the daemon. Open the dedicated surface for live session state,
+              pending approvals, panic halt, and audit export.
+            </p>
+            <SettingRow
+              iconGlyph="⌁"
+              label="Computer Use control surface"
+              description="No Linux system-mode controls are shown until the compositor and portal capability is verified."
+              control={<a className="system-danger-link settings-drill-link" href="#/computer-use">Open Computer Use</a>}
+            />
+          </SettingGroup>
+        );
+        break;
+      case 'pets':
+        content = (
+          <SettingGroup title="Pets" sectionHeader hideTitle>
+            <p className="muted settings-tab-lede">
+              The companion uses a contained draggable surface when compositor pass-through is unavailable. Open the
+              dedicated route to inspect the current asset and capability tier.
+            </p>
+            <SettingRow
+              iconGlyph="✧"
+              label="Pet companion"
+              description="Linux keeps the fallback visible and honest instead of claiming a click-through overlay."
+              control={<a className="system-danger-link settings-drill-link" href="#/pet">Open Pets</a>}
+            />
+          </SettingGroup>
+        );
         break;
       case 'text-expansion':
         content = (
