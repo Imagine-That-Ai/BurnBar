@@ -18,7 +18,7 @@ final class MercuryLinuxAudioPlaybackTests: XCTestCase {
         let adapter = RecordingMercuryLinuxAudioPlaybackAdapter()
         try adapter.startIfNeeded()
         try adapter.startIfNeeded()
-        adapter.play(
+        try adapter.play(
             MediaFrame(
                 kind: .audioOpus,
                 presentationTimestampMillis: 20,

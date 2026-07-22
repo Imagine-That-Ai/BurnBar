@@ -309,7 +309,8 @@ final class BurnBarDaemonLinuxAuthSocketTests: XCTestCase {
             XCTAssertFalse(text.contains(vaultKey.base64EncodedString()))
             XCTAssertFalse(text.contains("private-usage-payload"))
         }
-        XCTAssertEqual(await gateway.pushedCount(), 1)
+        let pushedCount = await gateway.pushedCount()
+        XCTAssertEqual(pushedCount, 1)
         await server.stop()
     }
 

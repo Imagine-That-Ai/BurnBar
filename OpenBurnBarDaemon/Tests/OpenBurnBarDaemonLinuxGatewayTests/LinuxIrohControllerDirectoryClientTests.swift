@@ -52,8 +52,10 @@ final class LinuxIrohControllerDirectoryClientTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? LinuxIrohControllerDirectoryError, .invalidConfiguration)
         }
-        XCTAssertEqual(await recorder.credentialProviderCallCount(), 1)
-        XCTAssertTrue(await recorder.snapshot().isEmpty)
+        let providerCalls = await recorder.credentialProviderCallCount()
+        let requests = await recorder.snapshot()
+        XCTAssertEqual(providerCalls, 1)
+        XCTAssertTrue(requests.isEmpty)
     }
 
     func testExplicitlyAllowlistedHTTPSHostCanServeAConfiguredDeployment() async throws {

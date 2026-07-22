@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import OpenBurnBarDaemon
 import XCTest
 
@@ -61,8 +64,9 @@ final class FirebaseLinuxCloudReplicaGatewayTests: XCTestCase {
             "https://us-central1-burnbar.cloudfunctions.net/untrusted",
             "https://user@us-central1-burnbar.cloudfunctions.net"
         ] {
+            let baseURL = try XCTUnwrap(URL(string: rawURL))
             let gateway = FirebaseLinuxCloudReplicaGateway(
-                baseURL: try XCTUnwrap(URL(string: rawURL)),
+                baseURL: baseURL,
                 credentials: { .init(idToken: "id", appCheckToken: "app") }
             )
             do {
@@ -86,12 +90,15 @@ private final class GatewayTransportRecorder: @unchecked Sendable {
 
     func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
         lock.withLock { self.request = request }
-        let response = try XCTUnwrap(HTTPURLResponse(
-            url: try XCTUnwrap(request.url),
-            statusCode: 200,
-            httpVersion: nil,
-            headerFields: ["Content-Type": "application/json"]
-        ))
+        guard let url = request.url,
+              let response = HTTPURLResponse(
+                  url: url,
+                  statusCode: 200,
+                  httpVersion: nil,
+                  headerFields: ["Content-Type": "application/json"]
+              ) else {
+            throw URLError(.badURL)
+        }
         return (responseData, response)
     }
 

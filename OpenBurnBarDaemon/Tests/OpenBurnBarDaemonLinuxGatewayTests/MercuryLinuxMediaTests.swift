@@ -96,7 +96,8 @@ final class MercuryLinuxMediaTests: XCTestCase {
         XCTAssertFalse(accepted.accepted)
         XCTAssertEqual(accepted.detail, "Call media frame seal key was not established.")
         XCTAssertEqual(audioAdapter.startCount, 0)
-        XCTAssertEqual((await replies.frames).last?.media?.callAck?.decision, .denied)
+        let replyFrames = await replies.frames
+        XCTAssertEqual(replyFrames.last?.media?.callAck?.decision, .denied)
     }
 
     func testCallAcceptStartsPortalAudioAndForwardsSealedOpusOnAudioClass() async throws {
@@ -134,7 +135,8 @@ final class MercuryLinuxMediaTests: XCTestCase {
             await replies.frames.contains { $0.type == .mediaStreamFrame }
         }
 
-        let stream = try XCTUnwrap((await replies.frames).first { $0.type == .mediaStreamFrame })
+        let replyFrames = await replies.frames
+        let stream = try XCTUnwrap(replyFrames.first { $0.type == .mediaStreamFrame })
         XCTAssertEqual(stream.media?.streamClass, MediaStreamClass.audioOut.rawValue)
         let position = try XCTUnwrap(stream.media?.sealedFramePosition)
         XCTAssertEqual(position.kind, MediaFrame.Kind.audioOpus.rawValue)

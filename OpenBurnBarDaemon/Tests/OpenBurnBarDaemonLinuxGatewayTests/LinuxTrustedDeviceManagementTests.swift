@@ -40,7 +40,8 @@ final class LinuxTrustedDeviceManagementTests: XCTestCase {
             }
         )
 
-        XCTAssertEqual(try await manager.listTrustedDevices(), [device])
+        let devices = try await manager.listTrustedDevices()
+        XCTAssertEqual(devices, [device])
         let approved = try await manager.approveTrustedDevice(deviceID: "ipad-1")
         XCTAssertEqual(approved.trustState, .trusted)
         let revoked = try await manager.revokeTrustedDevice(deviceID: "ipad-1")
