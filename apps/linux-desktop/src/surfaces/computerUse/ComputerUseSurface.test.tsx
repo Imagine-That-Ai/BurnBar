@@ -149,7 +149,9 @@ describe('ComputerUseSurface', () => {
     });
 
     render(<ComputerUseSurface />);
-    expect((await screen.findByRole('status')).textContent).toMatch(new RegExp(copy, 'i'));
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toMatch(new RegExp(copy, 'i'));
+    });
   });
 
   it('exposes authorized only with the native broker session', async () => {
