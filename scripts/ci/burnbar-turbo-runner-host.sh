@@ -93,7 +93,9 @@ softnet_path="$(command -v softnet || true)"
 [[ -n "$softnet_path" ]] || die "Softnet is required"
 softnet_path="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$softnet_path")"
 softnet_owner="$(stat -f '%u' "$softnet_path")"
-softnet_mode="$(stat -f '%OLp' "$softnet_path")"
+# macOS %OLp reports only the ordinary permission bits and drops setuid. Use
+# the full numeric mode so the 04000 trust bit is actually observable.
+softnet_mode="$(stat -f '%p' "$softnet_path")"
 if [[ "$softnet_owner" != "0" ]] || ! (( (0$softnet_mode & 04000) != 0 )); then
   die "Softnet is not root-owned setuid; run: sudo chown root '$softnet_path' && sudo chmod u+s '$softnet_path'"
 fi
