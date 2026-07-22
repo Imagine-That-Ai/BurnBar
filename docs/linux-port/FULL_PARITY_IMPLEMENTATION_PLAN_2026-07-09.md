@@ -254,6 +254,19 @@ known platform divergences.
 > backends, native PDF semantics, production credentials, and the seven
 > environment matrix remain release dependencies.
 
+> **Live-environment update (2026-07-22):** A fresh physical iPad run at
+> `b96ea13e24` passed `iPadNavigationUITests/testiPadSettingsTabs_countAndNoDaemon`
+> **1/1** with xcodebuild exit 0; the receipt is
+> [`evidence/mission-002-reanchor/ipad-navigation-focused-current-head-2026-07-22.json`](evidence/mission-002-reanchor/ipad-navigation-focused-current-head-2026-07-22.json).
+> The UTM Ubuntu guest also had a stale root-level systemd unit crash-looping
+> because it bypassed the per-user XDG token contract. That unit was disabled;
+> the packaged user service remains active and `openburnbar-cli health` returns
+> `ok=true`. The remediation is recorded in
+> [`evidence/mission-002-reanchor/utm-systemd-recovery-2026-07-22.json`](evidence/mission-002-reanchor/utm-systemd-recovery-2026-07-22.json).
+> Both receipts are focused/non-certifying: signed current-candidate binding,
+> Firebase/App Check trust-cycle execution, and the remaining environment rows
+> are still required.
+
 ## Executive Verdict
 
 Linux is not at full macOS parity.
