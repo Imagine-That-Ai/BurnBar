@@ -1,6 +1,5 @@
 #if os(macOS)
 import XCTest
-@testable import OpenBurnBarCore
 // P-15b / K2: CLILaunchAdapter's Foundation-pure resolution surface (and its internal
 // test seams environmentProvider/homeDirectoryProvider/trustedExecutableSearchDirectories/
 // allowsAmbientUserManagedExecutableFallback/ambientFallbackExecutableSearchDirectories)
