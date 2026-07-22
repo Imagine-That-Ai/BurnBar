@@ -377,7 +377,9 @@ jobs:
   promotion-contracts:
     name: promotion-contracts
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # This job performs two full-history checkouts. Either fetch can take several
+    # minutes during GitHub degradation, before the contract tests even run.
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -1110,11 +1112,18 @@ jobs:
             --identity-report "$RUNNER_TEMP/android-observed-identity.json" \
             --output "$RUNNER_TEMP/attestation-kotlin-aar"
 
+      - name: Build host domain core for JVM consumer contracts
+        working-directory: crates/openburnbar-domain-core
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
+        run: cargo build --locked -p openburnbar-domain-ffi
+
       - name: Run Android app domain-core consumer contracts
         working-directory: android
         run: |
           set -o pipefail
           ./gradlew :app:testDebugUnitTest --no-daemon \
+            -Dopenburnbar.domainCore.nativeLibraryPath="$GITHUB_WORKSPACE/crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so" \
             --tests 'com.openburnbar.data.DomainCoreBuildProfileTest' \
             --tests 'com.openburnbar.data.DomainCoreShadowEvidenceTest' \
             --tests 'com.openburnbar.data.cloud.*DomainCoreTest' \

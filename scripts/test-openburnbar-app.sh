@@ -194,14 +194,20 @@ done
 
 isolated_test_filters=(
     "OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
-    "OpenBurnBarTests/ProjectionPipelineServiceMattersTests/test_artifactReuseCopyFailure_reembedsChunks_neverLeavingThemUnsearchable"
+    "OpenBurnBarTests/MediaSessionCoordinatorTests/testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry"
+    "OpenBurnBarTests/ProjectionChunkerTests"
+    "OpenBurnBarTests/ProjectionPipelineServiceTests"
+    "OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
+    "OpenBurnBarTests/ProjectionStoreLifecycleTests"
 )
+isolated_test_expected_count=121
 main_skip_test_filters=()
 run_isolated_test_phase=0
 if ((${#test_filters[@]} == 1)) && [[ "${test_filters[0]}" == "OpenBurnBarTests" ]]; then
-    # Both methods pass together in a fresh host but are contaminated by
+    # These tests pass together in a fresh host but are contaminated by
     # process-global media/GRDB state after the 1,900-test monolithic run.
-    # Keep them mandatory while giving them a clean XCTest process.
+    # Keep the complete projection surface mandatory in one clean XCTest
+    # process so newly added projection tests cannot inherit that state.
     main_skip_test_filters=("${isolated_test_filters[@]}")
     run_isolated_test_phase=1
 fi
@@ -222,6 +228,7 @@ if [[ "$print_xcodebuild_plan" == "1" ]]; then
         for filter in "${isolated_test_filters[@]}"; do
             printf 'fresh-host-only\t%s\n' "$filter"
         done
+        printf 'fresh-host-expected-count\t%s\n' "$isolated_test_expected_count"
     fi
     exit 0
 fi
@@ -426,7 +433,7 @@ fi
 
 validate_fresh_host_xcresult() {
     local xcresult_path="$1"
-    local expected_count="${#isolated_test_filters[@]}"
+    local expected_count="$isolated_test_expected_count"
 
     xcrun xcresulttool get test-results summary \
         --path "$xcresult_path" \
@@ -580,10 +587,10 @@ if [ "$final_outcome" = "failed" ] && [ "$test_attempt" -gt "$max_test_attempts"
     xcodebuild build-for-testing "${xcodebuild_args[@]}" || true
 fi
 
-# The default full-bundle run keeps two tests out of the long-lived host, then
-# executes them against the same built products in a clean XCTest process. Both
-# phases must pass, and their result bundles are merged into the canonical
-# evidence artifact consumed by test-count and coverage gates.
+# The default full-bundle run keeps state-sensitive tests out of the long-lived
+# host, then executes them against the same built products in a clean XCTest
+# process. Both phases must pass, and their result bundles are merged into the
+# canonical evidence artifact consumed by test-count and coverage gates.
 if [[ "$final_outcome" == "passed" && "$run_isolated_test_phase" == "1" ]]; then
     main_xcresult="$final_xcresult"
     isolated_attempt=1

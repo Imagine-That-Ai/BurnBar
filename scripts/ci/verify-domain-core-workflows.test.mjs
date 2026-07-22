@@ -21,6 +21,10 @@ const androidAarBuild = readFileSync(
   new URL("../../scripts/build-domain-core-android-aar.sh", import.meta.url),
   "utf8",
 );
+const androidAppBuild = readFileSync(
+  new URL("../../android/app/build.gradle.kts", import.meta.url),
+  "utf8",
+);
 const signer = readFileSync(
   new URL(
     "../../.github/workflows/domain-core-promotion-proof.yml",
@@ -172,6 +176,30 @@ test("native consumer jobs keep their measured execution margin and emulator she
   assert.ok(byteDriftCheck >= 0);
   assert.ok(byteDriftCheck < candidateResolution);
   assert.ok(candidateResolution < candidateBuild);
+  const hostJvmBuild = android.indexOf(
+    "Build host domain core for JVM consumer contracts",
+  );
+  const androidConsumerContracts = android.indexOf(
+    "Run Android app domain-core consumer contracts",
+  );
+  assert.ok(candidateBuild < hostJvmBuild);
+  assert.ok(hostJvmBuild < androidConsumerContracts);
+  assert.match(
+    android,
+    /Build host domain core for JVM consumer contracts[\s\S]*working-directory: crates\/openburnbar-domain-core[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ steps\.candidate\.outputs\.candidate_commit \}\}[\s\S]*cargo build --locked -p openburnbar-domain-ffi/u,
+  );
+  assert.match(
+    android,
+    /-Dopenburnbar\.domainCore\.nativeLibraryPath="\$GITHUB_WORKSPACE\/crates\/openburnbar-domain-core\/target\/debug\/libopenburnbar_domain_ffi\.so"/u,
+  );
+  assert.match(
+    androidAppBuild,
+    /testImplementation\("net\.java\.dev\.jna:jna:5\.19\.0"\)/u,
+  );
+  assert.match(
+    androidAppBuild,
+    /providers\.systemProperty\("openburnbar\.domainCore\.nativeLibraryPath"\)[\s\S]*"uniffi\.component\.openburnbar_domain_ffi\.libraryOverride"/u,
+  );
   assert.match(
     apple,
     /Build Apple XCFramework and regenerate Swift bindings[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ github\.sha \}\}[\s\S]*build-domain-core-xcframework\.sh/u,
@@ -550,6 +578,12 @@ test("protected Functions inventory covers every pricing execution entry and bot
 test("promotion-contracts executes native release workflow contract tests", () => {
   const job = workflowJob(core, "promotion-contracts");
 
+  const timeout = job.match(/^    timeout-minutes: (\d+)$/mu);
+  assert.ok(timeout, "promotion-contracts must declare a timeout");
+  assert.ok(
+    Number.parseInt(timeout[1], 10) >= 15,
+    "promotion-contracts timeout must tolerate both full-history checkouts",
+  );
   assert.match(
     job,
     /node --test \\\n(?:            [^\n]+ \\\n)*            scripts\/ci\/verify-domain-core-native-release-workflows\.test\.mjs \\/u,

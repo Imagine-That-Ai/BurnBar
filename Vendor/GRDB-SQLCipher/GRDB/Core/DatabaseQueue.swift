@@ -235,10 +235,17 @@ extension DatabaseQueue: DatabaseReader {
 
     public func asyncRead(_ value: @escaping (Result<Database, Error>) -> Void) {
         writer.async { db in
+            var enteredReadOnly = false
             defer {
-                // Ignore error because we can not notify it.
-                try? db.commit()
-                try? db.endReadOnly()
+                if enteredReadOnly {
+                    do {
+                        try db.commit()
+                    } catch {
+                        try? db.rollback()
+                    }
+                    assert(!db.isInsideTransaction)
+                    try? db.endReadOnly()
+                }
             }
 
             do {
@@ -246,6 +253,7 @@ extension DatabaseQueue: DatabaseReader {
                 // transaction commit does not trigger database observation.
                 // See <https://github.com/groue/GRDB.swift/pull/1213>.
                 try db.beginReadOnly()
+                enteredReadOnly = true
                 try db.beginTransaction(.deferred)
                 value(.success(db))
             } catch {
@@ -285,10 +293,17 @@ extension DatabaseQueue: DatabaseReader {
             // ... and that no transaction is opened.
             GRDBPrecondition(!db.isInsideTransaction, "must not be called from inside a transaction.")
 
+            var enteredReadOnly = false
             defer {
-                // Ignore error because we can not notify it.
-                try? db.commit()
-                try? db.endReadOnly()
+                if enteredReadOnly {
+                    do {
+                        try db.commit()
+                    } catch {
+                        try? db.rollback()
+                    }
+                    assert(!db.isInsideTransaction)
+                    try? db.endReadOnly()
+                }
             }
 
             do {
@@ -296,6 +311,7 @@ extension DatabaseQueue: DatabaseReader {
                 // transaction commit does not trigger database observation.
                 // See <https://github.com/groue/GRDB.swift/pull/1213>.
                 try db.beginReadOnly()
+                enteredReadOnly = true
                 try db.beginTransaction(.deferred)
                 value(.success(db))
             } catch {

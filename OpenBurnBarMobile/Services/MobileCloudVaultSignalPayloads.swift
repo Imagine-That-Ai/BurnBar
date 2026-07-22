@@ -151,13 +151,13 @@ enum MobileCloudVaultSignalPayloads {
             localIdentity.identityKeyId: localIdentity.atRestRecipient()
         ]
 
-        for document in trustedDevices.documents {
-            let verified = try await MobileCloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevice(
-                uid: uid,
-                userRef: userRef,
-                deviceDocument: document,
-                localIdentity: localIdentity
-            )
+        let verifiedDevices = try await MobileCloudVaultTrustedDeviceChainVerifier.verifiedTrustedDevices(
+            uid: uid,
+            userRef: userRef,
+            deviceDocuments: trustedDevices.documents,
+            localIdentity: localIdentity
+        )
+        for verified in verifiedDevices {
             if verified.signalIdentityKeyId == localIdentity.identityKeyId { continue }
             recipientsByIdentityKeyId[verified.signalIdentityKeyId] = OpenBurnBarSignalAtRestRecipient(
                 recipientKind: "device",

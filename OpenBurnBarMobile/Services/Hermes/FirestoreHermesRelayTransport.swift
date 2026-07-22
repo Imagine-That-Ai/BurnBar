@@ -238,10 +238,58 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
     private func cancelRelayRequest(_ requestID: String) async throws {
         guard FirebaseApp.app() != nil else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        try await requestRef(uid: uid, requestID: requestID).setData([
+        let request = requestRef(uid: uid, requestID: requestID)
+        let cancellationData = [
             "status": HermesRelayRequestStatus.cancelled.rawValue,
             "updatedAt": Self.iso8601.string(from: Date())
-        ], merge: true)
+        ]
+        let firestore = db
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            Self.runCancellationTransaction(
+                firestore: firestore,
+                request: request,
+                cancellationData: cancellationData,
+                continuation: continuation
+            )
+        }
+    }
+
+    nonisolated private static func runCancellationTransaction(
+        firestore: Firestore,
+        request: DocumentReference,
+        cancellationData: [String: String],
+        continuation: CheckedContinuation<Void, Error>
+    ) {
+        firestore.runTransaction({ transaction, errorPointer -> Any? in
+            let snapshot: DocumentSnapshot
+            do {
+                snapshot = try transaction.getDocument(request)
+            } catch {
+                errorPointer?.pointee = error as NSError
+                return nil
+            }
+            guard shouldCancelRelayRequest(status: snapshot.data()?["status"] as? String) else {
+                return NSNull()
+            }
+            transaction.setData(cancellationData, forDocument: request, merge: true)
+            return NSNull()
+        }, completion: { _, error in
+            if let error {
+                continuation.resume(throwing: error)
+            } else {
+                continuation.resume(returning: ())
+            }
+        })
+    }
+
+    nonisolated static func shouldCancelRelayRequest(status: String?) -> Bool {
+        guard let status, let parsed = HermesRelayRequestStatus(rawValue: status) else { return false }
+        switch parsed {
+        case .pending, .claimed, .streaming:
+            return true
+        case .completed, .failed, .cancelled, .expired:
+            return false
+        }
     }
 
     private func requestRef(uid: String, requestID: String) -> DocumentReference {
