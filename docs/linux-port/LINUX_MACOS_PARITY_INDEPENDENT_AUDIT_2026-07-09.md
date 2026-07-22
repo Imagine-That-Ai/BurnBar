@@ -29,6 +29,11 @@ of blocking the daemon actor indefinitely. The native test manifest includes a
 regression case for the stalled-process path. This closes a reliability gap in
 source and tests; it is not installed-environment certification.
 
+Exact-head hosted verification for this change is run `29894925872`, Linux job
+`88843437034`; all 29 steps passed, including the native Swift/Rust behavior
+suite and IPC drift gate. Machine-readable evidence:
+`evidence/mission-002-reanchor/notification-timeout-2026-07-22.json`.
+
 The malformed/incomplete HTTP frame test is deterministic now: the Linux raw
 request helper half-closes its write side after sending the intentionally short
 body, so the gateway returns its typed error immediately instead of waiting for
