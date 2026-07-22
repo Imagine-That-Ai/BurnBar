@@ -1,4 +1,5 @@
 #if !canImport(LibSignalClient)
+// cov:ignore-start -- fallback backend is compile-time excluded when LibSignalClient is linked; fail-closed behavior is covered by unavailable-backend tests
 #if canImport(CryptoKit)
 import CryptoKit
 #else
@@ -541,4 +542,6 @@ extension OpenBurnBarSignalCoreError {
         }
     }
 }
+
+// cov:ignore-end
 #endif
