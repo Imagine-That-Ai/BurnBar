@@ -12,8 +12,9 @@ struct SettingsView: View {
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     var dataStore: DataStore
     var runtimeContext: OpenBurnBarRuntimeContext?
+    let chatController: ChatSessionController?
     @Environment(\.dismiss) private var dismiss
-    @State private var router = SettingsRouter()
+    @State private var router: SettingsRouter
     @State private var presentationWindow: NSWindow?
     @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
     @State private var piAgentRuntimeAdapter = PiAgentRuntimeAdapter()
@@ -30,14 +31,18 @@ struct SettingsView: View {
         cloudSyncService: CloudSyncService? = nil,
         iCloudSessionMirrorService: ICloudSessionMirrorService? = nil,
         dataStore: DataStore,
-        runtimeContext: OpenBurnBarRuntimeContext? = nil
+        runtimeContext: OpenBurnBarRuntimeContext? = nil,
+        chatController: ChatSessionController? = nil,
+        initialItemID: String? = nil
     ) {
         self._settingsManager = Bindable(settingsManager)
+        self._router = State(initialValue: SettingsRouter(initialItemID: initialItemID))
         self.accountManager = accountManager
         self.cloudSyncService = cloudSyncService
         self.iCloudSessionMirrorService = iCloudSessionMirrorService
         self.dataStore = dataStore
         self.runtimeContext = runtimeContext
+        self.chatController = chatController ?? runtimeContext?.chatController
     }
 
     var body: some View {
@@ -314,11 +319,7 @@ struct SettingsView: View {
                 iCloudSessionMirrorService: iCloudSessionMirrorService
             )
         case .analysisConfigurator:
-            // Settings has no `ChatSessionController` in scope, so the
-            // configurator renders its empty-state (the live picker needs a
-            // chat's advertised-model catalog). The chat-header entry point
-            // (`ChatPanel`) passes a real controller.
-            ElderWandConfiguratorView(controller: nil, settingsManager: settingsManager)
+            ElderWandConfiguratorView(controller: chatController, settingsManager: settingsManager)
         case .fusionImpact:
             // The standing fusion-spend screen reads `token_usage` through the
             // injected store. The fusion-search quota ring is fed separately

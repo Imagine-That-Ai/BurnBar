@@ -9,6 +9,10 @@ their answers into a structured verdict (it never merges them), and the user's o
 Wire-compatible plugin id: **`"fusion"`**. User-facing name: **The Elder Wand**.
 Membership gate: **Cloud Pro** (`burnbar_pro_max`).
 
+The cross-surface contract, persistence map, failure rules, and explicit
+separation from Pareto routing are documented in
+[Elder Wand and Pareto Wand contracts](ELDER_AND_PARETO_WAND_CONTRACTS.md).
+
 ## Request shape
 
 The Elder Wand rides on the existing OpenAI-compatible `/v1/chat/completions`

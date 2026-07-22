@@ -16,6 +16,8 @@ on:
   pull_request:
     branches:
       - main
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -32,7 +34,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 25
     env:
-      RUN_PR_SAFE_QA: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
+      RUN_PR_SAFE_QA: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.ref != 'refs/heads/main' }}
       RUN_SECRET_BACKED_QA: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
     steps:
       - name: Checkout repository

@@ -95,19 +95,36 @@ public final class FactoryDroidParser: LogParser, Sendable {
                     guard Date(timeIntervalSince1970: latestModification) >= boundary else { continue }
                 }
 
-                if let cached, !options.includeConversationBodies {
-                    appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
+                if let cached, let signature, !options.includeConversationBodies {
+                    let scrubbed = updateCacheEntry(
+                        cached,
+                        signature: signature,
+                        jsonlFile: jsonlFile,
+                        settingsFile: fileManager.fileExists(atPath: settingsFile.path) ? settingsFile : nil,
+                        sessionId: baseName,
+                        projectName: projectName,
+                        includeConversationBodies: false,
+                        parseCache: &parseCache,
+                        cacheKey: cacheKey,
+                        cacheMutated: &cacheMutated
+                    )
+                    appendCached(scrubbed, includeConversation: false, usages: &usages, conversations: &conversations)
                     continue
                 }
 
-                guard fileManager.fileExists(atPath: settingsFile.path) else {
+                let hasSettings = fileManager.fileExists(atPath: settingsFile.path)
+                let hasMetadata = fileManager.fileExists(atPath: metadataFile.path)
+                guard hasSettings || hasMetadata else {
                     if let cached {
                         appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
                     }
                     continue
                 }
-                var sessionFiles = [jsonlFile, settingsFile]
-                if fileManager.fileExists(atPath: metadataFile.path) {
+                var sessionFiles = [jsonlFile]
+                if hasSettings {
+                    sessionFiles.append(settingsFile)
+                }
+                if hasMetadata {
                     sessionFiles.append(metadataFile)
                 }
                 guard try gate.shouldRead(sessionFiles, candidateAlreadyRecorded: true) else {
@@ -122,7 +139,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
                         cached,
                         signature: signature,
                         jsonlFile: jsonlFile,
-                        settingsFile: settingsFile,
+                        settingsFile: hasSettings ? settingsFile : nil,
                         sessionId: baseName,
                         projectName: projectName,
                         includeConversationBodies: true,
@@ -140,7 +157,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
                     let parsed = try? parseSession(
                         sessionId: baseName,
                         jsonlFile: jsonlFile,
-                        settingsFile: settingsFile,
+                        settingsFile: hasSettings ? settingsFile : nil,
                         projectName: projectName
                     )
                     if parsed == nil {
@@ -465,7 +482,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
         _ cached: FactoryDroidCacheEntry,
         signature: CompositeFileSignature<FileSignature>,
         jsonlFile: URL,
-        settingsFile: URL,
+        settingsFile: URL?,
         sessionId: String,
         projectName: String,
         includeConversationBodies: Bool,

@@ -69,14 +69,20 @@ struct ApprovalInboxStrip: View {
                         .padding(.horizontal, 10).padding(.vertical, 5)
                         .background(Capsule().fill(DesignSystemColors.success))
                         .foregroundStyle(.white)
-                }.buttonStyle(.plain)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("mission.approval.approve.\(ask.missionID)")
+                .accessibilityLabel("Approve \(ask.title)")
                 Button { onDeny(ask) } label: {
                     Text("Deny")
                         .font(.caption.bold())
                         .padding(.horizontal, 10).padding(.vertical, 5)
                         .background(Capsule().fill(DesignSystemColors.error.opacity(0.18)))
                         .foregroundStyle(DesignSystemColors.error)
-                }.buttonStyle(.plain)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("mission.approval.deny.\(ask.missionID)")
+                .accessibilityLabel("Deny \(ask.title)")
                 Spacer()
                 Menu {
                     Button("Always approve this class") { onApproveAlways(ask) }

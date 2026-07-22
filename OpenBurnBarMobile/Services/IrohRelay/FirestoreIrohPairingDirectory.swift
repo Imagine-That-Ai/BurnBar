@@ -1,4 +1,5 @@
 import Foundation
+import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
@@ -14,9 +15,14 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, Sendable {
     static let shared = FirestoreIrohPairingDirectory()
 
     private let firestoreProvider: @Sendable () -> Firestore
+    private let firebaseConfigured: @Sendable () -> Bool
 
-    init(firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() }) {
+    init(
+        firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
+        firebaseConfigured: @escaping @Sendable () -> Bool = { FirebaseApp.app() != nil }
+    ) {
         self.firestoreProvider = firestoreProvider
+        self.firebaseConfigured = firebaseConfigured
     }
 
     func publish(_ record: IrohPairingRecord, for uid: String) async throws {
@@ -24,6 +30,9 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, Sendable {
     }
 
     func fetch(uid: String, connectionId: String) async throws -> IrohPairingRecord? {
+        guard firebaseConfigured() else {
+            throw FirestoreIrohPairingDirectoryError.firebaseUnavailable
+        }
         let snapshot = try await firestoreProvider()
             .collection("users")
             .document(uid)
@@ -59,5 +68,13 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, Sendable {
             protocolVersion: protocolVersion,
             signature: signature
         )
+    }
+}
+
+enum FirestoreIrohPairingDirectoryError: LocalizedError, Equatable {
+    case firebaseUnavailable
+
+    var errorDescription: String? {
+        "Firebase is not configured on this device."
     }
 }

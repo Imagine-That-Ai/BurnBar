@@ -100,7 +100,7 @@ jobs:
           # pbxproj (XcodeGen globs source directories, so adding/removing a
           # file under one of them rewrites project.pbxproj).
           if echo "${changed}" | grep -Eq \
-            '^(project\.yml|OpenBurnBar\.xcodeproj/|OpenBurnBarCore/|OpenBurnBarDaemon/|OpenBurnBarMobile/|OpenBurnBarMobileTests/|OpenBurnBarMobileUITests/|OpenBurnBarKeyboard/|OpenBurnBarWidget/|AgentLens/|AgentLensTests/|\.swiftlint\.yml|packages/data-domains/gen/.*\.swift|packages/design-tokens/dist/swift/.*\.swift)'; then
+            '^(project\.yml|OpenBurnBar\.xcodeproj/|OpenBurnBarCore/|OpenBurnBarDaemon/|OpenBurnBarMobile/|OpenBurnBarMobileTests/|OpenBurnBarMobileUITests/|OpenBurnBarKeyboard/|OpenBurnBarWidget/|AgentLens/|AgentLensTests/|scripts/ci/verify-daemon-release-signing(\.test)?\.sh|\.swiftlint\.yml|packages/data-domains/gen/.*\.swift|packages/design-tokens/dist/swift/.*\.swift)'; then
             echo "native=true" >> "$GITHUB_OUTPUT"
             echo "Native surface changed: running SwiftPM + xcodegen-drift gates."
           else
@@ -165,6 +165,9 @@ jobs:
           unzip -oq /tmp/swiftlint.zip -d /tmp/swiftlint-bin
           /tmp/swiftlint-bin/swiftlint version
           /tmp/swiftlint-bin/swiftlint lint --quiet --strict
+
+      - name: Self-test signed daemon runtime gate
+        run: bash scripts/ci/verify-daemon-release-signing.test.sh
 
       # Reuses scripts/test-openburnbar-swift.sh, which prepares the libsignal
       # FFI then runs `swift test` (build + unit) on OpenBurnBarCore and
