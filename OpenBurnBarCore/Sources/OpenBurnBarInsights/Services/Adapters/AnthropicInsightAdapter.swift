@@ -8,11 +8,11 @@ import FoundationNetworking
 ///
 /// Uses tier-1 strict JSON-Schema generation for canvas authoring and
 /// supports extended thinking when the user picks an opus-class model.
-public struct AnthropicInsightAdapter: InsightModelGateway {
+struct AnthropicInsightAdapter: InsightModelGateway {
 
-    public let providerKey = "anthropic"
-    public let displayName = "Anthropic (Claude)"
-    public let capabilities = InsightModelCapabilities(
+    let providerKey = "anthropic"
+    let displayName = "Anthropic (Claude)"
+    let capabilities = InsightModelCapabilities(
         supportsStrictJSONSchema: true,
         supportsJSONObject: true,
         supportsThinking: true,
@@ -20,12 +20,12 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         supportsStreaming: true
     )
 
-    public let apiKey: String
-    public let baseURL: URL
-    public let urlSession: URLSession
-    public let modelCatalog: [InsightCatalogModel]
+    let apiKey: String
+    let baseURL: URL
+    let urlSession: URLSession
+    let modelCatalog: [InsightCatalogModel]
 
-    public init(apiKey: String,
+    init(apiKey: String,
                 baseURL: URL = URL(string: "https://api.anthropic.com")!,
                 urlSession: URLSession = .shared,
                 modelCatalog: [InsightCatalogModel] = AnthropicInsightAdapter.defaultModels) {
@@ -35,11 +35,11 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         self.modelCatalog = modelCatalog
     }
 
-    public func availableModels() async throws -> [InsightCatalogModel] {
+    func availableModels() async throws -> [InsightCatalogModel] {
         modelCatalog
     }
 
-    public static let defaultModels: [InsightCatalogModel] = [
+    static let defaultModels: [InsightCatalogModel] = [
         .init(id: "claude-opus-4-8", displayName: "Claude Opus 4.8", providerKey: "anthropic",
               egressTier: .userKey, capabilities: .init(supportsStrictJSONSchema: true,
                                                         supportsJSONObject: true,
@@ -63,7 +63,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
               inputCostPerMtoken: 1, outputCostPerMtoken: 5, symbolName: "bolt.fill")
     ]
 
-    public func investigate(
+    func investigate(
         request: InsightInvestigateRequest,
         tools: InsightToolBroker?
     ) -> AsyncThrowingStream<InsightInvestigateEvent, Error> {
@@ -80,7 +80,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         }
     }
 
-    public func analyze(
+    func analyze(
         request: InsightAnalysisRequest,
         platform: InsightAnalysisPlatform,
         tools: InsightToolBroker?
@@ -258,7 +258,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
 
     /// Decoder shared by adapters: lifts a JSON canvas out of arbitrary
     /// LLM output. Forgiving — strips fences, walks brace depth.
-    public static func decodeCanvas(from data: Data,
+    static func decodeCanvas(from data: Data,
                                     fallbackTitle: String,
                                     modelTag: InsightModelTag) throws -> InsightCanvas {
         guard let text = String(data: data, encoding: .utf8) else {
@@ -329,7 +329,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
 
     /// Parse a simple "kind + title" widget shape into an InsightWidget
     /// with a sensible default binding.
-    public static func simpleWidget(_ obj: [String: Any]) -> InsightWidget? {
+    static func simpleWidget(_ obj: [String: Any]) -> InsightWidget? {
         guard let kindRaw = obj["kind"] as? String,
               let kind = InsightWidgetKind(rawValue: kindRaw),
               let title = obj["title"] as? String else {
@@ -493,7 +493,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         )
     }
 
-    public static func defaultBinding(for kind: InsightWidgetKind) -> InsightDataBinding {
+    static func defaultBinding(for kind: InsightWidgetKind) -> InsightDataBinding {
         switch kind {
         case .kpiTile: return .kpi(metric: .totalCost, window: .last7d)
         case .timeSeriesLine, .timeSeriesArea, .streamGraph:
@@ -522,7 +522,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         }
     }
 
-    public static func defaultSpec(for kind: InsightWidgetKind) -> InsightWidgetSpec {
+    static func defaultSpec(for kind: InsightWidgetKind) -> InsightWidgetSpec {
         switch kind {
         case .kpiTile: return .kpiTile(.init(metricLabel: "Metric"))
         case .timeSeriesLine: return .timeSeries(.init(style: .line))
