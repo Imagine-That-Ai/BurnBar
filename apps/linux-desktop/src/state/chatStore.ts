@@ -12,7 +12,12 @@ import type {
   ConfigSnapshot,
   PersistedChatMessage
 } from '../tauriBridge.js';
-import type { ChatBackendId, ChatWarningBanner, MemoryCitation } from '../surfaces/chat/chatTypes.js';
+import type {
+  ChatBackendId,
+  ChatToolApprovalCapability,
+  ChatWarningBanner,
+  MemoryCitation
+} from '../surfaces/chat/chatTypes.js';
 import { useShellStore } from './shellStore.js';
 
 export const CHAT_THREAD_PAGE_SIZE = 40;
@@ -28,6 +33,7 @@ export type ChatMessage = {
   toolName?: string;
   toolArgsSummary?: string;
   toolState?: 'proposed' | 'approved' | 'denied' | 'done' | 'running';
+  toolApproval?: ChatToolApprovalCapability;
   viaHermes?: boolean;
   /** Indexed/live session provider id when known (codex, claude-code, hermes, …). */
   provider?: string;
@@ -315,7 +321,13 @@ export function applyChatStreamEvent(messages: ChatMessage[], assistantId: strin
                 ...message,
                 text: summarizeToolArgs(event.toolCall.arguments),
                 toolName: event.toolCall.name,
-                toolArgsSummary: summarizeToolArgs(event.toolCall.arguments)
+                toolArgsSummary: summarizeToolArgs(event.toolCall.arguments),
+                toolApproval: {
+                  state: 'unavailable',
+                  source: 'gateway',
+                  reason: 'gateway-tool-call-missing-run-approval-identity',
+                  fallbackRoute: 'missions'
+                }
               }
             : message
         );
@@ -328,7 +340,13 @@ export function applyChatStreamEvent(messages: ChatMessage[], assistantId: strin
           text: summarizeToolArgs(event.toolCall.arguments),
           toolName: event.toolCall.name,
           toolArgsSummary: summarizeToolArgs(event.toolCall.arguments),
-          toolState: 'proposed'
+          toolState: 'proposed',
+          toolApproval: {
+            state: 'unavailable',
+            source: 'gateway',
+            reason: 'gateway-tool-call-missing-run-approval-identity',
+            fallbackRoute: 'missions'
+          }
         }
       ];
     case 'usage':

@@ -16,6 +16,24 @@ export type ChatWarningBanner = {
   message: string;
 };
 
+/**
+ * Approval capabilities are transport-specific. Gateway tool-call frames do
+ * not include the daemon run/approval identity required by `approval.respond`;
+ * keep that boundary explicit instead of making a card appear actionable.
+ */
+export type ChatToolApprovalCapability =
+  | {
+      state: 'unavailable';
+      source: 'gateway';
+      reason: 'gateway-tool-call-missing-run-approval-identity';
+      fallbackRoute: 'missions';
+    }
+  | {
+      state: 'available';
+      source: 'daemon-run';
+      approvalID: string;
+    };
+
 export type MemoryCitation = {
   id: string;
   label: string;

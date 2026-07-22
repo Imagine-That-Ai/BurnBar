@@ -38,6 +38,7 @@ export type ChatWorkspacePanelProps = {
   composerBusy: boolean;
   onSendMessage: (text: string) => void;
   onStopStreaming: () => void;
+  onOpenMissionControl: () => void;
   mainFallback?: ReactNode;
 };
 
@@ -70,6 +71,7 @@ export function ChatWorkspacePanel({
   composerBusy,
   onSendMessage,
   onStopStreaming,
+  onOpenMissionControl,
   mainFallback
 }: ChatWorkspacePanelProps) {
   const hasActiveTranscript = Boolean(selectedThread) || messages.length > 0 || streaming;
@@ -108,6 +110,7 @@ export function ChatWorkspacePanel({
               sharedFeaturesAvailable={sharedFeaturesAvailable}
               streamError={streamError}
               streaming={streaming}
+              onOpenMissionControl={onOpenMissionControl}
             />
           ) : (
             (mainFallback ?? (

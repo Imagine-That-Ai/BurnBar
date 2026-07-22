@@ -7,7 +7,7 @@ import type {
   PersistedChatMessage
 } from '../tauriBridge.js';
 import { useShellStore } from './shellStore.js';
-import { useChatStore } from './chatStore.js';
+import { applyChatStreamEvent, useChatStore } from './chatStore.js';
 
 const NOW = '2026-07-10T12:00:00.000Z';
 
@@ -92,6 +92,32 @@ afterEach(() => {
 });
 
 describe('exact-thread chat store', () => {
+  it('marks gateway tool calls as approval-unavailable without inventing a run identity', () => {
+    const messages = applyChatStreamEvent([], 'assistant-1', {
+      type: 'tool_call',
+      toolCall: {
+        id: 'gateway-call-1',
+        name: 'workspace.read',
+        arguments: '{"path":"README.md"}'
+      }
+    });
+
+    expect(messages).toEqual([
+      expect.objectContaining({
+        id: 'gateway-call-1',
+        role: 'tool',
+        toolState: 'proposed',
+        toolApproval: {
+          state: 'unavailable',
+          source: 'gateway',
+          reason: 'gateway-tool-call-missing-run-approval-identity',
+          fallbackRoute: 'missions'
+        }
+      })
+    ]);
+    expect(JSON.stringify(messages)).not.toContain('approvalID');
+  });
+
   it('loads the exact selected thread instead of fabricating usage transcript rows', async () => {
     const get = vi.fn(async (threadID: string) => ({
       thread: thread(threadID),
