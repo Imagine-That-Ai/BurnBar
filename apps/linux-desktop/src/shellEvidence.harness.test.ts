@@ -539,15 +539,15 @@ describe('shell evidence harness', () => {
         draggableContained: buildPetBehaviorGraph('draggable-contained')
       },
       overlayClickThrough: {
-        claim: 'Only compositor-supported tiers claim pass-through; GNOME Wayland degrades to contained draggable route.',
+        claim: 'No packaged route claims pass-through until both a compositor capability and native companion-window contract exist.',
         source: 'detectPetTierFromEnv',
         x11PackagedSession: {
-          expectedTier: 'overlay-pass-through-capable',
-          proof: 'packaged route screenshot plus matrix row; pass-through is not claimed on restricted compositor rows'
+          expectedTier: 'draggable-contained',
+          proof: 'environment matrix is diagnostic only; native companion-window contract is not wired'
         }
       },
       inputPassthrough: {
-        overlayTier: 'pointer/input passthrough is allowed only when compositor support is present',
+        overlayTier: 'pointer/input passthrough remains unavailable until the native companion-window contract is wired',
         restrictedTier: 'contained fallback receives drag events and does not intercept global input'
       },
       degradedDraggableFallback: {

@@ -47,7 +47,7 @@ describe('SurfaceRouter runtime capability boundary', () => {
 
     render(<SurfaceRouter route="pet" />);
     expect(screen.getByRole('status').textContent).toContain('Limited in this session');
-    expect(screen.getByRole('button', { name: 'Wave at pet' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Wave at preview' })).toBeTruthy();
   });
 
   it('fails closed when a packaged shell cannot provide the manifest', () => {
