@@ -22,6 +22,17 @@ import { useSystemStore } from './systemStore.js';
 
 type MutationKind = string;
 
+export type PrivacyMutationStatus = 'idle' | 'pending' | 'success' | 'error';
+
+export type PrivacyMutationState = {
+  status: PrivacyMutationStatus;
+  message: string | null;
+};
+
+export type PrivacySettingsPatch = Partial<
+  Pick<ConfigSnapshot, 'telemetryEnabled' | 'privacyOptIn' | 'cloudSyncEnabled'>
+>;
+
 export type SettingsWiringState = {
   routeLog: ProxyRouteLogEntry[];
   notificationConfig: NotificationConfig | null;
@@ -31,11 +42,13 @@ export type SettingsWiringState = {
   loadingNotifications: boolean;
   busy: MutationKind | null;
   error: string | null;
+  privacyMutation: PrivacyMutationState;
   loadRouteLog(): Promise<void>;
   clearRouteLog(): Promise<void>;
   loadNotifications(): Promise<void>;
   updateNotificationConfig(config: NotificationConfig): Promise<void>;
   runNotificationCommand(command: string, args?: string[]): Promise<void>;
+  updatePrivacySettings(patch: PrivacySettingsPatch): Promise<void>;
   replaceSnapshot(snapshot: ConfigSnapshot): Promise<void>;
   upsertCredentialSlot(params: {
     providerID: string;
@@ -96,6 +109,7 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
   loadingNotifications: false,
   busy: null,
   error: null,
+  privacyMutation: { status: 'idle', message: null },
 
   async loadRouteLog() {
     const { fixtureMode, bridge } = useShellStore.getState();
@@ -204,6 +218,48 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
       set({ busy: null, notificationCommandResult, error: null });
     } catch (e) {
       set({ busy: null, error: message(e, 'Notification command failed') });
+    }
+  },
+
+  async updatePrivacySettings(patch) {
+    const { fixtureMode, bridge } = useShellStore.getState();
+    const current = useSystemStore.getState().config;
+    set({
+      busy: 'privacy.config.update',
+      error: null,
+      privacyMutation: { status: 'pending', message: 'Saving privacy choices…' }
+    });
+    try {
+      if (!current) throw new Error('Config snapshot is unavailable. Refresh settings and try again.');
+      if (!fixtureMode && !bridge?.configUpdate) {
+        throw new Error('Packaged shell required to save privacy choices.');
+      }
+      const requested = { ...current, ...patch };
+      const next = fixtureMode ? requested : await bridge!.configUpdate!(requested);
+      // Config responses may omit the path envelope because the canonical
+      // daemon contract returns provider configuration plus consent fields.
+      // Preserve the already-loaded daemon facts until the next explicit
+      // config refresh rather than replacing them with empty renderer values.
+      const committed: ConfigSnapshot = {
+        ...current,
+        ...next,
+        paths: next.paths?.supportDir ? next.paths : current.paths,
+        secretServiceStatus: next.secretServiceStatus || current.secretServiceStatus,
+        providers: next.providers ?? current.providers
+      };
+      useSystemStore.setState({ config: committed, loading: false, error: null });
+      set({
+        busy: null,
+        error: null,
+        privacyMutation: { status: 'success', message: 'Privacy choices saved.' }
+      });
+    } catch (e) {
+      const failure = message(e, 'Privacy choices could not be saved.');
+      set({
+        busy: null,
+        error: failure,
+        privacyMutation: { status: 'error', message: failure }
+      });
     }
   },
 
