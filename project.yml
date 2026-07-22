@@ -827,6 +827,8 @@ targets:
       - package: OpenBurnBarCore
         product: OpenBurnBarEngine
       - package: OpenBurnBarCore
+        product: OpenBurnBarInsights
+      - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
