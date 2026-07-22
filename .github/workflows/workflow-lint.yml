@@ -19,6 +19,7 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
+      - "scripts/ci/verify-burnbar-turbo-workflow.test.mjs"
       - "scripts/ci/verify-merge-queue-workflows.mjs"
       - "scripts/ci/verify-merge-queue-workflows.test.mjs"
       - "scripts/ci/verify-curl-bearer-token-boundary.sh"
@@ -110,6 +111,7 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
+      - "scripts/ci/verify-burnbar-turbo-workflow.test.mjs"
       - "scripts/ci/verify-curl-bearer-token-boundary.sh"
       - "scripts/ci/verify-curl-bearer-token-boundary.test.sh"
       - "scripts/lib/curl-bearer.sh"
@@ -276,6 +278,9 @@ jobs:
 
       - name: Verify PR secret boundaries
         run: node scripts/ci/verify-pr-secret-boundaries.mjs
+
+      - name: Verify BurnBar turbo runner boundary
+        run: node --test scripts/ci/verify-burnbar-turbo-workflow.test.mjs
 
       - name: Self-test curl bearer-token argv boundary
         run: bash scripts/ci/verify-curl-bearer-token-boundary.test.sh
