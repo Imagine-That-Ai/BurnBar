@@ -10,12 +10,12 @@
       "publicMembers": 2521
     },
     "OpenBurnBarKernelCrypto": {
-      "publicTypes": 88,
-      "publicMembers": 593
+      "publicTypes": 87,
+      "publicMembers": 591
     },
     "OpenBurnBarKernelContracts": {
-      "publicTypes": 435,
-      "publicMembers": 2129
+      "publicTypes": 423,
+      "publicMembers": 2081
     },
     "OpenBurnBarLogParsers": {
       "publicTypes": 44,

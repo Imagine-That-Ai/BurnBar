@@ -1,19 +1,6 @@
 import Foundation
 import OpenBurnBarKernelPlatform
 
-public enum BurnBarWorkspaceCapability: String, Codable, CaseIterable, Hashable, Sendable {
-    case local
-    case remote
-    case readonly
-    case virtualWorkspace = "virtual_workspace"
-    case untrusted
-}
-
-public enum BurnBarApprovalPolicy: String, Codable, CaseIterable, Hashable, Sendable {
-    case automatic
-    case userApproval = "user_approval"
-}
-
 public enum BurnBarToolKind: String, Codable, CaseIterable, Hashable, Sendable {
     case readFile = "read_file"
     case searchWorkspace = "search_workspace"
@@ -73,28 +60,6 @@ public extension BurnBarToolKind {
         default:
             return false
         }
-    }
-}
-
-public struct BurnBarToolDefinition: Codable, Hashable, Sendable {
-    public let kind: BurnBarToolKind
-    public let displayName: String
-    public let approvalPolicy: BurnBarApprovalPolicy
-    public let requiresTrustedWorkspace: Bool
-    public let requiredCapabilities: [BurnBarWorkspaceCapability]
-
-    public init(
-        kind: BurnBarToolKind,
-        displayName: String,
-        approvalPolicy: BurnBarApprovalPolicy,
-        requiresTrustedWorkspace: Bool,
-        requiredCapabilities: [BurnBarWorkspaceCapability] = []
-    ) {
-        self.kind = kind
-        self.displayName = displayName
-        self.approvalPolicy = approvalPolicy
-        self.requiresTrustedWorkspace = requiresTrustedWorkspace
-        self.requiredCapabilities = requiredCapabilities
     }
 }
 

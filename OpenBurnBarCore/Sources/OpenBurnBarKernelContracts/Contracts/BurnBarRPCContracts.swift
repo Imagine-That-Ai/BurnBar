@@ -165,26 +165,6 @@ public struct BurnBarRPCRequestEnvelopeWithParams<Params: Codable & Sendable>: C
     }
 }
 
-public struct BurnBarAuthBootstrapRequest: Codable, Hashable, Sendable {
-    public let clientName: String
-    public let bootstrapToken: String
-
-    public init(clientName: String, bootstrapToken: String) {
-        self.clientName = clientName
-        self.bootstrapToken = bootstrapToken
-    }
-}
-
-public struct BurnBarAuthBootstrapResponse: Codable, Hashable, Sendable {
-    public let sessionToken: String
-    public let issuedAt: Date
-
-    public init(sessionToken: String, issuedAt: Date = Date()) {
-        self.sessionToken = sessionToken
-        self.issuedAt = issuedAt
-    }
-}
-
 public struct BurnBarRPCError: Codable, Hashable, Sendable {
     public let code: Int
     public let message: String
@@ -961,29 +941,5 @@ public struct BurnBarSubscriptionStopResponse: Codable, Sendable, Hashable {
         self.subscriptionID = subscriptionID
         self.stopped = stopped
         self.lastSeq = lastSeq
-    }
-}
-
-public struct BurnBarProtocolHandshakeRequest: Codable, Hashable, Sendable {
-    public let clientName: String
-    public let clientVersion: String
-    public let supportedProtocolVersions: [Int]
-
-    public init(clientName: String, clientVersion: String, supportedProtocolVersions: [Int]) {
-        self.clientName = clientName
-        self.clientVersion = clientVersion
-        self.supportedProtocolVersions = supportedProtocolVersions
-    }
-}
-
-public struct BurnBarProtocolHandshakeResponse: Codable, Hashable, Sendable {
-    public let negotiatedProtocolVersion: Int?
-    public let daemonVersion: String
-    public let compatible: Bool
-
-    public init(negotiatedProtocolVersion: Int?, daemonVersion: String, compatible: Bool) {
-        self.negotiatedProtocolVersion = negotiatedProtocolVersion
-        self.daemonVersion = daemonVersion
-        self.compatible = compatible
     }
 }
