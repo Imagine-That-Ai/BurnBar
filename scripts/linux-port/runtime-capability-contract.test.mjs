@@ -25,6 +25,7 @@ const KNOWN_EVALUATORS = new Set([
   'portal',
   'media',
   'tray',
+  'text-expansion',
   'x11-overlay',
   'computer-use-system',
   'unavailable'
