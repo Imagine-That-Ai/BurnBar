@@ -1,4 +1,5 @@
 #if os(Linux)
+// cov:ignore-start -- reason: Linux-only gateway paths are exercised by the Linux gateway suite, not macOS package coverage.
 import Foundation
 import Glibc
 import OpenBurnBarEngine
@@ -1246,4 +1247,5 @@ private func writeAll(_ data: Data, to fileDescriptor: Int32) throws {
         }
     }
 }
+// cov:ignore-end
 #endif
