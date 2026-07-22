@@ -118,6 +118,13 @@ require_pattern 'exactVersion: 4\.16\.0' project.yml "project.yml must pin SQLCi
 require_pattern 'product: SQLCipher' project.yml "OpenBurnBar targets must link the SQLCipher product"
 require_pattern 'SQLITE_HAS_CODEC' project.yml "OpenBurnBar targets must define SQLITE_HAS_CODEC"
 require_pattern 'path: Vendor/GRDB-SQLCipher' project.yml "project.yml must use the vendored SQLCipher-backed GRDB package"
+require_pattern 'OTHER_CODE_SIGN_FLAGS: --identifier com\.openburnbar\.app --options runtime,library' project.yml "daemon must share the app designated requirement for the database-key Keychain ACL"
+require_pattern 'verify-daemon-release-signing\.sh' scripts/build-macos-website-release.sh "website release must run the daemon signing and executable gate"
+require_pattern 'verify-daemon-release-signing\.sh' scripts/ci/verify-public-macos-download-trust.sh "public artifact verification must launch-check the signed daemon"
+require_pattern 'keychain-access-groups' scripts/ci/verify-daemon-release-signing.sh "daemon verifier must reject restricted Keychain entitlements on the bare helper"
+require_pattern 'Usage: OpenBurnBarDaemon' scripts/ci/verify-daemon-release-signing.sh "daemon verifier must exercise the real executable entry point"
+require_pattern 'OpenBurnBarPrivilegedInputKillSwitchWatchdog' scripts/build-macos-website-release.sh "website release must sign the bundled kill-switch watchdog"
+require_pattern 'timestamped Developer ID signature' scripts/ci/verify-daemon-release-signing.sh "release verifier must reject an ad-hoc kill-switch watchdog"
 
 require_pattern 'name: "GRDB-SQLCipher"' Vendor/GRDB-SQLCipher/Package.swift "vendored GRDB package identity must be explicit"
 require_pattern 'https://github\.com/sqlcipher/SQLCipher\.swift\.git' Vendor/GRDB-SQLCipher/Package.swift "vendored GRDB must depend on official SQLCipher Swift package"

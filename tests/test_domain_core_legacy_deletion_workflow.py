@@ -11,7 +11,7 @@ SIGNER_WORKFLOW = ROOT / ".github/workflows/domain-core-promotion-proof.yml"
 TRUSTED_GUARD_WORKFLOW = ROOT / ".github/workflows/domain-core-deletion-guard.yml"
 
 
-def _workflow_trigger_paths(source: str, event: str) -> set[str]:
+def _workflow_trigger_paths(source: str, event: str) -> set[str] | None:
     """Return the quoted path filters for one top-level workflow event."""
     lines = source.splitlines()
     start = lines.index(f"  {event}:")
@@ -26,6 +26,8 @@ def _workflow_trigger_paths(source: str, event: str) -> set[str]:
         len(lines),
     )
     event_lines = lines[start:end]
+    if "    paths:" not in event_lines:
+        return None
     paths_start = event_lines.index("    paths:")
     paths: set[str] = set()
     for line in event_lines[paths_start + 1 :]:
@@ -66,7 +68,9 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
         }
 
         for event in ("push", "pull_request"):
-            self.assertLessEqual(governed_families, _workflow_trigger_paths(source, event), event)
+            paths = _workflow_trigger_paths(source, event)
+            if paths is not None:
+                self.assertLessEqual(governed_families, paths, event)
 
     def test_protected_signer_publishes_official_provenance_bundle(self) -> None:
         source = SIGNER_WORKFLOW.read_text()
@@ -86,17 +90,20 @@ class DomainCoreLegacyDeletionWorkflowTests(unittest.TestCase):
         source = TRUSTED_GUARD_WORKFLOW.read_text()
         for marker in (
             "pull_request_target:",
+            "merge_group:",
             "Domain Core Trusted Deletion Guard",
             "path: trusted",
             "path: candidate",
-            "ref: ${{ github.event.pull_request.base.sha }}",
-            "ref: ${{ github.event.pull_request.head.sha }}",
+            "ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}",
+            "ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}",
             "persist-credentials: false",
+            "Resolve protected candidate metadata",
+            "gh-readonly-queue/main/pr-",
             'python3 "$TRUSTED_ROOT/scripts/ci/verify-domain-core-legacy-deletion.py"',
             '--repo-root "$CANDIDATE_ROOT"',
             '--trusted-root "$TRUSTED_ROOT"',
             "--verify-signed-evidence",
-            '--deletion-head "$HEAD_SHA"',
+            '--deletion-head "$PULL_REQUEST_HEAD"',
             'test "$(git -C "$TRUSTED_ROOT" rev-parse HEAD)" = "$BASE_SHA"',
             'test "$(git -C "$CANDIDATE_ROOT" rev-parse HEAD)" = "$HEAD_SHA"',
             "DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache",

@@ -18,6 +18,18 @@ import OpenBurnBarCore
 final class HermesRelayHostServiceMattersTests: XCTestCase {
     private let relayAccount = "settings.chat.hermes.relay.p256.v1"
 
+    @MainActor
+    func test_relayFallbackListenerStartsBeforePotentiallySlowConnectionPublish() async {
+        var events: [String] = []
+
+        await HermesRelayHostService.establishRelayAvailability(
+            ensureRequestListener: { events.append("listener") },
+            publishConnection: { events.append("publish") }
+        )
+
+        XCTAssertEqual(events, ["listener", "publish"])
+    }
+
     // MARK: - applyRelayKeyFields (L299 / L433 mapping)
 
     func test_applyRelayKeyFields_writesCompleteKeyTriple_neverPartial() {

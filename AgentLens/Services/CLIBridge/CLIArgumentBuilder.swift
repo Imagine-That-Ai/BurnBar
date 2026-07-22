@@ -107,6 +107,18 @@ enum CLIArgumentBuilder {
         return arguments
     }
 
+    static func directMissionArguments(
+        runtime: String,
+        prompt: String,
+        model: String,
+        capabilityGrant: AgentCapabilityGrant?
+    ) -> [String] {
+        if runtime == ChatBackendID.codex.rawValue {
+            return codexArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant)
+        }
+        return claudeArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant)
+    }
+
     static func droidArguments(
         prompt: String,
         model: String = "",

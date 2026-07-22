@@ -22,6 +22,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$httpModulePath = Join-Path $PSScriptRoot 'remote-config-http.psm1'
+Import-Module -Name $httpModulePath -Force -Scope Local
 
 if (-not $ConfirmStagingMutation) {
     throw 'Pass -ConfirmStagingMutation after confirming this is the isolated staging project.'
@@ -71,6 +73,7 @@ if ($activeProject -cne $ProjectId) {
 }
 
 $token = $null
+$httpClient = $null
 try {
     $token = (& $gcloud.Source auth print-access-token 2>$null | Select-Object -First 1)
     if ([string]::IsNullOrWhiteSpace($token)) {
@@ -78,28 +81,24 @@ try {
     }
 
     $uri = "https://firebaseremoteconfig.googleapis.com/v1/projects/$ProjectId/remoteConfig"
+    $httpClient = New-RemoteConfigHttpClient
     try {
-        $current = Invoke-WebRequest -Method Get -Uri $uri -Headers @{
-            Authorization = "Bearer $token"
-            'x-goog-user-project' = $ProjectId
-            'Accept-Encoding' = 'gzip'
-        }
+        $current = Invoke-RemoteConfigRequest -Client $httpClient `
+            -Method ([System.Net.Http.HttpMethod]::Get) -Uri $uri `
+            -AccessToken $token -QuotaProject $ProjectId
     }
     catch {
         throw 'The staging Remote Config read failed. No mutation was attempted; inspect operator access without logging credentials.'
     }
-    $etag = [string]$current.Headers['ETag']
+    $etag = [string]$current.ETag
     if ([string]::IsNullOrWhiteSpace($etag)) {
         throw 'The current staging Remote Config response did not include an ETag.'
     }
 
     try {
-        $published = Invoke-WebRequest -Method Put -Uri $uri -Headers @{
-            Authorization = "Bearer $token"
-            'x-goog-user-project' = $ProjectId
-            'Accept-Encoding' = 'gzip'
-            'If-Match' = $etag
-        } -ContentType 'application/json; charset=utf-8' -Body $payload
+        $published = Invoke-RemoteConfigRequest -Client $httpClient `
+            -Method ([System.Net.Http.HttpMethod]::Put) -Uri $uri `
+            -AccessToken $token -QuotaProject $ProjectId -IfMatch $etag -Body $payload
     }
     catch {
         throw 'The staging Remote Config publish failed. Verify and restore Baseline without logging credentials.'
@@ -144,4 +143,7 @@ try {
 }
 finally {
     $token = $null
+    if ($null -ne $httpClient) {
+        $httpClient.Dispose()
+    }
 }

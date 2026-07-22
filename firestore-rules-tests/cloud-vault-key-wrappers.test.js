@@ -3,8 +3,10 @@
  *
  * The wrapper document id is part of the security boundary: direct owner writes
  * may create/refresh only active wrappers whose id is bound to
- * vaultKeyID_targetDeviceId_keyVersion. Identity-bearing fields are immutable
- * after create; rotation/revocation status changes are server/Admin-owned.
+ * vaultKeyID_targetDeviceId_keyVersion. Recipient identity fields are immutable
+ * after create; rotation/revocation status changes are server/Admin-owned. A
+ * legacy mobile writer may refresh source provenance and timestamps so persisted
+ * offline writes from older releases can drain after an upgrade.
  */
 import {
   initializeTestEnvironment,
@@ -139,6 +141,28 @@ async function main() {
     await assertSucceeds(
       updateDoc(doc(aliceDB, `users/${aliceUid}/cloud_vault_key_wrappers/${wrapperId}`), {
         wrappedVaultKey: wrappedVaultKeyFixture("refreshed-ciphertext"),
+        updatedAt: Timestamp.fromMillis(Date.now()),
+      })
+    );
+  });
+
+  await step("legacy mobile wrapper refresh may use another trusted source", async () => {
+    await assertSucceeds(
+      updateDoc(doc(aliceDB, `users/${aliceUid}/cloud_vault_key_wrappers/${wrapperId}`), {
+        sourceDeviceId: "iphone-1",
+        wrappedVaultKey: wrappedVaultKeyFixture("legacy-mobile-ciphertext"),
+        createdAt: Timestamp.fromMillis(Date.now()),
+        updatedAt: Timestamp.fromMillis(Date.now()),
+      })
+    );
+  });
+
+  await step("legacy mobile wrapper refresh rejects an untrusted source", async () => {
+    await assertFails(
+      updateDoc(doc(aliceDB, `users/${aliceUid}/cloud_vault_key_wrappers/${wrapperId}`), {
+        sourceDeviceId: "attacker-device",
+        wrappedVaultKey: wrappedVaultKeyFixture("attacker-ciphertext"),
+        createdAt: Timestamp.fromMillis(Date.now()),
         updatedAt: Timestamp.fromMillis(Date.now()),
       })
     );

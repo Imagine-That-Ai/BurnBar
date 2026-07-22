@@ -32,7 +32,8 @@ enum OllamaCloudModelRoutingPolicy {
     static func routeModel(
         named modelName: String,
         in configuration: BurnBarResolvedProviderConfiguration,
-        catalog: BurnBarCatalog
+        catalog: BurnBarCatalog,
+        allowDynamicModel: Bool = false
     ) -> BurnBarCatalogModel? {
         guard let directCloudModelID = cloudAliasBaseModelID(from: modelName),
               mayClaimModelID(directCloudModelID, catalog: catalog) else {
@@ -50,7 +51,28 @@ enum OllamaCloudModelRoutingPolicy {
                 normalizedCanonical: normalizedCanonical
             )
         }
-        guard let configuredCloudModel else { return nil }
+        guard let configuredCloudModel else {
+            guard allowDynamicModel else { return nil }
+
+            // The HTTP gateway enables dynamic routing for models admitted by
+            // its live catalog. Build the same stripped wire route an explicitly
+            // configured model would use; direct callers stay allowlist-only.
+            let template = configuration.provider.models.first {
+                isCloudFamilyModelID($0.id)
+            }
+            return BurnBarCatalogModel(
+                id: directCloudModelID,
+                displayName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
+                visibility: .hidden,
+                aliases: [modelName],
+                matchers: [],
+                pricing: template?.pricing
+                    ?? BurnBarModelPricing(inputPerMToken: 0, outputPerMToken: 0, cacheReadPerMToken: 0),
+                canonicalModelID: normalizedBase,
+                capabilityClassID: normalizedBase,
+                capabilityClassRank: template?.capabilityClassRank
+            )
+        }
 
         let resolvedModelID = cloudAliasBaseModelID(from: configuredCloudModel.id) ?? configuredCloudModel.id
         let canonicalModelID: String

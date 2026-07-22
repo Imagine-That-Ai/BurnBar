@@ -139,8 +139,13 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             self.assertEqual(first, second)
             execute.assert_called_once()
 
-    def test_current_rollout_ledger_passes(self) -> None:
-        GATE.run_gate(ROOT, ROOT / "config/domain-core-legacy-deletion.json")
+    def test_current_ledger_passes_with_trusted_evidence_verifier(self) -> None:
+        verifier = mock.Mock(spec=GATE.SignedEvidenceVerifier)
+        GATE.run_gate(
+            ROOT,
+            ROOT / "config/domain-core-legacy-deletion.json",
+            evidence_verifier=verifier,
+        )
 
     def test_extracted_legacy_owners_are_whole_file_deletion_targets(self) -> None:
         ledger = json.loads((ROOT / "config/domain-core-legacy-deletion.json").read_text())
@@ -426,6 +431,9 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             )
             (repo / "crates/openburnbar-domain-core/Cargo.toml").write_text('[workspace]\n[workspace.package]\nversion = "0.3.0"\n')
             profiles = json.loads((ROOT / GATE.BUILD_PROFILE_PATH).read_text())
+            profiles["profiles"]["public-production"]["modes"] = {
+                domain: "legacy" for domain in profiles["domains"]
+            }
             (repo / GATE.BUILD_PROFILE_PATH).write_text(json.dumps(profiles))
             (repo / "config/domain-core-legacy-deletion.json").write_text('{"state":"rollout"}\n')
             subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
@@ -1876,6 +1884,12 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             destination = repo / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text((ROOT / relative).read_text())
+        profile_path = repo / GATE.BUILD_PROFILE_PATH
+        profiles = json.loads(profile_path.read_text())
+        profiles["profiles"]["public-production"]["modes"] = {
+            domain: "legacy" for domain in profiles["domains"]
+        }
+        profile_path.write_text(json.dumps(profiles))
         return repo, manifest
 
 

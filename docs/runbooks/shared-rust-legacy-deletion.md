@@ -88,7 +88,7 @@ The creator verifies GitHub provenance and writes append-only artifacts under:
 Promotion uses two commits so the authority chain is not circular:
 
 1. Candidate `C` contains the complete Rust source with the public profile still on legacy. A successful `domain-core.yml` push run and the protected signer attest `C`.
-2. Activation `P` is a descendant of `C`. It adds the promotion receipts and switches the public profile to Rust. The `C..P` diff may contain only the build-profile catalog, deletion ledger, append-only promotion authority artifacts, and these shared-Rust runbooks. It must not change the core version, ABI, source fingerprint, Rust source, or consumer code.
+2. Activation `P` is a descendant of `C`. It adds the promotion receipts, switches the public profile to Rust, and refreshes the trusted control-plane manifest for those exact profile bytes. The `C..P` diff may contain only the build-profile catalog, control-plane manifest, deletion ledger, append-only promotion authority artifacts, and these shared-Rust runbooks. It must not change the core version, ABI, source fingerprint, Rust source, or consumer code.
 3. Stable artifacts are built and tagged at `P`, embed the candidate identity from `C`, and include the SHA-256 of the restricted `C..P` path set.
 
 Every applicable consumer release predicate must bind the same candidate `C`, activation `P`, exact Rust closure, and exact public Rust profile. Apple, Linux, Android, Windows, Console, and Functions are covered where the governed row applies. iOS is additionally required for the five mobile runtime rows: CloudVault portable primitives, document rewrap, encrypted search, Hermes relay crypto, and Hermes ratchet transforms; it is not a quota-parser or pricing-arithmetic consumer.

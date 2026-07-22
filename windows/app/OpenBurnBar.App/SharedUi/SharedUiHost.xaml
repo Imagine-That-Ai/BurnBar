@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SharedUiHost — hosts the Linux desktop UI (apps/linux-desktop, vite "windows" mode build,
+  vendored under Resources/SharedUi) inside a WebView2, so the Windows main window renders
+  the EXACT same frontend as Linux: same TopChrome, same tab strip, same surfaces, same
+  KernelBackdrop on every route. The frontend's Tauri bridge is shimmed (src/shim/
+  tauriWebviewShim.ts) over chrome.webview.postMessage; this control dispatches those
+  invokes to in-process Windows services. Escape hatch: OPENBURNBAR_XAML_SHELL=1 restores
+  the native XAML AppShell.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.SharedUi.SharedUiHost"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid>
+        <WebView2 x:Name="WebView" />
+        <Border x:Name="FallbackNotice"
+                VerticalAlignment="Bottom"
+                HorizontalAlignment="Center"
+                Margin="0,0,0,12"
+                Padding="10,4"
+                CornerRadius="999"
+                Background="{ThemeResource AuroraGlassTintElevatedBrush}"
+                BorderBrush="{ThemeResource AuroraGlassStrokeBrush}"
+                BorderThickness="1"
+                Visibility="Collapsed">
+            <TextBlock x:Name="FallbackText"
+                       Style="{StaticResource AuroraTinyTextStyle}" />
+        </Border>
+    </Grid>
+</UserControl>

@@ -8,9 +8,12 @@ import { DOMAIN_CORE_PROTECTED_SIGNER_WORKFLOW } from "./domain-core-release-evi
 
 const FULL_SHA = /^[0-9a-f]{40}$/u;
 const DIGEST_RE = /^[0-9a-f]{64}$/u;
-const ALLOWED_EXACT = new Set([
+const REQUIRED_EXACT = new Set([
   "config/domain-core-build-profiles.json",
   "config/domain-core-legacy-deletion.json",
+]);
+const OPTIONAL_EXACT = new Set([
+  "config/domain-core-control-plane-manifest.json",
 ]);
 const ALLOWED_PREFIXES = [
   "config/domain-core-legacy-deletion-receipts/",
@@ -202,7 +205,8 @@ export function activationChangedPaths(
   if (paths.length === 0) throw new Error("activation diff must not be empty");
   const forbidden = paths.filter(
     (path) =>
-      !ALLOWED_EXACT.has(path) &&
+      !REQUIRED_EXACT.has(path) &&
+      !OPTIONAL_EXACT.has(path) &&
       !ALLOWED_PREFIXES.some((prefix) => path.startsWith(prefix)),
   );
   if (forbidden.length > 0) {
@@ -210,7 +214,7 @@ export function activationChangedPaths(
       `activation diff contains forbidden paths: ${forbidden.join(", ")}`,
     );
   }
-  for (const required of ALLOWED_EXACT) {
+  for (const required of REQUIRED_EXACT) {
     if (!paths.includes(required)) {
       throw new Error(`activation diff must include ${required}`);
     }

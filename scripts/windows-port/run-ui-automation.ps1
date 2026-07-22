@@ -1,5 +1,6 @@
 param(
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path,
+    [string]$HarnessRoot = "",
     [string]$Configuration = "Debug",
     [ValidateSet("x64", "ARM64")]
     [string]$Platform,
@@ -24,6 +25,10 @@ if ([string]::IsNullOrWhiteSpace($Platform)) {
 }
 
 $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+if ([string]::IsNullOrWhiteSpace($HarnessRoot)) {
+    $HarnessRoot = $RepoRoot
+}
+$HarnessRoot = (Resolve-Path -LiteralPath $HarnessRoot).Path
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
     $OutputDirectory = Join-Path $RepoRoot ".artifacts\windows-ui-automation\$stamp"
@@ -32,7 +37,7 @@ $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
 $appProject = Join-Path $RepoRoot "windows\app\OpenBurnBar.App\OpenBurnBar.App.csproj"
-$harnessProject = Join-Path $RepoRoot "windows\tests\ui-automation-harness\OpenBurnBar.UiAutomationHarness\OpenBurnBar.UiAutomationHarness.csproj"
+$harnessProject = Join-Path $HarnessRoot "windows\tests\ui-automation-harness\OpenBurnBar.UiAutomationHarness\OpenBurnBar.UiAutomationHarness.csproj"
 
 if (-not $SkipBuild) {
     & dotnet build $appProject -c $Configuration -p:Platform=$Platform -p:EnableWindowsTargeting=true

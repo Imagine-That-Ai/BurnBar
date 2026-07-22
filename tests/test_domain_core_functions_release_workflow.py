@@ -61,6 +61,20 @@ class DomainCoreFunctionsReleaseWorkflowTests(unittest.TestCase):
             source.index("Deploy Cloud Functions"),
         )
 
+    def test_functions_artifact_stays_candidate_scoped_at_release(self) -> None:
+        deploy = workflow(DEPLOY)["jobs"]["prepare-functions-deploy"]
+        build = step(deploy, "Install and build selected Functions artifact")["run"]
+        resolver, verifier = build.split(
+            "node scripts/ci/verify-domain-core-build-profile-artifact.mjs",
+            maxsplit=1,
+        )
+        self.assertIn("--expected-release-commit", resolver)
+        self.assertNotIn("--expected-release-version", resolver)
+        self.assertNotIn("--expected-release-tag", resolver)
+        self.assertIn("--expected-release-commit", verifier)
+        self.assertIn("--expected-release-version", verifier)
+        self.assertIn("--expected-release-tag", verifier)
+
     def test_deploy_health_and_dispatch_bind_exact_receipt(self) -> None:
         source = DEPLOY.read_text(encoding="utf-8")
         required = (
