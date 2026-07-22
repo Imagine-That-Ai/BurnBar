@@ -219,8 +219,12 @@ final class HermesStreamingScaleTests: XCTestCase {
 
     private static func chunk(delta: [String: Any]) -> String {
         let object: [String: Any] = ["choices": [["delta": delta]]]
-        let data = try! JSONSerialization.data(withJSONObject: object)
-        return "data: " + String(decoding: data, as: UTF8.self)
+        do {
+            let data = try JSONSerialization.data(withJSONObject: object)
+            return "data: " + String(decoding: data, as: UTF8.self)
+        } catch {
+            preconditionFailure("Hermes streaming fixture must be JSON-serializable: \(error)")
+        }
     }
 
     private static func toolCallChunk(fragment: String, includeName: Bool) throws -> String {
