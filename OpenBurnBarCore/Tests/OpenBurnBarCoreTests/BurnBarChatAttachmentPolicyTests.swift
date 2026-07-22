@@ -48,13 +48,45 @@ final class BurnBarChatAttachmentPolicyTests: XCTestCase {
         XCTAssertFalse(BurnBarChatAttachmentPolicy.isSafeFileName("notes/secret.md"))
     }
 
-    func testLinuxTransportBudgetIsTenMiBAndDoesNotClaimBinaryTypes() {
+    func testCanonicalMimeTypeAcceptsModelAuthorizedImageInputs() {
+        XCTAssertEqual(
+            BurnBarChatAttachmentPolicy.canonicalMimeType(
+                fileName: "screenshot.PNG",
+                mimeType: "application/octet-stream"
+            ),
+            "image/png"
+        )
+        XCTAssertEqual(
+            BurnBarChatAttachmentPolicy.canonicalMimeType(
+                fileName: "photo.jpeg",
+                mimeType: "image/jpeg"
+            ),
+            "image/jpeg"
+        )
+        XCTAssertEqual(
+            BurnBarChatAttachmentPolicy.canonicalMimeType(
+                fileName: "diagram.webp",
+                mimeType: "image/webp"
+            ),
+            "image/webp"
+        )
+    }
+
+    func testLinuxTransportBudgetIsTenMiBAndListsOnlySupportedChatTypes() {
         XCTAssertEqual(BurnBarChatAttachmentPolicy.maxBytes, 10 * 1024 * 1024)
         XCTAssertEqual(
             BurnBarChatAttachmentPolicy.allowedMimeTypes,
-            ["text/plain", "text/markdown", "text/csv", "application/json", "application/pdf"]
+            [
+                "text/plain",
+                "text/markdown",
+                "text/csv",
+                "application/json",
+                "application/pdf",
+                "image/png",
+                "image/jpeg",
+                "image/webp"
+            ]
         )
-        XCTAssertFalse(BurnBarChatAttachmentPolicy.allowedMimeTypes.contains("image/png"))
         XCTAssertFalse(BurnBarChatAttachmentPolicy.allowedMimeTypes.contains("audio/mpeg"))
     }
 }

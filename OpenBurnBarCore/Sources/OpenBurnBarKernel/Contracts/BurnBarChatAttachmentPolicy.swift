@@ -3,8 +3,9 @@ import Foundation
 /// Cross-platform policy for the Linux chat transport seam.
 ///
 /// macOS stores richer workspace attachments (including images, audio, and
-/// video). Linux deliberately advertises only the formats that can be carried
-/// through the current text gateway without silently pretending binary support.
+/// video). Linux carries text documents and model-authorized image inputs
+/// through the daemon-owned gateway; audio/video remain outside this chat
+/// transport until a provider capability explicitly supports them.
 public enum BurnBarChatAttachmentPolicy: Sendable {
     public static let maxBytes = 10 * 1024 * 1024
     public static let maxNameBytes = 240
@@ -14,7 +15,10 @@ public enum BurnBarChatAttachmentPolicy: Sendable {
         "text/markdown",
         "text/csv",
         "application/json",
-        "application/pdf"
+        "application/pdf",
+        "image/png",
+        "image/jpeg",
+        "image/webp"
     ]
 
     public static func canonicalMimeType(fileName: String, mimeType: String?) -> String? {
@@ -47,6 +51,9 @@ public enum BurnBarChatAttachmentPolicy: Sendable {
         case "csv": return "text/csv"
         case "json": return "application/json"
         case "pdf": return "application/pdf"
+        case "png": return "image/png"
+        case "jpg", "jpeg": return "image/jpeg"
+        case "webp": return "image/webp"
         default: return nil
         }
     }
