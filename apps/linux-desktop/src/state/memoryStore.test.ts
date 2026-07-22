@@ -63,6 +63,22 @@ describe('memoryStore decide (memorySetStatus primary)', () => {
     expect(useMemoryStore.getState().decisionById['mem-1']?.error).toBeNull();
   });
 
+  it('does not apply stale renderer status overrides to live daemon inboxes', async () => {
+    localStorage.setItem(
+      'openburnbar.linux.memoryReviewStatus.v1',
+      JSON.stringify({ 'mem-1': 'approved' })
+    );
+    const memoryReviewInbox = vi.fn().mockResolvedValue(sampleInbox);
+    useShellStore.setState({
+      bridge: { memoryReviewInbox } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+
+    await useMemoryStore.getState().loadInbox();
+
+    expect(useMemoryStore.getState().inbox?.items.find((item) => item.id === 'mem-1')?.status).toBe('pending');
+  });
+
   it('approve with body calls memorySetStatus approve', async () => {
     const memorySetStatus = vi.fn().mockResolvedValue({});
     const memoryReviewInbox = vi.fn().mockResolvedValue(sampleInbox);
