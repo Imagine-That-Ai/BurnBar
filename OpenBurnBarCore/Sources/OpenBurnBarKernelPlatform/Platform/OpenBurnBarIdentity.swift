@@ -211,6 +211,11 @@ public struct OpenBurnBarDefaultsMigration {
     let defaults: UserDefaults
     let legacyDomains: [String]
 
+    public init(defaults: UserDefaults, legacyDomains: [String]) {
+        self.defaults = defaults
+        self.legacyDomains = legacyDomains
+    }
+
     public func migrateIfNeeded() {
         for domain in legacyDomains {
             guard let persisted = defaults.persistentDomain(forName: domain), !persisted.isEmpty else { continue }
@@ -224,6 +229,11 @@ public struct OpenBurnBarDefaultsMigration {
 public struct OpenBurnBarFilesystemMigration {
     let fileManager: FileManager
     let paths: OpenBurnBarAppPaths
+
+    public init(fileManager: FileManager, paths: OpenBurnBarAppPaths) {
+        self.fileManager = fileManager
+        self.paths = paths
+    }
 
     @discardableResult
     public func prepareSupportDirectory() throws -> URL {
