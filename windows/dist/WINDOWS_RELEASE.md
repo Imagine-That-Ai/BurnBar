@@ -8,7 +8,14 @@ package → sign the update feed → SBOM + OpenVEX + Sigstore — adapted to Wi
 
 - Push a `windows-v<X.Y.Z>` tag (e.g. `windows-v1.0.28`), **after** bumping the app manifest
   version (the `portable-verify` job enforces version consistency at tag time), **or**
-- `workflow_dispatch` with a `version` input.
+- `workflow_dispatch` **run from the release tag ref** (the manual-rerun path). The authorization
+  guard rejects dispatches from any branch — including `main`, even with a `version` input — so a
+  matching `windows-v<X.Y.Z>` tag must already exist and be reachable from `origin/main`. To rerun
+  a release manually:
+  - **UI**: Actions → *OpenBurnBar Windows Release* → *Run workflow* → in the ref picker choose the
+    **tag** `windows-vX.Y.Z` (not a branch), then run. The `version` input can be left blank — it
+    is derived from the tag ref.
+  - **CLI**: `gh workflow run openburnbar-release-windows.yml --ref windows-vX.Y.Z`
 
 Manual dispatch has an `allow_unsigned` switch for Windows-runner build/package validation only. It
 lets the workflow publish the WinUI app, stage portable zips, and try MSIX packaging up to the
@@ -17,7 +24,10 @@ releases: real tags must have Azure Artifact Signing plus the pinned update-feed
 
 ## Jobs
 
-1. **resolve-release** — derive `X.Y.Z` from the tag/input.
+1. **resolve-release** — derive `X.Y.Z` from the release tag ref and **authorize** it: the run must
+   be on `refs/tags/windows-vX.Y.Z`, the tag must still point at the exact commit that triggered
+   the run (`GITHUB_SHA` — a tag moved after the run was queued fails closed), and that commit must
+   be reachable from `origin/main`. All later jobs check out this pinned `release_commit`.
 2. **portable-verify** *(ubuntu, always runs)* — the security kernel proof: `dotnet test` over
    `windows/tests/dist`, an end-to-end signer round-trip (good pin verifies, wrong pin fails
    closed), dependency-free XML parsing on the props, and `verify-version-consistency.sh`. The

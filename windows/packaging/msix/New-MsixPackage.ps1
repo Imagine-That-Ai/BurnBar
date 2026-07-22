@@ -15,16 +15,51 @@ param(
     [string]$OutputPath,
 
     [string]$MakeAppxPath = "",
-    [string]$Publisher = ""
+    [string]$MakePriPath = "",
+
+    [ValidateSet("Sideload", "MicrosoftStore")]
+    [string]$DistributionChannel = "Sideload",
+
+    [string]$PackageName = "",
+    [string]$PackageDisplayName = "",
+    [string]$Publisher = "",
+    [string]$PublisherDisplayName = "",
+    [string]$StoreProductId = ""
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path (Join-Path $scriptRoot '..') (Join-Path 'scripts' 'Assert-NativeEngineManifest.ps1'))
 $publish = (Resolve-Path -LiteralPath $PublishDir).Path
 $manifestSource = Join-Path $scriptRoot "Package.appxmanifest"
 $imagesSource = Join-Path $scriptRoot "Images"
+
+if ($DistributionChannel -ceq "MicrosoftStore") {
+    $missingStoreIdentityFields = @()
+    if (-not $PackageName) {
+        $missingStoreIdentityFields += "PackageName"
+    }
+    if (-not $PackageDisplayName) {
+        $missingStoreIdentityFields += "PackageDisplayName"
+    }
+    if (-not $Publisher) {
+        $missingStoreIdentityFields += "Publisher"
+    }
+    if (-not $PublisherDisplayName) {
+        $missingStoreIdentityFields += "PublisherDisplayName"
+    }
+    if (-not $StoreProductId) {
+        $missingStoreIdentityFields += "StoreProductId"
+    }
+    if ($missingStoreIdentityFields.Count -gt 0) {
+        throw "MicrosoftStore packaging requires a complete Partner Center identity: $($missingStoreIdentityFields -join ', ')."
+    }
+}
+elseif ($PackageName -or $PackageDisplayName -or $PublisherDisplayName -or $StoreProductId) {
+    throw "PackageName, PackageDisplayName, PublisherDisplayName, and StoreProductId overrides are reserved for the MicrosoftStore channel."
+}
 
 if (-not (Test-Path -LiteralPath $manifestSource -PathType Leaf)) {
     throw "MSIX manifest not found at $manifestSource."
@@ -43,6 +78,16 @@ if (-not $MakeAppxPath) {
 if (-not $MakeAppxPath -or -not (Test-Path -LiteralPath $MakeAppxPath -PathType Leaf)) {
     throw "MakeAppx.exe was not found. Pass -MakeAppxPath or install the Windows SDK."
 }
+if (-not $MakePriPath) {
+    $MakePriPath = Get-ChildItem `
+        "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makepri.exe" `
+        -ErrorAction SilentlyContinue |
+        Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+        Select-Object -First 1 -ExpandProperty FullName
+}
+if (-not $MakePriPath -or -not (Test-Path -LiteralPath $MakePriPath -PathType Leaf)) {
+    throw "MakePri.exe was not found. Pass -MakePriPath or install the Windows SDK."
+}
 
 $output = [System.IO.Path]::GetFullPath($OutputPath)
 if ([System.IO.Path]::GetExtension($output) -ne ".msix") {
@@ -52,11 +97,42 @@ $outputDirectory = Split-Path -Parent $output
 [void](New-Item -ItemType Directory -Path $outputDirectory -Force)
 
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("openburnbar-msix-" + [guid]::NewGuid().ToString("N"))
+$priWork = Join-Path ([System.IO.Path]::GetTempPath()) ("openburnbar-pri-" + [guid]::NewGuid().ToString("N"))
 [void](New-Item -ItemType Directory -Path $stage)
+[void](New-Item -ItemType Directory -Path $priWork)
 
 try {
     Copy-Item -Path (Join-Path $publish "*") -Destination $stage -Recurse -Force
     Copy-Item -LiteralPath $imagesSource -Destination (Join-Path $stage "Images") -Recurse -Force
+
+    $updatesDirectory = Join-Path $stage "Resources\Updates"
+    $latestFeed = Join-Path $updatesDirectory "latest-windows.json"
+    $pinnedUpdateKey = Join-Path $updatesDirectory "pinned-update-key.pub"
+    $distributionMarker = Join-Path $updatesDirectory "distribution-channel.json"
+    foreach ($requiredDirectUpdateFile in @($latestFeed, $pinnedUpdateKey)) {
+        if (-not (Test-Path -LiteralPath $requiredDirectUpdateFile -PathType Leaf)) {
+            throw "Publish output is missing required direct-update metadata: $requiredDirectUpdateFile"
+        }
+    }
+    if ($DistributionChannel -ceq "MicrosoftStore") {
+        Remove-Item -LiteralPath $latestFeed, $pinnedUpdateKey -Force
+        $distribution = [ordered]@{
+            schemaVersion = 1
+            channel = "microsoft-store"
+            productId = $StoreProductId
+        }
+        $distribution |
+            ConvertTo-Json |
+            Set-Content -LiteralPath $distributionMarker -Encoding utf8NoBOM
+    }
+    elseif (Test-Path -LiteralPath $distributionMarker) {
+        throw "Sideload publish input contains Microsoft Store distribution metadata: $distributionMarker"
+    }
+
+    $nativeEngine = Join-Path $stage "OpenBurnBarCoreCAbi.dll"
+    if (Test-Path -LiteralPath $nativeEngine -PathType Leaf) {
+        Assert-OpenBurnBarNativeEngineManifest -Root $stage
+    }
 
     $document = [System.Xml.XmlDocument]::new()
     $document.PreserveWhitespace = $false
@@ -73,8 +149,31 @@ try {
     }
     $identity.SetAttribute("Version", "$Version.0")
     $identity.SetAttribute("ProcessorArchitecture", $Architecture)
+    if ($PackageName) {
+        $identity.SetAttribute("Name", $PackageName)
+    }
     if ($Publisher) {
         $identity.SetAttribute("Publisher", $Publisher)
+    }
+    if ($PackageDisplayName) {
+        $packageDisplayNameNode = $document.SelectSingleNode(
+            "/pkg:Package/pkg:Properties/pkg:DisplayName",
+            $namespaces
+        )
+        if ($null -eq $packageDisplayNameNode) {
+            throw "Package.appxmanifest has no package DisplayName element."
+        }
+        $packageDisplayNameNode.InnerText = $PackageDisplayName
+    }
+    if ($PublisherDisplayName) {
+        $publisherDisplayNameNode = $document.SelectSingleNode(
+            "/pkg:Package/pkg:Properties/pkg:PublisherDisplayName",
+            $namespaces
+        )
+        if ($null -eq $publisherDisplayNameNode) {
+            throw "Package.appxmanifest has no PublisherDisplayName element."
+        }
+        $publisherDisplayNameNode.InnerText = $PublisherDisplayName
     }
 
     $application = $document.SelectSingleNode("/pkg:Package/pkg:Applications/pkg:Application", $namespaces)
@@ -82,6 +181,18 @@ try {
     $executable = if ($null -eq $executableAttribute) { "" } else { $executableAttribute.Value }
     if (-not $executable -or -not (Test-Path -LiteralPath (Join-Path $stage $executable) -PathType Leaf)) {
         throw "Manifest executable '$executable' is missing from publish output $publish."
+    }
+    $companionCli = Join-Path $stage "OpenBurnBar.Cli.exe"
+    if (-not (Test-Path -LiteralPath $companionCli -PathType Leaf)) {
+        throw "Authenticated companion CLI is missing from publish output $publish."
+    }
+    $watchdog = Join-Path $stage "ComputerUseWatchdog\OpenBurnBar.ComputerUse.Watchdog.exe"
+    if (-not (Test-Path -LiteralPath $watchdog -PathType Leaf)) {
+        throw "Privileged-input watchdog is missing from publish output $publish."
+    }
+    $privilegedInput = Join-Path $stage "PrivilegedInput\OpenBurnBar.PrivilegedInput.exe"
+    if (-not (Test-Path -LiteralPath $privilegedInput -PathType Leaf)) {
+        throw "Privileged-input broker is missing from publish output $publish."
     }
 
     $manifestOutput = Join-Path $stage "AppxManifest.xml"
@@ -95,6 +206,88 @@ try {
     finally {
         $writer.Dispose()
     }
+
+    # dotnet publish emits a component PRI because the app is also shipped unpackaged.
+    # MSIX activation requires those component maps to be merged into a package-root
+    # resources.pri whose primary map matches the package identity.
+    $resourcesPri = Join-Path $stage "resources.pri"
+    Remove-Item -LiteralPath $resourcesPri -Force -ErrorAction SilentlyContinue
+    $inputPris = @(Get-ChildItem -LiteralPath $stage -Recurse -Filter "*.pri" -File |
+        Where-Object { $_.FullName -cne $resourcesPri } |
+        Sort-Object FullName)
+    $appPri = $inputPris | Where-Object { $_.Name -ceq "OpenBurnBar.App.pri" } | Select-Object -First 1
+    if (-not $appPri) {
+        throw "Publish output is missing OpenBurnBar.App.pri; packaged XAML cannot be indexed."
+    }
+
+    $priResfiles = Join-Path $stage "pri.resfiles"
+    [System.IO.File]::WriteAllLines(
+        $priResfiles,
+        [string[]]@($inputPris.FullName),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
+    $priConfig = Join-Path $priWork "priconfig.xml"
+    & $MakePriPath createconfig /cf $priConfig /dq en-US /o | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "MakePri createconfig failed with exit code $LASTEXITCODE."
+    }
+
+    $priDocument = [System.Xml.XmlDocument]::new()
+    $priDocument.PreserveWhitespace = $false
+    $priDocument.Load($priConfig)
+    $packaging = $priDocument.SelectSingleNode("/resources/packaging")
+    if ($packaging) {
+        [void]$packaging.ParentNode.RemoveChild($packaging)
+    }
+    $index = $priDocument.SelectSingleNode("/resources/index")
+    if (-not $index) {
+        throw "Generated MakePri configuration has no index element."
+    }
+    $index.SetAttribute("root", "\")
+    $index.SetAttribute("startIndexAt", "pri.resfiles")
+    foreach ($indexer in @($index.SelectNodes("indexer-config"))) {
+        [void]$index.RemoveChild($indexer)
+    }
+    foreach ($type in @("PRI", "RESFILES")) {
+        $indexer = $priDocument.CreateElement("indexer-config")
+        $indexer.SetAttribute("type", $type)
+        if ($type -ceq "RESFILES") {
+            $indexer.SetAttribute("qualifierDelimiter", ".")
+        }
+        [void]$index.AppendChild($indexer)
+    }
+    $priDocument.Save($priConfig)
+
+    $packageName = $identity.GetAttribute("Name")
+    if (-not $packageName) {
+        throw "Package.appxmanifest Identity is missing its Name attribute."
+    }
+    & $MakePriPath new /pr $stage /cf $priConfig /of $resourcesPri /in $packageName /o | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "MakePri new failed with exit code $LASTEXITCODE."
+    }
+    if (-not (Test-Path -LiteralPath $resourcesPri -PathType Leaf)) {
+        throw "MakePri completed without producing $resourcesPri."
+    }
+
+    $priDump = Join-Path $priWork "resources.pri.xml"
+    & $MakePriPath dump /if $resourcesPri /of $priDump /dt detailed /o | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "MakePri dump failed with exit code $LASTEXITCODE."
+    }
+    $dumpDocument = [System.Xml.XmlDocument]::new()
+    $dumpDocument.Load($priDump)
+    $primaryMap = $dumpDocument.SelectSingleNode("/PriInfo/ResourceMap[@primary='true']")
+    if (-not $primaryMap -or $primaryMap.GetAttribute("name") -cne $packageName) {
+        $actualMap = if ($primaryMap) { $primaryMap.GetAttribute("name") } else { "<missing>" }
+        throw "resources.pri primary map is '$actualMap', expected '$packageName'."
+    }
+    $flyoutXbf = $dumpDocument.SelectSingleNode("//NamedResource[@name='FlyoutWindow.xbf']")
+    if (-not $flyoutXbf) {
+        throw "resources.pri does not contain FlyoutWindow.xbf."
+    }
+    Remove-Item -LiteralPath $priResfiles -Force
 
     if (Test-Path -LiteralPath $output) {
         Remove-Item -LiteralPath $output -Force
@@ -111,10 +304,17 @@ try {
     Write-Host "MSIX created: $output"
     Write-Host "Architecture: $Architecture"
     Write-Host "Version: $Version.0"
+    Write-Host "Distribution channel: $DistributionChannel"
+    Write-Host "Package identity: $($identity.GetAttribute('Name'))"
+    Write-Host "Publisher: $($identity.GetAttribute('Publisher'))"
+    Write-Host "Package resource map: $packageName ($($inputPris.Count) component PRI files)"
     Write-Host "SHA-256: $hash"
 }
 finally {
     if (Test-Path -LiteralPath $stage) {
         Remove-Item -LiteralPath $stage -Recurse -Force
+    }
+    if (Test-Path -LiteralPath $priWork) {
+        Remove-Item -LiteralPath $priWork -Recurse -Force
     }
 }

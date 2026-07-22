@@ -66,8 +66,10 @@ struct HermesSquareLeftColumn: View {
 
     @ViewBuilder
     private var activeGroupSection: some View {
-        if let group = activeGroupObserver.group {
-            let tiles = childTilesForActiveGroup(group)
+        if let group = activeGroupObserver.displayGroup {
+            let tiles = activeGroupObserver.childTiles(
+                fallbackActiveTiles: missionHost.snapshot.activeTiles
+            )
             MissionFanOutGroupCard(
                 group: group,
                 childTiles: tiles,
@@ -159,6 +161,9 @@ struct HermesSquareLeftColumn: View {
         .navigationTitle("Agents")
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            activeGroupObserver.startLatest()
+        }
+        .task {
             inbox.bind(historyStore: historyStore, missionHost: missionHost)
             syncMercuryPeer(mercuryPeer)
             await registry.refresh(hermesService: hermesService, piService: piService, missionHost: missionHost)
@@ -207,6 +212,7 @@ struct HermesSquareLeftColumn: View {
         .sheet(isPresented: $isShowingFanOut) {
             FanOutComposerSheet(
                 registry: registry,
+                catalogProvider: hermesService,
                 onDispatched: { result in
                     activeGroupObserver.start(groupID: result.groupID)
                 }
@@ -231,37 +237,12 @@ struct HermesSquareLeftColumn: View {
         }
         .confirmationDialog(
             "Manage Mission",
-            isPresented: Binding(
-                get: { missionForActionSheet != nil },
-                set: { if !$0 { missionForActionSheet = nil } }
-            ),
+            isPresented: missionManagementIsPresented,
             titleVisibility: .visible
         ) {
-            Button("Cancel & Dismiss", role: .destructive) {
-                if let mission = missionForActionSheet {
-                    let mid = mission.id
-                    Task {
-                        await missionHost.cancelMission(id: mid)
-                        missionHost.dismissMission(id: mid)
-                    }
-                }
-                missionForActionSheet = nil
-            }
-
-            Button("Just Dismiss", role: .none) {
-                if let mission = missionForActionSheet {
-                    missionHost.dismissMission(id: mission.id)
-                }
-                missionForActionSheet = nil
-            }
-
-            Button("Keep Running", role: .cancel) {
-                missionForActionSheet = nil
-            }
+            missionManagementActions
         } message: {
-            if let mission = missionForActionSheet {
-                Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
-            }
+            missionManagementMessage
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -305,6 +286,49 @@ struct HermesSquareLeftColumn: View {
         }
         .sheet(isPresented: $isShowingSubscriptions) {
             HermesSquareSubscriptionsFolder()
+        }
+    }
+
+    private var missionManagementIsPresented: Binding<Bool> {
+        Binding(
+            get: { missionForActionSheet != nil },
+            set: { if !$0 { missionForActionSheet = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private var missionManagementActions: some View {
+        Button("Cancel & Dismiss", role: .destructive) {
+            if let mission = missionForActionSheet {
+                cancelAndDismissMission(mission)
+            }
+            missionForActionSheet = nil
+        }
+
+        Button("Just Dismiss", role: .none) {
+            if let mission = missionForActionSheet {
+                missionHost.dismissMission(id: mission.id)
+            }
+            missionForActionSheet = nil
+        }
+
+        Button("Keep Running", role: .cancel) {
+            missionForActionSheet = nil
+        }
+    }
+
+    @ViewBuilder
+    private var missionManagementMessage: some View {
+        if let mission = missionForActionSheet {
+            Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
+        }
+    }
+
+    private func cancelAndDismissMission(_ mission: MissionConsoleActiveTile) {
+        let missionID = mission.id
+        Task {
+            await missionHost.cancelMission(id: missionID)
+            missionHost.dismissMission(id: missionID)
         }
     }
 
@@ -974,36 +998,6 @@ struct HermesSquareLeftColumn: View {
                 prompt: "What's important across my fleet right now? Summarize in 5 bullets."
             )
             onSelect(.runtimeNative(.hermes))
-        }
-    }
-
-    private func childTilesForActiveGroup(_ group: MissionGroupDocument) -> [MissionConsoleActiveTile] {
-        let snapshot = missionHost.snapshot
-        let knownByID = Dictionary(uniqueKeysWithValues: snapshot.activeTiles.map { ($0.id, $0) })
-        let now = Date()
-        return group.childMissionIDs.enumerated().map { idx, id -> MissionConsoleActiveTile in
-            if let existing = knownByID[id] { return existing }
-            let runtimeToken = idx < group.runtimeTokens.count ? group.runtimeTokens[idx] : nil
-            let elapsedSinceGroupCreation = now.timeIntervalSince(group.createdAt)
-            let isStale = elapsedSinceGroupCreation > 120
-            let phase: MissionConsoleActiveTile.Phase = isStale ? .macOffline : .queued
-            let detail = isStale
-                ? "Paired Mac hasn't claimed this child. Wake your Mac and reopen BurnBar."
-                : "Queued in group"
-            return MissionConsoleActiveTile(
-                id: id,
-                title: "\(group.title) · \(runtimeToken ?? "?")",
-                runtimeID: runtimeToken,
-                runtimeDisplayLabel: (runtimeToken ?? "auto").capitalized,
-                phase: phase,
-                phaseDetail: detail,
-                currentToolName: nil,
-                lastEventSnippet: nil,
-                startedAt: group.createdAt,
-                burnSoFarUSD: 0,
-                progressFraction: nil,
-                approvalPending: false
-            )
         }
     }
 

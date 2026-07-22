@@ -5,10 +5,116 @@ import FirebaseCore
 import FirebaseFirestore
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
+import OpenBurnBarSignalCore
 @testable import OpenBurnBarMobile
 
 @MainActor
 final class HermesServiceTests: XCTestCase {
+
+    func testFirestoreIrohPairingDirectoryFailsCleanlyBeforeFirebaseConfiguration() async {
+        let directory = FirestoreIrohPairingDirectory(
+            firestoreProvider: {
+                fatalError("Firestore provider must not run before Firebase configuration")
+            },
+            firebaseConfigured: { false }
+        )
+
+        do {
+            _ = try await directory.fetch(uid: "user", connectionId: "relay")
+            XCTFail("Expected a typed Firebase configuration error")
+        } catch {
+            XCTAssertEqual(error as? FirestoreIrohPairingDirectoryError, .firebaseUnavailable)
+            XCTAssertEqual(error.localizedDescription, "Firebase is not configured on this device.")
+        }
+    }
+
+    func testRelayCancellationNeverOverwritesTerminalStatus() async {
+        let decisions = await Task.detached {
+            ["pending", "claimed", "streaming", "completed", "failed", "cancelled", "expired", "unknown"]
+                .map { FirestoreHermesRelayTransport.shouldCancelRelayRequest(status: $0) }
+        }.value
+
+        XCTAssertEqual(decisions, [true, true, true, false, false, false, false, false])
+        XCTAssertFalse(FirestoreHermesRelayTransport.shouldCancelRelayRequest(status: nil))
+    }
+
+    func testTrustedSignalIdentityRepairChallengeAADMatchesCloudContract() {
+        let aad = MobileTrustedSignalIdentityRepairContract.challengeAAD(
+            uid: "user-1",
+            deviceId: "ipad-1",
+            challengeId: "challenge-1"
+        )
+
+        XCTAssertEqual(
+            String(decoding: aad, as: UTF8.self),
+            """
+            OpenBurnBar-SignalIdentityRepairChallenge-v1
+            3:uid
+            6:user-1
+            8:deviceId
+            6:ipad-1
+            11:challengeId
+            11:challenge-1
+
+            """
+        )
+    }
+
+    func testRepairedTrustedSignalIdentityWithoutFreshChainRequiresReapproval() {
+        let identity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "ipad-1")
+        let legacyRepair = MobileTrustedSignalIdentityRepairState(
+            trustState: EscrowDeviceTrustState.trusted.rawValue,
+            repairAlgorithm: MobileTrustedSignalIdentityRepairContract.repairAlgorithm,
+            targetIdentityKeyID: identity.identityKeyId,
+            targetIdentityFingerprint: identity.publicKeyFingerprint
+        )
+
+        XCTAssertTrue(
+            MobileSignalIdentityPublicKeyPublisher.requiresTrustedIdentityReapproval(
+                deviceState: legacyRepair,
+                identity: identity
+            )
+        )
+    }
+
+    func testRepairedTrustedSignalIdentityWithFreshChainDoesNotRequireReapproval() {
+        let identity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "ipad-1")
+        let approvedRepair = MobileTrustedSignalIdentityRepairState(
+            trustState: EscrowDeviceTrustState.trusted.rawValue,
+            repairAlgorithm: MobileTrustedSignalIdentityRepairContract.repairAlgorithm,
+            trustChainVersion: CloudVaultDeviceTrustChain.version,
+            trustChainAlgorithm: CloudVaultDeviceTrustChain.algorithm,
+            targetIdentityKeyID: identity.identityKeyId,
+            targetIdentityFingerprint: identity.publicKeyFingerprint,
+            approvedByDeviceID: "trusted-mac",
+            approvedByIdentityKeyID: "trusted-mac_1",
+            approvedByIdentityFingerprint: "fingerprint",
+            trustChainSignature: "signature"
+        )
+
+        XCTAssertFalse(
+            MobileSignalIdentityPublicKeyPublisher.requiresTrustedIdentityReapproval(
+                deviceState: approvedRepair,
+                identity: identity
+            )
+        )
+    }
+
+    func testMissingIrohBackendFailsCleanlyInsteadOfUsingLoopback() async {
+        let transport = HermesIrohRelayTransport.defaultTransport(
+            backendFactory: { nil }
+        )
+
+        XCTAssertFalse(transport is LoopbackIrohRelayTransport)
+        do {
+            _ = try await transport.start()
+            XCTFail("A build without the native iroh module must fail fast.")
+        } catch let error as IrohRelayTransportError {
+            XCTAssertEqual(error, .backendUnavailable)
+        } catch {
+            XCTFail("Unexpected missing-backend error: \(error)")
+        }
+    }
 
     func testIrohBootstrapStartupTimeoutLeavesRoomForHomeRelayRetry() {
         XCTAssertGreaterThanOrEqual(
@@ -19,6 +125,26 @@ final class HermesServiceTests: XCTestCase {
             HermesIrohRelayTransport.bootstrapStartupTimeout(connectTimeout: 10),
             35
         )
+    }
+
+    func testCLIRuntimeModelCatalogUsesControlPlaneTimeout() async throws {
+        let relayTransport = FakeHermesRelayTransport()
+        relayTransport.unaryResponses[.cliAgentModelCatalog] = try JSONEncoder().encode(
+            CLIRuntimeModelCatalogResponse(
+                runtime: AssistantRuntimeID.claude.rawValue,
+                generatedAtEpochMillis: 1,
+                options: []
+            )
+        )
+        let service = HermesService(relayTransport: relayTransport)
+        var relay = relayConnection()
+        relay.capabilities.append(HermesRelayOperation.cliAgentModelCatalog.rawValue)
+        service.connections = [.localDefault, relay]
+        XCTAssertTrue(service.selectConnection(relay, refresh: false))
+
+        _ = try await service.fetchCLIRuntimeModelCatalog(runtime: .claude)
+
+        XCTAssertEqual(relayTransport.unaryTimeouts, [service.remoteRelayControlPlaneTimeout])
     }
 
     func testMediaControlStreamUsesPublishedRelayURLAndMediaTimeout() async throws {
@@ -116,6 +242,49 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(service.messages.first?.role, .user)
         XCTAssertEqual(service.messages.first?.text, "Hello Hermes")
         XCTAssertTrue(service.isStreaming)
+    }
+
+    func testCancelGenerationFinalizesStreamingTurnWithoutClearingChat() {
+        let service = HermesService()
+        service.sendMessage("Hello Hermes")
+        XCTAssertTrue(service.isStreaming)
+        // Stage the placeholder the streaming engine would be driving.
+        service.messages.append(
+            HermesChatMessage(role: .assistant, text: "Partial reply", isStreaming: true)
+        )
+
+        service.cancelGeneration()
+
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertEqual(service.messages.count, 2)
+        XCTAssertEqual(service.messages.first?.text, "Hello Hermes")
+        XCTAssertEqual(service.messages.last?.text, "Partial reply")
+        XCTAssertEqual(service.messages.last?.isStreaming, false)
+        XCTAssertFalse(service.messages.last?.isError ?? true)
+    }
+
+    func testCancelGenerationDropsEmptyStreamingPlaceholder() {
+        let service = HermesService()
+        service.sendMessage("Hello Hermes")
+        service.messages.append(
+            HermesChatMessage(role: .assistant, text: "", isStreaming: true)
+        )
+
+        service.cancelGeneration()
+
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertEqual(service.messages.count, 1)
+        XCTAssertEqual(service.messages.first?.role, .user)
+    }
+
+    func testCancelGenerationWithoutActiveStreamIsANoOp() {
+        let service = HermesService()
+        service.messages = [HermesChatMessage(role: .assistant, text: "Done")]
+
+        service.cancelGeneration()
+
+        XCTAssertEqual(service.messages.count, 1)
+        XCTAssertFalse(service.isStreaming)
     }
 
     func testSendEmptyMessageIsNoOp() {
@@ -3323,11 +3492,13 @@ private final class FakeHermesRelayTransport: HermesRelayTransporting {
     var streamingError: Error?
     var unaryError: Error?
     private(set) var unaryPayloads: [HermesRelayPayload] = []
+    private(set) var unaryTimeouts: [TimeInterval] = []
     private(set) var streamingPayloads: [HermesRelayPayload] = []
     private(set) var streamingTimeouts: [TimeInterval] = []
 
     func sendUnary(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> Data {
         unaryPayloads.append(payload)
+        unaryTimeouts.append(timeout)
         if let unaryError {
             throw unaryError
         }

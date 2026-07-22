@@ -1,0 +1,14 @@
+  Determining projects to restore...
+  Restored /private/tmp/burnbar-cert-a364b9ece8/windows/tests/missioncontrol/OpenBurnBar.App.MissionControl.Tests.csproj (in 140 ms).
+  4 of 5 projects are up-to-date for restore.
+  OpenBurnBar.App.Configuration -> /private/tmp/burnbar-cert-a364b9ece8/windows/app/OpenBurnBar.App.Configuration/bin/Release/net8.0/OpenBurnBar.App.Configuration.dll
+  OpenBurnBar.CloudSync -> /private/tmp/burnbar-cert-a364b9ece8/windows/cloudsync/OpenBurnBar.CloudSync/bin/Release/net8.0/OpenBurnBar.CloudSync.dll
+  OpenBurnBar.Storage -> /private/tmp/burnbar-cert-a364b9ece8/windows/storage/OpenBurnBar.Storage/bin/Release/net8.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.App.Presentation -> /private/tmp/burnbar-cert-a364b9ece8/windows/app/OpenBurnBar.App.Presentation/bin/Release/net8.0/OpenBurnBar.App.Presentation.dll
+  OpenBurnBar.Storage -> /private/tmp/burnbar-cert-a364b9ece8/windows/storage/OpenBurnBar.Storage/bin/Release/net10.0/OpenBurnBar.Storage.dll
+  OpenBurnBar.App.MissionControl.Tests -> /private/tmp/burnbar-cert-a364b9ece8/windows/tests/missioncontrol/bin/Release/net10.0/OpenBurnBar.App.MissionControl.Tests.dll
+Test run for /private/tmp/burnbar-cert-a364b9ece8/windows/tests/missioncontrol/bin/Release/net10.0/OpenBurnBar.App.MissionControl.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Data collector 'Blame' message: All tests finished running, Sequence file will not be generated.
+
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 28 ms - OpenBurnBar.App.MissionControl.Tests.dll (net10.0)

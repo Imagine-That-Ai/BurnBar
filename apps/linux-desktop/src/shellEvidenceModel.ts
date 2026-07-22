@@ -116,7 +116,22 @@ function contrastRatio(foreground: string, background: string): number {
 export function routeSnapshotCases(): RouteSnapshotCase[] {
   return ROUTES.map((route) => {
     let expectedState: RouteSnapshotCase['expectedState'] = 'honest-empty';
-    if (['overview', 'insights', 'database', 'providers', 'projects', 'missions', 'activity', 'chat', 'memory'].includes(route.id)) {
+    if (
+      [
+        'overview',
+        'insights',
+        'database',
+        'providers',
+        'projects',
+        'missions',
+        'activity',
+        'chat',
+        'memory',
+        'computer-use',
+        'mercury',
+        'smarthub'
+      ].includes(route.id)
+    ) {
       expectedState = 'daemon-backed';
     }
     if (['settings', 'account', 'updates', 'support', 'onboarding'].includes(route.id)) expectedState = 'settings-failure';

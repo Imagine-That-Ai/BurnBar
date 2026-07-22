@@ -182,9 +182,6 @@
   font-weight: 600;
   line-height: 1.3;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
 }
 
 .chat-thread-row-snippet {

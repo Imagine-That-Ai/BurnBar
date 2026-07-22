@@ -36,6 +36,14 @@ public sealed record UiCertificationScenario(
     string Acceptance)
 {
     public bool RunsRouteSmoke { get; init; } = true;
+
+    public int? WindowWidth { get; init; }
+
+    public int? WindowHeight { get; init; }
+
+    public bool MatchesRequestedWindowSize(int actualWidth, int actualHeight, int tolerancePixels = 2) =>
+        (WindowWidth is null || Math.Abs(actualWidth - WindowWidth.Value) <= tolerancePixels) &&
+        (WindowHeight is null || Math.Abs(actualHeight - WindowHeight.Value) <= tolerancePixels);
 }
 
 public sealed record RouteSmokeEvidence(
@@ -62,6 +70,12 @@ public sealed record RouteSmokeEvidence(
     public int? ActualDpiScalePercent { get; init; }
 
     public bool DpiScaleMatches { get; init; } = true;
+
+    public int? ActualWindowWidth { get; init; }
+
+    public int? ActualWindowHeight { get; init; }
+
+    public bool WindowSizeMatches { get; init; } = true;
 }
 
 public sealed record SemanticProbeEvidence(
@@ -72,7 +86,12 @@ public sealed record SemanticProbeEvidence(
     bool IsSecureDesktop,
     bool IsCredentialPrompt,
     string? ScreenshotPath,
-    string? Message);
+    string? Message)
+{
+    public HarnessVerdict ExternalCaptureVerdict { get; init; } = HarnessVerdict.Skipped;
+
+    public string? ExternalCaptureMessage { get; init; }
+}
 
 public sealed record InputRouteEvidence(
     string ActionKind,

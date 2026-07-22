@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 import CryptoKit
 import Foundation
 import Network
@@ -24,7 +24,7 @@ extension BurnBarHTTPGatewayServer {
             cacheCreationTokens: usage.cacheCreationTokens,
             cacheReadTokens: usage.cacheReadTokens,
             reasoningTokens: usage.reasoningTokens,
-            cost: route.pricing.cost(
+            cost: try route.pricing.cost(
                 inputTokens: usage.inputTokens,
                 outputTokens: usage.outputTokens,
                 cacheCreationTokens: usage.cacheCreationTokens,
@@ -93,7 +93,7 @@ extension BurnBarHTTPGatewayServer {
             cacheCreationTokens: usage.cacheCreationTokens,
             cacheReadTokens: usage.cacheReadTokens,
             reasoningTokens: usage.reasoningTokens,
-            cost: route.pricing.cost(
+            cost: try route.pricing.cost(
                 inputTokens: usage.inputTokens,
                 outputTokens: usage.outputTokens,
                 cacheCreationTokens: usage.cacheCreationTokens,

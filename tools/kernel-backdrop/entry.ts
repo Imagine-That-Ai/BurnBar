@@ -26,6 +26,13 @@ interface KernelBridgeMeta {
   substrate: KernelSubstrate;
 }
 
+interface KernelBackdropRuntimeState {
+  hostVisible: boolean;
+  renderLoopScheduled: boolean;
+  reducedMotion: boolean;
+  resolvedKernel: KernelId;
+}
+
 declare global {
   interface Window {
     /** Switch the live kernel. Returns false (and no-ops) for junk ids. */
@@ -34,6 +41,8 @@ declare global {
     __setTheme?: (theme: string) => void;
     /** The kernel actually shown (may differ from requested on GL fallback). */
     __getKernel?: () => KernelId;
+    /** Actual engine visibility and render-loop state for native handshakes. */
+    __getBackdropState?: () => KernelBackdropRuntimeState;
     /** Import-free registry metadata for native pickers. */
     __kernels?: KernelBridgeMeta[];
     /**
@@ -63,6 +72,14 @@ function initialKernel(): KernelId {
   return isKernelId(PREFERRED_DEFAULT) ? PREFERRED_DEFAULT : KERNELS[0]!.id;
 }
 
+function performanceMotionOverride(): boolean | undefined {
+  try {
+    return new URLSearchParams(location.search).get("motion") === "full" ? false : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function mount(): void {
   let host = document.getElementById("host");
   if (!host) {
@@ -76,7 +93,11 @@ function mount(): void {
   host.style.height = "100%";
   host.style.overflow = "hidden";
 
-  const engine = new BackdropEngine(host, { theme: "dark", initialKernel: initialKernel() });
+  const engine = new BackdropEngine(host, {
+    theme: "dark",
+    initialKernel: initialKernel(),
+    reducedMotionOverride: performanceMotionOverride(),
+  });
 
   window.__setKernel = (id: string): boolean => {
     if (!isKernelId(id)) return false;
@@ -87,6 +108,7 @@ function mount(): void {
     if (theme === "dark" || theme === "light") engine.setTheme(theme);
   };
   window.__getKernel = (): KernelId => engine.getResolvedKernel();
+  window.__getBackdropState = (): KernelBackdropRuntimeState => engine.getRuntimeState();
   window.__setBackdropActive = (active: boolean): void => {
     engine.setHostVisible(active === true);
   };

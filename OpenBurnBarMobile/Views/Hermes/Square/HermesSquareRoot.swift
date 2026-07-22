@@ -177,8 +177,10 @@ struct HermesSquareRoot: View {
 
             // Fan-out group card — when an observer is active,
             // render the side-by-side child tiles.
-            if let group = activeGroupObserver.group {
-                let tiles = childTilesForActiveGroup(group)
+            if let group = activeGroupObserver.displayGroup {
+                let tiles = activeGroupObserver.childTiles(
+                    fallbackActiveTiles: missionHost.snapshot.activeTiles
+                )
                 MissionFanOutGroupCard(
                     group: group,
                     childTiles: tiles,
@@ -219,6 +221,13 @@ struct HermesSquareRoot: View {
     // MARK: Body
 
     var body: some View {
+        missionDialogContent
+            .navigationDestination(item: $navTarget) { target in
+                navigationDestination(for: target)
+            }
+    }
+
+    private var lifecycleContent: some View {
         ZStack(alignment: .top) {
             squareBackground
             squareContent
@@ -227,6 +236,9 @@ struct HermesSquareRoot: View {
         .accessibilityIdentifier("screen.agents")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .task {
+            activeGroupObserver.startLatest()
+        }
         .task {
             inbox.bind(historyStore: historyStore, missionHost: missionHost)
             await registry.refresh(hermesService: hermesService, piService: piService, missionHost: missionHost)
@@ -279,6 +291,10 @@ struct HermesSquareRoot: View {
             searchReindexTask = nil
             mercuryPeerSource.stop()
         }
+    }
+
+    private var presentedContent: some View {
+        lifecycleContent
         .sheet(isPresented: $isShowingDiscover) {
             discoverDrawerSheet
         }
@@ -308,69 +324,93 @@ struct HermesSquareRoot: View {
         } message: {
             Text("Enter a new title for this conversation.")
         }
+    }
+
+    private var missionDialogContent: some View {
+        presentedContent
         .confirmationDialog(
             "Manage Mission",
-            isPresented: Binding(
-                get: { missionForActionSheet != nil },
-                set: { if !$0 { missionForActionSheet = nil } }
-            ),
+            isPresented: missionManagementIsPresented,
             titleVisibility: .visible
         ) {
-            Button("Cancel & Dismiss", role: .destructive) {
-                if let mission = missionForActionSheet {
-                    let mid = mission.id
-                    Task {
-                        await missionHost.cancelMission(id: mid)
-                        missionHost.dismissMission(id: mid)
-                    }
-                }
-                missionForActionSheet = nil
-            }
-
-            Button("Just Dismiss", role: .none) {
-                if let mission = missionForActionSheet {
-                    missionHost.dismissMission(id: mission.id)
-                }
-                missionForActionSheet = nil
-            }
-
-            Button("Keep Running", role: .cancel) {
-                missionForActionSheet = nil
-            }
+            missionManagementActions
         } message: {
-            if let mission = missionForActionSheet {
-                Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
-            }
+            missionManagementMessage
         }
-        .navigationDestination(item: $navTarget) { target in
-            switch target {
-            case .thread(let id):
-                threadDetailView(id: id)
-            case .brandZone(let uri):
-                brandZoneView(uri: uri)
-            case .runtimeNative(let runtime):
-                runtimeNativeView(for: runtime)
-            case .runtimeThread(let runtime):
-                runtimeThreadView(for: runtime)
-            case .cloudSession(let hitID):
-                if let row = cloudSearchRowsByID[hitID] {
-                    HermesSquareCloudSessionDetailView(row: row)
-                } else {
-                    Text("Session unavailable")
-                }
-            case .projectMemory(let projectID):
-                projectMemoryView(projectID: projectID)
-            case .mercuryLive(let connectionID):
-                MercuryLiveDetailView(
-                    connectionID: connectionID,
-                    peer: mercuryPeerSource.peer,
-                    bootError: mercuryBootError,
-                    isBooting: bootingMercuryConnectionID != nil,
-                    ensureMercuryLive: { id in
-                        await ensureMercuryLive(connectionID: id)
-                    }
-                )
+    }
+
+    @ViewBuilder
+    private func navigationDestination(for target: NavTarget) -> some View {
+        switch target {
+        case .thread(let id):
+            threadDetailView(id: id)
+        case .brandZone(let uri):
+            brandZoneView(uri: uri)
+        case .runtimeNative(let runtime):
+            runtimeNativeView(for: runtime)
+        case .runtimeThread(let runtime):
+            runtimeThreadView(for: runtime)
+        case .cloudSession(let hitID):
+            if let row = cloudSearchRowsByID[hitID] {
+                HermesSquareCloudSessionDetailView(row: row)
+            } else {
+                Text("Session unavailable")
             }
+        case .projectMemory(let projectID):
+            projectMemoryView(projectID: projectID)
+        case .mercuryLive(let connectionID):
+            MercuryLiveDetailView(
+                connectionID: connectionID,
+                peer: mercuryPeerSource.peer,
+                bootError: mercuryBootError,
+                isBooting: bootingMercuryConnectionID != nil,
+                ensureMercuryLive: { id in
+                    await ensureMercuryLive(connectionID: id)
+                }
+            )
+        }
+    }
+
+    private var missionManagementIsPresented: Binding<Bool> {
+        Binding(
+            get: { missionForActionSheet != nil },
+            set: { if !$0 { missionForActionSheet = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private var missionManagementActions: some View {
+        Button("Cancel & Dismiss", role: .destructive) {
+            if let mission = missionForActionSheet {
+                cancelAndDismissMission(mission)
+            }
+            missionForActionSheet = nil
+        }
+
+        Button("Just Dismiss", role: .none) {
+            if let mission = missionForActionSheet {
+                missionHost.dismissMission(id: mission.id)
+            }
+            missionForActionSheet = nil
+        }
+
+        Button("Keep Running", role: .cancel) {
+            missionForActionSheet = nil
+        }
+    }
+
+    @ViewBuilder
+    private var missionManagementMessage: some View {
+        if let mission = missionForActionSheet {
+            Text("Manage mission \"\(mission.title)\". Aborting will stop the processes on the Mac immediately.")
+        }
+    }
+
+    private func cancelAndDismissMission(_ mission: MissionConsoleActiveTile) {
+        let missionID = mission.id
+        Task {
+            await missionHost.cancelMission(id: missionID)
+            missionHost.dismissMission(id: missionID)
         }
     }
 
@@ -399,6 +439,7 @@ struct HermesSquareRoot: View {
     private var fanOutSheet: some View {
         FanOutComposerSheet(
             registry: registry,
+            catalogProvider: hermesService,
             onDispatched: { result in
                 activeGroupObserver.start(groupID: result.groupID)
             }
@@ -1322,41 +1363,6 @@ struct HermesSquareRoot: View {
             NSLog("OpenBurnBarMercury ensure_mercury_live_failed connectionID=\(relay.id) error=\(error.localizedDescription)")
             #endif
             mercuryBootError = error.localizedDescription
-        }
-    }
-
-    private func childTilesForActiveGroup(_ group: MissionGroupDocument) -> [MissionConsoleActiveTile] {
-        let snapshot = missionHost.snapshot
-        let knownByID = Dictionary(uniqueKeysWithValues: snapshot.activeTiles.map { ($0.id, $0) })
-        let now = Date()
-        return group.childMissionIDs.enumerated().map { idx, id -> MissionConsoleActiveTile in
-            if let existing = knownByID[id] { return existing }
-            let runtimeToken = idx < group.runtimeTokens.count ? group.runtimeTokens[idx] : nil
-            // Auto-rescue: a child that's been queued for > 120s without
-            // the mission console host observing it almost certainly means
-            // the paired Mac never came online. Surface a `.macOffline`
-            // phase explicitly so the merge bar and the tile colour
-            // honestly reflect "this isn't ever going to run."
-            let elapsedSinceGroupCreation = now.timeIntervalSince(group.createdAt)
-            let isStale = elapsedSinceGroupCreation > 120
-            let phase: MissionConsoleActiveTile.Phase = isStale ? .macOffline : .queued
-            let detail = isStale
-                ? "Paired Mac hasn't claimed this child. Wake your Mac and reopen BurnBar."
-                : "Queued in group"
-            return MissionConsoleActiveTile(
-                id: id,
-                title: "\(group.title) · \(runtimeToken ?? "?")",
-                runtimeID: runtimeToken,
-                runtimeDisplayLabel: (runtimeToken ?? "auto").capitalized,
-                phase: phase,
-                phaseDetail: detail,
-                currentToolName: nil,
-                lastEventSnippet: nil,
-                startedAt: group.createdAt,
-                burnSoFarUSD: 0,
-                progressFraction: nil,
-                approvalPending: false
-            )
         }
     }
 

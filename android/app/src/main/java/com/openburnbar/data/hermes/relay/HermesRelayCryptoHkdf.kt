@@ -8,18 +8,24 @@ internal object HermesRelayCryptoHkdf {
     private const val AES_KEY_BYTES = 32
 
     fun hkdfDeriveSymmetricKey(sharedSecret: ByteArray, sharedInfo: ByteArray, length: Int): ByteArray {
-        val prk = hkdfExtract(salt = ByteArray(0), ikm = sharedSecret)
-        return hkdfExpand(prk = prk, info = sharedInfo, length = length)
+        return HermesDomainCoreAdapter.hkdf(sharedSecret, ByteArray(0), sharedInfo, length) {
+            val prk = hkdfExtractLegacy(salt = ByteArray(0), ikm = sharedSecret)
+            hkdfExpandLegacy(prk = prk, info = sharedInfo, length = length)
+        }
     }
 
-    fun hkdfExtract(salt: ByteArray, ikm: ByteArray): ByteArray {
+    fun hkdfExtract(salt: ByteArray, ikm: ByteArray): ByteArray = hkdfExtractLegacy(salt, ikm)
+
+    private fun hkdfExtractLegacy(salt: ByteArray, ikm: ByteArray): ByteArray {
         val saltKey = if (salt.isEmpty()) ByteArray(AES_KEY_BYTES) else salt
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(saltKey, "HmacSHA256"))
         return mac.doFinal(ikm)
     }
 
-    fun hkdfExpand(prk: ByteArray, info: ByteArray, length: Int): ByteArray {
+    fun hkdfExpand(prk: ByteArray, info: ByteArray, length: Int): ByteArray = hkdfExpandLegacy(prk, info, length)
+
+    private fun hkdfExpandLegacy(prk: ByteArray, info: ByteArray, length: Int): ByteArray {
         require(length <= AES_KEY_BYTES * BYTE_MASK) { "HKDF output too long" }
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(prk, "HmacSHA256"))

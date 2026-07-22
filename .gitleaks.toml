@@ -16,12 +16,23 @@ paths = [
 ]
 
 [[allowlists]]
-description = "Swift key-material parameter labels that reference variables, not committed secrets"
+description = "Swift key-material parameter labels that reference variables, not committed secrets — scoped to Swift sources only so the global pattern cannot mask a leaked key literal in TS/Python/Kotlin/etc."
+condition = "AND"
 regexTarget = "match"
 regexes = [
   '''privateKey:\s+[A-Za-z_][A-Za-z0-9_]*''',
   '''signingKey:\s+[A-Za-z_][A-Za-z0-9_]*''',
   '''key:\s+[A-Za-z_][A-Za-z0-9_]*''',
+]
+paths = [
+  '''AgentLens/.*\.swift''',
+  '''AgentLensTests/.*\.swift''',
+  '''OpenBurnBarCore/Sources/.*\.swift''',
+  '''OpenBurnBarCore/Tests/.*\.swift''',
+  '''OpenBurnBarDaemon/.*\.swift''',
+  '''OpenBurnBarMobile/.*\.swift''',
+  '''OpenBurnBarMobileTests/.*\.swift''',
+  '''tools/.*/Sources/.*\.swift''',
 ]
 
 [[allowlists]]
@@ -515,11 +526,16 @@ paths = [
 ]
 
 [[allowlists]]
-description = "Linux-port evidence transcripts: sha256 digests, ed25519 public-key hashes, and signer identifiers captured in committed proof bundles under docs/linux-port/evidence — digests of evidence artifacts, never credential material (the privacy-invariants gate governs PII there separately)"
+description = "Linux-port evidence transcripts: SHA-256 digests (64 hex) and git commit SHAs (40 hex) captured in committed proof bundles under docs/linux-port/evidence — digests of evidence artifacts, never credential material (the privacy-invariants gate governs PII there separately)"
 condition = "AND"
 regexTarget = "match"
 regexes = [
-  '''[0-9a-f]{24,64}''',
+  '''"[A-Za-z0-9]*[Ss]ha256":\s*"[0-9a-f]{64}"''',
+  '''"[A-Za-z0-9]*[Hh]ash[A-Za-z]*":\s*"[0-9a-f]{64}"''',
+  '''"commit":\s*"[0-9a-f]{40}"''',
+  '''"head":\s*"[0-9a-f]{40}"''',
+  '''"[A-Za-z0-9]*[Hh]ead[A-Za-z]*[Hh]ash[A-Za-z]*":\s*"[0-9a-f]{40}"''',
+  '''^[0-9a-f]{64}$''',
 ]
 paths = [
   '''docs/linux-port/evidence/.*''',
@@ -567,4 +583,85 @@ commits = [
 ]
 paths = [
   '''AgentLensTests/Active/CredentialExposureScanTests\.swift''',
+]
+
+[[allowlists]]
+description = "Shared domain-core CloudVault tests use one fixed synthetic recovery phrase across language bindings"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''abc-defg-hjkm-npq-rst-vwxyz-23456789''',
+]
+paths = [
+  '''OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/main\.swift''',
+  '''OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVaultDomainCoreAdapterTests\.swift''',
+  '''android/openburnbar-domain-core/src/androidTest/java/com/openburnbar/domaincore/DomainCoreNativeLoadTest\.kt''',
+  '''crates/openburnbar-domain-core/domain-ffi/src/lib\.rs''',
+  '''crates/openburnbar-domain-core/domain-wasm/tests/package-equivalence\.mjs''',
+  '''tests/fixtures/domain-core/cloudvault/v1/cloudvault-deterministic-kat\.json''',
+  '''windows/tests/cloudsync/DomainCoreCloudVaultBridgeTests\.cs''',
+  '''windows/tests/quota/DomainCoreCloudVaultRecoveryEscrowTests\.cs''',
+]
+
+[[allowlists]]
+description = "Shared domain-core CloudVault fixture contains deterministic recovery and escrow KAT outputs"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''"normalizedKey"\s*:\s*"ABCDEFGHJKMNPQRSTVWXYZ23456789"''',
+  '''"(unicodeWrappingKeyHex|wrappingKeyHex)"\s*:\s*"[a-f0-9]{64}"''',
+]
+paths = [
+  '''tests/fixtures/domain-core/cloudvault/v1/cloudvault-deterministic-kat\.json''',
+]
+
+[[allowlists]]
+description = "Shared domain-core Hermes fixture contains deterministic ratchet KAT outputs"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''"(nextChainKeyHex|messageKeyHex)"\s*:\s*"[a-f0-9]{64}"''',
+]
+paths = [
+  '''tests/fixtures/domain-core/hermes/v1/hermes-crypto-kat\.json''',
+]
+
+[[allowlists]]
+description = "Hermes relay HKDF input expression passes variable bytes and contains no credential literal"
+condition = "AND"
+regexTarget = "line"
+regexes = [
+  '''inputKeyMaterial:\s*dh1\.withUnsafeBytes\s*\{\s*Data\(\$0\)\s*\}''',
+]
+paths = [
+  '''OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto\.swift''',
+]
+
+[[allowlists]]
+description = "Historical Windows storage certification receipts contain SHA-256 key fingerprints, not encryption keys; exception is pinned to the two evidence commits and exact receipt filenames"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''[a-f0-9]{64}''',
+]
+commits = [
+  '''aec23de64e0a09e0dc78e6c788616934076a2374''',
+  '''abfc12cef4c7cfef08cbf795e21ab31bacdf4592''',
+]
+paths = [
+  '''docs/windows-port/evidence/foundation-chat-transfer-7d5f1c4/arm64-utm/arm64-evidence-current/storage-evidence/[^/]+/openburnbar\.sqlite\.(key-provenance|windows-migration-journal)\.json''',
+]
+
+[[allowlists]]
+description = "Historical Windows AppConfiguration test used one fixed base64 canary to prove legacy VaultKey migration; exception is pinned to its introducing commit and test path"
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''bGVnYWN5LXZhdWx0LWtleS1jYW5hcnk=''',
+]
+commits = [
+  '''567ac2217cd644713d0d3360b2344326f9e135bf''',
+]
+paths = [
+  '''windows/tests/configuration/AppConfigurationTests\.cs''',
 ]

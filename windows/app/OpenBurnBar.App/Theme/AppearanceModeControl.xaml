@@ -6,9 +6,21 @@
   "Reduce transparency" toggle. Selection drives the shell-wide ThemeService, which
   applies the ElementTheme + backdrop on/off across every window.
 
-  macOS renders bespoke mini-mockup swatches per card; here we use accessible
-  RadioButtons with a glyph+label template — functional + keyboard/Narrator-ready,
-  with the richer swatch art deferred to the design pass (Bucket A Settings).
+  Each option renders a swatch tile previewing that mode's canvas + accent (the design-pass
+  successor to the original glyph-only rows). The tile pins RequestedTheme to the mode's
+  ElementTheme via AppearanceModeExtensions.ToElementTheme — the exact mapping ThemeService
+  applies — so {ThemeResource} AuroraCanvasBrush/AuroraAccentBrush resolve to that mode's
+  plate + accent (Dark: #0D1117 + #FA5053 dot; Light: #F3E8E6 + #F45B69 dot). High
+  contrast overlays a solid black plate with a white border (AppearanceModeExtensions.
+  HighContrastOverlayVisibility — a Visibility-returning helper, since x:Bind function
+  bindings type-check the return type against the target property and a bool + converter
+  does not compile through a function bind). System previews its effective resolution (System → Dark
+  per ToElementTheme): a literal half-dark/half-light split would need Mode-identity
+  branching the shared ItemTemplate cannot express without new code-behind — System and
+  Dark share every derivable signal, so the tile honestly previews what System resolves to.
+
+  RadioButtons stays the accessible control (keyboard/Narrator-ready, selection bindings
+  intact); only the item content template was restyled.
 -->
 <UserControl
     x:Class="OpenBurnBar.App.Theme.AppearanceModeControl"
@@ -31,11 +43,34 @@
                                SelectionChanged="ModeButtons_SelectionChanged">
             <controls:RadioButtons.ItemTemplate>
                 <DataTemplate x:DataType="local:AppearanceModeOption">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon FontFamily="Segoe MDL2 Assets"
-                                  FontSize="14"
-                                  Glyph="{x:Bind Glyph}" />
-                        <TextBlock Text="{x:Bind Label}" VerticalAlignment="Center" />
+                    <StackPanel Spacing="6">
+                        <!-- Swatch tile: mode canvas plate + accent dot, radius 10 (OBBCardCornerRadius). -->
+                        <Grid Width="64"
+                              Height="40"
+                              RequestedTheme="{x:Bind local:AppearanceModeExtensions.ToElementTheme(Mode), Mode=OneWay}">
+                            <Border CornerRadius="{StaticResource OBBCardCornerRadius}"
+                                    Background="{ThemeResource AuroraCanvasBrush}"
+                                    BorderBrush="{ThemeResource AuroraGlassStrokeBrush}"
+                                    BorderThickness="1" />
+                            <Ellipse Width="10"
+                                     Height="10"
+                                     HorizontalAlignment="Right"
+                                     VerticalAlignment="Top"
+                                     Margin="0,6,6,0"
+                                     Fill="{ThemeResource AuroraAccentBrush}" />
+                            <!-- High contrast: solid black plate + white border. -->
+                            <Border CornerRadius="{StaticResource OBBCardCornerRadius}"
+                                    Background="Black"
+                                    BorderBrush="White"
+                                    BorderThickness="2"
+                                    Visibility="{x:Bind local:AppearanceModeExtensions.HighContrastOverlayVisibility(Mode), Mode=OneWay}" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                            <FontIcon FontFamily="Segoe MDL2 Assets"
+                                      FontSize="12"
+                                      Glyph="{x:Bind Glyph}" />
+                            <TextBlock Text="{x:Bind Label}" FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
                     </StackPanel>
                 </DataTemplate>
             </controls:RadioButtons.ItemTemplate>

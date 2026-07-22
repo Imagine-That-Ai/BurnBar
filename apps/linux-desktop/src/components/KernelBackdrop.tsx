@@ -28,7 +28,6 @@ export function KernelBackdrop({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
     if (typeof process !== 'undefined' && process.env.VITEST) return;
     const forcedMode =
       typeof localStorage === 'undefined'

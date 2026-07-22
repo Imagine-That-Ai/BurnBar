@@ -1,5 +1,6 @@
 import XCTest
 import GRDB
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 /// Tests for checkpoint/resume and atomic visibility boundaries.
@@ -221,6 +222,66 @@ final class CheckpointTests: XCTestCase {
         let afterSecondCommit = try await checkpointStore.fetchCheckpoint(for: .kimi)
         XCTAssertNotNil(afterSecondCommit)
         XCTAssertEqual(afterSecondCommit?.checkpointToken, "v1:99999:0")
+    }
+
+    func test_checkpointManifestRoundTripDoesNotRediscoverUnchangedFractionalDateIdentity() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let checkpointStore = ParserCheckpointStore(dbQueue: queue)
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("openburnbar-checkpoint-date-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let transcript = directory.appendingPathComponent("session.jsonl")
+        try Data("historical transcript".utf8).write(to: transcript)
+        try fileManager.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_700_000_000.123_456)],
+            ofItemAtPath: transcript.path
+        )
+        let captureTracker = ParserFileDiscoveryTracker(knownFiles: [])
+        let captureGate = ParserFileReadGate(
+            options: LogParseOptions(
+                includeConversationBodies: false,
+                fileDiscoveryTracker: captureTracker
+            ),
+            fileManager: fileManager
+        )
+        XCTAssertTrue(try captureGate.shouldRead(transcript))
+        let captured = captureTracker.discoveredFiles
+        XCTAssertEqual(captured.count, 1)
+
+        try await checkpointStore.saveDiscoveredFiles(captured, for: .claudeCode)
+        let restored = try await checkpointStore.fetchDiscoveredFiles(for: .claudeCode)
+        let capturedDateBits = captured.first.map {
+            [$0.modificationDate?.timeIntervalSinceReferenceDate.bitPattern,
+             $0.creationDate?.timeIntervalSinceReferenceDate.bitPattern]
+        }
+        let restoredDateBits = restored.first.map {
+            [$0.modificationDate?.timeIntervalSinceReferenceDate.bitPattern,
+             $0.creationDate?.timeIntervalSinceReferenceDate.bitPattern]
+        }
+        XCTAssertEqual(
+            restored,
+            captured,
+            "captured checkpoint date bits must round-trip without identity drift: \(capturedDateBits as Any) -> \(restoredDateBits as Any)"
+        )
+
+        let metrics = ParserPassMetrics()
+        let gate = ParserFileReadGate(
+            options: LogParseOptions(
+                includeConversationBodies: false,
+                minimumFileModificationDate: .distantFuture,
+                fileDiscoveryTracker: ParserFileDiscoveryTracker(knownFiles: restored),
+                resourceGovernor: ParserResourceGovernor(limits: .unlimited),
+                metrics: metrics
+            ),
+            fileManager: fileManager
+        )
+
+        XCTAssertFalse(try gate.shouldRead(transcript), "an unchanged persisted identity must not be re-read")
+        XCTAssertEqual(metrics.snapshot().contentReadCount, 0)
     }
 
     // MARK: - VAL-PERSIST-005: Resume from checkpoint is gap-free and duplicate-free
@@ -703,7 +764,7 @@ final class CheckpointTests: XCTestCase {
 private struct MockLogParser: LogParser {
     let provider: AgentProvider
 
-    func parse() async throws -> ParseResult {
+    func parse(options _: LogParseOptions) async throws -> ParseResult {
         ParseResult(usages: [], conversations: [])
     }
 }

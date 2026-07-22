@@ -12,7 +12,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
-    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
@@ -21,6 +21,21 @@
     <ProjectReference Include="../../cloudsync/OpenBurnBar.CloudSync/OpenBurnBar.CloudSync.csproj" />
     <ProjectReference Include="../../cloudsync/OpenBurnBar.CloudSync.Crypto/OpenBurnBar.CloudSync.Crypto.csproj" />
     <ProjectReference Include="../../cloudsync/appcheck/OpenBurnBar.CloudSync.AppCheck/OpenBurnBar.CloudSync.AppCheck.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../../crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.dylib"
+          Link="libopenburnbar_domain_ffi.dylib"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('../../../crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.dylib')" />
+    <None Include="../../../crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so"
+          Link="libopenburnbar_domain_ffi.so"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('../../../crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.so')" />
+    <None Include="../../../crates/openburnbar-domain-core/target/debug/openburnbar_domain_ffi.dll"
+          Link="openburnbar_domain_ffi.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('../../../crates/openburnbar-domain-core/target/debug/openburnbar_domain_ffi.dll')" />
   </ItemGroup>
 
 </Project>

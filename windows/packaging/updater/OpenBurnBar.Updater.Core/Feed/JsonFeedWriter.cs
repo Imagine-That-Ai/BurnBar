@@ -40,6 +40,7 @@ public static class JsonFeedWriter
             ["commit"] = release.Commit,
             ["createdAt"] = createdAt,
             ["critical"] = release.Critical,
+            ["descriptorSignature"] = release.DescriptorSignatureBase64,
             ["downloadUrl"] = release.DownloadUrl,
             ["edSignature"] = release.EdSignatureBase64,
             ["length"] = release.Length,

@@ -162,6 +162,49 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertEqual(normalized.totalTokens, 275)
     }
 
+    func test_usageLogPolling_pricesAndPersistsRoutedUsage() async throws {
+        let supportRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cursor-connector-pricing-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: supportRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: supportRoot) }
+
+        let previousSupportRoot = ProcessInfo.processInfo.environment["OPENBURNBAR_SUPPORT_ROOT"]
+        setenv("OPENBURNBAR_SUPPORT_ROOT", supportRoot.path, 1)
+        defer {
+            if let previousSupportRoot {
+                setenv("OPENBURNBAR_SUPPORT_ROOT", previousSupportRoot, 1)
+            } else {
+                unsetenv("OPENBURNBAR_SUPPORT_ROOT")
+            }
+        }
+
+        let manager = CursorConnectorManager()
+        let dataStore = try makeDiscoveryInMemoryStore()
+        let usageLogURL = supportRoot
+            .appendingPathComponent("OpenBurnBar", isDirectory: true)
+            .appendingPathComponent("cursor_connector_usage.jsonl")
+        try Data("""
+        {"request_id":"pricing-request","provider":"zai","model":"glm-5","prompt_tokens":1000000,"completion_tokens":1000000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"total_tokens":2000000,"timestamp":"2025-07-14T12:00:00Z"}
+        """.utf8).write(to: usageLogURL, options: .atomic)
+
+        manager.attach(dataStore: dataStore)
+
+        let deadline = Date().addingTimeInterval(2)
+        while manager.recentUsageEvents.isEmpty, Date() < deadline {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+
+        let event = try XCTUnwrap(manager.recentUsageEvents.first)
+        XCTAssertEqual(event.provider, .zai)
+        XCTAssertEqual(event.model, "glm-5")
+        XCTAssertEqual(event.cost, 0.14, accuracy: 0.000_001)
+
+        let persisted = try await dataStore.fetchAllUsage()
+        XCTAssertEqual(persisted.count, 1)
+        XCTAssertEqual(persisted.first?.sessionId, "pricing-request")
+        XCTAssertEqual(persisted.first?.costUSD ?? -1, 0.14, accuracy: 0.000_001)
+    }
+
     // MARK: - Reasoning Token Extraction Tests (VAL-TOKEN-006)
 
     func test_normalizeUsageEvent_extractsReasoningTokens_fromFlatPayload() {
@@ -342,24 +385,15 @@ final class CursorConnectorTests: XCTestCase {
         try JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys])
             .write(to: configURL, options: .atomic)
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-        process.arguments = [scriptURL.path, configURL.path]
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = output
-        try process.run()
-        defer {
-            process.terminate()
-            process.waitUntilExit()
-        }
+        let (process, output) = try launchProxy(script: scriptURL, config: configURL)
+        defer { terminateProxyProcess(process, output: output) }
 
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.timeoutIntervalForRequest = 2
         let session = URLSession(configuration: sessionConfig)
         defer { session.invalidateAndCancel() }
         let baseURL = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)"))
-        try await waitForProxyHealth(baseURL: baseURL, session: session)
+        try await waitForProxyHealth(baseURL: baseURL, session: session, process: process, output: output)
 
         for _ in 0..<3 {
             let healthStatus = try await proxyResponseStatus(baseURL.appendingPathComponent("health"), session: session)
@@ -420,24 +454,15 @@ final class CursorConnectorTests: XCTestCase {
         try JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys])
             .write(to: configURL, options: .atomic)
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-        process.arguments = [scriptURL.path, configURL.path]
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = output
-        try process.run()
-        defer {
-            process.terminate()
-            process.waitUntilExit()
-        }
+        let (process, output) = try launchProxy(script: scriptURL, config: configURL)
+        defer { terminateProxyProcess(process, output: output) }
 
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.timeoutIntervalForRequest = 2
         let session = URLSession(configuration: sessionConfig)
         defer { session.invalidateAndCancel() }
         let baseURL = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)"))
-        try await waitForProxyHealth(baseURL: baseURL, session: session)
+        try await waitForProxyHealth(baseURL: baseURL, session: session, process: process, output: output)
 
         let authHeaders = ["Authorization": "Bearer \(bearerToken)"]
         let cfOneHeaders = authHeaders.merging(["Cf-Connecting-IP": "198.51.100.10"], uniquingKeysWith: { _, new in new })
@@ -633,10 +658,65 @@ final class CursorConnectorTests: XCTestCase {
         return Int(UInt16(bigEndian: address.sin_port))
     }
 
-    private func waitForProxyHealth(baseURL: URL, session: URLSession) async throws {
+    private func launchProxy(script: URL, config: URL) throws -> (Process, Pipe) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = [script.path, config.path]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        return (process, output)
+    }
+
+    /// Bounded subprocess teardown: SIGTERM → poll (≤3 s) → SIGKILL → poll (≤2 s).
+    /// Never blocks indefinitely — the pre-fix `defer { terminate(); waitUntilExit() }`
+    /// could hang the entire test suite when the child was a zombie or unresponsive.
+    private func terminateProxyProcess(_ process: Process, output: Pipe) {
+        if process.isRunning {
+            process.terminate()
+        }
+        // Poll for graceful exit (3 s budget).
+        for _ in 0..<150 where process.isRunning {
+            usleep(20_000)
+        }
+        if process.isRunning {
+            // Escalate to SIGKILL.
+            kill(process.processIdentifier, SIGKILL)
+            // Poll for forced exit (2 s budget).
+            for _ in 0..<100 where process.isRunning {
+                usleep(20_000)
+            }
+        }
+    }
+
+    private func captureProxyOutput(_ output: Pipe) -> String {
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private func waitForProxyHealth(
+        baseURL: URL,
+        session: URLSession,
+        process: Process,
+        output: Pipe
+    ) async throws {
         let healthURL = baseURL.appendingPathComponent("health")
         var lastError: Error?
         for _ in 0..<150 {
+            // Fail fast if the child already exited — the proxy will never
+            // become healthy and polling for 7.5 s only delays the inevitable.
+            if !process.isRunning {
+                let captured = captureProxyOutput(output)
+                throw NSError(
+                    domain: "CursorConnectorTests",
+                    code: 2,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "proxy process exited before becoming healthy",
+                        NSLocalizedRecoverySuggestionErrorKey: captured.trimmingCharacters(in: .whitespacesAndNewlines)
+                    ]
+                )
+            }
             do {
                 if try await proxyResponseStatus(healthURL, session: session) == 200 {
                     return
@@ -646,7 +726,15 @@ final class CursorConnectorTests: XCTestCase {
             }
             try await Task.sleep(nanoseconds: 50_000_000)
         }
-        throw lastError ?? NSError(domain: "CursorConnectorTests", code: 1)
+        let captured = captureProxyOutput(output)
+        throw lastError ?? NSError(
+            domain: "CursorConnectorTests",
+            code: 1,
+            userInfo: [
+                NSLocalizedDescriptionKey: "proxy did not become healthy within timeout",
+                NSLocalizedRecoverySuggestionErrorKey: captured.trimmingCharacters(in: .whitespacesAndNewlines)
+            ]
+        )
     }
 
     private func proxyResponseStatus(

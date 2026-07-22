@@ -14,6 +14,37 @@ namespace OpenBurnBar.Storage;
 /// </summary>
 public static class TokenUsageReadSeam
 {
+    /// <summary>
+    /// Reads all headline metrics from the same optional UTC floor. A null floor
+    /// means all time; bounded windows never mix current-window cost with all-time
+    /// tokens or sessions.
+    /// </summary>
+    public static TokenUsageWindowTotals LoadWindowTotals(
+        SqliteConnection connection,
+        DateTimeOffset? startUtc)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        using var command = connection.CreateCommand();
+        command.CommandText = startUtc is null
+            ? "SELECT COALESCE(SUM(cost), 0), COALESCE(SUM(totalTokens), 0), COUNT(DISTINCT sessionId) FROM token_usage"
+            : "SELECT COALESCE(SUM(cost), 0), COALESCE(SUM(totalTokens), 0), COUNT(DISTINCT sessionId) FROM token_usage WHERE createdAt >= $start";
+        if (startUtc is { } start)
+        {
+            command.Parameters.AddWithValue("$start", FormatTimestamp(start));
+        }
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return new TokenUsageWindowTotals(0, 0, 0);
+        }
+
+        return new TokenUsageWindowTotals(
+            reader.GetDouble(0),
+            reader.GetInt64(1),
+            reader.GetInt64(2));
+    }
+
     /// <summary>Load the live dashboard/tray aggregate in one bounded set of indexed queries.</summary>
     public static TokenUsageAggregateSnapshot LoadAggregateSnapshot(
         SqliteConnection connection,

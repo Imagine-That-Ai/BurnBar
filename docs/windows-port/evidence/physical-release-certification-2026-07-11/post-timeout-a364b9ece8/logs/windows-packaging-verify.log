@@ -1,0 +1,19 @@
+== XML well-formedness (xmllint) ==
+OK   Package.appxmanifest
+OK   OpenBurnBar.Packaging.wapproj
+OK   openburnbar.nuspec
+== JSON parse (portable layout + schema) ==
+OK   portable-layout.json parsed
+OK   portable-layout structural checks
+== MSIX visual assets ==
+OK   MSIX manifest PNG assets exist with expected scale-100 dimensions
+== winget manifests (YAML + structural schema rules) ==
+OK   winget version/installer/locale: required keys, enums, SHA256/URL patterns, cross-manifest consistency
+== SOFT: full JSON-Schema validation (jsonschema, if available) ==
+SKIP jsonschema not importable (structural rules above already ran as the hard gate)
+== SOFT: nuspec NuGet-core XSD validation ==
+OK   nuspec NuGet-core subset valid against nuspec.xsd (choco-superset elements gated by 'choco pack')
+== SOFT: PowerShell parse (pwsh, if available) ==
+SKIP pwsh not installed (PowerShell syntax gated on the Windows/CI runner)
+
+PACKAGING VERIFY: PASSED (macOS ceiling; Windows-only gates deferred)

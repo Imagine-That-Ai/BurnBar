@@ -1,4 +1,4 @@
-# OpenBurnBar Windows Port — Master Handoff (2026-07-03)
+# OpenBurnBar Windows Port — Historical Handoff (2026-07-03)
 
 > **⚠️ SUPERSEDED FOR PARITY STATUS (2026-07-09):** Production-parity status is **only**
 > [`WINDOWS_PARITY_LEDGER.yml`](WINDOWS_PARITY_LEDGER.yml) (closed set: Real / Substituted /
@@ -8,6 +8,11 @@
 > [`PARITY_100_REMEDIATION_PLAN.md`](PARITY_100_REMEDIATION_PLAN.md) and the Wave 2–7 plan.
 > §2/§3/§6 below also predate the 2026-07-04 atomic integration (#1267) — verify against
 > the ledger + live code, not "done" phrasing in this handoff.
+
+> **CURRENT OPERATIONS ENTRYPOINT:** use
+> [`WINDOWS_PORT_OPERATIONS_RUNBOOK.md`](WINDOWS_PORT_OPERATIONS_RUNBOOK.md) for
+> releases, staging, signing, costs, physical certification, Store flights,
+> rollback, maintenance, and agent handoffs. This file is historical context.
 
 The single doc to continue the entire Windows port. Read `docs/WINDOWS_PORT_MASTER_PLAN.md` (v2.1) for the
 authoritative spec; this is the *current state + how to finish*.
@@ -97,8 +102,8 @@ Plans already written (execute through the factory):
 - **Phase 3 — UI parity → G3:** fully planned → `docs/windows-port/PHASE3_UI_PARITY_PLAN.md`. ~370–540 PRs.
   W6 design-system foundation (token WinUI emitter → Mica/Acrylic glass shim → 30-substrate particle engine
   on Win2D → Pretext WebView2), then W7 every surface (Buckets A/B/C). Predecessor WINUI-017 already cleared.
-- **Phase 4 — computer-use + PetCompanion + integrations → G4:** SendInput/UIA/WGC/ConPTY + capability
-  tokens + watchdog + kill-switch + ViGEm; glTF pet + click-through overlay; Cast/HomeAssistant/SmartHub/
+- **Phase 4 — computer-use + PetCompanion + integrations → G4:** isolated SendInput/UIA/WGC/ConPTY + capability
+  tokens + watchdog + kill-switch; glTF pet + click-through overlay; Cast/HomeAssistant/SmartHub/
   Mercury. The ConPTY + named-pipe peer-auth harness is already built + Windows-tested (20/20).
 - **Phase 5 — signed distribution + certification → G5:** Authenticode/Azure Trusted Signing + MSIX +
   winget/Choco + Ed25519-pinned auto-update + DLL-load hardening + SBOM/Sigstore; W11 full parity-matrix
@@ -107,7 +112,9 @@ Plans already written (execute through the factory):
   macOS-tested** (Node Firebase-Admin mint backend, mock-fenced, in `functions/`); build the Windows TPM
   attestation client (CNG `NCryptCreateClaim`) + prove real-TPM→createToken→enforced-callable on the dev
   host (TPM 2.0 + Win11; clear firebase-admin-node #2308).
-- **W0 procurement (calendar-bound, Alberto):** Authenticode/Trusted-Signing cert + Microsoft Store account
+- **W0 procurement:** Azure Artifact Signing identity validation and signed x64/ARM64
+  production are **resolved** by run [29160512069](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29160512069).
+  Microsoft Store and winget publisher onboarding remain calendar-bound.
   + winget publisher — external lead-times; start now, gates G5.
 
 ## 5. Execution model (how to keep running it)

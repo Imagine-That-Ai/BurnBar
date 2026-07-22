@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace OpenBurnBar.CloudSync.Models;
@@ -6,6 +7,25 @@ namespace OpenBurnBar.CloudSync.Models;
 // Domain: computer-use. Swift `Int` -> `long` (Swift Int is 64-bit on these hosts;
 // publishedAtMillis exceeds Int32). Property names bind to the Swift Codable keys
 // verbatim via [JsonPropertyName].
+
+/// <summary>
+/// Short-lived, domain-tagged capability token for privileged input leaves
+/// (Remote Unlock vs Computer Use). Firestore wire name: capabilityToken.
+/// </summary>
+public sealed record FirestoreCapabilityToken
+{
+    [JsonPropertyName("schemaVersion")] public required long SchemaVersion { get; init; }
+    [JsonPropertyName("domain")] public required string Domain { get; init; }
+    [JsonPropertyName("nonce")] public required string Nonce { get; init; }
+    [JsonPropertyName("issuedAt")] public required string IssuedAt { get; init; }
+    [JsonPropertyName("expiresAt")] public required string ExpiresAt { get; init; }
+    [JsonPropertyName("allowedActionKinds")] public required IReadOnlyList<string> AllowedActionKinds { get; init; }
+    [JsonPropertyName("scopeHash")] public required string ScopeHash { get; init; }
+    [JsonPropertyName("actionBudget")] public required long ActionBudget { get; init; }
+    [JsonPropertyName("boundEscrowDeviceId")] public string? BoundEscrowDeviceId { get; init; }
+    [JsonPropertyName("attestationHashBlake3")] public string? AttestationHashBlake3 { get; init; }
+    [JsonPropertyName("signatureEd25519Base64")] public string? SignatureEd25519Base64 { get; init; }
+}
 
 public sealed record FirestoreComputerUsePhoneAuthorityDoc
 {

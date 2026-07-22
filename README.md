@@ -5,7 +5,7 @@
 
   > A native macOS app that watches your AI coding agents so you don't have to wonder where all your money went.
 
-  **Status:** Commercial launch candidate — macOS `1.0.29` is prepared for Mac App Store review and ships as a Developer ID notarized direct download; iOS `1.0.2` build `82` and the Hosted Quota Sync subscription are in Apple review with manual release enabled.
+  **Status:** Commercial launch candidate — macOS `1.0.30` is prepared for Mac App Store review and ships as a Developer ID notarized direct download; Windows `1.0.32` is the parity release line; iOS `1.0.2` build `82` and the Hosted Quota Sync subscription are in Apple review with manual release enabled.
 
 </div>
 
@@ -274,8 +274,17 @@ The Mac app sources live under **`AgentLens/`** because renaming folders is a pe
 | `AgentLens/` | SwiftUI app: menu bar, dashboard, settings, parsers, GRDB store |
 | `OpenBurnBarCore/` | Shared types and RPC contracts for app ↔ daemon |
 | `OpenBurnBarDaemon/` | Local JSON-RPC daemon + executable wrapper |
+| `crates/openburnbar-domain-core/` | Shared pure Rust transforms, UniFFI/Wasm adapters, and generated-artifact provenance |
 | `extensions/openburnbar/` | TypeScript extension for Cursor / VS Code |
 | `docs/` | Mission, direction, roadmap, architecture, onboarding, and other words we meant |
+
+Shared-domain migration status and boundaries live in the
+[roadmap](docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md),
+[duplication inventory](docs/SHARED_RUST_DOMAIN_INVENTORY.md), and
+[ADR 014](docs/architecture/014-shared-rust-domain-core.md). The program is an
+active migration; generated bindings or feature-branch merges do not by
+themselves mean a domain is production-promoted or that legacy code can be
+deleted.
 
 ---
 

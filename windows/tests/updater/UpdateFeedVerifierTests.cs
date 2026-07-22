@@ -75,7 +75,9 @@ public sealed class UpdateFeedVerifierTests
         {
             Length = malicious.LongLength,
             Sha256 = Sha256Digest.HexOf(malicious), // rewritten to match the payload
-            // EdSignatureBase64 stays the ORIGINAL signature over the honest bytes.
+            // Both signatures stay the ORIGINALS: the descriptor signature no
+            // longer matches the rewritten metadata, and the artifact signature
+            // no longer matches the malicious bytes — either gate rejects.
         };
         var feed = JsonFeedWriter.Write(forgedFeedDescriptor);
 
@@ -83,6 +85,38 @@ public sealed class UpdateFeedVerifierTests
 
         Assert.Equal(UpdateStatus.Rejected, decision.Status);
         Assert.Equal(RejectionReason.SignatureInvalid, decision.Reason);
+    }
+
+
+    [Theory]
+    [InlineData(FeedFormat.Appcast)]
+    [InlineData(FeedFormat.Json)]
+    public void SignedArtifactCannotBeReboundToNewerMetadata(FeedFormat format)
+    {
+        var pinnedKey = Ed25519UpdateKeyPair.Generate();
+        var honest = FeedTestData.Descriptor(
+            pinnedKey,
+            FeedTestData.Artifact,
+            version: "1.4.2");
+        var tampered = honest with
+        {
+            Version = "99.99.99",
+            Build = "999999",
+            DownloadUrl = "https://attacker.example/OpenBurnBar-Setup-99.99.99.msix",
+            PackageName = "OpenBurnBar-Setup-99.99.99.msix",
+            Critical = true,
+        };
+        var feed = FeedTestData.Write(format, tampered);
+
+        var decision = VerifierFor(pinnedKey).Decide(
+            feed,
+            format,
+            UpdateVersion.Parse("2.0.0"),
+            FeedTestData.Artifact);
+
+        Assert.Equal(UpdateStatus.Rejected, decision.Status);
+        Assert.Equal(RejectionReason.SignatureInvalid, decision.Reason);
+        Assert.False(decision.ShouldInstall);
     }
 
     [Fact]
@@ -152,6 +186,25 @@ public sealed class UpdateFeedVerifierTests
     }
 
     [Fact]
+    public void FifthVersionComponentCannotReuseAFourComponentSignature()
+    {
+        // P1 regression guard: "1.4.2.0.1" must not parse/order as newer while
+        // canonicalizing to the same signed "1.4.2.0" descriptor. The extra
+        // component is rejected at parse time, so the feed fails closed.
+        var pinnedKey = Ed25519UpdateKeyPair.Generate();
+        var honest = FeedTestData.Descriptor(pinnedKey, FeedTestData.Artifact, version: "1.4.2.0");
+        var forged = honest with { Version = "1.4.2.0.1" };
+        var feed = JsonFeedWriter.Write(forged);
+
+        var decision = VerifierFor(pinnedKey).Decide(
+            feed, FeedFormat.Json, UpdateVersion.Parse("1.4.2.0"), FeedTestData.Artifact);
+
+        Assert.Equal(UpdateStatus.Rejected, decision.Status);
+        Assert.Equal(RejectionReason.MalformedFeedVersion, decision.Reason);
+        Assert.False(decision.ShouldInstall);
+    }
+
+    [Fact]
     public void MalformedFeedVersionIsRejected()
     {
         var pinnedKey = Ed25519UpdateKeyPair.Generate();
@@ -215,6 +268,44 @@ public sealed class UpdateFeedVerifierTests
     }
 
     [Fact]
+    public void MissingDescriptorSignatureIsRejected()
+    {
+        // A feed carrying only the Sparkle artifact signature (e.g. produced by
+        // legacy tooling) must NOT install: the metadata-binding descriptor
+        // signature is required too.
+        var pinnedKey = Ed25519UpdateKeyPair.Generate();
+        var descriptor = FeedTestData.Descriptor(pinnedKey, FeedTestData.Artifact) with
+        {
+            DescriptorSignatureBase64 = "",
+        };
+        var feed = JsonFeedWriter.Write(descriptor);
+
+        var decision = VerifierFor(pinnedKey).Decide(feed, FeedFormat.Json, Installed, FeedTestData.Artifact);
+
+        Assert.Equal(UpdateStatus.Rejected, decision.Status);
+        Assert.Equal(RejectionReason.MissingSignature, decision.Reason);
+    }
+
+    [Fact]
+    public void ArtifactSignatureMustCoverTheArtifactBytes()
+    {
+        // The descriptor signature is honest, but the Sparkle artifact
+        // signature covers DIFFERENT bytes — the WinSparkle-parity gate must
+        // reject it independently of the descriptor gate.
+        var pinnedKey = Ed25519UpdateKeyPair.Generate();
+        var descriptor = FeedTestData.Descriptor(pinnedKey, FeedTestData.Artifact) with
+        {
+            EdSignatureBase64 = pinnedKey.SignBase64(new byte[] { 1, 2, 3 }),
+        };
+        var feed = JsonFeedWriter.Write(descriptor);
+
+        var decision = VerifierFor(pinnedKey).Decide(feed, FeedFormat.Json, Installed, FeedTestData.Artifact);
+
+        Assert.Equal(UpdateStatus.Rejected, decision.Status);
+        Assert.Equal(RejectionReason.SignatureInvalid, decision.Reason);
+    }
+
+    [Fact]
     public void MissingSha256IsRejected()
     {
         // A feed that omits sha256 entirely (the release input always emits one,
@@ -227,6 +318,7 @@ public sealed class UpdateFeedVerifierTests
             Length = FeedTestData.Artifact.LongLength,
             Sha256 = null,
             EdSignatureBase64 = pinnedKey.SignBase64(FeedTestData.Artifact),
+            DescriptorSignatureBase64 = pinnedKey.SignBase64(FeedTestData.Artifact),
         };
 
         var verification = VerifierFor(pinnedKey).VerifyArtifact(manifest, FeedTestData.Artifact);

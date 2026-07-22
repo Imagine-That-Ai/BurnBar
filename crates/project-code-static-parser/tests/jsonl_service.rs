@@ -34,6 +34,7 @@ fn handles_multiple_jsonl_requests_in_one_process() -> Result<(), Box<dyn Error>
         assert_eq!(response["requestId"], request_id);
         assert_eq!(response["filePath"], file_path);
         assert_eq!(response["ok"], true);
+        assert_eq!(response["shaMatch"], false);
         assert!(
             response["symbols"].as_array().is_some_and(|symbols| {
                 symbols.iter().any(|symbol| symbol["name"] == symbol_name)
@@ -45,5 +46,114 @@ fn handles_multiple_jsonl_requests_in_one_process() -> Result<(), Box<dyn Error>
     drop(stdin);
     let status = child.wait()?;
     assert!(status.success(), "parser exited with {status}");
+    Ok(())
+}
+
+#[test]
+fn emits_true_blob_integrity_state() -> Result<(), Box<dyn Error>> {
+    let text = "def answer():\n    return 42\n";
+    let request = json!({
+        "requestId": "sha-match",
+        "filePath": "answer.py",
+        "language": "python",
+        "blobSha": "eca386f51bbe9df459d3def8a91f74e99caeab92",
+        "text": text,
+    });
+    let output = Command::new(env!("CARGO_BIN_EXE_project-code-static-parser"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let mut child = output;
+    let mut stdin = child.stdin.take().ok_or("missing parser stdin")?;
+    let stdout = child.stdout.take().ok_or("missing parser stdout")?;
+    writeln!(stdin, "{request}")?;
+    stdin.flush()?;
+    drop(stdin);
+    let mut reader = BufReader::new(stdout);
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+    let response: Value = serde_json::from_str(&line)?;
+    assert_eq!(response["ok"], true);
+    assert_eq!(response["shaMatch"], true);
+    assert!(child.wait()?.success());
+    Ok(())
+}
+
+#[test]
+fn parses_extended_repository_languages() -> Result<(), Box<dyn Error>> {
+    let cases = [
+        ("native.c", "c", "struct Native { int value; };\n", "c"),
+        (
+            "widget.cpp",
+            "cpp",
+            "namespace demo { class Widget {}; }\n",
+            "cpp",
+        ),
+        (
+            "Widget.m",
+            "objc",
+            "@interface Widget : NSObject\n@property int value;\n@end\n",
+            "objc",
+        ),
+        (
+            "config.json",
+            "json",
+            "{\"name\":\"BurnBar\",\"enabled\":true}\n",
+            "json",
+        ),
+        (
+            "README.md",
+            "markdown",
+            "# BurnBar\n\nA desktop companion.\n",
+            "markdown",
+        ),
+        (
+            "config.yaml",
+            "yaml",
+            "name: BurnBar\nenabled: true\n",
+            "yaml",
+        ),
+    ];
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_project-code-static-parser"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let mut stdin = child.stdin.take().ok_or("missing parser stdin")?;
+    let stdout = child.stdout.take().ok_or("missing parser stdout")?;
+    let mut reader = BufReader::new(stdout);
+
+    for (index, (file_path, language, text, normalized)) in cases.iter().enumerate() {
+        let request = json!({
+            "requestId": format!("extended-{index}"),
+            "filePath": file_path,
+            "language": language,
+            "blobSha": "wrong",
+            "text": text,
+        });
+        writeln!(stdin, "{request}")?;
+        stdin.flush()?;
+
+        let mut line = String::new();
+        assert!(
+            reader.read_line(&mut line)? > 0,
+            "parser closed stdout early"
+        );
+        let response: Value = serde_json::from_str(&line)?;
+        assert_eq!(
+            response["ok"], true,
+            "parser rejected {language}: {response}"
+        );
+        assert_eq!(response["language"], *normalized);
+        assert!(
+            response["symbols"]
+                .as_array()
+                .is_some_and(|symbols| !symbols.is_empty()),
+            "no symbols for {language}: {response}"
+        );
+    }
+
+    drop(stdin);
+    assert!(child.wait()?.success());
     Ok(())
 }

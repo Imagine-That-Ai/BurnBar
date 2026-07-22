@@ -1,0 +1,79 @@
+﻿{
+    "schema":  "openburnbar.windows.release-certification-receipt.v1",
+    "status":  "BLOCKED",
+    "gate":  "physical-performance-x64",
+    "target":  "physical-performance-x64",
+    "source":  {
+                   "commitSha":  "7c362298230e14bfd51dcdcbaf9476cd86cefa66",
+                   "dirtyTree":  false
+               },
+    "artifact":  {
+                     "name":  "OpenBurnBar-1.0.29-arm64.msix",
+                     "architecture":  "ARM64",
+                     "availability":  "recorded",
+                     "sha256":  "d8cd1423827e54b777a85cf58962b5c18ae6ae1118676b8255749894815c597e",
+                     "workflowRunId":  "29177583506",
+                     "workflowRunUrl":  "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/29177583506",
+                     "signature":  {
+                                       "result":  "verified",
+                                       "identity":  "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+                                   }
+                 },
+    "device":  {
+                   "kind":  "windows-vm-or-hosted-runner",
+                   "manufacturer":  "QEMU",
+                   "model":  "QEMU Virtual Machine",
+                   "assetTag":  {
+
+                                },
+                   "architecture":  "ARM64",
+                   "osArchitecture":  "ARM 64-bit Processor",
+                   "osBuild":  "Microsoft Windows 11 Pro 10.0.26200 build 26200",
+                   "tpm":  "unavailable",
+                   "cpu":  "virt-10.0",
+                   "ramBytes":  8580235264,
+                   "gpu":  [
+                               "Red Hat VirtIO GPU DOD controller"
+                           ],
+                   "storage":  [
+                                   {
+                                       "model":  "QEMU NVMe Ctrl",
+                                       "mediaType":  "Fixed hard disk media",
+                                       "sizeBytes":  214745610240
+                                   }
+                               ],
+                   "processorArchitecture":  "AMD64",
+                   "capturedAtUtc":  "2026-07-12T08:16:17.5705241+00:00"
+               },
+    "protocol":  {
+                     "commands":  [
+
+                                  ],
+                     "manualSteps":  [
+                                         "Run signed exact-candidate performance workload on physical Windows x64 hardware.",
+                                         "Capture cold/warm launch, tray/flyout, dashboard, search, settings, chat, scan, idle/active CPU, memory, GPU, disk, frame pacing, sleep/wake, Explorer restart, and soak traces."
+                                     ]
+                 },
+    "time":  {
+                 "startedAtUtc":  "2026-07-12T08:16:09.5872990+00:00",
+                 "endedAtUtc":  "2026-07-12T08:29:28.6643012+00:00",
+                 "durationSeconds":  799
+             },
+    "expected":  "All gate-specific physical/live/store assertions pass with complete raw evidence.",
+    "observed":  "No defensible PASS evidence was available in this invocation.",
+    "exitCode":  null,
+    "evidence":  {
+                     "files":  [
+                                   {
+                                       "path":  "blockers/physical-performance-x64.md",
+                                       "sha256":  "8c3a35e16d83670006e324a099d16372a577a056008f60f9da4d1b3e6cbcf808"
+                                   }
+                               ]
+                 },
+    "blocker":  {
+                    "id":  "ARCHITECTURE-NOT-UNDER-TEST",
+                    "owner":  "Alberto",
+                    "missing":  "This run targets ARM64; the physical-performance-x64 device lane requires a separate physical device.",
+                    "recovery":  "Run the same script on the other physical architecture with the exact signed artifact."
+                }
+}

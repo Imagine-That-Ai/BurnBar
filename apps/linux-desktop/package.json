@@ -12,7 +12,9 @@
     "tauri:dev": "tauri dev",
     "pretauri:build": "node ../../scripts/linux-port/prepare-linux-package-payload.mjs",
     "tauri:build": "tauri build",
-    "perf:budget": "node ../../scripts/linux-port/run-perf-budget.mjs"
+    "perf:budget": "node ../../scripts/linux-port/run-perf-budget.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --max-warnings=0"
   },
   "dependencies": {
     "@openburnbar/design-tokens": "file:../../packages/design-tokens",
@@ -31,6 +33,11 @@
     "@vitejs/plugin-react": "4.6.0",
     "axe-core": "4.12.1",
     "jsdom": "^25.0.1",
+    "playwright": "1.55.1",
+    "@eslint/js": "9.39.4",
+    "eslint": "9.39.4",
+    "globals": "17.7.0",
+    "typescript-eslint": "8.60.1",
     "typescript": "^5.7.3",
     "vite": "^6.0.7",
     "vitest": "^3.0.5"

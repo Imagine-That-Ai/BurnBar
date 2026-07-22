@@ -4,6 +4,9 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from pathlib import Path
 
 
@@ -19,7 +22,7 @@ def test_catalog_reader_flattens_object_shape_from_correct_repo_path() -> None:
     rows = ministry.load_catalog()
 
     assert ministry.CATALOG_PATH == (
-        ministry.REPO_ROOT / "OpenBurnBarCore" / "Sources" / "OpenBurnBarCore" / "Resources" / "catalog.json"
+        ministry.REPO_ROOT / "OpenBurnBarCore" / "Sources" / "OpenBurnBarKernel" / "Resources" / "catalog.json"
     )
     assert rows
     assert all("_providerID" in row for row in rows)
@@ -203,6 +206,105 @@ def test_wand_sanitizer_falls_back_and_has_one_default_with_headless_floor() -> 
     assert headmaster["constraints"]["minCapabilityRank"] <= 10
 
 
+def test_wand_sanitizer_does_not_mutate_caller_payload() -> None:
+    raw = {
+        "wands": [
+            {
+                "id": "pareto",
+                "name": "Pareto Wand",
+                "selector": "pareto",
+                "constraints": {"minCapabilityRank": "12"},
+                "isDefault": True,
+            }
+        ]
+    }
+    original = deepcopy(raw)
+
+    ministry.sanitize_wands(raw)
+
+    assert raw == original
+
+
+def test_saved_wand_store_validates_without_spurious_rewrite(tmp_path: Path) -> None:
+    store = tmp_path / "wands.v1.json"
+
+    saved = ministry.save_wands(store, ministry.SEED_WANDS)
+    validated = ministry.validate_wands(store)
+
+    assert saved["status"] == "ok"
+    assert validated["valid"] is True
+    assert validated["wouldChange"] is False
+
+
+def test_unreadable_wand_store_falls_back_with_actionable_warning(monkeypatch, tmp_path: Path) -> None:
+    store = tmp_path / "wands.v1.json"
+    store.write_text("{}", encoding="utf-8")
+
+    def deny_read(_path: Path):
+        raise PermissionError("permission denied")
+
+    monkeypatch.setattr(ministry, "_read_json_file", deny_read)
+
+    loaded = ministry.load_wands(store)
+
+    assert loaded["status"] == "ok"
+    assert loaded["source"] == "seed"
+    assert loaded["wands"] == ministry.SEED_WANDS
+    assert loaded["warnings"][0]["code"] == "store_read_failed"
+    assert "permission denied" in loaded["warnings"][0]["reason"]
+
+
+def test_concurrent_wand_saves_are_atomic_and_do_not_share_temp_file(monkeypatch, tmp_path: Path) -> None:
+    store = tmp_path / "wands.v1.json"
+    replace_barrier = threading.Barrier(2)
+    real_replace = ministry.os.replace
+
+    def synchronized_replace(source, destination) -> None:
+        replace_barrier.wait(timeout=5)
+        real_replace(source, destination)
+
+    monkeypatch.setattr(ministry.os, "replace", synchronized_replace)
+
+    def save(name: str) -> dict:
+        return ministry.save_wands(
+            store,
+            [
+                {
+                    "id": "pareto",
+                    "name": name,
+                    "selector": "pareto",
+                    "constraints": {"minCapabilityRank": 10},
+                    "isDefault": True,
+                }
+            ],
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(save, ["Pareto A", "Pareto B"]))
+
+    assert [result["status"] for result in results] == ["ok", "ok"]
+    payload = json.loads(store.read_text(encoding="utf-8"))
+    assert payload["wands"][0]["name"] in {"Pareto A", "Pareto B"}
+    assert not any(path.suffix == ".tmp" for path in tmp_path.iterdir())
+
+
+def test_wand_save_failure_is_structured_and_cleans_temp_file(monkeypatch, tmp_path: Path) -> None:
+    store = tmp_path / "wands.v1.json"
+
+    def deny_replace(_source, _destination) -> None:
+        raise PermissionError("read-only volume")
+
+    monkeypatch.setattr(ministry.os, "replace", deny_replace)
+
+    result = ministry.save_wands(store, ministry.SEED_WANDS)
+
+    assert result["status"] == "error"
+    assert result["code"] == "WAND_STORE_WRITE_FAILED"
+    assert "read-only volume" in result["reason"]
+    assert store.exists() is False
+    assert not any(path.suffix == ".tmp" for path in tmp_path.iterdir())
+
+
 def test_resolved_wand_parallel_max_env_and_clamp(monkeypatch) -> None:
     monkeypatch.delenv("OPENBURNBAR_WAND_PARALLEL_MAX", raising=False)
     assert ministry.resolved_wand_parallel_max() == 1  # fail-closed free fallback
@@ -348,6 +450,110 @@ def test_multi_selector_preserves_provider_diversity_with_proof(monkeypatch, tmp
     assert selected["providerCount"] == 2
     assert [item["arg"] for item in selected["selected"]] == ["openai-a", "zai-a"]
     assert probed == ["openai-a", "zai-a"]
+
+
+def test_multi_selector_relaxes_diversity_before_exhausting_probe_budget(monkeypatch, tmp_path: Path) -> None:
+    store = tmp_path / "wands.v1.json"
+    store.write_text(
+        json.dumps(
+            {
+                "wands": [
+                    {
+                        "id": "pareto",
+                        "name": "Pareto Wand",
+                        "selector": "pareto",
+                        "constraints": {"minCapabilityRank": 10},
+                        "autonomy": "medium",
+                        "allowBackends": ["builtin", "direct"],
+                        "isDefault": True,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ministry,
+        "list_launchable",
+        lambda include_quota=True: {
+            "candidates": [
+                {
+                    "arg": "openai-failed",
+                    "model": "gpt-5.4-mini",
+                    "provider": "openai",
+                    "backend": "builtin",
+                    "capabilityClassRank": 10,
+                    "price": 0.7,
+                    "costUnknown": False,
+                    "quota": {"state": "unknown"},
+                },
+                {
+                    "arg": "zai-failed",
+                    "model": "glm-5.2",
+                    "provider": "zai",
+                    "backend": "direct",
+                    "capabilityClassRank": 20,
+                    "price": 0.0,
+                    "costUnknown": True,
+                    "quota": {"state": "unknown"},
+                },
+                {
+                    "arg": "opencode-a",
+                    "provider": "opencode",
+                    "backend": "direct",
+                    "capabilityClassRank": 80,
+                    "price": 0.6,
+                    "costUnknown": False,
+                    "quota": {"state": "unknown"},
+                },
+                {
+                    "arg": "generic-failed",
+                    "provider": "generic",
+                    "backend": "direct",
+                    "capabilityClassRank": 80,
+                    "price": 0.0,
+                    "costUnknown": True,
+                    "quota": {"state": "unknown"},
+                },
+                {
+                    "arg": "opencode-b",
+                    "provider": "opencode",
+                    "backend": "direct",
+                    "capabilityClassRank": 70,
+                    "price": 0.8,
+                    "costUnknown": False,
+                    "quota": {"state": "unknown"},
+                },
+            ]
+        },
+    )
+    probed: list[str] = []
+
+    def probe(arg: str, autonomy: str, ttl: int) -> dict:
+        probed.append(arg)
+        return {
+            "landsCommit": arg.startswith("opencode-"),
+            "arg": arg,
+            "autonomy": autonomy,
+            "ttl": ttl,
+        }
+
+    monkeypatch.setenv("OPENBURNBAR_WAND_PARALLEL_MAX", "2")
+    selected = ministry.select_models_for_wand(
+        store,
+        wand_id="pareto",
+        count=2,
+        require_provider_diversity=True,
+        prove_headless=True,
+        max_probes=4,
+        probe_runner=probe,
+    )
+
+    assert selected["proofStatus"] == "proven_headless"
+    assert selected["selectedCount"] == 2
+    assert selected["providerCount"] == 1
+    assert [item["arg"] for item in selected["selected"]] == ["opencode-a", "opencode-b"]
+    assert probed == ["openai-failed", "zai-failed", "opencode-a", "opencode-b"]
 
 
 def test_env_cap_clamps_select_models_for_wand_end_to_end(monkeypatch, tmp_path: Path) -> None:

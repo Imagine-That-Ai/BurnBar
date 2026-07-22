@@ -11,6 +11,15 @@ public sealed record TokenUsageAggregateRow(
     long TotalTokens,
     int SessionCount);
 
+/// <summary>Cost, token, and session totals from one consistently filtered window.</summary>
+public sealed record TokenUsageWindowTotals(
+    double CostUsd,
+    long TotalTokens,
+    long SessionCount)
+{
+    public bool HasData => CostUsd > 0 || TotalTokens > 0 || SessionCount > 0;
+}
+
 public sealed record TokenUsageAggregateSnapshot(
     double TodayCostUsd,
     double WeekCostUsd,

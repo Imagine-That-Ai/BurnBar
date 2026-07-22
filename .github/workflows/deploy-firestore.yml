@@ -16,7 +16,12 @@ on:
       - "scripts/ci/prepare-firebase-tools.sh"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - "scripts/ci/check-firestore-deploy-drift.mjs"
-      - "scripts/ci/deploy-firebase-rules-releases.mjs"
+      - "scripts/ci/check-firestore-rules-size.mjs"
+      - "scripts/ci/compact-firestore-rules-inplace.mjs"
+      - "scripts/ci/repair-firestore-rules-release.mjs"
+      - "scripts/ci/repair-firestore-rules-release.test.mjs"
+      - "scripts/ci/propagate-storage-rules-secondary-buckets.mjs"
+      - "scripts/ci/firebase-rules-source.mjs"
       - "functions/scripts/test-firestore-rules.mjs"
       - "firestore-rules-tests/package.json"
       - "firestore-rules-tests/package-lock.json"
@@ -33,7 +38,8 @@ on:
         default: false
 
 concurrency:
-  group: deploy-firestore-${{ github.event_name }}
+  # Project-scoped: push and manual production mutations must never overlap.
+  group: deploy-firestore-production-burnbar
   cancel-in-progress: false
 
 jobs:
@@ -69,6 +75,12 @@ jobs:
 
       - name: Run Storage rules emulator tests
         run: bash scripts/ci/test-storage-rules.sh
+
+      - name: Guard Firestore rules size against the release limit
+        run: node scripts/ci/check-firestore-rules-size.mjs
+
+      - name: Test Firestore release conflict repair path
+        run: node --test scripts/ci/repair-firestore-rules-release.test.mjs
 
       - name: Prepare Firebase deploy config and CLI before auth
         run: |
@@ -110,12 +122,40 @@ jobs:
             echo "::error::$FIREBASE_FIRESTORE_CI_CONFIG contains predeploy."
             exit 1
           fi
-          "$FIREBASE_TOOLS_BIN" deploy \
-            --only firestore:indexes,storage \
+          # Route firestore.rules through firebase-tools' proven release path
+          # (the same tool that deployed rules manually on 2026-07-03), not the
+          # bespoke REST PATCH that has 400'd on every push since 2026-06-19.
+          # Compact the rules in place first so the deployed ruleset stays
+          # comment/blank-stripped — preserving the size margin AND keeping the
+          # drift check (which compacts the repo side) hash-identical.
+          node scripts/ci/compact-firestore-rules-inplace.mjs firestore.rules
+          set +e
+          deploy_output="$("$FIREBASE_TOOLS_BIN" deploy \
+            --only firestore,storage \
             --project "$FIREBASE_PROJECT" \
             --config "$FIREBASE_FIRESTORE_CI_CONFIG" \
-            --non-interactive
-          node scripts/ci/deploy-firebase-rules-releases.mjs "$FIREBASE_PROJECT"
+            --non-interactive 2>&1)"
+          deploy_status=$?
+          set -e
+          printf '%s\n' "$deploy_output"
+          if [[ "$deploy_status" -ne 0 ]]; then
+            if grep -Fq "firebaserules.googleapis.com/v1/projects/" <<<"$deploy_output" \
+              && grep -Fq "409, Requested entity already exists" <<<"$deploy_output"; then
+              echo "Firebase Rules release already exists; repairing the existing cloud.firestore release idempotently."
+              node scripts/ci/repair-firestore-rules-release.mjs "$FIREBASE_PROJECT"
+            else
+              echo "::error::Firebase deploy failed outside the narrowly-scoped existing-release conflict repair path."
+              exit "$deploy_status"
+            fi
+          fi
+
+      # firebase deploy --only storage only ships rules to the default bucket.
+      # The deleted helper enumerated every firebase.storage/ release; the drift
+      # checker still verifies them all. Propagate storage.rules to secondary
+      # buckets so the drift gate does not catch them (LB-2).
+      - name: Propagate Storage rules to secondary buckets
+        if: ${{ env.SHOULD_DEPLOY == 'true' }}
+        run: node scripts/ci/propagate-storage-rules-secondary-buckets.mjs "$FIREBASE_PROJECT"
 
       - name: Drift check deployed Firestore rules and indexes
         run: node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
@@ -187,7 +227,7 @@ jobs:
 
   firestore-result:
     needs: firestore-rules-and-indexes
-    if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'push') }}
+    if: ${{ always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -213,6 +253,7 @@ jobs:
             The Firestore deploy/drift gate failed. This blocks launch posture
             until firestore.rules, firestore.indexes.json, and storage.rules are
             tested, deployed, and drift-clean.
+          paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}
 
       - name: Close resolved Firestore deploy failure issue
         if: success()

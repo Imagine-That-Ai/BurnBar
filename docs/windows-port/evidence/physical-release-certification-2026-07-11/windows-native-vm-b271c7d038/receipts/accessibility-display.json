@@ -1,0 +1,61 @@
+{
+  "schema": "openburnbar.windows.release-certification-receipt.v1",
+  "status": "BLOCKED",
+  "gate": "accessibility-display",
+  "target": "accessibility-display",
+  "source": {
+    "commitSha": "b271c7d0387060fb1c040f0047cf0f2ebd8408ac",
+    "dirtyTree": false
+  },
+  "artifact": {
+    "name": "source-checkout",
+    "architecture": "win32-x64",
+    "availability": "not-applicable",
+    "sha256": null,
+    "workflowRunId": "not-applicable-local",
+    "workflowRunUrl": "not-applicable",
+    "signature": {
+      "result": "not-applicable",
+      "identity": "not-applicable"
+    }
+  },
+  "device": {
+    "kind": "windows-native-unattested",
+    "manufacturer": "unattested",
+    "model": "virt-10.0",
+    "architecture": "x64",
+    "osBuild": "win32 10.0.26200",
+    "tpm": "not-inspected",
+    "cpu": "virt-10.0",
+    "ramBytes": 8580235264
+  },
+  "protocol": {
+    "commands": [],
+    "manualSteps": [
+      "No signed-in physical Windows desktop session with Narrator operator, UIA inspection, 150%/200% DPI, OS high contrast, reduced motion/transparency, and mixed-DPI monitors is available here.",
+      "Run the accessibility profile plus the manual receipt protocol on both physical architectures; attach machine-readable UIA trees, screenshots, focus/live-region results, and Narrator/keyboard observations."
+    ]
+  },
+  "time": {
+    "startedAtUtc": "2026-07-12T01:22:14.870Z",
+    "endedAtUtc": "2026-07-12T01:40:13.495Z",
+    "durationSeconds": 1078.625
+  },
+  "expected": "The complete physical/live/private-flight protocol passes with exact signed artifact and raw evidence.",
+  "observed": "The required external device, account, permission, or approval is unavailable in this session; no pass is claimed.",
+  "exitCode": null,
+  "evidence": {
+    "files": [
+      {
+        "path": "blockers/accessibility-display.md",
+        "sha256": "b5a090fcdcbffa01ffe5510599a030340c563116a9f7e0ee2b5577412573d6ca"
+      }
+    ]
+  },
+  "blocker": {
+    "id": "EXT-WINDOWS-ACCESSIBILITY-OPERATOR",
+    "owner": "Alberto",
+    "missing": "No signed-in physical Windows desktop session with Narrator operator, UIA inspection, 150%/200% DPI, OS high contrast, reduced motion/transparency, and mixed-DPI monitors is available here.",
+    "recovery": "Run the accessibility profile plus the manual receipt protocol on both physical architectures; attach machine-readable UIA trees, screenshots, focus/live-region results, and Narrator/keyboard observations."
+  }
+}

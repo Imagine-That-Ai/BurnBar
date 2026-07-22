@@ -1,0 +1,187 @@
+name: Shared Rust domain core promotion proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_commit:
+        description: Full candidate commit already tested by the push workflow on main
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  attestations: write
+  contents: read
+  id-token: write
+
+concurrency:
+  group: domain-core-promotion-${{ inputs.candidate_commit }}
+  cancel-in-progress: false
+
+jobs:
+  protected-domain-core-signer:
+    name: protected-domain-core-signer
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: domain-core-promotion
+    steps:
+      - name: Check out trusted main evaluator
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require live protected-environment controls
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          environment_json="$RUNNER_TEMP/domain-core-promotion-environment.json"
+          branches_json="$RUNNER_TEMP/domain-core-promotion-branches.json"
+          branch_pages_json="$RUNNER_TEMP/domain-core-promotion-branch-pages.json"
+          bash scripts/ci/gh-api-with-retry.sh "/repos/$REPOSITORY/environments/domain-core-promotion" > "$environment_json"
+          jq -e \
+            'any(.protection_rules[]?; .type == "required_reviewers" and ((.reviewers // []) | length) > 0) and .deployment_branch_policy.custom_branch_policies == true' \
+            "$environment_json" >/dev/null
+          bash scripts/ci/gh-api-with-retry.sh --paginate --slurp \
+            "/repos/$REPOSITORY/environments/domain-core-promotion/deployment-branch-policies?per_page=100" \
+            > "$branch_pages_json"
+          jq -e \
+            'if length == 0 then error("branch policy API returned no pages") else {total_count: .[0].total_count, branch_policies: [.[].branch_policies[]]} end | select(.total_count == (.branch_policies | length))' \
+            "$branch_pages_json" > "$branches_json"
+          jq -e \
+            '([.branch_policies[] | select(.type == "branch")] | length) == 1 and (.branch_policies | length) == 1 and any(.branch_policies[]; .type == "branch" and .name == "main")' \
+            "$branches_json" >/dev/null
+
+      - name: Require live protected default-branch controls
+        env:
+          GH_TOKEN: ${{ secrets.DOMAIN_CORE_GOVERNANCE_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::DOMAIN_CORE_GOVERNANCE_READ_TOKEN is required with repository Administration: read."
+            exit 1
+          fi
+          node scripts/ci/verify-domain-core-default-branch-controls.mjs
+
+      - name: Validate candidate and locate exact successful push run
+        id: source
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin main "$CANDIDATE_COMMIT"
+          git merge-base --is-ancestor "$CANDIDATE_COMMIT" origin/main
+          runs="$RUNNER_TEMP/domain-core-runs.json"
+          run_pages="$RUNNER_TEMP/domain-core-run-pages.json"
+          bash scripts/ci/gh-api-with-retry.sh --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$REPOSITORY/actions/workflows/domain-core.yml/runs?event=push&status=completed&head_sha=$CANDIDATE_COMMIT&per_page=100" \
+            > "$run_pages"
+          jq -e \
+            'if length == 0 then error("runs API returned no pages") else {total_count: .[0].total_count, workflow_runs: [.[].workflow_runs[]]} end | select(.total_count == (.workflow_runs | length))' \
+            "$run_pages" > "$runs"
+          run_id="$(jq -er \
+            --arg sha "$CANDIDATE_COMMIT" \
+            '[.workflow_runs[] | select(.event == "push" and .head_branch == "main" and .head_sha == $sha and .status == "completed" and .conclusion == "success")] | if length == 1 then .[0].id else error("expected exactly one successful push run") end' \
+            "$runs")"
+          bash scripts/ci/gh-api-with-retry.sh "/repos/$REPOSITORY/actions/runs/$run_id" > "$RUNNER_TEMP/domain-core-run.json"
+          attempt="$(jq -er '.run_attempt' "$RUNNER_TEMP/domain-core-run.json")"
+          bash scripts/ci/gh-api-with-retry.sh --paginate --slurp \
+            "/repos/$REPOSITORY/actions/runs/$run_id/attempts/$attempt/jobs?per_page=100" \
+            > "$RUNNER_TEMP/domain-core-job-pages.json"
+          jq -e \
+            'if length == 0 then error("jobs API returned no pages") else {total_count: .[0].total_count, jobs: [.[].jobs[]]} end | select(.total_count == (.jobs | length))' \
+            "$RUNNER_TEMP/domain-core-job-pages.json" \
+            > "$RUNNER_TEMP/domain-core-jobs.json"
+          printf 'run_id=%s\nrun_attempt=%s\n' "$run_id" "$attempt" >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact candidate without executing its scripts
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Download exact-run unsigned candidate bundle
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          name: domain-core-candidate-bundle-${{ inputs.candidate_commit }}-${{ steps.source.outputs.run_id }}-${{ steps.source.outputs.run_attempt }}
+          path: ${{ runner.temp }}/candidate-bundle
+
+      - name: Download exact-run proof fragments
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          pattern: domain-core-proof-*-${{ steps.source.outputs.run_id }}-${{ steps.source.outputs.run_attempt }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/proof-fragments
+
+      - name: Download exact-run artifact identity archives
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          pattern: domain-core-attestation-*-${{ steps.source.outputs.run_id }}-${{ steps.source.outputs.run_attempt }}
+          merge-multiple: false
+          path: ${{ runner.temp }}/attestation-inputs
+
+      - name: Download exact candidate rollback artifact
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          name: domain-core-public-production-rollback-${{ inputs.candidate_commit }}-${{ steps.source.outputs.run_id }}-${{ steps.source.outputs.run_attempt }}
+          path: ${{ runner.temp }}/rollback-artifact
+
+      - name: Verify candidate control plane matches trusted main
+        run: >-
+          node scripts/ci/verify-domain-core-control-plane.mjs
+          --candidate-root "$GITHUB_WORKSPACE/candidate"
+          --manifest config/domain-core-control-plane-manifest.json
+          --trusted-root "$GITHUB_WORKSPACE"
+
+      - name: Revalidate with trusted main policy and evaluator
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+        run: |
+          set -euo pipefail
+          node scripts/ci/verify-domain-core-protected-attestation.mjs \
+            --attestation-inputs "$RUNNER_TEMP/attestation-inputs" \
+            --bundle "$RUNNER_TEMP/candidate-bundle/domain-core-candidate-bundle.json" \
+            --candidate-repo "$GITHUB_WORKSPACE/candidate" \
+            --expected-candidate-commit "$CANDIDATE_COMMIT" \
+            --expected-evaluator-commit "$GITHUB_SHA" \
+            --jobs "$RUNNER_TEMP/domain-core-jobs.json" \
+            --output "$RUNNER_TEMP/candidate-bundle/protected-verification.json" \
+            --policy config/domain-core-promotion-policy.json \
+            --proof-fragments "$RUNNER_TEMP/proof-fragments" \
+            --rollback-artifact "$RUNNER_TEMP/rollback-artifact/domain-core-public-production-rollback.json" \
+            --run "$RUNNER_TEMP/domain-core-run.json"
+
+      - name: Attest independently verified candidate bundle
+        id: attest
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: ${{ runner.temp }}/candidate-bundle/domain-core-candidate-bundle.json
+
+      - name: Upload official provenance bundle and diagnostic verification receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-protected-attestation-${{ inputs.candidate_commit }}-${{ steps.source.outputs.run_id }}-${{ steps.source.outputs.run_attempt }}
+          path: |
+            ${{ steps.attest.outputs.bundle-path }}
+            ${{ runner.temp }}/candidate-bundle/protected-verification.json
+          if-no-files-found: error
+          retention-days: 90

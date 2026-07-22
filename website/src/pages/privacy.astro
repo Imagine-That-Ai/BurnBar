@@ -69,7 +69,7 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
           <ul>
             <li>
               <strong>Local SQLite</strong> at <code
-                >~/Library/Application Support/OpenBurnBar/OpenBurnBar.sqlite</code
+                >~/Library/Application Support/OpenBurnBar/openburnbar.sqlite</code
               >
             </li>
             <li><strong>Local daemon</strong> over a UNIX socket, auth-token-gated</li>
@@ -203,7 +203,7 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
     <div class="container container--narrow">
       <header class="sec-head">
         <span class="eyebrow eyebrow--plain">The hard part, in plain words</span>
-        <h2>How the Pensieve cloak works.</h2>
+        <h2>How the agent-memory cloak works.</h2>
         <p class="lead">
           Your notes are sealed on your own devices. To find the right one for your agent, our
           server works with a scrambled version of each note's “shape” — never the words.
@@ -317,7 +317,7 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
           </p>
         </li>
         <li class="glass-pane">
-          <h3>Hermes Remote Relay (paid)</h3>
+          <h3>Hermes Realtime Relay (paid)</h3>
           <p>
             Off by default; paid entitlement required to activate. Content sealing is claimed only
             for paired E2EE paths after the runtime-readiness gate is complete. In that mode the
@@ -615,7 +615,7 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
     display: grid;
     gap: var(--s-5);
     justify-items: center;
-    padding: var(--s-4) 0;
+    padding-block: var(--s-4);
   }
 
   /* ── data-domain inventory (folded in from the trust surface) ──────────── */

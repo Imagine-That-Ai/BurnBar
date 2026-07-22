@@ -110,6 +110,16 @@ jobs:
         run: cargo test -p burnbar-remote-ffi
         working-directory: crates/burnbar-remote
 
+      - name: Verify committed AAR provenance and native structure
+        run: ./scripts/build-burnbar-remote-android-aar.sh --check
+        env:
+          BURNBAR_REMOTE_ANDROID_NDK_VERSION: ${{ env.ANDROID_NDK_VERSION }}
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+
+      - name: Preserve committed AAR for device proof
+        run: cp Vendor/burnbar-remote.aar "${RUNNER_TEMP}/burnbar-remote-committed.aar"
+
       - name: Build AAR
         run: ./scripts/build-burnbar-remote-android-aar.sh
         env:
@@ -122,12 +132,34 @@ jobs:
         run: |
           set -euo pipefail
           git diff --exit-code -- \
-            Vendor/burnbar-remote.aar \
             android/burnbar-remote/src/main/java/uniffi/burnbar_remote \
             || {
-              echo "::error::Committed BurnBarRemote AAR/Kotlin bindings do not match a clean source rebuild.";
+              echo "::error::Committed BurnBarRemote Kotlin bindings do not match a clean source rebuild.";
               exit 1;
             }
+
+      - name: Restore committed AAR for device proof
+        run: cp "${RUNNER_TEMP}/burnbar-remote-committed.aar" Vendor/burnbar-remote.aar
+
+      - name: Compile committed AAR native-load test
+        run: ./gradlew :burnbar-remote:assembleDebugAndroidTest --no-daemon --stacktrace
+        working-directory: android
+
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Execute committed AAR smoke on x86_64 emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disk-size: 4G
+          script: cd android && ./gradlew :burnbar-remote:connectedDebugAndroidTest --no-daemon --stacktrace
 
       - name: Build host UniFFI library for JVM smoke
         run: cargo build -p burnbar-remote-ffi
@@ -150,6 +182,7 @@ jobs:
           unzip -l Vendor/burnbar-remote.aar | head -60
 
       - name: Upload AAR artifact
+        if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: burnbar-remote.aar
@@ -158,6 +191,7 @@ jobs:
           retention-days: 14
 
       - name: Upload generated Kotlin bindings
+        if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: burnbar-remote-kotlin-bindings

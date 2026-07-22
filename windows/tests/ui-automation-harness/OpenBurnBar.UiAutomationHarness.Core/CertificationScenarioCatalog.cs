@@ -65,6 +65,24 @@ public static class CertificationScenarioCatalog
         RequiresNarratorProtocol: false,
         Acceptance: "CI captures non-uniform screenshots for dense routes at the hosted Windows default DPI.");
 
+    private static readonly UiCertificationScenario Compact640Scenario = new(
+        Key: "compact-640",
+        Title: "640 pixel compact navigation and dashboard",
+        Category: "responsive",
+        RouteKeys: new[] { "dashboard" },
+        AppearanceMode: "dark",
+        ReduceTransparency: null,
+        DpiScalePercent: null,
+        RequiresScreenshots: true,
+        RequiresUiAutomation: true,
+        RequiresKeyboardOnly: false,
+        RequiresNarratorProtocol: false,
+        Acceptance: "The real shell and Providers dashboard render without clipped navigation at a 640 pixel window width.")
+    {
+        WindowWidth = 640,
+        WindowHeight = 720,
+    };
+
     private static readonly UiCertificationScenario KeyboardOnlyScenario = new(
         Key: "keyboard-contract",
         Title: "Keyboard and input safety contract",
@@ -90,8 +108,8 @@ public static class CertificationScenarioCatalog
         return normalized switch
         {
             BaselineProfile => new[] { BaselineScenario },
-            AccessibilityProfile => new[] { BaselineScenario, HighContrastScenario, ReducedTransparencyScenario, Dpi100Scenario, KeyboardOnlyScenario },
-            AllProfile => new[] { BaselineScenario, HighContrastScenario, ReducedTransparencyScenario, Dpi100Scenario, KeyboardOnlyScenario },
+            AccessibilityProfile => new[] { BaselineScenario, HighContrastScenario, ReducedTransparencyScenario, Dpi100Scenario, Compact640Scenario, KeyboardOnlyScenario },
+            AllProfile => new[] { BaselineScenario, HighContrastScenario, ReducedTransparencyScenario, Dpi100Scenario, Compact640Scenario, KeyboardOnlyScenario },
             _ => throw new ArgumentException($"Unknown UI certification profile '{profile}'. Expected baseline, accessibility, or all.", nameof(profile)),
         };
     }

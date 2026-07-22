@@ -1,0 +1,16 @@
+Continue the OpenBurnBar Windows physical certification end to end on this native Intel x64 HP laptop.
+
+Use only exact candidate windows-v1.0.37:
+- commit: 2757652e89440eb647d21721895fc61ec89935d3
+- release run: 29650389335
+- x64 direct MSIX SHA-256: 63a9c374bb8d817f4642ddbcbc1c4847d5bcc0388d40fdac4c45b202e7e64bd9
+- signer: CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US
+- performance-budget SHA-256: 0824f341d0a7dea318a831e6ce67de016c9589d909e6982a678102130078fa92
+
+First locate the attached drive directory BurnBar-cert\windows-v1.0.37. Read certification-packet\PHYSICAL_X64_RUNBOOK.md and follow it exactly from a normal signed-in native PowerShell 7 desktop session. Reuse the release-artifact directory on the drive so you do not download the 1.35 GB Actions artifact again.
+
+If a v1.0.37 run is already active, monitor and finish that run instead of starting a duplicate. Preserve all partial evidence. The 30-minute soak is mandatory because v1.0.35 failed late memory growth. Run the physical x64 performance and every available accessibility/display assertion. Leave staging cloud, media/Computer Use safety, Store lifecycle, mixed-DPI, or any other unavailable assertion BLOCKED with the exact prerequisite; never manufacture PASS evidence.
+
+Do not use v1.0.35 or older artifacts. Do not run from a sandbox/service session. Do not touch production, public Store rollout, disks, partitions, firmware, unrelated data, or an existing OpenBurnBar install without recording it and obtaining approval. Do not expose secrets.
+
+At completion, validate the final bundle and copy the content-addressed evidence ZIP back under BurnBar-cert\windows-v1.0.37\physical-x64-evidence on the attached drive. Report the ZIP path and SHA-256, exact commit and artifact hash, hardware identity, overall verdict, every gate status, tests performed, and any named blocker. A NO-GO or BLOCKED result is valid; claim PASS only from validator-clean evidence.

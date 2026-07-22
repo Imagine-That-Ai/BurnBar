@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { useMemoryStore } from '../../state/memoryStore.js';
 import { useSystemStore } from '../../state/systemStore.js';
-import type { MemoryBoundary, MemoryReviewItem, MemoryReviewStatus } from '../../tauriBridge.js';
+import type { MemoryBoundary, MemoryReviewItem } from '../../tauriBridge.js';
 import '../system/system.css';
 import './memory.css';
 
@@ -48,7 +48,7 @@ function emptyInboxCopy(filter: InboxFilter): { title: string; body: string } {
     default:
       return {
         title: 'No memory items yet',
-        body: 'Durable memories recalled from the daemon appear here. Review-row approval remains a macOS-only workflow until the daemon exposes that queue.'
+        body: 'Durable memories recalled from the daemon appear here. "Save as memory" uses daemon.memory.remember (requires body text). Reject/forget permanently deletes via daemon.memory.forget — it does not return items to pending.'
       };
   }
 }
@@ -85,7 +85,9 @@ function MemoryReviewRow({
   };
 
   const handleRevoke = () => {
-    const ok = window.confirm('Revoke this approved memory? It will return to pending review.');
+    const ok = window.confirm(
+      'Permanently forget this memory? It will be deleted from local recall (not returned to pending).'
+    );
     if (ok) onRevoke();
   };
 
@@ -111,7 +113,7 @@ function MemoryReviewRow({
               disabled={pendingDecision}
               aria-busy={pendingDecision}
             >
-              {pendingDecision ? 'Revoking...' : 'Revoke'}
+              {pendingDecision ? 'Forgetting…' : 'Forget permanently'}
             </button>
           </>
         ) : pending ? (
@@ -128,10 +130,15 @@ function MemoryReviewRow({
             <button
               type="button"
               className="primary"
-              disabled={!item.canApprove || pendingDecision}
+              disabled={!item.canApprove || pendingDecision || !item.body.trim()}
               onClick={onApprove}
+              title={
+                item.body.trim()
+                  ? 'Save this body as a durable memory via daemon.memory.remember'
+                  : 'Body text required to save as memory'
+              }
             >
-              {pendingDecision ? 'Approving...' : 'Approve'}
+              {pendingDecision ? 'Saving…' : 'Save as memory'}
             </button>
           </>
         ) : (

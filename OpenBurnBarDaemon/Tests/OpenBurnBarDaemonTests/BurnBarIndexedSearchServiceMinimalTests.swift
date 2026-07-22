@@ -1,7 +1,11 @@
 import XCTest
 import Foundation
 import SQLite3
-@testable import OpenBurnBarCore
+// S17 repoint: the only Core symbol this test reaches is `BurnBarSemanticSearchConfig`,
+// public in OpenBurnBarVectorKit (an Engine leaf). `@testable import OpenBurnBarDaemon`
+// links Engine, so the config resolves; the umbrella `@testable import OpenBurnBarCore`
+// is replaced with the narrow leaf import so no daemon test retains an umbrella import.
+@testable import OpenBurnBarVectorKit
 @testable import OpenBurnBarDaemon
 
 final class BurnBarIndexedSearchServiceMinimalTests: XCTestCase {

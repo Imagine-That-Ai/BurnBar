@@ -13,7 +13,8 @@ param(
     [Parameter(Mandatory = $true)] [string] $RepoRoot,
     [Parameter(Mandatory = $true)] [string] $OutputDir,
     [string] $AppExe = '',
-    [int] $HoldMilliseconds = 8000
+    [int] $HoldMilliseconds = 8000,
+    [ValidateRange(10000, 120000)] [int] $WindowTimeoutMilliseconds = 30000
 )
 
 $ErrorActionPreference = 'Stop'
@@ -205,7 +206,7 @@ function Convert-UiaElement($Element, [int] $Depth) {
     return $node
 }
 
-function Find-WindowForProcess([int] $ProcessId, [int] $TimeoutMs = 10000) {
+function Find-WindowForProcess([int] $ProcessId, [int] $TimeoutMs) {
     $deadline = [DateTimeOffset]::UtcNow.AddMilliseconds($TimeoutMs)
     $condition = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
@@ -340,11 +341,17 @@ function Invoke-RouteScenario {
         throw "Failed to start app for $Id"
     }
 
-    $window = Find-WindowForProcess -ProcessId $process.Id
+    $window = Find-WindowForProcess -ProcessId $process.Id -TimeoutMs $WindowTimeoutMilliseconds
     $actions = @()
     $artifacts = @()
     if ($null -eq $window) {
-        $actions += [ordered]@{ action = 'findWindow'; status = 'failed' }
+        $actions += [ordered]@{
+            action = 'findWindow'
+            status = 'failed'
+            timeoutMilliseconds = $WindowTimeoutMilliseconds
+            processExited = $process.HasExited
+            processExitCode = if ($process.HasExited) { $process.ExitCode } else { $null }
+        }
     }
     else {
         $actions += [ordered]@{ action = 'findWindow'; status = 'captured'; processId = $process.Id }

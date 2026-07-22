@@ -10,22 +10,37 @@ extension DashboardView {
 
         return ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                    Text("Command")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .textCase(.uppercase)
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        Text("Command")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .textCase(.uppercase)
 
-                    Text(viewMode == .agents ? "Agent providers" : "LLM Models")
-                        .font(DesignSystem.Typography.title)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text(viewMode == .agents ? "Agent providers" : "LLM Models")
+                            .font(DesignSystem.Typography.title)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                    Text(viewMode == .agents
-                        ? "Scan, compare spend, and drill into model behavior from one workspace."
-                        : "Track spend and token volume across every model your agents use.")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        Text(viewMode == .agents
+                            ? "Scan, compare spend, and drill into model behavior from one workspace."
+                            : "Track spend and token volume across every model your agents use.")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Button(action: toggleDashboardSidebar) {
+                        Image(systemName: "sidebar.left")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Hide sidebar")
+                    .accessibilityLabel("Hide sidebar")
                 }
 
                 Picker("View Mode", selection: $viewMode) {
@@ -259,6 +274,40 @@ private struct DashboardSidebarMaterial: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+        }
+    }
+}
+
+/// SwiftUI's sidebar-removal placement is occasionally reapplied after this
+/// manually hosted dashboard window mounts. Keep the window chrome clean by
+/// removing only the system toggle item; the in-sidebar button remains the
+/// single visible control for this action.
+struct DashboardSidebarToolbarItemRemover: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        DashboardSidebarToolbarScrubberView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? DashboardSidebarToolbarScrubberView)?.removeSystemSidebarToggle()
+    }
+}
+
+@MainActor
+private final class DashboardSidebarToolbarScrubberView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        removeSystemSidebarToggle()
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            self?.removeSystemSidebarToggle()
+        }
+    }
+
+    func removeSystemSidebarToggle() {
+        guard let toolbar = window?.toolbar else { return }
+        for index in toolbar.items.indices.reversed()
+            where toolbar.items[index].itemIdentifier == .toggleSidebar {
+            toolbar.removeItem(at: index)
         }
     }
 }

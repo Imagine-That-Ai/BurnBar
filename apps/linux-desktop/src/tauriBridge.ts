@@ -976,7 +976,7 @@ function buildMix(
   }
   if (grand === 0) return [];
   return [...totals.entries()]
-    .map(([id, t], i) => ({
+    .map(([id, t]) => ({
       id,
       label: id.charAt(0).toUpperCase() + id.slice(1),
       pct: Math.round((t / grand) * 100)
@@ -1154,11 +1154,11 @@ function mapMemoryBoundaries(raw: RawJsonValue): MemoryBoundary[] {
 }
 
 function rpcReportResult(raw: RawJsonValue): RawJsonValue {
-  return Boolean(pick(raw, 'ok')) ? pick(raw, 'result') : undefined;
+  return pick(raw, 'ok') ? pick(raw, 'result') : undefined;
 }
 
 function rpcReportError(raw: RawJsonValue): string | undefined {
-  return Boolean(pick(raw, 'ok')) ? undefined : str(pick(raw, 'error')) || 'RPC failed';
+  return pick(raw, 'ok') ? undefined : str(pick(raw, 'error')) || 'RPC failed';
 }
 
 function mapMemoryReviewInbox(raw: RawJsonValue): MemoryReviewInbox {
@@ -2093,7 +2093,7 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         XDG_CURRENT_DESKTOP: str(pick(raw, 'xdg_current_desktop', 'XDG_CURRENT_DESKTOP')) || undefined
       };
     },
-    // P12 — daemon media_status / media.control observation
+    // P12 — explicit capability-absent until a real BurnBarRPCMethod media contract exists.
     mediaStatus: async () => {
       try {
         const raw = await invoke<RawJsonValue>('media_status');
@@ -2258,6 +2258,6 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     integrationsStatus: async () => {
       const raw = await invoke<RawJsonValue>('integrations_status');
       return mapIntegrationsStatus(raw);
-    }
+    },
   };
 }

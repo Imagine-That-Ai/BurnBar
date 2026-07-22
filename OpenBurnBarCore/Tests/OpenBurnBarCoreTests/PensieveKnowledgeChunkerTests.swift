@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarKernel
 
 final class PensieveKnowledgeChunkerTests: XCTestCase {
     private let key = Data(repeating: 0x42, count: 32)

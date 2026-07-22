@@ -1,0 +1,15 @@
+{
+"generatedAt": "2026-07-09T16:27:17Z",
+"host": "openburnbar-linux",
+"uname": "Linux openburnbar-linux 6.8.0-124-generic #124-Ubuntu SMP PREEMPT_DYNAMIC Tue May 26 12:38:50 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux",
+"display": ":0",
+"desktop": "",
+"sessionType": "tty",
+"secretTool": "/usr/bin/secret-tool",
+"calls": [
+{"method":"daemon.health","raw":"{\"result\":{\"gatewayEnabled\":false,\"protocolVersion\":1,\"ok\":true,\"daemonVersion\":\"1.0.29\",\"socketPath\":\"\/run\/user\/1000\/openburnbar\/daemon.sock\"},\"protocolVersion\":1,\"id\":\"daemon.health\"}"},
+{"method":"daemon.usage.recent","raw":"{\"error\":{\"code\":-32001,\"message\":\"OpenBurnBar RPC method 'daemon.usage.recent' is outside this peer's capability scope.\"},\"id\":\"daemon.usage.recent\",\"protocolVersion\":1}"},
+{"method":"daemon.config.get","raw":"{\"error\":{\"code\":-32001,\"message\":\"OpenBurnBar RPC method 'daemon.config.get' is outside this peer's capability scope.\"},\"id\":\"daemon.config.get\",\"protocolVersion\":1}"},
+{"method":"daemon.memory.audit_trail","raw":"{\"protocolVersion\":1,\"error\":{\"code\":-32001,\"message\":\"OpenBurnBar RPC method 'daemon.memory.audit_trail' is outside this peer's capability scope.\"},\"id\":\"daemon.memory.audit_trail\"}"}
+]
+}

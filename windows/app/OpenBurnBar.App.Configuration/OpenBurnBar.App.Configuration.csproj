@@ -24,4 +24,8 @@
     <InternalsVisibleTo Include="OpenBurnBar.App.MissionControl.Tests" />
     <InternalsVisibleTo Include="OpenBurnBar.App.Storage.Tests" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../computeruse/OpenBurnBar.ComputerUse.Core/OpenBurnBar.ComputerUse.Core.csproj" />
+  </ItemGroup>
 </Project>

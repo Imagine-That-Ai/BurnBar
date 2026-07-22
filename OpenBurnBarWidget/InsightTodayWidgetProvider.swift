@@ -1,5 +1,5 @@
 import WidgetKit
-import OpenBurnBarCore
+import OpenBurnBarInsights
 
 struct InsightTodayWidgetEntry: TimelineEntry {
     let date: Date

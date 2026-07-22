@@ -39,6 +39,7 @@ public sealed class WindowsAppCheckProvider : IDisposable
 {
     private readonly IAttestationProducer _producer;
     private readonly AppCheckMintClient _mintClient;
+    private readonly AppCheckChallengeClient? _challengeClient;
     private readonly IFirebaseIdTokenSource _idTokenSource;
     private readonly IClock _clock;
     private readonly AppCheckProviderOptions _options;
@@ -51,7 +52,8 @@ public sealed class WindowsAppCheckProvider : IDisposable
         AppCheckMintClient mintClient,
         IFirebaseIdTokenSource idTokenSource,
         AppCheckProviderOptions options,
-        IClock? clock = null)
+        IClock? clock = null,
+        AppCheckChallengeClient? challengeClient = null)
     {
         _producer = producer ?? throw new ArgumentNullException(nameof(producer));
         _mintClient = mintClient ?? throw new ArgumentNullException(nameof(mintClient));
@@ -59,6 +61,7 @@ public sealed class WindowsAppCheckProvider : IDisposable
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _options.Validate();
         _clock = clock ?? SystemClock.Instance;
+        _challengeClient = challengeClient;
     }
 
     /// <summary>The App Check app id this provider mints for.</summary>
@@ -142,7 +145,26 @@ public sealed class WindowsAppCheckProvider : IDisposable
             throw AppCheckMintException.MissingIdToken();
         }
 
-        var claim = await _producer.ProduceAsync(_options.AppId, nowMillis, cancellationToken).ConfigureAwait(false);
+        AttestationChallenge? challenge = null;
+        if (_producer.RequiresServerChallenge)
+        {
+            if (_challengeClient is null)
+            {
+                throw AppCheckMintException.AttestationUnavailable(
+                    "The production attestation producer requires a server challenge client.");
+            }
+            challenge = await _challengeClient
+                .IssueAsync(_options.AppId, idToken, cancellationToken)
+                .ConfigureAwait(false);
+            // Challenge acquisition is a network operation. Re-read the clock so
+            // the claim timestamp and local expiry check reflect the moment
+            // attestation starts, not the earlier token-cache check.
+            nowMillis = _clock.NowMillis;
+        }
+
+        var claim = await _producer
+            .ProduceAsync(_options.AppId, nowMillis, challenge, cancellationToken)
+            .ConfigureAwait(false);
         return await _mintClient
             .MintAsync(claim, idToken, nowMillis, _options.RequestedTtlMillis, cancellationToken)
             .ConfigureAwait(false);

@@ -4,7 +4,11 @@
 Windows App Check provider, and CloudVault seal→open live round-trip are shipped
 and unit-tested. OAuth builds DesktopOAuthLoopbackFlow when
 OPENBURNBAR_GOOGLE_OAUTH_CLIENT_ID and OPENBURNBAR_FIREBASE_WEB_API_KEY are set.
-App Check uses WindowsAppCheckProvider with injectable attestation producers.
+App Check production OAuth now requires `TpmAttestationProducer`, a live HTTP
+transport, the provisioned app ID, and a server-issued challenge. Functions
+consumes challenges transactionally and delegates opaque CNG claim verification
+to the Windows-hosted `NCryptVerifyClaim` service. See
+[`WINDOWS_APP_CHECK_TPM_PRODUCTION.md`](../../WINDOWS_APP_CHECK_TPM_PRODUCTION.md).
 CloudVaultLiveRoundTrip seals and opens through the production AES-GCM core with
 random vault keys (integrity fail-closed on mismatch).
 
@@ -12,5 +16,7 @@ random vault keys (integrity fail-closed on mismatch).
 windows/tests/cloudsync-app/DesktopOAuthCredentialsProviderTests.cs,
 windows/cloudsync App Check suites.
 
-**Operational residual:** operator secrets and physical/vTPM claim mint on a
-given machine. Composition is production code, not sample authentication.
+**Operational residual:** deploy the verifier and Functions configuration, then
+capture the R14-A vTPM and R14-B physical-TPM evidence contracts on named Windows
+hosts. Portable coverage and macOS cross-builds do not certify either hardware
+gate.

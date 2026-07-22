@@ -37,6 +37,6 @@
     "**/*.generated.*"
   ],
   "reporters": ["console"],
-  "format": ["swift", "kotlin", "typescript", "tsx", "javascript", "jsx"],
+  "format": ["swift", "kotlin", "typescript", "tsx", "javascript", "jsx", "csharp", "rust"],
   "gitignore": true
 }

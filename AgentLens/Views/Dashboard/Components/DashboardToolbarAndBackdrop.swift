@@ -82,7 +82,7 @@ struct DashboardBackdrop: View {
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
     @StateObject private var substrateBox = SwarmSubstrateBox()
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
-    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
     @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = KernelCatalog.defaultID
 
     /// Clear-side adjustment (0…1). Toward 1 the window's own plates fade so
@@ -96,8 +96,18 @@ struct DashboardBackdrop: View {
         DashboardLiveBackdropVisibility.exposesContentBackdrop(
             appearanceSkin: settingsManager.appearanceSkin,
             useWebsiteBackground: settingsManager.useWebsiteBackground,
-            useKernelBackdrop: useKernelBackdrop
+            useKernelBackdrop: shouldUseKernelBackdrop
         )
+    }
+
+    /// CI launches with an ephemeral preferences home. Mount the actual
+    /// backdrop deterministically instead of relying on `@AppStorage` to
+    /// consume the argument domain before this view is first constructed.
+    private var shouldUseKernelBackdrop: Bool {
+        useKernelBackdrop || OpenBurnBarRuntime.performanceGateBackdropKernelOverride(
+            isPerformanceGateLaunch: OpenBurnBarRuntime.isPerformanceGateLaunch,
+            arguments: ProcessInfo.processInfo.arguments
+        ) != nil
     }
 
     private var substrate: SwarmSubstrate {
@@ -117,7 +127,7 @@ struct DashboardBackdrop: View {
                 WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
             } else if dynamicBackdropEnabled {
                 Group {
-                    if useKernelBackdrop {
+                    if shouldUseKernelBackdrop {
                         // Full-window WebGL2 kernel field (the bottom-most
                         // backdrop layer). Reuses the same clear-surface
                         // plumbing as the swarm, so dashboard content composites
@@ -214,7 +224,7 @@ struct WebsiteBackgroundView: View {
     @Environment(SettingsManager.self) private var settingsManager
     @StateObject private var substrateBox = SwarmSubstrateBox()
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
-    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = SubstrateCatalog.plainID
+    @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
     @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel: String = KernelCatalog.defaultID
 
     /// The resolved substrate for the active backdrop theme + persisted pick.

@@ -1,0 +1,1 @@
+{"actionBudget":1000,"allowedActionKinds":["remote_unlock","computer_use"],"attestationHashBlake3":"blake3:fedcba9876543210","boundEscrowDeviceId":"dev-A1B2C3","domain":"computer_use","expiresAt":"2026-07-15T11:00:00Z","issuedAt":"2026-07-15T10:00:00Z","nonce":"nonce-abc123","schemaVersion":1,"scopeHash":"sha256:abcdef0123456789","signatureEd25519Base64":"sig-ed25519-base64="}

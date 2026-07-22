@@ -13,16 +13,16 @@ import { SUPPORT_MACROS } from "@data/supportMacros";
       <span class="eyebrow eyebrow--ember">Support</span>
       <h1>OpenBurnBar support</h1>
       <p class="lead">
-        Get help with the macOS app, iPhone and iPad companion app, BurnBar Cloud, BurnBar Cloud
-        Pro, provider connections, account deletion, or privacy requests.
+        Get help with the Windows, macOS, Linux, Android, iPhone, and iPad apps, BurnBar Cloud,
+        Cloud Pro and Ultra plans, provider connections, account deletion, or privacy requests.
       </p>
 
       <div class="supportgrid">
         <article class="supportcard">
           <h2>Email support</h2>
           <p>
-            For app support, billing-flow questions, App Store subscription recovery, or
-            account/data deletion help, email
+            For app support, billing-flow questions, purchase recovery, Microsoft Store acquisition
+            or update issues, or account/data deletion help, email
             <a href={`mailto:${SITE.supportContact}`}>{SITE.supportContact}</a>.
           </p>
           <p class="small muted">
@@ -34,9 +34,10 @@ import { SUPPORT_MACROS } from "@data/supportMacros";
         <article class="supportcard">
           <h2>Subscription help</h2>
           <p>
-            BurnBar Cloud and BurnBar Cloud Pro are auto-renewable subscriptions. Billing is handled
-            by the purchase platform: Apple App Store, Google Play, or Stripe. Manage, cancel, or
-            request refunds from the platform where you purchased.
+            BurnBar Cloud, Cloud Pro, and Ultra are auto-renewable subscriptions. Billing is handled
+            by the purchase platform: Apple App Store, Google Play, or Stripe. The Microsoft Store
+            Windows package is free. Manage, cancel, or request refunds from the platform where you
+            purchased a subscription.
           </p>
           <a
             class="textlink"
@@ -60,9 +61,11 @@ import { SUPPORT_MACROS } from "@data/supportMacros";
         <article class="supportcard">
           <h2>Account and data deletion</h2>
           <p>
-            In the iOS app, go to <strong>You &gt; Settings &gt; Account &gt; Delete account</strong
-            >. This deletes OpenBurnBar cloud data for the signed-in account and signs you out.
-            Local macOS data remains on your Mac until you remove the app support folder.
+            In the mobile app, go to <strong
+              >You &gt; Settings &gt; Account &gt; Delete account</strong
+            >. On Windows or macOS, open <strong>Settings &gt; Account &gt; Delete Account</strong>.
+            This deletes OpenBurnBar cloud data for the signed-in account and signs you out. Local
+            data remains on the device until you remove the platform's OpenBurnBar support folder.
           </p>
         </article>
 
@@ -80,7 +83,11 @@ import { SUPPORT_MACROS } from "@data/supportMacros";
       </div>
 
       <section class="macros" aria-labelledby="support-macros-h">
-        <h2 id="support-macros-h">Support macros</h2>
+        <h2 id="support-macros-h">Billing &amp; account answers</h2>
+        <p class="macros__note">
+          The same playbook our support inbox works from — published so you know what to expect
+          before you write in.
+        </p>
         <div class="supportgrid">
           {
             SUPPORT_MACROS.map((macro) => (
@@ -97,6 +104,11 @@ import { SUPPORT_MACROS } from "@data/supportMacros";
 </BaseLayout>
 
 <style>
+  .macros__note {
+    color: var(--text-mute);
+    margin-bottom: var(--s-4);
+    max-width: 60ch;
+  }
   .supportpage {
     padding-block: var(--s-9);
   }

@@ -160,6 +160,14 @@ class BurnBarApplication : Application() {
             .onFailure { Log.w("BurnBar", "Sentry privacy scrubber install failed: ${it.message}") }
         FirebaseApp.initializeApp(this)
         installAppCheckProvider()
+        val domainCoreEvidenceChannel = com.openburnbar.data.DomainCoreBuildProfile.evidenceChannel()
+        runCatching {
+            if (domainCoreEvidenceChannel == null) {
+                com.openburnbar.data.AndroidDomainCoreShadowEvidence.discardStoredSamples(this)
+            } else {
+                com.openburnbar.data.AndroidDomainCoreShadowEvidence.install(this, domainCoreEvidenceChannel)
+            }
+        }.onFailure { Log.w("BurnBar", "Domain-core evidence uploader disabled: ${it.message}") }
         // F2/F7/F10: land remote kill-switch values so the default-ON
         // protection flags can be remotely disabled (the flags default ON via
         // the source-aware reader; this makes the override reachable). iOS

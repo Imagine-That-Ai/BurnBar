@@ -1,9 +1,10 @@
 // WINDOWS-ONLY / CI-DEFERRED (Win2D host). The frame-GENERATION math here mirrors the
 // perf harness (portable, macOS-built), but this file lives in the WinUI app because it
-// binds the LANDED SwarmCanvasHost (Win2D CanvasAnimatedControl). See SwarmCanvasHost.cs.
+// binds the LANDED SwarmCanvasHost (airspace-free Win2D CanvasImageSource). See SwarmCanvasHost.cs.
 
 using System;
-using Microsoft.Graphics.Canvas.UI.Xaml;
+using System.Linq;
+using Microsoft.UI.Xaml.Controls;
 using OpenBurnBar.App.Dashboard.Layout;
 using OpenBurnBar.App.Particles;
 using OpenBurnBar.Particles.Math;
@@ -16,8 +17,8 @@ namespace OpenBurnBar.App.Dashboard;
 /// The dashboard's swarm/constellation/depth backdrop — the Windows analog of the
 /// macOS <c>ConstellationBackgroundView</c> / <c>DashboardDepthBackdrop</c> /
 /// <c>KernelBackdropView</c> that ride behind every concept layout. It CONSUMES the
-/// landed particle engine: a <see cref="SwarmCanvasHost"/> (the Win2D
-/// <c>CanvasAnimatedControl</c> renderer) painting a family-appropriate
+/// landed particle engine: a <see cref="SwarmCanvasHost"/> (an airspace-free Win2D
+/// <c>CanvasImageSource</c> renderer) painting a family-appropriate
 /// <see cref="ISwarmSubstrate"/> from the ported <see cref="SubstrateCatalog"/>. The
 /// active family follows the selected <see cref="DashboardLayout"/> so each concept has
 /// its own signature backdrop, exactly like the macOS layouts.
@@ -37,6 +38,7 @@ public sealed class DashboardBackdrop : IDisposable
     private double _fieldHeight;
     private SubstrateFamily _family = SubstrateFamily.Constellation;
     private SubstrateStage _stage;
+    private bool _isDark = true;
 
     public DashboardBackdrop()
     {
@@ -45,18 +47,55 @@ public sealed class DashboardBackdrop : IDisposable
         SetLayout(DashboardLayoutMeta.Default);
     }
 
-    /// <summary>The Win2D control to place at the back of the dashboard visual tree.</summary>
-    public CanvasAnimatedControl Control => _host.Control;
+    /// <summary>The XAML image to place at the back of the dashboard visual tree.</summary>
+    public Image Control => _host.Control;
+
+    /// <summary>Pauses compositor-driven invalidation while the WebGL layer is active.</summary>
+    public bool Paused
+    {
+        get => _host.Paused;
+        set => _host.Paused = value;
+    }
 
     /// <summary>Switch the backdrop family + substrate to match the selected layout.</summary>
     public void SetLayout(DashboardLayout layout)
     {
         SubstrateFamily next = FamilyFor(layout);
-        bool familyChanged = next != _family;
-        _family = next;
+        SubstrateDescriptor[] bespoke = SubstrateCatalog.BespokeFor(next);
+        ApplyDescriptor(
+            bespoke.Length > 0
+                ? bespoke[0]
+                : SubstrateCatalog.Plain(next));
+    }
+
+    /// <summary>Render a shared kernel id through its native Win2D substrate analog.</summary>
+    public void SetKernel(string? kernelId)
+    {
+        string substrateId = KernelSubstrateSelection.SubstrateIdFor(kernelId);
+        SubstrateDescriptor descriptor = SubstrateCatalog.SubstrateList.First(
+            candidate => string.Equals(candidate.Id, substrateId, StringComparison.Ordinal));
+        ApplyDescriptor(descriptor);
+    }
+
+    /// <summary>Apply the active XAML theme polarity to every generated native frame.</summary>
+    public void SetTheme(string? theme)
+    {
+        bool isDark = !string.Equals(theme, "light", StringComparison.OrdinalIgnoreCase);
+        if (_isDark == isDark)
+        {
+            return;
+        }
+
+        _isDark = isDark;
         _stage = BuildStage(_family);
-        SubstrateDescriptor[] bespoke = SubstrateCatalog.BespokeFor(_family);
-        _host.Substrate = bespoke.Length > 0 ? bespoke[0].Make() : new PlainDotsSubstrate();
+    }
+
+    private void ApplyDescriptor(SubstrateDescriptor descriptor)
+    {
+        bool familyChanged = descriptor.Family != _family;
+        _family = descriptor.Family;
+        _stage = BuildStage(_family);
+        _host.Substrate = descriptor.Make();
         // Rebuild the synthetic field when the family changes so accent/ramp reseed
         // and the switch is visibly different (not just a quieter painter swap).
         if (familyChanged && _fieldWidth > 1 && _fieldHeight > 1)
@@ -65,7 +104,7 @@ public sealed class DashboardBackdrop : IDisposable
         }
 
         // Resume the vsync loop if it was paused while the kernel layer was on top.
-        Control.Paused = false;
+        Paused = false;
     }
 
     /// <summary>
@@ -102,9 +141,10 @@ public sealed class DashboardBackdrop : IDisposable
 
         double t = elapsed.TotalSeconds;
         return new SwarmSubstrateFrame(
-            width: w, height: h, dark: true, reduced: false, batteryThrottled: false,
+            width: w, height: h, dark: _isDark, reduced: false, batteryThrottled: false,
             uiMode: UIMode.Standard, isShapeMode: false, formed: false, settleProgress: 0.0,
-            t: t, dt: 1.0, stage: _stage, backdrop: new Rgba(0.03, 0.04, 0.08, 1.0),
+            t: t, dt: 1.0, stage: _stage,
+            backdrop: _isDark ? new Rgba(0.03, 0.04, 0.08, 1.0) : new Rgba(0.96, 0.97, 1.0, 1.0),
             dots: _dots, cx: w / 2, cy: h / 2, cloudRadius: Math.Min(w, h) * 0.32,
             sizePx: 1.6);
     }
@@ -142,12 +182,12 @@ public sealed class DashboardBackdrop : IDisposable
         return dots;
     }
 
-    private static SubstrateStage BuildStage(SubstrateFamily family)
+    private SubstrateStage BuildStage(SubstrateFamily family)
     {
         Rgba accent = FamilyAccent.A(family);
         Rgba accent2 = FamilyAccent.A2(family);
-        var ink = new Rgba(0.90, 0.93, 1.0);
-        return new SubstrateStage(accent, accent2, ink, dark: true);
+        Rgba ink = _isDark ? new Rgba(0.90, 0.93, 1.0) : new Rgba(0.10, 0.14, 0.22);
+        return new SubstrateStage(accent, accent2, ink, dark: _isDark);
     }
 
     public void Dispose() => _host.Dispose();

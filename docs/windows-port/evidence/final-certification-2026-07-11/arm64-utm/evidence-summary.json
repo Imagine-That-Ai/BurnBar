@@ -1,0 +1,93 @@
+{
+    "schema":  "openburnbar.windows.foundation-current-candidate-evidence.v1",
+    "status":  "passed",
+    "completedAt":  "2026-07-11T17:42:24.2152799Z",
+    "candidate":  {
+                      "branch":  "codex/windows-final-certification",
+                      "commit":  "778e735a69ea9d812db87146630223ac1a3a49d7",
+                      "commitDate":  "2026-07-11T16:26:37Z",
+                      "parentCommits":  [
+                                            "b35206464ab0aafb11bde06330cfeb4f18021ae6"
+                                        ],
+                      "ref":  "HEAD",
+                      "tree":  "97a56caca0f60cf62ecb027f24334899d21d2f72"
+                  },
+    "host":  {
+                 "computerName":  "WIN-MIGC91I3AKQ",
+                 "osCaption":  "Microsoft Windows 11 Pro",
+                 "osVersion":  "10.0.26200",
+                 "processorArchitecture":  "AMD64",
+                 "platform":  "ARM64"
+             },
+    "candidateVerification":  "C:\\Users\\Public\\foundation-final-778e735a\\candidate-tree-verification.json",
+    "steps":  [
+                  {
+                      "name":  "dotnet-restore",
+                      "command":  "dotnet restore windows\\OpenBurnBar.sln -p:Platform=ARM64",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\foundation-final-778e735a\\dotnet-restore.log",
+                      "completedAt":  "2026-07-11T17:14:28.2583193Z"
+                  },
+                  {
+                      "name":  "dotnet-build",
+                      "command":  "dotnet build windows\\OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=ARM64",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\foundation-final-778e735a\\dotnet-build.log",
+                      "completedAt":  "2026-07-11T17:37:59.6261343Z"
+                  },
+                  {
+                      "name":  "configuration-tests",
+                      "command":  "dotnet test windows\\tests\\configuration\\OpenBurnBar.App.Configuration.Tests.csproj --configuration Debug --no-build --nologo --logger trx;LogFileName=configuration.trx",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\foundation-final-778e735a\\configuration-tests.log",
+                      "completedAt":  "2026-07-11T17:38:05.3041079Z"
+                  },
+                  {
+                      "name":  "chat-runtime-tests",
+                      "command":  "dotnet test windows\\tests\\chat\\OpenBurnBar.App.Chat.Runtime.Tests.csproj --configuration Debug --no-build --nologo --logger trx;LogFileName=chat-runtime.trx",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\foundation-final-778e735a\\chat-runtime-tests.log",
+                      "completedAt":  "2026-07-11T17:38:11.7747411Z"
+                  },
+                  {
+                      "name":  "storage-tests",
+                      "command":  "dotnet test windows\\tests\\storage\\OpenBurnBar.App.Storage.Tests.csproj --configuration Debug --no-build --nologo --logger trx;LogFileName=storage.trx",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\foundation-final-778e735a\\storage-tests.log",
+                      "completedAt":  "2026-07-11T17:39:05.0627354Z"
+                  },
+                  {
+                      "name":  "sqlcipher-storage-tests",
+                      "command":  "dotnet test windows\\storage\\OpenBurnBar.Storage.Tests\\OpenBurnBar.Storage.Tests.csproj --configuration Debug --no-build --nologo --logger trx;LogFileName=sqlcipher-storage.trx",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\foundation-final-778e735a\\sqlcipher-storage-tests.log",
+                      "completedAt":  "2026-07-11T17:39:32.5688288Z"
+                  },
+                  {
+                      "name":  "chat-presentation-tests",
+                      "command":  "dotnet test windows\\tests\\presentation\\OpenBurnBar.App.Presentation.Tests.csproj --configuration Debug --no-build --nologo --filter FullyQualifiedName~Chat --logger trx;LogFileName=chat-presentation.trx",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\foundation-final-778e735a\\chat-presentation-tests.log",
+                      "completedAt":  "2026-07-11T17:39:37.9297590Z"
+                  },
+                  {
+                      "name":  "storage-evidence",
+                      "command":  "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\windows-port\\storage-evidence.ps1 -RepoRoot C:\\candidate778e735a_final -OutputDir C:\\Users\\Public\\foundation-final-778e735a\\storage-evidence",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\foundation-final-778e735a\\storage-evidence.log",
+                      "completedAt":  "2026-07-11T17:41:21.5002917Z"
+                  },
+                  {
+                      "name":  "chat-evidence",
+                      "command":  "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\windows-port\\chat-evidence.ps1 -RepoRoot C:\\candidate778e735a_final -OutputDir C:\\Users\\Public\\foundation-final-778e735a\\chat-evidence",
+                      "exitCode":  0,
+                      "log":  "C:\\Users\\Public\\foundation-final-778e735a\\chat-evidence.log",
+                      "completedAt":  "2026-07-11T17:42:23.0993834Z"
+                  }
+              ],
+    "requiredExternalArtifacts":  [
+                                      "Windows UIA screenshots/trees for chat setup, approval, rotate/remove, denial, storage unavailable, retry/restart, durable rehydrate",
+                                      "Process image/path/ArgumentList traces for approved and denied chat launches",
+                                      "Native x64 hosted-runner artifact bundle when this script is not itself run on x64"
+                                  ]
+}

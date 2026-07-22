@@ -14,6 +14,7 @@
 "use strict";
 
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -63,6 +64,22 @@ const resolveThrows = async () => {
 const resolveEmpty = async () => [];
 
 async function main() {
+  // The Windows ProcessBrowserDriver uses the legacy `op` envelope. Keep the
+  // bridge adapter explicit so a protocol drift cannot silently turn real
+  // Playwright sessions into the in-process test fallback.
+  const bridgeSource = readFileSync(
+    path.join(
+      root,
+      "OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js",
+    ),
+    "utf8",
+  );
+  check("bridge accepts direct launch operation", bridgeSource.includes('method === "launch"'));
+  check("bridge accepts direct navigate operation", bridgeSource.includes('method === "navigate"'));
+  check("bridge accepts direct evaluate operation", bridgeSource.includes('method === "evaluate"'));
+  check("bridge accepts direct close operation", bridgeSource.includes('method === "close"'));
+  check("bridge normalizes op envelope", bridgeSource.includes("typeof req.method === \"string\" ? req.method : req.op"));
+
   // ---- Layer 1: synchronous literal guard (regression coverage) ----
   const blockedLiterals = [
     "http://127.0.0.1/",

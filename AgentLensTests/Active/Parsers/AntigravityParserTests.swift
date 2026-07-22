@@ -79,7 +79,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-user",
             fallbackModel: "test-model"
@@ -109,7 +109,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-thinking",
             fallbackModel: "test-model"
@@ -142,7 +142,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-tool-output",
             fallbackModel: "test-model"
@@ -171,7 +171,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-system",
             fallbackModel: "test-model"
@@ -208,7 +208,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-tool-args",
             fallbackModel: "test-model"
@@ -237,7 +237,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-sysmsg",
             fallbackModel: "test-model"
@@ -269,7 +269,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-model",
             fallbackModel: "some-fallback-model"
@@ -291,7 +291,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-fallback",
             fallbackModel: "my-fallback-model"
@@ -320,7 +320,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-gemini",
             fallbackModel: "fallback"
@@ -362,7 +362,7 @@ final class AntigravityParserTests: XCTestCase {
 
         let parser = AntigravityParser()
         let fullFile = logsDir.appendingPathComponent("transcript_full.jsonl")
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: fullFile,
             sessionId: sessionId,
             fallbackModel: "test-model"
@@ -392,7 +392,7 @@ final class AntigravityParserTests: XCTestCase {
             atomically: true, encoding: .utf8)
 
         let parser = AntigravityParser()
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: logsDir.appendingPathComponent("transcript.jsonl"),
             sessionId: sessionId,
             fallbackModel: "test-model"
@@ -410,7 +410,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: [])
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "empty",
             fallbackModel: "test-model"
@@ -430,7 +430,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "system-only",
             fallbackModel: "test-model"
@@ -454,7 +454,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-provenance",
             fallbackModel: "test-model"
@@ -489,7 +489,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-tools",
             fallbackModel: "test-model"
@@ -519,7 +519,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-title",
             fallbackModel: "test-model"
@@ -555,7 +555,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-project",
             fallbackModel: "test-model"
@@ -577,7 +577,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-default-project",
             fallbackModel: "test-model"
@@ -648,7 +648,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-realistic",
             fallbackModel: "fallback"
@@ -712,7 +712,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-timestamps",
             fallbackModel: "test-model"
@@ -739,7 +739,7 @@ final class AntigravityParserTests: XCTestCase {
         let (_, transcript) = try createConversation(in: root, lines: lines)
         let parser = AntigravityParser()
 
-        let result = parser.parseSession(
+        let result = try parser.parseSession(
             transcriptFile: transcript,
             sessionId: "test-frac-ts",
             fallbackModel: "test-model"

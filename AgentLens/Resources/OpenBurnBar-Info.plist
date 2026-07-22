@@ -41,6 +41,36 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>OpenBurnBarDomainCoreBuildProfile</key>
+	<string>$(DOMAIN_CORE_BUILD_PROFILE)</string>
+	<key>OpenBurnBarDomainCoreBuildAuthority</key>
+	<string>$(DOMAIN_CORE_BUILD_AUTHORITY)</string>
+	<key>OpenBurnBarDomainCoreDistribution</key>
+	<string>$(DOMAIN_CORE_DISTRIBUTION)</string>
+	<key>OpenBurnBarDomainCoreRolloutChannel</key>
+	<string>$(DOMAIN_CORE_ROLLOUT_CHANNEL)</string>
+	<key>OpenBurnBarDomainCoreEvidenceEnabled</key>
+	<string>$(DOMAIN_CORE_EVIDENCE_ENABLED)</string>
+	<key>OpenBurnBarDomainCoreCandidateCommit</key>
+	<string>$(DOMAIN_CORE_CANDIDATE_COMMIT)</string>
+	<key>OpenBurnBarDomainCoreExpectedVersion</key>
+	<string>$(DOMAIN_CORE_EXPECTED_VERSION)</string>
+	<key>OpenBurnBarDomainCoreExpectedABIVersion</key>
+	<string>$(DOMAIN_CORE_EXPECTED_ABI_VERSION)</string>
+	<key>OpenBurnBarDomainCoreExpectedSourceSHA256</key>
+	<string>$(DOMAIN_CORE_EXPECTED_SOURCE_SHA256)</string>
+	<key>OpenBurnBarDomainCoreModeQuota</key>
+	<string>$(DOMAIN_CORE_QUOTA_MODE)</string>
+	<key>OpenBurnBarDomainCoreModeCloudVault</key>
+	<string>$(DOMAIN_CORE_CLOUDVAULT_MODE)</string>
+	<key>OpenBurnBarDomainCoreModeCloudVaultRewrap</key>
+	<string>$(DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE)</string>
+	<key>OpenBurnBarDomainCoreModeCloudVaultSearch</key>
+	<string>$(DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE)</string>
+	<key>OpenBurnBarDomainCoreModeHermes</key>
+	<string>$(DOMAIN_CORE_HERMES_MODE)</string>
+	<key>OpenBurnBarDomainCoreModePricing</key>
+	<string>$(DOMAIN_CORE_PRICING_MODE)</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
@@ -89,5 +119,9 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OpenBurnBar uses the local network to connect this Mac to your trusted iPhone, iPad, Android devices, and local smart displays for pairing, Hermes relay, Mercury media sessions, and screen sharing.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>OpenBurnBar uses the camera only when you start a trusted Mercury video call or run the camera check in Media &amp; Sharing settings.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>OpenBurnBar uses the microphone only when you start a trusted Mercury audio or video call or run the microphone check in Media &amp; Sharing settings.</string>
 </dict>
 </plist>

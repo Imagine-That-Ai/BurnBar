@@ -24,7 +24,8 @@ name: OpenBurnBar Windows Release
 # round-trip).
 #
 # TRIGGER: a `windows-v*` tag (the manifest version must be bumped first — the portable-verify job
-# enforces version consistency at tag time) or a manual dispatch.
+# enforces version consistency at tag time) or a manual dispatch run FROM the release tag ref
+# (`refs/tags/windows-vX.Y.Z`); dispatching from a branch is rejected by the authorization guard.
 
 on:
   push:
@@ -33,7 +34,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (e.g. 1.0.28) — required for manual dispatch."
+        description: "Release version (e.g. 1.0.28). Optional: manual dispatch must run from the windows-vX.Y.Z tag ref, where the version is derived from the tag itself."
         required: false
         default: ""
       allow_unsigned:
@@ -41,6 +42,14 @@ on:
         required: false
         default: false
         type: boolean
+      domain_core_profile:
+        description: "Signed public domain-core profile. Rollback requires protected domain-core-promotion approval."
+        required: true
+        type: choice
+        default: public-production
+        options:
+          - public-production
+          - public-production-rollback
 
 permissions:
   contents: read
@@ -61,8 +70,16 @@ jobs:
     timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag_ref: ${{ steps.version.outputs.tag_ref }}
+      release_commit: ${{ steps.version.outputs.release_commit }}
+      domain_core_profile: ${{ steps.version.outputs.domain_core_profile }}
     steps:
-      - name: Resolve version
+      - name: Check out repository metadata
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+
+      - name: Resolve and authorize release tag
         id: version
         env:
           REF_NAME: ${{ github.ref_name }}
@@ -82,8 +99,66 @@ jobs:
             echo "::error::Version '${version}' is not X.Y.Z."
             exit 1
           fi
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "Resolved release version: ${version}"
+
+          tag_name="windows-v${version}"
+          tag_ref="refs/tags/${tag_name}"
+          if [[ "${GITHUB_REF}" != "${tag_ref}" ]]; then
+            echo "::error::Windows release ${version} must run from ${tag_ref}, not ${GITHUB_REF}."
+            echo "::error::For manual dispatch, select the matching protected release tag as the workflow ref."
+            exit 1
+          fi
+
+          git fetch --force --tags origin "+${tag_ref}:${tag_ref}"
+          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
+
+          if ! release_commit="$(git rev-list -n 1 "${tag_ref}^{commit}")"; then
+            echo "::error::Tag does not exist in repository: ${tag_name}"
+            exit 1
+          fi
+          if [[ -z "${release_commit}" ]]; then
+            echo "::error::Unable to resolve ${tag_ref} to a commit."
+            exit 1
+          fi
+
+          # Bind the release to the commit that actually triggered this run (GITHUB_SHA).
+          # Without this, a tag moved/recreated between the webhook and this step would
+          # silently build+sign whatever the tag points at NOW instead of the audited
+          # trigger commit, letting artifacts/provenance drift from the event.
+          if ! trigger_commit="$(git rev-parse --verify --quiet "${GITHUB_SHA}^{commit}")" || [[ -z "${trigger_commit}" ]]; then
+            echo "::error::Unable to resolve triggering commit ${GITHUB_SHA}."
+            exit 1
+          fi
+          if [[ "${release_commit}" != "${trigger_commit}" ]]; then
+            echo "::error::Tag ${tag_name} now points at ${release_commit}, but this run was triggered at ${trigger_commit}."
+            echo "::error::The release tag moved after the run was queued; refusing to build a drifted commit. Re-tag and re-run."
+            exit 1
+          fi
+          release_commit="${trigger_commit}"
+
+          if ! git merge-base --is-ancestor "${release_commit}" origin/main; then
+            echo "::error::Windows release tag ${tag_name} points at ${release_commit}, which is not reachable from origin/main."
+            exit 1
+          fi
+
+          {
+            echo "version=${version}"
+            echo "tag_ref=${tag_ref}"
+            echo "release_commit=${release_commit}"
+            if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+              echo "domain_core_profile=public-production"
+            else
+              case "${{ inputs.domain_core_profile }}" in
+                public-production|public-production-rollback)
+                  echo "domain_core_profile=${{ inputs.domain_core_profile }}"
+                  ;;
+                *)
+                  echo "::error::Manual release requires an explicit signed public domain-core profile."
+                  exit 1
+                  ;;
+              esac
+            fi
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved authorized Windows release ${version} at ${release_commit}."
 
   # ── Always-run: prove the portable security kernel (test + signer round-trip) ─
   portable-verify:
@@ -95,8 +170,11 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Check out repository
+      - name: Check out authorized release commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_commit }}
+          fetch-depth: 0
 
       - name: Set up .NET
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
@@ -107,6 +185,9 @@ jobs:
 
       - name: Run distribution-core unit tests
         run: dotnet test windows/tests/dist/OpenBurnBar.Dist.Tests.csproj -c Release --nologo
+
+      - name: Run project-code static parser tests
+        run: cargo test --manifest-path crates/project-code-static-parser/Cargo.toml
 
       - name: Signer round-trip (good pin verifies, wrong pin fails closed)
         run: |
@@ -152,13 +233,81 @@ jobs:
 
       - name: Enforce version consistency at release time
         env:
-          OPENBURNBAR_EXPECTED_VERSION: ${{ needs.resolve-release.outputs.version }}
+          OPENBURNBAR_EXPECTED_WINDOWS_VERSION: ${{ needs.resolve-release.outputs.version }}
           OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_unsigned == 'true' && '0' || '1' }}
         run: bash scripts/verify-version-consistency.sh
 
   native-engine:
     name: Build native parser engine
+    needs: domain-core-native-release-gate
     uses: ./.github/workflows/openburnbar-engine-windows.yml
+    with:
+      candidate_commit: ${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}
+
+  authorize-domain-core-rollback:
+    name: Authorize Shared Rust Windows rollback
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.domain_core_profile == 'public-production-rollback' }}
+    needs: resolve-release
+    runs-on: ubuntu-latest
+    environment: domain-core-promotion
+    permissions:
+      contents: read
+    steps:
+      - name: Record protected rollback authorization
+        run: echo "Protected Windows rollback authorized for ${{ needs.resolve-release.outputs.release_commit }}."
+
+  domain-core-native-release-gate:
+    name: Verify protected Shared Rust Windows release candidate
+    if: ${{ always() && needs.resolve-release.result == 'success' && (needs.authorize-domain-core-rollback.result == 'success' || needs.authorize-domain-core-rollback.result == 'skipped') }}
+    needs: [resolve-release, authorize-domain-core-rollback]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+    outputs:
+      profile_name: ${{ steps.gate.outputs.profile_name }}
+      candidate_commit: ${{ steps.gate.outputs.candidate_commit }}
+      signer_run_id: ${{ steps.gate.outputs.signer_run_id }}
+      signer_run_attempt: ${{ steps.gate.outputs.signer_run_attempt }}
+    steps:
+      - name: Check out exact Windows release candidate
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download and verify exact protected candidate chain
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+          SELECTED_PROFILE: ${{ needs.resolve-release.outputs.domain_core_profile }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/domain-core-native-release-gate"
+          activation="$RUNNER_TEMP/domain-core-native-release-gate/domain-core-activation.json"
+          node scripts/ci/resolve-domain-core-activation.mjs \
+            --release-commit "$RELEASE_COMMIT" --format json > "$activation"
+          CANDIDATE_COMMIT="$(jq -er '.candidateCommit' "$activation")"
+          node scripts/ci/prepare-domain-core-native-release-gate.mjs \
+            --candidate-commit "$CANDIDATE_COMMIT" \
+            --release-commit "$RELEASE_COMMIT" \
+            --activation "$activation" \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --requested-profile "$SELECTED_PROFILE" \
+            --output-dir "$RUNNER_TEMP/domain-core-native-release-gate" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload immutable verified Windows release inputs
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-windows-release-gate-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate/
+          if-no-files-found: error
+          retention-days: 90
 
   # ── Windows runner: build + Authenticode sign + sign the update feed ────────
   build-sign:
@@ -167,7 +316,11 @@ jobs:
       - resolve-release
       - portable-verify
       - native-engine
+      - authorize-domain-core-rollback
+      - domain-core-native-release-gate
+    if: ${{ always() && needs.resolve-release.result == 'success' && needs.portable-verify.result == 'success' && needs.native-engine.result == 'success' && needs.domain-core-native-release-gate.result == 'success' && (needs.authorize-domain-core-rollback.result == 'success' || needs.authorize-domain-core-rollback.result == 'skipped') }}
     runs-on: windows-latest
+    environment: windows-release
     timeout-minutes: 60
     permissions:
       contents: read
@@ -176,9 +329,24 @@ jobs:
         shell: bash
     env:
       VERSION: ${{ needs.resolve-release.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+    outputs:
+      signed_release: ${{ steps.config.outputs.codesign }}
     steps:
-      - name: Check out repository
+      - name: Check out authorized release commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_commit }}
+          fetch-depth: 0
+
+      - name: Resolve signed public domain-core profile
+        run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --expected-release-commit "$RELEASE_COMMIT" --format msbuild-props --output "$GITHUB_WORKSPACE/.domain-core-profile.props"
+
+      - name: Download verified Shared Rust release inputs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: domain-core-windows-release-gate-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate
 
       - name: Set up .NET
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
@@ -187,8 +355,8 @@ jobs:
             8.0.x
             10.0.x
 
-      - name: Locate MakeAppx
-        id: makeappx
+      - name: Locate Windows SDK packaging tools
+        id: packaging-tools
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -200,8 +368,18 @@ jobs:
           if (-not $makeappx) {
             throw "MakeAppx.exe is missing from the Windows SDK on this runner."
           }
-          "path=$makeappx" >> $env:GITHUB_OUTPUT
+          $makepri = Get-ChildItem `
+            "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makepri.exe" `
+            -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $makepri) {
+            throw "MakePri.exe is missing from the Windows SDK on this runner."
+          }
+          "makeappx=$makeappx" >> $env:GITHUB_OUTPUT
+          "makepri=$makepri" >> $env:GITHUB_OUTPUT
           "MakeAppx: $makeappx"
+          "MakePri: $makepri"
 
       - name: Download x64 native engine bundle
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
@@ -214,6 +392,24 @@ jobs:
         with:
           name: openburnbar-native-engine-win-arm64
           path: windows/native-engine/win-arm64
+
+      - name: Build project-code static parser for x64 and ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add x86_64-pc-windows-msvc aarch64-pc-windows-msvc
+          for rid in win-x64 win-arm64; do
+            target="x86_64-pc-windows-msvc"
+            [[ "$rid" == "win-arm64" ]] && target="aarch64-pc-windows-msvc"
+            cargo build \
+              --manifest-path crates/project-code-static-parser/Cargo.toml \
+              --release \
+              --target-dir target \
+              --target "$target"
+            mkdir -p "project-code-parser/$rid"
+            cp "target/$target/release/project-code-static-parser.exe" \
+              "project-code-parser/$rid/project-code-static-parser.exe"
+          done
 
       - name: Preflight signing configuration
         id: config
@@ -240,6 +436,9 @@ jobs:
         run: |
           set -euo pipefail
           app="windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj"
+          cli="windows/app/OpenBurnBar.Cli/OpenBurnBar.Cli.csproj"
+          watchdog="windows/computeruse/OpenBurnBar.ComputerUse.Watchdog/OpenBurnBar.ComputerUse.Watchdog.csproj"
+          privileged_input="windows/computeruse/OpenBurnBar.PrivilegedInput/OpenBurnBar.PrivilegedInput.csproj"
           pin="windows/packaging/updater/feed/pinned-update-key.pub"
           printf '%s\n' "$WINDOWS_UPDATE_PUBLIC_KEY" > "$pin"
           for rid in win-x64 win-arm64; do
@@ -251,8 +450,102 @@ jobs:
               -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
               -p:OpenBurnBarNativeEngineDirectory="$GITHUB_WORKSPACE/windows/native-engine/$rid" \
               -p:OpenBurnBarRequireNativeEngine=true \
+              -p:OpenBurnBarProjectCodeParserPath="$GITHUB_WORKSPACE/project-code-parser/$rid/project-code-static-parser.exe" \
+              -p:OpenBurnBarRequireProjectCodeParser=true \
+              -p:DomainCoreBuildProfileProps="$GITHUB_WORKSPACE/.domain-core-profile.props" \
               -o "publish/$rid"
+            cli_out="cli-publish/$rid"
+            dotnet publish "$cli" -c Release -r "$rid" --self-contained true \
+              -p:Version="$VERSION" -p:AssemblyVersion="${VERSION}.0" \
+              -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
+              -o "$cli_out"
+            for cli_file in \
+              OpenBurnBar.Cli.exe \
+              OpenBurnBar.Cli.dll \
+              OpenBurnBar.Cli.deps.json \
+              OpenBurnBar.Cli.runtimeconfig.json; do
+              test -f "$cli_out/$cli_file"
+              cp "$cli_out/$cli_file" "publish/$rid/$cli_file"
+            done
+            watchdog_out="watchdog-publish/$rid"
+            dotnet publish "$watchdog" -c Release -r "$rid" --self-contained true \
+              -p:Version="$VERSION" -p:AssemblyVersion="${VERSION}.0" \
+              -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
+              -o "$watchdog_out"
+            test -f "$watchdog_out/OpenBurnBar.ComputerUse.Watchdog.exe"
+            mkdir -p "publish/$rid/ComputerUseWatchdog"
+            cp -R "$watchdog_out/." "publish/$rid/ComputerUseWatchdog/"
+            privileged_input_out="privileged-input-publish/$rid"
+            dotnet publish "$privileged_input" -c Release -r "$rid" --self-contained true \
+              -p:Version="$VERSION" -p:AssemblyVersion="${VERSION}.0" \
+              -p:FileVersion="${VERSION}.0" -p:InformationalVersion="$VERSION" \
+              -o "$privileged_input_out"
+            test -f "$privileged_input_out/OpenBurnBar.PrivilegedInput.exe"
+            mkdir -p "publish/$rid/PrivilegedInput"
+            cp -R "$privileged_input_out/." "publish/$rid/PrivilegedInput/"
           done
+
+      - name: Validate published native-engine layouts
+        run: |
+          set -euo pipefail
+          for rid in win-x64 win-arm64; do
+            node scripts/windows-port/validate-native-engine-layout.mjs "publish/$rid"
+            node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --windows-dir "publish/$rid"
+          done
+
+      - name: Run parser smoke from the published x64 layout
+        shell: pwsh
+        env:
+          OPENBURNBAR_REQUIRE_NATIVE_ENGINE_INTEGRATION: "1"
+        run: |
+          $ErrorActionPreference = "Stop"
+          $publishedRoot = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64"
+          $smokeRoot = Join-Path $env:RUNNER_TEMP "openburnbar-published-x64-parser-smoke"
+          $testOutputRoot = Join-Path $env:RUNNER_TEMP "openburnbar-published-x64-parser-testhost"
+          $dotnetExecutable = (Get-Command dotnet -CommandType Application -ErrorAction Stop).Source
+          Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $testOutputRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $smokeRoot | Out-Null
+          New-Item -ItemType Directory -Force -Path $testOutputRoot | Out-Null
+          Copy-Item -Path (Join-Path $publishedRoot "*") -Destination $smokeRoot -Recurse -Force
+          $env:OPENBURNBAR_CORE_CABI_PATH = Join-Path $smokeRoot "OpenBurnBarCoreCAbi.dll"
+          # The real app starts in the publish directory. Give the isolated testhost
+          # the equivalent Windows DLL search path for the engine's Swift runtimes.
+          $env:PATH = "$smokeRoot;$env:PATH"
+          $testProject = "windows/tests/usage-runtime/OpenBurnBar.App.UsageRuntime.Tests.csproj"
+          & $dotnetExecutable build $testProject -c Release --output $testOutputRoot
+
+          # Swift Bundle.module resolves beside the host process on Windows. Stage only
+          # resource bundles there; copying the self-contained runtime would shadow net10.
+          $requiredResourceBundles = @(
+            "OpenBurnBarCore_OpenBurnBarCore.resources",
+            "OpenBurnBarCore_OpenBurnBarKernel.resources"
+          )
+          foreach ($bundleName in $requiredResourceBundles) {
+            $bundleSource = Join-Path $smokeRoot $bundleName
+            if (-not (Test-Path -LiteralPath $bundleSource -PathType Container)) {
+              throw "Published parser smoke is missing required resource bundle: $bundleName"
+            }
+          }
+          Get-ChildItem -LiteralPath $smokeRoot -Directory -Filter "OpenBurnBarCore_*.resources" |
+            ForEach-Object {
+              Copy-Item -LiteralPath $_.FullName `
+                -Destination (Join-Path $testOutputRoot $_.Name) -Recurse -Force
+            }
+          $forbiddenRuntimeFiles = @("hostfxr.dll", "hostpolicy.dll", "coreclr.dll")
+          foreach ($runtimeFile in $forbiddenRuntimeFiles) {
+            if (Test-Path -LiteralPath (Join-Path $testOutputRoot $runtimeFile)) {
+              throw "Self-contained runtime leaked into parser testhost output: $runtimeFile"
+            }
+          }
+
+          & $dotnetExecutable test $testProject `
+            -c Release `
+            --no-build `
+            --output $testOutputRoot `
+            --filter FullyQualifiedName~NativeUsageEngineIntegrationTests `
+            --blame-hang `
+            --blame-hang-timeout 5m
 
       - name: Authenticode sign (Azure Artifact Signing — no staple analog)
         if: steps.config.outputs.codesign == 'true'
@@ -265,7 +558,7 @@ jobs:
           azure-client-id: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_ID }}
           azure-client-secret: ${{ secrets.WINDOWS_CODESIGN_AZURE_CLIENT_SECRET }}
           files-folder: ${{ github.workspace }}/publish
-          files-folder-filter: OpenBurnBar*.exe,OpenBurnBar*.dll
+          files-folder-filter: OpenBurnBar*.exe,OpenBurnBar*.dll,project-code-static-parser.exe,openburnbar_domain_ffi.dll
           files-folder-recurse: true
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
@@ -284,11 +577,20 @@ jobs:
               throw "Publish root is missing: publish/$rid"
             }
             $signedFiles += Get-ChildItem -Path $publishRoot -Recurse -File |
-              Where-Object { $_.Name -like "OpenBurnBar*.exe" -or $_.Name -like "OpenBurnBar*.dll" }
+              Where-Object {
+                $_.Name -like "OpenBurnBar*.exe" -or
+                $_.Name -like "OpenBurnBar*.dll" -or
+                $_.Name -eq "project-code-static-parser.exe" -or
+                $_.Name -ceq "openburnbar_domain_ffi.dll"
+              }
           }
 
           if ($signedFiles.Count -lt 2) {
             throw "Expected OpenBurnBar-owned portable binaries to verify; found $($signedFiles.Count)."
+          }
+          $parserFiles = @($signedFiles | Where-Object { $_.Name -eq "project-code-static-parser.exe" })
+          if ($parserFiles.Count -ne 2) {
+            throw "Expected one signed project-code parser per RID; found $($parserFiles.Count)."
           }
 
           foreach ($file in $signedFiles) {
@@ -306,6 +608,28 @@ jobs:
             Write-Host "Portable Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
           }
 
+          $watchdog = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64/ComputerUseWatchdog/OpenBurnBar.ComputerUse.Watchdog.exe"
+          & $watchdog --verify-self-publisher
+          if ($LASTEXITCODE -ne 0) {
+            throw "The signed watchdog rejected its own Authenticode publisher (exit $LASTEXITCODE)."
+          }
+          Write-Host "Watchdog runtime publisher gate accepted the signed x64 image."
+          $privilegedInput = Join-Path $env:GITHUB_WORKSPACE "publish/win-x64/PrivilegedInput/OpenBurnBar.PrivilegedInput.exe"
+          & $privilegedInput --verify-self-publisher
+          if ($LASTEXITCODE -ne 0) {
+            throw "The signed privileged-input broker rejected its own Authenticode publisher (exit $LASTEXITCODE)."
+          }
+          Write-Host "Privileged-input runtime publisher gate accepted the signed x64 image."
+
+      - name: Refresh and validate signed native-engine layouts
+        if: steps.config.outputs.codesign == 'true'
+        run: |
+          set -euo pipefail
+          for rid in win-x64 win-arm64; do
+            node scripts/windows-port/refresh-native-engine-manifest.mjs "publish/$rid"
+            node scripts/windows-port/validate-native-engine-layout.mjs "publish/$rid"
+          done
+
       - name: Package zips + checksums
         id: package
         run: |
@@ -318,14 +642,38 @@ jobs:
             ( cd artifacts && sha256sum "OpenBurnBar-${VERSION}-${rid}.zip" >> "checksums-windows-v${VERSION}.txt" )
           done
 
-      - name: Build MSIX (MakeAppx — Store + sideload channel)
-        # The MSIX is the Store + sideload channel; the portable zip above is the
-        # direct-download / winget / Chocolatey channel. Both ship from the SAME
-        # app binaries (the WAP project references the app as its entry point;
-        # the app keeps WindowsPackageType=None so the portable build is unchanged).
+      - name: Execute signed domain core from final x64 ZIP and record identity
+        shell: pwsh
+        env:
+          OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}
+          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}/domain-core-windows-observed-identity.json
+        run: |
+          $ErrorActionPreference = "Stop"
+          $package = Join-Path $env:GITHUB_WORKSPACE "artifacts/OpenBurnBar-${env:VERSION}-win-x64.zip"
+          $extracted = Join-Path $env:RUNNER_TEMP "domain-core-windows-final-x64"
+          Expand-Archive -LiteralPath $package -DestinationPath $extracted
+          $nativeLibrary = Join-Path $extracted "openburnbar_domain_ffi.dll"
+          if (-not (Test-Path -LiteralPath $nativeLibrary -PathType Leaf)) {
+            throw "Final x64 release ZIP is missing openburnbar_domain_ffi.dll"
+          }
+          $env:DOMAIN_CORE_NATIVE_LIBRARY_PATH = $nativeLibrary
+          dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj --nologo --runtime win-x64 `
+            --filter FullyQualifiedName=OpenBurnBar.App.Quota.Tests.DomainCoreQuotaBridgeTests.Loaded_native_identity_is_observed_for_attestation
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/ci/verify-domain-core-observed-identity.mjs `
+            --profile "$env:RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" `
+            --observed-identity "$env:DOMAIN_CORE_OBSERVED_IDENTITY_REPORT" `
+            --binary "$nativeLibrary"
+
+      - name: Build direct-download MSIX packages
+        # Direct-download MSIX and portable zip outputs share the same app binaries.
+        # The direct package uses the Artifact Signing certificate identity and the
+        # Ed25519-pinned OpenBurnBar updater. Store packages are built separately.
         run: |
           set -euo pipefail
-          makeappx='${{ steps.makeappx.outputs.path }}'
+          makeappx='${{ steps.packaging-tools.outputs.makeappx }}'
+          makepri='${{ steps.packaging-tools.outputs.makepri }}'
           publisher="CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
           for rid in win-x64 win-arm64; do
             arch="x64"
@@ -333,10 +681,104 @@ jobs:
             output="artifacts/OpenBurnBar-${VERSION}-${arch}.msix"
             pwsh -NoProfile -NonInteractive -File windows/packaging/msix/New-MsixPackage.ps1 \
               -PublishDir "publish/$rid" -Architecture "$arch" -Version "$VERSION" \
-              -OutputPath "$output" -MakeAppxPath "$makeappx" -Publisher "$publisher"
+              -OutputPath "$output" -MakeAppxPath "$makeappx" -MakePriPath "$makepri" \
+              -DistributionChannel Sideload -Publisher "$publisher"
           done
 
-      - name: Authenticode sign the MSIX (Azure Artifact Signing)
+      - name: Build Microsoft Store MSIX packages
+        shell: pwsh
+        env:
+          RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $identityPath = Join-Path $env:GITHUB_WORKSPACE "windows/packaging/msix/store-identity.json"
+          $identity = Get-Content -LiteralPath $identityPath -Raw | ConvertFrom-Json
+          if ($identity.schemaVersion -ne 1) {
+            throw "Unsupported Microsoft Store identity schema: $($identity.schemaVersion)"
+          }
+          foreach ($field in @(
+            "productId",
+            "productName",
+            "packageIdentityName",
+            "publisher",
+            "publisherDisplayName",
+            "packageFamilyName",
+            "packageSid",
+            "msaAppId"
+          )) {
+            if (-not $identity.$field) {
+              throw "Microsoft Store identity is missing $field."
+            }
+          }
+
+          $storeDirectory = Join-Path $env:GITHUB_WORKSPACE "artifacts/store"
+          New-Item -ItemType Directory -Path $storeDirectory -Force | Out-Null
+          $packages = @()
+          foreach ($rid in @("win-x64", "win-arm64")) {
+            $arch = if ($rid -ceq "win-arm64") { "arm64" } else { "x64" }
+            $output = Join-Path $storeDirectory "OpenBurnBar-${env:VERSION}-store-$arch.msix"
+            & windows/packaging/msix/New-MsixPackage.ps1 `
+              -PublishDir "publish/$rid" `
+              -Architecture $arch `
+              -Version $env:VERSION `
+              -OutputPath $output `
+              -MakeAppxPath '${{ steps.packaging-tools.outputs.makeappx }}' `
+              -MakePriPath '${{ steps.packaging-tools.outputs.makepri }}' `
+              -DistributionChannel MicrosoftStore `
+              -PackageName $identity.packageIdentityName `
+              -PackageDisplayName $identity.productName `
+              -Publisher $identity.publisher `
+              -PublisherDisplayName $identity.publisherDisplayName `
+              -StoreProductId $identity.productId
+            & windows/packaging/msix/Test-MsixPackageIdentity.ps1 `
+              -PackagePath $output `
+              -ExpectedName $identity.packageIdentityName `
+              -ExpectedPublisher $identity.publisher `
+              -ExpectedDisplayName $identity.productName `
+              -ExpectedPublisherDisplayName $identity.publisherDisplayName `
+              -ExpectedVersion "${env:VERSION}.0" `
+              -ExpectedArchitecture $arch `
+              -SignatureExpectation Unsigned `
+              -DistributionChannel MicrosoftStore `
+              -StoreProductId $identity.productId `
+              -MakeAppxPath '${{ steps.packaging-tools.outputs.makeappx }}'
+            $file = Get-Item -LiteralPath $output
+            $packages += [ordered]@{
+              architecture = $arch
+              fileName = $file.Name
+              sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              sizeBytes = $file.Length
+            }
+          }
+
+          $submission = [ordered]@{
+            schemaVersion = "openburnbar.windows.store-submission.v1"
+            release = [ordered]@{
+              version = $env:VERSION
+              sourceCommit = $env:RELEASE_COMMIT
+            }
+            product = [ordered]@{
+              productId = $identity.productId
+              productName = $identity.productName
+              packageIdentityName = $identity.packageIdentityName
+              publisher = $identity.publisher
+              publisherDisplayName = $identity.publisherDisplayName
+              packageFamilyName = $identity.packageFamilyName
+              packageSid = $identity.packageSid
+              msaAppId = $identity.msaAppId
+            }
+            packages = $packages
+            signing = [ordered]@{
+              submissionState = "unsigned"
+              finalSigner = "Microsoft Store"
+            }
+          }
+          $manifestPath = Join-Path $env:GITHUB_WORKSPACE "artifacts/store-submission-v${env:VERSION}.json"
+          $submission |
+            ConvertTo-Json -Depth 6 |
+            Set-Content -LiteralPath $manifestPath -Encoding utf8NoBOM
+
+      - name: Authenticode sign the direct-download MSIX
         if: steps.config.outputs.codesign == 'true'
         uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
@@ -353,7 +795,7 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
-      - name: Verify MSIX Authenticode signatures
+      - name: Verify direct-download MSIX Authenticode signatures
         if: steps.config.outputs.codesign == 'true'
         shell: pwsh
         run: |
@@ -383,7 +825,69 @@ jobs:
             Write-Host "MSIX Authenticode valid: $relativePath :: $($signature.SignerCertificate.Subject)"
           }
 
+      - name: Verify Microsoft Store MSIX identity and unsigned state
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $identity = Get-Content `
+            -LiteralPath "windows/packaging/msix/store-identity.json" `
+            -Raw |
+            ConvertFrom-Json
+          foreach ($arch in @("x64", "arm64")) {
+            $packagePath = "artifacts/store/OpenBurnBar-${env:VERSION}-store-$arch.msix"
+            & windows/packaging/msix/Test-MsixPackageIdentity.ps1 `
+              -PackagePath $packagePath `
+              -ExpectedName $identity.packageIdentityName `
+              -ExpectedPublisher $identity.publisher `
+              -ExpectedDisplayName $identity.productName `
+              -ExpectedPublisherDisplayName $identity.publisherDisplayName `
+              -ExpectedVersion "${env:VERSION}.0" `
+              -ExpectedArchitecture $arch `
+              -SignatureExpectation Unsigned `
+              -DistributionChannel MicrosoftStore `
+              -StoreProductId $identity.productId `
+              -MakeAppxPath '${{ steps.packaging-tools.outputs.makeappx }}'
+          }
+
+      - name: Exercise signed x64 MSIX install and sustained-launch lifecycle
+        if: steps.config.outputs.codesign == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expectedPublisher = "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+          $packagePath = Join-Path $env:GITHUB_WORKSPACE "artifacts/OpenBurnBar-${env:VERSION}-x64.msix"
+          $receiptPath = Join-Path $env:GITHUB_WORKSPACE "artifacts/signed-x64-msix-lifecycle.json"
+          & windows/packaging/msix/Test-SignedMsixLifecycle.ps1 `
+            -PackagePath $packagePath `
+            -ExpectedVersion "${env:VERSION}.0" `
+            -ExpectedArchitecture X64 `
+            -ExpectedPublisher $expectedPublisher `
+            -ReceiptPath $receiptPath `
+            -HoldSeconds 20
+
+      - name: Write physical-certification artifact manifests
+        if: steps.config.outputs.codesign == 'true'
+        env:
+          RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+          EXPECTED_PUBLISHER: "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+        run: |
+          set -euo pipefail
+          workflow_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          for arch in x64 ARM64; do
+            file_arch="${arch,,}"
+            node scripts/windows-port/write-signed-artifact-manifest.mjs \
+              --artifact "artifacts/OpenBurnBar-${VERSION}-${file_arch}.msix" \
+              --architecture "$arch" \
+              --source-commit "$RELEASE_COMMIT" \
+              --workflow-run-id "$GITHUB_RUN_ID" \
+              --workflow-run-url "$workflow_url" \
+              --signature-identity "$EXPECTED_PUBLISHER" \
+              --output "artifacts/signed-artifact-${file_arch}.json"
+          done
+
       - name: Finalize checksums after signing
+        env:
+          CODESIGN_ENABLED: ${{ steps.config.outputs.codesign }}
         run: |
           set -euo pipefail
           checksum_file="checksums-windows-v${VERSION}.txt"
@@ -392,9 +896,25 @@ jobs:
             "OpenBurnBar-${VERSION}-win-x64.zip" \
             "OpenBurnBar-${VERSION}-win-arm64.zip" \
             "OpenBurnBar-${VERSION}-x64.msix" \
-            "OpenBurnBar-${VERSION}-arm64.msix"; do
+            "OpenBurnBar-${VERSION}-arm64.msix" \
+            "store/OpenBurnBar-${VERSION}-store-x64.msix" \
+            "store/OpenBurnBar-${VERSION}-store-arm64.msix" \
+            "store-submission-v${VERSION}.json"; do
+            if [[ ! -f "artifacts/$file" ]]; then
+              echo "::error::Mandatory Windows release package is missing: artifacts/$file"
+              exit 1
+            fi
             ( cd artifacts && sha256sum "$file" >> "$checksum_file" )
           done
+          if [[ "$CODESIGN_ENABLED" == "true" ]]; then
+            for file in "signed-artifact-x64.json" "signed-artifact-arm64.json"; do
+              if [[ ! -f "artifacts/$file" ]]; then
+                echo "::error::Signed release certification manifest is missing: artifacts/$file"
+                exit 1
+              fi
+              ( cd artifacts && sha256sum "$file" >> "$checksum_file" )
+            done
+          fi
           echo "Checksums:"
           cat "artifacts/${checksum_file}"
 
@@ -447,6 +967,50 @@ jobs:
             --created-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --pub-date "$(date -u '+%a, %d %b %Y %H:%M:%S GMT')"
 
+      - name: Build deterministic canonical Windows release bundle
+        if: steps.config.outputs.updatekey == 'true'
+        env:
+          RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          # The update feed, appcast, and latest metadata now exist above. The
+          # deterministic create-windows-domain-core-release-bundle.py bundler is
+          # the SINGLE canonical authority for OpenBurnBar-${VERSION}-windows-release.zip:
+          # it builds the bundle only after the three updater-metadata files are
+          # present and validates that they bind the exact signed app packages.
+          # Stage a clean input directory containing exactly the four app packages
+          # plus the three metadata files plus a four-package-only checksums file,
+          # so the bundler's strict parse_checksums passes (the build artifacts/
+          # checksums file also covers store MSIX + submission JSON, which the
+          # bundler would reject as unexpected members).
+          bundle_input="$RUNNER_TEMP/windows-canonical-bundle-input"
+          rm -rf "$bundle_input"
+          mkdir -p "$bundle_input"
+          cp \
+            "artifacts/OpenBurnBar-${VERSION}-win-x64.zip" \
+            "artifacts/OpenBurnBar-${VERSION}-win-arm64.zip" \
+            "artifacts/OpenBurnBar-${VERSION}-x64.msix" \
+            "artifacts/OpenBurnBar-${VERSION}-arm64.msix" \
+            "artifacts/windows-update-feed-v${VERSION}.json" \
+            "artifacts/appcast-windows.xml" \
+            "artifacts/latest-windows.json" \
+            "$bundle_input/"
+          canonical_checksums="$bundle_input/checksums-windows-v${VERSION}.txt"
+          : > "$canonical_checksums"
+          for file in \
+            "OpenBurnBar-${VERSION}-win-x64.zip" \
+            "OpenBurnBar-${VERSION}-win-arm64.zip" \
+            "OpenBurnBar-${VERSION}-x64.msix" \
+            "OpenBurnBar-${VERSION}-arm64.msix"; do
+            ( cd "$bundle_input" && sha256sum "$file" >> "checksums-windows-v${VERSION}.txt" )
+          done
+          python3 scripts/ci/create-windows-domain-core-release-bundle.py \
+            --source-dir "$bundle_input" \
+            --output "artifacts/OpenBurnBar-${VERSION}-windows-release.zip" \
+            --version "$VERSION" --commit "$RELEASE_COMMIT"
+          ( cd artifacts && sha256sum "OpenBurnBar-${VERSION}-windows-release.zip" >> "checksums-windows-v${VERSION}.txt" )
+          test -s "artifacts/OpenBurnBar-${VERSION}-windows-release.zip"
+
       - name: Upload Windows release artifacts
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
@@ -455,11 +1019,20 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload observed Windows Rust identity
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-windows-observed-identity-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-windows-observed-identity.json
+          if-no-files-found: error
+          retention-days: 90
+
   # ── Supply chain: SBOM (SPDX) + OpenVEX + keyless Sigstore over the artifacts ─
   supply-chain:
     name: SBOM + OpenVEX + Sigstore
     needs:
       - resolve-release
+      - domain-core-native-release-gate
       - build-sign
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -471,9 +1044,17 @@ jobs:
         shell: bash
     env:
       VERSION: ${{ needs.resolve-release.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+      RELEASE_TAG: windows-v${{ needs.resolve-release.outputs.version }}
+      PROFILE: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}
+      SIGNER_RUN_ID: ${{ needs.domain-core-native-release-gate.outputs.signer_run_id }}
+      SIGNER_RUN_ATTEMPT: ${{ needs.domain-core-native-release-gate.outputs.signer_run_attempt }}
     steps:
-      - name: Check out repository
+      - name: Check out authorized release commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_commit }}
+          fetch-depth: 0
 
       - name: Download Windows release artifacts
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
@@ -486,7 +1067,7 @@ jobs:
           set -euo pipefail
           mkdir -p sbom-input
           shopt -s nullglob
-          archives=(artifacts/*.zip artifacts/*.msix)
+          archives=(artifacts/*.zip artifacts/*.msix artifacts/store/*.msix)
           if [[ "${#archives[@]}" -eq 0 ]]; then
             echo "::error::No Windows packages are available for SBOM generation."
             exit 1
@@ -606,9 +1187,78 @@ jobs:
 
           attest "$sbom"
           attest "$vex"
-          for f in artifacts/*; do
-            [[ -f "$f" ]] && attest "$f"
-          done
+          while IFS= read -r -d '' f; do
+            attest "$f"
+          done < <(find artifacts -type f -print0 | sort -z)
+
+      - name: Download exact verified candidate chain
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: domain-core-windows-release-gate-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate
+
+      - name: Create candidate-bound Windows v2 domain-core evidence
+        id: windows-evidence-plan
+        run: |
+          set -euo pipefail
+          artifact="artifacts/OpenBurnBar-${VERSION}-windows-release.zip"
+          test -s "$artifact"
+          gate_dir="$RUNNER_TEMP/domain-core-native-release-gate"
+          # Consume the canonical native release evidence plan/gate output that
+          # actually lists Windows domains. create-domain-core-native-release-evidence.mjs
+          # derives the canonical Windows domain set from RELEASE_CONSUMERS +
+          # the selected profile (nativeEvidenceDomains), NOT from the flat
+          # activation JSON's .domains[] selector. The gate has already validated
+          # the activation, candidate bundle, promotion attestation, and rollback
+          # against the exact candidate C, release commit P, and signed profile.
+          evidence_dir="$RUNNER_TEMP/domain-core-windows-candidate-evidence"
+          node scripts/ci/create-domain-core-native-release-evidence.mjs \
+            --consumer windows \
+            --artifact "$artifact" \
+            --version "$VERSION" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --profile-name "$PROFILE" \
+            --profile "$gate_dir/domain-core-selected-public-profile.json" \
+            --activation "$gate_dir/domain-core-activation.json" \
+            --candidate-bundle "$gate_dir/source/domain-core-candidate-bundle.json" \
+            --promotion-attestation "$gate_dir/promotion/domain-core-promotion-attestation.sigstore.jsonl" \
+            --protected-signer-run-id "$SIGNER_RUN_ID" \
+            --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
+            --rollback-artifact "$gate_dir/source/domain-core-public-production-rollback.json" \
+            --output-dir "$evidence_dir" \
+            --github-output "$GITHUB_OUTPUT"
+          # The generator writes the canonical plan to
+          # $evidence_dir/domain-core-native-evidence-plan.json (see
+          # create-domain-core-native-release-evidence.mjs writeCreateOnly).
+          plan="$evidence_dir/domain-core-native-evidence-plan.json"
+          test -s "$plan"
+          # Fail closed against the canonical Windows consumer domain set. An
+          # all-legacy public-production profile legitimately has no native
+          # predicates before first activation; once quota and/or CloudVault is
+          # Rust-active, the plan must contain exactly those native domains.
+          expected_native_set="$(
+            jq -c '[.modes | to_entries[] | select(
+              (.key == "quota" or .key == "cloudVault") and .value == "rust"
+            ) | .key] | sort' "$gate_dir/domain-core-selected-public-profile.json"
+          )"
+          jq -e --argjson expected "$expected_native_set" \
+            '.schemaVersion == 2 and .consumer == "windows" and ([.domains[].domain] | sort) == $expected' \
+            "$plan" >/dev/null
+          domain_count="$(jq '.domains | length' "$plan")"
+          echo "Windows domain-core evidence plan: $domain_count domain(s) from canonical generator"
+          # Write predicate paths to a real file before iteration so a jq
+          # producer failure propagates through set -e instead of disappearing
+          # behind a successful while loop.
+          predicate_list="$RUNNER_TEMP/domain-core-windows-predicate-paths.txt"
+          jq -r '.domains[].predicatePath' "$plan" > "$predicate_list"
+          while IFS= read -r predicate; do
+            cosign attest-blob --yes \
+              --type https://openburnbar.dev/attestations/domain-core-release-artifact/v2 \
+              --predicate "$predicate" \
+              --bundle "${predicate}.sigstore.json" \
+              "$artifact"
+          done < "$predicate_list"
 
       - name: Upload provenance bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
@@ -618,5 +1268,201 @@ jobs:
             sbom-windows-v${{ needs.resolve-release.outputs.version }}.spdx.json
             openburnbar-windows-v${{ needs.resolve-release.outputs.version }}.vex.json
             provenance-windows-v${{ needs.resolve-release.outputs.version }}/
+            ${{ runner.temp }}/domain-core-windows-candidate-evidence/
           if-no-files-found: error
           retention-days: 7
+
+  domain-core-windows-release-evidence:
+    name: Publish immutable Shared Rust Windows release evidence
+    needs:
+      - resolve-release
+      - domain-core-native-release-gate
+      - build-sign
+      - supply-chain
+    if: ${{ needs.build-sign.outputs.signed_release == 'true' && needs.supply-chain.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: windows-release
+    permissions:
+      actions: read
+      attestations: write
+      contents: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.resolve-release.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
+      RELEASE_TAG: windows-v${{ needs.resolve-release.outputs.version }}
+      PROFILE: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}
+    steps:
+      - name: Check out exact Windows stable release commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download exact signed Windows artifacts
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: windows-release-v${{ needs.resolve-release.outputs.version }}
+          path: ${{ runner.temp }}/windows-release-input
+
+      - name: Download exact verified candidate chain
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: domain-core-windows-release-gate-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate
+
+      - name: Download observed Windows Rust identity
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: domain-core-windows-observed-identity-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-windows-identity
+
+      - name: Verify both published profile receipts and loaded Rust identity
+        run: |
+          set -euo pipefail
+          for rid in win-x64 win-arm64; do
+            package="$RUNNER_TEMP/windows-release-input/OpenBurnBar-${VERSION}-${rid}.zip"
+            directory="$RUNNER_TEMP/windows-profile-${rid}"
+            mkdir -p "$directory"
+            unzip -q "$package" -d "$directory"
+            node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+              --profile "$PROFILE" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" \
+              --windows-dir "$directory"
+          done
+          node scripts/ci/verify-domain-core-observed-identity.mjs \
+            --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
+            --observed-identity "$RUNNER_TEMP/domain-core-windows-identity/domain-core-windows-observed-identity.json" \
+            --binary "$RUNNER_TEMP/windows-profile-win-x64/openburnbar_domain_ffi.dll"
+
+      - name: Build deterministic x64 and ARM64 canonical release bundle
+        id: bundle
+        run: |
+          set -euo pipefail
+          # Rebuild deterministically, then byte-compare with the canonical bundle
+          # uploaded by build-sign. The evidence plan must attest the exact shipped
+          # archive, not an independently reconstructed lookalike.
+          # The deterministic Python bundler remains the single canonical authority.
+          # Run it against a clean directory with four app packages, three metadata files, and a
+          # four-package-only checksums file (the downloaded artifacts/
+          # checksums file also covers store MSIX + submission JSON, which the
+          # bundler would reject as unexpected members).
+          bundle_input="$RUNNER_TEMP/windows-canonical-bundle-input"
+          rm -rf "$bundle_input"
+          mkdir -p "$bundle_input"
+          cp \
+            "$RUNNER_TEMP/windows-release-input/OpenBurnBar-${VERSION}-win-x64.zip" \
+            "$RUNNER_TEMP/windows-release-input/OpenBurnBar-${VERSION}-win-arm64.zip" \
+            "$RUNNER_TEMP/windows-release-input/OpenBurnBar-${VERSION}-x64.msix" \
+            "$RUNNER_TEMP/windows-release-input/OpenBurnBar-${VERSION}-arm64.msix" \
+            "$RUNNER_TEMP/windows-release-input/windows-update-feed-v${VERSION}.json" \
+            "$RUNNER_TEMP/windows-release-input/appcast-windows.xml" \
+            "$RUNNER_TEMP/windows-release-input/latest-windows.json" \
+            "$bundle_input/"
+          : > "$bundle_input/checksums-windows-v${VERSION}.txt"
+          for file in \
+            "OpenBurnBar-${VERSION}-win-x64.zip" \
+            "OpenBurnBar-${VERSION}-win-arm64.zip" \
+            "OpenBurnBar-${VERSION}-x64.msix" \
+            "OpenBurnBar-${VERSION}-arm64.msix"; do
+            ( cd "$bundle_input" && sha256sum "$file" >> "checksums-windows-v${VERSION}.txt" )
+          done
+          artifact="$RUNNER_TEMP/OpenBurnBar-${VERSION}-windows-release.zip"
+          python3 scripts/ci/create-windows-domain-core-release-bundle.py \
+            --source-dir "$bundle_input" \
+            --output "$artifact" --version "$VERSION" --commit "$RELEASE_COMMIT"
+          shipped="$RUNNER_TEMP/windows-release-input/OpenBurnBar-${VERSION}-windows-release.zip"
+          test -s "$shipped"
+          cmp -s "$artifact" "$shipped" || {
+            echo "::error::Rebuilt canonical Windows bundle differs from the shipped build-sign artifact."
+            exit 1
+          }
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+
+      - name: Create Windows v2 release predicates
+        id: windows-plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNER_RUN_ID: ${{ needs.domain-core-native-release-gate.outputs.signer_run_id }}
+          SIGNER_RUN_ATTEMPT: ${{ needs.domain-core-native-release-gate.outputs.signer_run_attempt }}
+        run: |
+          node scripts/ci/create-domain-core-native-release-evidence.mjs \
+            --consumer windows --artifact "${{ steps.bundle.outputs.artifact }}" \
+            --version "$VERSION" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" \
+            --profile-name "$PROFILE" \
+            --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
+            --activation "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-activation.json" \
+            --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
+            --promotion-attestation "$RUNNER_TEMP/domain-core-native-release-gate/promotion/domain-core-promotion-attestation.sigstore.jsonl" \
+            --protected-signer-run-id "$SIGNER_RUN_ID" \
+            --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
+            --rollback-artifact "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-public-production-rollback.json" \
+            --output-dir "$RUNNER_TEMP/domain-core-windows-evidence" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Attest Windows quota predicate
+        id: attest-windows-quota
+        if: steps.windows-plan.outputs.domain_quota == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ steps.bundle.outputs.artifact }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-windows-evidence/OpenBurnBar-${{ needs.resolve-release.outputs.version }}-windows-quota-domain-core.predicate.json
+
+      - name: Attest Windows CloudVault predicate
+        id: attest-windows-cloud-vault
+        if: steps.windows-plan.outputs.domain_cloud_vault == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ steps.bundle.outputs.artifact }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
+          predicate-path: ${{ runner.temp }}/domain-core-windows-evidence/OpenBurnBar-${{ needs.resolve-release.outputs.version }}-windows-cloudVault-domain-core.predicate.json
+
+      - name: Stage deterministic attestation bundle names
+        env:
+          QUOTA_BUNDLE: ${{ steps.attest-windows-quota.outputs.bundle-path }}
+          CLOUD_VAULT_BUNDLE: ${{ steps.attest-windows-cloud-vault.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          bundle_dir="$RUNNER_TEMP/domain-core-windows-evidence/bundles"
+          mkdir -p "$bundle_dir"
+          if [[ -n "$QUOTA_BUNDLE" ]]; then
+            cp "$QUOTA_BUNDLE" "$bundle_dir/OpenBurnBar-${VERSION}-windows-quota-domain-core.sigstore.json"
+          fi
+          if [[ -n "$CLOUD_VAULT_BUNDLE" ]]; then
+            cp "$CLOUD_VAULT_BUNDLE" "$bundle_dir/OpenBurnBar-${VERSION}-windows-cloudVault-domain-core.sigstore.json"
+          fi
+
+      - name: Prepare exact stable Windows GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/ci/ensure-windows-domain-core-release.mjs \
+            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" --phase prepare
+
+      - name: Publish create-only Windows evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          manifest="$RUNNER_TEMP/domain-core-windows-evidence/publication.json"
+          node scripts/ci/create-domain-core-native-publication.mjs \
+            --plan "${{ steps.windows-plan.outputs.plan_path }}" \
+            --bundle-dir "$RUNNER_TEMP/domain-core-windows-evidence/bundles" \
+            --output "$manifest"
+          node scripts/ci/publish-domain-core-release-evidence.mjs --manifest "$manifest"
+
+      - name: Retain exact Windows evidence and rollback chain
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-windows-release-evidence-${{ needs.domain-core-native-release-gate.outputs.profile_name }}-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/domain-core-windows-evidence/
+            ${{ steps.bundle.outputs.artifact }}
+            ${{ runner.temp }}/domain-core-native-release-gate/domain-core-native-release-gate.json
+            ${{ runner.temp }}/domain-core-native-release-gate/domain-core-selected-public-profile.json
+            ${{ runner.temp }}/domain-core-native-release-gate/source/domain-core-public-production-rollback.json
+            ${{ runner.temp }}/domain-core-windows-identity/
+          if-no-files-found: error
+          retention-days: 90

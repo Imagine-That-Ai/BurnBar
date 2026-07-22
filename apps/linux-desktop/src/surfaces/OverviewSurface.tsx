@@ -5,6 +5,7 @@ import {
   DashboardLayoutShell,
   type DashboardSurfaceState
 } from '../dashboard/DashboardLayoutShell.js';
+import { DASHBOARD_LAYOUT_META } from '../dashboard/dashboardLayout.js';
 import { useDashboardLayoutStore } from '../state/dashboardLayoutStore.js';
 import { useDaemonStatusCopy, useShellStore } from '../state/shellStore.js';
 import { useOverviewStore } from '../state/overviewStore.js';
@@ -146,6 +147,13 @@ export function OverviewSurface() {
       </DashboardLayoutShell>
 
       <p className="overview-provenance muted" role="status">
+        Layout: {DASHBOARD_LAYOUT_META[layout].displayName}
+        {DASHBOARD_LAYOUT_META[layout].isKernelForward ? ' · kernel-forward' : ''}
+        {' · '}
+        shell: {shellState}
+        {' · '}
+        content: atelier-shared
+        {' · '}
         Data source: {fixtureMode ? 'fixture transcript' : bridge ? 'live daemon' : 'unavailable'} ·{' '}
         <button type="button" className="overview-reconnect-link" disabled={healthBusy} onClick={reconnect}>
           {healthBusy ? 'Reconnecting…' : 'Reconnect'}

@@ -8,13 +8,12 @@ shared `packages/` — nothing here collides with those trees.
 This tree now carries **real product code** (~950 `.cs`/`.xaml` source files, ~126K LOC): a full
 WinUI 3 shell + views, portable `net8.0` cores for every subsystem, and ~27 test projects that run
 on real Windows CI (x64 + ARM64, [`pr-windows-full.yml`](../.github/workflows/pr-windows-full.yml)).
-**Honest status:** the portable-logic layer is broad and genuinely tested, but the OS-integration
-halves (live cloud, TPM App Check, input synthesis, Win2D GPU render, WebView2 hosts, MSIX
-signing, auto-update round-trip) are explicitly *deferred* — see the per-tree notes below and the
-authoritative status ledger in
-[`docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md`](../docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md)
-plus the gap/remediation plan in
-[`docs/windows-port/PARITY_100_REMEDIATION_PLAN.md`](../docs/windows-port/PARITY_100_REMEDIATION_PLAN.md).
+**Current status:** the portable-logic layer is broad and genuinely tested, but the Windows product
+does not yet have full macOS parity. The independent source audit is the current gap and remediation
+plan: [`WINDOWS_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`](../docs/windows-port/WINDOWS_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md).
+The [`PARITY_CERTIFICATION_BUNDLE.md`](../docs/windows-port/PARITY_CERTIFICATION_BUNDLE.md) and
+[`WINDOWS_PARITY_LEDGER.yml`](../docs/windows-port/WINDOWS_PARITY_LEDGER.yml) remain scoped evidence,
+not end-to-end product certification.
 
 ## Layout
 
@@ -73,3 +72,18 @@ self-enforcing.
 
 `windows/` is owned in [`.github/CODEOWNERS`](../.github/CODEOWNERS); PRs to this tree carry the
 `area: Windows` label ([`.github/labels.yml`](../.github/labels.yml)).
+
+## Full-suite gate note (WS-D D3 proof closure)
+
+The blocking full-suite gate is [`.github/workflows/pr-windows-full.yml`](../.github/workflows/pr-windows-full.yml):
+two parallel legs (`windows-latest` x64 + `windows-11-arm` ARM64) that run `dotnet restore`, a full
+`dotnet build` of [`OpenBurnBar.sln`](OpenBurnBar.sln), and the full `dotnet test` suite (~2,545 C#
+fixtures) on each architecture, aggregating into the single `PR Windows Full Gate` status.
+
+Its `detect-windows-full-changes` job is path-filtered: the x64 + ARM64 legs run only when a change
+touches `windows/**`, the crate-side C# uniffi bindings, `OpenBurnBarCore/.../Resources/`,
+`AgentLensTests/Fixtures/`, or the workflow file itself. A bare `workflow_dispatch` against `main`
+resolves `git diff HEAD^1 HEAD` — which on `main` sees only the last merge commit — so it reports
+`windows=false` and the legs skip. To exercise both full legs on main-equivalent code, land a change
+that touches `windows/**` (this note does exactly that); the ARM64 leg's first green run must happen
+on the hosted `windows-11-arm` runner because it cannot be exercised on the macOS/x64 dev host.

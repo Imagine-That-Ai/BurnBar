@@ -138,6 +138,13 @@ const LOGOS: Record<string, string> = {
     font-size: 0.92rem;
     min-width: 720px;
   }
+  /* Keep the provider name + blurb column readable — without a floor the
+     long unbreakable source strings crush it to one word per line inside
+     the horizontal-scroll wrapper. */
+  tbody td:first-child,
+  thead th:first-child {
+    min-width: 230px;
+  }
   thead {
     background: rgba(255, 255, 255, 0.03);
   }

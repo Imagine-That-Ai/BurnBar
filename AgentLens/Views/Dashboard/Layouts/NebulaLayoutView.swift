@@ -30,7 +30,8 @@ extension DashboardView {
                     conceptDetailsDrawer(includesLiveCurve: false)
                 }
                 .padding(DesignSystem.Spacing.xl)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .frame(maxWidth: DashboardLayoutMetrics.contentMaxWidth, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
             .scrollContentBackground(.hidden)
         }

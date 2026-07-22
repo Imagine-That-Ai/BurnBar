@@ -13,21 +13,24 @@
     files / hinting / subpixel rounding, which is exactly risk R22
     (docs/windows-port/design/0005-pretext-webview2-metric-parity.md).
 
-    The corpus pins `Arial`, which ships on BOTH Windows and macOS, so the Mac
-    golden is capturable and the Windows run needs no bundled font. For EXACT
-    parity in production, drop a single `.woff2` into this folder and reference it
-    identically on both platforms via the @font-face seam below (uncomment + point
-    `src` at the bundled file); then repin the corpus `font` strings to that family.
+    The parity corpus remains pinned to Arial. The production chat surface measures
+    with the same bundled Geist and JetBrains Mono files that WinUI renders; the
+    Windows host stages those files beside this shell before navigation.
   */
-  /*
   @font-face {
-    font-family: "OBBPretextPinned";
-    src: url("pretext-pinned.woff2") format("woff2");
+    font-family: "Geist";
+    src: url("fonts/geist.ttf") format("truetype");
     font-weight: 100 900;
     font-style: normal;
     font-display: block;
   }
-  */
+  @font-face {
+    font-family: "JetBrains Mono";
+    src: url("fonts/jetbrains-mono.ttf") format("truetype");
+    font-weight: 100 800;
+    font-style: normal;
+    font-display: block;
+  }
   html, body {
     margin: 0;
     padding: 0;
@@ -240,9 +243,21 @@
         }
       };
 
-      // Signal readiness once Pretext is loaded (heartbeat id === 0).
+      // Signal readiness only after the production measurement fonts are loaded.
+      // If either file is absent/corrupt, the host stays unavailable and WinUI keeps
+      // the RichTextBlock fallback instead of accepting mismatched line breaks.
       if (hasBridge()) {
-        window.chrome.webview.postMessage({ id: 0, ok: true, value: { ready: true } });
+        Promise.all([
+          document.fonts.load("400 14px Geist"),
+          document.fonts.load("500 13px 'JetBrains Mono'")
+        ]).then(function (loadedFaces) {
+          if (loadedFaces.some(function (faces) { return faces.length === 0; })) {
+            throw new Error("Bundled Pretext fonts did not load");
+          }
+          window.chrome.webview.postMessage({ id: 0, ok: true, value: { ready: true } });
+        }).catch(function (error) {
+          window.chrome.webview.postMessage({ id: 0, ok: false, error: String(error) });
+        });
       }
     })();
   </script>

@@ -1,0 +1,215 @@
+﻿Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\ipc\bin\Release\net10.0\OpenBurnBar.Pal.Ipc.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\ipc\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    20, Skipped:     0, Total:    20, Duration: 354 ms - OpenBurnBar.Pal.Ipc.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\theme\bin\Release\net10.0\OpenBurnBar.App.Theme.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\theme\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    70, Skipped:     0, Total:    70, Duration: 493 ms - OpenBurnBar.App.Theme.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\onboarding\bin\Release\net10.0\OpenBurnBar.App.Onboarding.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\onboarding\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    77, Skipped:     0, Total:    77, Duration: 429 ms - OpenBurnBar.App.Onboarding.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\storage\OpenBurnBar.Storage.Tests\bin\Release\net10.0\OpenBurnBar.Storage.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\storage\OpenBurnBar.Storage.Tests\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    21, Skipped:     0, Total:    21, Duration: 12 s - OpenBurnBar.Storage.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\pretext\OpenBurnBar.Pretext.Tests\bin\Release\net10.0\OpenBurnBar.Pretext.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.21]     OpenBurnBar.Pretext.Tests.MetricParityHarnessTests.Live_webview2_matches_mac_golden_within_tolerance [SKIP]
+  Skipped OpenBurnBar.Pretext.Tests.MetricParityHarnessTests.Live_webview2_matches_mac_golden_within_tolerance [1 ms]
+Results File: C:\candidate-7c36229823-rehearsal4\windows\pretext\OpenBurnBar.Pretext.Tests\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    38, Skipped:     1, Total:    39, Duration: 366 ms - OpenBurnBar.Pretext.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\shell\bin\Release\net10.0\OpenBurnBar.App.Shell.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\shell\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    49, Skipped:     0, Total:    49, Duration: 321 ms - OpenBurnBar.App.Shell.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\components\bin\Release\net10.0\OpenBurnBar.App.Components.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\components\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:   181, Skipped:     0, Total:   181, Duration: 231 ms - OpenBurnBar.App.Components.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\settings\OpenBurnBar.App.Settings.Tests\bin\Release\net10.0\OpenBurnBar.App.Settings.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\settings\OpenBurnBar.App.Settings.Tests\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    75, Skipped:     0, Total:    75, Duration: 203 ms - OpenBurnBar.App.Settings.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\settings\OpenBurnBar.App.Settings.ViewModels.Tests\bin\Release\net10.0\OpenBurnBar.App.Settings.ViewModels.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\settings\OpenBurnBar.App.Settings.ViewModels.Tests\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:   128, Skipped:     0, Total:   128, Duration: 393 ms - OpenBurnBar.App.Settings.ViewModels.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\presentation\bin\Release\net10.0\OpenBurnBar.App.Presentation.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\presentation\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:   742, Skipped:     0, Total:   742, Duration: 13 s - OpenBurnBar.App.Presentation.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\dashboard\bin\Release\net10.0\OpenBurnBar.App.Dashboard.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\dashboard\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    75, Skipped:     0, Total:    75, Duration: 246 ms - OpenBurnBar.App.Dashboard.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\computeruse\bin\Release\net10.0\OpenBurnBar.ComputerUse.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\computeruse\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:   111, Skipped:     0, Total:   111, Duration: 611 ms - OpenBurnBar.ComputerUse.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\input\bin\Release\net10.0\OpenBurnBar.Pal.Input.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\input\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    66, Skipped:     0, Total:    66, Duration: 491 ms - OpenBurnBar.Pal.Input.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\pet\bin\Release\net10.0\OpenBurnBar.App.Pet.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\pet\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    74, Skipped:     0, Total:    74, Duration: 354 ms - OpenBurnBar.App.Pet.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\integrations-cast\bin\Release\net10.0\OpenBurnBar.Integrations.Cast.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\integrations-cast\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    79, Skipped:     0, Total:    79, Duration: 191 ms - OpenBurnBar.Integrations.Cast.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\integrations\OpenBurnBar.Integrations.Tests\bin\Release\net10.0\OpenBurnBar.Integrations.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\integrations\OpenBurnBar.Integrations.Tests\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:   163, Skipped:     0, Total:   163, Duration: 450 ms - OpenBurnBar.Integrations.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\mercury\bin\Release\net10.0\OpenBurnBar.Integrations.Mercury.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\mercury\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:   152, Skipped:     0, Total:   152, Duration: 273 ms - OpenBurnBar.Integrations.Mercury.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\cloudsync\OpenBurnBar.CloudSync.Tests\bin\Release\net10.0\OpenBurnBar.CloudSync.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\cloudsync\OpenBurnBar.CloudSync.Tests\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:   113, Skipped:     0, Total:   113, Duration: 502 ms - OpenBurnBar.CloudSync.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\cloudsync\bin\Release\net10.0\OpenBurnBar.CloudSync.Crypto.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\cloudsync\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    45, Skipped:     0, Total:    45, Duration: 724 ms - OpenBurnBar.CloudSync.Crypto.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\cloudsync-appcheck\bin\Release\net10.0\OpenBurnBar.CloudSync.AppCheck.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\cloudsync-appcheck\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    55, Skipped:     0, Total:    55, Duration: 178 ms - OpenBurnBar.CloudSync.AppCheck.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\quota\bin\Release\net10.0\OpenBurnBar.App.Quota.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\quota\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    21, Skipped:     0, Total:    21, Duration: 265 ms - OpenBurnBar.App.Quota.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\dist\bin\Release\net10.0\OpenBurnBar.Dist.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\dist\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    97, Skipped:     0, Total:    97, Duration: 629 ms - OpenBurnBar.Dist.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\updater\bin\Release\net10.0\OpenBurnBar.Updater.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\updater\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    94, Skipped:     0, Total:    94, Duration: 492 ms - OpenBurnBar.Updater.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\cloudsync-app\bin\Release\net10.0\OpenBurnBar.App.CloudSync.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\cloudsync-app\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    59, Skipped:     0, Total:    59, Duration: 1 s - OpenBurnBar.App.CloudSync.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\configuration\bin\Release\net10.0\OpenBurnBar.App.Configuration.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\configuration\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    35, Skipped:     0, Total:    35, Duration: 1 s - OpenBurnBar.App.Configuration.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\engine-binding\bin\Release\net10.0\OpenBurnBar.EngineBinding.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\engine-binding\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 435 ms - OpenBurnBar.EngineBinding.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\chat\bin\Release\net10.0\OpenBurnBar.App.Chat.Runtime.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\chat\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    21, Skipped:     0, Total:    21, Duration: 1 s - OpenBurnBar.App.Chat.Runtime.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\storage\bin\Release\net10.0\OpenBurnBar.App.Storage.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\storage\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    18, Skipped:     0, Total:    18, Duration: 28 s - OpenBurnBar.App.Storage.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\native\bin\Release\net10.0\OpenBurnBar.Native.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.75]     OpenBurnBar.Native.Tests.IrohLoopbackTests.ParseBlobTicket_RejectsGarbage_WithTheTypedError [SKIP]
+[xUnit.net 00:00:00.75]     OpenBurnBar.Native.Tests.IrohLoopbackTests.ProtocolVersion_IsTheV1TheMacPeerSpeaks [SKIP]
+[xUnit.net 00:00:00.75]     OpenBurnBar.Native.Tests.IrohLoopbackTests.AuxiliaryAlpns_AreNonEmpty_AndDistinct [SKIP]
+[xUnit.net 00:00:00.75]     OpenBurnBar.Native.Tests.IrohLoopbackTests.OpenBurnBarAlpn_MatchesThePinnedConstant [SKIP]
+[xUnit.net 00:00:00.75]     OpenBurnBar.Native.Tests.IrohLoopbackTests.GenerateSecretKeyMaterial_Returns32FreshBytes [SKIP]
+[xUnit.net 00:00:00.75]     OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_RejectsAnInvalidSecretKey [SKIP]
+[xUnit.net 00:00:00.75]     OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_Identity_BeforeBootstrap_ThrowsTheTypedError [SKIP]
+[xUnit.net 00:00:00.75]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.Readiness_ReportsTheGen2Protocol [SKIP]
+[xUnit.net 00:00:00.75]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.QualityController_UpdatesThroughTheStatefulObjectPath [SKIP]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.ParseBlobTicket_RejectsGarbage_WithTheTypedError [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.ProtocolVersion_IsTheV1TheMacPeerSpeaks [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.AuxiliaryAlpns_AreNonEmpty_AndDistinct [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.OpenBurnBarAlpn_MatchesThePinnedConstant [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.GenerateSecretKeyMaterial_Returns32FreshBytes [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_RejectsAnInvalidSecretKey [1 ms]
+  Skipped OpenBurnBar.Native.Tests.IrohLoopbackTests.EndpointHandle_Identity_BeforeBootstrap_ThrowsTheTypedError [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.Readiness_ReportsTheGen2Protocol [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.QualityController_UpdatesThroughTheStatefulObjectPath [1 ms]
+[xUnit.net 00:00:00.75]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_Truncated_ThrowsTheTypedError [SKIP]
+[xUnit.net 00:00:00.75]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_OfTheGolden_ReturnsTheOriginal [SKIP]
+[xUnit.net 00:00:00.75]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.ModeRequiresPermission_MatchesTheEnginePolicyTable [SKIP]
+[xUnit.net 00:00:00.75]     OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.EncodeQualityDecision_MatchesTheCommittedGolden_AndFiresCallbacksInOrder [SKIP]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_Truncated_ThrowsTheTypedError [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.DecodeQualityDecision_OfTheGolden_ReturnsTheOriginal [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.ModeRequiresPermission_MatchesTheEnginePolicyTable [1 ms]
+  Skipped OpenBurnBar.Native.Tests.BurnBarRemoteLoopbackTests.EncodeQualityDecision_MatchesTheCommittedGolden_AndFiresCallbacksInOrder [1 ms]
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\native\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    15, Skipped:    13, Total:    28, Duration: 174 ms - OpenBurnBar.Native.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\quota-acquisition\bin\Release\net10.0\OpenBurnBar.App.Quota.Acquisition.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\quota-acquisition\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    57, Skipped:     0, Total:    57, Duration: 769 ms - OpenBurnBar.App.Quota.Acquisition.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\managed-agent-runtime\bin\Release\net10.0\OpenBurnBar.App.ManagedAgentRuntime.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\managed-agent-runtime\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    97, Skipped:     0, Total:    97, Duration: 184 ms - OpenBurnBar.App.ManagedAgentRuntime.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\cursor-connector\bin\Release\net10.0\OpenBurnBar.App.CursorConnector.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\cursor-connector\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    94, Skipped:     0, Total:    94, Duration: 276 ms - OpenBurnBar.App.CursorConnector.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\text-expansion\OpenBurnBar.App.TextExpansion.Tests\bin\Release\net10.0\OpenBurnBar.App.TextExpansion.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\text-expansion\OpenBurnBar.App.TextExpansion.Tests\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    82, Skipped:     0, Total:    82, Duration: 1 s - OpenBurnBar.App.TextExpansion.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\memory-search\OpenBurnBar.App.MemorySearch.Tests\bin\Release\net10.0\OpenBurnBar.App.MemorySearch.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\memory-search\OpenBurnBar.App.MemorySearch.Tests\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:   138, Skipped:     0, Total:   138, Duration: 289 ms - OpenBurnBar.App.MemorySearch.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\ui-automation\bin\Release\net10.0\OpenBurnBar.UiAutomationHarness.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\ui-automation\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    10, Skipped:     0, Total:    10, Duration: 289 ms - OpenBurnBar.UiAutomationHarness.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\usage-runtime\bin\Release\net10.0\OpenBurnBar.App.UsageRuntime.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\usage-runtime\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:     6, Skipped:     0, Total:     6, Duration: 1 s - OpenBurnBar.App.UsageRuntime.Tests.dll (net10.0)
+Test run for C:\candidate-7c36229823-rehearsal4\windows\tests\insights\bin\Release\net10.0\OpenBurnBar.App.Insights.Runtime.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+Results File: C:\candidate-7c36229823-rehearsal4\windows\tests\insights\TestResults\physical-certification.trx
+
+Passed!  - Failed:     0, Passed:    15, Skipped:     0, Total:    15, Duration: 374 ms - OpenBurnBar.App.Insights.Runtime.Tests.dll (net10.0)
+
+

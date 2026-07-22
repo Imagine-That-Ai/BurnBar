@@ -10,6 +10,10 @@ name: PR Windows Dist Gate
 #   • an END-TO-END signer round-trip through the OpenBurnBar.Dist.UpdateFeed.Tool CLI
 #     (gen-key → sign-entry → build-feed → verify-feed) asserting a good pin verifies and a
 #     WRONG pin is rejected (exit 2);
+#   • PowerShell AST parsing + wiring regression checks over the MSIX packager and
+#     signed lifecycle gate;
+#   • a Windows-hosted MakePri + MakeAppx smoke over real WinUI publish/XAML output
+#     for both sideload and Microsoft Store identities;
 #   • Python stdlib XML parsing over the packaging props (DLL-hardening flags must be
 #     well-formed XML without relying on runner-local xmllint packages);
 #   • scripts/verify-version-consistency.sh (the Windows version surface must stay consistent).
@@ -75,7 +79,7 @@ jobs:
           echo "${changed}"
 
           if echo "${changed}" | grep -Eq \
-            '^(windows/dist/|windows/tests/dist/|\.github/workflows/pr-windows-dist\.yml|\.github/workflows/openburnbar-release-windows\.yml|scripts/verify-version-consistency\.sh)'; then
+            '^(windows/dist/|windows/tests/dist/|windows/packaging/msix/|\.github/workflows/pr-windows-dist\.yml|\.github/workflows/openburnbar-release-windows\.yml|scripts/ci/verify-ops-script-hardening\.test\.mjs|scripts/verify-version-consistency\.sh)'; then
             echo "dist=true" >> "$GITHUB_OUTPUT"
             echo "Windows dist surface changed: running the real dist verification lane."
           else
@@ -85,7 +89,7 @@ jobs:
 
   # ── PR-GATED: real net8.0 verification of the distribution core ─────────────
   dist-verify:
-    name: Windows dist verify (test + sign/verify + xmllint)
+    name: Windows dist verify (test + sign/verify + packaging)
     needs: detect-dist-changes
     if: needs.detect-dist-changes.outputs.dist == 'true'
     runs-on: ubuntu-latest
@@ -143,6 +147,32 @@ jobs:
           fi
           echo "Wrong-pin verification correctly failed closed (exit $rc)."
 
+      - name: Parse MSIX packaging PowerShell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $files = @(Get-ChildItem windows/packaging/msix -Filter "*.ps1" -File)
+          if ($files.Count -lt 1) {
+            throw "No MSIX packaging PowerShell files were found."
+          }
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $file.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $errors | Format-List
+              throw "PowerShell parse failed: $($file.FullName)"
+            }
+            Write-Host "PowerShell parse OK: $($file.FullName)"
+          }
+
+      - name: Verify release and packaging wiring regressions
+        run: node scripts/ci/verify-ops-script-hardening.test.mjs
+
       - name: Lint packaging props (well-formed XML)
         run: |
           set -euo pipefail
@@ -161,12 +191,150 @@ jobs:
       - name: Verify version consistency (Windows surface included)
         run: bash scripts/verify-version-consistency.sh
 
+  msix-package-smoke:
+    name: Windows MSIX package identity smoke
+    needs: detect-dist-changes
+    if: needs.detect-dist-changes.outputs.dist == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Locate Windows SDK packaging tools
+        id: packaging-tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $makeappx = Get-ChildItem `
+            "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" `
+            -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          $makepri = Get-ChildItem `
+            "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makepri.exe" `
+            -ErrorAction SilentlyContinue |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $makeappx -or -not $makepri) {
+            throw "Windows SDK MakeAppx/MakePri tools are unavailable."
+          }
+          "makeappx=$makeappx" >> $env:GITHUB_OUTPUT
+          "makepri=$makepri" >> $env:GITHUB_OUTPUT
+
+      - name: Publish real WinUI packaging fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $publish = Join-Path $env:RUNNER_TEMP "openburnbar-msix-publish"
+          dotnet publish windows/app/OpenBurnBar.App/OpenBurnBar.App.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:Platform=x64 `
+            -p:WindowsPackageType=None `
+            -o $publish
+          if ($LASTEXITCODE -ne 0) {
+            throw "WinUI packaging fixture publish failed with exit code $LASTEXITCODE."
+          }
+
+          $appExecutable = Join-Path $publish "OpenBurnBar.App.exe"
+          $appPri = Join-Path $publish "OpenBurnBar.App.pri"
+          if (-not (Test-Path -LiteralPath $appExecutable -PathType Leaf) -or
+              -not (Test-Path -LiteralPath $appPri -PathType Leaf)) {
+            throw "WinUI publish did not produce the executable and component PRI required by the MSIX packager."
+          }
+
+          Copy-Item `
+            -LiteralPath $appExecutable `
+            -Destination (Join-Path $publish "OpenBurnBar.Cli.exe") `
+            -Force
+          foreach ($relativePath in @(
+            "ComputerUseWatchdog\OpenBurnBar.ComputerUse.Watchdog.exe",
+            "PrivilegedInput\OpenBurnBar.PrivilegedInput.exe"
+          )) {
+            $destination = Join-Path $publish $relativePath
+            New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+            Copy-Item -LiteralPath $appExecutable -Destination $destination -Force
+          }
+          "MSIX_SMOKE_PUBLISH=$publish" >> $env:GITHUB_ENV
+
+      - name: Build and inspect sideload and Store MSIX fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "1.0.0"
+          $directPublisher = "CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
+          $identity = Get-Content `
+            -LiteralPath "windows/packaging/msix/store-identity.json" `
+            -Raw |
+            ConvertFrom-Json
+          $output = Join-Path $env:RUNNER_TEMP "openburnbar-msix-output"
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+
+          $directPackage = Join-Path $output "OpenBurnBar-direct-x64.msix"
+          & windows/packaging/msix/New-MsixPackage.ps1 `
+            -PublishDir $env:MSIX_SMOKE_PUBLISH `
+            -Architecture x64 `
+            -Version $version `
+            -OutputPath $directPackage `
+            -MakeAppxPath '${{ steps.packaging-tools.outputs.makeappx }}' `
+            -MakePriPath '${{ steps.packaging-tools.outputs.makepri }}' `
+            -DistributionChannel Sideload `
+            -Publisher $directPublisher
+          & windows/packaging/msix/Test-MsixPackageIdentity.ps1 `
+            -PackagePath $directPackage `
+            -ExpectedName "ImagineThat.OpenBurnBar" `
+            -ExpectedPublisher $directPublisher `
+            -ExpectedDisplayName "OpenBurnBar" `
+            -ExpectedPublisherDisplayName "Imagine That" `
+            -ExpectedVersion "$version.0" `
+            -ExpectedArchitecture x64 `
+            -SignatureExpectation Unsigned `
+            -DistributionChannel Sideload `
+            -MakeAppxPath '${{ steps.packaging-tools.outputs.makeappx }}'
+
+          $storePackage = Join-Path $output "OpenBurnBar-store-x64.msix"
+          & windows/packaging/msix/New-MsixPackage.ps1 `
+            -PublishDir $env:MSIX_SMOKE_PUBLISH `
+            -Architecture x64 `
+            -Version $version `
+            -OutputPath $storePackage `
+            -MakeAppxPath '${{ steps.packaging-tools.outputs.makeappx }}' `
+            -MakePriPath '${{ steps.packaging-tools.outputs.makepri }}' `
+            -DistributionChannel MicrosoftStore `
+            -PackageName $identity.packageIdentityName `
+            -PackageDisplayName $identity.productName `
+            -Publisher $identity.publisher `
+            -PublisherDisplayName $identity.publisherDisplayName `
+            -StoreProductId $identity.productId
+          & windows/packaging/msix/Test-MsixPackageIdentity.ps1 `
+            -PackagePath $storePackage `
+            -ExpectedName $identity.packageIdentityName `
+            -ExpectedPublisher $identity.publisher `
+            -ExpectedDisplayName $identity.productName `
+            -ExpectedPublisherDisplayName $identity.publisherDisplayName `
+            -ExpectedVersion "$version.0" `
+            -ExpectedArchitecture x64 `
+            -SignatureExpectation Unsigned `
+            -DistributionChannel MicrosoftStore `
+            -StoreProductId $identity.productId `
+            -MakeAppxPath '${{ steps.packaging-tools.outputs.makeappx }}'
+
   # ── Aggregate gate ─────────────────────────────────────────────────────────
   pr-windows-dist-gate:
     name: PR Windows Dist Gate
     needs:
       - detect-dist-changes
       - dist-verify
+      - msix-package-smoke
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -174,10 +342,12 @@ jobs:
         env:
           DETECT_RESULT: ${{ needs.detect-dist-changes.result }}
           VERIFY_RESULT: ${{ needs.dist-verify.result }}
+          MSIX_SMOKE_RESULT: ${{ needs.msix-package-smoke.result }}
         run: |
           set -euo pipefail
           echo "detect-dist-changes: ${DETECT_RESULT}"
           echo "dist-verify: ${VERIFY_RESULT}"
+          echo "msix-package-smoke: ${MSIX_SMOKE_RESULT}"
 
           if [[ "${DETECT_RESULT}" != "success" ]]; then
             echo "::error::detect-dist-changes did not succeed (${DETECT_RESULT})."
@@ -186,6 +356,10 @@ jobs:
 
           if [[ "${VERIFY_RESULT}" != "success" && "${VERIFY_RESULT}" != "skipped" ]]; then
             echo "::error::The Windows dist verify lane failed (result=${VERIFY_RESULT})."
+            exit 1
+          fi
+          if [[ "${MSIX_SMOKE_RESULT}" != "success" && "${MSIX_SMOKE_RESULT}" != "skipped" ]]; then
+            echo "::error::The Windows MSIX package smoke failed (result=${MSIX_SMOKE_RESULT})."
             exit 1
           fi
 
