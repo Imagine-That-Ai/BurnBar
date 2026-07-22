@@ -124,7 +124,7 @@
           "provenanceMethod" : "provider_log",
           "provider" : "Codex",
           "reasoningTokens" : 0,
-          "sessionId" : "codex-contract-001#day-1766556000",
+          "sessionId" : "codex-contract-001#day-1766534400",
           "totalTokens" : 176,
           "usageSource" : "provider_log"
         }
@@ -150,7 +150,7 @@
           "provenanceMethod" : "provider_log",
           "provider" : "Codex",
           "reasoningTokens" : 0,
-          "sessionId" : "codex-contract-002#day-1766556000",
+          "sessionId" : "codex-contract-002#day-1766534400",
           "totalTokens" : 176,
           "usageSource" : "provider_log"
         }
@@ -176,7 +176,7 @@
           "provenanceMethod" : "provider_log",
           "provider" : "Codex",
           "reasoningTokens" : 0,
-          "sessionId" : "codex-contract-003#day-1766556000",
+          "sessionId" : "codex-contract-003#day-1766534400",
           "totalTokens" : 176,
           "usageSource" : "provider_log"
         }
