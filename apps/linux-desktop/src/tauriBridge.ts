@@ -10,6 +10,19 @@ import {
   type LinuxOnboardingActionRequest,
   type LinuxOnboardingSnapshot
 } from './onboardingStore.js';
+import {
+  normalizeProxyRouteFinalStatus,
+  type ProxyRouteLogEntry
+} from './proxyRouteContracts.js';
+
+export {
+  normalizeProxyRouteFinalStatus,
+  PROXY_ROUTE_FINAL_STATUS_COPY
+} from './proxyRouteContracts.js';
+export type {
+  ProxyRouteFinalStatus,
+  ProxyRouteLogEntry
+} from './proxyRouteContracts.js';
 
 // ─────────────────────────── P01: usage summary ───────────────────────────
 
@@ -294,73 +307,6 @@ export type LinuxUpdateStatus = {
 export type DiagnosticsExport = { path: string };
 
 // ─────────────────────────── P10: proxy route log ─────────────────────────
-
-/**
- * Mirrors `BurnBarProxyRouteFinalStatus` in
- * OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarProxyRouteLogContracts.swift.
- * Wire names are BurnBarRPC canon — do not rename here without changing the
- * Swift contract. `unknown` is the local decode fallback for statuses newer
- * than this build, never a wire value.
- */
-export type ProxyRouteFinalStatus =
-  | 'exact'
-  | 'same_model_failover'
-  | 'cross_vendor_fallback'
-  | 'failed'
-  | 'rejected'
-  | 'interrupted'
-  | 'unknown';
-
-const PROXY_ROUTE_FINAL_STATUSES: readonly ProxyRouteFinalStatus[] = [
-  'exact',
-  'same_model_failover',
-  'cross_vendor_fallback',
-  'failed',
-  'rejected',
-  'interrupted'
-];
-
-export function normalizeProxyRouteFinalStatus(raw: string): ProxyRouteFinalStatus {
-  return (PROXY_ROUTE_FINAL_STATUSES as readonly string[]).includes(raw)
-    ? (raw as ProxyRouteFinalStatus)
-    : 'unknown';
-}
-
-/**
- * Human labels for proxy-route final statuses. Exhaustive `Record` over the
- * `ProxyRouteFinalStatus` union on purpose: adding a status to the contract
- * fails this file at compile time instead of rendering a raw wire name.
- * `Interrupted` is deliberately distinct from `Failed` — the stream ended
- * early after delivery began, the route stayed healthy, and the request can
- * simply be retried.
- */
-export const PROXY_ROUTE_FINAL_STATUS_COPY: Record<ProxyRouteFinalStatus, string> = {
-  exact: 'Exact',
-  same_model_failover: 'Same model failover',
-  cross_vendor_fallback: 'Cross-vendor fallback',
-  failed: 'Failed',
-  rejected: 'No route',
-  interrupted: 'Interrupted — retryable',
-  unknown: 'Unknown status'
-};
-
-export type ProxyRouteLogEntry = {
-  id: string;
-  occurredAt: string;
-  endpoint: string;
-  clientModelSlug: string;
-  routingModelSlug?: string;
-  upstreamModelSlug?: string;
-  providerName?: string;
-  accountLabel?: string;
-  finalStatus: ProxyRouteFinalStatus;
-  rewriteKind: string;
-  exactModelInvariant: string;
-  streamed: boolean;
-  streamInterrupted: boolean;
-  httpStatus?: number;
-  failureMessage?: string;
-};
 
 // ─────────────────────────── P12: notifications ──────────────────────────
 
