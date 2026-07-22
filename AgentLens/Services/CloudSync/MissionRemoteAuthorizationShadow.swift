@@ -540,6 +540,42 @@ enum MissionRemoteAuthorizationShadow {
         let workingDirectory: String?
         let fanOutCount: Int
         let trustedFanOutCap: Int? = nil
+
+        init(
+            missionID: String,
+            prompt: String,
+            runtime: String?,
+            modelID: String?,
+            commandsAllowed: Bool,
+            fileEditsAllowed: Bool,
+            originDeviceID: String,
+            originPlatform: String,
+            personaScopeJSON: String?,
+            approvalMode: String?,
+            approvalStatus: String,
+            approverDeviceID: String?,
+            entitlementTier: String,
+            workingDirectory: String?,
+            fanOutCount: Int,
+            trustedFanOutCap: Int? = nil
+        ) {
+            self.missionID = missionID
+            self.prompt = prompt
+            self.runtime = runtime
+            self.modelID = modelID
+            self.commandsAllowed = commandsAllowed
+            self.fileEditsAllowed = fileEditsAllowed
+            self.originDeviceID = originDeviceID
+            self.originPlatform = originPlatform
+            self.personaScopeJSON = personaScopeJSON
+            self.approvalMode = approvalMode
+            self.approvalStatus = approvalStatus
+            self.approverDeviceID = approverDeviceID
+            self.entitlementTier = entitlementTier
+            self.workingDirectory = workingDirectory
+            self.fanOutCount = fanOutCount
+            self.trustedFanOutCap = trustedFanOutCap
+        }
     }
 
     // MARK: Fire-and-forget observation helpers
