@@ -25,6 +25,14 @@
     <FontFamily x:Key="AuroraMonoFont">ms-appx:///Assets/Fonts/jetbrains-mono.ttf#JetBrains Mono, Cascadia Mono, Consolas, Courier New</FontFamily>
     <FontFamily x:Key="AuroraArcaneFont">ms-appx:///Assets/Fonts/fraunces.ttf#Fraunces, Georgia, serif</FontFamily>
 
+    <!-- App-wide default typeface: implicit TextBlock style (the WinUI-legal way to set a
+         default font — Grid/Panel have no FontFamily member, so root-level FontFamily is a
+         XamlCompiler error, WMC0011). TextBlocks/controls with explicit FontFamily (mono,
+         icon fonts) keep theirs. -->
+    <Style TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource AuroraBodyFont}" />
+    </Style>
+
     <!-- ── macOS DesignSystem.Typography scale (rounded display family) ── -->
     <Style x:Key="AuroraDisplayLargeTextStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource AuroraDisplayFont}" />

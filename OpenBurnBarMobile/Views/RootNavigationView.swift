@@ -265,6 +265,8 @@ struct RootNavigationView: View {
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
         .animation(.spring(response: 0.30, dampingFraction: 0.78), value: selection)
+        .accessibilityIdentifier(destination.auroraAccessibilityIdentifier)
+        .accessibilityAddTraits(selection == destination ? .isSelected : [])
     }
 
     private var sidebarFooter: some View {

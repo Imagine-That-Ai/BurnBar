@@ -94,6 +94,18 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    private struct TrustedSignalIdentityRepairChallengeResponse: Decodable {
+        let ok: Bool
+        let challengeId: String
+        let challengeCiphertextBase64: String
+        let schemaVersion: Int
+    }
+
+    private struct TrustedSignalIdentityRepairResponse: Decodable {
+        let ok: Bool
+        let reapprovalRequired: Bool
+    }
+
     private static var functions: Functions {
         Functions.functions(region: "us-central1")
     }
@@ -108,6 +120,22 @@ enum ComputerUseSecurityCallableClient {
             throw ClientError.notAuthenticated
         }
         return user
+    }
+
+    private static func decodeCallableResponse<Value: Decodable>(
+        _ rawValue: Any,
+        as _: Value.Type,
+        invalidMessage: String
+    ) throws -> Value {
+        guard JSONSerialization.isValidJSONObject(rawValue) else {
+            throw ClientError.invalidResponse(invalidMessage)
+        }
+        do {
+            let data = try JSONSerialization.data(withJSONObject: rawValue)
+            return try JSONDecoder().decode(Value.self, from: data)
+        } catch {
+            throw ClientError.invalidResponse(invalidMessage)
+        }
     }
 
     static func bindAppCheckAttestation() async throws {
@@ -191,6 +219,65 @@ enum ComputerUseSecurityCallableClient {
         let result = try await functions.httpsCallable("approveEscrowDeviceTrust").call(payload)
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Escrow device trust approval failed.")
+        }
+    }
+
+    static func repairTrustedSignalIdentity(
+        uid: String,
+        deviceId: String,
+        identity: OpenBurnBarSignalIdentityKeypair
+    ) async throws {
+        let user = try requireSignedInUser()
+        guard user.uid == uid else {
+            throw ClientError.invalidResponse("Signal identity repair user mismatch.")
+        }
+        try await bindAppCheckAttestation()
+
+        let challengeResult = try await functions
+            .httpsCallable("issueTrustedSignalIdentityRepairChallenge")
+            .call(["deviceId": deviceId])
+        let challenge = try decodeCallableResponse(
+            challengeResult.data,
+            as: TrustedSignalIdentityRepairChallengeResponse.self,
+            invalidMessage: "Signal identity repair challenge was invalid."
+        )
+        guard challenge.ok,
+              challenge.challengeId.isEmpty == false,
+              let ciphertext = Data(base64Encoded: challenge.challengeCiphertextBase64),
+              challenge.schemaVersion == MobileTrustedSignalIdentityRepairContract.challengeVersion else {
+            throw ClientError.invalidResponse("Signal identity repair challenge was invalid.")
+        }
+
+        let escrowKeypair = try iOSDeviceKeypair()
+        guard escrowKeypair.keyVersion == identity.keyVersion else {
+            throw ClientError.invalidResponse("Signal identity and escrow key versions do not match.")
+        }
+        let plaintext = try escrowKeypair.decrypt(
+            ciphertext,
+            authenticating: MobileTrustedSignalIdentityRepairContract.challengeAAD(
+                uid: uid,
+                deviceId: deviceId,
+                challengeId: challenge.challengeId
+            )
+        )
+        let nonce = try await issueHighRiskActionNonce()
+        let repairResult = try await functions.httpsCallable("repairTrustedSignalIdentity").call([
+            "deviceId": deviceId,
+            "challengeId": challenge.challengeId,
+            "challengePlaintextBase64": plaintext.base64EncodedString(),
+            "identityKeyId": identity.identityKeyId,
+            "publicKeyData": identity.publicKeyBase64,
+            "publicKeyFingerprint": identity.publicKeyFingerprint,
+            "keyVersion": identity.keyVersion,
+            "nonce": nonce
+        ])
+        let response = try decodeCallableResponse(
+            repairResult.data,
+            as: TrustedSignalIdentityRepairResponse.self,
+            invalidMessage: "Signal identity repair failed."
+        )
+        guard response.ok, response.reapprovalRequired else {
+            throw ClientError.invalidResponse("Signal identity repair failed.")
         }
     }
 

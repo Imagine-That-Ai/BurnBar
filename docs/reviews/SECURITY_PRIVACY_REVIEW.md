@@ -22,7 +22,7 @@ OpenBurnBar is an unsandboxed macOS utility that parses local AI agent logs, agg
 - **Token caching:** `lastOAuthToken` is cached in memory on `AccountManager`. It is never persisted to disk. **Acceptable for a session-bound property.**
 - **Anonymous users:** The app supports anonymous Firebase users and links them on credential sign-in. This is standard Firebase behavior.
 - **Firebase configuration:** `GoogleService-Info.plist` is `.gitignore`d; only an `.example` file is present. **Good.**
-- **App Check:** `OpenBurnBarAppCheckProviderFactory.swift` uses `AppAttestProvider` on macOS 11+ in release builds, `DeviceCheckProvider` as fallback, and `AppCheckDebugProvider` only in DEBUG when a debug token is present in Info.plist. **Correct tiering.**
+- **App Check:** `OpenBurnBarAppCheckProviderFactory.swift` checks provider support at runtime, uses `DeviceCheckProvider` on Mac where App Attest is unsupported, and permits `AppCheckDebugProvider` only under the explicit internal/debug policy. It fails closed when no production provider is supported. **Correct tiering.**
 
 ### Daemon Auth
 - **Socket RPC:** Every RPC request to the daemon requires an `authToken`. The token is compared against `configuration.socketAuthToken`. If the token is missing or mismatched, the daemon returns `BurnBarRPCErrorCode.unauthorized`.

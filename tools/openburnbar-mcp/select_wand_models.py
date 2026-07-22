@@ -89,13 +89,13 @@ def _public_candidate(candidate: dict[str, Any] | None) -> dict[str, Any] | None
 def _public_payload(payload: dict[str, Any], sibling_index: int) -> dict[str, Any]:
     selected = payload.get("selected")
     selected_candidates = selected if isinstance(selected, list) else []
-    selected_for_index = _selection_for_index(selected_candidates, sibling_index)
+    requested_count = payload.get("requestedCount")
+    selection_complete = not isinstance(requested_count, int) or len(selected_candidates) >= requested_count
+    selected_for_index = _selection_for_index(selected_candidates, sibling_index) if selection_complete else None
     return {
         "status": _safe_public_string(payload.get("status"), max_length=32) or "ok",
         "selectedCount": len(selected_candidates),
-        "requestedCount": int(payload.get("requestedCount"))
-        if isinstance(payload.get("requestedCount"), int)
-        else None,
+        "requestedCount": int(requested_count) if isinstance(requested_count, int) else None,
         "reason": _safe_public_string(payload.get("reason"), max_length=120),
         "selectedForIndex": _public_candidate(selected_for_index),
     }

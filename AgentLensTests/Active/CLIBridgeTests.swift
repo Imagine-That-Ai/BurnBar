@@ -1251,6 +1251,226 @@ final class CLIBridgeTests: XCTestCase {
         ))
     }
 
+    func test_resolvedElderWandOriginatingModel_automaticUsesBurnBarGatewayDefault() {
+        let burnBarModels = [
+            OpenAICompatibleAdvertisedModel(
+                id: "claude-haiku-4-5", displayName: "Claude Haiku",
+                providerID: "anthropic", providerName: "Anthropic", routeEligible: true
+            ),
+            OpenAICompatibleAdvertisedModel(
+                id: "disabled-model", displayName: "Disabled",
+                providerID: "example", providerName: "Example", routeEligible: false
+            )
+        ]
+
+        XCTAssertEqual(
+            ChatSessionController.resolvedElderWandOriginatingModel(
+                selection: "",
+                liveModels: burnBarModels
+            ),
+            "claude-haiku-4-5"
+        )
+    }
+
+    func test_resolvedElderWandOriginatingModel_preservesExplicitStaleChoiceForVisibleFailure() {
+        let burnBarModels = [
+            OpenAICompatibleAdvertisedModel(
+                id: "claude-haiku-4-5", displayName: "Claude Haiku",
+                providerID: "anthropic", providerName: "Anthropic", routeEligible: true
+            )
+        ]
+
+        XCTAssertEqual(
+            ChatSessionController.resolvedElderWandOriginatingModel(
+                selection: " hermes-agent ",
+                liveModels: burnBarModels
+            ),
+            "hermes-agent"
+        )
+        XCTAssertEqual(
+            ChatSessionController.elderWandRoutingError(
+                backend: .hermes,
+                selectedModel: "hermes-agent",
+                gatewayAvailable: true,
+                authRejected: false,
+                liveModels: burnBarModels
+            ),
+            "The Elder Wand final-answer model 'hermes-agent' is not routed by the BurnBar gateway. Choose a live model from the chat model menu."
+        )
+    }
+
+    func test_elderWandRoutingError_coversBackendAvailabilityAuthAndEmptyCatalog() {
+        let model = OpenAICompatibleAdvertisedModel(
+            id: "claude-haiku-4-5", displayName: "Claude Haiku",
+            providerID: "anthropic", providerName: "Anthropic", routeEligible: true
+        )
+
+        XCTAssertNotNil(ChatSessionController.elderWandRoutingError(
+            backend: .codex,
+            selectedModel: model.id,
+            gatewayAvailable: true,
+            authRejected: false,
+            liveModels: [model]
+        ))
+        XCTAssertNotNil(ChatSessionController.elderWandRoutingError(
+            backend: .hermes,
+            selectedModel: model.id,
+            gatewayAvailable: false,
+            authRejected: false,
+            liveModels: []
+        ))
+        XCTAssertNotNil(ChatSessionController.elderWandRoutingError(
+            backend: .hermes,
+            selectedModel: model.id,
+            gatewayAvailable: false,
+            authRejected: true,
+            liveModels: []
+        ))
+        XCTAssertNotNil(ChatSessionController.elderWandRoutingError(
+            backend: .hermes,
+            selectedModel: "",
+            gatewayAvailable: true,
+            authRejected: false,
+            liveModels: []
+        ))
+        for backend in [ChatBackendID.hermes, .openclaw, .piAgent] {
+            XCTAssertTrue(ChatSessionController.supportsElderWandGateway(backend))
+            XCTAssertNil(ChatSessionController.elderWandRoutingError(
+                backend: backend,
+                selectedModel: model.id,
+                gatewayAvailable: true,
+                authRejected: false,
+                liveModels: [model]
+            ))
+        }
+        XCTAssertFalse(ChatSessionController.supportsElderWandGateway(.codex))
+    }
+
+    func test_elderWandModelGrouping_usesBurnBarRowsAndDeduplicatesByModelID() {
+        let groups = ElderWandModelGrouping.groups(from: [
+            OpenAICompatibleAdvertisedModel(
+                id: "claude-haiku-4-5", displayName: "Claude Haiku",
+                providerID: "anthropic", providerName: "Anthropic", routeEligible: true
+            ),
+            OpenAICompatibleAdvertisedModel(
+                id: "claude-haiku-4-5", displayName: "Duplicate",
+                providerID: "other", providerName: "Other", routeEligible: true
+            ),
+            OpenAICompatibleAdvertisedModel(
+                id: "gemma4:12b-mlx", displayName: "Gemma 4",
+                providerID: "ollama-local", providerName: "Ollama (Local)", routeEligible: false
+            )
+        ])
+
+        XCTAssertEqual(groups.map(\.providerName), ["Anthropic", "Ollama (Local)"])
+        XCTAssertEqual(groups.flatMap(\.options).map(\.id), ["claude-haiku-4-5", "gemma4:12b-mlx"])
+        XCTAssertEqual(groups.flatMap(\.options).map(\.isRouteEligible), [true, false])
+    }
+
+    func test_elderWandActiveControllerUsesBurnBarCatalogAcrossSupportedBackends() throws {
+        let fixture = try makeElderWandController()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+
+        let model = OpenAICompatibleAdvertisedModel(
+            id: "claude-haiku-4-5",
+            displayName: "Claude Haiku",
+            providerID: "anthropic",
+            providerName: "Anthropic",
+            routeEligible: true
+        )
+        fixture.controller.burnBarGatewayAvailable = true
+        fixture.controller.burnBarGatewayModels = [model]
+        fixture.controller.chatModelHermes = ""
+        fixture.controller.chatModelOpenClaw = ""
+        fixture.controller.chatModelPiAgent = ""
+
+        XCTAssertTrue(fixture.controller.isElderWandActive)
+        for backend in [ChatBackendID.hermes, .openclaw, .piAgent] {
+            XCTAssertEqual(fixture.controller.effectiveChatModel(for: backend), model.id)
+            XCTAssertEqual(fixture.controller.chatModelCatalog(for: backend).map(\.id), [model.id])
+            XCTAssertNil(fixture.controller.selectedModelRoutingError(for: backend))
+        }
+
+        fixture.controller.burnBarGatewayCatalogAuthRejected = true
+        XCTAssertNotNil(fixture.controller.selectedModelRoutingError(for: .hermes))
+    }
+
+    func test_validateChatBackendAvailability_elderWandLoadsLiveGatewayCatalog() async throws {
+        ElderWandGatewayURLProtocol.configure(
+            statusCode: 200,
+            body: #"{"data":[{"id":"claude-haiku-4-5","display_name":"Claude Haiku","provider_id":"anthropic","provider_name":"Anthropic","route_eligible":true}]}"#
+        )
+        _ = URLProtocol.registerClass(ElderWandGatewayURLProtocol.self)
+        defer { URLProtocol.unregisterClass(ElderWandGatewayURLProtocol.self) }
+
+        let fixture = try makeElderWandController()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        fixture.controller.chatModelHermes = ""
+
+        let isAvailable = await fixture.controller.validateChatBackendAvailability()
+
+        XCTAssertTrue(isAvailable)
+        XCTAssertTrue(fixture.controller.burnBarGatewayAvailable)
+        XCTAssertFalse(fixture.controller.burnBarGatewayCatalogAuthRejected)
+        XCTAssertEqual(fixture.controller.burnBarGatewayModels.map(\.id), ["claude-haiku-4-5"])
+        XCTAssertEqual(ElderWandGatewayURLProtocol.requestedPaths, ["/v1/models"])
+    }
+
+    func test_validateChatBackendAvailability_elderWandRejectedCredentialShowsRecoveryError() async throws {
+        ElderWandGatewayURLProtocol.configure(statusCode: 401, body: #"{"error":"unauthorized"}"#)
+        _ = URLProtocol.registerClass(ElderWandGatewayURLProtocol.self)
+        defer { URLProtocol.unregisterClass(ElderWandGatewayURLProtocol.self) }
+
+        let fixture = try makeElderWandController()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.suiteName) }
+        fixture.controller.chatModelHermes = ""
+
+        let isAvailable = await fixture.controller.validateChatBackendAvailability()
+
+        XCTAssertFalse(isAvailable)
+        XCTAssertFalse(fixture.controller.burnBarGatewayAvailable)
+        XCTAssertTrue(fixture.controller.burnBarGatewayCatalogAuthRejected)
+        XCTAssertTrue(fixture.controller.burnBarGatewayModels.isEmpty)
+        XCTAssertEqual(
+            fixture.controller.messages.last?.content,
+            "The BurnBar gateway rejected its bearer token. Open Settings -> Model Gateway, repair the gateway token, and try again."
+        )
+        XCTAssertEqual(ElderWandGatewayURLProtocol.requestedPaths, ["/v1/models"])
+    }
+
+    private func makeElderWandController() throws -> (
+        controller: ChatSessionController,
+        defaults: UserDefaults,
+        suiteName: String
+    ) {
+        let suiteName = "CLIBridgeTests.ElderWand.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = SettingsManager(
+            defaults: defaults,
+            launchAgentGatewayAuthTokenReader: { nil },
+            flushDelayNanoseconds: 0
+        )
+        settings.gatewayHost = "wand-gateway.test"
+        settings.gatewayPort = 8317
+        settings.elderWand.save(ElderWandPreset(
+            name: "Controller integration",
+            analysisModelIDs: ["claude-haiku-4-5"],
+            judgeModelID: "claude-haiku-4-5",
+            maxToolCalls: 1,
+            isDefault: true
+        ))
+
+        let controller = ChatSessionController(
+            dataStore: try makeDiscoveryInMemoryStore(),
+            settingsManager: settings,
+            searchService: ControlledChatSessionSearchProvider(responses: [:]),
+            persistsViewState: false,
+            initialBackend: .hermes
+        )
+        return (controller, defaults, suiteName)
+    }
+
     func test_cliBridge_codexArguments_includesReasoningEffort() {
         let args = CLIBridge.codexArguments(prompt: "test")
         XCTAssertTrue(args.contains(#"model_reasoning_effort="high""#))
@@ -2444,6 +2664,61 @@ private final class CLIBridgeNetworkTrapURLProtocol: URLProtocol, @unchecked Sen
     override func startLoading() {
         Self.requestCountBox.withLock { $0 += 1 }
         client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+    }
+
+    override func stopLoading() {}
+}
+
+private final class ElderWandGatewayURLProtocol: URLProtocol, @unchecked Sendable {
+    private struct Stub: Sendable {
+        var statusCode = 200
+        var body = Data()
+        var requestedPaths: [String] = []
+    }
+
+    private static let stubBox = OpenBurnBarCore.Locked(Stub())
+
+    static var requestedPaths: [String] {
+        stubBox.read().requestedPaths
+    }
+
+    static func configure(statusCode: Int, body: String) {
+        stubBox.write(Stub(
+            statusCode: statusCode,
+            body: Data(body.utf8),
+            requestedPaths: []
+        ))
+    }
+
+    override static func canInit(with request: URLRequest) -> Bool {
+        request.url?.host == "wand-gateway.test"
+    }
+
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let url = request.url else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        let responseStub = Self.stubBox.withLock { stub -> (statusCode: Int, body: Data) in
+            stub.requestedPaths.append(url.path)
+            return (stub.statusCode, stub.body)
+        }
+        guard let response = HTTPURLResponse(
+            url: url,
+            statusCode: responseStub.statusCode,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        ) else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: responseStub.body)
+        client?.urlProtocolDidFinishLoading(self)
     }
 
     override func stopLoading() {}

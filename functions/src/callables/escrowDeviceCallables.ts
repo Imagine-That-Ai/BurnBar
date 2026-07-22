@@ -495,6 +495,7 @@ export const approveEscrowDeviceTrust = onCall(
             targetSignalIdentityPublicKeyFingerprint: trustChain.targetSignalIdentityPublicKeyFingerprint,
             approvedBySignalIdentityKeyId: trustChain.approverSignalIdentityKeyId,
             approvedBySignalIdentityPublicKeyFingerprint: trustChain.approverSignalIdentityPublicKeyFingerprint,
+            signalIdentityReapprovalRequired: false,
           },
           { merge: true },
         );

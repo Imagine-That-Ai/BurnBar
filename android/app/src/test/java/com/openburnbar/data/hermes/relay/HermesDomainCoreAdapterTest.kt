@@ -27,8 +27,8 @@ class HermesDomainCoreAdapterTest {
     fun `shadow generic adapter records native unavailable without leaking the failure`() {
         mockkStatic(Log::class)
         every { Log.w(any(), any<String>()) } returns 0
-        System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
-        val mode = HermesDomainCoreMode.resolve()
+        HermesDomainCoreAdapter.modeOverride = HermesDomainCoreMode.SHADOW
+        val mode = HermesDomainCoreMode.SHADOW
         val expected = String(charArrayOf('l', 'e', 'g', 'a', 'c', 'y'))
         val comparisons = mutableListOf<HermesShadowComparison>()
         HermesDomainCoreAdapter.comparisonOverride = comparisons::add
@@ -67,8 +67,8 @@ class HermesDomainCoreAdapterTest {
     fun `shadow generic adapter records ABI mismatch without querying native version`() {
         mockkStatic(Log::class)
         every { Log.w(any(), any<String>()) } returns 0
-        System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
-        val mode = HermesDomainCoreMode.resolve()
+        HermesDomainCoreAdapter.modeOverride = HermesDomainCoreMode.SHADOW
+        val mode = HermesDomainCoreMode.SHADOW
         val expected = byteArrayOf(0x00, 0x7f, 0xff.toByte())
         val comparisons = mutableListOf<HermesShadowComparison>()
         HermesDomainCoreAdapter.comparisonOverride = comparisons::add
@@ -149,8 +149,8 @@ class HermesDomainCoreAdapterTest {
     fun `hpke adapter emits the required promotion slice`() {
         mockkStatic(Log::class)
         every { Log.w(any(), any<String>()) } returns 0
-        System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
-        val mode = HermesDomainCoreMode.resolve()
+        HermesDomainCoreAdapter.modeOverride = HermesDomainCoreMode.SHADOW
+        val mode = HermesDomainCoreMode.SHADOW
         val expected = "OpenBurnBar-HermesRelay-HPKE-v3|aad".toByteArray()
         val comparisons = mutableListOf<HermesShadowComparison>()
         HermesDomainCoreAdapter.comparisonOverride = comparisons::add
@@ -209,8 +209,8 @@ class HermesDomainCoreAdapterTest {
     fun `shadow special seal paths contain native loader failure and preserve legacy outputs`() {
         mockkStatic(Log::class)
         every { Log.w(any(), any<String>()) } returns 0
-        System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
-        val mode = HermesDomainCoreMode.resolve()
+        HermesDomainCoreAdapter.modeOverride = HermesDomainCoreMode.SHADOW
+        val mode = HermesDomainCoreMode.SHADOW
         val legacyCiphertext = String(charArrayOf('n', 'o', 't', '-', 'b', 'a', 's', 'e', '6', '4'))
         val legacyCombined = byteArrayOf(0x01, 0x02)
         val comparisons = mutableListOf<HermesShadowComparison>()
@@ -251,8 +251,8 @@ class HermesDomainCoreAdapterTest {
         val legacyString = String(charArrayOf('l', 'e', 'g', 'a', 'c', 'y'))
         val legacyBytes = byteArrayOf(0x10, 0x20)
 
-        System.setProperty("openburnbar.domain_core.hermes.mode", "shadow")
-        val shadowMode = HermesDomainCoreMode.resolve()
+        HermesDomainCoreAdapter.modeOverride = HermesDomainCoreMode.SHADOW
+        val shadowMode = HermesDomainCoreMode.SHADOW
         val shadowString = HermesDomainCoreAdapter.seal(ByteArray(1), ByteArray(32), ByteArray(0)) { legacyString }
         val shadowBytes = HermesDomainCoreAdapter.sealCombined(ByteArray(1), ByteArray(32), ByteArray(0)) { legacyBytes }
 
@@ -270,8 +270,8 @@ class HermesDomainCoreAdapterTest {
             verify(exactly = 0) { Log.w(any(), any<String>()) }
         }
 
-        System.setProperty("openburnbar.domain_core.hermes.mode", "rust")
-        val rustMode = HermesDomainCoreMode.resolve()
+        HermesDomainCoreAdapter.modeOverride = HermesDomainCoreMode.RUST
+        val rustMode = HermesDomainCoreMode.RUST
         var legacyCalls = 0
         if (rustMode == HermesDomainCoreMode.RUST) {
             assertThrows(IllegalStateException::class.java) {

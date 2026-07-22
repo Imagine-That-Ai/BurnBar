@@ -42,6 +42,7 @@ public enum IrohRelayRole: String, Sendable, Equatable {
 /// the existing `HermesServiceError.relayUnavailable(...)` envelope so
 /// downstream code paths do not have to learn an iroh-specific taxonomy.
 public enum IrohRelayTransportError: Error, Equatable, Sendable {
+    case backendUnavailable
     case endpointNotReady
     case nodeIdUnreachable(String)
     case streamRejected(String)
@@ -54,6 +55,8 @@ public enum IrohRelayTransportError: Error, Equatable, Sendable {
 extension IrohRelayTransportError: LocalizedError {
     public var errorDescription: String? {
         switch self {
+        case .backendUnavailable:
+            return "Iroh native transport is unavailable in this build."
         case .endpointNotReady:
             return "Iroh endpoint is not ready."
         case .nodeIdUnreachable(let nodeId):
