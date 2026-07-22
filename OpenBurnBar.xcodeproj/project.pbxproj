@@ -1573,6 +1573,7 @@
 		AC48627254D7F84E7B62864E /* PretextRichBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52BFCE9D20C1D0984F302A1 /* PretextRichBubble.swift */; };
 		AC5C572CCE624E499B525ED3 /* parser-output-golden.json in Resources */ = {isa = PBXBuildFile; fileRef = 4A7E07D1DDFA195A73CA2878 /* parser-output-golden.json */; };
 		AC70721EB4B644A7B0C79332 /* ChatMinimizedPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5FCF9C1BF181D400BC1F8D7 /* ChatMinimizedPill.swift */; };
+		AC85E232BD22E80ACADF2C22 /* CLIAgentJunieMissionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABA220FB309188DAE6F74EFD /* CLIAgentJunieMissionPolicy.swift */; };
 		AC8ABCF41B45F22CB768D312 /* ChatSessionController+SearchMemoryContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E23A6141044AAB29DCBF4E7 /* ChatSessionController+SearchMemoryContext.swift */; };
 		ACA159F49D9C0EE49FFE0C83 /* VectorIndexTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E19A3A276B13AF17DACF57C /* VectorIndexTypes.swift */; };
 		ACC8507023D6137A73D06B70 /* ProviderDashboardStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9F500275555FEB29981B408 /* ProviderDashboardStoreTests.swift */; };
@@ -4039,6 +4040,7 @@
 		AAA07D50FCA9F0E62F730AC6 /* MobileCloudVaultKeyAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileCloudVaultKeyAccess.swift; sourceTree = "<group>"; };
 		AACA1D4A1C5104C2964091BE /* BurnViewStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnViewStyles.swift; sourceTree = "<group>"; };
 		AB9331768D88BB9102B4FD75 /* FactoryDroidParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactoryDroidParserTests.swift; sourceTree = "<group>"; };
+		ABA220FB309188DAE6F74EFD /* CLIAgentJunieMissionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAgentJunieMissionPolicy.swift; sourceTree = "<group>"; };
 		ABCDFADD40C9509EE037B187 /* BurnLayoutStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnLayoutStyle.swift; sourceTree = "<group>"; };
 		ABD269FC720106681B23293D /* ClaudeQuotaBridgeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeQuotaBridgeManager.swift; sourceTree = "<group>"; };
 		AC02FF8F8F6E5FE9C997A488 /* HermesSquareSplitLayout+Sidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HermesSquareSplitLayout+Sidebar.swift"; sourceTree = "<group>"; };
@@ -8329,6 +8331,7 @@
 				51B3BB7BDBF3AC680CF48F0C /* AgentToolBroker+SandboxPolicy.swift */,
 				325FF26BAF6E90EB0F7FFF2C /* AgentToolBroker+Workspace.swift */,
 				963A4552560E5AFEADF81CD6 /* AsyncPipeLineReader.swift */,
+				ABA220FB309188DAE6F74EFD /* CLIAgentJunieMissionPolicy.swift */,
 				2683C5C3062D0E0643B8ADF7 /* CLIArgumentBuilder.swift */,
 				1C39AD878BD781A5964AB634 /* CLIBridge.swift */,
 				133DC428626DD2C6CE418AD0 /* CLIBridgeQuotaSignalRecorder.swift */,
@@ -11420,6 +11423,7 @@
 				8875B5B6199DE7A6E2424F47 /* BudgetSettingsView.swift in Sources */,
 				215E4A46FAE823A63B382604 /* BurnBarTopRail.swift in Sources */,
 				0AE4A80D29878D232DD32925 /* BurnRailBudgetChip.swift in Sources */,
+				AC85E232BD22E80ACADF2C22 /* CLIAgentJunieMissionPolicy.swift in Sources */,
 				38E35A3C77C75ED9E8849BC2 /* CLIAgentMissionEventFactory.swift in Sources */,
 				715B61D4C5445DAB03AD6D14 /* CLIAgentMissionRequestListener+ApprovalFlow.swift in Sources */,
 				5C279AA75C1CD9EBD1D61150 /* CLIAgentMissionRequestListener+DirectExecution.swift in Sources */,

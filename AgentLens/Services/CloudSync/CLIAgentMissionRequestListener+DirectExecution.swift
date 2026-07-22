@@ -89,6 +89,8 @@ extension CLIAgentMissionRequestListener {
                 sessionID: "persona-scope-rejected-\(backend.rawValue)-\(UUID().uuidString)"
             )
         }
+        // Fail closed: Junie has no enforceable read-only/no-shell flags (CLIAgentJunieMissionPolicy).
+        if let junieRefusal = CLIAgentJunieMissionPolicy.directExecutionRefusal(backend: backend, grant: CLIAgentMissionRuntimePlanner.capabilityGrant(for: backend, data: data)) { return junieRefusal }
         if CLIAgentMissionRuntimePlanner.presentationMode(from: data) == .macVisibleCLI {
             guard let plan = CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
                 title: title,
@@ -132,9 +134,7 @@ extension CLIAgentMissionRequestListener {
             )
         }
 
-        if backend.chatBackend != nil {
-            return nil
-        }
+        if backend.chatBackend != nil { return nil }
 
         return DirectCLIMissionResult(
             status: "failed",
