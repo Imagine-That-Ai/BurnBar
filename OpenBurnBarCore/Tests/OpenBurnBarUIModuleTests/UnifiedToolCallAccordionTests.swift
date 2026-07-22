@@ -1,5 +1,5 @@
 import Testing
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarUI
 
 // MARK: - UnifiedToolCallAccordionTests
 //

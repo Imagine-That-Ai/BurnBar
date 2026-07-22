@@ -1,9 +1,11 @@
 import XCTest
-@testable import OpenBurnBarCore
+import OpenBurnBarKernelModels
 // AE-TESTABLE (P-16d): PixelClockQuotaRenderer + PixelClockProviderLogo moved to
 // OpenBurnBarUI; this test reaches internal members (PixelClockProviderLogo.sourceName/
 // rows, PixelClockQuotaRenderer.providerLogoPattern) that the @_exported umbrella does
-// not carry, so it @testable-imports the new target for internal-symbol access.
+// not carry, so it @testable-imports the new target for internal-symbol access. The
+// PixelClock config models / AgentProvider it feeds the renderer live in
+// OpenBurnBarKernelModels, imported directly (WS-B B5).
 @testable import OpenBurnBarUI
 
 final class PixelClockQuotaRendererTests: XCTestCase {

@@ -1,9 +1,10 @@
 import XCTest
-@testable import OpenBurnBarCore
+import OpenBurnBarKernelModels
 // AE-TESTABLE (P-16f): UnifiedQuotaSignalView moved Core→OpenBurnBarUI; its internal
 // `fullRemainingText`/`fullUsedText` render helpers are reachable only via @testable of the
-// new home target (the public init resolves through Core's @_exported re-export). This test
-// is off-Apple test-excluded (openBurnBarCoreTestExcludes) since OpenBurnBarUI is pruned there.
+// new home target (the public init resolves through Core's @_exported re-export). The
+// ProviderQuotaBucket model type it renders lives in OpenBurnBarKernelModels, imported
+// directly (WS-B B5). This test is off-Apple pruned since OpenBurnBarUI does not exist there.
 @testable import OpenBurnBarUI
 
 /// The Cursor "Included usage" gauge needs to render as `$3.61 / $4.00`, not

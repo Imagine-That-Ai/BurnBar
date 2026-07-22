@@ -1,5 +1,9 @@
 import XCTest
-@testable import OpenBurnBarCore
+// SwarmColorDriver lives in OpenBurnBarUI, but the AgentProvider cases it resolves
+// (.claudeCode/.codex/.xAI) live in OpenBurnBarKernelModels; @testable import of UI does
+// not re-export them, so import the model module directly (WS-B B5).
+import OpenBurnBarKernelModels
+@testable import OpenBurnBarUI
 
 final class SwarmColorDriverTests: XCTestCase {
     func testActiveProviderWeightsResolveDistinctProviderColors() throws {

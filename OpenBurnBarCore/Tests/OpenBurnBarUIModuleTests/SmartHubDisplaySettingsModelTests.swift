@@ -1,5 +1,6 @@
 import XCTest
-@testable import OpenBurnBarCore
+import OpenBurnBarKernelModels
+@testable import OpenBurnBarUI
 
 @MainActor
 final class SmartHubDisplaySettingsModelTests: XCTestCase {

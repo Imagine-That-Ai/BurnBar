@@ -1,10 +1,12 @@
 import XCTest
 import SwiftUI
-@testable import OpenBurnBarCore
+import OpenBurnBarKernelModels
 // AE-TESTABLE (P-16e): SwarmLogoShape/SwarmFormationMode moved Core→OpenBurnBarUI. The
 // internal SwarmLogoShape enum + its nested Point + generatePoints() are reachable only
 // via @testable of the new home target (SwarmFormationMode is public, so it also resolves
-// through Core's @_exported re-export; single definition graph-wide → no ambiguity).
+// through Core's @_exported re-export; single definition graph-wide → no ambiguity). The
+// AgentProvider / RGBA model types it drives live in OpenBurnBarKernelModels, imported
+// directly (WS-B B5).
 @testable import OpenBurnBarUI
 
 final class SwarmLogoShapeTests: XCTestCase {
