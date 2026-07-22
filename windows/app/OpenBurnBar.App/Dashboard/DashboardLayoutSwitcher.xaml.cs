@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
@@ -68,6 +69,8 @@ public sealed partial class DashboardLayoutSwitcher : UserControl
                 MinWidth = 0,
                 Padding = new Thickness(12, 6, 12, 6),
             };
+            AutomationProperties.SetAutomationId(toggle, $"Dashboard.Layout.{layout}");
+            AutomationProperties.SetName(toggle, layout.DisplayName());
             toggle.Click += OnSegmentClick;
             _segments.Add(toggle);
             SegmentPanel.Children.Add(toggle);

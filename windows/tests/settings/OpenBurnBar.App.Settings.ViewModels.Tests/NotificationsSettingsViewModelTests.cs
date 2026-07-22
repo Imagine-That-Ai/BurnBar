@@ -62,9 +62,10 @@ public sealed class NotificationsSettingsViewModelTests
     }
 
     [Fact]
-    public void CapabilityNotes_FlagTelegramDeferAndCalendarNotApplicable()
+    public void CapabilityNotes_ReportTelegramLiveAndCalendarNotApplicable()
     {
         var vm = new NotificationsSettingsViewModel();
+        Assert.Contains("live", vm.TelegramCapabilityNote);
         Assert.Contains("row 16", vm.TelegramCapabilityNote);
         Assert.Contains("row 17", vm.CalendarCapabilityNote);
     }

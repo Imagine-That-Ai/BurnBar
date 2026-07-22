@@ -83,7 +83,14 @@ function verify() {
   const bundle = readFileSync(OUTFILE, "utf8");
 
   // 2. The native bridge must be present.
-  for (const symbol of ["__setKernel", "__setTheme", "__getKernel", "__kernels", "__backdropReady"]) {
+  for (const symbol of [
+    "__setKernel",
+    "__setTheme",
+    "__getKernel",
+    "__getBackdropState",
+    "__kernels",
+    "__backdropReady",
+  ]) {
     if (!bundle.includes(symbol)) throw new Error(`bundle is missing bridge symbol ${symbol}`);
   }
 

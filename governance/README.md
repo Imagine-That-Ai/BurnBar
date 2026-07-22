@@ -12,26 +12,38 @@ Related: [`docs/GOVERNANCE.md`](../docs/GOVERNANCE.md),
 
 ## Current Contract
 
-BurnBar is intentionally solo-maintainer automation friendly. The hard merge gates are:
+BurnBar's hard merge gates are:
 
-- required status checks;
+- required status checks, including the trusted Domain Core aggregate gates;
+- strict current-base checks;
+- one independent approving review;
+- CODEOWNER review for protected paths;
+- dismissal of stale approvals after a new push;
 - required conversation resolution;
 - no force pushes;
 - no branch deletion;
 - exact-head merge discipline in the automation lane.
 
-The following must not be reintroduced as permanent blockers for the daily maintainer lane unless the
-owner intentionally changes the contract again:
+Required last-push approval remains disabled because strict checks, stale-approval
+dismissal, and exact-head review already bind approval to the current head without
+requiring a second reviewer after an approved maintainer merge update.
 
-- strict up-to-date status checks (`required_status_checks.strict`);
-- required approving reviews;
-- required CODEOWNER reviews;
-- required last-push approval;
-- stale-review dismissal as a merge blocker.
+**Operation 9 owner decision (2026-07-16):** the QA §M-1 stale-base finding and
+security P-SEC-4 scanner-governance finding retire the former solo-maintainer
+review exception. `required_status_checks.strict` is `true`, one approving review
+and CODEOWNER review are required, and approvals are dismissed when the head
+changes. The repository has two named CODEOWNERS, so this closes the protected-file
+two-PR bypass without deadlocking ordinary review.
 
-That is why the current desired file has `required_status_checks.strict: false` and a
-`required_pull_request_reviews` object whose count/booleans are all non-blocking. Keeping the review
-object present makes drift explicit without making self-approval a required gate.
+Strict checks were chosen over a merge queue because they do not require every
+required context to support `merge_group`. `Domain Core Trusted Deletion Guard`
+runs on every PR and is globally required. `Domain Core PR Gate` remains
+path-scoped evidence for domain-core changes; promoting it as a classic global
+context would leave every unrelated PR permanently pending.
+
+The drift checker verifies this complete contract. Apply the same values to live
+classic branch protection in the same change, then
+`scripts/ops/check-branch-protection-drift.mjs` must report an exact match.
 
 ## Live Surface
 
@@ -92,6 +104,14 @@ This gate covers the TypeScript surface only. Swift/native diff coverage
 [`openburnbar-pr-harness.yml`](../.github/workflows/openburnbar-pr-harness.yml), which is not a
 `pull_request` gate.
 
+### The `Domain Core Trusted Deletion Guard` Pending Gate
+
+Keep this context pending until the legacy-deletion ledger has landed on `main`
+and the trusted `pull_request_target` workflow has evaluated that ledger
+successfully. For an exact-head deletion approval, rerun the trusted check
+manually after approval; do not add a candidate-controlled
+`pull_request_review` trigger.
+
 ## Drift Check
 
 The scheduled/dispatch ops verification lane runs
@@ -103,8 +123,9 @@ not exposed to PRs.
 The drift check fails closed on:
 
 - required-check set differences in either direction;
-- strict status checks being enabled when this file says false, or disabled if this file is changed
-  back to true;
+- strict status checks differing from this file (currently `true`; any live
+  mismatch — strict disabled when the file says true, or enabled when it says
+  false — is drift);
 - required review/CODEOWNER/last-push/stale-review settings differing from this file;
 - conversation resolution disabled;
 - admin enforcement disabled;

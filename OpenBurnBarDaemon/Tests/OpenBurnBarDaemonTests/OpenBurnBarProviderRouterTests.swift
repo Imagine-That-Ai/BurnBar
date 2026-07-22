@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarEngine
 @testable import OpenBurnBarDaemon
 import Foundation
 import XCTest
@@ -201,6 +201,33 @@ final class BurnBarProviderRouterTests: XCTestCase {
         let dashRoute = try await harness.router.route(modelName: "some-new-model-cloud", preferredProviderID: "ollama")
         XCTAssertEqual(dashRoute.resolvedModelID, "some-new-model")
         XCTAssertEqual(dashRoute.modelCapabilityClassID, "some-new-model")
+    }
+
+    func testDynamicGatewayRouterRoutesOllamaCloudModel() async throws {
+        let harness = try makeHarness(
+            name: "ollama-cloud-live-discovery",
+            allowDynamicModels: true
+        )
+        try await harness.configStore.setSecret("ollama-key", for: "ollama")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama",
+                isEnabled: true,
+                baseURL: "https://ollama.com/api",
+                preferredModelIDs: ["ollama-cloud-family"]
+            )
+        )
+
+        let route = try await harness.router.route(
+            modelName: "gemini-3-flash-preview:cloud",
+            preferredProviderID: "ollama"
+        )
+
+        XCTAssertEqual(route.providerID, "ollama")
+        XCTAssertEqual(route.requestedModel, "gemini-3-flash-preview:cloud")
+        XCTAssertEqual(route.resolvedModelID, "gemini-3-flash-preview")
+        XCTAssertEqual(route.canonicalModelID, "gemini-3-flash-preview")
+        XCTAssertEqual(route.modelCapabilityClassID, "gemini-3-flash-preview")
     }
 
     func testRouterDoesNotLetOllamaCloudClaimAnthropicCatalogModel() async throws {

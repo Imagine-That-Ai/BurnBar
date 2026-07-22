@@ -4,13 +4,33 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const GATE = join(SCRIPT_DIR, "verify-hosting-deploy-boundary.mjs");
+const WORKFLOW = readFileSync(
+  join(SCRIPT_DIR, "..", "..", ".github", "workflows", "deploy-hosting.yml"),
+  "utf8",
+);
+for (const helper of [
+  "scripts/lib/atomic-regular-file.mjs",
+  "scripts/lib/firebase-hosting-rest-url.mjs",
+]) {
+  if (!WORKFLOW.includes(`cp ${helper} "$ARTIFACT_ROOT/scripts/lib/"`)) {
+    throw new Error(
+      `immutable Hosting artifact omits imported helper: ${helper}`,
+    );
+  }
+}
 const roots = [];
 process.on("exit", () =>
   roots.forEach((dir) => rmSync(dir, { recursive: true, force: true })),
@@ -26,6 +46,7 @@ permissions:
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -38,21 +59,63 @@ jobs:
       - name: Verify hosting deploy ref
         env:
           EVENT_NAME: \${{ github.event_name }}
+          REQUESTED_PROFILE: \${{ inputs.domain_core_profile || 'public-production' }}
         run: |
           set -euo pipefail
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
-            echo "::error::Manual hosting deploys must run from refs/heads/main."
+          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
+          release_tag=""
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            commit="$GITHUB_SHA"
+          elif [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+            release_tag="\${GITHUB_REF#refs/tags/}"
+            git fetch --force --tags origin "+$GITHUB_REF:$GITHUB_REF"
+            commit="$(git rev-parse "$GITHUB_REF^{commit}")"
+            [[ "$GITHUB_SHA" == "$commit" ]] || { echo "::error::Release tag moved away from workflow commit."; exit 1; }
+          else
+            echo "::error::Hosting deploys require main or an exact stable v* tag."
             exit 1
           fi
-          git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
             echo "::error::Hosting deploy commit is not reachable from origin/main."
             exit 1
           fi
+          profile="public-production"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            profile="$REQUESTED_PROFILE"
+          fi
+          if [[ "$profile" == "public-production-rollback" ]]; then
+            if [[ "$EVENT_NAME" != "workflow_dispatch" || -z "$release_tag" ]]; then
+              echo "::error::Rollback is manual-only and must target an exact stable release tag."
+              exit 1
+            fi
+          fi
+      - name: Resolve signed public domain-core profile
+        env:
+          CANDIDATE_COMMIT: \${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}
+          RELEASE_TAG: \${{ steps.ref.outputs.release_tag }}
+        run: |
+          if [[ -n "$RELEASE_TAG" ]]; then
+            echo "stable"
+          fi
       - name: Build immutable hosting outputs
         run: npm run build --prefix website
+      - name: Stage hosting deploy artifact
+        env:
+          CANDIDATE_COMMIT: \${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}
+          RELEASE_TAG: \${{ steps.ref.outputs.release_tag }}
+        run: |
+          if [[ -n "$RELEASE_TAG" ]]; then
+            echo "stable"
+          fi
+          verify_args=(
+            --expected-candidate-commit "$CANDIDATE_COMMIT"
+          )
+          if [[ -n "$RELEASE_TAG" ]]; then
+            verify_args+=(
+              --expected-release-commit "$RELEASE_COMMIT"
+            )
+          fi
       - name: Upload immutable hosting artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
   deploy-hosting:
     needs: build-hosting-artifacts
     if: \${{ github.event.inputs.dry_run != 'true' }}
@@ -125,34 +188,31 @@ console.log("Self-test: verify-hosting-deploy-boundary.mjs\n");
 
 expect("current hardened hosting workflow passes", GOOD, 0);
 expect(
-  "missing manual main-ref guard fails",
+  "missing stable tag trigger fails",
+  GOOD.replace('    tags: ["v*"]\n', ""),
+  1,
+);
+expect(
+  "nonstable tag selector fails",
   GOOD.replace(
-    'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then',
-    'if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then',
+    "^refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+(\\+[0-9A-Za-z.-]+)?$",
+    "^refs/tags/v.*$",
   ),
   1,
 );
 expect(
-  "comment-only manual main-ref guard fails",
+  "moved release tag guard missing fails",
   GOOD.replace(
-    'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then',
-    '# if [[ "$EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then',
-  ),
-  1,
-);
-expect(
-  "manual guard without exit fails",
-  GOOD.replace(
-    '            exit 1\n          fi\n          git fetch',
-    '            echo "::warning::continuing"\n          fi\n          git fetch',
+    '            [[ "$GITHUB_SHA" == "$commit" ]] || { echo "::error::Release tag moved away from workflow commit."; exit 1; }',
+    '            echo "::warning::tag movement ignored"',
   ),
   1,
 );
 expect(
   "missing origin-main reachability check fails",
   GOOD.replace(
-    'if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then',
-    'if [[ -n "$GITHUB_SHA" ]]; then',
+    'if ! git merge-base --is-ancestor "$commit" origin/main; then',
+    'if [[ -n "$commit" ]]; then',
   ),
   1,
 );
@@ -160,7 +220,7 @@ expect(
   "ref guard after artifact upload fails",
   GOOD.replace(
     /      - name: Verify hosting deploy ref[\s\S]*?      - name: Build immutable hosting outputs/u,
-    '      - name: Build immutable hosting outputs',
+    "      - name: Build immutable hosting outputs",
   ).replace(
     "      - name: Upload immutable hosting artifact",
     `      - name: Upload immutable hosting artifact
@@ -245,10 +305,44 @@ expect(
   ),
   1,
 );
+expect(
+  "staging verify against RELEASE_COMMIT instead of CANDIDATE_COMMIT fails",
+  GOOD.replace(
+    '--expected-candidate-commit "$CANDIDATE_COMMIT"',
+    '--expected-candidate-commit "$RELEASE_COMMIT"',
+  ),
+  1,
+);
+expect(
+  "staging step missing CANDIDATE_COMMIT env fails",
+  GOOD.replace(
+    "      - name: Stage hosting deploy artifact\n        env:\n          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}\n          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}",
+    "      - name: Stage hosting deploy artifact\n        env:\n          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}",
+  ),
+  1,
+);
+expect(
+  "staging step missing conditional release flag guard fails",
+  GOOD.replace(
+    '          if [[ -n "$RELEASE_TAG" ]]; then\n            echo "stable"\n          fi\n          verify_args=(\n            --expected-candidate-commit "$CANDIDATE_COMMIT"\n          )\n          if [[ -n "$RELEASE_TAG" ]]; then\n            verify_args+=(\n              --expected-release-commit "$RELEASE_COMMIT"\n            )\n          fi',
+    '          verify_args=(\n            --expected-candidate-commit "$CANDIDATE_COMMIT"\n          )',
+  ),
+  1,
+);
+expect(
+  "resolve profile step missing conditional release flag guard fails",
+  GOOD.replace(
+    '      - name: Resolve signed public domain-core profile\n        env:\n          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}\n          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}\n        run: |\n          if [[ -n "$RELEASE_TAG" ]]; then\n            echo "stable"\n          fi',
+    "      - name: Resolve signed public domain-core profile\n        env:\n          CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}\n          RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}\n        run: echo done",
+  ),
+  1,
+);
 
 if (failed > 0) {
   console.error(`\nFAIL: ${failed} failed, ${passed} passed`);
   process.exit(1);
 }
 
-console.log(`\nPASS: ${passed} hosting deploy boundary self-test case(s) passed.`);
+console.log(
+  `\nPASS: ${passed} hosting deploy boundary self-test case(s) passed.`,
+);

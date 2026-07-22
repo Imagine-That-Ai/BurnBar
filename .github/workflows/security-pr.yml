@@ -83,21 +83,27 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           GITLEAKS_CONFIG_PATH=".gitleaks.toml"
+          GITLEAKS_IGNORE_PATH=".gitleaksignore"
           if [[ "${EVENT_NAME}" != "push" ]]; then
             if [[ -z "${BASE_SHA}" || "${BASE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
-              echo "::error::Cannot resolve trusted base SHA for ${EVENT_NAME}. Refusing to use head .gitleaks.toml." >&2
+              echo "::error::Cannot resolve trusted base SHA for ${EVENT_NAME}. Refusing to use head gitleaks policy." >&2
               exit 1
             fi
             GITLEAKS_CONFIG_PATH="${RUNNER_TEMP}/gitleaks-base.toml"
+            GITLEAKS_IGNORE_PATH="${RUNNER_TEMP}/gitleaks-base.ignore"
             git show "${BASE_SHA}:.gitleaks.toml" > "${GITLEAKS_CONFIG_PATH}" || {
               echo "::error::Cannot read trusted base .gitleaks.toml from ${BASE_SHA}. Refusing to use head .gitleaks.toml." >&2
               exit 1
             }
+            git show "${BASE_SHA}:.gitleaksignore" > "${GITLEAKS_IGNORE_PATH}" || {
+              echo "::error::Cannot read trusted base .gitleaksignore from ${BASE_SHA}. Refusing to use head .gitleaksignore." >&2
+              exit 1
+            }
           fi
           if [[ -z "${BASE_SHA}" || "${BASE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
-            "$HOME/go/bin/gitleaks" detect --config "${GITLEAKS_CONFIG_PATH}" --source . --redact --verbose
+            "$HOME/go/bin/gitleaks" detect --config "${GITLEAKS_CONFIG_PATH}" --gitleaks-ignore-path "${GITLEAKS_IGNORE_PATH}" --source . --redact --verbose
           else
-            "$HOME/go/bin/gitleaks" detect --config "${GITLEAKS_CONFIG_PATH}" --source . --redact --verbose --log-opts "${BASE_SHA}..HEAD"
+            "$HOME/go/bin/gitleaks" detect --config "${GITLEAKS_CONFIG_PATH}" --gitleaks-ignore-path "${GITLEAKS_IGNORE_PATH}" --source . --redact --verbose --log-opts "${BASE_SHA}..HEAD"
           fi
 
   dependency-review:
@@ -277,14 +283,24 @@ jobs:
         uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
         with:
           scan-args: |-
-            --lockfile=functions/package-lock.json
+            --lockfile=package-lock.json
+            --lockfile=apps/console/package-lock.json
+            --lockfile=apps/linux-desktop/package-lock.json
             --lockfile=extensions/openburnbar/package-lock.json
-            --lockfile=services/hermes-realtime-relay/package-lock.json
-            --lockfile=services/hosted-mcp/package-lock.json
-            --lockfile=tools/openburnbar-mcp-remote/package-lock.json
+            --lockfile=firestore-rules-tests/package-lock.json
+            --lockfile=functions/package-lock.json
+            --lockfile=packages/design-tokens/package-lock.json
+            --lockfile=packages/entitlements/package-lock.json
             --lockfile=packages/libsignal-bridge/package-lock.json
             --lockfile=packages/libsignal-protocol/package-lock.json
             --lockfile=packages/signal-envelope-contracts/package-lock.json
+            --lockfile=quota-runner/package-lock.json
+            --lockfile=services/hermes-realtime-relay/package-lock.json
+            --lockfile=services/hosted-mcp/package-lock.json
+            --lockfile=tools/app-store-connect/package-lock.json
+            --lockfile=tools/openburnbar-mcp-remote/package-lock.json
+            --lockfile=tools/schema-sync/package-lock.json
+            --lockfile=website/package-lock.json
 
   hosted-mcp-security-smoke:
     name: Hosted MCP Security Smoke
@@ -511,6 +527,13 @@ jobs:
 
       - name: Run Storage security-rules emulator tests
         run: bash scripts/ci/test-storage-rules.sh
+
+      # PR-time tripwire: fail before firestore.rules grows large enough to break
+      # the production rules release (diligence 2026-07-12 LB-2). The emulator
+      # suites above already prove the ruleset COMPILES; this proves it stays
+      # deployable.
+      - name: Guard Firestore rules size against the release limit
+        run: node scripts/ci/check-firestore-rules-size.mjs
 
       # session-log-backup has 3 PRE-EXISTING failures (Pro-entitlement manifest
       # accept/refresh/overwrite) that fail standalone on the base tree and are

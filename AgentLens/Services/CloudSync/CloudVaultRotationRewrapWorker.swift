@@ -246,8 +246,8 @@ struct CloudVaultRotationRewrapWorker {
                     newKeyData: newKeyData
                 ) ?? document.documentID
                 let preview = String(bodyText.prefix(500))
-                let chunks = SessionLogSyncService.chunkUTF8String(bodyText, maxBytes: Self.cloudSearchChunkMaxBytes)
                 let provider = data["provider"] as? String ?? "unknown"
+                let chunks = try Self.cloudSearchChunks(bodyText, title: title, provider: provider, maxBytes: Self.cloudSearchChunkMaxBytes)
                 let sourceID = data["id"] as? String ?? document.documentID
                 let sealedSearchTitle = try CloudVaultCrypto.sealText(
                     title,
@@ -365,6 +365,20 @@ struct CloudVaultRotationRewrapWorker {
             changedFields: 0,
             scannedStorageBlobs: scanned,
             rewrappedStorageBlobs: rewrapped
+        )
+    }
+
+    static func cloudSearchChunks(
+        _ bodyText: String,
+        title: String,
+        provider: String,
+        maxBytes: Int
+    ) throws -> [String] {
+        let searchMetadata = "\(title) \(provider)"
+        return try CloudVaultCrypto.cloudSearchBodyChunks(
+            bodyText,
+            metadata: searchMetadata,
+            maxBytes: maxBytes
         )
     }
 

@@ -1,0 +1,14 @@
+{
+  "attributeCondition": "assertion.repository=='Imagine-That-Ai/BurnBar'",
+  "attributeMapping": {
+    "attribute.ref": "assertion.ref",
+    "attribute.repository": "assertion.repository",
+    "google.subject": "assertion.sub"
+  },
+  "displayName": "GitHub OIDC",
+  "name": "projects/1079930549647/locations/global/workloadIdentityPools/github-pool/providers/github-provider",
+  "oidc": {
+    "issuerUri": "https://token.actions.githubusercontent.com"
+  },
+  "state": "ACTIVE"
+}

@@ -74,6 +74,9 @@ public sealed class WindowsUsageRuntime : IUsageRuntime
         }
     }
 
+    /// <summary>Effective periodic refresh cadence selected by the app composition root.</summary>
+    public TimeSpan PeriodicInterval => _periodicInterval;
+
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

@@ -394,6 +394,7 @@ struct TrustedDevicesDetailView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
+                    .accessibilityIdentifier("trusted-device.approve.\(device.id)")
                 }
 
                 if !device.isCurrentDevice {
@@ -403,6 +404,7 @@ struct TrustedDevicesDetailView: View {
                     .buttonStyle(.bordered)
                     .tint(.red)
                     .controlSize(.small)
+                    .accessibilityIdentifier("trusted-device.revoke.\(device.id)")
                 } else if device.trustState == .trusted {
                     Text("This Mac")
                         .font(DesignSystem.Typography.tiny)
@@ -748,6 +750,10 @@ struct MacTrustedDevice: Identifiable, Equatable {
     let platform: String
     let trustState: EscrowDeviceTrustState
     let isCurrentDevice: Bool
+    /// Server timestamp for the latest registration refresh. Duplicate rows
+    /// with the same name/platform/trust state keep the newest registration so
+    /// approval actions target the device that is actually active.
+    let registrationUpdatedAt: Date?
     /// Stored `escrow_devices.publicKeyFingerprint` (base64 SHA-256 of the
     /// device public key). The approval gate verifies this against
     /// ``publicKeyData`` before trusting it.
@@ -763,6 +769,7 @@ struct MacTrustedDevice: Identifiable, Equatable {
         platform: String = "macOS",
         trustState: EscrowDeviceTrustState = .pending,
         isCurrentDevice: Bool = false,
+        registrationUpdatedAt: Date? = nil,
         publicKeyFingerprint: String? = nil,
         publicKeyData: String? = nil
     ) {
@@ -771,6 +778,7 @@ struct MacTrustedDevice: Identifiable, Equatable {
         self.platform = platform
         self.trustState = trustState
         self.isCurrentDevice = isCurrentDevice
+        self.registrationUpdatedAt = registrationUpdatedAt
         self.publicKeyFingerprint = publicKeyFingerprint
         self.publicKeyData = publicKeyData
     }
@@ -819,6 +827,8 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
                 platform: d["platform"] as? String ?? "macOS",
                 trustState: EscrowDeviceTrustState(rawValue: d["trustState"] as? String ?? "") ?? .pending,
                 isCurrentDevice: did == self.deviceId,
+                registrationUpdatedAt: (d["updatedAt"] as? Timestamp)?.dateValue()
+                    ?? (d["createdAt"] as? Timestamp)?.dateValue(),
                 publicKeyFingerprint: d["publicKeyFingerprint"] as? String,
                 publicKeyData: publicKeyData
             ))
@@ -1013,6 +1023,13 @@ final class DeviceTrustViewModel {
         }
         if current.displayName == "Unknown", candidate.displayName != "Unknown" {
             return candidate
+        }
+        if candidate.registrationUpdatedAt != current.registrationUpdatedAt {
+            if let candidateUpdatedAt = candidate.registrationUpdatedAt,
+               let currentUpdatedAt = current.registrationUpdatedAt {
+                return candidateUpdatedAt > currentUpdatedAt ? candidate : current
+            }
+            return candidate.registrationUpdatedAt != nil ? candidate : current
         }
         return candidate.id < current.id ? candidate : current
     }

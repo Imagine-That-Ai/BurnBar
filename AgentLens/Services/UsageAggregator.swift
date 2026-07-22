@@ -44,8 +44,13 @@ final class UsageAggregator {
     /// Usage records fetched from provider billing APIs (separate from log-parsed data).
     private(set) var apiUsages: [ProviderUsageRecord] = []
     private var projectionWorkerTask: Task<Void, Never>?
+    private var conversationIndexingTask: Task<Void, Never>?
     private var projectionSweepRequested = false
     private var lastProjectionInsightRefreshAt: Date?
+    /// Set by `MemoryFootprintWatchdog` when the process footprint crosses
+    /// the critical threshold; suppresses new conversation-indexing passes
+    /// until the watchdog observes recovery.
+    private(set) var memoryPressureSheddingActive = false
 
     // MARK: - Forwarded Summary State (observation convenience)
 
@@ -191,12 +196,11 @@ final class UsageAggregator {
         parserHealth = result.parserHealth
         errors = result.errors
 
-        // Reload from DB so in-memory array is canonical.
-        if let refreshed = result.postPersistence.refreshedRecords {
-            dataStore.replaceUsages(refreshed)
-        } else {
-            await dataStore.refresh()
-        }
+        // Reload from the database worker so the main actor only applies the
+        // bounded dashboard snapshot. Replacing the full refreshed row set here
+        // synchronously sorted and rebuilt every aggregate on the main actor,
+        // which made active users pay an unbounded UI pause after a refresh.
+        await dataStore.refresh()
         lastRefresh = Date()
 
         persistenceErrorMessage = result.persistenceErrorMessage
@@ -223,6 +227,13 @@ final class UsageAggregator {
             launchProjectionSweep()
         }
 
+        scheduleConversationIndexingIfNeeded(
+            parsers: parsers,
+            orchestrator: orchestrator,
+            indexingEnabled: settings.conversationIndexingEnabled,
+            indexedAfter: refreshStartedAt
+        )
+
         let totalDuration = Date().timeIntervalSince(refreshStartedAt)
         AppLogger.parser.info(
             "usage_refresh_timing",
@@ -234,9 +245,31 @@ final class UsageAggregator {
                 "providers_scanned": String(parsers.count),
                 "usage_rows": String(result.allUsages.count),
                 "indexed_changes": String(result.indexedConversationChanges),
-                "api_supplemental_rows": String(postResult.supplementalUsageCount)
+                "api_supplemental_rows": String(postResult.supplementalUsageCount),
+                // No silent caps: how much new log content this pass read and
+                // how many files the byte budget pushed to the next tick.
+                "parse_new_content_mb": String(result.parseConsumedByteCount / (1024 * 1024)),
+                "parse_deferred_files": String(result.parseDeferredFileCount)
             ]
         )
+    }
+
+    /// Memory-watchdog escape hatch: cancels the heavy optional background
+    /// work and surfaces the condition in parser health (visible in the UI)
+    /// instead of only in Activity Monitor.
+    func shedBackgroundWorkForMemoryPressure(footprintMB: Int64) {
+        memoryPressureSheddingActive = true
+        conversationIndexingTask?.cancel()
+        conversationIndexingTask = nil
+        if parserImportError == nil {
+            parserImportError = "Background parsing paused: memory footprint reached \(footprintMB)MB. It resumes automatically once memory recovers."
+        }
+    }
+
+    /// Called by the watchdog once the footprint falls back under the re-arm
+    /// threshold.
+    func memoryPressureRecovered() {
+        memoryPressureSheddingActive = false
     }
 
     private static func formatMilliseconds(_ seconds: TimeInterval) -> String {
@@ -393,6 +426,12 @@ final class UsageAggregator {
         if result.indexedConversationChanges > 0 || pendingProjectionJobs > 0 {
             launchProjectionSweep()
         }
+        scheduleConversationIndexingIfNeeded(
+            parsers: [provider: parser],
+            orchestrator: refreshOrchestrator,
+            indexingEnabled: settings.conversationIndexingEnabled,
+            indexedAfter: refreshStartedAt
+        )
         if ProviderQuotaService.supportedProviders.contains(provider) {
             await quotaService.refresh(provider: provider, dataStore: dataStore)
         }
@@ -402,6 +441,69 @@ final class UsageAggregator {
 // MARK: - Private Helpers
 
 private extension UsageAggregator {
+    func scheduleConversationIndexingIfNeeded(
+        parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
+        orchestrator: RefreshOrchestrator,
+        indexingEnabled: Bool,
+        indexedAfter: Date
+    ) {
+        if !indexingEnabled {
+            conversationIndexingTask?.cancel()
+            return
+        }
+        // Watchdog shedding: no new indexing passes while the process
+        // footprint is critical; the periodic refresh keeps calling here, so
+        // indexing resumes on the first tick after recovery.
+        guard !memoryPressureSheddingActive else { return }
+        guard conversationIndexingTask == nil else { return }
+
+        let dataStore = self.dataStore
+        conversationIndexingTask = Task(priority: .utility) { [weak self] in
+            defer { self?.conversationIndexingTask = nil }
+
+            let result = await RefreshBackgroundWork.runConversationIndexing(
+                parsers: parsers,
+                dataStore: dataStore,
+                orchestrator: orchestrator,
+                indexingEnabled: indexingEnabled
+            )
+            guard !Task.isCancelled, let self else { return }
+
+            if !result.errors.isEmpty {
+                for (provider, error) in result.errors {
+                    AppLogger.parser.error(
+                        "conversation_indexing_failed",
+                        metadata: [
+                            "provider": provider.rawValue,
+                            "error": error
+                        ]
+                    )
+                }
+            }
+
+            if result.indexedConversationChanges > 0 {
+                let pendingProjectionJobs = (try? await self.dataStore.countProjectionJobs( // try?-ok(opportunistic sweep gate)
+                    statuses: [.queued, .leased, .running]
+                )) ?? 0
+                if pendingProjectionJobs < AutoSummaryPolicy.pauseWhenProjectionQueueExceeds {
+                    self.summaryEngine.launchAutoSummarySweep(indexedAfter: indexedAfter)
+                }
+                self.launchProjectionSweep()
+            }
+
+            AppLogger.parser.info(
+                "conversation_indexing_timing",
+                metadata: [
+                    "duration_ms": Self.formatMilliseconds(result.duration),
+                    "indexed_changes": String(result.indexedConversationChanges),
+                    "provider_errors": String(result.errors.count),
+                    "read_content_mb": String(result.consumedByteCount / (1024 * 1024)),
+                    "deferred_files": String(result.deferredFileCount)
+                ]
+            )
+        }
+    }
+
     func upsertParserImportHealth(importedUsageCount: Int, persistenceError: String?) async throws {
         let providers = parsers.keys.sorted { $0.rawValue < $1.rawValue }
         let providerStates = providers.map { provider -> ParserImportHealthProviderState in

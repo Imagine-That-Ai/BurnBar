@@ -23,6 +23,8 @@ public sealed partial class DashboardCommandSidebar : UserControl
     public DashboardCommandSidebar()
     {
         InitializeComponent();
+        ApplyModeChrome();
+        ActualThemeChanged += OnActualThemeChanged;
     }
 
     /// <summary>Raised when the user picks Overview / a provider / a model row.</summary>
@@ -76,6 +78,12 @@ public sealed partial class DashboardCommandSidebar : UserControl
     private void OnModelsModeClick(object sender, RoutedEventArgs e) =>
         SetViewMode(DashboardCommandViewMode.Models, raise: true);
 
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+    {
+        ApplyModeChrome();
+        RebuildRows();
+    }
+
     private async void OnCursorClick(object sender, RoutedEventArgs e)
     {
         // macOS openBurnBarCursorExtension — cursor: then vscode: fallback.
@@ -108,11 +116,11 @@ public sealed partial class DashboardCommandSidebar : UserControl
             ? "Scan, compare spend, and drill into model behavior from one workspace."
             : "Track spend and token volume across every model your agents use.";
 
-        Brush selectedBg = ResourceBrush("PensieveColorGlassBgElevatedBrush")
+        Brush selectedBg = ResourceBrush("AuroraGlassTintElevatedBrush")
             ?? new SolidColorBrush(Color.FromArgb(0x44, 0xFF, 0xFF, 0xFF));
-        Brush mutedFg = ResourceBrush("PensieveColorTextBaseBrush")
+        Brush mutedFg = ResourceBrush("AuroraTextSecondaryBrush")
             ?? new SolidColorBrush(Color.FromArgb(0xCC, 0xC8, 0xD0, 0xE0));
-        Brush brightFg = ResourceBrush("PensieveColorTextBrightBrush")
+        Brush brightFg = ResourceBrush("AuroraTextBrush")
             ?? new SolidColorBrush(Colors.White);
 
         AgentsModeButton.Background = agents ? selectedBg : new SolidColorBrush(Colors.Transparent);
@@ -214,10 +222,10 @@ public sealed partial class DashboardCommandSidebar : UserControl
             BorderThickness = new Thickness(1),
             BorderBrush = selected
                 ? new SolidColorBrush(Color.FromArgb(0x4D, accentColor.R, accentColor.G, accentColor.B))
-                : ResourceBrush("PensieveColorGlassLineBrush") ?? new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
+                : ResourceBrush("AuroraGlassStrokeBrush") ?? new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
             Background = selected
                 ? new SolidColorBrush(Color.FromArgb(0x14, accentColor.R, accentColor.G, accentColor.B))
-                : new SolidColorBrush(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF)),
+                : ResourceBrush("AuroraGlassTintBaseBrush"),
         };
 
         var grid = new Grid { ColumnSpacing = 10 };
@@ -232,7 +240,7 @@ public sealed partial class DashboardCommandSidebar : UserControl
             CornerRadius = new CornerRadius(17),
             Background = selected
                 ? new SolidColorBrush(Color.FromArgb(0x2E, accentColor.R, accentColor.G, accentColor.B))
-                : ResourceBrush("PensieveColorGlassBgElevatedBrush")
+                : ResourceBrush("AuroraGlassTintElevatedBrush")
                     ?? new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
             Child = new FontIcon
             {
@@ -242,7 +250,7 @@ public sealed partial class DashboardCommandSidebar : UserControl
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = selected
                     ? accentBrush
-                    : ResourceBrush("PensieveColorTextBaseBrush")
+                    : ResourceBrush("AuroraTextSecondaryBrush")
                         ?? new SolidColorBrush(Color.FromArgb(0xCC, 0xC8, 0xD0, 0xE0)),
             },
         };
@@ -256,14 +264,14 @@ public sealed partial class DashboardCommandSidebar : UserControl
             FontWeight = selected ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = selected
-                ? ResourceBrush("PensieveColorTextBrightBrush")
-                : ResourceBrush("PensieveColorTextBaseBrush"),
+                ? ResourceBrush("AuroraTextBrush")
+                : ResourceBrush("AuroraTextSecondaryBrush"),
         });
         labels.Children.Add(new TextBlock
         {
             Text = subtitle,
             FontSize = 11,
-            Foreground = ResourceBrush("PensieveColorTextDimBrush"),
+            Foreground = ResourceBrush("AuroraTextMutedBrush"),
         });
         Grid.SetColumn(labels, 1);
 
@@ -277,9 +285,9 @@ public sealed partial class DashboardCommandSidebar : UserControl
         {
             Text = metric,
             FontSize = 12,
-            FontFamily = new FontFamily("Cascadia Mono, Consolas"),
+            FontFamily = BrandFonts.Mono,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Foreground = selected ? accentBrush : ResourceBrush("PensieveColorTextDimBrush"),
+            Foreground = selected ? accentBrush : ResourceBrush("AuroraTextMutedBrush"),
         });
         trailing.Children.Add(new FontIcon
         {
@@ -288,7 +296,7 @@ public sealed partial class DashboardCommandSidebar : UserControl
             HorizontalAlignment = HorizontalAlignment.Right,
             Foreground = selected
                 ? new SolidColorBrush(Color.FromArgb(0xCC, accentColor.R, accentColor.G, accentColor.B))
-                : ResourceBrush("PensieveColorTextDimBrush"),
+                : ResourceBrush("AuroraTextMutedBrush"),
         });
         Grid.SetColumn(trailing, 2);
 
@@ -309,8 +317,16 @@ public sealed partial class DashboardCommandSidebar : UserControl
     private void RaiseSelection(DashboardCommandSelection selection) =>
         SelectionChanged?.Invoke(this, selection);
 
-    private Brush? ResourceBrush(string key) =>
-        Application.Current.Resources.TryGetValue(key, out object? value) ? value as Brush : null;
+    private Brush? ResourceBrush(string key) => key switch
+    {
+        "AuroraGlassTintBaseBrush" => AuroraGlassTintBaseBrushProbe.Background,
+        "AuroraGlassTintElevatedBrush" => AuroraGlassTintElevatedBrushProbe.Background,
+        "AuroraGlassStrokeBrush" => AuroraGlassStrokeBrushProbe.Background,
+        "AuroraTextBrush" => AuroraTextBrushProbe.Background,
+        "AuroraTextSecondaryBrush" => AuroraTextSecondaryBrushProbe.Background,
+        "AuroraTextMutedBrush" => AuroraTextMutedBrushProbe.Background,
+        _ => null,
+    };
 }
 
 /// <summary>Selection payload from the Command sidebar.</summary>

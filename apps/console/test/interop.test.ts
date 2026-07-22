@@ -11,9 +11,10 @@
  * suite never fails for a missing toolchain — but when present this is the real
  * compatibility gate.
  */
-import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { beforeAll, describe, it, expect } from "vitest";
 import {
   openBlob,
   openText,
@@ -23,6 +24,29 @@ import {
   type CloudVaultBlobEnvelope,
   type CloudVaultSealedText,
 } from "../lib/escrow";
+import { initializeCloudVaultDomainCoreForTests } from "../lib/domainCoreCloudVault";
+
+beforeAll(() => {
+  const wasmURL = new URL(
+    "../vendor/openburnbar-domain-core-wasm/openburnbar_domain_core_bg.wasm",
+    import.meta.url,
+  );
+  const manifestURL = new URL(
+    "../../../crates/openburnbar-domain-core/union-abi-manifest.json",
+    import.meta.url,
+  );
+  const expected = JSON.parse(
+    readFileSync(fileURLToPath(manifestURL), "utf8"),
+  ) as {
+    coreVersion: string;
+    abiVersion: number;
+    sourceSha256: string;
+  };
+  initializeCloudVaultDomainCoreForTests(
+    readFileSync(fileURLToPath(wasmURL)),
+    expected,
+  );
+});
 
 const fixturePath = resolve(__dirname, "interop/swift-fixture.json");
 const hasFixture = existsSync(fixturePath);

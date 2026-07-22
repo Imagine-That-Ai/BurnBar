@@ -51,7 +51,7 @@ functions/src/hermesGateway.ts @Ajnunezg @emilio3435
 AgentLens/Services/CloudVaultCrypto.swift @Ajnunezg @emilio3435
 AgentLens/Services/DataStore/DatabaseEncryptionService.swift @Ajnunezg @emilio3435
 OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ @Ajnunezg @emilio3435
-OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift @Ajnunezg @emilio3435
+OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift @Ajnunezg @emilio3435
 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/*Signal*.swift @Ajnunezg @emilio3435
 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/*HPKE*.swift @Ajnunezg @emilio3435
 OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/DaemonLocalAuthProofVerifier.swift @Ajnunezg @emilio3435
@@ -76,6 +76,10 @@ scripts/ci/prepare-firebase-tools.sh @Ajnunezg @emilio3435
 scripts/ci/write-firebase-hosting-ci-config.mjs @Ajnunezg @emilio3435
 scripts/ci/verify-production-deploy-auth.sh @Ajnunezg @emilio3435
 scripts/ci/verify-production-deploy-auth.test.sh @Ajnunezg @emilio3435
+# Scanner governance — gitleaks config controls which secrets the scanner
+# suppresses; must route to security owners (closes P-SEC-4 governance gap).
+.gitleaks.toml @Ajnunezg @emilio3435
+.gitleaksignore @Ajnunezg @emilio3435
 firestore.rules @Ajnunezg @emilio3435
 firestore.indexes.json @Ajnunezg @emilio3435
 project.yml @Ajnunezg @emilio3435

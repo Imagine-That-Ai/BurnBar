@@ -15,38 +15,52 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     AutomationProperties.AutomationId="RouteRoot.dashboard"
+    SizeChanged="OnDashboardSizeChanged"
     Background="Transparent">
 
     <Grid Background="Transparent">
         <!-- Backdrop layers span full page (macOS DashboardBackdrop behind split). -->
-        <Grid x:Name="KernelHost" IsHitTestVisible="False" Visibility="Collapsed" />
-        <Grid x:Name="BackdropHost" />
-        <Border IsHitTestVisible="False">
+        <Grid x:Name="KernelHost"
+              Canvas.ZIndex="-30"
+              IsHitTestVisible="False"
+              Visibility="Collapsed" />
+        <Grid x:Name="BackdropHost"
+              Canvas.ZIndex="-20"
+              IsHitTestVisible="False" />
+        <Border Canvas.ZIndex="-10" IsHitTestVisible="False">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                    <GradientStop Offset="0.0" Color="#66070A12" />
+                    <GradientStop Offset="0.0" Color="{ThemeResource AuroraGlassTintSunkenColor}" />
                     <GradientStop Offset="0.5" Color="#1A070A12" />
-                    <GradientStop Offset="1.0" Color="#66070A12" />
+                    <GradientStop Offset="1.0" Color="{ThemeResource AuroraGlassTintSunkenColor}" />
                 </LinearGradientBrush>
             </Border.Background>
         </Border>
 
         <!-- NavigationSplitView: Command sidebar | detail -->
-        <Grid>
+        <Grid Canvas.ZIndex="10">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="280" MinWidth="260" MaxWidth="320" />
-                <ColumnDefinition Width="1" />
+                <ColumnDefinition x:Name="SidebarColumn" Width="280" MinWidth="260" MaxWidth="320" />
+                <ColumnDefinition x:Name="SidebarDividerColumn" Width="1" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <dashboard:DashboardCommandSidebar x:Name="CommandSidebar"
-                                               Grid.Column="0" />
+            <ContentControl x:Name="DesktopCommandHost"
+                            Grid.Column="0">
+                <dashboard:DashboardCommandSidebar x:Name="CommandSidebar" />
+            </ContentControl>
 
-            <Border Grid.Column="1"
+            <Border x:Name="SidebarDivider"
+                    Grid.Column="1"
                     Background="{StaticResource PensieveColorGlassLineBrush}"
                     Opacity="0.65" />
 
-            <Grid Grid.Column="2" RowSpacing="8" Padding="16,12,16,0">
+            <Grid x:Name="DetailHost"
+                  Grid.Column="2"
+                  RowSpacing="8"
+                  Padding="16,12,16,0"
+                  AutomationProperties.AutomationId="Dashboard.Content"
+                  AutomationProperties.Name="Providers dashboard content">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -63,17 +77,32 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button x:Name="CompactCommandButton"
+                                    Visibility="Collapsed"
+                                    Width="36"
+                                    Height="36"
+                                    Padding="0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    AutomationProperties.Name="Provider and model commands"
+                                    ToolTipService.ToolTip="Provider and model commands">
+                                <FontIcon Glyph="&#xE700;" FontSize="16" />
+                                <Button.Flyout>
+                                    <Flyout x:Name="CompactCommandFlyout"
+                                            Placement="BottomEdgeAlignedLeft" />
+                                </Button.Flyout>
+                            </Button>
                             <TextBlock x:Name="DetailTitle"
                                        Text="Overview"
                                        VerticalAlignment="Center"
                                        FontSize="18"
                                        FontWeight="SemiBold"
-                                       Foreground="{StaticResource PensieveColorTextBrightBrush}" />
+                                       Foreground="{ThemeResource AuroraTextBrush}" />
                             <TextBlock x:Name="DetailSubtitle"
                                        VerticalAlignment="Center"
                                        FontSize="12"
                                        Opacity="0.55"
-                                       Foreground="{StaticResource PensieveColorTextMuteBrush}" />
+                                       Foreground="{ThemeResource AuroraTextMutedBrush}" />
                         </StackPanel>
                         <dashboard:DashboardLayoutSwitcher Grid.Column="2"
                                                            x:Name="Switcher"
@@ -93,6 +122,6 @@
             </Grid>
         </Grid>
 
-        <Grid x:Name="EggHost" IsHitTestVisible="False" />
+        <Grid x:Name="EggHost" Canvas.ZIndex="20" IsHitTestVisible="False" />
     </Grid>
 </Page>

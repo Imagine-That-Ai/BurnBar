@@ -26,8 +26,10 @@ typealias ConversationSourceType = OpenBurnBarCore.ConversationSourceType
 typealias ParseResult = OpenBurnBarCore.ParseResult
 typealias LogParseOptions = OpenBurnBarCore.LogParseOptions
 typealias LogParser = OpenBurnBarCore.LogParser
+typealias ParserOptionsUnsupported = OpenBurnBarCore.ParserOptionsUnsupported
 
 typealias ClaudeCodeParser = OpenBurnBarCore.ClaudeCodeParser
+typealias LiftedCodexParser = OpenBurnBarCore.CodexParser
 typealias FactoryDroidParser = OpenBurnBarCore.FactoryDroidParser
 typealias AntigravityParser = OpenBurnBarCore.AntigravityParser
 typealias AugmentParser = OpenBurnBarCore.AugmentParser

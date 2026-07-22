@@ -22,6 +22,22 @@ public sealed class DashboardUsageSummarySourceTests
         Task.FromResult(value);
 
     [Fact]
+    public void DashboardWindows_MatchMacOSNamesAndFloors()
+    {
+        var now = new DateTimeOffset(2026, 7, 15, 12, 30, 0, TimeSpan.Zero);
+
+        Assert.Equal("Today", DashboardUsageWindow.Today.DisplayName());
+        Assert.Equal("Last 7 Days", DashboardUsageWindow.Last7Days.DisplayName());
+        Assert.Equal("Last 30 Days", DashboardUsageWindow.Last30Days.DisplayName());
+        Assert.Equal("This Month", DashboardUsageWindow.ThisMonth.DisplayName());
+        Assert.Equal("All Time", DashboardUsageWindow.AllTime.DisplayName());
+        Assert.NotNull(DashboardUsageWindow.Today.StartUtc(now));
+        Assert.Equal(now.AddDays(-7), DashboardUsageWindow.Last7Days.StartUtc(now));
+        Assert.Equal(now.AddDays(-30), DashboardUsageWindow.Last30Days.StartUtc(now));
+        Assert.Null(DashboardUsageWindow.AllTime.StartUtc(now));
+    }
+
+    [Fact]
     public async Task Local_data_wins_and_cloud_is_not_consulted()
     {
         var cloudCalled = false;

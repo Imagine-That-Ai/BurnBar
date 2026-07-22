@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Aurora typography — the macOS type scale (AgentLens/Theme/DesignSystem.swift
+  DesignSystem.Typography) on the self-hosted brand fonts.
+
+  The macOS app renders SF Pro Rounded / SF Mono; neither ships off-Apple, so the
+  cross-platform brand stack is the same one the Linux shell uses: Outfit (display),
+  Geist (body), JetBrains Mono (mono), Fraunces (arcane hero only) — converted to TTF
+  under Assets/Fonts/ (OFL, see Assets/Fonts/LICENSE-fonts.txt) and referenced here.
+  Each family falls back to Segoe UI / Cascadia Mono / Consolas / Georgia if the
+  bundled file ever fails to resolve (e.g. unpackaged ms-appx font issue — see
+  docs/windows-port/MAC_GLASS_PARITY_PASS.md).
+
+  Sizes mirror the mac values exactly (displayLarge 36/bold … tiny 11/medium;
+  mono 28/bold, 14/medium, 12, 11). Use these named styles instead of ad-hoc
+  FontSize/FontFamily so surfaces read identically across platforms.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Brand font families (bundled under Assets/Fonts/, system fallbacks after the comma). -->
+    <FontFamily x:Key="AuroraDisplayFont">ms-appx:///Assets/Fonts/outfit.ttf#Outfit, Segoe UI, sans-serif</FontFamily>
+    <FontFamily x:Key="AuroraBodyFont">ms-appx:///Assets/Fonts/geist.ttf#Geist, Segoe UI, sans-serif</FontFamily>
+    <FontFamily x:Key="AuroraMonoFont">ms-appx:///Assets/Fonts/jetbrains-mono.ttf#JetBrains Mono, Cascadia Mono, Consolas, Courier New</FontFamily>
+    <FontFamily x:Key="AuroraArcaneFont">ms-appx:///Assets/Fonts/fraunces.ttf#Fraunces, Georgia, serif</FontFamily>
+
+    <!-- App-wide default typeface: implicit TextBlock style (the WinUI-legal way to set a
+         default font — Grid/Panel have no FontFamily member, so root-level FontFamily is a
+         XamlCompiler error, WMC0011). TextBlocks/controls with explicit FontFamily (mono,
+         icon fonts) keep theirs. -->
+    <Style TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource AuroraBodyFont}" />
+    </Style>
+
+    <!-- ── macOS DesignSystem.Typography scale (rounded display family) ── -->
+    <Style x:Key="AuroraDisplayLargeTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource AuroraDisplayFont}" />
+        <Setter Property="FontSize" Value="{StaticResource PensieveTypeSizeDisplayLarge}" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="Foreground" Value="{ThemeResource AuroraTextBrush}" />
+    </Style>
+    <Style x:Key="AuroraDisplayTextStyle" TargetType="TextBlock" BasedOn="{StaticResource AuroraDisplayLargeTextStyle}">
+        <Setter Property="FontSize" Value="{StaticResource PensieveTypeSizeDisplay}" />
+    </Style>
+    <Style x:Key="AuroraTitleTextStyle" TargetType="TextBlock" BasedOn="{StaticResource AuroraDisplayLargeTextStyle}">
+        <Setter Property="FontSize" Value="{StaticResource PensieveTypeSizeTitle}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style x:Key="AuroraHeadlineTextStyle" TargetType="TextBlock" BasedOn="{StaticResource AuroraDisplayLargeTextStyle}">
+        <Setter Property="FontSize" Value="{StaticResource PensieveTypeSizeHeadline}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style x:Key="AuroraBodyTextStyle" TargetType="TextBlock" BasedOn="{StaticResource AuroraDisplayLargeTextStyle}">
+        <Setter Property="FontFamily" Value="{StaticResource AuroraBodyFont}" />
+        <Setter Property="FontSize" Value="{StaticResource PensieveTypeSizeBody}" />
+        <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+    <Style x:Key="AuroraCaptionTextStyle" TargetType="TextBlock" BasedOn="{StaticResource AuroraBodyTextStyle}">
+        <Setter Property="FontSize" Value="{StaticResource PensieveTypeSizeCaption}" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="Foreground" Value="{ThemeResource AuroraTextSecondaryBrush}" />
+    </Style>
+    <Style x:Key="AuroraTinyTextStyle" TargetType="TextBlock" BasedOn="{StaticResource AuroraCaptionTextStyle}">
+        <Setter Property="FontSize" Value="{StaticResource PensieveTypeSizeTiny}" />
+        <Setter Property="Foreground" Value="{ThemeResource AuroraTextMutedBrush}" />
+    </Style>
+
+    <!-- ── macOS mono scale (metrics, code, telemetry) ── -->
+    <Style x:Key="AuroraMonoLargeTextStyle" TargetType="TextBlock" BasedOn="{StaticResource AuroraDisplayLargeTextStyle}">
+        <Setter Property="FontFamily" Value="{StaticResource AuroraMonoFont}" />
+        <Setter Property="FontSize" Value="{StaticResource PensieveTypeSizeMonoLarge}" />
+    </Style>
+    <Style x:Key="AuroraMonoTextStyle" TargetType="TextBlock" BasedOn="{StaticResource AuroraDisplayLargeTextStyle}">
+        <Setter Property="FontFamily" Value="{StaticResource AuroraMonoFont}" />
+        <Setter Property="FontSize" Value="{StaticResource PensieveTypeSizeMono}" />
+        <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <Style x:Key="AuroraMonoSmallTextStyle" TargetType="TextBlock" BasedOn="{StaticResource AuroraMonoTextStyle}">
+        <Setter Property="FontSize" Value="{StaticResource PensieveTypeSizeMonoSmall}" />
+        <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+    <Style x:Key="AuroraMonoTinyTextStyle" TargetType="TextBlock" BasedOn="{StaticResource AuroraMonoSmallTextStyle}">
+        <Setter Property="FontSize" Value="{StaticResource PensieveTypeSizeMonoTiny}" />
+        <Setter Property="Foreground" Value="{ThemeResource AuroraTextMutedBrush}" />
+    </Style>
+
+    <!-- Arcane hero label (Fraunces) — membership/hero surfaces only, mirrors ProTheme. -->
+    <Style x:Key="AuroraArcaneHeroTextStyle" TargetType="TextBlock" BasedOn="{StaticResource AuroraDisplayLargeTextStyle}">
+        <Setter Property="FontFamily" Value="{StaticResource AuroraArcaneFont}" />
+        <Setter Property="FontSize" Value="40" />
+        <Setter Property="FontWeight" Value="Black" />
+    </Style>
+
+</ResourceDictionary>

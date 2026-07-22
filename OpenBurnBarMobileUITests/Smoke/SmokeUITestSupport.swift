@@ -64,12 +64,13 @@ extension SmokeUIFlow where Self: XCTestCase {
                       file: file, line: line)
         let center = tab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         center.tap()
-        if !waitFor(tab, predicateFormat: "isSelected == true", timeout: 4) {
+        let selectionCompleted = "isSelected == true OR exists == false"
+        if !waitFor(tab, predicateFormat: selectionCompleted, timeout: 4) {
             // Fallback: nudge the drag surface onto the tab center.
             center.press(forDuration: 0.05, thenDragTo: center)
         }
-        XCTAssertTrue(waitFor(tab, predicateFormat: "isSelected == true", timeout: 6),
-                      "Aurora tab '\(id)' did not become selected after tapping.\n\(app.debugDescription)",
+        XCTAssertTrue(waitFor(tab, predicateFormat: selectionCompleted, timeout: 6),
+                      "Aurora tab '\(id)' did not become selected or collapse its sidebar after tapping.\n\(app.debugDescription)",
                       file: file, line: line)
         return tab
     }

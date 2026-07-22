@@ -13,6 +13,7 @@ namespace OpenBurnBar.App.Shell.Tests;
 /// <c>ApplicationData</c>) precisely so the unpackaged shell can use it AND so it is
 /// unit-testable off-Windows — these tests exercise that seam on the macOS host.
 /// </summary>
+[Collection(ShellEnvironmentCollection.Name)]
 public sealed class AppStatePersistenceTests : IDisposable
 {
     private readonly string _dir;

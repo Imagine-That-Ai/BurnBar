@@ -61,4 +61,8 @@
     <AssemblyName>OpenBurnBar.App.ManagedAgentRuntime</AssemblyName>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenBurnBar.App.ManagedAgentRuntime.Tests" />
+  </ItemGroup>
+
 </Project>

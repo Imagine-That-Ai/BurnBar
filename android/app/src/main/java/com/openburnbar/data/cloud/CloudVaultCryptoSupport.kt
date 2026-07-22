@@ -1,24 +1,19 @@
 package com.openburnbar.data.cloud
 
 import java.text.Normalizer
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 import org.signal.libsignal.protocol.ecc.ECPrivateKey
 import org.signal.libsignal.protocol.ecc.ECPublicKey
 
 private const val FIXED_COORDINATE_BYTES = 32
 
 internal object CloudVaultCryptoSupport {
-    private const val GCM_AUTH_TAG_BITS = 128
-    private const val GCM_NONCE_BYTES = 12
     private const val SHA256_DIGEST_BYTES = 32
     private const val WRAPPED_KEY_EPHEMERAL_BYTES = 65
     private const val P256_Y_COORDINATE_OFFSET = 33
 
-    fun encodeBase64(data: ByteArray): String = java.util.Base64.getEncoder().encodeToString(data)
+    fun encodeBase64(data: ByteArray): String = CloudVaultDomainCore.base64Encode(data)
 
-    fun decodeBase64(value: String): ByteArray = java.util.Base64.getMimeDecoder().decode(value)
+    fun decodeBase64(value: String): ByteArray = CloudVaultDomainCore.base64Decode(value)
 
     fun decodeSignalPublicKey(bytes: ByteArray): ECPublicKey = ECPublicKey(bytes)
 
@@ -69,10 +64,7 @@ internal object CloudVaultCryptoSupport {
     }
 
     fun openAesGcm(key: ByteArray, nonce: ByteArray, ciphertextAndTag: ByteArray, aad: ByteArray? = null): ByteArray {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
-        if (aad != null) cipher.updateAAD(aad)
-        return cipher.doFinal(ciphertextAndTag)
+        return CloudVaultDomainCore.aesOpenCombined(nonce + ciphertextAndTag, key, aad ?: ByteArray(0))
     }
 
     fun publicKeyFromX963(bytes: ByteArray, params: java.security.spec.ECParameterSpec): java.security.PublicKey {

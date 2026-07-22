@@ -11,6 +11,8 @@ exclude = [
   "build",
   "dist",
   "node_modules",
+  # reason: UniFFI owns this checked-in binding; drift and runtime gates validate it.
+  "tools/openburnbar-mcp/vendor/openburnbar-domain-core-python/openburnbar_domain_ffi.py",
 ]
 
 [lint]

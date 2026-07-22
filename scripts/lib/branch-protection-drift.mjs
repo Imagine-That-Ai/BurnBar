@@ -31,9 +31,9 @@ export const BRANCH_PROTECTION_SOURCE_OF_TRUTH = join(
 /**
  * The canonical, comparable subset of fields drift is checked on. Documentation
  * metadata keys (prefixed with "_") and the segregated
- * `_pending_required_status_checks` placeholders are intentionally EXCLUDED — no
- * workflow emits the pending checks yet, so they must never be required live
- * (a required-but-never-reported context leaves every PR pending forever).
+ * `_pending_required_status_checks` placeholders are intentionally EXCLUDED.
+ * A pending context is not guaranteed to report on every PR: it may be path-scoped
+ * or not emitted yet. Requiring it globally would leave some PRs pending forever.
  */
 export function canonicalizeDesired(desired) {
   const reviews = desired.required_pull_request_reviews || null;
@@ -84,44 +84,51 @@ export function canonicalizeLive({ classic = null, ruleset = null } = {}) {
   // that ruleset surface. Classic protection is still accepted when no ruleset
   // is present, which matches the current solo-maintainer repo configuration.
   const rulesetActive = rulesetView.present && rulesetView.enforcementActive;
-  const governanceView = rulesetView.present ? rulesetView : classicView;
+  const reviewView = rulesetActive && rulesetView.pullRequestRules.length > 0
+    ? rulesetView
+    : classicView;
+  const statusView = rulesetActive && rulesetView.requiredStatusCheckRules.length > 0
+    ? rulesetView
+    : classicView;
 
   return {
     rulesetPresent: rulesetView.present,
     rulesetPullRequestRules: rulesetView.pullRequestRules,
     rulesetRequiredStatusCheckRules: rulesetView.requiredStatusCheckRules,
     requiredStatusCheckContexts: contexts,
-    strictRequiredStatusChecks: governanceView.strictRequiredStatusChecks,
+    strictRequiredStatusChecks: statusView.strictRequiredStatusChecks,
     // Classic `enforce_admins` maps to zero bypass actors. If a ruleset is present,
     // bypass actors mean admins are not fully enforced on that ruleset surface.
-    enforceAdmins: rulesetView.present
-      ? rulesetActive && rulesetView.bypassActors.length === 0
-      : classicView.enforceAdmins,
-    reviewsPresent: governanceView.reviewsPresent,
-    requiredApprovingReviewCount: governanceView.requiredApprovingReviewCount,
-    requireCodeOwnerReviews: governanceView.requireCodeOwnerReviews,
-    dismissStaleReviews: governanceView.dismissStaleReviews,
-    requireLastPushApproval: governanceView.requireLastPushApproval,
+    enforceAdmins: (classicView.present ? classicView.enforceAdmins : rulesetActive)
+      && rulesetView.bypassActors.length === 0,
+    reviewsPresent: reviewView.reviewsPresent,
+    requiredApprovingReviewCount: reviewView.requiredApprovingReviewCount,
+    requireCodeOwnerReviews: reviewView.requireCodeOwnerReviews,
+    dismissStaleReviews: reviewView.dismissStaleReviews,
+    requireLastPushApproval: reviewView.requireLastPushApproval,
     // Bypass drift is a UNION: any bypass actor on EITHER surface is a bypass.
     bypassActors: sortedUnique([
       ...classicView.bypassActors,
       ...rulesetView.bypassActors,
     ]),
-    requireConversationResolution: governanceView.requireConversationResolution,
+    requireConversationResolution:
+      classicView.requireConversationResolution
+      || (rulesetActive && rulesetView.requireConversationResolution),
     // Force-push / deletion are disallowed by ruleset rules (non_fast_forward /
     // deletion) or by classic branch protection, depending on the active surface.
-    allowForcePushes: rulesetView.present
-      ? !rulesetView.forbidsForcePush
-      : classicView.allowForcePushes,
-    allowDeletions: rulesetView.present
-      ? !rulesetView.forbidsDeletion
-      : classicView.allowDeletions,
+    allowForcePushes:
+      classicView.allowForcePushes
+      && !(rulesetActive && rulesetView.forbidsForcePush),
+    allowDeletions:
+      classicView.allowDeletions
+      && !(rulesetActive && rulesetView.forbidsDeletion),
   };
 }
 
 function normalizeClassic(classic) {
   if (!classic || typeof classic !== "object") {
     return {
+      present: false,
       requiredStatusCheckContexts: [],
       strictRequiredStatusChecks: false,
       enforceAdmins: false,
@@ -140,6 +147,7 @@ function normalizeClassic(classic) {
   const reviews = classic.required_pull_request_reviews || null;
   const bypass = reviews?.bypass_pull_request_allowances || {};
   return {
+    present: true,
     requiredStatusCheckContexts: sortedUnique([
       ...(classic.required_status_checks?.contexts || []),
       ...((classic.required_status_checks?.checks || [])
