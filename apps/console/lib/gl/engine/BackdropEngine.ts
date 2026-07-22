@@ -300,6 +300,13 @@ export class BackdropEngine {
         cancelAnimationFrame(this.raf);
         this.raf = null;
       }
+      // Readability sampling uses its own one-shot rAF. Leaving that callback
+      // armed while the host is occluded defeats the zero-work contract and
+      // leaves a stale callback behind for every pause/resume cycle.
+      if (this.initialReadabilityRaf !== null) {
+        cancelAnimationFrame(this.initialReadabilityRaf);
+        this.initialReadabilityRaf = null;
+      }
     } else if (this.raf === null && !this.reducedMotion) {
       this.startLoop();
       this.scheduleReadabilitySample();
@@ -559,7 +566,7 @@ export class BackdropEngine {
   }
 
   private scheduleReadabilitySample(): void {
-    if (!this.onReadability || this.initialReadabilityRaf !== null) return;
+    if (!this.hostVisible || !this.onReadability || this.initialReadabilityRaf !== null) return;
     this.initialReadabilityRaf = requestAnimationFrame((now) => {
       this.initialReadabilityRaf = null;
       void this.emitReadability(now, true);
