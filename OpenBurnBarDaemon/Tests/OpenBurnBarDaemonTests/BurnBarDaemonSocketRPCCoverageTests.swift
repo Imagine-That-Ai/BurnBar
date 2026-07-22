@@ -31,6 +31,7 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
             BurnBarDaemonSocketRPCCoverage.lifecycle,
             BurnBarDaemonSocketRPCCoverage.config,
             BurnBarDaemonSocketRPCCoverage.usage,
+            BurnBarDaemonSocketRPCCoverage.chat,
             BurnBarDaemonSocketRPCCoverage.observability,
             BurnBarDaemonSocketRPCCoverage.membership,
             BurnBarDaemonSocketRPCCoverage.tooling,
@@ -51,6 +52,16 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
                     "RPC handler domains must not overlap: \(left) intersects \(right)"
                 )
             }
+        }
+    }
+    func testChatMethodsUseChatDomain() {
+        for method in [
+            BurnBarRPCMethod.chatThreadList,
+            .chatThreadGet,
+            .chatMessageAppend
+        ] {
+            XCTAssertTrue(BurnBarDaemonSocketRPCCoverage.chat.contains(method))
+            XCTAssertEqual(BurnBarDaemonSocketRPCCoverage.domain(for: method), "chat")
         }
     }
 }

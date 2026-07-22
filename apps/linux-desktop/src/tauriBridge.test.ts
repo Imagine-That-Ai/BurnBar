@@ -2,10 +2,80 @@ import { describe, expect, it } from 'vitest';
 import { bridgeStubDefaults } from './testing/bridgeStubs';
 import {
   computeCacheHitRatePct,
+  decodeChatMessageAppend,
+  decodeChatThreadGet,
+  decodeChatThreadList,
   decodeDaemonSubscriptionResponse,
   decodeDaemonSubscriptionStopResponse
 } from './tauriBridge';
 
+const ACCOUNT_UPDATED_AT = '2026-07-10T12:00:00Z';
+
+const CHAT_THREAD = {
+  id: 'thread-1',
+  title: 'Release check',
+  preview: 'Verify the Linux package',
+  messageCount: 2,
+  createdAt: ACCOUNT_UPDATED_AT,
+  updatedAt: ACCOUNT_UPDATED_AT,
+  lastMessageAt: ACCOUNT_UPDATED_AT,
+  backendID: 'codex'
+};
+
+const CHAT_MESSAGE = {
+  id: 'message-1',
+  threadID: 'thread-1',
+  role: 'user',
+  content: 'Verify the package.',
+  timestamp: ACCOUNT_UPDATED_AT,
+  backendID: 'codex'
+};
+
+describe('exact-thread chat wire decoding', () => {
+  it('strictly decodes list, get, and idempotent append results', () => {
+    expect(decodeChatThreadList({ threads: [CHAT_THREAD] })).toEqual({ threads: [CHAT_THREAD] });
+    expect(decodeChatThreadGet({
+      thread: CHAT_THREAD,
+      messages: [CHAT_MESSAGE],
+      hasMoreBefore: false
+    })).toMatchObject({ thread: CHAT_THREAD, messages: [CHAT_MESSAGE], hasMoreBefore: false });
+    expect(decodeChatMessageAppend({ message: CHAT_MESSAGE, inserted: false })).toEqual({
+      message: CHAT_MESSAGE,
+      inserted: false
+    });
+  });
+
+  it('rejects malformed roles, cross-thread messages, oversized bodies, and result floods', () => {
+    expect(() => decodeChatThreadGet({
+      thread: CHAT_THREAD,
+      messages: [{ ...CHAT_MESSAGE, role: 'tool' }],
+      hasMoreBefore: false
+    })).toThrow('role');
+    expect(() => decodeChatThreadGet({
+      thread: CHAT_THREAD,
+      messages: [{ ...CHAT_MESSAGE, threadID: 'thread-2' }],
+      hasMoreBefore: false
+    })).toThrow('different thread');
+    expect(() => decodeChatThreadGet({
+      messages: [CHAT_MESSAGE],
+      hasMoreBefore: false
+    })).toThrow('thread is missing');
+    expect(() => decodeChatMessageAppend({
+      message: { ...CHAT_MESSAGE, content: 'x'.repeat(262_145) },
+      inserted: true
+    })).toThrow('262144');
+    expect(() => decodeChatThreadList({ threads: Array.from({ length: 101 }, () => CHAT_THREAD) }))
+      .toThrow('100');
+  });
+
+  it('renders a missing thread as an honest empty exact-thread result', () => {
+    expect(decodeChatThreadGet({ messages: [], hasMoreBefore: false })).toEqual({
+      thread: undefined,
+      messages: [],
+      hasMoreBefore: false
+    });
+  });
+});
 describe('computeCacheHitRatePct', () => {
   it('matches the macOS CacheEfficiency formula (prompt-side basis)', () => {
     // hitRate = cacheRead / (input + cacheCreation + cacheRead)

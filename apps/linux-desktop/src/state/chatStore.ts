@@ -6,18 +6,25 @@ import {
 } from '../chat/gatewayClient.js';
 import { fixtureConfigSnapshot, fixtureSessionList } from '../daemonFixture.js';
 import { markStart } from '../perfMarks.js';
-import type { ConfigSnapshot, SessionEntry, SessionListResult } from '../tauriBridge.js';
+import type {
+  ChatMessageAppendRequest,
+  ChatThreadSummary,
+  ConfigSnapshot,
+  PersistedChatMessage
+} from '../tauriBridge.js';
 import type { ChatBackendId, ChatWarningBanner, MemoryCitation } from '../surfaces/chat/chatTypes.js';
 import { useShellStore } from './shellStore.js';
 
 export const CHAT_THREAD_PAGE_SIZE = 40;
 
-export type ChatMessageRole = 'user' | 'assistant' | 'tool' | 'thinking';
+export type ChatMessageRole = 'user' | 'assistant' | 'system' | 'tool' | 'thinking';
 
 export type ChatMessage = {
   id: string;
   role: ChatMessageRole;
   text: string;
+  threadID?: string;
+  timestamp?: string;
   toolName?: string;
   toolArgsSummary?: string;
   toolState?: 'proposed' | 'approved' | 'denied' | 'done' | 'running';
@@ -31,11 +38,13 @@ export type ChatStreamPhase = 'idle' | 'composing' | 'streaming' | 'done' | 'err
 export type ChatGatewayStatus = 'unknown' | 'reachable' | 'unreachable' | 'disabled';
 
 export type ChatState = {
-  threads: SessionEntry[];
+  threads: ChatThreadSummary[];
   nextCursor: string | null;
   selectedThreadId: string | null;
   messages: ChatMessage[];
   messagesLoading: boolean;
+  loadingOlderMessages: boolean;
+  hasMoreMessages: boolean;
   config: ConfigSnapshot | null;
   loading: boolean;
   error: string | null;
@@ -54,22 +63,37 @@ export type ChatState = {
   load(): Promise<void>;
   search(query: string): Promise<void>;
   selectThread(id: string | null): Promise<void>;
+  loadOlderMessages(): Promise<void>;
   loadMoreThreads(): void;
   setBackend(id: ChatBackendId): void;
   startNewChat(): void;
+  sendToThread(input: { threadID?: string; backend: ChatBackendId; text: string }): Promise<void>;
   sendMessage(text: string): Promise<void>;
   stopStreaming(): void;
 };
 
-function filterFixtureThreads(sessions: SessionEntry[], query: string): SessionEntry[] {
+function fixtureThreads(): ChatThreadSummary[] {
+  return fixtureSessionList().sessions.map((session) => ({
+    id: session.id,
+    title: session.title,
+    preview: `Fixture ${session.provider} / ${session.model} transcript`,
+    messageCount: Math.max(2, Math.round(session.tokens / 1200)),
+    createdAt: session.startedAt,
+    updatedAt: session.startedAt,
+    lastMessageAt: session.startedAt,
+    backendID: session.provider
+  }));
+}
+
+function filterFixtureThreads(threads: ChatThreadSummary[], query: string): ChatThreadSummary[] {
   const q = query.trim().toLowerCase();
-  if (!q) return sessions;
-  return sessions.filter(
-    (s) =>
-      s.title.toLowerCase().includes(q) ||
-      s.provider.toLowerCase().includes(q) ||
-      s.model.toLowerCase().includes(q) ||
-      s.id.toLowerCase().includes(q)
+  if (!q) return threads;
+  return threads.filter(
+    (thread) =>
+      thread.title.toLowerCase().includes(q) ||
+      thread.preview.toLowerCase().includes(q) ||
+      thread.backendID?.toLowerCase().includes(q) ||
+      thread.id.toLowerCase().includes(q)
   );
 }
 
@@ -88,72 +112,93 @@ function fixtureWarnings(): ChatWarningBanner[] {
   ];
 }
 
-function messagesForSession(session: SessionEntry, fixtureMode: boolean): ChatMessage[] {
-  const started = new Date(session.startedAt).toLocaleString();
+function messagesForFixture(thread: ChatThreadSummary): ChatMessage[] {
   const user: ChatMessage = {
-    id: `${session.id}-user`,
+    id: `${thread.id}-user`,
     role: 'user',
-    text: session.title || 'Untitled conversation'
+    text: thread.title || 'Untitled conversation',
+    threadID: thread.id,
+    timestamp: thread.createdAt
   };
   const thinking: ChatMessage = {
-    id: `${session.id}-thinking`,
+    id: `${thread.id}-thinking`,
     role: 'thinking',
-    text: fixtureMode
-      ? 'Reviewing provider logs and prior context before drafting a reply.'
-      : 'Indexed session loaded. Live reasoning appears when you send a new message through the gateway stream.'
+    text: 'Reviewing provider logs and prior context before drafting a reply.'
   };
   const assistant: ChatMessage = {
-    id: `${session.id}-assistant`,
+    id: `${thread.id}-assistant`,
     role: 'assistant',
-    text: fixtureMode
-      ? 'Pulled indexed excerpts for this thread and drafted a concise answer from your recent provider spend and session metadata.'
-      : `Indexed session · ${session.provider} / ${session.model} · ${started} · ${session.tokens.toLocaleString()} tokens · $${session.costUsd.toFixed(2)}. Compose below to stream a live reply via the local gateway (not stub text).`,
-    viaHermes: fixtureMode || session.provider === 'hermes' || session.provider === 'openclaw',
-    provider: session.provider,
-    memoryCitations: fixtureMode
-      ? [
-          { id: 'mem-1', label: 'BurnBar memory · quota pacing', messageId: `${session.id}-assistant` },
-          { id: 'mem-2', label: 'Indexed session · provider mix', messageId: `${session.id}-assistant` }
-        ]
-      : undefined
+    text: 'Pulled indexed excerpts for this thread and drafted a concise answer from your recent provider spend and session metadata.',
+    threadID: thread.id,
+    timestamp: thread.updatedAt,
+    viaHermes: true,
+    provider: thread.backendID,
+    memoryCitations: [
+      { id: 'mem-1', label: 'BurnBar memory · quota pacing', messageId: `${thread.id}-assistant` },
+      { id: 'mem-2', label: 'Indexed session · provider mix', messageId: `${thread.id}-assistant` }
+    ]
   };
   const tool: ChatMessage = {
-    id: `${session.id}-tool`,
+    id: `${thread.id}-tool`,
     role: 'tool',
     text: 'Tool invocation summary',
     toolName: 'hermes.tool',
-    toolState: fixtureMode ? 'done' : 'proposed'
+    toolState: 'done'
   };
-  return fixtureMode ? [user, thinking, assistant, tool] : [user, assistant];
+  return [user, thinking, assistant, tool];
 }
 
 async function fetchThreads(
   query: string
-): Promise<{ result: SessionListResult; config: ConfigSnapshot | null }> {
+): Promise<{ threads: ChatThreadSummary[]; config: ConfigSnapshot | null }> {
   const { fixtureMode, bridge } = useShellStore.getState();
   if (fixtureMode) {
-    const all = fixtureSessionList();
-    const sessions = query ? filterFixtureThreads(all.sessions, query) : all.sessions;
+    const all = fixtureThreads();
+    const threads = query ? filterFixtureThreads(all, query) : all;
     return {
-      result: { sessions, nextCursor: all.nextCursor },
+      threads,
       config: fixtureConfigSnapshot()
     };
   }
   if (!bridge) {
-    return { result: { sessions: [], nextCursor: null }, config: null };
+    return { threads: [], config: null };
   }
-  const result = query ? await bridge.sessionSearch(query) : await bridge.sessionList();
+  const result = await bridge.chatThreadList(query.trim() || undefined, 100);
   let config: ConfigSnapshot | null = null;
   try {
     config = await bridge.configSnapshot();
   } catch {
     config = null;
   }
-  return { result, config };
+  return { threads: result.threads, config };
 }
 
-function modelLabelForThread(thread: SessionEntry | null, backend: ChatBackendId): string {
-  if (thread) return `${thread.provider} / ${thread.model}`;
+function backendFromThread(thread: ChatThreadSummary | null, fallback: ChatBackendId): ChatBackendId {
+  switch (thread?.backendID?.trim().toLowerCase()) {
+    case 'hermes':
+    case 'openclaw':
+      return 'hermes';
+    case 'codex':
+    case 'openai':
+      return 'codex';
+    case 'claude':
+    case 'claude-code':
+    case 'anthropic':
+      return 'claude';
+    case 'pi':
+    case 'pi-agent':
+    // macOS persists ChatBackendID.piAgent.rawValue ("piAgent"), which
+    // arrives here lowercased.
+    case 'piagent':
+      return 'pi-agent';
+    case 'cli':
+      return 'cli';
+    default:
+      return fallback;
+  }
+}
+
+function modelLabelForThread(_thread: ChatThreadSummary | null, backend: ChatBackendId): string {
   switch (backend) {
     case 'codex':
       return 'gpt-5.4-codex';
@@ -166,6 +211,18 @@ function modelLabelForThread(thread: SessionEntry | null, backend: ChatBackendId
     default:
       return 'hermes';
   }
+}
+
+function messageFromPersisted(message: PersistedChatMessage): ChatMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    text: message.content,
+    threadID: message.threadID,
+    timestamp: message.timestamp,
+    viaHermes: message.role === 'assistant' && (message.backendID === 'hermes' || message.backendID === 'openclaw'),
+    provider: message.backendID
+  };
 }
 
 function gatewayBaseURLFromHealth(): string | null {
@@ -188,8 +245,36 @@ async function resolveGatewayStatus(
   return { status: reachable ? 'reachable' : 'unreachable', baseURL };
 }
 
+let transientIDSequence = 0;
+
 function newId(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  transientIDSequence = (transientIDSequence + 1) % Number.MAX_SAFE_INTEGER;
+  return `${prefix}-${Date.now().toString(36)}-${transientIDSequence.toString(36)}`;
+}
+
+function newUUID(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  if (typeof globalThis.crypto?.getRandomValues !== 'function') {
+    throw new Error('Secure UUID generation is unavailable.');
+  }
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+async function refreshThreadSummaries(query: string): Promise<void> {
+  const { fixtureMode } = useShellStore.getState();
+  if (fixtureMode) return;
+  try {
+    const { threads, config } = await fetchThreads(query);
+    useChatStore.setState({ threads, nextCursor: null, config });
+  } catch {
+    // Summary refresh is ancillary; a persisted turn must still reach the gateway.
+    console.error('linux_chat_thread_refresh_failed');
+  }
 }
 
 function summarizeToolArgs(args: string): string {
@@ -278,6 +363,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   selectedThreadId: null,
   messages: [],
   messagesLoading: false,
+  loadingOlderMessages: false,
+  hasMoreMessages: false,
   config: null,
   loading: false,
   error: null,
@@ -307,6 +394,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         visibleThreadCount: CHAT_THREAD_PAGE_SIZE,
         messages: [],
         selectedThreadId: null,
+        loadingOlderMessages: false,
+        hasMoreMessages: false,
         warnings: [],
         sharedFeaturesAvailable: true,
         streaming: false
@@ -315,23 +404,25 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
     set({ loading: true, error: null });
     try {
-      const { result, config } = await fetchThreads(query);
+      const { threads, config } = await fetchThreads(query);
       const gateway = await resolveGatewayStatus(fixtureMode);
       const prevSelected = get().selectedThreadId;
-      const stillThere = prevSelected && result.sessions.some((t) => t.id === prevSelected);
-      const selectedThreadId = stillThere ? prevSelected : result.sessions[0]?.id ?? null;
-      const selected = result.sessions.find((t) => t.id === selectedThreadId) ?? null;
+      const stillThere = prevSelected && threads.some((t) => t.id === prevSelected);
+      const selectedThreadId = stillThere ? prevSelected : threads[0]?.id ?? null;
+      const selected = threads.find((t) => t.id === selectedThreadId) ?? null;
+      const selectedBackend = backendFromThread(selected, get().backend);
       set({
-        threads: result.sessions,
-        nextCursor: result.nextCursor,
+        threads,
+        nextCursor: null,
         config,
         loading: false,
         error: null,
         visibleThreadCount: CHAT_THREAD_PAGE_SIZE,
         selectedThreadId,
+        backend: selectedBackend,
         warnings: fixtureMode ? fixtureWarnings() : [],
         sharedFeaturesAvailable: fixtureMode ? false : true,
-        modelLabel: modelLabelForThread(selected, get().backend),
+        modelLabel: modelLabelForThread(selected, selectedBackend),
         streaming: false,
         streamPhase: 'idle',
         streamError: null,
@@ -349,6 +440,8 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         error: e instanceof Error ? e.message : 'Request failed',
         messages: [],
         selectedThreadId: null,
+        loadingOlderMessages: false,
+        hasMoreMessages: false,
         warnings: [],
         streaming: false,
         streamPhase: 'error',
@@ -364,12 +457,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   async selectThread(id: string | null) {
-    const { fixtureMode } = useShellStore.getState();
+    if (get().streaming || get().streamPhase === 'composing') return;
+    const { fixtureMode, bridge } = useShellStore.getState();
     if (!id) {
       set({
         selectedThreadId: null,
         messages: [],
         messagesLoading: false,
+        loadingOlderMessages: false,
+        hasMoreMessages: false,
         modelLabel: modelLabelForThread(null, get().backend),
         streaming: false,
         streamPhase: 'idle',
@@ -377,21 +473,100 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       });
       return;
     }
-    const thread = get().threads.find((t) => t.id === id);
-    if (!thread) {
-      set({ selectedThreadId: id, messages: [], messagesLoading: false, streaming: false, streamPhase: 'idle', streamError: null });
-      return;
-    }
+    const thread = get().threads.find((t) => t.id === id) ?? null;
+    const selectedBackend = backendFromThread(thread, get().backend);
     set({
       selectedThreadId: id,
+      messages: [],
       messagesLoading: true,
-      modelLabel: modelLabelForThread(thread, get().backend),
+      loadingOlderMessages: false,
+      hasMoreMessages: false,
+      backend: selectedBackend,
+      modelLabel: modelLabelForThread(thread, selectedBackend),
       streaming: false,
       streamPhase: 'idle',
       streamError: null
     });
-    const messages = messagesForSession(thread, fixtureMode);
-    set({ messages, messagesLoading: false });
+    try {
+      const result = fixtureMode || !bridge ? null : await bridge.chatThreadGet(id, 500);
+      const resolvedThread = result?.thread ?? thread;
+      const resolvedBackend = backendFromThread(resolvedThread, selectedBackend);
+      const messages = fixtureMode
+        ? thread
+          ? messagesForFixture(thread)
+          : []
+        : result?.messages.map(messageFromPersisted) ?? [];
+      if (get().selectedThreadId === id) {
+        set({
+          messages,
+          messagesLoading: false,
+          hasMoreMessages: result?.hasMoreBefore ?? false,
+          backend: resolvedBackend,
+          modelLabel: modelLabelForThread(resolvedThread, resolvedBackend)
+        });
+      }
+    } catch (error) {
+      if (get().selectedThreadId === id) {
+        set({
+          messages: [],
+          messagesLoading: false,
+          streamPhase: 'error',
+          streamError: error instanceof Error ? error.message : 'Unable to load this thread.'
+        });
+      }
+    }
+  },
+
+  async loadOlderMessages() {
+    const state = get();
+    const threadID = state.selectedThreadId;
+    const { fixtureMode, bridge } = useShellStore.getState();
+    if (
+      fixtureMode ||
+      !bridge ||
+      !threadID ||
+      !state.hasMoreMessages ||
+      state.loadingOlderMessages ||
+      state.streaming ||
+      state.streamPhase === 'composing'
+    ) {
+      return;
+    }
+
+    // Thinking/tool rows are ephemeral; the first timestamped row is the
+    // stable cursor for the oldest durable message currently loaded.
+    const oldest = state.messages.find((message) => message.timestamp && message.threadID === threadID);
+    if (!oldest?.timestamp) {
+      set({ hasMoreMessages: false });
+      return;
+    }
+
+    set({ loadingOlderMessages: true, streamError: null });
+    try {
+      const result = await bridge.chatThreadGet(threadID, 500, {
+        timestamp: oldest.timestamp,
+        messageID: oldest.id
+      });
+      if (get().selectedThreadId !== threadID) return;
+      set((current) => {
+        const existingIDs = new Set(current.messages.map((message) => message.id));
+        const older = result.messages
+          .filter((message) => !existingIDs.has(message.id))
+          .map(messageFromPersisted);
+        return {
+          messages: [...older, ...current.messages],
+          hasMoreMessages: result.hasMoreBefore,
+          loadingOlderMessages: false
+        };
+      });
+    } catch (error) {
+      if (get().selectedThreadId === threadID) {
+        set({
+          loadingOlderMessages: false,
+          streamError: error instanceof Error ? error.message : 'Unable to load older messages.'
+        });
+      }
+    }
   },
 
   loadMoreThreads() {
@@ -399,11 +574,13 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   },
 
   setBackend(id: ChatBackendId) {
+    if (get().streaming || get().streamPhase === 'composing') return;
     const thread = get().threads.find((t) => t.id === get().selectedThreadId) ?? null;
     set({ backend: id, modelLabel: modelLabelForThread(thread, id) });
   },
 
   startNewChat() {
+    if (get().streaming || get().streamPhase === 'composing') return;
     set({
       selectedThreadId: null,
       messages: [],
@@ -415,59 +592,138 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     });
   },
 
-  async sendMessage(text: string) {
-    const prompt = text.trim();
-    if (!prompt || get().streaming) return;
+  async sendToThread(input) {
+    const prompt = input.text.trim();
+    const current = get();
+    if (!prompt || current.streaming || current.streamPhase === 'composing') return;
+
     const { fixtureMode, bridge } = useShellStore.getState();
-    const user: ChatMessage = { id: newId('user'), role: 'user', text: prompt };
-    const assistantId = newId('assistant');
-    const backend = get().backend;
+    let threadID: string;
+    try {
+      threadID = input.threadID ?? current.selectedThreadId ?? newUUID();
+    } catch {
+      set({
+        streamPhase: 'error',
+        streamError: 'Secure message identity generation is unavailable.'
+      });
+      return;
+    }
+    const backend = input.backend;
+    let history = current.selectedThreadId === threadID ? current.messages : [];
+
+    if (!fixtureMode) {
+      if (!bridge) {
+        set({ streamPhase: 'error', streamError: 'Linux native chat bridge is unavailable.' });
+        return;
+      }
+      if (current.selectedThreadId !== threadID) {
+        try {
+          history = (await bridge.chatThreadGet(threadID, 500)).messages.map(messageFromPersisted);
+        } catch (error) {
+          set({
+            streamPhase: 'error',
+            streamError: error instanceof Error ? error.message : 'Unable to load the target thread.'
+          });
+          return;
+        }
+      }
+    }
+
+    let userID: string;
+    let assistantID: string;
+    try {
+      userID = newUUID();
+      assistantID = newUUID();
+    } catch {
+      set({
+        streamPhase: 'error',
+        streamError: 'Secure message identity generation is unavailable.'
+      });
+      return;
+    }
+    const userTimestamp = new Date().toISOString();
+    const user: ChatMessage = {
+      id: userID,
+      role: 'user',
+      text: prompt,
+      threadID,
+      timestamp: userTimestamp,
+      provider: backend === 'cli' ? undefined : backend
+    };
     const assistant: ChatMessage = {
-      id: assistantId,
+      id: assistantID,
       role: 'assistant',
       text: '',
+      threadID,
       viaHermes: backend === 'hermes',
       provider: backend === 'cli' ? undefined : backend
     };
     const controller = new AbortController();
+    const hasMoreForTarget = current.selectedThreadId === threadID ? current.hasMoreMessages : false;
     const outboundHistory = [
-      ...get()
-        .messages.filter((message) => message.role === 'user' || (message.role === 'assistant' && message.text.trim()))
+      ...history
+        .filter((message) => message.role === 'user' || (message.role === 'assistant' && message.text.trim()))
         .map((message) => ({
           role: message.role as 'user' | 'assistant',
           content: message.text
         })),
       { role: 'user' as const, content: prompt }
     ];
-    set((state) => ({
-      selectedThreadId: null,
-      messages: [...state.messages, user, assistant],
+
+    set({
+      selectedThreadId: threadID,
+      messages: [...history, user],
+      messagesLoading: false,
+      hasMoreMessages: hasMoreForTarget,
+      backend,
       streaming: false,
       streamPhase: 'composing',
       streamError: null,
       activeAbortController: controller,
-      modelLabel: modelLabelForThread(null, state.backend)
-    }));
+      modelLabel: modelLabelForThread(get().threads.find((thread) => thread.id === threadID) ?? null, backend)
+    });
+
+    // Message IDs the daemon has durably acknowledged. On failure, anything
+    // outside this set is rolled back from the in-memory transcript so a
+    // non-durable turn can never be replayed as prior context on the next
+    // send. Fixture mode has no persistence, so its turns count as committed.
+    const committedMessageIds = new Set<string>();
 
     try {
+      if (!fixtureMode) {
+        const appendRequest: ChatMessageAppendRequest = {
+          threadID,
+          messageID: userID,
+          role: 'user',
+          content: prompt,
+          timestamp: userTimestamp,
+          backendID: backend
+        };
+        await bridge!.chatMessageAppend(appendRequest);
+        await refreshThreadSummaries(get().query);
+      }
+      committedMessageIds.add(userID);
+
       const gateway = await resolveGatewayStatus(fixtureMode);
       set({ gatewayStatus: gateway.status, gatewayBaseURL: gateway.baseURL });
       if (!fixtureMode && gateway.status !== 'reachable') {
-        throw new GatewayChatError('unreachable', gateway.status === 'disabled' ? 'Gateway chat is disabled in daemon health.' : 'Gateway health check failed.');
+        throw new GatewayChatError(
+          'unreachable',
+          gateway.status === 'disabled'
+            ? 'Gateway chat is disabled in daemon health.'
+            : 'Gateway health check failed.'
+        );
       }
       const model = get().modelLabel.trim() || 'hermes';
       const stream = fixtureMode
         ? fixtureChatStream()
         : streamGatewayChatNative(
             {
-              start: (request, onChunk) => {
-                if (!bridge) return Promise.reject(new Error('Linux native gateway bridge is unavailable.'));
-                return bridge.gatewayChatStream(request, onChunk);
-              },
-              cancel: (requestId) => bridge?.gatewayChatCancel(requestId) ?? Promise.resolve()
+              start: (request, onChunk) => bridge!.gatewayChatStream(request, onChunk),
+              cancel: (requestId) => bridge!.gatewayChatCancel(requestId)
             },
             {
-              requestId: newId('gateway'),
+              requestId: newUUID(),
               model,
               messages: [{ role: 'system', content: 'You are Hermes inside OpenBurnBar.' }, ...outboundHistory],
               signal: controller.signal
@@ -478,21 +734,59 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         'chat.firstToken.progress',
         fixtureMode ? 'fixture-chat-first-delta' : 'packaged-gateway-first-delta'
       );
-      set({ streaming: true, streamPhase: 'streaming' });
+      set((state) => ({
+        messages: [...state.messages, assistant],
+        streaming: true,
+        streamPhase: 'streaming'
+      }));
       for await (const event of stream) {
+        if (controller.signal.aborted) {
+          throw new GatewayChatError('aborted', 'Chat stream aborted.');
+        }
         if (event.type === 'delta' && !firstText) {
           firstText = true;
           endFirstToken();
         }
+        set((state) => ({ messages: applyChatStreamEvent(state.messages, assistantID, event) }));
+      }
+
+      const finalAssistant = get().messages.find((message) => message.id === assistantID);
+      if (fixtureMode) {
+        committedMessageIds.add(assistantID);
+      } else if (finalAssistant?.text.trim()) {
+        const timestamp = new Date().toISOString();
+        await bridge!.chatMessageAppend({
+          threadID,
+          messageID: assistantID,
+          role: 'assistant',
+          content: finalAssistant.text,
+          timestamp,
+          backendID: backend
+        });
+        committedMessageIds.add(assistantID);
         set((state) => ({
-          messages: applyChatStreamEvent(state.messages, assistantId, event)
+          messages: state.messages.map((message) =>
+            message.id === assistantID ? { ...message, timestamp } : message
+          )
         }));
+        await refreshThreadSummaries(get().query);
       }
       set({ streaming: false, streamPhase: 'done', activeAbortController: null });
     } catch (error) {
       const aborted = error instanceof GatewayChatError && error.kind === 'aborted';
       const unimplemented = error instanceof GatewayChatError && error.kind === 'unimplemented';
-      set({
+      // Roll back every message from this turn that the daemon did not
+      // durably acknowledge: a user append that rejected, or streamed
+      // assistant text whose terminal append rejected. Leaving them in
+      // `messages` would feed non-durable turns into the next send's history.
+      set((state) => ({
+        messages: state.messages.filter((message) => {
+          if (message.id === userID) return committedMessageIds.has(userID);
+          if (message.id === assistantID) {
+            return committedMessageIds.has(assistantID) && Boolean(message.text.trim());
+          }
+          return true;
+        }),
         streaming: false,
         streamPhase: aborted ? 'aborted' : 'error',
         streamError: unimplemented
@@ -501,12 +795,22 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             ? error.message
             : 'Chat stream failed.',
         activeAbortController: null
-      });
+      }));
     }
   },
 
+  async sendMessage(text: string) {
+    await get().sendToThread({
+      threadID: get().selectedThreadId ?? undefined,
+      backend: get().backend,
+      text
+    });
+  },
+
   stopStreaming() {
-    get().activeAbortController?.abort();
-    set({ streaming: false, streamPhase: 'aborted', activeAbortController: null });
+    const controller = get().activeAbortController;
+    if (!controller) return;
+    controller.abort();
+    set({ streamPhase: 'aborted' });
   }
 }));
