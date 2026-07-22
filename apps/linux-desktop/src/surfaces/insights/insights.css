@@ -31,6 +31,66 @@
   align-content: start;
 }
 
+.insights-brief {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.insights-brief-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.insights-brief-heading h2 {
+  margin: 0;
+  color: var(--color-text-bright);
+  font-size: 1.25rem;
+  line-height: 1.25;
+}
+
+.insights-brief-source {
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.insights-brief-summary {
+  margin: 0;
+  color: var(--color-text-mute);
+  max-width: 70ch;
+}
+
+.insights-brief-observations {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--color-text-base);
+}
+
+.insights-brief-followups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.insights-brief-followups a {
+  color: var(--color-brass-bright);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-brass-core);
+  padding-bottom: 0.12rem;
+}
+
+.insights-brief-followups a:focus-visible,
+.insights-brief-followups a:hover {
+  color: var(--color-text-bright);
+}
+
 .insights-empty {
   margin: var(--space-4) 0 0;
 }
