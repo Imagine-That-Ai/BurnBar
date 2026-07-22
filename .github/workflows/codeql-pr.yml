@@ -104,12 +104,7 @@ jobs:
         if: matrix.language == 'swift'
         run: |
           for attempt in 1 2 3; do
-            if xcodebuild -project OpenBurnBar.xcodeproj \
-              -scheme OpenBurnBar \
-              -configuration Debug \
-              -destination 'platform=macOS,arch=x86_64' \
-              -derivedDataPath .codeql-derived-data \
-              -resolvePackageDependencies; then
+            if swift package resolve --package-path OpenBurnBarDaemon; then
               exit 0
             fi
             if [ "$attempt" = "3" ]; then exit 1; fi
@@ -119,18 +114,22 @@ jobs:
       - name: Build Swift for CodeQL
         if: matrix.language == 'swift'
         run: |
+          # The Linux parity product is the UI-free daemon SwiftPM package.
+          # The full Xcode app remains covered by App build + test; using the
+          # package here avoids Xcode app build scripts that can hang a hosted
+          # CodeQL runner while preserving Swift extraction for daemon/core/CLI.
+          build_path="$PWD/.codeql-swiftpm-build"
           for attempt in 1 2; do
-            if xcodebuild -project OpenBurnBar.xcodeproj \
-              -scheme OpenBurnBar \
-              -configuration Debug \
-              -destination 'platform=macOS,arch=x86_64' \
-              -derivedDataPath .codeql-derived-data \
-              ARCHS=x86_64 \
-              ONLY_ACTIVE_ARCH=YES \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGNING_REQUIRED=NO \
-              SWIFT_ENABLE_EXPLICIT_MODULES=NO \
-              build; then
+            if swift build \
+              --package-path OpenBurnBarDaemon \
+              --build-path "$build_path" \
+              --configuration debug \
+              --product OpenBurnBarDaemon && \
+              swift build \
+                --package-path OpenBurnBarDaemon \
+                --build-path "$build_path" \
+                --configuration debug \
+                --product OpenBurnBarCLI; then
               exit 0
             fi
             if [ "$attempt" = "2" ]; then exit 1; fi
