@@ -200,7 +200,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: domain-core-${{ github.ref }}
+  group: domain-core-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
