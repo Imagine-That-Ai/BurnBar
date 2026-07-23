@@ -11,7 +11,7 @@ import SwiftUI
 // Variants drive sheen + edge tuning so a single modifier covers hero, default,
 // urgent, success, and Hermes surfaces inside the Mission Control Console.
 
-public enum MissionGlassVariant {
+enum MissionGlassVariant {
     case hero
     case standard
     case compact
@@ -20,14 +20,14 @@ public enum MissionGlassVariant {
     case hermes
 }
 
-public struct MissionGlassSurface: ViewModifier {
-    public let variant: MissionGlassVariant
-    public let cornerRadius: CGFloat
+struct MissionGlassSurface: ViewModifier {
+    let variant: MissionGlassVariant
+    let cornerRadius: CGFloat
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
-    public func body(content: Content) -> some View {
+    func body(content: Content) -> some View {
         content
             .background(backgroundLayer)
             .overlay(edgeLayer)
@@ -207,7 +207,7 @@ private struct LiquidGlassEffectIfAvailable: ViewModifier {
     }
 }
 
-public extension View {
+extension View {
     /// Apply Mission Control glass to any view. Defaults to `.standard` at the
     /// Aurora "standard" corner.
     func missionGlass(

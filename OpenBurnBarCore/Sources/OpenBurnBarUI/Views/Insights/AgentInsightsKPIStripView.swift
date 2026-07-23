@@ -4,16 +4,16 @@ import OpenBurnBarInsights
 /// Four KPI tiles, identical order on every platform: Spend · Tokens ·
 /// Sessions · Anomaly. `compact` lays them out in a 2×2 grid; `roomy`
 /// uses a single 4-wide row.
-public struct AgentInsightsKPIStripView: View {
-    public let strip: AgentInsightsKPIStrip
-    public let presentation: AgentInsightsView.Presentation
+struct AgentInsightsKPIStripView: View {
+    let strip: AgentInsightsKPIStrip
+    let presentation: AgentInsightsView.Presentation
 
-    public init(strip: AgentInsightsKPIStrip, presentation: AgentInsightsView.Presentation) {
+    init(strip: AgentInsightsKPIStrip, presentation: AgentInsightsView.Presentation) {
         self.strip = strip
         self.presentation = presentation
     }
 
-    public var body: some View {
+    var body: some View {
         let columns: [GridItem] = presentation == .roomy
             ? Array(repeating: GridItem(.flexible(), spacing: UnifiedDesignSystem.Spacing.md), count: 4)
             : Array(repeating: GridItem(.flexible(), spacing: UnifiedDesignSystem.Spacing.md), count: 2)

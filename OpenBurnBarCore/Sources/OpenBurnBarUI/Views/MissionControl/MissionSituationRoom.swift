@@ -195,14 +195,14 @@ public struct MissionSituationRoom: View {
 
 // MARK: - Live Burn Gauge
 
-public struct MissionLiveBurnGauge: View {
-    public let burnPerHourUSD: Double
-    public let burnTodayUSD: Double
+struct MissionLiveBurnGauge: View {
+    let burnPerHourUSD: Double
+    let burnTodayUSD: Double
 
     @State private var animated: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(burnPerHourUSD: Double, burnTodayUSD: Double) {
+    init(burnPerHourUSD: Double, burnTodayUSD: Double) {
         self.burnPerHourUSD = burnPerHourUSD
         self.burnTodayUSD = burnTodayUSD
     }
@@ -211,7 +211,7 @@ public struct MissionLiveBurnGauge: View {
         min(1.0, burnPerHourUSD / 3.0)
     }
 
-    public var body: some View {
+    var body: some View {
         HStack(alignment: .center, spacing: UnifiedDesignSystem.Spacing.lg) {
             ZStack {
                 // Track
@@ -484,19 +484,19 @@ public struct MissionActiveTile: View {
 
 // MARK: - Approval Card
 
-public struct MissionApprovalCard: View {
-    public let ask: MissionConsoleApprovalAsk
-    public let onApprove: (Bool) -> Void
+struct MissionApprovalCard: View {
+    let ask: MissionConsoleApprovalAsk
+    let onApprove: (Bool) -> Void
 
     @State private var pulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(ask: MissionConsoleApprovalAsk, onApprove: @escaping (Bool) -> Void) {
+    init(ask: MissionConsoleApprovalAsk, onApprove: @escaping (Bool) -> Void) {
         self.ask = ask
         self.onApprove = onApprove
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             HStack(spacing: 6) {
                 Image(systemName: "hand.raised.fill")
@@ -581,14 +581,14 @@ public struct MissionApprovalCard: View {
 
 // MARK: - Activity Ticker
 
-public struct MissionActivityTicker: View {
-    public let entries: [MissionConsoleTickerEntry]
+struct MissionActivityTicker: View {
+    let entries: [MissionConsoleTickerEntry]
 
-    public init(entries: [MissionConsoleTickerEntry]) {
+    init(entries: [MissionConsoleTickerEntry]) {
         self.entries = entries
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if entries.isEmpty {
                 empty

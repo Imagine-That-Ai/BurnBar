@@ -8,13 +8,13 @@ import OpenBurnBarInsights
 /// the "peripheral vision" of the surface: a user walking past their
 /// laptop should be able to read whether today is on track without
 /// stopping to read the headline.
-public struct VerdictRingsStrip: View {
+struct VerdictRingsStrip: View {
 
-    public var rings: [VerdictRing]
-    public var compact: Bool
-    public var onRingTap: ((VerdictRing) -> Void)?
+    var rings: [VerdictRing]
+    var compact: Bool
+    var onRingTap: ((VerdictRing) -> Void)?
 
-    public init(
+    init(
         rings: [VerdictRing],
         compact: Bool = false,
         onRingTap: ((VerdictRing) -> Void)? = nil
@@ -24,7 +24,7 @@ public struct VerdictRingsStrip: View {
         self.onRingTap = onRingTap
     }
 
-    public var body: some View {
+    var body: some View {
         HStack(spacing: compact ? UnifiedDesignSystem.Spacing.md
                                 : UnifiedDesignSystem.Spacing.xl) {
             ForEach(rings) { ring in

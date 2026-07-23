@@ -16,27 +16,27 @@ import AppKit
 ///
 /// The renderer is platform-agnostic for layout computation; the
 /// actual bitmap generation uses the host platform's graphics APIs.
-public struct InsightShareCardRenderer: Sendable {
+struct InsightShareCardRenderer: Sendable {
 
-    public enum CardFormat: Sendable {
+    enum CardFormat: Sendable {
         case portrait1080x1350
         case square1080x1080
         case a4PDF
         case video9x16
     }
 
-    public struct CardLayout: Sendable {
-        public let width: CGFloat
-        public let height: CGFloat
-        public let backgroundColor: PlatformColor
-        public let textColor: PlatformColor
-        public let accentColor: PlatformColor
-        public let margin: CGFloat
-        public let headlineFontSize: CGFloat
-        public let bodyFontSize: CGFloat
-        public let footerFontSize: CGFloat
+    struct CardLayout: Sendable {
+        let width: CGFloat
+        let height: CGFloat
+        let backgroundColor: PlatformColor
+        let textColor: PlatformColor
+        let accentColor: PlatformColor
+        let margin: CGFloat
+        let headlineFontSize: CGFloat
+        let bodyFontSize: CGFloat
+        let footerFontSize: CGFloat
 
-        public init(
+        init(
             width: CGFloat,
             height: CGFloat,
             backgroundColor: PlatformColor,
@@ -59,10 +59,10 @@ public struct InsightShareCardRenderer: Sendable {
         }
     }
 
-    public init() {}
+    init() {}
 
     /// Layout constants for each format.
-    public func layout(for format: CardFormat, isDark: Bool = true) -> CardLayout {
+    func layout(for format: CardFormat, isDark: Bool = true) -> CardLayout {
         switch format {
         case .portrait1080x1350:
             return CardLayout(
@@ -108,13 +108,13 @@ public struct InsightShareCardRenderer: Sendable {
 
 // MARK: - Platform color abstraction
 
-public struct PlatformColor: Sendable {
-    public let r: CGFloat
-    public let g: CGFloat
-    public let b: CGFloat
-    public let a: CGFloat
+struct PlatformColor: Sendable {
+    let r: CGFloat
+    let g: CGFloat
+    let b: CGFloat
+    let a: CGFloat
 
-    public init(r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat = 1.0) {
+    init(r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat = 1.0) {
         self.r = r / 255.0
         self.g = g / 255.0
         self.b = b / 255.0
@@ -122,13 +122,13 @@ public struct PlatformColor: Sendable {
     }
 
     #if canImport(UIKit)
-    public var uiColor: UIColor {
+    var uiColor: UIColor {
         UIColor(red: r, green: g, blue: b, alpha: a)
     }
     #endif
 
     #if canImport(AppKit)
-    public var nsColor: NSColor {
+    var nsColor: NSColor {
         NSColor(red: r, green: g, blue: b, alpha: a)
     }
     #endif

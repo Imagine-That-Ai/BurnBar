@@ -8,14 +8,14 @@ import OpenBurnBarInsights
 /// shifts subtly based on the egress tier so the user can see at a
 /// glance whether the verdict was authored on-device or via a hosted
 /// model — without reading the words.
-public struct VerdictProvenanceChip: View {
+struct VerdictProvenanceChip: View {
 
-    public var provenance: InsightModelTag
-    public var latencyLabel: String?
-    public var tokensLabel: String?
-    public var isFallback: Bool
+    var provenance: InsightModelTag
+    var latencyLabel: String?
+    var tokensLabel: String?
+    var isFallback: Bool
 
-    public init(
+    init(
         provenance: InsightModelTag,
         latencyLabel: String? = nil,
         tokensLabel: String? = nil,
@@ -27,7 +27,7 @@ public struct VerdictProvenanceChip: View {
         self.isFallback = isFallback
     }
 
-    public var body: some View {
+    var body: some View {
         HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
             Image(systemName: provenance.egressTier.symbolName)
                 .font(.system(size: 12, weight: .semibold))

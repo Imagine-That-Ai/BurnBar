@@ -2,13 +2,13 @@ import SwiftUI
 import OpenBurnBarInsights
 
 /// The 1-4 bullet rows below the rings.
-public struct VerdictBulletList: View {
+struct VerdictBulletList: View {
 
-    public var bullets: [VerdictBullet]
-    public var onCitationTap: (InsightCitation) -> Void
-    public var onAcceptAction: (VerdictBullet, VerdictAcceptAction) -> Void
+    var bullets: [VerdictBullet]
+    var onCitationTap: (InsightCitation) -> Void
+    var onAcceptAction: (VerdictBullet, VerdictAcceptAction) -> Void
 
-    public init(
+    init(
         bullets: [VerdictBullet],
         onCitationTap: @escaping (InsightCitation) -> Void = { _ in },
         onAcceptAction: @escaping (VerdictBullet, VerdictAcceptAction) -> Void = { _, _ in }
@@ -18,7 +18,7 @@ public struct VerdictBulletList: View {
         self.onAcceptAction = onAcceptAction
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
             ForEach(bullets) { bullet in
                 VerdictBulletRow(
@@ -34,13 +34,13 @@ public struct VerdictBulletList: View {
 }
 
 /// One bullet — claim + delta chip + cite chips + optional accept action.
-public struct VerdictBulletRow: View {
+struct VerdictBulletRow: View {
 
-    public var bullet: VerdictBullet
-    public var onCitationTap: (InsightCitation) -> Void
-    public var onAcceptAction: (VerdictAcceptAction) -> Void
+    var bullet: VerdictBullet
+    var onCitationTap: (InsightCitation) -> Void
+    var onAcceptAction: (VerdictAcceptAction) -> Void
 
-    public init(
+    init(
         bullet: VerdictBullet,
         onCitationTap: @escaping (InsightCitation) -> Void = { _ in },
         onAcceptAction: @escaping (VerdictAcceptAction) -> Void = { _ in }
@@ -50,7 +50,7 @@ public struct VerdictBulletRow: View {
         self.onAcceptAction = onAcceptAction
     }
 
-    public var body: some View {
+    var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: UnifiedDesignSystem.Spacing.md) {
             // Glyph leader (recommendation/anomaly/etc).
             Image(systemName: glyph)

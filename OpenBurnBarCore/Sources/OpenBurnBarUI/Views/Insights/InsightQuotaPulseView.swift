@@ -1,11 +1,11 @@
 import SwiftUI
 import OpenBurnBarInsights
 
-public struct InsightQuotaPulseView: View {
-    public let data: InsightWidgetData.QuotaState
-    public init(data: InsightWidgetData.QuotaState) { self.data = data }
+struct InsightQuotaPulseView: View {
+    let data: InsightWidgetData.QuotaState
+    init(data: InsightWidgetData.QuotaState) { self.data = data }
 
-    public var body: some View {
+    var body: some View {
         LazyVGrid(columns: [
             GridItem(.adaptive(minimum: 130, maximum: 180), spacing: UnifiedDesignSystem.Spacing.sm)
         ], spacing: UnifiedDesignSystem.Spacing.sm) {

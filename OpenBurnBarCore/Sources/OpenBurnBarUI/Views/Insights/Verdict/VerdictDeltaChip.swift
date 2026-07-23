@@ -7,17 +7,17 @@ import OpenBurnBarInsights
 /// (which already knows whether the metric's direction is
 /// higher-is-better or lower-is-better). Neutral deltas render in a calm
 /// secondary tone — never warning or success.
-public struct VerdictDeltaChip: View {
+struct VerdictDeltaChip: View {
 
-    public var delta: VerdictDelta
-    public var compact: Bool
+    var delta: VerdictDelta
+    var compact: Bool
 
-    public init(delta: VerdictDelta, compact: Bool = false) {
+    init(delta: VerdictDelta, compact: Bool = false) {
         self.delta = delta
         self.compact = compact
     }
 
-    public var body: some View {
+    var body: some View {
         HStack(spacing: 2) {
             Image(systemName: glyph)
                 .font(.system(size: compact ? 8 : 10, weight: .bold))

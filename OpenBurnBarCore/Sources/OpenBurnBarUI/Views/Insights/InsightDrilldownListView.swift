@@ -1,16 +1,16 @@
 import SwiftUI
 import OpenBurnBarInsights
 
-public struct InsightDrilldownListView: View {
-    public let data: InsightWidgetData.Drilldown
-    public let onCitationTapped: ((InsightCitation) -> Void)?
-    public init(data: InsightWidgetData.Drilldown,
+struct InsightDrilldownListView: View {
+    let data: InsightWidgetData.Drilldown
+    let onCitationTapped: ((InsightCitation) -> Void)?
+    init(data: InsightWidgetData.Drilldown,
                 onCitationTapped: ((InsightCitation) -> Void)? = nil) {
         self.data = data
         self.onCitationTapped = onCitationTapped
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(data.rows) { row in
                 Button {

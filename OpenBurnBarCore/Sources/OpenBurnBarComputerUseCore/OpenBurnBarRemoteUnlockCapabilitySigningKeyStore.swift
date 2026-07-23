@@ -6,7 +6,7 @@ public protocol RemoteUnlockCapabilityPrivateKeyStoring: Sendable {
     func set(_ data: Data) throws
 }
 
-public enum RemoteUnlockCapabilitySigningKeyStoreError: Error, Equatable {
+enum RemoteUnlockCapabilitySigningKeyStoreError: Error, Equatable {
     case secretStorageUnavailable
     case invalidStoredKey
 }

@@ -14,7 +14,7 @@ import Czlib
 /// the session `manifest.json`, `chain.jsonl`, optional `head.json`, and
 /// optional screenshot PNGs.
 public struct ComputerUseAuditExportWriter {
-    public enum WriterError: Error, Sendable, Equatable {
+    enum WriterError: Error, Sendable, Equatable {
         case sessionDirectoryMissing
         case chainFileMissing
         case manifestMissing

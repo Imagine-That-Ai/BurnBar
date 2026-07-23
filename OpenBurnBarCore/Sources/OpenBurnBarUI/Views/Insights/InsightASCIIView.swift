@@ -1,11 +1,11 @@
 import SwiftUI
 import OpenBurnBarInsights
 
-public struct InsightASCIIView: View {
-    public let data: InsightWidgetData.ASCIICard
-    public init(data: InsightWidgetData.ASCIICard) { self.data = data }
+struct InsightASCIIView: View {
+    let data: InsightWidgetData.ASCIICard
+    init(data: InsightWidgetData.ASCIICard) { self.data = data }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(data.headline.uppercased())
                 .font(UnifiedDesignSystem.Typography.monoSmall)

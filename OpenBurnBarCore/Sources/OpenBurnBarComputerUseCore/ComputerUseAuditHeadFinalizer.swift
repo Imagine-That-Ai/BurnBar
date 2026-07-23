@@ -4,7 +4,7 @@ import Foundation
 public enum ComputerUseAuditHeadFinalizer {
     public static let signedHeadFilename = "signed_head.json"
 
-    public enum FinalizerError: Error, Sendable, Equatable {
+    enum FinalizerError: Error, Sendable, Equatable {
         case headMarkerMissing
         case invalidHeadMarker
         case signingFailed

@@ -38,15 +38,15 @@ public enum InsightMissionRuntimeTarget: String, CaseIterable, Identifiable, Sen
     }
 }
 
-public enum InsightMissionDepth: String, CaseIterable, Identifiable, Sendable {
+enum InsightMissionDepth: String, CaseIterable, Identifiable, Sendable {
     case light
     case standard
     case deep
     case max
 
-    public var id: String { rawValue }
+    var id: String { rawValue }
 
-    public var label: String {
+    var label: String {
         switch self {
         case .light: return "Light"
         case .standard: return "Standard"
@@ -56,15 +56,15 @@ public enum InsightMissionDepth: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-public enum InsightMissionApprovalMode: String, CaseIterable, Identifiable, Sendable {
+enum InsightMissionApprovalMode: String, CaseIterable, Identifiable, Sendable {
     case existingPolicy = "existing_policy"
     case manualAll = "manual_all"
     case riskyOnly = "risky_only"
     case readOnly = "read_only"
 
-    public var id: String { rawValue }
+    var id: String { rawValue }
 
-    public var label: String {
+    var label: String {
         switch self {
         case .existingPolicy: return "Existing"
         case .manualAll: return "Manual"

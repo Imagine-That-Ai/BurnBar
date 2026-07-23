@@ -54,9 +54,9 @@ public enum AgentWatchLiveActivityIntentRouter {
 }
 
 @available(iOS 17.0, *)
-public enum AgentWatchLiveActivityIntentSecurity {
-    public static let decisionAuthenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
-    public static let panicAuthenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+enum AgentWatchLiveActivityIntentSecurity {
+    static let decisionAuthenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
+    static let panicAuthenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 }
 
 @available(iOS 17.0, *)

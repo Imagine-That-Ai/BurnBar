@@ -13,18 +13,18 @@ import OpenBurnBarKernel
 
 // MARK: - Title + prompt
 
-public struct MissionTitlePromptFields: View {
+struct MissionTitlePromptFields: View {
     @Binding public var title: String
     @Binding public var prompt: String
     @FocusState private var titleFocused: Bool
     @FocusState private var promptFocused: Bool
 
-    public init(title: Binding<String>, prompt: Binding<String>) {
+    init(title: Binding<String>, prompt: Binding<String>) {
         self._title = title
         self._prompt = prompt
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
             sectionHeader
 
@@ -126,14 +126,14 @@ public struct MissionTitlePromptFields: View {
 
 // MARK: - Depth dial
 
-public struct MissionDepthDial: View {
+struct MissionDepthDial: View {
     @Binding public var depth: MissionConsoleDepth
 
-    public init(depth: Binding<MissionConsoleDepth>) {
+    init(depth: Binding<MissionConsoleDepth>) {
         self._depth = depth
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             fieldLabel("DEPTH")
 
@@ -215,14 +215,14 @@ public struct MissionDepthDial: View {
 
 // MARK: - Approval lever
 
-public struct MissionApprovalLever: View {
+struct MissionApprovalLever: View {
     @Binding public var mode: MissionConsoleApprovalMode
 
-    public init(mode: Binding<MissionConsoleApprovalMode>) {
+    init(mode: Binding<MissionConsoleApprovalMode>) {
         self._mode = mode
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             fieldLabel("APPROVAL")
 
@@ -300,11 +300,11 @@ public struct MissionApprovalLever: View {
 
 // MARK: - Permissions row
 
-public struct MissionPermissionsRow: View {
+struct MissionPermissionsRow: View {
     @Binding public var commandsAllowed: Bool
     @Binding public var fileEditsAllowed: Bool
 
-    public init(
+    init(
         commandsAllowed: Binding<Bool>,
         fileEditsAllowed: Binding<Bool>
     ) {
@@ -312,7 +312,7 @@ public struct MissionPermissionsRow: View {
         self._fileEditsAllowed = fileEditsAllowed
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             fieldLabel("PERMISSIONS")
             ViewThatFits(in: .horizontal) {
@@ -466,13 +466,13 @@ public struct MissionPermissionsRow: View {
 
 // MARK: - Project field (autocomplete)
 
-public struct MissionProjectField: View {
+struct MissionProjectField: View {
     @Binding public var project: String
-    public let knownProjects: [String]
-    public let recentProjects: [String]
+    let knownProjects: [String]
+    let recentProjects: [String]
     @FocusState private var isFocused: Bool
 
-    public init(
+    init(
         project: Binding<String>,
         knownProjects: [String],
         recentProjects: [String]
@@ -482,7 +482,7 @@ public struct MissionProjectField: View {
         self.recentProjects = recentProjects
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             HStack {
                 fieldLabel("PROJECT")

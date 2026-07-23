@@ -75,13 +75,13 @@ public extension RGBA {
 
 // MARK: - Shape vocabulary (mirrors kit-draw.ts drawShape)
 
-public enum SubstrateShape: Sendable {
+enum SubstrateShape: Sendable {
     case dot, bead, ring, shard, streak, ribbon, bar
 }
 
 /// Paint one primitive at (x,y) sized `sz`, oriented by velocity (vx,vy) or `rot`.
 /// Matches `kit-draw.ts` semantics closely enough for faithful parity.
-public func drawShape(_ ctx: inout GraphicsContext, _ shape: SubstrateShape,
+func drawShape(_ ctx: inout GraphicsContext, _ shape: SubstrateShape,
                       x: Double, y: Double, sz: Double, rgba: RGBA,
                       vx: Double = 0, vy: Double = 0, rot: Double = 0) {
     let color = GraphicsContext.Shading.color(rgba.color)

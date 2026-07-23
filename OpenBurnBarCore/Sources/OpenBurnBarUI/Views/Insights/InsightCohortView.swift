@@ -1,11 +1,11 @@
 import SwiftUI
 import OpenBurnBarInsights
 
-public struct InsightCohortView: View {
-    public let data: InsightWidgetData.Cohort
-    public init(data: InsightWidgetData.Cohort) { self.data = data }
+struct InsightCohortView: View {
+    let data: InsightWidgetData.Cohort
+    init(data: InsightWidgetData.Cohort) { self.data = data }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             header
             ForEach(Array(data.cells.enumerated()), id: \.offset) { rIdx, row in

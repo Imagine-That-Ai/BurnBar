@@ -9,7 +9,7 @@ import OpenBurnBarKernel
 /// still covers both `ciphertextBase64` and `aadBase64`, so metadata tampering
 /// is rejected before decryption.
 public enum RemoteUnlockCredentialEnvelopeCrypto {
-    public enum CryptoError: Error, Sendable, Equatable {
+    enum CryptoError: Error, Sendable, Equatable {
         case unsupportedAlgorithm(String)
         case invalidRecipientPublicKey
         case invalidCiphertext

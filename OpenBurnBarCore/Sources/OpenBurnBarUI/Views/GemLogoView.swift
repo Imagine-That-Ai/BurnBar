@@ -29,7 +29,7 @@ import SwiftUI
 ///   and the logo.
 /// - The mark is decorative here (`accessibilityHidden`); callers pair it with
 ///   a visible wordmark that carries the label.
-public struct GemLogoView<Logo: View>: View {
+struct GemLogoView<Logo: View>: View {
     private let size: CGFloat
     private let logo: Logo
 
@@ -42,12 +42,12 @@ public struct GemLogoView<Logo: View>: View {
     ///     Default `132`.
     ///   - logo: The brand mark to display. Pass a `.resizable().scaledToFit()`
     ///     image so it adapts to the composition.
-    public init(size: CGFloat = 132, @ViewBuilder logo: () -> Logo) {
+    init(size: CGFloat = 132, @ViewBuilder logo: () -> Logo) {
         self.size = size
         self.logo = logo()
     }
 
-    public var body: some View {
+    var body: some View {
         Group {
             if reduceMotion {
                 composition(phase: Phase.still)
