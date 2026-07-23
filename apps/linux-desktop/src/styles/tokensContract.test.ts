@@ -83,6 +83,23 @@ describe('VAL-TOKENS design token contract', () => {
     expect(topChromeCss).toContain('--glass-theme-tint');
   });
 
+  it('exposes the macOS ProTheme vocabulary for Linux membership surfaces', () => {
+    for (const role of [
+      '--pro-obsidian',
+      '--pro-obsidian-elevated',
+      '--pro-mercury',
+      '--pro-aureate',
+      '--pro-ember-pop',
+      '--pro-aureate-stroke',
+      '--pro-dark-aurora-ribbon',
+      '--pro-card-radius',
+      '--pro-band-radius',
+      '--pro-foil-stroke'
+    ]) {
+      expect(liquidGlassTokensCss).toContain(role);
+    }
+  });
+
   it('declares a dark native-control color scheme for WebKitGTK', () => {
     expect(appCss).toMatch(/:root\s*\{[^}]*color-scheme:\s*dark;/s);
   });

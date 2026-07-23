@@ -25,6 +25,25 @@
   --macos-frost: #6fc2ff;
   --macos-blaze: #e86100;
 
+  /* ProTheme roles mirrored from macOS/iOS. Pro surfaces stay obsidian and
+   * use mercury/aureate accents instead of the utilitarian shell palette. */
+  --pro-obsidian: #0a0a0d;
+  --pro-obsidian-elevated: #121216;
+  --pro-mercury: var(--macos-hermes-mercury);
+  --pro-aureate: var(--macos-hermes-aureate);
+  --pro-ember-pop: var(--macos-ember);
+  --pro-aureate-stroke: linear-gradient(135deg, var(--pro-aureate), var(--pro-mercury), var(--pro-aureate));
+  --pro-dark-aurora-ribbon: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--pro-ember-pop) 32%, transparent),
+    color-mix(in srgb, var(--macos-amber) 18%, transparent) 42%,
+    color-mix(in srgb, var(--pro-mercury) 14%, transparent) 72%,
+    transparent
+  );
+  --pro-card-radius: 18px;
+  --pro-band-radius: 14px;
+  --pro-foil-stroke: 1px;
+
   /* Prefer macOS cool slate over editorial ink for the shell canvas */
   --color-ink-void: var(--macos-bg);
   --color-ink-base: var(--macos-bg);

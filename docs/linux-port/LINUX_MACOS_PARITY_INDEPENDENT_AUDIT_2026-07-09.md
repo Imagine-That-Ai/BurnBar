@@ -156,6 +156,20 @@ This closes the source-level per-layout glass palette gap. Installed visual
 comparison receipts across the compositor matrix are still required; the
 strict ledger remains **0/40 product** and **0/7 environment**.
 
+### Linux ProTheme membership surfaces — 2026-07-23
+
+Linux membership cards, bands, crests, and foil buttons now consume a shared
+ProTheme token vocabulary matching macOS/iOS: obsidian and elevated obsidian
+plates, mercury text, aureate foil, ember-pop accents, the dark aurora ribbon,
+and the 18/14px Pro corner radii. The existing React components remain the
+behavioral surface; this change aligns their visual roles instead of adding a
+second component system. The token contract now fails if any required ProTheme
+role disappears.
+
+This closes the source-level ProTheme token gap. Installed membership visual
+receipts, entitlement-state coverage, and live billing/account evidence remain
+required; the strict ledger remains **0/40 product** and **0/7 environment**.
+
 ## Integration closeout — 2026-07-21
 
 ### Live UTM session re-open — 2026-07-21 (Grok)
