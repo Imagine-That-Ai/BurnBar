@@ -337,6 +337,37 @@ describe('App shell', () => {
     expect(screen.getByText(/local-first mode/i)).toBeTruthy();
   });
 
+  it('fails closed on an expired or malformed cloud operation and allows a fresh sign-in', async () => {
+    const initial = cloudIdentitySnapshot();
+    const accountStatusRead = vi.fn().mockResolvedValue(accountStatus({
+      state: 'authorizing',
+      signedIn: false,
+      authorizationOperationID: 'stale-operation',
+      authorizationExpiresAt: 'not-a-timestamp'
+    }));
+    const accountBeginSignIn = vi.fn().mockResolvedValue({
+      operationID: 'fresh-operation',
+      expiresAt: '2099-07-10T00:00:00Z'
+    });
+    useShellStore.setState({
+      bridge: {
+        onboardingSnapshot: vi.fn().mockResolvedValue(initial),
+        accountStatus: accountStatusRead,
+        accountBeginSignIn,
+        onboardingAction: vi.fn()
+      } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+
+    render(<OnboardingSurface />);
+    expect(await screen.findByText(/expired or invalid cloud sign-in operation/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Check sign-in' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Start cloud sign-in' }));
+    await waitFor(() => expect(accountBeginSignIn).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/Browser authorization started/i)).toBeTruthy();
+  });
+
   it('waits for device approval, rechecks daemon state, then requires explicit onboarding verification', async () => {
     const initial = cloudIdentitySnapshot();
     const verified = {

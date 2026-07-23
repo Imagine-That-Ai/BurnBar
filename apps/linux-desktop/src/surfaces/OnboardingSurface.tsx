@@ -63,8 +63,19 @@ function cloudAuthPhase(status: AccountStatus | null): CloudAuthPhase {
   return 'signed-out';
 }
 
-function cloudAuthStatusCopy(status: AccountStatus | null, operation: AccountSignInOperation | null): string {
-  switch (cloudAuthPhase(status)) {
+function cloudAuthStatusCopy(
+  status: AccountStatus | null,
+  operation: AccountSignInOperation | null,
+  phase = cloudAuthPhase(status)
+): string {
+  const rawPhase = cloudAuthPhase(status);
+  if (
+    phase === 'unavailable'
+    && (rawPhase === 'authorizing' || rawPhase === 'awaiting-device-approval')
+  ) {
+    return 'The daemon returned an expired or invalid cloud sign-in operation. Start sign-in again; no cloud identity was accepted.';
+  }
+  switch (phase) {
     case 'authorizing':
       return 'The native browser sign-in is in progress. Finish authorization, then check again.';
     case 'awaiting-device-approval':
@@ -101,9 +112,19 @@ function cloudAuthPhaseForOperation(
   operation: AccountSignInOperation | null
 ): CloudAuthPhase {
   const phase = cloudAuthPhase(status);
+  if (phase === 'authorizing' || phase === 'awaiting-device-approval') {
+    const operationID = status?.authorizationOperationID ?? operation?.operationID;
+    const expiresAt = Date.parse(status?.authorizationExpiresAt ?? operation?.expiresAt ?? '');
+    // A pending operation without a bounded identity and expiry is not safe
+    // to poll or cancel. Treat it as unavailable and require a fresh daemon
+    // operation instead of allowing an infinite spinner.
+    return operationID?.trim() && Number.isFinite(expiresAt) && expiresAt > Date.now()
+      ? phase
+      : 'unavailable';
+  }
   if (phase !== 'signed-out' || !operation || cloudAuthErrorCopy(status)) return phase;
   const expiresAt = Date.parse(operation.expiresAt);
-  return !Number.isFinite(expiresAt) || expiresAt > Date.now() ? 'authorizing' : phase;
+  return Number.isFinite(expiresAt) && expiresAt > Date.now() ? 'authorizing' : 'unavailable';
 }
 
 function CloudIdentitySetup({
@@ -269,7 +290,7 @@ function CloudIdentitySetup({
     <section className="onboarding-cloud-setup" aria-labelledby="onboarding-cloud-title">
       <h4 id="onboarding-cloud-title">Cloud sign-in</h4>
       <p className="onboarding-cloud-status" role={error || statusError ? 'alert' : 'status'}>
-        {loading && !status ? 'Reading daemon cloud identity state…' : error ?? statusError ?? cloudAuthStatusCopy(status, operation)}
+        {loading && !status ? 'Reading daemon cloud identity state…' : error ?? statusError ?? cloudAuthStatusCopy(status, operation, phase)}
       </p>
       {notice ? <p className="onboarding-cloud-status" role="status">{notice}</p> : null}
       {phase === 'active' ? (
@@ -296,6 +317,11 @@ function CloudIdentitySetup({
       ) : null}
       {phase === 'unavailable' ? (
         <div className="onboarding-cloud-actions">
+          {cloudAuthPhase(status) === 'authorizing' || cloudAuthPhase(status) === 'awaiting-device-approval' ? (
+            <button type="button" className="onboarding-btn-ghost" disabled={controlsDisabled} onClick={() => void beginSignIn()}>
+              Start cloud sign-in
+            </button>
+          ) : null}
           {!fixtureMode ? (
             <button type="button" className="onboarding-btn-ghost" disabled={controlsDisabled} onClick={() => void refreshStatus()}>
               Retry cloud sign-in
