@@ -64,7 +64,7 @@ function WindowRow({
 export function QuotaCard({ entry, onManage }: { entry: SubscriptionEntry; onManage: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const glyph = findProviderGlyph(entry.providerId);
-  const accent = glyph.accent.startsWith('#') ? 'var(--color-brass-core)' : glyph.accent;
+  const accent = glyph.accent;
   const visibleBuckets = expanded ? entry.buckets : entry.buckets.slice(0, 2);
   const bucketToggle =
     entry.buckets.length > 2

@@ -70,6 +70,13 @@ swarm with the validated options while retaining its Canvas2D/CSS fallback.
 Full macOS provider catalog coverage, constellation mode, and installed
 wallpaper receipts remain open.
 
+**Implementation checkpoint (2026-07-23, provider color roles):** Linux now
+uses deterministic macOS-aligned provider accents and model-family colors in
+provider glyph fallback, quota cards, provider cards, and overview spend
+curves. Unknown provider/model IDs receive stable fallback colors rather than
+collapsing to the brass accent. Bundled logo breadth and installed visual
+comparison receipts remain open.
+
 ---
 
 ## 1. Current state snapshot
@@ -220,6 +227,9 @@ required before promotion.
 17. **Kernel-forward layouts** (full-bleed kernel backdrop for atelier/constellation).
 18. **Pet companion renderer** (GLB/Three.js runtime, behavior graph, tier matrix, chat bubble, hover toolbar, global summon hotkey).
 19. **Provider color themes** (30+ provider color schemes, model color hashing).
+    Deterministic provider aliases, family colors, and hashed model fallback
+    are implemented in the Linux source; full 30+ logo/theme asset coverage
+    and installed receipts remain.
 
 ### Tier 3 — Core UI surface depth
 

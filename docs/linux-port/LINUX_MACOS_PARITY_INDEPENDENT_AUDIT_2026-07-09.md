@@ -222,6 +222,18 @@ catalog coverage (Linux point data still lacks some macOS marks), constellation
 mode, native wallpaper hosting, and installed visual receipts remain open; the
 strict ledger remains **0/40 product** and **0/7 environment**.
 
+### Linux provider and model color roles — 2026-07-23
+
+Linux now applies deterministic macOS-aligned provider accents and model-family
+colors to provider glyph fallbacks, quota cards, provider cards, and overview
+spend curves. Known aliases such as Claude Code, Codex, Gemini CLI, and Grok
+resolve to their provider colors; unknown model names use the same stable
+palette-hash strategy instead of a single brass fallback.
+
+This closes the source-level color-role subset. Full provider logo/theme asset
+coverage and installed visual receipts remain; the strict ledger remains
+**0/40 product** and **0/7 environment**.
+
 ## Integration closeout — 2026-07-21
 
 ### Live UTM session re-open — 2026-07-21 (Grok)
