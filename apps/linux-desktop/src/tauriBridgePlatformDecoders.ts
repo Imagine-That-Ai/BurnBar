@@ -593,7 +593,7 @@ export function decodeNativeShortcutStatus(raw: RawJsonValue): NativeShortcutSta
 export function decodeDesktopWallpaperStatus(raw: RawJsonValue): DesktopWallpaperStatus {
   const value = requireObject(raw, 'desktop wallpaper status');
   const backend = requireString(pick(value, 'backend'), 'desktop wallpaper backend');
-  if (backend !== 'gnome' && backend !== 'kde' && backend !== 'xfce' && backend !== 'unsupported') {
+  if (backend !== 'gnome' && backend !== 'kde' && backend !== 'xfce' && backend !== 'sway' && backend !== 'hyprland' && backend !== 'unsupported') {
     throw new Error(`desktop wallpaper backend is unsupported: ${backend}`);
   }
   const state = requireString(pick(value, 'state'), 'desktop wallpaper state');

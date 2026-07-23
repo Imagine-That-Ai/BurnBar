@@ -14,6 +14,8 @@ export const SWARM_SPEED_DEFAULT = 0.6;
 export type SwarmPreferences = {
   speed: number;
   sparkles: boolean;
+  /** macOS Appearance > Constellation Style cinematic preset. */
+  constellationMode: boolean;
   providerGlyphs: SwarmProviderGlyphId[];
   excludeBrandShapes: boolean;
   autoCycleShapes: boolean;
@@ -23,6 +25,7 @@ export type SwarmPreferences = {
 export const DEFAULT_SWARM_PREFERENCES: SwarmPreferences = {
   speed: SWARM_SPEED_DEFAULT,
   sparkles: false,
+  constellationMode: false,
   providerGlyphs: [...SWARM_PROVIDER_GLYPH_IDS],
   // Linux historically used the provider-only dashboard cycle. Keep that
   // default while exposing the macOS brand-shape switch to users.
@@ -49,6 +52,7 @@ export function readSwarmPreferences(): SwarmPreferences {
     return {
       speed: clampSwarmSpeed(Number(parsed.speed)),
       sparkles: parsed.sparkles === true,
+      constellationMode: parsed.constellationMode === true,
       providerGlyphs: normalizeSwarmProviderGlyphs(
         Array.isArray(parsed.providerGlyphs)
           ? parsed.providerGlyphs.filter((value): value is string => typeof value === 'string')
@@ -67,6 +71,7 @@ export function persistSwarmPreferences(next: Partial<SwarmPreferences>): SwarmP
   const normalized = {
     speed: clampSwarmSpeed(next.speed ?? SWARM_SPEED_DEFAULT),
     sparkles: next.sparkles === true,
+    constellationMode: next.constellationMode === true,
     providerGlyphs: normalizeSwarmProviderGlyphs(next.providerGlyphs),
     excludeBrandShapes: next.excludeBrandShapes !== false,
     autoCycleShapes: next.autoCycleShapes !== false,

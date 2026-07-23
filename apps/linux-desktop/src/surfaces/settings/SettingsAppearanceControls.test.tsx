@@ -133,6 +133,23 @@ describe('SettingsAppearanceControls accessibility', () => {
     expect(JSON.parse(localStorage.getItem('openburnbar.linux.swarm.v1') ?? '{}')).toMatchObject({ sparkles: true });
   });
 
+  it('persists the macOS Constellation style preset', () => {
+    render(<SettingsAppearanceControls />);
+    const constellation = screen.getByRole('checkbox', { name: 'Use Constellation style' });
+    expect((constellation as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(constellation);
+
+    expect((constellation as HTMLInputElement).checked).toBe(true);
+    expect(JSON.parse(localStorage.getItem('openburnbar.linux.swarm.v1') ?? '{}')).toMatchObject({
+      constellationMode: true,
+      sparkles: false,
+      excludeBrandShapes: true,
+      autoCycleShapes: true,
+      allowsClickCycle: false
+    });
+  });
+
   it('persists swarm shape and provider glyph selections', () => {
     render(<SettingsAppearanceControls />);
 

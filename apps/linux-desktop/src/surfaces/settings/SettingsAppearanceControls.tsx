@@ -354,6 +354,16 @@ export function SettingsAppearanceControls() {
           />
           <span>Enable settled-shape sparkles</span>
         </label>
+        <label className="setting-toggle" htmlFor="swarm-constellation-toggle">
+          <input
+            id="swarm-constellation-toggle"
+            type="checkbox"
+            checked={swarm.constellationMode}
+            aria-label="Use Constellation style"
+            onChange={(event) => updateSwarm({ constellationMode: event.currentTarget.checked })}
+          />
+          <span>Use Constellation style</span>
+        </label>
         <label className="setting-toggle" htmlFor="swarm-brand-shapes-toggle">
           <input
             id="swarm-brand-shapes-toggle"

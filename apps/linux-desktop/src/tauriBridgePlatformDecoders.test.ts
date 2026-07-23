@@ -45,7 +45,7 @@ describe('notification settings decoder', () => {
 });
 
 describe('desktop wallpaper decoder', () => {
-  it('accepts only the bounded native backend and state vocabulary', () => {
+  it('accepts the bounded native backend and state vocabulary', () => {
     expect(decodeDesktopWallpaperStatus({
       available: true,
       backend: 'gnome',
@@ -53,9 +53,19 @@ describe('desktop wallpaper decoder', () => {
       theme: 'auroraTeal',
       path: '/home/test/.local/share/openburnbar/wallpapers/auroraTeal.svg'
     })).toMatchObject({ backend: 'gnome', state: 'applied', theme: 'auroraTeal' });
-    expect(() => decodeDesktopWallpaperStatus({
+    expect(decodeDesktopWallpaperStatus({
       available: true,
       backend: 'sway',
+      state: 'ready'
+    })).toMatchObject({ backend: 'sway', state: 'ready' });
+    expect(decodeDesktopWallpaperStatus({
+      available: true,
+      backend: 'hyprland',
+      state: 'applied'
+    })).toMatchObject({ backend: 'hyprland', state: 'applied' });
+    expect(() => decodeDesktopWallpaperStatus({
+      available: true,
+      backend: 'cosmic',
       state: 'ready'
     })).toThrow('desktop wallpaper backend is unsupported');
   });

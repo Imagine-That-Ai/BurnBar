@@ -86,12 +86,14 @@ export function KernelBackdrop({
         initialKernel: requestedKernelRef.current,
         palette: resolveSkinPalette(skin),
         swarmEmberOptions: {
-          enableSwarmSparkles: swarmPreferences.sparkles,
-          motionSpeedMultiplier: swarmPreferences.speed || DASHBOARD_MOTION_SPEED_MULTIPLIER,
+          enableSwarmSparkles: swarmPreferences.constellationMode || swarmPreferences.sparkles,
+          motionSpeedMultiplier: swarmPreferences.constellationMode
+            ? 0.55
+            : swarmPreferences.speed || DASHBOARD_MOTION_SPEED_MULTIPLIER,
           providerGlyphs: swarmPreferences.providerGlyphs,
-          excludeBrandShapes: swarmPreferences.excludeBrandShapes,
-          autoCycleShapes: swarmPreferences.autoCycleShapes,
-          allowsClickCycle: swarmPreferences.allowsClickCycle
+          excludeBrandShapes: swarmPreferences.constellationMode || swarmPreferences.excludeBrandShapes,
+          autoCycleShapes: swarmPreferences.constellationMode || swarmPreferences.autoCycleShapes,
+          allowsClickCycle: swarmPreferences.constellationMode ? false : swarmPreferences.allowsClickCycle
         },
         onStatus: (status) => publishKernelResolution(container, status),
         onResolve: (resolvedId) => {

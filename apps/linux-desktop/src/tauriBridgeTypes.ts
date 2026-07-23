@@ -1024,7 +1024,7 @@ export type NativeShortcutBindingStatus = {
 };
 export type DesktopWallpaperStatus = {
   available: boolean;
-  backend: 'gnome' | 'kde' | 'xfce' | 'unsupported';
+  backend: 'gnome' | 'kde' | 'xfce' | 'sway' | 'hyprland' | 'unsupported';
   state: 'ready' | 'applied' | 'degraded' | 'unsupported';
   theme?: string;
   path?: string;
