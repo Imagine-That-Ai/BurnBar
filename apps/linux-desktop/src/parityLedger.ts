@@ -43,6 +43,7 @@ export const PARITY_LEDGER: ParityRow[] = [
   {
     feature: 'Smart-display integration controls',
     macos: 'Live layout/palette/theme pickers and test-display actions in Settings',
-    linux: 'Read-and-explain status rows from openburnbar-cli devices parity; configuration happens daemon/CLI-side in v1.'
+    linux: 'Typed root-owned discovery/status/test probes for SmartHub, Cast, Home Assistant, PixelClock, and AWTRIX via the trusted packaged CLI.',
+    substitution: 'Device-specific configuration remains daemon/CLI-owned; the renderer never exposes arbitrary shell or credential fields.'
   }
 ];
