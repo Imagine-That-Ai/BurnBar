@@ -1042,7 +1042,7 @@ jobs:
     needs: [prepare-functions-deploy, deploy-functions, functions-health-gate]
     if: ${{ always() && github.event.inputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
       issues: write
