@@ -199,6 +199,37 @@ function assertPrivacyReadback(snapshot: ConfigSnapshot, patch: PrivacySettingsP
   }
 }
 
+/**
+ * Preferred-account changes must be confirmed by the daemon response before
+ * the quota/provider catalog is refreshed. A successful RPC envelope alone is
+ * not proof that the routing preference was accepted; a rejected or stale
+ * readback must leave the previous catalog visible and report the mismatch.
+ */
+function assertPreferredCredentialReadback(
+  previous: ConfigSnapshot,
+  requested: ConfigSnapshot,
+  confirmed: ConfigSnapshot
+): void {
+  const previousProviders = new Map((previous.providers ?? []).map((provider) => [provider.providerID, provider]));
+  const confirmedProviders = new Map((confirmed.providers ?? []).map((provider) => [provider.providerID, provider]));
+
+  for (const requestedProvider of requested.providers ?? []) {
+    const previousSlotID = previousProviders.get(requestedProvider.providerID)?.preferredCredentialSlotID ?? '';
+    const requestedSlotID = requestedProvider.preferredCredentialSlotID ?? '';
+    if (previousSlotID === requestedSlotID) continue;
+
+    const confirmedProvider = confirmedProviders.get(requestedProvider.providerID);
+    const confirmedSlotID = confirmedProvider?.preferredCredentialSlotID ?? '';
+    if (confirmedSlotID === requestedSlotID) continue;
+
+    throw new Error(
+      requestedSlotID
+        ? `Daemon did not confirm preferred credential slot '${requestedSlotID}' for '${requestedProvider.providerID}'.`
+        : `Daemon did not confirm clearing the preferred credential slot for '${requestedProvider.providerID}'.`
+    );
+  }
+}
+
 export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) => ({
   routeLog: [],
   notificationConfig: null,
@@ -480,10 +511,14 @@ export const useSettingsWiringStore = create<SettingsWiringState>()((set, get) =
 
   async replaceSnapshot(snapshot) {
     const { fixtureMode, bridge } = useShellStore.getState();
+    const previous = useSystemStore.getState().config;
     set({ busy: 'config.update', error: null });
     try {
       if (!fixtureMode && !bridge?.configUpdate) throw new Error('Config update RPC bridge is unavailable.');
       const next = fixtureMode ? snapshot : await bridge!.configUpdate!(snapshot);
+      if (!fixtureMode && previous) {
+        assertPreferredCredentialReadback(previous, snapshot, next);
+      }
       await refreshSnapshotFrom(next);
       set({ busy: null, error: null });
     } catch (e) {

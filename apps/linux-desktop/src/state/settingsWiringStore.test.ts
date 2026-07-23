@@ -134,6 +134,48 @@ describe('settingsWiringStore provider catalog refresh', () => {
     expect(useSettingsWiringStore.getState().error).toBe('daemon rejected preferred account');
   });
 
+  it('fails closed when the config mutation does not confirm a preferred account switch', async () => {
+    const previousConfig = fixtureConfigSnapshot();
+    const requestedConfig = configWithPreferredSlot('backup');
+    const oldCatalog = providerCatalog('Team workspace', 'team');
+    const bridge = liveBridge({
+      configUpdate: vi.fn(async () => previousConfig),
+      providerCatalog: vi.fn(async () => providerCatalog('Backup workspace', 'backup'))
+    });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    useSystemStore.setState({ config: previousConfig, loading: false, error: null });
+    useProvidersStore.setState({ catalog: oldCatalog, loading: false, error: null });
+
+    await useSettingsWiringStore.getState().replaceSnapshot(requestedConfig);
+
+    expect(bridge.providerCatalog).not.toHaveBeenCalled();
+    expect(useProvidersStore.getState().catalog).toBe(oldCatalog);
+    expect(useSystemStore.getState().config?.providers?.[0]?.preferredCredentialSlotID).toBe('anthropic-team');
+    expect(useSettingsWiringStore.getState().error).toBe(
+      "Daemon did not confirm preferred credential slot 'backup' for 'anthropic'."
+    );
+  });
+
+  it('fails closed when the config mutation does not confirm clearing auto routing', async () => {
+    const previousConfig = fixtureConfigSnapshot();
+    const requestedConfig = structuredClone(previousConfig);
+    if (requestedConfig.providers?.[0]) delete requestedConfig.providers[0].preferredCredentialSlotID;
+    const bridge = liveBridge({
+      configUpdate: vi.fn(async () => previousConfig),
+      providerCatalog: vi.fn(async () => providerCatalog('Auto route', ''))
+    });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    useSystemStore.setState({ config: previousConfig, loading: false, error: null });
+    useProvidersStore.setState({ catalog: providerCatalog('Team workspace', 'anthropic-team'), loading: false, error: null });
+
+    await useSettingsWiringStore.getState().replaceSnapshot(requestedConfig);
+
+    expect(bridge.providerCatalog).not.toHaveBeenCalled();
+    expect(useSettingsWiringStore.getState().error).toBe(
+      "Daemon did not confirm clearing the preferred credential slot for 'anthropic'."
+    );
+  });
+
   it('clears stale quota state when the successful mutation cannot refresh the catalog', async () => {
     const bridge = liveBridge({
       providerCatalog: vi.fn(async () => {
