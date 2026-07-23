@@ -244,10 +244,21 @@ jobs:
 
       - name: Install XcodeGen
         run: |
-          if ! command -v xcodegen >/dev/null 2>&1; then
-            brew install xcodegen
-          fi
-          xcodegen --version
+          set -euo pipefail
+          # The committed project is generated with XcodeGen 2.45.4. Do not
+          # consume the moving Homebrew formula: 2.46.0 changes target
+          # discovery and makes the drift gate fail without a source change.
+          xcodegen_version=2.45.4
+          xcodegen_sha256=090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef
+          xcodegen_root="$RUNNER_TEMP/xcodegen-$xcodegen_version"
+          mkdir -p "$xcodegen_root"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/$xcodegen_version/xcodegen.zip" \
+            --output "$xcodegen_root/xcodegen.zip"
+          echo "$xcodegen_sha256  $xcodegen_root/xcodegen.zip" | shasum --algorithm 256 --check --strict
+          unzip -q -o "$xcodegen_root/xcodegen.zip" -d "$xcodegen_root"
+          echo "$xcodegen_root/xcodegen/bin" >> "$GITHUB_PATH"
+          "$xcodegen_root/xcodegen/bin/xcodegen" --version
 
       # Regenerate from the spec; the committed pbxproj must already match.
       - name: Regenerate Xcode project from project.yml
