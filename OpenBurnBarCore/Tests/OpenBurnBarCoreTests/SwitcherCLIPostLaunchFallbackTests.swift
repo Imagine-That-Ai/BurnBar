@@ -54,7 +54,7 @@ final class SwitcherCLIPostLaunchFallbackTests: XCTestCase {
         let store = InMemorySwitcherProfileStoreAdapter()
         let recorder = PackageLaunchEventRecorder()
         let fallbackEventRecorded = expectation(description: "post-launch fallback event recorded")
-        let service = SwitcherCLILAunchService(
+        let service = SwitcherCLILaunchService(
             profileStore: store,
             fallbackPlanner: PackageTestCLIFallbackPlanner(),
             eventHandler: { event in
@@ -134,7 +134,7 @@ final class SwitcherCLIPostLaunchFallbackTests: XCTestCase {
     func test_launchCLI_persistsPostLaunchOutOfLimitQuotaHold() async throws {
         let store = InMemorySwitcherProfileStoreAdapter()
         let fallbackEventRecorded = expectation(description: "post-launch fallback event recorded")
-        let service = SwitcherCLILAunchService(
+        let service = SwitcherCLILaunchService(
             profileStore: store,
             fallbackPlanner: PackageTestCLIFallbackPlanner(),
             eventHandler: { _ in

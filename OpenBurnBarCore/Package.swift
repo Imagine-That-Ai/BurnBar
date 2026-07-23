@@ -1058,7 +1058,11 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "OpenBurnBarLogParsers",
-            dependencies: ["OpenBurnBarKernel", "OpenBurnBarSQLiteReader"],
+            dependencies: [
+                "OpenBurnBarKernel",
+                "OpenBurnBarKernelPlatform",
+                "OpenBurnBarSQLiteReader"
+            ],
             exclude: openBurnBarLogParsersExcludes
         ),
         .target(
@@ -1066,15 +1070,18 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarKernel",
                 "OpenBurnBarSQLiteReader",
-                // P-13 (integrator-authorized manifest edit, docs/CORE_DECOMPOSITION_PROGRAM.md
-                // AE-IMPORT STOP override): `AiderQuotaAdapter` parses Aider session logs via
-                // `FileHandle.readAllUTF8Lines()` → `BufferedLineSequence`, both defined in
-                // `OpenBurnBarLogParsers` (LogParser/{LogParserProtocol,BufferedLineSequence}.swift).
-                // The DRAFT card's "NO LogParsers edge" invariant was FALSE (its grep matched only
-                // the literal `LogParser`, missing the method-name reference). This edge is acyclic:
-                // `OpenBurnBarLogParsers` depends only on [Kernel, SQLiteReader], so Quota→LogParsers
-                // introduces no cycle. The moved `AiderQuotaAdapter.swift` gains `import
-                // OpenBurnBarLogParsers` (AE-IMPORT); no other Quota file references LogParsers.
+                // Phase-2 WS-K W1 (docs/CORE_DECOMPOSITION_PROGRAM.md): this Quota→LogParsers
+                // edge stays. P-13 added it for `AiderQuotaAdapter`'s use of
+                // `FileHandle.readAllUTF8Lines()` → `BufferedLineSequence`; W1 moved BOTH of those
+                // generic UTF-8 primitives DOWN to OpenBurnBarKernelPlatform, so AiderQuotaAdapter no
+                // longer needs LogParsers (its `import OpenBurnBarLogParsers` was dropped). BUT the W1
+                // card's premise that AiderQuotaAdapter was the SOLE consumer was FALSE: the edge is
+                // also required by `WarpQuotaAdapter.swift`, which calls
+                // `WarpParser.extractBodyJSONObjects(from:)` and `TimestampNormalizationUtility.date(fromEpoch:)`
+                // — both LogParsers-only types (LogParser/{WarpParser,TokenExtractionUtility}.swift).
+                // The W1 re-grep gate (no Quota file may reference a LogParsers-only type) therefore
+                // KEEPS the edge. It is acyclic: `OpenBurnBarLogParsers` depends only on
+                // [Kernel, SQLiteReader], so Quota→LogParsers introduces no cycle.
                 "OpenBurnBarLogParsers",
                 swiftCryptoNonAppleDependency
             // Merge (train ← origin/main): P-13 moved the ProviderQuota adapters (incl.

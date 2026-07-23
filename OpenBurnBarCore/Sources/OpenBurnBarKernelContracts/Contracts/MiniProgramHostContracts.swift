@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelModels
 
 // MARK: - Mini-Program Host Contracts (Hermes Square §6.6)
 //

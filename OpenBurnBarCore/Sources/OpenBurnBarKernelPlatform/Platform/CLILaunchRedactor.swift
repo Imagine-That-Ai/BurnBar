@@ -4,7 +4,7 @@ import Foundation
 //
 // Core-decomposition P-18 (docs/CORE_DECOMPOSITION_PROGRAM.md): the secret-safe
 // logging/redaction surface of the CLI launch stack, extracted DOWN from
-// `OpenBurnBarLaunchServices/SwitcherCLILAunchService.swift` into the cross-platform
+// `OpenBurnBarLaunchServices/SwitcherCLILaunchService.swift` into the cross-platform
 // Kernel so the daemon repoint reaches it via Engine WITHOUT linking the Apple-only,
 // AppKit-adjacent `OpenBurnBarLaunchServices` target. `CLILaunchRedactor` is pure
 // Foundation (String/Set/Dictionary regex only — zero Kernel or LaunchServices

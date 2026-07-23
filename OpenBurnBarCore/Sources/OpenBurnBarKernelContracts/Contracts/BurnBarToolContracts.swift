@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelPlatform
 
 public enum BurnBarWorkspaceCapability: String, Codable, CaseIterable, Hashable, Sendable {
     case local

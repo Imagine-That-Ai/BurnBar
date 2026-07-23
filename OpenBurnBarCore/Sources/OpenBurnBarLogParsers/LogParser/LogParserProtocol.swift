@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarKernel
+@_exported import OpenBurnBarKernelPlatform
 
 // MARK: - Parse Result
 
@@ -147,13 +148,13 @@ public struct ParserConversationCacheScrubber {
 
 // MARK: - FileHandle Extensions
 
+// `readAllUTF8Lines()` and its `BufferedLineSequence` return type moved DOWN to
+// OpenBurnBarKernelPlatform (Phase-2 WS-K W1, docs/CORE_DECOMPOSITION_PROGRAM.md);
+// this target reaches both through its declared `OpenBurnBarKernel` dependency
+// (which `@_exported import`s OpenBurnBarKernelPlatform). The `readLine()` /
+// `readLastLine()` primitives below stay here (their only consumers are in this
+// target).
 extension FileHandle {
-    /// Buffered UTF-8 line reader for log files. Returns a lazy sequence so
-    /// parsers do not load and split multi-megabyte logs into memory at startup.
-    public func readAllUTF8Lines() -> BufferedLineSequence {
-        BufferedLineSequence(fileHandle: self)
-    }
-
     public func readLine() -> String? {
         var data = Data()
         var byte = readData(ofLength: 1)

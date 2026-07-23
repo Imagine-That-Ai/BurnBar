@@ -75,7 +75,7 @@ struct PopoverQuickSwitchView: View {
 
     // Launch services
     @State private var browserLaunchService: SwitcherBrowserLaunchService?
-    @State private var cliLaunchService: SwitcherCLILAunchService?
+    @State private var cliLaunchService: SwitcherCLILaunchService?
 
     #if DEBUG
     /// Test-only: pre-populated error state for view testing.
@@ -885,7 +885,7 @@ struct PopoverQuickSwitchView: View {
                 }
             }
             browserLaunchService = SwitcherBrowserLaunchService(profileStore: adapter)
-            cliLaunchService = SwitcherCLILAunchService(
+            cliLaunchService = SwitcherCLILaunchService(
                 profileStore: adapter,
                 fallbackPlanner: fallbackPlanner,
                 eventHandler: { event in

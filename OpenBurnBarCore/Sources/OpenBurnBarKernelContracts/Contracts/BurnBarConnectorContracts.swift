@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelPlatform
 
 public enum BurnBarConnectorKind: String, Codable, CaseIterable, Hashable, Sendable {
     case github
