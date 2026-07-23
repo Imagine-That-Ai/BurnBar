@@ -617,7 +617,7 @@ public actor BurnBarBrowserToolService {
 
     private static func stripHTML(_ html: String) -> String? {
         let stripped = html
-            .replacingOccurrences(of: "(?is)<script[^>]*>.*?</script>", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "(?is)<script[^>]*>.*?</script[^>]*>", with: " ", options: .regularExpression)
             .replacingOccurrences(of: "(?is)<style[^>]*>.*?</style>", with: " ", options: .regularExpression)
             .replacingOccurrences(of: "(?is)<[^>]+>", with: " ", options: .regularExpression)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)

@@ -72,9 +72,13 @@ function resolveExecutable(runner, command, repoRoot) {
   const candidate = commandOutput(runner, 'which', [command], { cwd: repoRoot });
   if (!candidate || candidate.includes('\n')) throw new Error(`${command} runtime probe returned an invalid executable path`);
   const executable = fs.realpathSync(candidate);
-  const stat = fs.statSync(executable, { throwIfNoEntry: true });
-  if (!stat.isFile()) throw new Error(`${command} runtime probe did not resolve a regular executable`);
-  return { name: path.basename(executable), sha256: sha256(fs.readFileSync(executable)) };
+  const fd = fs.openSync(executable, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    if (!fs.fstatSync(fd).isFile()) throw new Error(`${command} runtime probe did not resolve a regular executable`);
+    return { name: path.basename(executable), sha256: sha256(fs.readFileSync(fd)) };
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 function readCurrentProductVersion(repoRoot) {

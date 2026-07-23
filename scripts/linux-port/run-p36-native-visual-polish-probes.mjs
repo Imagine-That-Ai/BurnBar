@@ -104,15 +104,20 @@ function tree(root) {
         visit(file, rel);
       } else {
         assert(stat.isFile(), `P-36 state contains special file ${rel}`);
-        rows.push({
-          path: rel,
-          type: "file",
-          mode: stat.mode & 0o777,
-          sha256: crypto
-            .createHash("sha256")
-            .update(fs.readFileSync(file))
-            .digest("hex"),
-        });
+        const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        try {
+          rows.push({
+            path: rel,
+            type: "file",
+            mode: fs.fstatSync(fd).mode & 0o777,
+            sha256: crypto
+              .createHash("sha256")
+              .update(fs.readFileSync(fd))
+              .digest("hex"),
+          });
+        } finally {
+          fs.closeSync(fd);
+        }
       }
     }
   };
@@ -491,15 +496,8 @@ function webdriver(env) {
       return Boolean(session);
     },
     async start() {
-      required(
-        "sh",
-        [
-          "-c",
-          "command -v tauri-driver >/dev/null && command -v WebKitWebDriver >/dev/null",
-        ],
-        "P-36 WebDriver prerequisites",
-        { env },
-      );
+      required("which", ["tauri-driver"], "P-36 WebDriver prerequisites", { env });
+      required("which", ["WebKitWebDriver"], "P-36 WebDriver prerequisites", { env });
       const selected = await port();
       base = `http://127.0.0.1:${selected}/`;
       processHandle = spawn("tauri-driver", ["--port", String(selected)], {
@@ -601,6 +599,7 @@ function webdriver(env) {
             .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])),
         "P-36 WebDriver screenshot is not a non-empty PNG",
       );
+      // codeql[js/http-to-file-access] -- intentional evidence capture: payload comes from the loopback WebDriver session this probe spawned and is validated as a PNG above before being written to a new 0600 artifact.
       fs.writeFileSync(file, bytes, { flag: "wx", mode: 0o600 });
     },
     async stop() {
@@ -1004,6 +1003,7 @@ export function createP36ProductionDependencies(options) {
         expectedVisual && JSON.stringify(visual) === JSON.stringify(expectedVisual),
         `P-36 ${state} accessibility state does not match the live product`,
       );
+      // codeql[js/http-to-file-access] -- intentional evidence capture: the summary comes from the loopback WebDriver session this probe spawned and is asserted equal to the expected visual state above before being written to a 0600 artifact.
       fs.writeFileSync(
         accessibility,
         `${JSON.stringify({ ...summary, producer: "openburnbar-p36-atspi-live-v1", proofState: state, ...visual }, null, 2)}\n`,

@@ -56,20 +56,24 @@ function privateDirectory(directory, label) {
   return fs.realpathSync(directory);
 }
 function readToken(file) {
-  const stat = fs.lstatSync(file);
-  assert(
-    stat.isFile() &&
-      !stat.isSymbolicLink() &&
-      stat.uid === process.getuid?.() &&
-      (stat.mode & 0o077) === 0,
-    "P-23 daemon token must be owner-only",
-  );
-  const token = fs.readFileSync(file, "utf8").trim();
-  assert(
-    token.length >= 32 && !/[\r\n]/u.test(token),
-    "P-23 daemon token is invalid",
-  );
-  return token;
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    const stat = fs.fstatSync(fd);
+    assert(
+      stat.isFile() &&
+        stat.uid === process.getuid?.() &&
+        (stat.mode & 0o077) === 0,
+      "P-23 daemon token must be owner-only",
+    );
+    const token = fs.readFileSync(fd, "utf8").trim();
+    assert(
+      token.length >= 32 && !/[\r\n]/u.test(token),
+      "P-23 daemon token is invalid",
+    );
+    return token;
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 function commandRunner() {
   return {

@@ -56,7 +56,12 @@ function stateTree(root) {
       const stat = fs.lstatSync(absolute);
       assert(!stat.isSymbolicLink(), `P-33 state contains symlink ${child}`);
       if (stat.isDirectory()) { rows.push({ path: child, type: "directory", mode: stat.mode & 0o777 }); visit(absolute, child); }
-      else { assert(stat.isFile(), `P-33 state contains special file ${child}`); rows.push({ path: child, type: "file", mode: stat.mode & 0o777, sha256: crypto.createHash("sha256").update(fs.readFileSync(absolute)).digest("hex") }); }
+      else {
+        assert(stat.isFile(), `P-33 state contains special file ${child}`);
+        const fd = fs.openSync(absolute, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        try { rows.push({ path: child, type: "file", mode: fs.fstatSync(fd).mode & 0o777, sha256: crypto.createHash("sha256").update(fs.readFileSync(fd)).digest("hex") }); }
+        finally { fs.closeSync(fd); }
+      }
     }
   };
   visit(root);

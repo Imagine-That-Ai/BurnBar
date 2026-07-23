@@ -134,15 +134,21 @@ function screenshot(output, file, state) {
 }
 function accessibility(output, file, state) {
   const absolute = fs.realpathSync(file);
-  const stat = fs.lstatSync(absolute);
-  assert(
-    path.dirname(absolute) === output &&
-      stat.isFile() &&
-      !stat.isSymbolicLink() &&
-      stat.size >= 100,
-    `P-29 ${state} AT-SPI evidence is invalid`,
-  );
-  const value = JSON.parse(fs.readFileSync(absolute, "utf8"));
+  const fd = fs.openSync(absolute, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  let raw;
+  try {
+    const stat = fs.fstatSync(fd);
+    assert(
+      path.dirname(absolute) === output &&
+        stat.isFile() &&
+        stat.size >= 100,
+      `P-29 ${state} AT-SPI evidence is invalid`,
+    );
+    raw = fs.readFileSync(fd, "utf8");
+  } finally {
+    fs.closeSync(fd);
+  }
+  const value = JSON.parse(raw);
   const inputProbe = state === "expanded" || state === "secure-denied";
   assert(
     value.application === (inputProbe ? "OpenBurnBar P29 IBus Probe" : "OpenBurnBar") &&
@@ -582,14 +588,19 @@ function processIDs(pattern) {
 }
 
 function readToken(file) {
-  const stat = fs.lstatSync(file);
-  assert(
-    stat.isFile() && !stat.isSymbolicLink() && (stat.mode & 0o077) === 0,
-    "P-29 daemon token must be an owner-only regular file",
-  );
-  const token = fs.readFileSync(file, "utf8").trim();
-  assert(token.length >= 32 && !/[\r\n]/u.test(token), "P-29 daemon token is invalid");
-  return token;
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    const stat = fs.fstatSync(fd);
+    assert(
+      stat.isFile() && (stat.mode & 0o077) === 0,
+      "P-29 daemon token must be an owner-only regular file",
+    );
+    const token = fs.readFileSync(fd, "utf8").trim();
+    assert(token.length >= 32 && !/[\r\n]/u.test(token), "P-29 daemon token is invalid");
+    return token;
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 function isolatedEnvironment(options, keyNamespace, extra = {}) {
@@ -621,12 +632,18 @@ function treeSnapshot(root) {
         visit(absolute, child);
       } else {
         assert(stat.isFile(), `P-29 isolated state contains a special file: ${child}`);
-        entries.push({
-          path: child,
-          type: "file",
-          mode: stat.mode & 0o777,
-          bytes: fs.readFileSync(absolute),
-        });
+        const fd = fs.openSync(absolute, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        try {
+          const fileStat = fs.fstatSync(fd);
+          entries.push({
+            path: child,
+            type: "file",
+            mode: fileStat.mode & 0o777,
+            bytes: fs.readFileSync(fd),
+          });
+        } finally {
+          fs.closeSync(fd);
+        }
       }
     }
   };
@@ -779,24 +796,34 @@ function createStoreAdapter(options) {
   };
   return {
     async inspect(plaintext) {
-      const stat = fs.lstatSync(storePath);
-      const bytes = fs.readFileSync(storePath);
-      return {
-        path: storePath,
-        mode: (stat.mode & 0o777).toString(8).padStart(4, "0"),
-        ownerUid: stat.uid,
-        symlink: stat.isSymbolicLink(),
-        containsPlaintext: plaintext.some((value) => bytes.includes(Buffer.from(value))),
-        ciphertextSha256: crypto.createHash("sha256").update(bytes).digest("hex"),
-      };
+      const fd = fs.openSync(storePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+      try {
+        const stat = fs.fstatSync(fd);
+        const bytes = fs.readFileSync(fd);
+        return {
+          path: storePath,
+          mode: (stat.mode & 0o777).toString(8).padStart(4, "0"),
+          ownerUid: stat.uid,
+          symlink: stat.isSymbolicLink(),
+          containsPlaintext: plaintext.some((value) => bytes.includes(Buffer.from(value))),
+          ciphertextSha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+        };
+      } finally {
+        fs.closeSync(fd);
+      }
     },
     async corrupt() {
-      const stat = fs.lstatSync(storePath);
-      repair = { exists: true, bytes: fs.readFileSync(storePath), mode: stat.mode & 0o777 };
-      const corrupted = Buffer.from(repair.bytes);
-      assert(corrupted.length > 32, "P-29 encrypted store is too small to corrupt safely");
-      corrupted[Math.floor(corrupted.length / 2)] ^= 0xff;
-      fs.writeFileSync(storePath, corrupted, { mode: repair.mode });
+      const fd = fs.openSync(storePath, fs.constants.O_RDWR | fs.constants.O_NOFOLLOW);
+      try {
+        const stat = fs.fstatSync(fd);
+        repair = { exists: true, bytes: fs.readFileSync(fd), mode: stat.mode & 0o777 };
+        const corrupted = Buffer.from(repair.bytes);
+        assert(corrupted.length > 32, "P-29 encrypted store is too small to corrupt safely");
+        corrupted[Math.floor(corrupted.length / 2)] ^= 0xff;
+        fs.writeSync(fd, corrupted, 0, corrupted.length, 0);
+      } finally {
+        fs.closeSync(fd);
+      }
     },
     async restore() {
       assert(repair, "P-29 corruption repair snapshot is unavailable");
@@ -839,13 +866,20 @@ function createUIAdapter(options, env) {
     await sleep(500);
   };
   const fieldState = () => {
-    const stat = fs.lstatSync(fieldStatePath);
-    assert(
-      stat.isFile() && !stat.isSymbolicLink() && stat.uid === process.getuid?.() &&
-        (stat.mode & 0o777) === 0o600,
-      "P-29 GTK field state is not an owned 0600 file",
-    );
-    const value = JSON.parse(fs.readFileSync(fieldStatePath, "utf8"));
+    const fd = fs.openSync(fieldStatePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    let raw;
+    try {
+      const stat = fs.fstatSync(fd);
+      assert(
+        stat.isFile() && stat.uid === process.getuid?.() &&
+          (stat.mode & 0o777) === 0o600,
+        "P-29 GTK field state is not an owned 0600 file",
+      );
+      raw = fs.readFileSync(fd, "utf8");
+    } finally {
+      fs.closeSync(fd);
+    }
+    const value = JSON.parse(raw);
     assert(
       value.producer === "openburnbar-p29-ibus-field-probe-v1" &&
         value.marker === fieldMarker &&

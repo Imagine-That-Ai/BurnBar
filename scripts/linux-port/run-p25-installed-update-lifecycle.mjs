@@ -31,12 +31,14 @@ function assert(value, message) {
   if (!value) throw new Error(message);
 }
 function bytes(file) {
-  const stat = fs.lstatSync(file);
-  assert(
-    stat.isFile() && !stat.isSymbolicLink(),
-    `P-25 requires a regular file: ${file}`,
-  );
-  return fs.readFileSync(file);
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    const stat = fs.fstatSync(fd);
+    assert(stat.isFile(), `P-25 requires a regular file: ${file}`);
+    return fs.readFileSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");

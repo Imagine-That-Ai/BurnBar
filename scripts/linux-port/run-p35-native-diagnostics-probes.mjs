@@ -70,7 +70,12 @@ function tree(root) {
       const stat = fs.lstatSync(absolute);
       assert(!stat.isSymbolicLink(), `P-35 state contains symlink ${child}`);
       if (stat.isDirectory()) { rows.push({ path: child, type: "directory", mode: stat.mode & 0o777 }); visit(absolute, child); }
-      else { assert(stat.isFile(), `P-35 state contains special file ${child}`); rows.push({ path: child, type: "file", mode: stat.mode & 0o777, sha256: crypto.createHash("sha256").update(fs.readFileSync(absolute)).digest("hex") }); }
+      else {
+        assert(stat.isFile(), `P-35 state contains special file ${child}`);
+        const fd = fs.openSync(absolute, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        try { rows.push({ path: child, type: "file", mode: fs.fstatSync(fd).mode & 0o777, sha256: crypto.createHash("sha256").update(fs.readFileSync(fd)).digest("hex") }); }
+        finally { fs.closeSync(fd); }
+      }
     }
   };
   visit(root);
@@ -115,9 +120,16 @@ export async function runP35DiagnosticsSupportWorkflow(options, deps) {
     await deps.waitForText?.("Connected");
     await deps.capture("preview", STATES[0][1], path.join(raw, "diagnostics-preview-atspi.json"), path.join(raw, "diagnostics-preview.png"));
     const exported = await deps.exportDiagnostics(marker);
-    const stat = fs.lstatSync(exported.path);
-    assert(stat.isFile() && !stat.isSymbolicLink() && stat.uid === process.getuid?.() && (stat.mode & 0o777) === 0o600 && path.dirname(fs.realpathSync(exported.path)) === destination, "P-35 export destination is not selected, regular, owner-only, and confined");
-    const bytes = fs.readFileSync(exported.path);
+    const exportFd = fs.openSync(exported.path, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    let bytes;
+    let exportStat;
+    try {
+      exportStat = fs.fstatSync(exportFd);
+      assert(exportStat.isFile() && exportStat.uid === process.getuid?.() && (exportStat.mode & 0o777) === 0o600 && path.dirname(fs.realpathSync(exported.path)) === destination, "P-35 export destination is not selected, regular, owner-only, and confined");
+      bytes = fs.readFileSync(exportFd);
+    } finally {
+      fs.closeSync(exportFd);
+    }
     const bundle = JSON.parse(bytes);
     metadataOnly(bundle, deps.plantedSecrets ?? []);
     assert(exported.preview?.schemaVersion === 1 && exported.preview.fileMode === "0600" && exported.preview.byteCount === bytes.length && exported.atomic === true && exported.partialArtifacts === 0, "P-35 native preview or atomic write evidence is invalid");
@@ -162,7 +174,7 @@ export async function runP35DiagnosticsSupportWorkflow(options, deps) {
         included: bundle.included,
         metadataOnly: true,
         mode: "0600",
-        ownerUid: stat.uid,
+        ownerUid: exportStat.uid,
         partialArtifacts: exported.partialArtifacts,
         path: exported.path,
         sha256: crypto.createHash("sha256").update(bytes).digest("hex"),

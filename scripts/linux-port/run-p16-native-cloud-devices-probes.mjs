@@ -115,12 +115,18 @@ function tree(root) {
         visit(absolute, child);
       } else {
         assert(stat.isFile(), `P-16 state contains special file ${child}`);
-        rows.push({
-          path: child,
-          type: "file",
-          mode: stat.mode & 0o777,
-          sha256: sha(fs.readFileSync(absolute)),
-        });
+        const fd = fs.openSync(absolute, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        try {
+          const fileStat = fs.fstatSync(fd);
+          rows.push({
+            path: child,
+            type: "file",
+            mode: fileStat.mode & 0o777,
+            sha256: sha(fs.readFileSync(fd)),
+          });
+        } finally {
+          fs.closeSync(fd);
+        }
       }
     }
   };
@@ -229,19 +235,25 @@ function normalizeStatus(value, proofState) {
 }
 function receipt(source, destination) {
   const requested = path.resolve(source);
-  const stat = fs.lstatSync(requested);
-  assert(
-    stat.isFile() &&
-      !stat.isSymbolicLink() &&
-      stat.uid === process.getuid?.() &&
-      stat.nlink === 1 &&
-      stat.size >= 800 &&
-      stat.size <= 1024 * 1024 &&
-      (stat.mode & 0o077) === 0 &&
-      fs.realpathSync(requested) === requested,
-    "P-16 physical-ipad receipt must be an owner-only regular file",
-  );
-  const value = JSON.parse(fs.readFileSync(requested, "utf8"));
+  const fd = fs.openSync(requested, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  let raw;
+  try {
+    const stat = fs.fstatSync(fd);
+    assert(
+      stat.isFile() &&
+        stat.uid === process.getuid?.() &&
+        stat.nlink === 1 &&
+        stat.size >= 800 &&
+        stat.size <= 1024 * 1024 &&
+        (stat.mode & 0o077) === 0 &&
+        fs.realpathSync(requested) === requested,
+      "P-16 physical-ipad receipt must be an owner-only regular file",
+    );
+    raw = fs.readFileSync(fd, "utf8");
+  } finally {
+    fs.closeSync(fd);
+  }
+  const value = JSON.parse(raw);
   assert(
     value?.producer === "openburnbar-p16-physical-ipad-trust-cycle-v1",
     "P-16 receipt is not a physical-ipad trust cycle",
@@ -624,15 +636,8 @@ function driver(env) {
   let base;
   return {
     async start() {
-      required(
-        "sh",
-        [
-          "-c",
-          "command -v tauri-driver >/dev/null && command -v WebKitWebDriver >/dev/null",
-        ],
-        "P-16 WebDriver prerequisites",
-        { env },
-      );
+      required("which", ["tauri-driver"], "P-16 WebDriver prerequisites", { env });
+      required("which", ["WebKitWebDriver"], "P-16 WebDriver prerequisites", { env });
       const port = await reservePort();
       base = `http://127.0.0.1:${port}/`;
       child = spawn("tauri-driver", ["--port", String(port)], {

@@ -10,8 +10,19 @@ import com.openburnbar.data.media.IrohBlobKeyStore
 import com.openburnbar.data.media.MediaFileTransferService
 import com.openburnbar.irohrelay.OpenBurnBarIrohBlobFfiBackend
 import java.io.File
+import java.security.MessageDigest
 
-private const val LOG_CHALLENGE_ID_PREFIX_LENGTH = 32
+private const val LOG_CHALLENGE_ID_DIGEST_LENGTH = 16
+
+/**
+ * One-way digest used so logs can correlate challenge failures without ever
+ * writing any portion of the raw challenge identifier to the log stream.
+ */
+private fun challengeIdLogDigest(challengeId: String): String =
+    MessageDigest.getInstance("SHA-256")
+        .digest(challengeId.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+        .take(LOG_CHALLENGE_ID_DIGEST_LENGTH)
 
 internal fun BurnBarApplication.installComputerUseSessionGrantReceiver() {
     ForegroundFragmentActivityTracker.install(this)
@@ -39,7 +50,7 @@ internal fun BurnBarApplication.installComputerUseSessionGrantReceiver() {
                 Log.w(
                     "BurnBar",
                     "Session grant challenge failed " +
-                        "id=${challenge.challengeId.take(LOG_CHALLENGE_ID_PREFIX_LENGTH)}: ${error.message}",
+                        "idSha256=${challengeIdLogDigest(challenge.challengeId)}: ${error.message}",
                 )
             },
         )

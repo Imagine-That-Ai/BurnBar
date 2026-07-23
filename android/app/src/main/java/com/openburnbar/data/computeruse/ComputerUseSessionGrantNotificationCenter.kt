@@ -38,8 +38,8 @@ class ComputerUseSessionGrantNotificationCenter(
     private fun postPendingChallenge(challengeId: String, timeoutMillis: Long) {
         ensureChannel()
         val intent =
-            Intent(Intent.ACTION_VIEW).apply {
-                setClass(appContext, MainActivity::class.java)
+            Intent(appContext, MainActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
                 data = Uri.parse("burnbar://computer-use/session-grant/${Uri.encode(challengeId)}")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 setPackage(appContext.packageName)

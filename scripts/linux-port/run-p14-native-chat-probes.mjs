@@ -17,7 +17,7 @@ function run(command, args, options = {}) {
   if (result.error || result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed: ${(result.stderr || result.error?.message || '').trim()}`);
   return result.stdout.trim();
 }
-function commandExists(command) { run('sh', ['-c', 'command -v "$1" >/dev/null', 'p14-tool', command]); }
+function commandExists(command) { run('which', [command]); }
 function startApp(outputDir, environment = {}) {
   const child = spawn(DESKTOP, [], { stdio: ['ignore', 'ignore', 'ignore'],
     env: { ...process.env, ...environment, OPENBURNBAR_EVIDENCE_OUT: outputDir } });

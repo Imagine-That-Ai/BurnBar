@@ -240,7 +240,7 @@
     "scripts/linux-port/resolve-linux-previous-release.mjs": ["a2c00a2338c82145","5ceae783fe5a14fe","196860572b017ba3","1512da2ed6bd7a14"],
     "scripts/linux-port/resolve-linux-release-version.mjs": ["b146ede75bc26d2e","12510050e1de3992","ea13187059a4dbab","a7fbc18f0fffd8a6"],
     "scripts/linux-port/sign-linux-release-requests.mjs": ["3fe5fd128343343e","bc3f595361db0614","66c1cff56b76f6b8","af5bbac8bc9a8c42"],
-    "scripts/linux-port/sign-linux-text-expansion-engine.mjs": ["c77f3009dc60f1cf","8f406e4c4c682412","0237b0047321e46e","cd5d29bdd01fd8bb"],
+    "scripts/linux-port/sign-linux-text-expansion-engine.mjs": ["9dcae441d635df23","6359bd05c2001383","668ccdd2413f0e9e","f53584873081007b"],
     "scripts/linux-port/sign-product-proof-closure.mjs": ["19097b78b1064759","8155c94e20168f9f","98439e80d2193830","60e2cec318698254"],
     "scripts/linux-port/smoke-arch-package.mjs": ["c3a8ece311c7d15f","eacd4205862961df","008c8da45f74e215","b7a6012556283fba"],
     "scripts/linux-port/smoke-linux-packages.mjs": ["43a2a8c25e622ce7","03db4a386fda2498","20e9a373e7b5b866","51faa0c00ad0a837"],
