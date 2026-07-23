@@ -11,6 +11,7 @@ import { shellDestinationFromNative } from '../routes.js';
 import { readPersistedKernelId, writePersistedKernelId } from '../state/kernelPrefs.js';
 import { useShellStore } from '../state/shellStore.js';
 import { useDashboardLayoutStore } from '../state/dashboardLayoutStore.js';
+import { applyWallpaperBackground, readWallpaperBackground } from '../state/wallpaperPrefs.js';
 import type { NativeShortcutStatus } from '../tauriBridge.js';
 import { isChatPopoutWindow } from '../surfaces/chat/chatWindow.js';
 import {
@@ -286,6 +287,10 @@ export function App() {
   useEffect(() => {
     applyDashboardGlassPalette(dashboardLayout);
   }, [dashboardLayout]);
+
+  useEffect(() => {
+    applyWallpaperBackground(readWallpaperBackground());
+  }, []);
 
   if (chatPopout) {
     return (

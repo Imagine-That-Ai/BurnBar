@@ -8,6 +8,7 @@ describe('SettingsAppearanceControls accessibility', () => {
   beforeEach(() => {
     localStorage.clear();
     delete document.documentElement.dataset.glassTransparency;
+    delete document.documentElement.dataset.wallpaper;
     useShellStore.setState({ skin: 'editorial' });
   });
 
@@ -15,6 +16,7 @@ describe('SettingsAppearanceControls accessibility', () => {
     cleanup();
     localStorage.clear();
     delete document.documentElement.dataset.glassTransparency;
+    delete document.documentElement.dataset.wallpaper;
   });
 
   it('uses a roving tab stop and supports arrow, Home, and End navigation', () => {
@@ -82,5 +84,14 @@ describe('SettingsAppearanceControls accessibility', () => {
     expect(output()?.textContent).toBe('50% clearer than system');
     expect(localStorage.getItem('openburnbar.linux.glassTransparency.v1')).toBe('0.5');
     expect(document.documentElement.dataset.glassTransparency).toBe('clearer');
+  });
+
+  it('persists and applies the desktop wallpaper palette', () => {
+    render(<SettingsAppearanceControls />);
+    const select = screen.getByRole('combobox', { name: 'Desktop wallpaper palette' });
+    fireEvent.change(select, { target: { value: 'auroraTeal' } });
+    expect((select as HTMLSelectElement).value).toBe('auroraTeal');
+    expect(localStorage.getItem('openburnbar.linux.wallpaper.v1')).toBe('auroraTeal');
+    expect(document.documentElement.dataset.wallpaper).toBe('auroraTeal');
   });
 });

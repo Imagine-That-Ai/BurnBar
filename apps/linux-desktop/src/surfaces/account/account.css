@@ -360,11 +360,13 @@ body.reduced-motion .trust-disclosure-toggle {
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3);
-  border: 1px solid var(--color-glass-line);
-  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--pro-aureate) 42%, var(--color-glass-line));
+  border-radius: var(--pro-band-radius);
   background:
-    radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--color-brass-bright) 18%, transparent), transparent 30%),
-    var(--color-glass-elevated);
+    var(--pro-dark-aurora-ribbon),
+    var(--pro-obsidian-elevated);
+  color: var(--pro-mercury);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--pro-obsidian) 45%, transparent);
 }
 
 .membership-tier-dot {
@@ -377,8 +379,8 @@ body.reduced-motion .trust-disclosure-toggle {
 }
 
 .membership-tier-dot--pro {
-  background: var(--color-brass-bright);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-brass-bright) 18%, transparent);
+  background: var(--pro-aureate);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--pro-aureate) 18%, transparent);
 }
 
 .membership-tier-copy {
@@ -411,20 +413,14 @@ body.reduced-motion .trust-disclosure-toggle {
   gap: var(--space-4);
   align-items: center;
   padding: var(--space-4);
-  border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--color-brass-bright) 42%, var(--color-glass-line));
+  border-radius: var(--pro-card-radius);
+  border: var(--pro-foil-stroke) solid color-mix(in srgb, var(--pro-aureate) 78%, var(--pro-mercury));
   background:
-    radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--color-brass-bright) 34%, transparent), transparent 32%),
-    radial-gradient(circle at 88% 20%, color-mix(in srgb, var(--color-seal-crimson) 20%, transparent), transparent 28%),
-    conic-gradient(from 22deg at 54% 48%,
-      color-mix(in srgb, var(--color-brass-bright) 82%, white) 0deg,
-      color-mix(in srgb, var(--color-brass-bright) 58%, var(--color-glass-bg)) 54deg,
-      color-mix(in srgb, var(--color-seal-crimson) 40%, var(--color-glass-bg)) 124deg,
-      color-mix(in srgb, var(--color-tier-server-readable) 42%, var(--color-glass-bg)) 198deg,
-      color-mix(in srgb, var(--color-brass-bright) 72%, var(--color-glass-bg)) 292deg,
-      color-mix(in srgb, var(--color-brass-bright) 82%, white) 360deg),
-    var(--color-glass-bg);
-  background-blend-mode: screen, screen, soft-light, normal;
+    var(--pro-dark-aurora-ribbon),
+    radial-gradient(circle at 88% 20%, color-mix(in srgb, var(--pro-aureate) 16%, transparent), transparent 34%),
+    var(--pro-obsidian);
+  background-blend-mode: screen, screen, normal;
+  box-shadow: 0 18px 42px color-mix(in srgb, var(--pro-obsidian) 62%, transparent);
   transition: filter 180ms var(--motion-ease-standard);
 }
 
@@ -433,7 +429,7 @@ body.reduced-motion .trust-disclosure-toggle {
 }
 
 .membership-foil-card--active {
-  border-color: var(--color-brass-bright);
+  border-color: var(--pro-aureate);
 }
 
 .membership-crest {
@@ -443,7 +439,7 @@ body.reduced-motion .trust-disclosure-toggle {
   border-radius: var(--radius-pill);
   background:
     radial-gradient(circle at 38% 28%, color-mix(in srgb, white 70%, transparent), transparent 18%),
-    conic-gradient(from 16deg, var(--color-brass-bright), var(--color-tier-server-readable), var(--color-seal-crimson), var(--color-brass-bright));
+    conic-gradient(from 16deg, var(--pro-aureate), var(--pro-mercury), var(--pro-ember-pop), var(--pro-aureate));
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, white 42%, transparent),
     0 14px 28px color-mix(in srgb, var(--color-brass-bright) 20%, transparent);
@@ -464,7 +460,7 @@ body.reduced-motion .trust-disclosure-toggle {
 
 .membership-foil-copy h3 {
   margin: 0 0 var(--space-1);
-  color: var(--color-text-bright);
+  color: var(--pro-mercury);
   font-family: var(--font-display);
   font-size: 1.55rem;
   letter-spacing: 0;
@@ -475,7 +471,7 @@ body.reduced-motion .trust-disclosure-toggle {
 }
 
 .membership-eyebrow {
-  color: var(--color-brass-bright);
+  color: var(--pro-aureate);
   font-family: var(--font-mono);
   font-size: 0.72rem;
   font-weight: 800;
@@ -490,8 +486,8 @@ body.reduced-motion .trust-disclosure-toggle {
 }
 
 .membership-foil-button {
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-glass-line);
+  border-radius: var(--pro-band-radius);
+  border: var(--pro-foil-stroke) solid color-mix(in srgb, var(--pro-aureate) 72%, var(--pro-mercury));
   padding: var(--space-2) var(--space-4);
   font: inherit;
   font-weight: 700;
@@ -500,16 +496,17 @@ body.reduced-motion .trust-disclosure-toggle {
 }
 
 .membership-foil-button--primary {
-  color: var(--color-glass-bg);
-  border-color: color-mix(in srgb, var(--color-brass-bright) 68%, transparent);
+  color: var(--pro-mercury);
+  border-color: color-mix(in srgb, var(--pro-aureate) 80%, transparent);
   background:
-    radial-gradient(circle at 20% 0%, color-mix(in srgb, white 50%, transparent), transparent 34%),
-    conic-gradient(from 28deg, var(--color-brass-bright), var(--color-tier-server-readable), var(--color-seal-crimson), var(--color-brass-bright));
+    var(--pro-dark-aurora-ribbon),
+    radial-gradient(circle at 20% 0%, color-mix(in srgb, white 32%, transparent), transparent 34%),
+    var(--pro-obsidian-elevated);
 }
 
 .membership-foil-button--secondary {
-  color: var(--color-text-bright);
-  background: var(--color-glass-elevated);
+  color: var(--pro-mercury);
+  background: var(--pro-obsidian-elevated);
 }
 
 .membership-foil-button:hover:not(:disabled) {
@@ -523,7 +520,7 @@ body.reduced-motion .trust-disclosure-toggle {
 .membership-foil-button:disabled {
   color: var(--color-text-mute);
   cursor: default;
-  background: var(--color-glass-elevated);
+  background: var(--pro-obsidian-elevated);
   border-color: var(--color-glass-line);
   filter: grayscale(0.55);
 }

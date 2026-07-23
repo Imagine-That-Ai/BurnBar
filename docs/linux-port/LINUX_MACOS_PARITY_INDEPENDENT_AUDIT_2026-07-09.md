@@ -152,9 +152,36 @@ component colors. The role mapping and CSS token contracts are covered by
 focused tests, and the existing reduced-transparency rules still override the
 glass surface itself.
 
-This closes the source-level per-layout glass palette gap. Installed visual
-comparison receipts across the compositor matrix are still required; the
-strict ledger remains **0/40 product** and **0/7 environment**.
+This closes the source-level per-layout glass palette gap. Top Chrome and the
+sidebar now consume the same roles. Installed visual comparison receipts
+across the compositor matrix are still required; the strict ledger remains
+**0/40 product** and **0/7 environment**.
+
+### Linux ProTheme membership surfaces — 2026-07-23
+
+Linux membership cards, bands, crests, and foil buttons now consume a shared
+ProTheme token vocabulary matching macOS/iOS: obsidian and elevated obsidian
+plates, mercury text, aureate foil, ember-pop accents, the dark aurora ribbon,
+and the 18/14px Pro corner radii. The existing React components remain the
+behavioral surface; this change aligns their visual roles instead of adding a
+second component system. The token contract now fails if any required ProTheme
+role disappears.
+
+This closes the source-level ProTheme token gap. Installed membership visual
+receipts, entitlement-state coverage, and live billing/account evidence remain
+required; the strict ledger remains **0/40 product** and **0/7 environment**.
+
+### Linux desktop wallpaper palette — 2026-07-23
+
+Linux Appearance settings now carry the full eleven-case macOS
+`DesktopWallpaperBackground` vocabulary. The validated local preference drives
+the root dataset and CSS palette beneath both the live kernel canvas and the
+Canvas2D/CSS fallback, so WebGL2 absence does not erase the selected mood.
+Selection is exposed as a native Linux select control with descriptive copy.
+
+This closes the source-level wallpaper palette gap. Native desktop-wallpaper
+installation, live wallpaper panels, and installed compositor receipts remain
+open; the strict ledger remains **0/40 product** and **0/7 environment**.
 
 ## Integration closeout — 2026-07-21
 

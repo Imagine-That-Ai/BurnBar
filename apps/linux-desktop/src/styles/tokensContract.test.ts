@@ -83,6 +83,42 @@ describe('VAL-TOKENS design token contract', () => {
     expect(topChromeCss).toContain('--glass-theme-tint');
   });
 
+  it('exposes the macOS ProTheme vocabulary for Linux membership surfaces', () => {
+    for (const role of [
+      '--pro-obsidian',
+      '--pro-obsidian-elevated',
+      '--pro-mercury',
+      '--pro-aureate',
+      '--pro-ember-pop',
+      '--pro-aureate-stroke',
+      '--pro-dark-aurora-ribbon',
+      '--pro-card-radius',
+      '--pro-band-radius',
+      '--pro-foil-stroke'
+    ]) {
+      expect(liquidGlassTokensCss).toContain(role);
+    }
+  });
+
+  it('routes sidebar glass chrome through the active ThemeGlassPalette', () => {
+    const sidebarCss = fs.readFileSync(path.join(stylesDir, '../components/sidebar-extras.css'), 'utf8');
+    expect(sidebarCss).toContain('--glass-theme-wash-top');
+    expect(sidebarCss).toContain('--glass-theme-wash-bottom');
+    expect(sidebarCss).toContain('--glass-theme-rim');
+    expect(sidebarCss).toContain('--glass-theme-tint');
+  });
+
+  it('declares all macOS desktop wallpaper palette selectors', () => {
+    for (const wallpaper of [
+      'macosDesktop', 'midnight', 'amoledBlack', 'graphite', 'warmEmber', 'deepIndigo',
+      'auroraTeal', 'sunsetCrimson', 'cyberpunkViolet', 'forestMoss', 'solarFlare'
+    ]) {
+      expect(liquidGlassTokensCss).toContain(`:root[data-wallpaper='${wallpaper}']`);
+    }
+    expect(liquidGlassTokensCss).toContain('--wallpaper-base:');
+    expect(appCss).toContain('var(--wallpaper-base');
+  });
+
   it('declares a dark native-control color scheme for WebKitGTK', () => {
     expect(appCss).toMatch(/:root\s*\{[^}]*color-scheme:\s*dark;/s);
   });

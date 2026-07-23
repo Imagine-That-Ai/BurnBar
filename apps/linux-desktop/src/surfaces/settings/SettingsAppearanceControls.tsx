@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MutableRefObject } from 'react';
 import { useShellStore, type ShellSkin } from '../../state/shellStore.js';
+import {
+  applyWallpaperBackground,
+  persistWallpaperBackground,
+  readWallpaperBackground,
+  WALLPAPER_OPTIONS,
+  type WallpaperBackground
+} from '../../state/wallpaperPrefs.js';
 
 type AppearanceMode = 'system' | 'light' | 'dark';
 type GlassTransparency = number;
@@ -130,14 +137,16 @@ export function SettingsAppearanceControls() {
   const toggleSkin = useShellStore((s) => s.toggleSkin);
   const [appearance, setAppearance] = useState<AppearanceMode>(() => readAppearanceMode());
   const [glassTransparency, setGlassTransparency] = useState<GlassTransparency>(() => readGlassTransparency());
+  const [wallpaper, setWallpaper] = useState<WallpaperBackground>(() => readWallpaperBackground());
   const appearanceButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const skinButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
     applyAppearanceMode(appearance);
     applyGlassTransparency(glassTransparency);
+    applyWallpaperBackground(wallpaper);
     document.documentElement.dataset.skin = skin;
-  }, [appearance, glassTransparency, skin]);
+  }, [appearance, glassTransparency, skin, wallpaper]);
 
   return (
     <div className="settings-appearance-controls">
@@ -227,8 +236,31 @@ export function SettingsAppearanceControls() {
           <span>Clearer</span>
         </div>
       </fieldset>
+      <fieldset className="settings-appearance-fieldset">
+        <legend className="settings-appearance-legend">Desktop backdrop</legend>
+        <label className="settings-appearance-range-label" htmlFor="desktop-wallpaper-select">
+          <span>Wallpaper palette</span>
+          <select
+            id="desktop-wallpaper-select"
+            value={wallpaper}
+            aria-label="Desktop wallpaper palette"
+            onChange={(event) => {
+              const next = event.currentTarget.value as WallpaperBackground;
+              setWallpaper(next);
+              persistWallpaperBackground(next);
+            }}
+          >
+            {WALLPAPER_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <p className="muted settings-tab-lede">
+          {WALLPAPER_OPTIONS.find((option) => option.id === wallpaper)?.detail}
+        </p>
+      </fieldset>
       <p className="muted settings-tab-lede">
-        Backdrop kernel selection stays on the Overview deck until appearance prefs sync across the Linux bridge.
+        Backdrop kernel selection stays on the Overview deck; wallpaper palette is local to this Linux shell.
       </p>
     </div>
   );

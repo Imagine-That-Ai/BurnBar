@@ -49,9 +49,16 @@ and live event receipts remain external release evidence.
 **Implementation checkpoint (2026-07-23, ThemeGlassPalette):** Linux now maps
 all six dashboard layouts to the macOS tint, wash, and rim roles through
 `apps/linux-desktop/src/dashboard/dashboardGlassPalette.ts`. The selected
-palette is bound to the document root and consumed by Top Chrome's wash,
-selected-tab rim, icon tint, and focus glow. Pure mapping tests and the CSS
-token contract pass; installed compositor visual comparisons remain required.
+palette is bound to the document root and consumed by Top Chrome and sidebar
+wash, selected-tab/segmented rims, icon tint, and focus glow. Pure mapping
+tests and the CSS token contract pass; installed compositor visual comparisons
+remain required.
+
+**Implementation checkpoint (2026-07-23, desktop wallpaper palette):** Linux
+now exposes all eleven macOS desktop backdrop palettes in Appearance settings,
+persists the validated choice locally, and applies the palette beneath both
+the live kernel canvas and the Canvas2D/CSS fallback. Native desktop-wallpaper
+installation and compositor screenshots remain external evidence.
 
 ---
 
@@ -61,7 +68,7 @@ token contract pass; installed compositor visual comparisons remain required.
 |------|--------------|-------------|---------|
 | Core / daemon | `OpenBurnBarDaemon/`, `OpenBurnBarCore/` | All RPC handlers implemented; POSIX HTTP gateway, inotify, Secret Service/KWallet, Avahi discovery, Linux security all in place. | Strong |
 | UI shell | `AgentLens/Views/`, `AgentLens/Theme/` | `apps/linux-desktop/` has W6 foundation + P01-P15 route surfaces. | Route parity exists, but macOS visual/interaction layer is missing. |
-| Design system | `AgentLens/Theme/DesignSystem.swift`, `LiquidGlass.swift`, `KernelBackdropView.swift` | Tokens + 2 skins + 32 kernels + CSS glass exist; user-controlled transparency presets, OS Reduce Transparency fallback, and the six-layout glass palette are implemented at source level. | Missing Pro theme, wallpaper, live wallpaper panels, pet renderer, swarm customization; installed visual receipts remain open. |
+| Design system | `AgentLens/Theme/DesignSystem.swift`, `LiquidGlass.swift`, `KernelBackdropView.swift` | Tokens + 2 skins + 32 kernels + CSS glass exist; user-controlled transparency presets, OS Reduce Transparency fallback, six-layout glass palette, and ProTheme membership roles are implemented at source level. | Missing wallpaper, live wallpaper panels, pet renderer, swarm customization; installed visual receipts remain open. |
 | Desktop integration | `AppDelegate+StatusItem.swift`, `SwarmWallpaperRuntime.swift`, `Hotkey.swift` | Tauri tray exists. | Missing menu-bar popover, global hotkeys, desktop wallpaper, live wallpaper panels. |
 | Release / CI | `scripts/build-macos-website-release.sh`, `scripts/upload-macos-downloads-r2.sh`, `scripts/ops/rollback-macos-appcast.sh` | Signed x86_64/aarch64 DEB/RPM/Arch candidate, daemon/desktop sessions, aggregate attestation, and exact-head Nightly matrix are green. | Public feed/promotion, compatible previous-package lifecycle proof, production trust callables, and full environment receipts remain open. |
 
@@ -189,7 +196,9 @@ required before promotion.
 12. **Complete at source:** ThemeGlassPalette tint/wash/rim roles per layout;
     installed visual comparison receipts remain open.
 13. **Glass card / Glass button** primitives with the Reduce Transparency opaque path implemented; installed preference receipts remain.
-14. **Pro theme** obsidian foil palette for membership.
+14. **Complete at source:** ProTheme obsidian foil palette and shared
+    mercury/aureate/ribbon tokens for membership; installed visual receipts
+    remain open.
 15. **Desktop wallpaper runtime** with 11 backgrounds, provider glyph selection, speed, click-to-cycle, sparkles, constellation mode.
 16. **Swarm customization** (provider glyph selection, brand-shape exclusion, sparkles, constellation mode).
 17. **Kernel-forward layouts** (full-bleed kernel backdrop for atelier/constellation).
@@ -245,7 +254,9 @@ required before promotion.
 ### Phase 2 — Design system foundation
 
 - Implement `DashboardLayout` enum and persistence, `LayoutSwitcher` UI, and 6 layout skeletons.
-- Add `GlassCard` / `GlassButton` / `ThemeGlassPalette` / `ProTheme`.
+- Add `GlassCard` / `GlassButton` primitives and continue expanding their use
+  across route surfaces; ThemeGlassPalette and ProTheme source contracts are
+  now implemented.
 - Add `sidebarThemeGlass` to complete the remaining per-layout Liquid Glass palette surface; the transparency slider and OS Reduce Transparency fallback are implemented.
 - Implement kernel-forward layout support in `KernelBackdrop`.
 - Verification: visual proof book, `npm test`, `npm run build`, `prefers-reduced-motion` test.
