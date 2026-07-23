@@ -42,6 +42,10 @@ detailed result and exact recovery actions are in
 [`PHYSICAL_X64_RETRY_RESULT.md`](PHYSICAL_X64_RETRY_RESULT.md).
 The native-operator continuation prompt is
 [`HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt`](HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt).
+The preferred removable-drive packet includes the exact release and provenance
+artifacts plus a packet-wide checksum manifest. The historical retry ZIP is
+supporting context only: verify it when present, but never require or reuse it
+as new baseline or supplemental evidence.
 
 ## Later supplemental bundle
 
