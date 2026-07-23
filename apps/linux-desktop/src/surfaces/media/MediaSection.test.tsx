@@ -56,6 +56,7 @@ function bridgeWithMedia(result: Promise<MercuryMediaStatus>, overrides: Partial
     exportDiagnostics: vi.fn(),
     sessionEnv: vi.fn(),
     mediaStatus: vi.fn().mockReturnValue(result),
+    pickMediaFile: vi.fn().mockResolvedValue(null),
     ...overrides
   } as LinuxShellBridge;
 }
@@ -383,5 +384,57 @@ describe('P12 Mercury media section', () => {
     expect(mediaFileAccept).toHaveBeenCalledWith({ transferID: 'transfer-1', manifestID: 'manifest-1' });
     expect(screen.getByText('/home/alberto/Downloads/report.pdf')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Send file' })).toBeTruthy();
+  });
+
+  it('chooses an outgoing file through the native picker before sending', async () => {
+    const pickMediaFile = vi.fn().mockResolvedValue('/home/alberto/Downloads/report.pdf');
+    const mediaFileSend = vi.fn().mockResolvedValue({ accepted: false, detail: 'queued' });
+    useShellStore.setState({
+      bridge: bridgeWithMedia(
+        Promise.resolve({ capabilityAvailable: true, pairedDevices: [] }),
+        {
+          mediaFileOfferList: vi.fn().mockResolvedValue({ capabilityAvailable: true, transfers: [] }),
+          pickMediaFile,
+          mediaFileSend
+        }
+      )
+    });
+    render(<MediaSection />);
+    await act(async () => {
+      await useMediaStore.getState().load();
+    });
+
+    expect(screen.queryByLabelText('File path')).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Choose file' }));
+      await Promise.resolve();
+    });
+    expect(pickMediaFile).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('/home/alberto/Downloads/report.pdf')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send file' }));
+      await Promise.resolve();
+    });
+    expect(mediaFileSend).toHaveBeenCalledWith({
+      path: '/home/alberto/Downloads/report.pdf',
+      peerID: undefined
+    });
+  });
+
+  it('fails closed when an older shell has no native media picker', async () => {
+    useShellStore.setState({
+      bridge: bridgeWithMedia(Promise.resolve({ capabilityAvailable: true, pairedDevices: [] }), {
+        mediaFileOfferList: vi.fn().mockResolvedValue({ capabilityAvailable: true, transfers: [] }),
+        pickMediaFile: undefined
+      })
+    });
+    render(<MediaSection />);
+    await act(async () => {
+      await useMediaStore.getState().load();
+    });
+
+    expect(screen.queryByLabelText('File path')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Choose file' })).toBeNull();
+    expect(screen.getByText(/Native file picker is unavailable/)).toBeTruthy();
   });
 });

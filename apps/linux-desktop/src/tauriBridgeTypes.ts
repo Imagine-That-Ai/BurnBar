@@ -1801,6 +1801,8 @@ export interface LinuxShellBridge {
     request: MercuryFileTransferActionRequest & { reason?: string }
   ): Promise<MercuryFileTransferActionResponse>;
   mediaFileSend(request: MercuryFileTransferSendRequest): Promise<MercuryFileTransferActionResponse>;
+  /** Optional on older packaged shells; opens a native outgoing-file chooser. */
+  pickMediaFile?(): Promise<string | null>;
   computerUsePanicHalt(params?: {
     sessionId?: string;
     source?: ComputerUsePanicSource;

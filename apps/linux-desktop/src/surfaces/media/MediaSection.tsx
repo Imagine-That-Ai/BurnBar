@@ -35,6 +35,10 @@ export function MediaSection() {
   const scriptFixtureFileTransfer = useMediaStore((s) => s.scriptFixtureFileTransfer);
   const daemonStatus = useDaemonStatusCopy();
   const fixtureMode = useShellStore((s) => s.fixtureMode);
+  const bridge = useShellStore((s) => s.bridge);
+  const pickMediaFile = bridge?.pickMediaFile
+    ? () => bridge.pickMediaFile!()
+    : undefined;
   const viewerCapability = status?.viewerCapability;
   const viewerUnavailable = Boolean(viewerCapability && !viewerCapability.available);
 
@@ -89,6 +93,7 @@ export function MediaSection() {
           onAccept={(transfer) => void acceptFileTransfer(transfer.transferID, transfer.manifestID)}
           onDecline={(transfer) => void declineFileTransfer(transfer.transferID, transfer.manifestID)}
           onSend={(path) => void sendFileTransfer(path)}
+          onPickFile={pickMediaFile}
           onScriptFixture={scriptFixtureFileTransfer}
         />
       </>
@@ -129,6 +134,7 @@ export function MediaSection() {
           onAccept={(transfer) => void acceptFileTransfer(transfer.transferID, transfer.manifestID)}
           onDecline={(transfer) => void declineFileTransfer(transfer.transferID, transfer.manifestID)}
           onSend={(path) => void sendFileTransfer(path)}
+          onPickFile={pickMediaFile}
           onScriptFixture={scriptFixtureFileTransfer}
         />
       </>
@@ -252,6 +258,7 @@ function MercuryFileTransferPanel({
   onAccept,
   onDecline,
   onSend,
+  onPickFile,
   onScriptFixture
 }: {
   transfers: MercuryFileTransfer[];
@@ -263,12 +270,31 @@ function MercuryFileTransferPanel({
   onAccept: (transfer: MercuryFileTransfer) => void;
   onDecline: (transfer: MercuryFileTransfer) => void;
   onSend: (path: string) => void;
+  onPickFile?: () => Promise<string | null>;
   onScriptFixture: () => void;
 }) {
   const [sendPath, setSendPath] = useState('');
+  const [pickerBusy, setPickerBusy] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
   const canUseFiles = capabilityAvailable === true || fixtureMode;
+  const nativePickerAvailable = !fixtureMode && typeof onPickFile === 'function';
   const pendingOffers = transfers.filter((transfer) => transfer.direction === 'inbound' && transfer.phase === 'pendingAccept');
   const rows = transfers.filter((transfer) => transfer.phase !== 'pendingAccept');
+
+  async function chooseFile(): Promise<void> {
+    if (!onPickFile || pickerBusy) return;
+    setPickerBusy(true);
+    setPickerError(null);
+    try {
+      const path = await onPickFile();
+      if (path) setSendPath(path);
+    } catch (error) {
+      setPickerError(error instanceof Error ? error.message : 'Choosing a file failed.');
+    } finally {
+      setPickerBusy(false);
+    }
+  }
+
   return (
     <section className="p12-file-panel" aria-label="Mercury file transfers">
       <div className="p12-file-panel-head">
@@ -318,31 +344,41 @@ function MercuryFileTransferPanel({
           </div>
         </section>
       ))}
-      <form
-        className="p12-file-send"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSend(sendPath);
-        }}
-      >
-        <label>
-          <span>File path</span>
-          <input
-            value={sendPath}
-            onChange={(event) => setSendPath(event.currentTarget.value)}
-            placeholder="/home/alberto/Downloads/report.pdf"
-            disabled={!canUseFiles}
-          />
-        </label>
-        <button type="submit" disabled={!canUseFiles || sendPath.trim().length === 0 || busyTransferID === 'send'}>
-          Send file
-        </button>
-        {fixtureMode ? (
+      {nativePickerAvailable ? (
+        <form
+          className="p12-file-send"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSend(sendPath);
+          }}
+        >
+          <div className="p12-file-selection" aria-live="polite">
+            <span>Selected file</span>
+            {sendPath ? <code title={sendPath}>{sendPath}</code> : <span className="muted">No file selected</span>}
+          </div>
+          <button type="button" onClick={() => void chooseFile()} disabled={!canUseFiles || pickerBusy}>
+            {pickerBusy ? 'Choosing…' : 'Choose file'}
+          </button>
+          <button type="submit" disabled={!canUseFiles || sendPath.trim().length === 0 || busyTransferID === 'send'}>
+            Send file
+          </button>
+        </form>
+      ) : fixtureMode ? (
+        <div className="p12-file-send">
           <button type="button" className="ghost" onClick={onScriptFixture}>
             Script transfer
           </button>
-        ) : null}
-      </form>
+        </div>
+      ) : (
+        <div className="p12-file-absent" role="status">
+          Native file picker is unavailable in this packaged shell; file sending is disabled.
+        </div>
+      )}
+      {pickerError ? (
+        <div className="banner degraded p12-file-error" role="alert">
+          {pickerError}
+        </div>
+      ) : null}
       {rows.length > 0 ? (
         <ul className="p12-file-list" aria-label="Mercury file transfer history">
           {rows.map((transfer) => (

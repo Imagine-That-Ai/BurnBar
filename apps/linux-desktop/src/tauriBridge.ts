@@ -105,6 +105,7 @@ import {
   mapMercuryCapability,
   mapMercuryFileOfferList,
   mapMercuryFileAction,
+  mapMercuryFilePickerPath,
   mapComputerUsePanicHalt,
   decodeComputerUseInvokeResponse
 } from './tauriBridgePlatformDecoders.js';
@@ -842,6 +843,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         }
         throw e;
       }
+    },
+    pickMediaFile: async () => {
+      const raw = await invoke<RawJsonValue>('pick_media_file');
+      return mapMercuryFilePickerPath(raw);
     },
     toolApprovalRespond: async (approvalId, decision, note) => {
       await invoke<RawJsonValue>('tool_approval_respond', {

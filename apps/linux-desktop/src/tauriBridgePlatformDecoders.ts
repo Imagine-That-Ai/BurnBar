@@ -973,6 +973,32 @@ export function mapMercuryFileAction(raw: RawJsonValue): MercuryFileTransferActi
   };
 }
 
+/** Decode a native outgoing-file chooser result without accepting renderer paths. */
+export function mapMercuryFilePickerPath(raw: RawJsonValue): string | null {
+  if (raw === null || raw === undefined) return null;
+  const path = str(raw);
+  if (
+    !path.startsWith('/')
+    || path.length > 4096
+    || [...path].some((character) => character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f)
+    || path.includes('\\')
+  ) {
+    throw new Error('Native media file dialog returned an unsafe path.');
+  }
+  const segments = path.split('/');
+  const filename = segments.at(-1) ?? '';
+  if (
+    !filename
+    || filename === '.'
+    || filename === '..'
+    || filename.length > 255
+    || segments.slice(1, -1).some((segment) => segment.length === 0 || segment === '.' || segment === '..')
+  ) {
+    throw new Error('Native media file dialog returned an unsafe path.');
+  }
+  return path;
+}
+
 export function mapComputerUsePanicHalt(
   raw: RawJsonValue,
   source: ComputerUsePanicSource

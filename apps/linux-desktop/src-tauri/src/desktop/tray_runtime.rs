@@ -582,6 +582,7 @@ pub fn run() {
             media_file_accept,
             media_file_decline,
             media_file_send,
+            pick_media_file,
             tool_approval_respond,
             memory_set_status,
             computer_use_session_authority_status,

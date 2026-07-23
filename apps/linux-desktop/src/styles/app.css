@@ -415,6 +415,8 @@ button.ghost:hover { border-color: var(--color-glass-line-bright); background: v
 .p12-file-error { margin: 0; }
 .p12-file-offer { grid-template-columns: minmax(0, 1fr) auto; padding: var(--space-3); border: 1px solid color-mix(in srgb, var(--color-brass-core) 42%, var(--color-glass-line)); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--color-brass-core) 9%, transparent); }
 .p12-file-send { grid-template-columns: minmax(220px, 1fr) auto auto; }
+.p12-file-selection { display: grid; min-width: 0; gap: var(--space-1); color: var(--color-text-mute); font-size: 0.82rem; }
+.p12-file-selection code { min-width: 0; overflow-wrap: anywhere; color: var(--color-text-base); }
 .p12-file-send label { display: grid; gap: var(--space-1); color: var(--color-text-mute); font-size: 0.82rem; }
 .p12-file-send input { min-width: 0; width: 100%; padding: var(--space-2); border: 1px solid var(--color-glass-line); border-radius: var(--radius-sm); color: var(--color-text-base); background: var(--color-ink-elevated); }
 .p12-file-send input:focus-visible { border-color: color-mix(in srgb, var(--color-brass-core) 58%, transparent); outline: none; }
