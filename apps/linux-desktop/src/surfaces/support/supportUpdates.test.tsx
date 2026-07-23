@@ -355,6 +355,8 @@ describe('P09 updates and support', () => {
         currentVersion: '1.0.0',
         latestVersion: '1.1.0',
         channel: 'stable',
+        signatureState: 'verified',
+        feedFreshness: 'fresh',
         artifact: undefined,
         instructions: {
           packageManager: 'apt',
@@ -395,6 +397,65 @@ describe('P09 updates and support', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Copy rollback command' }));
     expect(writeText).toHaveBeenCalledWith('sudo apt-get install --allow-downgrades open-burn-bar=<previous-version>');
     expect(bridge.updateStatus).toHaveBeenCalled();
+  });
+
+  it('keeps package actions disabled when signed-feed metadata is missing', () => {
+    const openUpdateUrl = vi.fn().mockResolvedValue(undefined);
+    const bridge = mockBridge({ openUpdateUrl });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(
+      <UpdateStatusCard
+        status={{
+          state: 'available',
+          currentVersion: '1.0.0',
+          latestVersion: '1.1.0',
+          artifact: {
+            type: 'deb',
+            architecture: 'aarch64',
+            url: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb',
+            sha256: 'a'.repeat(64),
+            size: 100,
+            signatureUrl: 'https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v1.1.0/OpenBurnBar_1.1.0_arm64.deb.sig'
+          },
+          instructions: {
+            packageManager: 'apt',
+            install: {
+              id: 'install',
+              label: 'Update with apt',
+              instruction: 'Use apt after reviewing the signed artifact.',
+              command: 'sudo apt-get install --only-upgrade open-burn-bar',
+              available: true,
+              requiresConfirmation: true
+            },
+            rollback: {
+              id: 'rollback',
+              label: 'Roll back with apt',
+              instruction: 'Choose a previously signed version first.',
+              command: 'sudo apt-get install --allow-downgrades open-burn-bar=<previous-version>',
+              available: true,
+              requiresConfirmation: true
+            },
+            restart: {
+              id: 'restart',
+              label: 'Restart OpenBurnBar',
+              instruction: 'Quit and relaunch after apt finishes.',
+              command: 'systemctl --user restart openburnbar-daemon.service',
+              available: true,
+              requiresConfirmation: false
+            }
+          }
+        }}
+        loading={false}
+        error={null}
+        onCheck={vi.fn()}
+      />
+    );
+    expect((screen.getByRole('button', { name: 'Copy install command' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Copy rollback command' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Copy restart command' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Download unavailable' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/fresh verified feed/i)).toBeTruthy();
+    expect(openUpdateUrl).not.toHaveBeenCalled();
   });
 
   it.each([

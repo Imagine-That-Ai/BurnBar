@@ -28,11 +28,12 @@ export function UpdateStatusCard({
 }) {
   const bridge = useShellStore((state) => state.bridge);
   const [copiedAction, setCopiedAction] = useState<string | null>(null);
-  const hasVerifiedFreshFeed = status === null
-    ? false
-    : status.signatureState === undefined
-      ? status.feedFreshness === undefined || status.feedFreshness === 'fresh'
-      : status.signatureState === 'verified' && status.feedFreshness === 'fresh';
+  // Package mutation guidance is a privileged handoff to the distro package
+  // manager. Missing metadata is not legacy success: it is insufficient proof
+  // that the feed was signed and fresh, so keep install/rollback/download
+  // controls disabled until both facts are explicit.
+  const hasVerifiedFreshFeed = status?.signatureState === 'verified'
+    && status.feedFreshness === 'fresh';
   const daemonAllowsPackageChange = status?.compatibility === undefined
     || status.compatibility.state === 'aligned';
   const packageActionsBlocked = stale || !hasVerifiedFreshFeed || !daemonAllowsPackageChange;
