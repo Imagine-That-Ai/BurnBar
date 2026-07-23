@@ -299,8 +299,9 @@ required before promotion.
 
 - Desktop wallpaper runtime with background selection, provider glyph selection,
   speed, sparkles, click-to-cycle, constellation mode. Palette, provider
-  selection, and click-cycle are implemented; native hosting and constellation
-  mode remain.
+  selection, click-to-cycle, and typed GNOME/KDE/XFCE native wallpaper
+  apply/status are implemented; Sway/Hyprland hosting, prior-wallpaper
+  restoration, live wallpaper panels, and constellation depth remain.
 - Swarm customization settings: provider selection, brand-shape exclusion,
   speed, sparkles, auto-cycle, and full 33-ID catalog coverage are implemented;
   constellation mode remains.
