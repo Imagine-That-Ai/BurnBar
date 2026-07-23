@@ -11,6 +11,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -451,9 +452,33 @@ const fastStep = workflowStep(fastGate, "Check all fast jobs passed");
 const fastScript = stepScript(fastStep);
 const fastNeeds = jobNeeds(fastGate);
 
-check("SQLCipher policy leaves enough time for checkout and verification", () => {
-  const timeoutMinutes = Number.parseInt(jobField(sqlcipherJob, "timeout-minutes"), 10);
-  assert.ok(timeoutMinutes >= 6, "SQLCipher policy timeout must tolerate a two-minute checkout delay");
+check("every checkout-bearing CI job tolerates a slow checkout", () => {
+  // A job whose budget expires during actions/checkout is reported by GitHub as
+  // CANCELLED, and the CI Gate aggregator fails closed on a cancelled component
+  // -- so an ordinary slow checkout ejects the whole merge-queue candidate. The
+  // pack is ~866MB and a tip checkout has been observed taking 3min+ under
+  // contention. This originally guarded one job (SQLCipher), was widened to
+  // fast-feedback.yml, and is now repo-wide: the required-context detector jobs
+  // (Detect native/dist/windows changes) live in other workflows and were the
+  // ones still ejecting candidates. Any job that runs actions/checkout must
+  // budget >= 6 minutes.
+  const dir = join(REPO_ROOT, ".github/workflows");
+  const offenders = [];
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".yml"))) {
+    const src = readFileSync(join(dir, file), "utf8");
+    for (const m of src.matchAll(/\n  ([a-z0-9_-]+):\n((?:    .*\n|\n)*)/gu)) {
+      const [, job, body] = m;
+      const t = body.match(/^    timeout-minutes: (\d+)$/mu);
+      if (t && Number.parseInt(t[1], 10) < 6 && body.includes("actions/checkout")) {
+        offenders.push(`${file}:${job}=${t[1]}`);
+      }
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `checkout-bearing jobs must budget >=6 min: ${JSON.stringify(offenders)}`,
+  );
 });
 
 check("Rust path detector is mandatory and only a proven unchanged path may skip Rust", () => {
@@ -610,7 +635,16 @@ check("desired main branch protection requires only the umbrella gate", () => {
   assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
 });
 
-check("macOS gates stay on the isolated capped paid runner group", () => {
+check("macOS gates route free+trusted, and never run untrusted code on self-hosted", () => {
+  // Cost + security policy. Each macOS gate has three routing arms:
+  //   1. MACOS_GATE_POOL=paid -> isolated capped hosted pool (manual fast burst)
+  //   2. merge_group          -> free self-hosted `burnbar-swift` fleet
+  //   3. else (pull_request)  -> hosted macos-26
+  // Self-hosted MUST be gated on merge_group only: the merge queue runs
+  // post-approval TRUSTED code, whereas a pull_request can carry untrusted fork
+  // code, and running that on self-hosted hardware is a pwn-request. So every
+  // self-hosted route is guarded by `event_name == 'merge_group'`, and no gate
+  // routes self-hosted on any other event.
   for (const [workflow, expectedCount] of [
     [APP_WORKFLOW, 2],
     [DAEMON_WORKFLOW, 2],
@@ -619,8 +653,20 @@ check("macOS gates stay on the isolated capped paid runner group", () => {
     [NATIVE_WORKFLOW, 2],
   ]) {
     const source = readFileSync(join(REPO_ROOT, workflow), "utf8");
-    assert.equal(source.split("group: burnbar-ci-paid").length - 1, expectedCount);
+    // Paid opt-in arm present and still the isolated capped pool (never inline group:).
+    assert.equal(source.split("vars.MACOS_GATE_POOL == 'paid'").length - 1, expectedCount);
+    assert.equal(source.split('{"group":"burnbar-ci-paid"}').length - 1, expectedCount);
+    assert.equal(source.split("group: burnbar-ci-paid").length - 1, 0);
     assert.doesNotMatch(source, /burnbar-turbo-ephemeral|BurnBar-macos-26-xlarge/);
+    // SECURITY: every self-hosted route is merge_group-gated, and there are
+    // exactly as many merge_group-gated self-hosted routes as gates -- so no
+    // self-hosted route exists on any untrusted (pull_request) path.
+    const selfHosted = source.split('"self-hosted","macOS","ARM64","burnbar-swift"').length - 1;
+    const mergeGroupGated = source.split(
+      `github.event_name == 'merge_group' && fromJSON('["self-hosted","macOS","ARM64","burnbar-swift"]')`,
+    ).length - 1;
+    assert.equal(selfHosted, expectedCount, `${workflow}: self-hosted route count`);
+    assert.equal(mergeGroupGated, expectedCount, `${workflow}: every self-hosted route must be merge_group-gated`);
   }
 });
 

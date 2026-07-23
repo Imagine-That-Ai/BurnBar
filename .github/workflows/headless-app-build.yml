@@ -51,8 +51,13 @@ concurrency:
 jobs:
   headless-app-build:
     name: Headless macOS app build (scheme OpenBurnBar)
-    runs-on:
-      group: burnbar-ci-paid
+    # Routing (cost + security): the merge queue runs post-approval TRUSTED code,
+    # so its candidates use the free self-hosted `burnbar-swift` fleet (M5 Max +
+    # M1 Pro + M4 mini, all pinned to Xcode 26.6). Pull-request runs may carry
+    # untrusted fork code and therefore NEVER touch self-hosted hardware -- they
+    # stay on hosted macos-26. Set repo var MACOS_GATE_POOL=paid to force the
+    # isolated capped hosted pool for a billed fast burst.
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || github.event_name == 'merge_group' && fromJSON('["self-hosted","macOS","ARM64","burnbar-swift"]') || 'macos-26' }}
     # Build-only (no XCTest host launch), so far lighter than the 120-min
     # app-build-test lane; the cap still covers a cold SPM cache + libsignal FFI
     # build on a hosted runner.
