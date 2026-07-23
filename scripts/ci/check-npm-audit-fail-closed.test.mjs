@@ -215,6 +215,65 @@ expect(
   /could not start/u,
 );
 
+// --- retry classification -------------------------------------------------
+// The gate retries transport/service failures because registry.npmjs.org's
+// audit endpoint intermittently answers 400/429/5xx, and a fail-closed gate
+// turns that hiccup into an ejected merge-queue candidate. Retries must never
+// be able to launder a real finding, so severity results are non-retryable.
+function expectRetryable(label, input, wantRetryable) {
+  const result = classifyAuditResult({ dir: "fixture", stderr: "", ...input });
+  if (result.retryable === wantRetryable) {
+    console.log(`  \u2713 ${label}`);
+    passed += 1;
+    return;
+  }
+  console.error(
+    `  \u2717 ${label}: got retryable=${result.retryable}, want ${wantRetryable}`,
+  );
+  failed += 1;
+}
+
+expectRetryable(
+  "high/critical findings are NEVER retried",
+  {
+    status: 1,
+    stdout: JSON.stringify({
+      vulnerabilities: { demo: { severity: "critical" } },
+    }),
+  },
+  false,
+);
+
+expectRetryable(
+  "registry error without findings is retryable",
+  {
+    status: 1,
+    stdout: JSON.stringify({ vulnerabilities: { demo: { severity: "moderate" } } }),
+    stderr: "npm warn audit 400 Bad Request - POST .../security/audits/quick",
+  },
+  true,
+);
+
+expectRetryable(
+  "empty audit output is retryable",
+  { status: 1, stdout: "" },
+  true,
+);
+
+expectRetryable(
+  "invalid JSON is retryable",
+  { status: 1, stdout: "<html>502</html>" },
+  true,
+);
+
+expectRetryable(
+  "spawn failure is retryable",
+  { status: null, stdout: "", error: new Error("spawn npm ENOENT") },
+  true,
+);
+
+expectRetryable("clean audit is not retryable", { status: 0, stdout: "{}" }, false);
+
 console.log(
   `\n${failed === 0 ? "PASS" : "FAIL"}: ${passed} passed, ${failed} failed`,
 );
