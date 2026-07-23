@@ -1387,13 +1387,19 @@ Fixes applied in this plan:
 - Add accepted divergences so strict parity is not infinite.
 - Add evidence paths and proof commands for every lane.
 
-### Loop 1 - factual source verification
+### Loop 1 - factual source verification (historical snapshot)
+
+> **Historical baseline, preserved for traceability.** The checks below were
+> recorded before the current-head reconciliation above and are not a current
+> status report. Use the 2026-07-23 reconciliation and the parity audit for
+> present-day implementation decisions; do not reopen work solely because a
+> historical bullet says a source gap existed.
 
 Question: Are the corrected assumptions backed by source?
 
 Answer: Mostly yes, with explicit blockers.
 
-Verified:
+Verified at the time of the original Loop 1 pass:
 
 - No Linux `DashboardLayout` hits exist under `apps/linux-desktop/src`.
 - Windows has `DashboardLayout.cs` and `DashboardLayoutState.cs` with the same
@@ -1414,6 +1420,15 @@ Verified:
 - `apps/linux-desktop/src-tauri/src/lib.rs` still calls raw
   `daemon.media.status`; this is not in the current RPC enum and must be fixed
   or replaced by a real media-control contract.
+
+Current-head correction:
+
+- The first three source-gap bullets above are superseded by the
+  `Current-head reconciliation` section: Linux now has the dashboard layout
+  implementation, consumes the checked-in design-token dependency, and uses
+  the canonical `daemon.media.status` contract. The remaining work is
+  generated-token coverage, installed visual proof, and live Mercury runtime
+  evidence.
 
 Blockers:
 
