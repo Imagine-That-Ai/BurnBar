@@ -7,8 +7,10 @@ disposable worker on the 24 GB M4 Pro Mac mini and two disposable workers on the
 
 ## Trust boundary
 
-- Only `.github/workflows/burnbar-turbo.yml@main` may access the
-  `burnbar-turbo-ephemeral` runner group.
+- Only the pinned `burnbar-turbo.yml`, `app-pr-gate.yml`, and
+  `daemon-pr-gate.yml` workflows may access the `burnbar-turbo-ephemeral`
+  runner group. All three workflows are explicitly allowlisted in the runner
+  group; no other workflow may target it.
 - The workflow is manual until the fleet has passed its soak test. A caller must
   have write access and supply an exact lowercase 40-character SHA belonging to
   `main` or an open, non-draft, same-repository PR.
@@ -51,7 +53,8 @@ internal SSD.
 
 ## Bring-up order
 
-1. Land the trusted workflow on `main`.
+1. Land the trusted workflow and the explicitly allowlisted merge-gate
+   workflows on `main`.
    For a pull request, retarget it to `main` before validation and push a
    normal synchronize commit; the trusted deletion guard intentionally refuses
    to evaluate a stacked or stale base.

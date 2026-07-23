@@ -609,17 +609,19 @@ check("desired main branch protection requires only the umbrella gate", () => {
   assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
 });
 
-check("macOS gates stay on free standard hosted runners", () => {
-  for (const [workflow, expectedCount] of [
-    [APP_WORKFLOW, 2],
-    [DAEMON_WORKFLOW, 2],
-    [DOMAIN_CORE_WORKFLOW, 2],
-    [NATIVE_WORKFLOW, 2],
-  ]) {
+check("macOS gates use only approved hosted or disposable runners", () => {
+  const app = readFileSync(join(REPO_ROOT, APP_WORKFLOW), "utf8");
+  const daemon = readFileSync(join(REPO_ROOT, DAEMON_WORKFLOW), "utf8");
+  assert.equal((app.match(/group: burnbar-turbo-ephemeral/g) ?? []).length, 2);
+  assert.equal((daemon.match(/group: burnbar-turbo-ephemeral/g) ?? []).length, 2);
+
+  for (const workflow of [DOMAIN_CORE_WORKFLOW, NATIVE_WORKFLOW]) {
     const source = readFileSync(join(REPO_ROOT, workflow), "utf8");
-    assert.equal(source.split("runs-on: macos-26").length - 1, expectedCount);
+    assert.equal(source.split("runs-on: macos-26").length - 1, 2);
     assert.doesNotMatch(source, /ci-turbo|BurnBar-macos-26-xlarge/);
   }
+
+  assert.doesNotMatch(`${app}\n${daemon}`, /runs-on:\s*\[self-hosted|ios-ci/);
 });
 
 if (failed > 0) {
