@@ -1138,6 +1138,36 @@ turned into a hard Phase 0 gate, or represented as an explicit blocker with an
 owner and acceptance test. It does not mean every future implementation detail
 is risk-free.
 
+## Current-head reconciliation — 2026-07-23
+
+The historical planning baseline below intentionally remains preserved, but
+several of its source-gap statements are no longer current. At head
+`452ebb8370d15d9370d8e8afdd24f47e1cda4ed6`:
+
+- `apps/linux-desktop/package.json` already consumes
+  `@openburnbar/design-tokens` through the checked-in file dependency. The
+  remaining token work is generated-token coverage and installed visual proof,
+  not dependency wiring.
+- `daemon.media.status` is present in the canonical RPC enum, generated
+  contract, daemon capability set, server handler, and typed Tauri bridge. The
+  remaining Mercury gap is live GStreamer/PipeWire and cross-device proof, not
+  an unregistered method string.
+- Chat export and Activity export already use bounded full-history pagination,
+  cursor/identity validation, and fail-closed attachment metadata handling.
+  Remaining P-14/P-17 work is provider breadth and installed populated-data
+  proof.
+- The Fcitx5 contract remains intentionally source-only. It must not be marked
+  runtime-supported until a native addon is built, signed, packaged, and
+  exercised in the IME/keyring matrix. IBus support and the secure-field
+  refusal contract remain the supported Linux path.
+
+The current branch is merge-clean against the latest `main`; the exact-head
+Linux PR gate passed before this merge. The UTM guest is deliberately stopped,
+so no live Linux guest receipt is claimed here. These reconciliations narrow
+the engineering queue; they do not change the strict certification boundary,
+which remains **0/40 product requirements and 0/7 environments** until the
+signed-candidate, production-cloud, device, and environment gates below run.
+
 ## Current Critical Path
 
 The remaining credential work is operational, not a missing daemon architecture.
