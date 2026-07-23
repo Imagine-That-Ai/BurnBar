@@ -180,7 +180,7 @@ final class ChatStreamingMessageMutationTests: XCTestCase {
 
         let result = try await ChatSessionController.consumeChatStream(
             stream,
-            commitInterval: .hours(1),
+            commitInterval: .seconds(3600),
             onCommit: { joined, pieces in commits.append((joined, pieces)) },
             onStructuralEvent: { structuralEvents.append($0) }
         )
@@ -207,7 +207,7 @@ final class ChatStreamingMessageMutationTests: XCTestCase {
         do {
             _ = try await ChatSessionController.consumeChatStream(
                 stream,
-                commitInterval: .hours(1),
+                commitInterval: .seconds(3600),
                 onCommit: { joined, pieces in commits.append((joined, pieces)) }
             )
             XCTFail("expected the stream error")
@@ -230,7 +230,7 @@ final class ChatStreamingMessageMutationTests: XCTestCase {
         var commitCount = 0
         let result = try await ChatSessionController.consumeChatStream(
             stream,
-            commitInterval: .hours(1),
+            commitInterval: .seconds(3600),
             onCommit: { _, _ in commitCount += 1 }
         )
 
