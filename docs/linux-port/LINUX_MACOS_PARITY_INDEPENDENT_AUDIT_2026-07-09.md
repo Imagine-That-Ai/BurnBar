@@ -22,6 +22,22 @@
 | Latest VM proof | The exact `5571e65f85` Ubuntu 24.04 GNOME/X11 ARM64 DEB is 152,137,340 bytes with SHA-256 `5c3218d60fc188df6102c683628e9b0dcae77d80167b724dcad4fdb8df01483`. The clean guest build preserves all 12,456 tracked source blobs; all 163 regular package files match their installed bytes; desktop, daemon, CLI, iroh, linkage, daemon service, and CLI health checks pass; and no stale `/usr/local` product process is present. Live QA exposed and fixed a startup race where `main.tsx` and `App.tsx` could drain the same initial deep link. After `5571e65f85`, three of three true cold starts with `openburnbar://providers?provider=codex` selected Codex and passed AT-SPI at 189 nodes / 108 named / 91 actionable with zero failures. Receipt: [`evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-exact-native-2026-07-20.json`](evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-exact-native-2026-07-20.json). Screenshot: [`evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-provider-deep-link.png`](evidence/parity-audit-2026-07-10/linux-arm64-current-5571e65f85-provider-deep-link.png). The receipt remains explicitly non-certifying because the installed manifest is the unsigned `{}` placeholder, production cloud identifiers are absent, and the remaining environment/device matrix is open. |
 | Historical remediation evidence | Earlier installed candidates (`5b70a3d320`, `1b80f2ca08`, and the `50d40b9acb` kernel capability slice) remain preserved under `evidence/mission-002-reanchor/` and explain the staged-payload, first-paint, WebKit, Settings, and accessibility fixes. The WebKitGTK probe still reports `webgl2=false`, `webgl1=true`; the current package visibly uses the Canvas2D fallback with an explicit `WebGL2 unavailable` label. Historical focused physical-iPad receipts remain bound to their recorded source commits. Signed provenance, the hosted architecture/compositor matrix, cross-device proof, and the strict product/environment receipts remain open. |
 
+## Exact-head Linux gate checkpoint — 2026-07-23
+
+The corrected Linux PR Gate run `30036735995` passed at head
+`cd4caaf4d2226f226efc59548cd77abb93319233`. Its macOS matched-performance
+reference and Linux fast package/parity job both passed, including the complete
+Linux parity-ledger and release-integrity suites, Linux desktop typecheck/unit
+tests/build, Linux Swift package tests, the native Swift/Rust behavior manifest,
+and IPC drift validation. This head includes the Linux first-run SQLCipher key
+provisioning fix (`da9d6a5188`), explicit-key migration bypass
+(`071fc7672e`), the AUR Fcitx capability fixture correction (`2869b88a24`),
+and the refreshed native test manifest (`cd4caaf4d2`). These are source and
+hosted-CI proofs only: the installed UTM guest remains stopped and is still the
+pre-change package, while signed current-candidate execution, production
+credentials, and the strict **0/40 product + 0/7 environment** ledger remain
+open.
+
 ## Latest verification checkpoint — 2026-07-22
 
 The integration branch's hosted Linux gate is green at commit
