@@ -23,6 +23,11 @@ Key was installed via guest agent into `~/.ssh/authorized_keys` for `burnbar`, `
 ## Daemon
 
 ```bash
+# The packaged daemon is a per-user systemd service. Do not query or enable
+# `openburnbar-daemon.service` in the system scope; that is a different unit.
+systemctl --user status openburnbar-daemon.service
+systemctl --user start openburnbar-daemon.service
+
 # Preferred launch (sets LD_LIBRARY_PATH + XDG paths + index DB)
 /usr/libexec/openburnbar-daemon-launch
 # Or known-good wrapper shipped with packages
@@ -37,6 +42,15 @@ Key was installed via guest agent into `~/.ssh/authorized_keys` for `burnbar`, `
 - Peer RPC probe binary: `/usr/bin/openburnbar-linux-desktop` (app identity) or
   `/usr/bin/openburnbar-cli` (CLI identity). Both are root-owned installed peers;
   the CLI now reads the canonical token file without an environment override.
+
+The daemon health check is authenticated AF_UNIX RPC, not an HTTP service on
+`127.0.0.1:8080`. Use the packaged CLI (or the desktop shell's
+`--daemon-health` probe) rather than `curl`:
+
+```bash
+openburnbar-cli health
+/usr/bin/openburnbar-linux-desktop --daemon-health
+```
 
 ## Repo on guest
 
