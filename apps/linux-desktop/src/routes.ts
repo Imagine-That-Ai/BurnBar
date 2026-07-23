@@ -48,7 +48,7 @@ export const ROUTES: RouteMeta[] = [
   { id: 'support', label: 'Support & diagnostics', group: 'system', description: 'Redacted diagnostics export and reconnect tools.', requiredCapability: 'support.export' },
   { id: 'onboarding', label: 'First-run setup', group: 'system', description: 'Linux onboarding wizard (daemon, secrets, DE limits).', requiredCapability: 'onboarding.repair' },
   { id: 'pet', label: 'Pet companion', group: 'system', description: 'Overlay tier matrix and degraded draggable mode.', requiredCapability: 'pet.overlay' },
-  { id: 'text-expansion', label: 'Text expansion', group: 'system', description: 'In-app snippet expansion (v1); system-wide Wayland deferred.', requiredCapability: 'text-expansion.in-app' }
+  { id: 'text-expansion', label: 'Text expansion', group: 'system', description: 'In-app snippets plus an optional signed IBus engine when the daemon reports it.', requiredCapability: 'text-expansion.in-app' }
 ];
 
 export type ProviderRouteSelection = {
