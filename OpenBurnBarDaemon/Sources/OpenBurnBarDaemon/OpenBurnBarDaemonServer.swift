@@ -514,6 +514,20 @@ public actor BurnBarDaemonServer {
                 databasePath: path,
                 logger: BurnBarDaemonLogger(category: "database-recovery")
             )
+#if os(Linux)
+            // Match macOS's encryption-at-rest default on first launch. The
+            // key is persisted in the approved native SecretStore before the
+            // chat store can create the database; encrypted existing profiles
+            // without a readable key remain fail-closed.
+            do {
+                _ = try BurnBarDaemonDatabaseCipher.ensureKeyIfNeeded(at: path)
+            } catch {
+                logger.warning(
+                    "daemon_database_key_provision_failed",
+                    metadata: ["path": path, "error": "\(error)"]
+                )
+            }
+#endif
             if FileManager.default.fileExists(atPath: path) {
                 // RR-1: one-time plaintext→encrypted migration of the shared SQLite
                 // file BEFORE any service opens it. No-op on a stock-SQLite build or

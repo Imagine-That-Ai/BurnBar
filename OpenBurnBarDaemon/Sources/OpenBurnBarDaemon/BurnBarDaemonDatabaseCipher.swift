@@ -113,6 +113,70 @@ enum BurnBarDaemonDatabaseCipher {
         return key
     }
 
+#if os(Linux)
+    /// Returns the existing database key or provisions one for a new/plaintext
+    /// profile. An encrypted database with no readable key is never given a
+    /// replacement key: that would make the existing data permanently
+    /// unreadable. New Linux installs mirror macOS's encryption-at-rest
+    /// default by persisting a 256-bit key in the approved native SecretStore
+    /// before any encrypted database is opened.
+    @discardableResult
+    static func ensureKeyIfNeeded(
+        at path: String,
+        secretStore: LinuxSecretCustodian = LinuxSecretStoreFactory.production()
+    ) throws -> String? {
+        guard isCipherAvailable() else { return nil }
+
+        do {
+            return try secretStore
+                .requireHighValueSecret(
+                    id: LinuxHighValueSecretClass.databaseKey.rawValue,
+                    secretClass: .databaseKey
+                )
+                .secret
+        } catch LinuxSecretStoreError.missingSecret {
+            // A missing key is expected only for a new or legacy plaintext
+            // profile. Continue below and provision it once.
+        } catch {
+            // A locked/unavailable store is not the same as a missing key.
+            // Preserve the fail-closed state and let the caller surface it.
+            throw error
+        }
+
+        // Never create a replacement key for ciphertext or an unknown file.
+        // Only a missing path or a recognizable plaintext SQLite file can be
+        // safely initialized/migrated.
+        let fileExists = FileManager.default.fileExists(atPath: path)
+        guard fileExists == false || isPlaintextDatabaseFile(at: path) else {
+            return nil
+        }
+
+        var generator = SystemRandomNumberGenerator()
+        let bytes = Data((0..<32).map { _ in
+            UInt8.random(in: UInt8.min...UInt8.max, using: &generator)
+        })
+        let key = bytes.base64EncodedString()
+        _ = try secretStore.storeHighValueSecret(
+            key,
+            id: LinuxHighValueSecretClass.databaseKey.rawValue,
+            secretClass: .databaseKey
+        )
+
+        // Do not proceed with an in-memory key. The persisted readback is the
+        // invariant that makes the next daemon launch recoverable.
+        let persisted = try secretStore.requireHighValueSecret(
+            id: LinuxHighValueSecretClass.databaseKey.rawValue,
+            secretClass: .databaseKey
+        )
+        guard persisted.secret == key else {
+            throw BurnBarDaemonDatabaseCipherError.keyApplicationFailed(
+                detail: "database key persistence readback did not match"
+            )
+        }
+        return key
+    }
+#endif
+
     // MARK: - Codec Availability Probe
 
     /// Whether the daemon's linked SQLite actually provides the SQLCipher codec,
@@ -217,10 +281,12 @@ enum BurnBarDaemonDatabaseCipher {
     // MARK: - One-Time Plaintext → Encrypted Migration
 
     /// Migrate an existing plaintext database at `path` into a SQLCipher-encrypted
-    /// database keyed with the app's Keychain key, then atomically replace the
-    /// original. No-op (returns `false`) WHEN the codec is unavailable, no key is
-    /// provisioned, the file is missing, or the file is already encrypted — so the
-    /// stock-SQLite build never touches the file.
+    /// database keyed with the app's native secret-store key, then atomically
+    /// replace the original. On Linux, a missing key is provisioned first for a
+    /// new/plaintext profile; an encrypted profile without a readable key stays
+    /// fail-closed. No-op (returns `false`) when the codec is unavailable, the
+    /// file is missing, or the file is already encrypted — so the stock-SQLite
+    /// build never touches the file.
     ///
     /// The migration opens the plaintext source, ATTACHes a freshly keyed sibling
     /// database, runs `sqlcipher_export('encrypted')` to copy every page through
@@ -240,7 +306,12 @@ enum BurnBarDaemonDatabaseCipher {
     ) throws -> Bool {
         removeOrphanedMigrationArtifacts(forDatabaseAt: path, logger: logger)
         guard isCipherAvailable() else { return false }
-        guard let key = explicitKey ?? resolveKey() else { return false }
+        #if os(Linux)
+        let resolvedKey = try ensureKeyIfNeeded(at: path)
+        #else
+        let resolvedKey = resolveKey()
+        #endif
+        guard let key = explicitKey ?? resolvedKey else { return false }
         try validateKey(key)
         guard isPlaintextDatabaseFile(at: path) else { return false }
 
