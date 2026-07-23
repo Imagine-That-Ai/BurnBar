@@ -542,14 +542,14 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
     }
 }
 
-public enum BurnBarCatalogError: Error, LocalizedError {
+enum BurnBarCatalogError: Error, LocalizedError {
     case unsupportedSchemaVersion(Int)
     case duplicateProviderID(String)
     case duplicateModelID(String)
     case providerMissingVisibleModels(String)
     case missingBundledCatalog
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case .unsupportedSchemaVersion(let version):
             return "Unsupported OpenBurnBar catalog schema version \(version)."

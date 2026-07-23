@@ -180,16 +180,6 @@ public struct BurnBarRunDetailResponse: Codable, Hashable, Sendable {
     }
 }
 
-public struct BurnBarRunSubscribeRequest: Codable, Hashable, Sendable {
-    public let runID: BurnBarRunID
-    public let clientID: BurnBarClientID
-
-    public init(runID: BurnBarRunID, clientID: BurnBarClientID) {
-        self.runID = runID
-        self.clientID = clientID
-    }
-}
-
 public struct BurnBarRunPollRequest: Codable, Hashable, Sendable {
     public let clientID: BurnBarClientID
     public let sessionID: BurnBarSessionID

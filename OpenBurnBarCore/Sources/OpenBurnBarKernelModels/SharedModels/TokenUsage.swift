@@ -14,8 +14,8 @@ import Crypto
 /// Contracts, so `TokenUsage` cannot depend on `FusionUsageRow.fusionParentPrefix`).
 /// `FusionUsageRow` in OpenBurnBarKernelContracts keeps its own
 /// `fusionParentPrefix = "elderwand-"` alias; both must stay byte-identical.
-public enum FusionUsageParentPrefix {
-    public static let value = "elderwand-"
+enum FusionUsageParentPrefix {
+    static let value = "elderwand-"
 }
 
 // MARK: - Usage Provenance Method
