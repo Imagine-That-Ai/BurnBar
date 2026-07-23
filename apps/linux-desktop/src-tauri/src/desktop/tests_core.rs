@@ -110,6 +110,21 @@
     }
 
     #[test]
+    fn recovery_bundle_picker_validates_safe_obb_paths() {
+        let root = std::env::temp_dir().join(format!(
+            "openburnbar-recovery-picker-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        assert!(validate_recovery_bundle_picker_path(&root.join("backup.obb")).is_ok());
+        assert!(validate_recovery_bundle_picker_path(&root.join("backup.json")).is_err());
+        assert!(validate_recovery_bundle_picker_path(&root.join("backup name.obb")).is_err());
+        assert!(validate_recovery_bundle_picker_path(&root.join("../backup.obb")).is_err());
+        assert!(validate_recovery_bundle_picker_path(&root.join(".backup.obb")).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn launch_at_login_uses_embedded_template_when_packaged_entry_is_missing() {
         let root = autostart_test_root();
         let user_path = root.join("autostart/openburnbar.desktop");

@@ -33,6 +33,7 @@ include!("desktop/daemon_runtime.rs");
 include!("desktop/native_shell.rs");
 include!("desktop/daemon_data_commands.rs");
 include!("desktop/export_destination_commands.rs");
+include!("desktop/recovery_destination_commands.rs");
 include!("desktop/account_media_commands.rs");
 include!("desktop/computer_use.rs");
 include!("desktop/tray_runtime.rs");

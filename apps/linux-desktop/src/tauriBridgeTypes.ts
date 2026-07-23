@@ -653,6 +653,7 @@ export type DatabaseRecoveryBundleImportRequest = {
   sourcePath: string;
   passphrase: string;
 };
+export type DatabaseRecoveryBundlePickerMode = 'export' | 'import';
 export type DatabaseRecoveryPhase =
   | 'ready'
   | 'database_missing'
@@ -1686,6 +1687,8 @@ export interface LinuxShellBridge {
   databaseRecoveryBundleImport?(
     request: DatabaseRecoveryBundleImportRequest
   ): Promise<DatabaseRecoveryBundleImportResult>;
+  /** Optional on older packaged shells; native recovery bundle picker. */
+  pickRecoveryBundleDestination?(mode: DatabaseRecoveryBundlePickerMode): Promise<string | null>;
   /** Optional on older packaged shells; callers must fail closed when absent. */
   databaseCodeSearch?(request: DatabaseCodeSearchRequest): Promise<DatabaseCodeSearchResult>;
   /** Optional on older packaged shells; callers must fail closed when absent. */

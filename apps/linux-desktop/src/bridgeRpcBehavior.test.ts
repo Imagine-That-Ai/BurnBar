@@ -419,6 +419,18 @@ describe('VAL-RPC-002 bridge behavior', () => {
     expect(invoke).toHaveBeenNthCalledWith(3, 'pick_export_destination', { kind: 'account-cloud' });
   });
 
+  it('uses the typed recovery bundle picker for save and open flows', async () => {
+    invoke
+      .mockResolvedValueOnce('/tmp/recovery.obb')
+      .mockResolvedValueOnce(null);
+    const b = await bridge();
+
+    await expect(b.pickRecoveryBundleDestination?.('export')).resolves.toBe('/tmp/recovery.obb');
+    await expect(b.pickRecoveryBundleDestination?.('import')).resolves.toBeNull();
+    expect(invoke).toHaveBeenNthCalledWith(1, 'pick_recovery_bundle_destination', { mode: 'export' });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'pick_recovery_bundle_destination', { mode: 'import' });
+  });
+
   it('uses the canonical run.resume RPC for persisted activity body and resume actions', async () => {
     invoke
       .mockResolvedValueOnce({

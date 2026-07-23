@@ -34,14 +34,18 @@ export function RecoveryAndRestoreControl({
   const exportRecoveryBundle = useDatabaseStore((state) => state.exportRecoveryBundle);
   const importRecoveryBundle = useDatabaseStore((state) => state.importRecoveryBundle);
   const supported = !fixtureMode && typeof bridge?.databaseRecoveryBundleStatus === 'function';
+  const pickerAvailable = supported && typeof bridge?.pickRecoveryBundleDestination === 'function';
   const recoveryStatus = statusAction.result;
-  const exportAvailable = supported && typeof bridge?.databaseRecoveryBundleExport === 'function';
-  const importAvailable = supported && typeof bridge?.databaseRecoveryBundleImport === 'function';
+  const exportAvailable = supported && pickerAvailable && typeof bridge?.databaseRecoveryBundleExport === 'function';
+  const importAvailable = supported && pickerAvailable && typeof bridge?.databaseRecoveryBundleImport === 'function';
   const [exportPath, setExportPath] = useState('');
   const [exportPassphrase, setExportPassphrase] = useState('');
   const [importPath, setImportPath] = useState('');
   const [importPassphrase, setImportPassphrase] = useState('');
   const [importConfirmation, setImportConfirmation] = useState('');
+  const [exportPickerBusy, setExportPickerBusy] = useState(false);
+  const [importPickerBusy, setImportPickerBusy] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
 
   useEffect(() => {
     if (supported) void loadRecoveryStatus();
@@ -63,9 +67,37 @@ export function RecoveryAndRestoreControl({
 
   const exportBusy = exportAction.pending;
   const importBusy = importAction.pending;
-  const recoveryBusy = statusAction.pending || exportBusy || importBusy;
+  const recoveryBusy = statusAction.pending || exportBusy || importBusy || exportPickerBusy || importPickerBusy;
   const canExport = exportAvailable && recoveryStatus?.canExport === true;
   const canImport = importAvailable && recoveryStatus?.canImport === true;
+
+  const chooseExportPath = async () => {
+    if (!bridge?.pickRecoveryBundleDestination || recoveryBusy) return;
+    setExportPickerBusy(true);
+    setPickerError(null);
+    try {
+      const path = await bridge.pickRecoveryBundleDestination('export');
+      if (path) setExportPath(path);
+    } catch (cause) {
+      setPickerError(cause instanceof Error ? cause.message : 'Could not choose a recovery bundle destination.');
+    } finally {
+      setExportPickerBusy(false);
+    }
+  };
+
+  const chooseImportPath = async () => {
+    if (!bridge?.pickRecoveryBundleDestination || recoveryBusy) return;
+    setImportPickerBusy(true);
+    setPickerError(null);
+    try {
+      const path = await bridge.pickRecoveryBundleDestination('import');
+      if (path) setImportPath(path);
+    } catch (cause) {
+      setPickerError(cause instanceof Error ? cause.message : 'Could not choose a recovery bundle source.');
+    } finally {
+      setImportPickerBusy(false);
+    }
+  };
 
   const exportBundle = async () => {
     await exportRecoveryBundle(exportPath, exportPassphrase);
@@ -113,6 +145,7 @@ export function RecoveryAndRestoreControl({
           {statusAction.error}
         </Banner>
       ) : null}
+      {pickerError ? <Banner tone="degraded" role="alert">{pickerError}</Banner> : null}
       {recoveryStatus ? (
         <p className="muted settings-tab-lede" role="status" aria-live="polite">
           {recoveryStatus.recommendedAction !== 'none'
@@ -132,18 +165,22 @@ export function RecoveryAndRestoreControl({
           {exportAvailable ? (
             <div className="settings-recovery-action">
               <strong>Export recovery bundle</strong>
-              <label className="setting-field">
-                <span>Destination path</span>
-                <input
-                  type="text"
-                  value={exportPath}
-                  aria-label="Recovery bundle export destination"
-                  autoComplete="off"
-                  placeholder="/home/user/openburnbar-recovery.obb"
-                  disabled={recoveryBusy}
-                  onChange={(event) => setExportPath(event.currentTarget.value)}
-                />
-              </label>
+              <div className="setting-field">
+                <span>Destination</span>
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={recoveryBusy}
+                    aria-busy={exportPickerBusy}
+                    aria-label="Choose recovery bundle export destination"
+                    onClick={() => void chooseExportPath()}
+                  >
+                    {exportPickerBusy ? 'Opening…' : 'Choose destination'}
+                  </button>
+                  {exportPath ? <code>{exportPath}</code> : <span className="muted">No destination selected</span>}
+                </div>
+              </div>
               <label className="setting-field">
                 <span>Passphrase</span>
                 <input
@@ -176,18 +213,22 @@ export function RecoveryAndRestoreControl({
             <div className="settings-recovery-action">
               <strong>Import recovery bundle</strong>
               <p className="muted">Import only a bundle you trust. The daemon verifies the candidate key and database integrity before adoption.</p>
-              <label className="setting-field">
-                <span>Source path</span>
-                <input
-                  type="text"
-                  value={importPath}
-                  aria-label="Recovery bundle import source"
-                  autoComplete="off"
-                  placeholder="/home/user/openburnbar-recovery.obb"
-                  disabled={recoveryBusy}
-                  onChange={(event) => setImportPath(event.currentTarget.value)}
-                />
-              </label>
+              <div className="setting-field">
+                <span>Source</span>
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={recoveryBusy}
+                    aria-busy={importPickerBusy}
+                    aria-label="Choose recovery bundle import source"
+                    onClick={() => void chooseImportPath()}
+                  >
+                    {importPickerBusy ? 'Opening…' : 'Choose source'}
+                  </button>
+                  {importPath ? <code>{importPath}</code> : <span className="muted">No source selected</span>}
+                </div>
+              </div>
               <label className="setting-field">
                 <span>Passphrase</span>
                 <input

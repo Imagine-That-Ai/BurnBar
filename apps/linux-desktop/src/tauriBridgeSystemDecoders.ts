@@ -997,6 +997,30 @@ export function mapExportDestination(raw: RawJsonValue, kind: ExportDestinationK
   return path;
 }
 
+export function mapRecoveryBundleDestination(raw: RawJsonValue): string | null {
+  if (raw === null || raw === undefined) return null;
+  const path = str(raw);
+  if (
+    !path.startsWith('/')
+    || path.length > 4096
+    || [...path].some((character) => character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f)
+    || path.includes('\\')
+    || !path.endsWith('.obb')
+  ) {
+    throw new Error('Native recovery dialog returned an unsafe path.');
+  }
+  const segments = path.split('/');
+  const filename = segments.at(-1) ?? '';
+  const stem = filename.slice(0, -4);
+  if (
+    segments.slice(1, -1).some((segment) => segment.length === 0 || segment === '.' || segment === '..')
+    || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(stem)
+  ) {
+    throw new Error('Native recovery dialog returned an unsafe path.');
+  }
+  return path;
+}
+
 export function mapAppVersionInfo(raw: RawJsonValue): AppVersionInfo {
   const packageRaw = obj(pick(raw, 'package'));
   const runtimeRaw = obj(pick(raw, 'runtime'));

@@ -91,11 +91,13 @@ describe('RecoveryAndRestoreControl', () => {
   it('exports an encrypted recovery bundle from Data & Privacy and clears the passphrase', async () => {
     const databaseRecoveryBundleStatus = vi.fn(async () => readyStatus);
     const databaseRecoveryBundleExport = vi.fn(async () => exportedBundle);
+    const pickRecoveryBundleDestination = vi.fn(async () => '/tmp/recovery.obb');
     useShellStore.setState({
       bridge: {
         ...bridgeStubDefaults,
         databaseRecoveryBundleStatus,
-        databaseRecoveryBundleExport
+        databaseRecoveryBundleExport,
+        pickRecoveryBundleDestination
       } as unknown as LinuxShellBridge,
       fixtureMode: false
     });
@@ -103,9 +105,9 @@ describe('RecoveryAndRestoreControl', () => {
     render(<RecoveryAndRestoreControl fixtureMode={false} onOpenDatabase={vi.fn()} />);
 
     await waitFor(() => expect(screen.getByText('Ready')).toBeTruthy());
-    const destination = screen.getByRole('textbox', { name: 'Recovery bundle export destination' });
     const passphrase = screen.getByLabelText('Recovery bundle export passphrase');
-    fireEvent.change(destination, { target: { value: '/tmp/recovery.obb' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Choose recovery bundle export destination' }));
+    await waitFor(() => expect(screen.getByText('/tmp/recovery.obb')).toBeTruthy());
     fireEvent.change(passphrase, { target: { value: 'correct horse battery' } });
     fireEvent.click(screen.getByRole('button', { name: 'Export bundle' }));
 
@@ -121,11 +123,13 @@ describe('RecoveryAndRestoreControl', () => {
   it('requires an exact confirmation before importing a recovery bundle', async () => {
     const databaseRecoveryBundleStatus = vi.fn(async () => readyStatus);
     const databaseRecoveryBundleImport = vi.fn(async () => importedBundle);
+    const pickRecoveryBundleDestination = vi.fn(async () => '/tmp/recovery.obb');
     useShellStore.setState({
       bridge: {
         ...bridgeStubDefaults,
         databaseRecoveryBundleStatus,
-        databaseRecoveryBundleImport
+        databaseRecoveryBundleImport,
+        pickRecoveryBundleDestination
       } as unknown as LinuxShellBridge,
       fixtureMode: false
     });
@@ -133,10 +137,10 @@ describe('RecoveryAndRestoreControl', () => {
     render(<RecoveryAndRestoreControl fixtureMode={false} onOpenDatabase={vi.fn()} />);
 
     await waitFor(() => expect(screen.getByText('Ready')).toBeTruthy());
-    const source = screen.getByRole('textbox', { name: 'Recovery bundle import source' });
     const passphrase = screen.getByLabelText('Recovery bundle import passphrase');
     const confirmation = screen.getByRole('textbox', { name: 'Recovery bundle import confirmation' });
-    fireEvent.change(source, { target: { value: '/tmp/recovery.obb' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Choose recovery bundle import source' }));
+    await waitFor(() => expect(screen.getByText('/tmp/recovery.obb')).toBeTruthy());
     fireEvent.change(passphrase, { target: { value: 'correct horse battery' } });
     const importButton = screen.getByRole('button', { name: 'Import bundle' }) as HTMLButtonElement;
     expect(importButton.disabled).toBe(true);

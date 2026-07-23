@@ -539,6 +539,7 @@ pub fn run() {
             database_recovery_bundle_status,
             database_recovery_bundle_export,
             database_recovery_bundle_import,
+            pick_recovery_bundle_destination,
             account_status,
             trusted_device_list,
             trusted_device_approve,

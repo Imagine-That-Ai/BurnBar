@@ -69,6 +69,7 @@ import {
   mapMembershipPortalUrl,
   mapDiagnosticsExport,
   mapExportDestination,
+  mapRecoveryBundleDestination,
   mapAppVersionInfo,
   decodeLinuxUpdateStatus,
   decodeSmartHubCommandResponse,
@@ -586,6 +587,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         passphrase: request.passphrase
       });
       return mapDatabaseRecoveryBundleImport(raw);
+    },
+    pickRecoveryBundleDestination: async (mode) => {
+      const raw = await invoke<RawJsonValue>('pick_recovery_bundle_destination', { mode });
+      return mapRecoveryBundleDestination(raw);
     },
     // P22 — daemon.code.search / daemon.code.context_pack. The daemon owns
     // index availability and trust wrapping; the shell only clamps bounded
