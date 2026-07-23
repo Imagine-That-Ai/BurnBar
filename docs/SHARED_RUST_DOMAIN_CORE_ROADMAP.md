@@ -248,9 +248,19 @@ not into `main`, and does not mean production promotion.
   CloudVault hosting deployment: the deployed site must serve the exact
   profile, source commit, and tag identity before the workflow signs and
   immutably publishes its receipt. Both producers remain dormant while their
-  public profiles are legacy-authoritative. Apple, Android, and Windows exact
-  artifact producers remain to be landed before their mapped rows can satisfy
-  stable authority.
+  public profiles are legacy-authoritative. The stable Apple/Android release
+  train now publishes the canonical notarized arm64 DMG and signed four-ABI
+  AAB, emits six Apple and four Android custom domain attestations as the
+  applicable public modes become Rust-authoritative, and uses the same shared,
+  fail-closed publisher as Functions and Console to publish every custom bundle
+  before its immutable artifact. The stable Windows train deterministically
+  packages its signed x64 and ARM64 artifacts and update metadata into one
+  canonical release bundle, emits quota and CloudVault attestations as those
+  modes become Rust-authoritative, and routes them through that same publisher.
+  A separate fail-closed lifecycle creates or reuses the exact draft, lets the
+  shared publisher verify the complete immutable evidence set, and only then
+  exposes the exact stable release. Prerelease and wrong-tag releases fail
+  closed.
 
 ## Required CI
 

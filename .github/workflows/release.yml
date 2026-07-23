@@ -232,6 +232,10 @@ jobs:
             echo "::error::Unable to resolve ${tag_ref} to a commit."
             exit 1
           fi
+          if [[ "$GITHUB_SHA" != "$release_commit" ]]; then
+            echo "::error::Release event SHA $GITHUB_SHA does not equal ${tag_ref} commit $release_commit."
+            exit 1
+          fi
           if ! git merge-base --is-ancestor "$release_commit" origin/main; then
             echo "::error::Release tag ${TAG_NAME} points at ${release_commit}, which is not reachable from origin/main."
             exit 1
@@ -833,6 +837,7 @@ jobs:
     outputs:
       dmg_path: ${{ steps.dmg.outputs.dmg_path }}
       dmg_name: ${{ steps.dmg.outputs.dmg_name }}
+      aab_name: ${{ steps.android.outputs.aab_name }}
       zip_path: ${{ steps.zip.outputs.zip_path }}
       zip_name: ${{ steps.zip.outputs.zip_name }}
 
@@ -1036,27 +1041,38 @@ jobs:
         run: bash ./scripts/ci/inject-android-keystore.sh
 
       - name: Build signed Android release bundle
+        id: android
         env:
           OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD }}
           OPENBURNBAR_ANDROID_KEY_ALIAS: ${{ secrets.OPENBURNBAR_ANDROID_KEY_ALIAS }}
           OPENBURNBAR_ANDROID_KEY_PASSWORD: ${{ secrets.OPENBURNBAR_ANDROID_KEY_PASSWORD }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
+          set -euo pipefail
           if [[ -z "${OPENBURNBAR_ANDROID_KEYSTORE_PATH:-}" || ! -f "$OPENBURNBAR_ANDROID_KEYSTORE_PATH" ]]; then
             echo "::error::Android release keystore was not injected at OPENBURNBAR_ANDROID_KEYSTORE_PATH."
             exit 1
           fi
           cd android
           ./gradlew :app:bundleRelease --no-daemon
-          echo "aab_path=$(pwd)/app/build/outputs/bundle/release/app-release.aab" >> "$GITHUB_OUTPUT"
+          source_aab="$(pwd)/app/build/outputs/bundle/release/app-release.aab"
+          aab_name="OpenBurnBar-${VERSION}-Android.aab"
+          aab_path="$RUNNER_TEMP/$aab_name"
+          cp "$source_aab" "$aab_path"
+          {
+            echo "aab_name=$aab_name"
+            echo "aab_path=$aab_path"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Verify Android domain-core profile receipt
-        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --android-aab android/app/build/outputs/bundle/release/app-release.aab
+        run: node scripts/ci/verify-domain-core-build-profile-artifact.mjs --profile public-production --android-aab "${{ steps.android.outputs.aab_path }}"
 
       - name: Upload Android release bundle artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          name: app-release-aab
-          path: android/app/build/outputs/bundle/release/app-release.aab
+          name: ${{ steps.android.outputs.aab_name }}
+          path: ${{ steps.android.outputs.aab_path }}
+          if-no-files-found: error
 
       - name: Install extension dependencies
         run: npm ci --prefix extensions/openburnbar
@@ -1693,6 +1709,7 @@ jobs:
         id: checksums
         env:
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
+          AAB_PATH: ${{ steps.android.outputs.aab_path }}
           ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
           SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
           APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
@@ -1709,6 +1726,8 @@ jobs:
             echo ""
             sha256sum "$DMG_PATH"
             sha512sum "$DMG_PATH"
+            sha256sum "$AAB_PATH"
+            sha512sum "$AAB_PATH"
             sha256sum "$ZIP_PATH"
             sha512sum "$ZIP_PATH"
             sha256sum "$SOURCE_PATH"
@@ -1808,6 +1827,7 @@ jobs:
           VEX_PATH: ${{ steps.vex.outputs.vex_path }}
           CHECKSUMS_PATH: ${{ steps.checksums.outputs.checksums_path }}
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
+          AAB_PATH: ${{ steps.android.outputs.aab_path }}
           ZIP_PATH: ${{ steps.zip.outputs.zip_path }}
           SOURCE_PATH: ${{ steps.corresponding-source.outputs.source_path }}
           APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
@@ -1896,6 +1916,7 @@ jobs:
           attest_release_blob "$VEX_PATH" "openburnbar-v${VERSION}.vex.json"
           attest_release_blob "$CHECKSUMS_PATH" "checksums-v${VERSION}.txt"
           attest_release_blob "$DMG_PATH" "${DMG_PATH##*/}"
+          attest_release_blob "$AAB_PATH" "${AAB_PATH##*/}"
           attest_release_blob "$ZIP_PATH" "${ZIP_PATH##*/}"
           attest_release_blob "$SOURCE_PATH" "${SOURCE_PATH##*/}"
           attest_release_blob "$APPCAST_PATH" "${APPCAST_PATH##*/}"
@@ -2122,6 +2143,254 @@ jobs:
           bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$DMG_PATH"
           bash scripts/ci/smoke-openburnbar-release-dmg.sh "$DMG_PATH"
 
+  domain-core-native-release-evidence:
+    name: Domain-core Apple and Android release evidence
+    needs: [release-preflight, build-and-release, smoke-test]
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      # Prereleases intentionally perform no stable-release attestation work,
+      # but this job remains successful so the common publish dependency graph
+      # does not need an always()/skipped-result exception.
+      - name: Check out exact stable release tag
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify stable tag checkout identity
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        env:
+          TAG_REF: ${{ needs.release-preflight.outputs.tag_ref }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin "+${TAG_REF}:${TAG_REF}"
+          git checkout --detach "$RELEASE_COMMIT"
+          test "$GITHUB_REF" = "$TAG_REF"
+          test "$GITHUB_SHA" = "$RELEASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          test "$(git rev-list -n 1 "${TAG_REF}^{commit}")" = "$RELEASE_COMMIT"
+
+      - name: Set up Java 21 for AAB signature verification
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Download exact notarized DMG
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0 (node24-native)
+        with:
+          name: ${{ needs.build-and-release.outputs.dmg_name }}
+          path: ${{ runner.temp }}/domain-core-native-artifacts
+
+      - name: Download exact signed AAB
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0 (node24-native)
+        with:
+          name: ${{ needs.build-and-release.outputs.aab_name }}
+          path: ${{ runner.temp }}/domain-core-native-artifacts
+
+      - name: Verify native release artifacts and embedded public profiles
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        env:
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+          DMG_PATH: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          AAB_PATH: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+        run: |
+          bash scripts/ci/verify-domain-core-native-release-artifact.sh apple "$DMG_PATH" "$VERSION"
+          bash scripts/ci/verify-domain-core-native-release-artifact.sh android "$AAB_PATH" "$VERSION"
+
+      - name: Create Apple domain-core predicates
+        id: apple-evidence
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        env:
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+          RELEASE_TAG: ${{ needs.release-preflight.outputs.tag_name }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+          DMG_PATH: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+        run: |
+          node scripts/ci/create-domain-core-native-release-evidence.mjs \
+            --consumer apple \
+            --version "$VERSION" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --artifact "$DMG_PATH" \
+            --output-dir "$RUNNER_TEMP/domain-core-native-evidence" \
+            --profile-catalog config/domain-core-build-profiles.json
+
+      - name: Create Android domain-core predicates
+        id: android-evidence
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        env:
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+          RELEASE_TAG: ${{ needs.release-preflight.outputs.tag_name }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+          AAB_PATH: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+        run: |
+          node scripts/ci/create-domain-core-native-release-evidence.mjs \
+            --consumer android \
+            --version "$VERSION" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" \
+            --artifact "$AAB_PATH" \
+            --output-dir "$RUNNER_TEMP/domain-core-native-evidence" \
+            --profile-catalog config/domain-core-build-profiles.json
+
+      - name: Attest Apple quota authority
+        id: attest-apple-quota
+        if: steps.apple-evidence.outputs.quota_enabled == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
+          predicate-path: ${{ steps.apple-evidence.outputs.quota_predicate }}
+
+      - name: Attest Apple CloudVault authority
+        id: attest-apple-cloud-vault
+        if: steps.apple-evidence.outputs.cloud_vault_enabled == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
+          predicate-path: ${{ steps.apple-evidence.outputs.cloud_vault_predicate }}
+
+      - name: Attest Apple CloudVault rewrap authority
+        id: attest-apple-cloud-vault-rewrap
+        if: steps.apple-evidence.outputs.cloud_vault_rewrap_enabled == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
+          predicate-path: ${{ steps.apple-evidence.outputs.cloud_vault_rewrap_predicate }}
+
+      - name: Attest Apple CloudVault search authority
+        id: attest-apple-cloud-vault-search
+        if: steps.apple-evidence.outputs.cloud_vault_search_enabled == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
+          predicate-path: ${{ steps.apple-evidence.outputs.cloud_vault_search_predicate }}
+
+      - name: Attest Apple Hermes authority
+        id: attest-apple-hermes
+        if: steps.apple-evidence.outputs.hermes_enabled == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
+          predicate-path: ${{ steps.apple-evidence.outputs.hermes_predicate }}
+
+      - name: Attest Apple pricing authority
+        id: attest-apple-pricing
+        if: steps.apple-evidence.outputs.pricing_enabled == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
+          predicate-path: ${{ steps.apple-evidence.outputs.pricing_predicate }}
+
+      - name: Attest Android CloudVault authority
+        id: attest-android-cloud-vault
+        if: steps.android-evidence.outputs.cloud_vault_enabled == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
+          predicate-path: ${{ steps.android-evidence.outputs.cloud_vault_predicate }}
+
+      - name: Attest Android CloudVault rewrap authority
+        id: attest-android-cloud-vault-rewrap
+        if: steps.android-evidence.outputs.cloud_vault_rewrap_enabled == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
+          predicate-path: ${{ steps.android-evidence.outputs.cloud_vault_rewrap_predicate }}
+
+      - name: Attest Android CloudVault search authority
+        id: attest-android-cloud-vault-search
+        if: steps.android-evidence.outputs.cloud_vault_search_enabled == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
+          predicate-path: ${{ steps.android-evidence.outputs.cloud_vault_search_predicate }}
+
+      - name: Attest Android Hermes authority
+        id: attest-android-hermes
+        if: steps.android-evidence.outputs.hermes_enabled == 'true'
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+          predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v1
+          predicate-path: ${{ steps.android-evidence.outputs.hermes_predicate }}
+
+      - name: Stage deterministic native attestation bundle names
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/domain-core-native-evidence
+          APPLE_QUOTA_PATH: ${{ steps.attest-apple-quota.outputs.bundle-path }}
+          APPLE_QUOTA_NAME: ${{ steps.apple-evidence.outputs.quota_bundle }}
+          APPLE_CLOUD_VAULT_PATH: ${{ steps.attest-apple-cloud-vault.outputs.bundle-path }}
+          APPLE_CLOUD_VAULT_NAME: ${{ steps.apple-evidence.outputs.cloud_vault_bundle }}
+          APPLE_REWRAP_PATH: ${{ steps.attest-apple-cloud-vault-rewrap.outputs.bundle-path }}
+          APPLE_REWRAP_NAME: ${{ steps.apple-evidence.outputs.cloud_vault_rewrap_bundle }}
+          APPLE_SEARCH_PATH: ${{ steps.attest-apple-cloud-vault-search.outputs.bundle-path }}
+          APPLE_SEARCH_NAME: ${{ steps.apple-evidence.outputs.cloud_vault_search_bundle }}
+          APPLE_HERMES_PATH: ${{ steps.attest-apple-hermes.outputs.bundle-path }}
+          APPLE_HERMES_NAME: ${{ steps.apple-evidence.outputs.hermes_bundle }}
+          APPLE_PRICING_PATH: ${{ steps.attest-apple-pricing.outputs.bundle-path }}
+          APPLE_PRICING_NAME: ${{ steps.apple-evidence.outputs.pricing_bundle }}
+          ANDROID_CLOUD_VAULT_PATH: ${{ steps.attest-android-cloud-vault.outputs.bundle-path }}
+          ANDROID_CLOUD_VAULT_NAME: ${{ steps.android-evidence.outputs.cloud_vault_bundle }}
+          ANDROID_REWRAP_PATH: ${{ steps.attest-android-cloud-vault-rewrap.outputs.bundle-path }}
+          ANDROID_REWRAP_NAME: ${{ steps.android-evidence.outputs.cloud_vault_rewrap_bundle }}
+          ANDROID_SEARCH_PATH: ${{ steps.attest-android-cloud-vault-search.outputs.bundle-path }}
+          ANDROID_SEARCH_NAME: ${{ steps.android-evidence.outputs.cloud_vault_search_bundle }}
+          ANDROID_HERMES_PATH: ${{ steps.attest-android-hermes.outputs.bundle-path }}
+          ANDROID_HERMES_NAME: ${{ steps.android-evidence.outputs.hermes_bundle }}
+        run: |
+          set -euo pipefail
+          copy_bundle() {
+            local source="$1" name="$2"
+            if [[ -z "$source" && -z "$name" ]]; then
+              return
+            fi
+            if [[ -z "$source" || -z "$name" || ! -f "$source" || "$name" != "${name##*/}" ]]; then
+              echo "::error::Native domain-core attestation output is incomplete or unsafe."
+              exit 1
+            fi
+            cp "$source" "$EVIDENCE_DIR/$name"
+          }
+          copy_bundle "$APPLE_QUOTA_PATH" "$APPLE_QUOTA_NAME"
+          copy_bundle "$APPLE_CLOUD_VAULT_PATH" "$APPLE_CLOUD_VAULT_NAME"
+          copy_bundle "$APPLE_REWRAP_PATH" "$APPLE_REWRAP_NAME"
+          copy_bundle "$APPLE_SEARCH_PATH" "$APPLE_SEARCH_NAME"
+          copy_bundle "$APPLE_HERMES_PATH" "$APPLE_HERMES_NAME"
+          copy_bundle "$APPLE_PRICING_PATH" "$APPLE_PRICING_NAME"
+          copy_bundle "$ANDROID_CLOUD_VAULT_PATH" "$ANDROID_CLOUD_VAULT_NAME"
+          copy_bundle "$ANDROID_REWRAP_PATH" "$ANDROID_REWRAP_NAME"
+          copy_bundle "$ANDROID_SEARCH_PATH" "$ANDROID_SEARCH_NAME"
+          copy_bundle "$ANDROID_HERMES_PATH" "$ANDROID_HERMES_NAME"
+
+      - name: Upload native release evidence for bundle-first publication
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-native-release-evidence-v${{ needs.release-preflight.outputs.version }}
+          path: ${{ runner.temp }}/domain-core-native-evidence
+          if-no-files-found: error
+
   publish:
     # Fail-closed release gate: publish requires every validation lane and the
     # packaging + artifact smoke chain. A skipped gate only occurs through the
@@ -2139,6 +2408,7 @@ jobs:
       - release-supply-chain-gate
       - build-and-release
       - smoke-test
+      - domain-core-native-release-evidence
     runs-on: macos-15
     timeout-minutes: 15
     steps:
@@ -2157,6 +2427,7 @@ jobs:
           TAG_NAME: ${{ needs.release-preflight.outputs.version }}
           VERSION: ${{ needs.release-preflight.outputs.version }}
           DMG_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.dmg_name }}
+          AAB_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.aab_name }}
           ZIP_PATH: ${{ runner.temp }}/${{ needs.build-and-release.outputs.zip_name }}
           # Prerelease status is derived from the tag (set in release-preflight).
           IS_PRERELEASE: ${{ needs.release-preflight.outputs.is_prerelease }}
@@ -2165,6 +2436,7 @@ jobs:
           # for a prerelease tag.
           PROMOTE: ${{ github.event_name == 'workflow_dispatch' && inputs.promote && 'true' || 'false' }}
         run: |
+          set -euo pipefail
           # Checksums, SBOM, and metadata are also downloaded via merge-multiple.
           # `find -print -quit` is shellcheck-clean (SC2012) and quoted to handle spaces (SC2086).
           CHECKSUMS_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "checksums-v${VERSION}*.txt" -print -quit 2>/dev/null)
@@ -2180,7 +2452,14 @@ jobs:
           PROVENANCE_PATHS=()
           while IFS= read -r provenance_path; do
             [[ -n "$provenance_path" ]] && PROVENANCE_PATHS+=("$provenance_path")
-          done < <(find "$RUNNER_TEMP" -type f \( -name "*.sigstore.json" -o -name "*.predicate.json" \) -print 2>/dev/null | sort)
+          done < <(
+            find "$RUNNER_TEMP" -type f \
+              \( -name "*.sigstore.json" -o -name "*.predicate.json" \) \
+              ! -name "*-domain-core-attestation.sigstore.json" \
+              ! -name "apple-*.predicate.json" \
+              ! -name "android-*.predicate.json" \
+              -print 2>/dev/null | sort
+          )
 
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           VERSION_TAG="${VERSION#v}"
@@ -2196,8 +2475,9 @@ jobs:
             cp CHANGELOG.md "$NOTES_FILE"
           fi
 
-          ASSETS=("$DMG_PATH" "$ZIP_PATH")
-          for asset in "${ASSETS[@]}"; do
+          CANONICAL_NATIVE_ASSETS=("$DMG_PATH" "$AAB_PATH")
+          ASSETS=("$ZIP_PATH")
+          for asset in "${CANONICAL_NATIVE_ASSETS[@]}" "${ASSETS[@]}"; do
             if [[ ! -f "$asset" ]]; then
               echo "::error::Release asset missing after artifact download: $asset"
               exit 1
@@ -2226,6 +2506,7 @@ jobs:
           # atomically repoints the fleet's update feed onto a beta, which is the
           # exact failure this guard exists to prevent (H15).
           if [[ "$IS_PRERELEASE" == "true" ]]; then
+            ASSETS=("${CANONICAL_NATIVE_ASSETS[@]}" "${ASSETS[@]}")
             PRERELEASE_FLAG="--prerelease"
             LATEST_FLAG="--latest=false"
             if [[ "$PROMOTE" == "true" ]]; then
@@ -2243,18 +2524,48 @@ jobs:
             fi
           fi
 
-          if gh release view "v${VERSION}" >/dev/null 2>&1; then
-            gh release upload "v${VERSION}" "${ASSETS[@]}" --clobber
-            gh release edit "v${VERSION}" --title "OpenBurnBar $VERSION" "$PRERELEASE_FLAG" "$LATEST_FLAG"
-          else
-            gh release create "v${VERSION}" \
-              "${ASSETS[@]}" \
+          RELEASE_TAG="v${VERSION}"
+          # Create a draft container so deletion-grade bundles and canonical
+          # native artifacts publish first. Generic release metadata and cosign
+          # bundles retain their established rerun behavior below; the native
+          # publisher never replaces the DMG, AAB, or custom bundles.
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --draft \
               --title "OpenBurnBar $VERSION" \
               --verify-tag \
               "$PRERELEASE_FLAG" \
-              "$LATEST_FLAG" \
               --notes-file "$NOTES_FILE"
           fi
+
+          if [[ "$IS_PRERELEASE" == "false" ]]; then
+            apple_mode="$(node scripts/ci/resolve-domain-core-native-publication-mode.mjs \
+              --manifest "$RUNNER_TEMP/apple-manifest.json" --consumer apple)"
+            android_mode="$(node scripts/ci/resolve-domain-core-native-publication-mode.mjs \
+              --manifest "$RUNNER_TEMP/android-manifest.json" --consumer android)"
+
+            if [[ "$apple_mode" == "shared-rust" ]]; then
+              bash scripts/ci/publish-domain-core-native-release-evidence.sh \
+                apple "$RELEASE_TAG" "${{ needs.release-preflight.outputs.release_commit }}" \
+                "$DMG_PATH" "$RUNNER_TEMP"
+            else
+              ASSETS+=("$DMG_PATH")
+            fi
+            if [[ "$android_mode" == "shared-rust" ]]; then
+              bash scripts/ci/publish-domain-core-native-release-evidence.sh \
+                android "$RELEASE_TAG" "${{ needs.release-preflight.outputs.release_commit }}" \
+                "$AAB_PATH" "$RUNNER_TEMP"
+            else
+              ASSETS+=("$AAB_PATH")
+            fi
+          fi
+
+          gh release upload "$RELEASE_TAG" "${ASSETS[@]}" --clobber
+          gh release edit "$RELEASE_TAG" \
+            --draft=false \
+            --title "OpenBurnBar $VERSION" \
+            "$PRERELEASE_FLAG" \
+            "$LATEST_FLAG"
 
       - name: Notify Sentry of new release
         if: env.SENTRY_AUTH_TOKEN != ''

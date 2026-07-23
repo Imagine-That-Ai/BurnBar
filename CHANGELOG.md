@@ -52,6 +52,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The proof binds the live profile, repository, release commit, tag, and
   artifact digest; redirects, stale identities, prerelease tags, and asset
   replacement fail closed.
+- **Shared immutable release-evidence publisher** — Functions, Console, Apple,
+  Android, and Windows now use one manifest-driven publisher that verifies
+  exact signer, tag, commit, OIDC issuer, predicate, artifact bytes, collision
+  behavior, and bundle-before-artifact ordering without creating, editing, or
+  overwriting a release.
+- **Signed Shared Rust Apple and Android release evidence** — stable releases
+  now publish the exact notarized arm64 DMG and signed four-ABI AAB with
+  domain-specific GitHub attestations for every Rust-authoritative public mode.
+  Custom bundles publish before immutable native artifacts; reruns verify the
+  existing bytes, exact tag, commit, signer workflow, and embedded profile.
+  All-legacy profiles retain the normal release path, while Android evidence
+  additionally pins the sole upload certificate and validates AAB structure
+  with a digest-pinned Bundletool release.
+- **Signed Shared Rust Windows release evidence** — fully signed stable Windows
+  releases now assemble one deterministic x64 and ARM64 release bundle, attest
+  the exact quota and CloudVault Rust profiles, and publish those bundles before
+  the immutable artifact through the shared publisher. The release remains a
+  draft until the publisher verifies the complete immutable evidence set, then
+  a separate fail-closed step exposes that exact stable release.
 - **Launch-readiness hardening** — added durable account-erasure barriers,
   resumable oldest-first reconciliation with poison-record quarantine, and
   privacy-safe retained audit receipts across Functions, Firestore, and Storage.

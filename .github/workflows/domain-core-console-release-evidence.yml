@@ -148,112 +148,31 @@ jobs:
           BUNDLE_ASSET: ${{ steps.evidence.outputs.bundle_asset }}
         run: |
           set -euo pipefail
-          artifact_name="${ARTIFACT_PATH##*/}"
-          staged_bundle="$RUNNER_TEMP/$BUNDLE_ASSET"
-          cp "$ATTESTATION_BUNDLE" "$staged_bundle"
-          verify_bundle() {
-            gh attestation verify "$ARTIFACT_PATH" \
-              --bundle "$1" \
-              --repo "$GITHUB_REPOSITORY" \
-              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/domain-core-console-release-evidence.yml" \
-              --source-digest "$GITHUB_SHA" \
-              --source-ref "refs/tags/$RELEASE_TAG" \
-              --signer-digest "$GITHUB_SHA" \
-              --cert-oidc-issuer https://token.actions.githubusercontent.com \
-              --deny-self-hosted-runners \
-              --predicate-type https://openburnbar.dev/attestations/domain-core-release-artifact/v1 \
-              --format json > "$RUNNER_TEMP/verified-domain-core-attestation.json"
-            python3 - "$RUNNER_TEMP/verified-domain-core-attestation.json" "$PREDICATE_PATH" <<'PY'
-          import json
-          import sys
-
-          with open(sys.argv[1], encoding="utf-8") as handle:
-              verified = json.load(handle)
-          with open(sys.argv[2], encoding="utf-8") as handle:
-              expected = json.load(handle)
-          predicates = []
-          for result in verified if isinstance(verified, list) else []:
-              verification = result.get("verificationResult") if isinstance(result, dict) else None
-              statement = verification.get("statement") if isinstance(verification, dict) else None
-              predicate = statement.get("predicate") if isinstance(statement, dict) else None
-              if isinstance(predicate, dict):
-                  predicates.append(predicate)
-          if expected not in predicates:
-              raise SystemExit("verified attestation does not contain the exact release predicate")
-          PY
-          }
-          verify_bundle "$staged_bundle"
-
-          release_ready=false
-          for attempt in $(seq 1 120); do
-            if release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" 2>/dev/null)"; then
-              release_state="$(node -e '
-                const release=JSON.parse(process.argv[1]);
-                const tag=process.argv[2];
-                if (release.tag_name !== tag || release.prerelease) process.stdout.write("invalid");
-                else process.stdout.write(release.draft ? "draft" : "ready");
-              ' "$release_json" "$RELEASE_TAG")"
-              if [[ "$release_state" == "invalid" ]]; then
-                echo "::error::Release $RELEASE_TAG is prerelease or has the wrong tag identity."
-                exit 1
-              fi
-              if [[ "$release_state" == "ready" ]]; then
-                release_ready=true
-                break
-              fi
-            fi
-            echo "Waiting for release.yml to publish $RELEASE_TAG ($attempt/120)..."
-            sleep 30
-          done
-          if [[ "$release_ready" != "true" ]]; then
-            echo "::error::GitHub release $RELEASE_TAG was not published within 60 minutes."
-            exit 1
-          fi
-
-          mapfile -t assets < <(
-            gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'
-          )
-          has_asset() {
-            local expected="$1"
-            printf '%s\n' "${assets[@]}" | grep -Fxq "$expected"
-          }
-
-          existing="$RUNNER_TEMP/existing-domain-core-evidence"
-          mkdir -p "$existing"
-          if has_asset "$artifact_name"; then
-            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-              --pattern "$artifact_name" --dir "$existing"
-            if ! cmp -s "$ARTIFACT_PATH" "$existing/$artifact_name"; then
-              echo "::error::Refusing to replace non-identical immutable release asset $artifact_name."
-              exit 1
-            fi
-          fi
-          if has_asset "$BUNDLE_ASSET"; then
-            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-              --pattern "$BUNDLE_ASSET" --dir "$existing"
-            verify_bundle "$existing/$BUNDLE_ASSET"
-          elif ! gh release upload "$RELEASE_TAG" "$staged_bundle" --repo "$GITHUB_REPOSITORY"; then
-            rm -f "$existing/$BUNDLE_ASSET"
-            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-              --pattern "$BUNDLE_ASSET" --dir "$existing"
-            verify_bundle "$existing/$BUNDLE_ASSET"
-          fi
-          if ! has_asset "$artifact_name" && ! gh release upload "$RELEASE_TAG" "$ARTIFACT_PATH" --repo "$GITHUB_REPOSITORY"; then
-            rm -f "$existing/$artifact_name"
-            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-              --pattern "$artifact_name" --dir "$existing"
-            if ! cmp -s "$ARTIFACT_PATH" "$existing/$artifact_name"; then
-              echo "::error::Concurrent immutable release asset differs from local evidence."
-              exit 1
-            fi
-          fi
-
-          published="$RUNNER_TEMP/published-domain-core-evidence"
-          mkdir -p "$published"
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern "$artifact_name" --pattern "$BUNDLE_ASSET" --dir "$published"
-          if ! cmp -s "$ARTIFACT_PATH" "$published/$artifact_name"; then
-            echo "::error::Published Console evidence bytes differ from the signed local artifact."
-            exit 1
-          fi
-          verify_bundle "$published/$BUNDLE_ASSET"
+          manifest="$RUNNER_TEMP/domain-core-console-publication.json"
+          node - \
+            "$manifest" \
+            "$GITHUB_REPOSITORY" \
+            "$RELEASE_TAG" \
+            "$GITHUB_SHA" \
+            "$ARTIFACT_PATH" \
+            "$ATTESTATION_BUNDLE" \
+            "$BUNDLE_ASSET" \
+            "$PREDICATE_PATH" <<'NODE'
+          const fs = require("fs");
+          const [path, repository, tag, commit, artifactPath, bundlePath, assetName, predicatePath] =
+            process.argv.slice(2);
+          const manifest = {
+            schemaVersion: 1,
+            repository,
+            tag,
+            commit,
+            consumer: "console",
+            signerWorkflow: ".github/workflows/domain-core-console-release-evidence.yml",
+            releaseAvailability: "published",
+            artifactPath,
+            bundles: [{ domain: "cloudVault", assetName, bundlePath, predicatePath }],
+          };
+          fs.writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+          NODE
+          node scripts/ci/publish-domain-core-release-evidence.mjs \
+            --manifest "$manifest"

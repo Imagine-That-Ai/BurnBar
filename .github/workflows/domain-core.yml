@@ -106,6 +106,7 @@ on:
       - "scripts/ops/manage-domain-core-shadow-enrollment.mjs"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
       - "config/domain-core-android-ndk-version.txt"
+      - "config/android-upload-certificate.sha256"
       - "config/domain-core-promotion-policy.json"
       - "config/domain-core-build-profiles.json"
       - "config/domain-core-legacy-deletion.json"
@@ -137,6 +138,20 @@ on:
       - "scripts/ops/create-domain-core-deletion-plan.py"
       - "scripts/ci/create-domain-core-release-evidence.mjs"
       - "scripts/ci/create-domain-core-release-evidence.test.mjs"
+      - "scripts/ci/publish-domain-core-release-evidence.mjs"
+      - "scripts/ci/publish-domain-core-release-evidence.test.mjs"
+      - "scripts/ci/create-domain-core-native-release-evidence.mjs"
+      - "scripts/ci/create-domain-core-native-release-evidence.test.mjs"
+      - "scripts/ci/resolve-domain-core-native-publication-mode.mjs"
+      - "scripts/ci/resolve-domain-core-native-publication-mode.test.mjs"
+      - "scripts/ci/verify-domain-core-native-release-artifact.sh"
+      - "scripts/ci/verify-domain-core-native-release-artifact.test.sh"
+      - "scripts/ci/publish-domain-core-native-release-evidence.sh"
+      - "scripts/ci/publish-domain-core-native-release-evidence.test.sh"
+      - "scripts/ci/create-windows-domain-core-release-bundle.py"
+      - "scripts/ci/create-windows-domain-core-release-evidence.test.mjs"
+      - "scripts/ci/ensure-windows-domain-core-release.mjs"
+      - "scripts/ci/ensure-windows-domain-core-release.test.mjs"
       - "scripts/ci/create-domain-core-deployment-identity.mjs"
       - "scripts/ci/create-domain-core-deployment-identity.test.mjs"
       - "scripts/ci/hosting-smoke.sh"
@@ -147,6 +162,9 @@ on:
       - "tests/test_domain_core_legacy_deletion_workflow.py"
       - "tests/test_domain_core_release_evidence_workflow.py"
       - "tests/test_domain_core_console_release_evidence_workflow.py"
+      - "tests/test_domain_core_native_release_evidence_workflow.py"
+      - "tests/test_windows_domain_core_release_bundle.py"
+      - "tests/test_domain_core_windows_release_evidence_workflow.py"
       - ".github/workflows/domain-core.yml"
   pull_request:
     paths:
@@ -249,6 +267,7 @@ on:
       - "scripts/ops/manage-domain-core-shadow-enrollment.mjs"
       - "scripts/windows-port/check-csharp-binding-drift.sh"
       - "config/domain-core-android-ndk-version.txt"
+      - "config/android-upload-certificate.sha256"
       - "config/domain-core-promotion-policy.json"
       - "config/domain-core-build-profiles.json"
       - "config/domain-core-legacy-deletion.json"
@@ -280,6 +299,20 @@ on:
       - "scripts/ops/create-domain-core-deletion-plan.py"
       - "scripts/ci/create-domain-core-release-evidence.mjs"
       - "scripts/ci/create-domain-core-release-evidence.test.mjs"
+      - "scripts/ci/publish-domain-core-release-evidence.mjs"
+      - "scripts/ci/publish-domain-core-release-evidence.test.mjs"
+      - "scripts/ci/create-domain-core-native-release-evidence.mjs"
+      - "scripts/ci/create-domain-core-native-release-evidence.test.mjs"
+      - "scripts/ci/resolve-domain-core-native-publication-mode.mjs"
+      - "scripts/ci/resolve-domain-core-native-publication-mode.test.mjs"
+      - "scripts/ci/verify-domain-core-native-release-artifact.sh"
+      - "scripts/ci/verify-domain-core-native-release-artifact.test.sh"
+      - "scripts/ci/publish-domain-core-native-release-evidence.sh"
+      - "scripts/ci/publish-domain-core-native-release-evidence.test.sh"
+      - "scripts/ci/create-windows-domain-core-release-bundle.py"
+      - "scripts/ci/create-windows-domain-core-release-evidence.test.mjs"
+      - "scripts/ci/ensure-windows-domain-core-release.mjs"
+      - "scripts/ci/ensure-windows-domain-core-release.test.mjs"
       - "scripts/ci/create-domain-core-deployment-identity.mjs"
       - "scripts/ci/create-domain-core-deployment-identity.test.mjs"
       - "scripts/ci/hosting-smoke.sh"
@@ -290,6 +323,9 @@ on:
       - "tests/test_domain_core_legacy_deletion_workflow.py"
       - "tests/test_domain_core_release_evidence_workflow.py"
       - "tests/test_domain_core_console_release_evidence_workflow.py"
+      - "tests/test_domain_core_native_release_evidence_workflow.py"
+      - "tests/test_windows_domain_core_release_bundle.py"
+      - "tests/test_domain_core_windows_release_evidence_workflow.py"
       - ".github/workflows/domain-core.yml"
   workflow_dispatch:
 
@@ -356,14 +392,24 @@ jobs:
           scripts/ci/resolve-domain-core-build-profile.test.mjs
           scripts/lib/domain-core-shadow-enrollment.test.mjs
           scripts/ci/create-domain-core-release-evidence.test.mjs
+          scripts/ci/publish-domain-core-release-evidence.test.mjs
+          scripts/ci/create-domain-core-native-release-evidence.test.mjs
+          scripts/ci/resolve-domain-core-native-publication-mode.test.mjs
+          scripts/ci/create-windows-domain-core-release-evidence.test.mjs
+          scripts/ci/ensure-windows-domain-core-release.test.mjs
           scripts/ci/create-domain-core-deployment-identity.test.mjs
 
       - name: Test release evidence workflow contracts
         run: |
           python3 tests/test_domain_core_release_evidence_workflow.py
           python3 tests/test_domain_core_console_release_evidence_workflow.py
+          python3 tests/test_domain_core_native_release_evidence_workflow.py
+          python3 tests/test_windows_domain_core_release_bundle.py
+          python3 tests/test_domain_core_windows_release_evidence_workflow.py
           bash scripts/ci/post-deploy-health-gate.test.sh
           bash scripts/ci/hosting-smoke-domain-core.test.sh
+          bash scripts/ci/verify-domain-core-native-release-artifact.test.sh
+          bash scripts/ci/publish-domain-core-native-release-evidence.test.sh
 
       - name: Verify shadow evidence retention declaration
         run: bash scripts/ci/check-firestore-ttl-declared.sh
@@ -677,6 +723,7 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
+          disk-size: 4G
           disable-animations: true
           emulator-options: >-
             -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
