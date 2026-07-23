@@ -139,9 +139,11 @@ final class ChartsSnapshotBuilderTests: XCTestCase {
     }
 
     func test_build_todayRange_usesHourlyBuckets() {
-        let now = Date()
         let calendar = Calendar.current
-        // Start of day is always in the past no matter when the test runs.
+        // Keep the fixture past the first hour so the range contains at least
+        // two hourly buckets on every runner, including UTC just after midnight.
+        let anchor = Date(timeIntervalSince1970: 1_735_689_600) // 2025-01-01 00:00 UTC
+        let now = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: anchor) ?? anchor
         let morning = calendar.startOfDay(for: now)
         let row = TokenUsage(
             provider: .claudeCode, sessionId: "s", projectName: "p",
