@@ -5,6 +5,10 @@ import Foundation
 /// the 32-byte vault key from an approved Linux SecretStore backend.
 public typealias LinuxCloudSyncIdentityProvider = @Sendable () async throws -> String
 public typealias LinuxCloudSyncVaultKeyProvider = @Sendable () async throws -> Data
+/// Reads the daemon-owned global cloud-consent switch. This is deliberately
+/// separate from the per-domain replica policy so a global opt-out can stop
+/// an already-running background loop before it resolves identity or secrets.
+public typealias LinuxCloudSyncConsentProvider = @Sendable () async -> Bool
 
 public struct BurnBarLinuxCloudSyncPolicyUpdateRequest: Codable, Hashable, Sendable {
     public let enabledDomains: [String]
@@ -81,6 +85,7 @@ public actor LinuxCloudSyncRuntime {
     private let engine: LinuxCloudReplicaEngine
     private let identityProvider: LinuxCloudSyncIdentityProvider
     private let vaultKeyProvider: LinuxCloudSyncVaultKeyProvider
+    private let globalConsentProvider: LinuxCloudSyncConsentProvider
     private let backgroundIntervalMillis: Int64
     private var backgroundTask: Task<Void, Never>?
 
@@ -88,12 +93,14 @@ public actor LinuxCloudSyncRuntime {
         engine: LinuxCloudReplicaEngine,
         identityProvider: @escaping LinuxCloudSyncIdentityProvider,
         vaultKeyProvider: @escaping LinuxCloudSyncVaultKeyProvider,
+        globalConsentProvider: @escaping LinuxCloudSyncConsentProvider = { true },
         backgroundIntervalMillis: Int64 = 5 * 60 * 1_000
     ) {
         precondition(backgroundIntervalMillis > 0)
         self.engine = engine
         self.identityProvider = identityProvider
         self.vaultKeyProvider = vaultKeyProvider
+        self.globalConsentProvider = globalConsentProvider
         self.backgroundIntervalMillis = backgroundIntervalMillis
         self.backgroundTask = nil
     }
@@ -131,12 +138,18 @@ public actor LinuxCloudSyncRuntime {
     }
 
     public func status() async throws -> BurnBarLinuxCloudSyncStatusResponse {
+        guard await globalConsentProvider() else {
+            return disabledResponse()
+        }
         let uid = try await identityProvider()
         return try await response(from: engine.status(uid: uid))
     }
 
     public func updatePolicy(_ request: BurnBarLinuxCloudSyncPolicyUpdateRequest) async throws
         -> BurnBarLinuxCloudSyncStatusResponse {
+        guard await globalConsentProvider() else {
+            return disabledResponse()
+        }
         let uid = try await identityProvider()
         let domains = try Set(request.enabledDomains.map { raw -> LinuxCloudReplicaEngine.Domain in
             guard let domain = LinuxCloudReplicaEngine.Domain(rawValue: raw),
@@ -153,6 +166,14 @@ public actor LinuxCloudSyncRuntime {
     }
 
     public func run(force: Bool) async throws -> BurnBarLinuxCloudSyncRunResponse {
+        guard await globalConsentProvider() else {
+            return BurnBarLinuxCloudSyncRunResponse(
+                pushedCount: 0,
+                appliedRemoteCount: 0,
+                retainedLocalConflictCount: 0,
+                status: disabledResponse()
+            )
+        }
         let uid = try await identityProvider()
         let vaultKey = try await vaultKeyProvider()
         let result = try await engine.syncOnce(uid: uid, vaultKey: vaultKey, force: force)
@@ -184,6 +205,19 @@ public actor LinuxCloudSyncRuntime {
             enabledDomains: status.enabledDomains.map(\.rawValue).sorted(),
             remoteAccessEnabled: status.remoteAccessEnabled,
             vaultKeyAvailable: vaultKeyAvailable
+        )
+    }
+
+    private func disabledResponse() -> BurnBarLinuxCloudSyncStatusResponse {
+        BurnBarLinuxCloudSyncStatusResponse(
+            phase: LinuxCloudReplicaEngine.Phase.disabled.rawValue,
+            pendingMutationCount: 0,
+            consecutiveFailures: 0,
+            retryAtMillis: nil,
+            lastSuccessfulSyncAtMillis: nil,
+            enabledDomains: [],
+            remoteAccessEnabled: false,
+            vaultKeyAvailable: false
         )
     }
 }

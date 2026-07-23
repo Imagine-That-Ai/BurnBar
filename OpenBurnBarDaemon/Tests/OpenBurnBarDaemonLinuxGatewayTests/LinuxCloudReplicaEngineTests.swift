@@ -293,6 +293,31 @@ final class LinuxCloudReplicaEngineTests: XCTestCase {
         XCTAssertEqual(status.enabledDomains, ["usage"])
     }
 
+    func testGlobalCloudConsentStopsStatusAndRunBeforeIdentityOrVaultAccess() async throws {
+        let engine = try LinuxCloudReplicaEngine(
+            database: try DatabaseQueue(),
+            gateway: ReplicaGateway(),
+            deviceID: "linux-a"
+        )
+        let runtime = LinuxCloudSyncRuntime(
+            engine: engine,
+            identityProvider: { throw UnexpectedCloudProviderUse() },
+            vaultKeyProvider: { throw UnexpectedCloudProviderUse() },
+            globalConsentProvider: { false }
+        )
+
+        let status = try await runtime.status()
+        XCTAssertEqual(status.phase, "disabled")
+        XCTAssertFalse(status.vaultKeyAvailable)
+        XCTAssertEqual(status.pendingMutationCount, 0)
+
+        let result = try await runtime.run(force: true)
+        XCTAssertEqual(result.pushedCount, 0)
+        XCTAssertEqual(result.appliedRemoteCount, 0)
+        XCTAssertEqual(result.retainedLocalConflictCount, 0)
+        XCTAssertEqual(result.status.phase, "disabled")
+    }
+
     func testEngineRejectsUnknownDirectAndPersistedPolicyDomains() async throws {
         let database = try DatabaseQueue()
         let engine = try LinuxCloudReplicaEngine(
@@ -505,6 +530,7 @@ final class LinuxCloudReplicaEngineTests: XCTestCase {
 }
 
 private struct LockedVaultKeyError: Error {}
+private struct UnexpectedCloudProviderUse: Error {}
 
 private actor ReplicaGateway: LinuxCloudReplicaEngine.Gateway {
     enum Failure: Error { case unavailable }

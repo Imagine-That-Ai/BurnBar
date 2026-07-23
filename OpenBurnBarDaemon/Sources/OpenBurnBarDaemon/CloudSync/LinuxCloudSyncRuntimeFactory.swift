@@ -18,6 +18,7 @@ public enum LinuxCloudSyncRuntimeFactory {
         gateway: any LinuxCloudReplicaEngine.Gateway,
         identityProvider: @escaping LinuxCloudSyncIdentityProvider,
         vaultKeyProvider: @escaping LinuxCloudSyncVaultKeyProvider,
+        globalConsentProvider: @escaping LinuxCloudSyncConsentProvider = { true },
         backgroundIntervalMillis: Int64 = LinuxCloudSyncRuntime.defaultBackgroundIntervalMillis
     ) throws -> LinuxCloudSyncRuntime {
         let path = databasePath.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -42,6 +43,7 @@ public enum LinuxCloudSyncRuntimeFactory {
             engine: engine,
             identityProvider: identityProvider,
             vaultKeyProvider: vaultKeyProvider,
+            globalConsentProvider: globalConsentProvider,
             backgroundIntervalMillis: backgroundIntervalMillis
         )
     }
@@ -95,6 +97,12 @@ public enum LinuxCloudSyncRuntimeFactory {
                 )
             }
             let gateway = FirebaseLinuxCloudReplicaGateway(credentials: credentials)
+            let configStore = BurnBarConfigStore()
+            let globalConsentProvider: LinuxCloudSyncConsentProvider = {
+                // A malformed or unreadable config must not silently preserve
+                // the prior cloud policy; fail closed until the user repairs it.
+                (try? await configStore.snapshot().cloudSyncEnabled) ?? false
+            }
             let vaultKeyProvider: LinuxCloudSyncVaultKeyProvider = {
                 let custodian = LinuxSecretStoreFactory.production(environment: environment)
                 let record = try custodian.requireHighValueSecret(
@@ -111,7 +119,8 @@ public enum LinuxCloudSyncRuntimeFactory {
                 deviceID: deviceID,
                 gateway: gateway,
                 identityProvider: identityProvider,
-                vaultKeyProvider: vaultKeyProvider
+                vaultKeyProvider: vaultKeyProvider,
+                globalConsentProvider: globalConsentProvider
             )
         } catch {
             logger.warning(
