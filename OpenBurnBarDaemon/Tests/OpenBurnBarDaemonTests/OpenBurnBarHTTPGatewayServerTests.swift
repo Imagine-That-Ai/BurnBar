@@ -1892,7 +1892,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
         let upstreamRequest = try XCTUnwrap(GatewayUpstreamURLProtocol.recordedRequests().first)
         XCTAssertTrue(upstreamRequest.body.contains(#""type":"document""#), upstreamRequest.body)
-        XCTAssertTrue(upstreamRequest.body.contains(#""media_type":"application/pdf""#), upstreamRequest.body)
+        XCTAssertTrue(upstreamRequest.body.contains(#""media_type":"application\/pdf""#), upstreamRequest.body)
         XCTAssertTrue(upstreamRequest.body.contains(#""data":"JVBERi0xLjc=""#), upstreamRequest.body)
     }
 
