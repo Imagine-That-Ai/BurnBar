@@ -102,32 +102,48 @@ function disjoint(values) {
     }
   }
 }
+// Opens `absolute` without ever resolving a symlink and without inspecting the
+// path first: `O_NOFOLLOW` turns a symlinked entry into `ELOOP` and
+// `O_NONBLOCK` keeps a hostile FIFO from stalling the open, so every assertion
+// below can be made against the descriptor we actually hold.
+function openEntry(absolute, child) {
+  try {
+    return fs.openSync(
+      absolute,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+      0o600,
+    );
+  } catch (error) {
+    assert(error.code !== "ELOOP", `P-16 state contains symlink ${child}`);
+    throw error;
+  }
+}
 function tree(root) {
   const rows = [];
   const visit = (directory, relative = "") => {
     for (const name of fs.readdirSync(directory).sort()) {
       const absolute = path.join(directory, name);
       const child = relative ? path.join(relative, name) : name;
-      const stat = fs.lstatSync(absolute);
-      assert(!stat.isSymbolicLink(), `P-16 state contains symlink ${child}`);
-      if (stat.isDirectory()) {
-        rows.push({ path: child, type: "directory", mode: stat.mode & 0o777 });
-        visit(absolute, child);
-      } else {
-        assert(stat.isFile(), `P-16 state contains special file ${child}`);
-        const fd = fs.openSync(absolute, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
-        try {
-          const fileStat = fs.fstatSync(fd);
+      const fd = openEntry(absolute, child);
+      let descend = false;
+      try {
+        const stat = fs.fstatSync(fd);
+        if (stat.isDirectory()) {
+          descend = true;
+          rows.push({ path: child, type: "directory", mode: stat.mode & 0o777 });
+        } else {
+          assert(stat.isFile(), `P-16 state contains special file ${child}`);
           rows.push({
             path: child,
             type: "file",
-            mode: fileStat.mode & 0o777,
+            mode: stat.mode & 0o777,
             sha256: sha(fs.readFileSync(fd)),
           });
-        } finally {
-          fs.closeSync(fd);
         }
+      } finally {
+        fs.closeSync(fd);
       }
+      if (descend) visit(absolute, child);
     }
   };
   visit(root);
@@ -235,7 +251,11 @@ function normalizeStatus(value, proofState) {
 }
 function receipt(source, destination) {
   const requested = path.resolve(source);
-  const fd = fs.openSync(requested, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  const fd = fs.openSync(
+    requested,
+    fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
+    0o600,
+  );
   let raw;
   try {
     const stat = fs.fstatSync(fd);

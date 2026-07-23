@@ -93,7 +93,7 @@ function ownerOnlyDirectory(directory, label, { empty = false } = {}) {
   return fs.realpathSync(directory);
 }
 function readToken(file) {
-  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW, 0o600);
   try {
     const stat = fs.fstatSync(fd);
     assert(
@@ -462,7 +462,7 @@ function writeAutostart(file, template, enabled) {
 function fileBackup(file) {
   let fd;
   try {
-    fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW, 0o600);
   } catch (error) {
     if (error.code === "ENOENT") return null;
     throw error;

@@ -47,21 +47,30 @@ function privateDirectory(candidate, label, empty = false) {
   if (empty) assert(fs.readdirSync(absolute).length === 0, `${label} must be empty`);
   return absolute;
 }
+// Open first, assert on the descriptor: `O_NOFOLLOW` reports a symlinked entry
+// as `ELOOP` and `O_NONBLOCK` stops a hostile FIFO from stalling the open, so
+// no path is inspected between the check and the read.
+function openEntry(absolute, child) {
+  try { return fs.openSync(absolute, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK, 0o600); }
+  catch (error) { assert(error.code !== "ELOOP", `P-33 state contains symlink ${child}`); throw error; }
+}
 function stateTree(root) {
   const rows = [];
   const visit = (directory, relative = "") => {
     for (const name of fs.readdirSync(directory).sort()) {
       const absolute = path.join(directory, name);
       const child = relative ? path.join(relative, name) : name;
-      const stat = fs.lstatSync(absolute);
-      assert(!stat.isSymbolicLink(), `P-33 state contains symlink ${child}`);
-      if (stat.isDirectory()) { rows.push({ path: child, type: "directory", mode: stat.mode & 0o777 }); visit(absolute, child); }
-      else {
-        assert(stat.isFile(), `P-33 state contains special file ${child}`);
-        const fd = fs.openSync(absolute, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
-        try { rows.push({ path: child, type: "file", mode: fs.fstatSync(fd).mode & 0o777, sha256: crypto.createHash("sha256").update(fs.readFileSync(fd)).digest("hex") }); }
-        finally { fs.closeSync(fd); }
-      }
+      const fd = openEntry(absolute, child);
+      let descend = false;
+      try {
+        const stat = fs.fstatSync(fd);
+        if (stat.isDirectory()) { descend = true; rows.push({ path: child, type: "directory", mode: stat.mode & 0o777 }); }
+        else {
+          assert(stat.isFile(), `P-33 state contains special file ${child}`);
+          rows.push({ path: child, type: "file", mode: stat.mode & 0o777, sha256: crypto.createHash("sha256").update(fs.readFileSync(fd)).digest("hex") });
+        }
+      } finally { fs.closeSync(fd); }
+      if (descend) visit(absolute, child);
     }
   };
   visit(root);

@@ -134,7 +134,7 @@ function screenshot(output, file, state) {
 }
 function accessibility(output, file, state) {
   const absolute = fs.realpathSync(file);
-  const fd = fs.openSync(absolute, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  const fd = fs.openSync(absolute, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW, 0o600);
   let raw;
   try {
     const stat = fs.fstatSync(fd);
@@ -588,7 +588,7 @@ function processIDs(pattern) {
 }
 
 function readToken(file) {
-  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW, 0o600);
   try {
     const stat = fs.fstatSync(fd);
     assert(
@@ -619,32 +619,48 @@ function isolatedEnvironment(options, keyNamespace, extra = {}) {
   };
 }
 
+// Opens `absolute` without ever resolving a symlink and without inspecting the
+// path first: `O_NOFOLLOW` turns a symlinked entry into `ELOOP` and
+// `O_NONBLOCK` keeps a hostile FIFO from stalling the open, so every assertion
+// below is made against the descriptor we actually hold.
+function openEntry(absolute, child) {
+  try {
+    return fs.openSync(
+      absolute,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+      0o600,
+    );
+  } catch (error) {
+    assert(error.code !== "ELOOP", `P-29 isolated state contains a symlink: ${child}`);
+    throw error;
+  }
+}
 function treeSnapshot(root) {
   const entries = [];
   const visit = (directory, relative = "") => {
     for (const name of fs.readdirSync(directory).sort()) {
       const absolute = path.join(directory, name);
       const child = relative ? path.join(relative, name) : name;
-      const stat = fs.lstatSync(absolute);
-      assert(!stat.isSymbolicLink(), `P-29 isolated state contains a symlink: ${child}`);
-      if (stat.isDirectory()) {
-        entries.push({ path: child, type: "directory", mode: stat.mode & 0o777 });
-        visit(absolute, child);
-      } else {
-        assert(stat.isFile(), `P-29 isolated state contains a special file: ${child}`);
-        const fd = fs.openSync(absolute, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
-        try {
-          const fileStat = fs.fstatSync(fd);
+      const fd = openEntry(absolute, child);
+      let descend = false;
+      try {
+        const stat = fs.fstatSync(fd);
+        if (stat.isDirectory()) {
+          descend = true;
+          entries.push({ path: child, type: "directory", mode: stat.mode & 0o777 });
+        } else {
+          assert(stat.isFile(), `P-29 isolated state contains a special file: ${child}`);
           entries.push({
             path: child,
             type: "file",
-            mode: fileStat.mode & 0o777,
+            mode: stat.mode & 0o777,
             bytes: fs.readFileSync(fd),
           });
-        } finally {
-          fs.closeSync(fd);
         }
+      } finally {
+        fs.closeSync(fd);
       }
+      if (descend) visit(absolute, child);
     }
   };
   visit(root);
@@ -796,7 +812,7 @@ function createStoreAdapter(options) {
   };
   return {
     async inspect(plaintext) {
-      const fd = fs.openSync(storePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+      const fd = fs.openSync(storePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW, 0o600);
       try {
         const stat = fs.fstatSync(fd);
         const bytes = fs.readFileSync(fd);
@@ -813,7 +829,7 @@ function createStoreAdapter(options) {
       }
     },
     async corrupt() {
-      const fd = fs.openSync(storePath, fs.constants.O_RDWR | fs.constants.O_NOFOLLOW);
+      const fd = fs.openSync(storePath, fs.constants.O_RDWR | fs.constants.O_NOFOLLOW, 0o600);
       try {
         const stat = fs.fstatSync(fd);
         repair = { exists: true, bytes: fs.readFileSync(fd), mode: stat.mode & 0o777 };
@@ -866,7 +882,7 @@ function createUIAdapter(options, env) {
     await sleep(500);
   };
   const fieldState = () => {
-    const fd = fs.openSync(fieldStatePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    const fd = fs.openSync(fieldStatePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW, 0o600);
     let raw;
     try {
       const stat = fs.fstatSync(fd);
