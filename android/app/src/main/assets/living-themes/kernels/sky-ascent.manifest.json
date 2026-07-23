@@ -1,0 +1,23 @@
+{
+  "id": "sky-ascent",
+  "label": "Sky Ascent",
+  "metalFileBase": "K_SkyAscent",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_sky_ascent_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "id": "hypersphere",
+  "label": "Hypersphere",
+  "metalFileBase": "K_Hypersphere",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_hypersphere_display"
+  },
+  "controls": [
+    "scroll"
+  ],
+  "params": [
+    {
+      "name": "uDragRotation",
+      "kind": "vec2",
+      "default": [
+        0,
+        0
+      ]
+    }
+  ],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}
