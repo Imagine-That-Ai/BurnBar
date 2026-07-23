@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { applyReducedMotionClass } from './a11y.js';
+import { applyReducedMotionClass, applyReducedTransparencyClass } from './a11y.js';
 import { App } from './app/App.js';
 import {
   cacheOnboarding,
@@ -19,6 +19,7 @@ import { isPetCompanionWindow } from './petCompanionWindow.js';
 async function boot(): Promise<void> {
   const end = markStart('app.start');
   const removeReducedMotionListener = applyReducedMotionClass();
+  const removeReducedTransparencyListener = applyReducedTransparencyClass();
   const chatPopout = new URLSearchParams(location.search).get('window') === 'chat-popout';
   const petCompanion = isPetCompanionWindow();
   const requestedHash = location.hash;
@@ -106,6 +107,7 @@ async function boot(): Promise<void> {
     : () => {};
   window.addEventListener('beforeunload', () => {
     removeReducedMotionListener();
+    removeReducedTransparencyListener();
     if (petCompanion) document.documentElement.classList.remove('pet-companion-window');
     uninstallSubscriptionLifecycle();
     uninstallHealthLifecycle();

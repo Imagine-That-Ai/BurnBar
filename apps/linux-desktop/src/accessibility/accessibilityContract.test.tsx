@@ -56,6 +56,15 @@ describe('Linux accessibility preference contracts', () => {
     expect(forcedColors).toMatch(/\[role=['"]alert['"]\]/);
   });
 
+  it('provides an opaque, blur-free Liquid Glass fallback for Reduce Transparency', () => {
+    expect(appCss).toContain('body.reduced-transparency *');
+    expect(appCss).toContain('backdrop-filter: none !important');
+    expect(appCss).toContain('-webkit-backdrop-filter: none !important');
+    expect(appCss).toContain('.glass-toolbar');
+    expect(appCss).toContain('.onboarding-wizard');
+    expect(appCss).toContain('--a11y-opaque-surface');
+  });
+
   it('retains keyboard controls and live status semantics under the shared shell contract', () => {
     const { container } = render(
       <>

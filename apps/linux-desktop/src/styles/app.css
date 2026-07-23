@@ -463,6 +463,76 @@ button.ghost:hover { border-color: var(--color-glass-line-bright); background: v
   }
 }
 
+/*
+ * Reduce Transparency is a separate preference from reduced motion. Keep the
+ * glass vocabulary and its live preference class in the shell stylesheet so
+ * every lazy-loaded route gets an opaque fallback, not just onboarding.
+ */
+body.reduced-transparency {
+  --a11y-opaque-surface: var(--macos-surface);
+  --a11y-opaque-surface-elevated: var(--macos-surface-elevated);
+  --glass-toolbar: var(--a11y-opaque-surface);
+  --glass-card: var(--a11y-opaque-surface-elevated);
+  --glass-panel: var(--a11y-opaque-surface);
+  --glass-pill: var(--a11y-opaque-surface-elevated);
+  --glass-input: var(--macos-bg);
+  --glass-tint-base: var(--a11y-opaque-surface);
+  --glass-tint-elevated: var(--a11y-opaque-surface-elevated);
+  --glass-tint-clear: var(--a11y-opaque-surface-elevated);
+  --glass-tint-interactive: var(--a11y-opaque-surface-elevated);
+  --glass-specular: none;
+  --glass-inner-light: none;
+  --glass-inner-glow: none;
+}
+
+body.reduced-transparency *,
+body.reduced-transparency *::before,
+body.reduced-transparency *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.reduced-transparency .glass-toolbar,
+body.reduced-transparency .glass-card,
+body.reduced-transparency .glass-panel,
+body.reduced-transparency .glass-surface,
+body.reduced-transparency .glass-list-row,
+body.reduced-transparency .glass-input,
+body.reduced-transparency .glass-pill,
+body.reduced-transparency .glass-segmented,
+body.reduced-transparency .glass-interactive,
+body.reduced-transparency [class*='glass'],
+body.reduced-transparency [class*='panel'],
+body.reduced-transparency [class*='card'],
+body.reduced-transparency [class*='toolbar'],
+body.reduced-transparency [class*='popover'],
+body.reduced-transparency [class*='modal'],
+body.reduced-transparency [class*='dialog'],
+body.reduced-transparency [class*='segmented'],
+body.reduced-transparency [class*='pill'],
+body.reduced-transparency [class*='input'],
+body.reduced-transparency .shell-nav,
+body.reduced-transparency .command-deck,
+body.reduced-transparency .settings-split,
+body.reduced-transparency .command-palette-backdrop,
+body.reduced-transparency .command-palette,
+body.reduced-transparency .onboarding-wizard {
+  background: var(--a11y-opaque-surface-elevated) !important;
+}
+
+body.reduced-transparency .shell-nav,
+body.reduced-transparency .command-deck,
+body.reduced-transparency .settings-split,
+body.reduced-transparency .command-palette-backdrop {
+  background: var(--a11y-opaque-surface) !important;
+}
+
+body.reduced-transparency .card::before,
+body.reduced-transparency .glass-card::before {
+  background: none !important;
+  box-shadow: none !important;
+}
+
 @media (prefers-contrast: more) {
   :root {
     --a11y-border-strong: var(--color-text-bright);

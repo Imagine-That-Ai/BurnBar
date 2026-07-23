@@ -16,6 +16,10 @@ surface respond consistently to system visual preferences across every route.
   system Canvas, Button, Field, and Highlight colors. Focus uses a system
   Highlight outline and selected tabs/current navigation retain a visible
   selected state.
+- `prefers-reduced-transparency: reduce` is tracked at runtime by the shell and
+  applies an opaque, blur-free Liquid Glass fallback across lazy-loaded routes.
+  The listener follows live desktop preference changes and supports the legacy
+  WebKitGTK listener API.
 - Status and alert regions keep their existing `role="status"` and
   `role="alert"` semantics. Keyboard controls remain native buttons/inputs and
   continue to receive `:focus-visible` styling.
@@ -35,8 +39,8 @@ WebView/desktop session and are verified at the installed-app boundary.
 
 ## Acceptance criteria
 
-1. The global stylesheet contains reduced-motion, increased-contrast, and
-   forced-colors media contracts.
+1. The global stylesheet contains reduced-motion, reduced-transparency,
+   increased-contrast, and forced-colors contracts.
 2. Forced-colors mode has no required dependency on blur, gradients, or custom
    palette values for control, focus, selected-state, status, or alert legibility.
 3. High-contrast mode increases focus/control/status affordance visibility
@@ -63,6 +67,7 @@ desktop preference enabled and verify:
 - daemon-offline and capability-unavailable messages remain announced as status
   or alert regions;
 - reduced motion stops mesh, skeleton, shimmer, and route transitions;
+- reduced transparency removes backdrop blur and makes glass surfaces opaque;
 - forced colors removes dependency on the liquid-glass backdrop while preserving
   selected/current and warning/error distinctions through text and borders.
 

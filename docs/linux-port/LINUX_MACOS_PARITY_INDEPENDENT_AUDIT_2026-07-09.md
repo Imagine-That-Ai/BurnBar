@@ -102,6 +102,21 @@ This closes the release-gate implementation gap but cannot certify the current
 public site until a signed, current Linux release and feed are actually published;
 the strict ledger remains **0/40 product** and **0/7 environment**.
 
+### Reduce Transparency shell parity — 2026-07-22
+
+The Linux shell now listens to the desktop `(prefers-reduced-transparency:
+reduce)` preference for the full window lifetime. `a11y.ts` applies and removes
+the `body.reduced-transparency` class on live preference changes, including the
+legacy MediaQueryList listener used by older WebKitGTK versions. The shared
+shell CSS disables backdrop filters and maps Liquid Glass surfaces to opaque
+skin-aware tokens across lazy-loaded routes; onboarding is covered by the same
+fallback rather than relying only on its prior media query. Focused lifecycle
+and stylesheet contract tests cover the modern and legacy listener paths.
+
+This closes the source-level Reduce Transparency gap in the visual-preference
+slice. Installed compositor/WebKit preference receipts are still required and
+the strict ledger remains **0/40 product** and **0/7 environment**.
+
 ## Integration closeout — 2026-07-21
 
 ### Live UTM session re-open — 2026-07-21 (Grok)
