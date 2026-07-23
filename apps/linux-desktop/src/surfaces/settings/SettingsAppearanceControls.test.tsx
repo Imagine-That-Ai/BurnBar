@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../../state/shellStore.js';
 import { SettingsAppearanceControls } from './SettingsAppearanceControls.js';
 
@@ -10,7 +10,7 @@ describe('SettingsAppearanceControls accessibility', () => {
     delete document.documentElement.dataset.glassTransparency;
     delete document.documentElement.dataset.wallpaper;
     localStorage.removeItem('openburnbar.linux.swarm.v1');
-    useShellStore.setState({ skin: 'editorial' });
+    useShellStore.setState({ skin: 'editorial', bridge: null, fixtureMode: false });
   });
 
   afterEach(() => {
@@ -95,6 +95,31 @@ describe('SettingsAppearanceControls accessibility', () => {
     expect((select as HTMLSelectElement).value).toBe('auroraTeal');
     expect(localStorage.getItem('openburnbar.linux.wallpaper.v1')).toBe('auroraTeal');
     expect(document.documentElement.dataset.wallpaper).toBe('auroraTeal');
+  });
+
+  it('applies the selected palette through the native desktop wallpaper bridge', async () => {
+    const desktopWallpaperApply = vi.fn().mockResolvedValue({
+      available: true,
+      backend: 'gnome',
+      state: 'applied',
+      theme: 'auroraTeal'
+    });
+    const desktopWallpaperStatus = vi.fn().mockResolvedValue({
+      available: true,
+      backend: 'gnome',
+      state: 'ready'
+    });
+    useShellStore.setState({
+      bridge: { desktopWallpaperApply, desktopWallpaperStatus } as never,
+      fixtureMode: false
+    });
+
+    render(<SettingsAppearanceControls />);
+    const select = screen.getByRole('combobox', { name: 'Desktop wallpaper palette' });
+    fireEvent.change(select, { target: { value: 'auroraTeal' } });
+
+    await waitFor(() => expect(desktopWallpaperApply).toHaveBeenCalledWith('auroraTeal'));
+    await waitFor(() => expect(screen.getByText('Native wallpaper applied via gnome.')).toBeTruthy());
   });
 
   it('persists swarm speed and sparkle controls', () => {

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { defaultNotificationConfig, mapNotificationConfig } from './tauriBridgePlatformDecoders.js';
+import {
+  decodeDesktopWallpaperStatus,
+  defaultNotificationConfig,
+  mapNotificationConfig
+} from './tauriBridgePlatformDecoders.js';
 
 describe('notification settings decoder', () => {
   it('keeps the complete default contract when an older daemon omits fields', () => {
@@ -37,5 +41,22 @@ describe('notification settings decoder', () => {
     expect(decoded.local).toEqual({ isEnabled: true, quietHoursStart: 22, quietHoursEnd: 7 });
     expect(decoded.telegram.supportedCommands).toEqual(['status']);
     expect(decoded.calendar).toMatchObject({ isEnabled: true, defaultDurationMinutes: 60, defaultCalendarName: 'Work' });
+  });
+});
+
+describe('desktop wallpaper decoder', () => {
+  it('accepts only the bounded native backend and state vocabulary', () => {
+    expect(decodeDesktopWallpaperStatus({
+      available: true,
+      backend: 'gnome',
+      state: 'applied',
+      theme: 'auroraTeal',
+      path: '/home/test/.local/share/openburnbar/wallpapers/auroraTeal.svg'
+    })).toMatchObject({ backend: 'gnome', state: 'applied', theme: 'auroraTeal' });
+    expect(() => decodeDesktopWallpaperStatus({
+      available: true,
+      backend: 'sway',
+      state: 'ready'
+    })).toThrow('desktop wallpaper backend is unsupported');
   });
 });

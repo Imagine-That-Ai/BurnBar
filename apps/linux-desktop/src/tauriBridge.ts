@@ -93,6 +93,7 @@ import {
   decodeNativeNotificationResult,
   decodeNativeNotificationActionEvents,
   decodeNativeShortcutStatus,
+  decodeDesktopWallpaperStatus,
   decodeLaunchAtLoginStatus,
   decodePetCompanionStatus,
   isCapabilityAbsentError,
@@ -137,6 +138,7 @@ export {
   decodeNativeNotificationCapabilities,
   decodeNativeNotificationResult,
   decodeNativeShortcutStatus,
+  decodeDesktopWallpaperStatus,
   decodePetCompanionStatus,
   defaultNotificationConfig
 } from './tauriBridgePlatformDecoders.js';
@@ -405,6 +407,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       decodeNativeNotificationResult(await invoke<RawJsonValue>('native_notification_show', { request })),
     nativeShortcutStatus: async () =>
       decodeNativeShortcutStatus(await invoke<RawJsonValue>('native_shortcut_status')),
+    desktopWallpaperStatus: async () =>
+      decodeDesktopWallpaperStatus(await invoke<RawJsonValue>('desktop_wallpaper_status')),
+    desktopWallpaperApply: async (theme) =>
+      decodeDesktopWallpaperStatus(await invoke<RawJsonValue>('desktop_wallpaper_apply', { theme })),
     launchAtLoginStatus: async () =>
       decodeLaunchAtLoginStatus(await invoke<RawJsonValue>('launch_at_login_status')),
     launchAtLoginSet: async (enabled) =>

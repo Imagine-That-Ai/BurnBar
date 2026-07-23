@@ -1022,6 +1022,14 @@ export type NativeShortcutBindingStatus = {
   state: 'registered' | 'degraded' | 'unavailable';
   degradedReason?: string;
 };
+export type DesktopWallpaperStatus = {
+  available: boolean;
+  backend: 'gnome' | 'kde' | 'xfce' | 'unsupported';
+  state: 'ready' | 'applied' | 'degraded' | 'unsupported';
+  theme?: string;
+  path?: string;
+  reason?: string;
+};
 export type LinuxLaunchAtLoginStatus = {
   enabled: boolean;
   userOverride: boolean;
@@ -1735,6 +1743,9 @@ export interface LinuxShellBridge {
   nativeNotificationCapabilities?(): Promise<NativeNotificationCapabilities>;
   nativeNotificationShow?(request: NativeNotificationRequest): Promise<NativeNotificationResult>;
   nativeShortcutStatus?(): Promise<NativeShortcutStatus>;
+  /** Optional on older packaged shells; applies a validated native desktop backdrop. */
+  desktopWallpaperStatus?(): Promise<DesktopWallpaperStatus>;
+  desktopWallpaperApply?(theme: string): Promise<DesktopWallpaperStatus>;
   /** Optional on older packaged shells; writes only the fixed XDG desktop entry. */
   launchAtLoginStatus?(): Promise<LinuxLaunchAtLoginStatus>;
   launchAtLoginSet?(enabled: boolean): Promise<LinuxLaunchAtLoginStatus>;

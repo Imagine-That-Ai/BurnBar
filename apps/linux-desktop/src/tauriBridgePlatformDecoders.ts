@@ -16,6 +16,7 @@ import type {
   NativeNotificationActionEvent,
   NativeShortcutStatus,
   NativeShortcutBindingStatus,
+  DesktopWallpaperStatus,
   LinuxLaunchAtLoginStatus,
   PetCompanionStatus,
   MercuryDevicePlatform,
@@ -586,6 +587,26 @@ export function decodeNativeShortcutStatus(raw: RawJsonValue): NativeShortcutSta
       ? { portalReason: str(pick(value, 'portalReason', 'portal_reason')) }
       : {}),
     degradedReason: str(pick(value, 'degradedReason', 'degraded_reason')) || undefined
+  };
+}
+
+export function decodeDesktopWallpaperStatus(raw: RawJsonValue): DesktopWallpaperStatus {
+  const value = requireObject(raw, 'desktop wallpaper status');
+  const backend = requireString(pick(value, 'backend'), 'desktop wallpaper backend');
+  if (backend !== 'gnome' && backend !== 'kde' && backend !== 'xfce' && backend !== 'unsupported') {
+    throw new Error(`desktop wallpaper backend is unsupported: ${backend}`);
+  }
+  const state = requireString(pick(value, 'state'), 'desktop wallpaper state');
+  if (state !== 'ready' && state !== 'applied' && state !== 'degraded' && state !== 'unsupported') {
+    throw new Error(`desktop wallpaper state is unsupported: ${state}`);
+  }
+  return {
+    available: requireBoolean(pick(value, 'available'), 'desktop wallpaper availability'),
+    backend: backend as DesktopWallpaperStatus['backend'],
+    state: state as DesktopWallpaperStatus['state'],
+    ...(str(pick(value, 'theme')) ? { theme: str(pick(value, 'theme')) } : {}),
+    ...(str(pick(value, 'path')) ? { path: str(pick(value, 'path')) } : {}),
+    ...(str(pick(value, 'reason')) ? { reason: str(pick(value, 'reason')) } : {})
   };
 }
 

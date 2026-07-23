@@ -15,6 +15,7 @@ import {
   type SwarmPreferences
 } from '../../state/swarmPrefs.js';
 import { SWARM_PROVIDER_GLYPH_OPTIONS } from '@openburnbar/gl-engine/engine/kernels/swarmCatalog';
+import type { DesktopWallpaperStatus } from '../../tauriBridge.js';
 
 type AppearanceMode = 'system' | 'light' | 'dark';
 type GlassTransparency = number;
@@ -143,9 +144,14 @@ function applyGlassTransparency(value: GlassTransparency): void {
 export function SettingsAppearanceControls() {
   const skin = useShellStore((s) => s.skin);
   const toggleSkin = useShellStore((s) => s.toggleSkin);
+  const bridge = useShellStore((s) => s.bridge);
+  const fixtureMode = useShellStore((s) => s.fixtureMode);
   const [appearance, setAppearance] = useState<AppearanceMode>(() => readAppearanceMode());
   const [glassTransparency, setGlassTransparency] = useState<GlassTransparency>(() => readGlassTransparency());
   const [wallpaper, setWallpaper] = useState<WallpaperBackground>(() => readWallpaperBackground());
+  const [wallpaperStatus, setWallpaperStatus] = useState<DesktopWallpaperStatus | null>(null);
+  const [wallpaperError, setWallpaperError] = useState<string | null>(null);
+  const wallpaperRequestRef = useRef(0);
   const [swarm, setSwarm] = useState<SwarmPreferences>(() => readSwarmPreferences());
   const appearanceButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const skinButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -161,6 +167,36 @@ export function SettingsAppearanceControls() {
     applyWallpaperBackground(wallpaper);
     document.documentElement.dataset.skin = skin;
   }, [appearance, glassTransparency, skin, wallpaper]);
+
+  useEffect(() => {
+    if (fixtureMode || typeof bridge?.desktopWallpaperStatus !== 'function') return;
+    let active = true;
+    void bridge.desktopWallpaperStatus()
+      .then((status) => {
+        if (active) setWallpaperStatus(status);
+      })
+      .catch(() => {
+        if (active) setWallpaperError('Native desktop wallpaper status is unavailable.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [bridge, fixtureMode]);
+
+  const applyNativeWallpaper = (theme: WallpaperBackground) => {
+    if (fixtureMode || typeof bridge?.desktopWallpaperApply !== 'function') return;
+    const requestID = ++wallpaperRequestRef.current;
+    setWallpaperError(null);
+    void bridge.desktopWallpaperApply(theme)
+      .then((status) => {
+        if (requestID === wallpaperRequestRef.current) setWallpaperStatus(status);
+      })
+      .catch(() => {
+        if (requestID === wallpaperRequestRef.current) {
+          setWallpaperError('Native desktop wallpaper could not be applied; the in-app backdrop remains active.');
+        }
+      });
+  };
 
   return (
     <div className="settings-appearance-controls">
@@ -262,6 +298,7 @@ export function SettingsAppearanceControls() {
               const next = event.currentTarget.value as WallpaperBackground;
               setWallpaper(next);
               persistWallpaperBackground(next);
+              applyNativeWallpaper(next);
             }}
           >
             {WALLPAPER_OPTIONS.map((option) => (
@@ -272,6 +309,16 @@ export function SettingsAppearanceControls() {
         <p className="muted settings-tab-lede">
           {WALLPAPER_OPTIONS.find((option) => option.id === wallpaper)?.detail}
         </p>
+        {wallpaperError ? <p className="muted settings-tab-lede" role="status">{wallpaperError}</p> : null}
+        {wallpaperStatus && !wallpaperError ? (
+          <p className="muted settings-tab-lede" role="status">
+            {wallpaperStatus.state === 'applied'
+              ? `Native wallpaper applied via ${wallpaperStatus.backend}.`
+              : wallpaperStatus.state === 'unsupported'
+                ? 'Native wallpaper is unavailable on this desktop; the in-app backdrop remains active.'
+                : `Native wallpaper backend: ${wallpaperStatus.backend}.`}
+          </p>
+        ) : null}
       </fieldset>
       <fieldset className="settings-appearance-fieldset settings-appearance-transparency">
         <legend className="settings-appearance-legend">Swarm motion</legend>
