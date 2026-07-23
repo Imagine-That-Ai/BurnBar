@@ -122,6 +122,33 @@ describe('SettingsAppearanceControls accessibility', () => {
     await waitFor(() => expect(screen.getByText('Native wallpaper applied via gnome.')).toBeTruthy());
   });
 
+  it('restores the captured native wallpaper through the bridge', async () => {
+    const desktopWallpaperStatus = vi.fn().mockResolvedValue({
+      available: true,
+      backend: 'gnome',
+      state: 'applied',
+      restoreAvailable: true
+    });
+    const desktopWallpaperRestore = vi.fn().mockResolvedValue({
+      available: true,
+      backend: 'gnome',
+      state: 'restored',
+      restoreAvailable: false
+    });
+    useShellStore.setState({
+      bridge: { desktopWallpaperStatus, desktopWallpaperRestore } as never,
+      fixtureMode: false
+    });
+
+    render(<SettingsAppearanceControls />);
+    const restore = await screen.findByRole('button', { name: 'Restore previous wallpaper' });
+    await waitFor(() => expect((restore as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(restore);
+
+    await waitFor(() => expect(desktopWallpaperRestore).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText('Previous native wallpaper restored.')).toBeTruthy());
+  });
+
   it('persists swarm speed and sparkle controls', () => {
     render(<SettingsAppearanceControls />);
     const speed = screen.getByRole('slider', { name: 'Swarm motion speed' });

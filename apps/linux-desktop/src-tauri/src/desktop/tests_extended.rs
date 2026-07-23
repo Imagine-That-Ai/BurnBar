@@ -1241,6 +1241,16 @@
     }
 
     #[test]
+    fn desktop_wallpaper_restore_uri_decoding_is_local_and_bounded() {
+        assert_eq!(
+            percent_decode_file_uri("file:///home/alberto/My%20Wallpaper%20%231.svg"),
+            Some(PathBuf::from("/home/alberto/My Wallpaper #1.svg"))
+        );
+        assert!(percent_decode_file_uri("file://remote/share/wallpaper.png").is_none());
+        assert!(percent_decode_file_uri("file:///home/alberto/%ZZ.png").is_none());
+    }
+
+    #[test]
     fn desktop_wallpaper_status_distinguishes_ready_applied_and_unsupported() {
         let ready = wallpaper_status_from_state(DesktopWallpaperBackend::Gnome, None, None);
         assert!(ready.available);
@@ -1251,11 +1261,28 @@
                 backend: DesktopWallpaperBackend::Kde,
                 theme: "midnight".into(),
                 path: "/tmp/midnight.svg".into(),
+                previous: None,
             }),
             None,
         );
         assert_eq!(applied.state, "applied");
         assert_eq!(applied.theme.as_deref(), Some("midnight"));
+        assert!(!applied.restore_available);
+        let restorable = wallpaper_status_from_state(
+            DesktopWallpaperBackend::Gnome,
+            Some(DesktopWallpaperState {
+                backend: DesktopWallpaperBackend::Gnome,
+                theme: "midnight".into(),
+                path: "/tmp/midnight.svg".into(),
+                previous: Some(DesktopWallpaperPreviousState {
+                    backend: DesktopWallpaperBackend::Gnome,
+                    path: "/tmp/original.png".into(),
+                    dark_path: None,
+                }),
+            }),
+            None,
+        );
+        assert!(restorable.restore_available);
         let unsupported = wallpaper_status_from_state(
             DesktopWallpaperBackend::Unsupported,
             None,

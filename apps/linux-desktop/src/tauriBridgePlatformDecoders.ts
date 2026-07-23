@@ -597,13 +597,16 @@ export function decodeDesktopWallpaperStatus(raw: RawJsonValue): DesktopWallpape
     throw new Error(`desktop wallpaper backend is unsupported: ${backend}`);
   }
   const state = requireString(pick(value, 'state'), 'desktop wallpaper state');
-  if (state !== 'ready' && state !== 'applied' && state !== 'degraded' && state !== 'unsupported') {
+  if (state !== 'ready' && state !== 'applied' && state !== 'restored' && state !== 'degraded' && state !== 'unsupported') {
     throw new Error(`desktop wallpaper state is unsupported: ${state}`);
   }
   return {
     available: requireBoolean(pick(value, 'available'), 'desktop wallpaper availability'),
     backend: backend as DesktopWallpaperStatus['backend'],
     state: state as DesktopWallpaperStatus['state'],
+    restoreAvailable: pick(value, 'restoreAvailable', 'restore_available') === undefined
+      ? false
+      : requireBoolean(pick(value, 'restoreAvailable', 'restore_available'), 'desktop wallpaper restore availability'),
     ...(str(pick(value, 'theme')) ? { theme: str(pick(value, 'theme')) } : {}),
     ...(str(pick(value, 'path')) ? { path: str(pick(value, 'path')) } : {}),
     ...(str(pick(value, 'reason')) ? { reason: str(pick(value, 'reason')) } : {})

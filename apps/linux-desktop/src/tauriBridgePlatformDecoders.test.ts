@@ -62,7 +62,13 @@ describe('desktop wallpaper decoder', () => {
       available: true,
       backend: 'hyprland',
       state: 'applied'
-    })).toMatchObject({ backend: 'hyprland', state: 'applied' });
+    })).toMatchObject({ backend: 'hyprland', state: 'applied', restoreAvailable: false });
+    expect(decodeDesktopWallpaperStatus({
+      available: true,
+      backend: 'gnome',
+      state: 'restored',
+      restoreAvailable: false
+    })).toMatchObject({ backend: 'gnome', state: 'restored', restoreAvailable: false });
     expect(() => decodeDesktopWallpaperStatus({
       available: true,
       backend: 'cosmic',

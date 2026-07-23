@@ -411,6 +411,8 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       decodeDesktopWallpaperStatus(await invoke<RawJsonValue>('desktop_wallpaper_status')),
     desktopWallpaperApply: async (theme) =>
       decodeDesktopWallpaperStatus(await invoke<RawJsonValue>('desktop_wallpaper_apply', { theme })),
+    desktopWallpaperRestore: async () =>
+      decodeDesktopWallpaperStatus(await invoke<RawJsonValue>('desktop_wallpaper_restore')),
     launchAtLoginStatus: async () =>
       decodeLaunchAtLoginStatus(await invoke<RawJsonValue>('launch_at_login_status')),
     launchAtLoginSet: async (enabled) =>

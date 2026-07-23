@@ -1025,9 +1025,10 @@ export type NativeShortcutBindingStatus = {
 export type DesktopWallpaperStatus = {
   available: boolean;
   backend: 'gnome' | 'kde' | 'xfce' | 'sway' | 'hyprland' | 'unsupported';
-  state: 'ready' | 'applied' | 'degraded' | 'unsupported';
+  state: 'ready' | 'applied' | 'restored' | 'degraded' | 'unsupported';
   theme?: string;
   path?: string;
+  restoreAvailable: boolean;
   reason?: string;
 };
 export type LinuxLaunchAtLoginStatus = {
@@ -1746,6 +1747,8 @@ export interface LinuxShellBridge {
   /** Optional on older packaged shells; applies a validated native desktop backdrop. */
   desktopWallpaperStatus?(): Promise<DesktopWallpaperStatus>;
   desktopWallpaperApply?(theme: string): Promise<DesktopWallpaperStatus>;
+  /** Optional on older packaged shells; restores the user wallpaper captured before palette application. */
+  desktopWallpaperRestore?(): Promise<DesktopWallpaperStatus>;
   /** Optional on older packaged shells; writes only the fixed XDG desktop entry. */
   launchAtLoginStatus?(): Promise<LinuxLaunchAtLoginStatus>;
   launchAtLoginSet?(enabled: boolean): Promise<LinuxLaunchAtLoginStatus>;

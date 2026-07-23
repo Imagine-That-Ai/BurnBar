@@ -556,6 +556,7 @@ pub fn run() {
             update_status,
             desktop_wallpaper_status,
             desktop_wallpaper_apply,
+            desktop_wallpaper_restore,
             export_diagnostics,
             text_expansion_list,
             text_expansion_upsert,

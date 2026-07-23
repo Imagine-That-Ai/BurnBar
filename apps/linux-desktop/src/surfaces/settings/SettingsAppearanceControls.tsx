@@ -198,6 +198,21 @@ export function SettingsAppearanceControls() {
       });
   };
 
+  const restoreNativeWallpaper = () => {
+    if (fixtureMode || typeof bridge?.desktopWallpaperRestore !== 'function') return;
+    const requestID = ++wallpaperRequestRef.current;
+    setWallpaperError(null);
+    void bridge.desktopWallpaperRestore()
+      .then((status) => {
+        if (requestID === wallpaperRequestRef.current) setWallpaperStatus(status);
+      })
+      .catch(() => {
+        if (requestID === wallpaperRequestRef.current) {
+          setWallpaperError('The previous desktop wallpaper could not be restored; the in-app backdrop remains active.');
+        }
+      });
+  };
+
   return (
     <div className="settings-appearance-controls">
       <fieldset className="settings-appearance-fieldset">
@@ -309,10 +324,20 @@ export function SettingsAppearanceControls() {
         <p className="muted settings-tab-lede">
           {WALLPAPER_OPTIONS.find((option) => option.id === wallpaper)?.detail}
         </p>
+        <button
+          type="button"
+          className="settings-secondary-button"
+          onClick={restoreNativeWallpaper}
+          disabled={fixtureMode || typeof bridge?.desktopWallpaperRestore !== 'function' || !wallpaperStatus?.restoreAvailable}
+        >
+          Restore previous wallpaper
+        </button>
         {wallpaperError ? <p className="muted settings-tab-lede" role="status">{wallpaperError}</p> : null}
         {wallpaperStatus && !wallpaperError ? (
           <p className="muted settings-tab-lede" role="status">
-            {wallpaperStatus.state === 'applied'
+            {wallpaperStatus.state === 'restored'
+              ? 'Previous native wallpaper restored.'
+              : wallpaperStatus.state === 'applied'
               ? `Native wallpaper applied via ${wallpaperStatus.backend}.`
               : wallpaperStatus.state === 'unsupported'
                 ? 'Native wallpaper is unavailable on this desktop; the in-app backdrop remains active.'

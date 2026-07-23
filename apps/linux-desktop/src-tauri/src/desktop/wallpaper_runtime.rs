@@ -34,6 +34,7 @@ struct DesktopWallpaperStatus {
     state: String,
     theme: Option<String>,
     path: Option<String>,
+    restore_available: bool,
     reason: Option<String>,
 }
 
@@ -43,6 +44,17 @@ struct DesktopWallpaperState {
     backend: DesktopWallpaperBackend,
     theme: String,
     path: String,
+    #[serde(default)]
+    previous: Option<DesktopWallpaperPreviousState>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopWallpaperPreviousState {
+    backend: DesktopWallpaperBackend,
+    path: String,
+    #[serde(default)]
+    dark_path: Option<String>,
 }
 
 fn wallpaper_theme_is_valid(theme: &str) -> bool {
@@ -132,6 +144,10 @@ fn wallpaper_status_from_state(
         },
         theme: state.as_ref().map(|state| state.theme.clone()),
         path: state.as_ref().map(|state| state.path.clone()),
+        restore_available: state
+            .as_ref()
+            .and_then(|state| state.previous.as_ref())
+            .is_some(),
         reason,
     }
 }
@@ -262,6 +278,176 @@ fn bounded_output(mut command: Command) -> Result<(), String> {
     }
 }
 
+fn bounded_query_output(mut command: Command) -> Result<String, String> {
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("wallpaper_query_spawn:{error}"))?;
+    let deadline = Instant::now() + WALLPAPER_COMMAND_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => {
+                let output = child
+                    .wait_with_output()
+                    .map_err(|error| format!("wallpaper_query_wait:{error}"))?;
+                if output.stdout.len() > 16 * 1024 {
+                    return Err("wallpaper_query_output_too_large".to_string());
+                }
+                return String::from_utf8(output.stdout)
+                    .map_err(|_| "wallpaper_query_output_invalid_utf8".to_string());
+            }
+            Ok(Some(_)) => return Err("wallpaper_query_failed".to_string()),
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(25)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("wallpaper_query_timeout".to_string());
+            }
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("wallpaper_query_status:{error}"));
+            }
+        }
+    }
+}
+
+fn percent_decode_file_uri(uri: &str) -> Option<PathBuf> {
+    let encoded = uri.strip_prefix("file://")?;
+    if !encoded.starts_with('/') {
+        return None;
+    }
+    let bytes = encoded.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len() {
+                return None;
+            }
+            let high = (bytes[index + 1] as char).to_digit(16)? as u8;
+            let low = (bytes[index + 2] as char).to_digit(16)? as u8;
+            decoded.push((high << 4) | low);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    let path = PathBuf::from(String::from_utf8(decoded).ok()?);
+    path.is_absolute().then_some(path)
+}
+
+fn restore_path(raw: &str) -> Option<PathBuf> {
+    let path = if raw.starts_with("file://") {
+        percent_decode_file_uri(raw)?
+    } else {
+        PathBuf::from(raw)
+    };
+    if !path.is_absolute() {
+        return None;
+    }
+    let metadata = fs::symlink_metadata(&path).ok()?;
+    (metadata.is_file() && !metadata.file_type().is_symlink()).then_some(path)
+}
+
+fn gsettings_wallpaper_path(output: &str) -> Option<PathBuf> {
+    let value = output.trim().trim_matches(|character| character == '\'' || character == '"');
+    percent_decode_file_uri(value)
+}
+
+fn query_wallpaper_path(backend: DesktopWallpaperBackend) -> Option<DesktopWallpaperPreviousState> {
+    match backend {
+        DesktopWallpaperBackend::Gnome => {
+            let executable = trusted_wallpaper_executable("gsettings")?;
+            let mut light = Command::new(&executable);
+            light.args(["get", "org.gnome.desktop.background", "picture-uri"]);
+            let path = gsettings_wallpaper_path(&bounded_query_output(light).ok()?)?;
+            let mut dark = Command::new(executable);
+            dark.args(["get", "org.gnome.desktop.background", "picture-uri-dark"]);
+            let dark_path = bounded_query_output(dark)
+                .ok()
+                .and_then(|output| gsettings_wallpaper_path(&output))
+                .filter(|candidate| candidate != &path)
+                .map(|candidate| candidate.to_string_lossy().into_owned());
+            Some(DesktopWallpaperPreviousState {
+                backend,
+                path: path.to_string_lossy().into_owned(),
+                dark_path,
+            })
+        }
+        DesktopWallpaperBackend::Xfce => {
+            let executable = trusted_wallpaper_executable("xfconf-query")?;
+            let mut command = Command::new(executable);
+            command.args([
+                "-c",
+                "xfce4-desktop",
+                "-p",
+                "/backdrop/screen0/monitor0/image-path",
+            ]);
+            let path = restore_path(bounded_query_output(command).ok()?.trim())?;
+            Some(DesktopWallpaperPreviousState {
+                backend,
+                path: path.to_string_lossy().into_owned(),
+                dark_path: None,
+            })
+        }
+        DesktopWallpaperBackend::Hyprland => {
+            let executable = trusted_wallpaper_executable("hyprctl")?;
+            let mut command = Command::new(executable);
+            command.args(["hyprpaper", "listactive", "-j"]);
+            let value: serde_json::Value = serde_json::from_str(&bounded_query_output(command).ok()?).ok()?;
+            let path = value.as_array()?.iter().find_map(|entry| {
+                entry
+                    .get("wallpaper")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(restore_path)
+            })?;
+            Some(DesktopWallpaperPreviousState {
+                backend,
+                path: path.to_string_lossy().into_owned(),
+                dark_path: None,
+            })
+        }
+        DesktopWallpaperBackend::Kde
+        | DesktopWallpaperBackend::Sway
+        | DesktopWallpaperBackend::Unsupported => None,
+    }
+}
+
+fn apply_previous_wallpaper(previous: &DesktopWallpaperPreviousState) -> Result<(), String> {
+    let path = restore_path(&previous.path).ok_or_else(|| "wallpaper_previous_path_unavailable".to_string())?;
+    match previous.backend {
+        DesktopWallpaperBackend::Gnome => {
+            let uri = file_uri(&path)?;
+            let executable = trusted_wallpaper_executable("gsettings")
+                .ok_or_else(|| "wallpaper_command_unavailable:gsettings".to_string())?;
+            let mut light = Command::new(&executable);
+            light.args(["set", "org.gnome.desktop.background", "picture-uri", &uri]);
+            bounded_output(light)?;
+            let dark_path = previous
+                .dark_path
+                .as_deref()
+                .and_then(restore_path)
+                .unwrap_or_else(|| path.clone());
+            let dark_uri = file_uri(&dark_path)?;
+            let mut dark = Command::new(executable);
+            dark.args(["set", "org.gnome.desktop.background", "picture-uri-dark", &dark_uri]);
+            let _ = bounded_output(dark);
+            Ok(())
+        }
+        DesktopWallpaperBackend::Xfce | DesktopWallpaperBackend::Hyprland => {
+            apply_wallpaper_with_backend(previous.backend, &path)
+        }
+        DesktopWallpaperBackend::Kde
+        | DesktopWallpaperBackend::Sway
+        | DesktopWallpaperBackend::Unsupported => {
+            Err("wallpaper_previous_restore_unsupported".to_string())
+        }
+    }
+}
+
 fn apply_wallpaper_with_backend(backend: DesktopWallpaperBackend, path: &Path) -> Result<(), String> {
     let uri = file_uri(path)?;
     match backend {
@@ -382,6 +568,9 @@ fn desktop_wallpaper_apply(theme: String) -> Result<DesktopWallpaperStatus, Stri
     if fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
         return Err("wallpaper_path_unsafe".to_string());
     }
+    let previous = read_wallpaper_state(&directory)
+        .and_then(|state| state.previous)
+        .or_else(|| query_wallpaper_path(backend));
     atomic_write(&path, svg.as_bytes(), 0o600)?;
     if let Err(error) = apply_wallpaper_with_backend(backend, &path) {
         return Ok(wallpaper_status_from_state(backend, None, Some(error)));
@@ -390,6 +579,7 @@ fn desktop_wallpaper_apply(theme: String) -> Result<DesktopWallpaperStatus, Stri
         backend,
         theme,
         path: path.to_string_lossy().into_owned(),
+        previous,
     };
     let state_path = wallpaper_state_path(&directory);
     atomic_write(
@@ -398,4 +588,51 @@ fn desktop_wallpaper_apply(theme: String) -> Result<DesktopWallpaperStatus, Stri
         0o600,
     )?;
     Ok(wallpaper_status_from_state(backend, Some(state), None))
+}
+
+#[tauri::command]
+fn desktop_wallpaper_restore() -> Result<DesktopWallpaperStatus, String> {
+    let backend = detect_desktop_wallpaper_backend();
+    let directory = wallpaper_directory()?;
+    let state = match read_wallpaper_state(&directory) {
+        Some(state) => state,
+        None => {
+            return Ok(wallpaper_status_from_state(
+                backend,
+                None,
+                Some("wallpaper_previous_unavailable".to_string()),
+            ));
+        }
+    };
+    let previous = match state.previous.as_ref() {
+        Some(previous) => previous,
+        None => {
+            return Ok(wallpaper_status_from_state(
+                backend,
+                Some(state),
+                Some("wallpaper_previous_unavailable".to_string()),
+            ));
+        }
+    };
+    if previous.backend != backend {
+        return Ok(wallpaper_status_from_state(
+            backend,
+            Some(state),
+            Some("wallpaper_backend_changed".to_string()),
+        ));
+    }
+    if let Err(error) = apply_previous_wallpaper(previous) {
+        return Ok(wallpaper_status_from_state(backend, Some(state), Some(error)));
+    }
+    fs::remove_file(wallpaper_state_path(&directory))
+        .map_err(|error| format!("wallpaper_state_remove:{error}"))?;
+    Ok(DesktopWallpaperStatus {
+        available: backend != DesktopWallpaperBackend::Unsupported,
+        backend,
+        state: "restored".to_string(),
+        theme: None,
+        path: Some(previous.path.clone()),
+        restore_available: false,
+        reason: None,
+    })
 }
