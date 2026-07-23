@@ -184,8 +184,15 @@ public sealed class PensieveKnowledgeWatcherTests : IDisposable
         watcher.Start();
         watcher.Start();
         await File.WriteAllTextAsync(Path.Combine(docs, "decision.txt"), "Live watcher decision.");
+        // The scan writes queue artifacts first and only publishes the status
+        // afterwards (PensieveKnowledgeWatcher.SetStatus runs after every watch
+        // root is drained). Waiting on the file alone therefore races the status
+        // publication -- a window wide enough to lose on a loaded ARM64 runner.
+        // Wait on the value under assertion so the wait and the assert agree.
         await WaitUntilAsync(
-            () => Directory.Exists(queue) && Directory.GetFiles(queue, "*.json").Length == 1,
+            () => Directory.Exists(queue)
+                && Directory.GetFiles(queue, "*.json").Length == 1
+                && watcher.Status.LastEnqueuedCount == 1,
             TimeSpan.FromSeconds(5));
 
         Assert.True(watcher.Status.IsRunning);
