@@ -113,6 +113,13 @@ test("deterministic workflow implements every exact policy job and a fail-closed
   );
 });
 
+test("authoritative push proofs cannot be cancelled by merge-queue validation", () => {
+  assert.match(
+    core,
+    /concurrency:\n  group: domain-core-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\n  cancel-in-progress: true/u,
+  );
+});
+
 test("Wasm KAT reports bind distinct package execution contexts", () => {
   const wasm = workflowJob(core, "wasm");
   assert.match(
