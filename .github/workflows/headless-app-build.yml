@@ -51,7 +51,8 @@ concurrency:
 jobs:
   headless-app-build:
     name: Headless macOS app build (scheme OpenBurnBar)
-    runs-on: macos-26
+    runs-on:
+      group: burnbar-ci-paid
     # Build-only (no XCTest host launch), so far lighter than the 120-min
     # app-build-test lane; the cap still covers a cold SPM cache + libsignal FFI
     # build on a hosted runner.

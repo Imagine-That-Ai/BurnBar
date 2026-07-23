@@ -43,7 +43,8 @@ jobs:
 
   app-build-test:
     name: AgentLens Rust + Swift build/test prerequisites
-    runs-on: macos-26
+    runs-on:
+      group: burnbar-ci-paid
     # Cold cache + libsignal FFI + full xcodebuild of the app target on a hosted
     # runner needs headroom; observed cold macos-26 runs can approach 120
     # minutes before the 1,920-test suite and coverage upload finish.
@@ -184,7 +185,8 @@ jobs:
 
   mobile-build-gate:
     name: Mobile build + unit test
-    runs-on: macos-26
+    runs-on:
+      group: burnbar-ci-paid
     # Compile + unit test execution: Signal FFI + full mobile app-and-tests
     # compile, THEN run the unit-test bundle on a booted simulator.
     # Observing-first: build-for-testing first (fail fast on compile errors),
