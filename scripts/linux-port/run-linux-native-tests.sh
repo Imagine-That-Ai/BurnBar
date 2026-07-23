@@ -518,6 +518,7 @@ daemon_linux_tests=(
     MercuryLinuxMediaTests/testCapturePipelineEndedTransitionsToCooldown
     MercuryLinuxMediaTests/testCapturedFrameWithoutSealKeyFailsClosedAndDoesNotEgressPlaintext
     MercuryLinuxMediaTests/testCollisionSafeDownloadNaming
+    MercuryLinuxMediaTests/testCollisionSafeDownloadURLAtomicallyReservesDistinctPaths
     MercuryLinuxMediaTests/testFileOfferAcceptDownloadsToCollisionSafePathAndAcknowledges
     MercuryLinuxMediaTests/testFileOfferDeclineSendsRejectedAckWithoutFetch
     MercuryLinuxMediaTests/testFileTransferErrorTaxonomy
