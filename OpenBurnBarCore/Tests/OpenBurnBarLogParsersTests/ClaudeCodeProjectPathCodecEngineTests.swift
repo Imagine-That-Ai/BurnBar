@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarLogParsers
 
 /// Windows-port Phase-2: the Claude Code project-path codec (`VAL-P0-PATH-021`),
 /// now the single, Windows-buildable source of truth in the Engine. These vectors

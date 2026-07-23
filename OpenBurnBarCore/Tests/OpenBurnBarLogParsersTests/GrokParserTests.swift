@@ -1,5 +1,4 @@
 import XCTest
-@testable import OpenBurnBarCore
 @testable import OpenBurnBarLogParsers
 
 final class GrokParserTests: XCTestCase {
