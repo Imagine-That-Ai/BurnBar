@@ -51,7 +51,8 @@ concurrency:
 jobs:
   headless-app-build:
     name: Headless macOS app build (scheme OpenBurnBar)
-    runs-on: macos-26
+    runs-on:
+      group: burnbar-ci-paid
     # Build-only (no XCTest host launch), so far lighter than the 120-min
     # app-build-test lane; the cap still covers a cold SPM cache + libsignal FFI
     # build on a hosted runner.
@@ -65,6 +66,16 @@ jobs:
 
       - name: Initialize libsignal submodule with retry
         run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
+
+      - name: Resolve Signal FFI cache identity
+        id: signal-ffi-cache
+        run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache macOS Signal FFI artifact
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: Vendor/OpenBurnBarSignalFfiMac.xcframework
+          key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
 
       - name: Cache Swift Package Manager dependencies
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
@@ -96,4 +107,6 @@ jobs:
         # runner it builds in-tree (checkout is outside ~/Documents, so no
         # sandbox/TCC hit). FIREBASE_SOURCE_FIRESTORE=1 is forced inside the
         # script (iOS 27 gRPC/Firestore source-build guard on the resolve path).
-        run: ./scripts/ci/headless-app-build.sh
+        run: >-
+          SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin
+          ./scripts/ci/headless-app-build.sh

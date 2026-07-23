@@ -45,6 +45,16 @@ fun MobileKernelBackdrop(kernel: MobileBackdropKernel, accentColor: Color, modif
 }
 
 @Composable
+fun MobileKernelBackdropThumbnail(kernel: MobileBackdropKernel, accentColor: Color, modifier: Modifier = Modifier) {
+    MobileKernelBackdropCanvas(
+        kernel = kernel,
+        accentColor = accentColor,
+        phase = 0.36f,
+        modifier = modifier,
+    )
+}
+
+@Composable
 private fun MobileKernelBackdropCanvas(kernel: MobileBackdropKernel, accentColor: Color, phase: Float, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier.fillMaxSize()) {
         drawRect(
