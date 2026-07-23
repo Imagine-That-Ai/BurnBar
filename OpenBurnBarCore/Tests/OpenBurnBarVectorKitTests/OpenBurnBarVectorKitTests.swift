@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBarVectorKit
 
 final class BurnBarVectorKitTests: XCTestCase {
     // MARK: - VectorBlobCodec Tests

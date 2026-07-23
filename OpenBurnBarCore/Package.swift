@@ -704,6 +704,10 @@ let openBurnBarKernelCryptoTestsExcludes: [String] = [
 let openBurnBarKernelModelsTestsExcludes = [
     "CLITerminalSessionSupervisorTests.swift"
 ]
+let openBurnBarVectorKitTestsExcludes = [
+    "PensieveKnowledgeChunkerTests.swift",
+    "PensieveVectorCloakTests.swift"
+]
 // UI/Insights/TextExpansion/LaunchServices are pruned WHOLE off-Apple (like
 // OpenBurnBarData) rather than file-excluded, so their exclude arrays exist only
 // for symmetry and stay empty on every host.
@@ -725,11 +729,13 @@ let openBurnBarCoreTestExcludes = [
     // OpenBurnBarUIModuleTests (an Apple-pruned test target that off-Apple graphs never
     // see): AgentProviderLogoBackdrop, SmartHubDisplaySettingsModel, SwarmLogoShape,
     // SwarmSubstrateContract, SwarmSubstratePreviewRender, UnifiedQuotaSignalCurrency,
-    // UnifiedToolCallAccordion (the P-16f comment block moved with the last two). The two
-    // remaining entries stay in OpenBurnBarCoreTests: MissionConsoleTests is INTEGRATION
-    // (KernelModels+Insights+UI), SwitcherCLIPostLaunchFallbackTests is B7's future move.
-    "MissionConsoleTests.swift",
-    "SwitcherCLIPostLaunchFallbackTests.swift"
+    // UnifiedToolCallAccordion (the P-16f comment block moved with the last two).
+    // WS-B B7 (plans/core-decomposition2/packets/B7-launchservices-tests.md) then carried
+    // SwitcherCLIPostLaunchFallbackTests out to OpenBurnBarLaunchServicesTests (also an
+    // Apple-pruned test target), so its exclusion entry is gone with the file.
+    // The one remaining entry stays in OpenBurnBarCoreTests: MissionConsoleTests is
+    // INTEGRATION (KernelModels+Insights+UI).
+    "MissionConsoleTests.swift"
 ]
 let computerUseCoreTestExcludes = [
     "ComputerUseOpenTimestampsClientTests.swift",
@@ -826,6 +832,7 @@ let openBurnBarKernelCryptoTestsExcludes: [String] = []
 // Phase-2 WS-B packet B1: Apple-side (empty) default for OpenBurnBarKernelModelsTests'
 // off-Apple exclude seam. On Apple CLITerminalSessionSupervisorTests compiles.
 let openBurnBarKernelModelsTestsExcludes: [String] = []
+let openBurnBarVectorKitTestsExcludes: [String] = []
 let openBurnBarInsightsExcludes: [String] = []
 let openBurnBarUIExcludes: [String] = []
 let openBurnBarTextExpansionExcludes: [String] = []
@@ -953,7 +960,16 @@ let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTar
         name: "OpenBurnBarLaunchServicesTests",
         dependencies: [
             "OpenBurnBarLaunchServices",
-            "OpenBurnBarKernel"
+            "OpenBurnBarKernel",
+            // KernelModels DIRECT dep (cross-platform, acyclic): B7 carried
+            // CLIAuthDiscoveryTests + CLILaunchAdapterExecutableResolutionTests here.
+            // Both `@testable import OpenBurnBarKernelModels` to reach CLILaunchAdapter's
+            // internal test seams (environmentProvider/homeDirectoryProvider/...), which
+            // K2 carried into OpenBurnBarKernelModels. The @_exported Kernel umbrella
+            // re-exports only KernelModels' PUBLIC surface, so a per-module @testable
+            // needs KernelModels as a DIRECT target dependency. OpenBurnBarKernel already
+            // depends on KernelModels, so this edge stays acyclic.
+            "OpenBurnBarKernelModels"
         ] + swiftTestingAppleDependencies,
         swiftSettings: [.swiftLanguageMode(.v5)]
     ),
@@ -1578,7 +1594,15 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .testTarget(
             name: "OpenBurnBarVectorKitTests",
-            dependencies: ["OpenBurnBarVectorKit"] + swiftTestingAppleDependencies,
+            // KernelCrypto AE-dep (cross-platform, acyclic): B6 carried
+            // PensieveKnowledgeChunkerTests here, which asserts the Pensieve chunk seal
+            // against OpenBurnBarKernelCrypto.CloudVaultCrypto (pensieveSlugHmac/openText).
+            // `@testable import OpenBurnBarVectorKit` does not re-export VectorKit's Kernel
+            // deps, so the test imports OpenBurnBarKernelCrypto directly and the target must
+            // link it. VectorKit already depends on it transitively (via the Kernel
+            // umbrella), so this stays acyclic.
+            dependencies: ["OpenBurnBarVectorKit", "OpenBurnBarKernelCrypto"] + swiftTestingAppleDependencies,
+            exclude: openBurnBarVectorKitTestsExcludes,
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]

@@ -1,6 +1,5 @@
 #if os(macOS)
 import XCTest
-@testable import OpenBurnBarCore
 // Core-decomposition follow-up: the CLI-launch coordinator and the launch-failure
 // redactor moved out of the app-visible Core into package-only modules
 // (OpenBurnBarLaunchServices / OpenBurnBarKernel). Their behavioral tests, however,

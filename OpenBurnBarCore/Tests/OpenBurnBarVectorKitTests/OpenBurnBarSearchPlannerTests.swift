@@ -1,6 +1,6 @@
 import XCTest
 
-import OpenBurnBarCore
+import OpenBurnBarVectorKit
 
 final class BurnBarSearchPlannerTests: XCTestCase {
     func test_naturalLanguageUsesOrForLongQueries() {

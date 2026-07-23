@@ -1,5 +1,9 @@
 import XCTest
-@testable import OpenBurnBarCore
+// SwitcherProfileRecord / SwitcherCLIProfileMetadata / InMemorySwitcherProfileStoreAdapter /
+// CLILaunchAdapter live in OpenBurnBarKernelModels (K2 carried them out of the Kernel).
+// All are PUBLIC, so a plain import suffices; the dropped `@testable import OpenBurnBarCore`
+// used to reach them via the @_exported Kernel umbrella.
+import OpenBurnBarKernelModels
 @testable import OpenBurnBarLaunchServices
 
 private struct PackageTestCLIFallbackPlanner: CLIFallbackPlanning {
