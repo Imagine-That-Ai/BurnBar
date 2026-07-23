@@ -38,7 +38,9 @@ export const PARITY_LEDGER: ParityRow[] = [
   {
     feature: 'Memory review queue',
     macos: 'In-process MemoryServing quarantine inbox (no daemon RPC on any platform)',
-    linux: 'Recalled memories shown as approved with revoke-as-forget via daemon.memory.forget; fixture mode demos the queue UX.'
+    linux: 'Daemon-owned review status supports pending, approved, rejected, and forgotten transitions with a bounded quarantine feed and audit hashes; fixture mode only demos the queue UX.',
+    substitution:
+      'Cross-device review replication and installed cloud-authority proof remain separate from the local daemon lifecycle.'
   },
   {
     feature: 'Smart-display integration controls',
