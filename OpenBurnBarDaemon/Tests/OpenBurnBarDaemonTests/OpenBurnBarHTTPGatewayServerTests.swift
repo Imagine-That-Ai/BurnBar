@@ -1862,6 +1862,40 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertTrue(upstreamRequest.body.contains(#""model":"claude-sonnet-4-6""#), upstreamRequest.body)
     }
 
+    func testGatewayChatCompletionsBridgesPDFAttachmentAsAnthropicDocument() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"msg_pdf_bridge","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"pdf understood"}],"stop_reason":"end_turn","usage":{"input_tokens":9,"output_tokens":3}}"#
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        try await harness.configureAnthropicProviderForGateway()
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let requestBody = Data(
+            #"{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"Read this PDF"},{"type":"image_url","image_url":{"url":"data:application/pdf;base64,JVBERi0xLjc=","detail":"auto"}}]}],"max_tokens":12}"#.utf8
+        )
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: requestBody
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        let upstreamRequest = try XCTUnwrap(GatewayUpstreamURLProtocol.recordedRequests().first)
+        XCTAssertTrue(upstreamRequest.body.contains(#""type":"document""#), upstreamRequest.body)
+        XCTAssertTrue(upstreamRequest.body.contains(#""media_type":"application/pdf""#), upstreamRequest.body)
+        XCTAssertTrue(upstreamRequest.body.contains(#""data":"JVBERi0xLjc=""#), upstreamRequest.body)
+    }
+
     func testGatewayStopsAdvertisingAnthropicModelAfterRealRouteFailure() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]

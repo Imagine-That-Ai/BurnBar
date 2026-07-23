@@ -361,6 +361,17 @@ extension BurnBarOpenAICompatibleProviderExecutor {
                         "image_url": ["url": "data:\(mediaType);base64,\(data)"]
                     ])
                 }
+            case "document":
+                sawNonText = true
+                if let source = block["source"] as? [String: Any],
+                   let mediaType = source["media_type"] as? String,
+                   let data = source["data"] as? String,
+                   mediaType.caseInsensitiveCompare("application/pdf") == .orderedSame {
+                    parts.append([
+                        "type": "image_url",
+                        "image_url": ["url": "data:\(mediaType);base64,\(data)"]
+                    ])
+                }
             default:
                 continue
             }
