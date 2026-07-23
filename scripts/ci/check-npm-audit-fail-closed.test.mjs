@@ -7,7 +7,12 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { AUDIT_DIRS, classifyAuditResult } from "./check-npm-audit-fail-closed.mjs";
+import {
+  AUDIT_DIRS,
+  AUDIT_ATTEMPTS,
+  classifyAuditResult,
+  runWithRetries,
+} from "./check-npm-audit-fail-closed.mjs";
 
 let passed = 0;
 let failed = 0;
@@ -213,6 +218,105 @@ expect(
   },
   false,
   /could not start/u,
+);
+
+// --- retry classification -------------------------------------------------
+// The gate retries transport/service failures because registry.npmjs.org's
+// audit endpoint intermittently answers 400/429/5xx, and a fail-closed gate
+// turns that hiccup into an ejected merge-queue candidate. Retries must never
+// be able to launder a real finding, so severity results are non-retryable.
+function expectRetryable(label, input, wantRetryable) {
+  const result = classifyAuditResult({ dir: "fixture", stderr: "", ...input });
+  if (result.retryable === wantRetryable) {
+    console.log(`  \u2713 ${label}`);
+    passed += 1;
+    return;
+  }
+  console.error(
+    `  \u2717 ${label}: got retryable=${result.retryable}, want ${wantRetryable}`,
+  );
+  failed += 1;
+}
+
+expectRetryable(
+  "high/critical findings are NEVER retried",
+  {
+    status: 1,
+    stdout: JSON.stringify({
+      vulnerabilities: { demo: { severity: "critical" } },
+    }),
+  },
+  false,
+);
+
+expectRetryable(
+  "registry error without findings is retryable",
+  {
+    status: 1,
+    stdout: JSON.stringify({ vulnerabilities: { demo: { severity: "moderate" } } }),
+    stderr: "npm warn audit 400 Bad Request - POST .../security/audits/quick",
+  },
+  true,
+);
+
+expectRetryable(
+  "empty audit output is retryable",
+  { status: 1, stdout: "" },
+  true,
+);
+
+expectRetryable(
+  "invalid JSON is retryable",
+  { status: 1, stdout: "<html>502</html>" },
+  true,
+);
+
+expectRetryable(
+  "spawn failure is retryable",
+  { status: null, stdout: "", error: new Error("spawn npm ENOENT") },
+  true,
+);
+
+expectRetryable("clean audit is not retryable", { status: 0, stdout: "{}" }, false);
+
+// --- retry driver ---------------------------------------------------------
+// runWithRetries takes the attempt as a callback so the attempt COUNT is
+// provable here without touching the network. An earlier revision of this gate
+// shipped a runner that called itself instead of running npm, which blew the
+// stack in CI while these classifier tests still passed -- so assert on how
+// many times the attempt actually runs.
+function expectAttempts(label, outcomes, wantAttempts) {
+  let calls = 0;
+  const attempt = () => {
+    const outcome = outcomes[Math.min(calls, outcomes.length - 1)];
+    calls += 1;
+    return outcome;
+  };
+  runWithRetries(attempt, { sleep: () => {}, log: () => {} });
+  if (calls === wantAttempts) {
+    console.log(`  \u2713 ${label}`);
+    passed += 1;
+    return;
+  }
+  console.error(`  \u2717 ${label}: attempted ${calls}x, want ${wantAttempts}`);
+  failed += 1;
+}
+
+const RETRYABLE = { ok: false, retryable: true, messages: ["transient"] };
+const FINDING = { ok: false, retryable: false, messages: ["critical"] };
+const CLEAN = { ok: true, retryable: false, messages: ["clean"] };
+
+expectAttempts("a high/critical finding is attempted exactly once", [FINDING], 1);
+expectAttempts("a clean audit is attempted exactly once", [CLEAN], 1);
+expectAttempts(
+  "a persistent transport failure stops at the attempt budget",
+  [RETRYABLE],
+  AUDIT_ATTEMPTS,
+);
+expectAttempts(
+  "a transient failure that recovers stops retrying",
+  [RETRYABLE, CLEAN],
+  2,
 );
 
 console.log(

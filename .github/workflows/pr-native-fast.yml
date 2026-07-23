@@ -48,7 +48,7 @@ jobs:
   detect-native-changes:
     name: Detect native changes
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 10
     outputs:
       native: ${{ steps.filter.outputs.native }}
     steps:
@@ -265,6 +265,20 @@ jobs:
           # and shell scripts must already match the generated project.
           git show HEAD:OpenBurnBar.xcodeproj/project.pbxproj > /tmp/committed.pbxproj
           if python3 scripts/ci/verify-xcodegen-pbxproj-drift.py /tmp/committed.pbxproj OpenBurnBar.xcodeproj/project.pbxproj; then
+            exit 0
+          fi
+
+          # XcodeGen emission is not fully deterministic: an identical spec and
+          # tree can occasionally omit a whole target. Observed on a merge-queue
+          # candidate whose regenerated project dropped the OpenBurnBarMobileTests
+          # target, while the same commit regenerates clean locally with the same
+          # pinned XcodeGen 2.45.4. That ejects the candidate and discards hours
+          # of gate work. Real staleness is deterministic and reproduces, so
+          # regenerate once more and only fail when the drift comes back.
+          echo "::warning::pbxproj drift detected; regenerating once more to rule out nondeterministic XcodeGen emission."
+          xcodegen generate --spec project.yml
+          if python3 scripts/ci/verify-xcodegen-pbxproj-drift.py /tmp/committed.pbxproj OpenBurnBar.xcodeproj/project.pbxproj; then
+            echo "::warning::Drift did not reproduce on the second generation; treating the first result as nondeterministic XcodeGen output."
             exit 0
           fi
 

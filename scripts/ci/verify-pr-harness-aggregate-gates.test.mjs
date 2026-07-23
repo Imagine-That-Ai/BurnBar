@@ -11,6 +11,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -451,9 +452,33 @@ const fastStep = workflowStep(fastGate, "Check all fast jobs passed");
 const fastScript = stepScript(fastStep);
 const fastNeeds = jobNeeds(fastGate);
 
-check("SQLCipher policy leaves enough time for checkout and verification", () => {
-  const timeoutMinutes = Number.parseInt(jobField(sqlcipherJob, "timeout-minutes"), 10);
-  assert.ok(timeoutMinutes >= 6, "SQLCipher policy timeout must tolerate a two-minute checkout delay");
+check("every checkout-bearing CI job tolerates a slow checkout", () => {
+  // A job whose budget expires during actions/checkout is reported by GitHub as
+  // CANCELLED, and the CI Gate aggregator fails closed on a cancelled component
+  // -- so an ordinary slow checkout ejects the whole merge-queue candidate. The
+  // pack is ~866MB and a tip checkout has been observed taking 3min+ under
+  // contention. This originally guarded one job (SQLCipher), was widened to
+  // fast-feedback.yml, and is now repo-wide: the required-context detector jobs
+  // (Detect native/dist/windows changes) live in other workflows and were the
+  // ones still ejecting candidates. Any job that runs actions/checkout must
+  // budget >= 6 minutes.
+  const dir = join(REPO_ROOT, ".github/workflows");
+  const offenders = [];
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".yml"))) {
+    const src = readFileSync(join(dir, file), "utf8");
+    for (const m of src.matchAll(/\n  ([a-z0-9_-]+):\n((?:    .*\n|\n)*)/gu)) {
+      const [, job, body] = m;
+      const t = body.match(/^    timeout-minutes: (\d+)$/mu);
+      if (t && Number.parseInt(t[1], 10) < 6 && body.includes("actions/checkout")) {
+        offenders.push(`${file}:${job}=${t[1]}`);
+      }
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `checkout-bearing jobs must budget >=6 min: ${JSON.stringify(offenders)}`,
+  );
 });
 
 check("Rust path detector is mandatory and only a proven unchanged path may skip Rust", () => {
