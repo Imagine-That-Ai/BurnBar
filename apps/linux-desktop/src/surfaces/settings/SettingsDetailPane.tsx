@@ -1494,7 +1494,7 @@ export function SettingsDetailPane({
   activeTab: SettingsTabId;
   config: ConfigSnapshot | null;
   fixtureMode: boolean;
-  bridge: unknown;
+  bridge: LinuxShellBridge | null;
   status: DaemonStatusCopy;
   loading: boolean;
   error: string | null;
@@ -1731,7 +1731,7 @@ export function SettingsDetailPane({
       case 'cloud':
         content = (
           <>
-            <CloudSyncControls config={config} />
+            <CloudSyncControls config={config} bridge={bridge} />
             <SettingGroup title="OpenBurnBar Cloud" sectionHeader hideTitle>
               <SettingsDrillRow
                 as="div"

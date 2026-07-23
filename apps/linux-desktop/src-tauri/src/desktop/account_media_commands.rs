@@ -524,6 +524,24 @@ fn text_expansion_engine_expand(request: serde_json::Value) -> Result<serde_json
     call_daemon_method("daemon.text_expansion.engine.expand", Some(request))
 }
 
+// ───────────────── Linux cloud replica sync ─────────────────
+// The daemon owns identity, credentials, vault keys, and encrypted payloads;
+// the shell exposes only explicit consent, status, and a bounded manual run.
+#[tauri::command]
+fn linux_cloud_sync_status() -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.cloud_sync.status", None)
+}
+
+#[tauri::command]
+fn linux_cloud_sync_policy_update(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.cloud_sync.policy.update", Some(request))
+}
+
+#[tauri::command]
+fn linux_cloud_sync_run(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.cloud_sync.run", Some(request))
+}
+
 // ───────────────── P11: session env ─────────────────
 // Reads XDG env vars for real pet-tier detection (not hardcoded).
 #[tauri::command]

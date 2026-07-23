@@ -913,6 +913,31 @@ export type LinuxUpdateStatus = {
   compatibility?: LinuxUpdateCompatibility;
   reason?: string;
 };
+
+// Daemon-owned encrypted cloud replica status. The shell receives posture and
+// counters only; credentials, cursors, vault keys, and replica payloads stay
+// inside the daemon.
+export type LinuxCloudSyncPhase = 'disabled' | 'ready' | 'syncing' | 'backoff' | 'locked' | 'unknown';
+export type LinuxCloudSyncStatus = {
+  phase: LinuxCloudSyncPhase;
+  pendingMutationCount: number;
+  consecutiveFailures: number;
+  retryAtMillis?: number;
+  lastSuccessfulSyncAtMillis?: number;
+  enabledDomains: string[];
+  remoteAccessEnabled: boolean;
+  vaultKeyAvailable: boolean;
+};
+export type LinuxCloudSyncPolicy = {
+  enabledDomains: string[];
+  remoteAccessEnabled: boolean;
+};
+export type LinuxCloudSyncRunResult = {
+  pushedCount: number;
+  appliedRemoteCount: number;
+  retainedLocalConflictCount: number;
+  status: LinuxCloudSyncStatus;
+};
 export type DiagnosticsExportPreview = {
   schemaVersion: 1;
   byteCount: number;
@@ -1771,6 +1796,9 @@ export interface LinuxShellBridge {
   textExpansionEngineStart?(request: TextExpansionEngineStartRequest): Promise<TextExpansionEngineRuntimeStatus>;
   textExpansionEngineStop?(request?: TextExpansionEngineStopRequest): Promise<TextExpansionEngineRuntimeStatus>;
   textExpansionEngineExpand?(request: TextExpansionEngineExpandRequest): Promise<TextExpansionEngineExpandResponse>;
+  linuxCloudSyncStatus?(): Promise<LinuxCloudSyncStatus>;
+  linuxCloudSyncPolicyUpdate?(request: LinuxCloudSyncPolicy): Promise<LinuxCloudSyncStatus>;
+  linuxCloudSyncRun?(force?: boolean): Promise<LinuxCloudSyncRunResult>;
   toolApprovalRespond?(
     approvalId: string,
     decision: 'approve' | 'reject' | 'cancel',

@@ -47,6 +47,9 @@ import type {
   LinuxUpdateChannelInfo,
   LinuxUpdateCompatibility,
   LinuxUpdateStatus,
+  LinuxCloudSyncPhase,
+  LinuxCloudSyncStatus,
+  LinuxCloudSyncRunResult,
   DiagnosticsExportPreview,
   DiagnosticsExport,
   ExportDestinationKind,
@@ -1222,6 +1225,39 @@ export function decodeLinuxUpdateStatus(raw: RawJsonValue): LinuxUpdateStatus {
       : undefined,
     compatibility,
     reason: str(pick(raw, 'reason')) || undefined
+  };
+}
+
+export function mapLinuxCloudSyncStatus(raw: RawJsonValue): LinuxCloudSyncStatus {
+  const phaseRaw = str(pick(raw, 'phase'));
+  const phase = ['disabled', 'ready', 'syncing', 'backoff', 'locked'].includes(phaseRaw)
+    ? phaseRaw as LinuxCloudSyncPhase
+    : 'unknown';
+  const enabledDomains = arr(pick(raw, 'enabledDomains', 'enabled_domains'))
+    .map((value) => str(value))
+    .filter(Boolean);
+  const optionalMillis = (value: RawJsonValue): number | undefined => {
+    const parsed = num(value, -1);
+    return parsed >= 0 ? parsed : undefined;
+  };
+  return {
+    phase,
+    pendingMutationCount: Math.max(0, Math.floor(num(pick(raw, 'pendingMutationCount', 'pending_mutation_count')))),
+    consecutiveFailures: Math.max(0, Math.floor(num(pick(raw, 'consecutiveFailures', 'consecutive_failures')))),
+    retryAtMillis: optionalMillis(pick(raw, 'retryAtMillis', 'retry_at_millis')),
+    lastSuccessfulSyncAtMillis: optionalMillis(pick(raw, 'lastSuccessfulSyncAtMillis', 'last_successful_sync_at_millis')),
+    enabledDomains,
+    remoteAccessEnabled: Boolean(pick(raw, 'remoteAccessEnabled', 'remote_access_enabled')),
+    vaultKeyAvailable: Boolean(pick(raw, 'vaultKeyAvailable', 'vault_key_available'))
+  };
+}
+
+export function mapLinuxCloudSyncRunResult(raw: RawJsonValue): LinuxCloudSyncRunResult {
+  return {
+    pushedCount: Math.max(0, Math.floor(num(pick(raw, 'pushedCount', 'pushed_count')))),
+    appliedRemoteCount: Math.max(0, Math.floor(num(pick(raw, 'appliedRemoteCount', 'applied_remote_count')))),
+    retainedLocalConflictCount: Math.max(0, Math.floor(num(pick(raw, 'retainedLocalConflictCount', 'retained_local_conflict_count')))),
+    status: mapLinuxCloudSyncStatus(pick(raw, 'status'))
   };
 }
 

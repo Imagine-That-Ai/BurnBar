@@ -206,6 +206,23 @@ describe('VAL-RPC bridge contract', () => {
     }
   });
 
+  it('routes Linux cloud replica consent and runs through canonical daemon RPCs', () => {
+    for (const method of [
+      'daemon.cloud_sync.status',
+      'daemon.cloud_sync.policy.update',
+      'daemon.cloud_sync.run'
+    ]) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
+    }
+    expect(rustBridge).toContain('fn linux_cloud_sync_status');
+    expect(rustBridge).toContain('fn linux_cloud_sync_policy_update');
+    expect(rustBridge).toContain('fn linux_cloud_sync_run');
+    expect(tsBridge).toContain("'linux_cloud_sync_status'");
+    expect(tsBridge).toContain("'linux_cloud_sync_policy_update'");
+    expect(tsBridge).toContain("'linux_cloud_sync_run'");
+  });
+
   it('wires daemon-owned Linux auth without renderer credential material', () => {
     for (const method of [
       'daemon.auth.status',

@@ -73,6 +73,8 @@ import {
   mapDatabaseSnapshotPath,
   mapAppVersionInfo,
   decodeLinuxUpdateStatus,
+  mapLinuxCloudSyncStatus,
+  mapLinuxCloudSyncRunResult,
   decodeSmartHubCommandResponse,
   mapIntegrationsStatus
 } from './tauriBridgeSystemDecoders.js';
@@ -477,6 +479,12 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         replacement: typeof pick(value, 'replacement') === 'string' ? String(pick(value, 'replacement')) : null
       };
     },
+    linuxCloudSyncStatus: async () =>
+      mapLinuxCloudSyncStatus(await invoke<RawJsonValue>('linux_cloud_sync_status')),
+    linuxCloudSyncPolicyUpdate: async (request) =>
+      mapLinuxCloudSyncStatus(await invoke<RawJsonValue>('linux_cloud_sync_policy_update', { request })),
+    linuxCloudSyncRun: async (force = false) =>
+      mapLinuxCloudSyncRunResult(await invoke<RawJsonValue>('linux_cloud_sync_run', { request: { force } })),
     // P07 — derived from daemon.config.get + daemon.health
     dbStatus: async () => {
       const raw = await invoke<RawJsonValue>('db_status');
