@@ -554,6 +554,8 @@ pub fn run() {
             membership_restore,
             app_version_info,
             update_status,
+            desktop_wallpaper_status,
+            desktop_wallpaper_apply,
             export_diagnostics,
             text_expansion_list,
             text_expansion_upsert,

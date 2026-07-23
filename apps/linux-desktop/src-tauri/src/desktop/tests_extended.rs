@@ -145,6 +145,22 @@
         assert!(bounded_shortcut_error("x".repeat(300)).len() <= 256);
     }
 
+    #[test]
+    fn wayland_shortcut_portal_probe_requires_the_exact_global_shortcuts_interface() {
+        let introspection = r#"
+            interface org.freedesktop.portal.GlobalShortcuts {
+                CreateSession(a{sv}) -> (o)
+            }
+        "#;
+        assert!(wayland_global_shortcuts_portal_present(introspection));
+        assert!(!wayland_global_shortcuts_portal_present(
+            "interface org.freedesktop.portal.ScreenCast { }"
+        ));
+        assert!(!wayland_global_shortcuts_portal_present(
+            "interface org.freedesktop.portal.GlobalShortcutsExperimental { }"
+        ));
+    }
+
     fn computer_use_local_auth_fixture() -> (
         ComputerUseLocalAuthProof,
         ComputerUseLocalAuthGrantBinding,
@@ -1126,6 +1142,71 @@
         let guard = TrayRefreshGuard(gate.clone());
         drop(guard);
         assert!(try_begin_tray_refresh(&gate));
+    }
+
+    #[test]
+    fn desktop_wallpaper_backend_detection_is_explicit_and_command_gated() {
+        let available = |name: &str| matches!(name, "gsettings" | "plasma-apply-wallpaperimage");
+        assert_eq!(
+            desktop_backend_from_env_with(Some("GNOME"), available),
+            DesktopWallpaperBackend::Gnome
+        );
+        assert_eq!(
+            desktop_backend_from_env_with(Some("KDE;Plasma"), available),
+            DesktopWallpaperBackend::Kde
+        );
+        assert_eq!(
+            desktop_backend_from_env_with(Some("XFCE"), available),
+            DesktopWallpaperBackend::Unsupported
+        );
+        assert_eq!(
+            desktop_backend_from_env_with(Some("sway"), available),
+            DesktopWallpaperBackend::Unsupported
+        );
+    }
+
+    #[test]
+    fn desktop_wallpaper_theme_contract_is_bounded_and_uses_app_palette() {
+        assert_eq!(WALLPAPER_THEMES.len(), 11);
+        assert!(wallpaper_theme_is_valid("auroraTeal"));
+        assert!(!wallpaper_theme_is_valid("../../etc/passwd"));
+        let svg = theme_svg("auroraTeal").unwrap();
+        assert!(svg.starts_with("<svg "));
+        assert!(svg.contains("#0d5a64"));
+        assert!(theme_svg("unknown").is_err());
+    }
+
+    #[test]
+    fn desktop_wallpaper_file_uri_escapes_user_paths_without_shell_fragments() {
+        let uri = file_uri(Path::new("/home/alberto/My Wallpaper #1.svg")).unwrap();
+        assert_eq!(uri, "file:///home/alberto/My%20Wallpaper%20%231.svg");
+        assert!(!uri.contains(' '));
+        assert!(!uri.contains('#'));
+    }
+
+    #[test]
+    fn desktop_wallpaper_status_distinguishes_ready_applied_and_unsupported() {
+        let ready = wallpaper_status_from_state(DesktopWallpaperBackend::Gnome, None, None);
+        assert!(ready.available);
+        assert_eq!(ready.state, "ready");
+        let applied = wallpaper_status_from_state(
+            DesktopWallpaperBackend::Kde,
+            Some(DesktopWallpaperState {
+                backend: DesktopWallpaperBackend::Kde,
+                theme: "midnight".into(),
+                path: "/tmp/midnight.svg".into(),
+            }),
+            None,
+        );
+        assert_eq!(applied.state, "applied");
+        assert_eq!(applied.theme.as_deref(), Some("midnight"));
+        let unsupported = wallpaper_status_from_state(
+            DesktopWallpaperBackend::Unsupported,
+            None,
+            Some("wallpaper_backend_unsupported".into()),
+        );
+        assert!(!unsupported.available);
+        assert_eq!(unsupported.state, "degraded");
     }
 
     #[test]

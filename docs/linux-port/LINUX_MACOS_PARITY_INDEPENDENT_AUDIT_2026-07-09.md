@@ -184,6 +184,24 @@ This closes the source-level wallpaper palette gap. Native desktop-wallpaper
 installation, live wallpaper panels, and installed compositor receipts remain
 open; the strict ledger remains **0/40 product** and **0/7 environment**.
 
+### Linux native desktop wallpaper adapter — 2026-07-23
+
+The Tauri shell now exposes a bounded native wallpaper adapter for GNOME,
+KDE/Plasma, and XFCE. `desktop_wallpaper_apply` validates the same eleven
+macOS palette identifiers, writes an owner-only SVG atomically under the XDG
+data directory, invokes only the detected desktop's native wallpaper command,
+and returns an explicit ready/applied/degraded/unsupported status. GNOME's
+dark URI is best-effort for older schemas; the light URI remains authoritative.
+The status command and focused Rust tests keep command availability, URI
+escaping, path safety, and unsupported compositor behavior honest.
+
+This closes the source-level native wallpaper installation adapter gap for
+those desktop families. A renderer control still needs to call the command,
+Sway/Hyprland live wallpaper hosting is intentionally unsupported, and
+installed compositor receipts, restoration of a user's prior wallpaper, and
+live wallpaper panels remain open; the strict ledger remains **0/40 product**
+and **0/7 environment**.
+
 ### Linux GlassCard / GlassButton primitives — 2026-07-23
 
 Linux now exposes typed `GlassCard` and `GlassButton` components matching the
