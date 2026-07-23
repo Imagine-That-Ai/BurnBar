@@ -406,6 +406,14 @@ pub fn run() {
     // subscriber) a no-op instead of a panic.
     init_tracing();
 
+    let sentry_guard = match crate::observability::initialize() {
+        Ok(guard) => guard,
+        Err(error) => {
+            eprintln!("openburnbar: refusing startup: {error}");
+            return;
+        }
+    };
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
@@ -555,6 +563,7 @@ pub fn run() {
         ])
         .setup(move |app| {
             app.manage(instance_guard);
+            app.manage(sentry_guard);
             start_single_instance_dispatcher(app.handle().clone(), instance_receiver);
             start_packaged_daemon_lifecycle(app.handle().clone());
             let tray_ready = match build_tray(app.handle()) {

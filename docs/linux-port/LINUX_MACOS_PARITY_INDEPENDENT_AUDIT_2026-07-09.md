@@ -121,6 +121,25 @@ slice. Installed compositor/WebKit receipts and the remaining per-layout
 `sidebarThemeGlass` palette are still required; the strict ledger remains
 **0/40 product** and **0/7 environment**.
 
+### Linux Tauri observability bootstrap — 2026-07-22
+
+The Linux Tauri shell now has a held Rust Sentry client guard in
+`apps/linux-desktop/src-tauri/src/observability.rs`. It validates
+`OPENBURNBAR_SENTRY_DSN` (or the legacy `BURNBAR_SENTRY_DSN`) before calling
+the SDK, keeps missing or malformed configuration non-fatal in normal
+development, and refuses startup only when strict observability is explicitly
+requested. The client uses the `linux-desktop` environment, a version-bound
+release name, `send_default_pii=false`, zero trace sampling, and a scrubber
+that removes identity, request, message, context, tag, extra, and breadcrumb
+payloads while retaining crash/stacktrace signal. The guard is managed by
+Tauri for orderly event draining at shutdown. Four focused Rust tests cover DSN
+parsing and the privacy boundary.
+
+This closes the Linux shell's source-level Sentry bootstrap gap. A configured
+production DSN, captured event, and release-environment receipt remain
+external evidence requirements; the strict ledger remains **0/40 product** and
+**0/7 environment**.
+
 ## Integration closeout — 2026-07-21
 
 ### Live UTM session re-open — 2026-07-21 (Grok)

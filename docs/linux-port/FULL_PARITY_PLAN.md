@@ -36,6 +36,16 @@ listener cleanup is covered by focused tests. The user-controlled
 settings slider and maps to bounded skin-aware token presets. Installed
 compositor/WebKit receipts are still required.
 
+**Implementation checkpoint (2026-07-22, Linux observability):** the Tauri
+shell now initializes Sentry through
+`apps/linux-desktop/src-tauri/src/observability.rs`. DSNs are parsed before SDK
+initialization, missing or malformed values stay non-fatal outside strict
+observability mode, and the held client guard is managed by Tauri for orderly
+shutdown draining. Default PII is disabled and the event/breadcrumb scrubber
+removes identity and user-content fields. Focused Rust tests cover valid and
+invalid DSNs plus event and breadcrumb scrubbing. Production DSN configuration
+and live event receipts remain external release evidence.
+
 ---
 
 ## 1. Current state snapshot
@@ -160,7 +170,8 @@ required before promotion.
 4. **R2 upload script** for Linux artifacts (`scripts/upload-linux-downloads-r2.sh`).
 5. **Public download trust verification** CI script (`scripts/ci/verify-public-linux-download-trust.sh` equivalent).
 6. **`website/public/downloads/latest-linux.json`** promotion, gated by `verify-linux-release.mjs`.
-7. **Sentry integration** for the Tauri shell and Linux daemon.
+7. **Sentry integration** for the Tauri shell and Linux daemon. The Tauri shell
+   bootstrap is now source-complete; production DSN/event receipts remain open.
 8. **Nightly matrix evidence** for Ubuntu GNOME/Wayland, Fedora KDE, Arch/wlroots.
 9. **Makefile `release-linux` target** for parity with macOS `release-mas` / `release-website`.
 
@@ -216,7 +227,7 @@ required before promotion.
 | Lane | Scope | Files owned | Verification |
 |------|-------|-------------|--------------|
 | R1 | Release scripts: `upload-linux-downloads-r2.sh`, update/rollback feed, `verify-public-linux-download-trust.sh`. | `scripts/linux-port/`, `scripts/ci/`, `Makefile` | `verify-linux-release.mjs --allow-blocked` passes; scripts run green. |
-| R2 | Sentry + observability: add `sentry-rust` to Tauri and daemon, configure DSN. | `apps/linux-desktop/src-tauri/Cargo.toml`, `OpenBurnBarDaemon/` | Build passes; errors captured in dev. |
+| R2 | Sentry + observability: add `sentry-rust` to Tauri and daemon, configure DSN. | `apps/linux-desktop/src-tauri/`, `OpenBurnBarDaemon/` | Tauri bootstrap and focused Rust privacy tests pass; production DSN/event receipt remains external. |
 | R3 | Nightly matrix: fix Wayland/Fedora/Arch runners, add `xdg-desktop-portal` consent test. | `.github/workflows/linux-nightly.yml` | Nightly matrix produces artifacts. |
 | R4 | **Complete:** `fb20c38dc2` packaged route-body skeleton/idle hydration plus the root-owned transcript normalization fix were validated on Ubuntu GNOME/X11; eager fixture/browser behavior remains intact. | `apps/linux-desktop/src/surfaces/SurfaceRouter.tsx`, `SurfaceRouter.test.tsx`, `system/system.css`, `scripts/linux-port/run-shell-desktop-session.mjs`, `scripts/linux-port/accessibility-harness-contract.test.mjs`, `.github/workflows/linux-nightly.yml` | Nightly `29646670763`: route p95 `95.6 ms` <= `120 ms`, shell smoke success, route shell accessible during hydration, raw Docker-owned transcripts retained as evidence. |
 | D1 | Pensieve watcher: replace stub with inotify. | `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/PensieveKnowledgeWatcherLinux.swift` | `OpenBurnBarDaemonLinuxGatewayTests` pass. |
