@@ -225,19 +225,21 @@ equivalence, compositor rendering, reduced-motion visual proof, and installed
 visual receipts remain open; the strict ledger remains **0/40 product** and
 **0/7 environment**.
 
-### Linux Wayland shortcut capability reporting — 2026-07-23
+### Linux Wayland shortcut registration — 2026-07-23
 
-The native shortcut status now performs a bounded, trusted-path `gdbus`
+The native shortcut status performs a bounded, trusted-path `gdbus`
 introspection for `org.freedesktop.portal.GlobalShortcuts` on Wayland and
 returns typed `portalAvailable`/`portalReason` fields through the renderer
-bridge. Portal presence is reported as capability evidence only; bindings
-remain unavailable until the asynchronous `CreateSession`/`BindShortcuts`
-flow and event delivery are implemented.
+bridge. The shell now uses the `ashpd` portal client for the asynchronous
+`CreateSession`/`BindShortcuts` flow, preserves partial binding state, and
+dispatches portal `Activated` signals to the same fixed dashboard, pet, and
+Computer Use panic handlers used by X11. Preferred accelerators are a fixed
+native mapping; renderer input cannot create a portal shortcut.
 
-This closes the misleading “unknown Wayland” status gap without overclaiming
-global shortcut support. Full registration, compositor receipts, and IME/input
-matrix evidence remain open; the strict ledger remains **0/40 product** and
-**0/7 environment**.
+This closes the source-level Wayland registration/event-delivery gap. Live
+portal consent, compositor receipts, partial-registration recovery, and
+IME/input matrix evidence remain open; the strict ledger remains **0/40
+product** and **0/7 environment**.
 
 ### Linux onboarding cloud-auth recovery — 2026-07-23
 

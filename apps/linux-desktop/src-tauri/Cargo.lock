@@ -2974,6 +2974,7 @@ dependencies = [
 name = "openburnbar-linux-desktop"
 version = "0.1.1"
 dependencies = [
+ "ashpd",
  "base64 0.22.1",
  "ed25519-dalek",
  "futures-util",

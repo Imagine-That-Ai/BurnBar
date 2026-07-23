@@ -161,6 +161,33 @@
         ));
     }
 
+    #[test]
+    fn wayland_shortcut_portal_mapping_is_fixed_and_partial_bindings_are_visible() {
+        assert_eq!(
+            wayland_portal_trigger("computer-use-panic"),
+            Some("<Control><Alt><Super>period")
+        );
+        assert_eq!(
+            wayland_portal_trigger("computer-use-panic-fallback"),
+            Some("<Control><Alt><Shift>period")
+        );
+        assert_eq!(wayland_portal_trigger("open-dashboard"), Some("<Control><Alt><Super>O"));
+        assert_eq!(wayland_portal_trigger("summon-pet"), Some("<Control><Alt><Super>P"));
+        assert_eq!(wayland_portal_trigger("renderer-supplied"), None);
+
+        let bindings = portal_binding_status(
+            vec!["open-dashboard".to_string()],
+            Some("portal_binding_not_returned".to_string()),
+        );
+        assert_eq!(bindings.len(), NATIVE_SHORTCUT_BINDINGS.len());
+        assert_eq!(bindings[2].state, NativeShortcutBindingState::Registered);
+        assert_eq!(bindings[0].state, NativeShortcutBindingState::Degraded);
+        assert_eq!(
+            bindings[0].degraded_reason.as_deref(),
+            Some("portal_binding_not_returned")
+        );
+    }
+
     fn computer_use_local_auth_fixture() -> (
         ComputerUseLocalAuthProof,
         ComputerUseLocalAuthGrantBinding,

@@ -18,6 +18,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+ashpd = { version = "0.11.1", default-features = false, features = ["tokio"] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = { version = "2.7.2", default-features = false, features = ["xdg-portal"] }
 tauri-plugin-global-shortcut = "2"

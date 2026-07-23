@@ -181,6 +181,20 @@ const NATIVE_SHORTCUT_BINDINGS: [(&str, &str); 4] = [
     ("summon-pet", SUMMON_PET_SHORTCUT),
 ];
 
+/// Translate the shell's stable shortcut vocabulary to the accelerator syntax
+/// accepted by the freedesktop GlobalShortcuts portal. Keep this mapping
+/// explicit: the portal trigger is user-visible and must never be assembled
+/// from arbitrary renderer input.
+fn wayland_portal_trigger(id: &str) -> Option<&'static str> {
+    match id {
+        "computer-use-panic" => Some("<Control><Alt><Super>period"),
+        "computer-use-panic-fallback" => Some("<Control><Alt><Shift>period"),
+        "open-dashboard" => Some("<Control><Alt><Super>O"),
+        "summon-pet" => Some("<Control><Alt><Super>P"),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 enum NativeShortcutBackend {
@@ -597,8 +611,165 @@ fn set_native_shortcut_unavailable(backend: NativeShortcutBackend, reason: impl 
     }
 }
 
+fn set_wayland_portal_shortcut_result(
+    bindings: Vec<NativeShortcutBindingStatus>,
+    portal_available: bool,
+    portal_reason: Option<String>,
+    degraded_reason: Option<String>,
+) {
+    let registered_count = bindings
+        .iter()
+        .filter(|binding| binding.state == NativeShortcutBindingState::Registered)
+        .count();
+    let all_registered = registered_count == bindings.len();
+    let any_registered = registered_count > 0;
+    if let Ok(mut status) = native_shortcut_status_store().lock() {
+        status.available = any_registered;
+        status.registered = all_registered;
+        status.backend = NativeShortcutBackend::Wayland;
+        status.bindings = bindings;
+        status.portal_available = portal_available;
+        status.portal_reason = portal_reason;
+        status.degraded_reason = degraded_reason.or_else(|| {
+            if all_registered {
+                None
+            } else if any_registered {
+                Some("native_shortcuts_partial_registration".to_string())
+            } else {
+                Some("native_shortcuts_registration_failed".to_string())
+            }
+        });
+    }
+}
+
+fn portal_binding_status(
+    registered_ids: impl IntoIterator<Item = String>,
+    fallback_reason: Option<String>,
+) -> Vec<NativeShortcutBindingStatus> {
+    let registered_ids = registered_ids.into_iter().collect::<std::collections::HashSet<_>>();
+    NATIVE_SHORTCUT_BINDINGS
+        .iter()
+        .map(|(id, shortcut)| {
+            let registered = registered_ids.contains(*id);
+            NativeShortcutBindingStatus {
+                id: (*id).to_string(),
+                shortcut: (*shortcut).to_string(),
+                state: if registered {
+                    NativeShortcutBindingState::Registered
+                } else {
+                    NativeShortcutBindingState::Degraded
+                },
+                degraded_reason: if registered {
+                    None
+                } else {
+                    fallback_reason.clone()
+                },
+            }
+        })
+        .collect()
+}
+
+async fn register_wayland_portal_shortcuts(app: AppHandle<Wry>) -> Result<(), String> {
+    use ashpd::desktop::global_shortcuts::{GlobalShortcuts, NewShortcut};
+
+    let portal = GlobalShortcuts::new()
+        .await
+        .map_err(|error| format!("native_shortcuts_portal_connect:{error}"))?;
+    let session = portal
+        .create_session()
+        .await
+        .map_err(|error| format!("native_shortcuts_portal_create_session:{error}"))?;
+    let shortcuts = NATIVE_SHORTCUT_BINDINGS
+        .iter()
+        .filter_map(|(id, _)| {
+            wayland_portal_trigger(id).map(|trigger| {
+                NewShortcut::new(*id, format!("OpenBurnBar {id}"))
+                    .preferred_trigger(Some(trigger))
+            })
+        })
+        .collect::<Vec<_>>();
+    let response = portal
+        .bind_shortcuts(&session, &shortcuts, None)
+        .await
+        .map_err(|error| format!("native_shortcuts_portal_bind:{error}"))?
+        .response()
+        .map_err(|error| format!("native_shortcuts_portal_bind_response:{error}"))?;
+    let registered_ids = response
+        .shortcuts()
+        .iter()
+        .map(|shortcut| shortcut.id().to_string())
+        .collect::<Vec<_>>();
+    if registered_ids.is_empty() {
+        return Err("native_shortcuts_portal_bind_empty".to_string());
+    }
+    let bindings = portal_binding_status(
+        registered_ids,
+        Some("native_shortcuts_portal_binding_not_returned".to_string()),
+    );
+    set_wayland_portal_shortcut_result(bindings, true, None, None);
+
+    let mut activated = match portal.receive_activated().await {
+        Ok(stream) => stream,
+        Err(error) => {
+            if let Ok(mut status) = native_shortcut_status_store().lock() {
+                status.degraded_reason =
+                    Some(format!("native_shortcuts_portal_signal:{error}"));
+            }
+            return Ok(());
+        }
+    };
+    while let Some(event) = activated.next().await {
+        handle_portal_shortcut(&app, event.shortcut_id());
+    }
+    if let Ok(mut status) = native_shortcut_status_store().lock() {
+        status.degraded_reason = Some("native_shortcuts_portal_signal_closed".to_string());
+    }
+    Ok(())
+}
+
+fn handle_portal_shortcut(app: &AppHandle<Wry>, id: &str) {
+    match id {
+        "open-dashboard" => emit_tray_route(app, "overview"),
+        "summon-pet" => {
+            emit_tray_route(app, "pet");
+            let _ = app.emit("pet-summon", PET_SUMMON_EVENT_PAYLOAD);
+        }
+        "computer-use-panic" | "computer-use-panic-fallback" => {
+            trigger_computer_use_panic_hotkey();
+        }
+        _ => {}
+    }
+}
+
 fn register_computer_use_panic_shortcuts(app: &AppHandle) {
     let backend = native_shortcut_backend();
+    if backend == NativeShortcutBackend::Wayland {
+        set_native_shortcut_unavailable(
+            backend,
+            "native_shortcuts_portal_registration_pending".to_string(),
+        );
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(error) = register_wayland_portal_shortcuts(app).await {
+                let reason = format!("native_shortcuts_portal_registration_failed:{error}");
+                eprintln!("{reason}");
+                let bindings = native_shortcut_bindings(
+                    NativeShortcutBindingState::Degraded,
+                    Some(reason.clone()),
+                );
+                let (portal_available, portal_reason) =
+                    native_shortcut_portal_status(NativeShortcutBackend::Wayland);
+                set_wayland_portal_shortcut_result(
+                    bindings,
+                    portal_available,
+                    portal_reason,
+                    Some(reason),
+                );
+            }
+        });
+        return;
+    }
+
     let Some(global_shortcut) = app.try_state::<GlobalShortcut<Wry>>() else {
         set_native_shortcut_unavailable(
             backend,
@@ -607,9 +778,9 @@ fn register_computer_use_panic_shortcuts(app: &AppHandle) {
         return;
     };
 
-    // global-hotkey currently supports X11 only on Linux. Keep this explicit:
-    // Wayland/wlroots sessions must report an unavailable capability instead of
-    // claiming success, while the emergency keyboard fallback remains local.
+    // global-hotkey currently supports X11 only on Linux. Unknown sessions
+    // remain unavailable instead of claiming a registration that cannot be
+    // verified.
     if backend != NativeShortcutBackend::X11 {
         let reason = native_shortcut_registration_reason(backend, None);
         eprintln!("computer_use_global_panic_hotkey_degraded: {reason}");
