@@ -87,11 +87,12 @@ describe('petNativeContractFromStatus', () => {
     expect(petNativeContractFromStatus({
       state: 'available',
       compositor: 'GNOME/x11',
+      sessionType: 'x11',
       overlaySupported: true,
       clickThroughSupported: true,
       windowContract: 'tauri-x11-companion-v1',
       reason: 'ready',
-      source: 'test'
+      source: 'tauri-x11-companion-window'
     })).toEqual({ overlay: true, 'click-through': true });
   });
 
@@ -106,5 +107,28 @@ describe('petNativeContractFromStatus', () => {
       source: 'test'
     })).toEqual({ overlay: false, 'click-through': false });
     expect(petNativeContractFromStatus(null)).toEqual({ overlay: false, 'click-through': false });
+  });
+
+  it('rejects an optimistic available status without the canonical X11 contract', () => {
+    expect(petNativeContractFromStatus({
+      state: 'available',
+      compositor: 'GNOME/wayland',
+      sessionType: 'wayland',
+      overlaySupported: true,
+      clickThroughSupported: true,
+      windowContract: 'tauri-x11-companion-v1',
+      reason: 'forged',
+      source: 'test'
+    })).toEqual({ overlay: false, 'click-through': false });
+    expect(petNativeContractFromStatus({
+      state: 'available',
+      compositor: 'GNOME/x11',
+      sessionType: 'x11',
+      overlaySupported: true,
+      clickThroughSupported: true,
+      windowContract: 'unexpected-contract',
+      reason: 'stale',
+      source: 'tauri-x11-companion-window'
+    })).toEqual({ overlay: false, 'click-through': false });
   });
 });

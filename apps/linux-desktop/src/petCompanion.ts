@@ -49,7 +49,22 @@ export type PetNativeContract = {
 };
 
 export function petNativeContractFromStatus(status: PetCompanionStatus | null | undefined): PetNativeContract {
-  if (!status || status.state !== 'available') return { overlay: false, 'click-through': false };
+  // The renderer treats this status as untrusted capability input. Require
+  // the complete native contract, not only optimistic booleans, so a stale or
+  // forged available Wayland status can never enable overlay controls.
+  if (
+    !status ||
+    status.state !== 'available' ||
+    status.sessionType?.toLowerCase() !== 'x11' ||
+    !status.compositor.toLowerCase().endsWith('/x11') ||
+    status.windowContract !== 'tauri-x11-companion-v1' ||
+    status.source !== 'tauri-x11-companion-window'
+  ) {
+    return { overlay: false, 'click-through': false };
+  }
+  if (!status.overlaySupported && !status.clickThroughSupported) {
+    return { overlay: false, 'click-through': false };
+  }
   return {
     overlay: status.overlaySupported,
     'click-through': status.clickThroughSupported
