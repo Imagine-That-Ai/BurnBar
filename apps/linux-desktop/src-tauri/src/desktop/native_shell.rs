@@ -214,6 +214,10 @@ struct NativeShortcutStatus {
     backend: NativeShortcutBackend,
     shortcuts: Vec<String>,
     bindings: Vec<NativeShortcutBindingStatus>,
+    #[serde(rename = "portalAvailable")]
+    portal_available: bool,
+    #[serde(rename = "portalReason")]
+    portal_reason: Option<String>,
     degraded_reason: Option<String>,
 }
 
@@ -235,6 +239,8 @@ fn native_shortcut_status_store() -> &'static Mutex<NativeShortcutStatus> {
                 NativeShortcutBindingState::Unavailable,
                 Some("native_shortcuts_not_initialized".to_string()),
             ),
+            portal_available: false,
+            portal_reason: Some("native_shortcuts_portal_not_probed".to_string()),
             degraded_reason: Some("native_shortcuts_not_initialized".to_string()),
         })
     })
@@ -315,6 +321,129 @@ fn native_shortcut_registration_reason(
     }
 }
 
+/// Parse the portal's introspection response without trusting any other
+/// interface. The portal is capability evidence only: registration still
+/// requires the asynchronous CreateSession/BindShortcuts flow, which is not
+/// provided by Tauri's global-shortcut backend on Linux Wayland yet.
+fn wayland_global_shortcuts_portal_present(introspection: &str) -> bool {
+    const INTERFACE: &str = "org.freedesktop.portal.GlobalShortcuts";
+    introspection.lines().any(|line| {
+        let mut tokens = line.split_whitespace();
+        matches!(tokens.next(), Some("interface"))
+            && tokens
+                .next()
+                .is_some_and(|token| {
+                    token.trim_matches(|character| matches!(character, '{' | '}' | ':' | ';'))
+                        == INTERFACE
+                })
+    })
+}
+
+fn bounded_portal_probe_error(error: impl std::fmt::Display) -> String {
+    let normalized = error
+        .to_string()
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect::<String>();
+    normalized.chars().take(160).collect()
+}
+
+fn probe_wayland_global_shortcuts_portal() -> (bool, Option<String>) {
+    if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
+        return (
+            false,
+            Some("native_shortcuts_portal_session_bus_unavailable".to_string()),
+        );
+    }
+
+    let mut child = match Command::new("gdbus")
+        .args([
+            "introspect",
+            "--session",
+            "--dest",
+            "org.freedesktop.portal.Desktop",
+            "--object-path",
+            "/org/freedesktop/portal/desktop",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(error) => {
+            return (
+                false,
+                Some(format!(
+                    "native_shortcuts_portal_probe_unavailable:{}",
+                    bounded_portal_probe_error(error)
+                )),
+            )
+        }
+    };
+
+    let deadline = Instant::now() + Duration::from_millis(500);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let output = child
+                    .wait_with_output()
+                    .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
+                    .unwrap_or_default();
+                if status.success() && wayland_global_shortcuts_portal_present(&output) {
+                    return (
+                        true,
+                        Some(
+                            "native_shortcuts_portal_interface_present_registration_pending"
+                                .to_string(),
+                        ),
+                    );
+                }
+                return (
+                    false,
+                    Some("native_shortcuts_portal_interface_unavailable".to_string()),
+                );
+            }
+            Ok(None) if Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return (
+                    false,
+                    Some("native_shortcuts_portal_probe_timeout".to_string()),
+                );
+            }
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return (
+                    false,
+                    Some(format!(
+                        "native_shortcuts_portal_probe_failed:{}",
+                        bounded_portal_probe_error(error)
+                    )),
+                );
+            }
+        }
+    }
+}
+
+fn native_shortcut_portal_status(
+    backend: NativeShortcutBackend,
+) -> (bool, Option<String>) {
+    if backend != NativeShortcutBackend::Wayland {
+        return (false, Some("native_shortcuts_portal_not_wayland".to_string()));
+    }
+    probe_wayland_global_shortcuts_portal()
+}
+
 #[tauri::command]
 fn native_shortcut_status() -> NativeShortcutStatus {
     native_shortcut_status_store()
@@ -326,6 +455,8 @@ fn native_shortcut_status() -> NativeShortcutStatus {
             backend: NativeShortcutBackend::Unknown,
             shortcuts: Vec::new(),
             bindings: Vec::new(),
+            portal_available: false,
+            portal_reason: Some("native_shortcuts_state_unavailable".to_string()),
             degraded_reason: Some("native_shortcuts_state_unavailable".to_string()),
         })
 }
@@ -430,6 +561,7 @@ fn handle_native_shortcut(app: &AppHandle<Wry>, shortcut: &Shortcut, event: Shor
 
 fn set_native_shortcut_unavailable(backend: NativeShortcutBackend, reason: impl Into<String>) {
     let reason = reason.into();
+    let (portal_available, portal_reason) = native_shortcut_portal_status(backend);
     if let Ok(mut status) = native_shortcut_status_store().lock() {
         status.available = false;
         status.registered = false;
@@ -438,6 +570,8 @@ fn set_native_shortcut_unavailable(backend: NativeShortcutBackend, reason: impl 
             NativeShortcutBindingState::Unavailable,
             Some(reason.clone()),
         );
+        status.portal_available = portal_available;
+        status.portal_reason = portal_reason;
         status.degraded_reason = Some(reason);
     }
 }
@@ -497,6 +631,8 @@ fn register_computer_use_panic_shortcuts(app: &AppHandle) {
         status.registered = all_registered;
         status.backend = backend;
         status.bindings = bindings;
+        status.portal_available = false;
+        status.portal_reason = Some("native_shortcuts_portal_not_wayland".to_string());
         status.degraded_reason = if all_registered {
             None
         } else if any_registered {

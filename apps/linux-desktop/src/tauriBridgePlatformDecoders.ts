@@ -579,6 +579,12 @@ export function decodeNativeShortcutStatus(raw: RawJsonValue): NativeShortcutSta
     shortcuts: arr(pick(value, 'shortcuts')).map((shortcut) => requireString(shortcut, 'native shortcut')),
     ...(backend ? { backend: backend as NativeShortcutStatus['backend'] } : {}),
     ...(bindings ? { bindings } : {}),
+    ...(pick(value, 'portalAvailable', 'portal_available') === undefined
+      ? {}
+      : { portalAvailable: requireBoolean(pick(value, 'portalAvailable', 'portal_available'), 'native shortcut portal availability') }),
+    ...(str(pick(value, 'portalReason', 'portal_reason'))
+      ? { portalReason: str(pick(value, 'portalReason', 'portal_reason')) }
+      : {}),
     degradedReason: str(pick(value, 'degradedReason', 'degraded_reason')) || undefined
   };
 }

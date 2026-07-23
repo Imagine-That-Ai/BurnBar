@@ -1011,6 +1011,9 @@ export type NativeShortcutStatus = {
   backend?: 'x11' | 'wayland' | 'unknown';
   shortcuts: string[];
   bindings?: NativeShortcutBindingStatus[];
+  /** Wayland portal advertises GlobalShortcuts; this does not imply bindings are registered. */
+  portalAvailable?: boolean;
+  portalReason?: string;
   degradedReason?: string;
 };
 export type NativeShortcutBindingStatus = {

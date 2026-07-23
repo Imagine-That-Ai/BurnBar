@@ -641,6 +641,19 @@ describe('native Linux notification and shortcut decoding', () => {
       registered: false,
       bindings: [{ state: 'registered' }, { state: 'degraded', degradedReason: 'conflict' }]
     });
+    expect(decodeNativeShortcutStatus({
+      available: false,
+      registered: false,
+      backend: 'wayland',
+      shortcuts: ['Ctrl+Alt+Super+Period'],
+      portalAvailable: true,
+      portalReason: 'native_shortcuts_portal_interface_present_registration_pending',
+      bindings: [{ id: 'computer-use-panic', shortcut: 'Ctrl+Alt+Super+Period', state: 'unavailable' }]
+    })).toMatchObject({
+      backend: 'wayland',
+      portalAvailable: true,
+      portalReason: 'native_shortcuts_portal_interface_present_registration_pending'
+    });
     expect(() => decodeNativeShortcutStatus({
       available: false,
       registered: false,
