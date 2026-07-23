@@ -86,6 +86,9 @@ function bridge(overrides: Partial<LinuxShellBridge> = {}): LinuxShellBridge {
     accountStatus: async () => ({ signedIn: false, trustClass: 'linux-lower-trust', syncState: 'local-only' }),
     appVersionInfo: async () => ({ shellVersion: 'test', daemonVersion: 'test', packageChannel: 'deb', updateCheck: 'test' }),
     exportDiagnostics: async () => ({ path: '/tmp/openburnbar-test.json' }),
+    pickExportDestination: async (kind) => kind === 'linux-privacy'
+      ? '/tmp/privacy-export.obb'
+      : '/tmp/account-export.json',
     configUpdate: async (snapshot) => snapshot,
     providerCredentialSlotUpsert: async () => config,
     providerCredentialSlotRemove: async () => config,
@@ -337,9 +340,9 @@ describe('SettingsSurface', () => {
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
     render(<SettingsSurface />);
     fireEvent.click(screen.getAllByRole('button', { name: /Data & Privacy/i })[0]!);
-    const destination = screen.getByRole('textbox', { name: 'Privacy export destination path' });
     const passphrase = screen.getByLabelText('Privacy export passphrase');
-    fireEvent.change(destination, { target: { value: '/tmp/privacy-export.obb' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Choose privacy export destination' }));
+    await waitFor(() => expect(screen.getByText('/tmp/privacy-export.obb')).toBeTruthy());
     fireEvent.change(passphrase, { target: { value: 'correct horse battery' } });
     fireEvent.click(screen.getByRole('button', { name: 'Export selected data' }));
     await waitFor(() => expect(linuxPrivacyExport).toHaveBeenCalledWith({
@@ -348,7 +351,7 @@ describe('SettingsSurface', () => {
       passphrase: 'correct horse battery'
     }));
     expect(await screen.findByText('Encrypted local privacy export written.')).toBeTruthy();
-    expect(screen.getByText('/tmp/privacy-export.obb')).toBeTruthy();
+    expect(screen.getAllByText('/tmp/privacy-export.obb')).toHaveLength(2);
     expect(screen.getByText(/192 bytes · format v1/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Copy export path' })).toBeTruthy();
     expect(screen.getByText(/Keep the passphrase separate from this owner-only bundle/)).toBeTruthy();
@@ -369,14 +372,14 @@ describe('SettingsSurface', () => {
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
     render(<SettingsSurface />);
     fireEvent.click(screen.getAllByRole('button', { name: /Data & Privacy/i })[0]!);
-    const destination = screen.getByRole('textbox', { name: 'Account export destination path' });
-    fireEvent.change(destination, { target: { value: '/tmp/account-export.json' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Choose account export destination' }));
+    await waitFor(() => expect(screen.getByText('/tmp/account-export.json')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Export account data' }));
     await waitFor(() => expect(accountExportCloudData).toHaveBeenCalledWith({
       destinationPath: '/tmp/account-export.json'
     }));
     expect(await screen.findByText('Account export written by the daemon.')).toBeTruthy();
-    expect(screen.getByText('/tmp/account-export.json')).toBeTruthy();
+    expect(screen.getAllByText('/tmp/account-export.json')).toHaveLength(2);
     expect(screen.getByText(/1,024 bytes · schema v2/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Copy account export path' })).toBeTruthy();
   });

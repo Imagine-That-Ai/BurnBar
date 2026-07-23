@@ -388,7 +388,11 @@ function PrivacyExportControl({ fixtureMode }: { fixtureMode: boolean }) {
   ]);
   const [destinationPath, setDestinationPath] = useState('');
   const [passphrase, setPassphrase] = useState('');
-  const supported = !fixtureMode && typeof bridge?.linuxPrivacyExport === 'function';
+  const [destinationBusy, setDestinationBusy] = useState(false);
+  const [destinationError, setDestinationError] = useState<string | null>(null);
+  const supported = !fixtureMode
+    && typeof bridge?.linuxPrivacyExport === 'function'
+    && typeof bridge?.pickExportDestination === 'function';
 
   if (!supported) {
     return (
@@ -404,6 +408,19 @@ function PrivacyExportControl({ fixtureMode }: { fixtureMode: boolean }) {
 
   const disabled = Boolean(busy) || exportState.status === 'pending';
   const canExport = selectedStores.length > 0 && destinationPath.trim().startsWith('/') && passphrase.length >= 8;
+  const chooseDestination = async () => {
+    if (!bridge?.pickExportDestination || destinationBusy || disabled) return;
+    setDestinationBusy(true);
+    setDestinationError(null);
+    try {
+      const path = await bridge.pickExportDestination('linux-privacy');
+      if (path) setDestinationPath(path);
+    } catch (cause) {
+      setDestinationError(cause instanceof Error ? cause.message : 'Could not choose an export destination.');
+    } finally {
+      setDestinationBusy(false);
+    }
+  };
   const toggleStore = (store: LinuxPrivacyStoreID, checked: boolean) => {
     setSelectedStores((current) => checked
       ? Array.from(new Set([...current, store]))
@@ -445,16 +462,22 @@ function PrivacyExportControl({ fixtureMode }: { fixtureMode: boolean }) {
           </label>
         ))}
       </fieldset>
-      <label className="setting-field">
-        <span>Absolute destination path</span>
-        <input
-          type="text"
-          value={destinationPath}
-          aria-label="Privacy export destination path"
-          autoComplete="off"
-          onChange={(event) => setDestinationPath(event.currentTarget.value)}
-        />
-      </label>
+      <div className="setting-field">
+        <span>Export destination</span>
+        <div className="actions">
+          <button
+            type="button"
+            className="ghost"
+            disabled={disabled || destinationBusy}
+            aria-busy={destinationBusy}
+            aria-label="Choose privacy export destination"
+            onClick={() => void chooseDestination()}
+          >
+            {destinationBusy ? 'Opening…' : 'Choose destination'}
+          </button>
+          {destinationPath ? <code>{destinationPath}</code> : <span className="muted">No destination selected</span>}
+        </div>
+      </div>
       <label className="setting-field">
         <span>Export passphrase (8+ characters)</span>
         <input
@@ -465,6 +488,7 @@ function PrivacyExportControl({ fixtureMode }: { fixtureMode: boolean }) {
           onChange={(event) => setPassphrase(event.currentTarget.value)}
         />
       </label>
+      {destinationError ? <Banner tone="degraded" role="alert">{destinationError}</Banner> : null}
       {exportState.status === 'success' ? (
         <>
           <Banner tone="ok" role="status">{exportState.message ?? 'Encrypted local privacy export written.'}</Banner>
@@ -745,9 +769,13 @@ function AccountCloudDataExportControl({ fixtureMode }: { fixtureMode: boolean }
   const busy = useSettingsWiringStore((state) => state.busy);
   const [phase, setPhase] = useState<'idle' | 'exporting' | 'success' | 'error'>('idle');
   const [destinationPath, setDestinationPath] = useState('');
+  const [destinationBusy, setDestinationBusy] = useState(false);
+  const [destinationError, setDestinationError] = useState<string | null>(null);
   const [result, setResult] = useState<AccountCloudDataExportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const supported = !fixtureMode && typeof bridge?.accountExportCloudData === 'function';
+  const supported = !fixtureMode
+    && typeof bridge?.accountExportCloudData === 'function'
+    && typeof bridge?.pickExportDestination === 'function';
 
   if (!supported) {
     return (
@@ -764,6 +792,19 @@ function AccountCloudDataExportControl({ fixtureMode }: { fixtureMode: boolean }
   const exporting = phase === 'exporting';
   const disabled = Boolean(busy) || exporting;
   const canExport = destinationPath.trim().startsWith('/');
+  const chooseDestination = async () => {
+    if (!bridge?.pickExportDestination || destinationBusy || disabled) return;
+    setDestinationBusy(true);
+    setDestinationError(null);
+    try {
+      const path = await bridge.pickExportDestination('account-cloud');
+      if (path) setDestinationPath(path);
+    } catch (cause) {
+      setDestinationError(cause instanceof Error ? cause.message : 'Could not choose an export destination.');
+    } finally {
+      setDestinationBusy(false);
+    }
+  };
   const execute = async () => {
     if (!bridge?.accountExportCloudData || !canExport || exporting) return;
     setPhase('exporting');
@@ -797,17 +838,23 @@ function AccountCloudDataExportControl({ fixtureMode }: { fixtureMode: boolean }
           </button>
         }
       />
-      <label className="setting-field">
-        <span>Absolute destination path</span>
-        <input
-          type="text"
-          value={destinationPath}
-          aria-label="Account export destination path"
-          autoComplete="off"
-          disabled={disabled}
-          onChange={(event) => setDestinationPath(event.currentTarget.value)}
-        />
-      </label>
+      <div className="setting-field">
+        <span>Export destination</span>
+        <div className="actions">
+          <button
+            type="button"
+            className="ghost"
+            disabled={disabled || destinationBusy}
+            aria-busy={destinationBusy}
+            aria-label="Choose account export destination"
+            onClick={() => void chooseDestination()}
+          >
+            {destinationBusy ? 'Opening…' : 'Choose destination'}
+          </button>
+          {destinationPath ? <code>{destinationPath}</code> : <span className="muted">No destination selected</span>}
+        </div>
+      </div>
+      {destinationError ? <Banner tone="degraded" role="alert">{destinationError}</Banner> : null}
       <p className="muted">A trusted device must approve this export. Cloud credentials stay inside the daemon; sealed references and redacted fields are written to the selected path.</p>
       {phase === 'success' && result ? (
         <div className="actions" aria-label="Account export receipt">

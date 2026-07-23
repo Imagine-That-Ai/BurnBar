@@ -68,6 +68,7 @@ import {
   mapMembershipCheckoutUrl,
   mapMembershipPortalUrl,
   mapDiagnosticsExport,
+  mapExportDestination,
   mapAppVersionInfo,
   decodeLinuxUpdateStatus,
   decodeSmartHubCommandResponse,
@@ -614,6 +615,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     accountExportCloudData: async (request) => {
       const raw = await invoke<RawJsonValue>('account_export_cloud_data', { request });
       return mapAccountCloudDataExportResult(raw);
+    },
+    pickExportDestination: async (kind) => {
+      const raw = await invoke<RawJsonValue>('pick_export_destination', { kind });
+      return mapExportDestination(raw, kind);
     },
     accountDeleteCloudData: async (confirmation) => {
       const raw = await invoke<RawJsonValue>('account_delete_cloud_data', { confirmation });

@@ -404,6 +404,21 @@ describe('VAL-RPC-002 bridge behavior', () => {
     });
   });
 
+  it('uses the typed native export picker and preserves cancellation', async () => {
+    invoke
+      .mockResolvedValueOnce('/tmp/privacy-export.obb')
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce('/tmp/account-export.json');
+    const b = await bridge();
+
+    await expect(b.pickExportDestination?.('linux-privacy')).resolves.toBe('/tmp/privacy-export.obb');
+    await expect(b.pickExportDestination?.('linux-privacy')).resolves.toBeNull();
+    await expect(b.pickExportDestination?.('account-cloud')).resolves.toBe('/tmp/account-export.json');
+    expect(invoke).toHaveBeenNthCalledWith(1, 'pick_export_destination', { kind: 'linux-privacy' });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'pick_export_destination', { kind: 'linux-privacy' });
+    expect(invoke).toHaveBeenNthCalledWith(3, 'pick_export_destination', { kind: 'account-cloud' });
+  });
+
   it('uses the canonical run.resume RPC for persisted activity body and resume actions', async () => {
     invoke
       .mockResolvedValueOnce({

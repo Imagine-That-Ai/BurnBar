@@ -49,6 +49,7 @@ import type {
   LinuxUpdateStatus,
   DiagnosticsExportPreview,
   DiagnosticsExport,
+  ExportDestinationKind,
   IntegrationKind,
   IntegrationState,
   IntegrationStatus,
@@ -969,6 +970,31 @@ export function mapDiagnosticsExport(raw: RawJsonValue): DiagnosticsExport {
     path,
     preview: previewRaw === undefined ? undefined : mapDiagnosticsPreview(previewRaw)
   };
+}
+
+export function mapExportDestination(raw: RawJsonValue, kind: ExportDestinationKind): string | null {
+  if (raw === null || raw === undefined) return null;
+  const path = str(raw);
+  const extension = kind === 'linux-privacy' ? '.obb' : '.json';
+  if (
+    !path.startsWith('/')
+    || path.length > 4096
+    || [...path].some((character) => character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f)
+    || path.includes('\\')
+    || !path.endsWith(extension)
+  ) {
+    throw new Error('Native export destination returned an unsafe path.');
+  }
+  const segments = path.split('/');
+  const filename = segments.at(-1) ?? '';
+  const stem = filename.slice(0, -extension.length);
+  if (
+    segments.slice(1, -1).some((segment) => segment.length === 0 || segment === '.' || segment === '..')
+    || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(stem)
+  ) {
+    throw new Error('Native export destination returned an unsafe path.');
+  }
+  return path;
 }
 
 export function mapAppVersionInfo(raw: RawJsonValue): AppVersionInfo {

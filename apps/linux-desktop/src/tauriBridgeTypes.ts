@@ -794,6 +794,7 @@ export type AccountCloudDataExportRequest = {
   domains?: string[];
   destinationPath: string;
 };
+export type ExportDestinationKind = 'linux-privacy' | 'account-cloud';
 export type AccountCloudDataExportResult = {
   ok: boolean;
   destinationPath: string;
@@ -1696,6 +1697,8 @@ export interface LinuxShellBridge {
   accountSignOut(): Promise<AccountStatus>;
   /** Optional on older packaged shells; daemon-owned and fail-closed. */
   accountExportCloudData?(request: AccountCloudDataExportRequest): Promise<AccountCloudDataExportResult>;
+  /** Optional on older packaged shells; native picker is scoped to export workflows. */
+  pickExportDestination?(kind: ExportDestinationKind): Promise<string | null>;
   /** Optional on older packaged shells; daemon-owned and fail-closed. */
   accountDeleteCloudData?(confirmation: string): Promise<AccountCloudDataDeletionResult>;
   trustedDeviceList?(): Promise<TrustedDeviceListResult>;

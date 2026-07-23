@@ -82,6 +82,34 @@
     }
 
     #[test]
+    fn export_destination_specs_are_allowlisted_and_extension_specific() {
+        let privacy = export_destination_dialog_spec(ExportDestinationKind::LinuxPrivacy);
+        assert_eq!(privacy.file_name, "openburnbar-privacy-export.obb");
+        assert_eq!(privacy.extension, "obb");
+        let account = export_destination_dialog_spec(ExportDestinationKind::AccountCloud);
+        assert_eq!(account.file_name, "openburnbar-account-export.json");
+        assert_eq!(account.extension, "json");
+
+        let root = std::env::temp_dir().join(format!(
+            "openburnbar-export-destination-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        assert!(validate_export_destination(&root.join("privacy.obb"), ExportDestinationKind::LinuxPrivacy).is_ok());
+        assert!(validate_export_destination(&root.join("account.json"), ExportDestinationKind::AccountCloud).is_ok());
+        assert!(validate_export_destination(&root.join("privacy.json"), ExportDestinationKind::LinuxPrivacy).is_err());
+        assert!(validate_export_destination(&root.join("account.obb"), ExportDestinationKind::AccountCloud).is_err());
+        assert!(validate_export_destination(&root.join("../account.json"), ExportDestinationKind::AccountCloud).is_err());
+        assert!(validate_export_destination(&root.join(".account.json"), ExportDestinationKind::AccountCloud).is_err());
+        assert!(validate_export_destination(&root.join("account name.json"), ExportDestinationKind::AccountCloud).is_err());
+        assert!(validate_export_destination(
+            Path::new("/tmp/openburnbar-account-export.json"),
+            ExportDestinationKind::AccountCloud
+        ).is_ok());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn launch_at_login_uses_embedded_template_when_packaged_entry_is_missing() {
         let root = autostart_test_root();
         let user_path = root.join("autostart/openburnbar.desktop");

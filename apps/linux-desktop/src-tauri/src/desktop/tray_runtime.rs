@@ -509,6 +509,7 @@ pub fn run() {
             linux_privacy_deletion_preview,
             linux_privacy_deletion_execute,
             linux_privacy_export,
+            pick_export_destination,
             linux_privacy_retention_status,
             linux_privacy_retention_apply,
             notification_config_get,
