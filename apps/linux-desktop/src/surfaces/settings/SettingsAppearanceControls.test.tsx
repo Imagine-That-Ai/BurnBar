@@ -61,23 +61,26 @@ describe('SettingsAppearanceControls accessibility', () => {
     expect(useShellStore.getState().skin).toBe('aurora');
   });
 
-  it('persists the three-position Liquid Glass transparency control', () => {
+  it('persists the continuous Liquid Glass transparency control', () => {
     render(<SettingsAppearanceControls />);
 
     const range = screen.getByRole('slider', { name: 'Liquid Glass transparency' });
     const output = () => document.querySelector('output[for="glass-transparency-range"]');
-    expect(range.getAttribute('value')).toBe('0');
-    expect(output()?.textContent).toBe('Balanced');
+    expect((range as HTMLInputElement).value).toBe('0');
+    expect(range.getAttribute('step')).toBe('0.01');
+    expect(output()?.textContent).toBe('System default');
 
-    fireEvent.change(range, { target: { value: '-1' } });
-    expect(range.getAttribute('value')).toBe('-1');
-    expect(output()?.textContent).toBe('Frostier');
-    expect(localStorage.getItem('openburnbar.linux.glassTransparency.v1')).toBe('-1');
+    fireEvent.change(range, { target: { value: '-0.75' } });
+    expect((range as HTMLInputElement).value).toBe('-0.75');
+    expect(output()?.textContent).toBe('75% frostier than system');
+    expect(range.getAttribute('aria-valuetext')).toBe('75% frostier than system');
+    expect(localStorage.getItem('openburnbar.linux.glassTransparency.v1')).toBe('-0.75');
     expect(document.documentElement.dataset.glassTransparency).toBe('frostier');
+    expect(document.documentElement.style.getPropertyValue('--glass-tint-base-opacity')).toBe('60%');
 
-    fireEvent.change(range, { target: { value: '1' } });
-    expect(output()?.textContent).toBe('Clearer');
-    expect(localStorage.getItem('openburnbar.linux.glassTransparency.v1')).toBe('1');
+    fireEvent.change(range, { target: { value: '0.5' } });
+    expect(output()?.textContent).toBe('50% clearer than system');
+    expect(localStorage.getItem('openburnbar.linux.glassTransparency.v1')).toBe('0.5');
     expect(document.documentElement.dataset.glassTransparency).toBe('clearer');
   });
 });

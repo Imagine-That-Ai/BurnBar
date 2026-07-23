@@ -50,12 +50,18 @@
   --glass-saturate: 165%;
   --glass-saturate-high: 185%;
 
-  /* tint plates */
-  --glass-tint-base: color-mix(in srgb, var(--macos-surface) 48%, transparent);
-  --glass-tint-elevated: color-mix(in srgb, var(--macos-surface-elevated) 55%, transparent);
-  --glass-tint-sunken: color-mix(in srgb, var(--macos-bg) 42%, transparent);
-  --glass-tint-clear: color-mix(in srgb, var(--macos-surface) 28%, transparent);
-  --glass-tint-interactive: color-mix(in srgb, var(--macos-surface-elevated) 38%, transparent);
+  /* tint plates; the appearance slider updates the opacity variables live */
+  --glass-tint-base-opacity: 48%;
+  --glass-tint-elevated-opacity: 55%;
+  --glass-tint-sunken-opacity: 42%;
+  --glass-tint-clear-opacity: 28%;
+  --glass-tint-interactive-opacity: 38%;
+  --glass-input-opacity: 55%;
+  --glass-tint-base: color-mix(in srgb, var(--macos-surface) var(--glass-tint-base-opacity), transparent);
+  --glass-tint-elevated: color-mix(in srgb, var(--macos-surface-elevated) var(--glass-tint-elevated-opacity), transparent);
+  --glass-tint-sunken: color-mix(in srgb, var(--macos-bg) var(--glass-tint-sunken-opacity), transparent);
+  --glass-tint-clear: color-mix(in srgb, var(--macos-surface) var(--glass-tint-clear-opacity), transparent);
+  --glass-tint-interactive: color-mix(in srgb, var(--macos-surface-elevated) var(--glass-tint-interactive-opacity), transparent);
 
   /* strokes */
   --glass-stroke: color-mix(in srgb, var(--macos-border) 65%, transparent);
@@ -104,7 +110,7 @@
   --glass-panel-blur: blur(var(--glass-blur-md)) saturate(var(--glass-saturate));
   --glass-panel-shadow: var(--glass-shadow-sm), var(--glass-inner-light);
 
-  --glass-input: color-mix(in srgb, var(--macos-bg) 55%, transparent);
+  --glass-input: color-mix(in srgb, var(--macos-bg) var(--glass-input-opacity), transparent);
   --glass-input-stroke: var(--glass-stroke);
   --glass-input-focus: color-mix(in srgb, var(--color-brass-core) 45%, var(--glass-stroke));
 
@@ -132,17 +138,17 @@
 /* User-controlled Liquid Glass material density. Reduce Transparency on the
  * body still wins over these visual presets for accessibility. */
 :root[data-glass-transparency='frostier'] {
-  --glass-tint-base: color-mix(in srgb, var(--macos-surface) 64%, transparent);
-  --glass-tint-elevated: color-mix(in srgb, var(--macos-surface-elevated) 72%, transparent);
-  --glass-tint-clear: color-mix(in srgb, var(--macos-surface) 42%, transparent);
-  --glass-tint-interactive: color-mix(in srgb, var(--macos-surface-elevated) 54%, transparent);
-  --glass-input: color-mix(in srgb, var(--macos-bg) 70%, transparent);
+  --glass-tint-base-opacity: 64%;
+  --glass-tint-elevated-opacity: 72%;
+  --glass-tint-clear-opacity: 42%;
+  --glass-tint-interactive-opacity: 54%;
+  --glass-input-opacity: 70%;
 }
 
 :root[data-glass-transparency='clearer'] {
-  --glass-tint-base: color-mix(in srgb, var(--macos-surface) 35%, transparent);
-  --glass-tint-elevated: color-mix(in srgb, var(--macos-surface-elevated) 43%, transparent);
-  --glass-tint-clear: color-mix(in srgb, var(--macos-surface) 18%, transparent);
-  --glass-tint-interactive: color-mix(in srgb, var(--macos-surface-elevated) 29%, transparent);
-  --glass-input: color-mix(in srgb, var(--macos-bg) 42%, transparent);
+  --glass-tint-base-opacity: 35%;
+  --glass-tint-elevated-opacity: 43%;
+  --glass-tint-clear-opacity: 18%;
+  --glass-tint-interactive-opacity: 29%;
+  --glass-input-opacity: 42%;
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type MutableRefObject 
 import { useShellStore, type ShellSkin } from '../../state/shellStore.js';
 
 type AppearanceMode = 'system' | 'light' | 'dark';
-type GlassTransparency = -1 | 0 | 1;
+type GlassTransparency = number;
 
 const APPEARANCE_KEY = 'openburnbar.linux.appearanceMode.v1';
 const GLASS_TRANSPARENCY_KEY = 'openburnbar.linux.glassTransparency.v1';
@@ -18,11 +18,8 @@ const SKIN_OPTIONS: { id: ShellSkin; label: string }[] = [
   { id: 'aurora', label: 'Aurora' }
 ];
 
-const GLASS_TRANSPARENCY_LABELS: Record<GlassTransparency, string> = {
-  [-1]: 'Frostier',
-  0: 'Balanced',
-  1: 'Clearer'
-};
+const GLASS_TRANSPARENCY_MIN = -1;
+const GLASS_TRANSPARENCY_MAX = 1;
 
 type RadioOption = { id: string; label: string };
 
@@ -89,20 +86,43 @@ function applyAppearanceMode(mode: AppearanceMode): void {
 function readGlassTransparency(): GlassTransparency {
   try {
     const raw = Number(localStorage.getItem(GLASS_TRANSPARENCY_KEY));
-    if (raw === -1 || raw === 0 || raw === 1) return raw;
+    if (Number.isFinite(raw)) return clampGlassTransparency(raw);
   } catch {
     /* ignore */
   }
   return 0;
 }
 
+function clampGlassTransparency(value: number): GlassTransparency {
+  return Math.min(GLASS_TRANSPARENCY_MAX, Math.max(GLASS_TRANSPARENCY_MIN, value));
+}
+
+function glassTransparencyTone(value: GlassTransparency): 'frostier' | 'balanced' | 'clearer' {
+  if (value < -0.005) return 'frostier';
+  if (value > 0.005) return 'clearer';
+  return 'balanced';
+}
+
+function glassTransparencyDescription(value: GlassTransparency): string {
+  const percent = Math.round(Math.abs(value) * 100);
+  if (percent === 0) return 'System default';
+  return `${percent}% ${value < 0 ? 'frostier' : 'clearer'} than system`;
+}
+
 function applyGlassTransparency(value: GlassTransparency): void {
+  const normalized = clampGlassTransparency(value);
   try {
-    localStorage.setItem(GLASS_TRANSPARENCY_KEY, String(value));
+    localStorage.setItem(GLASS_TRANSPARENCY_KEY, String(normalized));
   } catch {
     /* convenience only */
   }
-  document.documentElement.dataset.glassTransparency = GLASS_TRANSPARENCY_LABELS[value].toLowerCase();
+  const root = document.documentElement;
+  root.dataset.glassTransparency = glassTransparencyTone(normalized);
+  root.style.setProperty('--glass-tint-base-opacity', `${48 - normalized * 16}%`);
+  root.style.setProperty('--glass-tint-elevated-opacity', `${55 - normalized * 17}%`);
+  root.style.setProperty('--glass-tint-clear-opacity', `${28 - normalized * 14}%`);
+  root.style.setProperty('--glass-tint-interactive-opacity', `${38 - normalized * 16}%`);
+  root.style.setProperty('--glass-input-opacity', `${55 - normalized * 13}%`);
 }
 
 export function SettingsAppearanceControls() {
@@ -181,7 +201,7 @@ export function SettingsAppearanceControls() {
         <label className="settings-appearance-range-label" htmlFor="glass-transparency-range">
           <span>Transparency</span>
           <output aria-live="polite" htmlFor="glass-transparency-range">
-            {GLASS_TRANSPARENCY_LABELS[glassTransparency]}
+            {glassTransparencyDescription(glassTransparency)}
           </output>
         </label>
         <input
@@ -190,13 +210,14 @@ export function SettingsAppearanceControls() {
           type="range"
           min="-1"
           max="1"
-          step="1"
+          step="0.01"
           value={glassTransparency}
           aria-label="Liquid Glass transparency"
+          aria-valuetext={glassTransparencyDescription(glassTransparency)}
           onChange={(event) => {
             const next = Number(event.target.value);
-            if (next !== -1 && next !== 0 && next !== 1) return;
-            const value = next as GlassTransparency;
+            if (!Number.isFinite(next)) return;
+            const value = clampGlassTransparency(next);
             setGlassTransparency(value);
             applyGlassTransparency(value);
           }}

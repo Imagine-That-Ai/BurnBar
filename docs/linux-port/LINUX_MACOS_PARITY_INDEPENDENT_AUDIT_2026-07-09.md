@@ -112,8 +112,9 @@ shell CSS disables backdrop filters and maps Liquid Glass surfaces to opaque
 skin-aware tokens across lazy-loaded routes; onboarding is covered by the same
 fallback rather than relying only on its prior media query. Focused lifecycle
 and stylesheet contract tests cover the modern and legacy listener paths. The
-General settings pane also persists the bounded `Frostier / Balanced / Clearer`
-transparency control and selects skin-aware Liquid Glass token presets.
+General settings pane also persists the continuous `-1…+1` transparency range,
+with Frostier/System/Clearer status text, and selects skin-aware Liquid Glass
+token presets.
 
 This closes the source-level transparency preference gap in the visual-preference
 slice. Installed compositor/WebKit receipts and the remaining per-layout
