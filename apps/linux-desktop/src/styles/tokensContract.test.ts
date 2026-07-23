@@ -119,6 +119,14 @@ describe('VAL-TOKENS design token contract', () => {
     expect(appCss).toContain('var(--wallpaper-base');
   });
 
+  it('keeps the typed GlassCard and GlassButton primitives on shared recipes', () => {
+    const liquidGlassCss = fs.readFileSync(path.join(stylesDir, 'liquid-glass.css'), 'utf8');
+    expect(liquidGlassCss).toContain('.glass-card--interactive');
+    expect(liquidGlassCss).toContain('.glass-card--embedded');
+    expect(liquidGlassCss).toContain('.glass-button--prominent');
+    expect(liquidGlassCss).toContain('.glass-button--cool');
+  });
+
   it('declares a dark native-control color scheme for WebKitGTK', () => {
     expect(appCss).toMatch(/:root\s*\{[^}]*color-scheme:\s*dark;/s);
   });

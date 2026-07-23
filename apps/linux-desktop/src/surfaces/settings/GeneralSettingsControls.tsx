@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SettingRow } from './SettingRow.js';
+import { GlassButton } from '../../components/GlassButton.js';
 import {
   DECK_TIME_RANGES,
   persistDeckHeroUnit,
@@ -248,7 +249,7 @@ export function IndexingSummaryControl({ onOpenDatabase }: { onOpenDatabase: () 
               {indexAction.pending ? 'Indexing…' : 'Index project'}
             </button>
           ) : null}
-          <button type="button" className="ghost" onClick={onOpenDatabase}>Open Database</button>
+          <GlassButton variant="regular" onClick={onOpenDatabase}>Open Database</GlassButton>
         </span>
       }
       readOnlyNote={indexStatus}

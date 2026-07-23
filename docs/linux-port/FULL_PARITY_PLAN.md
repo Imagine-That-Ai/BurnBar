@@ -255,8 +255,9 @@ required before promotion.
 
 - Implement `DashboardLayout` enum and persistence, `LayoutSwitcher` UI, and 6 layout skeletons.
 - Add `GlassCard` / `GlassButton` primitives and continue expanding their use
-  across route surfaces; ThemeGlassPalette and ProTheme source contracts are
-  now implemented.
+  across route surfaces; typed primitives now wrap primary route cards and the
+  shared settings action, while ThemeGlassPalette and ProTheme source
+  contracts are implemented.
 - Add `sidebarThemeGlass` to complete the remaining per-layout Liquid Glass palette surface; the transparency slider and OS Reduce Transparency fallback are implemented.
 - Implement kernel-forward layout support in `KernelBackdrop`.
 - Verification: visual proof book, `npm test`, `npm run build`, `prefers-reduced-motion` test.

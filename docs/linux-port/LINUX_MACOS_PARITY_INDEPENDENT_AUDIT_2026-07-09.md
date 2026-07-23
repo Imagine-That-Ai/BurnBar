@@ -183,6 +183,18 @@ This closes the source-level wallpaper palette gap. Native desktop-wallpaper
 installation, live wallpaper panels, and installed compositor receipts remain
 open; the strict ledger remains **0/40 product** and **0/7 environment**.
 
+### Linux GlassCard / GlassButton primitives — 2026-07-23
+
+Linux now exposes typed `GlassCard` and `GlassButton` components matching the
+macOS interactive/embedded card vocabulary and prominent/regular/cool button
+variants. The primary `SurfaceCard` route shell uses `GlassCard`, and the
+settings database action uses `GlassButton`; shared CSS keeps the Reduce
+Transparency fallback and hover/press behavior centralized.
+
+This closes the source-level glass primitive gap. Installed visual and
+accessibility receipts for every consuming surface remain open; the strict
+ledger remains **0/40 product** and **0/7 environment**.
+
 ## Integration closeout — 2026-07-21
 
 ### Live UTM session re-open — 2026-07-21 (Grok)
