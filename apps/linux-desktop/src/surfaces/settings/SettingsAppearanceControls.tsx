@@ -7,6 +7,13 @@ import {
   WALLPAPER_OPTIONS,
   type WallpaperBackground
 } from '../../state/wallpaperPrefs.js';
+import {
+  persistSwarmPreferences,
+  readSwarmPreferences,
+  SWARM_SPEED_MAX,
+  SWARM_SPEED_MIN,
+  type SwarmPreferences
+} from '../../state/swarmPrefs.js';
 
 type AppearanceMode = 'system' | 'light' | 'dark';
 type GlassTransparency = number;
@@ -138,6 +145,7 @@ export function SettingsAppearanceControls() {
   const [appearance, setAppearance] = useState<AppearanceMode>(() => readAppearanceMode());
   const [glassTransparency, setGlassTransparency] = useState<GlassTransparency>(() => readGlassTransparency());
   const [wallpaper, setWallpaper] = useState<WallpaperBackground>(() => readWallpaperBackground());
+  const [swarm, setSwarm] = useState<SwarmPreferences>(() => readSwarmPreferences());
   const appearanceButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const skinButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
@@ -258,6 +266,41 @@ export function SettingsAppearanceControls() {
         <p className="muted settings-tab-lede">
           {WALLPAPER_OPTIONS.find((option) => option.id === wallpaper)?.detail}
         </p>
+      </fieldset>
+      <fieldset className="settings-appearance-fieldset settings-appearance-transparency">
+        <legend className="settings-appearance-legend">Swarm motion</legend>
+        <label className="settings-appearance-range-label" htmlFor="swarm-speed-range">
+          <span>Speed</span>
+          <output aria-live="polite" htmlFor="swarm-speed-range">{swarm.speed.toFixed(2)}×</output>
+        </label>
+        <input
+          id="swarm-speed-range"
+          className="settings-appearance-range"
+          type="range"
+          min={SWARM_SPEED_MIN}
+          max={SWARM_SPEED_MAX}
+          step="0.05"
+          value={swarm.speed}
+          aria-label="Swarm motion speed"
+          aria-valuetext={`${swarm.speed.toFixed(2)} times normal`}
+          onChange={(event) => {
+            const next = persistSwarmPreferences({ ...swarm, speed: Number(event.currentTarget.value) });
+            setSwarm(next);
+          }}
+        />
+        <label className="setting-toggle" htmlFor="swarm-sparkles-toggle">
+          <input
+            id="swarm-sparkles-toggle"
+            type="checkbox"
+            checked={swarm.sparkles}
+            aria-label="Enable swarm sparkles"
+            onChange={(event) => {
+              const next = persistSwarmPreferences({ ...swarm, sparkles: event.currentTarget.checked });
+              setSwarm(next);
+            }}
+          />
+          <span>Enable settled-shape sparkles</span>
+        </label>
       </fieldset>
       <p className="muted settings-tab-lede">
         Backdrop kernel selection stays on the Overview deck; wallpaper palette is local to this Linux shell.

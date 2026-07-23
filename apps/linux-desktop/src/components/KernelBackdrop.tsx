@@ -5,6 +5,11 @@ import { resolveSkinPalette } from '../lib/resolveSkinPalette.js';
 import {
   DASHBOARD_MOTION_SPEED_MULTIPLIER
 } from '../state/kernelPrefs.js';
+import {
+  readSwarmPreferences,
+  SWARM_PREFS_CHANGED_EVENT,
+  type SwarmPreferences
+} from '../state/swarmPrefs.js';
 import type { ShellSkin } from '../state/shellStore.js';
 
 /** Window event used by the picker to mirror the backdrop's live capability receipt. */
@@ -35,7 +40,17 @@ export function KernelBackdrop({
   const engineRef = useRef<BackdropEngine | null>(null);
   const requestedKernelRef = useRef(kernelId);
   const [mode, setMode] = useState<'canvas' | 'css'>('canvas');
+  const [swarmPreferences, setSwarmPreferences] = useState<SwarmPreferences>(() => readSwarmPreferences());
   requestedKernelRef.current = kernelId;
+
+  useEffect(() => {
+    const onChange = (event: Event) => {
+      const next = (event as CustomEvent<SwarmPreferences>).detail;
+      setSwarmPreferences(next ?? readSwarmPreferences());
+    };
+    window.addEventListener(SWARM_PREFS_CHANGED_EVENT, onChange);
+    return () => window.removeEventListener(SWARM_PREFS_CHANGED_EVENT, onChange);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -71,8 +86,8 @@ export function KernelBackdrop({
         initialKernel: requestedKernelRef.current,
         palette: resolveSkinPalette(skin),
         swarmEmberOptions: {
-          enableSwarmSparkles: false,
-          motionSpeedMultiplier: DASHBOARD_MOTION_SPEED_MULTIPLIER
+          enableSwarmSparkles: swarmPreferences.sparkles,
+          motionSpeedMultiplier: swarmPreferences.speed || DASHBOARD_MOTION_SPEED_MULTIPLIER
         },
         onStatus: (status) => publishKernelResolution(container, status),
         onResolve: (resolvedId) => {
@@ -109,7 +124,7 @@ export function KernelBackdrop({
       engine.destroy();
       engineRef.current = null;
     };
-  }, []);
+  }, [swarmPreferences]);
 
   useEffect(() => {
     if (containerRef.current) {

@@ -60,6 +60,13 @@ persists the validated choice locally, and applies the palette beneath both
 the live kernel canvas and the Canvas2D/CSS fallback. Native desktop-wallpaper
 installation and compositor screenshots remain external evidence.
 
+**Implementation checkpoint (2026-07-23, swarm controls):** Linux now
+persists macOS-compatible swarm speed (`0.35×`–`2.5×`) and settled-shape
+sparkles controls. Changes publish a typed preference event; the kernel host
+rebuilds the active swarm with the validated options while retaining its
+Canvas2D/CSS fallback. Provider glyph selection, brand-shape exclusion, and
+desktop click-cycle remain open.
+
 ---
 
 ## 1. Current state snapshot

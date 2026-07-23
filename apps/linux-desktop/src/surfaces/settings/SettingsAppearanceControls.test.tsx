@@ -9,6 +9,7 @@ describe('SettingsAppearanceControls accessibility', () => {
     localStorage.clear();
     delete document.documentElement.dataset.glassTransparency;
     delete document.documentElement.dataset.wallpaper;
+    localStorage.removeItem('openburnbar.linux.swarm.v1');
     useShellStore.setState({ skin: 'editorial' });
   });
 
@@ -17,6 +18,7 @@ describe('SettingsAppearanceControls accessibility', () => {
     localStorage.clear();
     delete document.documentElement.dataset.glassTransparency;
     delete document.documentElement.dataset.wallpaper;
+    localStorage.removeItem('openburnbar.linux.swarm.v1');
   });
 
   it('uses a roving tab stop and supports arrow, Home, and End navigation', () => {
@@ -93,5 +95,16 @@ describe('SettingsAppearanceControls accessibility', () => {
     expect((select as HTMLSelectElement).value).toBe('auroraTeal');
     expect(localStorage.getItem('openburnbar.linux.wallpaper.v1')).toBe('auroraTeal');
     expect(document.documentElement.dataset.wallpaper).toBe('auroraTeal');
+  });
+
+  it('persists swarm speed and sparkle controls', () => {
+    render(<SettingsAppearanceControls />);
+    const speed = screen.getByRole('slider', { name: 'Swarm motion speed' });
+    fireEvent.change(speed, { target: { value: '1.25' } });
+    expect(JSON.parse(localStorage.getItem('openburnbar.linux.swarm.v1') ?? '{}')).toMatchObject({ speed: 1.25 });
+
+    const sparkles = screen.getByRole('checkbox', { name: 'Enable swarm sparkles' });
+    fireEvent.click(sparkles);
+    expect(JSON.parse(localStorage.getItem('openburnbar.linux.swarm.v1') ?? '{}')).toMatchObject({ sparkles: true });
   });
 });

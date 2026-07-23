@@ -195,6 +195,19 @@ This closes the source-level glass primitive gap. Installed visual and
 accessibility receipts for every consuming surface remain open; the strict
 ledger remains **0/40 product** and **0/7 environment**.
 
+### Linux swarm speed and sparkle controls — 2026-07-23
+
+Linux Appearance settings now expose validated macOS-compatible swarm motion
+speed and settled-shape sparkles controls. Preferences persist locally and
+publish a typed change event; `KernelBackdrop` rebuilds the active
+`swarmEmber` kernel with the new options, including when the host has no
+WebGL2 and is using the Canvas2D/CSS fallback.
+
+This closes the source-level speed/sparkle subset of swarm customization.
+Provider glyph selection, brand-shape exclusion, desktop click-cycle, and
+installed visual receipts remain open; the strict ledger remains **0/40
+product** and **0/7 environment**.
+
 ## Integration closeout — 2026-07-21
 
 ### Live UTM session re-open — 2026-07-21 (Grok)
