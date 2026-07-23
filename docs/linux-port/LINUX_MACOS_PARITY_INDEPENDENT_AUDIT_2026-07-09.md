@@ -2335,24 +2335,27 @@ Every matrix row maps to a detailed record containing all six requested fields:
 
 ### GAP-001 - Repair release integrity and parity certification
 
-**Implementation update (2026-07-10): partially closed in the implementation
-branch.** The parity claim is now false, the generated ledger has all 40 audit
-requirements at 0 ready/40 blocked, and strict verification cryptographically
-binds artifacts, signatures, source, SBOM/VEX, provenance, feed, architecture
-sessions, and Sigstore inputs. Clean aarch64 and architecture-correct x86_64
-shards at `391fe2847d` each produced all four required artifacts and passed 28
-package-smoke steps. Promotion remains blocked until an installed x86_64
-session, native hosted x86_64 run, final signed aggregate, valid public feed,
-and prior-version update/rollback/data-preservation proof all exist.
+**Implementation update (2026-07-10; current-head reconciliation 2026-07-23):
+partially closed in the implementation branch.** The parity claim is false, the
+generated ledger has all 40 audit requirements at 0 ready/40 blocked, and
+strict verification cryptographically binds artifacts, signatures, source,
+SBOM/VEX, provenance, feed, architecture sessions, and Sigstore inputs. The
+current verifier also rejects blocked lifecycle rows during promotion, checks
+the signed feed's schema/MIME/allowlisted hosts and exact artifact coverage,
+and fails on stale or contradictory closure metadata. Clean aarch64 and
+architecture-correct x86_64 shards at `391fe2847d` each produced all four
+required artifacts and passed 28 package-smoke steps. Promotion remains
+blocked until an installed x86_64 session, native hosted x86_64 run, final
+signed aggregate, valid public feed, and prior-version
+update/rollback/data-preservation proof all exist.
 
 - **Difference:** macOS release confidence comes from a signed product and a
   delivery path that can be exercised. Linux's four public Ed25519 artifact pairs
   pass, but the mission-002 local closure diverges and all four local pairs fail.
-  `verify-linux-release.mjs` checks only recorded signature entries and still
-  reports green. It also accepts blocked update/rollback evidence, does not
-  exercise the live feed, and delegates to a product ledger whose staleness is
-  disabled. The JSON ledger says parity is true while the Markdown ledger says
-  false.
+  The remaining Linux gap is live promotion evidence: the verifier cannot turn
+  local metadata into proof that the public candidate, hosted feed, previous
+  release, and installed environments are the same bytes. The current JSON
+  ledger intentionally says parity is false and keeps all 40 rows blocked.
 - **Why it matters:** automation can certify evidence that does not reproduce the
   public candidate, and every downstream parity claim inherits a false-green
   gate even though the public Ed25519 pairs themselves are valid.
@@ -2363,12 +2366,12 @@ and prior-version update/rollback/data-preservation proof all exist.
   update/rollback, and live-feed success; make contradictions or blocked rows
   fatal.
 - **Priority:** **Critical**.
-- **Implementation notes:** add Ed25519/minisign/Sigstore verification to
-  `scripts/linux-port/verify-linux-release.mjs`; bind artifact hash, public-key
-  fingerprint, signature, provenance, SBOM, and source commit in one manifest;
-  remove `staleWhenHeadDiffers: false` for Tier A/B product rows; generate the
-  Markdown ledger from JSON; check the public feed's status, MIME type, schema,
-  architecture, hash, version monotonicity, and signature.
+- **Implementation notes:** the current verifier already binds artifact hashes,
+  public-key fingerprints, detached signatures, provenance, SBOM/VEX, source,
+  architecture sessions, feed metadata, and the parity ledger. Keep the
+  mission-002 local bundle non-promotable; the remaining implementation is the
+  release-operator path that produces a current signed aggregate, verifies the
+  hosted feed and previous release, and records installed environment receipts.
 - **QA verification:** reproduce the downloaded GitHub asset hashes and passing
   Ed25519 checks; assert the current divergent mission-002 bundle fails; mutate
   one byte in every artifact/sidecar/manifest and assert failure; assert blocked
