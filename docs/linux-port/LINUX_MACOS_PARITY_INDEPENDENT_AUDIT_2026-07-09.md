@@ -280,6 +280,21 @@ therefore remains visibly unverified instead of producing a false-green
 onboarding state. Secret Service, provider endpoint, and production OAuth
 receipts remain live verification work; the strict ledger is unchanged.
 
+### Linux external text-engine capability readback — 2026-07-23
+
+The shell runtime-capability evaluator no longer hard-codes system text
+expansion as unavailable. When the authenticated daemon is healthy it now
+reads `daemon.text_expansion.engine.status` and advertises the system
+capability only when the daemon's signed-engine adapter reports
+`supportsExternalExpansion=true`; missing registration, missing package
+identity, or an unavailable daemon remain explicitly unavailable with the
+daemon's bounded reason. This keeps the UI aligned with the already-packaged
+IBus engine without ever promoting in-app expansion or an unverified binary.
+
+This closes the source-level capability-readback mismatch. Live signed IBus
+execution, secure-field denial, keyring custody, and the strict certification
+ledger remain open: **0/40 product** and **0/7 environment**.
+
 ### Linux GlassCard / GlassButton primitives — 2026-07-23
 
 Linux now exposes typed `GlassCard` and `GlassButton` components matching the

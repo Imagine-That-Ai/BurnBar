@@ -386,6 +386,14 @@ struct RuntimeComputerUsePendingSnapshot {
     system_capability: Option<RuntimeComputerUseSystemCapability>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeTextExpansionCapability {
+    registration: String,
+    supports_external_expansion: bool,
+    detail: String,
+}
+
 const RUNTIME_CAPABILITY_CATALOG: &str =
     include_str!("../../../../../packaging/linux/runtime-capability-catalog.json");
 
@@ -396,6 +404,7 @@ fn evaluate_runtime_capability(
     has_session_bus: bool,
     media: Option<&RuntimeMediaCapability>,
     system_computer_use: Option<&RuntimeComputerUseSystemCapability>,
+    text_expansion: Option<&RuntimeTextExpansionCapability>,
 ) -> Result<RuntimeCapabilityEntry, String> {
     let available = |reason: &str, source: &str| {
         (
@@ -512,11 +521,21 @@ fn evaluate_runtime_capability(
             definition.unavailable_reason.clone(),
             "desktop-session-probe".to_string(),
         ),
-        // The external text engine remains a separately packaged, consented
-        // capability. Keep the catalog evaluator explicit until a live IBus
-        // or Fcitx registration is observed; never promote in-app expansion
-        // into a system-wide claim.
-        "text-expansion" => unavailable(),
+        "text-expansion" => match text_expansion {
+            Some(capability) if capability.supports_external_expansion => available(
+                &capability.detail,
+                "daemon-text-expansion-status",
+            ),
+            Some(capability) => (
+                "unavailable".to_string(),
+                format!(
+                    "{} ({})",
+                    capability.detail, capability.registration
+                ),
+                "daemon-text-expansion-status".to_string(),
+            ),
+            None => unavailable(),
+        },
         "unavailable" => unavailable(),
         unknown => return Err(format!("runtime_capability_unknown_evaluator:{unknown}")),
     };
@@ -557,6 +576,17 @@ fn evaluate_runtime_capabilities() -> Result<RuntimeCapabilityManifest, String> 
         })
         .and_then(Result::ok)
         .and_then(|value| serde_json::from_value::<RuntimeMediaCapability>(value).ok());
+    let text_expansion = health
+        .ok
+        .then(|| {
+            call_daemon_method_with_timeout(
+                "daemon.text_expansion.engine.status",
+                None,
+                Duration::from_secs(2),
+            )
+        })
+        .and_then(Result::ok)
+        .and_then(|value| serde_json::from_value::<RuntimeTextExpansionCapability>(value).ok());
     let system_computer_use = health
         .ok
         .then(|| {
@@ -580,6 +610,7 @@ fn evaluate_runtime_capabilities() -> Result<RuntimeCapabilityManifest, String> 
                 has_session_bus,
                 media.as_ref(),
                 system_computer_use.as_ref(),
+                text_expansion.as_ref(),
             )
         })
         .collect::<Result<Vec<_>, _>>()?;

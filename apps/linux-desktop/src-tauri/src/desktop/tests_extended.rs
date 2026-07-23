@@ -866,6 +866,59 @@
     }
 
     #[test]
+    fn text_expansion_runtime_capability_follows_daemon_signed_engine_status() {
+        let definition = RuntimeCapabilityDefinition {
+            id: "text-expansion.system".to_string(),
+            domain: "platform".to_string(),
+            evaluator: "text-expansion".to_string(),
+            unavailable_reason: "System expansion is unavailable.".to_string(),
+            substitute: Some("Use in-app expansion.".to_string()),
+        };
+        let supported = RuntimeTextExpansionCapability {
+            registration: "registered".to_string(),
+            supports_external_expansion: true,
+            detail: "Signed IBus engine is registered.".to_string(),
+        };
+        let available = evaluate_runtime_capability(
+            definition,
+            &DaemonHealth::default(),
+            Some("x11"),
+            true,
+            None,
+            None,
+            Some(&supported),
+        )
+        .unwrap();
+        assert_eq!(available.state, "available");
+        assert_eq!(available.source, "daemon-text-expansion-status");
+        assert_eq!(available.reason, "Signed IBus engine is registered.");
+
+        let unavailable = RuntimeTextExpansionCapability {
+            registration: "engine_missing".to_string(),
+            supports_external_expansion: false,
+            detail: "The signed engine is not installed.".to_string(),
+        };
+        let blocked = evaluate_runtime_capability(
+            RuntimeCapabilityDefinition {
+                id: "text-expansion.system".to_string(),
+                domain: "platform".to_string(),
+                evaluator: "text-expansion".to_string(),
+                unavailable_reason: "System expansion is unavailable.".to_string(),
+                substitute: Some("Use in-app expansion.".to_string()),
+            },
+            &DaemonHealth::default(),
+            Some("wayland"),
+            true,
+            None,
+            None,
+            Some(&unavailable),
+        )
+        .unwrap();
+        assert_eq!(blocked.state, "unavailable");
+        assert!(blocked.reason.contains("engine_missing"));
+    }
+
+    #[test]
     fn mercury_runtime_capability_follows_daemon_probe() {
         let definition = RuntimeCapabilityDefinition {
             id: "media.mercury".to_string(),
@@ -886,6 +939,7 @@
             Some("wayland"),
             true,
             Some(&available),
+            None,
             None,
         )
         .unwrap();
@@ -916,6 +970,7 @@
             true,
             Some(&degraded),
             None,
+            None,
         )
         .unwrap();
         assert_eq!(entry.state, "degraded");
@@ -945,6 +1000,7 @@
             true,
             Some(&unavailable),
             None,
+            None,
         )
         .unwrap();
         assert_eq!(explicit.state, "unavailable");
@@ -955,6 +1011,7 @@
             &DaemonHealth::default(),
             Some("wayland"),
             true,
+            None,
             None,
             None,
         )
@@ -987,6 +1044,7 @@
             true,
             None,
             Some(&ready),
+            None,
         )
         .unwrap();
         assert_eq!(available.state, "available");
@@ -1006,6 +1064,7 @@
             true,
             None,
             Some(&capture_missing),
+            None,
         )
         .unwrap();
         assert_eq!(blocked.state, "unavailable");
