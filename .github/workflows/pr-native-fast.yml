@@ -220,9 +220,18 @@ jobs:
 
       - name: Install XcodeGen
         run: |
-          if ! command -v xcodegen >/dev/null 2>&1; then
-            brew install xcodegen
-          fi
+          set -euo pipefail
+          version="2.45.4"
+          archive="$RUNNER_TEMP/xcodegen-${version}.zip"
+          install_root="$RUNNER_TEMP/xcodegen-${version}"
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${version}/xcodegen.zip" \
+            --output "$archive"
+          echo "090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef  $archive" \
+            | shasum --algorithm 256 --check --strict
+          unzip -q "$archive" -d "$install_root"
+          echo "$install_root/xcodegen/bin" >> "$GITHUB_PATH"
+          export PATH="$install_root/xcodegen/bin:$PATH"
           xcodegen --version
 
       # Regenerate from the spec; the committed pbxproj must already match.
