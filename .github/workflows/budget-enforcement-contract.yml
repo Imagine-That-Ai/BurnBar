@@ -14,7 +14,10 @@ on:
   pull_request:
     paths:
       - "tests/fixtures/budget-enforcement/**"
-      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/budget-enforcement-vectors.json"
+      # Phase-2 WS-B packet B1 moved budget-enforcement-vectors.json (with
+      # BudgetGateContractVectorTests) into OpenBurnBarKernelModelsTests; the
+      # entitlement-vectors.json copy stays in OpenBurnBarCoreTests (CI-only, no Swift reader).
+      - "OpenBurnBarCore/Tests/OpenBurnBarKernelModelsTests/Fixtures/budget-enforcement-vectors.json"
       - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/entitlement-vectors.json"
       - "android/app/src/test/resources/budget-enforcement/**"
       - "scripts/ci/check-budget-enforcement-fixture.mjs"

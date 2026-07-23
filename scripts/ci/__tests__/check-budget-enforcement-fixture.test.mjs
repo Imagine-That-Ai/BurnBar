@@ -12,7 +12,9 @@ const SCRIPT = resolve(HERE, "..", "check-budget-enforcement-fixture.mjs");
 
 const COPIES = [
   "tests/fixtures/budget-enforcement/budget-enforcement-vectors.json",
-  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/budget-enforcement-vectors.json",
+  // Phase-2 WS-B packet B1: fixture co-moved with BudgetGateContractVectorTests
+  // into OpenBurnBarKernelModelsTests.
+  "OpenBurnBarCore/Tests/OpenBurnBarKernelModelsTests/Fixtures/budget-enforcement-vectors.json",
   "android/app/src/test/resources/budget-enforcement/budget-enforcement-vectors.json",
 ];
 const ENT_COPIES = [
