@@ -9,9 +9,11 @@ import {
   repoRoot,
   writeJson
 } from './lib/linux-release-common.mjs';
+import { validateFcitx5AddonContract } from './validate-fcitx5-addon-source.mjs';
 
 const manifest = readJson(manifestPath);
 const failures = [];
+failures.push(...validateFcitx5AddonContract({ root: repoRoot }));
 for (const key of ['product', 'appId', 'primaryArtifact', 'requiredArtifacts', 'tailMetadata', 'updateMetadata']) {
   if (!manifest[key]) failures.push(`manifest missing ${key}`);
 }

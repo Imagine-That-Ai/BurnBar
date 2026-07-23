@@ -7,7 +7,7 @@ arch=("x86_64" "aarch64")
 url="https://github.com/Imagine-That-Ai/BurnBar"
 license=("AGPL-3.0-only")
 depends=("webkit2gtk-4.1" "gtk3" "libayatana-appindicator" "libsecret" "nodejs" "npm" "polkit" "gstreamer" "gst-plugins-base" "gst-plugins-good" "gst-plugin-pipewire" "ibus" "python-gobject")
-optdepends=("kwallet: KDE Wallet credential backend" "fcitx5: input-method host (native OpenBurnBar addon not yet packaged)")
+optdepends=("kwallet: KDE Wallet credential backend" "fcitx5: input-method host (OpenBurnBar Fcitx5 addon is source-only and unavailable)")
 
 source=(
   "openburnbar.desktop::https://raw.githubusercontent.com/Imagine-That-Ai/BurnBar/linux-v${pkgver}/packaging/linux/aur/openburnbar.desktop"
@@ -107,6 +107,7 @@ package() {
     usr/bin/openburnbar-cli \
     usr/libexec/openburnbar/text-expansion-engine \
     usr/share/ibus/component/openburnbar.xml \
+    usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json \
     usr/share/openburnbar/text-expansion/text-expansion-engine.json \
     usr/lib/openburnbar/native/libopenburnbar_iroh.so \
     usr/lib/openburnbar/native/libsqlcipher.so.0 \
@@ -204,6 +205,7 @@ package() {
   install -Dm644 "${srcdir}/release-ed25519.pub.pem" "${pkgdir}/usr/share/openburnbar/attestation/release-ed25519.pub.pem"
   install -Dm755 "${srcdir}/squashfs-root/usr/libexec/openburnbar/text-expansion-engine" "${pkgdir}/usr/libexec/openburnbar/text-expansion-engine"
   install -Dm644 "${srcdir}/squashfs-root/usr/share/ibus/component/openburnbar.xml" "${pkgdir}/usr/share/ibus/component/openburnbar.xml"
+  install -Dm644 "${srcdir}/squashfs-root/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json" "${pkgdir}/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json"
   install -Dm644 "${srcdir}/squashfs-root/usr/share/openburnbar/text-expansion/text-expansion-engine.json" "${pkgdir}/usr/share/openburnbar/text-expansion/text-expansion-engine.json"
   rm -rf "${srcdir}/squashfs-root"
   trap - ERR

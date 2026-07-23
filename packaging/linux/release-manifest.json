@@ -31,6 +31,7 @@
     "daemonBinary": "/usr/bin/openburnbar-daemon",
     "textExpansionEngine": "/usr/libexec/openburnbar/text-expansion-engine",
     "textExpansionManifest": "/usr/share/openburnbar/text-expansion/text-expansion-engine.json",
+    "textExpansionFcitx5Contract": "/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json",
     "ibusComponent": "/usr/share/ibus/component/openburnbar.xml",
     "swiftRuntime": "/usr/lib/openburnbar/swift",
     "nativeRuntime": "/usr/lib/openburnbar/native",
@@ -104,7 +105,16 @@
     "readsSurroundingText": false,
     "secureFieldPolicy": "deny-unless-inspectable-and-explicitly-nonsecure",
     "supportedBackend": "ibus",
-    "unavailableBackend": "fcitx5-native-addon-not-packaged"
+    "unavailableBackend": "fcitx5-native-addon-not-packaged",
+    "fcitx5": {
+      "contract": "packaging/linux/fcitx5-openburnbar-addon.json",
+      "status": "source-only-not-packaged",
+      "nativeAddonPath": null,
+      "runtimeSupport": false,
+      "packageSupport": false,
+      "requiredHeaders": ["Fcitx5Core >= 5.1.6"],
+      "promotionBlocker": "fcitx5-native-headers-and-signed-addon-build-unavailable"
+    }
   },
   "updateMetadata": {
     "draftName": "latest-linux.draft.json",

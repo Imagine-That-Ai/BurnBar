@@ -296,6 +296,23 @@ This closes the source-level capability-readback mismatch. Live signed IBus
 execution, secure-field denial, keyring custody, and the strict certification
 ledger remain open: **0/40 product** and **0/7 environment**.
 
+### Linux Fcitx5 package capability contract — 2026-07-23
+
+The host does not provide `Fcitx5Core` development headers or a packaged native
+OpenBurnBar addon, so this slice does not pretend to enable Fcitx5. Deb, RPM,
+AppImage, and AUR payloads now carry an owner-readable
+`fcitx5-openburnbar-addon.json` contract that explicitly reports
+`source-only-not-packaged`, `runtimeSupport=false`, and `packageSupport=false`.
+It records the required native headers and preserves the no-global-capture,
+no-clipboard, no-surrounding-text, and secure-field-denial invariants. Release
+validation checks every Tauri payload and the AUR recipe, and fails closed if
+Fcitx5 is accidentally promoted before an exact signed addon build exists.
+
+This closes the package-capability ambiguity without claiming runtime parity.
+Building and signing a real Fcitx5 addon, live secure-field/consent execution,
+and the Wayland/X11 receipt matrix remain open; the strict ledger remains
+**0/40 product** and **0/7 environment**.
+
 ### Linux GlassCard / GlassButton primitives — 2026-07-23
 
 Linux now exposes typed `GlassCard` and `GlassButton` components matching the

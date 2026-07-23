@@ -44,6 +44,7 @@
           "/usr/libexec/openburnbar/text-expansion-engine": "../../../packaging/linux/openburnbar-text-expansion-engine.py",
           "/usr/share/ibus/component/openburnbar.xml": "../../../packaging/linux/ibus-openburnbar.xml",
           "/usr/share/openburnbar/text-expansion/text-expansion-engine.json": "target/openburnbar-package-payload/text-expansion-engine.json",
+          "/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json": "../../../packaging/linux/fcitx5-openburnbar-addon.json",
           "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
           "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
           "/usr/lib/openburnbar/playwright": "target/openburnbar-package-payload/playwright",
@@ -78,6 +79,7 @@
           "/usr/libexec/openburnbar/text-expansion-engine": "../../../packaging/linux/openburnbar-text-expansion-engine.py",
           "/usr/share/ibus/component/openburnbar.xml": "../../../packaging/linux/ibus-openburnbar.xml",
           "/usr/share/openburnbar/text-expansion/text-expansion-engine.json": "target/openburnbar-package-payload/text-expansion-engine.json",
+          "/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json": "../../../packaging/linux/fcitx5-openburnbar-addon.json",
           "/usr/lib/openburnbar/swift": "target/openburnbar-package-payload/swift",
           "/usr/lib/openburnbar/native": "target/openburnbar-package-payload/native",
           "/usr/lib/openburnbar/playwright": "target/openburnbar-package-payload/playwright",
@@ -101,6 +103,7 @@
           "/usr/libexec/openburnbar/text-expansion-engine": "../../../packaging/linux/openburnbar-text-expansion-engine.py",
           "/usr/share/ibus/component/openburnbar.xml": "../../../packaging/linux/ibus-openburnbar.xml",
           "/usr/share/openburnbar/text-expansion/text-expansion-engine.json": "target/openburnbar-package-payload/text-expansion-engine.json",
+          "/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json": "../../../packaging/linux/fcitx5-openburnbar-addon.json",
           "/usr/libexec/openburnbar-daemon-launch": "../../../packaging/linux/openburnbar-daemon-launch.sh",
           "/usr/lib/systemd/user/openburnbar-daemon.service": "../../../packaging/linux/openburnbar-daemon.service"
         }
