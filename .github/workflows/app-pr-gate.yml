@@ -69,8 +69,6 @@ jobs:
         with:
           path: Vendor/OpenBurnBarSignalFfiMac.xcframework
           key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
-          restore-keys: |
-            ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-
 
       - name: Cache Swift Package Manager dependencies
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
@@ -217,8 +215,6 @@ jobs:
         with:
           path: Vendor/OpenBurnBarSignalFfiIOS.xcframework
           key: ${{ runner.os }}-signal-ffi-ios-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
-          restore-keys: |
-            ${{ runner.os }}-signal-ffi-ios-${{ steps.signal-ffi-cache.outputs.sha }}-
 
       - name: Cache Swift Package Manager dependencies
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)

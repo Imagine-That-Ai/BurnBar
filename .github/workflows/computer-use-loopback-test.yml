@@ -51,8 +51,6 @@ jobs:
         with:
           path: Vendor/OpenBurnBarSignalFfiMac.xcframework
           key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
-          restore-keys: |
-            ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-
       - name: Install Rust toolchain for libsignal Swift FFI
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
