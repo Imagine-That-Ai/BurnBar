@@ -451,9 +451,23 @@ const fastStep = workflowStep(fastGate, "Check all fast jobs passed");
 const fastScript = stepScript(fastStep);
 const fastNeeds = jobNeeds(fastGate);
 
-check("SQLCipher policy leaves enough time for checkout and verification", () => {
-  const timeoutMinutes = Number.parseInt(jobField(sqlcipherJob, "timeout-minutes"), 10);
-  assert.ok(timeoutMinutes >= 6, "SQLCipher policy timeout must tolerate a two-minute checkout delay");
+check("every fast-feedback job leaves enough time for checkout", () => {
+  // A job whose budget expires during actions/checkout is reported by GitHub as
+  // CANCELLED, and the CI Gate aggregator fails closed on a cancelled component
+  // -- so an ordinary slow checkout ejects the whole merge-queue candidate.
+  // This repo's pack is ~866MB and a tip checkout has been observed taking over
+  // three minutes under runner contention. The rule was originally written for
+  // the SQLCipher job alone; nine other jobs still carried 3-4 minute budgets
+  // and were ejecting candidates, so it now applies to every job in the file.
+  const source = readFileSync(join(REPO_ROOT, ".github/workflows/fast-feedback.yml"), "utf8");
+  const tooTight = [...source.matchAll(/^  ([a-z0-9-]+):\n(?:.*\n)*?    timeout-minutes: (\d+)$/gmu)]
+    .map(([, job, minutes]) => [job, Number.parseInt(minutes, 10)])
+    .filter(([, minutes]) => minutes < 6);
+  assert.deepEqual(
+    tooTight,
+    [],
+    `fast-feedback jobs must tolerate a slow checkout (>=6 min): ${JSON.stringify(tooTight)}`,
+  );
 });
 
 check("Rust path detector is mandatory and only a proven unchanged path may skip Rust", () => {
