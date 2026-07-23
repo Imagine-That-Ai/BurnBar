@@ -33,8 +33,14 @@ export function createSignedEngineManifest({
   privateKeyPem
 }) {
   if (!['ibus', 'fcitx5'].includes(backend)) throw new Error('backend must be ibus or fcitx5');
-  const stat = fs.lstatSync(executable);
-  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('engine executable must be a regular file');
+  const executableFd = fs.openSync(executable, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  let executableBytes;
+  try {
+    if (!fs.fstatSync(executableFd).isFile()) throw new Error('engine executable must be a regular file');
+    executableBytes = fs.readFileSync(executableFd);
+  } finally {
+    fs.closeSync(executableFd);
+  }
   const privateKey = crypto.createPrivateKey(privateKeyPem);
   if (privateKey.asymmetricKeyType !== 'ed25519') throw new Error('engine manifest requires an Ed25519 key');
   const publicKey = crypto.createPublicKey(privateKey);
@@ -45,7 +51,7 @@ export function createSignedEngineManifest({
     backend,
     engineID: 'org.openburnbar.TextExpansion',
     executablePath: installedExecutable,
-    executableSha256: crypto.createHash('sha256').update(fs.readFileSync(executable)).digest('hex'),
+    executableSha256: crypto.createHash('sha256').update(executableBytes).digest('hex'),
     supportsWayland: true,
     supportsX11: true,
     noGlobalCapture: true,

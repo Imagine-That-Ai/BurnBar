@@ -117,7 +117,8 @@ jobs:
     name: SwiftPM build + test (Core + Daemon)
     needs: detect-native-changes
     if: needs.detect-native-changes.outputs.native == 'true'
-    runs-on: macos-26
+    runs-on:
+      group: burnbar-ci-paid
     # `swift test` on both packages compiles the libsignal Swift FFI on a cold
     # cache; the Swift Core lane uses 40 min for the same work.
     timeout-minutes: 40
@@ -130,12 +131,24 @@ jobs:
       - name: Verify macOS Engine closure is UI-free
         run: bash scripts/debt/check-engine-closure-ui-purity.sh
 
+      - name: Resolve Signal FFI cache identity
+        id: signal-ffi-cache
+        run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache macOS Signal FFI artifact
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: Vendor/OpenBurnBarSignalFfiMac.xcframework
+          key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
+
       - name: Cache Swift Package Manager dependencies
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
         with:
           path: |
             .spm-cache
             .build
+            ~/.cargo/registry
+            ~/.cargo/git
           key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-
@@ -212,7 +225,8 @@ jobs:
     name: XcodeGen pbxproj drift
     needs: detect-native-changes
     if: needs.detect-native-changes.outputs.native == 'true'
-    runs-on: macos-26
+    runs-on:
+      group: burnbar-ci-paid
     timeout-minutes: 15
     steps:
       - name: Check out repository

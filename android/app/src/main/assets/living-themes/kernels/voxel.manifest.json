@@ -1,0 +1,25 @@
+{
+  "id": "voxel",
+  "label": "Voxel",
+  "metalFileBase": "K_Voxel",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_voxel_display"
+  },
+  "controls": [
+    "scroll"
+  ],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

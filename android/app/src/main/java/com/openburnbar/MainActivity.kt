@@ -18,6 +18,8 @@ import com.openburnbar.services.media.AgentReplyNotificationState
 import com.openburnbar.ui.auth.LaunchSplashGate
 import com.openburnbar.ui.navigation.BurnBarNavHost
 import com.openburnbar.ui.theme.AuroraTheme
+import com.openburnbar.wallpaper.livingthemes.LivingThemeIntent
+import com.openburnbar.wallpaper.livingthemes.LivingThemesActivity
 
 class MainActivity : FragmentActivity() {
     /**
@@ -34,6 +36,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (routeLivingThemeIntent(intent)) return
         enableOpenBurnBarScreenPrivacy()
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
@@ -81,7 +84,18 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (routeLivingThemeIntent(intent)) return
         handleIntent(intent)
+    }
+
+    private fun routeLivingThemeIntent(intent: Intent?): Boolean {
+        if (LivingThemeIntent.parse(intent?.dataString) == null) return false
+        startActivity(
+            Intent(this, LivingThemesActivity::class.java)
+                .setData(intent?.data),
+        )
+        finish()
+        return true
     }
 
     private fun handleIntent(intent: Intent?) {

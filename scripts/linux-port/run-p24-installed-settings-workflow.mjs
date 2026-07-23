@@ -93,20 +93,24 @@ function ownerOnlyDirectory(directory, label, { empty = false } = {}) {
   return fs.realpathSync(directory);
 }
 function readToken(file) {
-  const stat = fs.lstatSync(file);
-  assert(
-    stat.isFile() &&
-      !stat.isSymbolicLink() &&
-      stat.uid === process.getuid?.() &&
-      (stat.mode & 0o077) === 0,
-    "P-24 daemon token must be owner-only",
-  );
-  const token = fs.readFileSync(file, "utf8").trim();
-  assert(
-    token.length >= 32 && !/[\r\n]/u.test(token),
-    "P-24 daemon token is invalid",
-  );
-  return token;
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW, 0o600);
+  try {
+    const stat = fs.fstatSync(fd);
+    assert(
+      stat.isFile() &&
+        stat.uid === process.getuid?.() &&
+        (stat.mode & 0o077) === 0,
+      "P-24 daemon token must be owner-only",
+    );
+    const token = fs.readFileSync(fd, "utf8").trim();
+    assert(
+      token.length >= 32 && !/[\r\n]/u.test(token),
+      "P-24 daemon token is invalid",
+    );
+    return token;
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 function environment(options) {
   return {
@@ -456,15 +460,25 @@ function writeAutostart(file, template, enabled) {
   fs.renameSync(temporary, file);
 }
 function fileBackup(file) {
-  if (!fs.existsSync(file)) return null;
-  const stat = fs.lstatSync(file);
-  assert(stat.isFile() && !stat.isSymbolicLink(), `P-24 unsafe file: ${file}`);
-  return {
-    bytes: fs.readFileSync(file),
-    mode: stat.mode & 0o777,
-    atime: stat.atime,
-    mtime: stat.mtime,
-  };
+  let fd;
+  try {
+    fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW, 0o600);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  try {
+    const stat = fs.fstatSync(fd);
+    assert(stat.isFile(), `P-24 unsafe file: ${file}`);
+    return {
+      bytes: fs.readFileSync(fd),
+      mode: stat.mode & 0o777,
+      atime: stat.atime,
+      mtime: stat.mtime,
+    };
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 function restoreFile(file, backup) {
   fs.rmSync(file, { force: true });

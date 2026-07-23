@@ -127,6 +127,15 @@ MACHO_REPAIR_TOOL="${BUILD_DIR}/repair_macho_linkedit_alignment.py"
 RUSTC_WRAPPER_SCRIPT="${BUILD_DIR}/rustc-wrapper.sh"
 METADATA_FILE_NAME=".openburnbar-signal-ffi-build.env"
 
+# Cargo honors CARGO_TARGET_DIR, including when CI or a developer points it at
+# a shared SSD cache. Keep staging on the same effective target directory as
+# the build instead of silently rebuilding there and then looking only under
+# Vendor/libsignal/target.
+cargo_target_dir="${CARGO_TARGET_DIR:-${LIBSIGNAL_DIR}/target}"
+if [[ "${cargo_target_dir}" != /* ]]; then
+  cargo_target_dir="${LIBSIGNAL_DIR}/${cargo_target_dir}"
+fi
+
 PROFILE="${SIGNAL_FFI_BUILD_PROFILE:-release}"
 case "${PROFILE}" in
   debug)
@@ -395,7 +404,7 @@ build_target() {
 
 latest_target_dylib() {
   local target="$1"
-  local dir="${CARGO_TARGET_DIR}/${target}/${PROFILE_DIR}/deps"
+  local dir="${cargo_target_dir}/${target}/${PROFILE_DIR}/deps"
   [[ -d "${dir}" ]] || abort "missing build output dir ${dir}"
   local dylib
   dylib="$(
@@ -410,7 +419,7 @@ latest_target_dylib() {
 
 latest_target_staticlib() {
   local target="$1"
-  local lib="${CARGO_TARGET_DIR}/${target}/${PROFILE_DIR}/libsignal_ffi.a"
+  local lib="${cargo_target_dir}/${target}/${PROFILE_DIR}/libsignal_ffi.a"
   [[ -f "${lib}" ]] || abort "missing libsignal_ffi static library for ${target}"
   printf '%s\n' "${lib}"
 }

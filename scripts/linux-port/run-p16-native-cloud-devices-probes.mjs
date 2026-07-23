@@ -102,26 +102,48 @@ function disjoint(values) {
     }
   }
 }
+// Opens `absolute` without ever resolving a symlink and without inspecting the
+// path first: `O_NOFOLLOW` turns a symlinked entry into `ELOOP` and
+// `O_NONBLOCK` keeps a hostile FIFO from stalling the open, so every assertion
+// below can be made against the descriptor we actually hold.
+function openEntry(absolute, child) {
+  try {
+    return fs.openSync(
+      absolute,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+      0o600,
+    );
+  } catch (error) {
+    assert(error.code !== "ELOOP", `P-16 state contains symlink ${child}`);
+    throw error;
+  }
+}
 function tree(root) {
   const rows = [];
   const visit = (directory, relative = "") => {
     for (const name of fs.readdirSync(directory).sort()) {
       const absolute = path.join(directory, name);
       const child = relative ? path.join(relative, name) : name;
-      const stat = fs.lstatSync(absolute);
-      assert(!stat.isSymbolicLink(), `P-16 state contains symlink ${child}`);
-      if (stat.isDirectory()) {
-        rows.push({ path: child, type: "directory", mode: stat.mode & 0o777 });
-        visit(absolute, child);
-      } else {
-        assert(stat.isFile(), `P-16 state contains special file ${child}`);
-        rows.push({
-          path: child,
-          type: "file",
-          mode: stat.mode & 0o777,
-          sha256: sha(fs.readFileSync(absolute)),
-        });
+      const fd = openEntry(absolute, child);
+      let descend = false;
+      try {
+        const stat = fs.fstatSync(fd);
+        if (stat.isDirectory()) {
+          descend = true;
+          rows.push({ path: child, type: "directory", mode: stat.mode & 0o777 });
+        } else {
+          assert(stat.isFile(), `P-16 state contains special file ${child}`);
+          rows.push({
+            path: child,
+            type: "file",
+            mode: stat.mode & 0o777,
+            sha256: sha(fs.readFileSync(fd)),
+          });
+        }
+      } finally {
+        fs.closeSync(fd);
       }
+      if (descend) visit(absolute, child);
     }
   };
   visit(root);
@@ -229,19 +251,29 @@ function normalizeStatus(value, proofState) {
 }
 function receipt(source, destination) {
   const requested = path.resolve(source);
-  const stat = fs.lstatSync(requested);
-  assert(
-    stat.isFile() &&
-      !stat.isSymbolicLink() &&
-      stat.uid === process.getuid?.() &&
-      stat.nlink === 1 &&
-      stat.size >= 800 &&
-      stat.size <= 1024 * 1024 &&
-      (stat.mode & 0o077) === 0 &&
-      fs.realpathSync(requested) === requested,
-    "P-16 physical-ipad receipt must be an owner-only regular file",
+  const fd = fs.openSync(
+    requested,
+    fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
+    0o600,
   );
-  const value = JSON.parse(fs.readFileSync(requested, "utf8"));
+  let raw;
+  try {
+    const stat = fs.fstatSync(fd);
+    assert(
+      stat.isFile() &&
+        stat.uid === process.getuid?.() &&
+        stat.nlink === 1 &&
+        stat.size >= 800 &&
+        stat.size <= 1024 * 1024 &&
+        (stat.mode & 0o077) === 0 &&
+        fs.realpathSync(requested) === requested,
+      "P-16 physical-ipad receipt must be an owner-only regular file",
+    );
+    raw = fs.readFileSync(fd, "utf8");
+  } finally {
+    fs.closeSync(fd);
+  }
+  const value = JSON.parse(raw);
   assert(
     value?.producer === "openburnbar-p16-physical-ipad-trust-cycle-v1",
     "P-16 receipt is not a physical-ipad trust cycle",
@@ -624,15 +656,8 @@ function driver(env) {
   let base;
   return {
     async start() {
-      required(
-        "sh",
-        [
-          "-c",
-          "command -v tauri-driver >/dev/null && command -v WebKitWebDriver >/dev/null",
-        ],
-        "P-16 WebDriver prerequisites",
-        { env },
-      );
+      required("which", ["tauri-driver"], "P-16 WebDriver prerequisites", { env });
+      required("which", ["WebKitWebDriver"], "P-16 WebDriver prerequisites", { env });
       const port = await reservePort();
       base = `http://127.0.0.1:${port}/`;
       child = spawn("tauri-driver", ["--port", String(port)], {

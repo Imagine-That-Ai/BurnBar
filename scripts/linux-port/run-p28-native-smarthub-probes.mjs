@@ -273,17 +273,32 @@ function screenshot(file) {
   throw new Error("P-28 could not capture a desktop screenshot");
 }
 
+function openEvidenceFd(file, message) {
+  try {
+    return fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  } catch (error) {
+    if (error.code === "ELOOP") throw new Error(message);
+    throw error;
+  }
+}
+
 function inspectScreenshot(file, startedMs) {
-  const stat = fs.lstatSync(file);
-  assert(
-    stat.isFile() && !stat.isSymbolicLink() && stat.uid === process.getuid?.(),
-    `P-28 screenshot is not an owned regular file: ${file}`,
-  );
-  assert(
-    stat.mtimeMs >= startedMs - 1_000,
-    `P-28 screenshot is stale: ${file}`,
-  );
-  const bytes = fs.readFileSync(file);
+  const fd = openEvidenceFd(file, `P-28 screenshot is not an owned regular file: ${file}`);
+  let bytes;
+  try {
+    const stat = fs.fstatSync(fd);
+    assert(
+      stat.isFile() && stat.uid === process.getuid?.(),
+      `P-28 screenshot is not an owned regular file: ${file}`,
+    );
+    assert(
+      stat.mtimeMs >= startedMs - 1_000,
+      `P-28 screenshot is stale: ${file}`,
+    );
+    bytes = fs.readFileSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
   assert(bytes.length >= 64, `P-28 screenshot is implausibly small: ${file}`);
   assert(
     bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE),
@@ -293,12 +308,18 @@ function inspectScreenshot(file, startedMs) {
 }
 
 function inspectAtspiFile(file, document) {
-  const stat = fs.lstatSync(file);
-  assert(
-    stat.isFile() && !stat.isSymbolicLink() && stat.uid === process.getuid?.(),
-    `P-28 AT-SPI evidence is not an owned regular file: ${file}`,
-  );
-  const bytes = fs.readFileSync(file);
+  const fd = openEvidenceFd(file, `P-28 AT-SPI evidence is not an owned regular file: ${file}`);
+  let bytes;
+  try {
+    const stat = fs.fstatSync(fd);
+    assert(
+      stat.isFile() && stat.uid === process.getuid?.(),
+      `P-28 AT-SPI evidence is not an owned regular file: ${file}`,
+    );
+    bytes = fs.readFileSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
   const stored = JSON.parse(bytes.toString("utf8"));
   assert(
     JSON.stringify(stored) === JSON.stringify(document),
@@ -551,7 +572,7 @@ function defaultDependencies(options) {
         );
       }
       for (const executable of ["python3", "avahi-browse", "systemctl", "lsof"])
-        command("sh", ["-c", `command -v ${executable}`]);
+        command("which", [executable]);
     },
     packageIdentity,
     daemonActive,

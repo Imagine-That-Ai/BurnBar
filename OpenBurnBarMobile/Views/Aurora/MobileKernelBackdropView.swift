@@ -45,6 +45,31 @@ struct MobileKernelBackdropView: View {
     }
 }
 
+struct MobileKernelBackdropFrameView: View {
+    let kernel: MobileBackdropKernel
+    let accent: Color
+    let time: TimeInterval
+    let size: CGSize
+    var colorDriver: SwarmColorDriver?
+    var backdropColors: [Color]?
+
+    var body: some View {
+        Canvas(opaque: true, rendersAsynchronously: false) { context, canvasSize in
+            MobileKernelBackdropRenderer.draw(
+                kernel: kernel,
+                accent: accent,
+                time: time,
+                opacity: 1,
+                colorDriver: colorDriver,
+                backdropColors: backdropColors,
+                size: canvasSize,
+                context: &context
+            )
+        }
+        .frame(width: size.width, height: size.height)
+    }
+}
+
 private enum MobileKernelBackdropRenderer {
     static func draw(
         kernel: MobileBackdropKernel,

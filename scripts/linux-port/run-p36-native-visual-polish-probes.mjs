@@ -91,29 +91,51 @@ function disjoint(values) {
     }
   }
 }
+// Opens `file` without ever resolving a symlink and without inspecting the path
+// first: `O_NOFOLLOW` turns a symlinked entry into `ELOOP` and `O_NONBLOCK`
+// keeps a hostile FIFO from stalling the open, so every assertion below is made
+// against the descriptor we actually hold.
+function openEntry(file, rel) {
+  try {
+    return fs.openSync(
+      file,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+      0o600,
+    );
+  } catch (error) {
+    assert(error.code !== "ELOOP", `P-36 state contains symlink ${rel}`);
+    throw error;
+  }
+}
 function tree(root) {
   const rows = [];
   const visit = (dir, prefix = "") => {
     for (const name of fs.readdirSync(dir).sort()) {
       const file = path.join(dir, name);
       const rel = prefix ? path.join(prefix, name) : name;
-      const stat = fs.lstatSync(file);
-      assert(!stat.isSymbolicLink(), `P-36 state contains symlink ${rel}`);
-      if (stat.isDirectory()) {
-        rows.push({ path: rel, type: "directory", mode: stat.mode & 0o777 });
-        visit(file, rel);
-      } else {
-        assert(stat.isFile(), `P-36 state contains special file ${rel}`);
-        rows.push({
-          path: rel,
-          type: "file",
-          mode: stat.mode & 0o777,
-          sha256: crypto
-            .createHash("sha256")
-            .update(fs.readFileSync(file))
-            .digest("hex"),
-        });
+      const fd = openEntry(file, rel);
+      let descend = false;
+      try {
+        const stat = fs.fstatSync(fd);
+        if (stat.isDirectory()) {
+          descend = true;
+          rows.push({ path: rel, type: "directory", mode: stat.mode & 0o777 });
+        } else {
+          assert(stat.isFile(), `P-36 state contains special file ${rel}`);
+          rows.push({
+            path: rel,
+            type: "file",
+            mode: stat.mode & 0o777,
+            sha256: crypto
+              .createHash("sha256")
+              .update(fs.readFileSync(fd))
+              .digest("hex"),
+          });
+        }
+      } finally {
+        fs.closeSync(fd);
       }
+      if (descend) visit(file, rel);
     }
   };
   visit(root);
@@ -491,15 +513,8 @@ function webdriver(env) {
       return Boolean(session);
     },
     async start() {
-      required(
-        "sh",
-        [
-          "-c",
-          "command -v tauri-driver >/dev/null && command -v WebKitWebDriver >/dev/null",
-        ],
-        "P-36 WebDriver prerequisites",
-        { env },
-      );
+      required("which", ["tauri-driver"], "P-36 WebDriver prerequisites", { env });
+      required("which", ["WebKitWebDriver"], "P-36 WebDriver prerequisites", { env });
       const selected = await port();
       base = `http://127.0.0.1:${selected}/`;
       processHandle = spawn("tauri-driver", ["--port", String(selected)], {
@@ -589,10 +604,15 @@ function webdriver(env) {
         "GET",
         `/session/${session}/screenshot`,
       );
-      assert(
-        typeof encoded === "string" && /^[A-Za-z0-9+/]+=*$/u.test(encoded),
-        "P-36 WebDriver screenshot response is invalid",
-      );
+      // Reject the response before it can reach the file system. These are
+      // statements rather than `assert(...)` calls so the fully anchored
+      // base64 allow-list actually guards every later use of `encoded`.
+      if (typeof encoded !== "string")
+        throw new Error("P-36 WebDriver screenshot response is not a string");
+      if (!/^[A-Za-z0-9+/]+=*$/u.test(encoded))
+        throw new Error(
+          "P-36 WebDriver screenshot response is not base64 evidence",
+        );
       const bytes = Buffer.from(encoded, "base64");
       assert(
         bytes.length >= 1024 &&
@@ -1004,9 +1024,13 @@ export function createP36ProductionDependencies(options) {
         expectedVisual && JSON.stringify(visual) === JSON.stringify(expectedVisual),
         `P-36 ${state} accessibility state does not match the live product`,
       );
+      // The assertion above proves `visual` serialises identically to
+      // `expectedVisual`, so the artifact records the locally owned expectation
+      // instead of piping the WebDriver response straight to disk. Byte-for-byte
+      // the same evidence, with provenance that stops at this probe.
       fs.writeFileSync(
         accessibility,
-        `${JSON.stringify({ ...summary, producer: "openburnbar-p36-atspi-live-v1", proofState: state, ...visual }, null, 2)}\n`,
+        `${JSON.stringify({ ...summary, producer: "openburnbar-p36-atspi-live-v1", proofState: state, ...expectedVisual }, null, 2)}\n`,
         { mode: 0o600 },
       );
       await driver.screenshot(image);

@@ -284,15 +284,20 @@ export function parseP26PackageOwner(environmentId, output) {
   return { manager: "pacman", packageName };
 }
 function packagedAutostart(runner, environmentId) {
-  const stat = fs.lstatSync(AUTOSTART);
-  assert(
-    stat.isFile() &&
-      !stat.isSymbolicLink() &&
-      stat.uid === 0 &&
-      (stat.mode & 0o022) === 0,
-    "P-26 packaged autostart entry is absent or unsafe",
-  );
-  const bytes = fs.readFileSync(AUTOSTART);
+  const autostartFd = fs.openSync(AUTOSTART, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  let bytes;
+  try {
+    const stat = fs.fstatSync(autostartFd);
+    assert(
+      stat.isFile() &&
+        stat.uid === 0 &&
+        (stat.mode & 0o022) === 0,
+      "P-26 packaged autostart entry is absent or unsafe",
+    );
+    bytes = fs.readFileSync(autostartFd);
+  } finally {
+    fs.closeSync(autostartFd);
+  }
   const exec = bytes
     .toString("utf8")
     .match(/^Exec=(.+)$/mu)?.[1]

@@ -42,7 +42,11 @@ import type {
 const FADE_MS = 700;
 // Fragment-shader kernels are soft, full-screen fields — high DPR is wasted
 // detail at real cost, so cap WebGL lower than the crisp 2D particle canvases.
-const DPR_CAP: Record<KernelSubstrate, number> = { "2d": 2, webgl2: 1.2, webgpu: 1 };
+const DPR_CAP: Record<KernelSubstrate, number> = {
+  "2d": 2,
+  webgl2: 1.2,
+  webgpu: 1,
+};
 
 interface Slot {
   id: KernelId;
@@ -63,6 +67,8 @@ export interface BackdropEngineOptions {
   palette?: KernelPalette;
   /** Host overrides when mounting `swarmEmber` (e.g. Linux dashboard cinematic pace). */
   swarmEmberOptions?: SwarmEmberKernelOptions;
+  /** Optional render cap for low-power/native preview hosts. Zero is uncapped. */
+  maxFps?: number;
   /** Notified with the kernel actually shown (may differ on GL fallback). */
   onResolve?: (id: KernelId) => void;
   /** Notified with the requested-vs-resolved capability receipt. */
@@ -85,12 +91,19 @@ function detectWebgl2(): { supported: boolean; caps: GlCapabilities } {
   try {
     const c = document.createElement("canvas");
     const gl = c.getContext("webgl2");
-    if (!gl) return { supported: false, caps: { colorBufferFloat: false, floatBlend: false } };
+    if (!gl)
+      return {
+        supported: false,
+        caps: { colorBufferFloat: false, floatBlend: false },
+      };
     const caps = detectGlCapabilities(gl);
     gl.getExtension("WEBGL_lose_context")?.loseContext();
     return { supported: true, caps };
   } catch {
-    return { supported: false, caps: { colorBufferFloat: false, floatBlend: false } };
+    return {
+      supported: false,
+      caps: { colorBufferFloat: false, floatBlend: false },
+    };
   }
 }
 
@@ -123,6 +136,8 @@ export class BackdropEngine {
    *  the embedder via {@link setHostVisible}. Browsers never touch this. */
   private hostVisible = true;
   private reducedMotion = false;
+  private maxFps = 0;
+  private lastFrameAdvanceAt = 0;
 
   private pointer = { x: 0, y: 0, active: false };
 
@@ -154,6 +169,8 @@ export class BackdropEngine {
     this.onStatus = opts.onStatus;
     this.activeId = opts.initialKernel ?? DEFAULT_KERNEL_ID;
     this.requestedKernelId = this.activeId;
+    this.maxFps =
+      opts.maxFps && opts.maxFps > 0 ? Math.min(opts.maxFps, 60) : 0;
 
     this.reducedMotion = opts.reducedMotionOverride ?? (
       typeof window !== "undefined" &&
@@ -200,7 +217,10 @@ export class BackdropEngine {
     for (const slot of this.slots) {
       slot.outgoing = true;
       slot.canvas.style.opacity = "0";
-      slot.disposeTimer = window.setTimeout(() => this.disposeSlot(slot), FADE_MS + 80);
+      slot.disposeTimer = window.setTimeout(
+        () => this.disposeSlot(slot),
+        FADE_MS + 80,
+      );
     }
 
     const slot = this.createSlot(requested.resolvedId);
@@ -256,7 +276,9 @@ export class BackdropEngine {
     this.palette = {
       theme: this.theme,
       bg: [...palette.bg] as KernelPalette["bg"],
-      accents: palette.accents.map((a) => [...a] as KernelPalette["accents"][0]),
+      accents: palette.accents.map(
+        (a) => [...a] as KernelPalette["accents"][0],
+      ),
       ink: [...palette.ink] as KernelPalette["ink"],
       intensity: palette.intensity,
     };
@@ -303,9 +325,22 @@ export class BackdropEngine {
     }
   }
 
+  /** Cap native/embedded previews without changing the browser default. */
+  setMaxFps(fps: number): void {
+    this.maxFps = Number.isFinite(fps) && fps > 0 ? Math.min(fps, 60) : 0;
+    this.lastFrameAdvanceAt = performance.now();
+  }
+
   /** A foreground glyph was dragged/thrown through the field — forward to the
    *  active kernel so the underlying world genuinely reacts (area-relative). */
-  wake(x: number, y: number, dx: number, dy: number, radius: number, strength: number): void {
+  wake(
+    x: number,
+    y: number,
+    dx: number,
+    dy: number,
+    radius: number,
+    strength: number,
+  ): void {
     for (const slot of this.slots) {
       if (!slot.outgoing) slot.kernel.wake?.(x, y, dx, dy, radius, strength);
     }
@@ -322,8 +357,10 @@ export class BackdropEngine {
 
   destroy(): void {
     if (this.raf !== null) cancelAnimationFrame(this.raf);
-    if (this.initialHarvestRaf !== null) cancelAnimationFrame(this.initialHarvestRaf);
-    if (this.initialHarvestTimer !== null) clearTimeout(this.initialHarvestTimer);
+    if (this.initialHarvestRaf !== null)
+      cancelAnimationFrame(this.initialHarvestRaf);
+    if (this.initialHarvestTimer !== null)
+      clearTimeout(this.initialHarvestTimer);
     this.resizeObs?.disconnect();
     this.intersectionObs?.disconnect();
     document.removeEventListener("visibilitychange", this.onVisibility);
@@ -544,9 +581,15 @@ export class BackdropEngine {
       this.raf = requestAnimationFrame(loop);
       if (!this.visible || !this.pageVisible || !this.hostVisible) {
         this.lastNow = now;
+        this.lastFrameAdvanceAt = now;
         return;
       }
-      const dt = Math.min(now - this.lastNow, 32);
+      if (this.maxFps > 0) {
+        const minimumInterval = 1000 / this.maxFps;
+        if (now - this.lastFrameAdvanceAt < minimumInterval) return;
+        this.lastFrameAdvanceAt = now;
+      }
+      const dt = Math.min(now - this.lastNow, this.maxFps > 0 ? 100 : 32);
       this.lastNow = now;
       this.tMs += dt;
 
@@ -596,21 +639,31 @@ export class BackdropEngine {
 
     // Deferred initial harvest (let the page content lay out first). Tracked so
     // destroy() can cancel them — they would otherwise fire on a torn-down engine.
-    this.initialHarvestRaf = requestAnimationFrame(() => this.harvestObstacles(true));
-    this.initialHarvestTimer = window.setTimeout(() => this.harvestObstacles(true), 700);
+    this.initialHarvestRaf = requestAnimationFrame(() =>
+      this.harvestObstacles(true),
+    );
+    this.initialHarvestTimer = window.setTimeout(
+      () => this.harvestObstacles(true),
+      700,
+    );
 
     this.intersectionObs = new IntersectionObserver(
       (entries) => {
         this.visible = entries[0]?.isIntersecting ?? true;
       },
-      { threshold: 0 }
+      { threshold: 0 },
     );
     this.intersectionObs.observe(this.container);
 
     document.addEventListener("visibilitychange", this.onVisibility);
-    window.addEventListener("pointermove", this.onPointerMove, { passive: true });
+    window.addEventListener("pointermove", this.onPointerMove, {
+      passive: true,
+    });
     window.addEventListener("pointerout", this.onPointerOut, { passive: true });
-    window.addEventListener("scroll", this.onScroll, { passive: true, capture: true });
+    window.addEventListener("scroll", this.onScroll, {
+      passive: true,
+      capture: true,
+    });
     window.addEventListener("click", this.onClick, { passive: true });
 
     this.mql = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -652,7 +705,7 @@ export class BackdropEngine {
     if (
       target?.closest?.(
         "a, button, input, textarea, select, label, [role='button']," +
-          ".glass-frost, .glass-refract, .glass-pill, .studio-switcher"
+          ".glass-frost, .glass-refract, .glass-pill, .studio-switcher",
       )
     ) {
       return;
@@ -675,13 +728,15 @@ export class BackdropEngine {
     const now = typeof performance !== "undefined" ? performance.now() : 0;
     if (!force && now - this.lastHarvest < 300) return;
     this.lastHarvest = now;
-    const wantsObstacles = this.slots.some((s) => !s.outgoing && s.kernel.obstacles);
+    const wantsObstacles = this.slots.some(
+      (s) => !s.outgoing && s.kernel.obstacles,
+    );
     if (!wantsObstacles) return;
 
     const base = this.container.getBoundingClientRect();
     const vh = window.innerHeight;
     const els = document.querySelectorAll<HTMLElement>(
-      ".glass-frost, .glass-refract, h1, h2"
+      ".glass-frost, .glass-refract, h1, h2",
     );
     const rects: { x: number; y: number; w: number; h: number }[] = [];
     els.forEach((el) => {
@@ -689,7 +744,12 @@ export class BackdropEngine {
       const r = el.getBoundingClientRect();
       if (r.width < 8 || r.height < 8) return;
       if (r.bottom < -140 || r.top > vh + 140) return; // off-screen — skip
-      rects.push({ x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height });
+      rects.push({
+        x: r.left - base.left,
+        y: r.top - base.top,
+        w: r.width,
+        h: r.height,
+      });
     });
     for (const slot of this.slots) {
       if (!slot.outgoing) slot.kernel.obstacles?.(rects);
@@ -708,7 +768,10 @@ export class BackdropEngine {
     const delta = ny - this.scroll.y;
     const docEl = document.documentElement;
     this.scroll.y = ny;
-    this.scroll.yMax = Math.max(0, (docEl?.scrollHeight ?? 0) - window.innerHeight);
+    this.scroll.yMax = Math.max(
+      0,
+      (docEl?.scrollHeight ?? 0) - window.innerHeight,
+    );
     this.scrollDelta += delta;
     this.harvestObstacles(); // throttled internally
   };

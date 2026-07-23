@@ -401,15 +401,8 @@ function webdriverController(env) {
   let baseURL = null;
   return {
     async start(marker) {
-      required(
-        "sh",
-        [
-          "-c",
-          "command -v tauri-driver >/dev/null && command -v WebKitWebDriver >/dev/null",
-        ],
-        "P-27 Linux WebDriver prerequisites",
-        { env },
-      );
+      required("which", ["tauri-driver"], "P-27 Linux WebDriver prerequisites", { env });
+      required("which", ["WebKitWebDriver"], "P-27 Linux WebDriver prerequisites", { env });
       const port = await reserveLoopbackPort();
       baseURL = `http://127.0.0.1:${port}/`;
       processHandle = spawn(WEBDRIVER, ["--port", String(port)], {

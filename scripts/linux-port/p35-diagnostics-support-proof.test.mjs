@@ -92,7 +92,7 @@ test("P-35 production contract proves export, degraded reconnect, recovery, and 
 
 test("P-35 rejects leakage, stale or replayed receipts, unsafe output, optimistic reconnect, forged provenance, and failed restoration", async () => {
   const mutations = [
-    (value, native) => { const exportFile = path.join(value.root, value.session.evidence.exportBundle.path); const bundle = JSON.parse(fs.readFileSync(exportFile)); bundle.providerPayload = "sk-leaked"; json(exportFile, bundle); refresh(value, "exportBundle", exportFile); native.export.byteCount = fs.statSync(exportFile).size; native.export.sha256 = hash(fs.readFileSync(exportFile)); },
+    (value, native) => { const exportFile = path.join(value.root, value.session.evidence.exportBundle.path); const bundle = JSON.parse(fs.readFileSync(exportFile)); bundle.providerPayload = "sk-leaked"; json(exportFile, bundle); refresh(value, "exportBundle", exportFile); const mutated = fs.readFileSync(exportFile); native.export.byteCount = mutated.length; native.export.sha256 = hash(mutated); },
     (_value, native) => { native.startedAt = "2020-01-01T00:00:00.000Z"; },
     (value, native) => { value.session.marker.challenge = "f".repeat(64); native.challenge = value.session.marker.challenge; },
     (_value, native) => { native.export.mode = "0644"; },

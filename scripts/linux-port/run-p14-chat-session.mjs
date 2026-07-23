@@ -172,8 +172,9 @@ async function createGatewayHarness(options, rpc, approvalRecords, citation) {
           usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 } })}\n\n`);
         response.end('data: [DONE]\n\n');
       } catch (error) {
+        console.error('P14 mock gateway request failed:', error);
         response.writeHead(500, { 'content-type': 'text/plain' });
-        response.end(error instanceof Error ? error.message : String(error));
+        response.end('internal error');
       }
     });
   });
