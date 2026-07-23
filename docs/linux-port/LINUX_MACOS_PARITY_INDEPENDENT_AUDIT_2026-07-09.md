@@ -3128,18 +3128,24 @@ breadth, high-contrast visual captures, and physical assistive-tech execution
 remain open. `534d7aae65` closes a concrete command-deck gap: the overflow menu
 now enters focus on open, supports roving Arrow/Home/End navigation and
 Enter/Space activation, and returns focus to its trigger after Escape or an
-action; its focused regression suite is 2/2.
+action; its focused regression suite is 2/2. `52a77d9ab1` applies the same
+keyboard contract to the section switcher listbox: opening moves focus into
+the selected option, Arrow/Home/End rove through options, Enter/Space
+activate, and Escape restores trigger focus.
 
 - **Difference:** macOS has broad semantic labels/actions and targeted tests.
   Linux has useful landmarks, a skip link, ARIA live regions, focus styling, and
   reduced-motion CSS. Before `534d7aae65`, the command-deck overflow menu
   exposed a menu role but left keyboard users on the trigger, lacked predictable
   list navigation, and did not consistently restore focus after actions; broader
-  AT-SPI proof still needs the full desktop matrix.
+  AT-SPI proof still needs the full desktop matrix. The section switcher now
+  exposes the equivalent listbox keyboard/focus behavior through
+  `52a77d9ab1`.
 - **Why it matters:** visual/component tests do not prove keyboard completion,
   screen-reader meaning, focus order, contrast, reflow, or live announcements.
-- **Recommended solution:** keep the new overflow-menu keyboard contract and
-  regression tests, then run axe on every route and important state; add
+- **Recommended solution:** keep the overflow-menu and section-switcher
+  keyboard contracts and regression tests, then run axe on every route and
+  important state; add
   Playwright keyboard/zoom/forced-colors/reduced-motion checks; exercise the
   packaged app with Orca and AT-SPI; fix focusable `aria-hidden` elements and any
   focus rules that remove the indicator.
@@ -3147,11 +3153,12 @@ action; its focused regression suite is 2/2.
 - **Implementation notes:** subscribe to media-query changes, test dynamic
   state, standardize names/roles/states/errors, and record the actual AT-SPI tree
   plus action transcript; include hardware/software rendering and high contrast.
-- **QA verification:** zero serious axe violations; overflow menu opens with
-  ArrowDown, cycles with Arrow/Home/End, activates with Enter/Space, closes with
-  Escape, and restores trigger focus; every other flow remains keyboard-complete
-  with visible focus, no trap, 200% zoom/reflow, Orca names/roles/states/actions,
-  live regions, GNOME High Contrast, reduced motion, and no color-only meaning.
+- **QA verification:** zero serious axe violations; overflow menu and section
+  switcher open with ArrowDown, cycle with Arrow/Home/End, activate with
+  Enter/Space, close with Escape, and restore trigger focus; every other flow
+  remains keyboard-complete with visible focus, no trap, 200% zoom/reflow, Orca
+  names/roles/states/actions, live regions, GNOME High Contrast, reduced motion,
+  and no color-only meaning.
 
 ### GAP-020 - Add real reliability, performance, and installed-shell gates
 
