@@ -49,9 +49,10 @@ and live event receipts remain external release evidence.
 **Implementation checkpoint (2026-07-23, ThemeGlassPalette):** Linux now maps
 all six dashboard layouts to the macOS tint, wash, and rim roles through
 `apps/linux-desktop/src/dashboard/dashboardGlassPalette.ts`. The selected
-palette is bound to the document root and consumed by Top Chrome's wash,
-selected-tab rim, icon tint, and focus glow. Pure mapping tests and the CSS
-token contract pass; installed compositor visual comparisons remain required.
+palette is bound to the document root and consumed by Top Chrome and sidebar
+wash, selected-tab/segmented rims, icon tint, and focus glow. Pure mapping
+tests and the CSS token contract pass; installed compositor visual comparisons
+remain required.
 
 ---
 

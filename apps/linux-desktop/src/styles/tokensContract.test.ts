@@ -100,6 +100,14 @@ describe('VAL-TOKENS design token contract', () => {
     }
   });
 
+  it('routes sidebar glass chrome through the active ThemeGlassPalette', () => {
+    const sidebarCss = fs.readFileSync(path.join(stylesDir, '../components/sidebar-extras.css'), 'utf8');
+    expect(sidebarCss).toContain('--glass-theme-wash-top');
+    expect(sidebarCss).toContain('--glass-theme-wash-bottom');
+    expect(sidebarCss).toContain('--glass-theme-rim');
+    expect(sidebarCss).toContain('--glass-theme-tint');
+  });
+
   it('declares a dark native-control color scheme for WebKitGTK', () => {
     expect(appCss).toMatch(/:root\s*\{[^}]*color-scheme:\s*dark;/s);
   });

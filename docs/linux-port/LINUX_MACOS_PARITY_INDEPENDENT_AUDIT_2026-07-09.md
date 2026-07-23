@@ -152,9 +152,10 @@ component colors. The role mapping and CSS token contracts are covered by
 focused tests, and the existing reduced-transparency rules still override the
 glass surface itself.
 
-This closes the source-level per-layout glass palette gap. Installed visual
-comparison receipts across the compositor matrix are still required; the
-strict ledger remains **0/40 product** and **0/7 environment**.
+This closes the source-level per-layout glass palette gap. Top Chrome and the
+sidebar now consume the same roles. Installed visual comparison receipts
+across the compositor matrix are still required; the strict ledger remains
+**0/40 product** and **0/7 environment**.
 
 ### Linux ProTheme membership surfaces — 2026-07-23
 
