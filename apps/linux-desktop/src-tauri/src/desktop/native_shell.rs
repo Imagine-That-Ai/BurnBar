@@ -679,6 +679,13 @@ async fn register_wayland_portal_shortcuts(app: AppHandle<Wry>) -> Result<(), St
         .create_session()
         .await
         .map_err(|error| format!("native_shortcuts_portal_create_session:{error}"))?;
+    // The portal broadcasts Activated signals on the interface. Capture the
+    // exact session object path so a signal from another client cannot trigger
+    // one of our privileged shell actions.
+    let session_path = serde_json::to_value(&session)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .ok_or_else(|| "native_shortcuts_portal_session_path_invalid".to_string())?;
     let shortcuts = NATIVE_SHORTCUT_BINDINGS
         .iter()
         .filter_map(|(id, _)| {
@@ -719,6 +726,9 @@ async fn register_wayland_portal_shortcuts(app: AppHandle<Wry>) -> Result<(), St
         }
     };
     while let Some(event) = activated.next().await {
+        if event.session_handle().as_str() != session_path {
+            continue;
+        }
         handle_portal_shortcut(&app, event.shortcut_id());
     }
     if let Ok(mut status) = native_shortcut_status_store().lock() {
