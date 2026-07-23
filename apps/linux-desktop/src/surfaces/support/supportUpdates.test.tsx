@@ -661,6 +661,19 @@ describe('P09 updates and support', () => {
     expect(screen.queryByText(/sk-live-should-not-render/)).toBeNull();
   });
 
+  it('does not mislabel a closed daemon socket as a user-cancelled dialog', async () => {
+    const bridge = mockBridge({
+      exportDiagnostics: vi.fn().mockRejectedValue(new Error('daemon socket closed before save destination'))
+    });
+    useShellStore.setState({ bridge, fixtureMode: false });
+    render(<SupportSurface />);
+    await act(async () => {
+      await useSupportStore.getState().exportDiagnostics();
+    });
+    expect(screen.getByText('Diagnostics export failed. Check the packaged shell status and try again.')).toBeTruthy();
+    expect(screen.queryByText('Export cancelled. No diagnostics file was written.')).toBeNull();
+  });
+
   it('fixture export succeeds without bridge', async () => {
     useShellStore.setState({ fixtureMode: true, bridge: null });
     render(<SupportSurface />);

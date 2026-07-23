@@ -54,7 +54,16 @@ function safeManifest(entries: string[], excluded: boolean): string[] {
 }
 
 function presentExportError(error: string): string {
-  if (/cancel|abort|closed/i.test(error)) return 'Export cancelled. No diagnostics file was written.';
+  // Native dialogs may report a user dismissal as "closed", but daemon and
+  // socket failures use the same word. Only classify explicit dialog/user
+  // cancellation as a cancellation so recovery guidance stays truthful.
+  const normalized = error.toLowerCase();
+  const infrastructureFailure = /socket|daemon|connection|timed? ?out|permission denied/u.test(normalized);
+  const dialogCancelled = !infrastructureFailure && (
+    /\bcancel(?:led|ed)?\b|\babort(?:ed)?\b/u.test(normalized)
+    || /dialog.{0,24}\bclosed\b/u.test(normalized)
+  );
+  if (dialogCancelled) return 'Export cancelled. No diagnostics file was written.';
   if (/unsafe path/i.test(error)) return 'Native diagnostics export returned an unsafe path.';
   if (/unsafe preview|invalid privacy metadata/i.test(error)) {
     return 'Native diagnostics export returned unsafe preview metadata.';
