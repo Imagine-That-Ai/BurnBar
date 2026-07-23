@@ -38,6 +38,24 @@ pre-change package, while signed current-candidate execution, production
 credentials, and the strict **0/40 product + 0/7 environment** ledger remain
 open.
 
+## Current integration branch checkpoint — 2026-07-23
+
+The parity integration branch is now at `f26af7e1cf`. This head contains a
+CI-only SwiftLint correction in `BurnBarLinuxOnboardingServiceTests.swift`:
+the two boolean assertions reported by the hosted SwiftPM gate now use the
+specific `XCTAssertEqual` matcher. Local SwiftLint passes for that file, and
+the change is pushed to both GitHub and GitLab in PR #1930. The fresh hosted
+checks have reported no failures while the remaining native, mobile, and
+security jobs continue to run.
+
+The host-only onboarding test compiled its product and test bundle but could
+not launch the XCTest bundle because the local Xcode runner could not resolve
+the existing `SQLCipher.framework` `@rpath` dependency. This is recorded as a
+test-environment limitation, not a passing behavior receipt. UTM/QEMU is
+intentionally stopped; no new installed Linux or desktop-environment evidence
+was collected, and the strict **0/40 product + 0/7 environment** ledger is
+unchanged.
+
 ## Latest verification checkpoint — 2026-07-22
 
 The integration branch's hosted Linux gate is green at commit
