@@ -42,6 +42,10 @@ detailed result and exact recovery actions are in
 [`PHYSICAL_X64_RETRY_RESULT.md`](PHYSICAL_X64_RETRY_RESULT.md).
 The native-operator continuation prompt is
 [`HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt`](HP_SUPPLEMENTAL_CERTIFICATION_PROMPT.txt).
+The preferred removable-drive packet includes the exact release and provenance
+artifacts plus a packet-wide checksum manifest. The historical retry ZIP is
+supporting context only: verify it when present, but never require or reuse it
+as new baseline or supplemental evidence.
 
 ## Later supplemental bundle
 
@@ -60,11 +64,14 @@ imported operator report is
 [`PHYSICAL_X64_SUPPLEMENTAL_RESULT.md`](PHYSICAL_X64_SUPPLEMENTAL_RESULT.md).
 
 The continuation must use clean independent harness commit
-`37d88056066d876570df4b2887f33df7af7ebe56`, the merge of PR #1867. It
-contains the PR #1862 UIA/supplemental corrections plus the Firebase Remote
-Config gzip/ETag repair. This newer harness identity does not alter the
-historical retry receipt above; it identifies the harness required for the next
-timestamped continuation bundle.
+`3a2d0a9f746228a23bb7461745fa1275bb0662c9`, the merge of PR #1932. It
+supersedes `37d88056066d876570df4b2887f33df7af7ebe56` for new certification
+runs while preserving all historical receipts under their recorded harness
+identities. The merged harness contains the UIA/supplemental corrections, the
+Firebase Remote Config gzip/ETag repair, independent-checkout build binding,
+final-checksum fix, and fail-closed runtime-safety observer. The exact merge
+binding is recorded in
+[`harness-merge-receipt.json`](harness-merge-receipt.json).
 
 ## Corrected-harness attempt
 
