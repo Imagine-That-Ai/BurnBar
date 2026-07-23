@@ -16,10 +16,12 @@ import {
 } from '../petCompanion.js';
 import { mountPetGltfRuntime, stopPetGltfRuntime } from '../petGltfRuntime.js';
 import {
+  closePetCompanionWindow,
   openPetCompanionWindow,
   setPetCompanionClickThrough,
   type PetCompanionWindowState
 } from '../petCompanionWindow.js';
+import { openChatPopoutWindow } from './chat/chatWindow.js';
 import { useShellStore } from '../state/shellStore.js';
 import type { PetCompanionStatus } from '../tauriBridge.js';
 import { BehaviorGraphView } from './pet/BehaviorGraphView.js';
@@ -295,6 +297,25 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
     );
   }, [companionWindow?.clickThrough]);
 
+  const closeNativePet = useCallback(async () => {
+    const closed = await closePetCompanionWindow();
+    if (closed) {
+      setCompanionWindow(null);
+      setContainedActionStatus('Native companion window closed.');
+    } else {
+      setContainedActionStatus('Native companion window could not be closed.');
+    }
+  }, []);
+
+  const openCompanionChat = useCallback(async () => {
+    const opened = await openChatPopoutWindow();
+    setContainedActionStatus(
+      opened
+        ? 'Chat opened in a separate window. The companion remains available here.'
+        : 'A separate chat window is unavailable in this shell.'
+    );
+  }, []);
+
   const stageClasses = [
     'pet-stage',
     reactWaveActive ? 'pet-stage--react-wave' : '',
@@ -353,43 +374,59 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
           Home to reset its position.
         </p>
       ) : null}
-      {!companionMode ? <div className="pet-actions">
-        <button type="button" className="pet-wave-button" onClick={waveAtPet}>
-          Wave at preview
-        </button>
-        <button
-          type="button"
-          className="pet-action-button"
-          onClick={summonContainedPet}
-          disabled={!capability.containedActions.summon.supported}
-        >
-          Summon contained preview
-        </button>
-        <button
-          type="button"
-          className="pet-action-button"
-          onClick={selectContainedPet}
-          disabled={!capability.containedActions.selection.supported}
-          aria-pressed={containedPetSelected}
-        >
-          {containedPetSelected ? 'Pet selected' : 'Select contained pet'}
-        </button>
-        {capability.actions.overlay.supported ? (
+      {companionMode ? (
+        <div className="pet-actions pet-companion-actions" aria-label="Companion controls">
+          <button type="button" className="pet-wave-button" onClick={waveAtPet}>
+            Wave
+          </button>
+          <button type="button" className="pet-action-button" onClick={() => void openCompanionChat()}>
+            Open chat
+          </button>
+        </div>
+      ) : (
+        <div className="pet-actions">
+          <button type="button" className="pet-wave-button" onClick={waveAtPet}>
+            Wave at preview
+          </button>
           <button
             type="button"
             className="pet-action-button"
-            aria-keyshortcuts="Ctrl+Alt+Super+P"
-            onClick={() => void summonNativePet()}
+            onClick={summonContainedPet}
+            disabled={!capability.containedActions.summon.supported}
           >
-            Open native companion
+            Summon contained preview
           </button>
-        ) : null}
-        {companionWindow?.opened ? (
-          <button type="button" className="pet-action-button" onClick={() => void toggleNativeClickThrough()}>
-            {companionWindow.clickThrough ? 'Restore companion interaction' : 'Enable click-through'}
+          <button
+            type="button"
+            className="pet-action-button"
+            onClick={selectContainedPet}
+            disabled={!capability.containedActions.selection.supported}
+            aria-pressed={containedPetSelected}
+          >
+            {containedPetSelected ? 'Pet selected' : 'Select contained pet'}
           </button>
-        ) : null}
-      </div> : null}
+          {capability.actions.overlay.supported ? (
+            <button
+              type="button"
+              className="pet-action-button"
+              aria-keyshortcuts="Ctrl+Alt+Super+P"
+              onClick={() => void summonNativePet()}
+            >
+              Open native companion
+            </button>
+          ) : null}
+          {companionWindow?.opened ? (
+            <>
+              <button type="button" className="pet-action-button" onClick={() => void toggleNativeClickThrough()}>
+                {companionWindow.clickThrough ? 'Restore companion interaction' : 'Enable click-through'}
+              </button>
+              <button type="button" className="pet-action-button" onClick={() => void closeNativePet()}>
+                Close native companion
+              </button>
+            </>
+          ) : null}
+        </div>
+      )}
       {containedActionStatus ? (
         <p className="pet-action-status" role="status" aria-live="polite">
           {containedActionStatus}

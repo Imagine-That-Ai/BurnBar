@@ -9,6 +9,8 @@ const mountMock = vi.fn();
 const stopMock = vi.fn();
 const openCompanionMock = vi.fn();
 const clickThroughMock = vi.fn();
+const closeCompanionMock = vi.fn();
+const openChatMock = vi.fn();
 
 vi.mock('../petGltfRuntime.js', () => ({
   mountPetGltfRuntime: (...args: unknown[]) => mountMock(...args),
@@ -17,7 +19,12 @@ vi.mock('../petGltfRuntime.js', () => ({
 
 vi.mock('../petCompanionWindow.js', () => ({
   openPetCompanionWindow: (...args: unknown[]) => openCompanionMock(...args),
-  setPetCompanionClickThrough: (...args: unknown[]) => clickThroughMock(...args)
+  setPetCompanionClickThrough: (...args: unknown[]) => clickThroughMock(...args),
+  closePetCompanionWindow: (...args: unknown[]) => closeCompanionMock(...args)
+}));
+
+vi.mock('./chat/chatWindow.js', () => ({
+  openChatPopoutWindow: (...args: unknown[]) => openChatMock(...args)
 }));
 
 function stubMatchMedia(matches = false): void {
@@ -57,6 +64,8 @@ describe('PetSurface', () => {
     stopMock.mockReset();
     openCompanionMock.mockReset();
     clickThroughMock.mockReset();
+    closeCompanionMock.mockReset();
+    openChatMock.mockReset();
     mountMock.mockResolvedValue({
       asset: { version: '2.0' },
       nodes: [],
@@ -237,6 +246,46 @@ describe('PetSurface', () => {
     expect(screen.getByRole('img', { name: /pet companion contained preview/i }).getAttribute('data-input-passthrough'))
       .toBe('false');
   });
+
+  it('closes the native companion and keeps the X11 capability available for a later summon', async () => {
+    const runtimeCapabilities = makeAvailableRuntimeCapabilityManifest();
+    const status = {
+      state: 'available' as const,
+      compositor: 'GNOME/x11',
+      sessionType: 'x11' as const,
+      overlaySupported: true,
+      clickThroughSupported: true,
+      windowContract: 'tauri-x11-companion-v1',
+      reason: 'ready',
+      source: 'tauri-x11-companion-window'
+    };
+    openCompanionMock.mockResolvedValue({ status, opened: true, clickThrough: false });
+    closeCompanionMock.mockResolvedValue(true);
+    useShellStore.setState({
+      runtimeCapabilities,
+      bridge: { petCompanionStatus: vi.fn().mockResolvedValue(status) } as never,
+      bridgeReady: true
+    });
+    render(<PetSurface />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /open native companion/i }));
+    const close = await screen.findByRole('button', { name: /close native companion/i });
+    fireEvent.click(close);
+    await waitFor(() => expect(closeCompanionMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(/native companion window closed/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /close native companion/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /open native companion/i })).toBeTruthy();
+  });
+
+  it('keeps chat available from the native companion child without claiming renderer-local chat state', async () => {
+    openChatMock.mockResolvedValue(true);
+    render(<PetSurface companionMode />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+    await waitFor(() => expect(openChatMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(/chat opened in a separate window/i)).toBeTruthy();
+  });
+
   it('renders behavior graph SVG nodes for the active tier', async () => {
     render(<PetSurface />);
     await waitFor(() => {
