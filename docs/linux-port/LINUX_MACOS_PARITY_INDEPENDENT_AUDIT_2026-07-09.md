@@ -195,13 +195,19 @@ dark URI is best-effort for older schemas; the light URI remains authoritative.
 The status command and focused Rust tests keep command availability, URI
 escaping, path safety, and unsupported compositor behavior honest.
 
+The adapter now also covers Sway through trusted `swaymsg` IPC and Hyprland
+through trusted `hyprctl` calls to a running `hyprpaper` service. Sway's output
+wildcard is passed as an argument (never through a shell); Hyprland preloads
+the image before switching it, so a decode failure leaves the current image in
+place. Those backends report unavailable when their fixed root-owned
+executables are absent.
+
 This closes the source-level native wallpaper installation adapter gap for
 those desktop families. The Appearance settings control now calls the typed
-status/apply bridge and surfaces applied/degraded/unsupported state. Sway/Hyprland
-live wallpaper hosting is intentionally unsupported, and installed compositor
-receipts, restoration of a user's prior wallpaper, and
-live wallpaper panels remain open; the strict ledger remains **0/40 product**
-and **0/7 environment**.
+status/apply bridge and surfaces applied/degraded/unsupported state. The
+remaining gaps are installed compositor receipts, restoration of a user's
+prior wallpaper, and live wallpaper panels; the strict ledger remains **0/40
+product** and **0/7 environment**.
 
 ### Linux Wayland shortcut capability reporting — 2026-07-23
 

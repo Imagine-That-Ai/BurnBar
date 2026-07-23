@@ -21,6 +21,8 @@ enum DesktopWallpaperBackend {
     Gnome,
     Kde,
     Xfce,
+    Sway,
+    Hyprland,
     Unsupported,
 }
 
@@ -68,19 +70,40 @@ where
     if desktop.contains("xfce") && command_available("xfconf-query") {
         return DesktopWallpaperBackend::Xfce;
     }
+    if desktop.contains("sway") && command_available("swaymsg") {
+        return DesktopWallpaperBackend::Sway;
+    }
+    if desktop.contains("hyprland")
+        && command_available("hyprctl")
+        && command_available("hyprpaper")
+    {
+        return DesktopWallpaperBackend::Hyprland;
+    }
     DesktopWallpaperBackend::Unsupported
 }
 
-fn command_available(name: &str) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
+/// Resolve only package-owned, absolute paths for desktop mutators. Never
+/// execute an ambient `$PATH` command for a setting that changes the user's
+/// desktop; a compromised PATH must result in an honest unavailable state.
+fn trusted_wallpaper_executable(name: &str) -> Option<PathBuf> {
+    let candidates: &[&str] = match name {
+        "gsettings" => &["/usr/bin/gsettings", "/usr/local/bin/gsettings", "/bin/gsettings"],
+        "plasma-apply-wallpaperimage" => &[
+            "/usr/bin/plasma-apply-wallpaperimage",
+            "/usr/local/bin/plasma-apply-wallpaperimage",
+            "/bin/plasma-apply-wallpaperimage",
+        ],
+        "xfconf-query" => &["/usr/bin/xfconf-query", "/usr/local/bin/xfconf-query", "/bin/xfconf-query"],
+        "swaymsg" => &["/usr/bin/swaymsg", "/usr/local/bin/swaymsg", "/bin/swaymsg"],
+        "hyprctl" => &["/usr/bin/hyprctl", "/usr/local/bin/hyprctl", "/bin/hyprctl"],
+        "hyprpaper" => &["/usr/bin/hyprpaper", "/usr/local/bin/hyprpaper", "/bin/hyprpaper"],
+        _ => return None,
     };
-    std::env::split_paths(&path).any(|directory| {
-        let candidate = directory.join(name);
-        fs::metadata(candidate).is_ok_and(|metadata| {
-            metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-        })
-    })
+    trusted_root_owned_executable(candidates)
+}
+
+fn command_available(name: &str) -> bool {
+    trusted_wallpaper_executable(name).is_some()
 }
 
 fn detect_desktop_wallpaper_backend() -> DesktopWallpaperBackend {
@@ -243,7 +266,10 @@ fn apply_wallpaper_with_backend(backend: DesktopWallpaperBackend, path: &Path) -
     let uri = file_uri(path)?;
     match backend {
         DesktopWallpaperBackend::Gnome => {
-            let mut light = Command::new("gsettings");
+            let mut light = Command::new(
+                trusted_wallpaper_executable("gsettings")
+                    .ok_or_else(|| "wallpaper_command_unavailable:gsettings".to_string())?,
+            );
             light.args([
                 "set",
                 "org.gnome.desktop.background",
@@ -253,7 +279,10 @@ fn apply_wallpaper_with_backend(backend: DesktopWallpaperBackend, path: &Path) -
             bounded_output(light)?;
             // GNOME 42+ keeps separate dark/light URIs. Older schemas reject
             // this key; the light URI above is still a successful application.
-            let mut dark = Command::new("gsettings");
+            let mut dark = Command::new(
+                trusted_wallpaper_executable("gsettings")
+                    .ok_or_else(|| "wallpaper_command_unavailable:gsettings".to_string())?,
+            );
             dark.args([
                 "set",
                 "org.gnome.desktop.background",
@@ -264,12 +293,20 @@ fn apply_wallpaper_with_backend(backend: DesktopWallpaperBackend, path: &Path) -
             Ok(())
         }
         DesktopWallpaperBackend::Kde => {
-            let mut command = Command::new("plasma-apply-wallpaperimage");
+            let mut command = Command::new(trusted_wallpaper_executable(
+                "plasma-apply-wallpaperimage",
+            )
+            .ok_or_else(|| {
+                "wallpaper_command_unavailable:plasma-apply-wallpaperimage".to_string()
+            })?);
             command.arg(path);
             bounded_output(command)
         }
         DesktopWallpaperBackend::Xfce => {
-            let mut command = Command::new("xfconf-query");
+            let mut command = Command::new(
+                trusted_wallpaper_executable("xfconf-query")
+                    .ok_or_else(|| "wallpaper_command_unavailable:xfconf-query".to_string())?,
+            );
             command.args([
                 "-c",
                 "xfce4-desktop",
@@ -279,6 +316,40 @@ fn apply_wallpaper_with_backend(backend: DesktopWallpaperBackend, path: &Path) -
                 path.to_str().ok_or_else(|| "wallpaper_path_invalid".to_string())?,
             ]);
             bounded_output(command)
+        }
+        DesktopWallpaperBackend::Sway => {
+            let mut command = Command::new(
+                trusted_wallpaper_executable("swaymsg")
+                    .ok_or_else(|| "wallpaper_command_unavailable:swaymsg".to_string())?,
+            );
+            command.args([
+                "output",
+                "*",
+                "bg",
+                path.to_str().ok_or_else(|| "wallpaper_path_invalid".to_string())?,
+                "fill",
+            ]);
+            bounded_output(command)
+        }
+        DesktopWallpaperBackend::Hyprland => {
+            let hyprctl = trusted_wallpaper_executable("hyprctl")
+                .ok_or_else(|| "wallpaper_command_unavailable:hyprctl".to_string())?;
+            // Hyprpaper owns the image cache. Preload before switching so a
+            // failed decode never replaces the currently visible wallpaper.
+            let mut preload = Command::new(&hyprctl);
+            preload.args([
+                "hyprpaper",
+                "preload",
+                path.to_str().ok_or_else(|| "wallpaper_path_invalid".to_string())?,
+            ]);
+            bounded_output(preload)?;
+            let mut wallpaper = Command::new(hyprctl);
+            let assignment = format!(
+                ",{}",
+                path.to_str().ok_or_else(|| "wallpaper_path_invalid".to_string())?
+            );
+            wallpaper.args(["hyprpaper", "wallpaper", &assignment]);
+            bounded_output(wallpaper)
         }
         DesktopWallpaperBackend::Unsupported => Err("wallpaper_backend_unsupported".to_string()),
     }

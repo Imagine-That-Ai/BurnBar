@@ -1146,7 +1146,16 @@
 
     #[test]
     fn desktop_wallpaper_backend_detection_is_explicit_and_command_gated() {
-        let available = |name: &str| matches!(name, "gsettings" | "plasma-apply-wallpaperimage");
+        let available = |name: &str| {
+            matches!(
+                name,
+                "gsettings"
+                    | "plasma-apply-wallpaperimage"
+                    | "swaymsg"
+                    | "hyprctl"
+                    | "hyprpaper"
+            )
+        };
         assert_eq!(
             desktop_backend_from_env_with(Some("GNOME"), available),
             DesktopWallpaperBackend::Gnome
@@ -1161,8 +1170,28 @@
         );
         assert_eq!(
             desktop_backend_from_env_with(Some("sway"), available),
+            DesktopWallpaperBackend::Sway
+        );
+        assert_eq!(
+            desktop_backend_from_env_with(Some("Hyprland"), available),
+            DesktopWallpaperBackend::Hyprland
+        );
+        assert_eq!(
+            desktop_backend_from_env_with(Some("Hyprland"), |name| name == "hyprctl"),
             DesktopWallpaperBackend::Unsupported
         );
+    }
+
+    #[test]
+    fn desktop_wallpaper_commands_are_absolute_allowlisted_and_not_path_resolved() {
+        let source = include_str!("wallpaper_runtime.rs");
+        for command in ["swaymsg", "hyprctl", "hyprpaper"] {
+            assert!(source.contains(&format!("/usr/bin/{command}")));
+            assert!(trusted_wallpaper_executable(command).is_none() || command_available(command));
+        }
+        assert!(trusted_wallpaper_executable("sh").is_none());
+        assert!(!source.contains("Command::new(\"swaymsg\")"));
+        assert!(!source.contains("Command::new(\"hyprctl\")"));
     }
 
     #[test]
@@ -1207,6 +1236,10 @@
         );
         assert!(!unsupported.available);
         assert_eq!(unsupported.state, "degraded");
+
+        let sway = wallpaper_status_from_state(DesktopWallpaperBackend::Sway, None, None);
+        assert!(sway.available);
+        assert_eq!(sway.state, "ready");
     }
 
     #[test]
