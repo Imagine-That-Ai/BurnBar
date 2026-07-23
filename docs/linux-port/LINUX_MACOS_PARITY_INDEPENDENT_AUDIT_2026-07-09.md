@@ -59,6 +59,18 @@ binaries remain unsigned and do not replace installed-package certification.
 Machine-readable receipt:
 `evidence/mission-002-reanchor/continuation-2026-07-22.json`.
 
+### Local frontend verification — 2026-07-22
+
+After restoring the locked `apps/linux-desktop` dependency set with
+`npm ci --ignore-scripts`, the current branch passed the complete local
+frontend gate: Vitest **100/100 files and 958/958 tests**, TypeScript
+typecheck, ESLint with zero warnings, Vite production build, and the Linux
+production-bundle verifier. The build warnings are limited to existing
+Rollup dynamic-import/chunk-size advisories; the bundle verifier reported no
+failures. `node_modules/` and `dist/` were removed after verification. This is
+source/build evidence only and does not advance the strict **0/40 product** or
+**0/7 environment** certification counters.
+
 ## Integration closeout — 2026-07-21
 
 ### Live UTM session re-open — 2026-07-21 (Grok)
