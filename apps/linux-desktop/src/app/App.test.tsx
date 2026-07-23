@@ -430,6 +430,40 @@ describe('App shell', () => {
     expect(screen.queryByRole('button', { name: 'Cancel sign-in' })).toBeNull();
   });
 
+  it('ignores a cloud sign-in response from a replaced daemon bridge', async () => {
+    const initial = cloudIdentitySnapshot();
+    let resolveOldOperation: ((operation: { operationID: string; expiresAt: string }) => void) | undefined;
+    const oldOperation = new Promise<{ operationID: string; expiresAt: string }>((resolve) => {
+      resolveOldOperation = resolve;
+    });
+    const oldBridge: Partial<LinuxShellBridge> = {
+      onboardingSnapshot: vi.fn().mockResolvedValue(initial),
+      accountStatus: vi.fn().mockResolvedValue(accountStatus()),
+      accountBeginSignIn: vi.fn(() => oldOperation)
+    };
+    const newBridge: Partial<LinuxShellBridge> = {
+      onboardingSnapshot: vi.fn().mockResolvedValue(initial),
+      accountStatus: vi.fn().mockResolvedValue(accountStatus()),
+      accountBeginSignIn: vi.fn()
+    };
+    useShellStore.setState({ bridge: oldBridge as LinuxShellBridge, bridgeReady: true, fixtureMode: false });
+
+    render(<OnboardingSurface />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Start cloud sign-in' }));
+    await waitFor(() => expect(oldBridge.accountBeginSignIn).toHaveBeenCalledOnce());
+
+    act(() => useShellStore.setState({ bridge: newBridge as LinuxShellBridge }));
+    await waitFor(() => expect(newBridge.accountStatus).toHaveBeenCalled());
+    resolveOldOperation?.({ operationID: 'old-bridge-operation', expiresAt: '2099-07-10T00:00:00Z' });
+    await act(async () => { await Promise.resolve(); });
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: 'Start cloud sign-in' }) as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    expect(screen.queryByRole('button', { name: 'Cancel sign-in' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Start cloud sign-in' })).toBeTruthy();
+  });
+
   it('stores an onboarding provider credential through the daemon without caching the secret', async () => {
     const initial = {
       ...defaultLinuxOnboardingSnapshot(),

@@ -151,6 +151,11 @@ function cloudAuthPhaseForOperation(
   return Number.isFinite(expiresAt) && expiresAt > Date.now() ? 'authorizing' : 'unavailable';
 }
 
+function shellContextMatches(bridge: LinuxShellBridge | null, fixtureMode: boolean): boolean {
+  const current = useShellStore.getState();
+  return current.bridge === bridge && current.fixtureMode === fixtureMode;
+}
+
 function CloudIdentitySetup({
   bridge,
   fixtureMode,
@@ -258,11 +263,15 @@ function CloudIdentitySetup({
         : 'Native cloud sign-in is unavailable in this shell. Open the Account screen or start the packaged app.');
       return;
     }
+    const actionRequestID = ++requestID.current;
+    const actionBridge = bridge;
+    const actionFixtureMode = fixtureMode;
     setBusyAction('start');
     setError(null);
     setNotice(null);
     try {
       const nextOperation = await bridge.accountBeginSignIn();
+      if (actionRequestID !== requestID.current || !shellContextMatches(actionBridge, actionFixtureMode)) return;
       setOperation(nextOperation);
       setStatus({
         state: 'authorizing',
@@ -275,7 +284,9 @@ function CloudIdentitySetup({
       });
       setNotice('Browser authorization started. Return here after completing sign-in.');
     } catch (signInError) {
-      setError(signInError instanceof Error ? signInError.message : 'Cloud sign-in could not be started.');
+      if (actionRequestID === requestID.current && shellContextMatches(actionBridge, actionFixtureMode)) {
+        setError(signInError instanceof Error ? signInError.message : 'Cloud sign-in could not be started.');
+      }
     } finally {
       setBusyAction(null);
     }
@@ -286,15 +297,21 @@ function CloudIdentitySetup({
       setError('No active cloud sign-in operation is available to cancel.');
       return;
     }
+    const actionRequestID = ++requestID.current;
+    const actionBridge = bridge;
+    const actionFixtureMode = fixtureMode;
     setBusyAction('cancel');
     setError(null);
     try {
       const next = await bridge.accountCancelSignIn(operationID);
+      if (actionRequestID !== requestID.current || !shellContextMatches(actionBridge, actionFixtureMode)) return;
       setOperation(null);
       setStatus(next);
       setNotice('Cloud sign-in cancelled. No cloud identity was connected.');
     } catch (cancelError) {
-      setError(cancelError instanceof Error ? cancelError.message : 'Cloud sign-in could not be cancelled.');
+      if (actionRequestID === requestID.current && shellContextMatches(actionBridge, actionFixtureMode)) {
+        setError(cancelError instanceof Error ? cancelError.message : 'Cloud sign-in could not be cancelled.');
+      }
     } finally {
       setBusyAction(null);
     }
