@@ -635,10 +635,16 @@ check("desired main branch protection requires only the umbrella gate", () => {
   assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
 });
 
-check("macOS gates default to the free fleet and opt into the capped paid pool", () => {
-  // Cost policy: a gate must never bill by default. Each macOS gate routes to the
-  // in-house fleet unless MACOS_GATE_POOL=paid is set, and the paid branch must
-  // still be the isolated capped pool -- never an uncapped or ephemeral worker.
+check("macOS gates route free+trusted, and never run untrusted code on self-hosted", () => {
+  // Cost + security policy. Each macOS gate has three routing arms:
+  //   1. MACOS_GATE_POOL=paid -> isolated capped hosted pool (manual fast burst)
+  //   2. merge_group          -> free self-hosted `burnbar-swift` fleet
+  //   3. else (pull_request)  -> hosted macos-26
+  // Self-hosted MUST be gated on merge_group only: the merge queue runs
+  // post-approval TRUSTED code, whereas a pull_request can carry untrusted fork
+  // code, and running that on self-hosted hardware is a pwn-request. So every
+  // self-hosted route is guarded by `event_name == 'merge_group'`, and no gate
+  // routes self-hosted on any other event.
   for (const [workflow, expectedCount] of [
     [APP_WORKFLOW, 2],
     [DAEMON_WORKFLOW, 2],
@@ -647,17 +653,20 @@ check("macOS gates default to the free fleet and opt into the capped paid pool",
     [NATIVE_WORKFLOW, 2],
   ]) {
     const source = readFileSync(join(REPO_ROOT, workflow), "utf8");
-    const routes = source.split("vars.MACOS_GATE_POOL == 'paid'").length - 1;
-    assert.equal(routes, expectedCount);
-    // Paid lane stays the isolated capped pool, and stays behind the opt-in.
+    // Paid opt-in arm present and still the isolated capped pool (never inline group:).
+    assert.equal(source.split("vars.MACOS_GATE_POOL == 'paid'").length - 1, expectedCount);
     assert.equal(source.split('{"group":"burnbar-ci-paid"}').length - 1, expectedCount);
     assert.equal(source.split("group: burnbar-ci-paid").length - 1, 0);
-    // Free lane pins the one fleet Mac with a complete toolchain + Xcode 26.6.
-    assert.equal(
-      source.split('["self-hosted","macOS","ARM64","m5max"]').length - 1,
-      expectedCount,
-    );
     assert.doesNotMatch(source, /burnbar-turbo-ephemeral|BurnBar-macos-26-xlarge/);
+    // SECURITY: every self-hosted route is merge_group-gated, and there are
+    // exactly as many merge_group-gated self-hosted routes as gates -- so no
+    // self-hosted route exists on any untrusted (pull_request) path.
+    const selfHosted = source.split('"self-hosted","macOS","ARM64","burnbar-swift"').length - 1;
+    const mergeGroupGated = source.split(
+      `github.event_name == 'merge_group' && fromJSON('["self-hosted","macOS","ARM64","burnbar-swift"]')`,
+    ).length - 1;
+    assert.equal(selfHosted, expectedCount, `${workflow}: self-hosted route count`);
+    assert.equal(mergeGroupGated, expectedCount, `${workflow}: every self-hosted route must be merge_group-gated`);
   }
 });
 

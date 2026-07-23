@@ -100,7 +100,7 @@ jobs:
           # pbxproj (XcodeGen globs source directories, so adding/removing a
           # file under one of them rewrites project.pbxproj).
           if echo "${changed}" | grep -Eq \
-            '^(project\.yml|OpenBurnBar\.xcodeproj/|OpenBurnBarCore/|OpenBurnBarDaemon/|OpenBurnBarMobile/|OpenBurnBarMobileTests/|OpenBurnBarMobileUITests/|OpenBurnBarKeyboard/|OpenBurnBarWidget/|AgentLens/|AgentLensTests/|scripts/ci/verify-daemon-release-signing(\.test)?\.sh|\.swiftlint\.yml|packages/data-domains/gen/.*\.swift|packages/design-tokens/dist/swift/.*\.swift)'; then
+            '^(project\.yml|OpenBurnBar\.xcodeproj/|OpenBurnBarCore/|OpenBurnBarDaemon/|OpenBurnBarMobile/|OpenBurnBarMobileTests/|OpenBurnBarMobileUITests/|OpenBurnBarKeyboard/|OpenBurnBarWidget/|AgentLens/|AgentLensTests/|scripts/ci/verify-daemon-release-signing(\.test)?\.sh|\.swiftlint\.yml|packages/data-domains/gen/.*\.swift|packages/design-tokens/dist/swift/.*\.swift|\.github/workflows/pr-native-fast\.yml)'; then
             echo "native=true" >> "$GITHUB_OUTPUT"
             echo "Native surface changed: running SwiftPM + xcodegen-drift gates."
           else
@@ -117,12 +117,13 @@ jobs:
     name: SwiftPM build + test (Core + Daemon)
     needs: detect-native-changes
     if: needs.detect-native-changes.outputs.native == 'true'
-    # Cost policy: these gates default to the in-house Apple Silicon fleet, which
-    # costs nothing per job. Set the repository variable MACOS_GATE_POOL=paid to
-    # opt into the isolated capped hosted pool for a faster (billed) run.
-    # The free lane pins `m5max`: it is the only fleet Mac with both the full
-    # toolchain (node/cargo/protoc/gradle/cmake) and stable Xcode 26.6.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || fromJSON('["self-hosted","macOS","ARM64","m5max"]') }}
+    # Routing (cost + security): the merge queue runs post-approval TRUSTED code,
+    # so its candidates use the free self-hosted `burnbar-swift` fleet (M5 Max +
+    # M1 Pro + M4 mini, all pinned to Xcode 26.6). Pull-request runs may carry
+    # untrusted fork code and therefore NEVER touch self-hosted hardware -- they
+    # stay on hosted macos-26. Set repo var MACOS_GATE_POOL=paid to force the
+    # isolated capped hosted pool for a billed fast burst.
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || github.event_name == 'merge_group' && fromJSON('["self-hosted","macOS","ARM64","burnbar-swift"]') || 'macos-26' }}
     # `swift test` on both packages compiles the libsignal Swift FFI on a cold
     # cache; the Swift Core lane uses 40 min for the same work.
     timeout-minutes: 40
@@ -229,12 +230,13 @@ jobs:
     name: XcodeGen pbxproj drift
     needs: detect-native-changes
     if: needs.detect-native-changes.outputs.native == 'true'
-    # Cost policy: these gates default to the in-house Apple Silicon fleet, which
-    # costs nothing per job. Set the repository variable MACOS_GATE_POOL=paid to
-    # opt into the isolated capped hosted pool for a faster (billed) run.
-    # The free lane pins `m5max`: it is the only fleet Mac with both the full
-    # toolchain (node/cargo/protoc/gradle/cmake) and stable Xcode 26.6.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || fromJSON('["self-hosted","macOS","ARM64","m5max"]') }}
+    # Routing (cost + security): the merge queue runs post-approval TRUSTED code,
+    # so its candidates use the free self-hosted `burnbar-swift` fleet (M5 Max +
+    # M1 Pro + M4 mini, all pinned to Xcode 26.6). Pull-request runs may carry
+    # untrusted fork code and therefore NEVER touch self-hosted hardware -- they
+    # stay on hosted macos-26. Set repo var MACOS_GATE_POOL=paid to force the
+    # isolated capped hosted pool for a billed fast burst.
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || github.event_name == 'merge_group' && fromJSON('["self-hosted","macOS","ARM64","burnbar-swift"]') || 'macos-26' }}
     timeout-minutes: 15
     steps:
       - name: Check out repository
