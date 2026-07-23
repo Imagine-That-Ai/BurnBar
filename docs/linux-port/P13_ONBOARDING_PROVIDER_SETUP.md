@@ -10,8 +10,12 @@ cache or renderer storage.
 The onboarding completion gate remains `daemon.onboarding.snapshot`; storing a
 credential does not mark the step verified. Users must still verify the
 provider and can finish the step only when the daemon accepts the required
-local setup. If the native bridge is absent or fixture mode is active, the
-mutation is rejected with an explicit unavailable reason.
+local setup. The daemon's required `provider_paths` probe also reads the
+resolved configuration and requires at least one enabled routing provider with
+either a Linux-local endpoint or a readable Secret Service credential; a
+catalog row or disabled slot cannot create a false-green first run. If the
+native bridge is absent or fixture mode is active, the mutation is rejected
+with an explicit unavailable reason.
 
 OAuth-only provider connections, portal consent, provider scan depth, and
 desktop integration do not have a canonical Linux RPC in this slice. The UI
