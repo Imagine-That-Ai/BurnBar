@@ -61,6 +61,27 @@
     }
 
     #[test]
+    fn tray_navigation_entries_resolve_to_registered_shell_routes() {
+        let expected = [
+            ("open", "overview"),
+            ("summary", "overview"),
+            ("providers", "providers"),
+            ("quick-switch", "providers"),
+            ("chat", "chat"),
+            ("mercury", "mercury"),
+            ("usage", "insights"),
+            ("updates", "updates"),
+            ("settings", "settings"),
+        ];
+
+        for (menu_id, route) in expected {
+            assert_eq!(tray_route_for_menu_id(menu_id), Some(route));
+        }
+        assert_eq!(tray_route_for_menu_id("refresh"), None);
+        assert_eq!(tray_route_for_menu_id("quit"), None);
+    }
+
+    #[test]
     fn launch_at_login_uses_embedded_template_when_packaged_entry_is_missing() {
         let root = autostart_test_root();
         let user_path = root.join("autostart/openburnbar.desktop");

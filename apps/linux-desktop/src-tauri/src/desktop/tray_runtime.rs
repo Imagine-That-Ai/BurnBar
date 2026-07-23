@@ -70,6 +70,19 @@ fn emit_tray_route(app: &AppHandle, route: &str) {
     let _ = app.emit("tray-route", route.to_string());
 }
 
+fn tray_route_for_menu_id(id: &str) -> Option<&'static str> {
+    match id {
+        "open" | "summary" => Some("overview"),
+        "providers" | "quick-switch" => Some("providers"),
+        "chat" => Some("chat"),
+        "mercury" => Some("mercury"),
+        "usage" => Some("insights"),
+        "updates" => Some("updates"),
+        "settings" => Some("settings"),
+        _ => None,
+    }
+}
+
 const TRAY_STATUS_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 
 fn try_begin_tray_refresh(gate: &AtomicBool) -> bool {
@@ -164,7 +177,11 @@ fn start_tray_status_refresh_loop(
 
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let open_i = MenuItemBuilder::with_id("open", "Open dashboard").build(app)?;
+    let summary_i = MenuItemBuilder::with_id("summary", "Summary").build(app)?;
+    let providers_i = MenuItemBuilder::with_id("providers", "Providers").build(app)?;
     let chat_i = MenuItemBuilder::with_id("chat", "Open chat").build(app)?;
+    let mercury_i = MenuItemBuilder::with_id("mercury", "Mercury").build(app)?;
+    let quick_switch_i = MenuItemBuilder::with_id("quick-switch", "Quick Switch").build(app)?;
     let usage_i = MenuItemBuilder::with_id("usage", "Open usage").build(app)?;
     let updates_i = MenuItemBuilder::with_id("updates", "Open updates").build(app)?;
     let settings_i = MenuItemBuilder::with_id("settings", "Open settings").build(app)?;
@@ -181,7 +198,17 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let health_i = MenuItemBuilder::with_id("health", "Reconnect daemon").build(app)?;
     let quit_i = MenuItemBuilder::with_id("quit", "Quit OpenBurnBar").build(app)?;
     let menu = MenuBuilder::new(app)
-        .items(&[&open_i, &chat_i, &usage_i, &updates_i, &settings_i])
+        .items(&[
+            &open_i,
+            &summary_i,
+            &providers_i,
+            &chat_i,
+            &mercury_i,
+            &quick_switch_i,
+            &usage_i,
+            &updates_i,
+            &settings_i,
+        ])
         .separator()
         .items(&[&status_i, &recent_usage_i, &update_state_i])
         .separator()
@@ -207,11 +234,12 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .tooltip("OpenBurnBar — Linux desktop assistant")
         .on_menu_event(move |app, event| match event.id.as_ref() {
-            "open" => emit_tray_route(app, "overview"),
-            "chat" => emit_tray_route(app, "chat"),
-            "usage" => emit_tray_route(app, "insights"),
-            "updates" => emit_tray_route(app, "updates"),
-            "settings" => emit_tray_route(app, "settings"),
+            id if tray_route_for_menu_id(id).is_some() => {
+                // Quick Switch is the Linux-native equivalent of the macOS
+                // provider/model switcher entry; the provider workspace owns
+                // the picker and keeps route validation centralized.
+                emit_tray_route(app, tray_route_for_menu_id(id).unwrap())
+            }
             "refresh" => refresh_tray_status_items(
                 status_for_events.clone(),
                 usage_for_events.clone(),
