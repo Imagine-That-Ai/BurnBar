@@ -534,6 +534,7 @@ pub fn run() {
             database_watch_project,
             database_snapshot,
             database_restore,
+            pick_database_snapshot_path,
             database_code_search,
             database_code_context_pack,
             database_recovery_bundle_status,

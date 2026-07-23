@@ -640,6 +640,7 @@ export type DatabaseSnapshotResult = {
   createdAt?: string;
   restoredAt?: string;
 };
+export type DatabaseSnapshotPickerMode = 'export' | 'import';
 export type DatabaseRecoveryBundleExportRequest = {
   destinationPath: string;
   passphrase: string;
@@ -1679,6 +1680,8 @@ export interface LinuxShellBridge {
   databaseSnapshot?(destinationPath: string, maxBytes?: number): Promise<DatabaseSnapshotResult>;
   /** Optional on older packaged shells; restores only validated encrypted snapshots. */
   databaseRestore?(snapshotPath: string, maxBytes?: number): Promise<DatabaseSnapshotResult>;
+  /** Optional on older packaged shells; native encrypted snapshot picker. */
+  pickDatabaseSnapshotPath?(mode: DatabaseSnapshotPickerMode): Promise<string | null>;
   /** Optional on older packaged shells; callers must fail closed when absent. */
   databaseRecoveryBundleStatus?(): Promise<DatabaseRecoveryStatusResult>;
   databaseRecoveryBundleExport?(

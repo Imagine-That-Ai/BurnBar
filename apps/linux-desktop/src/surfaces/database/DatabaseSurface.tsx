@@ -285,10 +285,35 @@ export function DatabaseSurface() {
   const [selectedFileID, setSelectedFileID] = useState<string | null>(null);
   const [snapshotPath, setSnapshotPath] = useState('');
   const [restorePath, setRestorePath] = useState('');
+  const [snapshotPickerBusy, setSnapshotPickerBusy] = useState(false);
+  const [snapshotPickerError, setSnapshotPickerError] = useState<string | null>(null);
+  const snapshotExportAvailable = !fixtureMode
+    && typeof bridge?.databaseSnapshot === 'function'
+    && typeof bridge?.pickDatabaseSnapshotPath === 'function';
+  const snapshotImportAvailable = !fixtureMode
+    && typeof bridge?.databaseRestore === 'function'
+    && typeof bridge?.pickDatabaseSnapshotPath === 'function';
   const selectedFile = workspace?.files.find((file) => file.id === selectedFileID) ?? null;
   const loadAll = useCallback(async () => {
     await Promise.all([loadDb(), loadWorkspace()]);
   }, [loadDb, loadWorkspace]);
+
+  const chooseSnapshotPath = async (mode: 'export' | 'import') => {
+    if (!bridge?.pickDatabaseSnapshotPath || snapshotPickerBusy) return;
+    setSnapshotPickerBusy(true);
+    setSnapshotPickerError(null);
+    try {
+      const path = await bridge.pickDatabaseSnapshotPath(mode);
+      if (path) {
+        if (mode === 'export') setSnapshotPath(path);
+        else setRestorePath(path);
+      }
+    } catch (cause) {
+      setSnapshotPickerError(cause instanceof Error ? cause.message : 'Could not choose a database snapshot path.');
+    } finally {
+      setSnapshotPickerBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (selectedFileID && !workspace?.files.some((file) => file.id === selectedFileID)) {
@@ -669,52 +694,79 @@ export function DatabaseSurface() {
                 Export or restore the daemon-owned SQLCipher code-memory store. Paths must be absolute, owner-only,
                 and outside the active database; the daemon refuses plaintext stores and oversized files.
               </p>
-              <label className="system-field-label" htmlFor="database-snapshot-path">Snapshot destination</label>
-              <input
-                id="database-snapshot-path"
-                className="system-text-input"
-                value={snapshotPath}
-                onChange={(event) => setSnapshotPath(event.target.value)}
-                placeholder="/home/user/openburnbar-code.snapshot"
-                inputMode="text"
-              />
-              <div className="actions">
-                <button
-                  type="button"
-                  className="ghost"
-                  disabled={snapshotAction.pending || snapshotPath.trim().length === 0}
-                  aria-busy={snapshotAction.pending}
-                  onClick={() => void exportSnapshot(snapshotPath.trim())}
-                >
-                  {snapshotAction.pending ? 'Exporting...' : 'Export encrypted snapshot'}
-                </button>
-              </div>
+              {snapshotExportAvailable ? (
+                <>
+                  <div className="setting-field">
+                    <span>Snapshot destination</span>
+                    <div className="actions">
+                      <button
+                        type="button"
+                        className="ghost"
+                        disabled={snapshotPickerBusy || snapshotAction.pending}
+                        aria-busy={snapshotPickerBusy}
+                        aria-label="Choose snapshot export destination"
+                        onClick={() => void chooseSnapshotPath('export')}
+                      >
+                        {snapshotPickerBusy ? 'Opening...' : 'Choose destination'}
+                      </button>
+                      {snapshotPath ? <code>{snapshotPath}</code> : <span className="muted">No destination selected</span>}
+                    </div>
+                  </div>
+                  <div className="actions">
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={snapshotAction.pending || snapshotPath.trim().length === 0}
+                      aria-busy={snapshotAction.pending}
+                      onClick={() => void exportSnapshot(snapshotPath.trim())}
+                    >
+                      {snapshotAction.pending ? 'Exporting...' : 'Export encrypted snapshot'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="muted" role="status">Encrypted snapshot export requires the packaged native picker.</p>
+              )}
+              {snapshotPickerError ? <p className="muted" role="alert">{snapshotPickerError}</p> : null}
               {snapshotAction.error ? <p className="muted" role="alert">{snapshotAction.error}</p> : null}
               {snapshotAction.result ? (
                 <p className="muted" role="status">
                   Encrypted snapshot exported successfully ({formatBytes(snapshotAction.result.byteCount)}). The destination path is kept private.
                 </p>
               ) : null}
-              <label className="system-field-label" htmlFor="database-restore-path">Snapshot to restore</label>
-              <input
-                id="database-restore-path"
-                className="system-text-input"
-                value={restorePath}
-                onChange={(event) => setRestorePath(event.target.value)}
-                placeholder="/home/user/openburnbar-code.snapshot"
-                inputMode="text"
-              />
-              <div className="actions">
-                <button
-                  type="button"
-                  className="ghost"
-                  disabled={restoreAction.pending || restorePath.trim().length === 0}
-                  aria-busy={restoreAction.pending}
-                  onClick={() => void restoreSnapshot(restorePath.trim())}
-                >
-                  {restoreAction.pending ? 'Restoring...' : 'Restore encrypted snapshot'}
-                </button>
-              </div>
+              {snapshotImportAvailable ? (
+                <>
+                  <div className="setting-field">
+                    <span>Snapshot to restore</span>
+                    <div className="actions">
+                      <button
+                        type="button"
+                        className="ghost"
+                        disabled={snapshotPickerBusy || restoreAction.pending}
+                        aria-busy={snapshotPickerBusy}
+                        aria-label="Choose snapshot restore source"
+                        onClick={() => void chooseSnapshotPath('import')}
+                      >
+                        {snapshotPickerBusy ? 'Opening...' : 'Choose source'}
+                      </button>
+                      {restorePath ? <code>{restorePath}</code> : <span className="muted">No source selected</span>}
+                    </div>
+                  </div>
+                  <div className="actions">
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={restoreAction.pending || restorePath.trim().length === 0}
+                      aria-busy={restoreAction.pending}
+                      onClick={() => void restoreSnapshot(restorePath.trim())}
+                    >
+                      {restoreAction.pending ? 'Restoring...' : 'Restore encrypted snapshot'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="muted" role="status">Encrypted snapshot restore requires the packaged native picker.</p>
+              )}
               {restoreAction.error ? <p className="muted" role="alert">{restoreAction.error}</p> : null}
               {restoreAction.result ? (
                 <p className="muted" role="status">

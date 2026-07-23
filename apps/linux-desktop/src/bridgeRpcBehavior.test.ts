@@ -431,6 +431,18 @@ describe('VAL-RPC-002 bridge behavior', () => {
     expect(invoke).toHaveBeenNthCalledWith(2, 'pick_recovery_bundle_destination', { mode: 'import' });
   });
 
+  it('uses the typed database snapshot picker for save and open flows', async () => {
+    invoke
+      .mockResolvedValueOnce('/tmp/code.snapshot')
+      .mockResolvedValueOnce(null);
+    const b = await bridge();
+
+    await expect(b.pickDatabaseSnapshotPath?.('export')).resolves.toBe('/tmp/code.snapshot');
+    await expect(b.pickDatabaseSnapshotPath?.('import')).resolves.toBeNull();
+    expect(invoke).toHaveBeenNthCalledWith(1, 'pick_database_snapshot_path', { mode: 'export' });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'pick_database_snapshot_path', { mode: 'import' });
+  });
+
   it('uses the canonical run.resume RPC for persisted activity body and resume actions', async () => {
     invoke
       .mockResolvedValueOnce({

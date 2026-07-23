@@ -125,6 +125,21 @@
     }
 
     #[test]
+    fn database_snapshot_picker_validates_safe_snapshot_paths() {
+        let root = std::env::temp_dir().join(format!(
+            "openburnbar-database-snapshot-picker-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        assert!(validate_database_snapshot_picker_path(&root.join("code.snapshot")).is_ok());
+        assert!(validate_database_snapshot_picker_path(&root.join("code.obb")).is_err());
+        assert!(validate_database_snapshot_picker_path(&root.join("code snapshot.snapshot")).is_err());
+        assert!(validate_database_snapshot_picker_path(&root.join("../code.snapshot")).is_err());
+        assert!(validate_database_snapshot_picker_path(&root.join(".code.snapshot")).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn launch_at_login_uses_embedded_template_when_packaged_entry_is_missing() {
         let root = autostart_test_root();
         let user_path = root.join("autostart/openburnbar.desktop");

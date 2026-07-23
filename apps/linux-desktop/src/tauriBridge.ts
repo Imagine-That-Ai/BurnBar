@@ -70,6 +70,7 @@ import {
   mapDiagnosticsExport,
   mapExportDestination,
   mapRecoveryBundleDestination,
+  mapDatabaseSnapshotPath,
   mapAppVersionInfo,
   decodeLinuxUpdateStatus,
   decodeSmartHubCommandResponse,
@@ -565,6 +566,10 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
         maxBytes: maxBytes == null ? undefined : Math.max(1, Math.min(512 * 1_024 * 1_024, Math.trunc(maxBytes)))
       });
       return mapDatabaseSnapshot(raw, true);
+    },
+    pickDatabaseSnapshotPath: async (mode) => {
+      const raw = await invoke<RawJsonValue>('pick_database_snapshot_path', { mode });
+      return mapDatabaseSnapshotPath(raw);
     },
     // P22 — read-only recovery posture. The daemon decides whether key
     // custody, database presence, and integrity verification are each proven.

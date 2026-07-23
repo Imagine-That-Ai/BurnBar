@@ -22,7 +22,12 @@ function resetStores(): void {
     loading: false,
     error: null,
     indexAction: { pending: false, error: null, result: null },
-    watchAction: { pending: false, error: null, result: null }
+    watchAction: { pending: false, error: null, result: null },
+    snapshotAction: { pending: false, error: null, result: null },
+    restoreAction: { pending: false, error: null, result: null },
+    recoveryStatusAction: { pending: false, error: null, result: null },
+    recoveryExportAction: { pending: false, error: null, result: null },
+    recoveryImportAction: { pending: false, error: null, result: null }
   });
 }
 
@@ -289,6 +294,81 @@ describe('DatabaseSurface', () => {
       passphrase: 'passphrase'
     });
     expect(databaseRecoveryBundleExport).not.toHaveBeenCalled();
+  });
+
+  it('uses native save/open pickers for encrypted database snapshots', async () => {
+    vi.spyOn(useSystemStore.getState(), 'loadDb').mockImplementation(async () => {});
+    vi.spyOn(useDatabaseStore.getState(), 'loadWorkspace').mockImplementation(async () => {});
+    const pickDatabaseSnapshotPath = vi.fn(async (mode: 'export' | 'import') =>
+      mode === 'export' ? '/tmp/code.snapshot' : '/tmp/restore.snapshot'
+    );
+    const databaseSnapshot = vi.fn(async (destinationPath: string) => ({
+      traceID: 'trace-1',
+      snapshotPath: destinationPath,
+      byteCount: 128,
+      sha256: 'a'.repeat(64),
+      schemaVersion: 1,
+      databaseEncrypted: true,
+      integrityCheck: 'ok'
+    }));
+    const databaseRestore = vi.fn(async (snapshotPath: string) => ({
+      traceID: 'trace-2',
+      snapshotPath,
+      byteCount: 128,
+      sha256: 'b'.repeat(64),
+      schemaVersion: 1,
+      databaseEncrypted: true,
+      integrityCheck: 'ok'
+    }));
+    useShellStore.setState({
+      bridge: {
+        databaseSnapshot,
+        databaseRestore,
+        pickDatabaseSnapshotPath
+      } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+    useSystemStore.setState({
+      db: { sqlcipherOk: true, migrationVersion: 54, sizeBytes: 4096, walMode: true },
+      loading: false,
+      error: null
+    });
+    render(<DatabaseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /system/i }));
+    await waitFor(() => expect(screen.getByText('Encrypted snapshot & recovery')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose snapshot export destination' }));
+    await waitFor(() => expect(screen.getByText('/tmp/code.snapshot')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Export encrypted snapshot' }));
+    await waitFor(() => expect(databaseSnapshot).toHaveBeenCalledWith('/tmp/code.snapshot', undefined));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose snapshot restore source' }));
+    await waitFor(() => expect(screen.getByText('/tmp/restore.snapshot')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Restore encrypted snapshot' }));
+    await waitFor(() => expect(databaseRestore).toHaveBeenCalledWith('/tmp/restore.snapshot', undefined));
+  });
+
+  it('fails closed for snapshot controls when the native picker is absent', async () => {
+    vi.spyOn(useSystemStore.getState(), 'loadDb').mockImplementation(async () => {});
+    vi.spyOn(useDatabaseStore.getState(), 'loadWorkspace').mockImplementation(async () => {});
+    const databaseSnapshot = vi.fn();
+    const databaseRestore = vi.fn();
+    useShellStore.setState({
+      bridge: { databaseSnapshot, databaseRestore } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+    useSystemStore.setState({
+      db: { sqlcipherOk: true, migrationVersion: 54, sizeBytes: 4096, walMode: true },
+      loading: false,
+      error: null
+    });
+    render(<DatabaseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /system/i }));
+    await waitFor(() => expect(screen.getAllByText(/requires the packaged native picker/i)).toHaveLength(2));
+    expect(screen.queryByRole('button', { name: 'Choose snapshot export destination' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Choose snapshot restore source' })).toBeNull();
+    expect(databaseSnapshot).not.toHaveBeenCalled();
+    expect(databaseRestore).not.toHaveBeenCalled();
   });
 
   it('renders key-loss recovery guidance without exposing daemon paths', async () => {
