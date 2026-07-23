@@ -169,7 +169,7 @@ not an opaque vote.
 These rules are enforced in
 [`functions/src/modelLandscape.ts`](../functions/src/modelLandscape.ts)
 and
-[`OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/ProviderAccountTypes.swift`](../OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/ProviderAccountTypes.swift)
+[`OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/ProviderAccountTypes.swift`](../OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/ProviderAccountTypes.swift)
 — not promises, code.
 
 - **Will not override a user pin.** A pinned model or pinned account that

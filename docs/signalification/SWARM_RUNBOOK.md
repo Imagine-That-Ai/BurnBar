@@ -137,7 +137,7 @@ packages/libsignal-protocol/package-lock.json       (NEW — same)
 
 **Owned file boundaries (Swift sources + Tests fixtures; do NOT touch the Python mirror — it is external):**
 ```
-OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift  (read-canonical; freeze)
+OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/HermesRelayCrypto.swift  (read-canonical; freeze)
 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift   (read-canonical; freeze)
 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift      (read-canonical; freeze)
 OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/LegacyEnvelopeVectors.json   (NEW — the 5-family frozen golden set)
@@ -170,7 +170,7 @@ tools/openburnbar-mcp-remote/src/seal.ts / decrypt.ts                           
 ```
 functions/src/hermesGateway.ts
 functions/src/callables/hermesGateway.ts
-OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift (shared w/ Stream 2,4 — coordinate)
+OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/HermesRelayCrypto.swift (shared w/ Stream 2,4 — coordinate)
 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift (shared — coordinate)
 OpenBurnBarMobile/Services/HermesGatewayRelayKeypair.swift                     (shared w/ Stream 4,6)
 OpenBurnBarMobile/Services/FunctionsRepository.swift
@@ -221,7 +221,7 @@ OpenBurnBarMobile/Services/HermesGatewayRelayKeypair.swift                      
 OpenBurnBarMobile/Services/HermesAttachmentLoader.swift
 OpenBurnBarMobile/Services/HermesAttachmentWorkspace.swift
 OpenBurnBarMobile/Features/Mercury/Stores/MediaAttachmentManifestStore.swift    (Mercury — NAME only, do NOT migrate)
-OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift  (shared — coordinate)
+OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/HermesRelayCrypto.swift  (shared — coordinate)
 OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift  (shared — coordinate)
 tools/hermes-platform-burnbar/adapter.py                                        (shared w/ Stream 2,3)
 ```

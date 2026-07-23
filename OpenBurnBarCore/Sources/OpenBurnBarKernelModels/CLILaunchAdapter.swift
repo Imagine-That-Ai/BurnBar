@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelPlatform
 
 // MARK: - CLI Launch Adapter (Foundation-pure resolution + env surface)
 //

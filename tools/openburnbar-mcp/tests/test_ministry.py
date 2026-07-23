@@ -19,7 +19,7 @@ def test_catalog_reader_flattens_object_shape_from_correct_repo_path() -> None:
     rows = ministry.load_catalog()
 
     assert ministry.CATALOG_PATH == (
-        ministry.REPO_ROOT / "OpenBurnBarCore" / "Sources" / "OpenBurnBarKernel" / "Resources" / "catalog.json"
+        ministry.REPO_ROOT / "OpenBurnBarCore" / "Sources" / "OpenBurnBarKernelModels" / "Resources" / "catalog.json"
     )
     assert rows
     assert all("_providerID" in row for row in rows)

@@ -1250,27 +1250,27 @@ for (const [section, note, allowlistHelperName] of [
 // context. Readers may still open old schema-1 payloads locally, but Firestore
 // rules must no longer accept v1 sealed-content writes.
 assertIncludes(
-  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/CloudVaultCrypto.swift",
   "public static let currentSealedPayloadSchemaVersion = 2",
   "Swift CloudVault must write sealedPayload schemaVersion 2",
 );
 assertIncludes(
-  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/CloudVaultCrypto.swift",
   'public static let aadContextPrefix = "OpenBurnBar-CloudVault-aad-v2"',
   "Swift CloudVault must use the six-part aad-v2 context",
 );
 assertIncludes(
-  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/CloudVaultCrypto.swift",
   "\\(field)|\\(schemaVersion)|\\(purpose)",
   "Swift CloudVault AAD must bind field, schemaVersion, and purpose",
 );
 assertIncludes(
-  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/CloudVaultCrypto.swift",
   'public static let sealedPayloadAADContext = "OpenBurnBar-CloudVaultSealedPayload-v2"',
   "Swift CloudVault must publish the sealedPayload v2 AAD context",
 );
 assertIncludes(
-  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/CloudVaultCrypto.swift",
   "authenticating: sealedPayloadAAD(for:",
   "Swift CloudVault sealedPayload v2 must authenticate envelope metadata as AAD",
 );
@@ -1844,12 +1844,12 @@ for (const rotationFile of [
 // response.error. Pin both directions: senders emit only errorCode, receivers
 // ignore the legacy plaintext field and map known codes to fixed public text.
 assertIncludes(
-  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated/HermesRealtimeRelayEnvelope.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/Generated/HermesRealtimeRelayEnvelope.swift",
   "public enum HermesRealtimeRelayErrorCode",
   "Swift iroh relay frame model must carry fixed public error codes",
 );
 assertIncludes(
-  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated/HermesRealtimeRelayEnvelope.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/Generated/HermesRealtimeRelayEnvelope.swift",
   "public var errorCode: String?",
   "Swift iroh relay payload must expose errorCode",
 );

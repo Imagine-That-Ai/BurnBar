@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelModels
 
 public enum RoamingProfilePayloadError: LocalizedError, Sendable {
     case unsupportedSchemaVersion(Int)

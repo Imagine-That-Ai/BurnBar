@@ -5,6 +5,19 @@ import CryptoKit
 import Crypto
 #endif
 
+// MARK: - Fusion parent-request prefix (Models-tier source of truth)
+
+/// The request-ID prefix stamped on every Elder Wand fusion sub-request
+/// (`elderwand-<UUID>`). Lives in the Models tier so the pure `TokenUsage`
+/// value type can classify a row without reaching up to the Contracts-tier
+/// `FusionUsageRow` (Phase-2 WS-K packet K2 boundary: Models sits below
+/// Contracts, so `TokenUsage` cannot depend on `FusionUsageRow.fusionParentPrefix`).
+/// `FusionUsageRow` in OpenBurnBarKernelContracts keeps its own
+/// `fusionParentPrefix = "elderwand-"` alias; both must stay byte-identical.
+public enum FusionUsageParentPrefix {
+    public static let value = "elderwand-"
+}
+
 // MARK: - Usage Provenance Method
 
 /// Describes how token usage values were obtained for a given row.
@@ -119,7 +132,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
 
     /// Whether this row belongs to an Elder Wand fusion run.
     public var isFusionRow: Bool {
-        parentRequestID?.hasPrefix(FusionUsageRow.fusionParentPrefix) ?? false
+        parentRequestID?.hasPrefix(FusionUsageParentPrefix.value) ?? false
     }
 
     public init(

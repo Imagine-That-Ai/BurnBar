@@ -164,24 +164,41 @@ daemon_resource_bundle="$app_path/Contents/Resources/OpenBurnBarCore_OpenBurnBar
 daemon_helper_resource_bundle="$helpers_dir/OpenBurnBarCore_OpenBurnBarCore.bundle"
 # Core-decomposition P-02: the Kernel target gained its own resource bundle
 # (catalog.json + secret-pattern-corpus.json). Stage it IN ADDITION to the Core bundle.
-daemon_kernel_resource_bundle="$app_path/Contents/Resources/OpenBurnBarCore_OpenBurnBarKernel.bundle"
-daemon_helper_kernel_resource_bundle="$helpers_dir/OpenBurnBarCore_OpenBurnBarKernel.bundle"
+#
+# Phase-2 WS-K packet K2 BUNDLE TRANSITION: K2 moved Resources/ into
+# OpenBurnBarKernelModels, renaming the SwiftPM bundle
+# OpenBurnBarCore_OpenBurnBarKernel.bundle -> OpenBurnBarCore_OpenBurnBarKernelModels.bundle.
+# Resolve the source bundle by the NEW name first, legacy name second, and stage it under
+# BOTH names so the daemon (which now looks for the new name) and any legacy path both find
+# it during the transition.
+daemon_kernel_resource_bundle_new_name="OpenBurnBarCore_OpenBurnBarKernelModels.bundle"
+daemon_kernel_resource_bundle_legacy_name="OpenBurnBarCore_OpenBurnBarKernel.bundle"
+daemon_kernel_resource_bundle=""
+for kernel_bundle_name in "$daemon_kernel_resource_bundle_new_name" "$daemon_kernel_resource_bundle_legacy_name"; do
+  if [[ -d "$app_path/Contents/Resources/$kernel_bundle_name" ]]; then
+    daemon_kernel_resource_bundle="$app_path/Contents/Resources/$kernel_bundle_name"
+    break
+  fi
+done
 project_code_memory_dir="$app_path/Contents/Resources/ProjectCodeMemory"
 if [[ ! -d "$daemon_resource_bundle" ]]; then
   echo "ERROR: OpenBurnBarDaemon resource bundle missing at $daemon_resource_bundle" >&2
   exit 1
 fi
-if [[ ! -d "$daemon_kernel_resource_bundle" ]]; then
-  echo "ERROR: OpenBurnBarDaemon Kernel resource bundle missing at $daemon_kernel_resource_bundle" >&2
+if [[ -z "$daemon_kernel_resource_bundle" ]]; then
+  echo "ERROR: OpenBurnBarDaemon Kernel resource bundle missing at $app_path/Contents/Resources/{$daemon_kernel_resource_bundle_new_name,$daemon_kernel_resource_bundle_legacy_name}" >&2
   exit 1
 fi
 if [[ ! -d "$project_code_memory_dir" ]]; then
   echo "ERROR: OpenBurnBarDaemon Project Code Memory resources missing at $project_code_memory_dir" >&2
   exit 1
 fi
-rm -rf "$daemon_helper_resource_bundle" "$daemon_helper_kernel_resource_bundle" "$helpers_dir/ProjectCodeMemory"
+daemon_helper_kernel_resource_bundle_new="$helpers_dir/$daemon_kernel_resource_bundle_new_name"
+daemon_helper_kernel_resource_bundle_legacy="$helpers_dir/$daemon_kernel_resource_bundle_legacy_name"
+rm -rf "$daemon_helper_resource_bundle" "$daemon_helper_kernel_resource_bundle_new" "$daemon_helper_kernel_resource_bundle_legacy" "$helpers_dir/ProjectCodeMemory"
 cp -R "$daemon_resource_bundle" "$daemon_helper_resource_bundle"
-cp -R "$daemon_kernel_resource_bundle" "$daemon_helper_kernel_resource_bundle"
+cp -R "$daemon_kernel_resource_bundle" "$daemon_helper_kernel_resource_bundle_new"
+cp -R "$daemon_kernel_resource_bundle" "$daemon_helper_kernel_resource_bundle_legacy"
 if otool -L "$helpers_dir/OpenBurnBarDaemon" | grep -q 'SQLCipher.framework'; then
   if [[ ! -d "$frameworks_dir/SQLCipher.framework" ]]; then
     echo "ERROR: OpenBurnBarDaemon links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2

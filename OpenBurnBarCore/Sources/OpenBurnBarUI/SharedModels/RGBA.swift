@@ -8,7 +8,7 @@ import SwiftUI
 // MARK: - RGBA color math + SwiftUI Color bridge
 //
 // The `RGBA` value type itself is a Foundation-only primitive that lives in
-// `OpenBurnBarKernel/SharedModels/RGBA.swift` so the pure engine and every Kernel
+// `OpenBurnBarKernelModels/SharedModels/RGBA.swift` so the pure engine and every Kernel
 // consumer can use it on all platforms (including off-Apple). The richer color
 // math and the SwiftUI bridge stay in the SwiftUI-carrying layer (Core today,
 // `OpenBurnBarUI` after the K4 split) — the bridge behind `#if canImport(SwiftUI)`

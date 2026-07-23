@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelPlatform
 
 public enum HermesRatchetError: Error, Equatable {
     case invalidBase64(String)

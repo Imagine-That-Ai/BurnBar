@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelPlatform
 
 // MARK: - OpenBurnBar Metrics
 

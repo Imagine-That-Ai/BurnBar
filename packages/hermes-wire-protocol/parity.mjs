@@ -26,7 +26,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
 
 const PATHS = {
-  swiftEnum: join(ROOT, "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRealtimeRelayFrameType.swift"),
+  swiftEnum: join(ROOT, "OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/HermesRealtimeRelayFrameType.swift"),
   kotlinEnum: join(ROOT, "android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/HermesRealtimeRelayFrame.kt"),
   tsRelay: join(ROOT, "services/hermes-realtime-relay/src/protocol.ts"),
   generatedTs: join(ROOT, "services/hermes-realtime-relay/src/generated/wireProtocol.ts"),

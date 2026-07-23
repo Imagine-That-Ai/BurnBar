@@ -251,7 +251,7 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
         case .daemonResourceBundleUnavailable(let expectedPath):
             return """
             OpenBurnBarDaemon resources are missing (OpenBurnBarCore_OpenBurnBarCore.bundle \
-            and/or OpenBurnBarCore_OpenBurnBarKernel.bundle).
+            and/or OpenBurnBarCore_OpenBurnBarKernelModels.bundle).
             Expected bundle at: \(expectedPath)
             Rebuild OpenBurnBar and run Install again.
             """
@@ -685,10 +685,21 @@ final class OpenBurnBarDaemonManager {
 
     nonisolated static let resourceBundleName = "OpenBurnBarCore_OpenBurnBarCore.bundle"
     // Core-decomposition P-02: the Kernel target gained its own resource bundle
-    // (catalog.json + secret-pattern-corpus.json moved into OpenBurnBarKernel). This
-    // bundle is staged IN ADDITION to the Core bundle (which still carries the
-    // MiningPickIcon SVGs), never instead of it.
-    nonisolated static let kernelResourceBundleName = "OpenBurnBarCore_OpenBurnBarKernel.bundle"
+    // (catalog.json + secret-pattern-corpus.json). This bundle is staged IN ADDITION
+    // to the Core bundle (which still carries the MiningPickIcon SVGs), never instead
+    // of it.
+    //
+    // Phase-2 WS-K packet K2 BUNDLE TRANSITION (docs/CORE_DECOMPOSITION_PROGRAM.md):
+    // packet K2 moved `Resources/` from OpenBurnBarKernel into OpenBurnBarKernelModels,
+    // renaming the SwiftPM bundle from `OpenBurnBarCore_OpenBurnBarKernel.bundle` to
+    // `OpenBurnBarCore_OpenBurnBarKernelModels.bundle`. The in-bundle loaders resolve
+    // `Bundle.module` to the NEW name automatically; the installer here must accept
+    // BOTH names during the transition (a mixed app can carry either). The primary is
+    // the NEW name (used as the staged/installed name); `kernelResourceBundleNames`
+    // is the ordered resolve list (new FIRST, legacy fallback).
+    nonisolated static let kernelResourceBundleName = "OpenBurnBarCore_OpenBurnBarKernelModels.bundle"
+    nonisolated static let legacyKernelResourceBundleNames = ["OpenBurnBarCore_OpenBurnBarKernel.bundle"]
+    nonisolated static let kernelResourceBundleNames = [kernelResourceBundleName] + legacyKernelResourceBundleNames
     nonisolated static let legacyResourceBundleNames = ["BurnBarCore_BurnBarCore.bundle"]
     nonisolated static let projectCodeMemoryResourceDirectoryName = "ProjectCodeMemory"
     nonisolated static let projectCodeMemorySecretCorpusFileName = "secret-pattern-corpus.json"

@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // K1 kernel extraction: the pure catalog model types moved to
-// `OpenBurnBarKernel/OpenBurnBarCatalog.swift`. This loader stays in
-// OpenBurnBarCore because `Bundle.module` here resolves to
-// `OpenBurnBarCore_OpenBurnBarCore.bundle` (which carries `catalog.json`) —
-// the exact bundle name the AgentLens daemon installer stages at runtime.
+// `OpenBurnBarCatalog.swift`. K2 (Phase-2 WS-K) carried this loader AND the
+// `Resources/` bundle (catalog.json + secret-pattern-corpus.json) into
+// OpenBurnBarKernelModels, so `Bundle.module` here now resolves to
+// `OpenBurnBarCore_OpenBurnBarKernelModels.bundle` (the SwiftPM
+// `<package>_<target>` bundle that carries `catalog.json`). The AgentLens daemon
+// installer stages that new bundle name IN ADDITION to the old
+// `OpenBurnBarCore_OpenBurnBarKernel.bundle` during the K2 transition.
 
 import Foundation
 

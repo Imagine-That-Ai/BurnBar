@@ -23,8 +23,8 @@ The wire format is the OpenAI `/v1/chat/completions` `tools` /
 | `OpenBurnBarMobile/Services/Tools/BurnBarRuntimeStatusTool.swift` | `burnbar_runtime_status` — honest snapshot of the active runtime + model. |
 | `OpenBurnBarMobile/Services/HermesService.swift` | Advertises the catalog, parses tool_call deltas, and runs the multi-turn loop. |
 | `OpenBurnBarMobile/Services/PiService.swift` | Sibling of Hermes; same catalog, same loop. |
-| `OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesOpenAICompatibleStreamParser.swift` | Canonical typed SSE parser. Emits `HermesStreamEvent.toolCallChunk` / `toolCallFinished` before the mobile services fold them into pills and tool replies. |
-| `OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesAttachmentEncoder.swift` | Emits the wire-format `tool_calls` / `tool` messages on subsequent turns. |
+| `OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/HermesOpenAICompatibleStreamParser.swift` | Canonical typed SSE parser. Emits `HermesStreamEvent.toolCallChunk` / `toolCallFinished` before the mobile services fold them into pills and tool replies. |
+| `OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/HermesAttachmentEncoder.swift` | Emits the wire-format `tool_calls` / `tool` messages on subsequent turns. |
 | `OpenBurnBarMobileTests/Tools/` | Catalog + executor + Hermes loop tests. |
 
 ## Authoring a new tool — five steps

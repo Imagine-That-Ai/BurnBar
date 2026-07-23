@@ -5,8 +5,9 @@ import OpenBurnBarKernel
 //
 // The Foundation-pure resolution + allowlisted-environment surface of this stack —
 // `CLILaunchAdapter` and its `CLILaunchError` — was extracted DOWN into the
-// cross-platform Kernel by core-decomposition P-15b
-// (`OpenBurnBarKernel/Platform/CLILaunchAdapter.swift`) so the daemon (P-18) and the
+// cross-platform Kernel by core-decomposition P-15b, then carried into the pure-data
+// sub-target by Phase-2 WS-K packet K2
+// (`OpenBurnBarKernelModels/CLILaunchAdapter.swift`) so the daemon (P-18) and the
 // Quota adapters (P-13) can resolve executables + build launch environments without
 // linking this Apple-only, AppKit-adjacent target. What remains here is the
 // launch-coordinator / process-invoker / profile-store-coupled orchestration

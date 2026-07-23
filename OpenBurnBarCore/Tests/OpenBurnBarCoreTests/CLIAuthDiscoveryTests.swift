@@ -1,9 +1,12 @@
 import XCTest
 @testable import OpenBurnBarCore
-// P-15b: CLILaunchAdapter's internal test seams (environmentProvider/homeDirectoryProvider)
-// moved to OpenBurnBarKernel; @testable reaches those internals (public CLILaunchAdapter
-// members flow via the @_exported umbrella).
+// P-15b / K2: CLILaunchAdapter's internal test seams (environmentProvider/
+// homeDirectoryProvider) live in OpenBurnBarKernelModels (Phase-2 WS-K packet K2
+// carried the adapter out of OpenBurnBarKernel). `@testable import
+// OpenBurnBarKernelModels` reaches those internals directly — the @_exported Kernel
+// umbrella re-exports only the PUBLIC surface, not sub-target internals.
 @testable import OpenBurnBarKernel
+@testable import OpenBurnBarKernelModels
 @testable import OpenBurnBarLaunchServices
 
 final class CLIAuthDiscoveryTests: XCTestCase {

@@ -73,7 +73,7 @@ above. Everything previously listed here that no longer exists in code has moved
   guarded: `scripts/ci/check-budget-fork-drift.sh` fails CI when either side of the pair
   (or BudgetEnforcement/BudgetSettings) drifts without a reviewed baseline update. The gate
   itself is no longer forked (single `BudgetGate` in
-  `OpenBurnBarCore/Sources/OpenBurnBarKernel/Budget/BudgetGate.swift`). *Owner note:
+  `OpenBurnBarCore/Sources/OpenBurnBarKernelModels/Budget/BudgetGate.swift`). *Owner note:
   intentional; revisit only if mobile ever gets a local usage table.*
 - **FTS rebuild TODO(C10) page reclamation** — the conversations FTS one-shot repair
   rebuilds rows but does not reclaim freed pages;

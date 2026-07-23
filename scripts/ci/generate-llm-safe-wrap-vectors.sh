@@ -4,7 +4,7 @@
 #
 # The vectors freeze the byte-exact output of the shipped
 # `LLMSafeContent.wrapUntrusted` / `resealTruncatedUntrusted`
-# (`OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/LLMSafeContent.swift`) for a
+# (`OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/LLMSafeContent.swift`) for a
 # set of named cases so a future Windows / Kotlin / TS re-implementation can be proven
 # byte-identical to the reference oracle. Companion Mac test:
 # `AgentLensTests/Active/Security/LLMSafeWrapVectorTests.swift`
@@ -24,7 +24,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-SOURCE_FILE="OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/LLMSafeContent.swift"
+SOURCE_FILE="OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/LLMSafeContent.swift"
 OUT_FILE="tests/fixtures/llm-safe-wrap/llm-safe-wrap-vectors.json"
 MODE="${1:-}"
 
@@ -146,7 +146,7 @@ let v6 = resealVector(
 let document = WrapVectorDocument(
     schema: "obb-llm-safe-wrap-v1",
     description: "Portable byte-exact contract vectors for LLMSafeContent.wrapUntrusted / resealTruncatedUntrusted (OWASP LLM01 prompt-injection wrap). Each vector pins the exact output bytes the shipped macOS function produces for a named case, so a Windows / Kotlin / TS re-implementation can be proven byte-identical to the Mac oracle. Regenerate with scripts/ci/generate-llm-safe-wrap-vectors.sh.",
-    source: "LLMSafeContent (OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/LLMSafeContent.swift)",
+    source: "LLMSafeContent (OpenBurnBarCore/Sources/OpenBurnBarKernelModels/SharedModels/LLMSafeContent.swift)",
     sentinelToken: "UNTRUSTED_CONTENT",
     sentinelDefangedToken: "UNTRUSTED\u{2011}CONTENT",
     vectors: [v1, v2, v3, v4, v5, v6]

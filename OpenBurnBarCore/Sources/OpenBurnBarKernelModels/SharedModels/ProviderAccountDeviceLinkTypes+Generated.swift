@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarFirestoreModels
+import OpenBurnBarKernelPlatform
 
 // MARK: - Generated-canon bridge (TypeSpec strangler)
 //

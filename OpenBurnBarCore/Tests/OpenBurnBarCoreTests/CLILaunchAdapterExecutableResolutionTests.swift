@@ -1,13 +1,16 @@
 #if os(macOS)
 import XCTest
 @testable import OpenBurnBarCore
-// P-15b: CLILaunchAdapter's Foundation-pure resolution surface (and its internal
+// P-15b / K2: CLILaunchAdapter's Foundation-pure resolution surface (and its internal
 // test seams environmentProvider/homeDirectoryProvider/trustedExecutableSearchDirectories/
 // allowsAmbientUserManagedExecutableFallback/ambientFallbackExecutableSearchDirectories)
-// moved to OpenBurnBarKernel; @testable reaches those internals (public members flow via
-// the @_exported umbrella). OpenBurnBarLaunchServices stays for the launch-coordinator
-// half also exercised here.
+// live in OpenBurnBarKernelModels (Phase-2 WS-K packet K2 carried the adapter out of
+// OpenBurnBarKernel). `@testable import OpenBurnBarKernelModels` reaches those internals
+// directly — the @_exported Kernel umbrella re-exports only the PUBLIC surface, not
+// sub-target internals. OpenBurnBarLaunchServices stays for the launch-coordinator half
+// also exercised here.
 @testable import OpenBurnBarKernel
+@testable import OpenBurnBarKernelModels
 @testable import OpenBurnBarLaunchServices
 
 final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {

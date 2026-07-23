@@ -23,7 +23,7 @@ import org.junit.Test
  * Android-originated requests and an Android client can decrypt
  * Mac-originated chunks. Every wire-visible constant and AAD string is
  * pinned here against the iOS source of truth at
- * `OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift`.
+ * `OpenBurnBarCore/Sources/OpenBurnBarKernelCrypto/SharedModels/HermesRelayCrypto.swift`.
  */
 class HermesRelayCryptoTest {
     @Before

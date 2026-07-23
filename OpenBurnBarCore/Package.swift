@@ -957,14 +957,15 @@ let firstPartyTargetsBase: [Target] = [
         // Phase-1 K1 kernel (see the OpenBurnBarKernel product comment above).
         // remediation(typespec-strangler): the generated Firestore canon stays
         // linked into the production graph — the `import OpenBurnBarFirestoreModels`
-        // consumer (ProviderAccountDeviceLinkTypes+Generated.swift) moved here,
-        // so anything that links the kernel (which includes OpenBurnBarCore and
-        // everything downstream) still transitively links the generated models
-        // and drift in the generated wire schema still fails the production build.
+        // consumer (ProviderAccountDeviceLinkTypes+Generated.swift) now lives in the
+        // OpenBurnBarKernelModels sub-target (Phase-2 WS-K packet K2), which declares
+        // `OpenBurnBarFirestoreModels` directly, so anything that links the kernel
+        // (which includes OpenBurnBarCore and everything downstream) still transitively
+        // links the generated models and drift in the generated wire schema still fails
+        // the production build.
         .target(
             name: "OpenBurnBarKernel",
             dependencies: [
-                "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency,
                 // Phase-2 WS-K (Kernel diet, docs/CORE_DECOMPOSITION_PROGRAM.md): the
                 // 4 sub-targets the Kernel is splitting into. KernelUmbrella.swift
@@ -977,8 +978,11 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarKernelModels",
                 "OpenBurnBarKernelCrypto",
                 "OpenBurnBarKernelContracts"
-            ],
-            resources: [.process("Resources")]
+            ]
+            // K2 moved OpenBurnBarKernel/Resources/ into OpenBurnBarKernelModels, so the
+            // resource bundle now belongs to KernelModels (`.process("Resources")` below).
+            // The Kernel target no longer owns any Resources/ directory; keeping a stale
+            // `.process("Resources")` here would make SwiftPM fail on a missing dir.
         ),
         // Phase-2 WS-K (Kernel diet): the 4 sub-targets of OpenBurnBarKernel. At S0
         // each holds only `Sources/<Target>/ModuleMarker.swift`; the move packets
@@ -1003,9 +1007,24 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarKernelModels",
             dependencies: [
                 "OpenBurnBarKernelPlatform",
+                // K2: the moved `ProviderAccountDeviceLinkTypes+Generated.swift`
+                // `import OpenBurnBarFirestoreModels` — that generated-canon edge
+                // followed the file out of OpenBurnBarKernel into KernelModels.
+                // OpenBurnBarFirestoreModels is a pure Foundation-only leaf (no
+                // reverse dep on the kernel), so this edge is acyclic and keeps the
+                // wire-schema drift gate live in the production link graph.
+                "OpenBurnBarFirestoreModels",
                 swiftCryptoNonAppleDependency
             ],
-            exclude: openBurnBarKernelModelsExcludes
+            exclude: openBurnBarKernelModelsExcludes,
+            // K2 bundle transition (docs/CORE_DECOMPOSITION_PROGRAM.md): Resources/
+            // (catalog.json + secret-pattern-corpus.json) moved here from
+            // OpenBurnBarKernel, renaming the SwiftPM bundle to
+            // `OpenBurnBarCore_OpenBurnBarKernelModels.bundle`. The in-target loaders
+            // (OpenBurnBarCatalogLoader / MemorySecretPIIGate) resolve `Bundle.module`
+            // to the new name automatically; the daemon installer + release/smoke
+            // scripts stage BOTH the new and old bundle names during the transition.
+            resources: [.process("Resources")]
         ),
         .target(
             name: "OpenBurnBarKernelCrypto",

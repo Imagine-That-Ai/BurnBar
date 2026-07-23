@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernelModels
 
 public enum HermesRelayAuthenticatedRequestDenyReason: String, Codable, Sendable, Equatable {
     case senderAuthRequired = "sender_auth_required"
