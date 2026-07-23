@@ -359,7 +359,7 @@ final class BurnBarLinuxOnboardingServiceTests: XCTestCase {
         let verified = try await verify(.providerPaths, using: service)
         let providerStep = try XCTUnwrap(verified.steps.first(where: { $0.id == .providerPaths }))
         XCTAssertEqual(providerStep.state, .verified)
-        XCTAssertTrue(providerStep.detail?.contains("Daemon routing is ready through") == true)
+        XCTAssertEqual(providerStep.detail?.contains("Daemon routing is ready through"), true)
 
         let snapshot = try await configStore.snapshot()
         for providerID in ["codex", "ollama", "ollama-local"] {
@@ -378,8 +378,9 @@ final class BurnBarLinuxOnboardingServiceTests: XCTestCase {
         _ = try await verify(.secretStore, using: blocked)
         let blockedSnapshot = try await verify(.providerPaths, using: blocked)
         XCTAssertEqual(blockedSnapshot.steps.first(where: { $0.id == .providerPaths })?.state, .blocked)
-        XCTAssertTrue(
-            blockedSnapshot.steps.first(where: { $0.id == .providerPaths })?.detail?.contains("No enabled routing provider") == true
+        XCTAssertEqual(
+            blockedSnapshot.steps.first(where: { $0.id == .providerPaths })?.detail?.contains("No enabled routing provider"),
+            true
         )
     }
 
