@@ -491,6 +491,38 @@
   color: var(--color-text-bright);
 }
 
+.settings-appearance-transparency {
+  gap: var(--space-2);
+  max-width: 32rem;
+}
+
+.settings-appearance-range-label,
+.settings-appearance-range-scale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--color-text-mute);
+  font-size: 0.78rem;
+}
+
+.settings-appearance-range-label output {
+  color: var(--color-text-bright);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.settings-appearance-range {
+  width: 100%;
+  accent-color: var(--color-brass-core);
+  cursor: pointer;
+}
+
+.settings-appearance-range-scale {
+  color: var(--color-text-dim);
+  font-size: 0.68rem;
+}
+
 .settings-embedded-surface {
   margin: calc(-1 * var(--space-2)) 0;
 }

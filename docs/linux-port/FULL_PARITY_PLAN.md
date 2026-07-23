@@ -32,9 +32,9 @@ preference through `apps/linux-desktop/src/a11y.ts`. The shared CSS disables
 backdrop filters and maps Liquid Glass surfaces to opaque skin-aware tokens,
 including lazy-loaded routes and onboarding; modern and legacy WebKitGTK
 listener cleanup is covered by focused tests. The user-controlled
-`-1` frostier to `+1` clearer transparency range from the broader macOS design
-system remains separate work, and installed compositor/WebKit receipts are
-still required.
+`-1` frostier to `+1` clearer transparency range is persisted by the General
+settings slider and maps to bounded skin-aware token presets. Installed
+compositor/WebKit receipts are still required.
 
 ---
 
@@ -44,7 +44,7 @@ still required.
 |------|--------------|-------------|---------|
 | Core / daemon | `OpenBurnBarDaemon/`, `OpenBurnBarCore/` | All RPC handlers implemented; POSIX HTTP gateway, inotify, Secret Service/KWallet, Avahi discovery, Linux security all in place. | Strong |
 | UI shell | `AgentLens/Views/`, `AgentLens/Theme/` | `apps/linux-desktop/` has W6 foundation + P01-P15 route surfaces. | Route parity exists, but macOS visual/interaction layer is missing. |
-| Design system | `AgentLens/Theme/DesignSystem.swift`, `LiquidGlass.swift`, `KernelBackdropView.swift` | Tokens + 2 skins + 32 kernels + CSS glass exist; the OS Reduce Transparency fallback is implemented. | Missing user-controlled transparency range, Pro theme, wallpaper, pet renderer, swarm customization. |
+| Design system | `AgentLens/Theme/DesignSystem.swift`, `LiquidGlass.swift`, `KernelBackdropView.swift` | Tokens + 2 skins + 32 kernels + CSS glass exist; user-controlled transparency presets and the OS Reduce Transparency fallback are implemented. | Missing `sidebarThemeGlass`, Pro theme, wallpaper, live wallpaper panels, pet renderer, swarm customization. |
 | Desktop integration | `AppDelegate+StatusItem.swift`, `SwarmWallpaperRuntime.swift`, `Hotkey.swift` | Tauri tray exists. | Missing menu-bar popover, global hotkeys, desktop wallpaper, live wallpaper panels. |
 | Release / CI | `scripts/build-macos-website-release.sh`, `scripts/upload-macos-downloads-r2.sh`, `scripts/ops/rollback-macos-appcast.sh` | Signed x86_64/aarch64 DEB/RPM/Arch candidate, daemon/desktop sessions, aggregate attestation, and exact-head Nightly matrix are green. | Public feed/promotion, compatible previous-package lifecycle proof, production trust callables, and full environment receipts remain open. |
 
@@ -167,7 +167,7 @@ required before promotion.
 ### Tier 2 — Design system & visual parity
 
 10. **Dashboard layout system** (`atelier`, `aurora`, `nebula`, `constellation`, `cockpit`, `classic`) with persistence and a layout switcher.
-11. **User-controlled Liquid Glass transparency preference** (`-1` frostier → `+1` clearer); the OS Reduce Transparency opaque fallback is implemented.
+11. **Complete:** user-controlled Liquid Glass transparency preference (`-1` frostier → `+1` clearer) plus OS Reduce Transparency opaque fallback.
 12. **Theme glass palette** per layout.
 13. **Glass card / Glass button** primitives with the Reduce Transparency opaque path implemented; installed preference receipts remain.
 14. **Pro theme** obsidian foil palette for membership.
@@ -227,7 +227,7 @@ required before promotion.
 
 - Implement `DashboardLayout` enum and persistence, `LayoutSwitcher` UI, and 6 layout skeletons.
 - Add `GlassCard` / `GlassButton` / `ThemeGlassPalette` / `ProTheme`.
-- Add Liquid Glass transparency preference slider and `sidebarThemeGlass`.
+- Add `sidebarThemeGlass` to complete the remaining per-layout Liquid Glass palette surface; the transparency slider and OS Reduce Transparency fallback are implemented.
 - Implement kernel-forward layout support in `KernelBackdrop`.
 - Verification: visual proof book, `npm test`, `npm run build`, `prefers-reduced-motion` test.
 

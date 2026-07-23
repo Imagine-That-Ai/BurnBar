@@ -128,3 +128,21 @@
   --color-ink-base: #040610;
   --color-ink-elevated: #0c1220;
 }
+
+/* User-controlled Liquid Glass material density. Reduce Transparency on the
+ * body still wins over these visual presets for accessibility. */
+:root[data-glass-transparency='frostier'] {
+  --glass-tint-base: color-mix(in srgb, var(--macos-surface) 64%, transparent);
+  --glass-tint-elevated: color-mix(in srgb, var(--macos-surface-elevated) 72%, transparent);
+  --glass-tint-clear: color-mix(in srgb, var(--macos-surface) 42%, transparent);
+  --glass-tint-interactive: color-mix(in srgb, var(--macos-surface-elevated) 54%, transparent);
+  --glass-input: color-mix(in srgb, var(--macos-bg) 70%, transparent);
+}
+
+:root[data-glass-transparency='clearer'] {
+  --glass-tint-base: color-mix(in srgb, var(--macos-surface) 35%, transparent);
+  --glass-tint-elevated: color-mix(in srgb, var(--macos-surface-elevated) 43%, transparent);
+  --glass-tint-clear: color-mix(in srgb, var(--macos-surface) 18%, transparent);
+  --glass-tint-interactive: color-mix(in srgb, var(--macos-surface-elevated) 29%, transparent);
+  --glass-input: color-mix(in srgb, var(--macos-bg) 42%, transparent);
+}

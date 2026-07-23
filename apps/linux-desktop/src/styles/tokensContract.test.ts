@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const stylesDir = path.dirname(fileURLToPath(import.meta.url));
 const appCss = fs.readFileSync(path.join(stylesDir, 'app.css'), 'utf8');
 const tokensCss = fs.readFileSync(path.join(stylesDir, 'tokens.css'), 'utf8');
+const liquidGlassTokensCss = fs.readFileSync(path.join(stylesDir, 'liquid-glass-tokens.css'), 'utf8');
 const skinsCss = fs.readFileSync(path.join(stylesDir, 'skins.css'), 'utf8');
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(stylesDir, '../../package.json'), 'utf8')
@@ -62,6 +63,13 @@ describe('VAL-TOKENS design token contract', () => {
     expect(appCss).toContain('body.reduced-motion *');
     expect(appCss).toContain('animation: none');
     expect(appCss).toContain('transition: none');
+  });
+
+  it('exposes bounded Liquid Glass transparency presets', () => {
+    expect(liquidGlassTokensCss).toContain(":root[data-glass-transparency='frostier']");
+    expect(liquidGlassTokensCss).toContain(":root[data-glass-transparency='clearer']");
+    expect(liquidGlassTokensCss).toContain('--glass-tint-base');
+    expect(liquidGlassTokensCss).toContain('--glass-tint-elevated');
   });
 
   it('declares a dark native-control color scheme for WebKitGTK', () => {

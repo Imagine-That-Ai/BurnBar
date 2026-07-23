@@ -7,12 +7,14 @@ import { SettingsAppearanceControls } from './SettingsAppearanceControls.js';
 describe('SettingsAppearanceControls accessibility', () => {
   beforeEach(() => {
     localStorage.clear();
+    delete document.documentElement.dataset.glassTransparency;
     useShellStore.setState({ skin: 'editorial' });
   });
 
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    delete document.documentElement.dataset.glassTransparency;
   });
 
   it('uses a roving tab stop and supports arrow, Home, and End navigation', () => {
@@ -57,5 +59,25 @@ describe('SettingsAppearanceControls accessibility', () => {
     expect(aurora?.getAttribute('aria-checked')).toBe('true');
     expect(document.activeElement).toBe(aurora);
     expect(useShellStore.getState().skin).toBe('aurora');
+  });
+
+  it('persists the three-position Liquid Glass transparency control', () => {
+    render(<SettingsAppearanceControls />);
+
+    const range = screen.getByRole('slider', { name: 'Liquid Glass transparency' });
+    const output = () => document.querySelector('output[for="glass-transparency-range"]');
+    expect(range.getAttribute('value')).toBe('0');
+    expect(output()?.textContent).toBe('Balanced');
+
+    fireEvent.change(range, { target: { value: '-1' } });
+    expect(range.getAttribute('value')).toBe('-1');
+    expect(output()?.textContent).toBe('Frostier');
+    expect(localStorage.getItem('openburnbar.linux.glassTransparency.v1')).toBe('-1');
+    expect(document.documentElement.dataset.glassTransparency).toBe('frostier');
+
+    fireEvent.change(range, { target: { value: '1' } });
+    expect(output()?.textContent).toBe('Clearer');
+    expect(localStorage.getItem('openburnbar.linux.glassTransparency.v1')).toBe('1');
+    expect(document.documentElement.dataset.glassTransparency).toBe('clearer');
   });
 });
