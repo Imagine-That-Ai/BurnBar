@@ -2895,13 +2895,20 @@ credential escrow, and live two-device execution remain required.
 
 ### GAP-012C - Complete Insights
 
-- **Difference:** macOS insights include editorial analysis, source evidence,
-  citations, follow-ups, comparison, and audit actions. Linux primarily renders
-  usage charts and summary/anomaly projections.
-- **Why it matters:** the Linux surface can show a pattern but cannot establish
-  why it exists or let the user investigate and act on it.
-- **Recommended solution:** add a typed insight document/evidence model, citation
-  navigation, compare periods/providers/models, follow-up actions, and audit state.
+- **Difference:** Linux now has typed source/evidence provenance, bounded
+  citations, provider/model comparison, follow-up chat handoff, audit disclosure,
+  and freshness states alongside usage charts and qualitative summaries. The
+  remaining difference is backend/domain depth: macOS supplies richer editorial
+  analysis and production evidence across the full source corpus, while Linux
+  still depends on the daemon's current bounded usage response and has not
+  completed installed or cross-device proof.
+- **Why it matters:** a polished evidence UI is only trustworthy when the
+  underlying analysis is complete, fresh, and backed by the same source depth as
+  macOS; otherwise users may overread a bounded summary.
+- **Recommended solution:** retain the typed insight/evidence model and extend
+  daemon-owned analysis over the full source corpus, preserve citation and
+  compare provenance, and certify stale/missing-source behavior on the signed
+  installed candidate.
 - **Priority:** **Medium**.
 - **Implementation notes:** preserve source IDs and generated-at freshness; make
   unsupported inference explicit; share calculation and citation fixtures.
