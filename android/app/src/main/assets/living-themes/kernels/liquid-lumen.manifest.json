@@ -1,0 +1,23 @@
+{
+  "id": "liquid-lumen",
+  "label": "Liquid Lumen",
+  "metalFileBase": "K_LiquidLumen",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_liquid_lumen_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

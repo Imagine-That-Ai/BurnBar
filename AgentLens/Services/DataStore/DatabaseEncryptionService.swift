@@ -735,8 +735,10 @@ extension DatabaseEncryptionService {
     /// therefore dead and safe to remove; the live database and its own
     /// `-wal`/`-shm` never match. Best-effort by design: failures are logged and
     /// never interrupt startup or migration.
-    static func removeOrphanedMigrationArtifacts(forDatabaseAt path: String) {
-        let fileManager = FileManager.default
+    static func removeOrphanedMigrationArtifacts(
+        forDatabaseAt path: String,
+        fileManager: FileManager = .default
+    ) {
         let databaseURL = URL(fileURLWithPath: path)
         let databaseFileName = databaseURL.lastPathComponent
         guard databaseFileName.isEmpty == false else { return }

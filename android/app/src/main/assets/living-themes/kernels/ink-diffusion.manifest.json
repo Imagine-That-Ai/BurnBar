@@ -1,0 +1,23 @@
+{
+  "id": "ink-diffusion",
+  "label": "Ink Diffusion",
+  "metalFileBase": "K_InkDiffusion",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_ink_diffusion_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

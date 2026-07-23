@@ -1,0 +1,25 @@
+{
+  "id": "aether-lattice",
+  "label": "Aether Lattice",
+  "metalFileBase": "K_AetherLattice",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_aether_lattice_display"
+  },
+  "controls": [
+    "scroll"
+  ],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

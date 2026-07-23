@@ -1,0 +1,51 @@
+{
+  "id": "gyroid",
+  "label": "Gyroid",
+  "metalFileBase": "K_Gyroid",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_gyroid_display"
+  },
+  "controls": [
+    "scroll"
+  ],
+  "params": [
+    {
+      "name": "uShellWidth",
+      "kind": "float",
+      "default": 0.34
+    },
+    {
+      "name": "uLevelSet",
+      "kind": "float",
+      "default": 0.35
+    },
+    {
+      "name": "uOrbitSpeed",
+      "kind": "float",
+      "default": 0.03
+    },
+    {
+      "name": "uDensityGain",
+      "kind": "float",
+      "default": 1
+    },
+    {
+      "name": "uCamDrift",
+      "kind": "float",
+      "default": 0.02
+    }
+  ],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}
