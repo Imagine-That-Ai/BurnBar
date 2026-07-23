@@ -21,7 +21,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@amplitude/analytics-browser": "2.44.1",
+    "@amplitude/analytics-browser": "2.45.4",
     "@chenglou/pretext": "0.0.8",
     "@radix-ui/react-dialog": "^1.1.6",
     "@radix-ui/react-slot": "^1.1.2",
