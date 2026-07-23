@@ -18,11 +18,10 @@ private const val LOG_CHALLENGE_ID_DIGEST_LENGTH = 16
  * One-way digest used so logs can correlate challenge failures without ever
  * writing any portion of the raw challenge identifier to the log stream.
  */
-private fun challengeIdLogDigest(challengeId: String): String =
-    MessageDigest.getInstance("SHA-256")
-        .digest(challengeId.toByteArray(Charsets.UTF_8))
-        .joinToString("") { "%02x".format(it) }
-        .take(LOG_CHALLENGE_ID_DIGEST_LENGTH)
+private fun challengeIdLogDigest(challengeId: String): String = MessageDigest.getInstance("SHA-256")
+    .digest(challengeId.toByteArray(Charsets.UTF_8))
+    .joinToString("") { "%02x".format(it) }
+    .take(LOG_CHALLENGE_ID_DIGEST_LENGTH)
 
 internal fun BurnBarApplication.installComputerUseSessionGrantReceiver() {
     ForegroundFragmentActivityTracker.install(this)
