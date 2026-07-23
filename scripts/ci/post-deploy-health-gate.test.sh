@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+mkdir -p "$TMP/bin"
+
+cat > "$TMP/bin/firebase" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' '{"result":[]}'
+EOF
+cat > "$TMP/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+url=""
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    -o) output="$2"; shift 2 ;;
+    -w) shift 2 ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+if [[ "$url" == */healthLive ]]; then
+  cp "$HEALTH_TEST_LIVE" "$output"
+else
+  cp "$HEALTH_TEST_READY" "$output"
+fi
+printf '200'
+EOF
+chmod +x "$TMP/bin/firebase" "$TMP/bin/curl"
+
+commit="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+repository="https://github.com/Imagine-That-Ai/BurnBar"
+cat > "$TMP/live.json" <<EOF
+{"status":"alive","license":"AGPL-3.0-only","source":{"repository":"$repository","commit":"$commit","correspondingSource":"https://burnbar.ai/legal/source"}}
+EOF
+cat > "$TMP/ready.json" <<EOF
+{"status":"ready","version":"v1.2.3","license":"AGPL-3.0-only","source":{"repository":"$repository","commit":"$commit","correspondingSource":"https://burnbar.ai/legal/source"},"sentry":{"enabled":true,"environment":"production"}}
+EOF
+
+run_gate() {
+  PATH="$TMP/bin:$PATH" \
+  HEALTH_TEST_LIVE="$TMP/live.json" \
+  HEALTH_TEST_READY="$TMP/ready.json" \
+  FUNCTIONS_HEALTH_LIVE_URL="https://example.test/healthLive" \
+  FUNCTIONS_HEALTH_READY_URL="https://example.test/healthReady" \
+  HEALTH_GATE_RETRIES=1 \
+  HEALTH_GATE_SLEEP_SEC=0 \
+  HEALTH_GATE_REQUIRE_SENTRY=1 \
+  HEALTH_GATE_EXPECTED_SOURCE_COMMIT="$1" \
+  HEALTH_GATE_EXPECTED_VERSION=v1.2.3 \
+  DEPLOY_TAG=v1.2.3 \
+  DEPLOY_HEALTH_JSON="$2" \
+    bash "$ROOT/scripts/ci/post-deploy-health-gate.sh"
+}
+
+run_gate "$commit" "$TMP/deploy-health.json" >/dev/null
+test -s "$TMP/deploy-health.json"
+jq -e --arg commit "$commit" '
+  .tag == "v1.2.3"
+  and .healthLive.source.commit == $commit
+  and .healthReady.source.commit == $commit
+  and .healthReady.version == "v1.2.3"
+' "$TMP/deploy-health.json" >/dev/null
+
+rm -f "$TMP/stale-health.json"
+if run_gate "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" "$TMP/stale-health.json" >/dev/null 2>&1; then
+  echo "expected stale deployed commit to fail" >&2
+  exit 1
+fi
+test ! -e "$TMP/stale-health.json"
+
+echo "post-deploy health identity tests passed"

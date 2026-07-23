@@ -5,6 +5,8 @@ set -euo pipefail
 
 RETRIES="${HOSTING_SMOKE_RETRIES:-8}"
 SLEEP_SEC="${HOSTING_SMOKE_SLEEP_SEC:-10}"
+DEPLOYMENT_IDENTITY_FILE=""
+trap '[[ -z "$DEPLOYMENT_IDENTITY_FILE" ]] || rm -f "$DEPLOYMENT_IDENTITY_FILE"' EXIT
 
 check_target() {
   local label="$1"
@@ -40,8 +42,55 @@ check_target() {
   return 1
 }
 
+check_console_deployment_identity() {
+  local url="$1"
+  local expected_commit="$2"
+  local expected_tag="$3"
+  local attempt=1
+  local body_file http_code
+  local -a tag_args=()
+  body_file="$(mktemp)"
+  trap 'rm -f "$body_file"' RETURN
+
+  while [[ "$attempt" -le "$RETRIES" ]]; do
+    : > "$body_file"
+    # The identity must come directly from the canonical Console URL. Following
+    # redirects would allow another origin to satisfy the deployment proof.
+    http_code="$(curl -sS -o "$body_file" -w "%{http_code}" "$url" 2>/dev/null || echo "000")"
+    tag_args=()
+    if [[ -n "$expected_tag" ]]; then
+      tag_args=(--tag "$expected_tag")
+    fi
+    if [[ "$http_code" == "200" ]] && node scripts/ci/create-domain-core-deployment-identity.mjs \
+      --consumer console \
+      --commit "$expected_commit" \
+      "${tag_args[@]}" \
+      --verify "$body_file" >/dev/null 2>&1; then
+      DEPLOYMENT_IDENTITY_FILE="$(mktemp)"
+      cp "$body_file" "$DEPLOYMENT_IDENTITY_FILE"
+      echo "OK console deployment identity: ${url}"
+      return 0
+    fi
+    echo "waiting for console deployment identity ${url} (HTTP ${http_code}, attempt ${attempt}/${RETRIES})..." >&2
+    sleep "$SLEEP_SEC"
+    attempt=$((attempt + 1))
+  done
+
+  echo "FAIL: console deployment identity does not match commit ${expected_commit} and tag ${expected_tag:-<none>}" >&2
+  echo "Body snippet:" >&2
+  head -c 400 "$body_file" >&2 || true
+  echo >&2
+  return 1
+}
+
 check_target "marketing" "${OPENBURNBAR_MARKETING_URL:-https://burnbar.ai/}" "${OPENBURNBAR_MARKETING_MARKER:-BurnBar}"
 check_target "console" "${OPENBURNBAR_CONSOLE_URL:-https://app.burnbar.ai/}" "${OPENBURNBAR_CONSOLE_MARKER:-BurnBar}"
+if [[ -n "${HOSTING_SMOKE_EXPECTED_COMMIT:-}" ]]; then
+  check_console_deployment_identity \
+    "${OPENBURNBAR_CONSOLE_IDENTITY_URL:-https://app.burnbar.ai/domain-core-deployment-identity.json}" \
+    "$HOSTING_SMOKE_EXPECTED_COMMIT" \
+    "${HOSTING_SMOKE_EXPECTED_TAG:-}"
+fi
 
 # Feed enforcement knob (OPENBURNBAR_REQUIRE_DOWNLOAD_FEED):
 #   warn (default) — a 404 (no published release/asset yet) emits a GitHub
@@ -115,6 +164,39 @@ appcast_file="$(printf "%s\n" "$download_values" | sed -n "4p")"
 if [[ -n "$update_base_url" ]]; then
   check_download_artifact "mac latest feed" "$update_base_url/$latest_file" '"sparkleEdSignature"[[:space:]]*:[[:space:]]*"[A-Za-z0-9+/=]+'
   check_download_artifact "mac appcast" "$update_base_url/$appcast_file" 'sparkle:edSignature="'
+fi
+
+if [[ -n "${CONSOLE_DEPLOY_HEALTH_JSON:-}" ]]; then
+  if [[ -z "${HOSTING_SMOKE_EXPECTED_COMMIT:-}" || -z "${HOSTING_SMOKE_EXPECTED_TAG:-}" || -z "$DEPLOYMENT_IDENTITY_FILE" ]]; then
+    echo "FAIL: console deploy health evidence requires an exact stable tag, commit, and verified live identity." >&2
+    exit 1
+  fi
+  python3 - \
+    "$DEPLOYMENT_IDENTITY_FILE" \
+    "$CONSOLE_DEPLOY_HEALTH_JSON" \
+    "$HOSTING_SMOKE_EXPECTED_COMMIT" \
+    "$HOSTING_SMOKE_EXPECTED_TAG" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+identity_path, output_path, commit, tag = sys.argv[1:]
+identity = json.loads(Path(identity_path).read_text(encoding="utf-8"))
+output = {
+    "schemaVersion": 1,
+    "project": "burnbar",
+    "tag": tag,
+    "commit": commit,
+    "checks": {
+        "marketing": "ok",
+        "console": "ok",
+        "deploymentIdentity": "ok",
+    },
+    "deploymentIdentity": identity,
+}
+Path(output_path).write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")
+PY
+  echo "Wrote ${CONSOLE_DEPLOY_HEALTH_JSON}"
 fi
 
 echo "PASS: hosting smoke"

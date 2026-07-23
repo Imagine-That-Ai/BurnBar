@@ -40,6 +40,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Signed Shared Rust Functions deployment evidence** — stable tag deployments
+  now publish an immutable, deterministic Functions receipt when the public
+  production pricing profile selects Rust, and only after the
+  production health gate passes, with a custom GitHub attestation binding the
+  exact release commit, tag, artifact digest, and Rust-authoritative pricing
+  profile. Reruns verify existing assets and refuse non-identical replacement.
+- **Signed Shared Rust Console deployment evidence** — stable Hosting tags now
+  embed and directly verify an exact Console deployment identity before
+  publishing an immutable CloudVault receipt and custom GitHub attestation.
+  The proof binds the live profile, repository, release commit, tag, and
+  artifact digest; redirects, stale identities, prerelease tags, and asset
+  replacement fail closed.
 - **Launch-readiness hardening** — added durable account-erasure barriers,
   resumable oldest-first reconciliation with poison-record quarantine, and
   privacy-safe retained audit receipts across Functions, Firestore, and Storage.

@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openburnbar.dev/schemas/domain-core-deployment-receipt.schema.json",
+  "title": "OpenBurnBar Shared Rust Deployment Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "consumer",
+    "artifactKind",
+    "target",
+    "release",
+    "deployment"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "consumer": { "enum": ["console", "functions"] },
+    "artifactKind": {
+      "enum": ["console-deployment-receipt", "functions-deployment-receipt"]
+    },
+    "target": {
+      "enum": ["firebase-hosting-production", "firebase-functions-production"]
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "tag", "commit", "publicProfileSha256"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$"
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?$"
+        },
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "publicProfileSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "project",
+        "environment",
+        "status",
+        "healthChecks"
+      ],
+      "properties": {
+        "provider": { "enum": ["firebase-hosting", "firebase-functions"] },
+        "project": { "const": "burnbar" },
+        "environment": { "const": "production" },
+        "status": { "const": "healthy" },
+        "healthChecks": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "healthLive",
+              "healthReady",
+              "marketing",
+              "console",
+              "deploymentIdentity"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 2,
+          "maxItems": 3
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "consumer": { "const": "console" } } },
+      "then": {
+        "properties": {
+          "artifactKind": { "const": "console-deployment-receipt" },
+          "target": { "const": "firebase-hosting-production" },
+          "deployment": {
+            "properties": {
+              "provider": { "const": "firebase-hosting" },
+              "healthChecks": {
+                "prefixItems": [
+                  { "const": "marketing" },
+                  { "const": "console" },
+                  { "const": "deploymentIdentity" }
+                ],
+                "items": false,
+                "minItems": 3,
+                "maxItems": 3
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "consumer": { "const": "functions" } } },
+      "then": {
+        "properties": {
+          "artifactKind": { "const": "functions-deployment-receipt" },
+          "target": { "const": "firebase-functions-production" },
+          "deployment": {
+            "properties": {
+              "provider": { "const": "firebase-functions" },
+              "healthChecks": {
+                "prefixItems": [
+                  { "const": "healthLive" },
+                  { "const": "healthReady" }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
