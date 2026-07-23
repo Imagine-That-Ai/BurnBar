@@ -354,6 +354,16 @@ fn bounded_portal_probe_error(error: impl std::fmt::Display) -> String {
     normalized.chars().take(160).collect()
 }
 
+fn read_bounded_child_stdout(child: &mut Child) -> String {
+    const MAX_OUTPUT_BYTES: u64 = 64 * 1024;
+    let mut bytes = Vec::new();
+    if let Some(stdout) = child.stdout.as_mut() {
+        let mut bounded = stdout.take(MAX_OUTPUT_BYTES);
+        let _ = bounded.read_to_end(&mut bytes);
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
 fn probe_wayland_global_shortcuts_portal() -> (bool, Option<String>) {
     if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
         return (
@@ -391,10 +401,10 @@ fn probe_wayland_global_shortcuts_portal() -> (bool, Option<String>) {
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                let output = child
-                    .wait_with_output()
-                    .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
-                    .unwrap_or_default();
+                // `try_wait` has already reaped the child on Unix. Read the
+                // bounded pipe directly instead of calling wait_with_output a
+                // second time, which can lose the introspection response.
+                let output = read_bounded_child_stdout(&mut child);
                 if status.success() && wayland_global_shortcuts_portal_present(&output) {
                     return (
                         true,
