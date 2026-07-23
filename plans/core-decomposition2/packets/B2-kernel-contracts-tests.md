@@ -1,11 +1,47 @@
 # Packet B2: move KernelContracts-owned tests → OpenBurnBarKernelContractsTests (19 files)
-STATE: READY  LANE: Test-decomposition (WS-B)  DEPENDS-ON: B0
+STATE: EXECUTED (branch core-decomp2/b2-kernel-contracts-tests, base core-decomp2/b1-kernel-models-tests)
+LANE: Test-decomposition (WS-B)  DEPENDS-ON: B0
 Shared conventions + reassignment valve: see B0-mapping.md.
 
-Destination: `OpenBurnBarCore/Tests/OpenBurnBarKernelContractsTests/` (target deps at B0:
-OpenBurnBarKernelContracts, OpenBurnBarKernelModels, OpenBurnBarKernelCrypto,
-OpenBurnBarKernelPlatform — already covers every cross-sub hit below). Delete
-`PlaceholderTests.swift` here.
+## EXECUTION NOTES
+- All 19 files moved (no reassignment valve fired). Pure `git mv` + import rewrites — no
+  test logic changed (every renamed file's only content delta is the import block).
+- Default rewrite applied to all 19: `@testable import OpenBurnBarCore` →
+  `@testable import OpenBurnBarKernelContracts`.
+- KernelPlatform plain-import deviations (the card's 4/10/8-hit files) — CONFIRMED real by the
+  compiler and added as plain `import OpenBurnBarKernelPlatform` (the referenced symbols are
+  PUBLIC value types, so plain import, not @testable):
+  - `OpenBurnBarContractsToolBridgeTests`: BurnBar{Client,Session,Run}ID, BurnBarJSONValue.
+  - `OpenBurnBarMissionControlContractsTests`: BurnBar{Client,Session,Run,Mission,MissionPacket,
+    MissionResult,Question,Followup,SimulatorRun,ControllerEvent,ProjectionCheckpoint}ID.
+  - `OpenBurnBarMissionControlMissionsContractsTests`: BurnBar{Run,Mission,MissionPacket,
+    MissionResult,Question,Followup,SimulatorRun,ControllerEvent}ID.
+  All eight ID families + BurnBarJSONValue are declared in `OpenBurnBarKernelPlatform`
+  (Sources/OpenBurnBarKernelPlatform/OpenBurnBar{Identifiers,JSONValue}.swift), verified by
+  defining-file grep. The KernelContractsTests target already declared the KernelPlatform dep at
+  B0, so NO Package.swift dep edit was needed — the plain imports resolve on the existing
+  (acyclic) edge.
+- The card's "weak sibling hits" (OpenBurnBarMissionControlContractsTests: Insights 2 +
+  TextExpansion 1; ProviderCredentialSlotRoutingPolicyTests: TextExpansion 1) proved to be
+  string-literal false positives: the cross-platform KernelContractsTests target takes NO
+  Apple-only Insights/TextExpansion dependency and every moved file compiles green without one.
+- HermesSquare{Motion,PhaseC,PhaseD} (Hermes-NAMED, Contracts-owned) moved cleanly. The harness
+  Hermes-lane filter was already relaxed `OpenBurnBarCoreTests/Hermes` → `Hermes` by B1
+  (openburnbar-pr-harness.yml line ~844), so those classes are still matched from their new
+  KernelContractsTests home — NO workflow edit needed in B2.
+- No Package.swift target edit at all: the KernelContractsTests target's deps (KernelContracts,
+  KernelModels, KernelCrypto, KernelPlatform), exclude (none — none of the 19 are file-excluded
+  off-Apple and OpenBurnBarKernelContracts is a cross-platform module), and resources (none) were
+  all correct as scaffolded at B0.
+- `PlaceholderTests.swift` deleted (first real files landed).
+- coretests-file baseline NOT ratcheted here. The card's close-out said
+  `check-coretests-file-budget.sh --update`, but the WS-B integrator ratchets
+  `budgets/coretests-file-baseline.json` ONCE after the whole B-chain lands (keeps the baseline
+  stable for stacked B2..B8). The gate prints a non-fatal NOTICE (19 removed, 0 new) and passes.
+
+## Fixtures
+None. Verified: zero `Bundle.module` / `Bundle(for:` references across the 19 files at move
+time; nothing co-moved.
 
 ## git mv list (flat)
 BurnBarCustomModelTests.swift, BurnBarModelAliasContractTests.swift,
@@ -18,22 +54,12 @@ OpenBurnBarContractsToolBridgeTests.swift, OpenBurnBarMissionControlContractsTes
 OpenBurnBarMissionControlMissionsContractsTests.swift, OpenBurnBarProtocolVersionTests.swift,
 OpenBurnBarRunStateMachineTests.swift, ProviderCredentialSlotRoutingPolicyTests.swift
 
-## Expected @testable rewrite per file
-Default: `@testable import OpenBurnBarCore` → `@testable import OpenBurnBarKernelContracts`.
-Deviations:
-- OpenBurnBarContractsToolBridgeTests / OpenBurnBarMissionControlContractsTests /
-  OpenBurnBarMissionControlMissionsContractsTests: heavy KernelPlatform hits (4/10/8) — add
-  `import OpenBurnBarKernelPlatform` (or @testable if internals are reached).
-- Weak sibling hits (OpenBurnBarMissionControlContractsTests: Insights 2 + TextExpansion 1;
-  ProviderCredentialSlotRoutingPolicyTests: TextExpansion 1): likely string-literal false
-  positives — Insights/TextExpansion are Apple-only and this target is cross-platform; use the
-  reassignment valve if the symbols are real.
-- HermesSquare{Motion,PhaseC,PhaseD}: Hermes-NAMED but Contracts-owned types; moving them out of
-  CoreTests shrinks the harness Hermes-lane filter match — covered by the B1/B3 filter relax
-  (`OPENBURNBAR_CORE_SWIFT_FILTER` → `Hermes`); coordinate whichever lands first.
-
-## Fixtures
-None referenced by these 19 files (verify with a `Bundle.module` grep at move time).
+## @testable rewrite per file (as executed)
+Default: `@testable import OpenBurnBarKernelContracts` (all 19).
+Plus plain `import OpenBurnBarKernelPlatform` on the 3 mission-control/tool-bridge files
+enumerated in EXECUTION NOTES.
 
 ## Close-out
-Delete PlaceholderTests.swift; `check-coretests-file-budget.sh --update`; full V-list.
+Deleted PlaceholderTests.swift; baseline NOT `--update`d (integrator ratchets — see notes);
+full V-list green (see PR body). Test count preserved: 160 test-method decls across the 19 files,
+identical before (in OpenBurnBarCoreTests) and after (in OpenBurnBarKernelContractsTests).

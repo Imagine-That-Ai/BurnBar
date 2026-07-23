@@ -1,0 +1,315 @@
+import XCTest
+import Foundation
+import OpenBurnBarKernelModels
+@testable import OpenBurnBarKernelCrypto
+
+final class CLIAgentSessionCodecTests: XCTestCase {
+
+    func test_roundTrip_preservesEveryField() throws {
+        let started = Date(timeIntervalSince1970: 1_730_000_000)
+        let updated = started.addingTimeInterval(60)
+        let endedAt = started.addingTimeInterval(120)
+        let record = CLIAgentSessionRecord(
+            id: "thread-1",
+            agent: .codex,
+            sourceKind: .archivedLog,
+            title: "Refactor login flow",
+            preview: "Final answer text…",
+            modelName: "gpt-5.5",
+            workspaceLabel: "BurnBar",
+            createdAt: started,
+            updatedAt: updated,
+            endedAt: endedAt,
+            messages: [
+                CLIAgentMessage(
+                    id: "m-1",
+                    role: .user,
+                    text: "Refactor the login flow.",
+                    timestamp: started
+                ),
+                CLIAgentMessage(
+                    id: "m-2",
+                    role: .assistant,
+                    text: "Sure — I'll read the auth files first.",
+                    timestamp: updated,
+                    toolUses: [
+                        CLIAgentToolUse(
+                            id: "t-1",
+                            name: "Read",
+                            status: "done",
+                            detail: "AgentLens/Services/AuthRepository.swift",
+                            startedAt: updated
+                        )
+                    ]
+                )
+            ],
+            tokenUsage: CLIAgentTokenUsage(inputTokens: 320, outputTokens: 1200),
+            resumeHandle: CLIAgentResumeHandle(
+                providerSessionID: "codex-thread-1",
+                projectLabel: "BurnBar",
+                commandHint: "codex resume codex-thread-1",
+                canResume: true,
+                canFork: true,
+                canForward: true
+            ),
+            encryptedTranscriptAvailable: true
+        )
+
+        let encoded = CLIAgentSessionCodec.encode(record)
+        let decoded = try XCTUnwrap(
+            CLIAgentSessionCodec.decode(documentID: record.id, data: encoded)
+        )
+
+        XCTAssertEqual(decoded.id, record.id)
+        XCTAssertEqual(decoded.agent, .codex)
+        XCTAssertEqual(decoded.sourceKind, .archivedLog)
+        XCTAssertEqual(decoded.title, "Refactor login flow")
+        XCTAssertEqual(decoded.preview, "Final answer text…")
+        XCTAssertEqual(decoded.modelName, "gpt-5.5")
+        XCTAssertEqual(decoded.workspaceLabel, "BurnBar")
+        XCTAssertEqual(decoded.createdAt.timeIntervalSince1970, started.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(decoded.updatedAt.timeIntervalSince1970, updated.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(decoded.endedAt?.timeIntervalSince1970, endedAt.timeIntervalSince1970)
+        XCTAssertEqual(decoded.messages.count, 2)
+        XCTAssertEqual(decoded.messages[1].toolUses.first?.name, "Read")
+        XCTAssertEqual(decoded.messages[1].toolUses.first?.detail, "AgentLens/Services/AuthRepository.swift")
+        XCTAssertEqual(decoded.tokenUsage?.inputTokens, 320)
+        XCTAssertEqual(decoded.tokenUsage?.outputTokens, 1200)
+        XCTAssertEqual(decoded.resumeHandle?.providerSessionID, "codex-thread-1")
+        XCTAssertEqual(decoded.resumeHandle?.projectLabel, "BurnBar")
+        XCTAssertEqual(decoded.resumeHandle?.commandHint, "codex resume codex-thread-1")
+        XCTAssertEqual(decoded.resumeHandle?.canResume, true)
+        XCTAssertTrue(decoded.encryptedTranscriptAvailable)
+    }
+
+    func test_sealedRoundTrip_bindsPayloadToCliSessionPath() throws {
+        let uid = "user-1"
+        let documentID = "archive_codex_thread_123"
+        let vaultKey = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
+        let record = CLIAgentSessionRecord(
+            id: "archive:codex:thread-123",
+            agent: .codex,
+            sourceKind: .archivedLog,
+            title: "Sensitive archived session",
+            preview: "Private preview",
+            createdAt: Date(timeIntervalSince1970: 1_730_000_000),
+            updatedAt: Date(timeIntervalSince1970: 1_730_000_060),
+            messages: [
+                CLIAgentMessage(
+                    id: "m-1",
+                    role: .assistant,
+                    text: "Private transcript",
+                    timestamp: Date(timeIntervalSince1970: 1_730_000_060)
+                )
+            ],
+            encryptedTranscriptAvailable: true
+        )
+
+        let sealed = try CLIAgentSessionCodec.encodeSealed(
+            record,
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID,
+            uid: uid,
+            documentID: documentID
+        )
+
+        XCTAssertEqual(sealed["id"] as? String, documentID)
+        let envelope = try XCTUnwrap(sealed["sealedPayload"] as? [String: Any])
+        XCTAssertEqual(
+            envelope["aad"] as? String,
+            "OpenBurnBar-CloudVault-aad-v2|\(uid)|cli_sessions|\(documentID)|sealedPayload|2|sealedPayload"
+        )
+
+        let decoded = try XCTUnwrap(
+            CLIAgentSessionCodec.decodeSealed(
+                documentID: documentID,
+                uid: uid,
+                data: sealed,
+                vaultKey: vaultKey
+            )
+        )
+        XCTAssertEqual(decoded.id, record.id)
+        XCTAssertEqual(decoded.messages.first?.text, "Private transcript")
+        XCTAssertNil(
+            CLIAgentSessionCodec.decodeSealed(
+                documentID: "archive_codex_thread_relocated",
+                uid: uid,
+                data: sealed,
+                vaultKey: vaultKey
+            )
+        )
+    }
+
+    func test_decodeSealed_opensLegacyGlobalAADWhenPathContextProvided() throws {
+        let uid = "user-1"
+        let documentID = "session-legacy"
+        let vaultKey = try CloudVaultCrypto.generateVaultKey()
+        let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: vaultKey)
+        let record = CLIAgentSessionRecord(
+            id: documentID,
+            agent: .claude,
+            title: "Legacy global AAD",
+            preview: "Legacy preview",
+            createdAt: Date(timeIntervalSince1970: 1_730_000_000),
+            updatedAt: Date(timeIntervalSince1970: 1_730_000_030),
+            messages: [
+                CLIAgentMessage(
+                    id: "m-1",
+                    role: .assistant,
+                    text: "Legacy payload",
+                    timestamp: Date(timeIntervalSince1970: 1_730_000_030)
+                )
+            ]
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let payload = try encoder.encode(record)
+        let legacyEnvelope = try CloudVaultCrypto.sealPayload(
+            payload,
+            keyData: vaultKey,
+            vaultKeyID: vaultKeyID
+        )
+        let data = [
+            "sealedPayload": CloudVaultCrypto.sealedPayloadDictionary(legacyEnvelope)
+        ]
+
+        let decoded = try XCTUnwrap(
+            CLIAgentSessionCodec.decodeSealed(
+                documentID: documentID,
+                uid: uid,
+                data: data,
+                vaultKey: vaultKey
+            )
+        )
+        XCTAssertEqual(decoded.id, documentID)
+        XCTAssertEqual(decoded.messages.first?.text, "Legacy payload")
+    }
+
+    func test_decode_returnsNilForFutureSchemaVersion() {
+        let payload: [String: Any] = [
+            "id": "x",
+            "agent": "codex",
+            "title": "future schema",
+            "preview": "",
+            "createdAt": Date(),
+            "updatedAt": Date(),
+            "schemaVersion": CLIAgentSessionRecord.currentSchemaVersion + 1,
+            "messages": []
+        ]
+        XCTAssertNil(CLIAgentSessionCodec.decode(documentID: "x", data: payload))
+    }
+
+    func test_decode_returnsNilForUnknownAgent() {
+        let payload: [String: Any] = [
+            "id": "x",
+            "agent": "mysterynewagent",
+            "title": "",
+            "preview": "",
+            "createdAt": Date(),
+            "updatedAt": Date(),
+            "messages": []
+        ]
+        XCTAssertNil(CLIAgentSessionCodec.decode(documentID: "x", data: payload))
+    }
+
+    func test_decode_toleratesMissingOptionalFields() throws {
+        let payload: [String: Any] = [
+            "agent": "claude",
+            "createdAt": Date(),
+            "updatedAt": Date(),
+            "messages": []
+        ]
+        let decoded = try XCTUnwrap(
+            CLIAgentSessionCodec.decode(documentID: "fallback-id", data: payload)
+        )
+        XCTAssertEqual(decoded.id, "fallback-id")
+        XCTAssertEqual(decoded.title, "CLI session")
+        XCTAssertEqual(decoded.sourceKind, .liveChat)
+        XCTAssertEqual(decoded.preview, "")
+        XCTAssertNil(decoded.modelName)
+        XCTAssertNil(decoded.workspaceLabel)
+        XCTAssertNil(decoded.endedAt)
+        XCTAssertTrue(decoded.messages.isEmpty)
+        XCTAssertNil(decoded.tokenUsage)
+    }
+
+    func test_decodeMessage_returnsNilForMalformedRecord() {
+        let raw: [String: Any] = [
+            "id": "msg",
+            "text": "hi"
+        ]
+        XCTAssertNil(CLIAgentSessionCodec.decodeMessage(raw))
+    }
+
+    func test_encodeToolUse_omitsBlankDetailOnDecode() {
+        let tool = CLIAgentToolUse(
+            id: "t",
+            name: "Bash",
+            status: "done",
+            detail: "   ",
+            startedAt: Date()
+        )
+        let encoded = CLIAgentSessionCodec.encodeToolUse(tool)
+        let decoded = CLIAgentSessionCodec.decodeToolUse(encoded)
+        XCTAssertEqual(decoded?.id, "t")
+        XCTAssertNil(decoded?.detail)
+    }
+
+    func test_resumeHandle_roundTrip_omitsBlankOptionals() {
+        let handle = CLIAgentResumeHandle(
+            providerSessionID: "s1",
+            projectLabel: "   ",
+            commandHint: nil,
+            canResume: true,
+            canFork: false,
+            canForward: true
+        )
+        let encoded = CLIAgentSessionCodec.encodeResumeHandle(handle)
+        let decoded = CLIAgentSessionCodec.decodeResumeHandle(encoded)
+        XCTAssertEqual(decoded?.providerSessionID, "s1")
+        XCTAssertNil(decoded?.projectLabel)
+        XCTAssertNil(decoded?.commandHint)
+        XCTAssertEqual(decoded?.canResume, true)
+        XCTAssertEqual(decoded?.canFork, false)
+        XCTAssertEqual(decoded?.canForward, true)
+    }
+
+    func test_assistantRuntimeMapping() {
+        XCTAssertEqual(CLIAgentRuntime(assistant: .codex), .codex)
+        XCTAssertEqual(CLIAgentRuntime(assistant: .claude), .claude)
+        XCTAssertEqual(CLIAgentRuntime(assistant: .openClaw), .openClaw)
+        XCTAssertEqual(CLIAgentRuntime(assistant: .droid), .droid)
+        XCTAssertEqual(CLIAgentRuntime(assistant: .forge), .forge)
+        XCTAssertNil(CLIAgentRuntime(assistant: .hermes))
+        XCTAssertNil(CLIAgentRuntime(assistant: .pi))
+    }
+
+    func test_cliAgentRelayChatRequestDefaultsToNativeChatPresentationMode() throws {
+        let legacyJSON = """
+        {
+          "runtime": "codex",
+          "prompt": "hello",
+          "clientThreadID": "thread-1"
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(CLIAgentRelayChatRequest.self, from: legacyJSON)
+
+        XCTAssertEqual(decoded.presentationMode, .nativeChat)
+    }
+
+    func test_cliAgentRelayChatRequestRoundTripsVisibleCLIPresentationMode() throws {
+        let request = CLIAgentRelayChatRequest(
+            runtime: "claude",
+            prompt: "show this on the Mac",
+            clientThreadID: "thread-2",
+            presentationMode: .macVisibleCLI
+        )
+
+        let encoded = try JSONEncoder().encode(request)
+        let decoded = try JSONDecoder().decode(CLIAgentRelayChatRequest.self, from: encoded)
+
+        XCTAssertEqual(decoded.presentationMode, .macVisibleCLI)
+    }
+}

@@ -105,7 +105,7 @@ if (reverse) {
 // ---- G6: transport-binding AAD vector (2 copies + shape) --------------------
 const transport = requireByteIdenticalCopies("transport-binding AAD fixture", [
   "packages/signal-envelope-contracts/fixtures/transport-binding-aad-vectors.json",
-  "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Fixtures/SignalTransportBindingAADVectors.json",
+  "OpenBurnBarCore/Tests/OpenBurnBarKernelCryptoTests/Fixtures/SignalTransportBindingAADVectors.json",
 ]);
 if (transport) {
   if (transport.prefix !== "OpenBurnBar-Signal-AAD-v1|") {
