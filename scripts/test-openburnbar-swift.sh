@@ -21,6 +21,13 @@ prepare_libsignal_ffi() {
   local auth_messages_service="${libsignal_dir}/swift/Sources/LibSignalClient/chat/AuthMessagesService.swift"
   local host_target
 
+  # This compatibility rewrite is required even when the XCFramework cache
+  # hits: the cached binary does not include the SwiftPM source patch, and a
+  # warm cache must behave exactly like a cold build.
+  if [[ -f "${auth_messages_service}" ]]; then
+    perl -0pi -e 's/\bextendLifetime\(([^)]+)\)/withExtendedLifetime($1) {}/g' "${auth_messages_service}"
+  fi
+
   if [[ -d "${macos_xcframework}" || -d "${legacy_xcframework}" ]]; then
     echo "Using prebuilt Signal FFI XCFramework."
     return
@@ -35,10 +42,6 @@ prepare_libsignal_ffi() {
   if [[ ! -x "${libsignal_build_script}" ]]; then
     echo "Missing ${libsignal_build_script}; initialize Vendor/libsignal before running Swift tests." >&2
     exit 1
-  fi
-
-  if [[ -f "${auth_messages_service}" ]]; then
-    perl -0pi -e 's/\bextendLifetime\(([^)]+)\)/withExtendedLifetime($1) {}/g' "${auth_messages_service}"
   fi
 
   if ! command -v protoc >/dev/null 2>&1; then
