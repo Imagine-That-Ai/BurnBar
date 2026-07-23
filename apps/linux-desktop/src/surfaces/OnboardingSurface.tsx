@@ -52,6 +52,30 @@ function providerRouteStatus(
     : 'Provider route is not verified by the daemon. Fix provider authentication, then retry verification.';
 }
 
+/**
+ * A mutation response is only a storage receipt when it names the requested
+ * provider and the requested enabled slot. Counting any slot would allow a
+ * stale config snapshot (or a response for another account) to create a false
+ * onboarding success state.
+ */
+function credentialReadbackMatches(
+  snapshot: ConfigSnapshot,
+  providerID: string,
+  label: string
+): boolean {
+  const normalizedProviderID = providerID.trim().toLowerCase();
+  const normalizedLabel = label.trim().toLowerCase();
+  if (!normalizedProviderID || !normalizedLabel) return false;
+  const provider = snapshot.providers?.find((candidate) =>
+    candidate.providerID.trim().toLowerCase() === normalizedProviderID
+  );
+  return provider?.credentialSlots.some((slot) =>
+    slot.slotID.trim().length > 0
+    && slot.label.trim().toLowerCase() === normalizedLabel
+    && slot.isEnabled === true
+  ) === true;
+}
+
 type CloudAuthPhase = 'unavailable' | 'signed-out' | 'authorizing' | 'awaiting-device-approval' | 'active';
 
 function cloudAuthPhase(status: AccountStatus | null): CloudAuthPhase {
@@ -676,9 +700,8 @@ export function OnboardingSurface() {
         apiKey,
         isEnabled: true
       });
-      const stored = next.providers?.find((provider) => provider.providerID === providerID)?.credentialSlots.length ?? 0;
-      if (stored === 0) {
-        setProviderStatus('The daemon accepted the request but did not report a credential slot. Provider route remains unverified.');
+      if (!credentialReadbackMatches(next, providerID, label)) {
+        setProviderStatus('The daemon did not return the requested enabled credential slot. Provider route remains unverified; retry storage.');
         return;
       }
       const refreshed = await loadProviderCatalog();

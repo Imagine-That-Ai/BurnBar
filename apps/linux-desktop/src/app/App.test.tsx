@@ -455,7 +455,10 @@ describe('App shell', () => {
         }
       ]);
     const providerCredentialSlotUpsert = vi.fn().mockResolvedValue({
-      providers: [{ providerID: 'codex', credentialSlots: [{ slotID: 'primary' }] }]
+      providers: [{
+        providerID: 'codex',
+        credentialSlots: [{ slotID: 'primary', label: 'Primary', isEnabled: true, status: 'stored' }]
+      }]
     });
     useShellStore.setState({
       bridge: { onboardingSnapshot, providerCatalog, providerCredentialSlotUpsert } as unknown as LinuxShellBridge,
@@ -505,7 +508,10 @@ describe('App shell', () => {
         }
       ]);
     const providerCredentialSlotUpsert = vi.fn().mockResolvedValue({
-      providers: [{ providerID: 'codex', credentialSlots: [{ slotID: 'primary' }] }]
+      providers: [{
+        providerID: 'codex',
+        credentialSlots: [{ slotID: 'primary', label: 'Primary', isEnabled: true, status: 'stored' }]
+      }]
     });
     useShellStore.setState({
       bridge: { onboardingSnapshot, providerCatalog, providerCredentialSlotUpsert } as unknown as LinuxShellBridge,
@@ -522,6 +528,40 @@ describe('App shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Verify provider route' }));
     expect(await screen.findByText(/Provider route verified by the daemon/i)).toBeTruthy();
     expect(providerCatalog).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not treat a stale or unrelated credential slot as a successful provider write', async () => {
+    const initial = {
+      ...defaultLinuxOnboardingSnapshot(),
+      currentStepID: 'provider_paths' as const,
+      privacyChoices: { telemetryEnabled: false, cloudSyncEnabled: false },
+      steps: defaultLinuxOnboardingSnapshot().steps.map((step) =>
+        step.id === 'provider_paths' ? { ...step, state: 'pending' as const } : { ...step, state: 'verified' as const }
+      )
+    };
+    const providerCatalog = vi.fn().mockResolvedValue([
+      { id: 'codex', label: 'Codex', accountLabel: 'No connected account', quotaBuckets: [] }
+    ]);
+    const providerCredentialSlotUpsert = vi.fn().mockResolvedValue({
+      providers: [{
+        providerID: 'codex',
+        credentialSlots: [{ slotID: 'old', label: 'Legacy', isEnabled: true, status: 'stored' }]
+      }]
+    });
+    useShellStore.setState({
+      bridge: { onboardingSnapshot: vi.fn().mockResolvedValue(initial), providerCatalog, providerCredentialSlotUpsert } as unknown as LinuxShellBridge,
+      bridgeReady: true,
+      fixtureMode: false
+    });
+
+    render(<OnboardingSurface />);
+    expect(await screen.findByRole('heading', { name: 'Connect a provider' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-test-secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Store credential securely' }));
+
+    expect(await screen.findByText(/did not return the requested enabled credential slot/i)).toBeTruthy();
+    expect(providerCatalog).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem('openburnbar.linux.onboarding.cache.v2') ?? '').not.toContain('sk-test-secret');
   });
 
   it('ignores stale provider catalog responses after a newer onboarding retry', async () => {
