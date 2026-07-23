@@ -7,6 +7,7 @@ const stylesDir = path.dirname(fileURLToPath(import.meta.url));
 const appCss = fs.readFileSync(path.join(stylesDir, 'app.css'), 'utf8');
 const tokensCss = fs.readFileSync(path.join(stylesDir, 'tokens.css'), 'utf8');
 const liquidGlassTokensCss = fs.readFileSync(path.join(stylesDir, 'liquid-glass-tokens.css'), 'utf8');
+const topChromeCss = fs.readFileSync(path.join(stylesDir, '../components/TopChrome.css'), 'utf8');
 const skinsCss = fs.readFileSync(path.join(stylesDir, 'skins.css'), 'utf8');
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(stylesDir, '../../package.json'), 'utf8')
@@ -70,6 +71,16 @@ describe('VAL-TOKENS design token contract', () => {
     expect(liquidGlassTokensCss).toContain(":root[data-glass-transparency='clearer']");
     expect(liquidGlassTokensCss).toContain('--glass-tint-base');
     expect(liquidGlassTokensCss).toContain('--glass-tint-elevated');
+  });
+
+  it('binds every dashboard layout to a ThemeGlassPalette role set', () => {
+    for (const layout of ['classic', 'aurora', 'nebula', 'constellation', 'cockpit', 'atelier']) {
+      expect(liquidGlassTokensCss).toContain(`:root[data-dashboard-glass='${layout}']`);
+    }
+    expect(topChromeCss).toContain('--glass-theme-wash-top');
+    expect(topChromeCss).toContain('--glass-theme-wash-bottom');
+    expect(topChromeCss).toContain('--glass-theme-rim');
+    expect(topChromeCss).toContain('--glass-theme-tint');
   });
 
   it('declares a dark native-control color scheme for WebKitGTK', () => {

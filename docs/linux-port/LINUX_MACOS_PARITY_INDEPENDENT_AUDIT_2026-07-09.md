@@ -2,7 +2,7 @@
 
 | Audit field | Value |
 |---|---|
-| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-22 UTC |
+| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-23 UTC |
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
@@ -139,6 +139,22 @@ This closes the Linux shell's source-level Sentry bootstrap gap. A configured
 production DSN, captured event, and release-environment receipt remain
 external evidence requirements; the strict ledger remains **0/40 product** and
 **0/7 environment**.
+
+### Linux per-layout ThemeGlassPalette — 2026-07-23
+
+The Linux shell now mirrors macOS `ThemeGlassPalette.glass(for:)` for all six
+dashboard layouts. `dashboardGlassPalette.ts` keeps the mapping total and
+typed, while the root `data-dashboard-glass` binding lets CSS resolve the
+semantic tint, wash-top, wash-bottom, and rim roles against the active skin.
+Top Chrome consumes those roles for its wash, selected-tab rim, icon tint, and
+focus glow, so changing layouts changes the glass identity without hard-coded
+component colors. The role mapping and CSS token contracts are covered by
+focused tests, and the existing reduced-transparency rules still override the
+glass surface itself.
+
+This closes the source-level per-layout glass palette gap. Installed visual
+comparison receipts across the compositor matrix are still required; the
+strict ledger remains **0/40 product** and **0/7 environment**.
 
 ## Integration closeout — 2026-07-21
 

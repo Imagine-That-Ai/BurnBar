@@ -22,6 +22,8 @@
   --macos-ember: #fa5053;
   --macos-amber: #ffa800;
   --macos-whimsy: #8b7fe8;
+  --macos-frost: #6fc2ff;
+  --macos-blaze: #e86100;
 
   /* Prefer macOS cool slate over editorial ink for the shell canvas */
   --color-ink-void: var(--macos-bg);
@@ -62,6 +64,13 @@
   --glass-tint-sunken: color-mix(in srgb, var(--macos-bg) var(--glass-tint-sunken-opacity), transparent);
   --glass-tint-clear: color-mix(in srgb, var(--macos-surface) var(--glass-tint-clear-opacity), transparent);
   --glass-tint-interactive: color-mix(in srgb, var(--macos-surface-elevated) var(--glass-tint-interactive-opacity), transparent);
+
+  /* Per-layout ThemeGlassPalette roles. The selected dashboard layout swaps
+   * these role bindings while the active skin continues to own base tokens. */
+  --glass-theme-tint: var(--macos-frost);
+  --glass-theme-wash-top: var(--macos-text);
+  --glass-theme-wash-bottom: var(--macos-frost);
+  --glass-theme-rim: var(--macos-frost);
 
   /* strokes */
   --glass-stroke: color-mix(in srgb, var(--macos-border) 65%, transparent);
@@ -133,6 +142,48 @@
   --color-ink-void: #040610;
   --color-ink-base: #040610;
   --color-ink-elevated: #0c1220;
+}
+
+:root[data-dashboard-glass='classic'] {
+  --glass-theme-tint: var(--macos-text);
+  --glass-theme-wash-top: var(--macos-text);
+  --glass-theme-wash-bottom: var(--macos-whimsy);
+  --glass-theme-rim: var(--macos-text);
+}
+
+:root[data-dashboard-glass='aurora'] {
+  --glass-theme-tint: var(--macos-amber);
+  --glass-theme-wash-top: var(--macos-ember);
+  --glass-theme-wash-bottom: var(--macos-amber);
+  --glass-theme-rim: var(--macos-amber);
+}
+
+:root[data-dashboard-glass='nebula'] {
+  --glass-theme-tint: var(--macos-whimsy);
+  --glass-theme-wash-top: var(--macos-whimsy);
+  --glass-theme-wash-bottom: var(--macos-ember);
+  --glass-theme-rim: var(--macos-whimsy);
+}
+
+:root[data-dashboard-glass='constellation'] {
+  --glass-theme-tint: var(--macos-frost);
+  --glass-theme-wash-top: var(--macos-whimsy);
+  --glass-theme-wash-bottom: var(--macos-frost);
+  --glass-theme-rim: var(--macos-frost);
+}
+
+:root[data-dashboard-glass='cockpit'] {
+  --glass-theme-tint: var(--macos-amber);
+  --glass-theme-wash-top: var(--macos-blaze);
+  --glass-theme-wash-bottom: var(--macos-amber);
+  --glass-theme-rim: var(--macos-blaze);
+}
+
+:root[data-dashboard-glass='atelier'] {
+  --glass-theme-tint: var(--macos-frost);
+  --glass-theme-wash-top: var(--macos-text);
+  --glass-theme-wash-bottom: var(--macos-frost);
+  --glass-theme-rim: var(--macos-frost);
 }
 
 /* User-controlled Liquid Glass material density. Reduce Transparency on the

@@ -46,6 +46,13 @@ removes identity and user-content fields. Focused Rust tests cover valid and
 invalid DSNs plus event and breadcrumb scrubbing. Production DSN configuration
 and live event receipts remain external release evidence.
 
+**Implementation checkpoint (2026-07-23, ThemeGlassPalette):** Linux now maps
+all six dashboard layouts to the macOS tint, wash, and rim roles through
+`apps/linux-desktop/src/dashboard/dashboardGlassPalette.ts`. The selected
+palette is bound to the document root and consumed by Top Chrome's wash,
+selected-tab rim, icon tint, and focus glow. Pure mapping tests and the CSS
+token contract pass; installed compositor visual comparisons remain required.
+
 ---
 
 ## 1. Current state snapshot
@@ -54,7 +61,7 @@ and live event receipts remain external release evidence.
 |------|--------------|-------------|---------|
 | Core / daemon | `OpenBurnBarDaemon/`, `OpenBurnBarCore/` | All RPC handlers implemented; POSIX HTTP gateway, inotify, Secret Service/KWallet, Avahi discovery, Linux security all in place. | Strong |
 | UI shell | `AgentLens/Views/`, `AgentLens/Theme/` | `apps/linux-desktop/` has W6 foundation + P01-P15 route surfaces. | Route parity exists, but macOS visual/interaction layer is missing. |
-| Design system | `AgentLens/Theme/DesignSystem.swift`, `LiquidGlass.swift`, `KernelBackdropView.swift` | Tokens + 2 skins + 32 kernels + CSS glass exist; user-controlled transparency presets and the OS Reduce Transparency fallback are implemented. | Missing `sidebarThemeGlass`, Pro theme, wallpaper, live wallpaper panels, pet renderer, swarm customization. |
+| Design system | `AgentLens/Theme/DesignSystem.swift`, `LiquidGlass.swift`, `KernelBackdropView.swift` | Tokens + 2 skins + 32 kernels + CSS glass exist; user-controlled transparency presets, OS Reduce Transparency fallback, and the six-layout glass palette are implemented at source level. | Missing Pro theme, wallpaper, live wallpaper panels, pet renderer, swarm customization; installed visual receipts remain open. |
 | Desktop integration | `AppDelegate+StatusItem.swift`, `SwarmWallpaperRuntime.swift`, `Hotkey.swift` | Tauri tray exists. | Missing menu-bar popover, global hotkeys, desktop wallpaper, live wallpaper panels. |
 | Release / CI | `scripts/build-macos-website-release.sh`, `scripts/upload-macos-downloads-r2.sh`, `scripts/ops/rollback-macos-appcast.sh` | Signed x86_64/aarch64 DEB/RPM/Arch candidate, daemon/desktop sessions, aggregate attestation, and exact-head Nightly matrix are green. | Public feed/promotion, compatible previous-package lifecycle proof, production trust callables, and full environment receipts remain open. |
 
@@ -179,7 +186,8 @@ required before promotion.
 
 10. **Dashboard layout system** (`atelier`, `aurora`, `nebula`, `constellation`, `cockpit`, `classic`) with persistence and a layout switcher.
 11. **Complete:** user-controlled Liquid Glass transparency preference (`-1` frostier → `+1` clearer) plus OS Reduce Transparency opaque fallback.
-12. **Theme glass palette** per layout.
+12. **Complete at source:** ThemeGlassPalette tint/wash/rim roles per layout;
+    installed visual comparison receipts remain open.
 13. **Glass card / Glass button** primitives with the Reduce Transparency opaque path implemented; installed preference receipts remain.
 14. **Pro theme** obsidian foil palette for membership.
 15. **Desktop wallpaper runtime** with 11 backgrounds, provider glyph selection, speed, click-to-cycle, sparkles, constellation mode.

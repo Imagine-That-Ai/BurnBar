@@ -6,9 +6,11 @@ import { KernelBackdrop } from '../components/KernelBackdrop.js';
 import { TopChrome } from '../components/TopChrome.js';
 import { SurfaceRouter } from '../surfaces/SurfaceRouter.js';
 import { PetSurface } from '../surfaces/PetSurface.js';
+import { applyDashboardGlassPalette } from '../dashboard/dashboardGlassPalette.js';
 import { shellDestinationFromNative } from '../routes.js';
 import { readPersistedKernelId, writePersistedKernelId } from '../state/kernelPrefs.js';
 import { useShellStore } from '../state/shellStore.js';
+import { useDashboardLayoutStore } from '../state/dashboardLayoutStore.js';
 import type { NativeShortcutStatus } from '../tauriBridge.js';
 import { isChatPopoutWindow } from '../surfaces/chat/chatWindow.js';
 import {
@@ -62,6 +64,7 @@ export function App() {
   const route = useShellStore((s) => s.route);
   const setRoute = useShellStore((s) => s.setRoute);
   const skin = useShellStore((s) => s.skin);
+  const dashboardLayout = useDashboardLayoutStore((s) => s.layout);
   const syncRouteFromHash = useShellStore((s) => s.syncRouteFromHash);
   const bridge = useShellStore((s) => s.bridge);
   const chatPopout = isChatPopoutWindow();
@@ -279,6 +282,10 @@ export function App() {
     document.documentElement.dataset.skin = skin;
     document.documentElement.style.setProperty('--ds-skin', skin);
   }, [skin]);
+
+  useEffect(() => {
+    applyDashboardGlassPalette(dashboardLayout);
+  }, [dashboardLayout]);
 
   if (chatPopout) {
     return (
