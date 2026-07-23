@@ -1,5 +1,6 @@
 # Packet B5: move UI-owned tests → OpenBurnBarUIModuleTests (11 files)
-STATE: READY  LANE: Test-decomposition (WS-B)  DEPENDS-ON: B0
+STATE: EXECUTED (branch core-decomp2/b5-ui-module-tests, base core-decomp2/b4-insights-tests)
+LANE: Test-decomposition (WS-B)  DEPENDS-ON: B0
 Shared conventions + reassignment valve: see B0-mapping.md.
 
 Destination: `OpenBurnBarCore/Tests/OpenBurnBarUIModuleTests/` — APPLE-PRUNED test target.
@@ -46,3 +47,24 @@ None (SwarmSubstratePreviewRenderTests renders in-process via AppKit/SwiftUI —
 ## Close-out
 Delete PlaceholderTests.swift; `check-coretests-file-budget.sh --update`; full V-list
 (off-Apple builds must never see this target).
+
+## Execution note (B5, compiler-decided)
+- All 11 files `git mv`-d into `Tests/OpenBurnBarUIModuleTests/`; PlaceholderTests.swift
+  deleted; `openBurnBarCoreTestExcludes` shrunk to the 2 non-B5 entries
+  (MissionConsoleTests STAY + SwitcherCLIPostLaunchFallbackTests B7). No fixtures.
+- `@testable import OpenBurnBarUI` does NOT re-export the module's Kernel deps, so
+  KernelModels PUBLIC types needed a direct `import OpenBurnBarKernelModels`. Beyond the
+  packet's original hit-list, the compiler required it on TWO more files whose only
+  KernelModels signal was `AgentProvider`/`AssistantRuntimeID`:
+  `AgentProviderLogoBackdropTests` and `SwarmColorDriverTests` (both build-broke with
+  "cannot find 'AgentProvider' in scope" until the import was added). Final direct-import
+  set: AgentProviderLogoBackdrop, SwarmColorDriver, PixelClockQuotaRenderer,
+  SmartHubDisplaySettingsModel, SwarmLogoShape, SwarmSubstrateContract,
+  SwarmSubstratePreviewRender, UnifiedQuotaSignalCurrency (8 files). AppSkinEditorialPalette,
+  DashboardLayoutContract, UnifiedToolCallAccordion stayed UI-only (no KernelModels symbol).
+- Whole-package `swift test` (Apple): 2075 tests, 0 failures (2044 XCTest + 31 swift-testing).
+  The 147 moved test methods (116 XCTest + 31 `@Test`) are conserved 1:1 (git rename
+  R79–R99, bodies unchanged); the only whole-package delta is the removed trivial B0
+  placeholder (−1), same scaffold-teardown B1–B4 performed.
+- Baseline NOT `--update`d (integrator ratchets `coretests-file-baseline.json` at the end);
+  the shrink-only gate passes non-fatally (baselined=144 live=35).

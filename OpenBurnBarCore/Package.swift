@@ -720,22 +720,16 @@ let computerUseCoreExcludes = [
     "RemoteUnlockSystemScreenSharingProbe.swift"
 ]
 let openBurnBarCoreTestExcludes = [
-    "AgentProviderLogoBackdropTests.swift",
-    "Insights/BurnBarHostedAdapterWireTests.swift",
-    "Insights/InsightLiveProviderSmokeTests.swift",
+    // WS-B B5 (plans/core-decomposition2/packets/B5-ui-module-tests.md) carried the 7
+    // OpenBurnBarUI-owned tests that used to be listed here out to
+    // OpenBurnBarUIModuleTests (an Apple-pruned test target that off-Apple graphs never
+    // see): AgentProviderLogoBackdrop, SmartHubDisplaySettingsModel, SwarmLogoShape,
+    // SwarmSubstrateContract, SwarmSubstratePreviewRender, UnifiedQuotaSignalCurrency,
+    // UnifiedToolCallAccordion (the P-16f comment block moved with the last two). The two
+    // remaining entries stay in OpenBurnBarCoreTests: MissionConsoleTests is INTEGRATION
+    // (KernelModels+Insights+UI), SwitcherCLIPostLaunchFallbackTests is B7's future move.
     "MissionConsoleTests.swift",
-    "SmartHubDisplaySettingsModelTests.swift",
-    "SwitcherCLIPostLaunchFallbackTests.swift",
-    "SwarmLogoShapeTests.swift",
-    "SwarmSubstrateContractTests.swift",
-    "SwarmSubstratePreviewRenderTests.swift",
-    // P-16f (S14 UI): these two tests reach OpenBurnBarUI view types now that
-    // UnifiedQuotaSignalView / UnifiedToolCallAccordion moved Core→OpenBurnBarUI
-    // (UnifiedQuotaSignalCurrencyTests additionally @testable-imports the UI target for the
-    // internal fullRemainingText render helper). OpenBurnBarUI is pruned WHOLE off-Apple, so
-    // both are excluded off-Apple exactly like the Swarm/SmartHub/MissionConsole UI tests above.
-    "UnifiedQuotaSignalCurrencyTests.swift",
-    "UnifiedToolCallAccordionTests.swift"
+    "SwitcherCLIPostLaunchFallbackTests.swift"
 ]
 let computerUseCoreTestExcludes = [
     "ComputerUseOpenTimestampsClientTests.swift",
@@ -941,7 +935,15 @@ let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTar
         name: "OpenBurnBarInsightsTests",
         dependencies: [
             "OpenBurnBarInsights",
-            "OpenBurnBarKernel"
+            "OpenBurnBarKernel",
+            // WS-B B4: AgentInsightsViewModelTests exercises the PUBLIC
+            // AgentInsightsViewModel / AgentInsightsBundleProducer /
+            // StaticAgentInsightsBundleProducer, which live in OpenBurnBarUI (the
+            // view-model layer sits above the Insights domain). UI already depends on
+            // Insights at the product level; a TEST target depending on BOTH closes no
+            // product cycle (UI→Insights is the only module edge). Public API only, so
+            // the test file uses a plain `import OpenBurnBarUI`, not @testable.
+            "OpenBurnBarUI"
         ] + swiftTestingAppleDependencies,
         // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
         // checker has known gaps (Task hand-off) that would contort correct tests.
