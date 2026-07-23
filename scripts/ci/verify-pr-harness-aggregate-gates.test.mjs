@@ -612,8 +612,9 @@ check("desired main branch protection requires only the umbrella gate", () => {
 check("macOS gates use only approved hosted or disposable runners", () => {
   const app = readFileSync(join(REPO_ROOT, APP_WORKFLOW), "utf8");
   const daemon = readFileSync(join(REPO_ROOT, DAEMON_WORKFLOW), "utf8");
-  assert.equal((app.match(/group: burnbar-turbo-ephemeral/g) ?? []).length, 2);
-  assert.equal((daemon.match(/group: burnbar-turbo-ephemeral/g) ?? []).length, 2);
+  const fleetSelector = /github\.event_name == 'merge_group' && 'burnbar-turbo' \|\| 'macos-26'/g;
+  assert.equal((app.match(fleetSelector) ?? []).length, 2);
+  assert.equal((daemon.match(fleetSelector) ?? []).length, 2);
 
   for (const workflow of [DOMAIN_CORE_WORKFLOW, NATIVE_WORKFLOW]) {
     const source = readFileSync(join(REPO_ROOT, workflow), "utf8");

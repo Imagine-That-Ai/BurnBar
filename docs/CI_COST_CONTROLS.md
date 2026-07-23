@@ -50,11 +50,12 @@ and workflows must not route labels to paid larger-runner pools. Throughput
 normally comes from narrow path classification, caching, and concurrent
 merge-queue candidate builds.
 
-Merge-blocking Swift app/mobile/daemon validation may use the owned M4/M5 fleet
-through the `burnbar-turbo-ephemeral` group. Those workers are disposable macOS
-VMs, accept one exact same-repository commit, receive no secrets, and are
-destroyed after one job. Urgent ad-hoc validation remains available through the
-manual, main-pinned `BurnBar Turbo Native CI` workflow. The bring-up and
+Merge-group Swift app/mobile/daemon validation may use the owned M4/M5 fleet
+through the `burnbar-turbo-ephemeral` group. Pull-request runs retain the safe
+hosted fallback; merge-group candidates select only the disposable worker label.
+Those workers accept one exact same-repository commit, receive no secrets, and
+are destroyed after one job. Urgent ad-hoc validation remains available through
+the manual, main-pinned `BurnBar Turbo Native CI` workflow. The bring-up and
 isolation contract is documented in
 [`runbooks/burnbar-turbo-runners.md`](runbooks/burnbar-turbo-runners.md).
 

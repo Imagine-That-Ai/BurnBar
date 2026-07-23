@@ -31,9 +31,9 @@ jobs:
 
   daemon-swift:
     name: Daemon Swift tests (proxy + router + quota)
-    # Public PR code may use only the disposable, no-host-mount fleet.
-    runs-on:
-      group: burnbar-turbo-ephemeral
+    # Keep pull-request runs on hosted macOS; merge-group candidates use the
+    # disposable Tart fleet through its `burnbar-turbo` label.
+    runs-on: ${{ github.event_name == 'merge_group' && 'burnbar-turbo' || 'macos-26' }}
     # Cold cache + libsignal FFI build on a slow runner needs headroom; the
     # daemon package alone is far lighter than the full Swift suite (~40 min cap).
     timeout-minutes: 40
@@ -88,9 +88,9 @@ jobs:
   # output, proving the compile gate works in a real release build.
   release-build-verification:
     name: Release build (debug-only escape hatches compiled out)
-    # Keep public PR execution inside disposable Tart guests.
-    runs-on:
-      group: burnbar-turbo-ephemeral
+    # Pull-request runs stay hosted; merge-group candidates use disposable
+    # Tart guests only.
+    runs-on: ${{ github.event_name == 'merge_group' && 'burnbar-turbo' || 'macos-26' }}
     timeout-minutes: 40
     needs: classify
     if: needs.classify.outputs.daemon == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
