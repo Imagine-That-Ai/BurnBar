@@ -61,7 +61,17 @@ def _canonical_trigger(value):
 
 
 def _field_allows_expansion(inspectable, purpose):
-    return bool(inspectable) and int(purpose) not in (8, 9)
+    if not bool(inspectable):
+        return False
+    try:
+        code = int(purpose)
+    except (TypeError, ValueError):
+        # An app can send key events before IBus calls do_set_content_type, so
+        # purpose is still the sentinel "unknown". Deny expansion, matching the
+        # deny-by-default posture -- never raise, or the IME dies for every
+        # field that omits content-type metadata.
+        return False
+    return code not in (8, 9)
 
 
 def _commit_plan(candidate, replacement, delimiter):
@@ -207,7 +217,7 @@ def run_ibus():
             candidate = self.pending
             self.pending = ""
             trigger = _canonical_trigger(candidate) if candidate.startswith("&&") else None
-            if trigger is None or not _field_allows_expansion(self.inspectable, int(self.purpose)):
+            if trigger is None or not _field_allows_expansion(self.inspectable, self.purpose):
                 return False
             replacement = _daemon_expand(trigger, {
                 "inspectable": True,
