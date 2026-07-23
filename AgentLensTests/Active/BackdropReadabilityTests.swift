@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import XCTest
 @testable import OpenBurnBar
@@ -91,6 +92,135 @@ final class BackdropReadabilityTests: XCTestCase {
     func testForegroundFamiliesMeetTextAndIconThresholdsOnFallbackCanvases() {
         assertContrast(profile: .darkCanvasFallback, background: BackdropRGB(10, 14, 24))
         assertContrast(profile: .lightCanvasFallback, background: BackdropRGB(245, 247, 250))
+    }
+
+    func testNativeFallbackFollowsSystemColorSchemeWithoutLiveBackdrop() {
+        XCTAssertEqual(
+            BackdropReadabilityProfile.nativeFallback(
+                colorScheme: .dark,
+                appearanceSkin: .aurora,
+                liveBackdropActive: false
+            ),
+            .darkCanvasFallback
+        )
+        XCTAssertEqual(
+            BackdropReadabilityProfile.nativeFallback(
+                colorScheme: .light,
+                appearanceSkin: .aurora,
+                liveBackdropActive: false
+            ),
+            .lightCanvasFallback
+        )
+    }
+
+    func testNativeFallbackProfilesPinTheirPublishedShape() {
+        let darkCanvas = BackdropReadabilityProfile.darkCanvasFallback
+        XCTAssertEqual(darkCanvas.tone, .light)
+        XCTAssertEqual(darkCanvas.scrimOpacity, 0.24, accuracy: 0.000_001)
+        XCTAssertEqual(darkCanvas.minLuminance, 0, accuracy: 0.000_001)
+        XCTAssertEqual(darkCanvas.maxLuminance, 0.18, accuracy: 0.000_001)
+        XCTAssertEqual(darkCanvas.contrastRatio, BackdropContrast.normalTextRatio, accuracy: 0.000_001)
+        XCTAssertEqual(darkCanvas.sampleCount, 0)
+        XCTAssertEqual(darkCanvas.samplingDurationMs, 0, accuracy: 0.000_001)
+        XCTAssertEqual(darkCanvas.source, "native-fallback")
+
+        let lightCanvas = BackdropReadabilityProfile.lightCanvasFallback
+        XCTAssertEqual(lightCanvas.tone, .dark)
+        XCTAssertEqual(lightCanvas.scrimOpacity, 0.16, accuracy: 0.000_001)
+        XCTAssertEqual(lightCanvas.minLuminance, 0.62, accuracy: 0.000_001)
+        XCTAssertEqual(lightCanvas.maxLuminance, 1, accuracy: 0.000_001)
+        XCTAssertEqual(lightCanvas.contrastRatio, BackdropContrast.normalTextRatio, accuracy: 0.000_001)
+        XCTAssertEqual(lightCanvas.sampleCount, 0)
+        XCTAssertEqual(lightCanvas.samplingDurationMs, 0, accuracy: 0.000_001)
+        XCTAssertEqual(lightCanvas.source, "native-fallback")
+    }
+
+    func testForegroundFamiliesAreToneSpecific() {
+        XCTAssertEqual(BackdropReadabilityProfile.darkCanvasFallback.foreground, .light)
+        XCTAssertEqual(BackdropReadabilityProfile.lightCanvasFallback.foreground, .dark)
+        XCTAssertNotEqual(BackdropForegroundFamily.light, BackdropForegroundFamily.dark)
+        // A light-canvas family must be darker than a dark-canvas family, or the
+        // tone switch is inverted and every surface loses contrast at once.
+        XCTAssertLessThan(
+            BackdropContrast.relativeLuminance(BackdropForegroundFamily.dark.primary),
+            BackdropContrast.relativeLuminance(BackdropForegroundFamily.light.primary)
+        )
+    }
+
+    func testInterfaceColorSchemeOpposesForegroundTone() {
+        // A light foreground family implies a dark canvas, so the interface
+        // controls drawn over it must render in the .dark scheme (and vice
+        // versa). Inverting this is what makes system controls disappear.
+        XCTAssertEqual(BackdropReadabilityProfile.darkCanvasFallback.tone, .light)
+        XCTAssertEqual(BackdropReadabilityProfile.darkCanvasFallback.interfaceColorScheme, .dark)
+        XCTAssertEqual(BackdropReadabilityProfile.lightCanvasFallback.tone, .dark)
+        XCTAssertEqual(BackdropReadabilityProfile.lightCanvasFallback.interfaceColorScheme, .light)
+    }
+
+    func testBackdropRGBProjectsNormalizedSRGBColor() throws {
+        let resolved = try XCTUnwrap(
+            NSColor(BackdropRGB(255, 128, 0).color).usingColorSpace(.sRGB)
+        )
+        XCTAssertEqual(Double(resolved.redComponent), 1, accuracy: 0.001)
+        XCTAssertEqual(Double(resolved.greenComponent), 128.0 / 255.0, accuracy: 0.001)
+        XCTAssertEqual(Double(resolved.blueComponent), 0, accuracy: 0.001)
+        XCTAssertEqual(BackdropRGB(10, 20, 30).color, BackdropRGB(10, 20, 30).color)
+        XCTAssertNotEqual(BackdropRGB(10, 20, 30).color, BackdropRGB(30, 20, 10).color)
+    }
+
+    func testAdaptiveColorsMapEveryForegroundRole() {
+        let family = BackdropForegroundFamily.light
+        let colors = BackdropAdaptiveColors(profile: .darkCanvasFallback)
+        XCTAssertEqual(colors.primary, family.primary.color)
+        XCTAssertEqual(colors.secondary, family.secondary.color)
+        XCTAssertEqual(colors.muted, family.muted.color)
+        XCTAssertEqual(colors.accent, family.accent.color)
+        XCTAssertEqual(colors.icon, family.icon.color)
+        XCTAssertEqual(colors.focus, family.focus.color)
+        XCTAssertEqual(colors.shadow, family.shadow.color)
+        XCTAssertEqual(colors.scrim, family.scrim.color)
+        // Roles must not collapse onto one another: a copy-paste swap here is
+        // invisible in a screenshot but flattens the whole hierarchy.
+        XCTAssertNotEqual(colors.primary, colors.muted)
+        XCTAssertNotEqual(colors.accent, colors.icon)
+        XCTAssertNotEqual(colors.shadow, colors.scrim)
+
+        let inverted = BackdropAdaptiveColors(profile: .lightCanvasFallback)
+        XCTAssertEqual(inverted.primary, BackdropForegroundFamily.dark.primary.color)
+        XCTAssertNotEqual(inverted.primary, colors.primary)
+    }
+
+    func testEnvironmentCarriesReadabilityProfileWithDarkCanvasDefault() {
+        var environment = EnvironmentValues()
+        XCTAssertEqual(environment.backdropReadabilityProfile, .darkCanvasFallback)
+        environment.backdropReadabilityProfile = .lightCanvasFallback
+        XCTAssertEqual(environment.backdropReadabilityProfile, .lightCanvasFallback)
+        XCTAssertEqual(environment.backdropReadabilityProfile.interfaceColorScheme, .light)
+    }
+
+    func testDecodeRejectsNonNumericNumberFields() {
+        // Every numeric field runs through the private `number(_:)` coercion.
+        // A string payload (what a malformed JS bridge message actually sends)
+        // must fail every cast and fail the decode closed rather than defaulting.
+        for field in [
+            "scrimOpacity", "minLuminance", "maxLuminance", "contrastRatio", "sampleCount"
+        ] {
+            var payload: [String: Any] = [
+                "tone": "light",
+                "scrimOpacity": 0.2,
+                "minLuminance": 0.1,
+                "maxLuminance": 0.9,
+                "contrastRatio": 5.1,
+                "sampleCount": 12,
+                "source": "canvas"
+            ]
+            payload[field] = "not-a-number"
+            XCTAssertNil(
+                BackdropReadabilityProfile.decode(messageBody: payload),
+                "decode must reject a non-numeric \(field)"
+            )
+        }
+        XCTAssertNil(BackdropReadabilityProfile.decode(messageBody: "not-a-dictionary"))
     }
 
     private func assertContrast(

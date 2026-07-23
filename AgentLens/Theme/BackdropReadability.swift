@@ -73,6 +73,17 @@ struct BackdropForegroundFamily: Equatable, Sendable {
     let shadow: BackdropRGB
     let scrim: BackdropRGB
 
+    // cov:ignore-start -- Stored static declaration table, not executable logic.
+    // LLVM emits no coverage counter for a multi-line stored static initializer,
+    // so these lines are unreachable by any test rather than untested: across
+    // the app sources this lane measures, 0 of the 57 `static let X = Type(`
+    // declaration openers appear in the xccov archive, as do none of their
+    // plain-literal argument lines. (The single-line form of the same
+    // declaration is already excluded by the gate's own structural filter.)
+    // The palette VALUES are behaviourally gated by BackdropReadabilityTests:
+    // testForegroundFamiliesMeetTextAndIconThresholdsOnFallbackCanvases asserts
+    // the WCAG normal-text/large-text ratio for every role in both families, and
+    // testForegroundFamiliesAreToneSpecific pins the light/dark split.
     static let light = BackdropForegroundFamily(
         primary: BackdropRGB(255, 255, 255),
         secondary: BackdropRGB(235, 239, 246),
@@ -94,6 +105,7 @@ struct BackdropForegroundFamily: Equatable, Sendable {
         shadow: BackdropRGB(255, 255, 255),
         scrim: BackdropRGB(248, 250, 252)
     )
+    // cov:ignore-end
 }
 
 struct BackdropReadabilityProfile: Equatable, Sendable {
@@ -114,6 +126,15 @@ struct BackdropReadabilityProfile: Equatable, Sendable {
         tone == .light ? .dark : .light
     }
 
+    // cov:ignore-start -- Stored static declaration table, not executable logic.
+    // Same LLVM limitation as BackdropForegroundFamily above: a multi-line
+    // stored static initializer carries no coverage counter anywhere in this
+    // lane, so these lines are unreachable by any test rather than untested.
+    // Every field VALUE is asserted by
+    // BackdropReadabilityTests.testNativeFallbackProfilesPinTheirPublishedShape,
+    // the tone/scheme pairing by testInterfaceColorSchemeOpposesForegroundTone,
+    // and the contrast behaviour by
+    // testForegroundFamiliesMeetTextAndIconThresholdsOnFallbackCanvases.
     static let darkCanvasFallback = BackdropReadabilityProfile(
         tone: .light,
         scrimOpacity: 0.24,
@@ -135,6 +156,7 @@ struct BackdropReadabilityProfile: Equatable, Sendable {
         samplingDurationMs: 0,
         source: "native-fallback"
     )
+    // cov:ignore-end
 
     static func nativeFallback(
         colorScheme: ColorScheme,
