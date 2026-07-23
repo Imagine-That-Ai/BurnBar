@@ -67,8 +67,14 @@ auto-cycle control. The optional click-to-cycle action now advances the same
 formation list from the Linux backdrop, including the Canvas2D fallback.
 Changes publish a typed preference event; the kernel host rebuilds the active
 swarm with the validated options while retaining its Canvas2D/CSS fallback.
-Full macOS provider catalog coverage, constellation mode, and installed
-wallpaper receipts remain open.
+Full macOS constellation mode and installed wallpaper receipts remain open.
+
+**Implementation checkpoint (2026-07-23, provider-logo breadth):** the Linux
+swarm catalog now carries all 33 macOS provider IDs. Existing baked point tables
+remain deterministic; providers without a baked table request their bundled
+Linux logo and rasterize it into swarm points, with a readable text fallback
+when an asset is unavailable. The catalog preserves explicit All/None and
+stale-ID filtering.
 
 **Implementation checkpoint (2026-07-23, provider color roles):** Linux now
 uses deterministic macOS-aligned provider accents and model-family colors in
@@ -222,8 +228,9 @@ required before promotion.
     wallpaper hosting and constellation mode remain.
 16. **Swarm customization** (provider glyph selection, brand-shape exclusion, sparkles, constellation mode).
     Source-level provider selection, brand-shape exclusion, auto-cycle, speed,
-    and sparkles are implemented; full provider catalog/constellation parity
-    and installed receipts remain.
+    and sparkles are implemented; the full provider catalog now has
+    asset-backed or readable fallback geometry, while constellation parity and
+    installed receipts remain.
 17. **Kernel-forward layouts** (full-bleed kernel backdrop for atelier/constellation).
 18. **Pet companion renderer** (GLB/Three.js runtime, behavior graph, tier matrix, chat bubble, hover toolbar, global summon hotkey).
 19. **Provider color themes** (30+ provider color schemes, model color hashing).
@@ -291,12 +298,12 @@ required before promotion.
 ### Phase 3 — Desktop integration & visual features
 
 - Desktop wallpaper runtime with background selection, provider glyph selection,
-  speed, sparkles, click-to-cycle, constellation mode. Palette and provider
-  selection are implemented; native hosting, click-cycle, and constellation
+  speed, sparkles, click-to-cycle, constellation mode. Palette, provider
+  selection, and click-cycle are implemented; native hosting and constellation
   mode remain.
 - Swarm customization settings: provider selection, brand-shape exclusion,
-  speed, sparkles, and auto-cycle are implemented; full catalog coverage and
-  constellation mode remain.
+  speed, sparkles, auto-cycle, and full 33-ID catalog coverage are implemented;
+  constellation mode remains.
 - Pet companion renderer (GLB/Three.js or `@openburnbar/gl-engine` reuse), behavior graph, tier matrix, global hotkey, drag-and-drop.
 - Provider color themes and model color hashing.
 - Verification: packaged smoke captures screenshots, AT-SPI snapshots, perf budgets.

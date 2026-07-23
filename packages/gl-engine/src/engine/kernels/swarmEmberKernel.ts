@@ -7,6 +7,7 @@ import { toCss } from "../palette";
 import { PROVIDER_SHAPE_POINTS } from "./swarmEmberShapeData";
 import {
   normalizeSwarmProviderGlyphs,
+  SWARM_PROVIDER_GLYPH_OPTIONS,
   SWARM_PROVIDER_GLYPH_IDS,
   type SwarmProviderGlyphId,
 } from "./swarmCatalog";
@@ -81,6 +82,7 @@ const SHOWCASE_PROVIDER_IDS: string[] = [
   "omp",
   "hermes",
   "geminicli",
+  "junie",
   "antigravity",
   "openai",
   "openburnbar",
@@ -102,7 +104,18 @@ const SHOWCASE_PROVIDER_IDS: string[] = [
   "goose",
   "ollama",
   "windsurf",
+  "warp",
+  "cursoragent",
 ];
+
+const PROVIDER_LOGO_ASSETS: Record<string, string> = {
+  claudecode: "claude-code.png",
+  geminicli: "gemini.png",
+  xai: "grok.png",
+};
+
+const providerLogoPointsCache = new Map<string, ShapePoint[]>();
+const providerLogoLoadStarted = new Set<string>();
 
 /** Shape tables use a few catalog aliases (anthropic/google) vs persisted tokens. */
 const SHAPE_PROVIDER_ALIASES: Record<string, string> = {
@@ -119,9 +132,7 @@ function shapeProviderKey(persistedId: string): string | null {
 
 function normalizedShowcaseProviders(providerGlyphs?: readonly string[]): string[] {
   const selected = normalizeSwarmProviderGlyphs(providerGlyphs);
-  return SHOWCASE_PROVIDER_IDS.filter(
-    (id) => selected.includes(id as SwarmProviderGlyphId) && shapeProviderKey(id) != null
-  );
+  return SHOWCASE_PROVIDER_IDS.filter((id) => selected.includes(id as SwarmProviderGlyphId));
 }
 
 function providerLogoGroups(providerGlyphs?: readonly string[]): string[][] {
@@ -220,11 +231,73 @@ function flatToShapePoints(flat: number[]): ShapePoint[] {
   return pts;
 }
 
-function providerShapePoints(providerId: string): ShapePoint[] {
+function providerLabel(providerId: string): string {
+  return SWARM_PROVIDER_GLYPH_OPTIONS.find((option) => option.id === providerId)?.label ?? providerId;
+}
+
+function providerTextFallbackPoints(providerId: string): ShapePoint[] {
+  const words = providerLabel(providerId).split(/\s+/).filter(Boolean);
+  const initials = words.length > 1
+    ? words.map((word) => word[0]).join("").slice(0, 4)
+    : providerLabel(providerId).replace(/[^a-z0-9]/gi, "").slice(0, 6);
+  return sampleTextPoints(initials || "?", 150);
+}
+
+function imageToShapePoints(image: HTMLImageElement): ShapePoint[] {
+  const side = 240;
+  const canvas = document.createElement("canvas");
+  canvas.width = side;
+  canvas.height = side;
+  const context = canvas.getContext("2d");
+  if (!context) return [];
+  context.clearRect(0, 0, side, side);
+  const scale = Math.min(side / Math.max(image.naturalWidth || side, 1), side / Math.max(image.naturalHeight || side, 1));
+  const width = (image.naturalWidth || side) * scale;
+  const height = (image.naturalHeight || side) * scale;
+  context.drawImage(image, (side - width) / 2, (side - height) / 2, width, height);
+  const pixels = context.getImageData(0, 0, side, side).data;
+  const points: ShapePoint[] = [];
+  const stride = 4;
+  for (let y = 0; y < side; y += stride) {
+    for (let x = 0; x < side; x += stride) {
+      const offset = (y * side + x) * 4;
+      const alpha = pixels[offset + 3] ?? 0;
+      const luminance = (pixels[offset] ?? 0) + (pixels[offset + 1] ?? 0) + (pixels[offset + 2] ?? 0);
+      if (alpha < 48 || luminance < 30) continue;
+      points.push({
+        x: (x - side / 2) / (side / 2),
+        y: -((y - side / 2) / (side / 2)),
+        role: "logo-flame-inner",
+        progress: Math.random(),
+      });
+    }
+  }
+  return points;
+}
+
+function requestProviderLogoPoints(providerId: string, onReady: () => void): void {
+  if (providerLogoLoadStarted.has(providerId) || typeof Image === "undefined") return;
+  providerLogoLoadStarted.add(providerId);
+  const image = new Image();
+  image.onload = () => {
+    const points = imageToShapePoints(image);
+    if (points.length > 0) {
+      providerLogoPointsCache.set(providerId, points);
+      onReady();
+    }
+  };
+  image.onerror = () => undefined;
+  const asset = PROVIDER_LOGO_ASSETS[providerId] ?? `${providerId}.png`;
+  image.src = `/provider-logos/${asset}`;
+}
+
+function providerShapePoints(providerId: string, onImageReady: () => void): ShapePoint[] {
   const key = shapeProviderKey(providerId);
-  if (!key) return [];
-  const flat = PROVIDER_SHAPE_POINTS[key];
-  return flatToShapePoints(flat);
+  if (key) return flatToShapePoints(PROVIDER_SHAPE_POINTS[key]);
+  const cached = providerLogoPointsCache.get(providerId);
+  if (cached) return cached;
+  requestProviderLogoPoints(providerId, onImageReady);
+  return providerTextFallbackPoints(providerId);
 }
 
 function formationKind(mode: FormationMode): string {
@@ -679,7 +752,11 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
       ensureShapeCaches();
       const specs = next.providers.map((providerId) => ({
         providerId,
-        points: providerShapePoints(providerId),
+        points: providerShapePoints(providerId, () => {
+          if (isProviderLogoMode(mode) && sameFormation(mode, next)) {
+            assignMode(mode, lastAdvanceMs ?? 0);
+          }
+        }),
       }));
       assignProviderLogoFormation(specs);
       return;
