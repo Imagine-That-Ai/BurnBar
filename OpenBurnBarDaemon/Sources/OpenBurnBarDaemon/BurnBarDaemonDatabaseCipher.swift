@@ -307,7 +307,14 @@ enum BurnBarDaemonDatabaseCipher {
         removeOrphanedMigrationArtifacts(forDatabaseAt: path, logger: logger)
         guard isCipherAvailable() else { return false }
         #if os(Linux)
-        let resolvedKey = try ensureKeyIfNeeded(at: path)
+        // Explicit keys are used by migration callers and tests; do not make
+        // those paths depend on a live Secret Service lookup.
+        let resolvedKey: String?
+        if let explicitKey {
+            resolvedKey = explicitKey
+        } else {
+            resolvedKey = try ensureKeyIfNeeded(at: path)
+        }
         #else
         let resolvedKey = resolveKey()
         #endif
