@@ -412,6 +412,20 @@ assert.match(script, /\[ValidateRange\(1, 7200\)\] \[int\] \$TimeoutSeconds = 18
 assert.match(script, /WaitForExit\(\$TimeoutSeconds \* 1000\)/);
 assert.match(script, /\$process\.Kill\(\$true\)/);
 assert.match(script, /timedOut = \$timedOut/);
+assert.match(script, /\[hashtable\] \$Environment = @\{\}/);
+assert.match(script, /\$startInfo\.EnvironmentVariables\[\[string\]\$entry\.Key\]/);
+assert.match(
+  script,
+  /'domain-core-native-build' 'cargo' @\('build', '--manifest-path', 'crates\\openburnbar-domain-core\\Cargo\.toml', '-p', 'openburnbar-domain-ffi'\)/,
+);
+assert.ok(
+  script.indexOf("'domain-core-native-build'") < script.indexOf("'dotnet-build'"),
+  "the physical certification runner must build the native domain core before dotnet build",
+);
+assert.match(
+  script,
+  /'dotnet-test'[\s\S]*-Environment @\{ OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE = '1' \}/,
+);
 assert.match(script, /SUPPLEMENTAL-LIVE-RECEIPT-MISSING/);
 assert.match(script, /\$supplementalGateIds = @\('accessibility-display'\)/);
 assert.match(script, /\$supplementalGateIds -notcontains/);
