@@ -32,8 +32,8 @@ export const PARITY_LEDGER: ParityRow[] = [
   {
     feature: 'Chat tool approvals',
     macos: 'In-chat tool approval riding in-process agent runs',
-    linux: 'Approval buttons disabled; approval flows ride agent runs, not gateway chat.',
-    substitution: 'Wire workspace.executeTool / approval.respond when Linux agent runs land in the shell.'
+    linux: 'Daemon-issued approval IDs enable approve/reject/cancel in chat; gateway calls without a verified run identity remain unavailable.',
+    substitution: 'Gateway tool calls without a daemon approval identity stay visibly unavailable rather than inventing an approval token.'
   },
   {
     feature: 'Memory review queue',

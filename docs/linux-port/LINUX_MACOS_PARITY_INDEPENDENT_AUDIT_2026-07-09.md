@@ -2759,6 +2759,12 @@ the intended `0700`/`0600` ownership boundary (`50a0684e75`).
 
 ### GAP-009 - Finish the chat workspace
 
+**Implementation update (2026-07-23):** the parity ledger is now aligned with
+the shipped behavior: Linux renders actionable approve/reject/cancel controls
+when a daemon-issued run approval ID is present, and keeps gateway-only tool
+calls unavailable when that identity is missing. No renderer-generated approval
+IDs or implicit approvals are allowed.
+
 - **Difference:** macOS supports persisted/searchable threads, twelve backends,
   model selection, streaming, attachments, citations, tool approvals, panes,
   desktop grants, resume/export, and pop-out. Linux now has real encrypted
