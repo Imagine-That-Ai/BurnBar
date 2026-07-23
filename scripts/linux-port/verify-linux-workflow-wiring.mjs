@@ -4,6 +4,50 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repoRoot } from './lib/linux-release-common.mjs';
 
+export const LINUX_WORKFLOW_WIRING_SOURCE_PATHS = Object.freeze({
+  pr: '.github/workflows/linux-pr-gate.yml',
+  productParityWorkflow: '.github/workflows/linux-product-parity.yml',
+  promotionWorkflow: '.github/workflows/linux-release-promote.yml',
+  nightly: '.github/workflows/linux-nightly.yml',
+  release: '.github/workflows/linux-release.yml',
+  makefile: 'Makefile',
+  nativeTests: 'scripts/linux-port/run-linux-native-tests.sh',
+  rustBridge: 'apps/linux-desktop/src-tauri/src/lib.rs',
+  updateFeed: 'apps/linux-desktop/src-tauri/src/update_feed.rs',
+  capability: 'apps/linux-desktop/src-tauri/capabilities/default.json',
+  tauriConfig: 'apps/linux-desktop/src-tauri/tauri.conf.json',
+  desktopPackage: 'apps/linux-desktop/package.json',
+  runtimeCatalog: 'packaging/linux/runtime-capability-catalog.json',
+  runtimeSchema: 'schemas/linux-runtime-capability-manifest.schema.json',
+  routes: 'apps/linux-desktop/src/routes.ts',
+  surfaceBoundary: 'apps/linux-desktop/src/surfaces/SurfaceRouter.tsx'
+});
+
+export const LINUX_WORKFLOW_WIRING_COMPOSITE_SOURCE_PATHS = Object.freeze({
+  fixturePolicy: [
+    'apps/linux-desktop/src/daemonFixture.ts',
+    'apps/linux-desktop/src/state/shellStore.ts',
+    'apps/linux-desktop/src/surfaces/support/SupportSurface.tsx'
+  ],
+  rendererBridge: [
+    'apps/linux-desktop/src/tauriBridge.ts',
+    'apps/linux-desktop/src/runtimeCapabilities.ts',
+    'apps/linux-desktop/src/state/chatStore.ts',
+    'apps/linux-desktop/src/chat/gatewayClient.ts'
+  ]
+});
+
+export function loadLinuxWorkflowWiringInput(root = repoRoot) {
+  const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
+  const input = Object.fromEntries(
+    Object.entries(LINUX_WORKFLOW_WIRING_SOURCE_PATHS).map(([key, relative]) => [key, read(relative)])
+  );
+  for (const [key, paths] of Object.entries(LINUX_WORKFLOW_WIRING_COMPOSITE_SOURCE_PATHS)) {
+    input[key] = paths.map(read).join('\n');
+  }
+  return input;
+}
+
 export function verifyLinuxWorkflowWiring(input) {
   const failures = [];
   const requireText = (body, needle, label) => {
@@ -32,6 +76,33 @@ export function verifyLinuxWorkflowWiring(input) {
       'if-no-files-found: error',
       ...paths
     ]) requireText(block, marker, `${source} ${stepName}`);
+  };
+  const requireP38CaptureContract = (body) => {
+    const stepName = 'Capture P-38 release automation verification';
+    const start = body.indexOf(`- name: ${stepName}`);
+    const end = start < 0 ? -1 : body.indexOf('\n      - name:', start + 1);
+    const block = start < 0 ? '' : body.slice(start, end < 0 ? body.length : end);
+    if (!block) {
+      failures.push(`product parity evidence workflow is missing executable step: ${stepName}`);
+      return;
+    }
+    const activeLines = block.split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
+    for (const line of [
+      "if: inputs.requirement == 'P-38'",
+      'set -euo pipefail',
+      'node scripts/linux-port/capture-p38-release-automation.mjs',
+      '--candidate-run-id "$CANDIDATE_RUN_ID"',
+      '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+    ]) {
+      if (!activeLines.includes(line) && !activeLines.includes(`${line} \\`)) {
+        failures.push(`product parity evidence workflow ${stepName} is missing: ${line}`);
+      }
+    }
+    for (const forbidden of ['continue-on-error: true', 'set +e', '|| true', '; true']) {
+      if (activeLines.some((line) => line.includes(forbidden))) {
+        failures.push(`product parity evidence workflow ${stepName} permits failure: ${forbidden}`);
+      }
+    }
   };
 
   requireText(input.release, '- "linux-v*"', 'release tag trigger');
@@ -196,6 +267,9 @@ export function verifyLinuxWorkflowWiring(input) {
     'smoke-linux-packages.test.mjs',
     'product-proof-closure.test.mjs',
     'product-feature-proof-closure.test.mjs',
+    'p38-release-automation-proof.test.mjs',
+    'p31-accessibility-proof.test.mjs',
+    'p34-credential-security-proof.test.mjs',
     'parity-certification-preflight.test.mjs',
     'run-linux-matrix-harness.test.mjs',
     'run-product-requirement-validator.test.mjs',
@@ -215,8 +289,13 @@ export function verifyLinuxWorkflowWiring(input) {
     'artifact-ids: ${{ steps.evidence.outputs.artifact_id }}',
     'CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}',
     'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
+    'capture-p38-release-automation.mjs',
+    "if: inputs.requirement == 'P-38'",
+    'Capture P-38 release automation verification',
     'capture-parity-certification-preflight.mjs',
+    'capture-p34-credential-security-proof.mjs',
     "if: inputs.requirement == 'P-02'",
+    "if: inputs.requirement == 'P-34'",
     'Preserve non-promotable P-02 diagnostic evidence',
     "if: always() && inputs.requirement == 'P-02'",
     'linux-product-parity-diagnostic-',
@@ -228,6 +307,13 @@ export function verifyLinuxWorkflowWiring(input) {
     'capture-failure.json',
     'capture.log',
     '2>&1 | tee "$capture_log"',
+    'capture-p31-accessibility.mjs',
+    "if: inputs.requirement == 'P-31'",
+    'id: p31_capture',
+    '--session-report "$session_report"',
+    'p31-live-session.json',
+    'P-34 credential security proof',
+    '--candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"',
     'finalize-product-feature-proof-closure.mjs',
     'prepare-product-requirement-input.mjs',
     'run-product-requirement-validator.mjs',
@@ -238,13 +324,17 @@ export function verifyLinuxWorkflowWiring(input) {
     'if-no-files-found: error',
     'include-hidden-files: true'
   ]) requireText(input.productParityWorkflow, marker, 'product parity evidence workflow');
+  requireP38CaptureContract(input.productParityWorkflow);
   if (/--run-id\s+['"]?\$\{\{\s*inputs\.candidate_run_id/u.test(input.productParityWorkflow)) {
     failures.push('product parity workflow may not interpolate candidate_run_id directly into shell.');
   }
   requireOrder(input.productParityWorkflow, [
     'Download exact-candidate installed evidence',
+    'Capture P-38 release automation verification',
     'Capture parity certification preflight',
     'Preserve non-promotable P-02 diagnostic evidence',
+    'Capture P-31 installed accessibility matrix evidence',
+    'Capture P-34 credential security proof',
     'Finalize registered feature proof closure',
     'Materialize the requirement-owned release closure',
     'Run the registered requirement validator'
@@ -417,36 +507,7 @@ export function verifyLinuxWorkflowWiring(input) {
 }
 
 function main() {
-  const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), 'utf8');
-  const result = verifyLinuxWorkflowWiring({
-    pr: read('.github/workflows/linux-pr-gate.yml'),
-    productParityWorkflow: read('.github/workflows/linux-product-parity.yml'),
-    promotionWorkflow: read('.github/workflows/linux-release-promote.yml'),
-    nightly: read('.github/workflows/linux-nightly.yml'),
-    release: read('.github/workflows/linux-release.yml'),
-    makefile: read('Makefile'),
-    nativeTests: read('scripts/linux-port/run-linux-native-tests.sh'),
-    rustBridge: read('apps/linux-desktop/src-tauri/src/lib.rs'),
-    updateFeed: read('apps/linux-desktop/src-tauri/src/update_feed.rs'),
-    capability: read('apps/linux-desktop/src-tauri/capabilities/default.json'),
-    tauriConfig: read('apps/linux-desktop/src-tauri/tauri.conf.json'),
-    fixturePolicy: [
-      read('apps/linux-desktop/src/daemonFixture.ts'),
-      read('apps/linux-desktop/src/state/shellStore.ts'),
-      read('apps/linux-desktop/src/surfaces/support/SupportSurface.tsx')
-    ].join('\n'),
-    desktopPackage: read('apps/linux-desktop/package.json'),
-    runtimeCatalog: read('packaging/linux/runtime-capability-catalog.json'),
-    runtimeSchema: read('schemas/linux-runtime-capability-manifest.schema.json'),
-    routes: read('apps/linux-desktop/src/routes.ts'),
-    surfaceBoundary: read('apps/linux-desktop/src/surfaces/SurfaceRouter.tsx'),
-    rendererBridge: [
-      read('apps/linux-desktop/src/tauriBridge.ts'),
-      read('apps/linux-desktop/src/runtimeCapabilities.ts'),
-      read('apps/linux-desktop/src/state/chatStore.ts'),
-      read('apps/linux-desktop/src/chat/gatewayClient.ts')
-    ].join('\n')
-  });
+  const result = verifyLinuxWorkflowWiring(loadLinuxWorkflowWiringInput(repoRoot));
   console.log(JSON.stringify(result, null, 2));
   process.exit(result.passed ? 0 : 1);
 }

@@ -11,6 +11,41 @@
           "maxBytes": 1048576
         }
       ]
+    },
+    {
+      "requirementId": "P-31",
+      "artifacts": [
+        {
+          "role": "feature.accessibility-assistive-tech",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-contrast",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-motion",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        },
+        {
+          "role": "feature.accessibility-scale",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
+    },
+    {
+      "requirementId": "P-34",
+      "artifacts": [
+        {
+          "role": "feature.credential-security-proof",
+          "mediaType": "application/json",
+          "maxBytes": 1048576
+        }
+      ]
     }
   ],
   "certification": [
@@ -107,6 +142,52 @@
       }
     },
     {
+      "requirementId": "P-31",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-31.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p31-accessibility-proof.test.mjs",
+        "mutationTestName": "P-31 independently rejects an accessibility proof missing exact 200 percent reflow"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p31-accessibility.mjs",
+        "entrypoint": "captureP31Accessibility",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p31-accessibility-proof.test.mjs",
+        "testName": "P-31 capture emits four candidate-bound accessibility proofs"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p31-accessibility-proof.test.mjs",
+        "testName": "P-31 materializer selects accessibility feature proofs"
+      }
+    },
+    {
+      "requirementId": "P-34",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-34.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/p34-credential-security-proof.test.mjs",
+        "mutationTestName": "P-34 rejects a credential proof that accepts a rotated-out value or exposes redaction material"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/capture-p34-credential-security-proof.mjs",
+        "entrypoint": "captureP34CredentialSecurityProof",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/p34-credential-security-proof.test.mjs",
+        "testName": "P-34 capture emits a metadata-only GNOME, KDE, and headless custody matrix"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/finalize-product-feature-proof-closure.mjs",
+        "entrypoint": "main",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-feature-proof-closure.test.mjs",
+        "testName": "P-34 materializer selects the candidate-bound credential security proof"
+      }
+    },
+    {
       "requirementId": "P-37",
       "validator": {
         "sourcePath": "scripts/linux-port/product-validators/P-37.mjs",
@@ -127,6 +208,29 @@
         "workflowPath": ".github/workflows/linux-product-parity.yml",
         "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
         "testName": "P-37 materializer selects Linux matrix evidence"
+      }
+    },
+    {
+      "requirementId": "P-38",
+      "validator": {
+        "sourcePath": "scripts/linux-port/product-validators/P-38.mjs",
+        "entrypoint": "validateProductRequirement",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "mutationTestName": "P-38 rejects missing prior-version lifecycle and workflow verification"
+      },
+      "capture": {
+        "producerPath": "scripts/linux-port/finalize-product-proof-closure.mjs",
+        "entrypoint": "finalizeProductProofClosure",
+        "workflowPath": ".github/workflows/linux-release.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-38 release capture includes architecture lifecycle and signing evidence"
+      },
+      "materializer": {
+        "producerPath": "scripts/linux-port/prepare-product-requirement-input.mjs",
+        "entrypoint": "prepareProductRequirementInput",
+        "workflowPath": ".github/workflows/linux-product-parity.yml",
+        "testPath": "scripts/linux-port/product-proof-closure.test.mjs",
+        "testName": "P-38 materializer selects release automation evidence"
       }
     }
   ]

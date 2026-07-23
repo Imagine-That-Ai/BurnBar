@@ -29,6 +29,9 @@ function valid() {
       'smoke-linux-packages.test.mjs',
       'product-proof-closure.test.mjs',
       'product-feature-proof-closure.test.mjs',
+      'p38-release-automation-proof.test.mjs',
+      'p31-accessibility-proof.test.mjs',
+      'p34-credential-security-proof.test.mjs',
       'parity-certification-preflight.test.mjs',
       'run-linux-matrix-harness.test.mjs',
       'run-product-requirement-validator.test.mjs',
@@ -55,7 +58,9 @@ function valid() {
       'CANDIDATE_RUN_ID: ${{ steps.evidence.outputs.run_id }}',
       'CANDIDATE_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact_digest }}',
       'capture-parity-certification-preflight.mjs',
+      'capture-p34-credential-security-proof.mjs',
       "if: inputs.requirement == 'P-02'",
+      "if: inputs.requirement == 'P-34'",
       "if: always() && inputs.requirement == 'P-02'",
       'linux-product-parity-diagnostic-',
       'id: p02_capture',
@@ -66,6 +71,12 @@ function valid() {
       'capture-failure.json',
       'capture.log',
       '2>&1 | tee "$capture_log"',
+      'capture-p31-accessibility.mjs',
+      "if: inputs.requirement == 'P-31'",
+      'id: p31_capture',
+      '--session-report "$session_report"',
+      'p31-live-session.json',
+      'P-34 credential security proof',
       'finalize-product-feature-proof-closure.mjs',
       'prepare-product-requirement-input.mjs',
       'run-product-requirement-validator.mjs',
@@ -76,8 +87,19 @@ function valid() {
       'if-no-files-found: error',
       'include-hidden-files: true',
       'Download exact-candidate installed evidence',
+      [
+        '      - name: Capture P-38 release automation verification',
+        "        if: inputs.requirement == 'P-38'",
+        '        run: |',
+        '          set -euo pipefail',
+        '          node scripts/linux-port/capture-p38-release-automation.mjs',
+        '            --candidate-run-id "$CANDIDATE_RUN_ID"',
+        '            --candidate-artifact-digest "$CANDIDATE_ARTIFACT_DIGEST"'
+      ].join('\n'),
       'Capture parity certification preflight',
       'Preserve non-promotable P-02 diagnostic evidence',
+      'Capture P-31 installed accessibility matrix evidence',
+      'Capture P-34 credential security proof',
       'Finalize registered feature proof closure',
       'Materialize the requirement-owned release closure',
       'Run the registered requirement validator'
@@ -265,6 +287,31 @@ function valid() {
 
 test('complete fail-closed workflow wiring passes', () => {
   assert.deepEqual(verifyLinuxWorkflowWiring(valid()), { passed: true, failures: [] });
+});
+
+test('P-38 workflow step cannot be removed or weakened', () => {
+  for (const marker of [
+    'capture-p38-release-automation.mjs',
+    "if: inputs.requirement == 'P-38'",
+    'Capture P-38 release automation verification'
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replace(marker, 'removed-p38-capture-marker');
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, marker);
+    assert.ok(result.failures.some((failure) => /product parity evidence workflow/u.test(failure)), marker);
+  }
+  for (const [name, from, to] of [
+    ['commented producer', '          node scripts/linux-port/capture-p38-release-automation.mjs', '          # node scripts/linux-port/capture-p38-release-automation.mjs'],
+    ['swallowed producer failure', '          set -euo pipefail', '          set -euo pipefail\n          continue-on-error: true'],
+    ['disabled fail-fast shell', '          set -euo pipefail', '          set +e']
+  ]) {
+    const input = valid();
+    input.productParityWorkflow = input.productParityWorkflow.replace(from, to);
+    const result = verifyLinuxWorkflowWiring(input);
+    assert.equal(result.passed, false, name);
+    assert.ok(result.failures.some((failure) => /P-38 release automation verification/u.test(failure)), name);
+  }
 });
 
 test('hidden Linux output uploads fail closed when upload protections mutate', () => {

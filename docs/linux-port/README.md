@@ -64,7 +64,9 @@ Primary files:
   steps.
 - [`accessibility-validation.md`](accessibility-validation.md) - axe route
   matrix, installed-app AT-SPI/Orca harness, evidence contract, and remaining
-  manual GNOME/KDE certification.
+  manual GNOME/KDE certification. P-31 additionally requires exact 200 percent
+  reflow, forced-colors/high-contrast/no-color, reduced-motion, and keyboard plus
+  Linux screen-reader evidence on every support-matrix row.
 - [`performance-reliability-validation.md`](performance-reliability-validation.md) -
   repeated packaged-shell percentiles, matched production-linked macOS/Linux
   workloads, resource soak, supervisor behavior, and fail-closed QA contract.
@@ -103,11 +105,11 @@ requirement, environment, and selected package, and registered materialized
 feature subjects are byte-validated and required in the validator result.
 Requirement-specific validators exist for P-01 release
 integrity, P-02 parity-certification preflight, P-03 installed runtime, P-04
-architecture reach, and P-37 Linux matrix coverage. P-02 captures a
+architecture reach, P-37 Linux matrix coverage, and P-38 release automation. P-02 captures a
 candidate-bound inventory of all 40 requirements, policies, support
 environments, substantive validator modules, registered capture roles, and
 materializer ownership. It remains blocked while any lane is incomplete; today
-35 substantive lanes are absent. The other 35 modules remain intentionally absent until their
+34 substantive lanes are absent. The other 34 modules remain intentionally absent until their
 installed-product acceptance packets land. Source availability is not a parity
 claim: every row remains blocked until all seven signed live receipts exist.
 

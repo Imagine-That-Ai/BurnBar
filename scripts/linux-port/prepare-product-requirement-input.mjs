@@ -11,6 +11,10 @@ import {
   validateRecord
 } from './lib/product-proof-closure.mjs';
 import { validateProductFeatureProofClosure } from './lib/product-feature-proof.mjs';
+import {
+  P38_WORKFLOW_PROOF_FILENAME,
+  validateP38ReleaseAutomationProof
+} from './lib/p38-release-automation-proof.mjs';
 
 const DEFAULT_REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const RELEASE_PROOF_ROLES = Object.freeze({
@@ -21,7 +25,10 @@ export const RELEASE_PROOF_ROLES = Object.freeze({
   ]),
   'P-03': new Set(['architecture-sessions', 'package-smoke']),
   'P-04': new Set(['architecture-sessions', 'architecture-smoke']),
-  'P-37': new Set(['architecture-smoke'])
+  'P-37': new Set(['architecture-smoke']),
+  'P-38': new Set([
+    'architecture-sessions', 'package-signature', 'package-sigstore', 'package-smoke', 'provenance'
+  ])
 });
 
 function parseJson(snapshot, label) {
@@ -160,6 +167,30 @@ export function prepareProductRequirementInput({
       ...(proof.format ? { format: proof.format } : {}),
       path: relative(destination),
       sha256: snapshot.sha256
+    });
+  }
+  if (requirementId === 'P-38') {
+    const workflowSnapshot = readRegularSnapshot(root, P38_WORKFLOW_PROOF_FILENAME, 'P-38 workflow verification proof');
+    validateP38ReleaseAutomationProof({
+      repoRoot: repository,
+      snapshot: workflowSnapshot,
+      targetHead,
+      environmentId,
+      candidateRunId,
+      candidateArtifactDigest
+    });
+    const destination = path.join(subjectsDir, safeName(
+      proofIndex,
+      'workflow-verification',
+      workflowSnapshot.path
+    ));
+    proofIndex += 1;
+    copySnapshot(workflowSnapshot, destination);
+    proofRecords.push({
+      role: 'workflow-verification',
+      path: relative(destination),
+      sha256: workflowSnapshot.sha256,
+      size: workflowSnapshot.size
     });
   }
   let featureProofClosure = null;

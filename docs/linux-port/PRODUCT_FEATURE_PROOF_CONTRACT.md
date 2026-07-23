@@ -11,8 +11,8 @@ alone.
    limits owned by each feature requirement. A requirement may register at most 16 roles, each
    limited to 256 MiB, with a combined declared budget no greater than 512 MiB. These limits are
    checked before any proof payload is read. Larger media must be chunked or gain a separately
-   reviewed streaming verifier. The four release-only requirements (`P-01`, `P-03`, `P-04`, and
-   `P-37`) cannot register feature roles.
+   reviewed streaming verifier. The five release-only requirements (`P-01`, `P-03`, `P-04`,
+   `P-37`, and `P-38`) cannot register feature roles.
 2. `finalize-product-proof-closure.mjs` validates and snapshots that registry into the immutable
    candidate artifact. The aggregate closure records its SHA-256 and size.
 3. A requirement capture harness writes only its observed artifacts under
@@ -78,7 +78,7 @@ The P-02 validator independently repeats that isolated execution instead of trus
 claims in the feature proof, then recomputes and validates the inventory. It can pass only when
 every one of the 40 rows has executable, mutation-sensitive ownership. A role, policy, empty test,
 reused test, workflow comment, untracked helper, or hand-authored passed JSON cannot satisfy a
-lane. The repository currently has five ready rows and 35 named blockers.
+lane. The repository currently has six ready rows and 34 named blockers.
 
 If collection itself fails, the capture producer atomically leaves a non-promotable
 `capture-failed` diagnostic in a runner-owned `mktemp` directory, even when the downloaded input
@@ -86,3 +86,19 @@ tree or a repository `.linux-parity-diagnostics` path is hostile or unwritable. 
 publishes that exact temporary path as a step output; the `always()` upload consumes that path and
 preserves both the diagnostic and combined output log. Neither file is registered as feature
 evidence or accepted as a validator receipt.
+
+## P-38 release automation certification
+
+P-38 is release-owned because its acceptance subjects are produced by the immutable candidate,
+not by a desktop-specific feature harness. Its materialized closure contains both architecture
+sessions, aggregate package lifecycle smoke, provenance, the complete detached-signature and
+Sigstore matrix, and a candidate-bound workflow-verification proof.
+
+Before materialization, `capture-p38-release-automation.mjs` independently verifies the current
+PR, nightly, candidate, product-parity, and promotion wiring and executes the workflow mutation
+suite. The proof binds every inspected source byte to the target commit, environment, candidate
+run, and immutable candidate artifact digest. The P-38 validator repeats the wiring verification
+and rejects stale sources, a partial signing matrix, missing architecture sessions, blocked smoke,
+or update/rollback records that do not name a distinct older version and the exact candidate.
+Capture and materialization delete stale outputs first, so a forced workflow or mutation failure
+cannot leave a reusable passed receipt.

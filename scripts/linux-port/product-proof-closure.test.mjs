@@ -12,11 +12,18 @@ import { validateProductRequirement as validateP01 } from './product-validators/
 import { validateProductRequirement as validateP03 } from './product-validators/P-03.mjs';
 import { validateProductRequirement as validateP04 } from './product-validators/P-04.mjs';
 import { validateProductRequirement as validateP37 } from './product-validators/P-37.mjs';
+import { validateProductRequirement as validateP38 } from './product-validators/P-38.mjs';
 import {
   archPkgbuildCommonSources,
   materializeArchReleaseMetadata
 } from './lib/linux-arch-pkgbuild.mjs';
 import { deriveReleaseAttestationSubjects } from './lib/product-proof-closure.mjs';
+import {
+  P38_WORKFLOW_PROOF_FILENAME,
+  P38_WORKFLOW_SOURCE_PATHS,
+  captureP38SourceRecords
+} from './lib/p38-release-automation-proof.mjs';
+import { loadLinuxWorkflowWiringInput, verifyLinuxWorkflowWiring } from './verify-linux-workflow-wiring.mjs';
 
 const HEAD = 'a'.repeat(40);
 const VERSION = '1.2.3';
@@ -153,6 +160,8 @@ function createReleaseFixture(featureRequirements = []) {
   }
   const sidecar = (name, value) => record(root, writeJson(path.join(output, 'sidecars', name), value));
   const binarySidecar = (name, value) => record(root, write(path.join(output, 'sidecars', name), value));
+  const previousVersion = '1.2.2';
+  const preservationHash = '7'.repeat(64);
   const architectureSessions = sidecar('architecture-sessions.json', {
     passed: true,
     failedCount: 0,
@@ -161,9 +170,20 @@ function createReleaseFixture(featureRequirements = []) {
       architecture,
       version: VERSION,
       gitCommit: HEAD,
-      lifecycle: Object.fromEntries([
-        'guiLaunch', 'daemonLaunch', 'versionReadback', 'update', 'rollback', 'dataPreservation'
-      ].map((step) => [step, { status: 'passed' }])),
+      packageSmokePassed: true,
+      lifecycle: {
+        guiLaunch: { status: 'passed' },
+        daemonLaunch: { status: 'passed' },
+        versionReadback: { status: 'passed' },
+        update: { status: 'passed', fromVersion: previousVersion, toVersion: VERSION },
+        rollback: { status: 'passed', fromVersion: VERSION, toVersion: previousVersion },
+        dataPreservation: {
+          status: 'passed', sentinelSha256: preservationHash,
+          afterPreviousSha256: preservationHash, afterUpdateSha256: preservationHash,
+          afterRollbackSha256: preservationHash, afterRestoreSha256: preservationHash
+        }
+      },
+      blockers: [],
       passed: true
     }))
   });
@@ -205,7 +225,13 @@ function createReleaseFixture(featureRequirements = []) {
       checksums: binarySidecar('checksums.txt', 'checksums\n'),
       sbom: sidecar('sbom.json', { schemaVersion: 1 }),
       vex: sidecar('vex.json', { schemaVersion: 1 }),
-      provenancePredicate: sidecar('provenance.json', { git: { commit: HEAD } }),
+      provenancePredicate: sidecar('provenance.json', {
+        status: 'passed',
+        failedCount: 0,
+        git: { commit: HEAD, dirty: false },
+        version: VERSION,
+        architectures: ['aarch64', 'x86_64'].map((architecture) => ({ architecture }))
+      }),
       sourceArchive: binarySidecar('source.tar', 'source archive\n'),
       parityAttestation: sidecar('parity.json', { promotionPassed: true, productParityClaim: true }),
       architectureSessions,
@@ -234,6 +260,56 @@ function stageAggregate(fixture, requirementId, environmentId = ENVIRONMENT) {
   fs.mkdirSync(inputRoot, { recursive: true });
   fs.cpSync(fixture.output, path.join(inputRoot, '.linux-release'), { recursive: true });
   return inputRoot;
+}
+
+function stageP38WorkflowProof(fixture, inputRoot, environmentId = ENVIRONMENT) {
+  for (const relative of P38_WORKFLOW_SOURCE_PATHS) {
+    const destination = path.join(fixture.root, relative);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(path.resolve(relative), destination);
+  }
+  const workflowVerification = verifyLinuxWorkflowWiring(loadLinuxWorkflowWiringInput(fixture.root));
+  assert.equal(workflowVerification.passed, true);
+  return writeJson(path.join(inputRoot, P38_WORKFLOW_PROOF_FILENAME), {
+    schemaVersion: 1,
+    id: 'openburnbar-linux-p38-release-automation-proof-v1',
+    generatedAt: new Date(0).toISOString(),
+    requirementId: 'P-38',
+    environmentId,
+    targetHead: HEAD,
+    candidate: { runId: CANDIDATE_RUN_ID, artifactDigest: CANDIDATE_ARTIFACT_DIGEST },
+    workflowVerification,
+    mutationSuite: {
+      command: 'node --test scripts/linux-port/verify-linux-workflow-wiring.test.mjs',
+      testPath: 'scripts/linux-port/verify-linux-workflow-wiring.test.mjs',
+      exitCode: 0,
+      testCount: 18,
+      passCount: 18,
+      failCount: 0,
+      outputSha256: '8'.repeat(64),
+      passed: true
+    },
+    sources: captureP38SourceRecords(fixture.root),
+    status: 'passed'
+  });
+}
+
+function prepareP38Fixture() {
+  const fixture = createReleaseFixture();
+  finalizeProductProofClosure({ repoRoot: fixture.root, outputDir: fixture.output, targetHead: HEAD });
+  const inputRoot = stageAggregate(fixture, 'P-38');
+  stageP38WorkflowProof(fixture, inputRoot);
+  const { closure } = prepareProductRequirementInput({
+    requirementId: 'P-38', environmentId: ENVIRONMENT, inputRoot, targetHead: HEAD,
+    candidateRunId: CANDIDATE_RUN_ID, candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+    repoRoot: fixture.root
+  });
+  return {
+    fixture,
+    inputRoot,
+    closure,
+    context: validatorContext(fixture, 'P-38', closure, 'p-38.ci-and-release-automation')
+  };
 }
 
 test('finalizer emits a two-architecture cryptographic product closure', (t) => {
@@ -280,6 +356,11 @@ test('P-04 release capture includes two-architecture smoke evidence', (t) => {
 
 test('P-37 release capture includes Linux matrix evidence', (t) => {
   assertRequirementReleaseCapture(t, 'P-37', 'architecture-smoke');
+});
+
+test('P-38 release capture includes architecture lifecycle and signing evidence', (t) => {
+  assertRequirementReleaseCapture(t, 'P-38', 'architecture-sessions');
+  assertRequirementReleaseCapture(t, 'P-38', 'package-signature');
 });
 
 test('finalizer rejects blockers, missing manifests, and signature mutation', async (t) => {
@@ -420,6 +501,25 @@ test('P-04 materializer selects two-architecture smoke evidence', (t) => {
 
 test('P-37 materializer selects Linux matrix evidence', (t) => {
   assertRequirementMaterializer(t, 'P-37', 'architecture-smoke');
+});
+
+test('P-38 materializer selects release automation evidence', (t) => {
+  const fixture = createReleaseFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  finalizeProductProofClosure({ repoRoot: fixture.root, outputDir: fixture.output, targetHead: HEAD });
+  const inputRoot = stageAggregate(fixture, 'P-38');
+  stageP38WorkflowProof(fixture, inputRoot);
+  const result = prepareProductRequirementInput({
+    requirementId: 'P-38', environmentId: ENVIRONMENT, inputRoot, targetHead: HEAD,
+    candidateRunId: CANDIDATE_RUN_ID, candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
+    repoRoot: fixture.root
+  });
+  for (const role of [
+    'architecture-sessions', 'package-signature', 'package-sigstore', 'package-smoke',
+    'provenance', 'workflow-verification'
+  ]) {
+    assert.ok(result.closure.proofs.some((proof) => proof.role === role), `P-38 must materialize ${role}`);
+  }
 });
 
 test('registered environment feature proofs are candidate-bound and materialized without implying pass', (t) => {
@@ -575,7 +675,7 @@ function validatorContext(
   };
 }
 
-test('P-01, P-03, P-04, and P-37 validators enforce their distinct release/runtime contracts', async (t) => {
+test('release-owned validators enforce their distinct release/runtime contracts', async (t) => {
   const fixture = createReleaseFixture();
   t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
   finalizeProductProofClosure({ repoRoot: fixture.root, outputDir: fixture.output, targetHead: HEAD });
@@ -583,10 +683,12 @@ test('P-01, P-03, P-04, and P-37 validators enforce their distinct release/runti
     ['P-01', 'p-01.release-integrity', validateP01],
     ['P-03', 'p-03.installed-runtime', validateP03],
     ['P-04', 'p-04.architecture-reach', validateP04],
-    ['P-37', 'p-37.linux-matrix', validateP37]
+    ['P-37', 'p-37.linux-matrix', validateP37],
+    ['P-38', 'p-38.ci-and-release-automation', validateP38]
   ];
   for (const [requirementId, checkId, validator] of cases) {
     const inputRoot = stageAggregate(fixture, requirementId);
+    if (requirementId === 'P-38') stageP38WorkflowProof(fixture, inputRoot);
     const { closure } = prepareProductRequirementInput({
       requirementId, environmentId: ENVIRONMENT, inputRoot, targetHead: HEAD,
       candidateRunId: CANDIDATE_RUN_ID, candidateArtifactDigest: CANDIDATE_ARTIFACT_DIGEST,
@@ -732,6 +834,106 @@ test('P-37 rejects a failed architecture smoke proof', async (t) => {
   writeJson(path.join(inputRoot, 'release-closure.json'), closure);
   const context = validatorContext(fixture, 'P-37', closure, 'p-37.linux-matrix');
   await assert.rejects(() => validateP37(context), /architecture-smoke proof is not passed/u);
+});
+
+function mutateP38Proof(subject, role, mutate) {
+  const proof = subject.closure.proofs.find((row) => row.role === role);
+  assert.ok(proof, `missing ${role} proof fixture`);
+  const file = path.join(subject.fixture.root, proof.path);
+  const document = JSON.parse(fs.readFileSync(file, 'utf8'));
+  mutate(document);
+  writeJson(file, document);
+  proof.sha256 = sha256(file);
+  proof.size = fs.statSync(file).size;
+}
+
+test('P-38 rejects missing prior-version lifecycle and workflow verification', async (t) => {
+  await t.test('prior version transition', async () => {
+    const subject = prepareP38Fixture();
+    t.after(() => fs.rmSync(subject.fixture.root, { recursive: true, force: true }));
+    mutateP38Proof(subject, 'architecture-sessions', (document) => {
+      document.sessions[0].lifecycle.update.fromVersion = VERSION;
+    });
+    await assert.rejects(
+      () => validateP38(subject.context),
+      /no exact older-release update\/rollback transition/u
+    );
+  });
+  await t.test('workflow mutation suite', async () => {
+    const subject = prepareP38Fixture();
+    t.after(() => fs.rmSync(subject.fixture.root, { recursive: true, force: true }));
+    mutateP38Proof(subject, 'workflow-verification', (document) => {
+      document.mutationSuite.passed = false;
+      document.mutationSuite.failCount = 1;
+      document.mutationSuite.passCount -= 1;
+    });
+    await assert.rejects(
+      () => validateP38(subject.context),
+      /workflow mutation suite did not pass completely/u
+    );
+  });
+});
+
+test('P-38 rejects missing architecture, signing, lifecycle, and current workflow source proof', async (t) => {
+  await t.test('architecture session', async () => {
+    const subject = prepareP38Fixture();
+    t.after(() => fs.rmSync(subject.fixture.root, { recursive: true, force: true }));
+    mutateP38Proof(subject, 'architecture-sessions', (document) => {
+      document.sessions.pop();
+    });
+    await assert.rejects(() => validateP38(subject.context), /architecture sessions are not complete/u);
+  });
+  await t.test('signing matrix', async () => {
+    const subject = prepareP38Fixture();
+    t.after(() => fs.rmSync(subject.fixture.root, { recursive: true, force: true }));
+    const index = subject.closure.proofs.findIndex((proof) => proof.role === 'package-signature');
+    subject.closure.proofs.splice(index, 1);
+    await assert.rejects(() => validateP38(subject.context), /must cover every release format and architecture/u);
+  });
+  await t.test('same-cardinality detached signature substitution', async () => {
+    const subject = prepareP38Fixture();
+    t.after(() => fs.rmSync(subject.fixture.root, { recursive: true, force: true }));
+    const proof = subject.closure.proofs.find((row) => row.role === 'package-signature');
+    assert.ok(proof, 'missing package-signature proof fixture');
+    const file = path.join(subject.fixture.root, proof.path);
+    write(file, Buffer.alloc(64, 9));
+    proof.sha256 = sha256(file);
+    proof.size = fs.statSync(file).size;
+    await assert.rejects(
+      () => validateP38(subject.context),
+      /does not match authoritative aggregate signing evidence/u
+    );
+  });
+  await t.test('same-cardinality Sigstore substitution', async () => {
+    const subject = prepareP38Fixture();
+    t.after(() => fs.rmSync(subject.fixture.root, { recursive: true, force: true }));
+    const proof = subject.closure.proofs.find((row) => row.role === 'package-sigstore');
+    assert.ok(proof, 'missing package-sigstore proof fixture');
+    const file = path.join(subject.fixture.root, proof.path);
+    writeJson(file, { substituted: true });
+    proof.sha256 = sha256(file);
+    proof.size = fs.statSync(file).size;
+    await assert.rejects(
+      () => validateP38(subject.context),
+      /does not match authoritative aggregate signing evidence/u
+    );
+  });
+  await t.test('blocked package lifecycle', async () => {
+    const subject = prepareP38Fixture();
+    t.after(() => fs.rmSync(subject.fixture.root, { recursive: true, force: true }));
+    mutateP38Proof(subject, 'package-smoke', (document) => {
+      document.lifecycle.rollback.status = 'blocked';
+      document.passed = false;
+      document.failedCount = 1;
+    });
+    await assert.rejects(() => validateP38(subject.context), /package-smoke proof is not passed/u);
+  });
+  await t.test('workflow source drift', async () => {
+    const subject = prepareP38Fixture();
+    t.after(() => fs.rmSync(subject.fixture.root, { recursive: true, force: true }));
+    fs.appendFileSync(path.join(subject.fixture.root, '.github/workflows/linux-release.yml'), '\n# forced failure\n');
+    await assert.rejects(() => validateP38(subject.context), /workflow source is stale or substituted/u);
+  });
 });
 
 function stagePassedPromotionEvidence(fixture) {
