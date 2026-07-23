@@ -1098,7 +1098,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
     /// single hinge that makes tapping "Why did cost spike?" produce a
     /// different brief than tapping "Which model is cheapest at
     /// similar performance?".
-    public enum PromptIntent: Sendable, Equatable {
+    enum PromptIntent: Sendable, Equatable {
         case costSpike            // "why did cost spike", "what blew up"
         case wasteByProject       // "which project / workflow wasted"
         case routeToCheaper       // "route routine work", "cheaper alternative"
@@ -1112,7 +1112,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
     /// the rule engine knows how to specialize for. Pure function over
     /// the prompt text — no I/O, no locale assumptions beyond ASCII
     /// keyword matching (all canonical questions are English).
-    public static func classifyPromptIntent(_ prompt: String) -> PromptIntent {
+    static func classifyPromptIntent(_ prompt: String) -> PromptIntent {
         let lower = prompt.lowercased()
         // Order matters: more specific intents check first so
         // "benchmark cost" lands on `.benchmarkPerformance`, not
@@ -1148,7 +1148,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
     /// A one-line "you asked about X" eyebrow that the brief renders
     /// above the executive summary so the user can see the tap they
     /// just made is actually steering the output.
-    public static func answerEyebrow(for intent: PromptIntent) -> String? {
+    static func answerEyebrow(for intent: PromptIntent) -> String? {
         switch intent {
         case .costSpike:            return "Answering: why cost moved"
         case .wasteByProject:       return "Answering: where spend leaked"

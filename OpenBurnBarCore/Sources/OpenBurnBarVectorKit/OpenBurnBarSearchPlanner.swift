@@ -102,10 +102,10 @@ public enum BurnBarFTSQueryBuilder {
 }
 
 /// Heuristics for precision-first search surfaces such as indexed-session lookup.
-public enum BurnBarLookupQueryHeuristics {
+enum BurnBarLookupQueryHeuristics {
     /// Returns `true` when search-box queries should allow semantic expansion beyond lexical hits.
     /// Single-term, quoted, or field-targeted lookups stay lexical-only for precision.
-    public static func allowsSemanticExpansion(for userInput: String) -> Bool {
+    static func allowsSemanticExpansion(for userInput: String) -> Bool {
         let trimmed = userInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return false }
 

@@ -45,7 +45,7 @@ public struct CodexRateLimitScanResult: Sendable {
     public let didChangeCache: Bool
 }
 
-public struct CodexRolloutEnvelope: Decodable {
+struct CodexRolloutEnvelope: Decodable {
     let timestamp: Date
     let type: String
     let payload: Payload
@@ -133,25 +133,15 @@ public struct CursorUserInfo: Decodable {
     public let name: String?
 }
 
-public struct CursorLegacyUsageResponse: Decodable {
-    let gpt4: CursorLegacyRequestUsage?
-}
-
-public struct CursorLegacyRequestUsage: Decodable {
-    let numRequests: Int?
-    let numRequestsTotal: Int?
-    let maxRequestUsage: Int?
-}
-
 // MARK: - Factory Models
 
-public struct FactorySessionCredentialEnvelope: Sendable {
+struct FactorySessionCredentialEnvelope: Sendable {
     let cookieHeader: String?
     let bearerToken: String?
     let sourceLabel: String
 }
 
-public struct FactoryAuthResponseEnvelope: Sendable {
+struct FactoryAuthResponseEnvelope: Sendable {
     let planName: String?
     let tier: String?
     let organizationName: String?
@@ -164,7 +154,7 @@ public struct FactoryAuthResponseEnvelope: Sendable {
     let inferredPlanTier: FactoryQuotaPlanTier
 }
 
-public struct FactoryUsageEnvelope: Sendable {
+struct FactoryUsageEnvelope: Sendable {
     struct Lane: Sendable {
         let userTokens: Double
         let totalAllowance: Double?

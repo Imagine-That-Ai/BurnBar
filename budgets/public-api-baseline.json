@@ -18,16 +18,16 @@
       "publicMembers": 2081
     },
     "OpenBurnBarLogParsers": {
-      "publicTypes": 44,
-      "publicMembers": 189
+      "publicTypes": 42,
+      "publicMembers": 184
     },
     "OpenBurnBarQuota": {
-      "publicTypes": 93,
-      "publicMembers": 201
+      "publicTypes": 85,
+      "publicMembers": 199
     },
     "OpenBurnBarInsights": {
-      "publicTypes": 269,
-      "publicMembers": 1289
+      "publicTypes": 261,
+      "publicMembers": 1223
     },
     "OpenBurnBarUI": {
       "publicTypes": 218,
@@ -42,8 +42,8 @@
       "publicMembers": 50
     },
     "OpenBurnBarVectorKit": {
-      "publicTypes": 49,
-      "publicMembers": 244
+      "publicTypes": 48,
+      "publicMembers": 243
     },
     "OpenBurnBarLaunchServices": {
       "publicTypes": 25,
@@ -54,8 +54,8 @@
       "publicMembers": 100
     },
     "OpenBurnBarSQLiteReader": {
-      "publicTypes": 6,
-      "publicMembers": 19
+      "publicTypes": 5,
+      "publicMembers": 15
     },
     "OpenBurnBarEngine": {
       "publicTypes": 0,

@@ -16,12 +16,12 @@ import OpenBurnBarKernel
 // session), so the G2 byte-identical contract is unaffected whether or not a sink
 // is installed. The default no-op keeps the Engine build free of any Apple-only or
 // third-party logging dependency.
-public enum ParserDiagnostics {
+enum ParserDiagnostics {
     /// A best-effort diagnostic emitted by the parser/cache layer.
-    public struct Event: Sendable {
-        public let message: String
-        public let error: Error?
-        public init(message: String, error: Error?) {
+    struct Event: Sendable {
+        let message: String
+        let error: Error?
+        init(message: String, error: Error?) {
             self.message = message
             self.error = error
         }
@@ -31,13 +31,13 @@ public enum ParserDiagnostics {
 
     /// Install a diagnostic sink (e.g. one that forwards to the app's `AppLogger`).
     /// Defaults to `nil` (no-op), which is what the Engine + CI harness use.
-    public static func installSink(_ handler: (@Sendable (Event) -> Void)?) {
+    static func installSink(_ handler: (@Sendable (Event) -> Void)?) {
         sink.withLock { $0 = handler }
     }
 
     /// Record a best-effort silent failure. Routed to the installed sink if any,
     /// otherwise discarded. Never throws, never affects parser output.
-    public static func silentFailure(_ message: String, error: Error? = nil) {
+    static func silentFailure(_ message: String, error: Error? = nil) {
         let handler = sink.withLock { $0 }
         handler?(Event(message: message, error: error))
     }
