@@ -51,6 +51,50 @@ export type SessionEntry = {
 };
 export type SessionListResult = { sessions: SessionEntry[]; nextCursor: string | null };
 
+// ──────────────────────────── Exact-thread chat ────────────────────────────
+
+export type ChatThreadSummary = {
+  id: string;
+  title: string;
+  preview: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+  lastMessageAt?: string;
+  backendID?: string;
+};
+
+export type PersistedChatMessageRole = 'user' | 'assistant' | 'system';
+
+export type PersistedChatMessage = {
+  id: string;
+  threadID: string;
+  role: PersistedChatMessageRole;
+  content: string;
+  timestamp: string;
+  backendID?: string;
+};
+
+export type ChatThreadListResult = { threads: ChatThreadSummary[] };
+export type ChatMessageCursor = {
+  timestamp: string;
+  messageID: string;
+};
+export type ChatThreadGetResult = {
+  thread?: ChatThreadSummary;
+  messages: PersistedChatMessage[];
+  hasMoreBefore: boolean;
+};
+export type ChatMessageAppendRequest = {
+  threadID: string;
+  messageID: string;
+  role: PersistedChatMessageRole;
+  content: string;
+  timestamp: string;
+  backendID?: string;
+};
+export type ChatMessageAppendResult = { message: PersistedChatMessage; inserted: boolean };
+
 // ─────────────────────────── P05: insights ────────────────────────────────
 
 export type WeeklyPoint = { label: string; tokens: number; costUsd: number };
@@ -242,6 +286,71 @@ export type DatabaseIndexActionResult = {
   auditHash?: string;
 };
 
+export type DatabaseCodeDegradation = {
+  code: string;
+  message: string;
+  staleCandidateCount: number;
+  totalCandidateCount: number;
+  indexAgeSeconds?: number;
+  reindexHint?: string;
+};
+
+export type DatabaseCodeTrustSignal = {
+  untrustedContentWrapped: boolean;
+  sourceTool: string;
+  wrappedCount: number;
+  warning: string;
+};
+
+export type DatabaseCodeSearchHit = {
+  chunkID: string;
+  filePath: string;
+  snippet: string;
+  rank?: number;
+  rankFeatures?: Record<string, number>;
+  blobSHA?: string;
+  contentHash?: string;
+};
+
+export type DatabaseCodeSearchResult = {
+  traceID: string;
+  projectID: string;
+  status: string;
+  hits: DatabaseCodeSearchHit[];
+  semanticAvailable: boolean;
+  degradation?: DatabaseCodeDegradation;
+  trustSignal: DatabaseCodeTrustSignal;
+};
+
+export type DatabaseCodeContextPackResult = {
+  traceID: string;
+  projectID: string;
+  status: string;
+  context: string;
+  hits: DatabaseCodeSearchHit[];
+  truncated: boolean;
+  semanticAvailable: boolean;
+  degradation?: DatabaseCodeDegradation;
+  trustSignal: DatabaseCodeTrustSignal;
+};
+
+export type DatabaseCodeSearchRequest = {
+  query: string;
+  projectPath?: string;
+  limit?: number;
+};
+
+export type DatabaseCodeContextPackRequest = {
+  query: string;
+  projectPath?: string;
+  limit?: number;
+  maxBytes?: number;
+};
+
+export const DATABASE_CODE_MAX_RESULTS = 50;
+export const DATABASE_CODE_DEFAULT_RESULTS = 20;
+export const DATABASE_CODE_MAX_CONTEXT_BYTES = 24_000;
+
 // ─────────────────────────── P08: account ─────────────────────────────────
 
 export type AccountStatus = {
@@ -281,6 +390,19 @@ export type AppVersionInfo = {
   shellVersion: string;
   daemonVersion: string;
   packageChannel: 'deb' | 'rpm' | 'appimage' | 'unknown';
+  package?: {
+    channel: 'deb' | 'rpm' | 'appimage' | 'unknown';
+    manager: string;
+    evidence: string;
+  };
+  runtime?: {
+    os: string;
+    architecture: string;
+    kernel?: string;
+    sessionType?: string;
+    desktop?: string;
+    displayServer?: string;
+  };
   /** Legacy fixture field. Live update truth comes from updateStatus(). */
   updateCheck?: string;
 };
@@ -302,7 +424,14 @@ export type LinuxUpdateStatus = {
   artifact?: LinuxUpdateArtifact;
   reason?: string;
 };
-export type DiagnosticsExport = { path: string };
+export type DiagnosticsExportPreview = {
+  schemaVersion: 1;
+  byteCount: number;
+  fileMode: '0600';
+  included: string[];
+  excluded: string[];
+};
+export type DiagnosticsExport = { path: string; preview?: DiagnosticsExportPreview };
 
 // ─────────────────────────── P10: proxy route log ─────────────────────────
 
@@ -501,14 +630,29 @@ export type ComputerUseSessionAuthorityStatus = {
   sessionId?: string;
 };
 
+/**
+ * Defaults from BurnBarComputerUseContracts.swift. The renderer-facing Tauri
+ * boundary is lower-camel (`clientId`, `runId`, `callId`); the Rust command
+ * translates these to the Swift Codable `clientID`/`runID`/`callID` wire keys
+ * before calling the daemon. Keeping that distinction explicit prevents the
+ * webview from accidentally sending Swift keys to a serde command.
+ */
+export const COMPUTER_USE_SESSION_DEFAULTS = {
+  scopeRuleIds: [] as string[],
+  phoneViewerNodeId: null as string | null,
+  macHostNodeId: null as string | null,
+  actionCap: 50,
+  sessionTimeoutSeconds: 1_800
+} as const;
+
 export type ComputerUseSessionStartRequest = {
   mode: 'browser';
   trustMode: 'manual' | 'step' | 'trusted';
-  scopeRuleIds?: string[];
-  phoneViewerNodeId?: string;
-  macHostNodeId?: string;
-  actionCap?: number;
-  sessionTimeoutSeconds?: number;
+  scopeRuleIds: string[];
+  phoneViewerNodeId: string | null;
+  macHostNodeId: string | null;
+  actionCap: number;
+  sessionTimeoutSeconds: number;
   clientId: 'linux-shell';
   runId: string;
   runCallId: string;
@@ -516,6 +660,54 @@ export type ComputerUseSessionStartRequest = {
   desktopOwnerAuthorizationRequest: {
     method: 'linux_desktop_owner';
   };
+};
+
+export type ComputerUseBrowserTool =
+  | 'browser_goto'
+  | 'browser_screenshot'
+  | 'browser_click'
+  | 'browser_fill';
+
+export type ComputerUseBrowserActionArguments = {
+  selector?: string;
+  text?: string;
+  url?: string;
+  key?: string;
+  value?: string;
+  positionX?: number;
+  positionY?: number;
+  timeoutMillis?: number;
+};
+
+/** Tauri command shape; Rust emits Swift's uppercase-ID Codable keys. */
+export type ComputerUseInvokeRequest = {
+  sessionId: string;
+  invocation: {
+    callId: string;
+    runId: string;
+    tool: ComputerUseBrowserTool;
+    arguments: ComputerUseBrowserActionArguments;
+    requestedBy: 'linux-shell';
+    /** Foundation reference-date seconds; Rust fills this only for legacy callers. */
+    requestedAt: number;
+  };
+};
+
+export type ComputerUseInvokeResponseStatus =
+  | 'executed'
+  | 'denied'
+  | 'awaiting_approval'
+  | 'error';
+
+export type ComputerUseInvokeResponse = {
+  sessionId: string;
+  callID: string;
+  status: ComputerUseInvokeResponseStatus;
+  approvalId?: string;
+  denyReason?: string;
+  auditEntryIndex?: number;
+  auditHeadHashHex?: string;
+  result?: RawJsonValue;
 };
 // ─────────────────────────── P13: integrations status ─────────────────────
 
@@ -536,6 +728,33 @@ export type IntegrationStatus = {
   docsHref?: string;
 };
 export type IntegrationsStatus = { integrations: IntegrationStatus[] };
+
+/** Closed operation set for the existing Linux SmartHub/device CLI contract. */
+export type SmartHubOperation =
+  | 'discover'
+  | 'status'
+  | 'cast_status'
+  | 'homeassistant_status'
+  | 'parity';
+export type SmartHubDiscoveryResult = {
+  adapter: string;
+  serviceType: string;
+  instances: string[];
+  rawTranscript: string;
+};
+export type SmartHubStatusResult = {
+  adapter: string;
+  status: string;
+  blocker?: string;
+  details: Record<string, string>;
+};
+export type SmartHubCommandResult =
+  | { operation: 'discover'; payload: SmartHubDiscoveryResult[] }
+  | {
+      operation: 'status' | 'cast_status' | 'homeassistant_status';
+      payload: SmartHubStatusResult;
+    }
+  | { operation: 'parity'; payload: IntegrationsStatus };
 
 export type GatewayProxyMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -601,6 +820,7 @@ export interface LinuxShellBridge {
   gatewayChatStream(request: GatewayProxyRequest, onChunk: (chunk: string) => void): Promise<void>;
   gatewayChatCancel(requestId: string): Promise<void>;
   openDashboard(): Promise<void>;
+  initialDeepLinkRoute?(): Promise<string | null>;
   quitApp(): Promise<void>;
   trayDegraded(): Promise<boolean>;
   measurePerfOperation(
@@ -618,6 +838,13 @@ export interface LinuxShellBridge {
   providerCatalog(): Promise<ProviderCatalog>;
   sessionList(): Promise<SessionListResult>;
   sessionSearch(query: string): Promise<SessionListResult>;
+  chatThreadList(query?: string, limit?: number): Promise<ChatThreadListResult>;
+  chatThreadGet(
+    threadID: string,
+    maxMessages?: number,
+    before?: ChatMessageCursor
+  ): Promise<ChatThreadGetResult>;
+  chatMessageAppend(request: ChatMessageAppendRequest): Promise<ChatMessageAppendResult>;
   usageInsights(): Promise<UsageInsights>;
   missionList(): Promise<MissionListResult>;
   missionApprovalDecision(id: string, decision: ApprovalDecision): Promise<void>;
@@ -631,6 +858,10 @@ export interface LinuxShellBridge {
   databaseWorkspaceStatus(projectPath?: string): Promise<DatabaseWorkspaceStatus>;
   databaseIndexProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
   databaseWatchProject(projectPath?: string): Promise<DatabaseIndexActionResult>;
+  /** Optional on older packaged shells; callers must fail closed when absent. */
+  databaseCodeSearch?(request: DatabaseCodeSearchRequest): Promise<DatabaseCodeSearchResult>;
+  /** Optional on older packaged shells; callers must fail closed when absent. */
+  databaseCodeContextPack?(request: DatabaseCodeContextPackRequest): Promise<DatabaseCodeContextPackResult>;
   accountStatus(): Promise<AccountStatus>;
   accountBeginSignIn(): Promise<AccountSignInOperation>;
   accountCancelSignIn(operationID: string): Promise<AccountStatus>;
@@ -682,7 +913,7 @@ export interface LinuxShellBridge {
   computerUseSessionStart?(
     params: ComputerUseSessionStartRequest
   ): Promise<ComputerUseSessionAuthorityStatus>;
-  computerUseInvoke?(params: Record<string, unknown>): Promise<unknown>;
+  computerUseInvoke?(params: ComputerUseInvokeRequest): Promise<ComputerUseInvokeResponse>;
   computerUseApprovalPending?(params?: Record<string, unknown>): Promise<unknown>;
   computerUseApprovalRespond?(params: Record<string, unknown>): Promise<unknown>;
   computerUseAuditExport?(params?: Record<string, unknown>): Promise<unknown>;
@@ -704,6 +935,7 @@ export interface LinuxShellBridge {
     source?: ComputerUsePanicSource;
   }): Promise<ComputerUsePanicHaltResult>;
   integrationsStatus(): Promise<IntegrationsStatus>;
+  smartHubCommand?(operation: SmartHubOperation): Promise<SmartHubCommandResult>;
 }
 
 // ──────────────────── Raw-daemon → typed-shape mappers ────────────────────
@@ -954,6 +1186,147 @@ function mapSessionList(raw: RawJsonValue): SessionListResult {
     })
   );
   return { sessions, nextCursor: str(pick(raw, 'nextCursor', 'cursor')) || null };
+}
+
+const CHAT_THREAD_RESULT_LIMIT = 100;
+const CHAT_MESSAGE_RESULT_LIMIT = 500;
+const CHAT_ID_LIMIT = 256;
+const CHAT_TITLE_LIMIT = 512;
+const CHAT_PREVIEW_LIMIT = 4_096;
+const CHAT_CONTENT_LIMIT = 262_144;
+const CHAT_BACKEND_ID_LIMIT = 64;
+
+function requireBoundedString(
+  value: RawJsonValue,
+  label: string,
+  maxBytes: number,
+  options: { allowEmpty?: boolean } = {}
+): string {
+  if (typeof value !== 'string' || (!options.allowEmpty && value.length === 0)) {
+    throw new Error(`${label} must be ${options.allowEmpty ? 'a' : 'a non-empty'} string.`);
+  }
+  if (new TextEncoder().encode(value).length > maxBytes) {
+    throw new Error(`${label} exceeds ${maxBytes} UTF-8 bytes.`);
+  }
+  return value;
+}
+
+function optionalBoundedString(value: RawJsonValue, label: string, maxBytes: number): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  return requireBoundedString(value, label, maxBytes);
+}
+
+function requireTimestamp(value: RawJsonValue, label: string): string {
+  const timestamp = requireBoundedString(value, label, 64);
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(timestamp) ||
+    !Number.isFinite(Date.parse(timestamp))
+  ) {
+    throw new Error(`${label} must be a canonical ISO-8601 timestamp.`);
+  }
+  return timestamp;
+}
+
+function requireCount(value: RawJsonValue, label: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative safe integer.`);
+  }
+  return value;
+}
+
+function decodePersistedChatRole(value: RawJsonValue, label: string): PersistedChatMessageRole {
+  if (value === 'user' || value === 'assistant' || value === 'system') return value;
+  throw new Error(`${label} is unsupported.`);
+}
+
+function decodeChatThreadSummary(raw: RawJsonValue, label: string): ChatThreadSummary {
+  const source = requireObject(raw, label);
+  return {
+    id: requireBoundedString(source.id, `${label}.id`, CHAT_ID_LIMIT),
+    title: requireBoundedString(source.title, `${label}.title`, CHAT_TITLE_LIMIT),
+    preview: requireBoundedString(source.preview, `${label}.preview`, CHAT_PREVIEW_LIMIT, { allowEmpty: true }),
+    messageCount: requireCount(source.messageCount, `${label}.messageCount`),
+    createdAt: requireTimestamp(source.createdAt, `${label}.createdAt`),
+    updatedAt: requireTimestamp(source.updatedAt, `${label}.updatedAt`),
+    lastMessageAt:
+      source.lastMessageAt === undefined || source.lastMessageAt === null
+        ? undefined
+        : requireTimestamp(source.lastMessageAt, `${label}.lastMessageAt`),
+    backendID: optionalBoundedString(source.backendID, `${label}.backendID`, CHAT_BACKEND_ID_LIMIT)
+  };
+}
+
+function decodePersistedChatMessage(raw: RawJsonValue, label: string): PersistedChatMessage {
+  const source = requireObject(raw, label);
+  return {
+    id: requireBoundedString(source.id, `${label}.id`, CHAT_ID_LIMIT),
+    threadID: requireBoundedString(source.threadID, `${label}.threadID`, CHAT_ID_LIMIT),
+    role: decodePersistedChatRole(source.role, `${label}.role`),
+    content: requireBoundedString(source.content, `${label}.content`, CHAT_CONTENT_LIMIT, { allowEmpty: true }),
+    timestamp: requireTimestamp(source.timestamp, `${label}.timestamp`),
+    backendID: optionalBoundedString(source.backendID, `${label}.backendID`, CHAT_BACKEND_ID_LIMIT)
+  };
+}
+
+export function decodeChatThreadList(raw: RawJsonValue): ChatThreadListResult {
+  const source = requireObject(pick(raw, 'result') ?? raw, 'chat thread list');
+  if (!Array.isArray(source.threads)) throw new Error('chat thread list.threads must be an array.');
+  if (source.threads.length > CHAT_THREAD_RESULT_LIMIT) {
+    throw new Error(`chat thread list.threads exceeds ${CHAT_THREAD_RESULT_LIMIT} entries.`);
+  }
+  return {
+    threads: source.threads.map((thread, index) =>
+      decodeChatThreadSummary(thread, `chat thread list.threads[${index}]`)
+    )
+  };
+}
+
+export function decodeChatThreadGet(raw: RawJsonValue): ChatThreadGetResult {
+  const source = requireObject(pick(raw, 'result') ?? raw, 'chat thread get');
+  if (!Array.isArray(source.messages)) throw new Error('chat thread get.messages must be an array.');
+  if (source.messages.length > CHAT_MESSAGE_RESULT_LIMIT) {
+    throw new Error(`chat thread get.messages exceeds ${CHAT_MESSAGE_RESULT_LIMIT} entries.`);
+  }
+  const thread = source.thread === undefined || source.thread === null
+    ? undefined
+    : decodeChatThreadSummary(source.thread, 'chat thread get.thread');
+  const messages = source.messages.map((message, index) =>
+    decodePersistedChatMessage(message, `chat thread get.messages[${index}]`)
+  );
+  if (!thread && messages.length > 0) {
+    throw new Error('chat thread get cannot contain messages when the thread is missing.');
+  }
+  if (thread && messages.some((message) => message.threadID !== thread.id)) {
+    throw new Error('chat thread get contains a message for a different thread.');
+  }
+  return {
+    thread,
+    messages,
+    hasMoreBefore: requireBoolean(source.hasMoreBefore, 'chat thread get.hasMoreBefore')
+  };
+}
+
+export function decodeChatMessageAppend(raw: RawJsonValue): ChatMessageAppendResult {
+  const source = requireObject(pick(raw, 'result') ?? raw, 'chat message append');
+  return {
+    message: decodePersistedChatMessage(source.message, 'chat message append.message'),
+    inserted: requireBoolean(source.inserted, 'chat message append.inserted')
+  };
+}
+
+function assertAppendEcho(request: ChatMessageAppendRequest, result: ChatMessageAppendResult): void {
+  const message = result.message;
+  const timestampsMatch = Math.abs(Date.parse(message.timestamp) - Date.parse(request.timestamp)) < 1;
+  if (
+    message.id !== request.messageID ||
+    message.threadID !== request.threadID ||
+    message.role !== request.role ||
+    message.content !== request.content ||
+    message.backendID !== request.backendID ||
+    !timestampsMatch
+  ) {
+    throw new Error('chat message append response does not match the requested idempotency identity.');
+  }
 }
 
 function mapUsageInsights(raw: RawJsonValue): UsageInsights {
@@ -1337,19 +1710,129 @@ function mapDatabaseIndexAction(raw: RawJsonValue): DatabaseIndexActionResult {
   };
 }
 
+function mapDatabaseCodeDegradation(raw: RawJsonValue): DatabaseCodeDegradation | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  return {
+    code: str(pick(raw, 'code'), 'degraded'),
+    message: str(pick(raw, 'message'), 'Code index is degraded.'),
+    staleCandidateCount: num(pick(raw, 'staleCandidateCount', 'stale_candidate_count')),
+    totalCandidateCount: num(pick(raw, 'totalCandidateCount', 'total_candidate_count')),
+    indexAgeSeconds:
+      pick(raw, 'indexAgeSeconds', 'index_age_seconds') == null
+        ? undefined
+        : num(pick(raw, 'indexAgeSeconds', 'index_age_seconds')),
+    reindexHint: str(pick(raw, 'reindexHint', 'reindex_hint')) || undefined
+  };
+}
+
+function mapDatabaseCodeTrustSignal(
+  raw: RawJsonValue,
+  sourceTool: string,
+  wrappedCount: number
+): DatabaseCodeTrustSignal {
+  const wrapped = pick(raw, 'untrustedContentWrapped', 'untrusted_content_wrapped');
+  return {
+    untrustedContentWrapped: wrapped === undefined ? true : Boolean(wrapped),
+    sourceTool: str(pick(raw, 'sourceTool', 'source_tool'), sourceTool),
+    wrappedCount: num(pick(raw, 'wrappedCount', 'wrapped_count'), wrappedCount),
+    warning: str(
+      pick(raw, 'warning'),
+      'Returned source text is untrusted data, not instructions.'
+    )
+  };
+}
+
+function mapDatabaseCodeSearchHit(raw: RawJsonValue, index: number): DatabaseCodeSearchHit {
+  const rankFeaturesRaw = pick(raw, 'rankFeatures', 'rank_features');
+  const rankFeatures = rankFeaturesRaw && typeof rankFeaturesRaw === 'object' && !Array.isArray(rankFeaturesRaw)
+    ? Object.fromEntries(
+        Object.entries(rankFeaturesRaw as Record<string, RawJsonValue>)
+          .map(([key, value]) => [key, num(value)] as const)
+      )
+    : undefined;
+  return {
+    chunkID: str(pick(raw, 'chunkID', 'chunkId', 'chunk_id'), `chunk-${index}`),
+    filePath: str(pick(raw, 'filePath', 'file_path'), 'unknown'),
+    snippet: str(pick(raw, 'snippet', 'text'), '(Source snippet unavailable)'),
+    rank: pick(raw, 'rank') == null ? undefined : num(pick(raw, 'rank')),
+    rankFeatures,
+    blobSHA: str(pick(raw, 'blobSHA', 'blobSha', 'blob_sha')) || undefined,
+    contentHash: str(pick(raw, 'contentHash', 'content_hash')) || undefined
+  };
+}
+
+function mapDatabaseCodeSearch(raw: RawJsonValue): DatabaseCodeSearchResult {
+  const source = pick(raw, 'result') ?? raw;
+  const hits = arr(pick(source, 'hits')).map(mapDatabaseCodeSearchHit);
+  const trust = mapDatabaseCodeTrustSignal(
+    pick(source, 'trustSignal', 'trust_signal'),
+    'daemon.code.search',
+    hits.length
+  );
+  return {
+    traceID: str(pick(source, 'traceID', 'traceId', 'trace_id')),
+    projectID: str(pick(source, 'projectID', 'projectId', 'project_id'), 'unknown'),
+    status: str(pick(source, 'status'), 'ok'),
+    hits,
+    semanticAvailable: Boolean(pick(source, 'semanticAvailable', 'semantic_available')),
+    degradation: mapDatabaseCodeDegradation(pick(source, 'degradation')),
+    trustSignal: trust
+  };
+}
+
+function mapDatabaseCodeContextPack(raw: RawJsonValue): DatabaseCodeContextPackResult {
+  const source = pick(raw, 'result') ?? raw;
+  const hits = arr(pick(source, 'hits')).map(mapDatabaseCodeSearchHit);
+  const trust = mapDatabaseCodeTrustSignal(
+    pick(source, 'trustSignal', 'trust_signal'),
+    'daemon.code.context_pack',
+    hits.length
+  );
+  return {
+    traceID: str(pick(source, 'traceID', 'traceId', 'trace_id')),
+    projectID: str(pick(source, 'projectID', 'projectId', 'project_id'), 'unknown'),
+    status: str(pick(source, 'status'), 'ok'),
+    context: str(pick(source, 'context')),
+    hits,
+    truncated: Boolean(pick(source, 'truncated')),
+    semanticAvailable: Boolean(pick(source, 'semanticAvailable', 'semantic_available')),
+    degradation: mapDatabaseCodeDegradation(pick(source, 'degradation')),
+    trustSignal: trust
+  };
+}
+
+function clampDatabaseCodeLimit(limit: number | undefined, fallback: number): number {
+  const value = Number.isFinite(limit) ? Math.trunc(limit as number) : fallback;
+  return Math.max(1, Math.min(DATABASE_CODE_MAX_RESULTS, value));
+}
+
+function normalizeDatabaseCodeQuery(query: string): string {
+  const normalized = query.trim();
+  if (!normalized) throw new Error('Code search query must not be empty.');
+  return normalized.slice(0, 512);
+}
+
 function mapAccountStatus(raw: RawJsonValue): AccountStatus {
   const status = pick(raw, 'status') ?? raw;
   const signedIn = Boolean(pick(status, 'signedIn', 'signed_in', 'authenticated'));
-  const rawState = str(pick(status, 'state'), signedIn ? 'active' : 'signed_out');
+  // The daemon's Linux auth authority deliberately collapses refreshing,
+  // locked, configuration-required, and error phases into an unavailable
+  // public state. Keep those failures visible instead of silently treating an
+  // unknown/new phase as signed out (which could offer the wrong destructive
+  // controls or hide a recoverable cloud session).
+  const rawState = str(pick(status, 'state'), signedIn ? 'active' : 'signed_out')
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, '_');
   const state: NonNullable<AccountStatus['state']> = rawState === 'authorizing'
     ? 'authorizing'
-    : rawState === 'awaiting_device_approval'
+    : rawState === 'awaiting_device_approval' || rawState === 'awaitingdeviceapproval'
       ? 'awaiting-device-approval'
-      : rawState === 'active'
+      : rawState === 'active' || rawState === 'ready'
         ? 'active'
-        : rawState === 'unavailable'
-          ? 'unavailable'
-          : 'signed-out';
+        : rawState === 'signed_out' || rawState === 'signedout'
+          ? 'signed-out'
+          : 'unavailable';
   const syncStateRaw = str(pick(status, 'syncState', 'sync_state'), signedIn ? 'active' : 'local-only');
   const syncState: AccountStatus['syncState'] = syncStateRaw === 'active' || syncStateRaw === 'cloud-ready'
     ? 'active'
@@ -1452,11 +1935,91 @@ function mapMembershipCheckoutUrl(raw: RawJsonValue): string {
   return value;
 }
 
+export function isSafeDiagnosticsPath(path: string): boolean {
+  if (!path.startsWith('/') || path.includes('\\') || path.length > 4096) return false;
+  if ([...path].some((character) => character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f)) {
+    return false;
+  }
+  const segments = path.split('/');
+  const interiorSegments = segments.slice(1, -1);
+  if (interiorSegments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')) return false;
+  const filename = segments.at(-1) ?? '';
+  return /^(?:diagnostics-[A-Za-z0-9._-]+|openburnbar-diagnostics-[A-Za-z0-9._-]+)\.json$/.test(filename);
+}
+
+export function isSafeDiagnosticsPreview(preview: DiagnosticsExportPreview): boolean {
+  const validEntry = (entry: string): boolean =>
+    entry.length > 0 && entry.length <= 256 && ![...entry].some((character) => character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f);
+  return (
+    preview.schemaVersion === 1 &&
+    Number.isSafeInteger(preview.byteCount) &&
+    preview.byteCount >= 0 &&
+    preview.byteCount <= 10 * 1024 * 1024 &&
+    preview.fileMode === '0600' &&
+    preview.included.length <= 32 &&
+    preview.excluded.length <= 32 &&
+    preview.included.every(validEntry) &&
+    preview.excluded.every(validEntry)
+  );
+}
+
+function mapDiagnosticsPreview(raw: RawJsonValue): DiagnosticsExportPreview {
+  const preview = obj(raw);
+  if (num(pick(preview, 'schemaVersion', 'schema_version')) !== 1) {
+    throw new Error('Native diagnostics preview returned an unsupported schema.');
+  }
+  const byteCount = num(pick(preview, 'byteCount', 'byte_count'), -1);
+  const fileMode = str(pick(preview, 'fileMode', 'file_mode'));
+  const included = arr(pick(preview, 'included')).map((entry) => str(entry));
+  const excluded = arr(pick(preview, 'excluded')).map((entry) => str(entry));
+  const candidate = { schemaVersion: 1 as const, byteCount, fileMode: fileMode as '0600', included, excluded };
+  if (!isSafeDiagnosticsPreview(candidate)) {
+    throw new Error('Native diagnostics preview returned invalid privacy metadata.');
+  }
+  return candidate;
+}
+
+function mapDiagnosticsExport(raw: RawJsonValue): DiagnosticsExport {
+  const path = str(pick(raw, 'path')).trim();
+  if (!isSafeDiagnosticsPath(path)) {
+    throw new Error('Native diagnostics export returned an unsafe path.');
+  }
+  const previewRaw = pick(raw, 'preview');
+  return {
+    path,
+    preview: previewRaw === undefined ? undefined : mapDiagnosticsPreview(previewRaw)
+  };
+}
+
 function mapAppVersionInfo(raw: RawJsonValue): AppVersionInfo {
+  const packageRaw = obj(pick(raw, 'package'));
+  const runtimeRaw = obj(pick(raw, 'runtime'));
+  const packageChannel = normalizeChannel(
+    str(pick(packageRaw, 'channel'), str(pick(raw, 'packageChannel', 'package_channel'), 'unknown'))
+  );
+  const packageInfo = Object.keys(packageRaw).length === 0
+    ? undefined
+    : {
+        channel: packageChannel,
+        manager: str(pick(packageRaw, 'manager'), 'unknown'),
+        evidence: str(pick(packageRaw, 'evidence'), 'unknown')
+      };
+  const runtime = Object.keys(runtimeRaw).length === 0
+    ? undefined
+    : {
+        os: str(pick(runtimeRaw, 'os'), 'unknown'),
+        architecture: str(pick(runtimeRaw, 'architecture'), 'unknown'),
+        kernel: str(pick(runtimeRaw, 'kernel')) || undefined,
+        sessionType: str(pick(runtimeRaw, 'sessionType', 'session_type')) || undefined,
+        desktop: str(pick(runtimeRaw, 'desktop')) || undefined,
+        displayServer: str(pick(runtimeRaw, 'displayServer', 'display_server')) || undefined
+      };
   return {
     shellVersion: str(pick(raw, 'shellVersion', 'shell_version')),
     daemonVersion: str(pick(raw, 'daemonVersion', 'daemon_version')),
-    packageChannel: normalizeChannel(str(pick(raw, 'packageChannel', 'package_channel'), 'unknown'))
+    packageChannel,
+    package: packageInfo,
+    runtime
   };
 }
 
@@ -1527,6 +2090,71 @@ function normalizeIntegrationState(value: string): IntegrationState {
     default:
       return 'unavailable';
   }
+}
+
+function normalizeSmartHubOperation(value: RawJsonValue): SmartHubOperation {
+  if (
+    value === 'discover' ||
+    value === 'status' ||
+    value === 'cast_status' ||
+    value === 'homeassistant_status' ||
+    value === 'parity'
+  ) {
+    return value;
+  }
+  throw new Error('SmartHub operation is not allowlisted.');
+}
+
+function mapSmartHubStatus(raw: RawJsonValue): SmartHubStatusResult {
+  const source = requireObject(raw, 'SmartHub status payload');
+  const details: Record<string, string> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value !== 'string') {
+      throw new Error(`SmartHub status field ${key} must be a string.`);
+    }
+    details[key] = value;
+  }
+  return {
+    adapter: requireString(source.adapter, 'SmartHub status adapter'),
+    status: requireString(source.status, 'SmartHub status state'),
+    blocker: typeof source.blocker === 'string' && source.blocker.length > 0 ? source.blocker : undefined,
+    details
+  };
+}
+
+function mapSmartHubCommand(raw: RawJsonValue): SmartHubCommandResult {
+  const source = requireObject(raw, 'SmartHub command response');
+  const operation = normalizeSmartHubOperation(source.operation);
+  const payload = source.payload;
+  if (payload === undefined) throw new Error('SmartHub command payload is missing.');
+  if (operation === 'discover') {
+    if (!Array.isArray(payload)) throw new Error('SmartHub discovery payload must be an array.');
+    const rows = payload.map((item, index): SmartHubDiscoveryResult => {
+      const row = requireObject(item, `SmartHub discovery result ${index}`);
+      const instances = arr(row.instances).map((instance, instanceIndex) =>
+        requireString(instance, `SmartHub discovery result ${index} instance ${instanceIndex}`)
+      );
+      if (typeof row.rawTranscript !== 'string') {
+        throw new Error(`SmartHub discovery result ${index} rawTranscript must be a string.`);
+      }
+      return {
+        adapter: requireString(row.adapter, `SmartHub discovery result ${index} adapter`),
+        serviceType: requireString(row.serviceType, `SmartHub discovery result ${index} serviceType`),
+        instances,
+        rawTranscript: row.rawTranscript
+      };
+    });
+    return { operation, payload: rows };
+  }
+  if (operation === 'parity') {
+    if (!Array.isArray(payload)) throw new Error('SmartHub parity payload must be an array.');
+    return { operation, payload: mapIntegrationsStatus({ integrations: payload }) };
+  }
+  return { operation, payload: mapSmartHubStatus(payload) };
+}
+
+export function decodeSmartHubCommandResponse(raw: RawJsonValue): SmartHubCommandResult {
+  return mapSmartHubCommand(raw);
 }
 
 function mapIntegrationsStatus(raw: RawJsonValue): IntegrationsStatus {
@@ -1913,6 +2541,53 @@ function mapComputerUsePanicHalt(
   };
 }
 
+const COMPUTER_USE_INVOKE_STATUSES: readonly ComputerUseInvokeResponseStatus[] = [
+  'executed',
+  'denied',
+  'awaiting_approval',
+  'error'
+];
+
+/** Decode the daemon's Swift Codable response without hiding a malformed result. */
+export function decodeComputerUseInvokeResponse(raw: RawJsonValue): ComputerUseInvokeResponse {
+  const direct = obj(raw);
+  const source = typeof direct.status === 'string'
+    ? direct
+    : requireObject(pick(raw, 'result'), 'computer-use invoke response');
+  const status = requireString(source.status, 'computer-use invoke status');
+  if (!COMPUTER_USE_INVOKE_STATUSES.includes(status as ComputerUseInvokeResponseStatus)) {
+    throw new Error(`computer-use invoke returned unsupported status: ${status}`);
+  }
+  const sessionId = requireString(
+    pick(source, 'sessionId', 'sessionID', 'session_id'),
+    'computer-use invoke sessionId'
+  );
+  const callID = requireString(
+    pick(source, 'callID', 'callId', 'call_id'),
+    'computer-use invoke callID'
+  );
+  const auditEntryIndexRaw = pick(source, 'auditEntryIndex', 'audit_entry_index');
+  const auditEntryIndex = typeof auditEntryIndexRaw === 'number'
+    && Number.isSafeInteger(auditEntryIndexRaw)
+    && auditEntryIndexRaw >= 0
+    ? auditEntryIndexRaw
+    : undefined;
+  const optionalString = (...keys: string[]): string | undefined => {
+    const value = pick(source, ...keys);
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
+  };
+  return {
+    sessionId,
+    callID,
+    status: status as ComputerUseInvokeResponseStatus,
+    approvalId: optionalString('approvalId', 'approvalID', 'approval_id'),
+    denyReason: optionalString('denyReason', 'deny_reason', 'reason'),
+    auditEntryIndex,
+    auditHeadHashHex: optionalString('auditHeadHashHex', 'audit_head_hash_hex'),
+    result: source.result
+  };
+}
+
 // ─────────────────────────── Bridge loader ────────────────────────────────
 
 export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
@@ -1931,6 +2606,7 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     },
     gatewayChatCancel: (requestId) => invoke<void>('gateway_chat_cancel', { requestId }),
     openDashboard: () => invoke<void>('open_dashboard'),
+    initialDeepLinkRoute: () => invoke<string | null>('initial_deep_link_route'),
     quitApp: () => invoke<void>('quit_app'),
     trayDegraded: () => invoke<boolean>('tray_degraded'),
     measurePerfOperation: (name) =>
@@ -1981,6 +2657,31 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     sessionSearch: async (query) => {
       const raw = await invoke<RawJsonValue>('session_search', { query });
       return mapSessionList(raw);
+    },
+    // Exact persisted chat authority; unlike P03, these never derive chat from usage rows.
+    chatThreadList: async (query, limit = 100) => {
+      const raw = await invoke<RawJsonValue>('chat_thread_list', { query: query || null, limit });
+      return decodeChatThreadList(raw);
+    },
+    chatThreadGet: async (threadID, maxMessages = 500, before) => {
+      const args: {
+        threadId: string;
+        maxMessages: number;
+        beforeTimestamp?: string;
+        beforeMessageID?: string;
+      } = { threadId: threadID, maxMessages };
+      if (before) {
+        args.beforeTimestamp = before.timestamp;
+        args.beforeMessageID = before.messageID;
+      }
+      const raw = await invoke<RawJsonValue>('chat_thread_get', args);
+      return decodeChatThreadGet(raw);
+    },
+    chatMessageAppend: async (request) => {
+      const raw = await invoke<RawJsonValue>('chat_message_append', { request });
+      const result = decodeChatMessageAppend(raw);
+      assertAppendEcho(request, result);
+      return result;
     },
     // P05 — daemon.usage.recent → insights aggregation
     usageInsights: async () => {
@@ -2125,6 +2826,26 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       const raw = await invoke<RawJsonValue>('database_watch_project', { projectPath });
       return mapDatabaseIndexAction(raw);
     },
+    // P22 — daemon.code.search / daemon.code.context_pack. The daemon owns
+    // index availability and trust wrapping; the shell only clamps bounded
+    // reads and maps the typed response.
+    databaseCodeSearch: async (request) => {
+      const raw = await invoke<RawJsonValue>('database_code_search', {
+        query: normalizeDatabaseCodeQuery(request.query),
+        projectPath: request.projectPath,
+        limit: clampDatabaseCodeLimit(request.limit, DATABASE_CODE_DEFAULT_RESULTS)
+      });
+      return mapDatabaseCodeSearch(raw);
+    },
+    databaseCodeContextPack: async (request) => {
+      const raw = await invoke<RawJsonValue>('database_code_context_pack', {
+        query: normalizeDatabaseCodeQuery(request.query),
+        projectPath: request.projectPath,
+        limit: clampDatabaseCodeLimit(request.limit, 10),
+        maxBytes: Math.max(1_024, Math.min(DATABASE_CODE_MAX_CONTEXT_BYTES, Math.trunc(request.maxBytes ?? DATABASE_CODE_MAX_CONTEXT_BYTES)))
+      });
+      return mapDatabaseCodeContextPack(raw);
+    },
     // P08 — daemon-owned browser PKCE and lower-trust Linux identity.
     accountStatus: async () => {
       const raw = await invoke<RawJsonValue>('account_status');
@@ -2174,7 +2895,7 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     // P09 — redacted diagnostics export → file path
     exportDiagnostics: async () => {
       const raw = await invoke<RawJsonValue>('export_diagnostics');
-      return { path: str(pick(raw, 'path')) };
+      return mapDiagnosticsExport(raw);
     },
     // P11 — session env for pet tier detection
     sessionEnv: async () => {
@@ -2334,7 +3055,8 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       invoke<ComputerUseSessionAuthorityStatus>('computer_use_session_authority_status'),
     computerUseSessionStart: (params) =>
       invoke<ComputerUseSessionAuthorityStatus>('computer_use_session_start', { params }),
-    computerUseInvoke: (params) => invoke<RawJsonValue>('computer_use_invoke', { params }),
+    computerUseInvoke: async (params) =>
+      decodeComputerUseInvokeResponse(await invoke<RawJsonValue>('computer_use_invoke', { params })),
     computerUseApprovalPending: (params) =>
       invoke<RawJsonValue>('computer_use_approval_pending', { params: params ?? null }),
     computerUseApprovalRespond: (params) =>
@@ -2351,6 +3073,11 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
     integrationsStatus: async () => {
       const raw = await invoke<RawJsonValue>('integrations_status');
       return mapIntegrationsStatus(raw);
+    },
+    // P28 — fixed-argv SmartHub/device CLI operations; never a generic shell.
+    smartHubCommand: async (operation) => {
+      const raw = await invoke<RawJsonValue>('smarthub_command', { operation });
+      return decodeSmartHubCommandResponse(raw);
     }
   };
 }

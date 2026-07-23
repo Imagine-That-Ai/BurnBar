@@ -166,6 +166,73 @@ describe('ActivitySurface', () => {
     expect(screen.getByText(formatTokens(first.tokens))).toBeTruthy();
   });
 
+  it('exports every currently loaded row in the selected format', async () => {
+    const loaded = fixtureSessionList().sessions.slice(0, 2);
+    const sessionList = vi.fn(async () => ({ sessions: loaded, nextCursor: 'older-page' }));
+    useShellStore.setState({
+      bridge: mockBridge({ sessionList })
+    });
+    render(<ActivitySurface />);
+    await act(async () => {
+      await useActivityStore.getState().load();
+    });
+    const sessionListCallsBeforeExport = sessionList.mock.calls.length;
+    expect(sessionListCallsBeforeExport).toBeGreaterThan(0);
+
+    expect(screen.getByText(/Export includes 2 currently loaded rows/i)).toBeTruthy();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Activity export format' }), {
+      target: { value: 'markdown' }
+    });
+    const exportButton = screen.getByRole('button', { name: 'Export activity as Markdown' });
+    expect((exportButton as HTMLButtonElement).disabled).toBe(false);
+
+    const url = globalThis.URL;
+    const originalCreateObjectURL = url.createObjectURL;
+    const originalRevokeObjectURL = url.revokeObjectURL;
+    const createObjectURL = vi.fn(() => 'blob:activity-export');
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(url, 'createObjectURL', {
+      configurable: true,
+      writable: true,
+      value: createObjectURL
+    });
+    Object.defineProperty(url, 'revokeObjectURL', {
+      configurable: true,
+      writable: true,
+      value: revokeObjectURL
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    try {
+      fireEvent.click(exportButton);
+      expect(screen.getByRole('status').textContent).toContain(
+        'Exported openburnbar-activity-export.md (2 loaded rows)'
+      );
+      expect(createObjectURL).toHaveBeenCalledOnce();
+      expect(click).toHaveBeenCalled();
+      expect(sessionList).toHaveBeenCalledTimes(sessionListCallsBeforeExport);
+    } finally {
+      click.mockRestore();
+      if (originalCreateObjectURL) {
+        Object.defineProperty(url, 'createObjectURL', {
+          configurable: true,
+          writable: true,
+          value: originalCreateObjectURL
+        });
+      } else {
+        delete (url as { createObjectURL?: unknown }).createObjectURL;
+      }
+      if (originalRevokeObjectURL) {
+        Object.defineProperty(url, 'revokeObjectURL', {
+          configurable: true,
+          writable: true,
+          value: originalRevokeObjectURL
+        });
+      } else {
+        delete (url as { revokeObjectURL?: unknown }).revokeObjectURL;
+      }
+    }
+  });
+
   it('shows empty state when daemon returns no sessions', async () => {
     useShellStore.setState({
       bridge: mockBridge({ sessionList: async () => ({ sessions: [], nextCursor: null }) })

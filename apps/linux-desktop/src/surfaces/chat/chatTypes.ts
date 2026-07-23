@@ -1,4 +1,4 @@
-import type { SessionEntry } from '../../tauriBridge.js';
+import type { ChatThreadSummary } from '../../tauriBridge.js';
 
 export type ChatBackendId = 'hermes' | 'codex' | 'claude' | 'pi-agent' | 'cli';
 
@@ -22,12 +22,12 @@ export type MemoryCitation = {
   messageId?: string;
 };
 
-export function threadPreview(session: SessionEntry): string {
-  return `Indexed ${session.provider} / ${session.model} · ${session.tokens.toLocaleString()} tokens · $${session.costUsd.toFixed(2)}`;
+export function threadPreview(thread: ChatThreadSummary): string {
+  return thread.preview || 'No messages yet';
 }
 
-export function threadMessageCount(session: SessionEntry): number {
-  return Math.max(2, Math.round(session.tokens / 1200));
+export function threadMessageCount(thread: ChatThreadSummary): number {
+  return thread.messageCount;
 }
 
 export function formatThreadActivity(startedAt: string): string {

@@ -11,7 +11,9 @@ import { accountPlanTier } from './accountPlanTier.js';
 import { MembershipSection } from './membership/MembershipSection.js';
 import { SyncStateCard } from './SyncStateCard.js';
 import { TrustBadge } from './TrustBadge.js';
+import { CopyPathButton } from '../system/CopyPathButton.js';
 import './account.css';
+import '../system/system.css';
 
 const ACCOUNT_CASES = [
   {
@@ -205,13 +207,23 @@ export function AccountSurface() {
                 <dl>
                   <div>
                     <dt>Device ID</dt>
-                    <dd><code>{statusForCard.installationDeviceID}</code></dd>
+                    <dd className="account-verification-value">
+                      <code>{statusForCard.installationDeviceID}</code>
+                      <CopyPathButton path={statusForCard.installationDeviceID} label="Copy device ID" />
+                    </dd>
                   </div>
                   <div>
                     <dt>Safety fingerprint</dt>
-                    <dd><code>{statusForCard.installationSafetyFingerprint}</code></dd>
+                    <dd className="account-verification-value">
+                      <code>{statusForCard.installationSafetyFingerprint}</code>
+                      <CopyPathButton path={statusForCard.installationSafetyFingerprint} label="Copy fingerprint" />
+                    </dd>
                   </div>
                 </dl>
+                <p className="account-installation-note muted">
+                  Compare both values on the trusted iPad before approving this Linux installation. Linux cannot approve
+                  or revoke trusted devices locally; those high-risk mutations require signed native-device authorization.
+                </p>
               </section>
             ) : null}
             <TrustBadge planTier={accountPlanTier(statusForCard)} />

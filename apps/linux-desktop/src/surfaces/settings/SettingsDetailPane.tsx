@@ -1,15 +1,19 @@
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
-import type { ConfigSnapshot, NotificationConfig, ProviderSettings } from '../../tauriBridge.js';
+import { useEffect, useMemo, useState } from 'react';
+import type { AccountStatus, ConfigSnapshot, LinuxShellBridge, NotificationConfig, ProviderSettings } from '../../tauriBridge.js';
 import type { DaemonStatusCopy } from '../../daemonStatusCopy.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
 import {
   LINUX_PROVIDER_PATH_REGISTRY,
+  providerCoverageSummary,
   resolveProviderLogicalPath
 } from '../../providerPathRegistry.js';
 import { useSupportStore } from '../../state/supportStore.js';
-import { useSettingsWiringStore } from '../../state/settingsWiringStore.js';
+import {
+  useSettingsWiringStore,
+  type PrivacySettingsPatch
+} from '../../state/settingsWiringStore.js';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { CopyPathButton } from '../system/CopyPathButton.js';
@@ -19,11 +23,11 @@ import { TextExpansionSurface } from '../TextExpansionSurface.js';
 import { UpdateStatusCard } from '../updates/UpdateStatusCard.js';
 import { SettingGroup } from './SettingGroup.js';
 import { SettingRow } from './SettingRow.js';
-import { ReadOnlyToggle } from './ReadOnlyToggle.js';
 import { SettingsHomeView } from './SettingsHomeView.js';
 import { SettingsAppearanceControls } from './SettingsAppearanceControls.js';
 import { SettingsDrillRow } from './SettingsDrillRow.js';
 import { settingsTabMeta, type SettingsTabId } from './settingsTabs.js';
+import { fixtureAccountStatus } from '../../daemonFixture.js';
 
 const UPDATE_CHANNEL_COPY: Record<'deb' | 'rpm' | 'appimage' | 'unknown', string> = {
   deb: 'Installed via the Debian package channel; apt/dpkg owns upgrades.',
@@ -115,6 +119,34 @@ function ConfigRefreshRow({ onRefresh, busy }: { onRefresh: () => void; busy: bo
   );
 }
 
+function PrivacyToggle({
+  checked,
+  label,
+  disabled,
+  onChange,
+  status
+}: {
+  checked: boolean;
+  label: string;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+  status: string;
+}) {
+  return (
+    <label className="setting-toggle setting-toggle--privacy">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        aria-busy={disabled}
+        aria-label={label}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+      />
+      <span className="muted">{status}</span>
+    </label>
+  );
+}
+
 function cloneConfig(config: ConfigSnapshot): ConfigSnapshot {
   return JSON.parse(JSON.stringify(config)) as ConfigSnapshot;
 }
@@ -140,6 +172,17 @@ function firstWritableModel(provider: ProviderSettings): string {
 
 function providerDisplay(provider: ProviderSettings): string {
   return provider.providerID.charAt(0).toUpperCase() + provider.providerID.slice(1);
+}
+
+function providerCoverageLabel(coverage: 'local-parser' | 'api-backed' | 'unavailable'): string {
+  switch (coverage) {
+    case 'local-parser':
+      return 'Local parser registered';
+    case 'api-backed':
+      return 'API-backed; no local parser';
+    case 'unavailable':
+      return 'Local usage unavailable';
+  }
 }
 
 function AgentsDetail({ config }: { config: ConfigSnapshot }) {
@@ -576,25 +619,172 @@ function NotificationsDetail({ mode }: { mode: 'alerts' | 'notifications' }) {
   );
 }
 
-function DevicesAndSyncDetail({ config, onSelectTab }: { config: ConfigSnapshot; onSelectTab: (tab: SettingsTabId) => void }) {
+type DeviceSyncAction = 'refresh' | 'sign-out' | 'rotate-identity' | null;
+
+function accountPostureCopy(status: AccountStatus | null, loading: boolean, error: string | null): string {
+  if (loading) return 'Checking daemon-owned account and enrollment posture…';
+  if (error) return `Account posture unavailable: ${error}`;
+  if (!status) return 'Account posture has not been loaded.';
+  if (status.state === 'unavailable') {
+    return status.detail === 'device_rejected'
+      ? 'This installation was rejected; replace its identity before requesting approval again.'
+      : 'Cloud account services are unavailable; local SQLite remains canonical.';
+  }
+  if (status.state === 'awaiting-device-approval' || status.deviceApprovalRequired) {
+    return 'This installation is enrolled and waiting for approval from a trusted OpenBurnBar device.';
+  }
+  if (status.signedIn) return `Signed in as ${status.identityLabel ?? 'Linux identity'}; cloud sync is ${status.syncState}.`;
+  return 'Signed out; local-first mode remains available.';
+}
+
+function DevicesAndSyncDetail({
+  config,
+  fixtureMode,
+  bridge,
+  onSelectTab
+}: {
+  config: ConfigSnapshot;
+  fixtureMode: boolean;
+  bridge: LinuxShellBridge | null;
+  onSelectTab: (tab: SettingsTabId) => void;
+}) {
+  const [account, setAccount] = useState<AccountStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [action, setAction] = useState<DeviceSyncAction>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadAccountPosture = async (requestedAction: DeviceSyncAction = 'refresh') => {
+    if (action !== null) return;
+    setLoading(true);
+    setAction(requestedAction);
+    setError(null);
+    try {
+      const next = fixtureMode
+        ? fixtureAccountStatus()
+        : bridge
+          ? await bridge.accountStatus()
+          : null;
+      if (!next) throw new Error('Packaged shell required for live account posture.');
+      setAccount(next);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Account status request failed.');
+    } finally {
+      setLoading(false);
+      setAction(null);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const request = fixtureMode
+      ? Promise.resolve(fixtureAccountStatus())
+      : bridge
+        ? bridge.accountStatus()
+        : Promise.reject(new Error('Packaged shell required for live account posture.'));
+    void request
+      .then((next) => {
+        if (!cancelled) setAccount(next);
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Account status request failed.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fixtureMode, bridge]);
+
+  const runAccountMutation = async (kind: Exclude<DeviceSyncAction, 'refresh' | null>) => {
+    if (action !== null || fixtureMode || !bridge) return;
+    setAction(kind);
+    setError(null);
+    try {
+      const next = kind === 'sign-out'
+        ? await bridge.accountSignOut()
+        : await bridge.accountRotateIdentity();
+      setAccount(next);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Account mutation failed.');
+    } finally {
+      setAction(null);
+    }
+  };
+
+  const rejected = account?.detail === 'device_rejected';
+  const awaitingApproval = account?.state === 'awaiting-device-approval' || account?.deviceApprovalRequired;
+  const statusText = accountPostureCopy(account, loading, error);
+
   return (
-    <SettingGroup title="Devices & Sync" sectionHeader hideTitle>
-      <p className="muted settings-tab-lede">
-        Linux sync status is derived from daemon.config.get/account posture. No trusted-device mutation RPC is available in this lane.
-      </p>
-      <SettingRow
-        iconGlyph="⊞"
-        label="Cloud sync source"
-        description={`Local SQLite remains canonical. Provider rows: ${(config.providers ?? []).length}.`}
-        control={<button type="button" className="ghost" onClick={() => onSelectTab('account')}>Open Account</button>}
-      />
-      <SettingRow
-        iconGlyph="⛨"
-        label="Secret Service"
-        description="Cloud credentials require unlocked GNOME Keyring/KWallet before sync credentials can be saved."
-        control={<span className="muted">{config.secretServiceStatus}</span>}
-      />
-    </SettingGroup>
+    <>
+      {error ? <Banner tone="degraded" role="alert">{error}</Banner> : null}
+      <SettingGroup title="Devices & Sync" sectionHeader hideTitle>
+        <p className="muted settings-tab-lede">
+          Account and enrollment posture comes from the daemon&apos;s authenticated account RPC. Secrets stay in the native
+          Secret Service; local SQLite remains canonical while cloud sync is unavailable.
+        </p>
+        <SettingRow
+          iconGlyph="⊞"
+          label="Cloud sync source"
+          description={`Provider rows: ${(config.providers ?? []).length}. ${statusText}`}
+          control={<button type="button" className="ghost" onClick={() => onSelectTab('account')}>Open Account</button>}
+        />
+        <SettingRow
+          iconGlyph="⛨"
+          label="Secret Service"
+          description="Cloud credentials require unlocked GNOME Keyring/KWallet before sync credentials can be saved."
+          control={<span className="muted">{config.secretServiceStatus}</span>}
+        />
+        {account?.installationDeviceID ? (
+          <SettingRow
+            iconGlyph="⌘"
+            label="Linux installation identity"
+            description={awaitingApproval ? 'Approval is required on a trusted OpenBurnBar device.' : 'Daemon-owned identity used for cloud enrollment.'}
+            control={
+              <span className="settings-verification-value">
+                <code className="mono">{account.installationDeviceID}</code>
+                <CopyPathButton path={account.installationDeviceID} label="Copy device ID" />
+              </span>
+            }
+          />
+        ) : null}
+        {account?.installationSafetyFingerprint ? (
+          <SettingRow
+            iconGlyph="#"
+            label="Safety fingerprint"
+            description="Compare this value on the approving device before trusting the installation."
+            control={
+              <span className="settings-verification-value">
+                <code className="mono">{account.installationSafetyFingerprint}</code>
+                <CopyPathButton path={account.installationSafetyFingerprint} label="Copy fingerprint" />
+              </span>
+            }
+          />
+        ) : null}
+        <div className="actions">
+          <button type="button" className="ghost" disabled={loading || action !== null} onClick={() => void loadAccountPosture()}>
+            {action === 'refresh' ? 'Checking…' : 'Check account posture'}
+          </button>
+          {account?.signedIn ? (
+            <button type="button" className="ghost" disabled={action !== null || fixtureMode} onClick={() => void runAccountMutation('sign-out')}>
+              {action === 'sign-out' ? 'Signing out…' : 'Sign out'}
+            </button>
+          ) : null}
+          {rejected ? (
+            <button type="button" className="danger" disabled={action !== null || fixtureMode} onClick={() => void runAccountMutation('rotate-identity')}>
+              {action === 'rotate-identity' ? 'Replacing identity…' : 'Replace rejected identity'}
+            </button>
+          ) : null}
+        </div>
+        <p className="muted settings-tab-lede">
+          Trusted-device approval and revoke remain unavailable here because the daemon exposes no Linux mutation contract
+          for those cloud callables. The pending/rejected state is shown fail-closed instead of presenting a fixture device.
+        </p>
+      </SettingGroup>
+    </>
   );
 }
 
@@ -642,6 +832,8 @@ export function SettingsDetailPane({
   onSelectTab: (tab: SettingsTabId) => void;
 }) {
   const meta = settingsTabMeta(activeTab);
+  const privacyMutation = useSettingsWiringStore((s) => s.privacyMutation);
+  const updatePrivacySettings = useSettingsWiringStore((s) => s.updatePrivacySettings);
 
   const providerRegistryRows = useMemo(() => {
     // Browser/test env may lack process.env; fall back to logical-only display.
@@ -755,17 +947,27 @@ export function SettingsDetailPane({
             <p className="system-path-row">
               <code>{config.paths.configDir}</code>
             </p>
-            {/* VAL-PARSER-002: registry is the source of truth for display paths. */}
+            <SettingRow
+              iconGlyph="∑"
+              label="Usage ingestion coverage"
+              description="The catalog mirrors all canonical providers and labels local parser, API-backed, and unavailable sources separately."
+              control={<span className="muted" role="status">{providerCoverageSummary()}</span>}
+            />
+            {/* VAL-PARSER-002: the catalog is the source of truth for display paths and coverage. */}
             {providerRegistryRows.map((row) => (
               <div key={row.providerId}>
                 <SettingRow
                   iconGlyph="📄"
                   label={`${row.displayLabel} log path`}
-                  description={`Parser source ${row.parserSourceId} · pattern ${row.filePattern}`}
+                  description={`${providerCoverageLabel(row.coverage)} · ${row.coverageNote} · pattern ${row.filePattern}`}
                   control={<CopyPathButton path={row.logicalPath} label="Copy log path" />}
                 />
                 <p className="system-path-row">
                   <code>{row.logicalPath}</code>
+                  {' '}
+                  <span className={`provider-coverage provider-coverage--${row.coverage}`} data-provider-coverage={row.coverage}>
+                    {providerCoverageLabel(row.coverage)}
+                  </span>
                   {row.resolvedHint ? (
                     <>
                       {' '}
@@ -815,6 +1017,9 @@ export function SettingsDetailPane({
       case 'agents':
         content = <AgentsDetail config={config} />;
         break;
+      case 'model-proxy':
+        content = <AgentsDetail config={config} />;
+        break;
       case 'account':
         content = (
           <SettingGroup title="Account" sectionHeader hideTitle>
@@ -860,10 +1065,49 @@ export function SettingsDetailPane({
         content = <NotificationsDetail mode={activeTab} />;
         break;
       case 'devices-and-sync':
-        content = <DevicesAndSyncDetail config={config} onSelectTab={onSelectTab} />;
+        content = (
+          <DevicesAndSyncDetail
+            config={config}
+            fixtureMode={fixtureMode}
+            bridge={bridge as LinuxShellBridge | null}
+            onSelectTab={onSelectTab}
+          />
+        );
         break;
       case 'media':
         content = <MediaDetail />;
+        break;
+      case 'computer-use':
+        content = (
+          <SettingGroup title="Computer Use" sectionHeader hideTitle>
+            <p className="muted settings-tab-lede">
+              Browser automation remains approval-gated by the daemon. Open the dedicated surface for live session state,
+              pending approvals, panic halt, and audit export.
+            </p>
+            <SettingRow
+              iconGlyph="⌁"
+              label="Computer Use control surface"
+              description="No Linux system-mode controls are shown until the compositor and portal capability is verified."
+              control={<a className="system-danger-link settings-drill-link" href="#/computer-use">Open Computer Use</a>}
+            />
+          </SettingGroup>
+        );
+        break;
+      case 'pets':
+        content = (
+          <SettingGroup title="Pets" sectionHeader hideTitle>
+            <p className="muted settings-tab-lede">
+              The companion uses a contained draggable surface when compositor pass-through is unavailable. Open the
+              dedicated route to inspect the current asset and capability tier.
+            </p>
+            <SettingRow
+              iconGlyph="✧"
+              label="Pet companion"
+              description="Linux keeps the fallback visible and honest instead of claiming a click-through overlay."
+              control={<a className="system-danger-link settings-drill-link" href="#/pet">Open Pets</a>}
+            />
+          </SettingGroup>
+        );
         break;
       case 'text-expansion':
         content = (
@@ -873,22 +1117,110 @@ export function SettingsDetailPane({
         );
         break;
       case 'data-privacy':
+        {
+          const privacyPending = privacyMutation.status === 'pending';
+          const privacyStatus = privacyPending
+            ? 'Saving…'
+            : privacyMutation.status === 'success'
+              ? 'Saved'
+              : privacyMutation.status === 'error'
+                ? 'Save failed'
+                : 'Managed by daemon';
+          const savePrivacy = (patch: PrivacySettingsPatch) => {
+            void updatePrivacySettings(patch);
+          };
         content = (
           <>
+            {privacyMutation.status === 'pending' ? (
+              <Banner tone="ok" role="status">
+                {privacyMutation.message ?? 'Saving privacy choices…'}
+              </Banner>
+            ) : null}
+            {privacyMutation.status === 'success' ? (
+              <Banner tone="ok" role="status">
+                {privacyMutation.message ?? 'Privacy choices saved.'}
+              </Banner>
+            ) : null}
+            {privacyMutation.status === 'error' ? (
+              <Banner tone="degraded" role="alert">
+                {privacyMutation.message ?? 'Privacy choices could not be saved.'}
+              </Banner>
+            ) : null}
             <SettingGroup title="Consent flags" sectionHeader hideTitle>
               <SettingRow
                 iconGlyph="📡"
                 label="Telemetry"
                 description="Opt-in only. When enabled, the daemon may emit anonymized stability events — never prompt content."
-                control={<ReadOnlyToggle checked={config.telemetryEnabled} label="Telemetry" />}
-                readOnlyNote="Managed by daemon config"
+                control={
+                  <PrivacyToggle
+                    checked={config.telemetryEnabled}
+                    label="Telemetry"
+                    disabled={privacyPending}
+                    onChange={(checked) => savePrivacy({ telemetryEnabled: checked })}
+                    status={privacyStatus}
+                  />
+                }
               />
               <SettingRow
                 iconGlyph="🛡"
                 label="Privacy opt-in"
                 description="Explicit consent before cloud-adjacent features sync metadata off this machine."
-                control={<ReadOnlyToggle checked={config.privacyOptIn} label="Privacy opt-in" />}
-                readOnlyNote="Managed by daemon config"
+                control={
+                  <PrivacyToggle
+                    checked={config.privacyOptIn}
+                    label="Privacy opt-in"
+                    disabled={privacyPending}
+                    onChange={(checked) => savePrivacy({ privacyOptIn: checked })}
+                    status={privacyStatus}
+                  />
+                }
+              />
+              <SettingRow
+                iconGlyph="☁"
+                label="Cloud sync"
+                description="Allow eligible metadata to leave this machine. Provider prompts and credentials remain local unless separately configured."
+                control={
+                  <PrivacyToggle
+                    checked={Boolean(config.cloudSyncEnabled)}
+                    label="Cloud sync"
+                    disabled={privacyPending}
+                    onChange={(checked) => savePrivacy({ cloudSyncEnabled: checked })}
+                    status={privacyStatus}
+                  />
+                }
+              />
+            </SettingGroup>
+            <SettingGroup title="Data lifecycle" sectionHeader hideTitle>
+              <p className="muted settings-tab-lede">
+                The controls below are intentionally capability-gated. Linux does not claim destructive or recovery workflows until the daemon exposes an audited RPC for each scope.
+              </p>
+              <SettingRow
+                iconGlyph="⇩"
+                label="Full data export"
+                description="Export of transcripts, memories, credentials, and account data is not available from this Linux shell."
+                control={<span className="muted" role="status">Unavailable</span>}
+                readOnlyNote="No canonical daemon export RPC for this scope. Support diagnostics export remains available below."
+              />
+              <SettingRow
+                iconGlyph="⌫"
+                label="Delete local data"
+                description="A destructive local purge requires a daemon-owned scope preview, confirmation, and receipt."
+                control={<span className="muted" role="status">Unavailable</span>}
+                readOnlyNote="No destructive deletion RPC is exposed; nothing is deleted from this pane."
+              />
+              <SettingRow
+                iconGlyph="◎"
+                label="Account erasure"
+                description="Account-level deletion and cloud propagation are not implemented in the Linux desktop contract."
+                control={<span className="muted" role="status">Unavailable</span>}
+                readOnlyNote="Use an audited account workflow when the service exposes one; this shell cannot claim erasure."
+              />
+              <SettingRow
+                iconGlyph="↺"
+                label="Recovery and retention"
+                description="Recovery keys, retention expiry, and restore receipts are not available from the current daemon contract."
+                control={<span className="muted" role="status">Unavailable</span>}
+                readOnlyNote="No renderer-only fallback or local recovery state is stored."
               />
             </SettingGroup>
             <SettingGroup title="Diagnostics" sectionHeader hideTitle>
@@ -908,6 +1240,7 @@ export function SettingsDetailPane({
           </>
         );
         break;
+        }
       default:
         content = null;
     }

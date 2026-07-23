@@ -430,4 +430,22 @@ public actor BurnBarLinuxOnboardingService {
             throw BurnBarLinuxOnboardingError.providerPathsUnavailable(error.localizedDescription)
         }
     }
+
+    /// Required first-data probe used by the packaged daemon. A writable XDG
+    /// directory alone is not enough to complete onboarding: the bundled
+    /// provider catalog must also be present so the first renderer read has a
+    /// real data source.
+    public nonisolated static func verifyProviderData(
+        at directoryURL: URL,
+        providerCount: Int,
+        fileManager: FileManager = .default
+    ) throws -> String {
+        let pathDetail = try verifyWritableDirectory(directoryURL, fileManager: fileManager)
+        guard providerCount > 0 else {
+            throw BurnBarLinuxOnboardingError.providerPathsUnavailable(
+                "The bundled provider catalog is empty; first-run data cannot be loaded."
+            )
+        }
+        return "\(pathDetail) Bundled provider catalog loaded with \(providerCount) provider definitions."
+    }
 }

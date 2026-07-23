@@ -78,6 +78,17 @@ describe('VAL-RPC bridge contract', () => {
     expect(tsBridge).toContain('memory_set_status');
   });
 
+  it('wires bounded database retrieval only to canonical code RPCs', () => {
+    expect(rustBridge).toContain('daemon.code.search');
+    expect(rustBridge).toContain('daemon.code.context_pack');
+    expect(rustBridge).toContain('fn database_code_search');
+    expect(rustBridge).toContain('fn database_code_context_pack');
+    expect(tsBridge).toContain("'database_code_search'");
+    expect(tsBridge).toContain("'database_code_context_pack'");
+    expect(canonicalRpc).toContain('id: "daemon.code.search"');
+    expect(canonicalRpc).toContain('id: "daemon.code.context_pack"');
+  });
+
   it('wires computer use wrappers to existing enum methods', () => {
     for (const method of [
       'daemon.computer_use.session.start',
@@ -108,6 +119,16 @@ describe('VAL-RPC bridge contract', () => {
     }
   });
 
+  it('keeps SmartHub execution on the fixed Linux CLI allowlist', () => {
+    expect(rustBridge).toContain('fn smarthub_command');
+    for (const operation of ['discover', 'status', 'cast_status', 'homeassistant_status', 'parity']) {
+      expect(rustBridge).toContain(`"${operation}"`);
+    }
+    expect(rustBridge).toContain('smarthub_operation_not_allowlisted');
+    expect(tsBridge).toContain("invoke<RawJsonValue>('smarthub_command'");
+    expect(tsBridge).not.toContain('runCli');
+  });
+
   it('wires daemon-owned Linux auth without renderer credential material', () => {
     for (const method of [
       'daemon.auth.status',
@@ -125,5 +146,22 @@ describe('VAL-RPC bridge contract', () => {
       tsBridge.indexOf('P10: membership')
     );
     expect(accountTypes).not.toMatch(/\b(refreshToken|idToken|appCheckToken|sessionGeneration|deviceID)\b/);
+  });
+
+  it('wires exact-thread chat only to canonical daemon RPC methods', () => {
+    for (const method of [
+      'daemon.chat.thread.list',
+      'daemon.chat.thread.get',
+      'daemon.chat.message.append'
+    ]) {
+      expect(rustBridge).toContain(method);
+      expect(canonicalRpc, `${method} must exist in BurnBarRPCIPCCanon`).toContain(`id: "${method}"`);
+    }
+    expect(rustBridge).toContain('fn chat_thread_list');
+    expect(rustBridge).toContain('fn chat_thread_get');
+    expect(rustBridge).toContain('fn chat_message_append');
+    expect(tsBridge).toContain('chat_thread_list');
+    expect(tsBridge).toContain('chat_thread_get');
+    expect(tsBridge).toContain('chat_message_append');
   });
 });

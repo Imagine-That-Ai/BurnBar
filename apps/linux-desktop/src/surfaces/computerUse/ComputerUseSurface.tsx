@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useShellStore } from '../../state/shellStore.js';
 import type {
+  ComputerUseBrowserActionArguments,
+  ComputerUseBrowserTool,
+  ComputerUseInvokeRequest,
+  ComputerUseInvokeResponse,
   ComputerUseSessionAuthorityState,
   ComputerUseSessionAuthorityStatus,
   ComputerUseSessionStartRequest
 } from '../../tauriBridge.js';
+import { COMPUTER_USE_SESSION_DEFAULTS } from '../../tauriBridge.js';
+import { findRuntimeCapability, type RuntimeCapabilityManifest } from '../../runtimeCapabilities.js';
 import './computer-use.css';
 
 export type ComputerUseTrust = 'manual' | 'step' | 'trusted';
@@ -36,6 +42,13 @@ export type RunRequirement = {
   generation?: number;
 };
 
+export type BrowserActionForm = {
+  tool: ComputerUseBrowserTool;
+  url: string;
+  selector: string;
+  text: string;
+};
+
 type PanicHaltResponse = {
   sessionId?: string;
   sessionID?: string;
@@ -44,6 +57,16 @@ type PanicHaltResponse = {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function displayInvokeResult(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  try {
+    const encoded = JSON.stringify(value, null, 2);
+    return encoded.length > 4_000 ? `${encoded.slice(0, 4_000)}\n...` : encoded;
+  } catch {
+    return 'The daemon returned an unreadable action result.';
+  }
 }
 
 export function isAuthoritativeInvalidSessionError(error: unknown): boolean {
@@ -73,12 +96,80 @@ export function buildComputerUseSessionStartParams(
   return {
     mode: 'browser' as const,
     trustMode,
+    ...COMPUTER_USE_SESSION_DEFAULTS,
     clientId: 'linux-shell',
     runId,
     runCallId,
     runGeneration: selectedRequirement.generation,
     desktopOwnerAuthorizationRequest: {
       method: 'linux_desktop_owner'
+    }
+  };
+}
+
+const BROWSER_TOOLS: readonly ComputerUseBrowserTool[] = [
+  'browser_goto',
+  'browser_screenshot',
+  'browser_click',
+  'browser_fill'
+];
+
+export function foundationReferenceDateSeconds(now = Date.now()): number {
+  return now / 1_000 - 978_307_200;
+}
+
+export function browserActionArguments(form: BrowserActionForm): ComputerUseBrowserActionArguments {
+  switch (form.tool) {
+    case 'browser_goto':
+      return { url: form.url.trim() };
+    case 'browser_click':
+      return { selector: form.selector.trim() };
+    case 'browser_fill':
+      return { selector: form.selector.trim(), text: form.text };
+    case 'browser_screenshot':
+      return {};
+    default: {
+      const exhaustive: never = form.tool;
+      return exhaustive;
+    }
+  }
+}
+
+export function buildComputerUseBrowserInvokeParams(
+  sessionId: string,
+  runId: string,
+  form: BrowserActionForm,
+  requirements: readonly RunRequirement[],
+  requestedAt = foundationReferenceDateSeconds()
+): ComputerUseInvokeRequest {
+  const normalizedSessionId = sessionId.trim();
+  const normalizedRunId = runId.trim();
+  if (!normalizedSessionId) throw new Error('Start a Browser Computer Use session first.');
+  if (!normalizedRunId) throw new Error('Select an agent run before invoking a browser action.');
+  if (!BROWSER_TOOLS.includes(form.tool)) throw new Error('Unsupported Browser Computer Use action.');
+  const requirement = requirements.find((item) => (item.runID ?? item.runId) === normalizedRunId);
+  const callId = requirement?.callID ?? requirement?.callId;
+  if (!callId || requirement?.generation === undefined) {
+    throw new Error('The selected run requirement is stale. Refresh and select it again.');
+  }
+  if (requirement.toolKind && requirement.toolKind !== form.tool) {
+    throw new Error('The selected run requirement does not match this browser action.');
+  }
+  const args = browserActionArguments(form);
+  if (form.tool === 'browser_goto' && !args.url) throw new Error('Enter a URL before navigating.');
+  if ((form.tool === 'browser_click' || form.tool === 'browser_fill') && !args.selector) {
+    throw new Error('Enter a selector before targeting the browser.');
+  }
+  if (form.tool === 'browser_fill' && args.text === '') throw new Error('Enter text before filling the field.');
+  return {
+    sessionId: normalizedSessionId,
+    invocation: {
+      callId,
+      runId: normalizedRunId,
+      tool: form.tool,
+      arguments: args,
+      requestedBy: 'linux-shell',
+      requestedAt
     }
   };
 }
@@ -100,11 +191,20 @@ const AUTHORITY_COPY: Record<ComputerUseSessionAuthorityState, string> = {
 export function ComputerUseSurface() {
   const bridge = useShellStore((s) => s.bridge);
   const fixtureMode = useShellStore((s) => s.fixtureMode);
+  const runtimeCapabilities = useShellStore((s) => s.runtimeCapabilities);
+  const [probedCapabilities, setProbedCapabilities] = useState<RuntimeCapabilityManifest | null>(null);
   const [trust, setTrust] = useState<ComputerUseTrust>('step');
   const [runId, setRunId] = useState('');
   const [runRequirements, setRunRequirements] = useState<RunRequirement[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingApproval[]>([]);
+  const [browserForm, setBrowserForm] = useState<BrowserActionForm>({
+    tool: 'browser_goto',
+    url: 'https://',
+    selector: '',
+    text: ''
+  });
+  const [invokeResult, setInvokeResult] = useState<ComputerUseInvokeResponse | null>(null);
   const [status, setStatus] = useState<'idle' | 'busy' | 'error' | 'offline'>('idle');
   const [authorityStatus, setAuthorityStatus] = useState<ComputerUseSessionAuthorityStatus>(
     fixtureMode
@@ -114,12 +214,40 @@ export function ComputerUseSurface() {
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
 
+  const capabilityManifest = runtimeCapabilities ?? probedCapabilities;
+  const browserCapability = capabilityManifest
+    ? findRuntimeCapability(capabilityManifest, 'computer-use.browser')
+    : null;
+  const systemCapability = capabilityManifest
+    ? findRuntimeCapability(capabilityManifest, 'computer-use.system')
+    : null;
+  // SurfaceRouter blocks an unprobed packaged session. Direct renders may not
+  // have a manifest yet, so only an explicit native-unavailable state blocks.
+  const browserModeAvailable = fixtureMode
+    || !bridge?.runtimeCapabilities
+    || !capabilityManifest
+    || browserCapability?.state === 'available';
+
   const pushLog = useCallback((line: string) => {
     setLog((prev) => [line, ...prev].slice(0, 40));
   }, []);
 
+  useEffect(() => {
+    if (fixtureMode || runtimeCapabilities || !bridge?.runtimeCapabilities) return;
+    let cancelled = false;
+    void bridge.runtimeCapabilities().then((manifest) => {
+      if (!cancelled) setProbedCapabilities(manifest);
+    }).catch(() => {
+      if (!cancelled) setProbedCapabilities(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, fixtureMode, runtimeCapabilities]);
+
   const retireSession = useCallback((expectedSessionId: string) => {
     setSessionId((current) => clearSessionIfCurrent(current, expectedSessionId));
+    setInvokeResult(null);
     setPending((current) => current.filter(
       (item) => (item.sessionId ?? item.sessionID) !== expectedSessionId
     ));
@@ -183,6 +311,12 @@ export function ComputerUseSurface() {
         toolKind: 'browser_goto',
         trustMode: 'step'
       }]);
+      setRunRequirements([{
+        runID: 'fixture-run',
+        callID: 'fixture-call',
+        generation: 1,
+        toolKind: 'browser_goto'
+      }]);
       return;
     }
     if (!bridge?.computerUseApprovalPending) {
@@ -219,7 +353,8 @@ export function ComputerUseSurface() {
 
   const sessionAuthorityAvailable = fixtureMode
     || (Boolean(bridge?.computerUseSessionStart)
-      && authorityStatus.state !== 'unavailable');
+      && authorityStatus.state !== 'unavailable'
+      && browserModeAvailable);
   // Action approval has a separate phone-signature contract. A session grant
   // must never be reused as authority for individual actions.
   const signedActionAuthorityAvailable = fixtureMode;
@@ -251,8 +386,14 @@ export function ComputerUseSurface() {
     setError(null);
     if (fixtureMode) {
       setSessionId('fixture-session');
+      setRunId((current) => current.trim() || 'fixture-run');
       setStatus('idle');
       pushLog('Fixture session started (browser / step).');
+      return;
+    }
+    if (!browserModeAvailable) {
+      setStatus('offline');
+      setError(browserCapability?.reason ?? 'Browser Computer Use is unavailable in this Linux session.');
       return;
     }
     const normalizedRunId = runId.trim();
@@ -275,12 +416,56 @@ export function ComputerUseSurface() {
     }
   }
 
+  async function invokeBrowserAction() {
+    setStatus('busy');
+    setError(null);
+    setInvokeResult(null);
+    const requestedSessionId = sessionId;
+    try {
+      const request = buildComputerUseBrowserInvokeParams(
+        requestedSessionId ?? '',
+        runId,
+        browserForm,
+        runRequirements
+      );
+      if (fixtureMode) {
+        const result: ComputerUseInvokeResponse = {
+          sessionId: request.sessionId,
+          callID: request.invocation.callId,
+          status: 'awaiting_approval',
+          approvalId: 'fixture-approval'
+        };
+        setInvokeResult(result);
+        setStatus('idle');
+        pushLog(`Fixture browser action queued: ${browserForm.tool}`);
+        return;
+      }
+      if (!bridge?.computerUseInvoke) {
+        setStatus('offline');
+        setError('Computer Use action bridge unavailable.');
+        return;
+      }
+      const result = await bridge.computerUseInvoke(request);
+      setInvokeResult(result);
+      setStatus('idle');
+      pushLog(`Browser action ${result.status}: ${browserForm.tool}`);
+      if (result.status === 'awaiting_approval') await refreshPending();
+    } catch (err) {
+      if (requestedSessionId && isAuthoritativeInvalidSessionError(err)) {
+        retireSession(requestedSessionId);
+      }
+      setStatus('error');
+      setError(errorMessage(err));
+    }
+  }
+
   async function panicHalt() {
     if (!sessionId) return;
     const requestedSessionId = sessionId;
     setStatus('busy');
     if (fixtureMode) {
       setSessionId(null);
+      setInvokeResult(null);
       setPending([]);
       setStatus('idle');
       pushLog('Fixture panic halt.');
@@ -390,6 +575,12 @@ export function ComputerUseSurface() {
           {authorityStatus.detail ?? AUTHORITY_COPY[authorityStatus.state]}
         </p>
       ) : null}
+      {!fixtureMode && systemCapability && systemCapability.state !== 'available' ? (
+        <p className="computer-use-surface__capability" role="status">
+          System Computer Use is unavailable on this Linux session. Browser actions remain the only enabled mode.
+          {systemCapability.reason ? ` ${systemCapability.reason}` : ''}
+        </p>
+      ) : null}
 
       <div className="computer-use-surface__controls">
         <label>
@@ -459,6 +650,88 @@ export function ComputerUseSurface() {
       </div>
 
       <div className="computer-use-surface__grid">
+        <div className="computer-use-card computer-use-card--action">
+          <h3 id="browser-action-title">Browser action</h3>
+          <p className="computer-use-action-note">
+            Every action is sent to the daemon for scope, approval, panic, and audit checks. This panel never approves an action locally.
+          </p>
+          <div className="computer-use-action-form" aria-labelledby="browser-action-title">
+            <label>
+              Action
+              <select
+                aria-label="Browser action"
+                value={browserForm.tool}
+                onChange={(event) => setBrowserForm((current) => ({
+                  ...current,
+                  tool: event.target.value as ComputerUseBrowserTool
+                }))}
+                disabled={!sessionId || status === 'busy'}
+              >
+                <option value="browser_goto">Navigate</option>
+                <option value="browser_screenshot">Screenshot</option>
+                <option value="browser_click">Click</option>
+                <option value="browser_fill">Type into field</option>
+              </select>
+            </label>
+            {browserForm.tool === 'browser_goto' ? (
+              <label>
+                URL
+                <input
+                  aria-label="Browser URL"
+                  type="url"
+                  value={browserForm.url}
+                  onChange={(event) => setBrowserForm((current) => ({ ...current, url: event.target.value }))}
+                  disabled={!sessionId || status === 'busy'}
+                  placeholder="https://example.com"
+                />
+              </label>
+            ) : null}
+            {browserForm.tool === 'browser_click' || browserForm.tool === 'browser_fill' ? (
+              <label>
+                CSS selector
+                <input
+                  aria-label="Browser selector"
+                  value={browserForm.selector}
+                  onChange={(event) => setBrowserForm((current) => ({ ...current, selector: event.target.value }))}
+                  disabled={!sessionId || status === 'busy'}
+                  placeholder="button[type=submit]"
+                />
+              </label>
+            ) : null}
+            {browserForm.tool === 'browser_fill' ? (
+              <label>
+                Text
+                <input
+                  aria-label="Browser text"
+                  value={browserForm.text}
+                  onChange={(event) => setBrowserForm((current) => ({ ...current, text: event.target.value }))}
+                  disabled={!sessionId || status === 'busy'}
+                  type="text"
+                />
+              </label>
+            ) : null}
+            <button
+              type="button"
+              className="computer-use-btn"
+              onClick={() => void invokeBrowserAction()}
+              disabled={!sessionId || !browserModeAvailable || status === 'busy'}
+            >
+              Send for approval
+            </button>
+          </div>
+          {invokeResult ? (
+            <div className="computer-use-action-result" role="status" aria-live="polite">
+              <strong>Action status: {invokeResult.status}</strong>
+              {invokeResult.approvalId ? <span>Approval · {invokeResult.approvalId}</span> : null}
+              {invokeResult.denyReason ? <span>Reason · {invokeResult.denyReason}</span> : null}
+              {displayInvokeResult(invokeResult.result) ? (
+                <pre>{displayInvokeResult(invokeResult.result)}</pre>
+              ) : null}
+            </div>
+          ) : (
+            <p className="computer-use-empty">Start a session to send an explicit browser action.</p>
+          )}
+        </div>
         <div className="computer-use-card">
           <h3>Pending approvals</h3>
           {pending.length === 0 ? (

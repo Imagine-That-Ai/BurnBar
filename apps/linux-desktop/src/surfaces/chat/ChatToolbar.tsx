@@ -1,14 +1,20 @@
 import { BackendStrip } from './BackendStrip.js';
-import type { SessionEntry } from '../../tauriBridge.js';
+import type { ChatThreadSummary } from '../../tauriBridge.js';
 import type { ChatBackendId } from './chatTypes.js';
+import type { ChatExportFormat } from './chatExport.js';
 
 type ChatToolbarProps = {
-  thread: SessionEntry | null;
+  thread: ChatThreadSummary | null;
   gatewayHint: string | null;
   backend: ChatBackendId;
   modelLabel: string;
   onBackendChange: (id: ChatBackendId) => void;
   onNewChat: () => void;
+  exportFormat: ChatExportFormat;
+  onExportFormatChange: (format: ChatExportFormat) => void;
+  onExport: () => void;
+  exportDisabled: boolean;
+  exportStatus: string | null;
   compact?: boolean;
 };
 
@@ -19,6 +25,11 @@ export function ChatToolbar({
   modelLabel,
   onBackendChange,
   onNewChat,
+  exportFormat,
+  onExportFormatChange,
+  onExport,
+  exportDisabled,
+  exportStatus,
   compact: _compact = false
 }: ChatToolbarProps) {
   return (
@@ -33,6 +44,33 @@ export function ChatToolbar({
         />
       </div>
       <div className="chat-toolbar-actions">
+        <div className="chat-export-control" role="group" aria-label="Chat export">
+          <span className="sr-only">Chat export format</span>
+          <select
+            value={exportFormat}
+            onChange={(event) => onExportFormatChange(event.target.value as ChatExportFormat)}
+            aria-label="Chat export format"
+            disabled={exportDisabled}
+          >
+            <option value="json">JSON</option>
+            <option value="markdown">Markdown</option>
+          </select>
+          <button
+            type="button"
+            className="ghost chat-toolbar-icon"
+            onClick={onExport}
+            disabled={exportDisabled}
+            title={exportDisabled ? 'Select a loaded thread to export' : `Export chat as ${exportFormat === 'json' ? 'JSON' : 'Markdown'}`}
+            aria-label={`Export chat as ${exportFormat === 'json' ? 'JSON' : 'Markdown'}`}
+          >
+            <span aria-hidden="true">⇩</span>
+          </button>
+          {exportStatus ? (
+            <span className="chat-export-status" role="status" aria-live="polite">
+              {exportStatus}
+            </span>
+          ) : null}
+        </div>
         <button
           type="button"
           className="ghost chat-toolbar-text-button"

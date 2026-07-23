@@ -2,13 +2,72 @@
 
 | Audit field | Value |
 |---|---|
-| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-12 UTC |
+| Date | Baseline audit: 2026-07-09; remediation evidence through 2026-07-13 UTC |
 | Gold standard | OpenBurnBar for macOS |
 | Linux target | `apps/linux-desktop` plus the shared OpenBurnBar daemon |
 | Baseline checkout | `windows/liquid-glass-kernel-reskin` at `18836ae40a` |
-| Remediation evidence | `codex/linux-parity-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, and the 2026-07-12 full Linux-native aggregate on `codex/linux-parity-controller-credentials` |
+| Remediation evidence | `codex/linux-parity-final`; clean aarch64 and architecture-correct x86_64 release shards at `391fe2847d`; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, and the 2026-07-12 full Linux-native aggregate on `codex/linux-parity-controller-credentials`; follow-on source slices through 2026-07-13 are linked below |
 
 **Verdict:** **NO-GO for a full-parity claim or stable Linux promotion**
+
+## Execution Status — 2026-07-13
+
+The audit remains the source of truth for the parity claim. The current Linux
+ledger is still **0/40 product requirements ready** and **0/7 environment
+receipts complete**; implementation progress must not be reported as a release
+percentage. The active remediation stack now contains these reviewable slices:
+
+| Slice | Current state | Scope and limit |
+|---|---|---|
+| P26 tray/deep links | PR #1649, merge-clean | Native tray routes, refresh/reconnect actions, and validated deep-link routing; does not certify every desktop host. |
+| P27 notifications | PR #1651, merge-clean | Bounded native `notify-send` adapter with typed failures; actionable notification actions and lifecycle proof remain open. |
+| P35 diagnostics | PR #1653, checks in progress | Metadata-only diagnostics preview/export, redaction and `0600` enforcement; installed support workflow remains open. |
+| P23 provider/model workspace | PR #1655, merge-clean | Canonical daemon catalog/config mapping, model provenance, health and failover state; credential custody and account lifecycle remain separate. |
+| P16 account/enrollment posture | PR #1658 updated, checks green | Daemon-owned account status, sign-out and rejected-identity recovery now decode transitional phases fail-closed; device ID/fingerprint copy actions and trusted-iPad guidance are present. Trusted-device list/approve/revoke remains a native mobile/Firebase boundary, and cloud backup remains unavailable. |
+| P12 quota account switching | PR #1659, stacked on P23 | Redacted credential-slot selection through canonical config get/update; does not provide cloud account or trusted-device management. |
+| P13 onboarding first-data probe | PR #1667 updated, checks queued | Provider setup now loads the daemon catalog and submits a credential once through native Secret Service storage, clears the web-view field, and keeps completion daemon-authoritative; OAuth-only auth, portal consent, and desktop integration remain open. |
+| P14 chat approval/citation boundary | PR #1662 + integration PR #1691 | Gateway tool cards now carry daemon-issued approval IDs and support approve/reject/cancel with terminal-state and single-flight handling. Bounded citations normalize safely, focus/open the originating thread when available, and fail closed for unavailable sources; unloaded-history export/resume, pop-out, and remaining backends remain open. |
+| P17 activity/session depth | PR #1661 + PR #1685 + integration PR #1691 | Canonical daemon-backed search/detail/resume with indexed transcript excerpts and bounded persisted body replay are integrated. Native resume uses the existing `run.resume` contract with provider-safe handoff fallback; loaded activity rows export as allowlisted JSON/Markdown with explicit loaded-only scope. Full-history export, source resolution, and resume-from-export remain open. |
+| P21 insights brief | PR #1669, checks in progress | Provenance-labeled trend brief and real Providers/Activity follow-ups derived from usage aggregates; citations and qualitative analysis remain open. |
+| P24 settings inventory | PR #1665, merge-clean | Restores Model Proxy, Computer Use, and Pets destinations for a 16-tab searchable inventory with honest capability routing. |
+| P28 SmartHub | PR #1668 + integration PR #1691 | Typed root-owned CLI allowlist now validates request IDs, bounds JSON depth/items/strings/output, drains stdout concurrently, enforces an 8-second timeout, and supports cancellation/degraded renderer states; live device/Avahi outcomes remain separate. |
+| P29 text expansion | PR #1663 + integration PR #1691 | Daemon-owned AES-GCM sealed snapshots use native Secret Service/KWallet key custody, consent RPC, owner-only permissions, corruption/tamper fail-closed behavior, and in-app-only Composer expansion without renderer localStorage/global capture; global IBus/Fcitx integration, secure-field hooks outside the app, and sync remain open. |
+| P18 memory authority | PR #1671, merge-clean | Live memory inboxes now remain daemon-authoritative; stale renderer status cannot resurrect or hide live items; first-class quarantine and cross-device review remain open. |
+| P19 projects depth | PR #1670 + PR #1688, source stack green | Canonical project list/get/upsert plus typed delete/reassign lifecycle, fail-closed slug/id/alias validation and collision handling, durable reference migration across reviews/questions/followups/missions/simulators/nested takeover history, deleted-slug tombstones, detail/register/edit UI, confirmation, and visible error recovery; installed proof remains open. |
+| P20 missions depth | PR #1677, checks green | Canonical mission get/cancel, typed packet/result/evidence/burn/takeover/PR snapshot mapping, freshness, expandable detail, and explicit unavailable health/history states; live mission integrations and installed proof remain open. |
+| P25 updates | PR #1673, checks in progress | Signed-feed freshness, channel ownership, shell/daemon compatibility, and fail-closed package/download guidance; valid public feed and installed rollback remain open. |
+| P30 pet companion | PR #1674, checks in progress | Native runtime-manifest probe replaces optimistic environment detection; contained fallback and action-level unavailable states are explicit; native overlay/summon/selection remain open. |
+| P40 data/privacy | PR #1672, merge-clean | Daemon-backed telemetry/privacy/cloud-sync writes with pending/error states and explicit unavailable destructive/recovery rows; backend erasure/export/recovery remain open. |
+| P11 usage catalog | PR #1676, checks green | All 33 canonical provider identities and Swift discovery paths/patterns are contract-tested against the exact 27 ParserRegistry entries; four API-backed and two unavailable sources are labeled explicitly in Settings/onboarding; normalized corpus and runtime/install evidence remain open. |
+| P14 exact chat threads | PR #1684 + integration PR #1691 | Canonical encrypted thread list/get/search, idempotent append, older-message pagination, strict Tauri decoding, durable send ordering, and loaded-transcript JSON/Markdown export with metadata allowlisting are integrated. Typed model selection/thinking-level state propagates the exact selected model through the gateway. The daemon owns bounded single-use attachment refs (10 MiB/file and send caps, 80 MiB registry, 0700/0600 private storage) with allowlisted text/Markdown/CSV/JSON/PDF policy; text refs resolve into bounded prompt markers and PDF fails explicitly as unsupported. Bounded citations and approval actions are now wired with fail-closed source handling and terminal-state controls; unloaded-history export/resume, pop-out, and remaining backends remain open. |
+| P07 browser Computer Use panel | PR #1681, merge-clean | Typed navigate/screenshot/click/fill actions are bound to the selected run/call/generation and fail closed when the packaged capability is absent; physical-iPad approval, production credentials, and installed browser/panic/audit/restart evidence remain open. |
+| P22 database inspection | PR #1680 + integration PR #1691 | Bounded daemon-owned code search/context packs with pagination and untrusted-source warnings remain integrated. SQLCipher-gated encrypted snapshots enforce owner-only paths, 512 MiB bounds, integrity hashes, atomic replacement, rollback, and watcher stop/reopen. A macOS-compatible v1 recovery bundle now uses salt16/PBKDF2-HMAC-SHA256 100k/AES-GCM, bounded atomic 0600 files, candidate-key verification, and native Secret Service/KWallet custody hooks; key-loss/device-transfer recovery, deep inspector parity, and installed proof remain open. |
+| P27 native startup/deep links | PR #1679 + PR #1686 + integration PR #1691, merge-clean source stack | Strict membership/OAuth callback parsing, one-shot startup handoff, background tray startup, XDG autostart, package desktop registration, owner-checked per-user single-instance forwarding, typed freedesktop notification actions with capability probing, and additive shortcut status are integrated; installed host integration remains open. |
+| P31 accessibility preferences | PR #1683, merge-clean | Shared reduced-motion, prefers-contrast, forced-colors, focus, and status/alert contracts; installed GNOME/KDE/AT-SPI/Orca/high-contrast evidence remains open. |
+| P39 differential oracle | PR #1682, merge-clean | Same-schema normalization, credential redaction, explicit volatile-path handling, path-level diff output, and fail-closed exit codes; a same-commit macOS/Linux artifact run remains required. |
+| Integrated Linux validation | PR #1691, current 2026-07-13 | Replayed P07/P11/P13/P14/P16/P17/P19/P20/P21/P22/P23/P24/P25/P27/P28/P29/P30/P31/P35/P39/P40 on the P26 tray/deep-link base: 73 Vitest files / 607 tests, TypeScript, production bundle verification, differential-oracle tests 6/6, Tauri Rust 80/80, RPC canon and formatting checks, suppression policy, Activity replay/resume Swift 4/4, database snapshot/recovery Swift 3/3, P19 daemon lifecycle 4/4, supported SQLCipher-backed daemon chat selector 9/9, and the recovery crypto plus daemon target sources compiled. The Linux-only native notification/Secret Service/KWallet paths require a Linux host for live capability and runtime receipts; the macOS host's recovery test bundle is blocked by its existing missing SQLCipher.framework packaging. This is engineering evidence only, not installed-product certification. |
+
+These slices reduce concrete gaps, but they do not change the NO-GO verdict:
+transactional provider/auth onboarding, chat unloaded-history export/resume,
+pop-out and remaining backends, cloud/device mutations, recovery key-loss and
+device-transfer flows, system Computer Use capture, Mercury two-device proof,
+live SmartHub device evidence, IBus/Fcitx/global secure-field integration,
+mission/session depth,
+packaging/update rollback, and the seven-environment installed matrix remain
+required.
+
+### Windows comparator semantics
+
+Windows parity is a real ship milestone, and the current ledger is **48/48
+Real for F1 Ship Peer**. That is not a claim that Windows is behaviorally
+identical to macOS in every native integration and installed environment:
+Windows documents a separate **F2 True 1:1** finish line, and `100% parity`
+means F2. This Linux audit uses that stricter macOS gold-standard contract:
+each requirement also needs failure/recovery behavior, accessibility and
+performance evidence, packaging and update proof, and current-head
+installed-environment receipts. Windows remains the comparator for shared
+product intent; its F1 result is not a substitute for macOS-native behavior or
+Linux-native integration proof.
 
 ## Executive Summary
 
@@ -366,40 +425,40 @@ required gates and were not made green by the Ed25519 result.
 | P-04 | Architecture reach | Published build covers the declared macOS architecture support contract | Native aarch64/x86_64 shard workflow exists and architecture-correct local construction/smoke is green for both; a native hosted x86_64 run, signed aggregate, and installed x86_64 evidence are not yet produced | Partial | Critical |
 | P-05 | Credential custody | Keychain-backed provider, connector, auth, and sync secrets | Secret Service, KWallet, and encrypted headless custodians are wired; live keyring/recovery matrix remains incomplete | Partial | Critical |
 | P-06 | Gateway credential boundary | Native process owns bearer credentials | Rust owns the bearer and proxies bounded authenticated HTTP/SSE; renderer receives typed data, not the token | Near parity | Critical |
-| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Exact run/call/generation authority, signed session/action responses, replay protection, waiting-run selection, shared scope/panic/Playwright/audit routing, and fail-safe restart/terminal behavior are implemented. Controller-route v2 provides dual-signature bootstrap, exact-tuple same-generation transport renewal, and authoritative absence/revocation. The Linux daemon now composes that runtime with daemon-owned PKCE sign-in, secure refresh-token custody, fresh Firebase ID/App Check credentials, per-install Ed25519 App Check enrollment, account-generation invalidation, phase-safe account transition RPCs, and scoped old-account revocation. Pending approval has an explicit bounded reason and quota-safe retry; permanent rejection stops polling. Official AppImages authenticate the final GUI bytes through a signed manifest rather than mutable environment pins. Source tests cover credential expiry/failure, account switch/sign-out races, wrong-state OAuth callbacks, token redaction, peer-manifest tampering, and runtime teardown. A dedicated Linux Firebase web app exists, but the Desktop OAuth client, production callable deployment, release variables, current physical-iPad approval execution, installed browser/panic/audit/restart proof, Agent Watch, and Linux system capture/input remain missing | Partial | Critical |
+| P-07 | Computer Use | Browser, Agent Watch, Mac System, approval, audit, and three panic paths | Exact run/call/generation authority, signed session/action responses, replay protection, waiting-run selection, shared scope/panic/Playwright/audit routing, and fail-safe restart/terminal behavior are implemented. Controller-route v2 provides dual-signature bootstrap, exact-tuple same-generation transport renewal, and authoritative absence/revocation. The Linux daemon now composes that runtime with daemon-owned PKCE sign-in, secure refresh-token custody, fresh Firebase ID/App Check credentials, per-install Ed25519 App Check enrollment, account-generation invalidation, phase-safe account transition RPCs, and scoped old-account revocation. Pending approval has an explicit bounded reason and quota-safe retry; permanent rejection stops polling. Official AppImages authenticate the final GUI bytes through a signed manifest rather than mutable environment pins. [PR #1681](https://github.com/Imagine-That-Ai/BurnBar/pull/1681) adds typed navigate/screenshot/click/fill requests with exact selected run/call/generation binding and daemon-owned result decoding; system mode stays hidden when unavailable. A dedicated Linux Firebase web app exists, but the Desktop OAuth client, production callable deployment, release variables, current physical-iPad approval execution, installed browser/panic/audit/restart proof, Agent Watch, and Linux system capture/input remain missing | Partial | Critical |
 | P-08 | Mercury media | File transfer, calls, screen share, mirroring, presence, consent | Daemon-owned transport, calls, files, sealed capture, portal consent, HUD, and live capability probing are implemented; real cross-device and compositor proof remains open | Partial | Critical |
 | P-09 | Navigation and shell | Dashboard, insights, deep provider/model routes, multi-window flows | All 19 installed routes activate through AT-SPI; deep links and native multi-window behavior remain thinner | Near parity | Medium |
 | P-10 | Dashboard layouts | Six dense layouts with real live content and persisted state | All six layouts, persistence, loading/error/offline/populated states, tokens, and tests exist; the packaged six-layout visual matrix remains incomplete | Near parity | Medium |
-| P-11 | Usage ingestion | 27 parser registrations, API/quota aggregation, recount, projections, cloud mirror | One 15-row Linux path registry now drives shell discovery copy and is contract-tested against Swift; the full macOS/Linux normalized parser corpus remains unproven | Partial | High |
+| P-11 | Usage ingestion | 27 parser registrations, API/quota aggregation, recount, projections, cloud mirror | All 33 canonical provider identities and Swift path/pattern cases are cataloged; the exact 27 registered local parsers plus four API-backed and two unavailable sources are labeled and tested. The normalized macOS/Linux corpus, recount/projection parity, and installed runtime evidence remain unproven | Partial | High |
 | P-12 | Quota | Provider quotas, histories, account switching, alerts | Strong read surface; account profiles, drain targets, and switching lag | Partial | Medium |
-| P-13 | Onboarding | Provider connection, scan, permissions, chat engine, recovery, completion gates | Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, and strict native/WebView RPC decoding are implemented; provider connection/scan, auth, portal, tray, update, and first-data readback remain incomplete | Partial | High |
-| P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Synthetic transcript rows and multiple disabled controls; five vs twelve backends | Partial | High |
+| P-13 | Onboarding | Provider connection, scan, permissions, chat engine, recovery, completion gates | Daemon-owned state, required-step gates, restart recovery, Secret Service readback, XDG write verification, privacy persistence, strict native/WebView RPC decoding, catalog-backed credential setup, and first-data readback are implemented; OAuth-only provider auth, provider scan depth, portal consent, tray, and update completion remain open | Partial | High |
+| P-14 | Chat | Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out | Exact encrypted thread list/get/search, idempotent user/assistant persistence, older-message pagination, strict Tauri decoding, durable send ordering, and safe JSON/Markdown export of loaded durable messages are implemented in [PR #1684](https://github.com/Imagine-That-Ai/BurnBar/pull/1684). Model selection/thinking level propagates the exact selected model through the gateway; attachment refs are bounded and daemon-owned; citations normalize with source/thread validation; and tool approvals use daemon-issued IDs with approve/reject/cancel terminal handling. Unloaded-history export/resume, pop-out, and the remaining backend catalog remain open | Partial | High |
 | P-15 | Account and billing | Sign-in/link/sign-out, membership, subscription, recovery | Daemon-owned Desktop PKCE, redacted account RPC/Tauri state, sign-out, and phase-safe account switching are implemented in source; production OAuth/callable configuration and installed account proof remain absent, while subscription/recovery depth still lags | Partial | High |
-| P-16 | Cloud and devices | Backup, sync, conflict handling, remote access, trusted device management | Physical-iPad source can list, verify, approve, and revoke Linux App Check devices through nonce-bound mutations; production deployment, current physical-iPad execution, backup/sync/conflict, and broader remote-device outcomes remain unproven or absent | Partial | High |
-| P-17 | Activity/session logs | Indexed transcript, search, body, replay, resume, export, source resolution | Recent usage is wrapped as session metadata; no real body/resume/export | Substitute | High |
-| P-18 | Memory review | Quarantined candidates, approve/reject, durable state, audit | Approve/reject/forget now use idempotent daemon RPCs and survive reload; Linux still lacks a proven first-class quarantine feed and cross-device review matrix | Partial | High |
-| P-19 | Projects | Registered projects, exact associations, detail, management | Read-only cards inferred with fuzzy title matching; no CRUD | Partial | Medium |
-| P-20 | Missions | Full run/task state, approvals, questions, evidence, history, health | List/create/approve works; history/evidence/freshness/questions lag | Partial | Medium |
+| P-16 | Cloud and devices | Backup, sync, conflict handling, remote access, trusted device management | Linux account/enrollment posture is daemon-owned with fail-closed transitional states and copyable device verification values. Trusted-device list/approve/revoke stays on the native mobile/Firebase nonce-bound contract; production deployment, current physical-iPad execution, backup/sync/conflict, and broader remote-device outcomes remain unproven or absent | Partial | High |
+| P-17 | Activity/session logs | Indexed transcript, search, body, replay, resume, export, source resolution | Canonical daemon search/detail/resume and indexed excerpts are wired; persisted body replay and native resume through `run.resume` with provider-safe handoff fallback are source-integrated, and loaded activity rows export through an explicit allowlisted JSON/Markdown path (PR #1685). Full-history export, source resolution, and resume-from-export remain open | Partial | High |
+| P-18 | Memory review | Quarantined candidates, approve/reject, durable state, audit | Daemon owns live review status and idempotent decisions survive reload; first-class quarantine feed and cross-device review remain unproven | Partial | High |
+| P-19 | Projects | Registered projects, exact associations, detail, management | Canonical list/get/upsert and exact identity are wired with register/edit UI; delete/reassign and installed proof remain open | Partial | Medium |
+| P-20 | Missions | Full run/task state, approvals, questions, evidence, history, health | List/create/approve plus canonical get/cancel and typed packet/result/evidence/burn/takeover/PR snapshot detail are wired; history and runtime health remain explicitly unavailable where the daemon contract does not expose them, and live/installed proof remains open | Partial | Medium |
 | P-21 | Insights | Editorial brief, evidence, citations, follow-ups, comparison, audit | Usage charts and anomaly-like summaries only | Partial | Medium |
-| P-22 | Database | Search/inspect indexed sessions, snapshots, watch/recovery, encrypted storage UX | Index/watch foundation exists; inspector, snapshot, and recovery depth lag | Partial | Medium |
+| P-22 | Database | Search/inspect indexed sessions, snapshots, watch/recovery, encrypted storage UX | Index/watch foundation plus bounded daemon-owned code search/context-pack inspection are wired in [PR #1680](https://github.com/Imagine-That-Ai/BurnBar/pull/1680), with pagination, trust warnings, and fail-closed capability handling. SQLCipher-gated encrypted snapshots provide owner-only path validation, bounded atomic copy, SHA-256 integrity, rollback, and watcher reopen; passphrase recovery bundles, key-loss/device-transfer recovery, deep inspector parity, and installed proof remain open | Partial | Medium |
 | P-23 | Provider/model workspace | Provider and model deep dives, health, catalog, failover, routing | Quota-centric provider route; no equivalent model workspace/failover flow | Partial | Medium |
-| P-24 | Settings | 16 searchable tabs with deep links and writable state | 13 tabs; Model Proxy, Computer Use, Pets omitted; several controls read-only | Partial | Medium |
-| P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed availability check fails closed; valid public feed and package-manager install/restart/rollback proof remain open | Partial | High |
+| P-24 | Settings | 16 searchable tabs with deep links and writable state | 16-tab searchable inventory and deep routes are wired; deeper per-tab backend writes and installed proof remain open | Partial | Medium |
+| P-25 | Updates | Automatic checks, channel, install/restart truth | Native signed-feed freshness, channel ownership, and shell/daemon compatibility gates are wired; valid public feed and installed rollback remain open | Partial | High |
 | P-26 | Tray and native shell | Rich live menu-bar status, quick switch, chat, quota, update state | Open/Reconnect/Quit tray only | Partial | High |
-| P-27 | Notifications/deep links | Actionable notifications, OAuth return, global commands, login start | No complete freedesktop notification, deep-link, shortcut, or autostart adapter | Missing | High |
-| P-28 | SmartHub | Discovery, status, allowlisted device actions | Runtime requires a trusted root-owned packaged CLI and otherwise fails closed; real device outcomes remain unproven | Partial | High |
-| P-29 | Text expansion | Global, secure-field-aware expansion, persistence, sync, previews | Preview-only in-app engine, plaintext localStorage, no normal composer hook | Substitute | High |
-| P-30 | Pet companion | Animated ambient overlay, click-through, summon, selection, interactions | Route-contained point-cloud preview with optimistic capability detection | Partial | High |
-| P-31 | Accessibility | Semantic UI, keyboard flows, assistive announcements, reduced effects | All routes pass axe; installed aarch64 AT-SPI/Orca/keyboard/200% evidence passed; desktop/architecture breadth remains | Near parity | High |
+| P-27 | Notifications/deep links | Actionable notifications, OAuth return, global commands, login start | Native startup/deep-link handoff, background tray launch, XDG autostart, desktop MIME registration, strict membership/OAuth URL validation, and owner-checked per-user single-instance forwarding are implemented in [PR #1679](https://github.com/Imagine-That-Ai/BurnBar/pull/1679) and [PR #1686](https://github.com/Imagine-That-Ai/BurnBar/pull/1686); freedesktop notification actions, global shortcuts, and installed host integration remain open | Partial | High |
+| P-28 | SmartHub | Discovery, status, allowlisted device actions | Runtime requires a trusted root-owned packaged CLI and otherwise fails closed. Typed operation allowlists, request/output bounds, concurrent drain, timeout, cancellation, and degraded renderer states are integrated; real device/Avahi outcomes remain unproven | Partial | High |
+| P-29 | Text expansion | Global, secure-field-aware expansion, persistence, sync, previews | Daemon-owned AES-GCM persistence with native Secret Service/KWallet custody, owner-only sealed files, consent, in-app Composer expansion, no renderer localStorage/global capture, and fail-closed corruption/missing-key handling are integrated. Global IBus/Fcitx expansion, external secure-field hooks, sync/conflict handling, and preview privacy remain open | Partial | High |
+| P-30 | Pet companion | Animated ambient overlay, click-through, summon, selection, interactions | Typed runtime-manifest probe and contained draggable fallback are honest; native overlay/summon/selection contracts remain open | Partial | High |
+| P-31 | Accessibility | Semantic UI, keyboard flows, assistive announcements, reduced effects | All routes pass axe; global reduced-motion, forced-colors, and prefers-contrast styling plus keyboard/status contracts are implemented in [PR #1683](https://github.com/Imagine-That-Ai/BurnBar/pull/1683); installed aarch64 AT-SPI/Orca/keyboard/200% evidence passed, while desktop/architecture/high-contrast breadth remains | Near parity | High |
 | P-32 | Performance | Startup/recovery/frame/cadence budgets and mature profiling | Matched macOS/Linux harness and ARM installed percentiles exist; final candidate and environment matrix remain | Partial | High |
 | P-33 | Reliability | Backoff, supervisor, recovery, subscriptions, migrations, long-idle stability | Daemon-owned bounded start/resume/stop subscriptions, monotonic restart recovery, offline-aware single-flight cadence, cancellation, coalesced route refresh, and soak contracts exist; native push and installed suspend/portal/keyring/matrix certification remain | Partial | High |
 | P-34 | Security hardening | Native URL/secret/process boundaries | Generic renderer shell permission and token exposure removed; production fixtures disabled; full installed adversarial matrix remains | Near parity | Critical |
-| P-35 | Diagnostics/support | Native export, privacy choices, accurate runtime/package facts | Useful redaction base; copy and save behavior differ; fixture toggle exposed | Partial | Medium |
+| P-35 | Diagnostics/support | Native export, privacy choices, accurate runtime/package facts | Metadata-only redacted export and support preview are wired; installed support workflow remains open | Partial | Medium |
 | P-36 | Visual/interaction polish | Consistent components, responsive density, animations, native affordances | Nonblack installed route captures now exist; raw diagnostics, interaction polish, and multi-environment regressions remain | Partial | Medium |
 | P-37 | Linux matrix | N/A; macOS supported versions are exercised | Environment-bound fail-closed harness exists and aarch64 X11/XFCE passed; GNOME Wayland, KDE Wayland, wlroots, x86_64, and real portal/keyring rows remain open | Partial | Critical |
 | P-38 | CI/release automation | Test, sign, package, and promotion jobs fail closed | Strict gates, mutation tests, native architecture shards, sessions, and aggregate closure are implemented; a full hosted two-architecture release run remains unproven | Partial | Critical |
-| P-39 | Cross-platform differential proof | Same contract/corpus compared at the same product version | Later Linux-labeled canonical evidence reuses preexisting fixtures rather than producing a current macOS-vs-Linux diff | Unproven | High |
-| P-40 | Data and Privacy | Vault/export/deletion/retention/recovery/consent/telemetry/panic workflows | Inventory/copy exists, but important controls are read-only or no complete local/account destructive and recovery workflow is proven | Partial | High |
+| P-39 | Cross-platform differential proof | Same contract/corpus compared at the same product version | A bounded evidence comparator is implemented in [PR #1682](https://github.com/Imagine-That-Ai/BurnBar/pull/1682): it normalizes object order, redacts credential values, supports explicit volatile paths, emits path-level differences, and fails closed with machine-readable exit codes. A same-commit macOS/Linux artifact run is still required | Partial | High |
+| P-40 | Data and Privacy | Vault/export/deletion/retention/recovery/consent/telemetry/panic workflows | Telemetry/privacy/cloud-sync consent writes are daemon-backed with explicit pending/error states; destructive export/deletion/recovery contracts remain unavailable | Partial | High |
 
 Every matrix row maps to a detailed record containing all six requested fields:
 
@@ -582,13 +641,16 @@ therefore not closed.
 
 ### GAP-005 - Complete Computer Use rather than exposing unsupported modes
 
-**Implementation update (2026-07-11): controller-route v2, cross-platform mobile
+**Implementation update (2026-07-13): controller-route v2, cross-platform mobile
 renewal, macOS host policy, Linux native runtime composition, daemon-owned
 PKCE/Firebase/App Check credentials, Linux App Check enrollment and policy, and
-signed AppImage peer admission are implemented in source. The physical-iPad
-approval surface is implemented in the active worktree. Production provisioning,
-an exact signed candidate, and installed Linux plus physical-iPad capability
-proof remain open.**
+signed AppImage peer admission are implemented in source. The active browser
+panel lane adds typed navigate/screenshot/click/fill requests, strict
+lower-camel Tauri-to-Swift ID translation, exact run/call/generation binding,
+and daemon result decoding; system mode remains unavailable when the runtime
+manifest cannot prove it. The physical-iPad approval surface is implemented in
+the active worktree. Production provisioning, an exact signed candidate, and
+installed Linux plus physical-iPad capability proof remain open.**
 The typed runtime manifest now marks Linux system Computer Use unavailable and
 prevents the route from offering a guaranteed-failure action. Browser is the
 only exposed source mode, but the release workflow is not yet operational.
@@ -849,15 +911,20 @@ remains required.
 
 - **Difference:** macOS supports persisted/searchable threads, twelve backends,
   model selection, streaming, attachments, citations, tool approvals, panes,
-  desktop grants, resume/export, and pop-out. Linux uses five backend choices,
-  synthesizes two history rows, and disables model, agent, attachment, option,
-  citation, tool-decision, restore, close, and pop-out controls.
-- **Why it matters:** chat is a primary workflow; synthetic history and inert
-  controls create false confidence and data-loss risk.
-- **Recommended solution:** introduce real session-body and chat-thread RPCs,
-  shared backend/model catalog, attachment store/content policy, streaming event
-  contract, citation navigation, approval state machine, resume/export, and a
-  Linux-native secondary window.
+  desktop grants, resume/export, and pop-out. Linux now has real encrypted
+  thread persistence/search/pagination, exact model/thinking-level selection,
+  and daemon-owned bounded single-use attachment refs with text-only gateway
+  resolution and explicit PDF degradation, but citations, approvals,
+  unloaded-history export/resume, pop-out, and the full backend catalog remain
+  unavailable.
+- **Why it matters:** chat is a primary workflow; presenting a file or model
+  control without a real transport still creates false confidence and data-loss
+  risk.
+- **Recommended solution:** extend the implemented attachment ref store into
+  provider-native binary/image handling, then complete citation navigation,
+  approval state machine, unloaded transcript/export contract, and Linux-native
+  secondary window; retain the typed model catalog and fail closed until each
+  capability is live.
 - **Priority:** **High**.
 - **Implementation notes:** keep the daemon authoritative for thread state;
   reconcile reconnect/cancel/idempotency; do not expose controls until their
@@ -891,14 +958,16 @@ remains required.
 ### GAP-011 - Replace activity and memory substitutes with true domain state
 
 - **Difference:** macOS exposes indexed session transcripts and a real memory
-  review queue. Linux still wraps recent usage as session entries. Memory
-  approve/reject/forget decisions are now daemon-authoritative and idempotent,
-  but recalled durable memories do not yet prove a first-class quarantine feed.
+  review queue. Linux now replays bounded persisted session bodies and resumes
+  through the canonical `run.resume` contract, with provider-safe handoff
+  fallback and explicit untrusted/error states. Full-history export, source
+  resolution, resume-from-export, and first-class memory quarantine remain
+  incomplete.
 - **Why it matters:** users cannot inspect or resume actual work, and the memory
   UI describes semantics the backend does not provide.
-- **Recommended solution:** add session list/body/search/source/resume/export RPCs
-  and complete the daemon-owned memory quarantine source and cross-device audit
-  model; retain the implemented durable decision path.
+- **Recommended solution:** complete session source/full-history/export RPCs and
+  the daemon-owned memory quarantine source and cross-device audit model; retain
+  the implemented durable decision path and bounded replay/resume.
 - **Priority:** **High**.
 - **Implementation notes:** preserve exact source/session/project IDs; support
   local/cloud conflict and missing-body recovery; make review decisions
@@ -957,20 +1026,24 @@ remains required.
 
 ### GAP-012D - Complete Database and indexing operations
 
-- **Difference:** Linux has index/watch foundations but lacks macOS inspector,
-  snapshot, deep search, encrypted-store recovery, and equivalent watch UX.
+- **Difference:** Linux has index/watch foundations and bounded daemon-owned
+  code search/context-pack inspection through [PR #1680](https://github.com/Imagine-That-Ai/BurnBar/pull/1680). It now also has SQLCipher-gated encrypted snapshot/restore with owner-only path checks, size bounds, integrity hashes, atomic replacement, rollback, and watcher reopen, plus a macOS-compatible v1 passphrase recovery bundle with PBKDF2/AES-GCM and native key-custody hooks. It still lacks the macOS-equivalent record inspector, key-loss/device-transfer recovery, deep rebuild UX, live Secret Service/KWallet proof, and installed proof.
 - **Why it matters:** users cannot diagnose missing sessions, inspect canonical
   records, recover corruption, or trust that updates are current.
-- **Recommended solution:** add daemon-owned inspect/search/snapshot/watch/rebuild/
-  recovery RPCs with pagination, cancellation, query tracing, and clear encryption
-  state.
+- **Recommended solution:** finish daemon-owned inspect/search/snapshot/watch/
+  rebuild/recovery-bundle RPCs with pagination, cancellation, query tracing, and
+  clear encryption/key-custody state; add recovery key-loss/device-transfer
+  handling and live Secret Service/KWallet verification; preserve the atomic
+  same-key snapshot path as the rollback primitive.
 - **Priority:** **Medium**.
 - **Implementation notes:** unify inotify ownership rather than layering another
   poller; use `OpenBurnBarQueryTracer`; keep raw sensitive content behind explicit
   reveal/export policy.
 - **QA verification:** search/inspect/snapshot/watch/rebuild/recover; N+1 limits,
   10k/100k rows, corruption, locked key, permission loss, path move, event burst,
-  cancellation, and restart.
+  cancellation, restart, passphrase bundle import/export, key loss, and device
+  transfer. Run the Linux SQLCipher round-trip with the production daemon secret
+  before marking the row ready.
 
 ### GAP-012E - Complete provider and model workspaces
 
@@ -1010,9 +1083,9 @@ remains required.
 ### GAP-014 - Build native tray, notifications, deep links, shortcuts, and startup
 
 - **Difference:** macOS provides a rich menu-bar experience with live cost,
-  quota, providers, quick switch, chat, freshness, and update state. Linux has an
-  Open/Reconnect/Quit tray and lacks a complete notification, OAuth deep-link,
-  global shortcut, and login-start integration.
+  quota, providers, quick switch, chat, freshness, and update state. Linux now
+  has a validated startup/deep-link handoff, background tray launch, XDG
+  autostart, and desktop MIME registration in [PR #1679](https://github.com/Imagine-That-Ai/BurnBar/pull/1679), but still lacks complete freedesktop notification actions, global shortcuts, and single-instance forwarding.
 - **Why it matters:** repeated daily workflows, alerts, recovery, auth, and panic
   controls feel incomplete or cannot work outside the main window.
 - **Recommended solution:** implement StatusNotifier/AppIndicator plus a compact
@@ -1059,39 +1132,50 @@ open; this row is therefore still **Partial**, not closed.
 
 ### GAP-016 - Replace broken SmartHub command execution
 
-- **Difference:** macOS has typed SmartHub integrations. Linux's surface calls
-  an optional `runCli` bridge that neither the Tauri bridge nor command handler
-  implements, so the production path always errors while fixture mode can hide
-  the failure.
-- **Why it matters:** a visible route is nonfunctional, and adding arbitrary
-  shell execution would create a security regression.
-- **Recommended solution:** expose structured, allowlisted daemon/Tauri commands
-  for discovery, status, test, cast, and supported device actions.
+- **Difference:** macOS has typed SmartHub integrations. Linux now has a typed,
+  root-owned allowlist for discovery/status/test/cast/device/parity operations,
+  bounded request and output decoding, timeout/cancellation, and explicit
+  degraded states; it still lacks live device/Avahi outcomes.
+- **Why it matters:** a visible route must remain useful and safe when the
+  optional native CLI or device is absent; generic shell execution would be a
+  security regression.
+- **Recommended solution:** keep the structured daemon/Tauri commands and add
+  a Linux-host matrix for real Cast, Home Assistant, AWTRIX, and Pixel Clock
+  behavior.
 - **Priority:** **High**.
 - **Implementation notes:** parse Avahi output structurally; validate device IDs,
-  URLs, payload sizes, timeouts, and cancellation; never expose generic shell;
-  reuse shared SmartHub contracts where possible.
-- **QA verification:** real Cast, Home Assistant, AWTRIX, and Pixel Clock devices;
-  escaped names, absent dependency, malformed input, timeout, auth failure,
-  offline/reconnect, cancellation, and command-injection attempts.
+  URLs, payload sizes, JSON depth/items, request IDs, timeout, cancellation, and
+  concurrent stdout drain; never expose generic shell; reuse shared SmartHub
+  contracts where possible.
+- **QA verification:** focused typed/Rust tests cover hostile input, bounds,
+  cancellation, and timeout. Remaining QA is real Cast, Home Assistant, AWTRIX,
+  and Pixel Clock devices; escaped names, absent dependency, auth failure,
+  offline/reconnect, and command-injection attempts on supported Linux hosts.
 
 ### GAP-017 - Make text expansion real and safe
 
 - **Difference:** macOS provides global, accessibility-aware expansion with
-  persistence and sync. Linux stores snippets in plaintext localStorage and only
-  exercises expansion in a preview/test surface, not normal app composers.
-- **Why it matters:** even the claimed in-app substitute is not a daily-use
-  feature, and sensitive snippets lack appropriate custody.
-- **Recommended solution:** first integrate expansion into every app composer and
-  move storage to the encrypted daemon database; then implement an opt-in
-  IBus/fcitx input method with secure-field and application exclusions.
+  persistence and sync. Linux now keeps snippets and consent in daemon-owned
+  AES-GCM sealed storage with native Secret Service/KWallet key custody and
+  applies expansion in the in-app Composer only; global IBus/fcitx integration,
+  external secure-field exclusions, and sync are not implemented.
+- **Why it matters:** durable snippets must not live in renderer storage, and an
+  honest in-app substitute must never silently become a global keylogger.
+- **Recommended solution:** retain the daemon boundary and explicit in-app-only
+  consent, then implement an opt-in IBus/fcitx input method with secure-field
+  and application exclusions plus conflict-aware sync.
 - **Priority:** **High**.
-- **Implementation notes:** avoid global keylogging; preserve clipboard contents;
-  capability-gate Wayland/X11 behavior; define import/export/sync conflicts and
-  LLM preview privacy.
-- **QA verification:** normal app inputs, GTK/Qt/Electron apps, password/secure
-  fields, excluded apps, clipboard restore, IME composition, Unicode, recursion,
-  import/export, sync, GNOME/KDE Wayland, and X11.
+- **Implementation notes:** no renderer localStorage or global capture; use the
+  daemon RPC canon, AES-GCM associated data, owner-only permissions, native key
+  custody, consent gating, secure-field hooks for supported in-app controls, and
+  fail-closed missing-key/corruption behavior. Capability-gate Wayland/X11
+  behavior and define import/export/sync conflicts and LLM preview privacy.
+- **QA verification:** focused tests cover consent gating, Composer expansion,
+  RPC wire names, encrypted persistence/restart, permissions, tamper/corruption,
+  missing native secret backend, and no-global-capture scans. Remaining QA is
+  normal app inputs, GTK/Qt/Electron apps, password/secure fields, excluded
+  apps, clipboard restore, IME composition, Unicode, recursion, import/export,
+  sync, GNOME/KDE Wayland, and X11.
 
 ### GAP-018 - Ship a real compositor-aware pet companion
 
@@ -1114,12 +1198,15 @@ open; this row is therefore still **Partial**, not closed.
 
 ### GAP-019 - Replace synthetic accessibility evidence with assistive-tech proof
 
-**Implementation update (2026-07-09): closed in the implementation branch.**
-All 19 routes and important states now run through axe; the installed `.deb`
-is exercised through AT-SPI actions, Orca process/focus observation,
-keyboard-only traversal, and requested 200% zoom. The full shell verifier
-rejects missing or synthetic accessibility artifacts. GNOME/KDE matrix breadth
-remains tracked under GAP-004 rather than keeping this implementation gap open.
+**Implementation update (2026-07-13): source polish is now explicit; certification
+remains open.** All 19 routes and important states run through axe; the installed
+`.deb` is exercised through AT-SPI actions, Orca process/focus observation,
+keyboard-only traversal, and requested 200% zoom. PR #1683 adds shared
+`prefers-reduced-motion`, `prefers-contrast: more`, and `forced-colors: active`
+tokens/focus/status rules with DOM keyboard/status contracts. The full shell
+verifier rejects missing or synthetic accessibility artifacts. GNOME/KDE matrix
+breadth, high-contrast visual captures, and physical assistive-tech execution
+remain open.
 
 - **Difference:** macOS has broad semantic labels/actions and targeted tests.
   Linux has useful landmarks, a skip link, ARIA live regions, focus styling, and
@@ -1267,6 +1354,14 @@ version and final signing/publication credentials.
 
 ### GAP-024 - Build a real current-version differential oracle
 
+**Implementation update (2026-07-13):** [PR #1682](https://github.com/Imagine-That-Ai/BurnBar/pull/1682)
+adds the reusable evidence comparator and focused tests. It sorts object keys,
+redacts credential-shaped values, supports explicit dotted-path volatile-field
+ignores, computes normalized SHA-256 checksums, reports stable path-level
+differences, and returns `0` for exact match, `1` for differences, and `2` for
+invalid input. This closes the comparison mechanism only; it does not provide
+the same-commit macOS/Linux artifacts or installed workflow evidence.
+
 - **Difference:** macOS is the gold standard, but current Linux provider/Hermes
   evidence can promote a Linux-labeled canonical pass from preexisting contract
   files rather than building and comparing both implementations at the same
@@ -1364,16 +1459,20 @@ coverage.
 |---|---|---|---|
 | LNX-GATE-001, LNX-REL-VERIFY-001, LNX-CI-001 | Implemented | Complete blocked inventory, crypto/closure mutations, strict workflow wiring | Exact signed candidate and all required rows green |
 | LNX-SEC-001, LNX-IPC-001, LNX-CAP-001 | Implemented | Native secret custodian, native gateway proxy, production fixture boundary, runtime capability manifest | GNOME/KDE/headless environment certification |
-| LNX-A11Y-HARNESS-001 | Implemented | All-route axe plus installed AT-SPI/Orca/keyboard/zoom contract | Full architecture/desktop/high-contrast matrix |
+| LNX-A11Y-HARNESS-001 | Implemented | All-route axe plus installed AT-SPI/Orca/keyboard/zoom contract and PR #1683 forced-colors/contrast/reduced-motion source tests | Full architecture/desktop/high-contrast matrix |
 | LNX-PERF-HARNESS-001 | Implemented | Matched workload tools, p50/p95/p99/resource capture, nightly soak contract | Final candidate results on comparable hardware and environments |
 | LNX-RUN-001 | Partially proven | Clean aarch64 package-owned GUI/daemon/version/uninstall session | x86_64, prior-version lifecycle, suspend/resume, compositor breadth |
 | LNX-PKG-001 | Implemented in workflow; construction proven | Four-artifact aarch64 and architecture-correct x86_64 shards green with 28/28 smoke checks each; native dual-architecture aggregation is fail closed. Official AppImages now admit the GUI only through a signed canonical manifest bound to the exact final bytes; focused peer-admission verification passed 8 Swift and 28 Node tests | Provision the release signing secret, produce the exact signed aggregate, then complete native hosted x86_64, installed x86_64, rpm/AppImage lifecycle, and channel proof |
 | LNX-UPD-001 | Partially implemented | Native signed-feed availability verifier rejects invalid public metadata | Valid feed plus deb/rpm/AppImage update, rollback, and data preservation |
-| LNX-CHANNEL-001 through LNX-DIFF-001 | Open/partial | Existing package/channel/product foundations retained | Daily-use platform foundation and current macOS/Linux differential proof |
+| LNX-CHANNEL-001 through LNX-DIFF-001 | Open/partial | Existing package/channel/product foundations retained; P-39 comparator mechanism is implemented in [PR #1682](https://github.com/Imagine-That-Ai/BurnBar/pull/1682) | Daily-use platform foundation, same-commit macOS/Linux artifact generation, and current differential proof |
+| P07/P11/P13/P14/P16/P17/P18/P19/P20/P22/P25/P27/P28/P29/P30/P31/P40 implementation slices | In review | Checked browser Computer Use panel, 33-provider catalog, daemon-backed onboarding credential setup, exact encrypted chat thread persistence/pagination/export plus bounded citations and approval actions, loaded activity export, fail-closed account/enrollment posture, daemon-authoritative memory, project management plus typed delete/reassign lifecycle, mission detail/cancel/evidence snapshots, bounded database code inspection and recovery, signed update freshness/compatibility, native startup/deep-link handoff plus single-instance forwarding, SmartHub allowlist/bounds/cancellation, daemon-owned AES-GCM text expansion with native key custody and consent, accessibility preference styling, fail-closed pet capability, and daemon-backed privacy consent are implemented in PRs [#1681](https://github.com/Imagine-That-Ai/BurnBar/pull/1681), #1676, #1667, [#1684](https://github.com/Imagine-That-Ai/BurnBar/pull/1684), [#1685](https://github.com/Imagine-That-Ai/BurnBar/pull/1685), #1658, #1671, #1670, [#1688](https://github.com/Imagine-That-Ai/BurnBar/pull/1688), #1677, #1680, #1673, #1679, [#1686](https://github.com/Imagine-That-Ai/BurnBar/pull/1686), [#1683](https://github.com/Imagine-That-Ai/BurnBar/pull/1683), #1674, #1672, and integration PR [#1691](https://github.com/Imagine-That-Ai/BurnBar/pull/1691) | Merge/rebase onto the release head, then prove installed behavior; chat unloaded-history export/resume/options/pop-out and remaining backends, activity source resolution, normalized provider corpus, OAuth/portal auth, trusted-device mobile execution, first-class quarantine, database key-loss/device-transfer recovery, mission health/history where absent from the contract, freedesktop live notification actions/global shortcuts, global IBus/Fcitx expansion, native pet adapters, and destructive privacy/recovery contracts remain separate dependencies |
+| LNX-CHAT-CITATIONS-APPROVALS-001 | Implemented in source; installed proof blocked | Bounded citation normalization/source focus and daemon-issued approval IDs with approve/reject/cancel single-flight handling; 43 focused chat tests plus the aggregate suite pass | Run unloaded-history/reconnect/pop-out/backend catalog flows against an installed Linux daemon and compare with macOS behavior |
+| LNX-SMARTHUB-HARDENING-001 | Implemented in source; live device proof blocked | Typed operation allowlist, request ID validation, bounded JSON depth/items/strings/output, concurrent stdout drain, 8-second timeout, cancellation registry, degraded renderer state; 88 focused TS tests and 3 Rust SmartHub tests pass | Provision supported devices and trusted packaged CLI on GNOME/KDE/wlroots hosts; verify Avahi discovery and offline/reconnect outcomes |
+| LNX-TEXT-EXPANSION-001 | Implemented in source; Linux keyring/IME proof blocked | Daemon-owned AES-GCM sealed snapshot, native Secret Service/KWallet key custody, owner-only permissions, consent RPC, in-app Composer expansion, no renderer localStorage/global capture, corruption/tamper/missing-key fail closed; focused persistence/Composer/RPC tests and 80-test Rust suite pass | Run on Linux with Secret Service/KWallet, then implement and certify opt-in IBus/Fcitx external integration, secure-field exclusions, sync/conflict policy, and Wayland/X11 matrix |
 | LNX-CU-CREDENTIALS-001 | Implemented in source; production provisioning blocked | Daemon-owned PKCE loopback sign-in, secure refresh-token custody, Firebase ID refresh, per-install Ed25519 App Check enrollment/challenge/mint, 30-minute production token ceiling, account-generation invalidation, phase-safe sign-out/account-switch RPC teardown, scoped old-account route revoke, cancellable HTTP, and redacted RPC state. Explicit pending approval retries on a capped 15/30/60/120/300-second schedule below the public quota; permanent rejection stops polling. The earlier focused daemon credential/runtime packet passed 35/35 and App Check backend packet passed 34/34; the lifecycle/polling regression cases are now covered by the 2026-07-12 full Linux-native aggregate. A dedicated Linux Firebase web app exists | Create the separate Google Desktop OAuth client, set the public release variables, deploy the new Functions callables/policy, and prove the flow from an installed signed candidate |
 | LNX-CU-BROWSER-001 | Source authority/runtime complete; mobile approval source present; installed proof blocked | Exact run/call/generation authority, controller-route v2, mobile renewal, macOS lifecycle policy, Linux native iroh composition, durable replay, polkit owner gate, root-owned Playwright runtime, daemon credential authority, signed AppImage peer admission, and redacted Tauri/account UI are implemented. The active worktree also contains iPad list/approve/revoke UI, canonical device-ID/fingerprint validation, nonce-bound mutation descriptors, stale-load protection, serialized mutations, and focused store/parser tests. The canonical relay challenge is generated consistently for Swift/Kotlin, Android compile/static-analysis and focused tests pass, and earlier generic iOS build-for-testing coverage passes; current physical-iPad execution is blocked because CoreDevice lists the assigned physical iPad as unavailable, and installed certification remains a separate gate | Run focused tests on the physical iPad without substituting an iPhone or simulator; then use that iPad to approve the exact Linux install and prove real browser actions, grant/approval/deny/panic, audit/tamper, credential expiry, account switch, and restart behavior |
 | Phase 2 core workflows | Open/partial | Existing routes and bounded mutations retained | Complete product outcomes and daemon-authoritative state |
-| Phase 3 native features | In progress | Mercury core, Linux CU input, panic, and outbound capture foundations are implemented; unsupported outcomes remain capability-gated | Cross-device Mercury proof, system CU capture, SmartHub, IBus/Fcitx, pet adapters |
+| Phase 3 native features | In progress | Mercury core, Linux CU input, panic, outbound capture, typed SmartHub safety, and daemon-owned text-expansion persistence foundations are implemented; unsupported outcomes remain capability-gated | Cross-device Mercury proof, system CU capture, live SmartHub devices, IBus/Fcitx, external secure-field expansion, sync, pet adapters |
 | Phase 4 certification/promotion | Blocked by design | No false stable promotion is possible | All product work plus exact-candidate environment matrix |
 
 ### Architectural target
@@ -1448,9 +1547,9 @@ truth-sync, not the first time behavior is documented.
 | Task | Depends on | Engineering work | Acceptance criteria |
 |---|---|---|---|
 | LNX-SESS-001 | LNX-EVT-001 | Session repository: list/body/search/source/resume/export | Real transcript replay and recovery, no synthetic rows |
-| LNX-CHAT-001 | LNX-SESS-001, LNX-CAT-001 | Backends/models, streaming, attachments, citations, approvals, options, secondary window | Mac-equivalent chat contract suite and installed E2E green |
+| LNX-CHAT-001 | LNX-SESS-001, LNX-CAT-001 | **Implemented in source:** canonical encrypted thread list/get/search, exact-thread idempotent append, older-message pagination, strict Tauri decoders, production synthetic-history removal, durable send ordering, and safe JSON/Markdown export of loaded messages in [PR #1684](https://github.com/Imagine-That-Ai/BurnBar/pull/1684) | Mac-equivalent chat contract suite and installed E2E green; attachments, citations, approvals, options, unloaded-history export/resume, secondary window, and remaining backend catalog are still required |
 | LNX-MEM-001 | LNX-EVT-001 | Real quarantine/review/forget/audit RPCs | Daemon-authoritative decisions persist across restart/devices |
-| LNX-PROJ-001 | LNX-SESS-001 | Project CRUD, exact associations, detail/history, inferred-row migration | Stable-ID project lifecycle and 10k-session migration suite green |
+| LNX-PROJ-001 | LNX-SESS-001 | Project CRUD, typed delete/reassign, exact associations, detail/history, inferred-row migration, collision/tombstone protection | Stable-ID project lifecycle, durable-reference migration, restart/replay, and 10k-session migration suite green |
 | LNX-MISSION-001 | LNX-EVT-001 | Mission questions, evidence, history, health, freshness, cancel/recovery | Full mission operating lifecycle survives restart/reconnect |
 | LNX-INSIGHT-001 | LNX-SESS-001, LNX-CAT-001 | Insight evidence/citations, compare, follow-up, and audit | Every insight is source-linked and comparable with stale/error handling |
 | LNX-DB-001 | LNX-EVT-001, LNX-SEC-001 | Inspector, search, snapshots, inotify ownership, rebuild/recovery, query budgets | Search/watch/rebuild/corruption/100k-row suite green without N+1 drift |

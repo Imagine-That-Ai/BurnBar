@@ -8,7 +8,7 @@ tracks the mission-002 full macOS parity foundation work.
 It does **not** claim full macOS product parity or public Linux release
 readiness.
 
-Current facts (2026-07-09):
+Current facts (2026-07-13):
 
 - A public signed aarch64 **prerelease** exists (`linux-v0.1.0`).
 - Full macOS parity is **not** complete — see
@@ -19,6 +19,12 @@ Current facts (2026-07-09):
   rows use `scope: product-parity`.
 - Public `https://burnbar.ai/latest-linux.json` must be real JSON before
   promotion; HTML SPA fallback is a hard update-feed blocker.
+- The current review stack includes PR #1684 (exact persisted chat threads and
+  safe loaded-message export), #1683 (reduced-motion/contrast/forced-colors
+  accessibility contracts), #1682 (macOS/Linux differential oracle), #1681
+  (approval-bound Browser Computer Use actions), #1680 (bounded database code
+  inspection), and #1679 (native startup/deep-link handoff). These are source
+  slices; none substitutes for the current-head installed receipts.
 
 ## Review map
 
@@ -98,7 +104,8 @@ make linux-matrix    # local DE probe → mission-002 matrix artifacts + blocked
 - Saw mission-001 historical ledger all-ready overclaim risk and invented-RPC risk.
 - Reaction: reanchor + foundation (paths, parser registry, tokens, dashboard,
   bridge contracts) with VAL product rows and `productParityClaim: false`.
-- Status: Phase 0–2 complete; Phase 3–6 in progress (pensieve inotify, POSIX switcher,
-  gateway models/catalog, Computer Use/Mercury/SmartHub routes, matrix harness).
+- Status: Phase 0–2 complete; Phase 3–6 in progress (chat depth, production
+  auth/device proof, Computer Use/Mercury/SmartHub routes, input methods, and
+  the installed matrix).
 - Release promotion still blocked (`productParityClaim: false`, packages/feed).
 - Next owner: live multi-DE matrix proof + package artifacts for VAL-RELEASE-001.

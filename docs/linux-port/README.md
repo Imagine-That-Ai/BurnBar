@@ -3,7 +3,7 @@
 This directory tracks the Linux desktop peer release work. The Linux lane is
 implemented as reviewable infrastructure, not a public availability claim.
 
-Current parity status as of 2026-07-09:
+Current parity status as of 2026-07-13:
 
 - A public signed aarch64 prerelease exists at `linux-v0.1.0`.
 - Full macOS parity is not complete. See
@@ -13,6 +13,13 @@ Current parity status as of 2026-07-09:
   [`LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md`](LINUX_MACOS_PARITY_INDEPENDENT_AUDIT_2026-07-09.md)
   for the independent executive summary, parity matrix, implementation plan,
   prioritized roadmap, and QA checklist.
+- The current source-remediation stack includes exact persisted chat threads
+  and older-message pagination (PR #1684), accessibility preference styling
+  and forced-colors contracts (PR #1683), a typed Browser Computer Use panel
+  (PR #1681), bounded database code inspection (PR #1680), native startup and
+  deep-link handoff (PR #1679), and the differential evidence oracle (PR #1682).
+  These are reviewable implementation slices; they do not replace the
+  current-head installed evidence required by `parity-ledger.json`.
 - For the CMUX-synthesized implementation plan, see
   [`FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md`](FULL_PARITY_IMPLEMENTATION_PLAN_2026-07-09.md).
 - The 2026-07-05 release notes below are historical context and should not be
@@ -33,6 +40,9 @@ Current active-checkout status as of 2026-07-05:
 
 Primary files:
 
+- [`P16_ACCOUNT_CLOUD_DEVICES.md`](P16_ACCOUNT_CLOUD_DEVICES.md) - Linux
+  daemon-auth account posture, enrollment verification, and the explicit
+  trusted-device mutation boundary.
 - [`release-runbook.md`](release-runbook.md) - package, update, signature,
   provenance, source-offer, and promotion process.
 - [`parity-ledger.json`](parity-ledger.json) - machine-readable Tier A/B/C
@@ -62,6 +72,9 @@ Primary files:
   capability probes, including the fail-closed packaged Browser Computer Use
   bridge and external runtime boundary, route gating, change procedure, and QA
   steps.
+- [`P07_COMPUTER_USE_BROWSER_PANEL.md`](P07_COMPUTER_USE_BROWSER_PANEL.md) -
+  typed Browser Computer Use actions, Swift/Rust/Tauri wire-shape boundary,
+  system-mode unavailability, and focused QA contract.
 - [`accessibility-validation.md`](accessibility-validation.md) - axe route
   matrix, installed-app AT-SPI/Orca harness, evidence contract, and remaining
   manual GNOME/KDE certification. P-31 additionally requires exact 200 percent
@@ -70,9 +83,15 @@ Primary files:
 - [`performance-reliability-validation.md`](performance-reliability-validation.md) -
   repeated packaged-shell percentiles, matched production-linked macOS/Linux
   workloads, resource soak, supervisor behavior, and fail-closed QA contract.
+- [`P22_DATABASE_CODE_INSPECTION.md`](P22_DATABASE_CODE_INSPECTION.md) - bounded
+  daemon-owned code search/context-pack behavior in the Database route, with
+  trust warnings and fail-closed packaging behavior.
 - [`LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md`](LINUX_EVENT_SUBSCRIPTION_AUTHORITY.md) -
   daemon start/resume/stop cursors, desktop cadence and cancellation, recovery
   behavior, honest degraded-pull status, and remaining installed certification.
+- [`LINUX_CHAT_THREAD_AUTHORITY.md`](LINUX_CHAT_THREAD_AUTHORITY.md) - canonical
+  encrypted thread history, exact-thread typed RPCs, idempotent send ordering,
+  strict renderer decoding, failure behavior, and remaining chat parity work.
 - [`ui-parity/`](ui-parity/README.md) - W6/W7 UI parity execution plan:
   foundation reference plus parallel task packets P01–P15.
 - [`evidence/`](evidence/) - generated and collected mission evidence.

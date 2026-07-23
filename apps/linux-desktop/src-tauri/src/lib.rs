@@ -8,17 +8,19 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Receiver;
 use std::sync::{Mutex, OnceLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
-use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::menu::{MenuBuilder, MenuItem, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 use tauri_plugin_shell::ShellExt;
 
 mod media;
+mod single_instance;
 mod update_feed;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -94,6 +96,27 @@ struct IntegrationStatusRow {
 #[serde(rename_all = "camelCase")]
 struct IntegrationsStatusPayload {
     integrations: Vec<IntegrationStatusRow>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SmartHubCommandPayload {
+    operation: String,
+    payload: serde_json::Value,
+}
+
+/// The Linux CLI is the existing SmartHub contract. Keep this operation map
+/// intentionally closed: the renderer can request a known operation, never an
+/// arbitrary executable or argument vector.
+fn smart_hub_cli_args(operation: &str) -> Result<&'static [&'static str], String> {
+    match operation {
+        "discover" => Ok(&["devices", "discover", "smarthub", "--json"]),
+        "status" => Ok(&["devices", "iot", "smarthub", "status", "--json"]),
+        "cast_status" => Ok(&["devices", "iot", "cast", "status", "--json"]),
+        "homeassistant_status" => Ok(&["devices", "iot", "homeassistant", "status", "--json"]),
+        "parity" => Ok(&["devices", "parity", "--json"]),
+        _ => Err("smarthub_operation_not_allowlisted".to_string()),
+    }
 }
 
 /// First non-empty trimmed env value among the given keys (VAL-PATH-001 parity with TS/Swift).
@@ -229,6 +252,92 @@ const DAEMON_ONBOARDING_RESET_METHOD: &str = "daemon.onboarding.reset";
 const DAEMON_SUBSCRIPTION_START_METHOD: &str = "subscription.start";
 const DAEMON_SUBSCRIPTION_RESUME_METHOD: &str = "subscription.resume";
 const DAEMON_SUBSCRIPTION_STOP_METHOD: &str = "subscription.stop";
+
+static INITIAL_DEEP_LINK_ROUTE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+static FORWARDED_ROUTE_QUEUE: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+
+fn initial_deep_link_route_store() -> &'static Mutex<Option<String>> {
+    INITIAL_DEEP_LINK_ROUTE.get_or_init(|| Mutex::new(None))
+}
+
+fn forwarded_route_queue() -> &'static Mutex<Vec<String>> {
+    FORWARDED_ROUTE_QUEUE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Accept only the routes registered by the Linux shell. External URLs,
+/// credentials, query strings, and fragments are deliberately rejected at the
+/// native boundary before they can influence renderer navigation.
+fn validated_deep_link_route(raw: &str) -> Option<&'static str> {
+    let url = reqwest::Url::parse(raw.trim()).ok()?;
+    if url.scheme() != "openburnbar"
+        || url.username() != ""
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return None;
+    }
+    let host = url.host_str()?;
+    let path = url.path().trim_matches('/');
+    match (host, path) {
+        ("dashboard", "") | ("overview", "") => Some("overview"),
+        ("chat", "") => Some("chat"),
+        ("settings", "") => Some("settings"),
+        ("updates", "") => Some("updates"),
+        ("membership", "success" | "cancel") => Some("account"),
+        ("route", "overview") => Some("overview"),
+        ("route", "chat") => Some("chat"),
+        ("route", "settings") => Some("settings"),
+        ("route", "updates") => Some("updates"),
+        _ => None,
+    }
+}
+
+fn store_initial_deep_link_route(route: Option<String>) {
+    if let Some(mut slot) = initial_deep_link_route_store().lock().ok() {
+        *slot = route;
+    }
+}
+
+fn route_from_single_instance_message(message: &single_instance::Message) -> Option<String> {
+    match message {
+        single_instance::Message::Focus => Some("overview".to_string()),
+        single_instance::Message::Route { route } => Some(route.clone()),
+        single_instance::Message::NotificationAction { action, .. } => {
+            single_instance::notification_action_route(action).map(str::to_string)
+        }
+    }
+}
+
+fn store_forwarded_route(route: String) {
+    if let Ok(mut routes) = forwarded_route_queue().lock() {
+        routes.push(route);
+        if routes.len() > 16 {
+            let excess = routes.len() - 16;
+            routes.drain(0..excess);
+        }
+    }
+}
+
+fn start_single_instance_dispatcher(app: AppHandle, receiver: Receiver<single_instance::Message>) {
+    let _ = thread::Builder::new()
+        .name("openburnbar-single-instance-dispatch".to_string())
+        .spawn(move || {
+            while let Ok(message) = receiver.recv() {
+                if let Some(route) = route_from_single_instance_message(&message) {
+                    store_forwarded_route(route.clone());
+                    emit_tray_route(&app, &route);
+                }
+                if let single_instance::Message::NotificationAction { action, payload } = message {
+                    let _ = app.emit(
+                        "notification-action",
+                        serde_json::json!({ "action": action, "payload": payload }),
+                    );
+                }
+            }
+        });
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1259,6 +1368,53 @@ fn integrations_status() -> Result<IntegrationsStatusPayload, String> {
     })
 }
 
+/// Execute one of the existing Linux SmartHub/device CLI contracts.
+///
+/// This intentionally does not become a generic CLI bridge. Every operation
+/// has a fixed argv, the executable must be the root-owned packaged binary,
+/// and the response must be bounded JSON before it reaches the renderer.
+#[tauri::command]
+fn smarthub_command(operation: String) -> Result<SmartHubCommandPayload, String> {
+    let args = smart_hub_cli_args(operation.as_str())?;
+    let cli = trusted_openburnbar_cli()?;
+    let mut child = Command::new(cli)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| "openburnbar_cli_smarthub_launch_failed".to_string())?;
+    let deadline = Instant::now() + Duration::from_secs(8);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("openburnbar_cli_smarthub_timeout".to_string());
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(25)),
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("openburnbar_cli_smarthub_wait_failed".to_string());
+            }
+        }
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|_| "openburnbar_cli_smarthub_output_failed".to_string())?;
+    if !output.status.success() {
+        return Err("openburnbar_cli_smarthub_command_failed".to_string());
+    }
+    const MAX_SMARTHUB_OUTPUT_BYTES: usize = 1_048_576;
+    if output.stdout.len() > MAX_SMARTHUB_OUTPUT_BYTES {
+        return Err("openburnbar_cli_smarthub_output_too_large".to_string());
+    }
+    let payload = serde_json::from_slice::<serde_json::Value>(&output.stdout)
+        .map_err(|_| "openburnbar_cli_smarthub_invalid_json".to_string())?;
+    Ok(SmartHubCommandPayload { operation, payload })
+}
+
 fn validate_external_url(raw_url: &str) -> Result<String, String> {
     if raw_url.len() > 2_048 {
         return Err("external_url_too_long".to_string());
@@ -1393,6 +1549,21 @@ fn open_dashboard(app: AppHandle) -> Result<(), String> {
         window.set_focus().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[tauri::command]
+fn initial_deep_link_route() -> Option<String> {
+    if let Some(route) = initial_deep_link_route_store()
+        .lock()
+        .ok()
+        .and_then(|mut route| route.take())
+    {
+        return Some(route);
+    }
+    forwarded_route_queue()
+        .lock()
+        .ok()
+        .and_then(|mut routes| routes.first().cloned().map(|_| routes.remove(0)))
 }
 
 #[tauri::command]
@@ -1608,6 +1779,64 @@ fn session_search(query: String) -> Result<serde_json::Value, String> {
         "daemon.search.query",
         Some(serde_json::json!({"query": query})),
     )
+}
+
+// ───────────── Exact persisted chat threads ─────────────
+
+fn chat_thread_list_wire(query: Option<String>, limit: u32) -> (&'static str, serde_json::Value) {
+    let mut params = serde_json::Map::from_iter([("limit".into(), serde_json::json!(limit))]);
+    if let Some(query) = query {
+        params.insert("query".into(), serde_json::json!(query));
+    }
+    ("daemon.chat.thread.list", serde_json::Value::Object(params))
+}
+
+#[tauri::command]
+fn chat_thread_list(query: Option<String>, limit: u32) -> Result<serde_json::Value, String> {
+    let (method, params) = chat_thread_list_wire(query, limit);
+    call_daemon_method(method, Some(params))
+}
+
+fn chat_thread_get_wire(
+    thread_id: String,
+    max_messages: u32,
+    before_timestamp: Option<String>,
+    before_message_id: Option<String>,
+) -> (&'static str, serde_json::Value) {
+    let mut params = serde_json::Map::from_iter([
+        ("threadID".into(), serde_json::json!(thread_id)),
+        ("maxMessages".into(), serde_json::json!(max_messages)),
+    ]);
+    if let Some(before_timestamp) = before_timestamp {
+        params.insert(
+            "beforeTimestamp".into(),
+            serde_json::json!(before_timestamp),
+        );
+    }
+    if let Some(before_message_id) = before_message_id {
+        params.insert(
+            "beforeMessageID".into(),
+            serde_json::json!(before_message_id),
+        );
+    }
+    ("daemon.chat.thread.get", serde_json::Value::Object(params))
+}
+
+#[tauri::command]
+fn chat_thread_get(
+    thread_id: String,
+    max_messages: u32,
+    before_timestamp: Option<String>,
+    before_message_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let (method, params) =
+        chat_thread_get_wire(thread_id, max_messages, before_timestamp, before_message_id);
+    call_daemon_method(method, Some(params))
+}
+
+#[tauri::command]
+fn chat_message_append(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.chat.message.append", Some(request))
 }
 
 // ───────────────── P05: usage insights ─────────────────
@@ -2032,6 +2261,60 @@ fn database_watch_project(project_path: Option<String>) -> Result<serde_json::Va
     )
 }
 
+// ───────────────── P22: bounded code retrieval ─────────────────
+// Wire: daemon.code.search / daemon.code.context_pack.
+// Keep the shell read-only and bounded; index ownership and trust wrapping
+// remain in OpenBurnBarDaemon.
+fn bounded_code_query(query: String) -> Result<String, String> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Err("Code search query must not be empty.".to_string());
+    }
+    Ok(trimmed.chars().take(512).collect())
+}
+
+fn bounded_code_limit(limit: Option<u32>, default: u32) -> u32 {
+    limit.unwrap_or(default).clamp(1, 50)
+}
+
+fn bounded_context_bytes(max_bytes: Option<u32>) -> u32 {
+    max_bytes.unwrap_or(24_000).clamp(1_024, 24_000)
+}
+
+#[tauri::command]
+fn database_code_search(
+    query: String,
+    project_path: Option<String>,
+    limit: Option<u32>,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.code.search",
+        Some(serde_json::json!({
+            "query": bounded_code_query(query)?,
+            "projectPath": project_path,
+            "limit": bounded_code_limit(limit, 20)
+        })),
+    )
+}
+
+#[tauri::command]
+fn database_code_context_pack(
+    query: String,
+    project_path: Option<String>,
+    limit: Option<u32>,
+    max_bytes: Option<u32>,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method(
+        "daemon.code.context_pack",
+        Some(serde_json::json!({
+            "query": bounded_code_query(query)?,
+            "projectPath": project_path,
+            "limit": bounded_code_limit(limit, 10),
+            "maxBytes": bounded_context_bytes(max_bytes)
+        })),
+    )
+}
+
 // ───────────────── P08: daemon-owned account authority ─────────────────
 #[tauri::command]
 fn account_status() -> Result<serde_json::Value, String> {
@@ -2218,11 +2501,14 @@ fn app_version_info() -> Result<serde_json::Value, String> {
     let daemon_version = probe_daemon_health()
         .daemon_version
         .unwrap_or_else(|| "unknown".to_string());
-    let package_channel = detect_linux_package_channel();
+    let package = detect_linux_package_facts();
+    let runtime = linux_runtime_facts();
     Ok(serde_json::json!({
         "shellVersion": shell_version,
         "daemonVersion": daemon_version,
-        "packageChannel": package_channel
+        "packageChannel": package.channel.clone(),
+        "package": package,
+        "runtime": runtime
     }))
 }
 
@@ -2233,9 +2519,42 @@ async fn update_status() -> update_feed::LinuxUpdateStatus {
 }
 
 // ───────────────── P09: redacted diagnostics export ─────────────────
+fn diagnostics_bundle(
+    stamp: u64,
+    health: &DaemonHealth,
+    package: &LinuxPackageFacts,
+    runtime: &LinuxRuntimeFacts,
+) -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": 1,
+        "exportedAt": stamp,
+        "shellVersion": env!("CARGO_PKG_VERSION"),
+        "daemonHealth": {
+            "ok": health.ok,
+            "daemonVersion": health.daemon_version,
+            "protocolVersion": health.protocol_version,
+            "socketPath": health.socket_path,
+        },
+        "package": package,
+        "runtime": runtime,
+        "included": DIAGNOSTICS_INCLUDED,
+        "excluded": DIAGNOSTICS_EXCLUDED,
+    })
+}
+
+fn diagnostics_preview(byte_count: usize) -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": 1,
+        "byteCount": byte_count,
+        "fileMode": "0600",
+        "included": DIAGNOSTICS_INCLUDED,
+        "excluded": DIAGNOSTICS_EXCLUDED,
+    })
+}
+
 // Writes a JSON bundle to the support dir. Redaction is structural: this
-// command only persists shell/health metadata — it never reads provider
-// payloads, tokens, or socket auth material. File mode is 0600.
+// command only persists shell/health/package/runtime metadata — it never reads
+// provider payloads, tokens, or socket auth material. File mode is 0600.
 #[tauri::command]
 fn export_diagnostics() -> Result<serde_json::Value, String> {
     use std::io::Write;
@@ -2251,28 +2570,11 @@ fn export_diagnostics() -> Result<serde_json::Value, String> {
         .unwrap_or(0);
     let path = dir.join(format!("diagnostics-{stamp}.json"));
     let health = probe_daemon_health();
-    let bundle = serde_json::json!({
-        "exportedAt": stamp,
-        "shellVersion": env!("CARGO_PKG_VERSION"),
-        "daemonHealth": {
-            "ok": health.ok,
-            "daemonVersion": health.daemon_version,
-            "protocolVersion": health.protocol_version,
-            "socketPath": health.socket_path,
-        },
-        "included": [
-            "shell version",
-            "daemon health (ok, version, protocol, socket path)",
-            "perf sample names and durations"
-        ],
-        "excluded": [
-            "provider API keys and credentials",
-            "socket auth tokens",
-            "provider response payloads",
-            "user session content"
-        ]
-    });
+    let package = detect_linux_package_facts();
+    let runtime = linux_runtime_facts();
+    let bundle = diagnostics_bundle(stamp, &health, &package, &runtime);
     let json = serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?;
+    let preview = diagnostics_preview(json.len());
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create(true)
@@ -2281,7 +2583,13 @@ fn export_diagnostics() -> Result<serde_json::Value, String> {
         .open(&path)
         .map_err(|e| e.to_string())?;
     file.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
-    Ok(serde_json::json!({ "path": path.display().to_string() }))
+    // Re-apply the owner-only mode even when a timestamp collision reopens an
+    // existing file; `OpenOptionsExt::mode` only affects newly-created files.
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({
+        "path": path.display().to_string(),
+        "preview": preview
+    }))
 }
 
 // ───────────────── P11: session env ─────────────────
@@ -3271,32 +3579,183 @@ where
 }
 
 fn detect_linux_package_channel() -> String {
-    if let Ok(channel) = std::env::var("OPENBURNBAR_PACKAGE_CHANNEL") {
-        let channel = channel.trim().to_ascii_lowercase();
-        if matches!(channel.as_str(), "appimage" | "deb" | "rpm") {
-            return channel;
-        }
+    detect_linux_package_facts().channel
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LinuxPackageFacts {
+    channel: String,
+    manager: String,
+    evidence: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LinuxRuntimeFacts {
+    os: String,
+    architecture: String,
+    kernel: Option<String>,
+    session_type: Option<String>,
+    desktop: Option<String>,
+    display_server: Option<String>,
+}
+
+const DIAGNOSTICS_INCLUDED: [&str; 4] = [
+    "shell version",
+    "daemon health (ok, version, protocol, socket path)",
+    "package channel and runtime facts",
+    "export schema and file permissions",
+];
+
+const DIAGNOSTICS_EXCLUDED: [&str; 4] = [
+    "provider API keys and credentials",
+    "socket auth tokens",
+    "provider response payloads",
+    "user session content",
+];
+
+fn normalized_package_channel(value: &str) -> Option<&'static str> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "appimage" => Some("appimage"),
+        "deb" => Some("deb"),
+        "rpm" => Some("rpm"),
+        _ => None,
     }
-    if Command::new("dpkg-query")
-        .args(["-W", "-f=${Status}", "open-burn-bar"])
+}
+
+fn package_manager_for_channel(channel: &str) -> &'static str {
+    match channel {
+        "deb" => "dpkg",
+        "rpm" => "rpm",
+        "appimage" => "appimage",
+        _ => "unknown",
+    }
+}
+
+fn command_reports_installed(command: &str, args: &[&str]) -> bool {
+    Command::new(command)
+        .args(args)
+        .output()
+        .map(|output| {
+            output.status.success()
+                && !String::from_utf8_lossy(&output.stdout)
+                    .to_ascii_lowercase()
+                    .contains("not installed")
+        })
+        .unwrap_or(false)
+}
+
+fn deb_package_reports_installed(command: &str, package_id: &str) -> bool {
+    Command::new(command)
+        .args(["-W", "-f=${Status}", package_id])
         .output()
         .map(|output| {
             output.status.success()
                 && String::from_utf8_lossy(&output.stdout).contains("install ok installed")
         })
         .unwrap_or(false)
-    {
-        return "deb".to_string();
+}
+
+fn package_query_ids() -> [&'static str; 2] {
+    // The release smoke path historically emitted both names. Keep the probe
+    // explicit instead of accepting arbitrary package-manager input.
+    ["openburnbar", "open-burn-bar"]
+}
+
+fn detect_linux_package_facts() -> LinuxPackageFacts {
+    if let Ok(channel) = std::env::var("OPENBURNBAR_PACKAGE_CHANNEL") {
+        if let Some(channel) = normalized_package_channel(&channel) {
+            return LinuxPackageFacts {
+                channel: channel.to_string(),
+                manager: package_manager_for_channel(channel).to_string(),
+                evidence: "OPENBURNBAR_PACKAGE_CHANNEL".to_string(),
+            };
+        }
     }
-    if Command::new("rpm")
-        .args(["-q", "open-burn-bar"])
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
-    {
-        return "rpm".to_string();
+    if first_non_empty_env(&["APPIMAGE", "APPDIR"]).is_some() {
+        return LinuxPackageFacts {
+            channel: "appimage".to_string(),
+            manager: "appimage".to_string(),
+            evidence: "APPIMAGE/APPDIR".to_string(),
+        };
     }
-    "appimage".to_string()
+
+    for package_id in package_query_ids() {
+        if deb_package_reports_installed("/usr/bin/dpkg-query", package_id)
+            || deb_package_reports_installed("/bin/dpkg-query", package_id)
+        {
+            return LinuxPackageFacts {
+                channel: "deb".to_string(),
+                manager: "dpkg".to_string(),
+                evidence: format!("dpkg-query:{package_id}"),
+            };
+        }
+    }
+    for package_id in package_query_ids() {
+        if command_reports_installed("/usr/bin/rpm", &["-q", package_id])
+            || command_reports_installed("/bin/rpm", &["-q", package_id])
+        {
+            return LinuxPackageFacts {
+                channel: "rpm".to_string(),
+                manager: "rpm".to_string(),
+                evidence: format!("rpm:{package_id}"),
+            };
+        }
+    }
+    if first_non_empty_env(&["FLATPAK_ID"]).is_some() {
+        return LinuxPackageFacts {
+            channel: "unknown".to_string(),
+            manager: "flatpak".to_string(),
+            evidence: "FLATPAK_ID (unsupported update channel)".to_string(),
+        };
+    }
+    LinuxPackageFacts {
+        channel: "unknown".to_string(),
+        manager: "unknown".to_string(),
+        evidence: "no-installed-package-evidence".to_string(),
+    }
+}
+
+fn sanitized_runtime_fact(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() || value.len() > 128 || value.chars().any(|c| c.is_control()) {
+        return None;
+    }
+    Some(value.to_string())
+}
+
+fn runtime_env_fact(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| sanitized_runtime_fact(&value))
+}
+
+fn linux_kernel_release() -> Option<String> {
+    fs::read_to_string("/proc/sys/kernel/osrelease")
+        .ok()
+        .and_then(|value| sanitized_runtime_fact(&value))
+}
+
+fn linux_runtime_facts() -> LinuxRuntimeFacts {
+    let session_type = runtime_env_fact("XDG_SESSION_TYPE");
+    let display_server = session_type.as_deref().and_then(|session| {
+        if session.eq_ignore_ascii_case("wayland") {
+            Some("wayland".to_string())
+        } else if session.eq_ignore_ascii_case("x11") || session.eq_ignore_ascii_case("xorg") {
+            Some("x11".to_string())
+        } else {
+            None
+        }
+    });
+    LinuxRuntimeFacts {
+        os: std::env::consts::OS.to_string(),
+        architecture: std::env::consts::ARCH.to_string(),
+        kernel: linux_kernel_release(),
+        session_type,
+        desktop: runtime_env_fact("XDG_CURRENT_DESKTOP"),
+        display_server,
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -4119,24 +4578,161 @@ fn foundation_reference_date_seconds() -> f64 {
     unix - 978_307_200.0
 }
 
+fn tray_number(value: &serde_json::Value, keys: &[&str]) -> Option<f64> {
+    keys.iter()
+        .find_map(|key| value.get(*key))
+        .and_then(|value| {
+            value
+                .as_f64()
+                .or_else(|| value.as_u64().map(|number| number as f64))
+                .or_else(|| value.as_i64().map(|number| number as f64))
+        })
+}
+
+/// Format the most recent daemon usage events for the native tray. The daemon
+/// has returned both a top-level array and an `{ events: [...] }` envelope in
+/// older protocol versions, so the shell deliberately accepts both shapes.
+fn tray_usage_text(value: &serde_json::Value) -> String {
+    let events = value
+        .as_array()
+        .or_else(|| value.get("events").and_then(serde_json::Value::as_array))
+        .or_else(|| value.get("rows").and_then(serde_json::Value::as_array));
+    let Some(events) = events else {
+        return "Usage: unavailable".to_string();
+    };
+    let (tokens, cost) = events.iter().fold((0.0, 0.0), |(tokens, cost), event| {
+        (
+            tokens + tray_number(event, &["tokens", "totalTokens", "tokenCount"]).unwrap_or(0.0),
+            cost + tray_number(event, &["costUsd", "cost", "estimatedCostUsd"]).unwrap_or(0.0),
+        )
+    });
+    format!(
+        "Recent usage: {} tokens - ${:.2}",
+        format_compact_number(tokens),
+        cost
+    )
+}
+
+fn format_compact_number(number: f64) -> String {
+    if number >= 1_000_000.0 {
+        format!("{:.1}M", number / 1_000_000.0)
+    } else if number >= 1_000.0 {
+        format!("{:.1}K", number / 1_000.0)
+    } else {
+        format!("{:.0}", number)
+    }
+}
+
+fn tray_update_text(status: &update_feed::LinuxUpdateStatus) -> String {
+    match status.state.as_str() {
+        "available" => format!(
+            "Update available: {}",
+            status.latest_version.as_deref().unwrap_or("new version")
+        ),
+        "current" => "Updates: up to date".to_string(),
+        "unavailable" => "Updates: feed unavailable".to_string(),
+        "invalid" => "Updates: feed rejected".to_string(),
+        state => format!("Updates: {state}"),
+    }
+}
+
+fn emit_tray_route(app: &AppHandle, route: &str) {
+    let _ = open_dashboard(app.clone());
+    let _ = app.emit("tray-route", route.to_string());
+}
+
+fn refresh_tray_status_items(
+    status_item: MenuItem<tauri::Wry>,
+    usage_item: MenuItem<tauri::Wry>,
+    update_item: MenuItem<tauri::Wry>,
+) {
+    tauri::async_runtime::spawn(async move {
+        let health = tauri::async_runtime::spawn_blocking(probe_daemon_health)
+            .await
+            .unwrap_or_default();
+        let status_text = if health.ok {
+            format!(
+                "Daemon: connected{}",
+                health
+                    .daemon_version
+                    .as_deref()
+                    .map(|version| format!(" - {version}"))
+                    .unwrap_or_default()
+            )
+        } else {
+            "Daemon: offline".to_string()
+        };
+        let _ = status_item.set_text(status_text);
+
+        let usage = tauri::async_runtime::spawn_blocking(|| usage_summary().ok())
+            .await
+            .ok()
+            .flatten();
+        let _ = usage_item.set_text(
+            usage
+                .as_ref()
+                .map(tray_usage_text)
+                .unwrap_or_else(|| "Usage: unavailable".to_string()),
+        );
+
+        let update = update_status().await;
+        let _ = update_item.set_text(tray_update_text(&update));
+    });
+}
+
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let open_i = MenuItemBuilder::with_id("open", "Open dashboard").build(app)?;
+    let chat_i = MenuItemBuilder::with_id("chat", "Open chat").build(app)?;
+    let usage_i = MenuItemBuilder::with_id("usage", "Open usage").build(app)?;
+    let updates_i = MenuItemBuilder::with_id("updates", "Open updates").build(app)?;
+    let settings_i = MenuItemBuilder::with_id("settings", "Open settings").build(app)?;
+    let status_i = MenuItemBuilder::with_id("status", "Daemon: checking...")
+        .enabled(false)
+        .build(app)?;
+    let recent_usage_i = MenuItemBuilder::with_id("recent-usage", "Usage: checking...")
+        .enabled(false)
+        .build(app)?;
+    let update_state_i = MenuItemBuilder::with_id("update-state", "Updates: checking...")
+        .enabled(false)
+        .build(app)?;
+    let refresh_i = MenuItemBuilder::with_id("refresh", "Refresh status").build(app)?;
     let health_i = MenuItemBuilder::with_id("health", "Reconnect daemon").build(app)?;
     let quit_i = MenuItemBuilder::with_id("quit", "Quit OpenBurnBar").build(app)?;
     let menu = MenuBuilder::new(app)
-        .items(&[&open_i, &health_i, &quit_i])
+        .items(&[&open_i, &chat_i, &usage_i, &updates_i, &settings_i])
+        .separator()
+        .items(&[&status_i, &recent_usage_i, &update_state_i])
+        .separator()
+        .items(&[&refresh_i, &health_i, &quit_i])
         .build()?;
+
+    let status_for_events = status_i.clone();
+    let usage_for_events = recent_usage_i.clone();
+    let update_for_events = update_state_i.clone();
+    refresh_tray_status_items(status_i, recent_usage_i, update_state_i);
 
     let _tray = TrayIconBuilder::new()
         .menu(&menu)
-        .tooltip("OpenBurnBar")
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "open" => {
-                let _ = open_dashboard(app.clone());
-            }
+        .tooltip("OpenBurnBar — Linux desktop assistant")
+        .on_menu_event(move |app, event| match event.id.as_ref() {
+            "open" => emit_tray_route(app, "overview"),
+            "chat" => emit_tray_route(app, "chat"),
+            "usage" => emit_tray_route(app, "insights"),
+            "updates" => emit_tray_route(app, "updates"),
+            "settings" => emit_tray_route(app, "settings"),
+            "refresh" => refresh_tray_status_items(
+                status_for_events.clone(),
+                usage_for_events.clone(),
+                update_for_events.clone(),
+            ),
             "health" => {
                 let health = daemon_health();
                 let _ = app.emit("daemon-health", health);
+                refresh_tray_status_items(
+                    status_for_events.clone(),
+                    usage_for_events.clone(),
+                    update_for_events.clone(),
+                );
             }
             "quit" => quit_app(app.clone()),
             _ => {}
@@ -4149,7 +4745,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             } = event
             {
                 let app = tray.app_handle();
-                let _ = open_dashboard(app.clone());
+                emit_tray_route(app, "overview");
             }
         })
         .build(app)?;
@@ -4174,6 +4770,11 @@ fn init_tracing() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let initial_route = std::env::args()
+        .skip(1)
+        .find_map(|arg| validated_deep_link_route(&arg).map(str::to_string));
+    store_initial_deep_link_route(initial_route);
+
     // Fast-exit CLI flags before booting the GUI: a GTK/WebKit app launched
     // headless (packaging smoke, CI) would otherwise spin forever on `--version`.
     for arg in std::env::args().skip(1) {
@@ -4202,6 +4803,31 @@ pub fn run() {
         }
     }
 
+    let startup_messages = match single_instance::startup_messages_from_args(
+        std::env::args().skip(1),
+        validated_deep_link_route,
+    ) {
+        Ok(messages) => messages,
+        Err(error) => {
+            eprintln!("openburnbar: refusing startup arguments: {error}");
+            return;
+        }
+    };
+    let instance = match single_instance::acquire(
+        &single_instance::directory(linux_support_dir),
+        &startup_messages,
+    ) {
+        Ok(instance) => instance,
+        Err(error) => {
+            eprintln!("openburnbar: single-instance startup unavailable: {error}");
+            return;
+        }
+    };
+    let (instance_guard, instance_receiver) = match instance {
+        single_instance::Acquire::Primary { guard, receiver } => (guard, receiver),
+        single_instance::Acquire::Forwarded => return,
+    };
+
     // Install the process-wide tracing subscriber so the remote stack's
     // `tracing::info!/warn!` events (and Tauri/tao/wry diagnostics) actually go
     // somewhere. Placed after the `--version`/`--help` fast-exit so probe output
@@ -4221,6 +4847,7 @@ pub fn run() {
             open_external_url,
             open_update_url,
             open_dashboard,
+            initial_deep_link_route,
             quit_app,
             tray_degraded,
             record_perf_sample,
@@ -4235,6 +4862,9 @@ pub fn run() {
             provider_catalog,
             session_list,
             session_search,
+            chat_thread_list,
+            chat_thread_get,
+            chat_message_append,
             usage_insights,
             mission_list,
             mission_create,
@@ -4265,6 +4895,8 @@ pub fn run() {
             database_workspace_status,
             database_index_project,
             database_watch_project,
+            database_code_search,
+            database_code_context_pack,
             account_status,
             account_begin_sign_in,
             account_cancel_sign_in,
@@ -4296,9 +4928,12 @@ pub fn run() {
             computer_use_approval_respond,
             computer_use_panic_halt,
             computer_use_audit_export,
-            integrations_status
+            integrations_status,
+            smarthub_command
         ])
-        .setup(|app| {
+        .setup(move |app| {
+            app.manage(instance_guard);
+            start_single_instance_dispatcher(app.handle().clone(), instance_receiver);
             start_packaged_daemon_lifecycle(app.handle().clone());
             if let Err(e) = build_tray(app.handle()) {
                 TRAY_INIT_FAILED.store(true, Ordering::Relaxed);
@@ -4524,6 +5159,75 @@ mod tests {
         })
     }
 
+    #[test]
+    fn diagnostics_bundle_is_metadata_only_and_has_a_safe_preview_contract() {
+        let health = DaemonHealth {
+            ok: false,
+            daemon_version: Some("1.2.3".to_string()),
+            protocol_version: Some(7),
+            socket_path: Some("/run/user/1000/openburnbar/daemon.sock".to_string()),
+            error: Some("socket auth token should never be serialized".to_string()),
+            ..Default::default()
+        };
+        let package = LinuxPackageFacts {
+            channel: "unknown".to_string(),
+            manager: "unknown".to_string(),
+            evidence: "no-installed-package-evidence".to_string(),
+        };
+        let runtime = LinuxRuntimeFacts {
+            os: "linux".to_string(),
+            architecture: "x86_64".to_string(),
+            kernel: Some("6.8.0".to_string()),
+            session_type: Some("wayland".to_string()),
+            desktop: Some("GNOME".to_string()),
+            display_server: Some("wayland".to_string()),
+        };
+        let bundle = diagnostics_bundle(42, &health, &package, &runtime);
+        let encoded = serde_json::to_string(&bundle).unwrap();
+        assert!(!encoded.contains("packageChannel"));
+        assert!(!encoded.contains("socket auth token should never be serialized"));
+        assert!(encoded.contains("provider API keys and credentials"));
+        assert!(encoded.contains("runtime"));
+
+        let preview = diagnostics_preview(encoded.len());
+        assert_eq!(preview["schemaVersion"], 1);
+        assert_eq!(preview["fileMode"], "0600");
+        assert_eq!(preview["byteCount"], encoded.len());
+        assert!(preview["included"].as_array().unwrap().len() >= 4);
+        assert!(preview["excluded"].as_array().unwrap().len() >= 4);
+    }
+
+    #[test]
+    fn package_channel_override_is_strict_and_unknown_is_not_promoted_to_appimage() {
+        assert_eq!(normalized_package_channel(" DEB "), Some("deb"));
+        assert_eq!(normalized_package_channel("rpm"), Some("rpm"));
+        assert_eq!(normalized_package_channel("appimage"), Some("appimage"));
+        assert_eq!(normalized_package_channel("flatpak"), None);
+        assert_eq!(package_manager_for_channel("unknown"), "unknown");
+    }
+
+    #[test]
+    fn runtime_facts_reject_control_input_and_normalize_display_server() {
+        assert_eq!(
+            sanitized_runtime_fact("  GNOME  "),
+            Some("GNOME".to_string())
+        );
+        assert_eq!(sanitized_runtime_fact("bad\nvalue"), None);
+        assert_eq!(sanitized_runtime_fact(&"x".repeat(129)), None);
+
+        let session = Some("x11".to_string());
+        let display_server = session.as_deref().and_then(|value| {
+            if value.eq_ignore_ascii_case("wayland") {
+                Some("wayland".to_string())
+            } else if value.eq_ignore_ascii_case("x11") || value.eq_ignore_ascii_case("xorg") {
+                Some("x11".to_string())
+            } else {
+                None
+            }
+        });
+        assert_eq!(display_server.as_deref(), Some("x11"));
+    }
+
     // BurnBarMissionApproveRequest/CancelRequest decode `missionID` (capital ID,
     // Swift property name verbatim — no CodingKeys remap) plus a non-optional
     // `actor`. A rename on either side makes the daemon's Codable decode throw,
@@ -4541,6 +5245,37 @@ mod tests {
         assert_eq!(method, "daemon.mission.cancel");
         assert_eq!(params["missionID"], "m-43");
         assert_eq!(params["actor"], "linux-shell");
+    }
+
+    #[test]
+    fn exact_thread_chat_wire_contract_is_pinned() {
+        let (method, params) = chat_thread_list_wire(Some("release".into()), 40);
+        assert_eq!(method, "daemon.chat.thread.list");
+        assert_eq!(params["query"], "release");
+        assert_eq!(params["limit"], 40);
+
+        let (_, params) = chat_thread_list_wire(None, 100);
+        assert!(params.get("query").is_none());
+        assert_eq!(params["limit"], 100);
+
+        let (method, params) = chat_thread_get_wire("thread-42".into(), 500, None, None);
+        assert_eq!(method, "daemon.chat.thread.get");
+        assert_eq!(params["threadID"], "thread-42");
+        assert_eq!(params["maxMessages"], 500);
+        assert!(params.get("threadId").is_none());
+
+        let (_, params) = chat_thread_get_wire(
+            "thread-42".into(),
+            500,
+            Some("2026-07-10T12:00:00.000Z".into()),
+            Some("message-42".into()),
+        );
+        assert_eq!(params["beforeTimestamp"], "2026-07-10T12:00:00.000Z");
+        assert_eq!(params["beforeMessageID"], "message-42");
+
+        let source = include_str!("lib.rs");
+        assert!(source.contains("daemon.chat.message.append"));
+        assert!(source.contains("fn chat_message_append"));
     }
 
     #[test]
@@ -4770,6 +5505,43 @@ mod tests {
     }
 
     #[test]
+    fn smarthub_cli_operations_are_fixed_and_allowlisted() {
+        assert_eq!(
+            smart_hub_cli_args("discover").unwrap(),
+            &["devices", "discover", "smarthub", "--json"]
+        );
+        assert_eq!(
+            smart_hub_cli_args("status").unwrap(),
+            &["devices", "iot", "smarthub", "status", "--json"]
+        );
+        assert_eq!(
+            smart_hub_cli_args("cast_status").unwrap(),
+            &["devices", "iot", "cast", "status", "--json"]
+        );
+        assert_eq!(
+            smart_hub_cli_args("homeassistant_status").unwrap(),
+            &["devices", "iot", "homeassistant", "status", "--json"]
+        );
+        assert_eq!(
+            smart_hub_cli_args("parity").unwrap(),
+            &["devices", "parity", "--json"]
+        );
+        for rejected in [
+            "",
+            "list",
+            "status --json",
+            "../../bin/evil",
+            "status\n--json",
+        ] {
+            assert_eq!(
+                smart_hub_cli_args(rejected).unwrap_err(),
+                "smarthub_operation_not_allowlisted",
+                "unexpectedly accepted {rejected:?}"
+            );
+        }
+    }
+
+    #[test]
     fn computer_use_panic_shortcuts_parse() {
         assert!(tauri_plugin_global_shortcut::Builder::<tauri::Wry>::new()
             .with_shortcuts(COMPUTER_USE_PANIC_SHORTCUTS)
@@ -4864,6 +5636,37 @@ mod tests {
             },
             now,
         )
+    }
+
+    #[test]
+    fn computer_use_invoke_renderer_shape_uses_lower_camel_ids() {
+        let params: ComputerUseInvokeParams = serde_json::from_value(serde_json::json!({
+            "sessionId": "session-1",
+            "invocation": {
+                "callId": "call-1",
+                "runId": "run-1",
+                "tool": "browser_screenshot",
+                "arguments": {},
+                "requestedBy": "linux-shell",
+                "requestedAt": 800000050.123
+            }
+        }))
+        .expect("Tauri renderer request must use lower-camel serde keys");
+        assert_eq!(params.session_id, "session-1");
+        assert_eq!(params.invocation.call_id, "call-1");
+        assert_eq!(params.invocation.run_id, "run-1");
+        assert!(
+            serde_json::from_value::<ComputerUseInvokeParams>(serde_json::json!({
+                "sessionId": "session-1",
+                "invocation": {
+                    "callID": "call-1",
+                    "runID": "run-1",
+                    "tool": "browser_screenshot",
+                    "arguments": {}
+                }
+            }))
+            .is_err()
+        );
     }
 
     #[test]
@@ -5541,5 +6344,90 @@ mod tests {
             "android-phone-1"
         );
         assert_eq!(payload["response"]["respondedAt"], 800_000_000.0);
+    }
+
+    #[test]
+    fn tray_usage_text_accepts_array_and_envelope_shapes() {
+        let rows = serde_json::json!([
+            {"tokens": 1_250, "costUsd": 0.11},
+            {"totalTokens": 2_750, "estimatedCostUsd": 0.24}
+        ]);
+        assert_eq!(tray_usage_text(&rows), "Recent usage: 4.0K tokens - $0.35");
+
+        let envelope = serde_json::json!({"events": [{"tokenCount": 12, "cost": 0.03}]});
+        assert_eq!(
+            tray_usage_text(&envelope),
+            "Recent usage: 12 tokens - $0.03"
+        );
+        assert_eq!(
+            tray_usage_text(&serde_json::json!({"error": "offline"})),
+            "Usage: unavailable"
+        );
+    }
+
+    #[test]
+    fn tray_update_text_is_honest_for_each_feed_state() {
+        let mut status = update_feed::LinuxUpdateStatus {
+            state: "unavailable".into(),
+            current_version: "0.1.0".into(),
+            latest_version: None,
+            channel: None,
+            published_at: None,
+            notes: None,
+            artifact: None,
+            reason: Some("offline".into()),
+        };
+        assert_eq!(tray_update_text(&status), "Updates: feed unavailable");
+
+        status.state = "current".into();
+        assert_eq!(tray_update_text(&status), "Updates: up to date");
+
+        status.state = "available".into();
+        status.latest_version = Some("0.2.0".into());
+        assert_eq!(tray_update_text(&status), "Update available: 0.2.0");
+    }
+
+    #[test]
+    fn deep_link_decoder_allows_registered_routes_only() {
+        assert_eq!(
+            validated_deep_link_route("openburnbar://dashboard"),
+            Some("overview")
+        );
+        assert_eq!(
+            validated_deep_link_route("openburnbar://membership/success"),
+            Some("account")
+        );
+        assert_eq!(
+            validated_deep_link_route("openburnbar://route/chat"),
+            Some("chat")
+        );
+        assert_eq!(validated_deep_link_route("https://example.com/chat"), None);
+        assert_eq!(
+            validated_deep_link_route("openburnbar://chat?prompt=secret"),
+            None
+        );
+        assert_eq!(
+            validated_deep_link_route("openburnbar://chat#fragment"),
+            None
+        );
+        assert_eq!(validated_deep_link_route("openburnbar://unknown"), None);
+    }
+
+    #[test]
+    fn database_code_bounds_reject_blank_queries_and_clamp_reads() {
+        assert!(bounded_code_query("   ".to_string()).is_err());
+        assert_eq!(
+            bounded_code_query("  symbol  ".to_string()).unwrap(),
+            "symbol"
+        );
+        assert_eq!(
+            bounded_code_query("a".repeat(600)).unwrap().chars().count(),
+            512
+        );
+        assert_eq!(bounded_code_limit(Some(0), 20), 1);
+        assert_eq!(bounded_code_limit(Some(999), 20), 50);
+        assert_eq!(bounded_code_limit(None, 10), 10);
+        assert_eq!(bounded_context_bytes(Some(999_999)), 24_000);
+        assert_eq!(bounded_context_bytes(Some(1)), 1_024);
     }
 }

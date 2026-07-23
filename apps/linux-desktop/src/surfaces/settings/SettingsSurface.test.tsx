@@ -41,7 +41,8 @@ function resetStores(): void {
     loadingRouteLog: false,
     loadingNotifications: false,
     busy: null,
-    error: null
+    error: null,
+    privacyMutation: { status: 'idle', message: null }
   });
 }
 
@@ -143,17 +144,19 @@ describe('SettingsSurface', () => {
     expect(screen.getByText('Look & Feel')).toBeTruthy();
     expect(screen.getByText('Account & Sync')).toBeTruthy();
   });
-  it('renders populated fixture config with read-only toggles on Data & Privacy', () => {
+  it('writes fixture privacy choices and exposes honest lifecycle capability states', async () => {
     useShellStore.setState({ fixtureMode: true });
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
     render(<SettingsSurface />);
     expect(screen.getByText(/fixture transcript/i)).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button', { name: /Data & Privacy/i })[0]!);
-    const toggles = screen.getAllByRole('checkbox');
-    for (const input of toggles) {
-      expect(input.getAttribute('aria-disabled')).toBe('true');
-      expect((input as HTMLInputElement).disabled).toBe(true);
-    }
+    const telemetry = screen.getByRole('checkbox', { name: 'Telemetry' }) as HTMLInputElement;
+    expect(telemetry.disabled).toBe(false);
+    fireEvent.click(telemetry);
+    await waitFor(() => expect(screen.getByText('Privacy choices saved.')).toBeTruthy());
+    expect(useSystemStore.getState().config?.telemetryEnabled).toBe(true);
+    expect(screen.getAllByText('Unavailable').length).toBeGreaterThanOrEqual(4);
+    expect(screen.getByText(/No destructive deletion RPC is exposed/i)).toBeTruthy();
   });
 
   it('shows loading skeleton without fixture', () => {
@@ -195,6 +198,17 @@ describe('SettingsSurface', () => {
     fireEvent.click(copyBtn);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(fixtureConfigSnapshot().paths.supportDir));
     await waitFor(() => expect(screen.getByText('Copied')).toBeTruthy());
+  });
+
+  it('labels parser, API-backed, and unavailable usage sources in the daemon pane', () => {
+    useShellStore.setState({ fixtureMode: true });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /Engine Room/i }));
+    expect(screen.getByText(/27 local parsers, 4 API-backed sources, 2 unavailable local sources/)).toBeTruthy();
+    expect(screen.getAllByText('API-backed; no local parser').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Local usage unavailable').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Local parser registered').length).toBeGreaterThan(0);
   });
 
   it('Done returns to overview route', () => {
@@ -240,6 +254,36 @@ describe('SettingsSurface', () => {
     expect(configUpdate.mock.calls[0][0].providers[0].isEnabled).toBe(false);
   });
 
+  it('fails closed when a packaged bridge cannot update privacy config', async () => {
+    useShellStore.setState({ bridge: null, fixtureMode: false });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    await useSettingsWiringStore.getState().updatePrivacySettings({ telemetryEnabled: true });
+    expect(useSystemStore.getState().config?.telemetryEnabled).toBe(false);
+    expect(useSettingsWiringStore.getState().privacyMutation).toEqual({
+      status: 'error',
+      message: 'Packaged shell required to save privacy choices.'
+    });
+  });
+
+  it('sends only the consent change while preserving daemon config fields', async () => {
+    const config = fixtureConfigSnapshot();
+    const configUpdate = vi.fn(async (snapshot) => ({
+      ...snapshot,
+      paths: config.paths,
+      secretServiceStatus: config.secretServiceStatus
+    }));
+    useShellStore.setState({ bridge: bridge({ configUpdate }), fixtureMode: false });
+    useSystemStore.setState({ config, loading: false, error: null });
+    await useSettingsWiringStore.getState().updatePrivacySettings({ privacyOptIn: true });
+    expect(configUpdate).toHaveBeenCalledTimes(1);
+    const payload = configUpdate.mock.calls[0][0];
+    expect(payload.privacyOptIn).toBe(true);
+    expect(payload.telemetryEnabled).toBe(config.telemetryEnabled);
+    expect(payload.providers).toEqual(config.providers);
+    expect(useSystemStore.getState().config?.privacyOptIn).toBe(true);
+    expect(useSettingsWiringStore.getState().privacyMutation.status).toBe('success');
+  });
+
   it('wires Agents credential and model mutation RPCs without rendering secrets', async () => {
     const providerCredentialSlotUpsert = vi.fn(async () => fixtureConfigSnapshot());
     const providerCustomModelUpsert = vi.fn(async () => fixtureConfigSnapshot());
@@ -272,13 +316,70 @@ describe('SettingsSurface', () => {
     await waitFor(() => expect(notificationCommand).toHaveBeenCalledWith('status', []));
   });
 
-  it('keeps Devices & Sync and Media honest when no mutation RPC exists', () => {
+  it('surfaces daemon-owned account posture while keeping unsupported device mutations explicit', async () => {
     useShellStore.setState({ fixtureMode: true });
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
     render(<SettingsSurface />);
     fireEvent.click(screen.getByRole('button', { name: /^Devices & Sync/i }));
-    expect(screen.getByText(/No trusted-device mutation RPC is available/i)).toBeTruthy();
+    expect(await screen.findByText(/Account and enrollment posture comes from the daemon/i)).toBeTruthy();
+    expect(await screen.findByText(/Signed in as alberto@burnbar.dev/i)).toBeTruthy();
+    expect(screen.getByText(/Trusted-device approval and revoke remain unavailable/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^Media & Sharing/i }));
     expect(screen.getByText(/No daemon settings RPC exists here/i)).toBeTruthy();
+  });
+
+  it('uses real account sign-out mutation from Devices & Sync', async () => {
+    const accountStatus = vi.fn(async () => ({
+      state: 'active' as const,
+      signedIn: true,
+      identityLabel: 'user@example.com',
+      trustClass: 'linux-lower-trust' as const,
+      syncState: 'active' as const,
+      deviceApprovalRequired: false
+    }));
+    const accountSignOut = vi.fn(async () => ({
+      state: 'signed-out' as const,
+      signedIn: false,
+      trustClass: 'linux-lower-trust' as const,
+      syncState: 'local-only' as const,
+      deviceApprovalRequired: false
+    }));
+    useShellStore.setState({ bridge: bridge({ accountStatus, accountSignOut }), fixtureMode: false });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^Devices & Sync/i }));
+    await screen.findByText(/Signed in as user@example.com/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    await waitFor(() => expect(accountSignOut).toHaveBeenCalledOnce());
+    expect(await screen.findByText(/Signed out; local-first mode remains available/i)).toBeTruthy();
+  });
+
+  it('exposes rejected installation replacement through the daemon identity RPC', async () => {
+    const accountStatus = vi.fn(async () => ({
+      state: 'unavailable' as const,
+      signedIn: true,
+      trustClass: 'linux-lower-trust' as const,
+      syncState: 'local-only' as const,
+      detail: 'device_rejected',
+      deviceApprovalRequired: false
+    }));
+    const accountRotateIdentity = vi.fn(async () => ({
+      state: 'awaiting-device-approval' as const,
+      signedIn: true,
+      trustClass: 'linux-lower-trust' as const,
+      syncState: 'local-only' as const,
+      deviceApprovalRequired: true,
+      installationDeviceID: 'linux_new',
+      installationSafetyFingerprint: 'ABCD EFGH'
+    }));
+    useShellStore.setState({ bridge: bridge({ accountStatus, accountRotateIdentity }), fixtureMode: false });
+    useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
+    render(<SettingsSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^Devices & Sync/i }));
+    await screen.findByText(/This installation was rejected/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Replace rejected identity' }));
+    await waitFor(() => expect(accountRotateIdentity).toHaveBeenCalledOnce());
+    expect(await screen.findByText('linux_new')).toBeTruthy();
+    expect(screen.getByText(/approval from a trusted OpenBurnBar device/i)).toBeTruthy();
   });
 });

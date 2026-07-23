@@ -245,13 +245,18 @@ describe('AccountSurface', () => {
     expect(beginSignIn).toHaveBeenCalledOnce();
   });
 
-  it('surfaces trusted-iPad approval with the public verification descriptor only', () => {
+  it('surfaces trusted-iPad approval with copyable public verification values only', async () => {
     useShellStore.setState({ bridge: { accountStatus: async () => awaitingApproval } as never });
     setAccount({ data: awaitingApproval });
     const { container } = render(<AccountSurface />);
     expect(screen.getByText(/trusted OpenBurnBar device/i)).toBeTruthy();
     expect(screen.getByText(awaitingApproval.installationDeviceID!)).toBeTruthy();
     expect(screen.getByText(awaitingApproval.installationSafetyFingerprint!)).toBeTruthy();
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    fireEvent.click(screen.getByRole('button', { name: 'Copy fingerprint' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(awaitingApproval.installationSafetyFingerprint));
+    expect(screen.getByText(/Compare both values on the trusted iPad/i)).toBeTruthy();
     expect(container.textContent).not.toMatch(/refreshToken|idToken|appCheckToken|publicKey|sessionGeneration/);
   });
 

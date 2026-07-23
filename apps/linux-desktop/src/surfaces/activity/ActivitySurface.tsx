@@ -7,6 +7,13 @@ import { useDaemonStatusCopy, useShellStore } from '../../state/shellStore.js';
 import { SearchBox } from './SearchBox.js';
 import { SessionRow, type ActivityMetricMode } from './SessionRow.js';
 import { groupSessionsByDay } from './sessionGroups.js';
+import {
+  buildActivityExportDocument,
+  downloadActivityExport,
+  sanitizeActivityExportFilename,
+  serializeActivityExport,
+  type ActivityExportFormat
+} from './activityExport.js';
 import './activity.css';
 
 function ActivitySkeleton() {
@@ -32,6 +39,8 @@ export function ActivitySurface() {
   const loadMore = useActivityStore((s) => s.loadMore);
 
   const [metricMode, setMetricMode] = useState<ActivityMetricMode>('cost');
+  const [exportFormat, setExportFormat] = useState<ActivityExportFormat>('json');
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
 
   const offline = !fixtureMode && !bridge;
   const provenance = fixtureMode ? 'fixture transcript' : 'live daemon session index';
@@ -41,6 +50,27 @@ export function ActivitySurface() {
   const visible = sessions.slice(0, visibleCount);
   const dayGroups = groupSessionsByDay(visible);
   const hasMore = sessions.length > visibleCount;
+  const exportDisabled = sessions.length === 0;
+
+  const exportActivity = () => {
+    if (exportDisabled) return;
+    try {
+      const document = buildActivityExportDocument(
+        sessions,
+        fixtureMode ? 'fixture transcript' : 'live daemon session index'
+      );
+      const filename = sanitizeActivityExportFilename('activity-export', exportFormat);
+      const content = serializeActivityExport(document, exportFormat);
+      downloadActivityExport({
+        filename,
+        content,
+        mimeType: exportFormat === 'markdown' ? 'text/markdown' : 'application/json'
+      });
+      setExportStatus(`Exported ${filename} (${document.loadedCount} loaded rows)`);
+    } catch (error) {
+      setExportStatus(error instanceof Error ? error.message : 'Activity export failed.');
+    }
+  };
 
   let body: ReactNode;
   if (offline) {
@@ -109,7 +139,37 @@ export function ActivitySurface() {
               Tokens
             </button>
           </div>
+          <div className="activity-export-control" role="group" aria-label="Activity export">
+            <span className="sr-only">Activity export format</span>
+            <select
+              value={exportFormat}
+              onChange={(event) => setExportFormat(event.target.value as ActivityExportFormat)}
+              aria-label="Activity export format"
+              disabled={exportDisabled}
+            >
+              <option value="json">JSON</option>
+              <option value="markdown">Markdown</option>
+            </select>
+            <button
+              type="button"
+              className="ghost activity-export-button"
+              onClick={exportActivity}
+              disabled={exportDisabled}
+              title={exportDisabled ? 'Load activity rows to export' : `Export activity as ${exportFormat === 'json' ? 'JSON' : 'Markdown'}`}
+              aria-label={`Export activity as ${exportFormat === 'json' ? 'JSON' : 'Markdown'}`}
+            >
+              <span aria-hidden="true">⇩</span>
+            </button>
+            {exportStatus ? (
+              <span className="activity-export-status" role="status" aria-live="polite">
+                {exportStatus}
+              </span>
+            ) : null}
+          </div>
         </div>
+        <p className="activity-export-scope">
+          Export includes {sessions.length} currently loaded row{sessions.length === 1 ? '' : 's'}; older or unloaded history is not fetched.
+        </p>
         <div className="activity-groups">
           {dayGroups.map((group) => (
             <section key={group.key} className="activity-day-group" aria-labelledby={`activity-day-${group.key}`}>

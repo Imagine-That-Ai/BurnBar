@@ -240,7 +240,7 @@
 <tbody>
 <tr>
 <td>Date</td>
-<td>Baseline audit: 2026-07-09; remediation evidence through 2026-07-12 UTC</td>
+<td>Baseline audit: 2026-07-09; remediation evidence through 2026-07-13 UTC</td>
 </tr>
 <tr>
 <td>Gold standard</td>
@@ -256,7 +256,7 @@
 </tr>
 <tr>
 <td>Remediation evidence</td>
-<td><code>codex/linux-parity-final</code>; clean aarch64 and architecture-correct x86_64 release shards at <code>391fe2847d</code>; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, and the 2026-07-12 full Linux-native aggregate on <code>codex/linux-parity-controller-credentials</code></td>
+<td><code>codex/linux-parity-final</code>; clean aarch64 and architecture-correct x86_64 release shards at <code>391fe2847d</code>; controller-route v2, App Check enrollment, daemon credential authority, signed AppImage peer-auth, account-lifecycle/approval-policy validation, and the 2026-07-12 full Linux-native aggregate on <code>codex/linux-parity-controller-credentials</code>; follow-on source slices through 2026-07-13 are linked below</td>
 </tr>
 </tbody>
 </table>
@@ -488,13 +488,18 @@ exercised in installed packages.</li>
 </tr>
 <tr>
 <td>Core product workflows</td>
-<td>Six dashboard layouts, XDG/provider paths, and daemon-authoritative memory decisions are implemented; several routes remain partial/read-only</td>
-<td>Complete onboarding, chat, sessions, account/cloud, and workspace depth</td>
+<td>Six dashboard layouts, XDG/provider paths, daemon-authoritative memory decisions, exact persisted chat thread storage/pagination plus safe loaded-message export (PR #1684), typed model/thinking-level selection with bounded attachment metadata, persisted activity body replay/native resume, and bounded database inspection plus encrypted snapshot/atomic restore are source-integrated in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1691">PR #1691</a>; several routes remain partial/read-only</td>
+<td>Complete binary chat attachment transport, citations/approvals/options/unloaded-history export/resume/pop-out and remaining backends, full-history activity/source resolution, passphrase recovery bundles, onboarding, account/cloud, and workspace depth</td>
 </tr>
 <tr>
 <td>Advanced platform features</td>
-<td>Mercury implementation and guarded Linux input/panic paths exist; Computer Use routing, controller-route v2, exact-generation authority, durable replay protection, daemon-owned PKCE/Firebase/App Check credential lifecycle, and signed AppImage peer admission are implemented in source and fail closed</td>
-<td>Create the dedicated desktop OAuth client, deploy the new callables, set public release variables, then certify installed physical-iPad-backed Browser CU actions/restart; continue with system CU capture, Mercury, SmartHub devices, IBus/Fcitx, and companion overlay</td>
+<td>Mercury implementation and guarded Linux input/panic paths exist; typed Browser Computer Use actions (PR #1681), controller-route v2, exact-generation authority, durable replay protection, daemon-owned PKCE/Firebase/App Check credential lifecycle, signed AppImage peer admission, native startup/deep-link handoff (PR #1679), owner-checked single-instance forwarding (PR #1686), and accessibility preference contracts (PR #1683) are implemented in source and fail closed</td>
+<td>Create the dedicated desktop OAuth client, deploy the new callables, set public release variables, then certify installed physical-iPad-backed Browser CU actions/restart; continue with system CU capture, Mercury, SmartHub devices, IBus/Fcitx, notification actions/global shortcuts, and companion overlay</td>
+</tr>
+<tr>
+<td>Integrated Linux validation</td>
+<td><a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1691">PR #1691</a> integration replay on 2026-07-13: 72 Vitest files / 583 tests, TypeScript, production bundle verification, differential-oracle tests 6/6, Tauri Rust 71/71, Activity replay/resume Swift 4/4, database snapshot/recovery Swift 3/3, P19 daemon lifecycle 4/4, and the supported SQLCipher-backed daemon chat selector 9/9 passed. The Linux-only native <code>notify-send</code> adapter is source-integrated with bounded tests that require a Linux host.</td>
+<td>Engineering evidence only; installed candidate, desktop matrix, and physical-iPad Browser CU proof remain open</td>
 </tr>
 </tbody>
 </table>
@@ -875,7 +880,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-14</td>
 <td>Chat</td>
 <td>Persisted threads, search, streaming, models, attachments, citations, approvals, panes/pop-out</td>
-<td>Synthetic transcript rows and multiple disabled controls; five vs twelve backends</td>
+<td>Exact encrypted thread list/get/search, idempotent user/assistant persistence, older-message pagination, strict Tauri decoding, durable send ordering, and safe JSON/Markdown export of loaded durable messages are implemented in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1684">PR #1684</a>. Model selection/thinking level now propagates the exact selected model through the gateway, and attachment metadata has bounded type/size/error/remove state; binary upload transport, citations, approvals, unloaded-history export/resume, pop-out, and the remaining backend catalog remain open</td>
 <td>Partial</td>
 <td>High</td>
 </tr>
@@ -899,7 +904,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-17</td>
 <td>Activity/session logs</td>
 <td>Indexed transcript, search, body, replay, resume, export, source resolution</td>
-<td>Recent usage is wrapped as session metadata; no real body/resume/export</td>
+<td>Loaded activity rows have an explicit, allowlisted JSON/Markdown export with filename/download guards in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1685">PR #1685</a>; persisted body replay and native <code>run.resume</code> with provider-safe handoff fallback are source-integrated. Full-history export, source resolution, and resume-from-export remain open</td>
 <td>Substitute</td>
 <td>High</td>
 </tr>
@@ -939,7 +944,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-22</td>
 <td>Database</td>
 <td>Search/inspect indexed sessions, snapshots, watch/recovery, encrypted storage UX</td>
-<td>Index/watch foundation exists; inspector, snapshot, and recovery depth lag</td>
+<td>Index/watch foundation plus bounded code inspection exists; SQLCipher-gated owner-only encrypted snapshots provide bounded atomic copy, SHA-256 integrity, rollback, and watcher reopen. Passphrase recovery bundles, key-loss/device-transfer recovery, deep inspector parity, and installed proof remain open</td>
 <td>Partial</td>
 <td>Medium</td>
 </tr>
@@ -979,8 +984,8 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-27</td>
 <td>Notifications/deep links</td>
 <td>Actionable notifications, OAuth return, global commands, login start</td>
-<td>No complete freedesktop notification, deep-link, shortcut, or autostart adapter</td>
-<td>Missing</td>
+<td>Strict membership/OAuth deep-link validation, one-shot startup handoff, background tray startup, XDG autostart, desktop registration, and owner-checked per-user single-instance forwarding are implemented in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1679">PR #1679</a> and <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1686">PR #1686</a>; freedesktop notification actions, global shortcuts, and installed host integration remain open</td>
+<td>Partial</td>
 <td>High</td>
 </tr>
 <tr>
@@ -1011,7 +1016,7 @@ required gates and were not made green by the Ed25519 result.</p>
 <td>P-31</td>
 <td>Accessibility</td>
 <td>Semantic UI, keyboard flows, assistive announcements, reduced effects</td>
-<td>All routes pass axe; installed aarch64 AT-SPI/Orca/keyboard/200% evidence passed; desktop/architecture breadth remains</td>
+<td>All routes pass axe; global reduced-motion, forced-colors, and prefers-contrast styling plus keyboard/status contracts are implemented in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1683">PR #1683</a>; installed aarch64 AT-SPI/Orca/keyboard/200% evidence passed, while desktop/architecture/high-contrast breadth remains</td>
 <td>Near parity</td>
 <td>High</td>
 </tr>
@@ -1620,15 +1625,17 @@ partial completion, app restart, upgrade migration, screen reader, and keyboard.
 <ul>
 <li><strong>Difference:</strong> macOS supports persisted/searchable threads, twelve backends,
 model selection, streaming, attachments, citations, tool approvals, panes,
-desktop grants, resume/export, and pop-out. Linux uses five backend choices,
-synthesizes two history rows, and disables model, agent, attachment, option,
-citation, tool-decision, restore, close, and pop-out controls.</li>
+desktop grants, resume/export, and pop-out. Linux now has real encrypted
+thread persistence/search/pagination, exact model/thinking-level selection, and
+bounded attachment metadata/error/remove state, but binary upload, citations,
+approvals, unloaded-history export/resume, pop-out, and the full backend catalog
+remain unavailable.</li>
 <li><strong>Why it matters:</strong> chat is a primary workflow; synthetic history and inert
 controls create false confidence and data-loss risk.</li>
-<li><strong>Recommended solution:</strong> introduce real session-body and chat-thread RPCs,
-shared backend/model catalog, attachment store/content policy, streaming event
-contract, citation navigation, approval state machine, resume/export, and a
-Linux-native secondary window.</li>
+<li><strong>Recommended solution:</strong> complete the daemon-owned attachment content
+store, citation navigation, approval state machine, unloaded transcript/export
+contract, and Linux-native secondary window; retain the typed model catalog and
+fail closed until each capability is live.</li>
 <li><strong>Priority:</strong> <strong>High</strong>.</li>
 <li><strong>Implementation notes:</strong> keep the daemon authoritative for thread state;
 reconcile reconnect/cancel/idempotency; do not expose controls until their
@@ -1662,14 +1669,16 @@ clock skew.</li>
 <h3>GAP-011 - Replace activity and memory substitutes with true domain state</h3>
 <ul>
 <li><strong>Difference:</strong> macOS exposes indexed session transcripts and a real memory
-review queue. Linux still wraps recent usage as session entries. Memory
-approve/reject/forget decisions are now daemon-authoritative and idempotent,
-but recalled durable memories do not yet prove a first-class quarantine feed.</li>
+review queue. Linux now replays bounded persisted session bodies and resumes
+through the canonical <code>run.resume</code> contract, with provider-safe handoff
+fallback and explicit untrusted/error states. Full-history export, source
+resolution, resume-from-export, and first-class memory quarantine remain
+incomplete.</li>
 <li><strong>Why it matters:</strong> users cannot inspect or resume actual work, and the memory
 UI describes semantics the backend does not provide.</li>
-<li><strong>Recommended solution:</strong> add session list/body/search/source/resume/export RPCs
-and complete the daemon-owned memory quarantine source and cross-device audit
-model; retain the implemented durable decision path.</li>
+<li><strong>Recommended solution:</strong> complete session source/full-history/export RPCs
+and the daemon-owned memory quarantine source and cross-device audit model;
+retain the implemented durable decision path and bounded replay/resume.</li>
 <li><strong>Priority:</strong> <strong>High</strong>.</li>
 <li><strong>Implementation notes:</strong> preserve exact source/session/project IDs; support
 local/cloud conflict and missing-body recovery; make review decisions
@@ -1728,20 +1737,27 @@ reader, and large-period performance.</li>
 </ul>
 <h3>GAP-012D - Complete Database and indexing operations</h3>
 <ul>
-<li><strong>Difference:</strong> Linux has index/watch foundations but lacks macOS inspector,
-snapshot, deep search, encrypted-store recovery, and equivalent watch UX.</li>
+<li><strong>Difference:</strong> Linux has index/watch foundations and bounded daemon-owned
+code search/context-pack inspection. It now also has SQLCipher-gated encrypted
+snapshot/restore with owner-only path checks, size bounds, integrity hashes,
+atomic replacement, rollback, and watcher reopen. It still lacks the macOS
+record inspector, passphrase-wrapped recovery-bundle import/export, key-loss/
+device-transfer recovery, deep rebuild UX, and installed proof.</li>
 <li><strong>Why it matters:</strong> users cannot diagnose missing sessions, inspect canonical
 records, recover corruption, or trust that updates are current.</li>
-<li><strong>Recommended solution:</strong> add daemon-owned inspect/search/snapshot/watch/rebuild/
-recovery RPCs with pagination, cancellation, query tracing, and clear encryption
-state.</li>
+<li><strong>Recommended solution:</strong> finish daemon-owned inspect/search/snapshot/watch/
+rebuild/recovery-bundle RPCs with pagination, cancellation, query tracing, and
+clear encryption/key-custody state; preserve the atomic same-key snapshot path
+as the rollback primitive.</li>
 <li><strong>Priority:</strong> <strong>Medium</strong>.</li>
 <li><strong>Implementation notes:</strong> unify inotify ownership rather than layering another
 poller; use <code>OpenBurnBarQueryTracer</code>; keep raw sensitive content behind explicit
 reveal/export policy.</li>
 <li><strong>QA verification:</strong> search/inspect/snapshot/watch/rebuild/recover; N+1 limits,
 10k/100k rows, corruption, locked key, permission loss, path move, event burst,
-cancellation, and restart.</li>
+cancellation, restart, passphrase bundle import/export, key loss, and device
+transfer. Run the Linux SQLCipher round-trip with the production daemon secret
+before marking the row ready.</li>
 </ul>
 <h3>GAP-012E - Complete provider and model workspaces</h3>
 <ul>
@@ -1883,12 +1899,15 @@ topmost, drag, scaling, animation, reduced motion, multi-monitor, hotkey,
 restart, GPU fallback, and unsupported contained mode.</li>
 </ul>
 <h3>GAP-019 - Replace synthetic accessibility evidence with assistive-tech proof</h3>
-<p><strong>Implementation update (2026-07-09): closed in the implementation branch.</strong>
-All 19 routes and important states now run through axe; the installed <code>.deb</code>
+<p><strong>Implementation update (2026-07-13): source polish is now explicit; certification remains open.</strong>
+All 19 routes and important states run through axe; the installed <code>.deb</code>
 is exercised through AT-SPI actions, Orca process/focus observation,
-keyboard-only traversal, and requested 200% zoom. The full shell verifier
-rejects missing or synthetic accessibility artifacts. GNOME/KDE matrix breadth
-remains tracked under GAP-004 rather than keeping this implementation gap open.</p>
+keyboard-only traversal, and requested 200% zoom. PR #1683 adds shared
+<code>prefers-reduced-motion</code>, <code>prefers-contrast: more</code>, and
+<code>forced-colors: active</code> tokens/focus/status rules with DOM keyboard/status
+contracts. The full shell verifier rejects missing or synthetic accessibility
+artifacts. GNOME/KDE matrix breadth, high-contrast visual captures, and physical
+assistive-tech execution remain open.</p>
 <ul>
 <li><strong>Difference:</strong> macOS has broad semantic labels/actions and targeted tests.
 Linux has useful landmarks, a skip link, ARIA live regions, focus styling, and
@@ -2148,7 +2167,7 @@ queueing, locked keyring, and redaction.</li>
 <tr>
 <td>LNX-A11Y-HARNESS-001</td>
 <td>Implemented</td>
-<td>All-route axe plus installed AT-SPI/Orca/keyboard/zoom contract</td>
+<td>All-route axe plus installed AT-SPI/Orca/keyboard/zoom contract and PR #1683 forced-colors/contrast/reduced-motion source tests</td>
 <td>Full architecture/desktop/high-contrast matrix</td>
 </tr>
 <tr>
@@ -2416,8 +2435,8 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>LNX-CHAT-001</td>
 <td>LNX-SESS-001, LNX-CAT-001</td>
-<td>Backends/models, streaming, attachments, citations, approvals, options, secondary window</td>
-<td>Mac-equivalent chat contract suite and installed E2E green</td>
+<td><strong>Implemented in source:</strong> canonical encrypted thread list/get/search, exact-thread idempotent append, older-message pagination, strict Tauri decoders, production synthetic-history removal, and durable send ordering in <a href="https://github.com/Imagine-That-Ai/BurnBar/pull/1684">PR #1684</a></td>
+<td>Mac-equivalent chat contract suite and installed E2E green; attachments, citations, approvals, options, secondary window, and remaining backend catalog are still required</td>
 </tr>
 <tr>
 <td>LNX-MEM-001</td>
@@ -2428,8 +2447,8 @@ truth-sync, not the first time behavior is documented.</p>
 <tr>
 <td>LNX-PROJ-001</td>
 <td>LNX-SESS-001</td>
-<td>Project CRUD, exact associations, detail/history, inferred-row migration</td>
-<td>Stable-ID project lifecycle and 10k-session migration suite green</td>
+<td>Project CRUD, typed delete/reassign, exact associations, detail/history, inferred-row migration, collision/tombstone protection</td>
+<td>Stable-ID project lifecycle, durable-reference migration, restart/replay, and 10k-session migration suite green</td>
 </tr>
 <tr>
 <td>LNX-MISSION-001</td>

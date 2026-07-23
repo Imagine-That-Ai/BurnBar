@@ -114,6 +114,21 @@
   cursor: not-allowed;
 }
 
+.setting-toggle--privacy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.setting-toggle--privacy input {
+  accent-color: var(--color-brass-bright);
+}
+
+.setting-toggle--privacy input:disabled {
+  cursor: wait;
+}
+
 .system-danger-link {
   color: var(--color-brass-bright);
 }
@@ -318,6 +333,149 @@ body.reduced-motion .system-skeleton-line {
   color: var(--color-text-mute);
   font-size: 0.9rem;
   padding: var(--space-4);
+}
+
+.database-code-retrieval {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-glass-bg) 70%, transparent);
+}
+
+.database-code-retrieval-compact {
+  margin-top: var(--space-4);
+}
+
+.database-code-retrieval-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.database-code-retrieval-lede {
+  margin: var(--space-1) 0 0;
+  line-height: 1.4;
+}
+
+.database-code-capability {
+  flex: 0 0 auto;
+  color: var(--color-text-mute);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.database-code-capability-ready {
+  color: var(--color-text-base);
+}
+
+.database-code-search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7rem auto;
+  align-items: end;
+  gap: var(--space-3);
+}
+
+.database-code-query-label,
+.database-code-limit-label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-text-mute);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.database-code-query-label input,
+.database-code-limit-label input {
+  min-height: 2.25rem;
+  padding: 0 var(--space-2);
+  color: var(--color-text-base);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-glass-bg-elevated);
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.database-code-query-label input:focus-visible,
+.database-code-limit-label input:focus-visible {
+  outline: 2px solid var(--color-brass-core);
+  outline-offset: 2px;
+}
+
+.database-code-result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  color: var(--color-text-mute);
+  font-size: 0.78rem;
+}
+
+.database-code-results-table {
+  margin-top: 0;
+}
+
+.database-code-snippet,
+.database-code-context-content {
+  max-width: 52rem;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--color-text-base);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.database-code-pagination,
+.database-code-context-action {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.database-code-pagination .muted {
+  margin-right: auto;
+}
+
+.database-code-context {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.database-code-context p {
+  margin: 0;
+}
+
+.database-code-context-content {
+  max-height: 22rem;
+  padding: var(--space-3);
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-glass-bg-elevated);
+}
+
+@media (max-width: 720px) {
+  .database-code-retrieval-header {
+    display: grid;
+  }
+
+  .database-code-search-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .database-code-search-form > button {
+    grid-column: 1 / -1;
+  }
 }
 
 .database-system-bands {
