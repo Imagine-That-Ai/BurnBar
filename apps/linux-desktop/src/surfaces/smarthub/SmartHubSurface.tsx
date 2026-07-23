@@ -126,6 +126,10 @@ export function SmartHubSurface() {
     activeRequestID.current = requestID;
     setBusy(true);
     setError(null);
+    // Do not leave a previous device snapshot visible while a new native
+    // operation is pending; its reachability and control facts may already be
+    // stale after a route, bridge, or device change.
+    setResult(null);
     try {
       if (fixtureMode) {
         if (activeRequestID.current === requestID) setResult(fixtureCommand(operation));

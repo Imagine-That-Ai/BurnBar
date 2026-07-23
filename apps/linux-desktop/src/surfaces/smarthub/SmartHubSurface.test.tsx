@@ -72,6 +72,26 @@ describe('P28 SmartHub surface', () => {
     expect(screen.getByText('Discovery')).toBeTruthy();
   });
 
+  it('clears the previous device result while a replacement operation is pending', async () => {
+    let resolveDiscover: ((result: SmartHubCommandResult) => void) | undefined;
+    const command = vi.fn()
+      .mockResolvedValueOnce(statusResult('status'))
+      .mockImplementationOnce(() => new Promise<SmartHubCommandResult>((resolve) => {
+        resolveDiscover = resolve;
+      }));
+    useShellStore.setState({ bridge: bridgeWithCommand(command) });
+    render(<SmartHubSurface />);
+    await waitFor(() => expect(screen.getAllByText('blocked_bridge_not_reachable').length).toBeGreaterThan(0));
+
+    fireEvent.change(screen.getByLabelText('Operation'), { target: { value: 'discover' } });
+    await waitFor(() => expect(command).toHaveBeenCalledWith('discover', expect.anything()));
+    expect(screen.queryByText('blocked_bridge_not_reachable')).toBeNull();
+    expect(screen.getByRole('status').textContent).toMatch(/Checking Linux device capability/i);
+
+    resolveDiscover?.(statusResult('discover'));
+    await waitFor(() => expect(screen.getByText('Discovery')).toBeTruthy());
+  });
+
   it('renders a bounded Avahi timeout as an actionable discovery outcome', async () => {
     const command = vi.fn(async (operation: SmartHubOperation): Promise<SmartHubCommandResult> => {
       if (operation === 'discover') {
