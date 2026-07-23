@@ -143,11 +143,12 @@ describe('PetSurface', () => {
     const status = {
       state: 'available' as const,
       compositor: 'GNOME/x11',
+      sessionType: 'x11' as const,
       overlaySupported: true,
       clickThroughSupported: true,
       windowContract: 'tauri-x11-companion-v1',
       reason: 'ready',
-      source: 'test'
+      source: 'tauri-x11-companion-window'
     };
     openCompanionMock.mockResolvedValue({ status, opened: true, clickThrough: false });
     useShellStore.setState({
@@ -169,11 +170,12 @@ describe('PetSurface', () => {
     const availableStatus = {
       state: 'available' as const,
       compositor: 'GNOME/x11',
+      sessionType: 'x11' as const,
       overlaySupported: true,
       clickThroughSupported: true,
       windowContract: 'tauri-x11-companion-v1',
       reason: 'ready',
-      source: 'test'
+      source: 'tauri-x11-companion-window'
     };
     const degradedStatus = {
       ...availableStatus,
@@ -207,11 +209,12 @@ describe('PetSurface', () => {
     const status = {
       state: 'available' as const,
       compositor: 'KDE/x11',
+      sessionType: 'x11' as const,
       overlaySupported: true,
       clickThroughSupported: true,
       windowContract: 'tauri-x11-companion-v1',
       reason: 'ready',
-      source: 'test'
+      source: 'tauri-x11-companion-window'
     };
     openCompanionMock.mockResolvedValue({ status, opened: true, clickThrough: false });
     clickThroughMock
