@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
@@ -9,7 +10,9 @@ import {
 } from './lib/linux-desktop-rust-source.mjs';
 
 function fixture() {
-  const root = fs.mkdtempSync(path.join(process.cwd(), '.linux-rust-source-test-'));
+  // Keep fixtures outside the repository: other contract tests recursively
+  // copy the checkout and must not observe or remove this temporary tree.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openburnbar-linux-rust-source-'));
   const sourceRoot = path.join(root, LINUX_DESKTOP_RUST_SOURCE_ROOT);
   fs.mkdirSync(path.join(sourceRoot, 'nested'), { recursive: true });
   fs.writeFileSync(path.join(sourceRoot, 'z.rs'), 'const Z: u8 = 1;\n');
