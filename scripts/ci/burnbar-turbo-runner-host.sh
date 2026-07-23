@@ -180,6 +180,9 @@ run_worker() {
     source "$HOME/.zprofile"
     test "$(uname -m)" = arm64
     xcodebuild -version
+    if ! command -v protoc >/dev/null 2>&1; then
+      brew install protobuf
+    fi
     protoc --version
     rustc --version
   '
