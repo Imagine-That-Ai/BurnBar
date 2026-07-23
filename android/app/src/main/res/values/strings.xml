@@ -3,6 +3,8 @@
     <string name="app_name">BurnBar</string>
     <string name="burnbar_wallpaper_label">BurnBar Live</string>
     <string name="burnbar_wallpaper_description">A data-driven ambient swarm background indicating provider activity.</string>
+    <string name="living_themes_wallpaper_label">OpenBurnBar Living Themes</string>
+    <string name="living_themes_wallpaper_description">Efficient procedural worlds that pause when hidden and default to 20 fps.</string>
 
     <string-array name="pace_entries">
         <item>Energetic (Fast)</item>

@@ -1,0 +1,25 @@
+{
+  "id": "storm-signal",
+  "label": "Tempest",
+  "metalFileBase": "K_StormSignal",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_storm_signal_display"
+  },
+  "controls": [
+    "scroll"
+  ],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

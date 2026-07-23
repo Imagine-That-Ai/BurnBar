@@ -1,0 +1,23 @@
+{
+  "id": "kinetic-stipple",
+  "label": "Kinetic Stipple",
+  "metalFileBase": "K_KineticStipple",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_kinetic_stipple_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "id": "prismatica",
+  "label": "Prismatica",
+  "metalFileBase": "K_Prismatica",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_prismatica_display"
+  },
+  "controls": [
+    "scroll",
+    "glyph"
+  ],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {
+      "uGlyphField": 2
+    }
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

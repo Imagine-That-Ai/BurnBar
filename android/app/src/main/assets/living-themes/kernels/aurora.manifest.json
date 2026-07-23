@@ -1,0 +1,23 @@
+{
+  "id": "aurora",
+  "label": "Aurora",
+  "metalFileBase": "K_Aurora",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_aurora_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}
