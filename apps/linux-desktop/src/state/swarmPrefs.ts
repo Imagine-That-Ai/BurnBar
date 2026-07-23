@@ -1,4 +1,10 @@
 /** Local swarm controls mirrored from macOS SwarmWallpaperViewModel. */
+import {
+  normalizeSwarmProviderGlyphs,
+  SWARM_PROVIDER_GLYPH_IDS,
+  type SwarmProviderGlyphId
+} from '@openburnbar/gl-engine/engine/kernels/swarmCatalog';
+
 export const SWARM_PREFS_KEY = 'openburnbar.linux.swarm.v1';
 export const SWARM_PREFS_CHANGED_EVENT = 'openburnbar:swarm-preferences-changed';
 export const SWARM_SPEED_MIN = 0.35;
@@ -8,11 +14,19 @@ export const SWARM_SPEED_DEFAULT = 0.6;
 export type SwarmPreferences = {
   speed: number;
   sparkles: boolean;
+  providerGlyphs: SwarmProviderGlyphId[];
+  excludeBrandShapes: boolean;
+  autoCycleShapes: boolean;
 };
 
 export const DEFAULT_SWARM_PREFERENCES: SwarmPreferences = {
   speed: SWARM_SPEED_DEFAULT,
-  sparkles: false
+  sparkles: false,
+  providerGlyphs: [...SWARM_PROVIDER_GLYPH_IDS],
+  // Linux historically used the provider-only dashboard cycle. Keep that
+  // default while exposing the macOS brand-shape switch to users.
+  excludeBrandShapes: true,
+  autoCycleShapes: true
 };
 
 function clampSwarmSpeed(value: number): number {
@@ -32,17 +46,27 @@ export function readSwarmPreferences(): SwarmPreferences {
     if (!isRecord(parsed)) return DEFAULT_SWARM_PREFERENCES;
     return {
       speed: clampSwarmSpeed(Number(parsed.speed)),
-      sparkles: parsed.sparkles === true
+      sparkles: parsed.sparkles === true,
+      providerGlyphs: normalizeSwarmProviderGlyphs(
+        Array.isArray(parsed.providerGlyphs)
+          ? parsed.providerGlyphs.filter((value): value is string => typeof value === 'string')
+          : undefined
+      ),
+      excludeBrandShapes: parsed.excludeBrandShapes !== false,
+      autoCycleShapes: parsed.autoCycleShapes !== false
     };
   } catch {
     return DEFAULT_SWARM_PREFERENCES;
   }
 }
 
-export function persistSwarmPreferences(next: SwarmPreferences): SwarmPreferences {
+export function persistSwarmPreferences(next: Partial<SwarmPreferences>): SwarmPreferences {
   const normalized = {
-    speed: clampSwarmSpeed(next.speed),
-    sparkles: next.sparkles === true
+    speed: clampSwarmSpeed(next.speed ?? SWARM_SPEED_DEFAULT),
+    sparkles: next.sparkles === true,
+    providerGlyphs: normalizeSwarmProviderGlyphs(next.providerGlyphs),
+    excludeBrandShapes: next.excludeBrandShapes !== false,
+    autoCycleShapes: next.autoCycleShapes !== false
   };
   try {
     localStorage.setItem(SWARM_PREFS_KEY, JSON.stringify(normalized));

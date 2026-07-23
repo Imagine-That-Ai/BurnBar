@@ -107,4 +107,22 @@ describe('SettingsAppearanceControls accessibility', () => {
     fireEvent.click(sparkles);
     expect(JSON.parse(localStorage.getItem('openburnbar.linux.swarm.v1') ?? '{}')).toMatchObject({ sparkles: true });
   });
+
+  it('persists swarm shape and provider glyph selections', () => {
+    render(<SettingsAppearanceControls />);
+
+    const brandShapes = screen.getByRole('checkbox', { name: 'Include brand shapes in swarm cycle' });
+    fireEvent.click(brandShapes);
+    expect(JSON.parse(localStorage.getItem('openburnbar.linux.swarm.v1') ?? '{}')).toMatchObject({
+      excludeBrandShapes: false
+    });
+
+    const claude = screen.getByRole('checkbox', { name: 'Show Claude Code glyph' });
+    expect((claude as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(claude);
+    expect(JSON.parse(localStorage.getItem('openburnbar.linux.swarm.v1') ?? '{}').providerGlyphs).not.toContain('claudecode');
+
+    fireEvent.click(screen.getByRole('button', { name: 'None' }));
+    expect(JSON.parse(localStorage.getItem('openburnbar.linux.swarm.v1') ?? '{}').providerGlyphs).toEqual([]);
+  });
 });

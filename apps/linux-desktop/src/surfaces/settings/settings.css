@@ -523,6 +523,42 @@
   font-size: 0.68rem;
 }
 
+.settings-swarm-provider-fieldset {
+  max-width: 42rem;
+}
+
+.settings-swarm-provider-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.settings-swarm-provider-count {
+  margin-right: auto;
+  font-size: 0.72rem;
+}
+
+.settings-swarm-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-2);
+}
+
+.settings-swarm-provider-option {
+  min-width: 0;
+  border: 1px solid var(--color-glass-line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  background: color-mix(in srgb, var(--color-mercury-wash) 48%, transparent);
+}
+
+.settings-swarm-provider-option:focus-within {
+  border-color: var(--color-frost-line);
+  outline: 2px solid color-mix(in srgb, var(--color-brass-core) 38%, transparent);
+  outline-offset: 1px;
+}
+
 .settings-embedded-surface {
   margin: calc(-1 * var(--space-2)) 0;
 }

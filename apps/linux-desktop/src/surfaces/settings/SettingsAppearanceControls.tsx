@@ -14,6 +14,7 @@ import {
   SWARM_SPEED_MIN,
   type SwarmPreferences
 } from '../../state/swarmPrefs.js';
+import { SWARM_PROVIDER_GLYPH_OPTIONS } from '@openburnbar/gl-engine/engine/kernels/swarmCatalog';
 
 type AppearanceMode = 'system' | 'light' | 'dark';
 type GlassTransparency = number;
@@ -148,6 +149,11 @@ export function SettingsAppearanceControls() {
   const [swarm, setSwarm] = useState<SwarmPreferences>(() => readSwarmPreferences());
   const appearanceButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const skinButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const updateSwarm = (changes: Partial<SwarmPreferences>) => {
+    const next = persistSwarmPreferences({ ...swarm, ...changes });
+    setSwarm(next);
+  };
 
   useEffect(() => {
     applyAppearanceMode(appearance);
@@ -301,9 +307,76 @@ export function SettingsAppearanceControls() {
           />
           <span>Enable settled-shape sparkles</span>
         </label>
+        <label className="setting-toggle" htmlFor="swarm-brand-shapes-toggle">
+          <input
+            id="swarm-brand-shapes-toggle"
+            type="checkbox"
+            checked={!swarm.excludeBrandShapes}
+            aria-label="Include brand shapes in swarm cycle"
+            onChange={(event) => updateSwarm({ excludeBrandShapes: !event.currentTarget.checked })}
+          />
+          <span>Include brand shapes in cycle</span>
+        </label>
+        <label className="setting-toggle" htmlFor="swarm-auto-cycle-toggle">
+          <input
+            id="swarm-auto-cycle-toggle"
+            type="checkbox"
+            checked={swarm.autoCycleShapes}
+            aria-label="Automatically cycle swarm shapes"
+            onChange={(event) => updateSwarm({ autoCycleShapes: event.currentTarget.checked })}
+          />
+          <span>Automatically cycle shapes</span>
+        </label>
+      </fieldset>
+      <fieldset className="settings-appearance-fieldset settings-swarm-provider-fieldset">
+        <legend className="settings-appearance-legend">Provider glyphs</legend>
+        <div className="settings-swarm-provider-actions" aria-label="Provider glyph selection actions">
+          <span className="muted settings-swarm-provider-count">
+            {swarm.providerGlyphs.length} of {SWARM_PROVIDER_GLYPH_OPTIONS.length} selected
+          </span>
+          <button
+            type="button"
+            className="settings-appearance-option"
+            aria-pressed={swarm.providerGlyphs.length === SWARM_PROVIDER_GLYPH_OPTIONS.length}
+            onClick={() => updateSwarm({ providerGlyphs: SWARM_PROVIDER_GLYPH_OPTIONS.map(({ id }) => id) })}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className="settings-appearance-option"
+            aria-pressed={swarm.providerGlyphs.length === 0}
+            onClick={() => updateSwarm({ providerGlyphs: [] })}
+          >
+            None
+          </button>
+        </div>
+        <div className="settings-swarm-provider-grid" role="group" aria-label="Provider glyphs">
+          {SWARM_PROVIDER_GLYPH_OPTIONS.map(({ id, label }) => (
+            <label key={id} className="setting-toggle settings-swarm-provider-option" htmlFor={`swarm-provider-${id}`}>
+              <input
+                id={`swarm-provider-${id}`}
+                type="checkbox"
+                checked={swarm.providerGlyphs.includes(id)}
+                aria-label={`Show ${label} glyph`}
+                onChange={(event) => {
+                  const next = new Set(swarm.providerGlyphs);
+                  if (event.currentTarget.checked) next.add(id);
+                  else next.delete(id);
+                  updateSwarm({
+                    providerGlyphs: SWARM_PROVIDER_GLYPH_OPTIONS
+                      .map((option) => option.id)
+                      .filter((providerId) => next.has(providerId))
+                  });
+                }}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
       </fieldset>
       <p className="muted settings-tab-lede">
-        Backdrop kernel selection stays on the Overview deck; wallpaper palette is local to this Linux shell.
+        Backdrop kernel selection stays on the Overview deck; wallpaper and swarm preferences are local to this Linux shell.
       </p>
     </div>
   );

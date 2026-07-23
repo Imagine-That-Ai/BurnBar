@@ -5,6 +5,11 @@
 
 import { toCss } from "../palette";
 import { PROVIDER_SHAPE_POINTS } from "./swarmEmberShapeData";
+import {
+  normalizeSwarmProviderGlyphs,
+  SWARM_PROVIDER_GLYPH_IDS,
+  type SwarmProviderGlyphId,
+} from "./swarmCatalog";
 import type {
   Kernel,
   KernelFrameContext,
@@ -112,12 +117,15 @@ function shapeProviderKey(persistedId: string): string | null {
   return flat && flat.length >= 2 ? alias : null;
 }
 
-function normalizedShowcaseProviders(): string[] {
-  return SHOWCASE_PROVIDER_IDS.filter((id) => shapeProviderKey(id) != null);
+function normalizedShowcaseProviders(providerGlyphs?: readonly string[]): string[] {
+  const selected = normalizeSwarmProviderGlyphs(providerGlyphs);
+  return SHOWCASE_PROVIDER_IDS.filter(
+    (id) => selected.includes(id as SwarmProviderGlyphId) && shapeProviderKey(id) != null
+  );
 }
 
-function providerLogoGroups(): string[][] {
-  const enabled = normalizedShowcaseProviders();
+function providerLogoGroups(providerGlyphs?: readonly string[]): string[][] {
+  const enabled = normalizedShowcaseProviders(providerGlyphs);
   const groups: string[][] = [];
   for (let i = 0; i < enabled.length; i += 2) {
     groups.push(enabled.slice(i, i + 2));
@@ -125,16 +133,34 @@ function providerLogoGroups(): string[][] {
   return groups;
 }
 
-function buildDashboardExcludeBrandCycle(): FormationMode[] {
-  const logoModes: FormationMode[] = providerLogoGroups().map((providers) => ({
+export function buildDashboardCycle(
+  providerGlyphs: readonly string[] | undefined,
+  excludeBrandShapes: boolean,
+  autoCycleShapes: boolean
+): FormationMode[] {
+  if (!autoCycleShapes) return ["swarm"];
+  const logoModes: FormationMode[] = providerLogoGroups(providerGlyphs).map((providers) => ({
     type: "shapeProviderLogo",
     providers,
   }));
-  if (logoModes.length === 0) return ["swarm"];
-  return logoModes.flatMap((mode) => [mode, "swarm"]);
+  if (excludeBrandShapes) {
+    if (logoModes.length === 0) return ["swarm"];
+    return logoModes.flatMap((mode) => [mode, "swarm"]);
+  }
+  return [
+    "swarm",
+    "shapeDollar",
+    "swarm",
+    "shapeCode",
+    "swarm",
+    "shapeBurnBarLogo",
+    ...logoModes.flatMap((mode) => ["swarm" as const, mode]),
+    "swarm",
+    "shapeRings",
+    "swarm",
+    "shapeRouterFlow",
+  ];
 }
-
-const MODE_CYCLE: FormationMode[] = buildDashboardExcludeBrandCycle();
 
 
 interface LogoSlot {
@@ -372,6 +398,12 @@ export type SwarmEmberKernelOptions = {
   enableSwarmSparkles?: boolean;
   /** macOS SwarmCanvasView.motionSpeedMultiplier — clamped 0.35…2.5. */
   motionSpeedMultiplier?: number;
+  /** Provider IDs selected in macOS Appearance > Customize Provider Glyphs. */
+  providerGlyphs?: readonly string[];
+  /** Include the non-provider $, code, BurnBar, rings, and router formations. */
+  excludeBrandShapes?: boolean;
+  /** Keep the formation cycle running; false leaves the field in swarm mode. */
+  autoCycleShapes?: boolean;
 };
 
 function clampMotionSpeedMultiplier(value: number): number {
@@ -427,6 +459,12 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
   let reducedMotion = false;
   const motionSpeedMultiplier = clampMotionSpeedMultiplier(options.motionSpeedMultiplier ?? 1);
   const enableSwarmSparkles = options.enableSwarmSparkles ?? false;
+  const providerGlyphs = options.providerGlyphs ?? SWARM_PROVIDER_GLYPH_IDS;
+  const modeCycle = buildDashboardCycle(
+    providerGlyphs,
+    options.excludeBrandShapes ?? true,
+    options.autoCycleShapes ?? true
+  );
 
   let particles: Particle[] = [];
   let mode: FormationMode = "swarm";
@@ -817,8 +855,8 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
     lastAdvanceMs = tMs;
 
     if (!reducedMotion && tMs >= nextCycleAtMs) {
-      cycleIndex = (cycleIndex + 1) % MODE_CYCLE.length;
-      assignMode(MODE_CYCLE[cycleIndex]!, tMs);
+      cycleIndex = (cycleIndex + 1) % modeCycle.length;
+      assignMode(modeCycle[cycleIndex]!, tMs);
       nextCycleAtMs = tMs + effectiveCycleIntervalMs();
     }
 

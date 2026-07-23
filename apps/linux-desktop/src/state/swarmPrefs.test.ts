@@ -22,7 +22,9 @@ describe('swarm preference contract', () => {
     const listener = vi.fn();
     window.addEventListener(SWARM_PREFS_CHANGED_EVENT, listener);
     const next = persistSwarmPreferences({ speed: 99, sparkles: true });
-    expect(next).toEqual({ speed: SWARM_SPEED_MAX, sparkles: true });
+    expect(next).toMatchObject({ speed: SWARM_SPEED_MAX, sparkles: true });
+    expect(next.providerGlyphs.length).toBeGreaterThan(0);
+    expect(next.excludeBrandShapes).toBe(true);
     expect(JSON.parse(localStorage.getItem(SWARM_PREFS_KEY) ?? '{}')).toEqual(next);
     expect(readSwarmPreferences()).toEqual(next);
     expect(listener).toHaveBeenCalledTimes(1);

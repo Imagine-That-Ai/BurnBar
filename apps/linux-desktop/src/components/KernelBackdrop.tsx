@@ -87,7 +87,10 @@ export function KernelBackdrop({
         palette: resolveSkinPalette(skin),
         swarmEmberOptions: {
           enableSwarmSparkles: swarmPreferences.sparkles,
-          motionSpeedMultiplier: swarmPreferences.speed || DASHBOARD_MOTION_SPEED_MULTIPLIER
+          motionSpeedMultiplier: swarmPreferences.speed || DASHBOARD_MOTION_SPEED_MULTIPLIER,
+          providerGlyphs: swarmPreferences.providerGlyphs,
+          excludeBrandShapes: swarmPreferences.excludeBrandShapes,
+          autoCycleShapes: swarmPreferences.autoCycleShapes
         },
         onStatus: (status) => publishKernelResolution(container, status),
         onResolve: (resolvedId) => {

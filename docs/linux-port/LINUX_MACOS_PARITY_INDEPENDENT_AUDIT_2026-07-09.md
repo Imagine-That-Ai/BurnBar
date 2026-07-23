@@ -204,9 +204,22 @@ publish a typed change event; `KernelBackdrop` rebuilds the active
 WebGL2 and is using the Canvas2D/CSS fallback.
 
 This closes the source-level speed/sparkle subset of swarm customization.
-Provider glyph selection, brand-shape exclusion, desktop click-cycle, and
-installed visual receipts remain open; the strict ledger remains **0/40
-product** and **0/7 environment**.
+
+### Linux swarm provider selection and cycle controls — 2026-07-23
+
+Linux Appearance now persists the renderable provider-glyph catalog, exposes
+All/None and per-provider checkboxes, and passes the normalized selection into
+the `swarmEmber` formation builder. The same control surface also exposes
+brand-shape inclusion and automatic cycling. Explicit empty selections are
+preserved, stale IDs are rejected, and the provider-only default remains the
+existing Linux behavior. Focused state, settings, catalog, and cycle-contract
+tests plus the full Linux frontend suite pass.
+
+This closes the source-level provider-selection and brand-shape/auto-cycle
+subset. Full macOS provider catalog coverage (Linux point data still lacks
+some macOS marks), desktop click-cycle, constellation mode, native wallpaper
+hosting, and installed visual receipts remain open; the strict ledger remains
+**0/40 product** and **0/7 environment**.
 
 ## Integration closeout — 2026-07-21
 

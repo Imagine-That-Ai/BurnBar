@@ -62,10 +62,11 @@ installation and compositor screenshots remain external evidence.
 
 **Implementation checkpoint (2026-07-23, swarm controls):** Linux now
 persists macOS-compatible swarm speed (`0.35×`–`2.5×`) and settled-shape
-sparkles controls. Changes publish a typed preference event; the kernel host
+sparkles controls, provider glyph selection, brand-shape exclusion, and
+auto-cycle control. Changes publish a typed preference event; the kernel host
 rebuilds the active swarm with the validated options while retaining its
-Canvas2D/CSS fallback. Provider glyph selection, brand-shape exclusion, and
-desktop click-cycle remain open.
+Canvas2D/CSS fallback. Desktop click-cycle, full macOS provider catalog
+coverage, constellation mode, and installed wallpaper receipts remain open.
 
 ---
 
@@ -75,7 +76,7 @@ desktop click-cycle remain open.
 |------|--------------|-------------|---------|
 | Core / daemon | `OpenBurnBarDaemon/`, `OpenBurnBarCore/` | All RPC handlers implemented; POSIX HTTP gateway, inotify, Secret Service/KWallet, Avahi discovery, Linux security all in place. | Strong |
 | UI shell | `AgentLens/Views/`, `AgentLens/Theme/` | `apps/linux-desktop/` has W6 foundation + P01-P15 route surfaces. | Route parity exists, but macOS visual/interaction layer is missing. |
-| Design system | `AgentLens/Theme/DesignSystem.swift`, `LiquidGlass.swift`, `KernelBackdropView.swift` | Tokens + 2 skins + 32 kernels + CSS glass exist; user-controlled transparency presets, OS Reduce Transparency fallback, six-layout glass palette, and ProTheme membership roles are implemented at source level. | Missing wallpaper, live wallpaper panels, pet renderer, swarm customization; installed visual receipts remain open. |
+| Design system | `AgentLens/Theme/DesignSystem.swift`, `LiquidGlass.swift`, `KernelBackdropView.swift` | Tokens + 2 skins + 32 kernels + CSS glass exist; user-controlled transparency presets, OS Reduce Transparency fallback, six-layout glass palette, ProTheme membership roles, and swarm selection controls are implemented at source level. | Missing native wallpaper panels, pet renderer, full provider catalog/constellation swarm depth; installed visual receipts remain open. |
 | Desktop integration | `AppDelegate+StatusItem.swift`, `SwarmWallpaperRuntime.swift`, `Hotkey.swift` | Tauri tray exists. | Missing menu-bar popover, global hotkeys, desktop wallpaper, live wallpaper panels. |
 | Release / CI | `scripts/build-macos-website-release.sh`, `scripts/upload-macos-downloads-r2.sh`, `scripts/ops/rollback-macos-appcast.sh` | Signed x86_64/aarch64 DEB/RPM/Arch candidate, daemon/desktop sessions, aggregate attestation, and exact-head Nightly matrix are green. | Public feed/promotion, compatible previous-package lifecycle proof, production trust callables, and full environment receipts remain open. |
 
@@ -207,7 +208,13 @@ required before promotion.
     mercury/aureate/ribbon tokens for membership; installed visual receipts
     remain open.
 15. **Desktop wallpaper runtime** with 11 backgrounds, provider glyph selection, speed, click-to-cycle, sparkles, constellation mode.
+    Source-level palette, provider selection, speed, sparkles, and brand-shape
+    controls are implemented in the Linux shell; native wallpaper hosting,
+    click-to-cycle, and constellation mode remain.
 16. **Swarm customization** (provider glyph selection, brand-shape exclusion, sparkles, constellation mode).
+    Source-level provider selection, brand-shape exclusion, auto-cycle, speed,
+    and sparkles are implemented; full provider catalog/constellation parity
+    and installed receipts remain.
 17. **Kernel-forward layouts** (full-bleed kernel backdrop for atelier/constellation).
 18. **Pet companion renderer** (GLB/Three.js runtime, behavior graph, tier matrix, chat bubble, hover toolbar, global summon hotkey).
 19. **Provider color themes** (30+ provider color schemes, model color hashing).
@@ -271,8 +278,13 @@ required before promotion.
 
 ### Phase 3 — Desktop integration & visual features
 
-- Desktop wallpaper runtime with background selection, provider glyph selection, speed, sparkles, click-to-cycle, constellation mode.
-- Swarm customization settings.
+- Desktop wallpaper runtime with background selection, provider glyph selection,
+  speed, sparkles, click-to-cycle, constellation mode. Palette and provider
+  selection are implemented; native hosting, click-cycle, and constellation
+  mode remain.
+- Swarm customization settings: provider selection, brand-shape exclusion,
+  speed, sparkles, and auto-cycle are implemented; full catalog coverage and
+  constellation mode remain.
 - Pet companion renderer (GLB/Three.js or `@openburnbar/gl-engine` reuse), behavior graph, tier matrix, global hotkey, drag-and-drop.
 - Provider color themes and model color hashing.
 - Verification: packaged smoke captures screenshots, AT-SPI snapshots, perf budgets.
