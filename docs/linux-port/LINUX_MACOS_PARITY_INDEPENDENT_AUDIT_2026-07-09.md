@@ -86,6 +86,22 @@ by the existing missing `SQLCipher.framework` runtime loader. This closes a
 source-level onboarding false-green path but does not advance the strict
 **0/40 product** or **0/7 environment** certification counters.
 
+### Public Linux download trust gate — 2026-07-22
+
+The Linux release plan's missing public-download gate is now implemented in
+`scripts/ci/verify-public-linux-download-trust.sh` with a focused contract test
+and `.github/workflows/public-linux-download-trust.yml`. The verifier parses the
+exported `SITE` object (not regex decoys), requires HTTPS/version-bound AppImage,
+deb, rpm, and PEM names, downloads each artifact and its detached Ed25519
+signature, verifies the signatures with the published key, and validates the
+signed `latest-linux.json` feed plus version alignment. The workflow has separate
+metadata/code checks and live-public checks, supports pull requests, merge queues,
+main pushes, and manual runs, and fails closed when public artifacts or feed trust
+are absent. Merge-queue workflow validation now requires this Linux trust check.
+This closes the release-gate implementation gap but cannot certify the current
+public site until a signed, current Linux release and feed are actually published;
+the strict ledger remains **0/40 product** and **0/7 environment**.
+
 ## Integration closeout — 2026-07-21
 
 ### Live UTM session re-open — 2026-07-21 (Grok)

@@ -16,6 +16,16 @@ cross-device flows, and the broader compositor/keyring/macOS differential
 matrix are still open. Do not convert the certification score into a source
 completion percentage.
 
+**Implementation checkpoint (2026-07-22):** the public Linux download trust
+gate is now implemented in
+`scripts/ci/verify-public-linux-download-trust.sh`, covered by its contract
+test, and wired through `.github/workflows/public-linux-download-trust.yml`.
+It parses the exported website `SITE` object, verifies the public AppImage/deb/
+rpm and detached Ed25519 signatures, and validates the signed update feed and
+version binding. The live GitHub artifact/signature probe passed; the branded
+feed was not reachable, so public promotion remains blocked. This closes the
+release-gate implementation item, not the signed-candidate certification row.
+
 ---
 
 ## 1. Current state snapshot

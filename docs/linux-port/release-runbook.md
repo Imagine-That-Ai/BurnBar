@@ -232,6 +232,21 @@ inventing update success.
 
 ### In-app update availability
 
+Before changing the public Linux download metadata or marking a release
+available, run the public trust gate from a checkout with the website parser
+dependencies installed:
+
+```bash
+npm ci --prefix website --ignore-scripts
+bash scripts/ci/verify-public-linux-download-trust.sh
+```
+
+The gate downloads the configured AppImage, deb, rpm, and release public key,
+verifies each detached Ed25519 signature, then validates the signed update feed
+and its version against `website/src/data/site.ts`. A missing or stale branded
+feed is a hard failure; do not weaken the check or publish website metadata to
+make an unreleased artifact appear available.
+
 The packaged shell checks update availability through the native Tauri
 `update_status` command. The renderer does not fetch or authenticate release
 metadata. The command:
