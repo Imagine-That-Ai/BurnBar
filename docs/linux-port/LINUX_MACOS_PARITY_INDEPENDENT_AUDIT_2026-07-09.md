@@ -2911,10 +2911,10 @@ credential escrow, and live two-device execution remain required.
 
 ### GAP-012D - Complete Database and indexing operations
 
-- **Difference:** Linux has index/watch foundations and bounded daemon-owned
-  code search/context-pack inspection through [PR #1680](https://github.com/Imagine-That-Ai/BurnBar/pull/1680). It now also has SQLCipher-gated encrypted snapshot/restore with owner-only path checks, size bounds, integrity hashes, atomic replacement, rollback, and watcher reopen, plus a macOS-compatible v1 passphrase recovery bundle with PBKDF2/AES-GCM and native key-custody hooks. It still lacks the macOS-equivalent record inspector, key-loss/device-transfer recovery, deep rebuild UX, live Secret Service/KWallet proof, and installed proof.
-- **Why it matters:** users cannot diagnose missing sessions, inspect canonical
-  records, recover corruption, or trust that updates are current.
+- **Difference:** Linux has index/watch foundations, bounded daemon-owned code search/context-pack inspection, and a metadata-only record inspector through [PR #1680](https://github.com/Imagine-That-Ai/BurnBar/pull/1680) and the current Database surface. It now also has SQLCipher-gated encrypted snapshot/restore with owner-only path checks, size bounds, integrity hashes, atomic replacement, rollback, and watcher reopen, plus a macOS-compatible v1 passphrase recovery bundle with PBKDF2/AES-GCM and native key-custody hooks. It still lacks raw-content inspection, key-loss/device-transfer recovery depth, deep rebuild UX, live Secret Service/KWallet proof, and installed proof.
+- **Why it matters:** users can inspect bounded metadata, but cannot yet reveal
+  authorized raw record content, diagnose every missing session, or complete
+  key-loss/rebuild recovery with the same depth as macOS.
 - **Recommended solution:** finish daemon-owned inspect/search/snapshot/watch/
   rebuild/recovery-bundle RPCs with pagination, cancellation, query tracing, and
   clear encryption/key-custody state; add recovery key-loss/device-transfer
