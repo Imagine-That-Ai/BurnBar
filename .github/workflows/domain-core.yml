@@ -956,7 +956,15 @@ jobs:
 
       - name: Execute ABI v3 smoke on x86_64 emulator
         # Hosted-runner emulators crash at boot ~5% of the time (qemu dies,
-        # adb:5554 refused). Tolerate one boot failure and retry once below.
+        # adb:5554 refused). Tolerate that one failure mode and retry below.
+        #
+        # `continue-on-error` necessarily wraps the whole action, including the
+        # native-load proof script -- which also exits non-zero for post-boot
+        # failures (instrumentation failures, observed-identity mismatches).
+        # Retrying those would let a real ABI/native-load flake pass on a second
+        # roll and still record a successful proof fragment. So the script drops
+        # a marker the moment the emulator has booted and it starts running:
+        # marker present + failure => a genuine post-boot failure, never retried.
         id: emu-smoke
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
@@ -968,10 +976,20 @@ jobs:
           emulator-options: >-
             -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
             -no-boot-anim
-          script: bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ steps.candidate.outputs.candidate_commit }}" "$RUNNER_TEMP/android-observed-identity.json"
+          script: |
+            touch "$RUNNER_TEMP/emulator-booted"
+            bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ steps.candidate.outputs.candidate_commit }}" "$RUNNER_TEMP/android-observed-identity.json"
+
+      - name: Fail closed when the emulator booted but the proof failed
+        # The marker exists only if the emulator came up and the proof script
+        # started, so this is a real native-load failure, not a boot flake.
+        if: steps.emu-smoke.outcome == 'failure' && hashFiles(format('{0}/emulator-booted', runner.temp)) != ''
+        run: |
+          echo "::error::ABI v3 native-load proof failed after the emulator booted; not a boot flake, not retrying." >&2
+          exit 1
 
       - name: Retry ABI v3 smoke on x86_64 emulator (boot-flake guard)
-        if: steps.emu-smoke.outcome == 'failure'
+        if: steps.emu-smoke.outcome == 'failure' && hashFiles(format('{0}/emulator-booted', runner.temp)) == ''
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
