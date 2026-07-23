@@ -16,9 +16,15 @@
  */
 
 import { BackdropEngine } from "../../packages/gl-engine/src/engine/BackdropEngine";
-import { KERNELS, isKernelId } from "../../packages/gl-engine/src/engine/registry";
+import {
+  KERNELS,
+  isKernelId,
+} from "../../packages/gl-engine/src/engine/registry";
 import type { BackdropReadabilityProfile } from "../../packages/gl-engine/src/engine/readability";
-import type { KernelId, KernelSubstrate } from "../../packages/gl-engine/src/engine/types";
+import type {
+  KernelId,
+  KernelSubstrate,
+} from "../../packages/gl-engine/src/engine/types";
 
 interface KernelBridgeMeta {
   id: KernelId;
@@ -46,6 +52,8 @@ declare global {
     __setKernel?: (id: string) => boolean;
     /** Switch the palette theme; anything but "light"/"dark" is ignored. */
     __setTheme?: (theme: string) => void;
+    /** Cap embedded previews without changing the browser default. */
+    __setMaxFps?: (fps: number) => void;
     /** The kernel actually shown (may differ from requested on GL fallback). */
     __getKernel?: () => KernelId;
     /** Actual engine visibility and render-loop state for native handshakes. */
@@ -81,6 +89,11 @@ function initialKernel(): KernelId {
   return isKernelId(PREFERRED_DEFAULT) ? PREFERRED_DEFAULT : KERNELS[0]!.id;
 }
 
+function initialMaxFps(): number {
+  const value = Number(new URLSearchParams(location.search).get("maxFps"));
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 60) : 0;
+}
+
 function performanceMotionOverride(): boolean | undefined {
   try {
     return new URLSearchParams(location.search).get("motion") === "full" ? false : undefined;
@@ -106,6 +119,7 @@ function mount(): void {
   const engine = new BackdropEngine(host, {
     theme: "dark",
     initialKernel: initialKernel(),
+    maxFps: initialMaxFps(),
     onReadability: (profile) => {
       readability = profile;
       window.webkit?.messageHandlers?.backdropReadability?.postMessage(profile);
@@ -121,15 +135,19 @@ function mount(): void {
   window.__setTheme = (theme: string): void => {
     if (theme === "dark" || theme === "light") engine.setTheme(theme);
   };
+  window.__setMaxFps = (fps: number): void => engine.setMaxFps(fps);
   window.__getKernel = (): KernelId => engine.getResolvedKernel();
   window.__getReadability = (): BackdropReadabilityProfile | null => readability;
   window.__getBackdropState = (): KernelBackdropRuntimeState => engine.getRuntimeState();
   window.__setBackdropActive = (active: boolean): void => {
     engine.setHostVisible(active === true);
   };
-  window.__kernels = KERNELS.map(
-    (k): KernelBridgeMeta => ({ id: k.id, label: k.label, blurb: k.blurb, substrate: k.substrate })
-  );
+  window.__kernels = KERNELS.map((k): KernelBridgeMeta => ({
+    id: k.id,
+    label: k.label,
+    blurb: k.blurb,
+    substrate: k.substrate,
+  }));
   window.__backdropReady = true;
   window.addEventListener("hashchange", () => {
     const hash = (location.hash || "").replace(/^#/, "").trim();

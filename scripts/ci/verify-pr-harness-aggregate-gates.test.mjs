@@ -25,6 +25,7 @@ const WORKFLOW = ".github/workflows/openburnbar-pr-harness.yml";
 const APP_WORKFLOW = ".github/workflows/app-pr-gate.yml";
 const DAEMON_WORKFLOW = ".github/workflows/daemon-pr-gate.yml";
 const DOMAIN_CORE_WORKFLOW = ".github/workflows/domain-core.yml";
+const HEADLESS_WORKFLOW = ".github/workflows/headless-app-build.yml";
 const FAST_WORKFLOW = ".github/workflows/fast-feedback.yml";
 const NATIVE_WORKFLOW = ".github/workflows/pr-native-fast.yml";
 const BRANCH_PROTECTION = "governance/branch-protection.main.json";
@@ -609,16 +610,17 @@ check("desired main branch protection requires only the umbrella gate", () => {
   assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
 });
 
-check("macOS gates stay on free standard hosted runners", () => {
+check("macOS gates stay on the isolated capped paid runner group", () => {
   for (const [workflow, expectedCount] of [
     [APP_WORKFLOW, 2],
     [DAEMON_WORKFLOW, 2],
     [DOMAIN_CORE_WORKFLOW, 2],
+    [HEADLESS_WORKFLOW, 1],
     [NATIVE_WORKFLOW, 2],
   ]) {
     const source = readFileSync(join(REPO_ROOT, workflow), "utf8");
-    assert.equal(source.split("runs-on: macos-26").length - 1, expectedCount);
-    assert.doesNotMatch(source, /ci-turbo|BurnBar-macos-26-xlarge/);
+    assert.equal(source.split("group: burnbar-ci-paid").length - 1, expectedCount);
+    assert.doesNotMatch(source, /burnbar-turbo-ephemeral|BurnBar-macos-26-xlarge/);
   }
 });
 

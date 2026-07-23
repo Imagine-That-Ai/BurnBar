@@ -1,0 +1,27 @@
+{
+  "id": "star-atlas",
+  "label": "Star Atlas",
+  "metalFileBase": "K_StarAtlas",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_star_atlas_display"
+  },
+  "controls": [
+    "glyph"
+  ],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {
+      "uGlyphField": 2
+    }
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

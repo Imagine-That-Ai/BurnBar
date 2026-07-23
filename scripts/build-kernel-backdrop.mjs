@@ -25,7 +25,10 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ENTRY = join(ROOT, "tools/kernel-backdrop/entry.ts");
-const OUTFILE = join(ROOT, "AgentLens/Resources/KernelBackdrop/kernel-backdrop.js");
+const OUTFILE = join(
+  ROOT,
+  "AgentLens/Resources/KernelBackdrop/kernel-backdrop.js",
+);
 const REGISTRY = join(ROOT, "packages/gl-engine/src/engine/registry.ts");
 const ESBUILD_VERSION = "0.25.5"; // pinned so regenerated bundles stay reproducible
 
@@ -59,18 +62,28 @@ function runEsbuild() {
   try {
     // Programmatic API if esbuild is resolvable but not linked into .bin.
     const esbuildPath = require.resolve("esbuild");
-    console.log(`[kernel-backdrop] using resolvable esbuild module: ${esbuildPath}`);
-    execFileSync(process.execPath, [join(dirname(esbuildPath), "..", "bin", "esbuild"), ...args], {
-      stdio: "inherit",
-    });
+    console.log(
+      `[kernel-backdrop] using resolvable esbuild module: ${esbuildPath}`,
+    );
+    execFileSync(
+      process.execPath,
+      [join(dirname(esbuildPath), "..", "bin", "esbuild"), ...args],
+      {
+        stdio: "inherit",
+      },
+    );
     return;
   } catch {
     /* not installed locally — use npx below */
   }
   console.log(`[kernel-backdrop] using npx esbuild@${ESBUILD_VERSION}`);
-  const res = spawnSync("npx", ["--yes", `esbuild@${ESBUILD_VERSION}`, ...args], {
-    stdio: "inherit",
-  });
+  const res = spawnSync(
+    "npx",
+    ["--yes", `esbuild@${ESBUILD_VERSION}`, ...args],
+    {
+      stdio: "inherit",
+    },
+  );
   if (res.status !== 0) {
     throw new Error(`esbuild exited with status ${res.status ?? "signal"}`);
   }
@@ -86,6 +99,7 @@ function verify() {
   for (const symbol of [
     "__setKernel",
     "__setTheme",
+    "__setMaxFps",
     "__getKernel",
     "__getReadability",
     "backdropReadability",
@@ -93,18 +107,25 @@ function verify() {
     "__kernels",
     "__backdropReady",
   ]) {
-    if (!bundle.includes(symbol)) throw new Error(`bundle is missing bridge symbol ${symbol}`);
+    if (!bundle.includes(symbol))
+      throw new Error(`bundle is missing bridge symbol ${symbol}`);
   }
 
   // 3. Every kernel id in the registry must appear in the bundle.
   const registry = readFileSync(REGISTRY, "utf8");
-  const ids = [...registry.matchAll(/^\s*id:\s*"([A-Za-z0-9-]+)"/gm)].map((m) => m[1]);
-  if (ids.length === 0) throw new Error("could not parse kernel ids from registry.ts");
+  const ids = [...registry.matchAll(/^\s*id:\s*"([A-Za-z0-9-]+)"/gm)].map(
+    (m) => m[1],
+  );
+  if (ids.length === 0)
+    throw new Error("could not parse kernel ids from registry.ts");
   const missing = ids.filter((id) => !bundle.includes(`"${id}"`));
-  if (missing.length > 0) throw new Error(`bundle is missing kernel ids: ${missing.join(", ")}`);
+  if (missing.length > 0)
+    throw new Error(`bundle is missing kernel ids: ${missing.join(", ")}`);
 
   const kb = (statSync(OUTFILE).size / 1024).toFixed(1);
-  console.log(`[kernel-backdrop] OK — ${ids.length} kernels, ${kb} KB → ${OUTFILE}`);
+  console.log(
+    `[kernel-backdrop] OK — ${ids.length} kernels, ${kb} KB → ${OUTFILE}`,
+  );
 }
 
 runEsbuild();

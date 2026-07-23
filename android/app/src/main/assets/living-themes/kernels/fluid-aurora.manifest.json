@@ -1,0 +1,23 @@
+{
+  "id": "fluid-aurora",
+  "label": "Fluid Aurora",
+  "metalFileBase": "K_FluidAurora",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_fluid_aurora_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

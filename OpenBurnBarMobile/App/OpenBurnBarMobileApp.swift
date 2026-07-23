@@ -91,6 +91,7 @@ struct OpenBurnBarMobileApp: App {
     /// screenshots — and automated visual audits — can capture it directly
     /// without scripting two levels of navigation. No effect in normal runs.
     @State private var showThemeScreenshotPage = false
+    @State private var livingThemeRequest: LivingThemeDeepLink?
 
     private var appearanceOverride: ColorScheme? {
         if appSkin == .editorial { return .light }
@@ -166,6 +167,13 @@ struct OpenBurnBarMobileApp: App {
                         showThemeScreenshotPage = true
                     }
                 }
+                .fullScreenCover(item: $livingThemeRequest) { request in
+                    WallpaperGeneratorView(
+                        colorDriver: SwarmColorDriver(),
+                        livingTheme: request.kernel,
+                        livingThemeMaxFrameRate: request.quality.maxFrameRate
+                    )
+                }
         }
     }
 
@@ -175,6 +183,11 @@ struct OpenBurnBarMobileApp: App {
         }
         if let pairingCode = HermesGatewayPairingDeepLink.pairingCode(from: url) {
             HermesGatewayPairingDeepLink.open(code: pairingCode)
+            return
+        }
+        if let request = LivingThemeDeepLink.parse(url) {
+            UserDefaults.standard.set(request.kernel.rawValue, forKey: MobileBackdropKernel.storageKey)
+            livingThemeRequest = request
             return
         }
         guard url.scheme == "burnbar" else { return }

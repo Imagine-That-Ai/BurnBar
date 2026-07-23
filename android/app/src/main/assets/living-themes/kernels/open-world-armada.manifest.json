@@ -1,0 +1,36 @@
+{
+  "id": "open-world-armada",
+  "label": "Voxel Armada",
+  "metalFileBase": "K_OpenWorldArmada",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_open_world_armada_display"
+  },
+  "controls": [
+    "scroll"
+  ],
+  "params": [
+    {
+      "name": "uWarp",
+      "kind": "float",
+      "default": 0
+    },
+    {
+      "name": "uSeed",
+      "kind": "float",
+      "default": 646771.8989679421
+    }
+  ],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

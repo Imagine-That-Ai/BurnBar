@@ -1,0 +1,25 @@
+{
+  "id": "knot-field",
+  "label": "Knot Field",
+  "metalFileBase": "K_KnotField",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_knot_field_display"
+  },
+  "controls": [
+    "scroll"
+  ],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}
