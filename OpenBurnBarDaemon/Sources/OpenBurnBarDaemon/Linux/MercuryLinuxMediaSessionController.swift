@@ -1374,21 +1374,30 @@ public actor MercuryLinuxMediaSessionController {
         let filename = sanitizedFilename(rawFilename)
         let pathExtension = (filename as NSString).pathExtension
         let stem = (filename as NSString).deletingPathExtension
-        let first = directory.appendingPathComponent(filename, isDirectory: false)
-        guard fileManager.fileExists(atPath: first.path) else {
-            return first
-        }
-
-        for index in 1...9999 {
+        for index in 0...9999 {
             let candidateName: String
-            if pathExtension.isEmpty {
+            if index == 0 {
+                candidateName = filename
+            } else if pathExtension.isEmpty {
                 candidateName = "\(stem) (\(index))"
             } else {
                 candidateName = "\(stem) (\(index)).\(pathExtension)"
             }
             let candidate = directory.appendingPathComponent(candidateName, isDirectory: false)
-            if fileManager.fileExists(atPath: candidate.path) == false {
+            // The existence check that used to live here was racy: two
+            // accepted transfers could both select the same path before
+            // either backend began exporting. Reserve the destination at the
+            // filesystem boundary so every accepted transfer owns a unique
+            // path before its async fetch starts.
+            let descriptor = candidate.path.withCString { path in
+                open(path, O_WRONLY | O_CREAT | O_EXCL, mode_t(S_IRUSR | S_IWUSR))
+            }
+            if descriptor >= 0 {
+                close(descriptor)
                 return candidate
+            }
+            guard errno == EEXIST else {
+                throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: candidate.path])
             }
         }
         throw CocoaError(.fileWriteFileExists)

@@ -1,4 +1,5 @@
 #if os(Linux)
+import Dispatch
 import Foundation
 import Glibc
 import OpenBurnBarEngine
@@ -8,6 +9,32 @@ import OpenBurnBarMedia
 import XCTest
 
 final class MercuryLinuxMediaTests: XCTestCase {
+    func testCollisionSafeDownloadURLAtomicallyReservesDistinctPaths() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mercury-reservation-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let lock = NSLock()
+        var paths: [String] = []
+        DispatchQueue.concurrentPerform(iterations: 32) { _ in
+            guard let path = try? MercuryLinuxMediaSessionController.collisionSafeDownloadURL(
+                filename: "report.pdf",
+                in: directory
+            ) else {
+                return
+            }
+            lock.lock()
+            paths.append(path.path)
+            lock.unlock()
+        }
+
+        XCTAssertEqual(paths.count, 32)
+        XCTAssertEqual(Set(paths).count, 32)
+        for path in paths {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+        }
+    }
+
     func testMediaChannelWritesLengthPrefixedShellFrames() throws {
         let socketPath = "/tmp/obb-media-\(UUID().uuidString).sock"
         let channel = try MercuryLinuxMediaChannel(socketPath: socketPath, maxQueuedFrames: 4)
