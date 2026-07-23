@@ -37,13 +37,15 @@ class ComputerUseSessionGrantNotificationCenter(
 
     private fun postPendingChallenge(challengeId: String, timeoutMillis: Long) {
         ensureChannel()
-        val intent =
-            Intent(appContext, MainActivity::class.java).apply {
-                action = Intent.ACTION_VIEW
-                data = Uri.parse("burnbar://computer-use/session-grant/${Uri.encode(challengeId)}")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                setPackage(appContext.packageName)
-            }
+        // Configured statement by statement rather than through `apply {}`: the
+        // package is pinned on `intent` itself, which is what makes the target
+        // explicit both at runtime and to static analysis. Pinning it on the
+        // receiver inside an `apply` lambda hides it from the latter.
+        val intent = Intent(appContext, MainActivity::class.java)
+        intent.setPackage(appContext.packageName)
+        intent.action = Intent.ACTION_VIEW
+        intent.data = Uri.parse("burnbar://computer-use/session-grant/${Uri.encode(challengeId)}")
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         val pendingIntent =
             PendingIntent.getActivity(
                 appContext,
