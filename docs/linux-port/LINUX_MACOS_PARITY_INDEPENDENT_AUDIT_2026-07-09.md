@@ -211,7 +211,7 @@ product** and **0/7 environment**.
 
 ### Linux prior-wallpaper restoration — 2026-07-23
 
-The native wallpaper adapter now captures the current local wallpaper before
+Commit `77db7deb8d` extends the native wallpaper adapter to capture the current local wallpaper before
 the first BurnBar palette change and stores only a bounded owner-only record.
 GNOME URI output, XFCE paths, and Hyprpaper JSON are decoded and validated as
 absolute regular local files; remote URIs, malformed output, missing files,
@@ -282,7 +282,7 @@ receipts remain live verification work; the strict ledger is unchanged.
 
 ### Linux external text-engine capability readback — 2026-07-23
 
-The shell runtime-capability evaluator no longer hard-codes system text
+Commit `a676e48e8b` makes the shell runtime-capability evaluator no longer hard-code system text
 expansion as unavailable. When the authenticated daemon is healthy it now
 reads `daemon.text_expansion.engine.status` and advertises the system
 capability only when the daemon's signed-engine adapter reports
