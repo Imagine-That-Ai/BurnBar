@@ -955,6 +955,23 @@ jobs:
         run: ./gradlew :openburnbar-domain-core:assembleDebugAndroidTest --no-daemon
 
       - name: Execute ABI v3 smoke on x86_64 emulator
+        # Hosted-runner emulators crash at boot ~5% of the time (qemu dies,
+        # adb:5554 refused). Tolerate one boot failure and retry once below.
+        id: emu-smoke
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: >-
+            -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
+            -no-boot-anim
+          script: bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ steps.candidate.outputs.candidate_commit }}" "$RUNNER_TEMP/android-observed-identity.json"
+
+      - name: Retry ABI v3 smoke on x86_64 emulator (boot-flake guard)
+        if: steps.emu-smoke.outcome == 'failure'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
