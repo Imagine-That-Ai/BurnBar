@@ -117,6 +117,11 @@ describe('SettingsAppearanceControls accessibility', () => {
       excludeBrandShapes: false
     });
 
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Click backdrop to cycle swarm shapes' }));
+    expect(JSON.parse(localStorage.getItem('openburnbar.linux.swarm.v1') ?? '{}')).toMatchObject({
+      allowsClickCycle: true
+    });
+
     const claude = screen.getByRole('checkbox', { name: 'Show Claude Code glyph' });
     expect((claude as HTMLInputElement).checked).toBe(true);
     fireEvent.click(claude);

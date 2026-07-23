@@ -216,10 +216,11 @@ existing Linux behavior. Focused state, settings, catalog, and cycle-contract
 tests plus the full Linux frontend suite pass.
 
 This closes the source-level provider-selection and brand-shape/auto-cycle
-subset. Full macOS provider catalog coverage (Linux point data still lacks
-some macOS marks), desktop click-cycle, constellation mode, native wallpaper
-hosting, and installed visual receipts remain open; the strict ledger remains
-**0/40 product** and **0/7 environment**.
+subset. Linux also now supports opt-in click-to-cycle on the backdrop and
+resets the automatic cycle timer after a manual advance. Full macOS provider
+catalog coverage (Linux point data still lacks some macOS marks), constellation
+mode, native wallpaper hosting, and installed visual receipts remain open; the
+strict ledger remains **0/40 product** and **0/7 environment**.
 
 ## Integration closeout — 2026-07-21
 

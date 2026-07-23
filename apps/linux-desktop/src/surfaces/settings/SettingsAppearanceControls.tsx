@@ -327,6 +327,16 @@ export function SettingsAppearanceControls() {
           />
           <span>Automatically cycle shapes</span>
         </label>
+        <label className="setting-toggle" htmlFor="swarm-click-cycle-toggle">
+          <input
+            id="swarm-click-cycle-toggle"
+            type="checkbox"
+            checked={swarm.allowsClickCycle}
+            aria-label="Click backdrop to cycle swarm shapes"
+            onChange={(event) => updateSwarm({ allowsClickCycle: event.currentTarget.checked })}
+          />
+          <span>Click backdrop to cycle shapes</span>
+        </label>
       </fieldset>
       <fieldset className="settings-appearance-fieldset settings-swarm-provider-fieldset">
         <legend className="settings-appearance-legend">Provider glyphs</legend>

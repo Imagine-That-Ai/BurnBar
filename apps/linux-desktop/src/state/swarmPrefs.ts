@@ -17,6 +17,7 @@ export type SwarmPreferences = {
   providerGlyphs: SwarmProviderGlyphId[];
   excludeBrandShapes: boolean;
   autoCycleShapes: boolean;
+  allowsClickCycle: boolean;
 };
 
 export const DEFAULT_SWARM_PREFERENCES: SwarmPreferences = {
@@ -26,7 +27,8 @@ export const DEFAULT_SWARM_PREFERENCES: SwarmPreferences = {
   // Linux historically used the provider-only dashboard cycle. Keep that
   // default while exposing the macOS brand-shape switch to users.
   excludeBrandShapes: true,
-  autoCycleShapes: true
+  autoCycleShapes: true,
+  allowsClickCycle: false
 };
 
 function clampSwarmSpeed(value: number): number {
@@ -53,7 +55,8 @@ export function readSwarmPreferences(): SwarmPreferences {
           : undefined
       ),
       excludeBrandShapes: parsed.excludeBrandShapes !== false,
-      autoCycleShapes: parsed.autoCycleShapes !== false
+      autoCycleShapes: parsed.autoCycleShapes !== false,
+      allowsClickCycle: parsed.allowsClickCycle === true
     };
   } catch {
     return DEFAULT_SWARM_PREFERENCES;
@@ -66,7 +69,8 @@ export function persistSwarmPreferences(next: Partial<SwarmPreferences>): SwarmP
     sparkles: next.sparkles === true,
     providerGlyphs: normalizeSwarmProviderGlyphs(next.providerGlyphs),
     excludeBrandShapes: next.excludeBrandShapes !== false,
-    autoCycleShapes: next.autoCycleShapes !== false
+    autoCycleShapes: next.autoCycleShapes !== false,
+    allowsClickCycle: next.allowsClickCycle === true
   };
   try {
     localStorage.setItem(SWARM_PREFS_KEY, JSON.stringify(normalized));

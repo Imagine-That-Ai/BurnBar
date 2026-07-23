@@ -404,6 +404,8 @@ export type SwarmEmberKernelOptions = {
   excludeBrandShapes?: boolean;
   /** Keep the formation cycle running; false leaves the field in swarm mode. */
   autoCycleShapes?: boolean;
+  /** macOS clickDesktopToCycleSwarm equivalent for the Linux backdrop surface. */
+  allowsClickCycle?: boolean;
 };
 
 function clampMotionSpeedMultiplier(value: number): number {
@@ -465,6 +467,7 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
     options.excludeBrandShapes ?? true,
     options.autoCycleShapes ?? true
   );
+  const allowsClickCycle = options.allowsClickCycle ?? false;
 
   let particles: Particle[] = [];
   let mode: FormationMode = "swarm";
@@ -700,6 +703,20 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
         clearFormation(p);
       }
     }
+  }
+
+  function sameFormation(a: FormationMode, b: FormationMode): boolean {
+    if (typeof a === 'string' || typeof b === 'string') return a === b;
+    return a.type === b.type && a.providers.join(',') === b.providers.join(',');
+  }
+
+  function cycleFormation(atMs: number): void {
+    if (!allowsClickCycle || modeCycle.length < 2) return;
+    const currentIndex = modeCycle.findIndex((candidate) => sameFormation(candidate, mode));
+    cycleIndex = (currentIndex < 0 ? cycleIndex : currentIndex) + 1;
+    cycleIndex %= modeCycle.length;
+    assignMode(modeCycle[cycleIndex]!, atMs);
+    nextCycleAtMs = atMs + effectiveCycleIntervalMs();
   }
 
   function applyTransform(): void {
@@ -1044,6 +1061,10 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
 
     pointer(x: number, y: number, active: boolean) {
       pointer = { x, y, active };
+    },
+
+    click(_x: number, _y: number) {
+      cycleFormation(lastAdvanceMs ?? 0);
     },
 
     wake(x: number, y: number, _dx: number, _dy: number, radius: number, strength: number) {

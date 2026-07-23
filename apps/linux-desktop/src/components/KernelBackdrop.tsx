@@ -90,7 +90,8 @@ export function KernelBackdrop({
           motionSpeedMultiplier: swarmPreferences.speed || DASHBOARD_MOTION_SPEED_MULTIPLIER,
           providerGlyphs: swarmPreferences.providerGlyphs,
           excludeBrandShapes: swarmPreferences.excludeBrandShapes,
-          autoCycleShapes: swarmPreferences.autoCycleShapes
+          autoCycleShapes: swarmPreferences.autoCycleShapes,
+          allowsClickCycle: swarmPreferences.allowsClickCycle
         },
         onStatus: (status) => publishKernelResolution(container, status),
         onResolve: (resolvedId) => {

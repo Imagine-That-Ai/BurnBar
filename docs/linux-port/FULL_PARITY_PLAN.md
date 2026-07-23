@@ -63,10 +63,12 @@ installation and compositor screenshots remain external evidence.
 **Implementation checkpoint (2026-07-23, swarm controls):** Linux now
 persists macOS-compatible swarm speed (`0.35×`–`2.5×`) and settled-shape
 sparkles controls, provider glyph selection, brand-shape exclusion, and
-auto-cycle control. Changes publish a typed preference event; the kernel host
-rebuilds the active swarm with the validated options while retaining its
-Canvas2D/CSS fallback. Desktop click-cycle, full macOS provider catalog
-coverage, constellation mode, and installed wallpaper receipts remain open.
+auto-cycle control. The optional click-to-cycle action now advances the same
+formation list from the Linux backdrop, including the Canvas2D fallback.
+Changes publish a typed preference event; the kernel host rebuilds the active
+swarm with the validated options while retaining its Canvas2D/CSS fallback.
+Full macOS provider catalog coverage, constellation mode, and installed
+wallpaper receipts remain open.
 
 ---
 
@@ -208,9 +210,9 @@ required before promotion.
     mercury/aureate/ribbon tokens for membership; installed visual receipts
     remain open.
 15. **Desktop wallpaper runtime** with 11 backgrounds, provider glyph selection, speed, click-to-cycle, sparkles, constellation mode.
-    Source-level palette, provider selection, speed, sparkles, and brand-shape
-    controls are implemented in the Linux shell; native wallpaper hosting,
-    click-to-cycle, and constellation mode remain.
+    Source-level palette, provider selection, speed, sparkles, brand-shape, and
+    click-to-cycle controls are implemented in the Linux shell; native
+    wallpaper hosting and constellation mode remain.
 16. **Swarm customization** (provider glyph selection, brand-shape exclusion, sparkles, constellation mode).
     Source-level provider selection, brand-shape exclusion, auto-cycle, speed,
     and sparkles are implemented; full provider catalog/constellation parity
