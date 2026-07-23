@@ -204,7 +204,7 @@ private struct ProxyRouteLogRow: View {
                 ForEach(entry.attempts) { attempt in
                     Text("#\(attempt.sequence) \(attempt.providerName) → \(attempt.upstreamModelSlug) (\(attempt.status.rawValue.replacingOccurrences(of: "_", with: " ")))")
                         .font(DesignSystem.Typography.monoTiny)
-                        .foregroundStyle(attemptTint(for: attempt.status))
+                        .foregroundStyle(ProxyRouteStatusPresentation.attemptTint(for: attempt.status))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -303,21 +303,6 @@ private struct ProxyRouteLogRow: View {
 
     private var isMismatch: Bool {
         entry.finalStatus != .exact
-    }
-
-    /// Per-attempt tint in the expanded attempt list. Exhaustive so a new
-    /// status case cannot silently render with the neutral secondary style.
-    private func attemptTint(for status: BurnBarProxyRouteFinalStatus) -> Color {
-        switch status {
-        case .failed:
-            return DesignSystem.Colors.error
-        case .interrupted:
-            // Interrupted attempts are amber, matching the row chip: the
-            // stream broke mid-flight, but the route was not at fault.
-            return DesignSystem.Colors.warning
-        case .exact, .sameModelFailover, .crossVendorFallback, .rejected:
-            return DesignSystem.Colors.textSecondary
-        }
     }
 
     private var providerReportedMismatch: Bool {
@@ -449,6 +434,23 @@ struct ProxyRouteStatusPresentation: Equatable {
             label = "Interrupted"
             systemImage = "waveform.path.ecg"
             tone = .warning
+        }
+    }
+
+    /// Per-attempt tint in the expanded attempt list. Exhaustive so a new
+    /// status case cannot silently render with the neutral secondary style.
+    /// Lives here rather than on the row so the status → color decision has a
+    /// single owner that unit tests can pin without rendering a view.
+    static func attemptTint(for status: BurnBarProxyRouteFinalStatus) -> Color {
+        switch status {
+        case .failed:
+            return DesignSystem.Colors.error
+        case .interrupted:
+            // Interrupted attempts are amber, matching the row chip: the
+            // stream broke mid-flight, but the route was not at fault.
+            return DesignSystem.Colors.warning
+        case .exact, .sameModelFailover, .crossVendorFallback, .rejected:
+            return DesignSystem.Colors.textSecondary
         }
     }
 }
