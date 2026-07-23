@@ -610,7 +610,10 @@ check("desired main branch protection requires only the umbrella gate", () => {
   assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
 });
 
-check("macOS gates stay on the isolated capped paid runner group", () => {
+check("macOS gates default to the free fleet and opt into the capped paid pool", () => {
+  // Cost policy: a gate must never bill by default. Each macOS gate routes to the
+  // in-house fleet unless MACOS_GATE_POOL=paid is set, and the paid branch must
+  // still be the isolated capped pool -- never an uncapped or ephemeral worker.
   for (const [workflow, expectedCount] of [
     [APP_WORKFLOW, 2],
     [DAEMON_WORKFLOW, 2],
@@ -619,7 +622,16 @@ check("macOS gates stay on the isolated capped paid runner group", () => {
     [NATIVE_WORKFLOW, 2],
   ]) {
     const source = readFileSync(join(REPO_ROOT, workflow), "utf8");
-    assert.equal(source.split("group: burnbar-ci-paid").length - 1, expectedCount);
+    const routes = source.split("vars.MACOS_GATE_POOL == 'paid'").length - 1;
+    assert.equal(routes, expectedCount);
+    // Paid lane stays the isolated capped pool, and stays behind the opt-in.
+    assert.equal(source.split('{"group":"burnbar-ci-paid"}').length - 1, expectedCount);
+    assert.equal(source.split("group: burnbar-ci-paid").length - 1, 0);
+    // Free lane pins the one fleet Mac with a complete toolchain + Xcode 26.6.
+    assert.equal(
+      source.split('["self-hosted","macOS","ARM64","m5max"]').length - 1,
+      expectedCount,
+    );
     assert.doesNotMatch(source, /burnbar-turbo-ephemeral|BurnBar-macos-26-xlarge/);
   }
 });

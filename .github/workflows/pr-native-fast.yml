@@ -117,8 +117,12 @@ jobs:
     name: SwiftPM build + test (Core + Daemon)
     needs: detect-native-changes
     if: needs.detect-native-changes.outputs.native == 'true'
-    runs-on:
-      group: burnbar-ci-paid
+    # Cost policy: these gates default to the in-house Apple Silicon fleet, which
+    # costs nothing per job. Set the repository variable MACOS_GATE_POOL=paid to
+    # opt into the isolated capped hosted pool for a faster (billed) run.
+    # The free lane pins `m5max`: it is the only fleet Mac with both the full
+    # toolchain (node/cargo/protoc/gradle/cmake) and stable Xcode 26.6.
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || fromJSON('["self-hosted","macOS","ARM64","m5max"]') }}
     # `swift test` on both packages compiles the libsignal Swift FFI on a cold
     # cache; the Swift Core lane uses 40 min for the same work.
     timeout-minutes: 40
@@ -225,8 +229,12 @@ jobs:
     name: XcodeGen pbxproj drift
     needs: detect-native-changes
     if: needs.detect-native-changes.outputs.native == 'true'
-    runs-on:
-      group: burnbar-ci-paid
+    # Cost policy: these gates default to the in-house Apple Silicon fleet, which
+    # costs nothing per job. Set the repository variable MACOS_GATE_POOL=paid to
+    # opt into the isolated capped hosted pool for a faster (billed) run.
+    # The free lane pins `m5max`: it is the only fleet Mac with both the full
+    # toolchain (node/cargo/protoc/gradle/cmake) and stable Xcode 26.6.
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || fromJSON('["self-hosted","macOS","ARM64","m5max"]') }}
     timeout-minutes: 15
     steps:
       - name: Check out repository

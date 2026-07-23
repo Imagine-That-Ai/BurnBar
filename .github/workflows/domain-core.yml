@@ -1130,8 +1130,12 @@ jobs:
     name: apple-native-smoke
     needs: [classify, apple]
     if: needs.classify.outputs.rust == 'true'
-    runs-on:
-      group: burnbar-ci-paid
+    # Cost policy: these gates default to the in-house Apple Silicon fleet, which
+    # costs nothing per job. Set the repository variable MACOS_GATE_POOL=paid to
+    # opt into the isolated capped hosted pool for a faster (billed) run.
+    # The free lane pins `m5max`: it is the only fleet Mac with both the full
+    # toolchain (node/cargo/protoc/gradle/cmake) and stable Xcode 26.6.
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || fromJSON('["self-hosted","macOS","ARM64","m5max"]') }}
     timeout-minutes: 30
     steps:
       - name: Check out repository
@@ -1201,8 +1205,12 @@ jobs:
     name: swift-consumer-contracts
     needs: classify
     if: needs.classify.outputs.rust == 'true'
-    runs-on:
-      group: burnbar-ci-paid
+    # Cost policy: these gates default to the in-house Apple Silicon fleet, which
+    # costs nothing per job. Set the repository variable MACOS_GATE_POOL=paid to
+    # opt into the isolated capped hosted pool for a faster (billed) run.
+    # The free lane pins `m5max`: it is the only fleet Mac with both the full
+    # toolchain (node/cargo/protoc/gradle/cmake) and stable Xcode 26.6.
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || fromJSON('["self-hosted","macOS","ARM64","m5max"]') }}
     # Cold macos-26 runners can spend nearly an hour building the domain-core
     # XCFramework and app-test dependency graph before the focused spool test.
     timeout-minutes: 90

@@ -51,8 +51,12 @@ concurrency:
 jobs:
   headless-app-build:
     name: Headless macOS app build (scheme OpenBurnBar)
-    runs-on:
-      group: burnbar-ci-paid
+    # Cost policy: these gates default to the in-house Apple Silicon fleet, which
+    # costs nothing per job. Set the repository variable MACOS_GATE_POOL=paid to
+    # opt into the isolated capped hosted pool for a faster (billed) run.
+    # The free lane pins `m5max`: it is the only fleet Mac with both the full
+    # toolchain (node/cargo/protoc/gradle/cmake) and stable Xcode 26.6.
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || fromJSON('["self-hosted","macOS","ARM64","m5max"]') }}
     # Build-only (no XCTest host launch), so far lighter than the 120-min
     # app-build-test lane; the cap still covers a cold SPM cache + libsignal FFI
     # build on a hosted runner.
