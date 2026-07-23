@@ -263,8 +263,24 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         case "input_audio":
             guard part["input_audio"] != nil else { return nil }
             return part
-        case "file":
-            return part
+        case "file", "input_file":
+            // Responses clients use `input_file` for PDFs and other
+            // document inputs. A provider that lacks `/responses` falls
+            // back to Chat Completions, whose compatible native wire shape
+            // is the same data URL used by the macOS attachment encoder.
+            // File IDs and remote URLs cannot be dereferenced by this
+            // bounded bridge, so leave those out rather than silently
+            // forwarding an unsupported part.
+            guard let dataURL = responsesInputFileDataURL(from: part) else {
+                return nil
+            }
+            return [
+                "type": "image_url",
+                "image_url": [
+                    "url": dataURL,
+                    "detail": "auto"
+                ]
+            ]
         default:
             if part["image_url"] != nil {
                 var normalized = part
@@ -281,6 +297,30 @@ extension BurnBarOpenAICompatibleProviderExecutor {
             }
             return nil
         }
+    }
+
+    private static func responsesInputFileDataURL(from part: [String: Any]) -> String? {
+        let nestedFile = part["file"] as? [String: Any]
+        let candidate = (part["file_data"] as? String)
+            ?? (part["data"] as? String)
+            ?? (nestedFile?["file_data"] as? String)
+            ?? (nestedFile?["data"] as? String)
+        guard let candidate,
+              candidate.lowercased().hasPrefix("data:"),
+              let comma = candidate.firstIndex(of: ",") else {
+            return nil
+        }
+        let metadata = candidate[candidate.index(candidate.startIndex, offsetBy: 5)..<comma]
+        let payload = candidate[candidate.index(after: comma)...]
+        let components = metadata.split(separator: ";").map(String.init)
+        guard components.contains(where: { $0.caseInsensitiveCompare("base64") == .orderedSame }),
+              !payload.isEmpty,
+              let mediaType = components.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased(),
+              mediaType == "application/pdf" || mediaType.hasPrefix("image/") else {
+            return nil
+        }
+        return candidate
     }
 
     static func chatCompletionsContentIsEmpty(_ value: Any) -> Bool {
