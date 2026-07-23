@@ -3095,16 +3095,18 @@ open; this row is therefore still **Partial**, not closed.
 
 ### GAP-018 - Ship a real compositor-aware pet companion
 
-- **Difference:** macOS has an animated desktop companion with overlay behavior
-  and interaction. Linux renders a route-contained point-cloud preview and
-  assumes overlay capability in nearly every environment except GNOME Wayland.
-- **Why it matters:** the visible result is materially less polished and can
-  steal focus or block input when optimistic compositor assumptions are wrong.
-- **Recommended solution:** retain the X11 child-window and fixed-marker summon
-  contract now present in source, then render the real glTF mesh/material/animation
-  in a separate transparent always-on-top/pass-through window only after capability
-  proof; add selection, chat/file interactions, multi-monitor behavior, and a
-  clearly labeled contained fallback for Wayland/unknown sessions.
+- **Difference:** macOS has an animated desktop companion with mature overlay
+  behavior and interaction. Linux now mounts the bundled glTF mesh/animation,
+  provides an accessible draggable contained fallback, and gates the native X11
+  child behind an exact session/window/source contract. Cross-compositor proof,
+  native chat/file interactions, and complete multi-monitor behavior remain open.
+- **Why it matters:** without installed compositor receipts, focus, topmost,
+  click-through, and restart behavior can still regress; missing interactions
+  also leave the companion less useful than macOS.
+- **Recommended solution:** certify the existing X11 child and fixed-marker
+  summon contract, then add native selection/chat/file interactions and
+  multi-monitor behavior where the desktop contract supports them. Keep the
+  explicitly labeled contained fallback for Wayland/unknown sessions.
 - **Priority:** **High**.
 - **Implementation notes:** maintain a compositor capability matrix; use reduced
   motion and GPU budgets; do not claim click-through from environment variables
