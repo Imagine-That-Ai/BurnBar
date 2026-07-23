@@ -372,7 +372,18 @@ fn probe_wayland_global_shortcuts_portal() -> (bool, Option<String>) {
         );
     }
 
-    let mut child = match Command::new("gdbus")
+    let Some(gdbus) = trusted_root_owned_executable(&[
+        "/usr/bin/gdbus",
+        "/usr/local/bin/gdbus",
+        "/bin/gdbus",
+    ]) else {
+        return (
+            false,
+            Some("native_shortcuts_portal_probe_unavailable:gdbus".to_string()),
+        );
+    };
+
+    let mut child = match Command::new(gdbus)
         .args([
             "introspect",
             "--session",
