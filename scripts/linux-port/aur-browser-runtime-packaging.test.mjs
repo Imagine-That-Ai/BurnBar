@@ -115,6 +115,7 @@ test('AUR package staging installs canonical Browser Computer Use resources with
     'printf "#!/bin/bash\\nexit 0\\n" >squashfs-root/usr/libexec/openburnbar/text-expansion-engine',
     'chmod 755 squashfs-root/usr/libexec/openburnbar/text-expansion-engine',
     'printf "{\\"schemaVersion\\":1}\\n" >squashfs-root/usr/share/openburnbar/text-expansion/text-expansion-engine.json',
+    'printf "{\\"schemaVersion\\":1,\\"available\\":false}\\n" >squashfs-root/usr/share/openburnbar/text-expansion/fcitx5-openburnbar-addon.json',
     'printf "<component><name>openburnbar</name></component>\\n" >squashfs-root/usr/share/ibus/component/openburnbar.xml',
     'printf peer >squashfs-root/usr/share/openburnbar/appimage-peer-manifest.json',
     'printf sig >squashfs-root/usr/share/openburnbar/appimage-peer-manifest.ed25519.sig'
