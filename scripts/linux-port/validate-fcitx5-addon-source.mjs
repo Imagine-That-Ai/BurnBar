@@ -58,6 +58,10 @@ export function validateFcitx5AddonContract({ root = DEFAULT_ROOT } = {}) {
   if (!Array.isArray(addon.requiredHeaders) || addon.requiredHeaders.length === 0) {
     failures.push('Fcitx5 contract must name the native headers needed for a future build');
   }
+  if (addon.sourceContract !== 'packaging/linux/FCITX5_ADDON_CONTRACT.md'
+      || !fs.existsSync(path.join(root, addon.sourceContract ?? ''))) {
+    failures.push('Fcitx5 contract must point to the checked-in safety contract documentation');
+  }
   if (!addon.promotionBlocker) failures.push('Fcitx5 contract must name its promotion blocker');
 
   for (const packageType of ['deb', 'rpm', 'appimage']) {
