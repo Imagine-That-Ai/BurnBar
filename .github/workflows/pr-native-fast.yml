@@ -48,7 +48,7 @@ jobs:
   detect-native-changes:
     name: Detect native changes
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 10
     outputs:
       native: ${{ steps.filter.outputs.native }}
     steps:

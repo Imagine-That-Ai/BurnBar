@@ -11,6 +11,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -451,22 +452,32 @@ const fastStep = workflowStep(fastGate, "Check all fast jobs passed");
 const fastScript = stepScript(fastStep);
 const fastNeeds = jobNeeds(fastGate);
 
-check("every fast-feedback job leaves enough time for checkout", () => {
+check("every checkout-bearing CI job tolerates a slow checkout", () => {
   // A job whose budget expires during actions/checkout is reported by GitHub as
   // CANCELLED, and the CI Gate aggregator fails closed on a cancelled component
-  // -- so an ordinary slow checkout ejects the whole merge-queue candidate.
-  // This repo's pack is ~866MB and a tip checkout has been observed taking over
-  // three minutes under runner contention. The rule was originally written for
-  // the SQLCipher job alone; nine other jobs still carried 3-4 minute budgets
-  // and were ejecting candidates, so it now applies to every job in the file.
-  const source = readFileSync(join(REPO_ROOT, ".github/workflows/fast-feedback.yml"), "utf8");
-  const tooTight = [...source.matchAll(/^  ([a-z0-9-]+):\n(?:.*\n)*?    timeout-minutes: (\d+)$/gmu)]
-    .map(([, job, minutes]) => [job, Number.parseInt(minutes, 10)])
-    .filter(([, minutes]) => minutes < 6);
+  // -- so an ordinary slow checkout ejects the whole merge-queue candidate. The
+  // pack is ~866MB and a tip checkout has been observed taking 3min+ under
+  // contention. This originally guarded one job (SQLCipher), was widened to
+  // fast-feedback.yml, and is now repo-wide: the required-context detector jobs
+  // (Detect native/dist/windows changes) live in other workflows and were the
+  // ones still ejecting candidates. Any job that runs actions/checkout must
+  // budget >= 6 minutes.
+  const dir = join(REPO_ROOT, ".github/workflows");
+  const offenders = [];
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".yml"))) {
+    const src = readFileSync(join(dir, file), "utf8");
+    for (const m of src.matchAll(/\n  ([a-z0-9_-]+):\n((?:    .*\n|\n)*)/gu)) {
+      const [, job, body] = m;
+      const t = body.match(/^    timeout-minutes: (\d+)$/mu);
+      if (t && Number.parseInt(t[1], 10) < 6 && body.includes("actions/checkout")) {
+        offenders.push(`${file}:${job}=${t[1]}`);
+      }
+    }
+  }
   assert.deepEqual(
-    tooTight,
+    offenders,
     [],
-    `fast-feedback jobs must tolerate a slow checkout (>=6 min): ${JSON.stringify(tooTight)}`,
+    `checkout-bearing jobs must budget >=6 min: ${JSON.stringify(offenders)}`,
   );
 });
 
