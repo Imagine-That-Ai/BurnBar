@@ -72,6 +72,21 @@ describe('P28 SmartHub surface', () => {
     expect(screen.getByText('Discovery')).toBeTruthy();
   });
 
+  it('exposes the typed PixelClock control probe already supported by the native contract', async () => {
+    const command = vi.fn(async (operation: SmartHubOperation) => statusResult(operation));
+    useShellStore.setState({ bridge: bridgeWithCommand(command) });
+    render(<SmartHubSurface />);
+    await waitFor(() => expect(command).toHaveBeenCalledWith('status', expect.anything()));
+    command.mockClear();
+
+    fireEvent.change(screen.getByLabelText('Operation'), { target: { value: 'pixel_clock_control' } });
+    await waitFor(() => expect(command).toHaveBeenCalledWith(
+      'pixel_clock_control',
+      expect.objectContaining({ requestId: expect.stringMatching(/^smarthub-/) })
+    ));
+    expect(screen.getByText('PixelClock control probe')).toBeTruthy();
+  });
+
   it('clears the previous device result while a replacement operation is pending', async () => {
     let resolveDiscover: ((result: SmartHubCommandResult) => void) | undefined;
     const command = vi.fn()

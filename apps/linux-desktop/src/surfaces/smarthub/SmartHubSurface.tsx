@@ -17,6 +17,7 @@ const OPERATIONS: ReadonlyArray<{ value: SmartHubOperation; label: string }> = [
   { value: 'cast_status', label: 'Google Cast status' },
   { value: 'homeassistant_status', label: 'Home Assistant status' },
   { value: 'device', label: 'PixelClock device probe' },
+  { value: 'pixel_clock_control', label: 'PixelClock control probe' },
   { value: 'parity', label: 'All integration status' }
 ];
 
