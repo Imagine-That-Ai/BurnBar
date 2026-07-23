@@ -7,7 +7,12 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { AUDIT_DIRS, classifyAuditResult } from "./check-npm-audit-fail-closed.mjs";
+import {
+  AUDIT_DIRS,
+  AUDIT_ATTEMPTS,
+  classifyAuditResult,
+  runWithRetries,
+} from "./check-npm-audit-fail-closed.mjs";
 
 let passed = 0;
 let failed = 0;
@@ -273,6 +278,46 @@ expectRetryable(
 );
 
 expectRetryable("clean audit is not retryable", { status: 0, stdout: "{}" }, false);
+
+// --- retry driver ---------------------------------------------------------
+// runWithRetries takes the attempt as a callback so the attempt COUNT is
+// provable here without touching the network. An earlier revision of this gate
+// shipped a runner that called itself instead of running npm, which blew the
+// stack in CI while these classifier tests still passed -- so assert on how
+// many times the attempt actually runs.
+function expectAttempts(label, outcomes, wantAttempts) {
+  let calls = 0;
+  const attempt = () => {
+    const outcome = outcomes[Math.min(calls, outcomes.length - 1)];
+    calls += 1;
+    return outcome;
+  };
+  runWithRetries(attempt, { sleep: () => {}, log: () => {} });
+  if (calls === wantAttempts) {
+    console.log(`  \u2713 ${label}`);
+    passed += 1;
+    return;
+  }
+  console.error(`  \u2717 ${label}: attempted ${calls}x, want ${wantAttempts}`);
+  failed += 1;
+}
+
+const RETRYABLE = { ok: false, retryable: true, messages: ["transient"] };
+const FINDING = { ok: false, retryable: false, messages: ["critical"] };
+const CLEAN = { ok: true, retryable: false, messages: ["clean"] };
+
+expectAttempts("a high/critical finding is attempted exactly once", [FINDING], 1);
+expectAttempts("a clean audit is attempted exactly once", [CLEAN], 1);
+expectAttempts(
+  "a persistent transport failure stops at the attempt budget",
+  [RETRYABLE],
+  AUDIT_ATTEMPTS,
+);
+expectAttempts(
+  "a transient failure that recovers stops retrying",
+  [RETRYABLE, CLEAN],
+  2,
+);
 
 console.log(
   `\n${failed === 0 ? "PASS" : "FAIL"}: ${passed} passed, ${failed} failed`,

@@ -121,24 +121,57 @@ export function classifyAuditResult({ dir, status, stdout, stderr, error }) {
 export const AUDIT_ATTEMPTS = 3;
 const RETRY_BACKOFF_SECONDS = [5, 15];
 
-function runAuditOnce(absoluteDir, dir) {
-  // registry.npmjs.org's audit endpoint intermittently answers 400/429/5xx.
-  // npm surfaces that as a non-zero exit with no findings, which this gate
-  // (correctly) fails closed on -- so a registry hiccup ejects merge-queue
-  // candidates. Retry only outcomes that indicate a transport/service problem.
-  // A high/critical finding is marked non-retryable and still fails on the
-  // first attempt, so retries can never launder a real vulnerability.
-  let result = runAuditOnce(absoluteDir, dir);
-  for (let attempt = 1; attempt < AUDIT_ATTEMPTS && result.retryable; attempt += 1) {
-    const backoff = RETRY_BACKOFF_SECONDS[attempt - 1] ?? 15;
-    console.log(
-      `    npm audit for ${dir} failed transiently; retrying in ${backoff}s ` +
-        `(attempt ${attempt + 1}/${AUDIT_ATTEMPTS})`,
+function sleepSeconds(seconds) {
+  spawnSync("sleep", [String(seconds)]);
+}
+
+/**
+ * Run `attempt` until it yields a non-retryable outcome or the budget is spent.
+ *
+ * registry.npmjs.org's audit endpoint intermittently answers 400/429/5xx. npm
+ * surfaces that as a non-zero exit with no findings, which this gate correctly
+ * fails closed on -- so a registry hiccup ejects merge-queue candidates and
+ * discards hours of gate work. Only transport/service outcomes are retryable;
+ * a high/critical finding is non-retryable and still fails on attempt 1, so a
+ * retry can never launder a real vulnerability.
+ *
+ * Kept pure (attempt/sleep/log injected) so the self-test can prove the attempt
+ * count directly instead of hitting the network.
+ */
+export function runWithRetries(
+  attempt,
+  { attempts = AUDIT_ATTEMPTS, sleep = sleepSeconds, log = console.log, label = "npm audit" } = {},
+) {
+  let result = attempt();
+  for (let index = 1; index < attempts && result.retryable; index += 1) {
+    const backoff = RETRY_BACKOFF_SECONDS[index - 1] ?? 15;
+    log(
+      `    ${label} failed transiently; retrying in ${backoff}s ` +
+        `(attempt ${index + 1}/${attempts})`,
     );
-    spawnSync("sleep", [String(backoff)]);
-    result = runAuditOnce(absoluteDir, dir);
+    sleep(backoff);
+    result = attempt();
   }
   return result;
+}
+
+function runAuditOnce(absoluteDir, dir) {
+  const result = spawnSync(
+    "npm",
+    ["audit", "--prefix", absoluteDir, "--audit-level=high", "--json"],
+    {
+      encoding: "utf8",
+      maxBuffer: 20 * 1024 * 1024,
+    },
+  );
+
+  return classifyAuditResult({
+    dir,
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    error: result.error,
+  });
 }
 
 function auditDirectory(repoRoot, dir) {
@@ -151,23 +184,9 @@ function auditDirectory(repoRoot, dir) {
     };
   }
 
-  // registry.npmjs.org's audit endpoint intermittently answers 400/429/5xx.
-  // npm surfaces that as a non-zero exit with no findings, which this gate
-  // (correctly) fails closed on -- so a registry hiccup ejects merge-queue
-  // candidates. Retry only outcomes that indicate a transport/service problem.
-  // A high/critical finding is marked non-retryable and still fails on the
-  // first attempt, so retries can never launder a real vulnerability.
-  let result = runAuditOnce(absoluteDir, dir);
-  for (let attempt = 1; attempt < AUDIT_ATTEMPTS && result.retryable; attempt += 1) {
-    const backoff = RETRY_BACKOFF_SECONDS[attempt - 1] ?? 15;
-    console.log(
-      `    npm audit for ${dir} failed transiently; retrying in ${backoff}s ` +
-        `(attempt ${attempt + 1}/${AUDIT_ATTEMPTS})`,
-    );
-    spawnSync("sleep", [String(backoff)]);
-    result = runAuditOnce(absoluteDir, dir);
-  }
-  return result;
+  return runWithRetries(() => runAuditOnce(absoluteDir, dir), {
+    label: `npm audit for ${dir}`,
+  });
 }
 
 export function runAuditGate(repoRoot = REPO_ROOT, dirs = AUDIT_DIRS) {
