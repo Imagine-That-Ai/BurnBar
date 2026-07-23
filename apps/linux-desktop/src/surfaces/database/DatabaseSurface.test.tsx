@@ -265,11 +265,13 @@ describe('DatabaseSurface', () => {
       byteCount: 96,
       formatVersion: 1
     }));
+    const pickRecoveryBundleDestination = vi.fn(async () => '/tmp/recovery.obb');
     useShellStore.setState({
       bridge: {
         databaseRecoveryBundleStatus,
         databaseRecoveryBundleImport,
-        databaseRecoveryBundleExport
+        databaseRecoveryBundleExport,
+        pickRecoveryBundleDestination
       } as unknown as LinuxShellBridge,
       fixtureMode: false
     });
@@ -284,7 +286,8 @@ describe('DatabaseSurface', () => {
     expect((screen.getByRole('button', { name: /export bundle/i }) as HTMLButtonElement).disabled).toBe(true);
     const importButton = screen.getByRole('button', { name: /import bundle/i });
     expect((importButton as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText(/Import path/i), { target: { value: '/tmp/recovery.obb' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Choose recovery bundle import source' }));
+    await waitFor(() => expect(screen.getByText('/tmp/recovery.obb')).toBeTruthy());
     fireEvent.change(screen.getByLabelText(/Import passphrase/i), { target: { value: 'passphrase' } });
     expect((importButton as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(importButton);
@@ -294,6 +297,40 @@ describe('DatabaseSurface', () => {
       passphrase: 'passphrase'
     });
     expect(databaseRecoveryBundleExport).not.toHaveBeenCalled();
+  });
+
+  it('fails closed for recovery bundle paths when the native picker is absent', async () => {
+    vi.spyOn(useSystemStore.getState(), 'loadDb').mockImplementation(async () => {});
+    vi.spyOn(useDatabaseStore.getState(), 'loadWorkspace').mockImplementation(async () => {});
+    const databaseRecoveryBundleStatus = vi.fn(async () => ({
+      phase: 'ready' as const,
+      code: 'ready',
+      message: '',
+      recommendedAction: 'none' as const,
+      canExport: true,
+      canImport: true,
+      databasePresent: true,
+      databaseIntegrityVerified: true,
+      restartRequired: false
+    }));
+    useShellStore.setState({
+      bridge: {
+        databaseRecoveryBundleStatus,
+        databaseRecoveryBundleExport: vi.fn(),
+        databaseRecoveryBundleImport: vi.fn()
+      } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+    useSystemStore.setState({
+      db: { sqlcipherOk: true, migrationVersion: 54, sizeBytes: 4096, walMode: true },
+      loading: false,
+      error: null
+    });
+    render(<DatabaseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /system/i }));
+    await waitFor(() => expect(screen.getByText(/Recovery bundle controls require a packaged Linux daemon/i)).toBeTruthy());
+    expect(screen.queryByRole('button', { name: 'Choose recovery bundle export destination' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Choose recovery bundle import source' })).toBeNull();
   });
 
   it('uses native save/open pickers for encrypted database snapshots', async () => {
@@ -346,6 +383,43 @@ describe('DatabaseSurface', () => {
     await waitFor(() => expect(screen.getByText('/tmp/restore.snapshot')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Restore encrypted snapshot' }));
     await waitFor(() => expect(databaseRestore).toHaveBeenCalledWith('/tmp/restore.snapshot', undefined));
+  });
+
+  it('announces native picker cancellation and restores focus to its trigger', async () => {
+    vi.spyOn(useSystemStore.getState(), 'loadDb').mockImplementation(async () => {});
+    vi.spyOn(useDatabaseStore.getState(), 'loadWorkspace').mockImplementation(async () => {});
+    const pickDatabaseSnapshotPath = vi.fn(async () => null);
+    useShellStore.setState({
+      bridge: {
+        databaseSnapshot: vi.fn(),
+        databaseRestore: vi.fn(),
+        pickDatabaseSnapshotPath
+      } as unknown as LinuxShellBridge,
+      fixtureMode: false
+    });
+    useSystemStore.setState({
+      db: { sqlcipherOk: true, migrationVersion: 54, sizeBytes: 4096, walMode: true },
+      loading: false,
+      error: null
+    });
+
+    render(<DatabaseSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /system/i }));
+    await waitFor(() => expect(screen.getByText('Encrypted snapshot & recovery')).toBeTruthy());
+
+    const exportPicker = screen.getByRole('button', { name: 'Choose snapshot export destination' });
+    exportPicker.focus();
+    fireEvent.click(exportPicker);
+    await waitFor(() => expect(screen.getByText('Snapshot destination selection canceled.')).toBeTruthy());
+    expect(document.activeElement).toBe(exportPicker);
+
+    const importPicker = screen.getByRole('button', { name: 'Choose snapshot restore source' });
+    importPicker.focus();
+    fireEvent.click(importPicker);
+    await waitFor(() => expect(screen.getByText('Snapshot restore source selection canceled.')).toBeTruthy());
+    expect(document.activeElement).toBe(importPicker);
+    expect(pickDatabaseSnapshotPath).toHaveBeenCalledWith('export');
+    expect(pickDatabaseSnapshotPath).toHaveBeenCalledWith('import');
   });
 
   it('fails closed for snapshot controls when the native picker is absent', async () => {

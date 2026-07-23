@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLaneLoad } from '../../state/useLaneLoad.js';
 import { Banner } from '../../components/Banner.js';
 import { OfflineNotice } from '../../components/OfflineNotice.js';
@@ -127,11 +127,15 @@ function DatabaseRecoveryBundleControls({
   const loadRecoveryStatus = useDatabaseStore((state) => state.loadRecoveryStatus);
   const exportRecoveryBundle = useDatabaseStore((state) => state.exportRecoveryBundle);
   const importRecoveryBundle = useDatabaseStore((state) => state.importRecoveryBundle);
-  const exportAvailable = !fixtureMode && typeof bridge?.databaseRecoveryBundleExport === 'function';
-  const importAvailable = !fixtureMode && typeof bridge?.databaseRecoveryBundleImport === 'function';
+  const pickerAvailable = !fixtureMode && typeof bridge?.pickRecoveryBundleDestination === 'function';
+  const exportAvailable = pickerAvailable && typeof bridge?.databaseRecoveryBundleExport === 'function';
+  const importAvailable = pickerAvailable && typeof bridge?.databaseRecoveryBundleImport === 'function';
   const available = exportAvailable || importAvailable;
   const recoveryStatus = statusAction.result;
   const busy = exportAction.pending ? 'export' : importAction.pending ? 'import' : null;
+  const [pickerBusy, setPickerBusy] = useState<'export' | 'import' | null>(null);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  const recoveryBusy = busy !== null || pickerBusy !== null;
 
   useEffect(() => {
     void loadRecoveryStatus();
@@ -170,7 +174,7 @@ function DatabaseRecoveryBundleControls({
             type="button"
             className="ghost"
             onClick={() => void loadRecoveryStatus()}
-            disabled={statusAction.pending || busy !== null}
+            disabled={statusAction.pending || recoveryBusy}
             aria-busy={statusAction.pending}
           >
             {statusAction.pending ? 'Refreshing...' : 'Refresh recovery status'}
@@ -181,18 +185,33 @@ function DatabaseRecoveryBundleControls({
         <p className="muted" role="status">Recovery bundle controls require a packaged Linux daemon with SQLCipher and native secret storage.</p>
       ) : (
         <>
+          {pickerError ? <p className="muted" role="alert">{pickerError}</p> : null}
           {exportAvailable ? (
             <div className="actions">
-              <label>
-                Export path
-                <input
-                  type="text"
-                  value={exportPath}
-                  onChange={(event) => setExportPath(event.target.value)}
-                  placeholder="/home/user/openburnbar-recovery.obb"
-                  autoComplete="off"
-                />
-              </label>
+              <div className="setting-field">
+                <span>Export destination</span>
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={recoveryBusy}
+                    aria-busy={pickerBusy === 'export'}
+                    aria-label="Choose recovery bundle export destination"
+                    onClick={() => {
+                      if (!bridge?.pickRecoveryBundleDestination || recoveryBusy) return;
+                      setPickerBusy('export');
+                      setPickerError(null);
+                      void bridge.pickRecoveryBundleDestination('export')
+                        .then((path) => { if (path) setExportPath(path); })
+                        .catch((cause) => setPickerError(cause instanceof Error ? cause.message : 'Could not choose a recovery bundle destination.'))
+                        .finally(() => setPickerBusy(null));
+                    }}
+                  >
+                    {pickerBusy === 'export' ? 'Opening...' : 'Choose destination'}
+                  </button>
+                  {exportPath ? <code>{exportPath}</code> : <span className="muted">No destination selected</span>}
+                </div>
+              </div>
               <label>
                 Export passphrase
                 <input
@@ -206,7 +225,7 @@ function DatabaseRecoveryBundleControls({
                 type="button"
                 className="ghost"
                 onClick={() => void exportBundle()}
-                disabled={busy !== null || recoveryStatus?.canExport !== true || exportPath.trim().length === 0 || exportPassphrase.length === 0}
+                disabled={recoveryBusy || recoveryStatus?.canExport !== true || exportPath.trim().length === 0 || exportPassphrase.length === 0}
               >
                 {busy === 'export' ? 'Exporting...' : 'Export bundle'}
               </button>
@@ -216,16 +235,30 @@ function DatabaseRecoveryBundleControls({
           )}
           {importAvailable ? (
             <div className="actions">
-              <label>
-                Import path
-                <input
-                  type="text"
-                  value={importPath}
-                  onChange={(event) => setImportPath(event.target.value)}
-                  placeholder="/home/user/openburnbar-recovery.obb"
-                  autoComplete="off"
-                />
-              </label>
+              <div className="setting-field">
+                <span>Import source</span>
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={recoveryBusy}
+                    aria-busy={pickerBusy === 'import'}
+                    aria-label="Choose recovery bundle import source"
+                    onClick={() => {
+                      if (!bridge?.pickRecoveryBundleDestination || recoveryBusy) return;
+                      setPickerBusy('import');
+                      setPickerError(null);
+                      void bridge.pickRecoveryBundleDestination('import')
+                        .then((path) => { if (path) setImportPath(path); })
+                        .catch((cause) => setPickerError(cause instanceof Error ? cause.message : 'Could not choose a recovery bundle source.'))
+                        .finally(() => setPickerBusy(null));
+                    }}
+                  >
+                    {pickerBusy === 'import' ? 'Opening...' : 'Choose source'}
+                  </button>
+                  {importPath ? <code>{importPath}</code> : <span className="muted">No source selected</span>}
+                </div>
+              </div>
               <label>
                 Import passphrase
                 <input
@@ -239,7 +272,7 @@ function DatabaseRecoveryBundleControls({
                 type="button"
                 className="ghost"
                 onClick={() => void importBundle()}
-                disabled={busy !== null || recoveryStatus?.canImport !== true || importPath.trim().length === 0 || importPassphrase.length === 0}
+                disabled={recoveryBusy || recoveryStatus?.canImport !== true || importPath.trim().length === 0 || importPassphrase.length === 0}
               >
                 {busy === 'import' ? 'Importing...' : 'Import bundle'}
               </button>
@@ -287,6 +320,9 @@ export function DatabaseSurface() {
   const [restorePath, setRestorePath] = useState('');
   const [snapshotPickerBusy, setSnapshotPickerBusy] = useState(false);
   const [snapshotPickerError, setSnapshotPickerError] = useState<string | null>(null);
+  const [snapshotPickerNotice, setSnapshotPickerNotice] = useState<string | null>(null);
+  const snapshotExportPickerRef = useRef<HTMLButtonElement>(null);
+  const snapshotImportPickerRef = useRef<HTMLButtonElement>(null);
   const snapshotExportAvailable = !fixtureMode
     && typeof bridge?.databaseSnapshot === 'function'
     && typeof bridge?.pickDatabaseSnapshotPath === 'function';
@@ -302,16 +338,22 @@ export function DatabaseSurface() {
     if (!bridge?.pickDatabaseSnapshotPath || snapshotPickerBusy) return;
     setSnapshotPickerBusy(true);
     setSnapshotPickerError(null);
+    setSnapshotPickerNotice(null);
     try {
       const path = await bridge.pickDatabaseSnapshotPath(mode);
       if (path) {
         if (mode === 'export') setSnapshotPath(path);
         else setRestorePath(path);
+      } else {
+        setSnapshotPickerNotice(
+          mode === 'export' ? 'Snapshot destination selection canceled.' : 'Snapshot restore source selection canceled.'
+        );
       }
     } catch (cause) {
       setSnapshotPickerError(cause instanceof Error ? cause.message : 'Could not choose a database snapshot path.');
     } finally {
       setSnapshotPickerBusy(false);
+      (mode === 'export' ? snapshotExportPickerRef : snapshotImportPickerRef).current?.focus();
     }
   };
 
@@ -702,6 +744,7 @@ export function DatabaseSurface() {
                       <button
                         type="button"
                         className="ghost"
+                        ref={snapshotExportPickerRef}
                         disabled={snapshotPickerBusy || snapshotAction.pending}
                         aria-busy={snapshotPickerBusy}
                         aria-label="Choose snapshot export destination"
@@ -727,6 +770,7 @@ export function DatabaseSurface() {
               ) : (
                 <p className="muted" role="status">Encrypted snapshot export requires the packaged native picker.</p>
               )}
+              {snapshotPickerNotice ? <p className="muted" role="status" aria-live="polite">{snapshotPickerNotice}</p> : null}
               {snapshotPickerError ? <p className="muted" role="alert">{snapshotPickerError}</p> : null}
               {snapshotAction.error ? <p className="muted" role="alert">{snapshotAction.error}</p> : null}
               {snapshotAction.result ? (
@@ -742,6 +786,7 @@ export function DatabaseSurface() {
                       <button
                         type="button"
                         className="ghost"
+                        ref={snapshotImportPickerRef}
                         disabled={snapshotPickerBusy || restoreAction.pending}
                         aria-busy={snapshotPickerBusy}
                         aria-label="Choose snapshot restore source"
