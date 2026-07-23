@@ -44,6 +44,10 @@
   --pro-band-radius: 14px;
   --pro-foil-stroke: 1px;
 
+  /* DesktopWallpaperBackground palettes. Kept in the palette layer so app
+   * layout CSS remains semantic and skin-aware. */
+  --wallpaper-base: var(--color-ink-void);
+
   /* Prefer macOS cool slate over editorial ink for the shell canvas */
   --color-ink-void: var(--macos-bg);
   --color-ink-base: var(--macos-bg);
@@ -204,6 +208,18 @@
   --glass-theme-wash-bottom: var(--macos-frost);
   --glass-theme-rim: var(--macos-frost);
 }
+
+:root[data-wallpaper='macosDesktop'] { --wallpaper-base: radial-gradient(ellipse 85% 70% at 16% 12%, #2e74ed 0%, transparent 58%), radial-gradient(ellipse 72% 64% at 86% 76%, #fa5053 0%, transparent 58%), radial-gradient(ellipse 58% 48% at 56% 46%, #ffa800 0%, transparent 62%), #0d1117; }
+:root[data-wallpaper='midnight'] { --wallpaper-base: radial-gradient(ellipse 90% 74% at 20% 10%, #0f2d64 0%, transparent 58%), radial-gradient(ellipse 72% 60% at 86% 82%, #1d4c91 0%, transparent 62%), #050816; }
+:root[data-wallpaper='amoledBlack'] { --wallpaper-base: #000; }
+:root[data-wallpaper='graphite'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 18% 12%, #4d5360 0%, transparent 58%), radial-gradient(ellipse 74% 62% at 88% 82%, #1b202a 0%, transparent 64%), #101216; }
+:root[data-wallpaper='warmEmber'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 18% 10%, #783916 0%, transparent 58%), radial-gradient(ellipse 70% 62% at 88% 82%, #3c160e 0%, transparent 62%), #1d0d0a; }
+:root[data-wallpaper='deepIndigo'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 16% 12%, #2e1e79 0%, transparent 58%), radial-gradient(ellipse 70% 62% at 88% 80%, #5d45ba 0%, transparent 62%), #100e28; }
+:root[data-wallpaper='auroraTeal'] { --wallpaper-base: radial-gradient(ellipse 82% 68% at 18% 12%, #0d5a64 0%, transparent 58%), radial-gradient(ellipse 70% 62% at 88% 82%, #2f9b9e 0%, transparent 62%), #06181a; }
+:root[data-wallpaper='sunsetCrimson'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 18% 12%, #6c1e34 0%, transparent 58%), radial-gradient(ellipse 72% 62% at 88% 80%, #b83e53 0%, transparent 62%), #19070d; }
+:root[data-wallpaper='cyberpunkViolet'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 16% 10%, #641f8f 0%, transparent 56%), radial-gradient(ellipse 72% 62% at 88% 82%, #b23cbb 0%, transparent 62%), #180b24; }
+:root[data-wallpaper='forestMoss'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 18% 12%, #184c2b 0%, transparent 58%), radial-gradient(ellipse 72% 62% at 88% 82%, #4b8f4d 0%, transparent 62%), #08160d; }
+:root[data-wallpaper='solarFlare'] { --wallpaper-base: radial-gradient(ellipse 82% 70% at 18% 10%, #9a5c16 0%, transparent 58%), radial-gradient(ellipse 72% 62% at 88% 82%, #d2a437 0%, transparent 62%), #191108; }
 
 /* User-controlled Liquid Glass material density. Reduce Transparency on the
  * body still wins over these visual presets for accessibility. */

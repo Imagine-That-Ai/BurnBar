@@ -54,6 +54,12 @@ wash, selected-tab/segmented rims, icon tint, and focus glow. Pure mapping
 tests and the CSS token contract pass; installed compositor visual comparisons
 remain required.
 
+**Implementation checkpoint (2026-07-23, desktop wallpaper palette):** Linux
+now exposes all eleven macOS desktop backdrop palettes in Appearance settings,
+persists the validated choice locally, and applies the palette beneath both
+the live kernel canvas and the Canvas2D/CSS fallback. Native desktop-wallpaper
+installation and compositor screenshots remain external evidence.
+
 ---
 
 ## 1. Current state snapshot

@@ -108,6 +108,17 @@ describe('VAL-TOKENS design token contract', () => {
     expect(sidebarCss).toContain('--glass-theme-tint');
   });
 
+  it('declares all macOS desktop wallpaper palette selectors', () => {
+    for (const wallpaper of [
+      'macosDesktop', 'midnight', 'amoledBlack', 'graphite', 'warmEmber', 'deepIndigo',
+      'auroraTeal', 'sunsetCrimson', 'cyberpunkViolet', 'forestMoss', 'solarFlare'
+    ]) {
+      expect(liquidGlassTokensCss).toContain(`:root[data-wallpaper='${wallpaper}']`);
+    }
+    expect(liquidGlassTokensCss).toContain('--wallpaper-base:');
+    expect(appCss).toContain('var(--wallpaper-base');
+  });
+
   it('declares a dark native-control color scheme for WebKitGTK', () => {
     expect(appCss).toMatch(/:root\s*\{[^}]*color-scheme:\s*dark;/s);
   });

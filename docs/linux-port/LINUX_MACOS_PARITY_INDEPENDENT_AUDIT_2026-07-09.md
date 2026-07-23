@@ -171,6 +171,18 @@ This closes the source-level ProTheme token gap. Installed membership visual
 receipts, entitlement-state coverage, and live billing/account evidence remain
 required; the strict ledger remains **0/40 product** and **0/7 environment**.
 
+### Linux desktop wallpaper palette — 2026-07-23
+
+Linux Appearance settings now carry the full eleven-case macOS
+`DesktopWallpaperBackground` vocabulary. The validated local preference drives
+the root dataset and CSS palette beneath both the live kernel canvas and the
+Canvas2D/CSS fallback, so WebGL2 absence does not erase the selected mood.
+Selection is exposed as a native Linux select control with descriptive copy.
+
+This closes the source-level wallpaper palette gap. Native desktop-wallpaper
+installation, live wallpaper panels, and installed compositor receipts remain
+open; the strict ledger remains **0/40 product** and **0/7 environment**.
+
 ## Integration closeout — 2026-07-21
 
 ### Live UTM session re-open — 2026-07-21 (Grok)
