@@ -35,7 +35,7 @@ public enum BurnBarLinuxOnboardingError: Error, LocalizedError, Equatable {
 }
 
 public actor BurnBarLinuxOnboardingService {
-    public typealias Probe = @Sendable () throws -> String
+    public typealias Probe = @Sendable () async throws -> String
 
     public static let orderedSteps: [(BurnBarLinuxOnboardingStepID, BurnBarLinuxOnboardingRequirement)] = [
         (.daemon, .required),
@@ -106,11 +106,21 @@ public actor BurnBarLinuxOnboardingService {
         }
         self.optionalProbes = optionalProbes
         self.providerPathsProbe = providerPathsProbe ?? {
-            try BurnBarLinuxOnboardingService.verifyProviderData(
+            let detail = try BurnBarLinuxOnboardingService.verifyProviderData(
                 at: stateURL.deletingLastPathComponent(),
                 providerCount: providerCatalogCount,
                 fileManager: fileManager
             )
+            guard let configStore else {
+                return detail
+            }
+            let routeProviderIDs = try await configStore.onboardingRoutingProviderIDs()
+            guard !routeProviderIDs.isEmpty else {
+                throw BurnBarLinuxOnboardingError.providerPathsUnavailable(
+                    "No enabled routing provider has a local endpoint or readable credential; connect a provider and retry."
+                )
+            }
+            return "\(detail) Daemon routing is ready through \(routeProviderIDs.joined(separator: ", "))."
         }
     }
 
@@ -172,7 +182,7 @@ public actor BurnBarLinuxOnboardingService {
                 throw BurnBarLinuxOnboardingError.invalidAction(step: request.stepID, action: request.action)
             }
             do {
-                let detail = try probe()
+                let detail = try await probe()
                 updatedStep = terminalStep(from: step, state: .verified, detail: detail)
             } catch {
                 updatedStep = BurnBarLinuxOnboardingStepSnapshot(

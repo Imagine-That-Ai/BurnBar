@@ -71,6 +71,21 @@ failures. `node_modules/` and `dist/` were removed after verification. This is
 source/build evidence only and does not advance the strict **0/40 product** or
 **0/7 environment** certification counters.
 
+### Onboarding provider-route verification — 2026-07-22
+
+The required Linux `provider_paths` onboarding probe now performs an
+asynchronous daemon-owned configuration read in addition to checking the
+writable XDG support directory and bundled catalog. It only verifies the step
+when at least one enabled routing provider has either a Linux-local endpoint or
+a readable credential; disabled providers and credential-less cloud catalog
+rows no longer satisfy first-run setup. The config store exposes this as a
+redacted provider-ID projection, so no credential material crosses the
+onboarding contract. Focused daemon target compilation passed after the change,
+and the focused XCTest bundle compiled; execution on the host remains blocked
+by the existing missing `SQLCipher.framework` runtime loader. This closes a
+source-level onboarding false-green path but does not advance the strict
+**0/40 product** or **0/7 environment** certification counters.
+
 ## Integration closeout — 2026-07-21
 
 ### Live UTM session re-open — 2026-07-21 (Grok)

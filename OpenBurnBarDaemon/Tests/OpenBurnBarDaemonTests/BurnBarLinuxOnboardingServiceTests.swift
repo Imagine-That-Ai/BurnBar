@@ -334,6 +334,55 @@ final class BurnBarLinuxOnboardingServiceTests: XCTestCase {
         XCTAssertEqual(verified.currentStepID, .cloudIdentity)
     }
 
+    func testDefaultProviderProbeRequiresAnEnabledRoutingProviderWhenConfigStoreIsInjected() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-onboarding-config-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let configStore = BurnBarConfigStore(
+            fileURL: rootURL.appendingPathComponent("provider-config.json"),
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "onboarding-config-tests")
+        )
+        let service = BurnBarLinuxOnboardingService(
+            stateURL: rootURL.appendingPathComponent("onboarding.json"),
+            daemonProbe: { "daemon verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerCatalogCount: 1,
+            configStore: configStore
+        )
+
+        _ = try await verify(.daemon, using: service)
+        _ = try await verify(.secretStore, using: service)
+        let verified = try await verify(.providerPaths, using: service)
+        let providerStep = try XCTUnwrap(verified.steps.first(where: { $0.id == .providerPaths }))
+        XCTAssertEqual(providerStep.state, .verified)
+        XCTAssertTrue(providerStep.detail?.contains("Daemon routing is ready through") == true)
+
+        let snapshot = try await configStore.snapshot()
+        for providerID in ["codex", "ollama", "ollama-local"] {
+            guard var settings = snapshot.providerSettings(id: providerID) else { continue }
+            settings.isEnabled = false
+            _ = try await configStore.upsertProvider(settings)
+        }
+        let blocked = BurnBarLinuxOnboardingService(
+            stateURL: rootURL.appendingPathComponent("blocked-onboarding.json"),
+            daemonProbe: { "daemon verified" },
+            secretStoreProbe: { "secret store verified" },
+            providerCatalogCount: 1,
+            configStore: configStore
+        )
+        _ = try await verify(.daemon, using: blocked)
+        _ = try await verify(.secretStore, using: blocked)
+        let blockedSnapshot = try await verify(.providerPaths, using: blocked)
+        XCTAssertEqual(blockedSnapshot.steps.first(where: { $0.id == .providerPaths })?.state, .blocked)
+        XCTAssertTrue(
+            blockedSnapshot.steps.first(where: { $0.id == .providerPaths })?.detail?.contains("No enabled routing provider") == true
+        )
+    }
+
     private func makeService(stateURL: URL) -> BurnBarLinuxOnboardingService {
         BurnBarLinuxOnboardingService(
             stateURL: stateURL,
