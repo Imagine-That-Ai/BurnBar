@@ -45,7 +45,7 @@ private final class DBByteCompatBundleMarker {}
 @MainActor
 final class DatabaseByteCompatVectorTests: XCTestCase {
 
-    private let fixtureBaseName = "openburnbar-db-compat-v56"
+    private let fixtureBaseName = "openburnbar-db-compat-v57"
     private let vectorBaseName = "openburnbar-db-compat-vector"
     private let paramsBaseName = "openburnbar-db-compat-params-observed"
 
@@ -100,8 +100,8 @@ final class DatabaseByteCompatVectorTests: XCTestCase {
             "Migrator endpoint changed — regenerate the DB-compat fixture + vector."
         )
         XCTAssertGreaterThanOrEqual(
-            OpenBurnBarDatabase.migrator.migrations.count, 57,
-            "Expected at least 57 registered migrations (v1..v56 + v51a interstitial)."
+            OpenBurnBarDatabase.migrator.migrations.count, 58,
+            "Expected at least 58 registered migrations (v1..v57 + v51a interstitial)."
         )
     }
 

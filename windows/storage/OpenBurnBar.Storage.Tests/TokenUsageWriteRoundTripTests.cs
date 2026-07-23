@@ -18,15 +18,15 @@ namespace OpenBurnBar.Storage.Tests;
 /// </summary>
 public sealed class TokenUsageWriteRoundTripTests
 {
-    // Ground-truth invariants of the committed v56 fixture, observed by opening it
+    // Ground-truth invariants of the committed v57 fixture, observed by opening it
     // and reproducing DatabaseByteCompatVector.computeSchemaHash byte-for-byte.
     // Pinned as literals so corruption or an accidental migration is caught, not
     // merely self-consistency.
-    private const string FixtureName = "openburnbar-db-compat-v56.sqlcipher";
+    private const string FixtureName = "openburnbar-db-compat-v57.sqlcipher";
     private const string ExpectedSchemaHash =
-        "193559c5f43cc57f249279afe9e334ff5df9bbe2d81c7fb9a90743a6c26c2950";
-    private const string ExpectedMigrationEndpoint = "v56_parser_checkpoint_file_manifest";
-    private const long ExpectedMigrationCount = 57;
+        "01cc2f514f88f7921b5b05088afc4fed3cda6e43a5a5b1328eb07460c47ce2b3";
+    private const string ExpectedMigrationEndpoint = "v57_execution_source_attribution";
+    private const long ExpectedMigrationCount = 58;
     private const long ExpectedUserVersion = 0;
 
     private static string FixtureSource =>
@@ -135,6 +135,10 @@ public sealed class TokenUsageWriteRoundTripTests
                 EndTime = "2026-07-03 00:01:00.000",
                 CreatedAt = "2026-07-03 00:02:00.000",
                 UsageSource = "measured",
+                ExecutionSourceID = "visual-studio-code",
+                ExecutionSourceName = "Visual Studio Code",
+                ExecutionSourceKind = "ide",
+                ExecutionSourceConfidence = "exact",
                 IsRemote = false,
                 ProvenanceMethod = "api",
                 ProvenanceConfidence = "exact",
@@ -163,6 +167,10 @@ public sealed class TokenUsageWriteRoundTripTests
                 Assert.Equal(record.StartTime, readBack.StartTime);
                 Assert.Equal(record.EndTime, readBack.EndTime);
                 Assert.Equal(record.ProvenanceConfidence, readBack.ProvenanceConfidence);
+                Assert.Equal(record.ExecutionSourceID, readBack.ExecutionSourceID);
+                Assert.Equal(record.ExecutionSourceName, readBack.ExecutionSourceName);
+                Assert.Equal(record.ExecutionSourceKind, readBack.ExecutionSourceKind);
+                Assert.Equal(record.ExecutionSourceConfidence, readBack.ExecutionSourceConfidence);
 
                 // ── (4) Schema hash UNCHANGED — no accidental migration/corruption
                 string afterHash = SqlCipherConnection.ComputeSchemaHash(connection);
@@ -206,6 +214,10 @@ public sealed class TokenUsageWriteRoundTripTests
                 StartTime = "2026-07-03 00:00:00.000",
                 EndTime = "2026-07-03 00:01:00.000",
                 CreatedAt = "2026-07-03 00:02:00.000",
+                ExecutionSourceID = "cursor",
+                ExecutionSourceName = "Cursor",
+                ExecutionSourceKind = "ide",
+                ExecutionSourceConfidence = "exact",
             };
 
             long countBefore;
@@ -233,6 +245,13 @@ public sealed class TokenUsageWriteRoundTripTests
                     connection,
                     "SELECT totalTokens FROM token_usage WHERE provider='WindowsPeer' AND sessionId='s-win-upsert' AND model='opus-4.8'");
                 Assert.Equal(999, totals); // the upsert updated totals
+
+                TokenUsageRecord? readBack = TokenUsageWriteSeam.ReadTokenUsage(connection, record.Id);
+                Assert.NotNull(readBack);
+                Assert.Equal("cursor", readBack!.ExecutionSourceID);
+                Assert.Equal("Cursor", readBack.ExecutionSourceName);
+                Assert.Equal("ide", readBack.ExecutionSourceKind);
+                Assert.Equal("exact", readBack.ExecutionSourceConfidence);
 
                 Assert.Equal(hashBefore, SqlCipherConnection.ComputeSchemaHash(connection));
             }

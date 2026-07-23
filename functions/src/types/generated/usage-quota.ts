@@ -12,6 +12,10 @@ export interface UsageEventDoc {
   sessionId?: string;
   deviceId?: string;
   sourceDeviceId?: string;
+  executionSourceID?: string;
+  executionSourceName?: string;
+  executionSourceKind?: string;
+  executionSourceConfidence?: string;
   inputTokens?: number;
   outputTokens?: number;
   cacheReadTokens?: number;
