@@ -79,10 +79,13 @@ final class AdditionalLocalUsageParsersTests: XCTestCase {
     func testOpenClaudeReadsClaudeCompatibleProjectTranscriptAndPreservesProviderIdentity() async throws {
         let root = try makeDirectory("openclaude")
         defer { remove(root) }
+        let assistantLine = #"{"type":"assistant","timestamp":"2026-07-01T00:00:01Z","sessionId":"openclaude-session","cwd":"/tmp/openclaude-demo","#
+            + #""message":{"role":"assistant","model":"claude-3-7-sonnet","content":[{"type":"text","text":"done"}],"#
+            + #""usage":{"input_tokens":19,"output_tokens":5,"cache_read_input_tokens":2,"cache_creation_input_tokens":1}}}"#
         try write(
             """
             {"type":"user","timestamp":"2026-07-01T00:00:00Z","sessionId":"openclaude-session","cwd":"/tmp/openclaude-demo","message":{"role":"user","content":[{"type":"text","text":"inspect"}]}}
-            {"type":"assistant","timestamp":"2026-07-01T00:00:01Z","sessionId":"openclaude-session","cwd":"/tmp/openclaude-demo","message":{"role":"assistant","model":"claude-3-7-sonnet","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":19,"output_tokens":5,"cache_read_input_tokens":2,"cache_creation_input_tokens":1}}}
+            \(assistantLine)
             """,
             to: root.appendingPathComponent("-Users-test-Project/openclaude-session.jsonl")
         )
