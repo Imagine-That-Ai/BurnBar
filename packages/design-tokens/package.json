@@ -20,5 +20,8 @@
   "devDependencies": {
     "style-dictionary": "^5.0.0"
   },
-  "license": "AGPL-3.0-only"
+  "license": "AGPL-3.0-only",
+  "overrides": {
+    "brace-expansion": "^5.0.8"
+  }
 }
