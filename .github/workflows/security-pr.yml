@@ -47,6 +47,15 @@ permissions:
   security-events: write
   pull-requests: write
 
+# Agent branches push repeatedly, and without this every push left the previous
+# run of this workflow occupying a runner slot until it finished on a commit
+# nobody was waiting for. Only superseded pull_request runs are cancelled --
+# `push: main` runs are the RR-17 direct-push backstop and MUST always complete,
+# as must merge_group runs, so the expression deliberately excludes both.
+concurrency:
+  group: security-pr-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   secret-detection:
     name: Secret Detection (gitleaks)

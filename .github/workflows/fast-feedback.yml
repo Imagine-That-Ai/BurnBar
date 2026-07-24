@@ -500,7 +500,13 @@ jobs:
         run: |
           set -euo pipefail
           archive="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
-          curl -fsSLO "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${archive}"
+          # github.com/*/releases/download intermittently answers 504 under load,
+          # which failed this gate on the FIRST and only attempt. --retry alone
+          # does not cover HTTP error responses on every curl build, so pair it
+          # with --retry-all-errors. The SHA256 check below still pins the bits.
+          curl -fsSLO \
+            --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 15 \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${archive}"
           printf '%s  %s\n' "${SHELLCHECK_SHA256}" "${archive}" | sha256sum -c -
           tar -xJf "${archive}"
           sudo install -m 0755 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck

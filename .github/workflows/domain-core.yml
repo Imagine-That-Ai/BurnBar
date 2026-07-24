@@ -1266,12 +1266,8 @@ jobs:
         with:
           workspaces: crates/openburnbar-domain-core
 
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Build host domain-core XCFramework
         env:

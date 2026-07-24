@@ -1,0 +1,85 @@
+name: Ensure libsignal native toolchain
+description: >
+  Idempotently guarantee the host tools the libsignal Swift FFI build needs
+  (protoc + cmake) are installed and on PATH before any Swift/Rust build step.
+
+  Why this exists: boring-sys (BoringSSL, pulled in by Vendor/libsignal) shells
+  out to `cmake` from its build script. GitHub-hosted macos-* images ship cmake,
+  but the self-hosted `burnbar-swift` fleet is not uniformly provisioned -- some
+  machines have never had it, and runners started from launchd frequently do not
+  inherit Homebrew's bin directory. When cmake is missing the failure surfaces
+  deep inside cargo as:
+
+      failed to execute command: No such file or directory (os error 2)
+      is `cmake` not installed?
+
+  which reads like a Rust problem and cost real merge-queue throughput. This
+  action turns that into an explicit, self-healing preflight so the free fleet
+  and the hosted pool behave identically.
+
+runs:
+  using: composite
+  steps:
+    # Self-hosted runners launched as a launchd agent inherit a minimal PATH that
+    # usually omits Homebrew. Put it back before probing for tools, otherwise an
+    # installed cmake still looks missing.
+    - name: Ensure Homebrew is on PATH
+      shell: bash
+      run: |
+        set -euo pipefail
+        for prefix in /opt/homebrew /usr/local; do
+          if [[ -x "${prefix}/bin/brew" ]]; then
+            case ":${PATH}:" in
+              *":${prefix}/bin:"*) ;;
+              *)
+                echo "${prefix}/bin" >> "$GITHUB_PATH"
+                echo "Added ${prefix}/bin to PATH for subsequent steps."
+                ;;
+            esac
+          fi
+        done
+
+    - name: Ensure protoc + cmake are installed
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # $GITHUB_PATH only affects *later* steps, so mirror it into this shell.
+        for prefix in /opt/homebrew /usr/local; do
+          if [[ -x "${prefix}/bin/brew" ]]; then
+            case ":${PATH}:" in
+              *":${prefix}/bin:"*) ;;
+              *) PATH="${prefix}/bin:${PATH}" ;;
+            esac
+          fi
+        done
+        export PATH
+
+        # protoc -> protobuf, cmake -> cmake. Keep the mapping explicit so a
+        # missing binary never silently installs the wrong formula.
+        missing=()
+        command -v protoc >/dev/null 2>&1 || missing+=("protobuf")
+        command -v cmake  >/dev/null 2>&1 || missing+=("cmake")
+
+        if [[ ${#missing[@]} -gt 0 ]]; then
+          if ! command -v brew >/dev/null 2>&1; then
+            echo "::error::Missing native build tools (${missing[*]}) and Homebrew is unavailable on $(hostname). Install cmake + protobuf on this runner, or take it out of the burnbar-swift pool."
+            exit 1
+          fi
+          echo "Installing missing native build tools: ${missing[*]}"
+          # Self-hosted machines are long-lived, so this cost is paid once per
+          # machine rather than once per run.
+          brew install "${missing[@]}"
+        fi
+
+        # Fail loudly and specifically rather than letting cargo report a bare
+        # "No such file or directory" from inside boring-sys.
+        for tool in protoc cmake; do
+          if ! command -v "$tool" >/dev/null 2>&1; then
+            echo "::error::${tool} is still not on PATH after install on $(hostname). The libsignal FFI build (boring-sys/BoringSSL) cannot proceed."
+            exit 1
+          fi
+        done
+
+        echo "protoc: $(command -v protoc) -> $(protoc --version)"
+        echo "cmake:  $(command -v cmake)  -> $(cmake --version | head -1)"

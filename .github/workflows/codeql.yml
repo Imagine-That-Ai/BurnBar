@@ -112,13 +112,9 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
+      - name: Ensure libsignal native toolchain (protoc + cmake)
         if: matrix.language == 'swift'
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Prepare Signal FFI for Swift CodeQL
         if: matrix.language == 'swift'

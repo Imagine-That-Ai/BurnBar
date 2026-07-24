@@ -99,12 +99,8 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install protobuf for libsignal Swift FFI
-        run: |
-          if ! command -v protoc >/dev/null 2>&1; then
-            brew install protobuf
-          fi
-          protoc --version
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Build the AgentLens app headless (scheme OpenBurnBar, build-only)
         # scripts/ci/headless-app-build.sh runs `xcodebuild build -scheme
