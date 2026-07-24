@@ -8,6 +8,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  ADVISORY_ALLOWLIST,
   AUDIT_DIRS,
   AUDIT_ATTEMPTS,
   classifyAuditResult,
@@ -17,8 +18,11 @@ import {
 let passed = 0;
 let failed = 0;
 
-function expect(label, input, wantOk, wantMessagePattern = null) {
-  const result = classifyAuditResult({ dir: "fixture", stderr: "", ...input });
+function expect(label, input, wantOk, wantMessagePattern = null, options = undefined) {
+  const result = classifyAuditResult(
+    { dir: "fixture", stderr: "", ...input },
+    options,
+  );
   const message = result.messages.join("\n");
   const messageMatches = wantMessagePattern
     ? wantMessagePattern.test(message)
@@ -177,6 +181,107 @@ expect(
   false,
   /High\/critical vulnerabilities/u,
 );
+
+// --- advisory allowlist -----------------------------------------------------
+// A time-boxed allowlist entry tolerates a finding only while unexpired and
+// only when the finding's ENTIRE via-chain resolves to allowlisted advisories.
+// Everything else stays fail-closed.
+const ALLOWLIST = {
+  "GHSA-mh99-v99m-4gvg": { reason: "fixture reason", expires: "2026-08-21" },
+};
+const BEFORE_EXPIRY = { allowlist: ALLOWLIST, now: new Date("2026-07-24T00:00:00Z") };
+const AFTER_EXPIRY = { allowlist: ALLOWLIST, now: new Date("2026-08-22T00:00:00Z") };
+const ALLOWLISTED_ADVISORY = {
+  url: "https://github.com/advisories/GHSA-mh99-v99m-4gvg",
+  severity: "high",
+};
+const UNLISTED_ADVISORY = {
+  url: "https://github.com/advisories/GHSA-2222-3333-4444",
+  severity: "high",
+};
+const CHAINED_REPORT = JSON.stringify({
+  vulnerabilities: {
+    "brace-expansion": { severity: "high", via: [ALLOWLISTED_ADVISORY] },
+    minimatch: { severity: "high", via: ["brace-expansion"] },
+  },
+});
+
+expect(
+  "allowlisted advisory chain is tolerated before expiry",
+  { status: 1, stdout: CHAINED_REPORT },
+  true,
+  /Tolerated allowlisted advisories/u,
+  BEFORE_EXPIRY,
+);
+
+expect(
+  "allowlisted advisory fails again after expiry",
+  { status: 1, stdout: CHAINED_REPORT },
+  false,
+  /High\/critical vulnerabilities/u,
+  AFTER_EXPIRY,
+);
+
+expect(
+  "a via-chain mixing allowlisted and unlisted advisories fails",
+  {
+    status: 1,
+    stdout: JSON.stringify({
+      vulnerabilities: {
+        demo: { severity: "high", via: [ALLOWLISTED_ADVISORY, UNLISTED_ADVISORY] },
+      },
+    }),
+  },
+  false,
+  /High\/critical vulnerabilities/u,
+  BEFORE_EXPIRY,
+);
+
+expect(
+  "a string via naming a package missing from the report fails closed",
+  {
+    status: 1,
+    stdout: JSON.stringify({
+      vulnerabilities: {
+        demo: { severity: "high", via: ["not-in-report"] },
+      },
+    }),
+  },
+  false,
+  /High\/critical vulnerabilities/u,
+  BEFORE_EXPIRY,
+);
+
+expect(
+  "an empty via-chain fails closed",
+  {
+    status: 1,
+    stdout: JSON.stringify({
+      vulnerabilities: { demo: { severity: "high", via: [] } },
+    }),
+  },
+  false,
+  /High\/critical vulnerabilities/u,
+  BEFORE_EXPIRY,
+);
+
+{
+  const label = "every real ADVISORY_ALLOWLIST entry carries a reason and a parseable expiry";
+  const wellFormed = Object.entries(ADVISORY_ALLOWLIST).every(
+    ([id, entry]) =>
+      /^GHSA-/.test(id) &&
+      typeof entry.reason === "string" &&
+      entry.reason.length >= 8 &&
+      !Number.isNaN(Date.parse(`${entry.expires}T23:59:59Z`)),
+  );
+  if (wellFormed) {
+    console.log(`  ✓ ${label}`);
+    passed += 1;
+  } else {
+    console.error(`  ✗ ${label}`);
+    failed += 1;
+  }
+}
 
 expect(
   "audit service failure with empty output fails closed",
