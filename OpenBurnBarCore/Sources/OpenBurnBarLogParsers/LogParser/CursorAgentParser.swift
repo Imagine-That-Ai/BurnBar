@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarKernel
+import OpenBurnBarParserSupport
 
 // MARK: - Cursor Agent Parser
 

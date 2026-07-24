@@ -1,0 +1,23 @@
+{
+  "id": "moire",
+  "label": "Moiré",
+  "metalFileBase": "K_Moire",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_moire_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

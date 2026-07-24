@@ -1,0 +1,23 @@
+{
+  "id": "retro-plasma",
+  "label": "Retro Plasma",
+  "metalFileBase": "K_RetroPlasma",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_retro_plasma_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}

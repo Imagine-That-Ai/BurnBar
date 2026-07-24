@@ -7,6 +7,7 @@ import com.openburnbar.data.models.TimelineScope
 import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.data.models.UsageDisplayMode
 import com.openburnbar.data.models.displayRemainingPercent
+import com.openburnbar.data.models.generated.FirestoreUsageEventDoc
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -17,6 +18,31 @@ class TokenUsageModelTest {
         assertEquals("", usage.id)
         assertEquals(0, usage.totalTokens)
         assertEquals(0.0, usage.cost, 0.001)
+    }
+
+    @Test
+    fun `usage models preserve execution source attribution`() {
+        val usage = TokenUsage(
+            executionSourceId = "grok-build",
+            executionSourceName = "Grok Build",
+            executionSourceKind = "automation",
+            executionSourceConfidence = "derived_exact",
+        )
+        assertEquals("grok-build", usage.executionSourceId)
+        assertEquals("Grok Build", usage.executionSourceName)
+        assertEquals("automation", usage.executionSourceKind)
+        assertEquals("derived_exact", usage.executionSourceConfidence)
+
+        val generated = FirestoreUsageEventDoc(
+            executionSourceId = "cursor",
+            executionSourceName = "Cursor",
+            executionSourceKind = "ide",
+            executionSourceConfidence = "exact",
+        )
+        assertEquals("cursor", generated.executionSourceId)
+        assertEquals("Cursor", generated.executionSourceName)
+        assertEquals("ide", generated.executionSourceKind)
+        assertEquals("exact", generated.executionSourceConfidence)
     }
 
     @Test

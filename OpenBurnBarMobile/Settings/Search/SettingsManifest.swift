@@ -73,7 +73,7 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.backdropKernel,
             title: "Backdrop Kernel",
             subtitle: "Choose the same app.burnbar.ai backdrop kernel on iPhone and iPad",
-            keywords: MobileBackdropKernel.allCases.flatMap { [$0.rawValue, $0.label.lowercased()] } + ["kernel", "fluid aurora", "petroleum sheen", "website background", "mobile backdrop", "ipad"]
+            keywords: MobileBackdropKernel.appBackdropKernels.flatMap { [$0.rawValue, $0.label.lowercased()] } + ["kernel", "fluid aurora", "petroleum sheen", "website background", "mobile backdrop", "ipad"]
         ),
         SettingsItem(
             id: "theme.appearance.glassTransparency",

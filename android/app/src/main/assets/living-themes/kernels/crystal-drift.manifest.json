@@ -1,0 +1,23 @@
+{
+  "id": "crystal-drift",
+  "label": "Crystal Drift",
+  "metalFileBase": "K_CrystalDrift",
+  "passes": [
+    "display"
+  ],
+  "entryPoints": {
+    "display": "k_crystal_drift_display"
+  },
+  "controls": [],
+  "params": [],
+  "sim": null,
+  "requiresFloatTex": false,
+  "fallbackId": null,
+  "textures": [],
+  "samplers": {
+    "display": {}
+  },
+  "msl": {
+    "status": "ok"
+  }
+}
