@@ -137,4 +137,61 @@ final class ChatPanelComponentTests: XCTestCase {
         let store = try XCTUnwrap(try? DataStoreCoordinator(databaseQueue: DatabaseQueue(), refreshOnInit: false))
         return ChatSessionController(dataStore: store)
     }
+
+    // MARK: - ChatTranscriptLayout (transcript render hoists)
+
+    /// The trailing-assistant scan was hoisted out of `ForEach` because running
+    /// it per row made rendering O(n^2). Pin the result so the hoist cannot
+    /// silently change which row gets the trailing affordances.
+    func test_latestAssistantID_picksTheTrailingAssistantMessage() {
+        let messages = [
+            ChatMessageRecord(role: .user, content: "first"),
+            ChatMessageRecord(role: .assistant, content: "older reply"),
+            ChatMessageRecord(role: .user, content: "second"),
+            ChatMessageRecord(role: .assistant, content: "newest reply")
+        ]
+        XCTAssertEqual(
+            ChatTranscriptLayout.latestAssistantID(in: messages, isStreaming: false),
+            messages[3].id
+        )
+    }
+
+    /// While a reply is streaming no row is "the latest assistant" — the
+    /// affordances must stay suppressed until the reply settles.
+    func test_latestAssistantID_isNilWhileStreaming() {
+        let messages = [
+            ChatMessageRecord(role: .user, content: "q"),
+            ChatMessageRecord(role: .assistant, content: "partial")
+        ]
+        XCTAssertNil(ChatTranscriptLayout.latestAssistantID(in: messages, isStreaming: true))
+    }
+
+    func test_latestAssistantID_isNilWithNoAssistantMessages() {
+        let messages = [ChatMessageRecord(role: .user, content: "only user")]
+        XCTAssertNil(ChatTranscriptLayout.latestAssistantID(in: messages, isStreaming: false))
+        XCTAssertNil(ChatTranscriptLayout.latestAssistantID(in: [], isStreaming: false))
+    }
+
+    /// Swapping `String.count` for `utf8.count` is only safe because both grow
+    /// monotonically as text is appended, so the tail-scroll notification fires
+    /// on exactly the same appends. Assert that on multi-byte and grapheme-cluster
+    /// content, where the two counts differ in value but must agree in direction.
+    func test_tailScrollTriggerKey_growsMonotonicallyOnAppendLikeCharacterCount() {
+        let appends = ["", "h", "hi", "hi ", "hi 👋", "hi 👋 é", "hi 👋 é 家", "hi 👋 é 家!"]
+        var previousKey = -1
+        var previousCount = -1
+        for text in appends {
+            let key = ChatTranscriptLayout.tailScrollTriggerKey(for: text)
+            let count = text.count
+            XCTAssertGreaterThanOrEqual(key, previousKey, "utf8 trigger key must never shrink on append: \(text)")
+            XCTAssertGreaterThanOrEqual(count, previousCount)
+            if count > previousCount {
+                XCTAssertGreaterThan(key, previousKey, "an appended grapheme must still move the trigger: \(text)")
+            }
+            previousKey = key
+            previousCount = count
+        }
+        XCTAssertEqual(ChatTranscriptLayout.tailScrollTriggerKey(for: nil), 0)
+    }
+
 }

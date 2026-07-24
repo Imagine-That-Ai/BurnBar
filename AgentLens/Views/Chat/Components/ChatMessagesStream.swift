@@ -81,7 +81,7 @@ struct ChatMessagesStream: View {
             // `utf8.count` is O(1); `.count` walked every grapheme of the
             // accumulated reply per body evaluation. Both grow monotonically
             // on append, so the tail-scroll trigger fires identically.
-            .onChange(of: controller.messages.last?.content.utf8.count ?? 0) { _, _ in
+            .onChange(of: ChatTranscriptLayout.tailScrollTriggerKey(for: controller.messages.last?.content)) { _, _ in
                 scrollToLatestMessage(using: proxy)
             }
             // E1: a citation tap bumps `memoryJumpRequestToken` (even when the id
@@ -173,10 +173,13 @@ struct ChatMessagesStream: View {
             }
             // Hoisted out of the per-row closure: the trailing-assistant scan
             // is O(n), so running it inside `ForEach` made every transcript
-            // render O(n²) in message count.
-            let latestAssistantID = controller.isStreaming
-                ? nil
-                : controller.messages.last(where: { $0.role == .assistant })?.id
+            // render O(n²) in message count. The scan itself lives in
+            // `ChatTranscriptLayout` so it is reachable from tests — inside a
+            // view body it is only exercised by rendering.
+            let latestAssistantID = ChatTranscriptLayout.latestAssistantID(
+                in: controller.messages,
+                isStreaming: controller.isStreaming
+            )
             ForEach(controller.messages) { msg in
                 let isLatestAssistant = msg.role == .assistant && msg.id == latestAssistantID
                 ChatMessageView(
@@ -241,5 +244,38 @@ private struct MemoryJumpHighlight: ViewModifier {
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
                     .strokeBorder(DesignSystem.Colors.hermesAureate.opacity(isActive ? 0.55 : 0), lineWidth: 1)
             )
+    }
+}
+
+// MARK: - ChatTranscriptLayout
+
+/// Pure transcript-layout decisions used by ``ChatMessagesStream``.
+///
+/// These live outside the view body deliberately: the body is only executed by
+/// rendering, so logic buried there cannot be asserted directly. Keeping it here
+/// lets the O(n)-scan hoist and the streaming-suppression rule be pinned by tests.
+enum ChatTranscriptLayout {
+
+    /// The message that should render trailing-assistant affordances, or `nil`
+    /// while a reply is still streaming.
+    ///
+    /// Scanning once per transcript instead of once per row is the whole point:
+    /// evaluating this inside `ForEach` made rendering O(n^2) in message count.
+    static func latestAssistantID(
+        in messages: [ChatMessageRecord],
+        isStreaming: Bool
+    ) -> ChatMessageRecord.ID? {
+        guard !isStreaming else { return nil }
+        return messages.last(where: { $0.role == .assistant })?.id
+    }
+
+    /// Tail-scroll trigger key for the in-flight reply.
+    ///
+    /// `utf8.count` is O(1) where `String.count` walks every grapheme of the
+    /// accumulated reply on each body evaluation. Substituting it is only safe
+    /// because both grow monotonically as text is appended, so the change
+    /// notification fires on exactly the same appends.
+    static func tailScrollTriggerKey(for content: String?) -> Int {
+        content?.utf8.count ?? 0
     }
 }
