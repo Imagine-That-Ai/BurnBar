@@ -78,6 +78,12 @@ export function providerFallbackGlyph(id: string): string {
   if (explicit) return explicit;
 
   const words = normalized.split(/[\s._-]+/u).filter(Boolean);
+  // A variant of a known provider ("cursor-agent") monograms from its base
+  // name ("CU") so it stays visually tied to that provider's family, while
+  // unknown compounds ("unknown-provider") monogram by initials ("UP").
+  if (words.length > 1 && FALLBACK_GLYPH[words[0]]) {
+    return words[0].slice(0, 2).toUpperCase();
+  }
   const monogram = words.length > 1
     ? words.slice(0, 2).map((word) => word[0]).join('')
     : (words[0] ?? '?').slice(0, 2);
