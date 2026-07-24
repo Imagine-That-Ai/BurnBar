@@ -563,6 +563,16 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Isolate generated release output from source cleanliness gates
+        run: |
+          set -euo pipefail
+          exclude_file="$(git rev-parse --git-path info/exclude)"
+          printf '%s\n' \
+            '/.linux-evidence/' \
+            '/.linux-release/' \
+            '/.linux-shards/' >> "$exclude_file"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
       - name: Verify candidate-to-activation history is complete
         env:
           CANDIDATE_COMMIT: ${{ needs.resolve-release.outputs.candidate_commit }}
