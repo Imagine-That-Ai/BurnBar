@@ -182,6 +182,46 @@ final class UsageRefreshPipelineTests: XCTestCase {
         XCTAssertEqual(recordedDates, [cutoff])
     }
 
+    func test_refreshPipelineReplacesInvalidatedLifetimeAndDayRows() async throws {
+        let store = try makeInMemoryDataStore()
+        let replacement = ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "parent#day-200",
+            model: "gpt-5.6-sol",
+            inputTokens: 200,
+            outputTokens: 20
+        )
+        let factoryReplacement = ViewTestFixtures.makeUsage(
+            provider: .factory,
+            sessionId: "factory-parent#day-200",
+            model: "glm-5"
+        )
+        try await store.insert(ViewTestFixtures.makeUsage(provider: .codex, sessionId: "parent"))
+        try await store.insert(ViewTestFixtures.makeUsage(provider: .codex, sessionId: "parent#day-100"))
+        try await store.insert(ViewTestFixtures.makeUsage(provider: .claudeCode, sessionId: "parent"))
+
+        let pipeline = UsageRefreshPipeline(
+            parsers: [
+                .codex: RepairParser(replacement: replacement),
+                .factory: RepairParser(provider: .factory, replacement: factoryReplacement)
+            ],
+            dataStore: store,
+            orchestrator: makeOrchestrator(store: store),
+            existingUsages: [],
+            settings: RefreshSettingsSnapshot(conversationIndexingEnabled: false, snapshotAPIs: [])
+        )
+
+        let parsed = try await pipeline.parse(from: pipeline.discover())
+        XCTAssertEqual(parsed.usageSessionIDsToDeleteByProvider[.codex], ["parent"])
+        XCTAssertEqual(parsed.usageSessionIDsToDeleteByProvider[.factory], ["parent"])
+        let persisted = await pipeline.persist(parsed: parsed)
+        XCTAssertNil(persisted.persistenceErrorMessage)
+
+        let rows = try await store.fetchAllUsage()
+        XCTAssertEqual(Set(rows.filter { $0.provider == .codex }.map(\.sessionId)), ["parent#day-200"])
+        XCTAssertEqual(Set(rows.filter { $0.provider == .claudeCode }.map(\.sessionId)), ["parent"])
+    }
+
     func test_conversationIndexingUsesSeparateBodyEnabledPass() async throws {
         let store = try makeInMemoryDataStore()
         let recorder = ParseOptionsRecorder()
@@ -297,6 +337,40 @@ final class UsageRefreshPipelineTests: XCTestCase {
         XCTAssertEqual(recordedOptions, [false])
     }
 
+    func test_singleProviderRefreshAppliesUsageInvalidations() async throws {
+        let store = try makeInMemoryDataStore()
+        let replacement = ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "parent#day-200",
+            model: "gpt-5.6-sol"
+        )
+        try await store.insert(ViewTestFixtures.makeUsage(provider: .codex, sessionId: "parent"))
+        try await store.insert(ViewTestFixtures.makeUsage(provider: .codex, sessionId: "parent#day-100"))
+
+        let result = await RefreshBackgroundWork.runSingleProviderRefresh(
+            provider: .codex,
+            parser: RepairParser(replacement: replacement),
+            dataStore: store,
+            settings: RefreshSettingsSnapshot(conversationIndexingEnabled: false, snapshotAPIs: [])
+        )
+
+        XCTAssertNil(result.error)
+        let rows = try await store.fetchAllUsage().filter { $0.provider == .codex }
+        XCTAssertEqual(rows.map(\.sessionId), ["parent#day-200"])
+    }
+
+    private func makeOrchestrator(store: DataStore) -> RefreshOrchestrator {
+        RefreshOrchestrator(
+            dataStore: store,
+            settingsManager: SettingsManager.shared,
+            quotaService: ProviderQuotaService(
+                appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: FileManager.default.temporaryDirectory),
+                homeDirectoryURL: FileManager.default.temporaryDirectory,
+                refreshProviders: []
+            )
+        )
+    }
+
     private func makeInMemoryDataStore() throws -> DataStore {
         let queue = try DatabaseQueue()
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -324,6 +398,24 @@ private struct CancellingParser: LogParser {
 
     func parse(options _: LogParseOptions) async throws -> ParseResult {
         throw CancellationError()
+    }
+}
+
+private struct RepairParser: LogParser {
+    let provider: AgentProvider
+    let replacement: TokenUsage
+
+    init(provider: AgentProvider = .codex, replacement: TokenUsage) {
+        self.provider = provider
+        self.replacement = replacement
+    }
+
+    func parse(options _: LogParseOptions) async throws -> ParseResult {
+        ParseResult(
+            usages: [replacement],
+            conversations: [],
+            usageSessionIDsToDelete: ["parent"]
+        )
     }
 }
 

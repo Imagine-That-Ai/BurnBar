@@ -432,6 +432,10 @@ final class DashboardUsageViewModel {
                 totalOutputTokens: totalOutputTokens,
                 sessionCount: modelUsages.count,
                 providerBreakdown: providerBreakdown,
+                executionSourceBreakdown: ExecutionSourceUsage.aggregate(
+                    modelUsages,
+                    totalCost: totalCost
+                ),
                 cacheEfficiency: CacheEfficiency.aggregate(modelUsages)
             )
         }
