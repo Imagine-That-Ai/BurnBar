@@ -40,13 +40,13 @@ open.
 
 ## Current integration branch checkpoint — 2026-07-23
 
-The parity integration branch is now at `f26af7e1cf`. This head contains a
-CI-only SwiftLint correction in `BurnBarLinuxOnboardingServiceTests.swift`:
-the two boolean assertions reported by the hosted SwiftPM gate now use the
-specific `XCTAssertEqual` matcher. Local SwiftLint passes for that file, and
-the change is pushed to both GitHub and GitLab in PR #1930. The fresh hosted
-checks have reported no failures while the remaining native, mobile, and
-security jobs continue to run.
+The parity integration branch is now at `b09c763257`. It includes the earlier
+CI-only SwiftLint correction in `BurnBarLinuxOnboardingServiceTests.swift` and
+the latest native PDF attachment parity fix (`63f39a80f0`), with the audit
+receipt for that fix recorded below. Both commits are pushed to GitHub and
+GitLab in PR #1930. Fresh hosted checks for the new head are expected to run;
+the existing SQLCipher, UTM, device, and environment limitations remain
+unchanged.
 
 The host-only onboarding test compiled its product and test bundle but could
 not launch the XCTest bundle because the local Xcode runner could not resolve
