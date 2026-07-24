@@ -23,6 +23,19 @@ import { revokeSignalSessionsForDevice } from "../signalDirectoryRuntime.js";
 import { normalizedControllerDeviceAllowlist } from "./computerUseSecurityCodecs.js";
 import { appendComputerUseAuditEvent } from "./computerUseSecurityFirestore.js";
 
+type BatchMutation = (batch: WriteBatch) => void;
+const REVOCATION_BATCH_LIMIT = 400;
+
+async function commitMutationsInChunks(mutations: BatchMutation[]): Promise<void> {
+  for (let offset = 0; offset < mutations.length; offset += REVOCATION_BATCH_LIMIT) {
+    const batch = db.batch();
+    for (const mutate of mutations.slice(offset, offset + REVOCATION_BATCH_LIMIT)) {
+      mutate(batch);
+    }
+    await batch.commit();
+  }
+}
+
 /**
  * Determine whether a CloudVault rotation requirement must be written when a
  * trusted device is revoked, and stage it into the batch. Pure relocation of the
@@ -33,9 +46,9 @@ async function stageCloudVaultRotationRequirement(args: {
   deviceId: string;
   receiptId: string;
   now: Timestamp;
-  batch: WriteBatch;
+  mutations: BatchMutation[];
 }): Promise<{ required: boolean; requirementId: string | null; blockedReason: string | null }> {
-  const { uid, deviceId, receiptId, now, batch } = args;
+  const { uid, deviceId, receiptId, now, mutations } = args;
   const stateSnap = await db.doc(`users/${uid}/cloud_vault_state/current`).get();
   const state = recordOrUndefined(stateSnap.data());
   if (!(stateSnap.exists && state?.status === "active" && typeof state.vaultKeyID === "string")) {
@@ -52,29 +65,26 @@ async function stageCloudVaultRotationRequirement(args: {
   if (survivorDeviceIds.length === 0) {
     return { required: false, requirementId: null, blockedReason: "no_surviving_trusted_device" };
   }
-  batch.set(db.doc(`users/${uid}/cloud_vault_rotation_requirements/${receiptId}`), {
-    requirementId: receiptId,
-    uid,
-    status: "pending",
-    reason: "device_revoked",
-    revokedDeviceId: deviceId,
-    revokedAt: now,
-    receiptId,
-    currentVaultKeyID: state.vaultKeyID,
-    currentVaultGeneration: typeof state.vaultGeneration === "number" ? state.vaultGeneration : 1,
-    survivorDeviceIds,
-    rotateCallable: "rotateCloudVaultKey",
-    nextRotationReason: "revocation_rewrap",
-    createdAt: FieldValue.serverTimestamp(),
-    // Millis mirror of createdAt so the stale-pending detector
-    // (detectStalePendingCloudVaultRotations) can range-query a
-    // collection-group on a sortable scalar — a serverTimestamp() is
-    // a sentinel at write time and cannot be compared in a query
-    // predicate. Mirrors agent_notification_events.updatedAtMillis.
-    createdAtMillis: now.toMillis(),
-    updatedAt: FieldValue.serverTimestamp(),
-    schemaVersion: 1,
-  });
+  mutations.push((batch) =>
+    batch.set(db.doc(`users/${uid}/cloud_vault_rotation_requirements/${receiptId}`), {
+      requirementId: receiptId,
+      uid,
+      status: "pending",
+      reason: "device_revoked",
+      revokedDeviceId: deviceId,
+      revokedAt: now,
+      receiptId,
+      currentVaultKeyID: state.vaultKeyID,
+      currentVaultGeneration: typeof state.vaultGeneration === "number" ? state.vaultGeneration : 1,
+      survivorDeviceIds,
+      rotateCallable: "rotateCloudVaultKey",
+      nextRotationReason: "revocation_rewrap",
+      createdAt: FieldValue.serverTimestamp(),
+      createdAtMillis: now.toMillis(),
+      updatedAt: FieldValue.serverTimestamp(),
+      schemaVersion: 1,
+    }),
+  );
   return { required: true, requirementId: receiptId, blockedReason: null };
 }
 
@@ -86,26 +96,28 @@ async function stageCloudVaultRotationRequirement(args: {
 async function clearRevokedControllerPairings(args: {
   uid: string;
   deviceId: string;
-  batch: WriteBatch;
+  mutations: BatchMutation[];
 }): Promise<string[]> {
-  const { uid, deviceId, batch } = args;
+  const { uid, deviceId, mutations } = args;
   const revokedControllerPeerNodeIds: string[] = [];
   const pairings = await db.collection(`users/${uid}/iroh_pairing`).get();
   for (const pairing of pairings.docs) {
     const allowlist = normalizedControllerDeviceAllowlist(pairing.get("authorizedControllerDeviceIds"));
     if (allowlist.includes(deviceId)) {
-      batch.set(
-        pairing.ref,
-        {
-          authorizedControllerDeviceIds: allowlist.filter((controllerDeviceId) => controllerDeviceId !== deviceId),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
+      mutations.push((batch) =>
+        batch.set(
+          pairing.ref,
+          {
+            authorizedControllerDeviceIds: allowlist.filter((controllerDeviceId) => controllerDeviceId !== deviceId),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        ),
       );
     }
     const controllers = await pairing.ref.collection("controllers").where("deviceId", "==", deviceId).get();
     for (const controller of controllers.docs) {
-      batch.delete(controller.ref);
+      mutations.push((batch) => batch.delete(controller.ref));
       const peer = controller.get("peerNodeId");
       if (typeof peer === "string" && peer.length > 0) revokedControllerPeerNodeIds.push(peer);
     }
@@ -149,38 +161,38 @@ export const revokeEscrowDeviceTrust = onCall(
       }
 
       const now = Timestamp.now();
-      const receiptId = `revoke_${Date.now()}_${randomBytes(6).toString("hex")}`;
-      // Flip the parent trust state before sweeping child grant records. Client
-      // rules require trusted source/target devices for new grants, so once this
-      // write commits, a new grant cannot race in after the sweep query. The
-      // cleanup batch repeats the same parent write so the durable receipt and
-      // child revocations converge idempotently if the callable is retried.
+      const existingReceiptId = snapshot.get("revocationReceiptId");
+      const receiptId =
+        snapshot.get("trustState") === "revoking" &&
+        typeof existingReceiptId === "string" &&
+        existingReceiptId.startsWith("revoke_")
+          ? existingReceiptId
+          : `revoke_${Date.now()}_${randomBytes(6).toString("hex")}`;
+      // Enter a fail-closed intermediate state before sweeping child records.
+      // Every authorization path accepts only trustState == "trusted", so a
+      // partial cleanup can never look complete while stale grants remain.
+      // Retries resume the idempotent sweep from "revoking".
       await ref.set(
         {
-          trustState: "revoked",
+          trustState: "revoking",
+          revocationReceiptId: receiptId,
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
       );
 
       const grants = await activeEscrowGrantDocsForDevice(uid, deviceId);
-      const batch = db.batch();
-      batch.set(
-        ref,
-        {
-          trustState: "revoked",
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
+      const mutations: BatchMutation[] = [];
       for (const grant of grants) {
-        batch.set(
-          grant.ref,
-          {
-            status: "revoked",
-            revokedAt: now,
-          },
-          { merge: true },
+        mutations.push((batch) =>
+          batch.set(
+            grant.ref,
+            {
+              status: "revoked",
+              revokedAt: now,
+            },
+            { merge: true },
+          ),
         );
       }
 
@@ -190,30 +202,32 @@ export const revokeEscrowDeviceTrust = onCall(
         .where("status", "==", "active")
         .get();
       for (const wrapper of activeWrapperSnap.docs) {
-        batch.set(
-          wrapper.ref,
-          {
-            status: "revoked",
-            revokedAt: now,
-            revokedByDeviceTrustRevocationId: receiptId,
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true },
+        mutations.push((batch) =>
+          batch.set(
+            wrapper.ref,
+            {
+              status: "revoked",
+              revokedAt: now,
+              revokedByDeviceTrustRevocationId: receiptId,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          ),
         );
       }
 
-      const rotation = await stageCloudVaultRotationRequirement({ uid, deviceId, receiptId, now, batch });
+      const rotation = await stageCloudVaultRotationRequirement({ uid, deviceId, receiptId, now, mutations });
       const cloudVaultRotationRequired = rotation.required;
       const cloudVaultRotationRequirementId = rotation.requirementId;
       const cloudVaultRotationBlockedReason = rotation.blockedReason;
 
-      // F2 — atomic revoke. A revoked device's controller record must be
-      // cleared in the same pass, not left dialable: the Mac builds its iroh
+      // A revoked device's controller record must be cleared before the parent
+      // reaches the terminal revoked state: the Mac builds its iroh
       // inbound allowlist + phone-control key pin from
       // `iroh_pairing/{conn}/controllers/{peer}`, so a surviving doc keeps a
       // revoked phone connectable until the relay restarts. Scoped to this uid
       // by iterating the user's own pairings (no cross-tenant collectionGroup).
-      const revokedControllerPeerNodeIds = await clearRevokedControllerPairings({ uid, deviceId, batch });
+      const revokedControllerPeerNodeIds = await clearRevokedControllerPairings({ uid, deviceId, mutations });
 
       // F2 — also retire the device's agent-grant authority (doc id == deviceId)
       // so a queued grant can no longer be minted against the revoked key.
@@ -221,10 +235,26 @@ export const revokeEscrowDeviceTrust = onCall(
       const agentGrantAuthoritySnap = await agentGrantAuthorityRef.get();
       const clearedAgentGrantAuthority = agentGrantAuthoritySnap.exists;
       if (clearedAgentGrantAuthority) {
-        batch.delete(agentGrantAuthorityRef);
+        mutations.push((batch) => batch.delete(agentGrantAuthorityRef));
       }
 
-      await batch.commit();
+      // The terminal state is deliberately the final mutation. Firestore
+      // batches are capped well below the 500-write service limit; if any
+      // chunk fails, the device remains "revoking" (fail closed) and a retry
+      // safely converges the remaining cleanup.
+      mutations.push((batch) =>
+        batch.set(
+          ref,
+          {
+            trustState: "revoked",
+            revocationReceiptId: receiptId,
+            revokedAt: now,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        ),
+      );
+      await commitMutationsInChunks(mutations);
 
       // L41: also retire the device's Signal session-directory entries (sessions
       // it owns + sessions where it is the peer). Best-effort — a failure here

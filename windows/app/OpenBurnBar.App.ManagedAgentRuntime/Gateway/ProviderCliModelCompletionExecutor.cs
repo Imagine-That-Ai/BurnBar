@@ -74,8 +74,7 @@ public sealed class ProviderCliModelCompletionExecutor : IModelCompletionExecuto
     }
 
     public static bool IsCliProvider(string vendor) =>
-        string.Equals(vendor, "codex", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(vendor, "factory", StringComparison.OrdinalIgnoreCase)
+        string.Equals(vendor, "factory", StringComparison.OrdinalIgnoreCase)
         || string.Equals(vendor, "factory-droid", StringComparison.OrdinalIgnoreCase);
 
     public static bool IsCliRoute(ModelRoute route) =>

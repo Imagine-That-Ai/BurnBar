@@ -102,11 +102,15 @@ async function deployedRulesForRelease(releasePath, fileName, token) {
   const files = Array.isArray(ruleset.source?.files)
     ? ruleset.source.files
     : [];
-  const rulesFile = files.find(
-    (file) =>
-      file?.name === fileName || file?.name?.endsWith(`/${fileName}`),
-  );
-  if (typeof rulesFile?.content !== "string") {
+  if (files.length !== 1) {
+    throw new Error(
+      `ruleset ${release.rulesetName} must contain exactly one ${fileName} source file; found ${files.length}`,
+    );
+  }
+  const [rulesFile] = files;
+  const canonicalRulesName =
+    rulesFile?.name === fileName || rulesFile?.name?.endsWith(`/${fileName}`);
+  if (!canonicalRulesName || typeof rulesFile?.content !== "string") {
     throw new Error(
       `ruleset ${release.rulesetName} did not include ${fileName} content`,
     );

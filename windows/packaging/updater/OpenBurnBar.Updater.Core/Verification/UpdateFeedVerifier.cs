@@ -112,6 +112,53 @@ public sealed class UpdateFeedVerifier
     {
         ArgumentNullException.ThrowIfNull(manifest);
 
+        if (manifest.Length is { } expectedLength && expectedLength != artifactBytes.Length)
+        {
+            return ArtifactVerification.Fail(RejectionReason.LengthMismatch);
+        }
+
+        if (string.IsNullOrWhiteSpace(manifest.Sha256))
+        {
+            return ArtifactVerification.Fail(RejectionReason.MissingSha256);
+        }
+
+        if (!Sha256Digest.Matches(artifactBytes, manifest.Sha256!))
+        {
+            return ArtifactVerification.Fail(RejectionReason.Sha256Mismatch);
+        }
+
+        var descriptorVerification = VerifyDescriptor(manifest);
+        if (!descriptorVerification.Verified)
+        {
+            return descriptorVerification;
+        }
+
+        byte[] artifactSignature;
+        try
+        {
+            artifactSignature = Convert.FromBase64String(manifest.EdSignatureBase64!.Trim());
+        }
+        catch (FormatException)
+        {
+            return ArtifactVerification.Fail(RejectionReason.SignatureInvalid);
+        }
+
+        if (!_pinnedVerifier.Verify(artifactBytes, artifactSignature))
+        {
+            return ArtifactVerification.Fail(RejectionReason.SignatureInvalid);
+        }
+
+        return ArtifactVerification.Pass();
+    }
+
+    /// <summary>
+    /// Verifies the signed metadata descriptor before trusting its URL or size.
+    /// Hosts must call this before downloading a candidate artifact.
+    /// </summary>
+    public ArtifactVerification VerifyDescriptor(UpdateManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+
         if (string.IsNullOrWhiteSpace(manifest.EdSignatureBase64) ||
             string.IsNullOrWhiteSpace(manifest.DescriptorSignatureBase64))
         {
@@ -121,16 +168,6 @@ public sealed class UpdateFeedVerifier
         if (string.IsNullOrWhiteSpace(manifest.Sha256))
         {
             return ArtifactVerification.Fail(RejectionReason.MissingSha256);
-        }
-
-        if (manifest.Length is { } expectedLength && expectedLength != artifactBytes.Length)
-        {
-            return ArtifactVerification.Fail(RejectionReason.LengthMismatch);
-        }
-
-        if (!Sha256Digest.Matches(artifactBytes, manifest.Sha256))
-        {
-            return ArtifactVerification.Fail(RejectionReason.Sha256Mismatch);
         }
 
         byte[] signedDescriptor;
@@ -144,11 +181,9 @@ public sealed class UpdateFeedVerifier
         }
 
         byte[] descriptorSignature;
-        byte[] artifactSignature;
         try
         {
             descriptorSignature = Convert.FromBase64String(manifest.DescriptorSignatureBase64!.Trim());
-            artifactSignature = Convert.FromBase64String(manifest.EdSignatureBase64!.Trim());
         }
         catch (FormatException)
         {
@@ -158,14 +193,6 @@ public sealed class UpdateFeedVerifier
         // Gate 1: the metadata descriptor (version / URL / length / sha256 /
         // critical / channel / …) is exactly what the pinned key signed.
         if (!_pinnedVerifier.Verify(signedDescriptor, descriptorSignature))
-        {
-            return ArtifactVerification.Fail(RejectionReason.SignatureInvalid);
-        }
-
-        // Gate 2: the downloaded bytes themselves are what the pinned key
-        // signed (Sparkle semantics — keeps parity with WinSparkle's native
-        // check and defends even if SHA-256 were ever weakened).
-        if (!_pinnedVerifier.Verify(artifactBytes, artifactSignature))
         {
             return ArtifactVerification.Fail(RejectionReason.SignatureInvalid);
         }

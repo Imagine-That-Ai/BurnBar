@@ -1,8 +1,10 @@
 {
-  "attributeCondition": "assertion.repository=='Imagine-That-Ai/BurnBar'",
+  "attributeCondition": "assertion.repository=='Imagine-That-Ai/BurnBar' && assertion.ref=='refs/heads/main' && assertion.environment=='staging' && assertion.workflow_ref=='Imagine-That-Ai/BurnBar/.github/workflows/deploy-staging.yml@refs/heads/main'",
   "attributeMapping": {
+    "attribute.environment": "assertion.environment",
     "attribute.ref": "assertion.ref",
     "attribute.repository": "assertion.repository",
+    "attribute.workflow_ref": "assertion.workflow_ref",
     "google.subject": "assertion.sub"
   },
   "displayName": "GitHub OIDC",

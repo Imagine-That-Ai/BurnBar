@@ -204,10 +204,19 @@ gcloud iam workload-identity-pools providers describe "$PROVIDER" \
     --workload-identity-pool="$POOL" \
     --display-name="GitHub OIDC" \
     --issuer-uri="https://token.actions.githubusercontent.com" \
-    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
-    --attribute-condition="assertion.repository=='${REPO}'"
+    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref,attribute.environment=assertion.environment,attribute.workflow_ref=assertion.workflow_ref" \
+    --attribute-condition="assertion.repository=='${REPO}' && assertion.ref=='refs/heads/main' && assertion.environment=='staging' && assertion.workflow_ref=='${REPO}/.github/workflows/deploy-staging.yml@refs/heads/main'"
 
-# Let the deploy SA be impersonated ONLY from this repo (optionally pin a ref).
+# Converge existing providers too: only the protected staging environment on
+# main, from the exact deploy workflow, may exchange a GitHub OIDC token.
+gcloud iam workload-identity-pools providers update-oidc "$PROVIDER" \
+  --project=burnbar-staging --location=global \
+  --workload-identity-pool="$POOL" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref,attribute.environment=assertion.environment,attribute.workflow_ref=assertion.workflow_ref" \
+  --attribute-condition="assertion.repository=='${REPO}' && assertion.ref=='refs/heads/main' && assertion.environment=='staging' && assertion.workflow_ref=='${REPO}/.github/workflows/deploy-staging.yml@refs/heads/main'"
+
+# The repository principal set is safe only because the provider above enforces
+# the exact environment, ref, and workflow before issuing any federated identity.
 gcloud iam service-accounts add-iam-policy-binding "$SA" \
   --project=burnbar-staging \
   --role="roles/iam.workloadIdentityUser" \
@@ -216,9 +225,6 @@ gcloud iam service-accounts add-iam-policy-binding "$SA" \
 # The provider resource name is the STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER secret:
 echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/providers/${PROVIDER}"
 ```
-
-> Harden later by narrowing the `principalSet` / attribute condition to a
-> specific ref (e.g. `attribute.ref=='refs/heads/main'`) once the flow works.
 
 ### 4. Create the `staging` GitHub Environment
 

@@ -395,9 +395,12 @@ public sealed partial class HeadlessAgentRunService : IAsyncDisposable
                 {
                     ApprovalRequest = null,
                     PendingApprovalToolInvocation = null,
-                    ApprovalResolvedForAttempt = pendingInvocation is null,
+                    // A run-level or model-requested approval authorizes only
+                    // continuation. It must never become a bearer capability
+                    // that a later, different high-risk tool can spend.
+                    ApprovalResolvedForAttempt = false,
                     RunLevelApprovalCompleted = checkpoint.RunLevelApprovalCompleted || completesRunLevelApproval,
-                    ApprovedToolAuthorizationId = pendingInvocation is null ? response.ApprovalId : null,
+                    ApprovedToolAuthorizationId = null,
                 };
                 checkpoint = Transition(checkpoint, HeadlessAgentRunPhase.Planning);
                 if (pendingInvocation is not null)

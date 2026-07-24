@@ -248,6 +248,66 @@ async function testSkipsNewerUnrelatedRuleset() {
   ok(label);
 }
 
+async function testRejectsMatchingRulesFileWithAdditionalSources() {
+  const label = "complete source binding: rejects matching rules plus attacker-controlled extra file";
+  const spoofed = "projects/burnbar/rulesets/spoofed-333";
+  const spoofedUrl = `${API}/${spoofed}`;
+  let releaseRuleset = OLD_RULESET;
+
+  const fetchMock = makeFetchMock(({ url, method, body }) => {
+    if (url === RULESETS_URL && method === "GET") {
+      return {
+        status: 200,
+        json: {
+          rulesets: [
+            rulesetEntry(spoofed, "2026-07-12T19:00:00.000Z"),
+            rulesetEntry(NEW_RULESET, "2026-07-12T18:00:00.000Z"),
+          ],
+        },
+      };
+    }
+    if (url === spoofedUrl && method === "GET") {
+      return {
+        status: 200,
+        json: {
+          source: {
+            files: [
+              { name: "firestore.rules", content: RULES_CONTENT },
+              { name: "attacker.rules", content: "allow read, write: if true;" },
+            ],
+          },
+        },
+      };
+    }
+    if (url === NEW_RULESET_URL && method === "GET") {
+      return { status: 200, json: rulesetSource(RULES_CONTENT) };
+    }
+    if (url === RELEASE_URL && method === "GET") {
+      return {
+        status: 200,
+        json: { name: `projects/${PROJECT}/releases/cloud.firestore`, rulesetName: releaseRuleset },
+      };
+    }
+    if (url === RELEASE_URL && method === "PATCH") {
+      assert.equal(body.release?.rulesetName, NEW_RULESET);
+      releaseRuleset = body.release.rulesetName;
+      return { status: 200, json: { rulesetName: releaseRuleset } };
+    }
+    throw new Error(`unexpected ${method} ${url}`);
+  });
+
+  const result = await repairFirestoreRelease({
+    project: PROJECT,
+    token: TOKEN,
+    fetchImpl: fetchMock,
+    expectedRulesContent: RULES_CONTENT,
+  });
+
+  assert.equal(result.newRuleset, NEW_RULESET);
+  assert.notEqual(result.newRuleset, spoofed);
+  ok(label);
+}
+
 // ─── Test 2: release already points to matching ruleset -> no-op ──────────
 
 async function testAlreadyCurrent() {
@@ -434,6 +494,7 @@ async function run() {
     ["test409Repair", test409Repair],
     ["testNormalizesAbsoluteSourcePath", testNormalizesAbsoluteSourcePath],
     ["testSkipsNewerUnrelatedRuleset", testSkipsNewerUnrelatedRuleset],
+    ["testRejectsMatchingRulesFileWithAdditionalSources", testRejectsMatchingRulesFileWithAdditionalSources],
     ["testAlreadyCurrent", testAlreadyCurrent],
     ["testPatchFails", testPatchFails],
     ["testIdempotent", testIdempotent],

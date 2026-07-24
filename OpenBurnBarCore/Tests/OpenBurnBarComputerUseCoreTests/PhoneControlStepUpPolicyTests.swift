@@ -25,11 +25,9 @@ final class PhoneControlStepUpPolicyTests: XCTestCase {
         XCTAssertFalse(policy.requiresStepUp(capabilities: []))
     }
 
-    func testSecureEnclaveSignatureSatisfiesStepUpWithoutProof() {
-        XCTAssertEqual(policy.stepUpEvidence(for: .secureEnclaveP256), .enforcedBySecureEnclaveSignature)
-        // A hardware-bound, biometry-gated key needs no extra proof field even
-        // for the most sensitive action.
-        XCTAssertFalse(policy.requiresExplicitLocalAuthProof(
+    func testSecureEnclaveLabelDoesNotReplaceExplicitProof() {
+        XCTAssertEqual(policy.stepUpEvidence(for: .secureEnclaveP256), .requiresExplicitLocalAuthProof)
+        XCTAssertTrue(policy.requiresExplicitLocalAuthProof(
             capabilities: [.shellUnrestricted], keyKind: .secureEnclaveP256
         ))
     }

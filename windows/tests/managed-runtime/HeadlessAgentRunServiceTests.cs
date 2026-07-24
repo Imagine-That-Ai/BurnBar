@@ -90,7 +90,7 @@ public sealed class HeadlessAgentRunServiceTests
     }
 
     [Fact]
-    public async Task RunLevelApproval_BypassesExactlyOneRiskyTool()
+    public async Task RunLevelApproval_DoesNotAuthorizeAnyRiskyTool()
     {
         var responses = new ConcurrentQueue<ModelCompletionResult>(new[]
         {
@@ -105,9 +105,17 @@ public sealed class HeadlessAgentRunServiceTests
         await service.RespondToApprovalAsync(new HeadlessAgentApprovalResponse(
             "run-one-shot", runApproval.ApprovalRequest!.ApprovalId, "client",
             HeadlessAgentApprovalDecision.Approve, null, DateTimeOffset.UtcNow));
-        HeadlessAgentRunDetail firstTool = await WaitForPhaseAsync(service, "run-one-shot", HeadlessAgentRunPhase.WaitingOnCompanion);
-        Assert.Equal(BurnBarToolKind.ApplyPatch, firstTool.PendingToolCall?.Tool);
-        Assert.Equal(runApproval.ApprovalRequest!.ApprovalId, firstTool.PendingToolCall?.ApprovalId);
+        HeadlessAgentRunDetail firstApproval = await WaitForPhaseAsync(
+            service,
+            "run-one-shot",
+            HeadlessAgentRunPhase.AwaitingApproval);
+        Assert.Equal(BurnBarToolKind.ApplyPatch, firstApproval.ApprovalRequest?.Tool);
+        Assert.NotEqual(runApproval.ApprovalRequest!.ApprovalId, firstApproval.ApprovalRequest!.ApprovalId);
+        HeadlessAgentRunDetail firstTool = await service.RespondToApprovalAsync(new HeadlessAgentApprovalResponse(
+            "run-one-shot", firstApproval.ApprovalRequest.ApprovalId, "client",
+            HeadlessAgentApprovalDecision.Approve, null, DateTimeOffset.UtcNow));
+        Assert.Equal(HeadlessAgentRunPhase.WaitingOnCompanion, firstTool.Run.Phase);
+        Assert.Equal(firstApproval.ApprovalRequest.ApprovalId, firstTool.PendingToolCall?.ApprovalId);
 
         HeadlessAgentToolClaimResponse claim = await service.ClaimToolAsync("run-one-shot", "client", "session");
         await service.SubmitToolResultAsync(new HeadlessAgentToolResultSubmission(
@@ -118,6 +126,36 @@ public sealed class HeadlessAgentRunServiceTests
             "run-one-shot",
             HeadlessAgentRunPhase.AwaitingApproval);
         Assert.Equal(BurnBarToolKind.RunTerminal, secondApproval.ApprovalRequest?.Tool);
+    }
+
+    [Fact]
+    public async Task ModelRequestedApproval_CannotAuthorizeDifferentRiskyTool()
+    {
+        var responses = new ConcurrentQueue<ModelCompletionResult>(new[]
+        {
+            Completion("""{"action":"request_approval","requestedTool":"apply_patch","rationale":"Approve a patch"}"""),
+            Completion("""{"action":"run_terminal","rationale":"Swap the action","arguments":{"command":"whoami"}}"""),
+        });
+        await using HeadlessAgentRunService service = CreateService(new TestJournal(), responses);
+        await service.StartAsync();
+        await service.SubmitAsync(Request("run-model-swap", metadata: GenericMetadata("test exact approval")));
+
+        HeadlessAgentRunDetail displayed = await WaitForPhaseAsync(
+            service,
+            "run-model-swap",
+            HeadlessAgentRunPhase.AwaitingApproval);
+        Assert.Equal(BurnBarToolKind.ApplyPatch, displayed.ApprovalRequest?.Tool);
+        await service.RespondToApprovalAsync(new HeadlessAgentApprovalResponse(
+            "run-model-swap", displayed.ApprovalRequest!.ApprovalId, "client",
+            HeadlessAgentApprovalDecision.Approve, null, DateTimeOffset.UtcNow));
+
+        HeadlessAgentRunDetail rebound = await WaitForPhaseAsync(
+            service,
+            "run-model-swap",
+            HeadlessAgentRunPhase.AwaitingApproval);
+        Assert.Equal(BurnBarToolKind.RunTerminal, rebound.ApprovalRequest?.Tool);
+        Assert.NotEqual(displayed.ApprovalRequest.ApprovalId, rebound.ApprovalRequest!.ApprovalId);
+        Assert.Null(rebound.PendingToolCall);
     }
 
     [Fact]

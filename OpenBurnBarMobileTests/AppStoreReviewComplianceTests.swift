@@ -292,20 +292,15 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertTrue(pbxproj.contains("APS_ENVIRONMENT = production;"))
     }
 
-    func testInternalTestFlightAppCheckBuildInjectsRuntimeSwitchAndDebugToken() throws {
+    func testProjectDoesNotEmbedReusableAppCheckDebugTokens() throws {
         try skipSourceInspectionInSimulatorAppHost()
         let projectURL = repoRoot().appendingPathComponent("project.yml")
         let source = try String(contentsOf: projectURL, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("OPENBURNBAR_USE_DEBUG_APP_CHECK: \"NO\""))
-        XCTAssertTrue(source.contains("if [[ \"${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}\" != \"YES\" ]]; then"))
-        XCTAssertTrue(source.contains("FIREBASE_APP_CHECK_DEBUG_TOKEN is required when OPENBURNBAR_USE_DEBUG_APP_CHECK=YES"))
-        XCTAssertTrue(source.contains("BUILT_GOOGLE_PLIST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\""))
-        XCTAssertTrue(source.contains("BUILT_INFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\""))
-        XCTAssertTrue(source.contains("Add :FirebaseAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}"))
-        XCTAssertTrue(source.contains("Add :FIRAAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}"))
-        XCTAssertTrue(source.contains("Add :OpenBurnBarUseDebugAppCheck string YES"))
-        XCTAssertTrue(source.contains("$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"))
+        XCTAssertFalse(source.contains("Inject Internal App Check Debug Token"))
+        XCTAssertFalse(source.contains("Inject Internal Mac App Check Debug Token"))
+        XCTAssertFalse(source.contains("Add :FirebaseAppCheckDebugToken"))
+        XCTAssertFalse(source.contains("Add :FIRAAppCheckDebugToken"))
     }
 
     func testReleaseAppCheckIgnoresBarePlistTokenAndDebugProviderOverrideWithoutInternalFlag() throws {
@@ -324,7 +319,7 @@ final class AppStoreReviewComplianceTests: XCTestCase {
         XCTAssertEqual(strategy, .appAttest)
     }
 
-    func testInternalReleaseAppCheckFlagPreservesDebugProviderPath() throws {
+    func testInternalReleaseAppCheckFlagCannotEnableDebugProvider() throws {
         let plistURL = try writeGooglePlist([
             AppCheckDebugTokenEnvironment.firaDebugTokenKey: "plist-token"
         ])
@@ -337,7 +332,7 @@ final class AppStoreReviewComplianceTests: XCTestCase {
             isDebugBuild: false
         )
 
-        XCTAssertEqual(strategy, .debug)
+        XCTAssertEqual(strategy, .appAttest)
     }
 
     func testDebugBuildAppCheckPathStillUsesDebugProvider() throws {
