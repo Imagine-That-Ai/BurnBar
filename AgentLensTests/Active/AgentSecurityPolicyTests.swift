@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import OpenBurnBarComputerUseCore
 import XCTest
 @testable import OpenBurnBar
@@ -391,4 +392,46 @@ final class AgentSecurityPolicyTests: XCTestCase {
         guard valueIndex < arguments.endIndex else { return nil }
         return arguments[valueIndex]
     }
+
+    // MARK: - Pet Junie surface must advertise "unavailable", never "ready"
+
+    /// Junie fails closed without a full desktop capability grant
+    /// (`CLIBridgeError.junieRequiresFullGrant`) and the pet surface never
+    /// plumbs one. Advertising `.ready` would offer a pet that silently answers
+    /// from the local fallback instead of Junie, so the probe must report
+    /// `.unavailable` regardless of whether the `junie` executable is present.
+    @MainActor
+    func test_petJunieProvider_advertisesUnavailableRatherThanReady() async {
+        let provider = CLIBridgeChatProvider(
+            id: .junie,
+            bridge: CLIBridge(),
+            keychain: PetKeychainStore(),
+            workspace: nil
+        )
+        let status = await provider.checkAuth()
+        XCTAssertEqual(
+            status, .unavailable,
+            "pet Junie must fail closed as .unavailable, never .ready"
+        )
+        XCTAssertNotEqual(status, .ready, "advertising ready would promise a grant the pet never holds")
+    }
+
+    /// The chip copy is user-facing: `.unavailable` must read as a distinct,
+    /// honest state rather than borrowing another status' wording.
+    func test_petAuthStatus_unavailableHasItsOwnLabel() {
+        XCTAssertEqual(PetAuthStatus.unavailable.label, "Unavailable")
+        XCTAssertNotEqual(PetAuthStatus.unavailable.label, PetAuthStatus.error.label)
+        XCTAssertNotEqual(PetAuthStatus.unavailable.label, PetAuthStatus.needsLogin.label)
+    }
+
+    /// `.unavailable` is "cannot run on this surface", not a fault: it must be
+    /// muted like `.unknown`, never coloured as `.error`.
+    func test_petAuthStatus_unavailableChipReadsAsMutedNotError() {
+        XCTAssertEqual(PetAuthStatus.unavailable.chipColor, DesignSystem.Colors.textMuted)
+        XCTAssertEqual(PetAuthStatus.unavailable.chipColor, PetAuthStatus.unknown.chipColor)
+        XCTAssertNotEqual(PetAuthStatus.unavailable.chipColor, PetAuthStatus.error.chipColor)
+        XCTAssertEqual(PetAuthStatus.ready.chipColor, DesignSystem.Colors.success)
+        XCTAssertEqual(PetAuthStatus.needsLogin.chipColor, DesignSystem.Colors.warning)
+    }
+
 }

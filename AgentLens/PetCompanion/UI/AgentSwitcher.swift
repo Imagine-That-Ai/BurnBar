@@ -79,20 +79,30 @@ struct PetAgentSwitcher: View {
 
     @ViewBuilder
     private func authChip(_ status: PetAuthStatus) -> some View {
-        let color: Color = {
-            switch status {
-            case .ready: return DesignSystem.Colors.success
-            case .needsLogin: return DesignSystem.Colors.warning
-            case .error: return DesignSystem.Colors.error
-            case .unavailable: return DesignSystem.Colors.textMuted
-            case .unknown: return DesignSystem.Colors.textMuted
-            }
-        }()
+        let color: Color = status.chipColor
         HStack(spacing: DesignSystem.Spacing.xxs) {
             Circle().fill(color).frame(width: 6, height: 6)
             Text(status.label)
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
+        }
+    }
+}
+
+// MARK: - PetAuthStatus chip presentation
+
+extension PetAuthStatus {
+    /// Indicator colour for the auth chip. Defined here rather than inline in
+    /// the view body so the status -> colour mapping is directly testable:
+    /// `.unavailable` must read as muted (an honest "cannot run here"), never
+    /// as `.error`, which would imply something is broken.
+    var chipColor: Color {
+        switch self {
+        case .ready: return DesignSystem.Colors.success
+        case .needsLogin: return DesignSystem.Colors.warning
+        case .error: return DesignSystem.Colors.error
+        case .unavailable: return DesignSystem.Colors.textMuted
+        case .unknown: return DesignSystem.Colors.textMuted
         }
     }
 }
