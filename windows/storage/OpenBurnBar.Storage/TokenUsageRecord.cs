@@ -28,6 +28,10 @@ public sealed record TokenUsageRecord
     public required string CreatedAt { get; init; }
 
     public string UsageSource { get; init; } = "measured";
+    public string ExecutionSourceID { get; init; } = "unknown";
+    public string ExecutionSourceName { get; init; } = "Unknown";
+    public string ExecutionSourceKind { get; init; } = "unknown";
+    public string ExecutionSourceConfidence { get; init; } = "unknown";
     public string? SourceDeviceId { get; init; }
     public string? SourceDeviceName { get; init; }
     public bool IsRemote { get; init; }

@@ -30,6 +30,9 @@ final class BurnBarCatalogTests: XCTestCase {
 
         let sonnet = try XCTUnwrap(catalog.pricing(forModelName: "claude-3-5-sonnet-20241022"))
         let factorySonnext = try XCTUnwrap(catalog.pricing(forModelName: "Sonnext-4.6-9"))
+        let gpt56Sol = try XCTUnwrap(catalog.pricing(forModelName: "gpt-5.6-sol"))
+        let gpt56Terra = try XCTUnwrap(catalog.pricing(forModelName: "gpt-5.6-terra"))
+        let gpt56Luna = try XCTUnwrap(catalog.pricing(forModelName: "gpt-5.6-luna"))
         let gpt55 = try XCTUnwrap(catalog.pricing(forModelName: "gpt-5.5"))
         let gpt55Pro = try XCTUnwrap(catalog.pricing(forModelName: "gpt-5.5-pro"))
         let factoryGLM5 = try XCTUnwrap(catalog.pricing(forModelName: "glm-5", providerID: "factory"))
@@ -43,6 +46,18 @@ final class BurnBarCatalogTests: XCTestCase {
         XCTAssertEqual(factorySonnext.inputPerMToken, 3, accuracy: 0.001)
         XCTAssertEqual(factorySonnext.outputPerMToken, 15, accuracy: 0.001)
         XCTAssertEqual(factorySonnext.cacheReadPerMToken, 0.3, accuracy: 0.001)
+        XCTAssertEqual(gpt56Sol.inputPerMToken, 5, accuracy: 0.001)
+        XCTAssertEqual(gpt56Sol.outputPerMToken, 30, accuracy: 0.001)
+        XCTAssertEqual(gpt56Sol.cacheCreationPerMToken ?? 0, 6.25, accuracy: 0.001)
+        XCTAssertEqual(gpt56Sol.cacheReadPerMToken, 0.5, accuracy: 0.001)
+        XCTAssertEqual(gpt56Terra.inputPerMToken, 2.5, accuracy: 0.001)
+        XCTAssertEqual(gpt56Terra.outputPerMToken, 15, accuracy: 0.001)
+        XCTAssertEqual(gpt56Terra.cacheCreationPerMToken ?? 0, 3.125, accuracy: 0.001)
+        XCTAssertEqual(gpt56Terra.cacheReadPerMToken, 0.25, accuracy: 0.001)
+        XCTAssertEqual(gpt56Luna.inputPerMToken, 1, accuracy: 0.001)
+        XCTAssertEqual(gpt56Luna.outputPerMToken, 6, accuracy: 0.001)
+        XCTAssertEqual(gpt56Luna.cacheCreationPerMToken ?? 0, 1.25, accuracy: 0.001)
+        XCTAssertEqual(gpt56Luna.cacheReadPerMToken, 0.1, accuracy: 0.001)
         XCTAssertEqual(gpt55.inputPerMToken, 5, accuracy: 0.001)
         XCTAssertEqual(gpt55.outputPerMToken, 30, accuracy: 0.001)
         XCTAssertEqual(gpt55.cacheReadPerMToken, 0.5, accuracy: 0.001)
@@ -207,14 +222,22 @@ final class BurnBarCatalogTests: XCTestCase {
     func test_bundledCatalog_exposesCurrentGPTModelsThroughCodexProvider() {
         let catalog = BurnBarCatalogLoader.bundledCatalog
         XCTAssertEqual(
-            Array(catalog.suggestedModels(forProviderID: "codex").prefix(2)).map(\.id),
-            ["codex-gpt-5.5-family", "codex-gpt-5.4-family"]
+            Array(catalog.suggestedModels(forProviderID: "codex").prefix(3)).map(\.id),
+            ["codex-gpt-5.6-sol-family", "codex-gpt-5.6-terra-family", "codex-gpt-5.6-luna-family"]
         )
+        XCTAssertTrue(catalog.supportsModel(named: "gpt-5.6", providerID: "codex"))
+        XCTAssertTrue(catalog.supportsModel(named: "gpt-5.6-sol", providerID: "codex"))
+        XCTAssertTrue(catalog.supportsModel(named: "gpt-5.6-terra", providerID: "codex"))
+        XCTAssertTrue(catalog.supportsModel(named: "gpt-5.6-luna", providerID: "codex"))
         XCTAssertTrue(catalog.supportsModel(named: "gpt-5.5", providerID: "codex"))
         XCTAssertTrue(catalog.supportsModel(named: "gpt-5.5-codex", providerID: "codex"))
         XCTAssertTrue(catalog.supportsModel(named: "gpt-5.4", providerID: "codex"))
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "gpt-5.6", providerID: "codex"), "gpt-5.6-sol")
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "gpt-5.6-terra", providerID: "codex"), "gpt-5.6-terra")
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "gpt-5.6-luna", providerID: "codex"), "gpt-5.6-luna")
         XCTAssertEqual(catalog.canonicalModelID(forModelName: "gpt-5.5", providerID: "codex"), "gpt-5.5")
         XCTAssertEqual(catalog.canonicalModelID(forModelName: "gpt-5.4", providerID: "codex"), "gpt-5.4")
+        XCTAssertEqual(catalog.capabilityClassID(forModelName: "gpt-5.6-sol", providerID: "codex"), "openai:codex")
         XCTAssertEqual(catalog.capabilityClassID(forModelName: "gpt-5.5", providerID: "codex"), "openai:codex")
     }
 
