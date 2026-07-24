@@ -7,7 +7,7 @@ function fixture() {
   return {
     required_status_checks: {
       strict: true,
-      contexts: ["Domain Core Trusted Deletion Guard"],
+      contexts: ["BurnBar CI Gate"],
     },
     enforce_admins: { enabled: true },
     required_pull_request_reviews: {
@@ -25,7 +25,7 @@ test("accepts fail-closed official main protection", () => {
 
 for (const [name, mutate] of [
   [
-    "missing trusted guard",
+    "missing umbrella gate",
     (value) => value.required_status_checks.contexts.pop(),
   ],
   [

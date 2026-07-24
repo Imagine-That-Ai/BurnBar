@@ -5,9 +5,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const REPOSITORY = "Imagine-That-Ai/BurnBar";
-const REQUIRED_CONTEXTS = Object.freeze([
-  "Domain Core Trusted Deletion Guard",
-]);
+const REQUIRED_CONTEXTS = Object.freeze(["BurnBar CI Gate"]);
 
 export function verifyDefaultBranchControls(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
