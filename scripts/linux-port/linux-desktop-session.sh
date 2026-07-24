@@ -221,6 +221,15 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
 
   xdotool mousemove --window "$window_id" 8 $((HEIGHT - 8)) click 1
   sleep 0.3
+  # Start from a real, named document control. WebKitGTK can retain focus on
+  # the host shell after route activation, which makes the same physical Tab
+  # sequence produce different Orca event counts across architectures.
+  python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+    --application OpenBurnBar \
+    --mode grab-focus \
+    --expected-name "Skip to content" \
+    --output "$out_dir/atspi-keyboard-focus-anchor.json"
+  sleep 0.5
   focus_log_offset="$(wc -c <"$out_dir/orca-debug.log")"
   # WebKitGTK and Orca enqueue focus events independently.  Fourteen keys
   # were enough on the historical arm64 image but intermittently stopped
