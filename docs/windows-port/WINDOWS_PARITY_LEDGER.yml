@@ -846,25 +846,6 @@ rows:
   - windows/app/OpenBurnBar.App.Configuration/ProtectedFilePayloadStore.cs
   - windows/app/OpenBurnBar.App/App+CompanionRuntime.cs
   notes: F2 accepted in-process headless run, protected recovery, approval, and leased tool-dispatch path Real; Windows-host and physical lifecycle evidence remain separate.
-- id: nav-calendar
-  macos_route: calendar
-  macos_capability: DashboardMainRoute.calendar — month heat grid + selection analytics
-  windows_route: calendar
-  windows_capability: CalendarPage with portable selection/bucketing/layout presentation logic
-  status: Real
-  evidence:
-  - docs/windows-port/evidence/f1-depth/calendar-surface.md
-  tests:
-  - windows/tests/presentation/Calendar
-  blocking_paths:
-  - windows/app/OpenBurnBar.App.Presentation/Calendar/CalendarSelectionSnapshot.cs
-  - windows/app/OpenBurnBar.App.Presentation/Calendar/CalendarMonthSnapshot.cs
-  - windows/app/OpenBurnBar.App.Presentation/Calendar/CalendarSelectionModel.cs
-  - windows/app/OpenBurnBar.App.Presentation/Calendar/CalendarPageLayout.cs
-  - windows/app/OpenBurnBar.App.Presentation/Calendar/CalendarBucketing.cs
-  - windows/app/OpenBurnBar.App.Presentation/Calendar/CalendarUsageSource.cs
-  owner_lane: wave-2-production-data
-  notes: 76 Calendar presentation tests green on macOS (872 total suite); local-tz startOfDay attribution and month-peak sqrt heat match the macOS oracle. WinUI XamlCompiler pass for CalendarPage.xaml is host-gated like every other page.
 f1_coverage_register:
 - subsystem: mercury-media
   ledger_row: mercury-media
