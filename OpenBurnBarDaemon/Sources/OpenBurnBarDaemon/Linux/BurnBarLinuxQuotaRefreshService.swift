@@ -159,12 +159,17 @@ final class BurnBarLinuxQuotaSnapshotCache: @unchecked Sendable, ProviderQuotaSn
     }
 
     private let fileURL: URL
+    private let logger: BurnBarDaemonLogger
     private let lock = NSLock()
     private var snapshotsByProvider: [String: ProviderQuotaSnapshot]
     private var scratch: [String: String]
 
-    init(fileURL: URL = OpenBurnBarAppPaths.live().providerQuotaSnapshotsURL) {
+    init(
+        fileURL: URL = OpenBurnBarAppPaths.live().providerQuotaSnapshotsURL,
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "linux-quota-cache")
+    ) {
         self.fileURL = fileURL
+        self.logger = logger
         self.snapshotsByProvider = [:]
         self.scratch = [:]
         load()
@@ -231,6 +236,7 @@ final class BurnBarLinuxQuotaSnapshotCache: @unchecked Sendable, ProviderQuotaSn
         } catch {
             // Quota cache loss must never make provider routing or the daemon
             // unavailable; the next refresh can rebuild it from the adapters.
+            logger.silentFailure("linux_quota_snapshot_persist", error: error)
         }
     }
 }
