@@ -2853,6 +2853,12 @@ backoff, and redacted status/policy/manual-cycle RPCs. The production Firebase
 gateway and process composition, Account UI, Iroh authorization/read path,
 credential escrow, and live two-device execution remain required.
 
+The Linux membership surface now treats an opened Stripe checkout or billing
+portal as a recoverable external state (`f1eed37f69`): the action is no longer
+left disabled indefinitely, and the user is told to return and re-check the
+daemon-owned entitlement state. Production billing, auth, and device receipts
+remain separate certification gates.
+
 - **Difference:** macOS can sign in/link/sign out, manage membership, cloud
   backup, conflicts, remote access, and trusted devices. Linux mostly projects
   status and checkout; auth must be completed elsewhere, cloud mutations are
