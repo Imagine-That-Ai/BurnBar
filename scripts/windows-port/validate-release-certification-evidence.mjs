@@ -858,7 +858,15 @@ export function validateReleaseCertificationBundle(bundleDir, options = {}) {
   return { ok: errors.length === 0, errors, manifest };
 }
 
-function parseArgs(argv) {
+function readExpectedCommit(argv, index, flag) {
+  const value = argv[index + 1];
+  if (typeof value !== "string" || !/^[a-f0-9]{40}$/i.test(value)) {
+    throw new Error(`${flag} requires a full 40-character Git SHA`);
+  }
+  return value.toLowerCase();
+}
+
+export function parseArgs(argv) {
   const args = {
     bundleDir: "",
     writeSums: false,
@@ -868,10 +876,15 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === "--write-sums") args.writeSums = true;
-    else if (value === "--expected-commit") args.expectedCommit = argv[++index] ?? "";
-    else if (value === "--expected-harness-commit") {
-      args.expectedHarnessCommit = argv[++index] ?? "";
+    else if (value === "--expected-commit") {
+      args.expectedCommit = readExpectedCommit(argv, index, value);
+      index += 1;
     }
+    else if (value === "--expected-harness-commit") {
+      args.expectedHarnessCommit = readExpectedCommit(argv, index, value);
+      index += 1;
+    }
+    else if (value.startsWith("-")) throw new Error(`unknown argument: ${value}`);
     else if (!args.bundleDir) args.bundleDir = value;
     else throw new Error(`unknown argument: ${value}`);
   }

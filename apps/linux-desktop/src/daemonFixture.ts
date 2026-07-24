@@ -753,6 +753,7 @@ export function fixtureProxyRouteLog(): ProxyRouteLogEntry[] {
       rewriteKind: 'model_alias',
       exactModelInvariant: 'passed',
       streamed: true,
+      streamInterrupted: false,
       httpStatus: 200
     }
   ];

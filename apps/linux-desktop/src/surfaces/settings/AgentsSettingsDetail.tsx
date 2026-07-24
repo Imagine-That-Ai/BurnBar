@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PROXY_ROUTE_FINAL_STATUS_COPY } from '../../tauriBridge.js';
 import type { ConfigSnapshot, ProviderSettings } from '../../tauriBridge.js';
 import { Banner } from '../../components/Banner.js';
 import { useSettingsWiringStore } from '../../state/settingsWiringStore.js';
@@ -382,7 +383,7 @@ export function AgentsDetail({ config, fixtureMode }: { config: ConfigSnapshot; 
             key={entry.id}
             iconGlyph="⇢"
             label={`${entry.clientModelSlug || 'unknown'} → ${entry.routingModelSlug ?? entry.upstreamModelSlug ?? 'unresolved'}`}
-            description={`${entry.finalStatus} · ${entry.rewriteKind} · ${entry.providerName ?? 'No provider'} · ${entry.occurredAt}`}
+            description={`${PROXY_ROUTE_FINAL_STATUS_COPY[entry.finalStatus]}${entry.streamInterrupted ? ' · stream interrupted' : ''} · ${entry.rewriteKind} · ${entry.providerName ?? 'No provider'} · ${entry.occurredAt}`}
             control={<span className="muted mono">{entry.httpStatus ?? 'n/a'}</span>}
           />
         ))}
