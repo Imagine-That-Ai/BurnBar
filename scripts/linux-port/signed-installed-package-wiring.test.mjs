@@ -15,6 +15,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 test('release Cargo target is ignored exactly without masking adjacent checkout paths', () => {
   const gitignore = read('.gitignore');
   assert.match(gitignore, /^crates\/openburnbar-iroh\/target-linux-release\/$/mu);
+  assert.match(gitignore, /^crates\/openburnbar-media\/target-linux-release\/$/mu);
 
   const checkIgnore = (candidate) => spawnSync(
     'git',
@@ -24,8 +25,14 @@ test('release Cargo target is ignored exactly without masking adjacent checkout 
   const generated = checkIgnore('crates/openburnbar-iroh/target-linux-release/release/libopenburnbar_iroh.so');
   assert.equal(generated.status, 0, generated.stderr || generated.stdout);
 
+  const mediaGenerated = checkIgnore('crates/openburnbar-media/target-linux-release/release/libopenburnbar_media.so');
+  assert.equal(mediaGenerated.status, 0, mediaGenerated.stderr || mediaGenerated.stdout);
+
   const nearMiss = checkIgnore('crates/openburnbar-iroh/target-linux-release-not-generated/release/libopenburnbar_iroh.so');
   assert.notEqual(nearMiss.status, 0, nearMiss.stdout || nearMiss.stderr);
+
+  const mediaNearMiss = checkIgnore('crates/openburnbar-media/target-linux-release-not-generated/release/libopenburnbar_media.so');
+  assert.notEqual(mediaNearMiss.status, 0, mediaNearMiss.stdout || mediaNearMiss.stderr);
 });
 
 test('deb, rpm, and Arch package exact installed attestation subjects', () => {
