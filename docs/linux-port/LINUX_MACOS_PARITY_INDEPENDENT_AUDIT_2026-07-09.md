@@ -120,7 +120,8 @@ encodes as bounded data URLs; the shared policy regression covers extension
 inference, explicit MIME values, and rejection of unsupported audio. This
 removes the prior daemon-side rejection that made the implemented gateway
 image path unusable after message persistence. Provider-specific backend
-coverage, PDF input semantics, and installed-candidate proof remain open.
+coverage and installed-candidate proof remain open; the native PDF document
+wire shape is now covered by the latest attachment-parity delta below.
 
 The malformed/incomplete HTTP frame test is deterministic now: the Linux raw
 request helper half-closes its write side after sending the intentionally short
@@ -2846,18 +2847,17 @@ IDs or implicit approvals are allowed.
   daemon-owned bounded single-use attachment refs, citations, approvals, and
   bounded unloaded-history/export/resume/pop-out behavior. Model-authorized
   PNG/JPEG/WebP image inputs now pass the shared daemon policy and the Tauri
-  gateway's native capability path. Remaining backend breadth, provider-native
-  PDF semantics, and installed proof remain incomplete. The Responses fallback
-  now preserves data-backed `input_file` PDFs/images through the same bounded
-  Chat Completions bridge; unresolved file IDs and remote URLs fail closed.
+  gateway's native capability path. Remaining backend breadth and installed
+  proof remain incomplete. Model-authorized PDF inputs now use a typed native
+  `file` part through the Tauri gateway, Responses fallback, and Anthropic
+  compatibility bridge; unresolved file IDs and remote URLs still fail closed.
 - **Why it matters:** chat is a primary workflow; presenting a file or model
   control without a real transport still creates false confidence and data-loss
   risk. `44a5864b0d` requires a daemon catalog routing capability before a
   backend is advertised, and `7017227ac8` verifies that a missing catalog fails
   closed before any durable append or gateway call.
-- **Recommended solution:** extend the implemented attachment ref store into
-  provider-native PDF/binary handling where the selected model declares it,
-  finish the remaining backend adapters,
+- **Recommended solution:** retain the implemented provider-native PDF/binary
+  handling where the selected model declares it, finish the remaining backend adapters,
   and certify the existing citation/approval/history/pop-out contracts against
   an installed daemon; retain the typed model catalog and fail closed until each
   capability is live.
