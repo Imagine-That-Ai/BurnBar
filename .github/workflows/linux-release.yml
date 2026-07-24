@@ -52,11 +52,20 @@ jobs:
           fetch-tags: true
 
       - name: Verify official Linux release history
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_CHANNEL: ${{ inputs.channel }}
         run: |
           set -euo pipefail
           git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          channel="${INPUT_CHANNEL:-prerelease}"
+          if [[ "$EVENT_NAME" != "workflow_dispatch" ]]; then channel="prerelease"; fi
+          if [[ "$GITHUB_REF" == refs/tags/linux-v* || "$channel" == "stable" ]]; then
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          else
+            printf 'Linux %s candidate may run from branch ref %s at %s.\n' "$channel" "$GITHUB_REF" "$GITHUB_SHA"
+          fi
           if [[ "$GITHUB_REF" == refs/tags/linux-v* ]]; then
             test "$(git rev-list -n 1 "${GITHUB_REF}^{commit}")" = "$GITHUB_SHA"
           fi
