@@ -412,7 +412,7 @@
     SharedUiHostWindow WebView2. Empty when the bundle has not been built; the
     app then fails over to the legacy XAML window (publish hard-fails instead,
     see RequireOpenBurnBarSharedUiBundle below). Rebuild with:
-      cd apps/linux-desktop && node_modules/.bin/vite build --mode windows
+      cd apps/linux-desktop; node_modules/.bin/vite build -m windows
   -->
   <ItemGroup Condition="Exists('..\..\..\apps\linux-desktop\dist-windows\index.html')">
     <Content Include="..\..\..\apps\linux-desktop\dist-windows\**\*"
@@ -424,7 +424,7 @@
   <!-- A publish must never silently omit the shared shell bundle. -->
   <Target Name="RequireOpenBurnBarSharedUiBundle" BeforeTargets="Publish">
     <Error Condition="!Exists('..\..\..\apps\linux-desktop\dist-windows\index.html')"
-           Text="apps/linux-desktop/dist-windows/index.html is missing. Build the shared shell bundle first: cd apps/linux-desktop && node_modules/.bin/vite build --mode windows" />
+           Text="apps/linux-desktop/dist-windows/index.html is missing. Build the shared shell bundle first: cd apps/linux-desktop &amp;&amp; node_modules/.bin/vite build --mode windows" />
   </Target>
 
   <!-- Brand + provider logos (macOS AppLogo / Linux openburnbar.png parity). -->
