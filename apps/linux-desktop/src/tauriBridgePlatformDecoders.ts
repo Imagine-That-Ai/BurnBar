@@ -1,3 +1,4 @@
+import { normalizeProxyRouteFinalStatus } from './proxyRouteContracts.js';
 import {
   requireTimestamp
 } from './tauriBridgeCoreDecoders.js';
@@ -207,10 +208,11 @@ export function mapProxyRouteLog(raw: RawJsonValue): ProxyRouteLogEntry[] {
     upstreamModelSlug: str(pick(entry, 'upstreamModelSlug')) || undefined,
     providerName: str(pick(entry, 'providerName')) || undefined,
     accountLabel: str(pick(entry, 'accountLabel')) || undefined,
-    finalStatus: str(pick(entry, 'finalStatus'), 'unknown'),
+    finalStatus: normalizeProxyRouteFinalStatus(str(pick(entry, 'finalStatus'), 'unknown')),
     rewriteKind: str(pick(entry, 'rewriteKind'), 'none'),
     exactModelInvariant: str(pick(entry, 'exactModelInvariant'), 'not_applicable'),
     streamed: Boolean(pick(entry, 'streamed')),
+    streamInterrupted: Boolean(pick(entry, 'streamInterrupted')),
     httpStatus: pick(entry, 'httpStatus') == null ? undefined : num(pick(entry, 'httpStatus')),
     failureMessage: str(pick(entry, 'failureMessage')) || undefined
   }));
