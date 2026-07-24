@@ -12,7 +12,7 @@ test("workflow executes trusted base code and observes the exact candidate", () 
     new URL("../../.github/workflows/burnbar-ci-gate.yml", import.meta.url),
     "utf8",
   );
-  assert.match(workflow, /\n  pull_request:\n/);
+  assert.doesNotMatch(workflow, /\n  pull_request:\n/);
   assert.match(workflow, /\n  pull_request_target:\n/);
   assert.match(
     workflow,
